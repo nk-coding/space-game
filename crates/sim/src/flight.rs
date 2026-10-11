@@ -50,19 +50,56 @@ pub enum AimMode {
     Lead,
 }
 
-/// Pilot input (touch stick or WASD, target lock, drift toggle, fire), in world terms.
+/// Pilot input: the touch stick (world terms) or the PC keyboard axes (ship terms), target lock, drift toggle,
+/// fire.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PilotInput {
-    /// World direction, length 0..1 (longer is clamped). Without a lock: "fly that way", the length sets the
-    /// speed as a fraction of the soft top speed. With a lock: strafe that way.
+    /// Touch stick, world direction, length 0..1 (longer is clamped). Without a lock: "fly that way", the length
+    /// sets the speed as a fraction of the soft top speed. With a lock: strafe that way. Ignored when `axes` is
+    /// set.
     pub stick: Vec2,
     /// Keep the nose on this target.
     pub lock: Option<Target>,
     /// Released stick coasts instead of braking.
     pub drift: bool,
     pub fire: bool,
-    /// Under a lock: nose on the target or on the lead point.
+    /// Under a lock: which way to aim (`Auto`: bring the strongest working guns to bear, GDR-0040).
     pub aim: AimMode,
+    /// PC keyboard (GDR-0040): ship-relative rotate / thrust / strafe. `Some` replaces the stick.
+    pub axes: Option<PilotAxes>,
+    /// Under a lock: extra aim angle (rad, counter-clockwise), the A/D nudge. The client integrates it every tick
+    /// with [`nudge_step`], so it springs back when released.
+    pub aim_offset: f32,
+}
+
+/// Ship-relative pilot axes (PC keyboard), each -1..1.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PilotAxes {
+    /// A/D: +1 turns counter-clockwise (left), -1 clockwise. Under a lock it drives the aim nudge instead.
+    pub turn: f32,
+    /// W/S: +1 thrusts forward along the nose, -1 backward.
+    pub thrust: f32,
+    /// Q/E: +1 strafes right (the ship's +x), -1 left.
+    pub strafe: f32,
+}
+
+/// Aim nudge (rad) reached while A/D are held under a lock, how fast it grows (rad/s) and how fast it springs
+/// back (1/s). Placeholders for feel.
+pub const NUDGE_MAX: f32 = 0.6;
+pub const NUDGE_RATE: f32 = 1.2;
+pub const NUDGE_RETURN: f32 = 5.0;
+
+/// One tick of the aim nudge: grows with `turn` (A/D) up to ±[`NUDGE_MAX`], springs back to 0 when released.
+/// Deterministic (no transcendentals); the client calls it once per sim tick.
+pub fn nudge_step(nudge: f32, turn: f32) -> f32 {
+    let turn = turn.clamp(-1.0, 1.0);
+    if turn.abs() > 0.05 {
+        (nudge + turn * NUDGE_RATE * DT).clamp(-NUDGE_MAX, NUDGE_MAX)
+    } else {
+        let k = (NUDGE_RETURN * DT).min(1.0);
+        let n = nudge - nudge * k;
+        if n.abs() < 1e-4 { 0.0 } else { n }
+    }
 }
 
 /// How the flight computer turns the ship.
@@ -77,6 +114,8 @@ pub enum HeadingGoal {
     /// Keep the heading if the ship can push along the needed acceleration from here, else turn the best
     /// thrust axis that way (flip-and-burn for ships with engines only at the back).
     Auto,
+    /// Turn at this rate (rad/s, counter-clockwise; capped at the max turn rate). Keyboard rotate.
+    Rate(f32),
 }
 
 /// What the flight computer should achieve.
@@ -433,20 +472,91 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             raw: false,
         },
         HelmMode::Pilot(input) => Plan {
-            goal: Some(pilot_goal(input, &kin, ships, tuning)),
+            goal: Some(pilot_goal(input, &kin, ship, piece, ships, tuning)),
             fire: Fire::all_if(input.fire),
             raw: false,
         },
     }
 }
 
-/// Stick and lock → goal.
+/// Body angle that brings the strongest working guns to bear on a target (GDR-0040): guns are grouped by the
+/// side they face; the group with the most damage per second among clear, alive, not overheated guns wins (ties:
+/// front, back, right, left), and it aims at the lead point if that group's strongest gun fires projectiles.
+/// `None` without working guns.
+pub fn smart_aim(ship: &Ship, piece: &Piece, kin: &Kin, t: &TargetState) -> Option<f32> {
+    // [dps, best gun dps, its projectile speed (0 = hit-scan)] per facing group (AXES order).
+    let mut groups = [[0.0f32; 3]; 4];
+    for g in piece.guns.iter().filter(|g| g.clear) {
+        let st = ship.part(g.part);
+        if !st.alive || st.overheated {
+            continue;
+        }
+        let k = if g.dir.y.abs() >= g.dir.x.abs() {
+            if g.dir.y >= 0.0 { 0 } else { 1 }
+        } else if g.dir.x >= 0.0 {
+            2
+        } else {
+            3
+        };
+        groups[k][0] += g.dps;
+        if g.dps > groups[k][1] {
+            groups[k][1] = g.dps;
+            groups[k][2] = match g.delivery {
+                data::Delivery::Projectile { speed, .. } => speed,
+                _ => 0.0,
+            };
+        }
+    }
+    let mut best = 0;
+    for k in 1..4 {
+        if groups[k][0] > groups[best][0] {
+            best = k;
+        }
+    }
+    if groups[best][0] <= 0.0 {
+        return None;
+    }
+    let aim = if groups[best][2] > 0.0 {
+        lead_point(kin.pos, kin.vel, t.pos, t.vel, groups[best][2])
+    } else {
+        t.pos
+    };
+    let to = aim - kin.pos;
+    if to.length_squared() < 1e-6 {
+        return None;
+    }
+    // Rotate the group's facing onto `to`.
+    Some(wrap_angle(atan2(to.y, to.x) - AXIS_ANGLE[best]))
+}
+
+/// Pilot input → goal: the touch stick ("fly that way") or the keyboard axes (rotate / thrust / strafe), with or
+/// without a lock.
 pub fn pilot_goal(
     input: &PilotInput,
     kin: &Kin,
+    ship: &Ship,
+    piece: &Piece,
     ships: &[Ship],
     tuning: &FlightTuning,
 ) -> FlightGoal {
+    let lock = input.lock.as_ref().and_then(|t| resolve_target(ships, t));
+    let lock_heading = |t: &TargetState| -> HeadingGoal {
+        let base = match input.aim {
+            AimMode::Auto => smart_aim(ship, piece, kin, t),
+            _ => None,
+        };
+        let base = base.or_else(|| {
+            let to = kin.aim_point(t, input.aim) - kin.pos;
+            (to.length_squared() > 1e-6).then(|| Kin::nose_heading(to))
+        });
+        match base {
+            Some(a) => HeadingGoal::Angle(wrap_angle(a + input.aim_offset)),
+            None => HeadingGoal::Keep,
+        }
+    };
+    if let Some(axes) = input.axes {
+        return keyboard_goal(input, &axes, kin, lock.as_ref().map(lock_heading), tuning);
+    }
     let mut stick = input.stick;
     let len = stick.length();
     if len > 1.0 {
@@ -454,13 +564,8 @@ pub fn pilot_goal(
     }
     let pushed = len > tuning.stick_deadzone;
     let released_velocity = if input.drift { None } else { Some(Vec2::ZERO) };
-    if let Some(t) = input.lock.as_ref().and_then(|t| resolve_target(ships, t)) {
-        let to = kin.aim_point(&t, input.aim) - kin.pos;
-        let heading = if to.length_squared() > 1e-6 {
-            HeadingGoal::Angle(Kin::nose_heading(to))
-        } else {
-            HeadingGoal::Keep
-        };
+    if let Some(t) = lock {
+        let heading = lock_heading(&t);
         let velocity = if pushed {
             Some(stick * kin.top_speed)
         } else {
@@ -508,6 +613,58 @@ pub fn pilot_goal(
         heading: HeadingGoal::Thrust(h),
         velocity: Some(v_des),
     }
+}
+
+/// Keyboard axes → goal (GDR-0040). W/S thrust along the nose and Q/E strafe; without drift the flight
+/// computer flies the ship where it points (sideways drift is cancelled) and brakes when the keys are released;
+/// with drift every key is pure thrust (momentum is kept). A/D rotate, or, under a lock (`locked` = the lock
+/// heading), the aim is the lock's and A/D only nudge it (`aim_offset`).
+fn keyboard_goal(
+    input: &PilotInput,
+    axes: &PilotAxes,
+    kin: &Kin,
+    locked: Option<HeadingGoal>,
+    tuning: &FlightTuning,
+) -> FlightGoal {
+    let dz = |v: f32| if v.abs() < tuning.stick_deadzone { 0.0 } else { v.clamp(-1.0, 1.0) };
+    let (turn, thrust, strafe) = (dz(axes.turn), dz(axes.thrust), dz(axes.strafe));
+    let nose = kin.rot.apply(Vec2::new(0.0, 1.0));
+    let side = kin.rot.apply(Vec2::new(1.0, 0.0));
+    let top = kin.top_speed;
+    let moving = thrust != 0.0 || strafe != 0.0;
+    let velocity = if input.drift {
+        // Pure thrust along the pressed axes up to the soft top speed; nothing else is corrected.
+        if moving {
+            let push = |key: f32, now: f32| {
+                let want = key * top;
+                if key > 0.0 {
+                    (want - now).max(0.0)
+                } else if key < 0.0 {
+                    (want - now).min(0.0)
+                } else {
+                    0.0
+                }
+            };
+            Some(kin.vel + nose * push(thrust, kin.vel.dot(nose)) + side * push(strafe, kin.vel.dot(side)))
+        } else {
+            None
+        }
+    } else {
+        // Go where it points: the velocity goal lies along the pressed axes only (zero = brake).
+        Some(nose * (thrust * top) + side * (strafe * top))
+    };
+    let heading = match locked {
+        Some(h) => h,
+        None if turn != 0.0 => {
+            // A comfortable turn rate this ship can also stop from within about a quarter turn.
+            let rate = tuning.max_turn_rate.min(sqrt(tuning.turn_margin * kin.alpha * PI));
+            HeadingGoal::Rate(turn * rate)
+        }
+        // Nothing pressed and not drifting: brake as with a released stick (flip-and-burn if needed).
+        None if !moving && !input.drift => HeadingGoal::Auto,
+        None => HeadingGoal::Keep,
+    };
+    FlightGoal { heading, velocity }
 }
 
 /// Desired turn rate towards a heading error `e` (rad).
@@ -584,7 +741,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
 
         // Heading → torque.
         let target = match goal.heading {
-            HeadingGoal::Keep => None,
+            HeadingGoal::Keep | HeadingGoal::Rate(_) => None,
             HeadingGoal::Angle(a) => Some(a),
             HeadingGoal::Thrust(d) => (d.length_squared() > 1e-12).then(|| kin.axis_heading(d)),
             HeadingGoal::Auto => {
@@ -601,7 +758,13 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             }
         };
         let error = target.map_or(0.0, |t| wrap_angle(t - kin.angle));
-        let omega_des = turn_rate(error, kin.alpha, tuning);
+        let (omega_des, turning) = match goal.heading {
+            HeadingGoal::Rate(r) => {
+                let r = r.clamp(-tuning.max_turn_rate, tuning.max_turn_rate);
+                (r, r.abs() > TURN_WITH_THRUST)
+            }
+            _ => (turn_rate(error, kin.alpha, tuning), error.abs() > TURN_WITH_THRUST),
+        };
         // Turning the thrust towards where it is needed: burn only once roughly aligned (flip, then burn), so
         // slow-turning ships do not chase their own velocity vector.
         let force = match goal.heading {
@@ -640,7 +803,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             tmax,
             force,
             torque,
-            error.abs() > TURN_WITH_THRUST,
+            turning,
             &mut piece.act,
         );
         *telemetry = FlightTelemetry {
@@ -687,6 +850,10 @@ impl StateHash for FlightGoal {
                 h.vec2(d);
             }
             HeadingGoal::Auto => h.u8(3),
+            HeadingGoal::Rate(r) => {
+                h.u8(4);
+                h.f32(r);
+            }
         }
         match self.velocity {
             Some(v) => {
@@ -715,6 +882,16 @@ impl StateHash for HelmMode {
                 h.bool(p.drift);
                 h.bool(p.fire);
                 h.u8(p.aim as u8);
+                match &p.axes {
+                    Some(a) => {
+                        h.u8(1);
+                        h.f32(a.turn);
+                        h.f32(a.thrust);
+                        h.f32(a.strafe);
+                    }
+                    None => h.u8(0),
+                }
+                h.f32(p.aim_offset);
             }
             HelmMode::Maneuver { maneuver, fire } => {
                 h.u8(2);

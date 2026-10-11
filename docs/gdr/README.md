@@ -17,7 +17,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0006](0006-ship-scale-no-fixed-cap.md) | Ships are ~60×60 blocks and up, with no fixed block cap | Accepted | 2026-10-10 |
 | [0007](0007-ship-style-2a.md) | Ships use style 2a: flat tiles with seams, glowing icons, a soft teal hull glow | Accepted | 2026-10-10 |
 | [0008](0008-ui-ship-mind-interface.md) | The UI is a diegetic ship-mind interface with a floating HUD, landscape only | Accepted | 2026-10-10 |
-| [0009](0009-stick-and-lock-controls.md) | Controls: stick + lock with an always-on flight computer; letting go brakes | Accepted | 2026-10-10 |
+| [0009](0009-stick-and-lock-controls.md) | Controls: stick + lock with an always-on flight computer; letting go brakes | Accepted; PC/WASD part superseded by [GDR-0040](0040-keyboard-flight-and-smart-lock-aim.md) | 2026-10-10 |
 | [0010](0010-turning-sources.md) | Ships turn with core assist, gyros, RCS pods and their engines (gimbal and differential thrust) | Accepted | 2026-10-11 |
 | [0011](0011-locked-flight-rear-engines-trade-off.md) | Ships with rear-only engines can't brake or strafe while locked: a design trade-off | Accepted | 2026-10-11 |
 | [0012](0012-halvex-runner-follows-rules.md) | The Halvex Runner's layout follows the drydock rules; the content blueprint is the source of truth | Accepted | 2026-10-11 |
@@ -48,6 +48,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0037](0037-behavior-vocabulary-as-content.md) | The behavior vocabulary is content; v1 has 24 nodes, one target line with aim priorities, and the raider pack as data | Accepted | 2026-10-11; 2026-10-12 |
 | [0038](0038-logic-cores-control-parts.md) | Each logic core runs up to N parts; mind capacity caps the running cores and so the ship's size | Accepted | 2026-10-12 |
 | [0039](0039-engine-exhaust-hurts-parts.md) | Engines may sit anywhere; their exhaust damages and heats the parts in its path | Accepted | 2026-10-12 |
+| [0040](0040-keyboard-flight-and-smart-lock-aim.md) | PC keyboard flight controls: rotate + thrust + strafe, smart lock aim with A/D nudge | Accepted | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
