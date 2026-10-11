@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+# Every crate under crates/ is a member. The physics benchmark is its own workspace
+# (it pulls in several physics engines and must not leak into the game's lockfile).
+members = ["crates/*"]
+exclude = ["crates/bench"]
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+
+# Bevy recommendation: optimise dependencies even in dev builds, keep our code quick to compile.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+
+# Web release: smaller wasm. Used by `trunk build --release` via Trunk.toml / cargo profile.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+strip = "debuginfo"

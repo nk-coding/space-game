@@ -1,0 +1,33 @@
+// DRAFT ship from the concept board drydock: sample-early. Grid 16x12, x right, y down, forward = up.
+// rot = quarter turns clockwise, flip = mirrored before rotating, mat only matters for hull parts.
+(
+    name: "sample-early",
+    parts: [
+        (part: "slope1", x: 6, y: 1, rot: 0, flip: true, mat: "steel"),
+        (part: "slope1", x: 9, y: 1, rot: 0, flip: false, mat: "steel"),
+        (part: "pulse", x: 7, y: 1, rot: 0, flip: false, mat: "steel"),
+        (part: "pulse", x: 8, y: 1, rot: 0, flip: true, mat: "steel"),
+        (part: "slope1", x: 5, y: 2, rot: 0, flip: true, mat: "steel"),
+        (part: "slope1", x: 10, y: 2, rot: 0, flip: false, mat: "steel"),
+        (part: "block", x: 6, y: 2, rot: 0, flip: false, mat: "steel"),
+        (part: "block", x: 9, y: 2, rot: 0, flip: true, mat: "steel"),
+        (part: "cap", x: 7, y: 2, rot: 0, flip: false, mat: "steel"),
+        (part: "cap", x: 8, y: 2, rot: 0, flip: true, mat: "steel"),
+        (part: "rad", x: 4, y: 3, rot: 0, flip: false, mat: "steel"),
+        (part: "rad", x: 11, y: 3, rot: 0, flip: true, mat: "steel"),
+        (part: "fission", x: 5, y: 3, rot: 0, flip: false, mat: "steel"),
+        (part: "fission", x: 10, y: 3, rot: 0, flip: true, mat: "steel"),
+        (part: "cargo", x: 6, y: 3, rot: 0, flip: false, mat: "steel"),
+        (part: "cargo", x: 9, y: 3, rot: 0, flip: true, mat: "steel"),
+        (part: "core", x: 7, y: 3, rot: 0, flip: false, mat: "steel"),
+        (part: "core", x: 8, y: 3, rot: 0, flip: true, mat: "steel"),
+        (part: "slope1", x: 4, y: 4, rot: 2, flip: false, mat: "steel"),
+        (part: "slope1", x: 11, y: 4, rot: 2, flip: true, mat: "steel"),
+        (part: "thruster", x: 5, y: 4, rot: 0, flip: false, mat: "steel"),
+        (part: "thruster", x: 10, y: 4, rot: 0, flip: true, mat: "steel"),
+        (part: "shield", x: 6, y: 4, rot: 0, flip: false, mat: "steel"),
+        (part: "shield", x: 9, y: 4, rot: 0, flip: true, mat: "steel"),
+        (part: "block", x: 7, y: 4, rot: 0, flip: false, mat: "steel"),
+        (part: "block", x: 8, y: 4, rot: 0, flip: true, mat: "steel"),
+    ],
+)

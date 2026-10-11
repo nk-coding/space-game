@@ -1,0 +1,47 @@
+// DRAFT part definitions exported from the concept board drydock (11 Oct 2026).
+// Placeholder numbers. Field names are a suggestion for the data crate, not a fixed schema.
+// Sizes in cells (1 cell = 1 m). out = power produced, draw = power consumed, heat = heat added at full load,
+// limit = heat level where the part shuts down, vent = heat a radiator dumps through edges open to space,
+// thrust in thrust units, cargo in units, slots = behavior rule slots. color = system colour (see assets/tokens.json).
+(
+    materials: {
+        "steel": (name: "Steel", mass_per_cell: 2, hp_per_cell: 1, build_point_factor: 1),
+        "composite": (name: "Composite", mass_per_cell: 1.5, hp_per_cell: 1.4, build_point_factor: 1.5),
+        "reactive": (name: "Reactive", mass_per_cell: 2.4, hp_per_cell: 2.1, build_point_factor: 2),
+    },
+    parts: {
+        "block": (name: "Armor block", group: "Hull", color: "steel", size: (1, 1), shape: Rect, build_points: 1, hull: true),
+            // Plain plating. Material sets weight and toughness.
+        "slope1": (name: "Slope 1×1", group: "Hull", color: "steel", size: (1, 1), shape: Slope, build_points: 0.5, hull: true),
+            // 45° slope. Orients itself to the hull; click it again to turn it.
+        "slope2": (name: "Slope 1×2", group: "Hull", color: "steel", size: (2, 1), shape: Slope, build_points: 1, hull: true),
+            // Shallow slope over two cells. Click again to turn or flip it.
+        "slope3": (name: "Slope 1×3", group: "Hull", color: "steel", size: (3, 1), shape: Slope, build_points: 1.5, hull: true),
+            // Long, flat slope over three cells. Good for noses and wing edges.
+        "fission": (name: "Fission reactor", group: "Power", color: "amber", size: (1, 1), shape: Rect, build_points: 4, mass: 4, out: 10, heat: 3, limit: 6),
+            // 10 power. +2 for each venting radiator beside it.
+        "fusion": (name: "Fusion reactor", group: "Power", color: "amber", size: (2, 2), shape: Rect, build_points: 10, mass: 12, out: 30, heat: 6, limit: 8),
+            // 2×2. 30 power, +2 per venting radiator. Runs hot.
+        "cap": (name: "Capacitor", group: "Power", color: "amber", size: (1, 1), shape: Rect, build_points: 2, mass: 1, bonus: 0.15, heat: 0.15, limit: 4),
+            // Lasers beside it fire 15% faster, up to 3 per laser.
+        "pulse": (name: "Pulse laser", group: "Combat", color: "cyan", size: (1, 1), shape: Rect, build_points: 3, mass: 2, draw: 4, dmg: 1, heat: 1.5, limit: 3, gun: true),
+            // Fixed forward gun. Needs a clear line of fire.
+        "beam": (name: "Beam laser", group: "Combat", color: "cyan", size: (1, 2), shape: Rect, build_points: 7, mass: 4, draw: 9, dmg: 2.6, heat: 3.2, limit: 4.2, gun: true),
+            // 1×2. Continuous beam: strong, hungry, hot.
+        "shield": (name: "Shield", group: "Combat", color: "shield", size: (1, 1), shape: Rect, build_points: 3, mass: 2, draw: 3, heat: 0.8, limit: 3.2),
+            // Projects a bubble over the hull around it.
+        "rad": (name: "Radiator", group: "Heat and thrust", color: "coral", size: (1, 1), shape: Rect, build_points: 2, mass: 1, vent: 1.5, heat: 0),
+            // Dumps heat, but only through edges open to space.
+        "thruster": (name: "Thruster", group: "Heat and thrust", color: "mint", size: (1, 1), shape: Rect, build_points: 3, mass: 2, draw: 2, thrust: 12, heat: 0.8, limit: 3.2, engine: true),
+            // 12 thrust. Needs open space behind it.
+        "torch": (name: "Torch drive", group: "Heat and thrust", color: "mint", size: (2, 2), shape: Rect, build_points: 9, mass: 9, draw: 6, thrust: 45, heat: 4, limit: 5, engine: true),
+            // 2×2. 45 thrust. Hot, heavy, and very fast.
+        "cargo": (name: "Cargo bay", group: "Other", color: "steel", size: (1, 1), shape: Rect, build_points: 1.5, mass: 1.5, cargo: 4),
+            // Holds 4 units of salvage. Hold space competes with everything else.
+        "hold": (name: "Cargo hold", group: "Other", color: "steel", size: (2, 2), shape: Rect, build_points: 5, mass: 5, cargo: 20),
+            // 2×2. Holds 20 units of salvage. Bulky, but cheaper per unit.
+        "core": (name: "Logic core", group: "Other", color: "violet", size: (1, 1), shape: Rect, build_points: 3, mass: 1, draw: 1, slots: 6, heat: 0.4, limit: 3),
+            // Runs behaviors: 6 rule slots per core.
+    },
+    build_point_budget_sample: 60,
+)
