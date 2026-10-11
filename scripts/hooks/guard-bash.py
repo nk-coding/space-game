@@ -8,6 +8,7 @@ Agents in this repo got stuck for hours on polling loops (see CLAUDE.md, "Wait l
   writes the log has died or never prints that marker.
 
 Rules:
+0. No `git commit -a/--all`, `git add -A/--all` or `git add .` (shared working tree).
 1. A polling loop (`until`/`while` together with `sleep`) must be bounded by `timeout <secs>`.
 2. `pgrep -f` must not be used inside a polling loop at all.
 
@@ -22,6 +23,10 @@ LOOP = re.compile(r"\b(until|while)\b")
 SLEEP = re.compile(r"\bsleep\b")
 TIMEOUT = re.compile(r"\btimeout\s+(-\S+\s+)*\d+[smh]?\b")
 PGREP_F = re.compile(r"\bpgrep\s+(-\w*\s+)*-\w*f")
+# Several agents share one working tree: committing "everything" sweeps up their unfinished work.
+GIT_COMMIT_ALL = re.compile(r"\bgit\s+(-C\s+\S+\s+)?commit\b[^;&|]*\s(-[a-zA-Z]*a[a-zA-Z]*|--all)\b")
+QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"|\'[^\']*\'')
+GIT_ADD_ALL = re.compile(r"\bgit\s+(-C\s+\S+\s+)?add\s+(-A\b|--all\b|\.(\s|$|;|&))")
 
 
 def deny(reason: str) -> None:
@@ -40,6 +45,15 @@ def main() -> None:
     except (json.JSONDecodeError, ValueError):
         return
     command = (payload.get("tool_input") or {}).get("command") or ""
+    unquoted = QUOTED.sub("''", command)  # commit messages may legitimately contain "-a"
+    if GIT_COMMIT_ALL.search(unquoted) or GIT_ADD_ALL.search(unquoted):
+        deny(
+            "Blocked by scripts/hooks/guard-bash.py: several agents share this working tree, so "
+            "`git commit -a/--all`, `git add -A/--all` and `git add .` would sweep up other agents' "
+            "unfinished work. Stage your own paths explicitly (`git add <paths>`, or `git add -p`) and "
+            "commit with `git commit -m ... -- <paths>`. See CLAUDE.md, 'Git conventions'."
+        )
+        return
     is_poll_loop = bool(LOOP.search(command) and SLEEP.search(command))
     if not is_poll_loop:
         return
