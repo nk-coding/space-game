@@ -21,14 +21,14 @@ for (const r of runs) {
   if (!groups.has(k)) groups.set(k, []);
   groups.get(k).push(r);
 }
-const labels = [...new Set(runs.map(r => r.label || r.platform))];
+const labels = [...new Set(runs.map(r => r.label || r.platform))].filter(l => !l.startsWith('pair-'));
 const g = (label, e, s) => groups.get(`${label}|${e}|${s}`) || [];
 const agg = (rs, fn) => median(rs.map(fn).filter(x => x !== undefined && x !== null));
 
 const out = [];
 const p = (s = '') => out.push(s);
 
-const labelName = { st: 'Native (VM), 1 thread', mt: 'Native (VM), multi-thread', node: 'wasm in Node (V8), 1 thread', browser: 'Browser' };
+const labelName = { st: 'Native (VM), 1 thread, one process per run', lockstep: 'Native (VM), 1 thread, lockstep (all engines in one process, ticking in turn)', 'lockstep-nosleep': 'Native (VM), 1 thread, lockstep, sleeping disabled', mt: 'Native (VM), multi-thread', node: 'wasm in Node (V8), 1 thread', browser: 'Browser' };
 
 // Load averages per label
 for (const label of labels) {
@@ -100,21 +100,41 @@ for (const label of labels) for (const s of ['ships', 'ships-merged', 'combined'
 }
 p();
 
+// Native vs Node from back-to-back pairs.
+if (runs.some(r => r.label === 'pair-native')) {
+  const pe = ENGINES.filter(e => g('pair-native', e, SCEN.find(s => g('pair-native', e, s).length) || '').length || SCEN.some(s => g('pair-native', e, s).length));
+  p('### Native vs wasm (Node), runs back to back: step median native / Node (ms), ratio Node ÷ native');
+  p();
+  p(`| Scenario | ${pe.join(' | ')} |`);
+  p(`|---|${pe.map(() => '---:').join('|')}|`);
+  for (const s of SCEN) {
+    const cells = pe.map(e => {
+      const a = g('pair-native', e, s), b = g('pair-node', e, s);
+      if (!a.length || !b.length) return '–';
+      const ratios = a.map(x => { const y = b.find(z => z.rep === x.rep); return y ? y.step.median / x.step.median : NaN; }).filter(x => !Number.isNaN(x));
+      return `${f2(agg(a, r => r.step.median))} / ${f2(agg(b, r => r.step.median))} (×${median(ratios).toFixed(2)})`;
+    });
+    if (cells.every(c => c === '–')) continue;
+    p(`| ${s} | ${cells.join(' | ')} |`);
+  }
+  p();
+}
+
 // Determinism
 p('### Determinism (final running state hash over all ticks)');
 p();
-p('Columns: same hash on every repeat within the platform; native 1-thread == Node wasm; native multi-thread == native 1-thread.');
+p('Columns: same hash on every repeat within the platform; native 1-thread == Node wasm; native multi-thread == native 1-thread; lockstep binary (all engines linked together) == per-engine binary.');
 p();
-p('| Engine | Scenario | native repeats | Node repeats | native == Node | MT == ST | native hash |');
-p('|---|---|---|---|---|---|---|');
+p('| Engine | Scenario | native repeats | Node repeats | native == Node | MT == ST | lockstep == ST | native hash |');
+p('|---|---|---|---|---|---|---|---|');
 const reference = {};
 for (const e of ENGINES) for (const s of SCEN) {
-  const st = g('st', e, s), nd = g('node', e, s), mt = g('mt', e, s);
+  const st = g('st', e, s), nd = g('node', e, s), mt = g('mt', e, s), ls = g('lockstep', e, s);
   if (!st.length && !nd.length) continue;
   const hs = (rs) => [...new Set(rs.map(r => r.state_hash))];
   const same = (rs) => rs.length ? (hs(rs).length === 1 ? `yes (${rs.length})` : `**no** (${hs(rs).length} distinct / ${rs.length})`) : '–';
   const eq = (a, b) => (a.length && b.length) ? (hs(a).length === 1 && hs(b).length === 1 && hs(a)[0] === hs(b)[0] ? 'yes' : '**no**') : '–';
-  p(`| ${e} | ${s} | ${same(st)} | ${same(nd)} | ${eq(st, nd)} | ${eq(mt, st)} | \`${st.length ? hs(st)[0] : '–'}\` |`);
+  p(`| ${e} | ${s} | ${same(st)} | ${same(nd)} | ${eq(st, nd)} | ${eq(mt, st)} | ${eq(ls, st)} | \`${st.length ? hs(st)[0] : '–'}\` |`);
   const ticks = (st[0] || nd[0]).warmup + (st[0] || nd[0]).ticks;
   reference[`${e}/${s}/${ticks}`] = { native: st.length && hs(st).length === 1 ? hs(st)[0] : undefined, node: nd.length && hs(nd).length === 1 ? hs(nd)[0] : undefined };
 }

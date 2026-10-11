@@ -25,6 +25,7 @@ impl Box2dEngine {
     pub fn new(cfg: EngineConfig) -> Self {
         let mut wd = default_world_def();
         wd.gravity = Vec2::new(0.0, 0.0);
+        wd.enable_sleep = cfg.sleep;
         // Defaults kept: sleep on, continuous (vs static) on, contact hertz 30, damping 10, push 3 m/s.
         let world = World::new(&wd);
         Box2dEngine { world, dt: cfg.dt, substeps: cfg.substeps as i32, bodies: Vec::new(), shapes: Vec::new(), shape_count: 0 }

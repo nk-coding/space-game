@@ -149,57 +149,98 @@ pub struct RunOptions {
 
 /// Run one scenario. The engine must be freshly created and empty.
 pub fn run(engine: &mut dyn PhysicsEngine, params: RunParams, clock: &dyn Clock, opts: RunOptions) -> RunResult {
-    let threads = opts.threads;
-    let keep_tick_hashes = opts.keep_tick_hashes;
-    let wall0 = clock.now_ms();
-    let total_ticks = params.warmup + params.ticks;
-    let world = scenario::generate(params.spec, params.seed, total_ticks);
-
-    let t0 = clock.now_ms();
-    for b in &world.bodies {
-        engine.add_body(b);
+    let mut r = Runner::new(engine, params, clock, opts);
+    while !r.done() {
+        r.tick(engine, clock);
     }
-    let setup_ms = clock.now_ms() - t0;
+    r.finish(engine, clock)
+}
 
-    let mut res = RunResult {
-        engine: engine.name(),
-        scenario: params.spec.name.to_string(),
-        threads,
-        warmup: params.warmup,
-        ticks: params.ticks,
-        seed: params.seed,
-        bodies_initial: engine.body_count(),
-        colliders_initial: engine.collider_count(),
-        setup_ms,
-        ..Default::default()
-    };
+/// One scenario run, advanced tick by tick. `run` loops it; the lockstep mode of the native runner advances
+/// several engines' runners alternately so they all see the same machine noise.
+pub struct Runner {
+    params: RunParams,
+    opts: RunOptions,
+    world: scenario::World,
+    res: RunResult,
+    tick: u32,
+    total_ticks: u32,
+    wall0: f64,
+    step_t: Vec<f64>,
+    ray_t: Vec<f64>,
+    total_t: Vec<f64>,
+    split_t: Vec<f64>,
+    rays: Vec<Ray>,
+    ray_stats: RayStats,
+    running: StateHasher,
+    next_break: usize,
+}
 
-    let n = params.ticks as usize;
-    let mut step_t = Vec::with_capacity(n);
-    let mut ray_t = Vec::with_capacity(n);
-    let mut total_t = Vec::with_capacity(n);
-    let mut split_t = Vec::new();
-    let mut rays: Vec<Ray> = Vec::with_capacity(scenario::RAYS_PER_TICK);
-    let mut ray_stats = RayStats::default();
-    let mut running = StateHasher::default();
-    let mut next_break = 0;
+impl Runner {
+    /// Generates the world and adds all bodies (timed as setup).
+    pub fn new(engine: &mut dyn PhysicsEngine, params: RunParams, clock: &dyn Clock, opts: RunOptions) -> Runner {
+        let wall0 = clock.now_ms();
+        let total_ticks = params.warmup + params.ticks;
+        let world = scenario::generate(params.spec, params.seed, total_ticks);
+        let t0 = clock.now_ms();
+        for b in &world.bodies {
+            engine.add_body(b);
+        }
+        let setup_ms = clock.now_ms() - t0;
+        let res = RunResult {
+            engine: engine.name(),
+            scenario: params.spec.name.to_string(),
+            threads: opts.threads,
+            warmup: params.warmup,
+            ticks: params.ticks,
+            seed: params.seed,
+            bodies_initial: engine.body_count(),
+            colliders_initial: engine.collider_count(),
+            setup_ms,
+            ..Default::default()
+        };
+        let n = params.ticks as usize;
+        Runner {
+            params,
+            opts,
+            world,
+            res,
+            tick: 0,
+            total_ticks,
+            wall0,
+            step_t: Vec::with_capacity(n),
+            ray_t: Vec::with_capacity(n),
+            total_t: Vec::with_capacity(n),
+            split_t: Vec::new(),
+            rays: Vec::with_capacity(scenario::RAYS_PER_TICK),
+            ray_stats: RayStats::default(),
+            running: StateHasher::default(),
+            next_break: 0,
+        }
+    }
 
-    for tick in 0..total_ticks {
-        let measured = tick >= params.warmup;
+    pub fn done(&self) -> bool {
+        self.tick >= self.total_ticks
+    }
+
+    /// One tick: due breakage events (timed as split), step (timed), raycasts (timed), state hash (untimed).
+    pub fn tick(&mut self, engine: &mut dyn PhysicsEngine, clock: &dyn Clock) {
+        let tick = self.tick;
+        let measured = tick >= self.params.warmup;
 
         let mut split_ms = 0.0;
-        while next_break < world.breaks.len() && world.breaks[next_break].tick == tick {
-            let ev = &world.breaks[next_break];
+        while self.next_break < self.world.breaks.len() && self.world.breaks[self.next_break].tick == tick {
+            let ev = &self.world.breaks[self.next_break];
             let a = clock.now_ms();
             engine.split(ev);
             let d = clock.now_ms() - a;
             split_ms += d;
             if measured {
-                split_t.push(d);
-                res.splits += 1;
-                res.pieces += ev.pieces.len() as u32;
+                self.split_t.push(d);
+                self.res.splits += 1;
+                self.res.pieces += ev.pieces.len() as u32;
             }
-            next_break += 1;
+            self.next_break += 1;
         }
 
         let a = clock.now_ms();
@@ -207,54 +248,58 @@ pub fn run(engine: &mut dyn PhysicsEngine, params: RunParams, clock: &dyn Clock,
         let step_ms = clock.now_ms() - a;
 
         let mut ray_ms = 0.0;
-        if params.spec.raycasts {
-            scenario::rays_for_tick(params.seed, tick, &mut rays);
+        if self.params.spec.raycasts {
+            scenario::rays_for_tick(self.params.seed, tick, &mut self.rays);
             let a = clock.now_ms();
-            engine.cast_rays(&rays, &mut ray_stats);
+            engine.cast_rays(&self.rays, &mut self.ray_stats);
             ray_ms = clock.now_ms() - a;
-            ray_stats.rays += rays.len() as u64;
+            self.ray_stats.rays += self.rays.len() as u64;
         }
 
         let mut h = StateHasher::default();
         engine.hash_state(&mut h);
         let th = h.finish();
-        running.u64(th);
-        if keep_tick_hashes {
-            res.tick_hashes.push(th);
+        self.running.u64(th);
+        if self.opts.keep_tick_hashes {
+            self.res.tick_hashes.push(th);
         }
         if CHECKPOINTS.contains(&(tick + 1)) {
-            res.checkpoints.push((tick + 1, running.finish()));
+            self.res.checkpoints.push((tick + 1, self.running.finish()));
         }
 
         if measured {
-            step_t.push(step_ms);
-            if params.spec.raycasts {
-                ray_t.push(ray_ms);
+            self.step_t.push(step_ms);
+            if self.params.spec.raycasts {
+                self.ray_t.push(ray_ms);
             }
-            total_t.push(step_ms + ray_ms + split_ms);
+            self.total_t.push(step_ms + ray_ms + split_ms);
         }
+        self.tick += 1;
     }
-    res.checkpoints.push((total_ticks, running.finish()));
 
-    res.step = Stats::of(&step_t);
-    res.total = Stats::of(&total_t);
-    if params.spec.raycasts {
-        res.rays = Some(Stats::of(&ray_t));
+    pub fn finish(mut self, engine: &mut dyn PhysicsEngine, clock: &dyn Clock) -> RunResult {
+        let res = &mut self.res;
+        res.checkpoints.push((self.total_ticks, self.running.finish()));
+        res.step = Stats::of(&self.step_t);
+        res.total = Stats::of(&self.total_t);
+        if self.params.spec.raycasts {
+            res.rays = Some(Stats::of(&self.ray_t));
+        }
+        if self.params.spec.breakage {
+            res.split = Some(Stats::of(&self.split_t));
+        }
+        res.ray_count = self.ray_stats.rays;
+        res.ray_hits = self.ray_stats.hits;
+        res.ray_hash = self.ray_stats.hasher.finish();
+        res.state_hash = self.running.finish();
+        res.bodies_final = engine.body_count();
+        res.colliders_final = engine.collider_count();
+        if self.opts.svg {
+            res.svg = Some(render_svg(&self.world, engine));
+        }
+        res.wall_ms = clock.now_ms() - self.wall0;
+        self.res
     }
-    if params.spec.breakage {
-        res.split = Some(Stats::of(&split_t));
-    }
-    res.ray_count = ray_stats.rays;
-    res.ray_hits = ray_stats.hits;
-    res.ray_hash = ray_stats.hasher.finish();
-    res.state_hash = running.finish();
-    res.bodies_final = engine.body_count();
-    res.colliders_final = engine.collider_count();
-    if opts.svg {
-        res.svg = Some(render_svg(&world, engine));
-    }
-    res.wall_ms = clock.now_ms() - wall0;
-    res
 }
 
 /// Final state as SVG (all break events applied). Ships teal, pieces magenta, debris orange, asteroids grey.

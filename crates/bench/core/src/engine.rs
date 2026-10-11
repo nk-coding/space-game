@@ -10,6 +10,8 @@ pub struct EngineConfig {
     pub substeps: u32,
     /// 1 = single thread. >1 = engine's own multithreading with that many worker threads (if supported).
     pub threads: u32,
+    /// Engine's default sleeping on (true, the benchmark default) or disabled for every body.
+    pub sleep: bool,
 }
 
 /// Accumulates raycast results so the work can't be optimised away and so query determinism can be checked.

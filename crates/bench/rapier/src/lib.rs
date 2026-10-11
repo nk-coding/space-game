@@ -13,6 +13,7 @@ pub struct RapierEngine {
     world: PhysicsWorld,
     compound: bool,
     threads: u32,
+    sleep: bool,
     bodies: Vec<RigidBodyHandle>,
     colliders: Vec<Vec<ColliderHandle>>,
 }
@@ -28,7 +29,7 @@ impl RapierEngine {
         if cfg.threads > 1 {
             world.configure_thread_pool(cfg.threads as usize).expect("rayon pool");
         }
-        RapierEngine { world, compound, threads: cfg.threads, bodies: Vec::new(), colliders: Vec::new() }
+        RapierEngine { world, compound, threads: cfg.threads, sleep: cfg.sleep, bodies: Vec::new(), colliders: Vec::new() }
     }
 
     pub fn supports_threads() -> bool {
@@ -95,6 +96,7 @@ impl PhysicsEngine for RapierEngine {
             .linvel(Vector::new(b.linvel[0], b.linvel[1]))
             .angvel(b.angvel)
             .user_data(b.id as u128)
+            .can_sleep(self.sleep)
             .build();
         let h = self.world.bodies.insert(rb);
         let cs = self.attach(b.id, h, &b.shapes);
@@ -148,7 +150,7 @@ impl PhysicsEngine for RapierEngine {
         // New bodies for the pieces, same pose as the parent, velocity of the parent's motion at their COM.
         for (id, shapes) in &ev.pieces {
             debug_assert_eq!(*id as usize, self.bodies.len());
-            let rb = RigidBodyBuilder::dynamic().pose(pose).angvel(w_ang).user_data(*id as u128).build();
+            let rb = RigidBodyBuilder::dynamic().pose(pose).angvel(w_ang).user_data(*id as u128).can_sleep(self.sleep).build();
             let h = self.world.bodies.insert(rb);
             let cs = self.attach(*id, h, shapes);
             let PhysicsWorld { bodies, colliders, .. } = &mut self.world;

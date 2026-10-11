@@ -28,6 +28,7 @@ struct BodyId(u32);
 pub struct AvianEngine {
     app: App,
     compound: bool,
+    sleep: bool,
     dt: Duration,
     bodies: Vec<Entity>,
     /// Child collider entities per body (child mode only).
@@ -64,6 +65,7 @@ impl AvianEngine {
         AvianEngine {
             app,
             compound,
+            sleep: cfg.sleep,
             dt: Duration::from_secs_f64(scenario::DT as f64),
             bodies: Vec::new(),
             children: Vec::new(),
@@ -149,6 +151,9 @@ impl AvianEngine {
         } else {
             self.app.world_mut().spawn(base).id()
         };
+        if !self.sleep {
+            self.app.world_mut().entity_mut(e).insert(SleepingDisabled);
+        }
         let ch = if self.compound { Vec::new() } else { self.spawn_children(id, e, shapes) };
         self.bodies.push(e);
         self.children.push(ch);

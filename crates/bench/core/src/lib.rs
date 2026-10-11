@@ -11,6 +11,6 @@ pub mod rng;
 pub mod scenario;
 
 pub use engine::{BodyState, Clock, EngineConfig, PhysicsEngine, RayStats, velocity_at};
-pub use harness::{RunOptions, RunParams, RunResult, Stats, run};
+pub use harness::{RunOptions, RunParams, RunResult, Runner, Stats, run};
 pub use hash::StateHasher;
 pub use scenario::{BodyDef, BodyKind, BodyRole, BreakEvent, ColliderMode, Ray, SCENARIOS, ScenarioSpec, Shape};

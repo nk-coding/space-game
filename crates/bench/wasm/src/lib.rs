@@ -64,7 +64,7 @@ pub fn run_scenario(engine: &str, scenario_name: &str, warmup: u32, ticks: u32, 
         Some(s) => s,
         None => return format!("{{\"error\":\"unknown scenario {scenario_name}\"}}"),
     };
-    let cfg = EngineConfig { dt: scenario::DT, substeps: scenario::SUBSTEPS, threads: 1 };
+    let cfg = EngineConfig { dt: scenario::DT, substeps: scenario::SUBSTEPS, threads: 1, sleep: true };
     let Some(mut e) = make(engine, cfg) else {
         return format!("{{\"error\":\"engine {engine} not in this build\"}}");
     };

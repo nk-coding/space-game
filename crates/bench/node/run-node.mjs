@@ -2,7 +2,7 @@
 // web/pkg/<build>/ and runs scenario x engine x repeat (interleaved like the native runner).
 //
 // Usage: node node/run-node.mjs [--engines a,b] [--scenarios a,b] [--repeats 3] [--warmup 30] [--ticks 900]
-//                               [--out results/node.jsonl] [--tick-hashes]
+//                               [--out results/node.jsonl] [--tick-hashes] [--label node] [--rep-base 0]
 import { readFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,6 +17,8 @@ const warmup = +get('--warmup', 30);
 const ticks = +get('--ticks', 900);
 const out = get('--out', null);
 const tickHashes = args.includes('--tick-hashes');
+const label = get('--label', 'node');
+const repBase = +get('--rep-base', 0);
 
 const modules = {}; // engine id -> module
 for (const build of ['rapier', 'box2d', 'avian']) {
@@ -35,14 +37,14 @@ if (out) mkdirSync(dirname(out), { recursive: true });
 
 const load = () => os.loadavg().map(x => x.toFixed(2)).join(' ');
 console.error(`run-node: node ${process.version}, engines ${engines}, scenarios ${scenarios}, repeats ${repeats}, ticks ${ticks}`);
-for (let rep = 0; rep < repeats; rep++) {
+for (let rep = repBase; rep < repBase + repeats; rep++) {
   for (const s of scenarios) {
     for (const e of engines) {
       const loadBefore = load();
       const json = modules[e].run_scenario(e, s, warmup, ticks, tickHashes);
       const r = JSON.parse(json);
       if (r.error) { console.error(r.error); continue; }
-      r.rep = rep; r.label = 'node'; r.node = process.version; r.load_before = loadBefore; r.load_after = load();
+      r.rep = rep; r.label = label; r.node = process.version; r.load_before = loadBefore; r.load_after = load();
       const f = (x) => x.toFixed(3).padStart(7);
       console.log(`rep ${rep} ${s.padEnd(16)} ${e.padEnd(16)} step med ${f(r.step.median)} p95 ${f(r.step.p95)} max ${f(r.step.max)} | total med ${f(r.total.median)} p95 ${f(r.total.p95)}` +
         (r.rays ? ` | rays med ${f(r.rays.median)} hits ${r.ray_hits}` : '') +

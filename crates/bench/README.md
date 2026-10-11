@@ -50,11 +50,18 @@ Rust via `source ~/.cargo/env`. Builds use `-j 6` (`JOBS=6`).
 ```sh
 cd crates/bench
 
-# Everything (builds all binaries + wasm, then native 1-thread, native multi-thread, Node), ~2–3 h:
+# Everything, ~3 h: builds all binaries + wasm, then
+#   native-st        1 thread, one process per engine x scenario x repeat
+#   lockstep         1 thread, all engines in one process ticking in turn (the robust comparison)
+#   lockstep-nosleep same with sleeping disabled (NOSLEEP_SCENARIOS)
+#   native-mt        engines' own multithreading, MT_THREADS worker threads
+#   node             wasm under Node
+#   pairs            native and Node runs back to back (native/wasm ratio; PAIR_SCENARIOS)
 ./run-all.sh
 # Knobs: REPEATS=3 TICKS=900 WARMUP=30 MT_THREADS=4 ENGINES=rapier,box2d-rust SCENARIOS=ships,combined
-#        MT_SCENARIOS=... SKIP_BUILD=1 SKIP_MT=1 SKIP_NODE=1 STAMP=name
-# Output: results/<stamp>/{env.txt,native-st.jsonl,native-mt.jsonl,node.jsonl,*.log,summary.md}
+#        MT_SCENARIOS / NOSLEEP_SCENARIOS / PAIR_SCENARIOS=...  SKIP_BUILD / SKIP_ST / SKIP_LOCKSTEP /
+#        SKIP_NOSLEEP / SKIP_MT / SKIP_NODE / SKIP_PAIRS=1  STAMP=name
+# Output: results/<stamp>/{env.txt,*.jsonl,*.log,summary.md}
 
 # Single native runs (binary per engine: rapier, box2d, avian, boxdd):
 cargo build --release -p bench-native --no-default-features --features rapier
@@ -62,6 +69,9 @@ target/release/bench-native --engines rapier-compound --scenarios ships,combined
 #   --threads 4 (needs --features rapier,parallel or avian,parallel; box2d-c threads without a feature)
 #   --svg DIR   writes the final state of each run as SVG (visual sanity check)
 #   --tick-hashes  stores every per-tick hash in the JSON (to find the first diverging tick)
+#   --no-sleep  disables body sleeping in every engine
+# All engines in one binary (default features) + lockstep:
+cargo build --release -p bench-native && target/release/bench-native --lockstep --scenarios combined-merged
 
 # wasm builds (web/pkg/<engine>/, also prints raw and gzip sizes):
 ./build-wasm.sh
@@ -86,6 +96,12 @@ results. The plain per-cell `avian` engine is unticked by default (slow). URL pa
 `?autorun=1&ticks=60&repeats=1&engines=rapier&scenarios=ships`.
 
 ## Fairness notes
+
+- The VM is noisy (other agents' builds, host scheduling of vCPUs across P/E cores): the same run can vary 3×
+  between processes. **Lockstep** mode (`--lockstep`) runs all engines of one binary in one process, one tick
+  each in turn with the order rotated every tick, so every engine sees the same noise; it is the primary table
+  in the results. Side effect: each engine starts its step with caches partly evicted by the others (closer to a
+  game frame than a tight loop). Its hashes are identical to the per-engine binaries.
 
 - Same scenario data, same dt, 4 substeps everywhere (Rapier: `num_solver_iterations` = substeps in its
   TGS-soft solver; Box2D: `subStepCount`; Avian: `SubstepCount`, whose default is 6). Sleeping and each engine's

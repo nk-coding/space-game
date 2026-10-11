@@ -27,6 +27,7 @@ impl BoxddEngine {
         unsafe {
             let mut wd = b2DefaultWorldDef();
             wd.gravity = v2(0.0, 0.0);
+            wd.enableSleep = cfg.sleep;
             wd.workerCount = cfg.threads.max(1) as i32;
             let world = b2CreateWorld(&wd);
             BoxddEngine { world, dt: cfg.dt, substeps: cfg.substeps as i32, threads: cfg.threads, bodies: Vec::new(), shapes: Vec::new(), shape_count: 0 }
