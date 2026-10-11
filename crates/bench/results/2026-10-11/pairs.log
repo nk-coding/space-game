@@ -1,0 +1,240 @@
+bench-native: engines ["rapier"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 ships-merged     rapier           step med   0.664 p95   1.879 max  14.984 | total med   0.664 p95   1.879 | bodies 20->20 | hash 5d7901af282e8421 | load 8.10 8.90 8.79
+run-node: node v24.11.1, engines rapier, scenarios ships-merged, repeats 1, ticks 900
+rep 0 ships-merged     rapier           step med   0.970 p95   1.840 max  24.232 | total med   0.970 p95   1.840 | bodies 20->20 | hash 5d7901af282e8421 | load 8.10 8.90 8.79
+bench-native: engines ["rapier-compound"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 ships-merged     rapier-compound  step med   0.122 p95   0.268 max   9.801 | total med   0.122 p95   0.268 | bodies 20->20 | hash deb29a2e2f85c907 | load 8.10 8.90 8.79
+run-node: node v24.11.1, engines rapier-compound, scenarios ships-merged, repeats 1, ticks 900
+rep 0 ships-merged     rapier-compound  step med   0.240 p95   0.675 max   8.662 | total med   0.240 p95   0.675 | bodies 20->20 | hash deb29a2e2f85c907 | load 8.10 8.90 8.79
+bench-native: engines ["box2d-rust"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 ships-merged     box2d-rust       step med   0.999 p95   1.784 max  21.125 | total med   0.999 p95   1.784 | bodies 20->20 | hash 17e67317479f7557 | load 8.17 8.90 8.79
+run-node: node v24.11.1, engines box2d-rust, scenarios ships-merged, repeats 1, ticks 900
+rep 0 ships-merged     box2d-rust       step med   1.358 p95   2.761 max  10.389 | total med   1.358 p95   2.761 | bodies 20->20 | hash 17e67317479f7557 | load 8.17 8.90 8.79
+bench-native: engines ["avian"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 ships-merged     avian            step med   1.500 p95   2.827 max  19.884 | total med   1.500 p95   2.827 | bodies 20->20 | hash 15cb013a44d98988 | load 8.17 8.90 8.79
+run-node: node v24.11.1, engines avian, scenarios ships-merged, repeats 1, ticks 900
+rep 0 ships-merged     avian            step med   2.811 p95   7.851 max  25.289 | total med   2.811 p95   7.851 | bodies 20->20 | hash 15cb013a44d98988 | load 8.32 8.92 8.79
+bench-native: engines ["avian-compound"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 ships-merged     avian-compound   step med   0.040 p95   0.114 max   2.450 | total med   0.040 p95   0.114 | bodies 20->20 | hash 58e602ed370be9ce | load 8.32 8.92 8.79
+run-node: node v24.11.1, engines avian-compound, scenarios ships-merged, repeats 1, ticks 900
+rep 0 ships-merged     avian-compound   step med   0.163 p95   0.536 max  18.832 | total med   0.163 p95   0.536 | bodies 20->20 | hash 58e602ed370be9ce | load 8.32 8.92 8.79
+bench-native: engines ["rapier"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 debris           rapier           step med   2.075 p95   6.645 max  24.453 | total med   2.075 p95   6.645 | bodies 2000->2000 | hash 5ad22995a546d274 | load 8.37 8.92 8.80
+run-node: node v24.11.1, engines rapier, scenarios debris, repeats 1, ticks 900
+rep 0 debris           rapier           step med   3.125 p95   9.319 max  45.569 | total med   3.125 p95   9.319 | bodies 2000->2000 | hash 5ad22995a546d274 | load 8.34 8.91 8.79
+bench-native: engines ["rapier-compound"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 debris           rapier-compound  step med   1.426 p95   4.560 max  28.826 | total med   1.426 p95   4.560 | bodies 2000->2000 | hash 01eaf3c06e581902 | load 8.34 8.91 8.79
+run-node: node v24.11.1, engines rapier-compound, scenarios debris, repeats 1, ticks 900
+rep 0 debris           rapier-compound  step med   2.227 p95   7.254 max  21.267 | total med   2.227 p95   7.254 | bodies 2000->2000 | hash 01eaf3c06e581902 | load 8.39 8.91 8.79
+bench-native: engines ["box2d-rust"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 debris           box2d-rust       step med   3.915 p95  12.311 max  44.798 | total med   3.915 p95  12.311 | bodies 2000->2000 | hash f3ef4d8f3c8d2cc1 | load 8.84 8.99 8.82
+run-node: node v24.11.1, engines box2d-rust, scenarios debris, repeats 1, ticks 900
+rep 0 debris           box2d-rust       step med   4.987 p95  14.303 max  77.873 | total med   4.987 p95  14.303 | bodies 2000->2000 | hash f3ef4d8f3c8d2cc1 | load 8.86 8.99 8.82
+bench-native: engines ["avian"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 debris           avian            step med   8.808 p95  21.591 max  80.260 | total med   8.808 p95  21.591 | bodies 2000->2000 | hash d09deea3991b8dd2 | load 9.25 9.08 8.85
+run-node: node v24.11.1, engines avian, scenarios debris, repeats 1, ticks 900
+rep 0 debris           avian            step med  14.963 p95  36.917 max 125.003 | total med  14.963 p95  36.917 | bodies 2000->2000 | hash d09deea3991b8dd2 | load 9.25 9.09 8.86
+bench-native: engines ["avian-compound"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 debris           avian-compound   step med   3.295 p95  12.954 max 888.727 | total med   3.295 p95  12.954 | bodies 2000->2000 | hash e8ee07e88b180299 | load 9.15 9.07 8.85
+run-node: node v24.11.1, engines avian-compound, scenarios debris, repeats 1, ticks 900
+rep 0 debris           avian-compound   step med   7.818 p95  19.884 max 104.236 | total med   7.818 p95  19.884 | bodies 2000->2000 | hash e8ee07e88b180299 | load 9.97 9.25 8.92
+bench-native: engines ["rapier"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined         rapier           step med  34.090 p95  82.893 max 596.270 | total med  47.246 p95 103.864 | rays med 10.653 hits 2706206 | split mean  1.206 max  3.234 | bodies 2320->2350 | hash 08e14ecb94a1640a | load 11.94 9.94 9.17
+run-node: node v24.11.1, engines rapier, scenarios combined, repeats 1, ticks 900
+rep 0 combined         rapier           step med  64.145 p95 126.719 max 295.325 | total med  89.023 p95 185.450 | rays med  23.219 hits 2706206 | split mean   3.392 max  12.982 | bodies 2320->2350 | hash 08e14ecb94a1640a | load 10.57 10.08 9.30
+bench-native: engines ["rapier-compound"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined         rapier-compound  step med   8.218 p95  33.841 max 132.036 | total med  24.008 p95  68.304 | rays med 13.874 hits 2708105 | split mean  1.375 max  6.144 | bodies 2320->2350 | hash 7c2787261a238ba0 | load 10.60 10.11 9.33
+run-node: node v24.11.1, engines rapier-compound, scenarios combined, repeats 1, ticks 900
+rep 0 combined         rapier-compound  step med  11.327 p95  29.716 max  54.367 | total med  33.100 p95  66.252 | rays med  20.064 hits 2708105 | split mean   1.953 max   7.521 | bodies 2320->2350 | hash 7c2787261a238ba0 | load 11.72 10.47 9.49
+bench-native: engines ["box2d-rust"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined         box2d-rust       step med  71.822 p95 138.267 max 416.214 | total med  88.766 p95 161.016 | rays med 12.731 hits 2668718 | split mean  5.049 max 16.803 | bodies 2320->2350 | hash 9d42931569ef3f3c | load 9.45 10.12 9.46
+run-node: node v24.11.1, engines box2d-rust, scenarios combined, repeats 1, ticks 900
+rep 0 combined         box2d-rust       step med 109.529 p95 206.405 max 666.086 | total med 134.631 p95 252.250 | rays med  20.397 hits 2668718 | split mean  10.231 max  40.410 | bodies 2320->2350 | hash 9d42931569ef3f3c | load 10.97 10.50 9.69
+bench-native: engines ["avian"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined         avian            step med  98.224 p95 163.577 max 353.913 | total med 116.786 p95 209.102 | rays med 14.191 hits 2700631 | split mean 95.993 max 274.588 | bodies 2320->2350 | hash 022ad346ce88ca68 | load 10.12 10.37 9.75
+run-node: node v24.11.1, engines avian, scenarios combined, repeats 1, ticks 900
+rep 0 combined         avian            step med 131.688 p95 236.902 max 960.768 | total med 164.961 p95 321.260 | rays med  27.055 hits 2700631 | split mean 125.613 max 325.400 | bodies 2320->2350 | hash 022ad346ce88ca68 | load 10.70 10.25 9.79
+bench-native: engines ["avian-compound"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined         avian-compound   step med   7.829 p95  20.677 max  56.242 | total med  22.405 p95  45.174 | rays med 13.992 hits 2702332 | split mean  2.290 max  8.014 | bodies 2320->2350 | hash 10aa50f355f64153 | load 12.85 10.76 9.97
+run-node: node v24.11.1, engines avian-compound, scenarios combined, repeats 1, ticks 900
+rep 0 combined         avian-compound   step med  10.849 p95  33.809 max 142.428 | total med  30.436 p95  75.423 | rays med  17.434 hits 2702332 | split mean   3.996 max  14.970 | bodies 2320->2350 | hash 10aa50f355f64153 | load 12.95 11.09 10.11
+bench-native: engines ["rapier"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined-merged  rapier           step med   4.620 p95  16.339 max  45.740 | total med  11.552 p95  26.990 | rays med  6.512 hits 2705030 | split mean  0.123 max  0.314 | bodies 2320->2350 | hash 54e48401588ac7be | load 12.29 11.03 10.11
+run-node: node v24.11.1, engines rapier, scenarios combined-merged, repeats 1, ticks 900
+rep 0 combined-merged  rapier           step med   6.933 p95  22.505 max  47.540 | total med  18.845 p95  38.863 | rays med  11.195 hits 2705030 | split mean   0.420 max   3.276 | bodies 2320->2350 | hash 54e48401588ac7be | load 11.49 10.93 10.09
+bench-native: engines ["rapier-compound"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined-merged  rapier-compound  step med   3.386 p95  17.272 max 1350.324 | total med  11.355 p95  29.867 | rays med  7.408 hits 2704086 | split mean  0.214 max  0.549 | bodies 2320->2350 | hash 107325dd8eaded84 | load 11.86 11.05 10.14
+run-node: node v24.11.1, engines rapier-compound, scenarios combined-merged, repeats 1, ticks 900
+rep 0 combined-merged  rapier-compound  step med   4.872 p95  17.102 max  41.751 | total med  17.829 p95  36.841 | rays med  12.004 hits 2704086 | split mean   0.661 max   8.008 | bodies 2320->2350 | hash 107325dd8eaded84 | load 10.92 10.88 10.11
+bench-native: engines ["box2d-rust"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined-merged  box2d-rust       step med   8.273 p95  21.263 max  85.904 | total med  17.448 p95  39.400 | rays med  8.384 hits 2656491 | split mean  0.365 max  4.777 | bodies 2320->2350 | hash 68c9613150f3539e | load 10.23 10.73 10.07
+run-node: node v24.11.1, engines box2d-rust, scenarios combined-merged, repeats 1, ticks 900
+rep 0 combined-merged  box2d-rust       step med  10.231 p95  22.390 max  41.129 | total med  20.800 p95  40.426 | rays med   9.964 hits 2656491 | split mean   0.440 max   1.935 | bodies 2320->2350 | hash 68c9613150f3539e | load 9.62 10.54 10.03
+bench-native: engines ["avian"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined-merged  avian            step med  19.007 p95  44.063 max 133.635 | total med  31.067 p95  59.029 | rays med 10.767 hits 2700528 | split mean  4.916 max 19.923 | bodies 2320->2350 | hash d3fc89fc4075f69f | load 10.75 10.74 10.11
+run-node: node v24.11.1, engines avian, scenarios combined-merged, repeats 1, ticks 900
+rep 0 combined-merged  avian            step med  32.287 p95  62.758 max 210.522 | total med  51.387 p95  92.719 | rays med  16.799 hits 2700528 | split mean   6.962 max  26.355 | bodies 2320->2350 | hash d3fc89fc4075f69f | load 10.13 10.57 10.09
+bench-native: engines ["avian-compound"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 0 combined-merged  avian-compound   step med   6.982 p95  28.654 max 109.471 | total med  18.419 p95  49.310 | rays med 10.111 hits 2701154 | split mean  2.060 max  9.543 | bodies 2320->2350 | hash 4b25350f2f0eddb0 | load 10.24 10.54 10.09
+run-node: node v24.11.1, engines avian-compound, scenarios combined-merged, repeats 1, ticks 900
+rep 0 combined-merged  avian-compound   step med  14.682 p95  40.212 max 104.164 | total med  37.806 p95  72.774 | rays med  20.658 hits 2701154 | split mean   3.092 max  12.533 | bodies 2320->2350 | hash 4b25350f2f0eddb0 | load 9.78 10.39 10.06
+bench-native: engines ["rapier"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 ships-merged     rapier           step med   0.761 p95   1.971 max  15.535 | total med   0.761 p95   1.971 | bodies 20->20 | hash 5d7901af282e8421 | load 9.78 10.39 10.06
+run-node: node v24.11.1, engines rapier, scenarios ships-merged, repeats 1, ticks 900
+rep 1 ships-merged     rapier           step med   1.199 p95   3.252 max  22.661 | total med   1.199 p95   3.252 | bodies 20->20 | hash 5d7901af282e8421 | load 9.78 10.39 10.06
+bench-native: engines ["rapier-compound"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 ships-merged     rapier-compound  step med   0.099 p95   0.377 max   1.695 | total med   0.099 p95   0.377 | bodies 20->20 | hash deb29a2e2f85c907 | load 9.48 10.32 10.04
+run-node: node v24.11.1, engines rapier-compound, scenarios ships-merged, repeats 1, ticks 900
+rep 1 ships-merged     rapier-compound  step med   0.274 p95   1.050 max   8.683 | total med   0.274 p95   1.050 | bodies 20->20 | hash deb29a2e2f85c907 | load 9.48 10.32 10.04
+bench-native: engines ["box2d-rust"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 ships-merged     box2d-rust       step med   1.173 p95   2.087 max  15.237 | total med   1.173 p95   2.087 | bodies 20->20 | hash 17e67317479f7557 | load 9.48 10.32 10.04
+run-node: node v24.11.1, engines box2d-rust, scenarios ships-merged, repeats 1, ticks 900
+rep 1 ships-merged     box2d-rust       step med   1.550 p95   3.592 max  18.738 | total med   1.550 p95   3.592 | bodies 20->20 | hash 17e67317479f7557 | load 9.48 10.32 10.04
+bench-native: engines ["avian"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 ships-merged     avian            step med   1.905 p95   5.469 max  31.041 | total med   1.905 p95   5.469 | bodies 20->20 | hash 15cb013a44d98988 | load 9.20 10.25 10.02
+run-node: node v24.11.1, engines avian, scenarios ships-merged, repeats 1, ticks 900
+rep 1 ships-merged     avian            step med   4.287 p95  17.285 max 141.458 | total med   4.287 p95  17.285 | bodies 20->20 | hash 15cb013a44d98988 | load 9.42 10.28 10.03
+bench-native: engines ["avian-compound"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 ships-merged     avian-compound   step med   0.059 p95   0.202 max   9.041 | total med   0.059 p95   0.202 | bodies 20->20 | hash 58e602ed370be9ce | load 9.42 10.28 10.03
+run-node: node v24.11.1, engines avian-compound, scenarios ships-merged, repeats 1, ticks 900
+rep 1 ships-merged     avian-compound   step med   0.191 p95   0.844 max  10.976 | total med   0.191 p95   0.844 | bodies 20->20 | hash 58e602ed370be9ce | load 9.31 10.24 10.02
+bench-native: engines ["rapier"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 debris           rapier           step med   2.290 p95  11.074 max  34.955 | total med   2.290 p95  11.074 | bodies 2000->2000 | hash 5ad22995a546d274 | load 9.31 10.24 10.02
+run-node: node v24.11.1, engines rapier, scenarios debris, repeats 1, ticks 900
+rep 1 debris           rapier           step med   5.759 p95  20.762 max  56.015 | total med   5.759 p95  20.762 | bodies 2000->2000 | hash 5ad22995a546d274 | load 9.49 10.25 10.02
+bench-native: engines ["rapier-compound"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 debris           rapier-compound  step med   2.969 p95  12.776 max 349.582 | total med   2.969 p95  12.776 | bodies 2000->2000 | hash 01eaf3c06e581902 | load 9.77 10.29 10.04
+run-node: node v24.11.1, engines rapier-compound, scenarios debris, repeats 1, ticks 900
+rep 1 debris           rapier-compound  step med   5.803 p95  19.375 max  88.650 | total med   5.803 p95  19.375 | bodies 2000->2000 | hash 01eaf3c06e581902 | load 10.13 10.35 10.06
+bench-native: engines ["box2d-rust"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 debris           box2d-rust       step med   7.758 p95  17.306 max 364.037 | total med   7.758 p95  17.306 | bodies 2000->2000 | hash f3ef4d8f3c8d2cc1 | load 10.87 10.50 10.11
+run-node: node v24.11.1, engines box2d-rust, scenarios debris, repeats 1, ticks 900
+rep 1 debris           box2d-rust       step med  10.357 p95  20.912 max  58.351 | total med  10.357 p95  20.912 | bodies 2000->2000 | hash f3ef4d8f3c8d2cc1 | load 11.89 10.73 10.19
+bench-native: engines ["avian"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 debris           avian            step med  15.535 p95  39.939 max 169.733 | total med  15.535 p95  39.939 | bodies 2000->2000 | hash d09deea3991b8dd2 | load 12.24 10.88 10.25
+run-node: node v24.11.1, engines avian, scenarios debris, repeats 1, ticks 900
+rep 1 debris           avian            step med  24.713 p95  56.429 max 157.914 | total med  24.713 p95  56.429 | bodies 2000->2000 | hash d09deea3991b8dd2 | load 11.95 10.93 10.28
+bench-native: engines ["avian-compound"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 debris           avian-compound   step med   5.969 p95  21.617 max 103.898 | total med   5.969 p95  21.617 | bodies 2000->2000 | hash e8ee07e88b180299 | load 11.95 10.96 10.30
+run-node: node v24.11.1, engines avian-compound, scenarios debris, repeats 1, ticks 900
+rep 1 debris           avian-compound   step med   7.899 p95  29.457 max 285.760 | total med   7.899 p95  29.457 | bodies 2000->2000 | hash e8ee07e88b180299 | load 11.50 10.90 10.29
+bench-native: engines ["rapier"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined         rapier           step med  54.500 p95 145.630 max 293.161 | total med  71.507 p95 217.787 | rays med 15.200 hits 2706206 | split mean  1.654 max  7.881 | bodies 2320->2350 | hash 08e14ecb94a1640a | load 14.58 11.93 10.70
+run-node: node v24.11.1, engines rapier, scenarios combined, repeats 1, ticks 900
+rep 1 combined         rapier           step med  35.610 p95  83.789 max 142.682 | total med  50.947 p95 107.478 | rays med  13.101 hits 2706206 | split mean   3.124 max  21.174 | bodies 2320->2350 | hash 08e14ecb94a1640a | load 13.17 12.14 10.85
+bench-native: engines ["rapier-compound"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined         rapier-compound  step med   4.023 p95  14.236 max 109.612 | total med  11.352 p95  29.193 | rays med  6.937 hits 2708105 | split mean  0.839 max  4.278 | bodies 2320->2350 | hash 7c2787261a238ba0 | load 12.33 12.01 10.83
+run-node: node v24.11.1, engines rapier-compound, scenarios combined, repeats 1, ticks 900
+rep 1 combined         rapier-compound  step med   6.455 p95  18.018 max  76.694 | total med  19.320 p95  38.711 | rays med  12.185 hits 2708105 | split mean   1.237 max   3.616 | bodies 2320->2350 | hash 7c2787261a238ba0 | load 12.31 12.01 10.85
+bench-native: engines ["box2d-rust"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined         box2d-rust       step med  66.218 p95 138.602 max 609.130 | total med  80.755 p95 177.315 | rays med 13.533 hits 2668718 | split mean  5.536 max 19.189 | bodies 2320->2350 | hash 9d42931569ef3f3c | load 13.60 12.26 11.04
+run-node: node v24.11.1, engines box2d-rust, scenarios combined, repeats 1, ticks 900
+rep 1 combined         box2d-rust       step med  81.730 p95 297.730 max 1178.588 | total med 100.985 p95 364.469 | rays med  15.793 hits 2668718 | split mean  12.548 max 111.701 | bodies 2320->2350 | hash 9d42931569ef3f3c | load 20.19 16.05 12.64
+bench-native: engines ["avian"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined         avian            step med  58.378 p95 127.511 max 357.003 | total med  70.629 p95 170.355 | rays med  9.001 hits 2700631 | split mean 76.155 max 303.995 | bodies 2320->2350 | hash 022ad346ce88ca68 | load 14.18 15.23 12.64
+run-node: node v24.11.1, engines avian, scenarios combined, repeats 1, ticks 900
+rep 1 combined         avian            step med  54.028 p95  95.944 max 241.806 | total med  65.088 p95 128.011 | rays med   9.264 hits 2700631 | split mean  57.972 max 130.620 | bodies 2320->2350 | hash 022ad346ce88ca68 | load 9.27 13.47 12.21
+bench-native: engines ["avian-compound"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined         avian-compound   step med   2.175 p95   6.480 max  34.351 | total med   6.479 p95  13.986 | rays med  4.164 hits 2702332 | split mean  1.525 max  4.588 | bodies 2320->2350 | hash 10aa50f355f64153 | load 8.61 13.26 12.15
+run-node: node v24.11.1, engines avian-compound, scenarios combined, repeats 1, ticks 900
+rep 1 combined         avian-compound   step med   3.175 p95   9.508 max  42.347 | total med   9.929 p95  20.502 | rays med   6.445 hits 2702332 | split mean   1.859 max   6.820 | bodies 2320->2350 | hash 10aa50f355f64153 | load 7.06 12.69 11.98
+bench-native: engines ["rapier"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined-merged  rapier           step med   1.735 p95   4.724 max  20.942 | total med   5.010 p95   9.206 | rays med  3.176 hits 2705030 | split mean  0.073 max  0.375 | bodies 2320->2350 | hash 54e48401588ac7be | load 6.58 12.50 11.92
+run-node: node v24.11.1, engines rapier, scenarios combined-merged, repeats 1, ticks 900
+rep 1 combined-merged  rapier           step med   7.088 p95  22.845 max 115.192 | total med  17.946 p95  39.363 | rays med   9.382 hits 2705030 | split mean   0.293 max   1.147 | bodies 2320->2350 | hash 54e48401588ac7be | load 7.07 12.22 11.84
+bench-native: engines ["rapier-compound"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined-merged  rapier-compound  step med   2.612 p95  11.623 max 167.498 | total med   8.182 p95  20.158 | rays med  5.146 hits 2704086 | split mean  0.187 max  0.761 | bodies 2320->2350 | hash 107325dd8eaded84 | load 6.98 12.03 11.78
+run-node: node v24.11.1, engines rapier-compound, scenarios combined-merged, repeats 1, ticks 900
+rep 1 combined-merged  rapier-compound  step med   4.047 p95  12.879 max  44.199 | total med  13.620 p95  30.053 | rays med   8.980 hits 2704086 | split mean   0.334 max   1.524 | bodies 2320->2350 | hash 107325dd8eaded84 | load 7.07 11.80 11.71
+bench-native: engines ["box2d-rust"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined-merged  box2d-rust       step med   5.143 p95  14.726 max 254.640 | total med  10.874 p95  25.213 | rays med  5.178 hits 2656491 | split mean  0.149 max  0.383 | bodies 2320->2350 | hash 68c9613150f3539e | load 6.57 11.47 11.60
+run-node: node v24.11.1, engines box2d-rust, scenarios combined-merged, repeats 1, ticks 900
+rep 1 combined-merged  box2d-rust       step med   5.963 p95  13.833 max  41.711 | total med  11.915 p95  23.402 | rays med   5.432 hits 2656491 | split mean   0.424 max   3.450 | bodies 2320->2350 | hash 68c9613150f3539e | load 5.94 11.17 11.51
+bench-native: engines ["avian"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined-merged  avian            step med  14.736 p95  40.165 max  67.308 | total med  21.344 p95  58.356 | rays med  5.868 hits 2700528 | split mean  3.526 max 14.610 | bodies 2320->2350 | hash d3fc89fc4075f69f | load 6.18 10.78 11.36
+run-node: node v24.11.1, engines avian, scenarios combined-merged, repeats 1, ticks 900
+rep 1 combined-merged  avian            step med  23.652 p95  44.995 max 107.578 | total med  35.428 p95  64.839 | rays med  10.849 hits 2700528 | split mean   5.527 max  15.205 | bodies 2320->2350 | hash d3fc89fc4075f69f | load 7.94 10.66 11.30
+bench-native: engines ["avian-compound"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 1 combined-merged  avian-compound   step med   4.473 p95  19.218 max 189.121 | total med  10.945 p95  42.755 | rays med  6.073 hits 2701154 | split mean  2.056 max 33.119 | bodies 2320->2350 | hash 4b25350f2f0eddb0 | load 8.09 10.56 11.26
+run-node: node v24.11.1, engines avian-compound, scenarios combined-merged, repeats 1, ticks 900
+rep 1 combined-merged  avian-compound   step med   6.783 p95  21.993 max  86.078 | total med  17.853 p95  41.486 | rays med  10.598 hits 2701154 | split mean   2.357 max  12.061 | bodies 2320->2350 | hash 4b25350f2f0eddb0 | load 10.76 11.01 11.39
+bench-native: engines ["rapier"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 ships-merged     rapier           step med   0.464 p95   0.690 max   3.112 | total med   0.464 p95   0.690 | bodies 20->20 | hash 5d7901af282e8421 | load 11.82 11.23 11.46
+run-node: node v24.11.1, engines rapier, scenarios ships-merged, repeats 1, ticks 900
+rep 2 ships-merged     rapier           step med   0.737 p95   2.249 max  70.749 | total med   0.737 p95   2.249 | bodies 20->20 | hash 5d7901af282e8421 | load 11.82 11.23 11.46
+bench-native: engines ["rapier-compound"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 ships-merged     rapier-compound  step med   0.088 p95   0.229 max   6.550 | total med   0.088 p95   0.229 | bodies 20->20 | hash deb29a2e2f85c907 | load 11.82 11.23 11.46
+run-node: node v24.11.1, engines rapier-compound, scenarios ships-merged, repeats 1, ticks 900
+rep 2 ships-merged     rapier-compound  step med   0.259 p95   1.444 max  15.668 | total med   0.259 p95   1.444 | bodies 20->20 | hash deb29a2e2f85c907 | load 11.82 11.23 11.46
+bench-native: engines ["box2d-rust"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 ships-merged     box2d-rust       step med   0.981 p95   3.063 max  70.430 | total med   0.981 p95   3.063 | bodies 20->20 | hash 17e67317479f7557 | load 11.82 11.23 11.46
+run-node: node v24.11.1, engines box2d-rust, scenarios ships-merged, repeats 1, ticks 900
+rep 2 ships-merged     box2d-rust       step med   1.353 p95   7.375 max  25.175 | total med   1.353 p95   7.375 | bodies 20->20 | hash 17e67317479f7557 | load 11.76 11.22 11.46
+bench-native: engines ["avian"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 ships-merged     avian            step med   1.514 p95   5.969 max 139.348 | total med   1.514 p95   5.969 | bodies 20->20 | hash 15cb013a44d98988 | load 11.38 11.15 11.43
+run-node: node v24.11.1, engines avian, scenarios ships-merged, repeats 1, ticks 900
+rep 2 ships-merged     avian            step med   2.341 p95  10.868 max 172.955 | total med   2.341 p95  10.868 | bodies 20->20 | hash 15cb013a44d98988 | load 11.18 11.12 11.42
+bench-native: engines ["avian-compound"] scenarios ["ships-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 ships-merged     avian-compound   step med   0.059 p95   0.161 max  10.170 | total med   0.059 p95   0.161 | bodies 20->20 | hash 58e602ed370be9ce | load 11.18 11.12 11.42
+run-node: node v24.11.1, engines avian-compound, scenarios ships-merged, repeats 1, ticks 900
+rep 2 ships-merged     avian-compound   step med   0.145 p95   0.843 max  12.589 | total med   0.145 p95   0.843 | bodies 20->20 | hash 58e602ed370be9ce | load 11.18 11.12 11.42
+bench-native: engines ["rapier"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 debris           rapier           step med   2.099 p95   8.961 max 108.890 | total med   2.099 p95   8.961 | bodies 2000->2000 | hash 5ad22995a546d274 | load 11.18 11.12 11.42
+run-node: node v24.11.1, engines rapier, scenarios debris, repeats 1, ticks 900
+rep 2 debris           rapier           step med   3.424 p95  15.837 max 105.629 | total med   3.424 p95  15.837 | bodies 2000->2000 | hash 5ad22995a546d274 | load 11.25 11.13 11.42
+bench-native: engines ["rapier-compound"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 debris           rapier-compound  step med   1.223 p95   3.920 max  30.919 | total med   1.223 p95   3.920 | bodies 2000->2000 | hash 01eaf3c06e581902 | load 11.15 11.11 11.41
+run-node: node v24.11.1, engines rapier-compound, scenarios debris, repeats 1, ticks 900
+rep 2 debris           rapier-compound  step med   2.371 p95  14.607 max 138.526 | total med   2.371 p95  14.607 | bodies 2000->2000 | hash 01eaf3c06e581902 | load 10.98 11.08 11.40
+bench-native: engines ["box2d-rust"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 debris           box2d-rust       step med   4.082 p95  10.655 max  67.916 | total med   4.082 p95  10.655 | bodies 2000->2000 | hash f3ef4d8f3c8d2cc1 | load 10.74 11.03 11.38
+run-node: node v24.11.1, engines box2d-rust, scenarios debris, repeats 1, ticks 900
+rep 2 debris           box2d-rust       step med   5.469 p95  14.636 max 197.706 | total med   5.469 p95  14.636 | bodies 2000->2000 | hash f3ef4d8f3c8d2cc1 | load 10.32 10.93 11.35
+bench-native: engines ["avian"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 debris           avian            step med   7.114 p95  19.995 max 158.983 | total med   7.114 p95  19.995 | bodies 2000->2000 | hash d09deea3991b8dd2 | load 10.21 10.89 11.33
+run-node: node v24.11.1, engines avian, scenarios debris, repeats 1, ticks 900
+rep 2 debris           avian            step med  10.809 p95  22.128 max 104.337 | total med  10.809 p95  22.128 | bodies 2000->2000 | hash d09deea3991b8dd2 | load 9.57 10.72 11.27
+bench-native: engines ["avian-compound"] scenarios ["debris"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 debris           avian-compound   step med   2.098 p95   4.982 max  93.921 | total med   2.098 p95   4.982 | bodies 2000->2000 | hash e8ee07e88b180299 | load 9.57 10.72 11.27
+run-node: node v24.11.1, engines avian-compound, scenarios debris, repeats 1, ticks 900
+rep 2 debris           avian-compound   step med   3.461 p95  10.328 max  23.482 | total med   3.461 p95  10.328 | bodies 2000->2000 | hash e8ee07e88b180299 | load 9.04 10.59 11.22
+bench-native: engines ["rapier"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined         rapier           step med  16.354 p95  33.127 max 137.981 | total med  22.471 p95  40.903 | rays med  5.627 hits 2706206 | split mean  0.938 max  2.719 | bodies 2320->2350 | hash 08e14ecb94a1640a | load 10.16 10.71 11.25
+run-node: node v24.11.1, engines rapier, scenarios combined, repeats 1, ticks 900
+rep 2 combined         rapier           step med  16.343 p95  33.257 max 214.225 | total med  24.743 p95  45.352 | rays med   7.542 hits 2706206 | split mean   0.742 max   2.335 | bodies 2320->2350 | hash 08e14ecb94a1640a | load 8.24 10.24 11.08
+bench-native: engines ["rapier-compound"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined         rapier-compound  step med   1.966 p95   5.821 max  30.404 | total med   6.518 p95  13.351 | rays med  4.385 hits 2708105 | split mean  0.511 max  1.378 | bodies 2320->2350 | hash 7c2787261a238ba0 | load 8.24 10.18 11.05
+run-node: node v24.11.1, engines rapier-compound, scenarios combined, repeats 1, ticks 900
+rep 2 combined         rapier-compound  step med   3.591 p95  11.258 max  61.215 | total med  11.504 p95  25.968 | rays med   7.391 hits 2708105 | split mean   0.799 max   1.628 | bodies 2320->2350 | hash 7c2787261a238ba0 | load 7.20 9.90 10.95
+bench-native: engines ["box2d-rust"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined         box2d-rust       step med  26.386 p95  55.200 max 163.368 | total med  32.983 p95  65.950 | rays med  5.268 hits 2668718 | split mean  2.763 max  9.735 | bodies 2320->2350 | hash 9d42931569ef3f3c | load 7.30 9.64 10.82
+run-node: node v24.11.1, engines box2d-rust, scenarios combined, repeats 1, ticks 900
+rep 2 combined         box2d-rust       step med  35.508 p95  67.972 max 689.775 | total med  43.179 p95  82.416 | rays med   6.641 hits 2668718 | split mean   3.767 max  12.096 | bodies 2320->2350 | hash 9d42931569ef3f3c | load 5.39 8.78 10.47
+bench-native: engines ["avian"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined         avian            step med  30.989 p95  59.052 max 181.116 | total med  37.062 p95  73.229 | rays med  4.676 hits 2700631 | split mean 33.556 max 86.717 | bodies 2320->2350 | hash 022ad346ce88ca68 | load 3.44 7.79 10.06
+run-node: node v24.11.1, engines avian, scenarios combined, repeats 1, ticks 900
+rep 2 combined         avian            step med  60.574 p95 101.870 max 399.658 | total med  75.139 p95 137.547 | rays med  12.183 hits 2700631 | split mean  59.129 max 129.180 | bodies 2320->2350 | hash 022ad346ce88ca68 | load 9.36 8.38 10.07
+bench-native: engines ["avian-compound"] scenarios ["combined"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined         avian-compound   step med   4.581 p95  13.275 max  75.798 | total med  11.850 p95  27.852 | rays med  6.819 hits 2702332 | split mean  1.472 max  4.146 | bodies 2320->2350 | hash 10aa50f355f64153 | load 9.21 8.38 10.05
+run-node: node v24.11.1, engines avian-compound, scenarios combined, repeats 1, ticks 900
+rep 2 combined         avian-compound   step med   6.154 p95  15.050 max 103.073 | total med  17.300 p95  32.952 | rays med  10.518 hits 2702332 | split mean   1.989 max  13.676 | bodies 2320->2350 | hash 10aa50f355f64153 | load 8.52 8.29 9.98
+bench-native: engines ["rapier"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined-merged  rapier           step med   3.740 p95  13.602 max  41.025 | total med   9.109 p95  21.221 | rays med  4.961 hits 2705030 | split mean  0.103 max  0.393 | bodies 2320->2350 | hash 54e48401588ac7be | load 8.71 8.35 9.98
+run-node: node v24.11.1, engines rapier, scenarios combined-merged, repeats 1, ticks 900
+rep 2 combined-merged  rapier           step med   6.549 p95  21.905 max 103.213 | total med  17.164 p95  39.036 | rays med   9.311 hits 2705030 | split mean   0.324 max   1.945 | bodies 2320->2350 | hash 54e48401588ac7be | load 8.84 8.40 9.97
+bench-native: engines ["rapier-compound"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined-merged  rapier-compound  step med   3.420 p95  13.522 max 376.802 | total med  10.798 p95  30.794 | rays med  6.899 hits 2704086 | split mean  0.175 max  0.380 | bodies 2320->2350 | hash 107325dd8eaded84 | load 9.62 8.60 10.01
+run-node: node v24.11.1, engines rapier-compound, scenarios combined-merged, repeats 1, ticks 900
+rep 2 combined-merged  rapier-compound  step med   4.637 p95  14.119 max 201.186 | total med  15.629 p95  33.101 | rays med  10.448 hits 2704086 | split mean   0.469 max   5.105 | bodies 2320->2350 | hash 107325dd8eaded84 | load 10.92 8.96 10.10
+bench-native: engines ["box2d-rust"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined-merged  box2d-rust       step med   5.612 p95  13.974 max  46.213 | total med  11.800 p95  22.629 | rays med  5.662 hits 2656491 | split mean  0.164 max  0.534 | bodies 2320->2350 | hash 68c9613150f3539e | load 9.66 8.78 10.02
+run-node: node v24.11.1, engines box2d-rust, scenarios combined-merged, repeats 1, ticks 900
+rep 2 combined-merged  box2d-rust       step med   6.173 p95  13.226 max  42.430 | total med  12.274 p95  21.516 | rays med   5.705 hits 2656491 | split mean   0.300 max   1.395 | bodies 2320->2350 | hash 68c9613150f3539e | load 8.64 8.59 9.94
+bench-native: engines ["avian"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined-merged  avian            step med   9.001 p95  21.449 max  46.768 | total med  14.067 p95  30.362 | rays med  4.561 hits 2700528 | split mean  2.119 max  4.326 | bodies 2320->2350 | hash d3fc89fc4075f69f | load 7.72 8.39 9.85
+run-node: node v24.11.1, engines avian, scenarios combined-merged, repeats 1, ticks 900
+rep 2 combined-merged  avian            step med  12.624 p95  26.413 max  68.410 | total med  20.229 p95  39.004 | rays med   7.219 hits 2700528 | split mean   2.788 max   8.197 | bodies 2320->2350 | hash d3fc89fc4075f69f | load 6.21 7.99 9.69
+bench-native: engines ["avian-compound"] scenarios ["combined-merged"] repeats 1 warmup 30 ticks 900 threads 1 build serial
+rep 2 combined-merged  avian-compound   step med   2.167 p95   6.241 max  11.529 | total med   5.997 p95  11.890 | rays med  3.639 hits 2701154 | split mean  0.776 max  6.108 | bodies 2320->2350 | hash 4b25350f2f0eddb0 | load 5.87 7.89 9.64
+run-node: node v24.11.1, engines avian-compound, scenarios combined-merged, repeats 1, ticks 900
+rep 2 combined-merged  avian-compound   step med   3.367 p95   9.361 max  71.557 | total med   9.955 p95  16.968 | rays med   6.179 hits 2701154 | split mean   1.141 max   4.707 | bodies 2320->2350 | hash 4b25350f2f0eddb0 | load 5.35 7.72 9.57
