@@ -10,7 +10,7 @@
 #   --size WxH           viewport (default 1280x720)
 #   --out FILE           screenshot path (default: target/web-check/shot.png)
 #   --build-timeout S    build time limit in seconds (default 1500)
-# Exit code: the build's or the browser's, non-zero on failure or timeout. Look at the PNG with the Read tool.
+# Exit code: non-zero on build failure, timeout, or a wasm panic / page error (3). Look at the PNG with the Read tool.
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -55,9 +55,19 @@ timeout 15 bash -c "until (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; do sle
 URL="http://127.0.0.1:$PORT/$PARAMS"
 echo "== browser: $URL (wait ${WAIT} ms)"
 W=${SIZE%x*} H=${SIZE#*x}
+LOG="$DIST.browser.log"
 set +e
-timeout $(( WAIT / 1000 + 180 )) node /home/devbox/workspace/tools/headless/shot.mjs "$URL" "$OUT" "$WAIT" "$W" "$H"
+timeout $(( WAIT / 1000 + 180 )) node /home/devbox/workspace/tools/headless/shot.mjs "$URL" "$OUT" "$WAIT" "$W" "$H" >"$LOG" 2>&1
 status=$?
 set -e
-echo "== screenshot: $OUT (exit $status)"
+# Console output without the long wasm stack frames; panics and page errors go first so they can't be missed.
+problems=$(grep -E "panicked at|\[pageerror\]|^error: " "$LOG" | head -20 || true)
+grep -vE "^\s+at " "$LOG" | tail -40
+rm -f "$LOG"
+echo "== screenshot: $OUT (browser exit $status)"
+if [ -n "$problems" ]; then
+  echo "== PROBLEMS (wasm panic / page error):"
+  echo "$problems"
+  [ "$status" -eq 0 ] && status=3
+fi
 exit "$status"
