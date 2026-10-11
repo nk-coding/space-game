@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: concept phase (exact day not recorded; settled by 2026-10-11)
 - Decided by: Niklas
-- Related: [ADR-0019](../adr/0019-rhai-scripting.md), [GDR-0008](0008-ui-ship-mind-interface.md), [GDR-0009](0009-stick-and-lock-controls.md), [GDR-0013](0013-vessels-and-piloting.md), [GDR-0032](0032-balancing-arena-evolution.md), `docs/behavior-format.md`, `docs/sim.md` "Flight"
+- Related: [ADR-0019](../adr/0019-rhai-scripting.md), [ADR-0026](../adr/0026-behavior-programs-text-in-content.md), [ADR-0027](../adr/0027-rhai-sandbox-and-determinism.md), [GDR-0008](0008-ui-ship-mind-interface.md), [GDR-0009](0009-stick-and-lock-controls.md), [GDR-0013](0013-vessels-and-piloting.md), [GDR-0032](0032-balancing-arena-evolution.md), [GDR-0034](0034-behavior-first-match-fire-at-will.md), [GDR-0035](0035-rule-slots-per-core.md), [GDR-0036](0036-behavior-text-format.md), [GDR-0037](0037-behavior-vocabulary-as-content.md), `docs/behavior-format.md`, `docs/sim.md` "Flight"
 
 ## Context
 

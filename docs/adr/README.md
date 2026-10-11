@@ -34,6 +34,8 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0023](0023-host-authoritative-netcode.md) | Co-op netcode is host-authoritative, with join codes and a tiny relay | Accepted | 2026-10-10 |
 | [0024](0024-saves-seed-and-deltas.md) | Saves store seed, generator version and deltas, versioned with migrations | Accepted | 2026-10-10 |
 | [0025](0025-main-repo-holds-only-chosen-code.md) | The main repo holds only chosen code; experiments and benchmarks live in separate local repos | Accepted | 2026-10-11 |
+| [0026](0026-behavior-programs-text-in-content.md) | Behavior programs are text lines in RON, parsed in `data`, compiled once and evaluated from one snapshot without allocation | Proposed | 2026-10-11 |
+| [0027](0027-rhai-sandbox-and-determinism.md) | Rhai runs as a raw, sandboxed engine with f32 floats, no `**`, libm math and an operation budget | Proposed | 2026-10-11 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

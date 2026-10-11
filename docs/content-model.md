@@ -28,6 +28,8 @@ content/base/
   materials/armor.ron      armor materials
   parts/<category>.ron     parts, one file per category (+ automatons.ron for enemy parts)
   ships/<id>.ron           one blueprint per file
+  behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
+  behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   wiki/<kind>/<id>.md      optional long-form prose, e.g. wiki/part/fission_reactor.md
   wiki/page/<id>.md        free-standing wiki articles (first "# " line = title)
 ```
@@ -35,7 +37,8 @@ content/base/
 File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
-  `categories`, `factions`, `materials`, `parts`, `ships`. File names are free; group however reads best.
+  `categories`, `factions`, `materials`, `parts`, `ships`, `behavior_nodes`, `behaviors`. File names are free;
+  group however reads best.
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; other files (READMEs) are
@@ -87,7 +90,8 @@ colour key for the icons of the category's parts (see Art keys).
 
 ### Factions (`factions/*.ron`)
 
-`glow`: hull glow key, `"player"` (teal) or `"enemy"` (coral). Ships name their faction.
+`glow`: hull glow key, `"player"` (teal) or `"enemy"` (coral). Ships name their faction. `behavior` (optional):
+the default behavior of the faction's ships (`automatons` → `raider_basic`, `ship_mind` → `skirmisher`).
 
 ### Materials (`materials/*.ron`)
 
@@ -196,7 +200,8 @@ category (it moves the ship, draws power like the engines and shares their brown
 
 `size` is the drydock frame; every placement must fit inside. A placement is `part`, `x`, `y`, `rot`
 (default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise). The index of a
-placement in `parts` is the part index used by the geometry API.
+placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
+ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`).
 
 Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raider.svg`), `sample_early` and
 `sample_mid` (from the concept-board drafts).
@@ -210,6 +215,70 @@ outline differs from the art's `outline_path` only there. The radiators now vent
 logic cores and shield emitters moved away from the fusion reactor's heat, and two gyros were added. The tests
 check exactly that: same cells, outline = art outline except the two shoulder vertices, unchanged spine, mirror
 symmetry, and no rule warnings. Every base ship validates without warnings.
+
+### Behavior nodes (`behavior_nodes/*.ron`, added 11 Oct 2026)
+
+The **vocabulary** of the behavior language: every condition, action and target selector a rule can use. The
+behavior editor's palette and the wiki list exactly these entries. The sim implements every built-in id
+(`sim::behavior::BUILTIN_NODES`); loading checks both directions (a content node without an implementation, an
+implementation without a content node, or a mismatch in role, value type, parameter types or choice options is
+an error), so text, wiki and code cannot drift apart. The grammar is in `docs/behavior-format.md`.
+
+```ron
+(
+    id: "orbit", name: "Orbit", role: Action, tags: ["move"],
+    summary: "Circle the target at the given radius.",
+    params: [
+        (id: "radius", name: "Radius", summary: "Metres, or a share of your weapon reach.", type: Distance,
+         default: "60%", min: 1, max: 5000),
+        (id: "dir", name: "Direction", type: Choice([
+            (id: "auto", name: "Auto"), (id: "ccw", name: "Counter-clockwise"), (id: "cw", name: "Clockwise"),
+        ]), default: "auto"),
+    ],
+)
+```
+
+| Field | Notes |
+|---|---|
+| `role` | `Condition` (before the arrow, violet), `Action` (after it, teal), `Target` (the `target` line) |
+| `value` | conditions only: `Distance`, `Percent`, `Seconds` or `Count` for a value that rules compare (`hull < 30%`); absent = a flag used bare (`shield_down`) |
+| `params` | positional parameters, at most 4: `id` (snake_case; also the Rhai variable name), `name`, optional `summary`, `type`, optional `default`, `min`, `max` |
+| `params[].type` | `Distance` (metres `45m`/`45`, or `60%` = a share of the weapon reach), `Percent` (always `%`), `Seconds`, `Count`, or `Choice([(id, name, summary?), ...])` |
+| `params[].default` | written as in a rule (`"67%"`, `"45m"`, `"cw"`); parameters without a default come first and are required |
+| `params[].min`, `max` | range of the number as written in the parameter's unit (m, %, s, count); reach-relative distances are checked against 0–1000% |
+| `script` | Rhai source: makes the node a custom (flag) condition, tagged "Rhai" in the editor; see `docs/behavior-format.md` |
+
+Text keys: the header fields as usual, plus `behavior_node.<id>.params.<param>.name` / `.summary` and
+`behavior_node.<id>.params.<param>.options.<option>.name` / `.summary`.
+
+Base vocabulary (v1): conditions `hull`, `shield`, `shield_down`, `heat`, `power`, `target_in_range`,
+`target_hull`, `target_on_me`, `under_attack`, `enemies_near`, `cycle`, `target_time`, and the Rhai condition
+`closing_in`; actions `approach`, `orbit`, `kite`, `face`, `flee`, `hold`; target selectors `nearest`,
+`weakest`, `threat`, `attacker`, `locked`, each with an aim point (`centre`, `engines`, `weapons`, `power`,
+`core`).
+
+### Behaviors (`behaviors/*.ron`, added 11 Oct 2026)
+
+A behavior program. `target` and every entry of `rules` are lines of the text format, exactly as the editor's
+text view shows them (the RON form *is* the text form: one string per rule, the target line without its
+keyword), so there is no second representation to keep in sync and errors point at a rule and a column.
+
+```ron
+(
+    id: "raider_basic", name: "Raider pack", tags: ["automaton", "attack"],
+    summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
+    target: "nearest",
+    rules: [
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)",
+        "always -> approach(67%)",
+    ],
+)
+```
+
+`target` is optional (default `nearest`); a rule may end in a `# note`. Rules are written in canonical form
+(the printer's output; a test checks the base pack). Base behaviors: `raider_basic` (the automatons' default,
+the old hard-coded raider brain as data, two rules for one automaton core) and `skirmisher` (the ship-mind's
+default for unpiloted ships, six rules, uses the Rhai condition).
 
 ## Coordinates and geometry
 
@@ -251,7 +320,7 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 - Fields that name another entry hold its id (`category: "power"`, `faction: "automatons"`,
   `material: "steel"`, `target: Part("capacitor")`); validation checks each target exists.
 - Any text field and wiki file may link: `[[kind:id]]` or `[[kind:id|label]]`, kind one of `stat category
-  faction material part ship page`. The game renders links as plain names (`Content::render_plain`), the wiki
+  faction material part ship behavior_node behavior page`. The game renders links as plain names (`Content::render_plain`), the wiki
   as hyperlinks. Broken links are errors.
 
 ## Text and localisation
@@ -299,6 +368,17 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
   an engine with a blocked exhaust, an RCS part without any side open to space, a radiator that cannot vent.
 - Turning parts: `engine.gimbal` between 0 and 45 degrees, `gyro.torque` and `rcs.thrust` above 0, no `rcs` on
   hull parts.
+- Behavior nodes: ids and option ids not keywords (`when if always and or not target`), unique parameter and
+  option ids, defaults that parse and fit their type and range, required parameters before optional ones,
+  `value` only on conditions, `script` only on flag conditions.
+- Behaviors: every rule parses (column-exact syntax errors), names a node of the right role (with a
+  "did you mean" suggestion), compares value conditions and only those, passes values of the right type and
+  range, and at least one rule. Unknown behavior references on factions and ships. A ship whose behavior has
+  more rules than its logic cores give rule slots is an error (field `behavior`, or `faction` for a faction
+  default).
+- In the sim (`BehaviorLibrary::new`, `sim::behavior::check_vocabulary`): content nodes and the sim's
+  implementations agree, Rhai scripts compile (syntax, unknown variables, no `**`), script parameters do not
+  shadow the script API.
 
 ## The wiki
 
@@ -314,7 +394,10 @@ cargo run -p content-tool -- list part
 `text_keys`, `links` (targets mentioned in its texts) and `wiki` (markdown or null). Parts add `color_key`,
 `stat_lines` (identical to the drydock), `stat_lines_by_material` for hull parts, `geometry` (area, polygon,
 connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygon`, `center` and `piece`,
-plus `bounds`, `pieces`, `main_piece`, `hull_loops` and summed `totals`. Categories list their parts,
+plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals`, `rule_slots` and `effective_behavior`.
+`behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
+`behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
+`default_of_factions` and `flown_by_ships`. Categories list their parts,
 factions their ships. `pages` holds free articles; `texts` the whole key → text table.
 
 ## Art keys
@@ -346,4 +429,8 @@ dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle poin
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
 content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
+content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
+let program = data::behavior::Program::parse(text)?;         // text form (or behavior.program() for RON form)
+program.to_text(); program.to_parts();                       // canonical print
+data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>
 ```
