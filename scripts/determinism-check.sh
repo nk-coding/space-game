@@ -10,7 +10,7 @@
 # be checked: the physics layer adds scenarios to sim's `determinism` example (--scenario), and the browser
 # build can print the same lines to the console (captured with tools/headless/shot.mjs) for --compare.
 #
-# Env: JOBS (6), PROFILE (release; or dev), OUT (target/determinism).
+# Env: JOBS (6), PROFILE (release; or dev), CARGO_TARGET_DIR (target), OUT ($CARGO_TARGET_DIR/determinism).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source "$HOME/.cargo/env" 2>/dev/null || true
@@ -56,7 +56,8 @@ while [ $# -gt 0 ]; do
 done
 JOBS=${JOBS:-6}
 PROFILE=${PROFILE:-release}
-OUT=${OUT:-target/determinism}
+TARGET=${CARGO_TARGET_DIR:-target}
+OUT=${OUT:-$TARGET/determinism}
 DIR=$PROFILE; [ "$PROFILE" = dev ] && DIR=debug
 
 if ! rustup target list --installed | grep -qx wasm32-wasip1; then
@@ -69,7 +70,7 @@ mkdir -p "$OUT"
 ARGS=(--seed "$SEED" --ticks "$TICKS" --scenario "$SCENARIO")
 NATIVE_OUT="$OUT/$EXAMPLE-$SCENARIO-$SEED-native.txt"
 WASM_OUT="$OUT/$EXAMPLE-$SCENARIO-$SEED-wasm.txt"
-"target/$DIR/examples/$EXAMPLE" "${ARGS[@]}" > "$NATIVE_OUT"
-node --no-warnings scripts/wasi-run.mjs "target/wasm32-wasip1/$DIR/examples/$EXAMPLE.wasm" "${ARGS[@]}" > "$WASM_OUT"
+"$TARGET/$DIR/examples/$EXAMPLE" "${ARGS[@]}" > "$NATIVE_OUT"
+node --no-warnings scripts/wasi-run.mjs "$TARGET/wasm32-wasip1/$DIR/examples/$EXAMPLE.wasm" "${ARGS[@]}" > "$WASM_OUT"
 echo "native ($(uname -m)) vs wasm32-wasip1 (node $(node --version)), profile $PROFILE"
 compare native "$NATIVE_OUT" wasm "$WASM_OUT"
