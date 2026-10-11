@@ -138,6 +138,11 @@ fn runner_splits_down_the_middle() {
     let c_rem = (a.com_world() * a.mass.mass + b.com_world() * b.mass.mass) * (1.0 / m);
     let want = inherited_velocity(body.linvel, body.angvel, com_old, c_rem) * m;
     assert!((mom - want).length() < 1e-2, "{mom:?} vs {want:?}");
+    // Each half has its own closed hull outline.
+    for p in [a, b] {
+        let loops = data::geometry::hull_loops(&ship.piece_hull_edges(p.id));
+        assert!(!loops.is_empty() && loops.iter().all(|l| l.closed));
+    }
     // The split pose in the event equals the live body.
     assert_eq!(new.body, b.body);
     assert!((new.body.pos - (body.pos + sim::Rot::from_angle(body.angle).apply(new.offset_in_parent))).length() < 1e-5);

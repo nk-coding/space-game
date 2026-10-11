@@ -498,6 +498,13 @@ impl Ship {
         }
     }
 
+    /// Outer hull edge of one piece in the blueprint frame (for the hull glow; chain with
+    /// `data::geometry::hull_loops`). Salvage pieces have no glow; the client decides.
+    pub fn piece_hull_edges(&self, piece: PieceId) -> Vec<data::HullSegment> {
+        self.grid
+            .hull_edges(|i| self.parts[i].alive && self.parts[i].piece == piece)
+    }
+
     /// The part under a piece-frame point (for mapping physics hits to parts), checking slope triangles.
     pub fn part_at_local(&self, piece: PieceId, local: Vec2) -> Option<PartIdx> {
         let p = self.piece(piece)?;
