@@ -1,0 +1,22 @@
+// Automaton raider: derived from art/ships/automaton-raider.svg (cells of 20 px centred on 0,0, as in
+// docs/concept/reference/generators/frag.py RT and RSL). Its hull edge is the octagon in the SVG.
+(
+    id: "automaton_raider",
+    name: "Automaton raider",
+    summary: "A small 3×3 rogue automaton with a cannon in its nose.",
+    description: "Raiders hunt in small packs at the rim. Wrecks are rich in salvage, above all their [[part:automaton_core|cores]].",
+    tags: ["enemy"],
+    faction: "automatons",
+    size: (3, 3),
+    parts: [
+        (part: "slope_1x1", x: 0, y: 0, flip: true, material: "automaton_plate"),
+        (part: "automaton_cannon", x: 1, y: 0),
+        (part: "slope_1x1", x: 2, y: 0, material: "automaton_plate"),
+        (part: "armor_block", x: 0, y: 1, material: "automaton_plate"),
+        (part: "automaton_core", x: 1, y: 1),
+        (part: "armor_block", x: 2, y: 1, material: "automaton_plate"),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "automaton_plate"),
+        (part: "thruster", x: 1, y: 2),
+        (part: "slope_1x1", x: 2, y: 2, rot: 2, flip: true, material: "automaton_plate"),
+    ],
+)

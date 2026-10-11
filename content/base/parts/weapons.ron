@@ -1,0 +1,36 @@
+// Weapons. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// Guns are fixed: they fire along the part's forward side and need a clear line of fire.
+[
+    (
+        id: "pulse_laser",
+        name: "Pulse laser",
+        summary: "A fixed forward laser that fires quick pulses.",
+        description: "Needs a clear line of fire. [[part:capacitor|Capacitors]] beside it make it fire faster.",
+        tags: ["laser"],
+        category: "weapons",
+        icon: "pulse-laser",
+        size: (1, 1),
+        build_points: 3,
+        mass: 2,
+        hp: 1,
+        power: (draw: 4),
+        heat: (output: 1.5, limit: 3),
+        weapon: (family: Energy, damage: 1),
+    ),
+    (
+        id: "beam_laser",
+        name: "Beam laser",
+        summary: "A continuous beam: strong, hungry and hot.",
+        description: "Needs a clear line of fire. [[part:capacitor|Capacitors]] beside it make it fire faster.",
+        tags: ["laser"],
+        category: "weapons",
+        icon: "beam-laser",
+        size: (1, 2),
+        build_points: 7,
+        mass: 4,
+        hp: 2,
+        power: (draw: 9),
+        heat: (output: 3.2, limit: 4.2),
+        weapon: (family: Energy, damage: 2.6),
+    ),
+]

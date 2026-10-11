@@ -1,0 +1,20 @@
+// Heat. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+[
+    (
+        id: "radiator",
+        name: "Radiator",
+        summary: "Dumps heat, but only through sides that are open to space.",
+        description: "A venting radiator beside a reactor also raises the reactor's output.",
+        tags: ["radiator"],
+        category: "heat",
+        icon: "radiator",
+        size: (1, 1),
+        build_points: 2,
+        mass: 1,
+        hp: 1,
+        radiator: (vent: 1.5),
+        bonuses: [
+            (target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [SourceVenting]),
+        ],
+    ),
+]

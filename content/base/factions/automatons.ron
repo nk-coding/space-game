@@ -1,0 +1,8 @@
+(
+    id: "automatons",
+    name: "Rogue automatons",
+    summary: "Feral precursor drones that roam the rim in small packs.",
+    description: "Early foes and rich salvage. Their [[part:automaton_core|cores]] are the first source of programmable matter.",
+    tags: ["enemy"],
+    glow: "enemy",
+)

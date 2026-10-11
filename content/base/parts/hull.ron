@@ -1,0 +1,50 @@
+// Hull parts: armor blocks and slopes. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// Hull parts take an armor material per placement; mass and hit points come from the material.
+// Slopes are right triangles over a w × 1 footprint: unrotated, the right angle sits bottom-left and the face
+// points up and to the right. They connect only through their two straight sides.
+[
+    (
+        id: "armor_block",
+        name: "Armor block",
+        summary: "Plain plating; its material sets weight and toughness.",
+        tags: ["armor"],
+        category: "hull",
+        size: (1, 1),
+        build_points: 1,
+        hull: true,
+    ),
+    (
+        id: "slope_1x1",
+        name: "Slope 1×1",
+        summary: "A 45° armor slope for corners and edges.",
+        description: "Slope faces deflect kinetic shots that hit at a shallow angle. A slope links to its neighbours only through its two straight sides.",
+        tags: ["armor", "slope"],
+        category: "hull",
+        size: (1, 1),
+        shape: Slope,
+        build_points: 0.5,
+        hull: true,
+    ),
+    (
+        id: "slope_1x2",
+        name: "Slope 1×2",
+        summary: "A shallow armor slope over two cells.",
+        tags: ["armor", "slope"],
+        category: "hull",
+        size: (2, 1),
+        shape: Slope,
+        build_points: 1,
+        hull: true,
+    ),
+    (
+        id: "slope_1x3",
+        name: "Slope 1×3",
+        summary: "A long, flat armor slope over three cells, good for noses and wing edges.",
+        tags: ["armor", "slope"],
+        category: "hull",
+        size: (3, 1),
+        shape: Slope,
+        build_points: 1.5,
+        hull: true,
+    ),
+]

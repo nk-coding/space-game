@@ -1,0 +1,19 @@
+// Logic. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+[
+    (
+        id: "logic_core",
+        name: "Logic core",
+        summary: "Hosts a copy of the ship-mind and runs its behavior rules.",
+        description: "Every logic core needs programmable matter; salvaged [[part:automaton_core|automaton cores]] are the first source.",
+        tags: ["core"],
+        category: "logic",
+        icon: "logic-core",
+        size: (1, 1),
+        build_points: 3,
+        mass: 1,
+        hp: 1,
+        power: (draw: 1),
+        heat: (output: 0.4, limit: 3),
+        logic: (rule_slots: 6),
+    ),
+]

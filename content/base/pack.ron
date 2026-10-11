@@ -1,0 +1,9 @@
+// The base game. It is loaded exactly like a mod; see docs/content-model.md.
+(
+    id: "base",
+    name: "Space Game",
+    version: "0.1.0",
+    schema_version: 1,
+    description: "Base game content: armor materials, the drydock parts, the rogue automatons and a few sample ships.",
+    authors: ["Niklas"],
+)

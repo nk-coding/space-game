@@ -1,0 +1,34 @@
+// Propulsion. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// Engines push towards the part's forward side and need open cells directly behind them.
+[
+    (
+        id: "thruster",
+        name: "Thruster",
+        summary: "A small engine that needs open space behind it.",
+        tags: ["engine"],
+        category: "propulsion",
+        icon: "thruster",
+        size: (1, 1),
+        build_points: 3,
+        mass: 2,
+        hp: 1,
+        power: (draw: 2),
+        heat: (output: 0.8, limit: 3.2),
+        engine: (thrust: 12),
+    ),
+    (
+        id: "torch_drive",
+        name: "Torch drive",
+        summary: "A big drive: hot, heavy and very fast.",
+        tags: ["engine"],
+        category: "propulsion",
+        icon: "torch-drive",
+        size: (2, 2),
+        build_points: 9,
+        mass: 9,
+        hp: 4,
+        power: (draw: 6),
+        heat: (output: 4, limit: 5),
+        engine: (thrust: 45),
+    ),
+]

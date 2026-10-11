@@ -1,0 +1,29 @@
+// Cargo. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+[
+    (
+        id: "cargo_bay",
+        name: "Cargo bay",
+        summary: "Holds salvage; hold space competes with everything else.",
+        tags: ["cargo"],
+        category: "cargo",
+        icon: "cargo-bay",
+        size: (1, 1),
+        build_points: 1.5,
+        mass: 1.5,
+        hp: 1,
+        cargo: (capacity: 4),
+    ),
+    (
+        id: "cargo_hold",
+        name: "Cargo hold",
+        summary: "A bulky hold that is cheaper per unit of salvage.",
+        tags: ["cargo"],
+        category: "cargo",
+        icon: "cargo-hold",
+        size: (2, 2),
+        build_points: 5,
+        mass: 5,
+        hp: 4,
+        cargo: (capacity: 20),
+    ),
+]

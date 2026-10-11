@@ -1,0 +1,20 @@
+// Defense. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only; the shield radius matches the
+// rings in art/ships/halvex-runner.svg).
+[
+    (
+        id: "shield_emitter",
+        name: "Shield emitter",
+        summary: "Projects a shield bubble over the hull around it.",
+        description: "Overlapping bubbles stack. Energy shots are absorbed well, kinetic shots partly pass and missiles detonate on the bubble.",
+        tags: ["shield"],
+        category: "defense",
+        icon: "shield-emitter",
+        size: (1, 1),
+        build_points: 3,
+        mass: 2,
+        hp: 1,
+        power: (draw: 3),
+        heat: (output: 0.8, limit: 3.2),
+        shield: (radius: 2.3),
+    ),
+]

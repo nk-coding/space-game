@@ -1,0 +1,37 @@
+// Parts of the rogue automatons. PLACEHOLDER NUMBERS (invented for feel; no concept-board values exist).
+// They use the enemy (coral) system colour instead of their category's.
+[
+    (
+        id: "automaton_core",
+        name: "Automaton core",
+        summary: "The feral mind and power plant of a rogue automaton.",
+        description: "A precursor drone core gone wild. Salvaged cores are the first source of programmable matter for new [[part:logic_core|logic cores]].",
+        tags: ["automaton", "core"],
+        category: "logic",
+        icon: "automaton-core",
+        color: "enemy",
+        size: (1, 1),
+        build_points: 5,
+        mass: 3,
+        hp: 2,
+        power: (output: 6),
+        heat: (output: 1, limit: 4),
+        logic: (rule_slots: 2),
+    ),
+    (
+        id: "automaton_cannon",
+        name: "Automaton cannon",
+        summary: "A crude kinetic gun that rogue automatons build into their noses.",
+        tags: ["automaton"],
+        category: "weapons",
+        icon: "automaton-cannon",
+        color: "enemy",
+        size: (1, 1),
+        build_points: 3,
+        mass: 2,
+        hp: 1,
+        power: (draw: 2),
+        heat: (output: 1, limit: 3),
+        weapon: (family: Kinetic, damage: 1.2),
+    ),
+]

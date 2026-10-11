@@ -1,0 +1,34 @@
+// Armor materials. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// A hull part's mass and hit points are `*_per_cell × area` (slopes count half their footprint);
+// its build points are multiplied by `build_point_factor`. `tone` is a key into art/tokens.json ship.armor.
+[
+    (
+        id: "steel",
+        name: "Steel",
+        summary: "Cheap, heavy plating.",
+        icon: "armor-steel",
+        armor: (tone: "steel", mass_per_cell: 2, hp_per_cell: 1, build_point_factor: 1),
+    ),
+    (
+        id: "composite",
+        name: "Composite",
+        summary: "Lighter and tougher than steel, but it costs more to build.",
+        icon: "armor-composite",
+        armor: (tone: "composite", mass_per_cell: 1.5, hp_per_cell: 1.4, build_point_factor: 1.5),
+    ),
+    (
+        id: "reactive",
+        name: "Reactive",
+        summary: "Heavy plating that breaks up incoming hits.",
+        icon: "armor-reactive",
+        armor: (tone: "reactive", mass_per_cell: 2.4, hp_per_cell: 2.1, build_point_factor: 2),
+    ),
+    (
+        id: "automaton_plate",
+        name: "Automaton plate",
+        summary: "Scavenged plating of the rogue automatons.",
+        tags: ["automaton"],
+        icon: "armor-enemy-armor",
+        armor: (tone: "enemy", mass_per_cell: 2.2, hp_per_cell: 1.2, build_point_factor: 1.2),
+    ),
+]
