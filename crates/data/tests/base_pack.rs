@@ -200,3 +200,33 @@ fn part_colors() {
     assert_eq!(color("automaton_core").as_deref(), Some("enemy"));
     assert_eq!(color("armor_block"), None);
 }
+
+#[test]
+fn placement_mass_and_centroid() {
+    let c = content();
+    let ship = c.ships.get("halvex_runner").unwrap();
+    let grid = c.ship_grid(ship).unwrap();
+    let mass: f32 = ship
+        .parts
+        .iter()
+        .map(|p| c.placement_mass(p).unwrap())
+        .sum();
+    assert_eq!(mass, 103.0);
+    // slope_1x2 at (3,0) flipped: corners (5,0), (5,1), (3,1).
+    let i = ship
+        .parts
+        .iter()
+        .position(|p| p.part == "slope_1x2" && p.x == 3)
+        .unwrap();
+    assert_eq!(c.placement_mass(&ship.parts[i]), Some(1.5));
+    assert_eq!(c.placement_hp(&ship.parts[i]), Some(1.4));
+    let [x, y] = grid.shape(i).centroid();
+    assert!((x - 13.0 / 3.0).abs() < 1e-6 && (y - 2.0 / 3.0).abs() < 1e-6);
+    let j = ship
+        .parts
+        .iter()
+        .position(|p| p.part == "fusion_reactor")
+        .unwrap();
+    assert_eq!(grid.shape(j).centroid(), [6.0, 3.0]);
+    assert_eq!(c.placement_mass(&ship.parts[j]), Some(12.0));
+}

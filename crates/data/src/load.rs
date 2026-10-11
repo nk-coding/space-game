@@ -379,4 +379,25 @@ impl Content {
     pub fn placement_material(&self, p: &Placement) -> Option<&Material> {
         p.material.as_deref().and_then(|m| self.materials.get(m))
     }
+
+    /// Mass of a placed part: the part's `mass`, or for hull parts the material's `mass_per_cell × area`.
+    /// `None` if the part or a hull part's armour material is unknown.
+    pub fn placement_mass(&self, p: &Placement) -> Option<f32> {
+        let part = self.parts.get(&p.part)?;
+        if part.hull {
+            Some(self.placement_material(p)?.armor.as_ref()?.mass_per_cell * part.area())
+        } else {
+            part.mass
+        }
+    }
+
+    /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
+    pub fn placement_hp(&self, p: &Placement) -> Option<f32> {
+        let part = self.parts.get(&p.part)?;
+        if part.hull {
+            Some(self.placement_material(p)?.armor.as_ref()?.hp_per_cell * part.area())
+        } else {
+            part.hp
+        }
+    }
 }

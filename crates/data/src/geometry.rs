@@ -312,6 +312,21 @@ impl PlacedShape {
     pub fn area(&self) -> f32 {
         self.footprint.area()
     }
+
+    /// Centroid of the polygon in metres (the centre for rects, the mean of the corners for slopes):
+    /// where the part's mass sits.
+    pub fn centroid(&self) -> [f32; 2] {
+        let poly = self.polygon();
+        let n = poly.len() as f32;
+        let (sx, sy) = poly
+            .iter()
+            .fold((0i32, 0i32), |(x, y), p| (x + p.x, y + p.y));
+        if self.footprint.shape == Shape::Slope {
+            [sx as f32 / n, sy as f32 / n]
+        } else {
+            self.center()
+        }
+    }
 }
 
 /// Twice the signed shoelace area (positive = clockwise on screen with y down).

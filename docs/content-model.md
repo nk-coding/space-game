@@ -299,7 +299,8 @@ let pieces = grid.pieces();                              // Pieces { parts, piec
 let main = grid.main_piece(&pieces, |i| part_of(i).logic.is_some());
 let edges = grid.piece_hull_edges(&pieces, main.unwrap()); // Vec<HullSegment>, as drawHullGlow
 let loops = data::geometry::hull_loops(&edges);          // closed outlines, collinear points merged
-grid.bounds(); grid.line_of_fire_clear(i); grid.exhaust_clear(i); grid.remove(i);
+grid.bounds(); grid.line_of_fire_clear(i); grid.exhaust_clear(i); grid.remove(i); grid.shape(i).centroid();
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
-content.part_color(part); content.placement_material(&placement); content.render_plain(text);
+content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
+content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 ```

@@ -86,12 +86,3 @@ impl std::fmt::Display for Problem {
         write!(f, ": {}", self.message)
     }
 }
-
-/// Splits problems into `Err(all)` if any is an error, otherwise `Ok(warnings)`.
-pub fn errors_or_warnings(problems: Vec<Problem>) -> Result<Vec<Problem>, Vec<Problem>> {
-    if problems.iter().any(Problem::is_error) {
-        Err(problems)
-    } else {
-        Ok(problems)
-    }
-}
