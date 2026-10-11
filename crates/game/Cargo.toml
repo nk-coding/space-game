@@ -8,6 +8,11 @@ publish.workspace = true
 
 [dependencies]
 data = { path = "../data" }
+sim = { path = "../sim" }
+# Vector art: embedded SVG icons + style tokens, rasterised at runtime (no committed raster graphics).
+art = { path = "../art" }
+# Live tuning panel (dev tool). 0.43.x targets Bevy 0.20.
+bevy_egui = { version = "=0.43.1", default-features = false, features = ["render", "default_fonts", "manage_clipboard"] }
 # Only what a 2D game needs. No audio and no gamepads for now (the VM lacks alsa/udev headers).
 bevy = { version = "=0.20.0", default-features = false, features = [
   "std",
@@ -29,4 +34,4 @@ bevy = { version = "=0.20.0", default-features = false, features = [
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Location"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "console"] }

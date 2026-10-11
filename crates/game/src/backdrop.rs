@@ -6,7 +6,6 @@ use bevy::prelude::*;
 use crate::atlas::Atlas;
 use crate::camera::{CameraRig, CameraSet, MainCamera};
 use crate::meshbuf::MeshBuf;
-use crate::sim_bridge::RenderPose;
 use crate::style::{vcol, Style};
 use crate::RenderToggles;
 
@@ -15,7 +14,7 @@ const Z_DUST: f32 = -800.0;
 const Z_RINGS: f32 = -700.0;
 
 /// Dust tiles repeat every this many metres (in layer space).
-const TILE: f32 = 120.0;
+const TILE: f32 = 240.0;
 /// Copies per layer (3 x 3 covers any view up to 2 tiles wide).
 const COPIES: i32 = 3;
 
@@ -73,14 +72,15 @@ fn spawn_backdrop(
     mut meshes: ResMut<Assets<Mesh>>,
     camera: Single<Entity, With<MainCamera>>,
 ) {
-    let bg = atlas.region("fx/backdrop");
-    // Sample half a texel inside the region so the gutter never shows at the screen edge.
-    let inset = Vec2::splat(1.0);
-    let rect = Rect::from_corners(bg.px.min + inset, bg.px.max - inset);
+    // The style-guide gradient as a mesh with vertex colours (resolution independent): CSS
+    // `radial-gradient(ellipse 75% 85% at 50% 45%, #0a1820, #050e15 55%, #010409)` in a unit square that is
+    // scaled to the viewport. Colours are interpolated in sRGB at every ring (like the browser); between rings
+    // the GPU interpolates, which is indistinguishable with this many rings.
     let backdrop = commands
         .spawn((
             Backdrop,
-            Sprite { image: atlas.image.clone(), rect: Some(rect), custom_size: Some(Vec2::ONE), ..default() },
+            Mesh2d(meshes.add(backdrop_mesh(&atlas))),
+            MeshMaterial2d(atlas.material.clone()),
             Transform::from_xyz(0.0, 0.0, Z_BACKDROP),
         ))
         .id();
@@ -92,7 +92,7 @@ fn spawn_backdrop(
     let mut rng = Rng::new(0x5eed_d057);
     for (li, _) in LAYERS.iter().enumerate() {
         let mut m = MeshBuf::default();
-        let (count, size, alpha) = if li == 0 { (1100, (0.05, 0.11), (0.12, 0.35)) } else { (360, (0.08, 0.16), (0.2, 0.5)) };
+        let (count, size, alpha) = if li == 0 { (3600, (0.05, 0.11), (0.12, 0.35)) } else { (1200, (0.08, 0.16), (0.2, 0.5)) };
         for _ in 0..count {
             let at = Vec2::new(rng.range(0.0, TILE), rng.range(0.0, TILE));
             let s = rng.range(size.0, size.1);
@@ -116,7 +116,7 @@ fn spawn_backdrop(
 
     // Dotted range rings (style guide: dotted rings in #414c52).
     let mut m = MeshBuf::default();
-    for (radius, spacing, dot) in [(11.0f32, 0.55f32, 0.09f32), (17.5, 0.7, 0.08)] {
+    for (radius, spacing, dot) in [(30.0f32, 1.1f32, 0.22f32), (60.0, 1.6, 0.26)] {
         let n = (std::f32::consts::TAU * radius / spacing).round() as usize;
         for k in 0..n {
             let a = k as f32 / n as f32 * std::f32::consts::TAU;
@@ -134,7 +134,7 @@ fn spawn_backdrop(
 fn fit_backdrop(
     toggles: Res<RenderToggles>,
     camera: Single<(&Camera, &Projection), With<MainCamera>>,
-    mut q: Single<(&mut Sprite, &mut Visibility), With<Backdrop>>,
+    mut q: Single<(&mut Transform, &mut Visibility), With<Backdrop>>,
 ) {
     let (cam, proj) = camera.into_inner();
     let Some(size) = cam.logical_viewport_size() else { return };
@@ -142,15 +142,72 @@ fn fit_backdrop(
         Projection::Orthographic(o) => o.scale,
         _ => 1.0,
     };
-    let want = size * scale;
-    let (sprite, vis) = &mut *q;
-    if sprite.custom_size != Some(want) {
-        sprite.custom_size = Some(want);
+    let want = (size * scale).extend(1.0);
+    let (tf, vis) = &mut *q;
+    if tf.scale != want {
+        tf.scale = want;
     }
     let v = if toggles.debug_shapes { Visibility::Hidden } else { Visibility::Inherited };
     if **vis != v {
         **vis = v;
     }
+}
+
+/// Unit-square backdrop gradient (x, y in -0.5..0.5, y up).
+fn backdrop_mesh(atlas: &Atlas) -> Mesh {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let stops = [(0.0f32, hex3(0x0a, 0x18, 0x20)), (0.55, hex3(0x05, 0x0e, 0x15)), (1.0, hex3(0x01, 0x04, 0x09))];
+    let colour = |t: f32| {
+        let t = t.min(1.0);
+        let mut c = stops[2].1;
+        for w in stops.windows(2) {
+            if t <= w[1].0 {
+                let k = (t - w[0].0) / (w[1].0 - w[0].0);
+                c = [0, 1, 2].map(|i| w[0].1[i] + (w[1].1[i] - w[0].1[i]) * k);
+                break;
+            }
+        }
+        let l = Color::srgb(c[0], c[1], c[2]).to_linear();
+        [l.red, l.green, l.blue, 1.0]
+    };
+    let white = atlas.region("fx/white").uv_center();
+    let (rings, segs) = (28usize, 72usize);
+    let centre = Vec2::new(0.0, 0.05);
+    let mut pos = vec![[centre.x, centre.y, 0.0]];
+    let mut col = vec![colour(0.0)];
+    for r in 1..=rings {
+        // a little denser in the middle, reaching t = 1.1 (outside the unit square everywhere)
+        let t = 1.1 * (r as f32 / rings as f32).powf(1.15);
+        for s in 0..segs {
+            let a = s as f32 / segs as f32 * std::f32::consts::TAU;
+            pos.push([centre.x + 0.75 * t * a.cos(), centre.y + 0.85 * t * a.sin(), 0.0]);
+            col.push(colour(t));
+        }
+    }
+    let mut idx: Vec<u32> = Vec::new();
+    for s in 0..segs as u32 {
+        idx.extend_from_slice(&[0, 1 + s, 1 + (s + 1) % segs as u32]);
+    }
+    for r in 0..rings as u32 - 1 {
+        let a = 1 + r * segs as u32;
+        let b = a + segs as u32;
+        for s in 0..segs as u32 {
+            let s1 = (s + 1) % segs as u32;
+            idx.extend_from_slice(&[a + s, b + s, b + s1, a + s, b + s1, a + s1]);
+        }
+    }
+    let n = pos.len();
+    let mut m = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
+    m.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
+    m.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[white.x, white.y]; n]);
+    m.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
+    m.insert_indices(Indices::U32(idx));
+    m
+}
+
+fn hex3(r: u8, g: u8, b: u8) -> [f32; 3] {
+    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
 }
 
 fn place_dust(
@@ -189,15 +246,13 @@ fn place_dust(
 fn follow_rings(
     rig: Res<CameraRig>,
     toggles: Res<RenderToggles>,
-    targets: Query<&RenderPose>,
     mut rings: Single<(&mut Transform, &mut Visibility), With<RangeRings>>,
 ) {
-    let target = rig.follow.or(toggles.ring_target).and_then(|e| targets.get(e).ok());
     let (tf, vis) = &mut *rings;
-    match target {
+    match rig.focus {
         Some(p) if !toggles.debug_shapes => {
-            tf.translation.x = p.0.pos.x;
-            tf.translation.y = p.0.pos.y;
+            tf.translation.x = p.x;
+            tf.translation.y = p.y;
             if **vis != Visibility::Inherited {
                 **vis = Visibility::Inherited;
             }

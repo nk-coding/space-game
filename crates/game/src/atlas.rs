@@ -1,32 +1,33 @@
-//! The baked texture atlas and the style tokens that come with it.
+//! The texture atlas, rasterised at runtime from vector sources (rule: no fixed raster graphics).
 //!
-//! `crates/atlas-tool` rasterises `art/icons/*.icon-only.svg` (crisp glyphs and their glow layers), the FX
-//! textures (plumes, halo profile, dots, aura, backdrop) and flattens `art/tokens.json` into
-//! `assets/atlas/atlas.png` + `assets/atlas/atlas.txt`. Both are embedded in the binary: the atlas is needed
-//! before the first frame, and embedding avoids a loading state and asset-meta requests on the web.
-//!
-//! Everything a ship draws samples this one texture, so a whole ship body is a single draw call.
+//! `crates/art` embeds the SVG icons and style tokens, lays every region out in resolution-independent atlas
+//! units and rasterises the layout at a *tier* (pixels per ship cell, a power of two). This module picks the
+//! tier from what the screen needs (camera zoom × window scale factor), rasterises a new atlas when that tier
+//! changes (spread over frames, the old texture stays in use meanwhile) and swaps the image in place. Region
+//! UVs are normalised and identical at every tier, so meshes never need rebuilding.
+
+use std::sync::Arc;
 
 use bevy::asset::RenderAssetUsages;
-use bevy::image::{
-    CompressedImageFormats, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor, ImageType,
-};
+use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::platform::collections::HashMap;
+use bevy::platform::time::Instant;
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite_render::AlphaMode2d;
+use bevy::window::PrimaryWindow;
 
-static ATLAS_PNG: &[u8] = include_bytes!("../assets/atlas/atlas.png");
-static ATLAS_TXT: &str = include_str!("../assets/atlas/atlas.txt");
+use crate::camera::CameraRig;
 
-/// Mip levels generated at startup (the atlas height is a multiple of 64, so 6 levels stay integral).
-const MIP_LEVELS: u32 = 6;
+/// Work per frame while re-rasterising (the old atlas stays on screen meanwhile).
+const FRAME_BUDGET_MS: f64 = 6.0;
+/// A new tier has to be wanted this long before the atlas is rebuilt (zooming through tiers costs nothing).
+const SETTLE_SECONDS: f32 = 0.35;
 
 /// One region of the atlas.
 #[derive(Clone, Copy, Debug)]
 pub struct Region {
-    /// Pixel rectangle (for `Sprite::rect`).
-    pub px: Rect,
-    /// Normalised UV rectangle.
+    /// Normalised UV rectangle (the same at every tier).
     pub uv: Rect,
     /// Size of the art in ship cells (1 cell = 1 m).
     pub cells: Vec2,
@@ -43,7 +44,7 @@ impl Region {
     pub fn uv_center(&self) -> Vec2 {
         self.uv.center()
     }
-    /// The sprite anchor (Bevy convention: -0.5..0.5, y up) that puts the region's origin at the transform.
+    /// Anchor (Bevy convention: -0.5..0.5, y up) that puts the region's origin at the transform.
     pub fn anchor(&self) -> Vec2 {
         Vec2::new(self.origin.x / self.cells.x - 0.5, 0.5 - self.origin.y / self.cells.y)
     }
@@ -55,22 +56,25 @@ pub struct Atlas {
     /// Shared material for every atlas mesh (vertex colours tint the texture).
     pub material: Handle<ColorMaterial>,
     regions: HashMap<String, Region>,
-    tokens: HashMap<String, String>,
+    tokens: art::Tokens,
+    layout: Arc<art::Layout>,
+    /// Pixels per cell of the atlas on screen now.
+    pub tier: u32,
 }
 
 impl Atlas {
     pub fn get(&self, name: &str) -> Option<&Region> {
         self.regions.get(name)
     }
-    /// A region that must exist (FX regions the tool always writes).
+    /// A region that must exist (FX regions the art crate always defines).
     pub fn region(&self, name: &str) -> Region {
-        *self.regions.get(name).unwrap_or_else(|| panic!("atlas region `{name}` missing; re-run atlas-tool"))
+        *self.regions.get(name).unwrap_or_else(|| panic!("atlas region `{name}` missing"))
     }
     pub fn token(&self, path: &str) -> &str {
-        self.tokens.get(path).unwrap_or_else(|| panic!("style token `{path}` missing; re-run atlas-tool"))
+        self.tokens.get(path).unwrap_or_else(|| panic!("style token `{path}` missing in art/tokens.json"))
     }
     pub fn token_f32(&self, path: &str) -> f32 {
-        self.token(path).parse().unwrap_or_else(|_| panic!("style token `{path}` is not a number"))
+        self.tokens.f32(path).unwrap_or_else(|| panic!("style token `{path}` is not a number"))
     }
     pub fn token_color(&self, path: &str) -> Color {
         parse_hex(self.token(path)).unwrap_or_else(|| panic!("style token `{path}` is not a #rrggbb colour"))
@@ -81,12 +85,47 @@ pub fn parse_hex(s: &str) -> Option<Color> {
     Srgba::hex(s.trim()).ok().map(Color::from)
 }
 
+/// A re-rasterisation in progress.
+#[derive(Resource, Default)]
+struct RasterJob {
+    job: Option<(art::Rasterizer, f64, u32)>,
+    /// Tier wanted and since when (real seconds).
+    wanted: Option<(u32, f32)>,
+}
+
 pub struct AtlasPlugin;
 
 impl Plugin for AtlasPlugin {
     fn build(&self, app: &mut App) {
-        let image = build_image();
-        let (regions, tokens) = parse_index(ATLAS_TXT, image.width() as f32, image.height() as f32);
+        let layout = Arc::new(art::Layout::new(&data::base_content()));
+        // Start at the tier the default zoom needs on a 2x display; refined on the first frames.
+        let tier = 64;
+        let t0 = Instant::now();
+        let raster = art::rasterise(&layout, tier).expect("rasterise atlas");
+        let ms = t0.elapsed().as_secs_f64() * 1e3;
+        info!(
+            "atlas: {} regions rasterised at {tier} px/cell ({}x{}, {} mips) in {ms:.1} ms",
+            layout.regions.len(),
+            raster.width,
+            raster.height,
+            raster.levels
+        );
+        let image = image_from(raster);
+        let regions = layout
+            .regions
+            .iter()
+            .map(|r| {
+                let [u0, v0, u1, v1] = layout.uv(r);
+                (
+                    r.name.clone(),
+                    Region {
+                        uv: Rect::new(u0, v0, u1, v1),
+                        cells: Vec2::from(r.cells),
+                        origin: Vec2::from(r.origin),
+                    },
+                )
+            })
+            .collect();
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
         let material = world.resource_mut::<Assets<ColorMaterial>>().add(ColorMaterial {
@@ -95,119 +134,108 @@ impl Plugin for AtlasPlugin {
             texture: Some(image.clone()),
             ..default()
         });
-        let atlas = Atlas { image, material, regions, tokens };
+        let atlas = Atlas { image, material, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
+        app.init_resource::<RasterJob>().add_systems(Update, (choose_tier, rasterise_step).chain());
     }
 }
 
-fn parse_index(src: &str, w: f32, h: f32) -> (HashMap<String, Region>, HashMap<String, String>) {
-    let mut regions = HashMap::default();
-    let mut tokens = HashMap::default();
-    for line in src.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("region ") {
-            let mut it = rest.split_whitespace();
-            let name = it.next().expect("region name").to_string();
-            let n: Vec<f32> = it.map(|v| v.parse().expect("region number")).collect();
-            assert_eq!(n.len(), 8, "bad region line: {line}");
-            let px = Rect::new(n[0], n[1], n[0] + n[2], n[1] + n[3]);
-            let uv = Rect::new(px.min.x / w, px.min.y / h, px.max.x / w, px.max.y / h);
-            regions.insert(name, Region { px, uv, cells: Vec2::new(n[4], n[5]), origin: Vec2::new(n[6], n[7]) });
-        } else if let Some(rest) = line.strip_prefix("token ") {
-            if let Some((k, v)) = rest.split_once(' ') {
-                tokens.insert(k.to_string(), v.trim().to_string());
+/// The tier the screen needs: camera zoom (logical px per metre = per cell) × the window's scale factor.
+fn choose_tier(
+    time: Res<Time<Real>>,
+    rig: Res<CameraRig>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    atlas: Res<Atlas>,
+    mut job: ResMut<RasterJob>,
+) {
+    let need = rig.zoom_target.max(rig.zoom) * window.scale_factor();
+    let want = art::tier_for(need);
+    let cur = job.job.as_ref().map(|j| j.0.tier()).unwrap_or(atlas.tier);
+    // Hysteresis: go up as soon as the screen needs more; go down only when half the tier is clearly enough.
+    let target = if want > cur || (want < cur && need < cur as f32 * 0.5 * 0.75) { want } else { cur };
+    let now = time.elapsed_secs();
+    if target == cur {
+        job.wanted = None;
+        return;
+    }
+    match job.wanted {
+        Some((t, since)) if t == target => {
+            if now - since >= SETTLE_SECONDS && job.job.is_none() {
+                let r = art::Rasterizer::new(atlas.layout.clone(), target);
+                job.job = Some((r, 0.0, 0));
+                job.wanted = None;
+            }
+        }
+        _ => job.wanted = Some((target, now)),
+    }
+}
+
+/// Renders regions until the frame budget is used, then finishes and swaps the image.
+fn rasterise_step(
+    mut job: ResMut<RasterJob>,
+    mut atlas: ResMut<Atlas>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let Some((r, spent, frames)) = job.job.as_mut() else { return };
+    let t0 = Instant::now();
+    let mut done = false;
+    while t0.elapsed().as_secs_f64() * 1e3 < FRAME_BUDGET_MS {
+        match r.step() {
+            Ok(true) => {
+                done = true;
+                break;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!("atlas rasterisation failed: {e}");
+                job.job = None;
+                return;
             }
         }
     }
-    (regions, tokens)
+    *spent += t0.elapsed().as_secs_f64() * 1e3;
+    *frames += 1;
+    if !done {
+        return;
+    }
+    let (r, spent, frames) = job.job.take().expect("job");
+    let tier = r.tier();
+    let t1 = Instant::now();
+    let raster = r.finish();
+    let finish_ms = t1.elapsed().as_secs_f64() * 1e3;
+    let (w, h) = (raster.width, raster.height);
+    let _ = images.insert(&atlas.image, image_from(raster));
+    atlas.tier = tier;
+    // Re-bind every material that samples the atlas (they cache the old texture view).
+    let ids: Vec<AssetId<ColorMaterial>> =
+        materials.iter().filter(|(_, m)| m.texture.as_ref() == Some(&atlas.image)).map(|(id, _)| id).collect();
+    for id in ids {
+        let _ = materials.get_mut(id);
+    }
+    info!(
+        "atlas: re-rasterised at {tier} px/cell ({w}x{h}): regions {spent:.1} ms over {frames} frames, mips {finish_ms:.1} ms"
+    );
 }
 
-/// Decodes the embedded PNG and appends a box-filtered mip chain (alpha-weighted, so transparent texels
-/// never darken their neighbours).
-fn build_image() -> Image {
-    let mut image = Image::from_buffer(
-        ATLAS_PNG,
-        ImageType::Extension("png"),
-        CompressedImageFormats::NONE,
-        true,
-        ImageSampler::Descriptor(ImageSamplerDescriptor {
-            label: Some("atlas".into()),
-            address_mode_u: ImageAddressMode::ClampToEdge,
-            address_mode_v: ImageAddressMode::ClampToEdge,
-            mag_filter: ImageFilterMode::Linear,
-            min_filter: ImageFilterMode::Linear,
-            mipmap_filter: ImageFilterMode::Linear,
-            ..default()
-        }),
+fn image_from(r: art::Raster) -> Image {
+    let mut image = Image::new_uninit(
+        Extent3d { width: r.width, height: r.height, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
-    )
-    .expect("decode embedded atlas.png");
-    let (w, h) = (image.width() as usize, image.height() as usize);
-    let base = image.data.take().expect("atlas pixels");
-    assert_eq!(base.len(), w * h * 4, "atlas must decode to RGBA8");
-
-    let levels = (MIP_LEVELS as usize).min(1 + w.min(h).ilog2() as usize);
-    let mut data = Vec::with_capacity(base.len() * 4 / 3 + 64);
-    data.extend_from_slice(&base);
-    let (mut lw, mut lh, mut prev_start) = (w, h, 0usize);
-    for _ in 1..levels {
-        let (nw, nh) = (lw / 2, lh / 2);
-        let start = data.len();
-        data.resize(start + nw * nh * 4, 0);
-        for y in 0..nh {
-            for x in 0..nw {
-                let mut sum = [0u32; 3];
-                let mut plain = [0u32; 3];
-                let mut a_sum = 0u32;
-                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                    let i = prev_start + ((2 * y + dy) * lw + 2 * x + dx) * 4;
-                    let a = data[i + 3] as u32;
-                    for c in 0..3 {
-                        sum[c] += data[i + c] as u32 * a;
-                        plain[c] += data[i + c] as u32;
-                    }
-                    a_sum += a;
-                }
-                let o = start + (y * nw + x) * 4;
-                for c in 0..3 {
-                    data[o + c] = if a_sum > 0 { (sum[c] / a_sum) as u8 } else { (plain[c] / 4) as u8 };
-                }
-                data[o + 3] = ((a_sum + 2) / 4) as u8;
-            }
-        }
-        prev_start = start;
-        lw = nw;
-        lh = nh;
-    }
-    image.data = Some(data);
-    image.texture_descriptor.mip_level_count = levels as u32;
+    );
+    image.data = Some(r.data);
+    image.texture_descriptor.mip_level_count = r.levels;
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        label: Some("atlas".into()),
+        address_mode_u: ImageAddressMode::ClampToEdge,
+        address_mode_v: ImageAddressMode::ClampToEdge,
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        ..default()
+    });
     image
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Every icon key used by content must have a baked atlas region (re-run atlas-tool when art changes).
-    #[test]
-    fn atlas_has_every_content_icon() {
-        let (regions, tokens) = parse_index(ATLAS_TXT, 1.0, 1.0);
-        let content = data::base_content();
-        let mut missing = Vec::new();
-        for part in content.parts.iter() {
-            if let Some(icon) = &part.icon
-                && !regions.contains_key(&format!("icon/{icon}"))
-            {
-                missing.push(format!("{} -> icon/{icon}", part.id));
-            }
-        }
-        assert!(missing.is_empty(), "atlas is missing icons (run `cargo run -p atlas-tool --release`): {missing:?}");
-        for tone in data::art_keys::ARMOR_TONES {
-            assert!(tokens.contains_key(&format!("ship.armor.{tone}")), "token ship.armor.{tone} missing");
-        }
-        for key in data::art_keys::SYSTEM_COLORS {
-            assert!(tokens.contains_key(&format!("ship.system_colors.{key}")), "token ship.system_colors.{key} missing");
-        }
-    }
 }

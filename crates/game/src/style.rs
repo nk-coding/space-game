@@ -1,4 +1,4 @@
-//! Typed view of the style tokens (`art/tokens.json`, flattened into the atlas index by `atlas-tool`).
+//! Typed view of the style tokens (`art/tokens.json`, embedded and flattened by the `art` crate).
 //! Client-only: the simulation never sees colours.
 
 use bevy::platform::collections::HashMap;

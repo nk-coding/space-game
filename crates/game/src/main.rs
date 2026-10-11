@@ -1,29 +1,36 @@
-//! Space game client (Bevy). Web first: `scripts/web-serve.sh` / `scripts/web-build.sh`.
+//! Space game client (Bevy). Web first (the development platform): `scripts/web-serve.sh`. See
+//! `docs/client.md` for controls, URL parameters and the structure.
 //!
 //! Module map:
-//! - `atlas`, `style`: the baked texture atlas + style tokens (from `crates/atlas-tool`).
-//! - `ship_model`: blueprint + content (`data` crate) → render-ready `ShipVisual`.
-//! - `ship_view`: `ShipVisual` → entity hierarchy (body mesh, aura, plumes, shields) + per-frame updates.
-//! - `sim_bridge`: `SimPose` / `EngineThrottle` written at 30 Hz, interpolated into transforms each frame.
-//! - `trails`, `backdrop`, `camera`, `hud`: effects, space backdrop, zoom/pan, debug overlay + toggles.
-//! - `showcase`: the current demo scene (scripted motion standing in for the sim).
+//! - `atlas`, `style`, `meshbuf`: the baked texture atlas + style tokens, mesh building.
+//! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
+//! - `scene`: sandbox (player + raider waves), showcase, load test; writes the player's pilot input.
+//! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame.
+//! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
+//! - `controls`, `camera`: keyboard / mouse / touch input, follow / frame / free camera.
+//! - `flight_hud`, `hud`, `tuning`: flight HUD, debug overlay and toggles, live tuning panel (egui).
+//! - `backdrop`: gradient, parallax dust, range rings.
 
 mod atlas;
 mod backdrop;
 mod camera;
+mod controls;
+mod flight_hud;
+mod fx;
 mod hud;
 mod meshbuf;
 mod params;
+mod scene;
 mod ship_model;
 mod ship_view;
-mod showcase;
 mod sim_bridge;
 mod style;
-mod trails;
+mod tuning;
 
 use bevy::camera::{CompositingSpace, Hdr};
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
+use bevy_egui::EguiPlugin;
 
 use crate::params::Params;
 
@@ -36,10 +43,9 @@ pub struct RenderToggles {
     pub bloom: bool,
     /// Pre-blurred glow layers (icon glows, hull halo, aura, soft muzzle glows).
     pub glow_sprites: bool,
-    pub shields: bool,
     pub hud: bool,
-    /// The ship the range rings (and `F` follow) belong to.
-    pub ring_target: Option<Entity>,
+    /// Fps / timings overlay.
+    pub debug_info: bool,
 }
 
 impl RenderToggles {
@@ -48,9 +54,8 @@ impl RenderToggles {
             debug_shapes: p.flag("debug").unwrap_or(false),
             bloom: p.flag("bloom").unwrap_or(false),
             glow_sprites: p.flag("glow").unwrap_or(true),
-            shields: p.flag("shields").unwrap_or(true),
             hud: p.flag("hud").unwrap_or(true),
-            ring_target: None,
+            debug_info: p.flag("stats").unwrap_or(false),
         }
     }
 }
@@ -74,30 +79,34 @@ fn main() {
             })
             .set(bevy::log::LogPlugin { filter: "wgpu=error,naga=warn,bevy_render=warn".into(), ..default() }),
     );
+    app.add_plugins(EguiPlugin::default());
     app.insert_resource(ClearColor(Color::srgb_u8(0x01, 0x04, 0x09)))
         .insert_resource(RenderToggles::from_params(&params))
+        .insert_resource(params)
         .add_plugins((
             atlas::AtlasPlugin,
+            tuning::TuningPlugin,
+            scene::ScenePlugin,
             sim_bridge::SimBridgePlugin,
             camera::CameraPlugin,
-            ship_view::ShipViewPlugin,
-            trails::TrailsPlugin,
+            controls::ControlsPlugin,
+            fx::FxPlugin,
             backdrop::BackdropPlugin,
+            flight_hud::FlightHudPlugin,
             hud::HudPlugin,
-            showcase::ShowcasePlugin,
         ))
-        .insert_resource(params)
         .add_systems(Startup, spawn_camera);
     app.run();
 }
 
 pub fn spawn_camera(mut commands: Commands, params: Res<Params>, mut rig: ResMut<camera::CameraRig>) {
     if let Some(z) = params.f32("zoom") {
-        rig.px_per_m = z.clamp(camera::MIN_PX_PER_M, camera::MAX_PX_PER_M);
+        rig.zoom = z.clamp(camera::MIN_PX_PER_M, camera::MAX_PX_PER_M);
+        rig.zoom_target = rig.zoom;
+        rig.user_zoom = true;
     }
-    rig.center = Vec2::new(params.f32("x").unwrap_or(0.0), params.f32("y").unwrap_or(0.0));
     commands.spawn((
-        camera::camera_bundle(),
+        camera::camera_bundle(rig.zoom),
         // Blend in sRGB space like the browser and the concept art (linear blending makes every faint glow
         // about twice as bright as the reference).
         CompositingSpace::Srgb,
