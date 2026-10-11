@@ -512,6 +512,17 @@ impl Ship {
         for k in 0..ship.pieces.len() {
             ship.rebuild_piece(k);
         }
+        // Stagger the guns' first shots over one period (deterministic, from ship id and part index), so
+        // the guns of a fleet do not fire in lock-step salvos.
+        for piece in &ship.pieces {
+            for g in &piece.guns {
+                if g.rate > 0.0 {
+                    let h = crate::rng::splitmix64(((id.0 as u64) << 32) | g.part as u64);
+                    let frac = (h >> 40) as f32 * (1.0 / 16_777_216.0);
+                    ship.gun_cooldown[g.slot as usize] = frac / g.rate;
+                }
+            }
+        }
         ship
     }
 

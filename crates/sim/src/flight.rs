@@ -38,6 +38,18 @@ pub struct TargetState {
     pub vel: Vec2,
 }
 
+/// Where a lock (or an aiming maneuver) points the nose.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AimMode {
+    /// Lead point if the ship's strongest gun (by damage per second) fires projectiles, else the target.
+    #[default]
+    Auto,
+    /// Straight at the target (lasers hit instantly).
+    Target,
+    /// Where the target will be when a shot of the ship's strongest projectile gun gets there.
+    Lead,
+}
+
 /// Pilot input (touch stick or WASD, target lock, drift toggle, fire), in world terms.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PilotInput {
@@ -49,6 +61,8 @@ pub struct PilotInput {
     /// Released stick coasts instead of braking.
     pub drift: bool,
     pub fire: bool,
+    /// Under a lock: nose on the target or on the lead point.
+    pub aim: AimMode,
 }
 
 /// How the flight computer turns the ship.
@@ -144,6 +158,12 @@ pub struct Kin {
     pub top_speed: f32,
     /// Planning angular acceleration (rad/s²).
     pub alpha: f32,
+    /// Longest reach of the piece's clear guns (m; 0 = no guns).
+    pub reach: f32,
+    /// Shot speed of its strongest projectile gun (by damage per second), if it has one.
+    pub projectile_speed: Option<f32>,
+    /// Its strongest gun overall fires projectiles (`AimMode::Auto` leads).
+    pub projectile_main: bool,
 }
 
 impl Kin {
@@ -166,6 +186,25 @@ impl Kin {
             0.5 * a.torque_ccw.max(a.torque_cw)
         };
         let rot = Rot::from_angle(p.body.angle);
+        let (mut reach, mut best_dps, mut best_proj_dps) = (0.0f32, -1.0f32, -1.0f32);
+        let (mut projectile_speed, mut projectile_main) = (None, false);
+        for g in p.guns.iter().filter(|g| g.clear) {
+            reach = reach.max(g.range);
+            let speed = match g.delivery {
+                data::Delivery::Projectile { speed, .. } => Some(speed),
+                _ => None,
+            };
+            if g.dps > best_dps {
+                best_dps = g.dps;
+                projectile_main = speed.is_some();
+            }
+            if let Some(v) = speed
+                && g.dps > best_proj_dps
+            {
+                best_proj_dps = g.dps;
+                projectile_speed = Some(v);
+            }
+        }
         Kin {
             pos: p.body.pos + rot.apply(p.mass.com),
             vel: p.body.linvel,
@@ -179,6 +218,22 @@ impl Kin {
             accel,
             top_speed: tuning.top_speed_k * sqrt(accel),
             alpha: (a.torque_pure + diff) / inertia,
+            reach,
+            projectile_speed,
+            projectile_main,
+        }
+    }
+
+    /// The point to aim the nose at for a target, by aim mode (see [`AimMode`]).
+    pub fn aim_point(&self, t: &TargetState, mode: AimMode) -> Vec2 {
+        let lead = match mode {
+            AimMode::Target => None,
+            AimMode::Lead => self.projectile_speed,
+            AimMode::Auto => self.projectile_speed.filter(|_| self.projectile_main),
+        };
+        match lead {
+            Some(speed) => lead_point(self.pos, self.vel, t.pos, t.vel, speed),
+            None => t.pos,
         }
     }
 
@@ -230,6 +285,50 @@ impl Kin {
         let a = tuning.stop_margin * self.stop_accel();
         let v = sqrt(2.0 * a * dist).min(tuning.position_gain * dist);
         v.min(self.top_speed)
+    }
+}
+
+/// First-order intercept: the time `t > 0` at which a shot fired now at `speed` (relative to the shooter, who
+/// moves with the shot's frame) meets a target at relative position `r` moving at relative velocity `v`, i.e.
+/// the smallest positive root of `|r + v·t| = speed·t`. `None` if it can never catch up.
+pub fn intercept_time(r: Vec2, v: Vec2, speed: f32) -> Option<f32> {
+    let a = v.length_squared() - speed * speed;
+    let b = 2.0 * r.dot(v);
+    let c = r.length_squared();
+    if a.abs() < 1e-6 {
+        // Same speed: linear.
+        return (b < 0.0).then(|| -c / b);
+    }
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return None;
+    }
+    let sq = sqrt(disc);
+    let (t1, t2) = ((-b - sq) / (2.0 * a), (-b + sq) / (2.0 * a));
+    let (lo, hi) = if t1 < t2 { (t1, t2) } else { (t2, t1) };
+    if lo > 0.0 {
+        Some(lo)
+    } else if hi > 0.0 {
+        Some(hi)
+    } else {
+        None
+    }
+}
+
+/// Where to aim so that a projectile of `speed` (on top of the shooter's velocity, as the sim fires them) meets
+/// a target moving at constant velocity. Falls back to the target's position if it cannot be caught.
+pub fn lead_point(
+    shooter: Vec2,
+    shooter_vel: Vec2,
+    target: Vec2,
+    target_vel: Vec2,
+    speed: f32,
+) -> Vec2 {
+    let r = target - shooter;
+    let v = target_vel - shooter_vel;
+    match intercept_time(r, v, speed) {
+        Some(t) => shooter + r + v * t,
+        None => target,
     }
 }
 
@@ -346,7 +445,7 @@ pub fn pilot_goal(
     let pushed = len > tuning.stick_deadzone;
     let released_velocity = if input.drift { None } else { Some(Vec2::ZERO) };
     if let Some(t) = input.lock.as_ref().and_then(|t| resolve_target(ships, t)) {
-        let to = t.pos - kin.pos;
+        let to = kin.aim_point(&t, input.aim) - kin.pos;
         let heading = if to.length_squared() > 1e-6 {
             HeadingGoal::Angle(Kin::nose_heading(to))
         } else {
@@ -594,6 +693,7 @@ impl StateHash for HelmMode {
                 }
                 h.bool(p.drift);
                 h.bool(p.fire);
+                h.u8(p.aim as u8);
             }
             HelmMode::Maneuver { maneuver, fire } => {
                 h.u8(2);

@@ -29,6 +29,8 @@ use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
 pub enum ScenarioKind {
     Core,
     Flight,
+    /// The shared load test with this many ships (see [`load_test`]).
+    Load(u32),
 }
 
 impl ScenarioKind {
@@ -36,6 +38,7 @@ impl ScenarioKind {
         match name {
             "core" => Some(ScenarioKind::Core),
             "flight" => Some(ScenarioKind::Flight),
+            "load" => Some(ScenarioKind::Load(20)),
             _ => None,
         }
     }
@@ -45,6 +48,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 0.25,
             ScenarioKind::Flight => 0.08,
+            ScenarioKind::Load(_) => 0.0,
         }
     }
 
@@ -53,6 +57,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 75,
             ScenarioKind::Flight => 150,
+            ScenarioKind::Load(_) => u64::MAX,
         }
     }
 
@@ -61,6 +66,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 20,
             ScenarioKind::Flight => 45,
+            ScenarioKind::Load(_) => u64::MAX,
         }
     }
 }
@@ -99,6 +105,14 @@ impl Scenario {
 
     /// Two ships of every blueprint in `content`, placed on a circle, spinning a little.
     pub fn with_kind(content: &Content, seed: u64, kind: ScenarioKind) -> Result<Scenario, String> {
+        if let ScenarioKind::Load(n) = kind {
+            return Ok(Scenario {
+                sim: load_test_with(content, n as usize, seed)?,
+                stats: ScenarioStats::default(),
+                kind,
+                inputs: TickInputs::default(),
+            });
+        }
         let mut sim = Sim::new(seed);
         let designs: Vec<Arc<ShipDesign>> = content
             .ships
@@ -108,7 +122,7 @@ impl Scenario {
         let n = designs.len() * 2;
         let radius = match kind {
             ScenarioKind::Core => 60.0,
-            ScenarioKind::Flight => 90.0,
+            _ => 90.0,
         };
         for k in 0..n {
             let design = Arc::clone(&designs[k % designs.len()]);
@@ -179,6 +193,9 @@ impl Scenario {
         self.inputs.controls.clear();
         self.inputs.commands.clear();
         self.inputs.damage.clear();
+        if let ScenarioKind::Load(_) = kind {
+            return; // brains fly and fight on their own
+        }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
             .ships()
@@ -230,7 +247,7 @@ impl Scenario {
                         },
                     ));
                 }
-                ScenarioKind::Flight => {
+                ScenarioKind::Flight | ScenarioKind::Load(_) => {
                     let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
                     let len = if rng.chance(0.2) {
                         0.0
@@ -249,6 +266,7 @@ impl Scenario {
                         lock,
                         drift: rng.chance(0.2),
                         fire: rng.chance(0.7),
+                        aim: crate::flight::AimMode::Auto,
                     };
                     self.inputs.commands.push((id, ShipCommand::Pilot(input)));
                 }
@@ -340,6 +358,59 @@ fn nth_alive(ship: &Ship, n: u32) -> PartIdx {
         }
     }
     0
+}
+
+/// The shared load test (native perf runs and the browser client use the same setup): `n` ships on the
+/// embedded base content, half Halvex Runners (rounded up) facing half automaton raiders 80 m away, every ship
+/// under the combat brain (approach, attack, orbit, fire with lead), so they engage at once and produce
+/// projectiles, hits and debris. With `n = 1` the lone runner orbits a point and fires into space.
+pub fn load_test(n: usize, seed: u64) -> Sim {
+    load_test_with(&data::base_content(), n, seed)
+        .expect("base content has the runner and the raider")
+}
+
+/// [`load_test`] on any content that has `halvex_runner` and `automaton_raider`.
+pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, String> {
+    let get = |id: &str| -> Result<Arc<ShipDesign>, String> {
+        let bp = content
+            .ships
+            .get(id)
+            .ok_or_else(|| format!("load test needs the ship `{id}`"))?;
+        ShipDesign::compile(content, bp).map(Arc::new)
+    };
+    let (runner, raider) = (get("halvex_runner")?, get("automaton_raider")?);
+    let mut sim = Sim::new(seed);
+    let runners = n.div_ceil(2);
+    let raiders = n / 2;
+    for k in 0..runners {
+        let x = (k as f32 - (runners as f32 - 1.0) / 2.0) * 25.0;
+        let id = sim.spawn_ship(Arc::clone(&runner), Body::at(Vec2::new(x, 0.0), 0.0));
+        if raiders == 0 {
+            let maneuver = crate::maneuver::Maneuver::Orbit {
+                target: crate::flight::Target::Point(Vec2::new(0.0, 50.0)),
+                radius: 30.0,
+                ccw: true,
+            };
+            sim.command(
+                id,
+                ShipCommand::Maneuver {
+                    maneuver,
+                    fire: true,
+                },
+            );
+        } else {
+            sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
+        }
+    }
+    for k in 0..raiders {
+        let x = (k as f32 - (raiders as f32 - 1.0) / 2.0) * 20.0;
+        let id = sim.spawn_ship(
+            Arc::clone(&raider),
+            Body::at(Vec2::new(x, 80.0), core::f32::consts::PI),
+        );
+        sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
+    }
+    Ok(sim)
 }
 
 /// Runs a scenario on the embedded base content and returns the state hash after every tick.

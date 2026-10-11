@@ -194,6 +194,7 @@ fn main() {
                         lock,
                         drift: false,
                         fire: true,
+                        ..Default::default()
                     }),
                 )
             })

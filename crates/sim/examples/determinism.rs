@@ -1,12 +1,14 @@
 //! Prints the per-tick state hashes of the deterministic scenario, one `tick hash` line per tick.
 //! Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh` runs both and compares.
 //!
-//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight]`
+//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|load] [--ships N]` (`--ships` sets the
+//! load test's ship count, default 20).
 
 fn main() {
     let mut seed: u64 = 42;
     let mut ticks: u64 = 900;
     let mut scenario = String::from("core");
+    let mut ships: u32 = 20;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut val = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -14,11 +16,15 @@ fn main() {
             "--seed" => seed = val().parse().expect("--seed: integer"),
             "--ticks" => ticks = val().parse().expect("--ticks: integer"),
             "--scenario" => scenario = val(),
+            "--ships" => ships = val().parse().expect("--ships: integer"),
             other => panic!("unknown argument {other}"),
         }
     }
-    let kind = sim::scenario::ScenarioKind::from_name(&scenario)
-        .unwrap_or_else(|| panic!("unknown scenario {scenario} (known: core, flight)"));
+    let mut kind = sim::scenario::ScenarioKind::from_name(&scenario)
+        .unwrap_or_else(|| panic!("unknown scenario {scenario} (known: core, flight, load)"));
+    if let sim::scenario::ScenarioKind::Load(_) = kind {
+        kind = sim::scenario::ScenarioKind::Load(ships);
+    }
     let (hashes, stats) = sim::scenario::run_kind(kind, seed, ticks);
     println!("# sim determinism scenario={scenario} seed={seed} ticks={ticks}");
     for (t, h) in hashes.iter().enumerate() {
