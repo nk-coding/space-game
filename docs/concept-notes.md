@@ -87,6 +87,16 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 - **Minimal content at the start**: build the systems first, content later.
 - **Wiki later, content wiki-ready now** (Niklas, 11 Oct 2026): all content (parts, materials, ships, later races, tech, lore) is organised so the same data files feed both the game and a future wiki. Details in `docs/content-model.md`.
 - The spike is built as the foundation of the real game, not as throwaway code. Plan and status: `docs/roadmap.md`.
+- Provisional sim rules (lead session, 11 Oct 2026; concept-consistent defaults, Niklas may change them; details in `docs/sim.md`):
+  - After a split, only the controlling piece (the one holding the controlling logic core) stays active; every other piece goes dark and becomes salvage, even if it has a core.
+  - A logic core needs power: an unpowered piece goes dark (supports "kill all power → capture").
+  - Brown-out order when supply < demand: logic → shields → engines → weapons → other (fixed default; per-ship reordering maybe later).
+  - Heat is simulated per part (not per cell) until a design needs hot spots.
+  - Chain reactions come later as an `explosion` block in content (reactors, capacitors, drives).
+  - Capacitor bonus applies to parts tagged `laser` (as its text says), not to every gun.
+  - Guns fire along their rotated facing.
+- Open (asked 11 Oct 2026): how ships turn. With thrusters only, the Halvex Runner turns 90° in ~9 s and the raider can't turn at all. Until Niklas decides, the flight computer has an EXPERIMENTAL "turn assist" torque that can be switched off to compare.
+- Open (asked 11 Oct 2026): Halvex Runner sample layout: its four radiators are boxed in (never vent), both wing-tip pulse lasers are blocked by the slope in front, and a boxed-in shield emitter overheats after ~8 s at full load.
 
 ## Combat (decided 10 Oct 2026)
 
