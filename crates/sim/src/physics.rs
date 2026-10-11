@@ -65,7 +65,7 @@ pub struct RayHit {
 pub struct Contact {
     pub a: BodyKey,
     pub b: BodyKey,
-    /// World point of the strongest contact (on `a`'s surface).
+    /// World contact point on `a`'s surface: the impulse-weighted centre of the strongest manifold.
     pub point: Vec2,
     /// World normal from `a` to `b`.
     pub normal: Vec2,
@@ -91,19 +91,28 @@ pub(crate) struct BodyDesc<'a> {
     pub colliders: &'a [ConvexPolygon],
 }
 
-/// A touching pair after a step, before the sim resolves parts and damage. `a < b`; points and
-/// sub-shape indices are those of the strongest contact point.
+/// A touching pair after a step, before the sim resolves parts and damage. `a < b`.
+///
+/// The contact point is the impulse-weighted centre of all contact points of the pair: two flat faces
+/// touch at the two ends of their overlap, which often sit on a neighbouring part's corner (several
+/// sub-shape manifolds then share the load there), while the centre lies inside the parts that took the
+/// push. The strongest manifold (one per pair of sub-shapes) is kept as a fallback for contacts whose
+/// centre misses the hull (two separate touching spots).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RawContact {
     pub a: BodyKey,
     pub b: BodyKey,
+    /// World centre of the contact, on `a`'s surface.
     pub point: Vec2,
     pub normal: Vec2,
     pub impulse: f32,
-    /// The contact point on each side, in that piece's frame.
+    /// The centre of the contact on each side, in that piece's frame.
     pub local_a: Vec2,
     pub local_b: Vec2,
-    /// Index into each piece's `colliders` (the compound's sub-shape).
+    /// The centre of the strongest manifold on each side, in that piece's frame.
+    pub strongest_a: Vec2,
+    pub strongest_b: Vec2,
+    /// The strongest manifold's sub-shapes: indices into each piece's `colliders`.
     pub sub_a: u32,
     pub sub_b: u32,
 }
@@ -377,48 +386,61 @@ impl Physics {
             if !(impulse > 0.0 && impulse >= min) {
                 continue;
             }
-            // The strongest contact point of the pair (first one on a tie: manifold order is stable).
+            // Impulse-weighted centres of the whole contact and of its strongest manifold (the first on a
+            // tie: manifold order is stable), in the collider (= piece) frames: sub-shape pose × point.
+            let (mut c1, mut c2) = (Vector::ZERO, Vector::ZERO);
             let mut best = None;
-            let mut best_impulse = f32::NEG_INFINITY;
+            let mut best_j = f32::NEG_INFINITY;
             for m in pair.solver_manifolds() {
+                let (mut m1, mut m2, mut j) = (Vector::ZERO, Vector::ZERO, 0.0);
                 for p in &m.points {
-                    if p.data.impulse > best_impulse {
-                        best_impulse = p.data.impulse;
-                        best = Some((m, p));
-                    }
+                    let i = p.data.impulse;
+                    let p1 = m.subshape_pos1().map_or(p.local_p1, |q| q * p.local_p1);
+                    let p2 = m.subshape_pos2().map_or(p.local_p2, |q| q * p.local_p2);
+                    m1 += p1 * i;
+                    m2 += p2 * i;
+                    j += i;
+                }
+                c1 += m1;
+                c2 += m2;
+                if j > 0.0 && j > best_j {
+                    best_j = j;
+                    best = Some((m, m1 / j, m2 / j));
                 }
             }
-            let Some((m, p)) = best else {
+            let Some((m, s1, s2)) = best else {
                 continue;
             };
-            let (c1, c2) = (&w.colliders[pair.collider1], &w.colliders[pair.collider2]);
-            let (k1, k2) = (key_of(c1.user_data), key_of(c2.user_data));
-            // Contact points in the collider (= piece) frames: sub-shape pose × point.
-            let l1 = m.subshape_pos1().map_or(p.local_p1, |q| q * p.local_p1);
-            let l2 = m.subshape_pos2().map_or(p.local_p2, |q| q * p.local_p2);
+            // `impulse` is the sum of the point impulses (normal impulses are never negative).
+            let (c1, c2) = (c1 / impulse, c2 / impulse);
+            let (co1, co2) = (&w.colliders[pair.collider1], &w.colliders[pair.collider2]);
+            let (k1, k2) = (key_of(co1.user_data), key_of(co2.user_data));
             let normal = vs(m.data.normal);
             self.contacts.push(if k1 <= k2 {
                 RawContact {
                     a: k1,
                     b: k2,
-                    point: vs(c1.position() * l1),
+                    point: vs(co1.position() * c1),
                     normal,
                     impulse,
-                    local_a: vs(l1),
-                    local_b: vs(l2),
+                    local_a: vs(c1),
+                    local_b: vs(c2),
+                    strongest_a: vs(s1),
+                    strongest_b: vs(s2),
                     sub_a: m.subshape1,
                     sub_b: m.subshape2,
                 }
             } else {
-                let (l1, l2) = (vs(l1), vs(l2));
                 RawContact {
                     a: k2,
                     b: k1,
-                    point: vs(c2.position() * vr(l2)),
+                    point: vs(co2.position() * c2),
                     normal: normal * -1.0,
                     impulse,
-                    local_a: l2,
-                    local_b: l1,
+                    local_a: vs(c2),
+                    local_b: vs(c1),
+                    strongest_a: vs(s2),
+                    strongest_b: vs(s1),
                     sub_a: m.subshape2,
                     sub_b: m.subshape1,
                 }
@@ -571,7 +593,10 @@ mod tests {
     }
 
     fn square() -> [ConvexPolygon; 1] {
-        [ConvexPolygon::rect(Vec2::new(-1.0, -1.0), Vec2::new(1.0, 1.0))]
+        [ConvexPolygon::rect(
+            Vec2::new(-1.0, -1.0),
+            Vec2::new(1.0, 1.0),
+        )]
     }
 
     fn add(ph: &mut Physics, k: BodyKey, body: Body, cols: &[ConvexPolygon]) {

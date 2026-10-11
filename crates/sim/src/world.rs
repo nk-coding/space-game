@@ -653,8 +653,20 @@ impl Sim {
                 normal: rc.normal,
                 impulse: rc.impulse,
                 relative_speed: closing,
-                part_a: contact_part(&self.ships[ka], pa, rc.local_a, out_a, rc.sub_a),
-                part_b: contact_part(&self.ships[kb], pb, rc.local_b, out_b, rc.sub_b),
+                part_a: contact_part(
+                    &self.ships[ka],
+                    pa,
+                    [rc.local_a, rc.strongest_a],
+                    out_a,
+                    rc.sub_a,
+                ),
+                part_b: contact_part(
+                    &self.ships[kb],
+                    pb,
+                    [rc.local_b, rc.strongest_b],
+                    out_b,
+                    rc.sub_b,
+                ),
                 damage,
             });
         }
@@ -697,19 +709,22 @@ impl Sim {
     }
 }
 
-/// The part of `piece` under a contact point (piece frame): the point moved [`CONTACT_NUDGE`] into the hull
-/// (against `outward`, the contact normal in the piece frame), looked up with `Ship::part_at_local`. If that
-/// misses (a corner), the contact's sub-shape decides: a slope triangle names its part, a merged rectangle is
-/// looked up at the point clamped into it.
+/// The part of `piece` under a contact (piece frame), looked up with `Ship::part_at_local` at the contact's
+/// centre `centre`, then at the centre of its strongest manifold `strongest`, each moved [`CONTACT_NUDGE`]
+/// into the hull (against `outward`, the contact normal in the piece frame). If both miss (corners), the
+/// strongest manifold's sub-shape decides: a slope triangle names its part, a merged rectangle is looked up
+/// at the point clamped into it.
 fn contact_part(
     ship: &Ship,
     piece: &Piece,
-    local: Vec2,
+    [centre, strongest]: [Vec2; 2],
     outward: Vec2,
     sub: u32,
 ) -> Option<PartIdx> {
-    if let Some(p) = ship.part_at_local(piece.id, local - outward * CONTACT_NUDGE) {
-        return Some(p);
+    for point in [centre, strongest] {
+        if let Some(p) = ship.part_at_local(piece.id, point - outward * CONTACT_NUDGE) {
+            return Some(p);
+        }
     }
     let poly = piece.colliders.get(sub as usize)?;
     if poly.part.is_some() {
@@ -718,8 +733,8 @@ fn contact_part(
     let (min, max) = (poly.points()[0], poly.points()[2]);
     let e = 1e-3;
     let q = Vec2::new(
-        local.x.clamp(min.x + e, max.x - e),
-        local.y.clamp(min.y + e, max.y - e),
+        strongest.x.clamp(min.x + e, max.x - e),
+        strongest.y.clamp(min.y + e, max.y - e),
     );
     ship.part_at_local(piece.id, q)
 }
