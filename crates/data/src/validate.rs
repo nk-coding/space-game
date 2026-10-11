@@ -318,6 +318,21 @@ impl<'a> Validator<'a> {
         }
         if let Some(x) = &p.weapon {
             self.number(p, "weapon.damage", x.damage, 0.0, false);
+            self.number(p, "weapon.range", x.range, 0.0, true);
+            match x.delivery {
+                crate::model::Delivery::Beam => {}
+                crate::model::Delivery::Pulse { rate } => {
+                    self.number(p, "weapon.delivery.rate", rate, 0.0, true)
+                }
+                crate::model::Delivery::Projectile { rate, speed, penetration, recoil } => {
+                    self.number(p, "weapon.delivery.rate", rate, 0.0, true);
+                    self.number(p, "weapon.delivery.speed", speed, 0.0, true);
+                    self.number(p, "weapon.delivery.recoil", recoil, 0.0, false);
+                    if penetration == 0 {
+                        self.err(p, "weapon.delivery.penetration", "must be at least 1");
+                    }
+                }
+            }
         }
         if let Some(x) = &p.engine {
             self.number(p, "engine.thrust", x.thrust, 0.0, true);
@@ -341,6 +356,14 @@ impl<'a> Validator<'a> {
         }
         if let Some(x) = &p.shield {
             self.number(p, "shield.radius", x.radius, 0.0, true);
+            self.number(p, "shield.capacity", x.capacity, 0.0, false);
+            self.number(p, "shield.regen", x.regen, 0.0, false);
+            for (f, &a) in &x.absorb {
+                self.number(p, &format!("shield.absorb.{f:?}"), a, 0.0, false);
+                if a > 1.0 {
+                    self.err(p, format!("shield.absorb.{f:?}"), "a share, at most 1");
+                }
+            }
         }
         if let Some(x) = &p.cargo {
             self.number(p, "cargo.capacity", x.capacity, 0.0, true);

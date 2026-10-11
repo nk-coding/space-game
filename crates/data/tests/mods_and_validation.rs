@@ -51,9 +51,9 @@ fn mod_overrides_a_part_in_place_and_adds_content() {
             r#"[
                 (id: "pulse_laser", name: "Pulse laser", summary: "Hotter, stronger pulses.", tags: ["laser"], category: "weapons",
                  icon: "pulse-laser", size: (1, 1), build_points: 4, mass: 2, hp: 1, power: (draw: 5),
-                 heat: (output: 2, limit: 3), weapon: (family: Energy, damage: 1.6)),
+                 heat: (output: 2, limit: 3), weapon: (family: Energy, damage: 1.6, range: 50)),
                 (id: "twin_laser", name: "Twin laser", summary: "Two pulse lasers in one housing.", tags: ["laser"], category: "weapons",
-                 icon: "pulse-laser", size: (2, 1), build_points: 6, mass: 4, hp: 2, power: (draw: 8), weapon: (family: Energy, damage: 2)),
+                 icon: "pulse-laser", size: (2, 1), build_points: 6, mass: 4, hp: 2, power: (draw: 8), weapon: (family: Energy, damage: 2, range: 50)),
             ]"#,
         ),
         (

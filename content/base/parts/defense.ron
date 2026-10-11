@@ -1,5 +1,5 @@
 // Defense. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only; the shield radius matches the
-// rings in art/ships/halvex-runner.svg).
+// rings in art/ships/halvex-runner.svg; capacity, regen and absorb are invented).
 [
     (
         id: "shield_emitter",
@@ -15,6 +15,6 @@
         hp: 1,
         power: (draw: 3),
         heat: (output: 0.8, limit: 3.2),
-        shield: (radius: 2.3),
+        shield: (radius: 2.3, capacity: 6, regen: 1.5, absorb: {Energy: 1.0, Kinetic: 0.5, Missile: 1.0}),
     ),
 ]

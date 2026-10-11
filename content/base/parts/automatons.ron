@@ -33,6 +33,6 @@
         hp: 1,
         power: (draw: 2),
         heat: (output: 1, limit: 3),
-        weapon: (family: Kinetic, damage: 1.2),
+        weapon: (family: Kinetic, damage: 1.2, range: 75, delivery: Projectile(rate: 1.5, speed: 90, penetration: 1, recoil: 2)),
     ),
 ]

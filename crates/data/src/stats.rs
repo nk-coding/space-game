@@ -18,11 +18,18 @@ pub const BUILTIN_STATS: &[&str] = &[
     "heat_limit",
     "heat_vent",
     "damage",
+    "range",
+    "shot_rate",
+    "shot_speed",
+    "penetration",
+    "recoil",
     "thrust",
     "gimbal",
     "rcs_thrust",
     "torque",
     "shield_radius",
+    "shield_capacity",
+    "shield_regen",
     "cargo_capacity",
     "rule_slots",
     "mass_per_cell",
@@ -142,6 +149,19 @@ impl Content {
         }
         if let Some(w) = &part.weapon {
             v.push(("damage", w.damage));
+            v.push(("range", w.range));
+            match w.delivery {
+                crate::model::Delivery::Beam => {}
+                crate::model::Delivery::Pulse { rate } => v.push(("shot_rate", rate)),
+                crate::model::Delivery::Projectile { rate, speed, penetration, recoil } => {
+                    v.push(("shot_rate", rate));
+                    v.push(("shot_speed", speed));
+                    v.push(("penetration", penetration as f32));
+                    if recoil != 0.0 {
+                        v.push(("recoil", recoil));
+                    }
+                }
+            }
         }
         if let Some(e) = &part.engine {
             v.push(("thrust", e.thrust));
@@ -157,6 +177,8 @@ impl Content {
         }
         if let Some(s) = &part.shield {
             v.push(("shield_radius", s.radius));
+            v.push(("shield_capacity", s.capacity));
+            v.push(("shield_regen", s.regen));
         }
         if let Some(c) = &part.cargo {
             v.push(("cargo_capacity", c.capacity));

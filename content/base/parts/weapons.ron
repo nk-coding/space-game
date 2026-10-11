@@ -1,4 +1,5 @@
-// Weapons. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// Weapons. PLACEHOLDER NUMBERS (damage from the concept-board drydock; range, delivery and rates invented), for
+// feel only.
 // Guns are fixed: they fire along the part's forward side and need a clear line of fire.
 [
     (
@@ -15,7 +16,7 @@
         hp: 1,
         power: (draw: 4),
         heat: (output: 1.5, limit: 3),
-        weapon: (family: Energy, damage: 1),
+        weapon: (family: Energy, damage: 1, range: 60, delivery: Pulse(rate: 4)),
     ),
     (
         id: "beam_laser",
@@ -31,6 +32,6 @@
         hp: 2,
         power: (draw: 9),
         heat: (output: 3.2, limit: 4.2),
-        weapon: (family: Energy, damage: 2.6),
+        weapon: (family: Energy, damage: 2.6, range: 45, delivery: Beam),
     ),
 ]

@@ -76,8 +76,8 @@ Display information for every number the UI and wiki show: `name` (label), `summ
 may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`Higher`, `Lower`, `Neutral`, for
 green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
 the game requires these ids: `build_points mass hp power_output power_draw heat_output heat_limit heat_vent
-damage thrust gimbal rcs_thrust torque shield_radius cargo_capacity rule_slots mass_per_cell hp_per_cell
-build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are placeholders
+damage range shot_rate shot_speed penetration recoil thrust gimbal rcs_thrust torque shield_radius
+shield_capacity shield_regen cargo_capacity rule_slots mass_per_cell hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are placeholders
 except that the sim reads mass in t, thrust in kN and torque in kN·m (so kN / t = m/s²); 1 cell = 1 m.
 
 ### Categories (`categories.ron`)
@@ -134,14 +134,25 @@ Optional component blocks (a part has any combination):
 | `power` | `output`, `draw` | adds to / draws from the piece's shared pool at full load |
 | `heat` | `output`, `limit` | heat at full load; shutdown level (none = never) |
 | `radiator` | `vent` | heat dumped per straight side open to space |
-| `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second) | fixed gun, fires along the part's forward side, needs a clear line of fire |
+| `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second), `range` (m), `delivery` (see below, default `Beam`) | fixed gun, fires along the part's forward side, needs a clear line of fire |
 | `engine` | `thrust`, `gimbal` (degrees, default 0, at most 45) | pushes along the part's forward side, needs open cells right behind it; can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque |
 | `gyro` | `torque` (kN·m) | pure reaction torque about the centre of mass, either direction, no thrust. On the gyro part, and as the small built-in turning help of logic cores |
 | `rcs` | `thrust` (kN per nozzle) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre |
-| `shield` | `radius` (m) | bubble over the hull around it |
+| `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots` | hosts a mind, runs behavior rules |
 | `bonuses` | list, see below | adjacency bonuses this part grants |
+
+**Weapon delivery** (`weapon.delivery`, added 11 Oct 2026):
+
+| Delivery | Fields | Meaning |
+|---|---|---|
+| `Beam` | — | continuous hit-scan: `damage` per second while firing, burns the first block it touches |
+| `Pulse(rate: r)` | `rate` (shots/s) | hit-scan pulses, each dealing `damage / rate`, first block only |
+| `Projectile(rate: r, speed: v, penetration: n, recoil: j)` | shots/s, m/s, blocks, kN·s | a flying shot (inherits the ship's velocity), lives `range / speed` s, goes through up to `n` blocks, pushes the shooter back with `j` per shot; kinetic shots ricochet off slopes hit at a shallow angle |
+
+Stat lines: `range`, `shot_rate`, `shot_speed`, `penetration`, `recoil`, `shield_capacity`, `shield_regen`
+(added 11 Oct 2026). The capacitor's `fire_rate` bonus multiplies the shot rate (beams: their damage).
 
 **Adjacency bonuses** are declared on the part that grants them and apply to each **linked** neighbour
 (touching through straight sides) that matches `target`:

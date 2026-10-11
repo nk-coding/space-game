@@ -238,7 +238,7 @@ pub struct RadiatorSpec {
 }
 
 /// Weapon families (settled 10 Oct 2026: all families).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum WeaponFamily {
     Energy,
     Kinetic,
@@ -254,8 +254,33 @@ pub enum WeaponFamily {
 #[serde(deny_unknown_fields)]
 pub struct WeaponSpec {
     pub family: WeaponFamily,
-    /// Damage per second at full power, before bonuses.
+    /// Damage per second at full power, before bonuses (pulses and projectiles split it over their shots).
     pub damage: f32,
+    /// Reach in metres (hit-scan length; projectiles fly `range / speed` seconds).
+    pub range: f32,
+    /// How the shot travels. Default `Beam`.
+    #[serde(default)]
+    pub delivery: Delivery,
+}
+
+/// How a weapon's shots travel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum Delivery {
+    /// A continuous hit-scan beam: damage per second while firing, burns the first block it touches.
+    #[default]
+    Beam,
+    /// Discrete hit-scan pulses, `rate` per second; each deals `damage / rate`, burns the first block.
+    Pulse { rate: f32 },
+    /// A physical projectile, `rate` per second, flying at `speed` (m/s, plus the shooter's velocity).
+    /// Each deals `damage / rate`, goes through up to `penetration` blocks (1 = stops at the first), and
+    /// pushes the shooter back with `recoil` (kN·s per shot).
+    Projectile {
+        rate: f32,
+        speed: f32,
+        penetration: u32,
+        #[serde(default)]
+        recoil: f32,
+    },
 }
 
 /// Pushes towards the part's forward side; needs open cells directly behind its back side.
@@ -295,6 +320,13 @@ pub struct RcsSpec {
 pub struct ShieldSpec {
     /// Bubble radius in metres from the part's centre.
     pub radius: f32,
+    /// Damage the bubble can take before it collapses.
+    pub capacity: f32,
+    /// Capacity regained per second while the emitter is powered.
+    pub regen: f32,
+    /// Share of a shot's damage the bubble takes, per weapon family (missing = 0: passes straight through).
+    #[serde(default)]
+    pub absorb: std::collections::BTreeMap<WeaponFamily, f32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
