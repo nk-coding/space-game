@@ -41,6 +41,7 @@ pub fn blueprint(parts: &[P]) -> Blueprint {
                 material: material.map(Into::into),
             })
             .collect(),
+        behavior: None,
         source: Default::default(),
     }
 }

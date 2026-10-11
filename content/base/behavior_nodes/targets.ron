@@ -1,0 +1,87 @@
+// Target selectors: the `target` line of a behavior picks the ship its rules are about (default `nearest`).
+// Only active enemy ships count (except for `locked`). A ship keeps its target unless another one is clearly
+// better, so it does not flip between two that are nearly equal. Each selector takes an aim point on the
+// target ship: its centre, or the nearest working part of a kind (engines first, weapons first, ...).
+// Built into the sim (`sim::behavior`).
+[
+    (
+        id: "nearest",
+        name: "Nearest",
+        summary: "The closest enemy ship.",
+        tags: ["target"],
+        role: Target,
+        params: [
+            (id: "aim", name: "Aim at", type: Choice([
+                (id: "centre", name: "Centre", summary: "The ship's centre of mass."),
+                (id: "engines", name: "Engines", summary: "Its nearest working engine: slow it down."),
+                (id: "weapons", name: "Weapons", summary: "Its nearest working gun: disarm it."),
+                (id: "power", name: "Power", summary: "Its nearest working reactor: kill all power to capture it."),
+                (id: "core", name: "Core", summary: "Its nearest logic core: the mind of the ship."),
+            ]), default: "centre"),
+        ],
+    ),
+    (
+        id: "weakest",
+        name: "Weakest",
+        summary: "The enemy ship with the least hull left (the nearer one on a tie).",
+        tags: ["target"],
+        role: Target,
+        params: [
+            (id: "aim", name: "Aim at", type: Choice([
+                (id: "centre", name: "Centre"),
+                (id: "engines", name: "Engines"),
+                (id: "weapons", name: "Weapons"),
+                (id: "power", name: "Power"),
+                (id: "core", name: "Core"),
+            ]), default: "centre"),
+        ],
+    ),
+    (
+        id: "threat",
+        name: "Biggest threat",
+        summary: "The enemy ship with the most firepower, weighted up if it aims at you and down with distance.",
+        tags: ["target"],
+        role: Target,
+        params: [
+            (id: "aim", name: "Aim at", type: Choice([
+                (id: "centre", name: "Centre"),
+                (id: "engines", name: "Engines"),
+                (id: "weapons", name: "Weapons"),
+                (id: "power", name: "Power"),
+                (id: "core", name: "Core"),
+            ]), default: "centre"),
+        ],
+    ),
+    (
+        id: "attacker",
+        name: "Attacker",
+        summary: "The nearest enemy ship that aims at you; none while nobody does.",
+        tags: ["target"],
+        role: Target,
+        params: [
+            (id: "aim", name: "Aim at", type: Choice([
+                (id: "centre", name: "Centre"),
+                (id: "engines", name: "Engines"),
+                (id: "weapons", name: "Weapons"),
+                (id: "power", name: "Power"),
+                (id: "core", name: "Core"),
+            ]), default: "centre"),
+        ],
+    ),
+    (
+        id: "locked",
+        name: "Leader's lock",
+        summary: "The ship your leader has locked (for an escort: the player's lock); none without a leader or a lock.",
+        tags: ["target", "escort"],
+        role: Target,
+        params: [
+            (id: "aim", name: "Aim at", type: Choice([
+                (id: "centre", name: "Centre"),
+                (id: "engines", name: "Engines"),
+                (id: "weapons", name: "Weapons"),
+                (id: "power", name: "Power"),
+                (id: "core", name: "Core"),
+            ]), default: "centre"),
+        ],
+    ),
+]

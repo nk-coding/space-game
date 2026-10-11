@@ -1,0 +1,18 @@
+// Default behavior of the ship-mind's unpiloted ships (escorts, test range): fights like the raider pack but
+// knows when to back off. Written for ships with engines at the back (no reverse thrust). PLACEHOLDER numbers.
+(
+    id: "skirmisher",
+    name: "Skirmisher",
+    summary: "Attack and strafe, dodge while the shields recharge, and run when badly hurt.",
+    description: "Uses the [[behavior_node:closing_in]] Rhai condition to turn and meet a fast attacker.",
+    tags: ["attack"],
+    target: "nearest",
+    rules: [
+        "when hull < 25% -> flee # too hurt to fight on",
+        "when shield_down and target_on_me -> orbit(80%, ccw) # dodge while the shields recharge",
+        "when enemies_near(100m) >= 3 -> orbit(90%) # do not get surrounded",
+        "when target_in_range(120%) and cycle(10s) >= 6s -> orbit(60%)",
+        "when closing_in(2s) and not target_in_range(100%) -> face # meet it nose first",
+        "always -> approach(67%)",
+    ],
+)

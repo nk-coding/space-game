@@ -1,0 +1,18 @@
+// Custom conditions written in Rhai (tagged "Rhai" in the editor). The sim runs them sandboxed: they see only
+// a read-only view of the ship (`me`) and its target (`target`) plus their own parameters, have an operation
+// budget, no I/O, and only deterministic math. A script that fails or runs out of budget counts as false.
+// API: docs/behavior-format.md ("Rhai conditions"). PLACEHOLDER defaults.
+[
+    (
+        id: "closing_in",
+        name: "Closing in",
+        summary: "At the current closing speed, the target will be within your weapon reach in less than the given time.",
+        description: "Useful to turn and meet an attacker before it opens fire.",
+        tags: ["target", "rhai"],
+        role: Condition,
+        params: [
+            (id: "time", name: "Time", type: Seconds, default: "3s", min: 0, max: 60),
+        ],
+        script: "target.exists && target.closing > 0.0 && (target.distance - me.reach) / target.closing < time",
+    ),
+]

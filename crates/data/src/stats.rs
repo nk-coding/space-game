@@ -153,7 +153,12 @@ impl Content {
             match w.delivery {
                 crate::model::Delivery::Beam => {}
                 crate::model::Delivery::Pulse { rate } => v.push(("shot_rate", rate)),
-                crate::model::Delivery::Projectile { rate, speed, penetration, recoil } => {
+                crate::model::Delivery::Projectile {
+                    rate,
+                    speed,
+                    penetration,
+                    recoil,
+                } => {
                     v.push(("shot_rate", rate));
                     v.push(("shot_speed", speed));
                     v.push(("penetration", penetration as f32));

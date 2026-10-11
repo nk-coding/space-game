@@ -13,6 +13,7 @@
 //! ```
 
 pub mod art_keys;
+pub mod behavior;
 pub mod geometry;
 pub mod kind;
 pub mod load;

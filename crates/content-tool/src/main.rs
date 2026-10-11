@@ -20,7 +20,8 @@ use serde_json::{Value, json};
 const USAGE: &str = "usage:
   content-tool validate [--icons <dir> | --no-icons] [pack_dir...]
   content-tool export-json <out.json | -> [pack_dir...]
-  content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, ship, page
+  content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, ship,
+                                             behavior_node, behavior, page
 
 Pack dirs load in order; later packs override earlier ones by id. Default: content/base.
 validate checks icon keys against <first pack>/../../art/icons when that directory exists.";
@@ -189,13 +190,15 @@ fn validate(args: &[String]) -> Result<(), String> {
     }
     let (content, warnings) = load_content(&dirs, &opts)?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} ships, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} ships, {} behavior nodes, {} behaviors, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
         content.materials.len(),
         content.parts.len(),
         content.ships.len(),
+        content.behavior_nodes.len(),
+        content.behaviors.len(),
         content.wiki.len()
     );
     let packs: Vec<&str> = content.packs.iter().map(|p| p.id.as_str()).collect();
@@ -235,6 +238,8 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Material => rows(c.materials.as_slice()),
         Kind::Part => rows(c.parts.as_slice()),
         Kind::Ship => rows(c.ships.as_slice()),
+        Kind::BehaviorNode => rows(c.behavior_nodes.as_slice()),
+        Kind::Behavior => rows(c.behaviors.as_slice()),
         Kind::Page => c
             .wiki
             .values()
@@ -375,6 +380,61 @@ fn export(c: &Content) -> Value {
         })
         .collect();
     let ships: Vec<Value> = c.ships.iter().map(|s| ship_json(c, s)).collect();
+    let behavior_nodes: Vec<Value> = c
+        .behavior_nodes
+        .iter()
+        .map(|n| {
+            let mut v = entry_json(c, n);
+            let keys: BTreeMap<String, String> = n
+                .param_texts()
+                .into_iter()
+                .map(|(f, _)| (f.clone(), text_key(Kind::BehaviorNode, &n.id, &f)))
+                .collect();
+            v["param_text_keys"] = json!(keys);
+            v["builtin"] = json!(n.script.is_none());
+            let used_by: Vec<&str> = c
+                .behaviors
+                .iter()
+                .filter(|b| {
+                    b.program().is_ok_and(|p| {
+                        p.target.iter().any(|t| t.call.name == n.id)
+                            || p.rules.iter().any(|r| {
+                                r.action.name == n.id || r.when.iter().any(|w| w.call.name == n.id)
+                            })
+                    })
+                })
+                .map(|b| b.id.as_str())
+                .collect();
+            v["used_by_behaviors"] = json!(used_by);
+            v
+        })
+        .collect();
+    let behaviors: Vec<Value> = c
+        .behaviors
+        .iter()
+        .map(|b| {
+            let mut v = entry_json(c, b);
+            let program = b.program().expect("validated");
+            v["text"] = json!(program.to_text());
+            v["program"] = json!(program);
+            v["rule_count"] = json!(program.rules.len());
+            let factions: Vec<&str> = c
+                .factions
+                .iter()
+                .filter(|f| f.behavior.as_deref() == Some(b.id.as_str()))
+                .map(|f| f.id.as_str())
+                .collect();
+            let ships: Vec<&str> = c
+                .ships
+                .iter()
+                .filter(|s| c.ship_behavior(s).is_some_and(|x| x.id == b.id))
+                .map(|s| s.id.as_str())
+                .collect();
+            v["default_of_factions"] = json!(factions);
+            v["flown_by_ships"] = json!(ships);
+            v
+        })
+        .collect();
     let pages: Vec<Value> = c
         .wiki
         .values()
@@ -392,6 +452,8 @@ fn export(c: &Content) -> Value {
         "materials": materials,
         "parts": parts,
         "ships": ships,
+        "behavior_nodes": behavior_nodes,
+        "behaviors": behaviors,
         "pages": pages,
         "texts": c.texts(),
     })
@@ -450,6 +512,8 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
                 .map(|v| (*k, (*v as f64 * 1e4).round() / 1e4))
         })
         .collect();
+    v["rule_slots"] = json!(c.ship_rule_slots(s));
+    v["effective_behavior"] = json!(c.ship_behavior(s).map(|b| &b.id));
     v["placements"] = json!(placements);
     v["totals"] = json!(totals);
     v["bounds"] = json!(grid.bounds());

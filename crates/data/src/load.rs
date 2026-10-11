@@ -30,6 +30,8 @@ pub struct Pack {
     pub materials: Vec<Material>,
     pub parts: Vec<Part>,
     pub ships: Vec<Blueprint>,
+    pub behavior_nodes: Vec<BehaviorNode>,
+    pub behaviors: Vec<Behavior>,
     pub wiki: Vec<WikiPage>,
 }
 
@@ -39,7 +41,7 @@ impl Pack {
     ///
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
-    ///   `materials`, `parts`, `ships`. A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    ///   `materials`, `parts`, `ships`, `behavior_nodes`, `behaviors`. A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
     /// * Anything else that is not `.ron` is ignored (READMEs, `.gitkeep`); unknown `.ron` files are errors.
     ///
@@ -94,6 +96,8 @@ impl Pack {
             materials: Vec::new(),
             parts: Vec::new(),
             ships: Vec::new(),
+            behavior_nodes: Vec::new(),
+            behaviors: Vec::new(),
             wiki: Vec::new(),
         };
 
@@ -120,9 +124,15 @@ impl Pack {
                     Some(Kind::Material) => parse_into(text, &src, &mut pack.materials, &mut problems),
                     Some(Kind::Part) => parse_into(text, &src, &mut pack.parts, &mut problems),
                     Some(Kind::Ship) => parse_into(text, &src, &mut pack.ships, &mut problems),
+                    Some(Kind::BehaviorNode) => {
+                        parse_into(text, &src, &mut pack.behavior_nodes, &mut problems)
+                    }
+                    Some(Kind::Behavior) => {
+                        parse_into(text, &src, &mut pack.behaviors, &mut problems)
+                    }
                     _ => problems.push(
                         Problem::error(
-                            "unknown content file location; RON files belong in stats, categories, factions, materials, parts or ships",
+                            "unknown content file location; RON files belong in stats, categories, factions, materials, parts, ships, behavior_nodes or behaviors",
                         )
                         .at(&src),
                     ),
@@ -138,7 +148,7 @@ impl Pack {
                 match parsed {
                     Some((kind, id)) => pack.wiki.push(WikiPage { kind, id: id.to_string(), markdown: text.to_string(), source: src }),
                     None if path.ends_with(".md") => problems.push(
-                        Problem::error("wiki files must be wiki/<kind>/<id>.md with kind stat, category, faction, material, part, ship or page")
+                        Problem::error("wiki files must be wiki/<kind>/<id>.md with kind stat, category, faction, material, part, ship, behavior_node, behavior or page")
                             .at(&src),
                     ),
                     None => {}
@@ -152,6 +162,8 @@ impl Pack {
         check_duplicates(&pack.materials, &mut problems);
         check_duplicates(&pack.parts, &mut problems);
         check_duplicates(&pack.ships, &mut problems);
+        check_duplicates(&pack.behavior_nodes, &mut problems);
+        check_duplicates(&pack.behaviors, &mut problems);
         let mut seen: BTreeMap<(Kind, &str), &Source> = BTreeMap::new();
         for page in &pack.wiki {
             if let Some(first) = seen.insert((page.kind, &page.id), &page.source) {
@@ -250,6 +262,8 @@ pub struct Content {
     pub materials: Table<Material>,
     pub parts: Table<Part>,
     pub ships: Table<Blueprint>,
+    pub behavior_nodes: Table<BehaviorNode>,
+    pub behaviors: Table<Behavior>,
     /// Wiki prose keyed `"<kind>:<id>"` (e.g. `"part:fission_reactor"`). Empty in the game build.
     pub wiki: BTreeMap<String, WikiPage>,
 }
@@ -284,6 +298,14 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.ships.upsert(e)));
+            p.behavior_nodes
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.behavior_nodes.upsert(e)));
+            p.behaviors
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.behaviors.upsert(e)));
             for w in &p.wiki {
                 c.wiki
                     .insert(format!("{}:{}", w.kind.key(), w.id), w.clone());
@@ -312,6 +334,8 @@ impl Content {
             Kind::Material => self.materials.contains(id),
             Kind::Part => self.parts.contains(id),
             Kind::Ship => self.ships.contains(id),
+            Kind::BehaviorNode => self.behavior_nodes.contains(id),
+            Kind::Behavior => self.behaviors.contains(id),
             Kind::Page => self.wiki.contains_key(&format!("page:{id}")),
         }
     }
@@ -325,6 +349,8 @@ impl Content {
             Kind::Material => self.materials.get(id).map(|e| e.name.as_str()),
             Kind::Part => self.parts.get(id).map(|e| e.name.as_str()),
             Kind::Ship => self.ships.get(id).map(|e| e.name.as_str()),
+            Kind::BehaviorNode => self.behavior_nodes.get(id).map(|e| e.name.as_str()),
+            Kind::Behavior => self.behaviors.get(id).map(|e| e.name.as_str()),
             Kind::Page => self.wiki.get(&format!("page:{id}")).map(|p| {
                 p.markdown
                     .lines()
@@ -389,6 +415,37 @@ impl Content {
         } else {
             part.mass
         }
+    }
+
+    /// The behavior a ship flies under when nobody pilots it: its own `behavior`, else its faction's.
+    pub fn ship_behavior(&self, ship: &Blueprint) -> Option<&Behavior> {
+        let id = ship.behavior.as_deref().or_else(|| {
+            self.factions
+                .get(&ship.faction)
+                .and_then(|f| f.behavior.as_deref())
+        })?;
+        self.behaviors.get(id)
+    }
+
+    /// Rule slots of an intact ship: the `logic.rule_slots` of every logic core on its main piece.
+    pub fn ship_rule_slots(&self, ship: &Blueprint) -> u32 {
+        let Ok(grid) = self.ship_grid(ship) else {
+            return 0;
+        };
+        let logic = |i: usize| {
+            self.parts
+                .get(&ship.parts[i].part)
+                .and_then(|p| p.logic.as_ref())
+        };
+        let pieces = grid.pieces();
+        let Some(main) = grid.main_piece(&pieces, |i| logic(i).is_some()) else {
+            return 0;
+        };
+        pieces.parts[main]
+            .iter()
+            .filter_map(|&i| logic(i))
+            .map(|l| l.rule_slots)
+            .sum()
     }
 
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.

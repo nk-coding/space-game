@@ -89,6 +89,14 @@ impl Content {
         self.for_each_entry_text(|kind, id, field, text| {
             out.insert(text_key(kind, id, field), text.to_string());
         });
+        for n in &self.behavior_nodes {
+            for (field, text) in n.param_texts() {
+                out.insert(
+                    text_key(Kind::BehaviorNode, &n.id, &field),
+                    text.to_string(),
+                );
+            }
+        }
         out
     }
 
@@ -107,6 +115,8 @@ impl Content {
         each(self.materials.as_slice(), &mut f);
         each(self.parts.as_slice(), &mut f);
         each(self.ships.as_slice(), &mut f);
+        each(self.behavior_nodes.as_slice(), &mut f);
+        each(self.behaviors.as_slice(), &mut f);
     }
 
     /// Replaces texts by key (a locale table). Returns the keys that matched nothing.
@@ -134,6 +144,18 @@ impl Content {
         each(self.materials.iter_mut(), overrides, &mut used);
         each(self.parts.iter_mut(), overrides, &mut used);
         each(self.ships.iter_mut(), overrides, &mut used);
+        each(self.behavior_nodes.iter_mut(), overrides, &mut used);
+        each(self.behaviors.iter_mut(), overrides, &mut used);
+        for n in self.behavior_nodes.iter_mut() {
+            let id = n.id.clone();
+            for (field, text) in n.param_texts_mut() {
+                let key = text_key(Kind::BehaviorNode, &id, &field);
+                if let Some(t) = overrides.get(&key) {
+                    *text = t.clone();
+                    used.push(key);
+                }
+            }
+        }
         overrides
             .keys()
             .filter(|k| !used.contains(k))

@@ -343,6 +343,7 @@ fn heat_stress_blueprint() -> data::Blueprint {
             p("fission_reactor", 2, 2),
             p("logic_core", 2, 3),
         ],
+        behavior: None,
         source: Default::default(),
     }
 }

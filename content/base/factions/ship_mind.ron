@@ -4,4 +4,5 @@
     summary: "You: a precursor mind that woke in an abandoned shipyard at the rim of the galaxy.",
     description: "The ship-mind flies its ships through [[part:logic_core|logic cores]] and rebuilds them at home from bonded matter.",
     glow: "player",
+    behavior: "skirmisher",
 )

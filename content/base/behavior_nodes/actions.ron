@@ -1,0 +1,67 @@
+// Behavior actions (teal in the editor): the maneuver a ship flies while its rule is active. Built into the
+// sim (`sim::behavior`); the flight computer turns them into thrust. Whatever the action, guns fire at will:
+// whenever the target (or its lead point) is in front of the nose and within reach.
+// An action that needs a target fails while there is none, and the next rule gets its turn.
+// PLACEHOLDER defaults and ranges (for feel).
+[
+    (
+        id: "approach",
+        name: "Approach",
+        summary: "Close in to the given distance, then face the target and keep pace.",
+        description: "Aims at the lead point when your strongest guns fire projectiles.",
+        tags: ["move", "attack"],
+        role: Action,
+        params: [
+            (id: "range", name: "Range", summary: "Stand-off distance: metres, or a share of your weapon reach.", type: Distance, default: "67%", min: 0, max: 5000),
+        ],
+    ),
+    (
+        id: "orbit",
+        name: "Orbit",
+        summary: "Circle the target at the given radius.",
+        description: "As fast as the ship can hold the turn. Guns fire whenever the target crosses the nose.",
+        tags: ["move"],
+        role: Action,
+        params: [
+            (id: "radius", name: "Radius", summary: "Metres, or a share of your weapon reach.", type: Distance, default: "60%", min: 1, max: 5000),
+            (id: "dir", name: "Direction", type: Choice([
+                (id: "auto", name: "Auto", summary: "Half of a fleet circles each way."),
+                (id: "ccw", name: "Counter-clockwise"),
+                (id: "cw", name: "Clockwise"),
+            ]), default: "auto"),
+        ],
+    ),
+    (
+        id: "kite",
+        name: "Keep distance",
+        summary: "Hold the given distance from the target: back off when it closes in, follow when it pulls away.",
+        description: "A ship that can thrust backwards (RCS pods) keeps its nose on the target while it backs off; one with engines only at the back turns away to open the gap and turns back to fight.",
+        tags: ["move", "attack"],
+        role: Action,
+        params: [
+            (id: "range", name: "Range", summary: "Metres, or a share of your weapon reach.", type: Distance, default: "90%", min: 0, max: 5000),
+        ],
+    ),
+    (
+        id: "face",
+        name: "Face target",
+        summary: "Turn the nose onto the target (or its lead point) and match its velocity.",
+        tags: ["attack"],
+        role: Action,
+    ),
+    (
+        id: "flee",
+        name: "Flee",
+        summary: "Run straight away from the target at top speed.",
+        tags: ["move"],
+        role: Action,
+    ),
+    (
+        id: "hold",
+        name: "Hold",
+        summary: "Stop and stay put.",
+        description: "Guns still fire if the target crosses the nose.",
+        tags: ["move"],
+        role: Action,
+    ),
+]

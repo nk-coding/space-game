@@ -11,18 +11,24 @@ pub enum Kind {
     Material,
     Part,
     Ship,
+    /// A word of the behavior language (condition, action, target selector).
+    BehaviorNode,
+    /// A behavior program (priority list of rules).
+    Behavior,
     /// Free-standing wiki article (`wiki/page/<id>.md`); has no RON data.
     Page,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 7] = [
+    pub const ALL: [Kind; 9] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
         Kind::Material,
         Kind::Part,
         Kind::Ship,
+        Kind::BehaviorNode,
+        Kind::Behavior,
         Kind::Page,
     ];
 
@@ -34,6 +40,8 @@ impl Kind {
             Kind::Material => "material",
             Kind::Part => "part",
             Kind::Ship => "ship",
+            Kind::BehaviorNode => "behavior_node",
+            Kind::Behavior => "behavior",
             Kind::Page => "page",
         }
     }
@@ -47,6 +55,8 @@ impl Kind {
             Kind::Material => Some("materials"),
             Kind::Part => Some("parts"),
             Kind::Ship => Some("ships"),
+            Kind::BehaviorNode => Some("behavior_nodes"),
+            Kind::Behavior => Some("behaviors"),
             Kind::Page => None,
         }
     }

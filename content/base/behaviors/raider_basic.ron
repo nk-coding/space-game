@@ -1,0 +1,15 @@
+// The rogue automatons' pack tactic (was the hard-coded `RaiderBrain`). Distances are shares of the weapon
+// reach, so it works for any armed ship: a raider (cannon, 75 m) engages from 90 m, attacks from 50 m and
+// orbits at 45 m. It fits the two rule slots of one automaton core. PLACEHOLDER numbers.
+(
+    id: "raider_basic",
+    name: "Raider pack",
+    summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
+    description: "Picks the nearest enemy. Within engagement range it attacks for five seconds out of every nine and circles the target for the other four, so a pack never sits still in front of the guns.",
+    tags: ["automaton", "attack"],
+    target: "nearest",
+    rules: [
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)",
+        "always -> approach(67%)",
+    ],
+)

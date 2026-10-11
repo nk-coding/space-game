@@ -1,0 +1,113 @@
+// Behavior conditions (violet in the editor): what a rule checks before the arrow. Built into the sim
+// (`sim::behavior`); every id here needs an implementation there and vice versa. A condition with a `value`
+// yields a number that a rule compares (`hull < 30%`); one without is a flag (`shield_down`).
+// Conditions about the target are false while there is no target, with or without `not`.
+// PLACEHOLDER defaults and ranges (for feel).
+[
+    (
+        id: "hull",
+        name: "Hull",
+        summary: "Your hull integrity: hit points left on the controlling piece, as a share of the intact ship.",
+        description: "Parts lost with pieces that broke off count as lost.",
+        tags: ["self"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "shield",
+        name: "Shield charge",
+        summary: "Charge left in your shield bubbles, as a share of their capacity.",
+        description: "False while the ship has no working [[part:shield_emitter|shield emitter]].",
+        tags: ["self", "shields"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "shield_down",
+        name: "Shield down",
+        summary: "One of your shield bubbles has collapsed and is recharging.",
+        tags: ["self", "shields"],
+        role: Condition,
+    ),
+    (
+        id: "heat",
+        name: "Heat",
+        summary: "Heat of your hottest part, as a share of the level where it shuts down.",
+        description: "At 100% that part has shut down until it cools off.",
+        tags: ["self"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "power",
+        name: "Power",
+        summary: "Share of your power demand the reactors can serve.",
+        description: "Below 100% the ship browns out: weapons lose power first, the logic cores last.",
+        tags: ["self"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "target_in_range",
+        name: "Target in range",
+        summary: "The target is within the given distance; by default, within your weapon reach.",
+        tags: ["target"],
+        role: Condition,
+        params: [
+            (id: "range", name: "Range", summary: "Metres, or a share of your weapon reach (100% = the reach of your longest clear gun).", type: Distance, default: "100%", min: 0, max: 5000),
+        ],
+    ),
+    (
+        id: "target_hull",
+        name: "Target hull",
+        summary: "The target's hull integrity, as a share of its intact ship.",
+        tags: ["target"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "target_on_me",
+        name: "Target on me",
+        summary: "The target is aiming at you: its pilot's lock or its behavior's target is your ship.",
+        tags: ["target"],
+        role: Condition,
+    ),
+    (
+        id: "under_attack",
+        name: "Under attack",
+        summary: "At least one enemy ship is aiming at you.",
+        tags: ["self"],
+        role: Condition,
+    ),
+    (
+        id: "enemies_near",
+        name: "Enemies near",
+        summary: "How many active enemy ships are within the radius.",
+        tags: ["surroundings"],
+        role: Condition,
+        value: Count,
+        params: [
+            (id: "radius", name: "Radius", summary: "Metres, or a share of your weapon reach.", type: Distance, default: "150m", min: 0, max: 5000),
+        ],
+    ),
+    (
+        id: "cycle",
+        name: "Cycle",
+        summary: "Seconds into the current cycle, counted from when you picked your target.",
+        description: "Compare it to alternate between two rules: `cycle(9s) >= 5s` holds for the last four seconds of every nine.",
+        tags: ["timer"],
+        role: Condition,
+        value: Seconds,
+        params: [
+            (id: "period", name: "Period", summary: "Length of one cycle.", type: Seconds, default: "10s", min: 1, max: 600),
+        ],
+    ),
+    (
+        id: "target_time",
+        name: "Time on target",
+        summary: "Seconds since you picked your current target.",
+        tags: ["timer", "target"],
+        role: Condition,
+        value: Seconds,
+    ),
+]
