@@ -38,6 +38,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - **Performance is the top priority** when choosing between options.
 - **Placeholder numbers stay placeholders**: concept-board numbers are for feel, not a spec.
 - **Don't silently change settled decisions** (see `docs/concept-notes.md`). If something doesn't work, report it with numbers.
+- **No fixed raster graphics** (Niklas, 11 Oct 2026). All art is vector: SVG, meshes, procedural shapes, vector fonts. Raster textures (icon atlases, glow sprites) are generated in memory at runtime at the resolution the display needs (zoom × DPI), and regenerated when that changes. Never commit PNGs for the game to use (screenshots in `docs/` are fine).
 - **Content lives in data, not code.** Names, descriptions, stats, ship layouts: all in `content/` RON files, never hard-coded in Rust. See `docs/content-model.md`.
 
 ## Current priorities (decided by Niklas, 11 Oct 2026)

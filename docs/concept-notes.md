@@ -111,6 +111,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
   - regular engines contribute too: off-axis engines through differential thrust, and every engine through a small gimbal angle (lead's interpretation, a per-engine placeholder that can be 0).
   The flight computer allocates across all of them. (Thrusters-only gave the Halvex Runner ~9 s per 90° turn, and the raider couldn't turn at all.)
 - **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `art/ships/halvex-runner.*` stays as the original concept art.
+- **No fixed raster graphics** (Niklas, 11 Oct 2026): all game art is vector (SVG icons, meshes, procedural shapes, vector fonts). Raster textures are generated in memory at runtime at the resolution the display needs and regenerated when zoom or DPI changes. Icons will move into the content pack (`content/base/icons/`), so mods can bring their own and the wiki can show the SVGs directly.
 - Open (11 Oct 2026): ship speed and fight length. With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build.
 
 ## Combat (decided 10 Oct 2026)
