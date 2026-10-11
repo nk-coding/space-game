@@ -20,7 +20,19 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0009](0009-spike-first-systems-before-content.md) | Spike first, keep the spike as the foundation, build systems before content | Accepted | 2026-10-10; 2026-10-11 |
 | [0010](0010-cross-platform-determinism.md) | The simulation is bit-exact deterministic across platforms | Accepted | 2026-10-10; 2026-10-11 |
 | [0011](0011-30hz-sim-60fps-interpolation.md) | 30 Hz fixed simulation, 60 fps rendering with interpolation | Accepted | 2026-10-10 |
-| [0012](0012-coordinate-frames-and-units.md) | Coordinate frames and units (1 block = 1 m) | Accepted (provisional, lead) | 2026-10-11; 1 block = 1 m was decided 2026-10-10 |
+| [0012](0012-coordinate-frames-and-units.md) | Coordinate frames and units (1 block = 1 m) | Accepted (provisional, lead) | 2026-10-11; 2026-10-10 |
+| [0013](0013-physics-backend-trait.md) | Physics sits behind a `PhysicsBackend` trait, with `FreeFlight` as the stand-in | Accepted (provisional, lead) | 2026-10-11 |
+| [0014](0014-physics-engine-by-benchmark.md) | Physics engine: picked by benchmark on game-like scenarios (choice pending) | Proposed | 2026-10-10; the engine is not chosen yet |
+| [0015](0015-ron-content-packs-and-mods.md) | Content lives in RON packs; the base game loads like a mod; mods from day one | Accepted | 2026-10-10 |
+| [0016](0016-wiki-ready-content-model.md) | Content is wiki-ready: stable ids, keyed text, stat descriptors, prose next to the data | Accepted | 2026-10-11 |
+| [0017](0017-embedded-content-in-memory-loader.md) | The base content is embedded at compile time behind a pure in-memory loader | Accepted (provisional, lead) | 2026-10-11 |
+| [0018](0018-english-only-keyed-text.md) | English only at launch; every string is keyed in data | Accepted | 2026-10-10 |
+| [0019](0019-rhai-scripting.md) | Rhai is the scripting language | Accepted | 2026-10-10 |
+| [0020](0020-style-2a-renderer.md) | Style 2a renderer: one atlas mesh per ship piece, glow sprites, sRGB compositing on an HDR camera | Accepted (provisional, lead) | 2026-10-11 |
+| [0021](0021-no-fixed-raster-graphics.md) | No fixed raster graphics: vector art, rasterised at runtime at display resolution | Accepted | 2026-10-11 |
+| [0022](0022-one-simulation-space-per-cluster.md) | One simulation space per cluster | Accepted | 2026-10-10 |
+| [0023](0023-host-authoritative-netcode.md) | Co-op netcode is host-authoritative, with join codes and a tiny relay | Accepted | 2026-10-10 |
+| [0024](0024-saves-seed-and-deltas.md) | Saves store seed, generator version and deltas, versioned with migrations | Accepted | 2026-10-10 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

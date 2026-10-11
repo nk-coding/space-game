@@ -1,9 +1,9 @@
 # ADR-0012: Coordinate frames and units (1 block = 1 m)
 
 - Status: Accepted (provisional, lead)
-- Date: 2026-10-11 (frames and units); 1 block = 1 m was decided 2026-10-10
+- Date: 2026-10-11 (frames and units); 2026-10-10 (1 block = 1 m)
 - Decided by: Niklas (1 block = 1 m); lead session (frames and units, default for Niklas to review)
-- Related: ADR-0013, GDR-0006, `docs/content-model.md` "Coordinates and geometry", `docs/sim.md` "Frames and units"
+- Related: [ADR-0013](0013-physics-backend-trait.md), GDR-0006, `docs/content-model.md` "Coordinates and geometry", `docs/sim.md` "Frames and units"
 
 ## Context
 
