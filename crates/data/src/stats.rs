@@ -19,6 +19,9 @@ pub const BUILTIN_STATS: &[&str] = &[
     "heat_vent",
     "damage",
     "thrust",
+    "gimbal",
+    "rcs_thrust",
+    "torque",
     "shield_radius",
     "cargo_capacity",
     "rule_slots",
@@ -142,6 +145,15 @@ impl Content {
         }
         if let Some(e) = &part.engine {
             v.push(("thrust", e.thrust));
+            if e.gimbal != 0.0 {
+                v.push(("gimbal", e.gimbal));
+            }
+        }
+        if let Some(r) = &part.rcs {
+            v.push(("rcs_thrust", r.thrust));
+        }
+        if let Some(g) = &part.gyro {
+            v.push(("torque", g.torque));
         }
         if let Some(s) = &part.shield {
             v.push(("shield_radius", s.radius));

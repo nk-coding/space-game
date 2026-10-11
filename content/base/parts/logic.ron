@@ -1,10 +1,10 @@
-// Logic. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// Logic. PLACEHOLDER NUMBERS (concept-board drydock values; the core torque is invented), for feel only.
 [
     (
         id: "logic_core",
         name: "Logic core",
         summary: "Hosts a copy of the ship-mind and runs its behavior rules.",
-        description: "Every logic core needs programmable matter; salvaged [[part:automaton_core|automaton cores]] are the first source.",
+        description: "Its built-in reaction wheel gives a little turning help. Every logic core needs programmable matter; salvaged [[part:automaton_core|automaton cores]] are the first source.",
         tags: ["core"],
         category: "logic",
         icon: "logic-core",
@@ -15,5 +15,6 @@
         power: (draw: 1),
         heat: (output: 0.4, limit: 3),
         logic: (rule_slots: 6),
+        gyro: (torque: 30),
     ),
 ]

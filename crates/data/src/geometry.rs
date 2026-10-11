@@ -70,6 +70,31 @@ impl Dir {
         1 << self.index()
     }
 
+    /// Outward unit normal of this side in the blueprint frame (y down): `Up` = `[0, -1]`.
+    pub fn normal(self) -> [f32; 2] {
+        let (x, y) = self.delta();
+        [x as f32, y as f32]
+    }
+
+    /// The two corners of this side of `cell`, ordered so the cell is on the right (screen view).
+    pub fn side_segment(self, (x, y): Cell) -> (GridPoint, GridPoint) {
+        match self {
+            Dir::Up => (GridPoint::new(x, y), GridPoint::new(x + 1, y)),
+            Dir::Right => (GridPoint::new(x + 1, y), GridPoint::new(x + 1, y + 1)),
+            Dir::Down => (GridPoint::new(x + 1, y + 1), GridPoint::new(x, y + 1)),
+            Dir::Left => (GridPoint::new(x, y + 1), GridPoint::new(x, y)),
+        }
+    }
+
+    /// Midpoint of this side of `cell` in metres (where an RCS nozzle sits).
+    pub fn side_center(self, (x, y): Cell) -> [f32; 2] {
+        let (dx, dy) = self.delta();
+        [
+            x as f32 + 0.5 + dx as f32 * 0.5,
+            y as f32 + 0.5 + dy as f32 * 0.5,
+        ]
+    }
+
     /// Direction after a placement's flip and rotation (`xfDir`): mirror Left/Right, then turn clockwise.
     pub fn transform(self, rot: u8, flip: bool) -> Dir {
         let mut d = self.index();
@@ -592,6 +617,24 @@ impl ShipGrid {
             n += 1;
         }
         n
+    }
+
+    /// Straight sides of part `i` whose neighbouring cell is empty: `(cell, side)`, in the order of
+    /// [`PlacedShape::connectable_sides`]. These are the RCS nozzles of a part with an `rcs` block. Stricter
+    /// than [`ShipGrid::exposure`] (the drydock's venting rule), which also counts a straight side that
+    /// faces a neighbour without linking to it (e.g. a slope face).
+    pub fn open_sides(&self, i: usize) -> Vec<(Cell, Dir)> {
+        if !self.present[i] {
+            return Vec::new();
+        }
+        self.shapes[i]
+            .connectable_sides()
+            .into_iter()
+            .filter(|&(c, d)| {
+                let (dx, dy) = d.delta();
+                self.occupant(c) == Some(i) && self.occupant((c.0 + dx, c.1 + dy)).is_none()
+            })
+            .collect()
     }
 
     /// True if any cell of part `i` is open to space (a radiator vents; `venting` in the drydock model).

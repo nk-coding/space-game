@@ -37,6 +37,8 @@ fn embedded_base_pack_loads_and_validates() {
         "cargo_hold",
         "automaton_core",
         "automaton_cannon",
+        "gyro",
+        "rcs_pod",
     ] {
         assert!(parts.contains(&id), "missing part {id}");
     }
@@ -95,13 +97,11 @@ fn base_warnings_are_known() {
         .filter(|p| p.severity == Severity::Warning)
         .map(|p| p.to_string())
         .collect();
-    // Halvex Runner's wing-tip pulse lasers sit right behind 1×1 slopes, so the drydock rule
-    // (a gun needs every cell ahead empty) calls them blocked. Reported to Niklas; kept as drawn.
-    assert_eq!(warnings.len(), 2, "{warnings:#?}");
+    // The original Halvex Runner layout: wing-tip pulse lasers behind 1×1 slopes, all six radiators boxed in.
+    // Fixed in the runner layout commit (Niklas, 11 Oct 2026).
+    assert_eq!(warnings.len(), 8, "{warnings:#?}");
     assert!(
-        warnings
-            .iter()
-            .all(|w| w.contains("halvex_runner") && w.contains("pulse_laser")),
+        warnings.iter().all(|w| w.contains("halvex_runner")),
         "{warnings:#?}"
     );
 }

@@ -17,6 +17,7 @@
         power: (output: 6),
         heat: (output: 1, limit: 4),
         logic: (rule_slots: 2),
+        gyro: (torque: 50),
     ),
     (
         id: "automaton_cannon",

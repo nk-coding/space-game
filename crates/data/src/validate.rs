@@ -55,6 +55,9 @@ struct Validator<'a> {
     out: Vec<Problem>,
 }
 
+/// Largest allowed engine gimbal, in degrees.
+pub const MAX_GIMBAL: f32 = 45.0;
+
 pub(crate) fn is_snake_id(id: &str) -> bool {
     let mut chars = id.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
@@ -318,6 +321,23 @@ impl<'a> Validator<'a> {
         }
         if let Some(x) = &p.engine {
             self.number(p, "engine.thrust", x.thrust, 0.0, true);
+            self.number(p, "engine.gimbal", x.gimbal, 0.0, false);
+            if x.gimbal > MAX_GIMBAL {
+                self.err(
+                    p,
+                    "engine.gimbal",
+                    format!("at most {MAX_GIMBAL} degrees, got {}", x.gimbal),
+                );
+            }
+        }
+        if let Some(x) = &p.gyro {
+            self.number(p, "gyro.torque", x.torque, 0.0, true);
+        }
+        if let Some(x) = &p.rcs {
+            self.number(p, "rcs.thrust", x.thrust, 0.0, true);
+            if p.hull {
+                self.err(p, "rcs", "hull parts cannot carry RCS nozzles");
+            }
         }
         if let Some(x) = &p.shield {
             self.number(p, "shield.radius", x.radius, 0.0, true);
@@ -478,6 +498,26 @@ impl<'a> Validator<'a> {
                     format!("parts[{k}]"),
                     format!(
                         "`{}` at ({}, {}) has its exhaust blocked",
+                        pl.part, pl.x, pl.y
+                    ),
+                );
+            }
+            if part.rcs.is_some() && grid.open_sides(k).is_empty() {
+                self.warn(
+                    s,
+                    format!("parts[{k}]"),
+                    format!(
+                        "`{}` at ({}, {}) has no side open to space, so no RCS nozzle",
+                        pl.part, pl.x, pl.y
+                    ),
+                );
+            }
+            if part.radiator.is_some() && !grid.is_exposed(k) {
+                self.warn(
+                    s,
+                    format!("parts[{k}]"),
+                    format!(
+                        "`{}` at ({}, {}) is boxed in and cannot vent",
                         pl.part, pl.x, pl.y
                     ),
                 );

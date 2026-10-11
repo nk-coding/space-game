@@ -263,6 +263,30 @@ pub struct WeaponSpec {
 #[serde(deny_unknown_fields)]
 pub struct EngineSpec {
     pub thrust: f32,
+    /// Maximum thrust deflection in degrees to either side of the engine's axis (0 = fixed nozzle).
+    /// The deflected thrust acts at the same point, so it adds torque without moving the engine.
+    #[serde(default)]
+    pub gimbal: f32,
+}
+
+/// Pure reaction torque about the centre of mass, in either direction, without thrust: a gyro, or the small
+/// built-in turning help of a logic core.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GyroSpec {
+    /// Maximum torque (kN·m) at full power.
+    pub torque: f32,
+}
+
+/// Reaction-control thrusters: one nozzle on every straight side of the part that is open to space (the
+/// neighbouring cell is empty), so the part needs no orientation. Each nozzle pushes the ship away from its
+/// side (the exhaust leaves through the side) at the side's centre. Nozzles appear and vanish as neighbours
+/// are built or shot away; see `ShipGrid::open_sides`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RcsSpec {
+    /// Thrust per nozzle (kN) at full power.
+    pub thrust: f32,
 }
 
 /// Projects a shield bubble over the hull around it.
@@ -376,6 +400,10 @@ pub struct Part {
     pub cargo: Option<CargoSpec>,
     #[serde(default)]
     pub logic: Option<LogicSpec>,
+    #[serde(default)]
+    pub gyro: Option<GyroSpec>,
+    #[serde(default)]
+    pub rcs: Option<RcsSpec>,
     #[serde(default)]
     pub bonuses: Vec<Bonus>,
     #[serde(skip_deserializing)]

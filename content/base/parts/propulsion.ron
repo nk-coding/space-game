@@ -1,5 +1,7 @@
-// Propulsion. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
-// Engines push towards the part's forward side and need open cells directly behind them.
+// Propulsion. PLACEHOLDER NUMBERS: thrust from the concept-board drydock; gimbal, gyro and RCS values are invented, all for feel only.
+// Engines push towards the part's forward side and need open cells directly behind them; `gimbal` swings their
+// thrust a few degrees to either side. Gyros turn the ship without thrust; RCS pods fire a nozzle out of every
+// side that is open to space.
 [
     (
         id: "thruster",
@@ -14,7 +16,7 @@
         hp: 1,
         power: (draw: 2),
         heat: (output: 0.8, limit: 3.2),
-        engine: (thrust: 12),
+        engine: (thrust: 12, gimbal: 5),
     ),
     (
         id: "torch_drive",
@@ -29,6 +31,38 @@
         hp: 4,
         power: (draw: 6),
         heat: (output: 4, limit: 5),
-        engine: (thrust: 45),
+        engine: (thrust: 45, gimbal: 3),
+    ),
+    (
+        id: "gyro",
+        name: "Gyro",
+        summary: "A spinning rotor that turns the ship without thrust.",
+        description: "Works anywhere in the hull and needs no open space, but draws power and warms up while it works.",
+        tags: ["gyro"],
+        category: "propulsion",
+        icon: "gyro",
+        size: (1, 1),
+        build_points: 4,
+        mass: 2,
+        hp: 1,
+        power: (draw: 3),
+        heat: (output: 1, limit: 4),
+        gyro: (torque: 300),
+    ),
+    (
+        id: "rcs_pod",
+        name: "RCS pod",
+        summary: "Small thrusters that fire out of every side open to space.",
+        description: "Each open side is one nozzle that pushes the ship away from that side, so the pod needs no turning. Far from the centre of mass it helps the ship turn; anywhere it lets the ship slide sideways.",
+        tags: ["rcs"],
+        category: "propulsion",
+        icon: "rcs-pod",
+        size: (1, 1),
+        build_points: 2,
+        mass: 1,
+        hp: 1,
+        power: (draw: 1),
+        heat: (output: 0.4, limit: 3),
+        rcs: (thrust: 4),
     ),
 ]
