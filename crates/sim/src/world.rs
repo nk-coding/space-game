@@ -28,6 +28,7 @@ use crate::math::{Rot, Vec2};
 use crate::physics::{BodyDesc, BodyKey, FreeFlight, PhysicsBackend, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
 use crate::ship::{Body, Ship, ShipControls};
+use crate::weapons::{BeamTrace, Bubble, Projectile};
 
 /// Scripted damage (tests, scenarios, replays).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,15 +81,22 @@ pub struct Sim<P: PhysicsBackend = FreeFlight> {
     seed: u64,
     config: SimConfig,
     rng: RngStreams,
-    ids: IdAlloc,
+    pub(crate) ids: IdAlloc,
     /// Ascending id.
-    ships: Vec<Ship>,
-    physics: P,
-    events: Vec<SimEvent>,
+    pub(crate) ships: Vec<Ship>,
+    pub(crate) physics: P,
+    pub(crate) events: Vec<SimEvent>,
     /// Events before this index belong to the previous step.
     events_mark: usize,
     tick_hash: Option<u64>,
     plans: Vec<flight::Plan>,
+    /// Live projectiles, ascending id.
+    pub(crate) projectiles: Vec<Projectile>,
+    /// Beams that fired this tick.
+    pub(crate) beams: Vec<BeamTrace>,
+    /// Shield bubbles this tick.
+    pub(crate) bubbles: Vec<Bubble>,
+    pub(crate) shield_scratch: Vec<(f32, u32)>,
 }
 
 impl Sim<FreeFlight> {
@@ -116,6 +124,10 @@ impl<P: PhysicsBackend> Sim<P> {
             events_mark: 0,
             tick_hash: None,
             plans: Vec::new(),
+            projectiles: Vec::new(),
+            beams: Vec::new(),
+            bubbles: Vec::new(),
+            shield_scratch: Vec::new(),
         }
     }
 
@@ -233,6 +245,55 @@ impl<P: PhysicsBackend> Sim<P> {
                 ShipCommand::Brain(b) => s.brain = b,
             }
         }
+    }
+
+    /// Spawns a projectile directly (tools, tests). It flies from the next step on and never hits `owner`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_projectile(
+        &mut self,
+        owner: ShipId,
+        family: data::WeaponFamily,
+        pos: Vec2,
+        vel: Vec2,
+        damage: f32,
+        pierce: u32,
+        life: f32,
+    ) -> crate::weapons::ProjectileId {
+        let id = self.ids.projectile();
+        self.projectiles.push(Projectile {
+            id,
+            owner,
+            family,
+            pos,
+            prev_pos: pos,
+            vel,
+            damage,
+            pierce: pierce.max(1),
+            life,
+            ricochets: 0,
+        });
+        self.events.push(SimEvent::ProjectileSpawned {
+            id,
+            owner,
+            pos,
+            vel,
+        });
+        id
+    }
+
+    /// Live projectiles (ascending id). Render each at `prev_pos + (pos − prev_pos) × alpha`.
+    pub fn projectiles(&self) -> &[Projectile] {
+        &self.projectiles
+    }
+
+    /// Beams that fired in the last step (draw from `from` to `to`).
+    pub fn beams(&self) -> &[BeamTrace] {
+        &self.beams
+    }
+
+    /// Shield bubbles that were up in the last step (centre, radius, capacity left).
+    pub fn bubbles(&self) -> &[Bubble] {
+        &self.bubbles
     }
 
     /// Events of the last step plus those of calls made since (spawns, direct damage resolution).
@@ -383,6 +444,10 @@ impl<P: PhysicsBackend> Sim<P> {
             s.update_systems();
         }
 
+        // Weapons (shields, projectiles, guns), then whatever they broke.
+        self.weapons_step();
+        self.resolve_breakage();
+
         // Physics.
         for s in &mut self.ships {
             let sid = s.id();
@@ -449,12 +514,17 @@ impl<P: PhysicsBackend> StateHash for Sim<P> {
             h.u64(s);
             h.u64(i);
         }
-        let (ns, np) = self.ids.raw();
+        let (ns, np, nq) = self.ids.raw();
         h.u32(ns);
         h.u32(np);
+        h.u32(nq);
         h.u32(self.ships.len() as u32);
         for s in &self.ships {
             s.hash_state(h);
+        }
+        h.u32(self.projectiles.len() as u32);
+        for p in &self.projectiles {
+            p.hash_state(h);
         }
         self.physics.hash_state(h);
     }

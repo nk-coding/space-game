@@ -76,6 +76,12 @@ pub struct ScenarioStats {
     pub overheated_part_ticks: u64,
     /// Ship-ticks with at least one gun firing.
     pub firing_ticks: u64,
+    /// Pulses and projectiles fired.
+    pub shots: u32,
+    /// Damage events on hulls, shield hits and ricochets.
+    pub hits: u32,
+    pub shield_hits: u32,
+    pub ricochets: u32,
 }
 
 pub struct Scenario {
@@ -143,6 +149,10 @@ impl Scenario {
                     self.stats.pieces_spawned += s.spawned.len() as u32;
                 }
                 SimEvent::PieceDestroyed { .. } => self.stats.pieces_destroyed += 1,
+                SimEvent::ShotFired { .. } => self.stats.shots += 1,
+                SimEvent::Hit { .. } => self.stats.hits += 1,
+                SimEvent::ShieldHit { .. } => self.stats.shield_hits += 1,
+                SimEvent::Ricochet { .. } => self.stats.ricochets += 1,
                 _ => {}
             }
         }

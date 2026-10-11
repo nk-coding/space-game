@@ -7,6 +7,8 @@ use crate::ids::{PieceId, ShipId};
 use crate::mass::MassProps;
 use crate::math::Vec2;
 use crate::ship::Body;
+use crate::weapons::{GoneReason, ProjectileId, ShotKind};
+use data::WeaponFamily;
 
 /// Everything the physics layer needs to create or update the body of one piece.
 #[derive(Clone, Debug, PartialEq)]
@@ -68,4 +70,63 @@ pub enum SimEvent {
     ShipRemoved { ship: ShipId },
     /// Two bodies started touching (reported by the physics backend; ramming damage later).
     Impact(crate::physics::Contact),
+    /// A pulse or projectile left a gun (beams are continuous: see `Sim::beams()`). `to` is where a pulse
+    /// ended (hit, shield or full range); for projectiles the end of their range if nothing stops them.
+    ShotFired {
+        ship: ShipId,
+        piece: PieceId,
+        gun: PartIdx,
+        kind: ShotKind,
+        from: Vec2,
+        to: Vec2,
+        projectile: Option<ProjectileId>,
+    },
+    /// Damage reached a part (after shields). One per part hit (beams: one per tick on target).
+    Hit {
+        by: ShipId,
+        ship: ShipId,
+        piece: PieceId,
+        part: PartIdx,
+        point: Vec2,
+        /// Surface normal at the hit, world frame.
+        normal: Vec2,
+        damage: f32,
+        /// What shields took off this shot before it hit.
+        absorbed: f32,
+        family: WeaponFamily,
+    },
+    ProjectileSpawned {
+        id: ProjectileId,
+        owner: ShipId,
+        pos: Vec2,
+        vel: Vec2,
+    },
+    ProjectileGone {
+        id: ProjectileId,
+        pos: Vec2,
+        reason: GoneReason,
+    },
+    /// A kinetic shot glanced off a slope face.
+    Ricochet {
+        id: ProjectileId,
+        point: Vec2,
+        normal: Vec2,
+        /// Velocity after the bounce.
+        vel: Vec2,
+    },
+    /// A shot entered a shield bubble, which took `absorbed` of its damage.
+    ShieldHit {
+        by: ShipId,
+        ship: ShipId,
+        piece: PieceId,
+        /// The emitter.
+        part: PartIdx,
+        /// Where the shot entered the bubble.
+        point: Vec2,
+        absorbed: f32,
+        /// Bubble capacity left.
+        left: f32,
+        /// The bubble collapsed (nothing left).
+        depleted: bool,
+    },
 }

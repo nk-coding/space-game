@@ -8,7 +8,24 @@
 
 use std::collections::BTreeMap;
 
-use data::{Blueprint, Content, Dir, Effect, PlacedShape, Selector, ShipGrid, WeaponFamily};
+use data::{
+    Blueprint, Content, Delivery, Dir, Effect, PlacedShape, Selector, ShipGrid, WeaponFamily,
+};
+
+/// Number of weapon families.
+pub const FAMILIES: usize = 6;
+
+/// Stable index of a weapon family (for per-family tables).
+pub fn family_index(f: WeaponFamily) -> usize {
+    match f {
+        WeaponFamily::Energy => 0,
+        WeaponFamily::Kinetic => 1,
+        WeaponFamily::Missile => 2,
+        WeaponFamily::Disruption => 3,
+        WeaponFamily::Drone => 4,
+        WeaponFamily::Utility => 5,
+    }
+}
 
 use crate::mass::polygon_mass;
 
@@ -66,10 +83,16 @@ pub enum Stat {
     RcsThrust,
     /// Engine gimbal, degrees to either side.
     Gimbal,
+    /// Weapon reach, m.
+    Range,
+    /// Shield bubble capacity.
+    ShieldCapacity,
+    /// Shield capacity regained per second.
+    ShieldRegen,
 }
 
 impl Stat {
-    pub const COUNT: usize = 12;
+    pub const COUNT: usize = 15;
 
     pub fn from_id(id: &str) -> Option<Stat> {
         Some(match id {
@@ -85,6 +108,9 @@ impl Stat {
             "torque" => Stat::Torque,
             "rcs_thrust" => Stat::RcsThrust,
             "gimbal" => Stat::Gimbal,
+            "range" => Stat::Range,
+            "shield_capacity" => Stat::ShieldCapacity,
+            "shield_regen" => Stat::ShieldRegen,
             _ => return None,
         })
     }
@@ -127,6 +153,10 @@ pub struct PartSpec {
     /// `FireRate` is a multiplier (1 = base).
     pub base: PartStats,
     pub weapon: Option<WeaponFamily>,
+    /// How the gun's shots travel (guns only).
+    pub delivery: Delivery,
+    /// Shield bubbles: share of each family's damage absorbed (indexed by [`family_index`]).
+    pub absorb: [f32; FAMILIES],
     pub is_engine: bool,
     /// Reaction-control pod: one nozzle per straight side open to space.
     pub is_rcs: bool,
@@ -301,10 +331,17 @@ impl ShipDesign {
             base.set(Stat::FireRate, 1.0);
             base.set(Stat::Thrust, def.engine.as_ref().map_or(0.0, |e| e.thrust));
             base.set(Stat::Gimbal, def.engine.as_ref().map_or(0.0, |e| e.gimbal));
-            base.set(
-                Stat::ShieldRadius,
-                def.shield.as_ref().map_or(0.0, |s| s.radius),
-            );
+            let shield = def.shield.as_ref();
+            base.set(Stat::ShieldRadius, shield.map_or(0.0, |s| s.radius));
+            base.set(Stat::ShieldCapacity, shield.map_or(0.0, |s| s.capacity));
+            base.set(Stat::ShieldRegen, shield.map_or(0.0, |s| s.regen));
+            base.set(Stat::Range, def.weapon.as_ref().map_or(0.0, |w| w.range));
+            let mut absorb = [0.0f32; FAMILIES];
+            if let Some(sh) = shield {
+                for (&f, &a) in &sh.absorb {
+                    absorb[family_index(f)] = a;
+                }
+            }
             base.set(Stat::Torque, def.gyro.as_ref().map_or(0.0, |g| g.torque));
             base.set(Stat::RcsThrust, def.rcs.as_ref().map_or(0.0, |r| r.thrust));
             let consumer = (power.draw > 0.0).then(|| {
@@ -333,6 +370,8 @@ impl ShipDesign {
                 inertia,
                 base,
                 weapon: def.weapon.as_ref().map(|w| w.family),
+                delivery: def.weapon.as_ref().map_or(Delivery::Beam, |w| w.delivery),
+                absorb,
                 is_engine: def.engine.is_some(),
                 is_rcs: def.rcs.is_some(),
                 is_radiator: def.radiator.is_some(),

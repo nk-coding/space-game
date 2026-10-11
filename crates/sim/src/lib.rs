@@ -50,6 +50,7 @@ pub mod physics;
 pub mod rng;
 pub mod scenario;
 pub mod ship;
+pub mod weapons;
 pub mod world;
 
 pub use alloc::{Actuation, TorqueSource};
@@ -71,6 +72,7 @@ pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,
     Wrench, inherited_velocity, thruster_wrench,
 };
+pub use weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
 pub use world::{DamageCommand, PartHit, ShipCommand, Sim, TickInputs};
 
 /// Fixed simulation rate (settled: 30 Hz).

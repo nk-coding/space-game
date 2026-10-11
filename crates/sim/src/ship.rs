@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use data::{Dir, Effect, ShipGrid};
+use data::{Delivery, Dir, Effect, ShipGrid, WeaponFamily};
 
 use crate::DT;
 use crate::alloc::{Actuation, AllocTable, TorqueSource, wrench_of};
@@ -118,6 +118,11 @@ pub struct PartState {
     pub power: f32,
     /// How hard it worked this tick, 0..1 (throttle × power for engines). Drives heat and output.
     pub work: f32,
+    /// Shield emitters: what the bubble can still absorb (0 for other parts).
+    pub shield: f32,
+    /// Shield emitters: the bubble collapsed and stays down until it has recharged
+    /// `weapons::tuning::SHIELD_RESTART` of its capacity.
+    pub shield_down: bool,
 }
 
 /// Power balance of a piece this tick.
@@ -216,6 +221,14 @@ pub struct GunMount {
     pub dps: f32,
     /// Damage per second this tick (0 unless firing, clear, powered and not overheated).
     pub output: f32,
+    pub family: WeaponFamily,
+    pub delivery: Delivery,
+    /// Reach (m).
+    pub range: f32,
+    /// Shots per second at full power with bonuses (0 for beams).
+    pub rate: f32,
+    /// Damage per pulse or projectile (`damage / base rate`; 0 for beams).
+    pub shot_damage: f32,
 }
 
 /// A connected group of parts: one rigid body.
@@ -257,6 +270,8 @@ pub struct Piece {
     pub ghost_until: u64,
     pub(crate) alloc: AllocTable,
     cores: Vec<PartIdx>,
+    /// Shield emitters.
+    pub(crate) shields: Vec<PartIdx>,
     reactors: Vec<Reactor>,
     /// Consumers in brown-out priority order.
     consumers: Vec<Consumer>,
@@ -322,6 +337,7 @@ impl Piece {
             ghost_until: 0,
             alloc: AllocTable::default(),
             cores: Vec::new(),
+            shields: Vec::new(),
             reactors: Vec::new(),
             consumers: Vec::new(),
             heaters: Vec::new(),
@@ -402,6 +418,8 @@ pub struct Ship {
     /// Global multipliers from `SimConfig` (thrust: engines and RCS; torque: gyros and cores).
     pub(crate) thrust_scale: f32,
     pub(crate) torque_scale: f32,
+    /// Seconds until each gun slot may fire again (≤ 0: ready).
+    pub(crate) gun_cooldown: Vec<f32>,
 }
 
 impl Ship {
@@ -429,6 +447,8 @@ impl Ship {
                 clear: true,
                 power: 1.0,
                 work: 0.0,
+                shield: 0.0,
+                shield_down: false,
             })
             .collect();
         let mut ship = Ship {
@@ -448,6 +468,7 @@ impl Ship {
             telemetry: FlightTelemetry::default(),
             thrust_scale: cfg.thrust_scale,
             torque_scale: cfg.torque_scale,
+            gun_cooldown: vec![0.0; design.guns.len()],
             design,
         };
         let all: Vec<PartIdx> = (0..n as u32).collect();
@@ -456,6 +477,9 @@ impl Ship {
         }
         for &p in &all {
             ship.refresh_stats(p);
+        }
+        for &p in &all {
+            ship.parts[p as usize].shield = ship.stats[p as usize].get(Stat::ShieldCapacity);
         }
         let comps = ship.components(&all);
         let main = ship.main_component(&comps);
@@ -910,11 +934,15 @@ impl Ship {
 
         // Torque sources (gyros, logic cores) and cores.
         piece.cores.clear();
+        piece.shields.clear();
         piece.torque_sources.clear();
         for &p in &piece.parts {
             let spec = &d.parts[p as usize];
             if spec.logic {
                 piece.cores.push(p);
+            }
+            if spec.is_shield {
+                piece.shields.push(p);
             }
             let t = self.stats[p as usize].get(Stat::Torque) * self.torque_scale;
             if t > 0.0 {
@@ -977,6 +1005,11 @@ impl Ship {
             } else if spec.weapon.is_some() && slot != NO_SLOT {
                 let g = &d.guns[slot as usize];
                 let fire_rate = st.get(Stat::FireRate);
+                let base_rate = match spec.delivery {
+                    Delivery::Beam => 0.0,
+                    Delivery::Pulse { rate } | Delivery::Projectile { rate, .. } => rate,
+                };
+                let damage = st.get(Stat::Damage);
                 piece.guns.push(GunMount {
                     slot,
                     part: p,
@@ -984,8 +1017,17 @@ impl Ship {
                     dir: dir_vec(g.facing),
                     clear,
                     fire_rate,
-                    dps: st.get(Stat::Damage) * fire_rate,
+                    dps: damage * fire_rate,
                     output: 0.0,
+                    family: spec.weapon.unwrap_or(WeaponFamily::Energy),
+                    delivery: spec.delivery,
+                    range: st.get(Stat::Range),
+                    rate: base_rate * fire_rate,
+                    shot_damage: if base_rate > 0.0 {
+                        damage / base_rate
+                    } else {
+                        0.0
+                    },
                 });
             }
         }
@@ -1061,6 +1103,7 @@ impl Ship {
         let Ship {
             design,
             parts,
+            stats,
             heat_k,
             pieces,
             controls,
@@ -1142,6 +1185,18 @@ impl Ship {
             for &h in &piece.heaters {
                 let ps = &mut parts[h as usize];
                 ps.work = if active && !ps.overheated { 1.0 } else { 0.0 };
+            }
+            // Shield bubbles recharge while their emitter works.
+            for &e in &piece.shields {
+                let ps = &mut parts[e as usize];
+                if ps.work > 0.0 {
+                    let st = &stats[e as usize];
+                    let cap = st.get(Stat::ShieldCapacity);
+                    ps.shield = (ps.shield + st.get(Stat::ShieldRegen) * ps.work * DT).min(cap);
+                    if ps.shield_down && ps.shield >= cap * crate::weapons::tuning::SHIELD_RESTART {
+                        ps.shield_down = false;
+                    }
+                }
             }
             piece.power = PowerState {
                 supply,
@@ -1292,6 +1347,9 @@ impl StateHash for Ship {
         h.bool(self.controls.fire);
         h.bool(self.controls.shields);
         h.u32(self.control.map_or(u32::MAX, |c| c.0));
+        for &c in &self.gun_cooldown {
+            h.f32(c);
+        }
         self.helm.hash_state(h);
         match &self.brain {
             Some(b) => {
@@ -1311,6 +1369,8 @@ impl StateHash for Ship {
             h.u32(ps.piece.0);
             h.f32(ps.power);
             h.f32(ps.work);
+            h.f32(ps.shield);
+            h.bool(ps.shield_down);
         }
         h.u32(self.pieces.len() as u32);
         for p in &self.pieces {

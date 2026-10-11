@@ -13,6 +13,7 @@ pub struct PieceId(pub u32);
 pub struct IdAlloc {
     next_ship: u32,
     next_piece: u32,
+    next_projectile: u32,
 }
 
 impl IdAlloc {
@@ -28,8 +29,14 @@ impl IdAlloc {
         id
     }
 
-    /// `(next ship id, next piece id)`, for hashing and saving.
-    pub fn raw(&self) -> (u32, u32) {
-        (self.next_ship, self.next_piece)
+    pub fn projectile(&mut self) -> crate::weapons::ProjectileId {
+        let id = crate::weapons::ProjectileId(self.next_projectile);
+        self.next_projectile = self.next_projectile.wrapping_add(1);
+        id
+    }
+
+    /// `(next ship id, next piece id, next projectile id)`, for hashing and saving.
+    pub fn raw(&self) -> (u32, u32, u32) {
+        (self.next_ship, self.next_piece, self.next_projectile)
     }
 }

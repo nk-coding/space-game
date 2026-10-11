@@ -29,13 +29,17 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
         stats.pieces_spawned,
         stats.pieces_destroyed,
         stats.overheated_part_ticks,
-        stats.firing_ticks
+        stats.firing_ticks,
+        stats.shots,
+        stats.hits,
+        stats.shield_hits,
+        stats.ricochets
     );
 }
