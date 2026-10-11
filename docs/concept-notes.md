@@ -96,6 +96,10 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
   - Chain reactions come later as an `explosion` block in content (reactors, capacitors, drives).
   - Capacitor bonus applies to parts tagged `laser` (as its text says), not to every gun.
   - Guns fire along their rotated facing.
+  - Weapons v1 (11 Oct 2026): lasers are hitscan and burn the first block; kinetic shots are simulated projectiles with penetration, recoil and ricochet off slopes (>60° from the face normal: 60% speed, 50% damage). Shots stop at the hull; they don't fly on to the next ship (revisit with railguns).
+  - Shields v1: each powered emitter projects a bubble with a recharging capacity; a shot entering it loses damage by family share (energy 1.0, kinetic 0.5, missile 1.0); overlapping bubbles stack along the shot; an emptied bubble stays down until 30% recharged.
+  - AI ships lead their projectile shots; the player's lock aims at the lead point for projectile weapons and at the target for lasers.
+- Open (11 Oct 2026): ship speed and fight length. With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and fights end ~15 s after contact. To be tuned by Niklas with live sliders in the browser.
 - **Turning (decided by Niklas, 11 Oct 2026):** three sources, all data-driven:
   - a bit of built-in turning help from logic cores (a small reaction torque);
   - dedicated parts: gyros (pure torque) and RCS thrusters (small, multi-directional);
