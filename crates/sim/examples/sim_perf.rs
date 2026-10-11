@@ -269,6 +269,7 @@ fn main() {
         let p = &world.ship(ids[0]).unwrap().pieces()[0];
         let guns = p.guns.len();
         let mut step = Vec::new();
+        let mut destroyed: Vec<usize> = Vec::new();
         let (mut live_max, mut live_sum, mut shots, mut hits) = (0usize, 0usize, 0usize, 0usize);
         for t in 0..ticks.min(150) {
             let input = if t == 0 {
@@ -282,15 +283,27 @@ fn main() {
             let live = world.projectiles().len();
             live_max = live_max.max(live);
             live_sum += live;
+            let mut d = 0;
             for e in world.events() {
                 match e {
                     sim::SimEvent::ShotFired { .. } => shots += 1,
                     sim::SimEvent::Hit { .. } => hits += 1,
+                    sim::SimEvent::PartDestroyed { .. } => d += 1,
                     _ => {}
                 }
             }
+            destroyed.push(d);
         }
         let n = step.len();
+        if std::env::var("PERF_DETAIL").is_ok() {
+            for (t, ms) in step.iter().enumerate() {
+                if *ms > 3.0 {
+                    println!("  slow tick {t}: {ms:.2} ms, destroyed parts {}", destroyed[t]);
+                }
+            }
+            let quiet: Vec<f64> = step.iter().zip(&destroyed).filter(|(_, d)| **d == 0).map(|(s, _)| *s).collect();
+            println!("  ticks without destroyed parts: {} of {n}, mean {:.3} ms", quiet.len(), quiet.iter().sum::<f64>() / quiet.len().max(1) as f64);
+        }
         let (m, p95) = stats(step);
         println!(
             "combat ({ships} gunboats, {guns} guns each, shields): step mean {m:.3} ms, p95 {p95:.3} ms; \
