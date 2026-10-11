@@ -115,3 +115,21 @@ fn flight_scenario_is_deterministic_and_busy() {
     let (c, _) = scenario::run_kind(ScenarioKind::Flight, 43, 900);
     assert!(a.iter().zip(&c).all(|(x, y)| x != y));
 }
+
+#[test]
+fn load_test_is_deterministic_and_fights() {
+    let (a, sa) = scenario::run_kind(ScenarioKind::Load(6), 42, 900);
+    let (b, sb) = scenario::run_kind(ScenarioKind::Load(6), 42, 900);
+    assert_eq!(a, b);
+    assert_eq!(sa, sb);
+    assert!(sa.shots > 20 && sa.hits > 10, "{sa:?}");
+    let sim = scenario::load_test(1, 3);
+    assert_eq!(sim.ships().len(), 1);
+    let sim = scenario::load_test(5, 3);
+    let runners = sim
+        .ships()
+        .iter()
+        .filter(|s| s.design().id == "halvex_runner")
+        .count();
+    assert_eq!((runners, sim.ships().len()), (3, 5));
+}

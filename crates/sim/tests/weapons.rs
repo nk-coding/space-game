@@ -126,7 +126,13 @@ fn pulse_laser_fires_at_its_rate() {
 fn railgun_pierces_three_blocks_and_recoils() {
     let c = content_with_railgun();
     let (mut w, s, t, d) = range(&c, "test_railgun");
-    w.step(&fire(s));
+    // The first shot comes within one period (gun cooldowns are staggered).
+    let mut ticks = 0;
+    while w.projectiles().is_empty() {
+        w.step(&fire(s));
+        ticks += 1;
+        assert!(ticks <= 31, "no shot within a second");
+    }
     assert_eq!(w.projectiles().len(), 1);
     assert!(
         w.events()
@@ -162,8 +168,19 @@ fn cannon_stops_in_the_first_block() {
     let d = custom(&c, &wall());
     // The raider's cannon sits on its centre line (x = 0); aim it down wall column 2.
     let t = w.spawn_ship(d.clone(), Body::at(Vec2::new(0.4, 20.0), 0.0));
-    for _ in 0..12 {
+    // One shot, then cease fire and let it land.
+    let mut ticks = 0;
+    while !w
+        .events()
+        .iter()
+        .any(|e| matches!(e, SimEvent::ShotFired { .. }))
+    {
         w.step(&fire(raider));
+        ticks += 1;
+        assert!(ticks <= 31, "no shot within a second");
+    }
+    for _ in 0..12 {
+        w.step(&inputs(raider, controls(1, 0.0, false, true)));
     }
     let shot = w.ship(raider).unwrap().pieces()[0].guns[0].shot_damage;
     assert!(

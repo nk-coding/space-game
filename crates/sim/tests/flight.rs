@@ -373,6 +373,7 @@ fn maneuvers_approach_orbit_and_hold() {
             maneuver: Maneuver::Approach {
                 target: beacon,
                 range: 20.0,
+                aim: sim::flight::AimMode::Auto,
             },
             fire: false,
         },
@@ -449,7 +450,11 @@ fn raider_brain_hunts_and_fires() {
             fired += 1;
         }
     }
-    assert!(closest < raider::ENGAGE_RANGE, "closest approach {closest}");
+    // The cannon reaches 75 m; the brain engages within 1.2 × that.
+    assert!(
+        closest < raider::ENGAGE * 75.0,
+        "closest approach {closest}"
+    );
     assert!(fired > 30, "fired on {fired} ticks");
     assert_eq!(
         w.ship(raider).unwrap().brain().unwrap().target,
@@ -596,5 +601,78 @@ fn raycast_finds_the_part_under_the_hit() {
     assert!(
         w.raycast(Vec2::ZERO, Vec2::new(1.0, 0.0), 100.0, Some(s))
             .is_none()
+    );
+}
+
+#[test]
+fn lead_point_intercepts_a_moving_target() {
+    use sim::flight::{intercept_time, lead_point};
+    let (shooter, shooter_vel) = (Vec2::new(3.0, -2.0), Vec2::new(1.0, 0.5));
+    let (target, target_vel) = (Vec2::new(50.0, 20.0), Vec2::new(-4.0, 9.0));
+    let speed = 90.0;
+    let aim = lead_point(shooter, shooter_vel, target, target_vel, speed);
+    let r = aim - shooter;
+    let dir = r * (1.0 / r.length());
+    let t = intercept_time(target - shooter, target_vel - shooter_vel, speed).unwrap();
+    // A shot along `dir` (plus the shooter's velocity, as the sim fires them) meets the target at time t.
+    let shot = shooter + (shooter_vel + dir * speed) * t;
+    let there = target + target_vel * t;
+    assert!((shot - there).length() < 1e-3, "{shot:?} vs {there:?}");
+    // A target faster than the shot, running away, cannot be caught: aim at it directly.
+    assert_eq!(
+        lead_point(
+            Vec2::ZERO,
+            Vec2::ZERO,
+            Vec2::new(10.0, 0.0),
+            Vec2::new(200.0, 0.0),
+            90.0
+        ),
+        Vec2::new(10.0, 0.0)
+    );
+}
+
+/// A raider on the spot (lock, drift: no flying) shooting at a raider crossing at 8 m/s, 50 m away.
+fn crossing_hits(aim: sim::flight::AimMode) -> usize {
+    let c = content();
+    let mut w = sim::Sim::new(9);
+    let shooter = w.spawn_ship(design(&c, "automaton_raider"), Body::default());
+    let target = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        Body {
+            pos: Vec2::new(-20.0, 50.0),
+            linvel: Vec2::new(8.0, 0.0),
+            ..Body::default()
+        },
+    );
+    let input = PilotInput {
+        lock: Some(Target::Ship(target)),
+        fire: true,
+        drift: true,
+        aim,
+        ..Default::default()
+    };
+    w.command(shooter, ShipCommand::Pilot(input));
+    let mut hits = 0;
+    for _ in 0..150 {
+        w.step(&TickInputs::default());
+        hits += w
+            .events()
+            .iter()
+            .filter(|e| matches!(e, SimEvent::Hit { ship, by, .. } if *ship == target && *by == shooter))
+            .count();
+    }
+    hits
+}
+
+#[test]
+fn leading_hits_a_crossing_target() {
+    let lead = crossing_hits(sim::flight::AimMode::Lead);
+    let auto = crossing_hits(sim::flight::AimMode::Auto);
+    let direct = crossing_hits(sim::flight::AimMode::Target);
+    assert!(lead >= 3, "lead: {lead} hits");
+    assert_eq!(auto, lead, "a cannon ship leads by default");
+    assert!(
+        direct < lead,
+        "aiming at the target: {direct} hits, leading: {lead}"
     );
 }
