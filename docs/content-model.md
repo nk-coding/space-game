@@ -76,8 +76,9 @@ Display information for every number the UI and wiki show: `name` (label), `summ
 may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`Higher`, `Lower`, `Neutral`, for
 green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
 the game requires these ids: `build_points mass hp power_output power_draw heat_output heat_limit heat_vent
-damage thrust shield_radius cargo_capacity rule_slots mass_per_cell hp_per_cell build_point_factor`.
-`fire_rate` is a bonus-only stat. Units (`t`, `kN`, `MW`) are placeholders; only 1 cell = 1 m is decided.
+damage thrust gimbal rcs_thrust torque shield_radius cargo_capacity rule_slots mass_per_cell hp_per_cell
+build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are placeholders
+except that the sim reads mass in t, thrust in kN and torque in kN·m (so kN / t = m/s²); 1 cell = 1 m.
 
 ### Categories (`categories.ron`)
 
@@ -134,7 +135,9 @@ Optional component blocks (a part has any combination):
 | `heat` | `output`, `limit` | heat at full load; shutdown level (none = never) |
 | `radiator` | `vent` | heat dumped per straight side open to space |
 | `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second) | fixed gun, fires along the part's forward side, needs a clear line of fire |
-| `engine` | `thrust` | pushes along the part's forward side, needs open cells right behind it |
+| `engine` | `thrust`, `gimbal` (degrees, default 0, at most 45) | pushes along the part's forward side, needs open cells right behind it; can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque |
+| `gyro` | `torque` (kN·m) | pure reaction torque about the centre of mass, either direction, no thrust. On the gyro part, and as the small built-in turning help of logic cores |
+| `rcs` | `thrust` (kN per nozzle) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre |
 | `shield` | `radius` (m) | bubble over the hull around it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots` | hosts a mind, runs behavior rules |
@@ -156,6 +159,14 @@ bonuses: [(target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [
 mod add a new capacitor or a new laser without editing existing parts. Note: the concept-board drydock gave
 the capacitor bonus to every gun; the content gives it to parts tagged `laser`, as the part text says.
 
+**Turning** (decided 11 Oct 2026) comes from three sources the flight computer allocates across: the `gyro`
+torque of logic cores and gyro parts, RCS pods, and engines (differential thrust plus `gimbal`). RCS is its own
+block rather than an engine mode on purpose: code that handles `engine` (rear exhaust, clear-exhaust rule) must
+never mistake an RCS pod for a rear engine, and the wiki can describe it on its own. Power draw of a gyro or RCS
+pod is "at full use"; how draw and heat scale with use is up to the sim. The gyro sits in the `propulsion`
+category (it moves the ship, draws power like the engines and shares their brown-out tier and colour), not
+`logic`.
+
 **Slopes** must be one cell high (`size: (w, 1)`) and hull parts. Steep variants come from rotation.
 
 ### Ships (`ships/<id>.ron`)
@@ -176,8 +187,18 @@ the capacitor bonus to every gun; the content gives it to parts tagged `laser`, 
 (default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise). The index of a
 placement in `parts` is the part index used by the geometry API.
 
-Base ships: `halvex_runner` (exact conversion of `art/ships/halvex-runner.layout.json`), `automaton_raider`
-(from `art/ships/automaton-raider.svg`), `sample_early` and `sample_mid` (from the concept-board drafts).
+Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raider.svg`), `sample_early` and
+`sample_mid` (from the concept-board drafts).
+
+The Halvex Runner started as an exact conversion of `art/ships/halvex-runner.layout.json`. On 11 Oct 2026 Niklas
+decided that its layout must work under the drydock rules. The **content blueprint is now the source of truth**
+and `art/ships/halvex-runner.*` stays the original concept art. The adjusted layout keeps the occupied cells, the
+spine (beams, fusion reactor, torch drive, thrusters), the slopes and the left/right symmetry. The wing-tip pulse
+lasers moved up into the wing shoulders, replacing the two 1×1 slopes that blocked their line of fire, so the
+outline differs from the art's `outline_path` only there. The radiators now vent (wing tips and tail row), the
+logic cores and shield emitters moved away from the fusion reactor's heat, and two gyros were added. The tests
+check exactly that: same cells, outline = art outline except the two shoulder vertices, unchanged spine, mirror
+symmetry, and no rule warnings. Every base ship validates without warnings.
 
 ## Coordinates and geometry
 
@@ -197,6 +218,12 @@ All in the **blueprint frame**, 1 cell = 1 m:
   same piece covers it with a straight side.
 - **Guns** need every cell straight ahead of their facing side empty, to the edge of the grid. **Engines** need
   the cells directly behind their back side empty. "Facing" is local forward turned by `rot`/`flip`.
+- **Open to space**, two rules:
+  - `ShipGrid::exposure(cell)` (the drydock's venting rule, used for radiators and heat loss): straight sides
+    not linked to a neighbour, plus one for a slope face. A straight side facing a slope's face counts.
+  - `ShipGrid::open_sides(part)` (stricter, used for RCS nozzles): straight sides whose neighbouring cell is
+    empty. Each entry `(cell, dir)` is one nozzle at `dir.side_center(cell)`; its force points along
+    `-dir.normal()`, pushing the ship away from that side.
 - Polygons and hull segments wind so the solid is on the right when walking them on screen (positive
   shoelace area with y down).
 - **For a y-up renderer (Bevy):** `world = (x, −y)`; rotation is `−rot × 90°` about z; the flip is a mirror in
@@ -204,8 +231,9 @@ All in the **blueprint frame**, 1 cell = 1 m:
   footprint size, mirrored if `flip`, then turned.
 
 These rules are a port of `docs/concept/reference/drydock-model.js` and `drawHullGlow` in
-`concept-board-script.js`; the tests check Halvex Runner tile-for-tile and its hull edge against the
-layout's `outline_path`.
+`concept-board-script.js`; the tests check the raider's hull edge against its SVG outline, the Halvex Runner's
+against the concept art's `outline_path` (except the two adjusted wing shoulders), and the drydock-model cases
+(slope links, mirroring, rotation).
 
 ## References and links
 
@@ -257,7 +285,9 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, wiki pages for missing entries, broken or malformed links.
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
-  an engine with a blocked exhaust.
+  an engine with a blocked exhaust, an RCS part without any side open to space, a radiator that cannot vent.
+- Turning parts: `engine.gimbal` between 0 and 45 degrees, `gyro.torque` and `rcs.thrust` above 0, no `rcs` on
+  hull parts.
 
 ## The wiki
 
@@ -300,6 +330,8 @@ let main = grid.main_piece(&pieces, |i| part_of(i).logic.is_some());
 let edges = grid.piece_hull_edges(&pieces, main.unwrap()); // Vec<HullSegment>, as drawHullGlow
 let loops = data::geometry::hull_loops(&edges);          // closed outlines, collinear points merged
 grid.bounds(); grid.line_of_fire_clear(i); grid.exhaust_clear(i); grid.remove(i); grid.shape(i).centroid();
+grid.open_sides(i);                                      // Vec<((x, y), Dir)>: RCS nozzles of part i
+dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
 content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
