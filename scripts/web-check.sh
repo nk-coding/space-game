@@ -62,7 +62,7 @@ status=$?
 set -e
 # Console output without the long wasm stack frames; panics and page errors go first so they can't be missed.
 problems=$(grep -E "panicked at|\[pageerror\]|^error: " "$LOG" | head -20 || true)
-grep -vE "^\s+at " "$LOG" | tail -40
+{ grep -vE "^\s+at " "$LOG" || true; } | tail -40
 rm -f "$LOG"
 echo "== screenshot: $OUT (browser exit $status)"
 if [ -n "$problems" ]; then
