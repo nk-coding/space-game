@@ -26,8 +26,8 @@ use std::collections::BTreeMap;
 
 use rapier2d::prelude::{
     ActiveHooks, ColliderBuilder, ColliderHandle, MassProperties, PairFilterContext, PhysicsHooks,
-    PhysicsPipeline, PhysicsWorld, Pose, QueryFilter, Ray, RigidBody, RigidBodyBuilder,
-    RigidBodyHandle, Rotation, SharedShape, SolverFlags, Vector,
+    PhysicsPipeline, PhysicsWorld, Pose, QueryFilter, Ray, RigidBody, RigidBodyActivation,
+    RigidBodyBuilder, RigidBodyHandle, Rotation, SharedShape, SolverFlags, Vector,
 };
 
 use crate::DT;
@@ -65,7 +65,7 @@ pub struct RayHit {
 pub struct Contact {
     pub a: BodyKey,
     pub b: BodyKey,
-    /// World contact point on `a`'s surface: the impulse-weighted centre of the strongest manifold.
+    /// World contact point on `a`'s surface: the impulse-weighted centre of all contact points.
     pub point: Vec2,
     /// World normal from `a` to `b`.
     pub normal: Vec2,
@@ -192,6 +192,7 @@ fn configure_body(rb: &mut RigidBody, t: &PhysicsTuning) {
     let a = rb.activation_mut();
     if t.sleep_speed > 0.0 {
         a.normalized_linear_threshold = t.sleep_speed;
+        a.angular_threshold = RigidBodyActivation::default_angular_threshold();
         a.time_until_sleep = t.sleep_time;
     } else {
         a.normalized_linear_threshold = -1.0;

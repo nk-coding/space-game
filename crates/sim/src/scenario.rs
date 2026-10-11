@@ -99,6 +99,9 @@ pub struct ScenarioStats {
     pub ricochets: u32,
     /// Rhai condition evaluations.
     pub script_evals: u64,
+    /// Collisions (`SimEvent::Impact`) and those that dealt ramming damage.
+    pub impacts: u32,
+    pub rams: u32,
 }
 
 pub struct Scenario {
@@ -190,6 +193,10 @@ impl Scenario {
                 SimEvent::Hit { .. } => self.stats.hits += 1,
                 SimEvent::ShieldHit { .. } => self.stats.shield_hits += 1,
                 SimEvent::Ricochet { .. } => self.stats.ricochets += 1,
+                SimEvent::Impact(c) => {
+                    self.stats.impacts += 1;
+                    self.stats.rams += (c.damage > 0.0) as u32;
+                }
                 _ => {}
             }
         }

@@ -36,7 +36,7 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
@@ -48,6 +48,8 @@ fn main() {
         stats.hits,
         stats.shield_hits,
         stats.ricochets,
-        stats.script_evals
+        stats.script_evals,
+        stats.impacts,
+        stats.rams
     );
 }

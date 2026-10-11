@@ -2165,6 +2165,7 @@ dependencies = [
  "data",
  "serde",
  "serde_json",
+ "sim",
 ]
 
 [[package]]
