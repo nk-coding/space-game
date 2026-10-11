@@ -1,5 +1,5 @@
 //! With the `embed` feature, generates `$OUT_DIR/base_pack.rs`: a list of `(path, contents)` pairs for every
-//! file of `content/base` except `wiki/` (wiki prose is for tools, never loaded by the game).
+//! `.ron` and `.svg` file of `content/base` except `wiki/` (wiki prose is for tools, never loaded by the game).
 //! `include_str!` makes rustc track every file; `rerun-if-changed` on the directory catches added files.
 
 use std::fmt::Write as _;
@@ -50,7 +50,7 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
         }
         if path.is_dir() {
             collect(root, &path, out);
-        } else if path.extension().is_some_and(|e| e == "ron") {
+        } else if path.extension().is_some_and(|e| e == "ron" || e == "svg") {
             out.push((rel.join("/"), path));
         }
     }

@@ -32,6 +32,8 @@ pub struct Pack {
     pub ships: Vec<Blueprint>,
     pub behavior_nodes: Vec<BehaviorNode>,
     pub behaviors: Vec<Behavior>,
+    /// `icons/<key>.svg`, sorted by key.
+    pub icons: Vec<Icon>,
     pub wiki: Vec<WikiPage>,
 }
 
@@ -42,11 +44,13 @@ impl Pack {
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
     ///   `materials`, `parts`, `ships`, `behavior_nodes`, `behaviors`. A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
-    /// * Anything else that is not `.ron` is ignored (READMEs, `.gitkeep`); unknown `.ron` files are errors.
+    /// * Anything else that is not `.ron` or `.svg` is ignored (READMEs, `.gitkeep`); unknown `.ron` files and
+    ///   `.svg` files outside `icons/` are errors.
     ///
     /// Files are processed in sorted path order. Errors: parse errors, unknown `.ron` locations, malformed
-    /// wiki paths, and ids defined twice within this pack (ids repeated across packs are overrides).
+    /// wiki and icon paths, and ids defined twice within this pack (ids repeated across packs are overrides).
     pub fn from_files<P: AsRef<str>, C: AsRef<str>>(
         files: impl IntoIterator<Item = (P, C)>,
     ) -> Result<Pack, Vec<Problem>> {
@@ -98,6 +102,7 @@ impl Pack {
             ships: Vec::new(),
             behavior_nodes: Vec::new(),
             behaviors: Vec::new(),
+            icons: Vec::new(),
             wiki: Vec::new(),
         };
 
@@ -133,6 +138,24 @@ impl Pack {
                     _ => problems.push(
                         Problem::error(
                             "unknown content file location; RON files belong in stats, categories, factions, materials, parts, ships, behavior_nodes or behaviors",
+                        )
+                        .at(&src),
+                    ),
+                }
+            } else if path.ends_with(".svg") {
+                let key = path
+                    .strip_prefix("icons/")
+                    .and_then(|f| f.strip_suffix(".svg"))
+                    .filter(|k| crate::art_keys::is_icon_key(k));
+                match key {
+                    Some(key) => pack.icons.push(Icon {
+                        key: key.to_string(),
+                        svg: text.to_string(),
+                        source: src,
+                    }),
+                    None => problems.push(
+                        Problem::error(
+                            "SVG files must be icons/<key>.svg with a kebab-case key (lowercase letters, digits and -)",
                         )
                         .at(&src),
                     ),
@@ -264,6 +287,8 @@ pub struct Content {
     pub ships: Table<Blueprint>,
     pub behavior_nodes: Table<BehaviorNode>,
     pub behaviors: Table<Behavior>,
+    /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
+    pub icons: BTreeMap<String, Icon>,
     /// Wiki prose keyed `"<kind>:<id>"` (e.g. `"part:fission_reactor"`). Empty in the game build.
     pub wiki: BTreeMap<String, WikiPage>,
 }
@@ -306,6 +331,9 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.behaviors.upsert(e)));
+            for i in &p.icons {
+                c.icons.insert(i.key.clone(), i.clone());
+            }
             for w in &p.wiki {
                 c.wiki
                     .insert(format!("{}:{}", w.kind.key(), w.id), w.clone());
@@ -364,6 +392,12 @@ impl Content {
     /// Wiki prose for an entry, if a pack provides it (tools only; the game build embeds no wiki files).
     pub fn wiki_page(&self, kind: Kind, id: &str) -> Option<&WikiPage> {
         self.wiki.get(&format!("{}:{}", kind.key(), id))
+    }
+
+    /// The SVG source of an icon (`key` as in `Part::icon`), from the last loaded pack that has
+    /// `icons/<key>.svg`. The client rasterises it at the resolution it needs; the wiki shows it as is.
+    pub fn icon_svg(&self, key: &str) -> Option<&str> {
+        self.icons.get(key).map(|i| i.svg.as_str())
     }
 
     /// The system colour key for a part's icon: the part's own `color`, else its category's.

@@ -36,6 +36,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0025](0025-main-repo-holds-only-chosen-code.md) | The main repo holds only chosen code; experiments and benchmarks live in separate local repos | Accepted | 2026-10-11 |
 | [0026](0026-behavior-programs-text-in-content.md) | Behavior programs are text lines in RON, parsed in `data`, compiled once and evaluated from one snapshot without allocation | Accepted | 2026-10-11; 2026-10-12 |
 | [0027](0027-rhai-sandbox-and-determinism.md) | Rhai runs as a raw, sandboxed engine with f32 floats, no `**`, libm math and an operation budget | Accepted | 2026-10-11; 2026-10-12 |
+| [0028](0028-icons-in-the-content-pack.md) | Icons live in the content pack as SVG text, loaded and validated by `data` | Accepted (provisional, lead) | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

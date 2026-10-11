@@ -146,6 +146,75 @@ fn layout_errors() {
     ]);
 }
 
+const ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" fill="#8cefdb"/></svg>"##;
+
+#[test]
+fn mods_add_and_override_icons() {
+    let m = pack(&[
+        ("pack.ron", MOD_MANIFEST),
+        ("icons/pulse-laser.svg", ICON),
+        ("icons/twin-laser.svg", ICON),
+        ("icons/README.md", "Icons of the test mod."),
+        (
+            "parts/twin.ron",
+            r#"(id: "twin_laser", name: "Twin laser", summary: "Two lasers.", tags: ["laser"], category: "weapons",
+                icon: "twin-laser", size: (2, 1), build_points: 6, mass: 4, hp: 2, power: (draw: 8),
+                weapon: (family: Energy, damage: 2, range: 50))"#,
+        ),
+    ]);
+    let base_only = Content::load(&[base()]).unwrap();
+    let c = Content::load(&[base(), m]).unwrap_or_else(|p| panic!("{}", show(&p)));
+    assert_eq!(c.icon_svg("pulse-laser"), Some(ICON));
+    assert_eq!(c.icons["pulse-laser"].source.pack, "test_mod");
+    assert_eq!(c.icon_svg("twin-laser"), Some(ICON));
+    assert_ne!(c.icon_svg("thruster"), None);
+    assert_eq!(c.icons.len(), base_only.icons.len() + 1);
+}
+
+#[test]
+fn icon_errors_and_warnings() {
+    // A part whose icon no pack provides.
+    let e = errors_with(
+        "parts/p.ron",
+        &format!("({PART_HEAD}, category: \"power\", mass: 1, hp: 1, icon: \"warp-core\")"),
+    );
+    assert_error(&e, "p", "icon", "no loaded pack has icons/warp-core.svg");
+    // SVG files belong in icons/ and need a kebab-case key.
+    for path in ["icons/Bad_Key.svg", "parts/x.svg", "icons/sub/x.svg"] {
+        let err = Pack::from_files([("pack.ron", MOD_MANIFEST), (path, ICON)]).unwrap_err();
+        assert!(
+            err[0].message.contains("icons/<key>.svg"),
+            "{path}: {}",
+            err[0]
+        );
+    }
+    // A broken SVG is an error at its file; an icon nothing uses is a warning.
+    let m = pack(&[
+        ("pack.ron", MOD_MANIFEST),
+        (
+            "icons/broken.svg",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"><g></svg>",
+        ),
+        ("icons/spare.svg", ICON),
+    ]);
+    let problems = data::validate(&Content::merge(&[base(), m]));
+    let broken = problems
+        .iter()
+        .find(|p| p.message.contains("icon `broken`"))
+        .unwrap_or_else(|| panic!("{}", show(&problems)));
+    assert!(
+        broken.is_error() && broken.message.contains("closes <g>"),
+        "{broken}"
+    );
+    assert_eq!(broken.source.as_ref().unwrap().file, "icons/broken.svg");
+    let spare = problems
+        .iter()
+        .find(|p| p.message.contains("icon `spare`"))
+        .unwrap();
+    assert_eq!(spare.severity, Severity::Warning);
+    assert!(spare.message.contains("not used"), "{spare}");
+}
+
 #[test]
 fn duplicate_ids_within_a_pack() {
     let part = r#"(id: "dup", name: "D", summary: "S.", category: "hull", size: (1, 1), build_points: 1, hull: true)"#;

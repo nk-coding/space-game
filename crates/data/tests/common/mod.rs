@@ -11,14 +11,17 @@ pub fn repo_root() -> PathBuf {
         .unwrap()
 }
 
-/// All `.ron` and `.md` files of a pack directory (tests may touch the filesystem; the crate may not).
+/// All `.ron`, `.md` and `.svg` files of a pack directory (tests may touch the filesystem; the crate may not).
 pub fn read_dir_files(dir: &Path) -> Vec<(String, String)> {
     fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
         for e in std::fs::read_dir(dir).unwrap() {
             let p = e.unwrap().path();
             if p.is_dir() {
                 walk(root, &p, out);
-            } else if p.extension().is_some_and(|x| x == "ron" || x == "md") {
+            } else if p
+                .extension()
+                .is_some_and(|x| x == "ron" || x == "md" || x == "svg")
+            {
                 let rel = p
                     .strip_prefix(root)
                     .unwrap()

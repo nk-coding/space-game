@@ -19,7 +19,7 @@ pub const ARMOR_TONES: &[&str] = &["steel", "composite", "reactive", "enemy"];
 /// Hull glow colours: "player" = `ship.hull_glow.color` (teal), "enemy" = `ship.hull_glow.enemy_color` (coral).
 pub const GLOWS: &[&str] = &["player", "enemy"];
 
-/// Icon keys are file stems in `art/icons` (`<key>.svg`, `<key>.icon-only.svg`): lowercase kebab-case.
+/// Icon keys name `icons/<key>.svg` in a content pack: lowercase kebab-case.
 pub fn is_icon_key(key: &str) -> bool {
     !key.is_empty()
         && key.split('-').all(|w| {

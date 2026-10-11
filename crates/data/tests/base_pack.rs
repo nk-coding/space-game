@@ -1,7 +1,5 @@
 mod common;
 
-use std::collections::BTreeSet;
-
 use common::*;
 use data::{Kind, Severity};
 
@@ -64,29 +62,34 @@ fn disk_pack_with_wiki_validates() {
 }
 
 #[test]
-fn icon_keys_exist_in_art() {
-    let icons: BTreeSet<String> = std::fs::read_dir(repo_root().join("art/icons"))
-        .unwrap()
-        .map(|e| {
-            e.unwrap()
-                .file_name()
-                .to_string_lossy()
-                .split('.')
-                .next()
-                .unwrap()
-                .to_string()
-        })
-        .collect();
-    let opts = data::ValidateOptions {
-        icon_keys: Some(icons),
-    };
-    let problems = data::validate_with(&content(), &opts);
-    let errors: Vec<_> = problems.iter().filter(|p| p.is_error()).cloned().collect();
-    assert!(errors.is_empty(), "{}", show(&errors));
-    // Every non-hull part has an icon.
-    for p in content().parts.iter().filter(|p| !p.hull) {
-        assert!(p.icon.is_some(), "{} has no icon", p.id);
+fn icons_are_embedded_with_the_pack() {
+    let c = content();
+    // Every non-hull part and every material has an icon, served from the pack as SVG text.
+    for p in c.parts.iter().filter(|p| !p.hull) {
+        let key = p
+            .icon
+            .as_deref()
+            .unwrap_or_else(|| panic!("{} has no icon", p.id));
+        let svg = c
+            .icon_svg(key)
+            .unwrap_or_else(|| panic!("no icons/{key}.svg"));
+        assert_eq!(data::svg::check_svg(svg), Ok(()), "{key}");
     }
+    for m in c.materials.iter() {
+        assert!(c.icon_svg(m.icon.as_deref().unwrap()).is_some(), "{}", m.id);
+    }
+    let icon = &c.icons["pulse-laser"];
+    assert_eq!(icon.source.file, "icons/pulse-laser.svg");
+    assert!(
+        data::base_pack_files()
+            .iter()
+            .any(|(path, _)| *path == "icons/pulse-laser.svg")
+    );
+    // The disk pack (tools) loads the same icons.
+    assert_eq!(
+        data::Content::merge(&[base_pack_with_wiki()]).icons.len(),
+        c.icons.len()
+    );
 }
 
 #[test]

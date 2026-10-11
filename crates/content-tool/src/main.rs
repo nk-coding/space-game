@@ -1,7 +1,7 @@
 //! `content-tool`: validate content packs, export the resolved content as JSON, list entries.
 //!
 //! ```text
-//! content-tool validate [--icons <dir> | --no-icons] [pack_dir...]
+//! content-tool validate [pack_dir...]
 //! content-tool export-json <out.json | -> [pack_dir...]
 //! content-tool list <kind> [pack_dir...]
 //! ```
@@ -14,17 +14,16 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use data::geometry::hull_loops;
-use data::{Content, Entry, Kind, Pack, Problem, Severity, ValidateOptions, text_key};
+use data::{Content, Entry, Kind, Pack, Problem, Severity, text_key};
 use serde_json::{Value, json};
 
 const USAGE: &str = "usage:
-  content-tool validate [--icons <dir> | --no-icons] [pack_dir...]
+  content-tool validate [pack_dir...]
   content-tool export-json <out.json | -> [pack_dir...]
   content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, ship,
                                              behavior_node, behavior, page
 
-Pack dirs load in order; later packs override earlier ones by id. Default: content/base.
-validate checks icon keys against <first pack>/../../art/icons when that directory exists.";
+Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
 /// Version of the JSON export layout (bump on breaking changes for external readers).
 const EXPORT_FORMAT_VERSION: u32 = 1;
@@ -122,7 +121,7 @@ fn report(problems: &[(Problem, Option<PathBuf>)]) -> (usize, usize) {
 }
 
 /// Loads, merges and validates; prints every problem. `Err` if there are errors.
-fn load_content(dirs: &[PathBuf], opts: &ValidateOptions) -> Result<(Content, usize), String> {
+fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
     let loaded = match load_packs(dirs) {
         Ok(l) => l,
         Err(problems) => {
@@ -131,7 +130,7 @@ fn load_content(dirs: &[PathBuf], opts: &ValidateOptions) -> Result<(Content, us
         }
     };
     let content = Content::merge(&loaded.packs);
-    let mut found = data::validate_with(&content, opts);
+    let mut found = data::validate(&content);
     // Behavior nodes must match what the sim implements; Rhai conditions must compile. Only meaningful once
     // the content itself is valid.
     if !found.iter().any(Problem::is_error) {
@@ -156,47 +155,9 @@ fn load_content(dirs: &[PathBuf], opts: &ValidateOptions) -> Result<(Content, us
 }
 
 fn validate(args: &[String]) -> Result<(), String> {
-    let mut icons: Option<Option<PathBuf>> = None;
-    let mut rest = Vec::new();
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--icons" => {
-                icons = Some(Some(PathBuf::from(
-                    it.next().ok_or("--icons needs a directory")?,
-                )))
-            }
-            "--no-icons" => icons = Some(None),
-            _ => rest.push(a.clone()),
-        }
-    }
-    let dirs = pack_dirs(&rest);
-    let icon_dir = match icons {
-        Some(explicit) => explicit,
-        None => dirs[0]
-            .join("../../art/icons")
-            .canonicalize()
-            .ok()
-            .filter(|d| d.is_dir()),
-    };
-    let mut opts = ValidateOptions::default();
-    if let Some(dir) = &icon_dir {
-        let keys: BTreeSet<String> = std::fs::read_dir(dir)
-            .map_err(|e| format!("cannot read icon directory {}: {e}", dir.display()))?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .split('.')
-                    .next()
-                    .map(str::to_string)
-            })
-            .collect();
-        opts.icon_keys = Some(keys);
-    }
-    let (content, warnings) = load_content(&dirs, &opts)?;
+    let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} ships, {} behavior nodes, {} behaviors, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} ships, {} behavior nodes, {} behaviors, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
@@ -205,15 +166,12 @@ fn validate(args: &[String]) -> Result<(), String> {
         content.ships.len(),
         content.behavior_nodes.len(),
         content.behaviors.len(),
+        content.icons.len(),
         content.wiki.len()
     );
     let packs: Vec<&str> = content.packs.iter().map(|p| p.id.as_str()).collect();
-    let icons_note = match &icon_dir {
-        Some(d) => format!("icons checked against {}", d.display()),
-        None => "icons not checked".into(),
-    };
     println!(
-        "ok: packs [{}]: {counts}; {warnings} warning(s); {icons_note}",
+        "ok: packs [{}]: {counts}; {warnings} warning(s)",
         packs.join(", ")
     );
     Ok(())
@@ -224,7 +182,7 @@ fn list(args: &[String]) -> Result<(), String> {
         .first()
         .and_then(|k| Kind::from_key(k))
         .ok_or_else(|| USAGE.to_string())?;
-    let (c, _) = load_content(&pack_dirs(&args[1..]), &ValidateOptions::default())?;
+    let (c, _) = load_content(&pack_dirs(&args[1..]))?;
     fn rows<T: Entry>(items: &[T]) -> Vec<(String, String, String)> {
         items
             .iter()
@@ -269,7 +227,7 @@ fn list(args: &[String]) -> Result<(), String> {
 
 fn export_json(args: &[String]) -> Result<(), String> {
     let out = args.first().ok_or_else(|| USAGE.to_string())?;
-    let (c, _) = load_content(&pack_dirs(&args[1..]), &ValidateOptions::default())?;
+    let (c, _) = load_content(&pack_dirs(&args[1..]))?;
     let text = serde_json::to_string_pretty(&export(&c)).map_err(|e| e.to_string())?;
     if out == "-" {
         println!("{text}");
@@ -441,6 +399,29 @@ fn export(c: &Content) -> Value {
             v
         })
         .collect();
+    // Icons as SVG text (the wiki can inline them or write them out as files), with what uses them.
+    let icons: Vec<Value> = c
+        .icons
+        .values()
+        .map(|i| {
+            let users = |keys: Vec<(&str, Option<&str>)>| -> Vec<String> {
+                keys.into_iter()
+                    .filter(|(_, k)| *k == Some(i.key.as_str()))
+                    .map(|(id, _)| id.to_string())
+                    .collect()
+            };
+            json!({
+                "key": i.key,
+                "svg": i.svg,
+                "source": i.source,
+                "used_by": {
+                    "parts": users(c.parts.iter().map(|p| (p.id.as_str(), p.icon.as_deref())).collect()),
+                    "materials": users(c.materials.iter().map(|m| (m.id.as_str(), m.icon.as_deref())).collect()),
+                    "categories": users(c.categories.iter().map(|k| (k.id.as_str(), k.icon.as_deref())).collect()),
+                },
+            })
+        })
+        .collect();
     let pages: Vec<Value> = c
         .wiki
         .values()
@@ -460,6 +441,7 @@ fn export(c: &Content) -> Value {
         "ships": ships,
         "behavior_nodes": behavior_nodes,
         "behaviors": behaviors,
+        "icons": icons,
         "pages": pages,
         "texts": c.texts(),
     })

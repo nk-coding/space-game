@@ -20,6 +20,7 @@ pub mod load;
 pub mod model;
 pub mod problem;
 pub mod stats;
+pub mod svg;
 pub mod table;
 pub mod text;
 pub mod validate;
@@ -37,7 +38,7 @@ pub use problem::{Problem, Severity};
 pub use stats::{BonusInfo, StatLine};
 pub use table::Table;
 pub use text::{Link, parse_links, text_key};
-pub use validate::{ValidateOptions, validate, validate_with};
+pub use validate::validate;
 
 #[cfg(feature = "embed")]
 mod embedded {

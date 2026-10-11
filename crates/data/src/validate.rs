@@ -10,25 +10,10 @@ use crate::problem::Problem;
 use crate::stats::BUILTIN_STATS;
 use crate::text::parse_links;
 
-/// Extra checks that need data from outside the content (native tools).
-#[derive(Clone, Debug, Default)]
-pub struct ValidateOptions {
-    /// Known icon keys (file stems in `art/icons`). `None` skips the existence check.
-    pub icon_keys: Option<BTreeSet<String>>,
-}
-
 /// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns
-/// or engines).
+/// or engines, unused icons).
 pub fn validate(c: &Content) -> Vec<Problem> {
-    validate_with(c, &ValidateOptions::default())
-}
-
-pub fn validate_with(c: &Content, opts: &ValidateOptions) -> Vec<Problem> {
-    let mut v = Validator {
-        c,
-        opts,
-        out: Vec::new(),
-    };
+    let mut v = Validator { c, out: Vec::new() };
     v.packs();
     v.stats();
     v.entries(c.categories.as_slice(), |v, e| {
@@ -50,13 +35,13 @@ pub fn validate_with(c: &Content, opts: &ValidateOptions) -> Vec<Problem> {
     v.entries(c.ships.as_slice(), |v, e| v.ship(e));
     v.entries(c.behavior_nodes.as_slice(), |v, e| v.behavior_node(e));
     v.entries(c.behaviors.as_slice(), |v, e| v.behavior(e));
+    v.icons();
     v.wiki();
     v.out
 }
 
 struct Validator<'a> {
     c: &'a Content,
-    opts: &'a ValidateOptions,
     out: Vec<Problem>,
 }
 
@@ -203,12 +188,41 @@ impl<'a> Validator<'a> {
             self.err(
                 e,
                 field,
-                format!("icon key `{key}` must be kebab-case (an art/icons file stem)"),
+                format!("icon key `{key}` must be kebab-case (the stem of icons/<key>.svg)"),
             );
-        } else if let Some(known) = &self.opts.icon_keys
-            && !known.contains(key)
-        {
-            self.err(e, field, format!("icon `{key}` has no file in art/icons"));
+        } else if !self.c.icons.contains_key(key) {
+            self.err(
+                e,
+                field,
+                format!("icon `{key}` not found: no loaded pack has icons/{key}.svg"),
+            );
+        }
+    }
+
+    /// Every icon is a usable SVG; icons nothing refers to are probably left over.
+    fn icons(&mut self) {
+        let c = self.c;
+        let used: BTreeSet<&str> = c
+            .parts
+            .iter()
+            .filter_map(|p| p.icon.as_deref())
+            .chain(c.materials.iter().filter_map(|m| m.icon.as_deref()))
+            .chain(c.categories.iter().filter_map(|k| k.icon.as_deref()))
+            .collect();
+        for icon in c.icons.values() {
+            if let Err(msg) = crate::svg::check_svg(&icon.svg) {
+                self.out
+                    .push(Problem::error(format!("icon `{}`: {msg}", icon.key)).at(&icon.source));
+            }
+            if !used.contains(icon.key.as_str()) {
+                self.out.push(
+                    Problem::warning(format!(
+                        "icon `{}` is not used by any part, material or category",
+                        icon.key
+                    ))
+                    .at(&icon.source),
+                );
+            }
         }
     }
 

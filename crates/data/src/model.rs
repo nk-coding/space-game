@@ -399,7 +399,8 @@ pub struct Part {
     #[serde(default)]
     pub tags: Vec<String>,
     pub category: String,
-    /// Icon key = file stem in `art/icons` (e.g. "fission-reactor"). Hull parts use their material's icon.
+    /// Icon key: `icons/<key>.svg` in a loaded pack (e.g. "fission-reactor"). Hull parts use their material's
+    /// icon.
     #[serde(default)]
     pub icon: Option<String>,
     /// System colour key overriding the category's colour (e.g. "enemy" for automaton parts).
@@ -488,6 +489,15 @@ pub struct Placement {
     /// Armour material; required for hull parts, not allowed on other parts.
     #[serde(default)]
     pub material: Option<String>,
+}
+
+/// An icon of a pack: `icons/<key>.svg`, kept as SVG text (rasterised by the client at runtime, shown as is
+/// by the wiki). Later packs replace icons with the same key.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Icon {
+    pub key: String,
+    pub svg: String,
+    pub source: Source,
 }
 
 /// `ships/*.ron`: a ship blueprint (one per file by convention).

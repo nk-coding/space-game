@@ -5,7 +5,8 @@ use std::path::Path;
 use crate::load::Pack;
 use crate::problem::Problem;
 
-/// Reads every `.ron` and `.md` file below `dir` as `(relative path with '/', contents)`, sorted by path.
+/// Reads every `.ron`, `.md` and `.svg` file below `dir` as `(relative path with '/', contents)`, sorted by
+/// path.
 /// Hidden files and directories (starting with '.') are skipped.
 pub fn read_pack_files(dir: &Path) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
@@ -26,7 +27,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) -> std::io::Re
         }
         if path.is_dir() {
             walk(root, &path, out)?;
-        } else if path.extension().is_some_and(|e| e == "ron" || e == "md") {
+        } else if path
+            .extension()
+            .is_some_and(|e| e == "ron" || e == "md" || e == "svg")
+        {
             let rel: Vec<String> = path
                 .strip_prefix(root)
                 .unwrap()
