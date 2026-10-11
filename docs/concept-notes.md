@@ -88,24 +88,30 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 - **Minimal content at the start**: build the systems first, content later.
 - **Wiki later, content wiki-ready now** (Niklas, 11 Oct 2026): all content (parts, materials, ships, later races, tech, lore) is organised so the same data files feed both the game and a future wiki. Details in `docs/content-model.md`.
 - The spike is built as the foundation of the real game, not as throwaway code. Plan and status: `docs/roadmap.md`.
-- Provisional sim rules (lead session, 11 Oct 2026; concept-consistent defaults, Niklas may change them; details in `docs/sim.md`):
-  - After a split, only the controlling piece (the one holding the controlling logic core) stays active; every other piece goes dark and becomes salvage, even if it has a core.
-  - A logic core needs power: an unpowered piece goes dark (supports "kill all power → capture").
-  - Brown-out order when supply < demand: logic → shields → engines → weapons → other (fixed default; per-ship reordering maybe later).
-  - Heat is simulated per part (not per cell) until a design needs hot spots.
-  - Chain reactions come later as an `explosion` block in content (reactors, capacitors, drives).
-  - Capacitor bonus applies to parts tagged `laser` (as its text says), not to every gun.
-  - Guns fire along their rotated facing.
-  - Weapons v1 (11 Oct 2026): lasers are hitscan and burn the first block; kinetic shots are simulated projectiles with penetration, recoil and ricochet off slopes (>60° from the face normal: 60% speed, 50% damage). Shots stop at the hull; they don't fly on to the next ship (revisit with railguns).
-  - Shields v1: each powered emitter projects a bubble with a recharging capacity; a shot entering it loses damage by family share (energy 1.0, kinetic 0.5, missile 1.0); overlapping bubbles stack along the shot; an emptied bubble stays down until 30% recharged.
-  - AI ships lead their projectile shots; the player's lock aims at the lead point for projectile weapons and at the target for lasers.
-- Open (11 Oct 2026): ship speed and fight length. With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and fights end ~15 s after contact. To be tuned by Niklas with live sliders in the browser.
+- **Vessels and piloting (decided by Niklas, 11 Oct 2026; concept developed by the lead session):**
+  - Every working logic core hosts a copy of the ship-mind. Any connected piece with at least one working logic core is a **vessel** of its owner: the main ship, escorts, drones and pieces split off a ship.
+  - The player pilots exactly one vessel directly (the **focus**); every other own vessel runs its behavior (AI). The player can switch focus to any own vessel at any time, **instantly** (click/tap a friendly vessel, a hotkey, or a fleet bar in the HUD); the camera glides over.
+  - **Splits:** each piece that still has a working core becomes its own vessel and **inherits the parent's behavior**, limited to the rule slots its own cores provide. If the piloted piece loses its last core, focus moves automatically to another vessel. Pieces without a working core become salvage; pieces with an unpowered core stay dark until power returns.
+  - Enemies follow the same rules (shooting a raider in half can leave two raiders).
+  - **Mind capacity:** the number of logic cores the mind can run at once is limited; the limit grows with progression (an exclusive resource, upgrades, research; details later). Cores beyond the limit stay dormant. During development the limit is a placeholder setting.
+- **Logic cores need power** (Niklas, 11 Oct 2026): an unpowered piece goes dark until power returns (supports "kill all power → capture").
+- **Power allocation (decided by Niklas, 11 Oct 2026):** customisable per part and partial instead of all-or-nothing.
+  - Every consumer part has a **tier** (critical / high / normal / low / off) and a **weight** within its tier. Defaults come from the part type in content; the player overrides them per part in the drydock (e.g. front shields high, rear shields low); behaviors may change them in battle later.
+  - When supply < demand: tiers are served in order; inside the tier that can't be fully served, the remaining power is shared by weight, so parts run at **partial output** (weapons fire slower, shields recharge slower, engines push less). A part type may define a minimum level below which it switches off.
+- **Locked flight with rear-only engines** (Niklas, 11 Oct 2026): a design trade-off. Strafing or braking while locked needs RCS pods or side/front thrusters; rear-only ships must turn around.
+- **Combat rules confirmed by Niklas (11 Oct 2026):**
+  - Shields: one bubble per powered emitter with its own recharging charge; absorbs energy fully, kinetic 50%, missiles fully; an emptied bubble stays down until 30% recharged; overlapping bubbles stack along the shot.
+  - Kinetic shots stop at the hull (no over-penetration; revisit with railguns).
+  - The capacitor bonus applies to lasers only; kinetic weapons get their own support part later.
+  - Guns fire along their rotated facing (broadside and rear guns are possible).
+- Other sim defaults (lead session, 11 Oct 2026): heat is simulated per part (not per cell); chain reactions come later as an `explosion` block in content; lasers are hitscan and burn the first block; kinetic shots are projectiles with penetration, recoil and ricochet off slopes (>60° from the face normal: 60% speed, 50% damage); AI ships lead their projectile shots, and the player's lock aims at the lead point for projectile weapons.
 - **Turning (decided by Niklas, 11 Oct 2026):** three sources, all data-driven:
   - a bit of built-in turning help from logic cores (a small reaction torque);
   - dedicated parts: gyros (pure torque) and RCS thrusters (small, multi-directional);
   - regular engines contribute too: off-axis engines through differential thrust, and every engine through a small gimbal angle (lead's interpretation, a per-engine placeholder that can be 0).
   The flight computer allocates across all of them. (Thrusters-only gave the Halvex Runner ~9 s per 90° turn, and the raider couldn't turn at all.)
 - **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `art/ships/halvex-runner.*` stays as the original concept art.
+- Open (11 Oct 2026): ship speed and fight length. With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build.
 
 ## Combat (decided 10 Oct 2026)
 
