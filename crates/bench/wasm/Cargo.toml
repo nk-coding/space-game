@@ -1,0 +1,21 @@
+[package]
+name = "bench-wasm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+rapier = ["dep:bench-rapier"]
+box2d = ["dep:bench-box2d"]
+avian = ["dep:bench-avian"]
+
+[dependencies]
+bench-core.workspace = true
+bench-rapier = { workspace = true, optional = true }
+bench-box2d = { workspace = true, optional = true }
+bench-avian = { workspace = true, optional = true }
+wasm-bindgen = "=0.2.129"
