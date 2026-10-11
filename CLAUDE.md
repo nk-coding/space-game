@@ -33,7 +33,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - **All Rust.** No C++ anywhere. C (Box2D v3.1) only as a reference number in the physics benchmark, never in the game. (Node is fine for dev tooling such as the headless screenshot helper, never for game code.)
 - **No Godot, Unity, Unreal or JavaScript game engines.** Bevy is the client. The web build comes from the same Rust code (WebAssembly).
 - **Scripting is Rhai** (not Lua).
-- **Every game crate must build for wasm32** (and later Android + desktop). No threads or filesystem required inside `sim`/`data`; data comes in as bytes/strings.
+- **Every game crate must build for wasm32** (the dev platform) as well as Android + desktop. No threads or filesystem required inside `sim`/`data`; data comes in as bytes/strings.
 - **Cross-platform determinism in `sim`:** fixed 30 Hz step; seeded RNG streams per system; ordered containers only (`BTreeMap`/`Vec`, never iterate a `HashMap`/`HashSet` in simulation logic); software math for trig (`libm` or own impl, never `f32::sin` etc. from std which may differ per platform); no wall-clock time; physics engine in its deterministic mode; a state hash every tick in debug builds. No FMA / fast-math.
 - **Performance is the top priority** when choosing between options.
 - **Placeholder numbers stay placeholders**: concept-board numbers are for feel, not a spec.
@@ -42,7 +42,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Current priorities (decided by Niklas, 11 Oct 2026)
 
-- **Web first.** The web build (wasm in the host browser) is the platform that matters now. Android comes later; phone measurements from the spike plan are deferred until then. Keep everything Android-compatible anyway (no desktop-only APIs).
+- **Web first, for development.** The web build (wasm in the host browser) is how Niklas develops and looks at the game; it is **not an end-user platform** (clarified 11 Oct 2026). End users get Android and desktop. So: wasm size doesn't matter (don't optimise for it); browser performance matters only for comfortable development; native performance weighs most. Android comes later; phone measurements from the spike plan are deferred until then. Keep everything Android-compatible (no desktop-only APIs).
 - **Minimal content** at the start: a few materials, the ~16 drydock parts, a couple of ships. Build the systems, not the content.
 - **Wiki-ready content:** a wiki will come later. All content must be organised so the same files feed the game and the wiki (stable ids, text in data, stat labels/units in data, optional long-form wiki prose next to the data). See `docs/content-model.md`.
 

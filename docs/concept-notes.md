@@ -45,7 +45,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 
 - Stack: all Rust. Crates: `sim` (engine-free; ships, parts, physics, heat, power, damage, behavior trees, Rhai; fixed 30 Hz), `game` (Bevy client, 60 fps with interpolation), `net` (host-authoritative sessions, join codes, tiny relay), `arena` (headless fights, evolution, reports, determinism checks), `data` (RON; base game loaded like a mod). Flutter dropped (menus-only fallback if Bevy UI fails badly). No C++, no Godot.
 - Targets: Android mid-range 2021+ (Snapdragon 7-series class, 6 GB), Windows, Linux, and the web. 60 fps render, 30 Hz fixed sim.
-- Web (decided 11 Oct 2026): a FULL platform, not just a dev build. The same Rust code is compiled to WebAssembly and served as static files.
+- Web (decided 11 Oct 2026; **superseded later that day**: the web build is a development platform, see "Development start" above): a FULL platform, not just a dev build. The same Rust code is compiled to WebAssembly and served as static files.
   - Single player, co-op, mods and saves all work in the browser.
   - Rendering: WebGL2 baseline, WebGPU where available.
   - Bevy's web build is probably single-threaded, so the web gets its own performance bar (set after measuring) and the drydock device warning knows about it.
@@ -84,6 +84,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 
 - Work started in the VM repo `space-game` (branch `dev`, local git only). The concept bundle lives under `docs/concept/`, art sources under `art/`.
 - **Web first** (Niklas, 11 Oct 2026): the web build is what matters now. Android comes later, so the phone parts of the spike (APK, phone timings, temperature, phone hash) are deferred. Everything stays Android-compatible.
+- **The web build is a development platform, not an end-user platform** (Niklas, 11 Oct 2026, later the same day). He develops and views the game in the browser; end users get Android and desktop. Consequences: wasm size doesn't matter; browser performance only needs to be comfortable for development; native performance weighs most in engine/tech choices. This relaxes the earlier "web is a FULL platform" decision (Technical decisions below): browser-only end-user features (IndexedDB saves, mods from a zip/URL, WebRTC co-op transport) are no longer requirements unless Niklas brings them back. Everything still compiles to wasm32 and stays deterministic across native, wasm and Android.
 - **Minimal content at the start**: build the systems first, content later.
 - **Wiki later, content wiki-ready now** (Niklas, 11 Oct 2026): all content (parts, materials, ships, later races, tech, lore) is organised so the same data files feed both the game and a future wiki. Details in `docs/content-model.md`.
 - The spike is built as the foundation of the real game, not as throwaway code. Plan and status: `docs/roadmap.md`.
