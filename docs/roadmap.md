@@ -29,6 +29,12 @@ Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS,
 - 30 Hz sim with 60 fps interpolation in the client.
 - Automaton raiders with a trivial AI (approach, orbit, fire). Basic weapons and damage, breakage, debris.
 
+## Queued (after the behavior system lands)
+
+- Vessel model in `sim`: cored pieces become vessels on split (inherit behavior, slot-limited), focus switching, mind capacity (running cores limit), owners/teams. Client: fleet bar, focus hotkey, camera glide.
+- Power allocation: tiers + weights with partial output, per-part overrides in blueprints, minimum operating levels.
+- Icons move into the content pack (`content/base/icons/*.svg`), served by `data`; the client's `icon_svg(key)` switches to it; the wiki export includes them.
+
 ## Phase 4: measurement
 
 - Load test in the browser: 1, 5, 20 ships with debris and projectiles; style 2a vs. debug shapes; glow sprites vs. bloom.
