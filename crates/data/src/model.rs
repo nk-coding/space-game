@@ -213,14 +213,80 @@ pub enum Shape {
     Slope,
 }
 
-/// Power: `output` feeds the piece's shared pool, `draw` is taken from it at full load.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// Power: `output` feeds the piece's shared pool, `draw` is taken from it at full load. Parts that draw also
+/// carry their allocation defaults: `tier`, `weight` and `min_level` (see `docs/sim.md` "Power").
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PowerSpec {
     #[serde(default)]
     pub output: f32,
     #[serde(default)]
     pub draw: f32,
+    /// Default allocation tier of a consumer; a blueprint placement may override it.
+    #[serde(default)]
+    pub tier: PowerTier,
+    /// Default weight within its tier (share of a tier that cannot be fully served); a placement may override
+    /// it. Between 0 (exclusive) and [`MAX_POWER_WEIGHT`].
+    #[serde(default = "one")]
+    pub weight: f32,
+    /// Below this share of its demand (0..1) the part switches off instead of running partially.
+    #[serde(default)]
+    pub min_level: f32,
+}
+
+impl Default for PowerSpec {
+    fn default() -> PowerSpec {
+        PowerSpec {
+            output: 0.0,
+            draw: 0.0,
+            tier: PowerTier::default(),
+            weight: 1.0,
+            min_level: 0.0,
+        }
+    }
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+/// Largest allowed power weight (content defaults, placement overrides, runtime settings).
+pub const MAX_POWER_WEIGHT: f32 = 100.0;
+
+/// Power allocation tier of a consumer. When a piece's supply falls short, tiers are served in this order;
+/// inside the first tier that cannot be fully served the rest is shared by weight, and the tiers below get
+/// nothing. `Off` never draws.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum PowerTier {
+    Critical,
+    High,
+    #[default]
+    Normal,
+    Low,
+    Off,
+}
+
+impl PowerTier {
+    /// Every tier in serving order.
+    pub const ALL: [PowerTier; 5] = [
+        PowerTier::Critical,
+        PowerTier::High,
+        PowerTier::Normal,
+        PowerTier::Low,
+        PowerTier::Off,
+    ];
+}
+
+/// A placement's override of its part's power allocation defaults (the player's drydock setting).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PowerOverride {
+    #[serde(default)]
+    pub tier: Option<PowerTier>,
+    #[serde(default)]
+    pub weight: Option<f32>,
 }
 
 /// Heat added at full load and the level where the part shuts down (none = never).
@@ -489,6 +555,9 @@ pub struct Placement {
     /// Armour material; required for hull parts, not allowed on other parts.
     #[serde(default)]
     pub material: Option<String>,
+    /// Power tier and weight of this placement, overriding the part's defaults (parts that draw power only).
+    #[serde(default)]
+    pub power: Option<PowerOverride>,
 }
 
 /// An icon of a pack: `icons/<key>.svg`, kept as SVG text (rasterised by the client at runtime, shown as is

@@ -31,7 +31,7 @@
         build_points: 3,
         mass: 2,
         hp: 1,
-        power: (draw: 2),
+        power: (draw: 2, tier: Low),
         heat: (output: 1, limit: 3),
         weapon: (family: Kinetic, damage: 1.2, range: 75, delivery: Projectile(rate: 1.5, speed: 90, penetration: 1, recoil: 2)),
     ),

@@ -21,6 +21,7 @@ fn place(part: &str, x: i32, y: i32, material: Option<&str>) -> Placement {
         rot: 0,
         flip: false,
         material: material.map(Into::into),
+        power: None,
     }
 }
 

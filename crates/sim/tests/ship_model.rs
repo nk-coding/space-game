@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use sim::{ConsumerKind, DamageTarget, Stat, Vec2, thruster_wrench};
+use sim::{DamageTarget, Stat, Vec2, thruster_wrench};
 
 // ---------- mass properties ----------
 
@@ -176,7 +176,8 @@ fn colliders_cover_each_piece_exactly() {
 
 // ---------- power ----------
 
-/// Two beams on top, core | fission | shield in the middle, a thruster below the fission reactor.
+/// Two beams on top, core | fission | shield in the middle, a thruster below the fission reactor. (The power
+/// allocation itself is tested in `tests/power.rs`.)
 fn brownout_ship() -> Vec<P<'static>> {
     vec![
         ("beam_laser", 0, 0, 0, false, None),
@@ -186,60 +187,6 @@ fn brownout_ship() -> Vec<P<'static>> {
         ("shield_emitter", 2, 2, 0, false, None),
         ("thruster", 1, 3, 0, false, None),
     ]
-}
-
-#[test]
-fn brownout_follows_priority_order() {
-    let c = content();
-    let d = custom(&c, &brownout_ship());
-    let (mut w, s) = world_with(d.clone());
-    w.step(&inputs(s, controls(1, 1.0, true, true)));
-    let ship = w.ship(s).unwrap();
-    let p = &ship.pieces()[0];
-    // Supply 10; demand 1 (core) + 3 (shield) + 2 (thruster) + 9 + 9 (beams).
-    assert_eq!(p.power.supply, 10.0);
-    assert_eq!(p.power.demand, 24.0);
-    assert_eq!(p.power.served, 10.0);
-    let kinds: Vec<ConsumerKind> = p.consumers().iter().map(|c| c.kind).collect();
-    assert_eq!(
-        kinds,
-        vec![
-            ConsumerKind::Logic,
-            ConsumerKind::Shield,
-            ConsumerKind::Engine,
-            ConsumerKind::Weapon,
-            ConsumerKind::Weapon
-        ]
-    );
-    let power = |x, y, id| ship.part(find(&d, id, x, y)).power;
-    assert_eq!(power(0, 2, "logic_core"), 1.0);
-    assert_eq!(power(2, 2, "shield_emitter"), 1.0);
-    assert_eq!(power(1, 3, "thruster"), 1.0);
-    assert!(close(power(0, 0, "beam_laser"), 4.0 / 9.0, 1e-6));
-    assert_eq!(power(1, 0, "beam_laser"), 0.0);
-    // Gun output follows power.
-    let out: Vec<f32> = p.guns.iter().map(|g| g.output).collect();
-    assert!(out[0] > 0.0 && out[1] == 0.0);
-
-    // Weapons first: both beams get power before the shield.
-    let mut w2 = sim::Sim::new(1);
-    let s2 = w2.spawn_ship(d.clone(), sim::Body::default());
-    w2.ship_mut(s2).unwrap().set_power_priority([
-        ConsumerKind::Weapon,
-        ConsumerKind::Logic,
-        ConsumerKind::Engine,
-        ConsumerKind::Shield,
-        ConsumerKind::Other,
-    ]);
-    w2.step(&inputs(s2, controls(1, 1.0, true, true)));
-    let ship2 = w2.ship(s2).unwrap();
-    assert_eq!(ship2.part(find(&d, "beam_laser", 0, 0)).power, 1.0);
-    assert!(close(
-        ship2.part(find(&d, "beam_laser", 1, 0)).power,
-        1.0 / 9.0,
-        1e-6
-    ));
-    assert_eq!(ship2.part(find(&d, "shield_emitter", 2, 2)).power, 0.0);
 }
 
 #[test]

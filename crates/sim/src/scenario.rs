@@ -292,6 +292,7 @@ impl Scenario {
                         drift: rng.chance(0.2),
                         fire: rng.chance(0.7),
                         aim: crate::flight::AimMode::Auto,
+                        ..Default::default()
                     };
                     self.inputs.commands.push((id, ShipCommand::Pilot(input)));
                 }
@@ -421,6 +422,7 @@ fn heat_stress_blueprint() -> data::Blueprint {
         rot: 0,
         flip: false,
         material: None,
+        power: None,
     };
     data::Blueprint {
         id: HEAT_STRESS.into(),

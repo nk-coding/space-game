@@ -25,6 +25,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
 | `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
 | `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority`, `inherited_velocity`, heat `tuning` constants |
+| `power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate`, `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry` |
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
@@ -99,7 +100,8 @@ The rules (also in `src/math.rs`, enforced where possible):
 - **State hash**: `Sim::state_hash()` = FNV-1a 64 fed with 32-bit words: tick, seed, config, RNG states, id
   counters, and per ship the controls (including the per-gun fire mask), control piece, helm and behavior state,
   every part's flags, hp, heat, piece, power share and work, and per piece its parts, flags, ghost timer, frame
-  origin, mass properties, body, power balance, wrench, collider vertices, gun output and actuator commands.
+  origin, mass properties, body, power balance, consumer power settings (part, tier, weight, in allocation
+  order), wrench, collider vertices, gun output and actuator commands.
   Floats by exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug
   builds, on demand in release. `PhysicsBackend::hash_state` can add engine-internal state.
 
@@ -119,7 +121,10 @@ How it is checked:
   flight and load (20 ships) seed 42, 1800 ticks, identical. **With behaviors and Rhai** (11 Oct, late):
   behavior (1548 Rhai evaluations), core, flight and load, seed 42, 1800 ticks each: identical. **With fire at
   will per gun and the raider brain removed** (12 Oct): the same four, plus flight seed 7 (3000 ticks):
-  identical.
+  identical. **With power tiers and weights** (12 Oct): core, flight, load and behavior, seed 42, 1800 ticks:
+  identical. (The hash streams differ from the previous version from tick 1 on, since power settings are hashed
+  and idle consumers now show their tier's level; the scenario counters are unchanged except one more shot in
+  `core`, 567.)
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -164,8 +169,9 @@ links. So "static lists filtered by alive" is always the current topology, and n
 
 ### Runtime (per ship)
 
-- `PartState`: `hp`, `heat`, `alive`, `overheated`, `piece`, `open_sides`, `clear`, `power` (share of its
-  demand served this tick), `work` (0..1, how hard it worked).
+- `PartState`: `hp`, `heat`, `alive`, `overheated`, `piece`, `open_sides`, `clear`, `power` (level: share of
+  its demand served this tick, see [Power](#power)), `work` (0..1, how hard it worked).
+- `power_settings`: tier and weight per consumer part (the blueprint's at spawn; `Ship::set_power_setting`).
 - `grid`: a clone of the design's `data::ShipGrid`; destroyed parts are removed. All pieces share it (pieces
   are never linked to each other, so cell queries stay correct after splits; line of fire, exhaust and RCS
   nozzles only count parts of the same piece).
@@ -202,13 +208,63 @@ links. So "static lists filtered by alive" is always the current topology, and n
 
 ### Power
 
-Per piece and tick: `supply` = output of alive, non-overheated reactors (with bonuses). Consumers ask for
-`draw × activity` and are fed in **brown-out priority order**: logic core → shields → engines (engines, RCS
-pods and gyros: everything that moves the ship, one tier) → weapons → other, ties by part index; at most one
-consumer is partly fed. Per-ship order: `Ship::set_power_priority`. Activity: engines = throttle; RCS pods =
-sum of their nozzles' throttles (capped at 1); gyros = |torque used| / max; guns = `fire` and a clear line of
-fire; shields = `shields`; logic and other = 1. Output (thrust, torque, gun dps) and heat scale with
-`work = activity × power`. A logic core's reaction torque is free (the core's own draw covers it).
+Tiers and weights with partial output (GDR-0014, decided by Niklas; implemented 12 Oct 2026). Code:
+`src/power.rs`.
+
+Per piece and tick:
+
+- **Supply** = output of alive, non-overheated reactors (with bonuses); 0 for a dark piece.
+- **Demand** of each consumer = `draw × activity`. Activity: engines = throttle; RCS pods = sum of their
+  nozzles' throttles (capped at 1); gyros = |torque used| / max; guns = the trigger and the per-gun fire mask
+  (`ShipControls::gun_fires`) and a clear line of fire, so a gun that holds draws nothing; shields =
+  `shields`; logic and other = 1. Overheated parts ask for nothing.
+- **Allocation:**
+  1. Tiers are served in order: `Critical`, `High`, `Normal`, `Low`. `Off` never draws.
+  2. A tier whose demand fits into what is left is served in full.
+  3. The first tier that does not fit shares what is left **by weight**: every running part gets the same
+     multiple `k × weight` of its own demand (capped at 1; parts that reach 1 leave the rest to the others).
+     Equal weights = every part at the same level; weight 2 runs at twice the level of weight 1.
+  4. A part whose level would fall below its **minimum level** switches off instead: one at a time, lowest
+     weight first (ties: the higher part index first), and its share goes back to the others of the tier by
+     weight. A part that reaches its minimum once others have switched off keeps running.
+  5. If parts of that tier run at partial output, the tiers below get nothing. If the tier ends up fully served
+     because the parts that did not fit switched off, what is left goes on to the next tier.
+- **Partial output** scales what a part does, through `work = activity × level`: gun damage per second (beams)
+  and fire rate (pulse and projectile cooldowns run at `work`), shield recharge (`regen × work`; the bubble is
+  up while its emitter gets any power, so a shield below its minimum drops its bubble but keeps its charge),
+  thrust of engines and RCS nozzles (`max_force × level`, also the plume `Piece::output`), gyro and core torque
+  (`max × level`). Heat scales with `work` as before. A logic core's reaction torque is free (its own draw
+  covers it).
+
+**Settings.** Every consumer has a tier and a weight (`PowerSetting`); the minimum level belongs to the part type.
+
+| Where | What |
+|---|---|
+| content part `power: (draw, tier, weight, min_level)` | defaults (tier `Normal`, weight 1, min level 0) |
+| blueprint placement `power: (tier: High, weight: 2)` | the player's drydock override for this part (both optional) |
+| `Ship::set_power_setting(part, PowerSetting { tier, weight })`, `ShipCommand::Power { part, setting }` | runtime change (UI, behaviors later); the command goes through `TickInputs`, so replays and co-op see it |
+
+`set_power_setting` refuses parts that draw no power and weights outside `(0, 100]` (`data::MAX_POWER_WEIGHT`).
+Settings survive piece rebuilds and splits (per-part list on the ship) and are part of the state hash.
+
+Base content defaults (lead defaults, placeholders like the numbers; the old fixed brown-out order as data):
+logic core `Critical`; shield emitter `High` with minimum 25% (below it the bubble cannot hold); engines, RCS
+pods and gyros `Normal` (so thrust and turning brown out together); guns `Low`, the beam laser with minimum
+50%.
+
+**Exposed for the client:** `PartState::power` is the part's level, 0..1: 1 = full, in between = partial
+output (draw a dimmed icon), 0 = off or no power. A consumer that asks for nothing this tick shows the level
+its tier and weight are served at (1 in a fully served tier, 0 in a tier that gets nothing, `Off`, or on a dark
+piece). `Piece::power` (`supply`, `demand` without `Off` parts, `served`), `Piece::consumers()` (rows in
+allocation order with `tier`, `weight`, `min_level`), `Ship::power_setting(part)`.
+
+**Cost.** Rows are cached per piece in allocation order (tier, weight descending, part index) and re-sorted only
+when a setting changes or the piece is rebuilt. A tick is one pass over the rows plus at most two more over the
+one shared tier; only `+ − × ÷` and comparisons in a fixed order; no allocation. Measured 12 Oct 2026 (native
+release, load average 4.5–9, five interleaved runs each, medians): `update_systems` (power + heat + wrench) for
+20 ships of ~1930 parts and ~300 consumers each, 419 → 416 µs with power to spare and 394 → 415 µs in a
+brown-out (+5%, about 1 µs per 2000-part ship per tick; heat dominates). The 20-ship load test: median step
+0.024–0.034 → 0.025–0.027 ms, the same within noise.
 
 ### Heat (dynamic, lumped per part)
 
@@ -593,6 +649,9 @@ for ship in world.ships() { for piece in ship.pieces() {
   `world.command(raider, ShipCommand::Behavior(world.behaviors().default_for(&design)))` (see
   [Behaviors](#behaviors)).
 - Debug HUD: `ship.telemetry()` (top speed, goal, heading target), `piece.power`, `ship.parts()[i].heat`.
+- Power: `ship.parts()[i].power` (0..1) dims a part's icon at partial power; the drydock writes the player's
+  tiers and weights into the blueprint placements; in flight `ShipCommand::Power { part, setting }` changes
+  them (see [Power](#power)).
 - Keep stable ids: visuals keyed by `(ShipId, PieceId)`; a split keeps the parent's `PieceId` for the kept part.
 
 ## Performance
@@ -650,8 +709,8 @@ The sim core itself is very cheap at these ship sizes (a runner has 56 parts): 2
 ## Design questions for Niklas
 
 Answered (provisionally, lead session 11 Oct 2026; easy to change, see the sections above): split-off cored
-pieces are salvage; a core needs power; fixed brown-out order; chain reactions later via content; heat per
-part. Turning: decided by Niklas (cores, gyros, RCS, gimbals). Halvex Runner layout: fixed in content.
+pieces are salvage; a core needs power; chain reactions later via content; heat per part. The fixed brown-out
+order was replaced by Niklas's tiers and weights (GDR-0014, implemented 12 Oct 2026). Turning: decided by Niklas (cores, gyros, RCS, gimbals). Halvex Runner layout: fixed in content.
 Weapons (lead session, 11 Oct 2026, defaults Niklas may change): shields keep per-family shares with a collapse
 until 30% recharged; a penetrating shot stops at the hull; raiders lead their shots (done, plus `AimMode` for
 the player's lock). Fight length: Niklas tunes speed and ranges in the browser with live sliders.

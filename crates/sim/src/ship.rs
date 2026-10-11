@@ -15,14 +15,13 @@ use data::{Delivery, Dir, Effect, ShipGrid, WeaponFamily};
 use crate::DT;
 use crate::alloc::{Actuation, AllocTable, TorqueSource, wrench_of};
 use crate::collider::{ColliderScratch, ConvexPolygon, build_colliders};
-use crate::design::{
-    ConsumerKind, DEFAULT_POWER_PRIORITY, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat,
-};
+use crate::design::{ConsumerKind, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat};
 use crate::flight::{FlightTelemetry, HelmMode};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
 use crate::mass::{MassProps, combine, to_piece};
 use crate::math::{Rot, Vec2, sin};
+use crate::power::{Consumer, PowerSetting, Reactor};
 
 /// Heat model constants. **PLACEHOLDERS** for feel; the steady state matches the concept-board drydock
 /// (`docs/concept/reference/drydock-model.js`): `loss · T = gen − Σ K (T − T_neighbour)`.
@@ -124,7 +123,9 @@ pub struct PartState {
     pub open_sides: u16,
     /// Guns: line of fire clear; engines: exhaust clear (only parts of the same piece block). True otherwise.
     pub clear: bool,
-    /// Share of its power demand served this tick (1 when it wants nothing).
+    /// Share of its power demand served this tick: 1 = full, between = partial output, 0 = off or no power.
+    /// A consumer that asks for nothing shows the level its tier and weight are served at (see
+    /// [`crate::power::allocate`]); reactors and passive parts show 1.
     pub power: f32,
     /// How hard it worked this tick, 0..1 (throttle × power for engines). Drives heat and output.
     pub work: f32,
@@ -142,7 +143,7 @@ pub struct PowerState {
     pub supply: f32,
     /// What its active consumers asked for.
     pub demand: f32,
-    /// What they got (`min(supply, demand)`), handed out in brown-out priority order.
+    /// What they got (at most `min(supply, demand)`), handed out by tier and weight (`crate::power`).
     pub served: f32,
 }
 
@@ -282,31 +283,12 @@ pub struct Piece {
     cores: Vec<PartIdx>,
     /// Shield emitters.
     pub(crate) shields: Vec<PartIdx>,
-    reactors: Vec<Reactor>,
-    /// Consumers in brown-out priority order.
-    consumers: Vec<Consumer>,
+    pub(crate) reactors: Vec<Reactor>,
+    /// Consumers in allocation order (tier, weight descending, part).
+    pub(crate) consumers: Vec<Consumer>,
     /// Parts that make heat without a power role (e.g. capacitors).
-    heaters: Vec<PartIdx>,
+    pub(crate) heaters: Vec<PartIdx>,
     pub(crate) dirty: bool,
-}
-
-/// A reactor row, cached for the per-tick loop.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Reactor {
-    part: PartIdx,
-    /// Output with bonuses.
-    output: f32,
-}
-
-/// A power consumer row, cached for the per-tick loop (no `PartSpec` access per tick).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Consumer {
-    pub part: PartIdx,
-    pub kind: ConsumerKind,
-    /// Engine or gun slot (`design::NO_SLOT` otherwise).
-    pub slot: u32,
-    /// Draw at full activity, with bonuses.
-    pub draw: f32,
 }
 
 /// Heat constants of one part, cached when its exposure or bonuses change (compact for the per-tick loop).
@@ -373,7 +355,7 @@ impl Piece {
         &self.cores
     }
 
-    /// Consumers in the order they get power.
+    /// Consumers in the order they get power (tier, weight descending, part).
     pub fn consumers(&self) -> &[Consumer] {
         &self.consumers
     }
@@ -402,6 +384,9 @@ pub(crate) struct Scratch {
     pub fmax: Vec<f32>,
     pub tmax: Vec<f32>,
     pub activity: Vec<f32>,
+    /// Per consumer row: demand this tick, and the level it got.
+    pub want: Vec<f32>,
+    pub level: Vec<f32>,
 }
 
 /// A ship: one blueprint instance, possibly broken into several pieces.
@@ -420,8 +405,9 @@ pub struct Ship {
     /// Alive pieces, ascending id.
     pub(crate) pieces: Vec<Piece>,
     pub(crate) controls: ShipControls,
-    /// Brown-out order (default [`DEFAULT_POWER_PRIORITY`]).
-    pub(crate) power_priority: [ConsumerKind; ConsumerKind::COUNT],
+    /// Power tier and weight per part (consumers only; the blueprint's at spawn, changed by
+    /// `set_power_setting`).
+    pub(crate) power_settings: Vec<PowerSetting>,
     pub(crate) scratch: Scratch,
     /// Parts destroyed since the last breakage resolution.
     pub(crate) pending_destroyed: Vec<PartIdx>,
@@ -477,7 +463,7 @@ impl Ship {
             heat_k: vec![HeatK::default(); n],
             parts,
             pieces: Vec::new(),
-            power_priority: DEFAULT_POWER_PRIORITY,
+            power_settings: design.parts.iter().map(|s| s.power_setting).collect(),
             scratch: Scratch::default(),
             pending_destroyed: Vec::new(),
             control: None,
@@ -676,19 +662,6 @@ impl Ship {
         self.controls.fire = c.fire;
         self.controls.guns.clone_from(&c.guns);
         self.controls.shields = c.shields;
-    }
-
-    pub fn power_priority(&self) -> [ConsumerKind; ConsumerKind::COUNT] {
-        self.power_priority
-    }
-
-    /// Changes the brown-out order (a permutation of all kinds). Takes effect after the next rebuild of each
-    /// piece; call before the first step.
-    pub fn set_power_priority(&mut self, order: [ConsumerKind; ConsumerKind::COUNT]) {
-        self.power_priority = order;
-        for k in 0..self.pieces.len() {
-            self.rebuild_piece(k);
-        }
     }
 
     /// Outer hull edge of one piece in the blueprint frame (for the hull glow; chain with
@@ -963,36 +936,8 @@ impl Ship {
             &mut piece.colliders,
         );
 
-        // Power lists.
-        piece.reactors.clear();
-        piece.consumers.clear();
-        piece.heaters.clear();
-        for &p in &piece.parts {
-            let spec = &d.parts[p as usize];
-            let st = &self.stats[p as usize];
-            if spec.reactor {
-                piece.reactors.push(Reactor {
-                    part: p,
-                    output: st.get(Stat::PowerOutput),
-                });
-            } else if let Some(kind) = spec.consumer {
-                piece.consumers.push(Consumer {
-                    part: p,
-                    kind,
-                    slot: d.slot_of_part[p as usize],
-                    draw: st.get(Stat::PowerDraw),
-                });
-            } else if st.get(Stat::HeatOutput) > 0.0 {
-                piece.heaters.push(p);
-            }
-        }
-        let prio = self.power_priority;
-        let rank = |k: ConsumerKind| {
-            prio.iter()
-                .position(|&x| x == k)
-                .unwrap_or(ConsumerKind::COUNT)
-        };
-        piece.consumers.sort_by_key(|c| (rank(c.kind), c.part));
+        // Power lists (reactors, consumers in allocation order, heaters).
+        self.rebuild_power_lists(&mut piece);
 
         // Torque sources (gyros, logic cores) and cores.
         piece.cores.clear();
@@ -1210,11 +1155,11 @@ impl Ship {
                 }
             }
 
-            // Consumers draw in brown-out priority order.
-            let mut remaining = supply;
-            let (mut demand, mut served) = (0.0f32, 0.0f32);
+            // What each consumer asks for (draw × activity), then the allocation by tier and weight.
+            let want = &mut scratch.want;
+            want.clear();
             for c in &piece.consumers {
-                let ps = &mut parts[c.part as usize];
+                let ps = &parts[c.part as usize];
                 let act = if !active || ps.overheated || !ps.clear {
                     0.0
                 } else {
@@ -1227,13 +1172,18 @@ impl Ship {
                         ConsumerKind::Logic | ConsumerKind::Other => 1.0,
                     }
                 };
-                let want = c.draw * act;
-                let got = want.min(remaining);
-                remaining -= got;
-                demand += want;
-                served += got;
-                ps.power = if want > 0.0 { got / want } else { 1.0 };
-                ps.work = act * ps.power;
+                activity[c.part as usize] = act;
+                want.push(c.draw * act);
+            }
+            let level = &mut scratch.level;
+            level.clear();
+            level.resize(want.len(), 0.0);
+            let fed = if active { supply } else { 0.0 };
+            let (demand, served) = crate::power::allocate(&piece.consumers, want, fed, level);
+            for (c, &l) in piece.consumers.iter().zip(level.iter()) {
+                let ps = &mut parts[c.part as usize];
+                ps.power = l;
+                ps.work = activity[c.part as usize] * l;
             }
             let reactor_work = if served > 0.0 && supply > 0.0 {
                 let load = (served / supply).min(1.0);
@@ -1379,6 +1329,7 @@ impl StateHash for Piece {
         h.f32(self.power.supply);
         h.f32(self.power.demand);
         h.f32(self.power.served);
+        crate::power::hash_consumers(self, h);
         h.vec2(self.wrench.force);
         h.f32(self.wrench.torque);
         h.u32(self.colliders.len() as u32);

@@ -216,6 +216,61 @@ fn icon_errors_and_warnings() {
 }
 
 #[test]
+fn power_allocation_fields() {
+    let c = Content::load(&[base()]).unwrap();
+    let beam = c.parts.get("beam_laser").unwrap().power.as_ref().unwrap();
+    assert_eq!(beam.tier, data::PowerTier::Low);
+    assert_eq!(beam.weight, 1.0);
+    assert_eq!(beam.min_level, 0.5);
+    let lines = c.part_stats(c.parts.get("beam_laser").unwrap(), None);
+    let min = lines.iter().find(|l| l.stat == "power_min_level").unwrap();
+    assert_eq!(min.text, "50%");
+    // Defaults: normal tier, weight 1, no minimum.
+    let gyro = c.parts.get("gyro").unwrap().power.as_ref().unwrap();
+    assert_eq!(
+        (gyro.tier, gyro.weight, gyro.min_level),
+        (data::PowerTier::Normal, 1.0, 0.0)
+    );
+
+    let e = errors_with(
+        "parts/p.ron",
+        &format!(
+            "({PART_HEAD}, category: \"power\", mass: 1, hp: 1, power: (draw: 2, weight: 0, min_level: 1.5))"
+        ),
+    );
+    assert_error(&e, "p", "power.weight", "above 0");
+    assert_error(&e, "p", "power.min_level", "0 to 1");
+    let e = errors_with(
+        "parts/p.ron",
+        &format!(
+            "({PART_HEAD}, category: \"power\", mass: 1, hp: 1, power: (output: 5, tier: High))"
+        ),
+    );
+    assert_error(&e, "p", "power", "for parts that draw power");
+    let e = errors_with(
+        "ships/s.ron",
+        &format!(
+            "({SHIP_HEAD}, parts: [(part: \"logic_core\", x: 0, y: 0, power: (tier: Off, weight: 500)), (part: \"fission_reactor\", x: 1, y: 0, power: (tier: High))])"
+        ),
+    );
+    assert_error(&e, "s", "parts[0].power.weight", "at most 100");
+    assert_error(&e, "s", "parts[1].power", "draws no power");
+    // A valid override.
+    let m = pack(&[
+        ("pack.ron", MOD_MANIFEST),
+        (
+            "ships/s.ron",
+            r#"(id: "s", name: "S", summary: "S.", faction: "ship_mind", size: (2, 1), parts: [
+                (part: "logic_core", x: 0, y: 0, power: (tier: High, weight: 2)), (part: "fission_reactor", x: 1, y: 0),
+            ])"#,
+        ),
+    ]);
+    let c = Content::load(&[base(), m]).unwrap_or_else(|p| panic!("{}", show(&p)));
+    let o = c.ships.get("s").unwrap().parts[0].power.unwrap();
+    assert_eq!((o.tier, o.weight), (Some(data::PowerTier::High), Some(2.0)));
+}
+
+#[test]
 fn duplicate_ids_within_a_pack() {
     let part = r#"(id: "dup", name: "D", summary: "S.", category: "hull", size: (1, 1), build_points: 1, hull: true)"#;
     let err = Pack::from_files([

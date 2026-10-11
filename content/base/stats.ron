@@ -7,6 +7,7 @@
     (id: "hp", name: "Hit points", summary: "Damage the part takes before it is destroyed.", unit: "HP", decimals: 2, better: Higher),
     (id: "power_output", name: "Power output", summary: "Power the part adds to its piece's shared pool.", unit: "MW", decimals: 1, better: Higher),
     (id: "power_draw", name: "Power draw", summary: "Power the part takes from its piece's pool at full load.", unit: "MW", decimals: 1, better: Lower),
+    (id: "power_min_level", name: "Minimum power", summary: "Below this share of its draw the part switches off instead of running at partial output.", unit: "%", decimals: 0, better: Lower),
     (id: "heat_output", name: "Heat", summary: "Heat the part adds at full load.", decimals: 2, better: Lower),
     (id: "heat_limit", name: "Heat limit", summary: "Heat level at which the part shuts down.", decimals: 1, better: Higher),
     (id: "heat_vent", name: "Venting", summary: "Heat a radiator dumps through each side open to space.", decimals: 1, better: Higher),

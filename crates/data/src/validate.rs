@@ -226,6 +226,17 @@ impl<'a> Validator<'a> {
         }
     }
 
+    /// A power weight: finite, above 0, at most [`MAX_POWER_WEIGHT`].
+    fn power_weight<T: Entry>(&mut self, e: &T, field: &str, w: f32) {
+        if !(w.is_finite() && w > 0.0 && w <= MAX_POWER_WEIGHT) {
+            self.err(
+                e,
+                field,
+                format!("a weight above 0 and at most {MAX_POWER_WEIGHT}, got {w}"),
+            );
+        }
+    }
+
     fn number<T: Entry>(&mut self, e: &T, field: &str, x: f32, min: f32, strict: bool) {
         let ok = x.is_finite() && if strict { x > min } else { x >= min };
         if !ok {
@@ -325,6 +336,23 @@ impl<'a> Validator<'a> {
         if let Some(x) = &p.power {
             self.number(p, "power.output", x.output, 0.0, false);
             self.number(p, "power.draw", x.draw, 0.0, false);
+            self.power_weight(p, "power.weight", x.weight);
+            if !(x.min_level.is_finite() && (0.0..=1.0).contains(&x.min_level)) {
+                self.err(
+                    p,
+                    "power.min_level",
+                    format!("a share of the demand, 0 to 1, got {}", x.min_level),
+                );
+            }
+            let allocation_set =
+                x.tier != PowerTier::default() || x.weight != 1.0 || x.min_level != 0.0;
+            if x.draw <= 0.0 && allocation_set {
+                self.err(
+                    p,
+                    "power",
+                    "`tier`, `weight` and `min_level` are for parts that draw power",
+                );
+            }
         }
         if let Some(x) = &p.heat {
             self.number(p, "heat.output", x.output, 0.0, false);
@@ -640,6 +668,25 @@ impl<'a> Validator<'a> {
                     format!("`{}` is not a hull part; remove material `{m}`", pl.part),
                 ),
                 (None, false) => {}
+            }
+            if let Some(o) = &pl.power {
+                if part.power.as_ref().is_none_or(|x| x.draw <= 0.0) {
+                    self.err(
+                        s,
+                        format!("{f}.power"),
+                        format!("`{}` draws no power; remove `power`", pl.part),
+                    );
+                }
+                if let Some(w) = o.weight {
+                    self.power_weight(s, &format!("{f}.power.weight"), w);
+                }
+                if o.tier.is_none() && o.weight.is_none() {
+                    self.warn(
+                        s,
+                        format!("{f}.power"),
+                        "an empty power override changes nothing",
+                    );
+                }
             }
             let shape = self.c.placed_shape(pl).unwrap();
             let (w, h) = shape.dims();

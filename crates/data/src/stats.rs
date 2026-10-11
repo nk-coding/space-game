@@ -14,6 +14,7 @@ pub const BUILTIN_STATS: &[&str] = &[
     "hp",
     "power_output",
     "power_draw",
+    "power_min_level",
     "heat_output",
     "heat_limit",
     "heat_vent",
@@ -136,6 +137,9 @@ impl Content {
             }
             if p.draw != 0.0 {
                 v.push(("power_draw", p.draw));
+                if p.min_level > 0.0 {
+                    v.push(("power_min_level", p.min_level * 100.0));
+                }
             }
         }
         if let Some(h) = &part.heat {

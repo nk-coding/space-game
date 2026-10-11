@@ -1,6 +1,7 @@
 // Weapons. PLACEHOLDER NUMBERS (damage from the concept-board drydock; range, delivery and rates invented), for
 // feel only.
 // Guns are fixed: they fire along the part's forward side and need a clear line of fire.
+// Power tier (lead default): guns come last. A beam below half its draw cannot hold focus (placeholder).
 [
     (
         id: "pulse_laser",
@@ -14,7 +15,7 @@
         build_points: 3,
         mass: 2,
         hp: 1,
-        power: (draw: 4),
+        power: (draw: 4, tier: Low),
         heat: (output: 1.5, limit: 3),
         weapon: (family: Energy, damage: 1, range: 60, delivery: Pulse(rate: 4)),
     ),
@@ -30,7 +31,7 @@
         build_points: 7,
         mass: 4,
         hp: 2,
-        power: (draw: 9),
+        power: (draw: 9, tier: Low, min_level: 0.5),
         heat: (output: 3.2, limit: 4.2),
         weapon: (family: Energy, damage: 2.6, range: 45, delivery: Beam),
     ),

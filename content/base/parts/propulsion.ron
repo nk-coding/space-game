@@ -2,6 +2,7 @@
 // Engines push towards the part's forward side and need open cells directly behind them; `gimbal` swings their
 // thrust a few degrees to either side. Gyros turn the ship without thrust; RCS pods fire a nozzle out of every
 // side that is open to space.
+// Power tier: everything that moves the ship is `Normal` (the default), so thrust and turning brown out together.
 [
     (
         id: "thruster",

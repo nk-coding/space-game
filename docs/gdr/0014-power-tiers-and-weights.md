@@ -32,3 +32,9 @@ other) in which at most one consumer is partly fed. Whether a logic core needs p
 - Queued in the roadmap: tiers and weights, per-part overrides in blueprints, minimum operating levels. The sim
   uses the fixed order until then.
 - Power layout becomes a drydock decision as well as a fight-time one.
+
+12 Oct 2026: implemented (`docs/sim.md` "Power", content fields in `docs/content-model.md`); the fixed order is
+gone. Details the decision left open, set by the power agent: inside the shared tier every part runs at the same
+multiple of its weight (weight 2 = twice the level); parts below their minimum switch off lowest weight first;
+if that leaves the tier fully served, the rest goes on to the next tier. Base tiers mirror the old order (lead
+defaults, placeholders).

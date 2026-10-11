@@ -39,6 +39,7 @@ pub fn blueprint(parts: &[P]) -> Blueprint {
                 rot,
                 flip,
                 material: material.map(Into::into),
+                power: None,
             })
             .collect(),
         behavior: None,

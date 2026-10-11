@@ -56,6 +56,12 @@ pub enum ShipCommand {
     Behavior(Option<BehaviorId>),
     /// Set the ship whose lock the `locked` target selector follows (an escort's leader), or none.
     Leader(Option<ShipId>),
+    /// Change a consumer part's power tier and weight (`Ship::set_power_setting`; ignored for parts that draw
+    /// no power and for invalid weights).
+    Power {
+        part: crate::design::PartIdx,
+        setting: crate::power::PowerSetting,
+    },
 }
 
 /// Everything from outside that affects one tick. Applied in list order.
@@ -302,6 +308,9 @@ impl<P: PhysicsBackend> Sim<P> {
                     }
                 }
                 ShipCommand::Leader(l) => s.leader = l,
+                ShipCommand::Power { part, setting } => {
+                    s.set_power_setting(part, setting);
+                }
             }
         }
     }

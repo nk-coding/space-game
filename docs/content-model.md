@@ -30,6 +30,7 @@ content/base/
   ships/<id>.ron           one blueprint per file
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
+  icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
   wiki/<kind>/<id>.md      optional long-form prose, e.g. wiki/part/fission_reactor.md
   wiki/page/<id>.md        free-standing wiki articles (first "# " line = title)
 ```
@@ -41,8 +42,8 @@ File rules:
   group however reads best.
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
-- Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; other files (READMEs) are
-  ignored.
+- Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
+  `icons/` as `<key>.svg` with a kebab-case key; other files (READMEs) are ignored.
 - Files are read in sorted path order, entries in file order. That is the **load order**, which is also the
   display order for stats, categories and the drydock palette.
 - `wiki/` is for tools only. The game build never embeds it.
@@ -78,7 +79,7 @@ goes up. `depends` lists packs that must load earlier.
 Display information for every number the UI and wiki show: `name` (label), `summary`, `unit` (translatable,
 may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`Higher`, `Lower`, `Neutral`, for
 green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
-the game requires these ids: `build_points mass hp power_output power_draw heat_output heat_limit heat_vent
+the game requires these ids: `build_points mass hp power_output power_draw power_min_level heat_output heat_limit heat_vent
 damage range shot_rate shot_speed penetration recoil thrust gimbal rcs_thrust torque shield_radius
 shield_capacity shield_regen cargo_capacity rule_slots mass_per_cell hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are placeholders
 except that the sim reads mass in t, thrust in kN and torque in kN·m (so kN / t = m/s²); 1 cell = 1 m.
@@ -123,7 +124,7 @@ A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_p
 | Field | Notes |
 |---|---|
 | `category` | category id |
-| `icon` | icon key = file stem in `art/icons` (`fission-reactor` → `fission-reactor.svg`, `.icon-only.svg`). Hull parts have none: they show their material |
+| `icon` | icon key: `fission-reactor` → `icons/fission-reactor.svg` in any loaded pack (see [Icons](#icons)). Hull parts have none: they show their material |
 | `color` | optional system colour key overriding the category's (automaton parts use `"enemy"`) |
 | `size` | footprint `(w, h)` in cells before rotation |
 | `shape` | `Rect` (default) or `Slope` |
@@ -135,7 +136,7 @@ Optional component blocks (a part has any combination):
 
 | Block | Fields | Meaning |
 |---|---|---|
-| `power` | `output`, `draw` | adds to / draws from the piece's shared pool at full load |
+| `power` | `output`, `draw`, `tier`, `weight`, `min_level` | adds to / draws from the piece's shared pool at full load; consumers also give their allocation defaults (see below) |
 | `heat` | `output`, `limit` | heat at full load; shutdown level (none = never) |
 | `radiator` | `vent` | heat dumped per straight side open to space |
 | `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second), `range` (m), `delivery` (see below, default `Beam`) | fixed gun, fires along the part's forward side, needs a clear line of fire |
@@ -174,12 +175,30 @@ bonuses: [(target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [
 mod add a new capacitor or a new laser without editing existing parts. Note: the concept-board drydock gave
 the capacitor bonus to every gun; the content gives it to parts tagged `laser`, as the part text says.
 
+**Power allocation** (GDR-0014, fields added 12 Oct 2026). A part that draws power declares how it is fed
+when its piece runs short:
+
+```ron
+power: (draw: 9, tier: Low, min_level: 0.5),   // beam laser: fed after everything else; off below 50%
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `tier` | `Normal` | `Critical`, `High`, `Normal`, `Low` or `Off`: tiers are served in this order, `Off` never draws |
+| `weight` | 1 | share inside the one tier that cannot be fully served (weight 2 runs at twice the level of weight 1); above 0, at most 100 |
+| `min_level` | 0 | below this share of its draw the part switches off instead of running at partial output (0..1); shown as the stat line `power_min_level` |
+
+`tier` and `weight` are defaults: a blueprint placement may override them (see Ships), and the sim can change
+them at runtime. `min_level` belongs to the part type. The exact rule is in `docs/sim.md` "Power". Base content
+(lead defaults, placeholders): logic core `Critical`; shield emitter `High`, minimum 25%; propulsion `Normal`;
+guns `Low`, beam laser minimum 50%.
+
 **Turning** (decided 11 Oct 2026) comes from three sources the flight computer allocates across: the `gyro`
 torque of logic cores and gyro parts, RCS pods, and engines (differential thrust plus `gimbal`). RCS is its own
 block rather than an engine mode on purpose: code that handles `engine` (rear exhaust, clear-exhaust rule) must
 never mistake an RCS pod for a rear engine, and the wiki can describe it on its own. Power draw of a gyro or RCS
 pod is "at full use"; how draw and heat scale with use is up to the sim. The gyro sits in the `propulsion`
-category (it moves the ship, draws power like the engines and shares their brown-out tier and colour), not
+category (it moves the ship, draws power like the engines and shares their power tier and colour), not
 `logic`.
 
 **Slopes** must be one cell high (`size: (w, 1)`) and hull parts. Steep variants come from rotation.
@@ -199,8 +218,10 @@ category (it moves the ship, draws power like the engines and shares their brown
 ```
 
 `size` is the drydock frame; every placement must fit inside. A placement is `part`, `x`, `y`, `rot`
-(default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise). The index of a
-placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
+(default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise) and `power`
+(optional, parts that draw power only): the player's override of the part's power tier and weight, e.g.
+`(part: "shield_emitter", x: 2, y: 6, power: (tier: Low))` or `power: (tier: High, weight: 2)`; either field
+may be left out. The index of a placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
 ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`).
 
 Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raider.svg`), `sample_early` and
@@ -338,6 +359,7 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
   (a mod can rebalance `pulse_laser` by redefining it). New ids are appended.
 - Ids defined twice inside one pack are an error.
 - Base ships pick up overridden parts automatically, because they reference ids.
+- Icons work the same way by key: a mod's `icons/pulse-laser.svg` replaces the base icon, new keys are added.
 - Not yet: partial patches (change one field), removing entries, locale files. Add when a mod needs them.
 - Co-op needs matching mod lists (hash of pack ids + versions, later).
 
@@ -345,10 +367,10 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 
 - The `data` crate never touches the filesystem: `Pack::from_files(iter of (path, contents))`, then
   `Content::load(&[packs...])` (merge + validate). This works on wasm32 and Android.
-- Feature `embed` (default) compiles `content/base` (without `wiki/`) into the binary:
-  `data::base_content()`, `data::base_pack()` (to combine with mods), `data::base_pack_files()`.
+- Feature `embed` (default) compiles `content/base` (`.ron` and `icons/*.svg`, without `wiki/`) into the
+  binary: `data::base_content()`, `data::base_pack()` (to combine with mods), `data::base_pack_files()`.
 - Web mods come from a picked zip or a URL: unpack into `(path, contents)` and call the same function.
-- Feature `fs` (native tools): `data::fs::load_pack_dir(path)`.
+- Feature `fs` (native tools): `data::fs::load_pack_dir(path)` (reads `.ron`, `.md` and `.svg`).
 - Hot reload in dev: re-read the files, rebuild the packs, swap the `Content`.
 
 ## Validation
@@ -359,13 +381,18 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
 - Errors: RON syntax and unknown fields, unknown file locations, malformed wiki paths, missing `pack.ron`,
   unsupported `schema_version`, dependency order, packs loaded twice, duplicate ids within a pack, bad id/tag
   format, empty name/summary, dangling references (category, faction, material, part, bonus targets, tags,
-  stats), stat ids the code needs but `stats.ron` lacks, unknown colour/tone/glow keys, malformed icon keys
-  (and missing icon files when the tool is given `art/icons`), non-finite or out-of-range numbers, hull parts
+  stats), stat ids the code needs but `stats.ron` lacks, unknown colour/tone/glow keys, malformed icon keys,
+  icon keys (parts, materials, categories) with no `icons/<key>.svg` in any loaded pack, `.svg` files outside
+  `icons/`, icons that are not usable SVG (see [Icons](#icons)), non-finite or out-of-range numbers, hull parts
   with `mass`/`hp`, non-hull parts without them, illegal slopes (not `w × 1`, or not hull), hull placements
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, wiki pages for missing entries, broken or malformed links.
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
-  an engine with a blocked exhaust, an RCS part without any side open to space, a radiator that cannot vent.
+  an engine with a blocked exhaust, an RCS part without any side open to space, a radiator that cannot vent,
+  an icon nothing uses, an empty placement `power` override.
+- Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
+  `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
+  the same weight range.
 - Turning parts: `engine.gimbal` between 0 and 45 degrees, `gyro.torque` and `rcs.thrust` above 0, no `rcs` on
   hull parts.
 - Behavior nodes: ids and option ids not keywords (`when if always and or not target`), unique parameter and
@@ -385,7 +412,7 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
 A future generator reads either the `data` crate directly (Rust) or the JSON export:
 
 ```
-cargo run -p content-tool -- validate                 # all packs ok? icons exist?
+cargo run -p content-tool -- validate                 # all packs ok (icons included)?
 cargo run -p content-tool -- export-json content.json  # resolved content for any external tool
 cargo run -p content-tool -- list part
 ```
@@ -398,7 +425,9 @@ plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals`, `rule_slot
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
 `default_of_factions` and `flown_by_ships`. Categories list their parts,
-factions their ships. `pages` holds free articles; `texts` the whole key → text table.
+factions their ships. `icons` lists every icon by key with its `svg` text, `source` (pack and file) and
+`used_by` (parts, materials, categories), so the wiki can inline the SVGs or write them out as files. Ship
+placements carry their `power` override. `pages` holds free articles; `texts` the whole key → text table.
 
 ## Art keys
 
@@ -407,9 +436,25 @@ Content never holds colours. It names keys that `art/tokens.json` resolves:
 - system colours (`ship.system_colors`): `power weapons shields heat propulsion logic cargo enemy`
 - armor tones (`ship.armor`): `steel composite reactive enemy`
 - hull glow: `player` (`ship.hull_glow.color`), `enemy` (`ship.hull_glow.enemy_color`)
-- icons: file stems in `art/icons`
+- icons: keys of `icons/<key>.svg` in the content packs (not `tokens.json`)
 
 The lists live in `data::art_keys`; a new key needs an entry there and in `tokens.json`.
+
+## Icons
+
+Icons live in the content pack (ADR-0021, ADR-0028): `content/base/icons/<key>.svg`, one SVG per key, the
+glyph of a part without its tile (the game draws tiles itself and rasterises the glyph at runtime at the
+resolution it needs; the wiki can show the SVG as is or composite it on a tile). Materials have a swatch icon
+(`armor-steel`, ...). Parts, materials and categories name them by `icon` key.
+
+- `Content::icon_svg(key)` returns the SVG text from the last loaded pack that has the key; `Content::icons`
+  lists them all (`Icon { key, svg, source }`). Mods add or replace icons by key.
+- Every icon must be usable SVG (`data::svg::check_svg`, a cheap structural check without an XML library):
+  well-formed tags, a root `<svg>` in the SVG namespace with a `viewBox`, and no `<image>`, `<text>`,
+  `<script>` or `<foreignObject>` (no raster graphics; the runtime rasteriser has no fonts; the wiki shows the
+  files in a browser).
+- Glyphs are drawn on a 20 × 20 `viewBox` (one cell) in their system colour, with their soft glow as a
+  blurred group; see `docs/style-guide.md`.
 
 ## API quick reference (`data` crate)
 
@@ -428,6 +473,7 @@ grid.open_sides(i);                                      // Vec<((x, y), Dir)>: 
 dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
 content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
+content.icon_svg("pulse-laser");                         // Option<&str>: SVG text of icons/pulse-laser.svg
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
 let program = data::behavior::Program::parse(text)?;         // text form (or behavior.program() for RON form)

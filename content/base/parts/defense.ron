@@ -1,5 +1,6 @@
 // Defense. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only; the shield radius matches the
-// rings in art/ships/halvex-runner.svg; capacity, regen and absorb are invented).
+// rings in art/ships/halvex-runner.svg; capacity, regen, absorb and the minimum power level are invented).
+// Power tier (lead default): shields before engines and guns. Below a quarter of its draw the bubble cannot hold.
 [
     (
         id: "shield_emitter",
@@ -13,7 +14,7 @@
         build_points: 3,
         mass: 2,
         hp: 1,
-        power: (draw: 3),
+        power: (draw: 3, tier: High, min_level: 0.25),
         heat: (output: 0.8, limit: 3.2),
         shield: (radius: 2.3, capacity: 6, regen: 1.5, absorb: {Energy: 1.0, Kinetic: 0.5, Missile: 1.0}),
     ),

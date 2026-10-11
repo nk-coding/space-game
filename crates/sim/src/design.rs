@@ -35,35 +35,21 @@ pub type PartIdx = u32;
 /// Marker for "no slot".
 pub const NO_SLOT: u32 = u32::MAX;
 
-/// What a power consumer is, for the brown-out priority (see [`DEFAULT_POWER_PRIORITY`]).
+/// What drives a power consumer's demand each tick (who gets power first is its tier and weight, see
+/// [`crate::power`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConsumerKind {
-    /// Logic cores: the mind stays awake as long as possible.
+    /// Logic cores: always on while the piece is active.
     Logic,
-    /// Shield emitters.
+    /// Shield emitters: the shields switch.
     Shield,
-    /// Everything that moves the ship: engines, RCS pods and gyros (one tier, so turning and thrust brown
-    /// out together).
+    /// Everything that moves the ship (engines, RCS pods, gyros): how hard the actuators are driven.
     Engine,
-    /// Guns.
+    /// Guns: the trigger.
     Weapon,
-    /// Anything else that draws power.
+    /// Anything else that draws power: always on.
     Other,
 }
-
-impl ConsumerKind {
-    pub const COUNT: usize = 5;
-}
-
-/// Default brown-out order: earlier kinds are fed first. Placeholder; see the design questions in
-/// `docs/sim.md` (could become a per-ship player setting).
-pub const DEFAULT_POWER_PRIORITY: [ConsumerKind; ConsumerKind::COUNT] = [
-    ConsumerKind::Logic,
-    ConsumerKind::Shield,
-    ConsumerKind::Engine,
-    ConsumerKind::Weapon,
-    ConsumerKind::Other,
-];
 
 /// Stats the simulation reads and adjacency bonuses may change. Ids match `stats.ron`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -168,6 +154,10 @@ pub struct PartSpec {
     pub cargo: f32,
     /// `Some` for parts that draw power.
     pub consumer: Option<ConsumerKind>,
+    /// Consumers: tier and weight at spawn (the part's content default, or the placement's override).
+    pub power_setting: crate::power::PowerSetting,
+    /// Consumers: below this share of its demand the part switches off (content `power.min_level`).
+    pub power_min_level: f32,
     /// Feeds the power pool.
     pub reactor: bool,
     /// Candidate for chain reactions when destroyed (hook only; rule should move to data, see docs).
@@ -364,6 +354,19 @@ impl ShipDesign {
                     ConsumerKind::Other
                 }
             });
+            let over = pl.power.unwrap_or_default();
+            let power_setting = crate::power::PowerSetting {
+                tier: over.tier.unwrap_or(power.tier),
+                weight: over.weight.unwrap_or(power.weight),
+            };
+            let w = power_setting.weight;
+            if !(w > 0.0 && w <= data::MAX_POWER_WEIGHT) || !(0.0..=1.0).contains(&power.min_level)
+            {
+                return Err(format!(
+                    "ship `{}` part {i} (`{}`): power weight {w} or min_level {} out of range",
+                    ship.id, pl.part, power.min_level
+                ));
+            }
             let area = def.area();
             parts.push(PartSpec {
                 id: def.id.clone(),
@@ -387,6 +390,8 @@ impl ShipDesign {
                 rule_slots: def.logic.as_ref().map_or(0, |l| l.rule_slots),
                 cargo: def.cargo.as_ref().map_or(0.0, |c| c.capacity),
                 consumer,
+                power_setting,
+                power_min_level: power.min_level,
                 reactor: power.output > 0.0,
                 volatile: power.output > 0.0,
                 heat_capacity: HEAT_CAPACITY_PER_CELL * area,

@@ -472,6 +472,7 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
             let shape = grid.shape(i);
             json!({
                 "part": pl.part, "x": pl.x, "y": pl.y, "rot": pl.rot, "flip": pl.flip, "material": pl.material,
+                "power": pl.power,
                 "cells": shape.cells(),
                 "polygon": shape.polygon(),
                 "center": shape.center(),
