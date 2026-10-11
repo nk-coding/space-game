@@ -29,7 +29,7 @@ space-game/
   Cargo.toml          # workspace
   crates/sim/         # engine-free simulation (no Bevy dependency unless Avian wins)
   crates/game/        # Bevy client (native, web, Android)
-  crates/bench/       # physics benchmark harness (native + wasm + Android)
+  crates/bench/       # physics benchmark harness (native + wasm + Android); moved to ../space-game-physics-bench on 12 Oct 2026 (ADR-0025)
   data/               # RON: parts, sample ships (start from reference/data-draft/)
   docs/               # this context folder's docs, kept up to date
 ```

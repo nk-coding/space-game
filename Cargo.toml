@@ -1,9 +1,8 @@
 [workspace]
 resolver = "3"
-# Every crate under crates/ is a member. The physics benchmark is its own workspace
-# (it pulls in several physics engines and must not leak into the game's lockfile).
+# Every crate under crates/ is a member. Experiments and benchmarks live in separate local repos
+# (ADR-0025), e.g. ../space-game-physics-bench.
 members = ["crates/*"]
-exclude = ["crates/bench"]
 
 [workspace.package]
 edition = "2024"

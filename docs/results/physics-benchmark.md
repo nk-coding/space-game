@@ -2,8 +2,8 @@
 
 **Decision (11 Oct 2026): Niklas chose Rapier2D.**
 
-Run on 11 Oct 2026 in the VM. Harness: [`crates/bench/`](../../crates/bench/README.md). Raw results:
-`crates/bench/results/2026-10-11/` (JSON lines per run, logs, `env.txt`, generated `summary.md`).
+Run on 11 Oct 2026 in the VM. Harness: the separate local repo `/home/devbox/workspace/space-game-physics-bench` (moved out of `crates/bench` on 12 Oct 2026, ADR-0025). Raw results:
+`space-game-physics-bench/results/2026-10-11/` (JSON lines per run, logs, `env.txt`, generated `summary.md`).
 Niklas decides; this page recommends.
 
 ## Summary
@@ -172,7 +172,7 @@ wasm in Node costs about 1.2–1.9× native on the realistic scenes (more for th
 loses least, at ×1.2–1.4, probably because it has no SIMD-style code to lose. Rapier-compound stays the
 fastest or near-fastest in wasm as well (combined-merged 4.6 ms in Node).
 
-**Browser**: the page (`crates/bench/web/`) runs the same wasm builds in a Web Worker and shows step times and the
+**Browser**: the page (`space-game-physics-bench/web/`) runs the same wasm builds in a Web Worker and shows step times and the
 final hash next to the native and Node hashes. Headless Chromium (CPU only) ran it with full-length runs of 5 scenarios × 5 engines, and all
 25 final hashes matched native and Node (`results/2026-10-11/browser-headless-hashes.txt`). Headless timings are not meaningful; Niklas can measure in his
 host browser (command below).
@@ -209,7 +209,7 @@ checkpoints. Ray results (hit body + hit distance bits) are hashed separately.
 
 ## API notes per engine (what it took to implement the scenarios)
 
-### Rapier2D 0.36.1 (`crates/bench/rapier/src/lib.rs`, ~200 lines)
+### Rapier2D 0.36.1 (`space-game-physics-bench/rapier/src/lib.rs`, ~200 lines)
 
 - **Compound bodies:** two options, both measured. (a) One collider per cell attached to the body; every collider is its own leaf in the broad-phase BVH and can be removed individually. (b) One collider holding a `SharedShape::compound(Vec<(Pose, SharedShape)>)`; parry builds a BVH over the parts inside the shape, the broad phase sees one leaf per body. (b) is immutable: any change means building a new compound, which is cheap (a whole split event, rebuild included, averages ~0.4 ms natively with per-cell compounds and ~0.04 ms with merged rectangles).
 - **Adding/removing colliders:** `colliders.insert_with_parent(builder, body, &mut bodies)` and `colliders.remove(handle, &mut islands, &mut bodies, &mut soft_bodies, wake_up)`. Insert updates mass properties immediately, removal only at the next step; call `recompute_mass_properties_from_colliders` if you need the new centre of mass right away. Rapier does **not** correct the linear velocity when the centre of mass moves; the adapter adds `w × Δcom` itself.
@@ -218,7 +218,7 @@ checkpoints. Ray results (hit body + hit distance bits) are hashed separately.
 - **Determinism:** `enhanced-determinism` = libm math in glam/simba, deterministic hash maps and iteration order; documented to cover wasm. Can't be combined with `simd8`. `parallel` (rayon) works together with it.
 - **Pain:** low. Explicit sets and handles, a `PhysicsWorld` convenience struct, plain Rust, no framework. 0.36 switched its math types to glam (`Vector = Vec2`, `Rotation = Rot2`, `Pose`); the prelude still re-exports nalgebra's `vector!`/`point!` macros, which produce the wrong types (pitfall).
 
-### box2d-rust 1.4.0 (`crates/bench/box2d/src/lib.rs`, ~170 lines)
+### box2d-rust 1.4.0 (`space-game-physics-bench/box2d/src/lib.rs`, ~170 lines)
 
 - A line-by-line port of the Box2D v3 C API: free functions taking `&mut World` (`create_body`, `create_polygon_shape`, `world_step(&mut world, dt, substeps)`), definition structs from `default_*_def()`. Familiar if you know Box2D v3. It says "v3.1" but ports C commit `56edae7` (3.2-dev; `get_version()` returns 3.2.0).
 - **Compound bodies:** no compound shape type. Every polygon (max 8 vertices) is its own shape and broad-phase proxy on the body. One box per cell is therefore expensive; merged rectangles are the way to go.
@@ -229,7 +229,7 @@ checkpoints. Ray results (hit body + hit distance bits) are hashed separately.
 - **Threads:** serial by design; Box2D's task system was not ported (README: "the port is serial").
 - **Pain:** low for a Box2D user, but C-style.
 
-### Avian2D 0.7.0 on Bevy 0.19.1 (`crates/bench/avian/src/lib.rs`, ~280 lines)
+### Avian2D 0.7.0 on Bevy 0.19.1 (`space-game-physics-bench/avian/src/lib.rs`, ~280 lines)
 
 - **ECS-driven:** bodies and colliders are entities with components; stepping means running a Bevy schedule. Headless setup that works: `App` + `TaskPoolPlugin` + `PhysicsPlugins::new(MySchedule)` with interpolation disabled, a manually advanced `Time` resource, `app.finish(); app.cleanup()` (or systems panic on missing resources), then `world.run_schedule(MySchedule)` per tick. Each of these steps fails in a non-obvious way when you get it wrong, and it took noticeably longer to get right than the other engines.
 - **Compound bodies:** (a) one child entity per cell (`ChildOf(body)` + `Transform` offset), Avian's documented way, measured as `avian`; (b) `Collider::compound(...)` on the body entity, measured as `avian-compound`. (a) is very slow at this scale (tens of thousands of entities; a split that despawns and respawns ~1000 child entities costs ~27 ms).
@@ -278,7 +278,7 @@ checkpoints. Ray results (hit body + hit distance bits) are hashed separately.
 ## How to reproduce / open the browser page
 
 ```sh
-cd ~/workspace/space-game/crates/bench
+cd ~/workspace/space-game-physics-bench
 ./run-all.sh                 # everything (~3–4 h): builds, native per-engine, lockstep, sleep-off, multi-thread, Node, pairs
 STAMP=quiet REPEATS=3 ./run-all.sh   # e.g. in a quiet period; results in results/quiet/
 ./build-wasm.sh && python3 web/serve.py 8090   # browser page at http://10.77.6.2:8090/
