@@ -358,6 +358,11 @@ impl Piece {
         (pos, crate::physics::wrap_angle(self.prev_angle + d * alpha))
     }
 
+    /// Logic cores of this piece (alive when the piece was last rebuilt).
+    pub fn cores(&self) -> &[PartIdx] {
+        &self.cores
+    }
+
     /// Consumers in the order they get power.
     pub fn consumers(&self) -> &[Consumer] {
         &self.consumers
@@ -414,6 +419,10 @@ pub struct Ship {
     pub(crate) control: Option<PieceId>,
     pub(crate) helm: HelmMode,
     pub(crate) brain: Option<RaiderBrain>,
+    /// A behavior program flies the ship (overrides the helm, like a brain).
+    pub(crate) behavior: Option<crate::behavior::BehaviorState>,
+    /// Whose lock the `locked` target selector follows (an escort's leader).
+    pub(crate) leader: Option<ShipId>,
     pub(crate) telemetry: FlightTelemetry,
     /// Global multipliers from `SimConfig` (thrust: engines and RCS; torque: gyros and cores).
     pub(crate) thrust_scale: f32,
@@ -465,6 +474,8 @@ impl Ship {
             control: None,
             helm: HelmMode::Raw,
             brain: None,
+            behavior: None,
+            leader: None,
             telemetry: FlightTelemetry::default(),
             thrust_scale: cfg.thrust_scale,
             torque_scale: cfg.torque_scale,
@@ -582,6 +593,41 @@ impl Ship {
 
     pub fn brain(&self) -> Option<&RaiderBrain> {
         self.brain.as_ref()
+    }
+
+    /// The running behavior and its debug view (active rule, why the others failed, target), if any.
+    pub fn behavior(&self) -> Option<&crate::behavior::BehaviorState> {
+        self.behavior.as_ref()
+    }
+
+    /// The ship whose lock this ship's `locked` target selector follows.
+    pub fn leader(&self) -> Option<ShipId> {
+        self.leader
+    }
+
+    /// Behavior rule slots now: the `rule_slots` of the working (alive, not overheated) logic cores of the
+    /// controlling piece; 0 while the ship is dark.
+    pub fn rule_slots(&self) -> u32 {
+        self.control.map_or(0, |c| self.rule_slots_of(c))
+    }
+
+    /// Rule slots of one piece's own working logic cores (0 unless the piece is active). The slot limit is
+    /// per piece, so a split-off piece with its own cores can run a copy of the behavior within its slots.
+    pub fn rule_slots_of(&self, piece: PieceId) -> u32 {
+        let Some(p) = self.piece(piece) else {
+            return 0;
+        };
+        if !p.active {
+            return 0;
+        }
+        p.cores
+            .iter()
+            .filter(|&&c| {
+                let ps = &self.parts[c as usize];
+                ps.alive && !ps.overheated
+            })
+            .map(|&c| self.design.parts[c as usize].rule_slots)
+            .sum()
     }
 
     /// What the flight computer did last tick.
@@ -1369,6 +1415,14 @@ impl StateHash for Ship {
             }
             None => h.u8(0),
         }
+        match &self.behavior {
+            Some(b) => {
+                h.u8(1);
+                b.hash_state(h);
+            }
+            None => h.u8(0),
+        }
+        h.u32(self.leader.map_or(u32::MAX, |l| l.0));
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {
             h.u32(ps.alive as u32 | (ps.overheated as u32) << 1);

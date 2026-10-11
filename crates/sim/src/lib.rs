@@ -35,6 +35,7 @@
 #![forbid(unsafe_code)]
 
 pub mod alloc;
+pub mod behavior;
 pub mod breakage;
 pub mod collider;
 pub mod config;
@@ -54,6 +55,7 @@ pub mod weapons;
 pub mod world;
 
 pub use alloc::{Actuation, TorqueSource};
+pub use behavior::{BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
 pub use breakage::{DamageOutcome, DamageTarget};
 pub use collider::ConvexPolygon;
 pub use config::{FlightTuning, SimConfig};

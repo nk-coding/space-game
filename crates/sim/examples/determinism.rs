@@ -1,7 +1,7 @@
 //! Prints the per-tick state hashes of the deterministic scenario, one `tick hash` line per tick.
 //! Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh` runs both and compares.
 //!
-//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|load] [--ships N]` (`--ships` sets the
+//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|load|behavior] [--ships N]` (`--ships` sets the
 //! load test's ship count, default 20).
 
 fn main() {
@@ -20,8 +20,9 @@ fn main() {
             other => panic!("unknown argument {other}"),
         }
     }
-    let mut kind = sim::scenario::ScenarioKind::from_name(&scenario)
-        .unwrap_or_else(|| panic!("unknown scenario {scenario} (known: core, flight, load)"));
+    let mut kind = sim::scenario::ScenarioKind::from_name(&scenario).unwrap_or_else(|| {
+        panic!("unknown scenario {scenario} (known: core, flight, load, behavior)")
+    });
     if let sim::scenario::ScenarioKind::Load(_) = kind {
         kind = sim::scenario::ScenarioKind::Load(ships);
     }
@@ -35,7 +36,7 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
@@ -46,6 +47,7 @@ fn main() {
         stats.shots,
         stats.hits,
         stats.shield_hits,
-        stats.ricochets
+        stats.ricochets,
+        stats.script_evals
     );
 }

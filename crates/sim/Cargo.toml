@@ -11,6 +11,10 @@ data = { path = "../data" }
 # Pure-Rust transcendental functions (sin, cos, atan2, exp, ...): identical results on every platform.
 # `default-features = false` drops the `arch` feature, so no platform-specific code path is ever used.
 libm = { version = "=0.2.16", default-features = false }
+# Custom behavior conditions (Rhai nodes in content). Sandboxed raw engine: no packages, no `**` (float powf
+# would go through the platform libm), no time, no modules/import, no eval; `sync` so the sim stays
+# Send + Sync (Bevy resource); `f32_float` to match the sim. See `src/behavior/script.rs`.
+rhai = { version = "=1.26.1", default-features = false, features = ["std", "sync", "f32_float", "no_time", "no_module", "no_custom_syntax"] }
 
 [[example]]
 name = "determinism"

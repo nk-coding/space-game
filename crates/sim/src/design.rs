@@ -163,6 +163,8 @@ pub struct PartSpec {
     pub is_radiator: bool,
     pub is_shield: bool,
     pub logic: bool,
+    /// Behavior rules this logic core can run (`logic.rule_slots`; 0 for other parts).
+    pub rule_slots: u32,
     pub cargo: f32,
     /// `Some` for parts that draw power.
     pub consumer: Option<ConsumerKind>,
@@ -275,6 +277,11 @@ pub struct ShipDesign {
     pub exhaust_blockers: Csr<PartIdx>,
     /// Content problems that do not stop the sim (e.g. bonuses on stats the sim does not model yet).
     pub warnings: Vec<String>,
+    /// Hit points of the intact ship (sum over all parts): the 100% of the `hull` behavior sensors.
+    pub hp_total: f32,
+    /// The behavior (content id) this ship flies under when nobody pilots it: the blueprint's own, else its
+    /// faction's default. Look it up with `BehaviorLibrary::default_for`.
+    pub behavior: Option<String>,
 }
 
 /// Heat capacity per cell of area. PLACEHOLDER.
@@ -377,6 +384,7 @@ impl ShipDesign {
                 is_radiator: def.radiator.is_some(),
                 is_shield: def.shield.is_some(),
                 logic: def.logic.is_some(),
+                rule_slots: def.logic.as_ref().map_or(0, |l| l.rule_slots),
                 cargo: def.cargo.as_ref().map_or(0.0, |c| c.capacity),
                 consumer,
                 reactor: power.output > 0.0,
@@ -493,6 +501,7 @@ impl ShipDesign {
             }
         }
 
+        let hp_total = parts.iter().map(|p: &PartSpec| p.hp).sum::<f32>();
         Ok(ShipDesign {
             id: ship.id.clone(),
             name: ship.name.clone(),
@@ -508,6 +517,8 @@ impl ShipDesign {
             gun_blockers: Csr::from_lists(gun_blockers),
             exhaust_blockers: Csr::from_lists(exhaust_blockers),
             warnings,
+            hp_total,
+            behavior: content.ship_behavior(ship).map(|b| b.id.clone()),
         })
     }
 

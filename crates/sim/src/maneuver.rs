@@ -1,6 +1,7 @@
-//! Built-in maneuvers: the layer between behavior trees (later) and the flight computer. Each maneuver turns
-//! into a [`FlightGoal`] every tick. Plus a tiny hard-coded combat brain (approach → attack → orbit, aimed with
-//! lead) until behavior trees exist. Ranges and timings are **placeholders**.
+//! Built-in maneuvers: the layer between behaviors (`behavior.rs`) and the flight computer. Each maneuver turns
+//! into a [`FlightGoal`] every tick. Plus the old hard-coded combat brain (approach → attack → orbit, aimed
+//! with lead), kept for API stability; the content behavior `raider_basic` replaces it. Ranges and timings are
+//! **placeholders**.
 
 use crate::config::FlightTuning;
 use crate::flight::{AimMode, FlightGoal, HeadingGoal, Kin, Target, TargetState, resolve_target};
@@ -30,11 +31,44 @@ pub enum Maneuver {
         radius: f32,
         ccw: bool,
     },
+    /// Hold `range` metres from the target: back off when it is closer (`HeadingGoal::Auto`, so a ship that
+    /// cannot thrust backwards turns away), close in like `Approach` when it is farther, face it at range.
+    KeepRange {
+        target: Target,
+        range: f32,
+        aim: AimMode,
+    },
+    /// Run straight away from the target at top speed.
+    Flee { from: Target },
 }
 
 impl Maneuver {
+    /// The target this maneuver flies relative to, if any.
+    pub fn target(&self) -> Option<Target> {
+        match *self {
+            Maneuver::Brake | Maneuver::Hold { .. } => None,
+            Maneuver::FaceTarget { target, .. }
+            | Maneuver::Approach { target, .. }
+            | Maneuver::Orbit { target, .. }
+            | Maneuver::KeepRange { target, .. } => Some(target),
+            Maneuver::Flee { from } => Some(from),
+        }
+    }
+
     /// This tick's goal. An unresolvable target (destroyed ship) brakes.
     pub fn goal(&self, kin: &Kin, ships: &[Ship], tuning: &FlightTuning) -> FlightGoal {
+        let ts = self.target().and_then(|t| resolve_target(ships, &t));
+        self.goal_for(kin, ts, tuning)
+    }
+
+    /// This tick's goal with the target already resolved (`ts`; ignored by maneuvers without a target).
+    /// Behaviors use it to fly relative to an aim point on the target ship (e.g. its engines).
+    pub fn goal_for(
+        &self,
+        kin: &Kin,
+        ts: Option<TargetState>,
+        tuning: &FlightTuning,
+    ) -> FlightGoal {
         let brake = FlightGoal {
             heading: HeadingGoal::Auto,
             velocity: Some(Vec2::ZERO),
@@ -45,35 +79,18 @@ impl Maneuver {
                 heading: HeadingGoal::Auto,
                 velocity: Some(seek(kin, at, Vec2::ZERO, 0.0, tuning)),
             },
-            Maneuver::FaceTarget { target, aim } => match resolve_target(ships, &target) {
+            Maneuver::FaceTarget { aim, .. } => match ts {
                 Some(ts) => FlightGoal {
                     heading: face(kin, &ts, aim),
                     velocity: Some(ts.vel),
                 },
                 None => brake,
             },
-            Maneuver::Approach { target, range, aim } => match resolve_target(ships, &target) {
-                Some(ts) => {
-                    let dist = (ts.pos - kin.pos).length();
-                    if dist > range {
-                        FlightGoal {
-                            heading: HeadingGoal::Auto,
-                            velocity: Some(seek(kin, ts.pos, ts.vel, range, tuning)),
-                        }
-                    } else {
-                        FlightGoal {
-                            heading: face(kin, &ts, aim),
-                            velocity: Some(ts.vel),
-                        }
-                    }
-                }
+            Maneuver::Approach { range, aim, .. } => match ts {
+                Some(ts) => approach(kin, &ts, range, aim, tuning),
                 None => brake,
             },
-            Maneuver::Orbit {
-                target,
-                radius,
-                ccw,
-            } => match resolve_target(ships, &target) {
+            Maneuver::Orbit { radius, ccw, .. } => match ts {
                 Some(ts) => {
                     let r = kin.pos - ts.pos;
                     let dist = r.length();
@@ -98,6 +115,60 @@ impl Maneuver {
                 }
                 None => brake,
             },
+            Maneuver::KeepRange { range, aim, .. } => match ts {
+                Some(ts) => {
+                    let r = kin.pos - ts.pos;
+                    let dist = r.length();
+                    if dist < range && dist > 1e-3 {
+                        let out = r * (1.0 / dist);
+                        let speed = kin.arrive_speed(range - dist, tuning);
+                        FlightGoal {
+                            heading: HeadingGoal::Auto,
+                            velocity: Some(ts.vel + out * speed),
+                        }
+                    } else {
+                        approach(kin, &ts, range, aim, tuning)
+                    }
+                }
+                None => brake,
+            },
+            Maneuver::Flee { .. } => match ts {
+                Some(ts) => {
+                    let r = kin.pos - ts.pos;
+                    let dist = r.length();
+                    let out = if dist > 1e-3 {
+                        r * (1.0 / dist)
+                    } else {
+                        Vec2::Y
+                    };
+                    FlightGoal {
+                        heading: HeadingGoal::Auto,
+                        velocity: Some(out * kin.top_speed),
+                    }
+                }
+                None => brake,
+            },
+        }
+    }
+}
+
+fn approach(
+    kin: &Kin,
+    ts: &TargetState,
+    range: f32,
+    aim: AimMode,
+    tuning: &FlightTuning,
+) -> FlightGoal {
+    let dist = (ts.pos - kin.pos).length();
+    if dist > range {
+        FlightGoal {
+            heading: HeadingGoal::Auto,
+            velocity: Some(seek(kin, ts.pos, ts.vel, range, tuning)),
+        }
+    } else {
+        FlightGoal {
+            heading: face(kin, ts, aim),
+            velocity: Some(ts.vel),
         }
     }
 }
@@ -288,6 +359,16 @@ impl StateHash for Maneuver {
                 target.hash_state(h);
                 h.f32(*radius);
                 h.bool(*ccw);
+            }
+            Maneuver::KeepRange { target, range, aim } => {
+                h.u8(5);
+                target.hash_state(h);
+                h.f32(*range);
+                h.u8(*aim as u8);
+            }
+            Maneuver::Flee { from } => {
+                h.u8(6);
+                from.hash_state(h);
             }
         }
     }

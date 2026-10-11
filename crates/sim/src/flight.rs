@@ -383,7 +383,7 @@ impl Plan {
     };
 }
 
-/// Pass 1: decide the goal of one ship from its helm (or brain), reading the whole world.
+/// Pass 1: decide the goal of one ship from its helm (or brain, or behavior), reading the whole world.
 pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
     let Some(piece) = ship.control_piece().and_then(|c| ship.piece(c)) else {
         return Plan::DARK;
@@ -400,6 +400,15 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             fire,
             raw: false,
             brain: Some(next),
+        };
+    }
+    if let Some(b) = &ship.behavior {
+        let (goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
+        return Plan {
+            goal: Some(goal),
+            fire,
+            raw: false,
+            brain: None,
         };
     }
     match &ship.helm {

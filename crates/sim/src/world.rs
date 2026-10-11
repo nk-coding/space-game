@@ -16,6 +16,7 @@
 use std::sync::Arc;
 
 use crate::DT;
+use crate::behavior::{self, BehaviorId, BehaviorLibrary, BehaviorState};
 use crate::breakage::{DamageOutcome, DamageTarget};
 use crate::config::SimConfig;
 use crate::design::ShipDesign;
@@ -50,8 +51,14 @@ pub enum ShipCommand {
         goal: flight::FlightGoal,
         fire: bool,
     },
-    /// Hand the ship to a brain (`Some`) or take it back (`None`). A brain overrides the helm.
+    /// Hand the ship to a brain (`Some`) or take it back (`None`). A brain overrides the helm. Clears a
+    /// behavior.
     Brain(Option<RaiderBrain>),
+    /// Hand the ship to a behavior of the sim's [`BehaviorLibrary`] (`Some`) or take it back (`None`). A
+    /// behavior overrides the helm, like a brain, and clears the brain. Unknown ids are ignored.
+    Behavior(Option<BehaviorId>),
+    /// Set the ship whose lock the `locked` target selector follows (an escort's leader), or none.
+    Leader(Option<ShipId>),
 }
 
 /// Everything from outside that affects one tick. Applied in list order.
@@ -97,6 +104,9 @@ pub struct Sim<P: PhysicsBackend = FreeFlight> {
     /// Shield bubbles this tick.
     pub(crate) bubbles: Vec<Bubble>,
     pub(crate) shield_scratch: Vec<(f32, u32)>,
+    /// Behavior programs (shared; ships refer to them by `BehaviorId`).
+    behaviors: BehaviorLibrary,
+    behavior_scratch: behavior::Scratch,
 }
 
 impl Sim<FreeFlight> {
@@ -128,7 +138,48 @@ impl<P: PhysicsBackend> Sim<P> {
             beams: Vec::new(),
             bubbles: Vec::new(),
             shield_scratch: Vec::new(),
+            behaviors: BehaviorLibrary::default(),
+            behavior_scratch: behavior::Scratch::default(),
         }
+    }
+
+    /// Replaces the behavior library (`BehaviorLibrary::new(&content)`). Every ship's behavior is dropped,
+    /// since handles refer to the old library; set the library before commanding behaviors.
+    pub fn set_behaviors(&mut self, lib: BehaviorLibrary) {
+        self.behavior_scratch = behavior::Scratch::default();
+        self.behavior_scratch.scopes = lib.script_scopes();
+        self.behaviors = lib;
+        for s in &mut self.ships {
+            s.behavior = None;
+        }
+    }
+
+    pub fn behaviors(&self) -> &BehaviorLibrary {
+        &self.behaviors
+    }
+
+    /// Add player programs here (`add_text`); existing handles stay valid.
+    pub fn behaviors_mut(&mut self) -> &mut BehaviorLibrary {
+        &mut self.behaviors
+    }
+
+    /// Rhai condition evaluations so far (diagnostics; not part of the state).
+    pub fn script_evaluations(&self) -> u64 {
+        self.behavior_scratch.script_evals
+    }
+
+    /// Runs the behavior think pass for every ship with a behavior now, whatever the cadence (benchmarks and
+    /// tools; `step` thinks on its own).
+    #[doc(hidden)]
+    pub fn think_all_behaviors_now(&mut self) {
+        behavior::think_all(
+            &mut self.ships,
+            &self.behaviors,
+            &mut self.behavior_scratch,
+            self.tick,
+            &self.config,
+            true,
+        );
     }
 
     /// Number of completed ticks.
@@ -242,7 +293,25 @@ impl<P: PhysicsBackend> Sim<P> {
                     s.helm = HelmMode::Maneuver { maneuver, fire }
                 }
                 ShipCommand::Goal { goal, fire } => s.helm = HelmMode::Goal { goal, fire },
-                ShipCommand::Brain(b) => s.brain = b,
+                ShipCommand::Brain(b) => {
+                    if b.is_some() {
+                        s.behavior = None;
+                    }
+                    s.brain = b;
+                }
+                ShipCommand::Behavior(None) => s.behavior = None,
+                ShipCommand::Behavior(Some(id)) => {
+                    let program = self.behaviors.get(id).cloned();
+                    let s = match self.ships.binary_search_by_key(&ship, |s| s.id()) {
+                        Ok(k) => &mut self.ships[k],
+                        Err(_) => return,
+                    };
+                    if let Some(p) = program {
+                        s.brain = None;
+                        s.behavior = Some(BehaviorState::new(id, p));
+                    }
+                }
+                ShipCommand::Leader(l) => s.leader = l,
             }
         }
     }
@@ -426,6 +495,16 @@ impl<P: PhysicsBackend> Sim<P> {
             self.apply_damage(d.ship, d.target, d.amount);
         }
         self.resolve_breakage();
+
+        // Behaviors decide (each ship every few ticks, from one snapshot), then flight flies the decisions.
+        behavior::think_all(
+            &mut self.ships,
+            &self.behaviors,
+            &mut self.behavior_scratch,
+            self.tick,
+            &self.config,
+            false,
+        );
 
         // Flight: plan every ship from the same world, then act.
         let mut plans = std::mem::take(&mut self.plans);

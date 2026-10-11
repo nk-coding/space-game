@@ -8,6 +8,10 @@
 //!   base ships do.
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
 //!   fire), automaton ships by the raider brain, fewer hits: flight computer, allocation, maneuvers, brains.
+//! * [`ScenarioKind::Behavior`]: every ship under a content behavior (raiders: `raider_basic`; ship-mind
+//!   ships: `skirmisher` and three player programs with target priorities, among them an escort following
+//!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
+//!   (rule slots drop).
 //!
 //! When the physics engine lands, the same scenarios run on it and the same check compares the hashes.
 
@@ -31,6 +35,8 @@ pub enum ScenarioKind {
     Flight,
     /// The shared load test with this many ships (see [`load_test`]).
     Load(u32),
+    /// Behaviors (content and player programs, Rhai conditions, target priorities, slots).
+    Behavior,
 }
 
 impl ScenarioKind {
@@ -39,6 +45,7 @@ impl ScenarioKind {
             "core" => Some(ScenarioKind::Core),
             "flight" => Some(ScenarioKind::Flight),
             "load" => Some(ScenarioKind::Load(20)),
+            "behavior" => Some(ScenarioKind::Behavior),
             _ => None,
         }
     }
@@ -48,6 +55,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 0.25,
             ScenarioKind::Flight => 0.08,
+            ScenarioKind::Behavior => 0.06,
             ScenarioKind::Load(_) => 0.0,
         }
     }
@@ -56,7 +64,7 @@ impl ScenarioKind {
     fn blast_every(self) -> u64 {
         match self {
             ScenarioKind::Core => 75,
-            ScenarioKind::Flight => 150,
+            ScenarioKind::Flight | ScenarioKind::Behavior => 150,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -65,7 +73,7 @@ impl ScenarioKind {
     fn reroll_every(self) -> u64 {
         match self {
             ScenarioKind::Core => 20,
-            ScenarioKind::Flight => 45,
+            ScenarioKind::Flight | ScenarioKind::Behavior => 45,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -88,6 +96,8 @@ pub struct ScenarioStats {
     pub hits: u32,
     pub shield_hits: u32,
     pub ricochets: u32,
+    /// Rhai condition evaluations.
+    pub script_evals: u64,
 }
 
 pub struct Scenario {
@@ -138,6 +148,9 @@ impl Scenario {
                 sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
             }
         }
+        if kind == ScenarioKind::Behavior {
+            assign_behaviors(content, &mut sim)?;
+        }
         if kind == ScenarioKind::Core
             && let Ok(d) = ShipDesign::compile(content, &heat_stress_blueprint())
         {
@@ -184,6 +197,7 @@ impl Scenario {
                 self.stats.firing_ticks += 1;
             }
         }
+        self.stats.script_evals = self.sim.script_evaluations();
         self.sim.state_hash()
     }
 
@@ -204,7 +218,7 @@ impl Scenario {
                 (
                     s.id(),
                     s.design().engines.len(),
-                    s.brain().is_some(),
+                    s.brain().is_some() || s.behavior().is_some(),
                     s.design().id == HEAT_STRESS,
                 )
             })
@@ -247,7 +261,7 @@ impl Scenario {
                         },
                     ));
                 }
-                ScenarioKind::Flight | ScenarioKind::Load(_) => {
+                ScenarioKind::Flight | ScenarioKind::Behavior | ScenarioKind::Load(_) => {
                     let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
                     let len = if rng.chance(0.2) {
                         0.0
@@ -311,6 +325,68 @@ impl Scenario {
             }
         }
     }
+}
+
+/// Player programs of the behavior scenario (text form, as typed in the editor).
+const HUNTER: &str = "target weakest(engines)
+when hull < 30% -> flee
+when target_in_range(110%) and cycle(8s) >= 5s -> orbit(70%, cw)
+when closing_in(3s) -> face
+always -> approach(60%)";
+const GUARD: &str = "target threat(weapons)
+when under_attack and shield_down -> kite(120%)
+when enemies_near(80m) >= 2 -> flee
+when target_time > 20s and target_hull > 80% -> orbit(50%)
+always -> approach(80%)";
+const ESCORT: &str = "target locked(power)
+when target_in_range and not heat > 90% -> face
+always -> approach(70%)";
+
+/// Behavior scenario: raiders fly their faction default; the first ship-mind ship is piloted (random input,
+/// the leader); the others cycle through the skirmisher, the hunter, the guard and an escort of the leader.
+fn assign_behaviors(content: &Content, sim: &mut Sim) -> Result<(), String> {
+    let show = |e: Vec<String>| e.join("; ");
+    let mut lib = crate::behavior::BehaviorLibrary::new(content)
+        .map_err(|p| show(p.iter().map(|p| p.to_string()).collect()))?;
+    let mut add = |id: &str, text: &str| {
+        lib.add_text(id, text)
+            .map_err(|e| show(e.iter().map(|e| e.to_string()).collect()))
+    };
+    let programs = [
+        None,
+        Some(add("hunter", HUNTER)?),
+        Some(add("guard", GUARD)?),
+        Some(add("escort", ESCORT)?),
+    ];
+    sim.set_behaviors(lib);
+    let ships: Vec<(crate::ShipId, bool, Option<crate::BehaviorId>)> = sim
+        .ships()
+        .iter()
+        .map(|s| {
+            (
+                s.id(),
+                s.design().faction == "ship_mind",
+                sim.behaviors().default_for(s.design()),
+            )
+        })
+        .collect();
+    let mut leader = None;
+    let mut k = 0;
+    for (id, mind, default) in ships {
+        if !mind {
+            sim.command(id, ShipCommand::Behavior(default));
+            continue;
+        }
+        let Some(l) = leader else {
+            leader = Some(id); // piloted by the scenario's random input
+            continue;
+        };
+        let program = programs[k % programs.len()].or(default);
+        sim.command(id, ShipCommand::Behavior(program));
+        sim.command(id, ShipCommand::Leader(Some(l)));
+        k += 1;
+    }
+    Ok(())
 }
 
 const HEAT_STRESS: &str = "heat_stress";
