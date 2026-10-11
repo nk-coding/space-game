@@ -2,6 +2,8 @@
 
 # Space Game: Concept Notes
 
+**Decisions are recorded in [`docs/adr`](adr/README.md) (architecture and tech) and [`docs/gdr`](gdr/README.md) (game design); this file is the overview.** Each decision below links to its record (→); the records hold the reasons, the rejected options and the exact status. Open questions are listed under "Open" in both READMEs.
+
 Backing notes for future sessions. **The main, user-facing version is the concept board artifact:**
 https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Update that page when the concept changes (read it with the Artifact tool, edit, republish to the same URL). Niklas prefers artifacts over markdown docs.
 
@@ -18,34 +20,34 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 
 ## Decisions
 
-| Topic | Direction | Status |
-|---|---|---|
-| Player role | Pilot one ship + small scripted escort | Settled |
-| World | One seamless procedural open galaxy | Settled |
-| Physics | Fully physical: mass, CoM, thrust torque, breakage | Settled |
-| Hull | Distinct flat blocks with thin dark seams (no bevels) and a faint teal glow along the hull edge (style 2a). Parts have footprints (1×1, 1×2, 2×2, later 3×3+). Armor: blocks + slopes 1×1, 1×2, 1×3 (three angles), in materials (steel, composite, reactive, ...) | Settled |
-| Ship systems | Shared power pool (per connected piece) + heat/radiators + adjacency bonuses; no wiring | Settled |
-| Behavior | Layered: behavior tree (user edits) → built-in maneuvers → always-on flight computer. Trees have a text format (1 line per rule) | Settled |
-| Scripting | Rhai for custom nodes (core is Rust). Niklas dislikes Lua's `end` | Leaning |
-| Touch controls | Stick to move, tap to lock a target; flight computer keeps the nose on it. Without a lock the stick means 'fly that way' (push distance = speed). Letting go brakes with the ship's own thrusters by default; a drift toggle (player setting) turns braking off. Soft top speed from thrust and mass. PC: WASD = stick, mouse locks and fires | Settled |
-| Weapons | All families: energy, kinetic (physical recoil), missiles, disruption, drones, utility | Settled |
-| Tech | Big tech trees per family (~200 nodes total). Node kinds: new part, variant (trade-off), size class, refinement (short I–V chains), alien (needs reverse-engineering). NO Mk I–III levels. Cross-links between trees. All data-driven | Settled |
-| Progression | Research data from dismantling salvaged parts (per family); alien nodes need artifacts/lore. Other sources undecided | Leaning |
-| Balancing | AI-vs-AI arena on the headless simulation with evolutionary search (see below), MAP-Elites archive, automatic number tuning, Elo/TrueSkill ratings, reports, short CI run | Settled |
-| Tech stack | All Rust. Engine-free simulation core crate. Bevy client for native and web (WebAssembly). No C++, no Godot. Next step: the spike (see Technical decisions) | Settled |
-| Physics engine | Rapier2D in the core (pure Rust, standalone, determinism mode). box2d-rust (pure Rust port of Box2D 3.1) to watch. Avian ties core to Bevy | Leaning |
-| Ship scale | ~60x60 minimum, capital ships if achievable | Settled |
-| Death | Mild: bonded matter re-forms the ship at home for free; unbonded haul stays behind as a wreck | Settled |
-| Economy | None (no credits, no trading); parts still have build-point costs for balancing/enemy scaling | Settled |
-| Story | Light: procedural missions + lore on derelicts (lore also unlocks reverse-engineering) | Settled |
-| Art | Ship style 2a: flat vector tiles, one flat colour per machine with its glowing icon on the tile, soft teal glow (coral for enemies); each color = one meaning. UI: reference look (floating HUD, tracked labels, pill buttons, dotted rings) | Settled |
-| Multiplayer | P2P co-op, host-authoritative; raids later | Later |
+| Topic | Direction | Status | Record |
+|---|---|---|---|
+| Player role | Pilot one ship + small scripted escort | Settled | [GDR-0003](gdr/0003-pilot-one-ship-with-escort.md) (superseded 11 Oct 2026 by [GDR-0013](gdr/0013-vessels-and-piloting.md), vessels and piloting) |
+| World | One seamless procedural open galaxy | Settled | [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md) |
+| Physics | Fully physical: mass, CoM, thrust torque, breakage | Settled | [GDR-0005](gdr/0005-fully-physical-ships.md) |
+| Hull | Distinct flat blocks with thin dark seams (no bevels) and a faint teal glow along the hull edge (style 2a). Parts have footprints (1×1, 1×2, 2×2, later 3×3+). Armor: blocks + slopes 1×1, 1×2, 1×3 (three angles), in materials (steel, composite, reactive, ...) | Settled | [GDR-0004](gdr/0004-grid-ship-building-no-wiring.md), [GDR-0007](gdr/0007-ship-style-2a.md) |
+| Ship systems | Shared power pool (per connected piece) + heat/radiators + adjacency bonuses; no wiring | Settled | [GDR-0004](gdr/0004-grid-ship-building-no-wiring.md), [GDR-0014](gdr/0014-power-tiers-and-weights.md) |
+| Behavior | Layered: behavior tree (user edits) → built-in maneuvers → always-on flight computer. Trees have a text format (1 line per rule) | Settled | [GDR-0015](gdr/0015-layered-behavior.md) |
+| Scripting | Rhai for custom nodes (core is Rust). Niklas dislikes Lua's `end` | Leaning | [ADR-0019](adr/0019-rhai-scripting.md) (recorded as Accepted: the concept board and `CLAUDE.md` treat Rhai as settled) |
+| Touch controls | Stick to move, tap to lock a target; flight computer keeps the nose on it. Without a lock the stick means 'fly that way' (push distance = speed). Letting go brakes with the ship's own thrusters by default; a drift toggle (player setting) turns braking off. Soft top speed from thrust and mass. PC: WASD = stick, mouse locks and fires | Settled | [GDR-0009](gdr/0009-stick-and-lock-controls.md) |
+| Weapons | All families: energy, kinetic (physical recoil), missiles, disruption, drones, utility | Settled | [GDR-0018](gdr/0018-weapon-families.md) |
+| Tech | Big tech trees per family (~200 nodes total). Node kinds: new part, variant (trade-off), size class, refinement (short I–V chains), alien (needs reverse-engineering). NO Mk I–III levels. Cross-links between trees. All data-driven | Settled | [GDR-0024](gdr/0024-tech-trees-no-mk-levels.md) |
+| Progression | Research data from dismantling salvaged parts (per family); alien nodes need artifacts/lore. Other sources undecided | Leaning | [GDR-0025](gdr/0025-research-from-salvage.md) (recorded as Accepted for salvage and scans; other sources open) |
+| Balancing | AI-vs-AI arena on the headless simulation with evolutionary search (see below), MAP-Elites archive, automatic number tuning, Elo/TrueSkill ratings, reports, short CI run | Settled | [GDR-0032](gdr/0032-balancing-arena-evolution.md) |
+| Tech stack | All Rust. Engine-free simulation core crate. Bevy client for native and web (WebAssembly). No C++, no Godot. Next step: the spike (see Technical decisions) | Settled | [ADR-0002](adr/0002-all-rust-stack-with-bevy.md), [ADR-0003](adr/0003-crate-architecture.md) |
+| Physics engine | Rapier2D in the core (pure Rust, standalone, determinism mode). box2d-rust (pure Rust port of Box2D 3.1) to watch. Avian ties core to Bevy. **Decided 11 Oct 2026 (Niklas): Rapier2D 0.36, one compound collider per ship piece** | Settled 11 Oct 2026 (was Leaning) | [ADR-0014](adr/0014-physics-engine-by-benchmark.md) |
+| Ship scale | ~60x60 minimum, capital ships if achievable | Settled | [GDR-0006](gdr/0006-ship-scale-no-fixed-cap.md) |
+| Death | Mild: bonded matter re-forms the ship at home for free; unbonded haul stays behind as a wreck | Settled | [GDR-0029](gdr/0029-mild-death-bonded-matter.md) |
+| Economy | None (no credits, no trading); parts still have build-point costs for balancing/enemy scaling | Settled | [GDR-0030](gdr/0030-no-economy.md) |
+| Story | Light: procedural missions + lore on derelicts (lore also unlocks reverse-engineering) | Settled | [GDR-0002](gdr/0002-awakened-ship-mind-light-story.md) |
+| Art | Ship style 2a: flat vector tiles, one flat colour per machine with its glowing icon on the tile, soft teal glow (coral for enemies); each color = one meaning. UI: reference look (floating HUD, tracked labels, pill buttons, dotted rings) | Settled | [GDR-0007](gdr/0007-ship-style-2a.md), [GDR-0008](gdr/0008-ui-ship-mind-interface.md) |
+| Multiplayer | P2P co-op, host-authoritative; raids later | Later | [GDR-0033](gdr/0033-multiplayer-coop-and-arena.md), [ADR-0023](adr/0023-host-authoritative-netcode.md) |
 
 ## Technical decisions (10 Oct 2026)
 
-- Stack: all Rust. Crates: `sim` (engine-free; ships, parts, physics, heat, power, damage, behavior trees, Rhai; fixed 30 Hz), `game` (Bevy client, 60 fps with interpolation), `net` (host-authoritative sessions, join codes, tiny relay), `arena` (headless fights, evolution, reports, determinism checks), `data` (RON; base game loaded like a mod). Flutter dropped (menus-only fallback if Bevy UI fails badly). No C++, no Godot.
-- Targets: Android mid-range 2021+ (Snapdragon 7-series class, 6 GB), Windows, Linux, and the web. 60 fps render, 30 Hz fixed sim.
-- Web (decided 11 Oct 2026; **superseded later that day**: the web build is a development platform, see "Development start" above): a FULL platform, not just a dev build. The same Rust code is compiled to WebAssembly and served as static files.
+- Stack: all Rust. Crates: `sim` (engine-free; ships, parts, physics, heat, power, damage, behavior trees, Rhai; fixed 30 Hz), `game` (Bevy client, 60 fps with interpolation), `net` (host-authoritative sessions, join codes, tiny relay), `arena` (headless fights, evolution, reports, determinism checks), `data` (RON; base game loaded like a mod). Flutter dropped (menus-only fallback if Bevy UI fails badly). No C++, no Godot. → [ADR-0002](adr/0002-all-rust-stack-with-bevy.md), [ADR-0003](adr/0003-crate-architecture.md)
+- Targets: Android mid-range 2021+ (Snapdragon 7-series class, 6 GB), Windows, Linux, and the web. 60 fps render, 30 Hz fixed sim. → [ADR-0004](adr/0004-target-platforms-and-performance-first.md), [ADR-0011](adr/0011-30hz-sim-60fps-interpolation.md)
+- Web (decided 11 Oct 2026; **superseded later that day**: the web build is a development platform, see "Development start" above): a FULL platform, not just a dev build. The same Rust code is compiled to WebAssembly and served as static files. → [ADR-0005](adr/0005-web-as-full-end-user-platform.md) (superseded by [ADR-0006](adr/0006-web-as-development-platform.md))
   - Single player, co-op, mods and saves all work in the browser.
   - Rendering: WebGL2 baseline, WebGPU where available.
   - Bevy's web build is probably single-threaded, so the web gets its own performance bar (set after measuring) and the drydock device warning knows about it.
@@ -54,19 +56,19 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
   - Co-op transport must work in browsers: WebRTC data channels with a WebSocket fallback; the relay doubles as the signalling server.
   - Mods on the web load from a picked zip or a URL. Saves use browser storage (IndexedDB) plus the same export.
   - Rapier's determinism docs list WASM among the covered targets; box2d-rust and Avian must be checked in the benchmark.
-- Development setup (decided 11 Oct 2026):
+- Development setup (decided 11 Oct 2026): → [ADR-0007](adr/0007-development-setup-vm-and-host-browser.md)
   - Niklas develops in a Linux VM without GPU passthrough. Claude Code runs in the VM.
   - The sim, tests and arena run natively in the VM. The game is viewed as a web build served from the VM to the host browser, because native windows in the VM would be software-rendered.
   - Android APKs reach the flagship phone via adb over Wi-Fi (Wireless debugging), so the VM network must reach the phone.
-- Determinism: cross-platform bit-exact. Fixed step, seeded per-system RNG streams, ordered containers only (no HashMap iteration in sim), software trig, no wall-clock, physics in deterministic mode, per-tick state hash in debug.
-- Netcode: host-authoritative snapshots + interpolation + local prediction; determinism used for desync detection, replays, later arena rollback. Connect via join codes + tiny relay server (the only server piece).
-- Mods from day one: mods folder with RON data + Rhai scripts, same loader as base game, versioned/validated schemas, deterministic script API, co-op requires matching mod list hash.
-- Authoring: hand-edited RON files; enemy/guardian ships from drydock export; hot reload in dev.
-- Saves: versioned with migrations; store seed + generator version + deltas (galaxy must stay expandable); export/import by file/share code now, optional cloud sync later.
-- Text: English only at launch; all strings keyed in data.
-- Simulation spaces: one per cluster (small local coords); warp sequence between clusters while loading; empty clusters freeze (respawn timers settled on arrival); cheap galaxy-wide event layer (Swarm raids, roaming bosses); co-op players may split → host simulates several spaces.
-- Ship size: no fixed block cap; drydock measures simulation cost and warns per device; merged colliders + LOD.
-- Spike (Bevy only), decided 10 Oct 2026:
+- Determinism: cross-platform bit-exact. Fixed step, seeded per-system RNG streams, ordered containers only (no HashMap iteration in sim), software trig, no wall-clock, physics in deterministic mode, per-tick state hash in debug. → [ADR-0010](adr/0010-cross-platform-determinism.md)
+- Netcode: host-authoritative snapshots + interpolation + local prediction; determinism used for desync detection, replays, later arena rollback. Connect via join codes + tiny relay server (the only server piece). → [ADR-0023](adr/0023-host-authoritative-netcode.md)
+- Mods from day one: mods folder with RON data + Rhai scripts, same loader as base game, versioned/validated schemas, deterministic script API, co-op requires matching mod list hash. → [ADR-0015](adr/0015-ron-content-packs-and-mods.md)
+- Authoring: hand-edited RON files; enemy/guardian ships from drydock export; hot reload in dev. → [ADR-0015](adr/0015-ron-content-packs-and-mods.md)
+- Saves: versioned with migrations; store seed + generator version + deltas (galaxy must stay expandable); export/import by file/share code now, optional cloud sync later. → [ADR-0024](adr/0024-saves-seed-and-deltas.md)
+- Text: English only at launch; all strings keyed in data. → [ADR-0018](adr/0018-english-only-keyed-text.md)
+- Simulation spaces: one per cluster (small local coords); warp sequence between clusters while loading; empty clusters freeze (respawn timers settled on arrival); cheap galaxy-wide event layer (Swarm raids, roaming bosses); co-op players may split → host simulates several spaces. → [ADR-0022](adr/0022-one-simulation-space-per-cluster.md)
+- Ship size: no fixed block cap; drydock measures simulation cost and warns per device; merged colliders + LOD. → [GDR-0006](gdr/0006-ship-scale-no-fixed-cap.md)
+- Spike (Bevy only), decided 10 Oct 2026: → [ADR-0009](adr/0009-spike-first-systems-before-content.md)
   - Length: no fixed time box; it runs until every pass/fail question has an answer.
   - Who and where: Claude Code writes and runs it in the Linux VM, in a local folder with local git. No remote repo.
   - Test device: Niklas's flagship Android phone, so a headroom rule applies. Pass = 20 ships with debris at 60 fps using at most half the frame budget (about 8 ms per frame, sim step under 4 ms), plus phone temperature.
@@ -76,107 +78,109 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
     3. Web, Android + feel: one ship in the 2a look (atlas tiles, icons, hull edge, glow sprites, bloom on and off) as a web build and an APK; stick + lock, WASD + mouse, 30 Hz with interpolation.
     4. Load test with 1, 5 and 20 ships. Browser numbers are measured first; the web bar is set from them.
     5. Cross-device state hash: native, phone and browser must match.
-  - Units: 1 block = 1 m.
-- Physics benchmark: FIRST STEP OF THE SPIKE (user decision, 10 Oct 2026; was 'later'). Candidates Rapier2D (determinism mode), box2d-rust, Avian 2D (ties core to Bevy ECS); Box2D 3.1 C as reference only. Scenarios: 20 compound ships of 200–2000 blocks, 2000 debris chunks, 5000 raycasts/tick, breakage every second, asteroid field. Metrics: mean/p95 step at 30 Hz, single/multi-thread, desktop + phone, cross-platform hash.
-- Repository: closed for now; DO NOT create repos.
+  - Units: 1 block = 1 m. → [ADR-0012](adr/0012-coordinate-frames-and-units.md)
+- Physics benchmark: FIRST STEP OF THE SPIKE (user decision, 10 Oct 2026; was 'later'). Candidates Rapier2D (determinism mode), box2d-rust, Avian 2D (ties core to Bevy ECS); Box2D 3.1 C as reference only. Scenarios: 20 compound ships of 200–2000 blocks, 2000 debris chunks, 5000 raycasts/tick, breakage every second, asteroid field. Metrics: mean/p95 step at 30 Hz, single/multi-thread, desktop + phone, cross-platform hash. → [ADR-0014](adr/0014-physics-engine-by-benchmark.md) (decided 11 Oct 2026: Rapier2D)
+- Repository: closed for now; DO NOT create repos. → [ADR-0008](adr/0008-local-git-only.md)
 
 ## Development start (11 Oct 2026)
 
-- Work started in the VM repo `space-game` (branch `dev`, local git only). The concept bundle lives under `docs/concept/`, art sources under `art/`.
-- **Web first** (Niklas, 11 Oct 2026): the web build is what matters now. Android comes later, so the phone parts of the spike (APK, phone timings, temperature, phone hash) are deferred. Everything stays Android-compatible.
-- **The web build is a development platform, not an end-user platform** (Niklas, 11 Oct 2026, later the same day). He develops and views the game in the browser; end users get Android and desktop. Consequences: wasm size doesn't matter; browser performance only needs to be comfortable for development; native performance weighs most in engine/tech choices. This relaxes the earlier "web is a FULL platform" decision (Technical decisions below): browser-only end-user features (IndexedDB saves, mods from a zip/URL, WebRTC co-op transport) are no longer requirements unless Niklas brings them back. Everything still compiles to wasm32 and stays deterministic across native, wasm and Android.
-- **Minimal content at the start**: build the systems first, content later.
-- **Wiki later, content wiki-ready now** (Niklas, 11 Oct 2026): all content (parts, materials, ships, later races, tech, lore) is organised so the same data files feed both the game and a future wiki. Details in `docs/content-model.md`.
-- The spike is built as the foundation of the real game, not as throwaway code. Plan and status: `docs/roadmap.md`.
-- **Vessels and piloting (decided by Niklas, 11 Oct 2026; concept developed by the lead session):**
+- Work started in the VM repo `space-game` (branch `dev`, local git only). The concept bundle lives under `docs/concept/`, art sources under `art/`. → [ADR-0008](adr/0008-local-git-only.md)
+- **Web first** (Niklas, 11 Oct 2026): the web build is what matters now. Android comes later, so the phone parts of the spike (APK, phone timings, temperature, phone hash) are deferred. Everything stays Android-compatible. → [ADR-0006](adr/0006-web-as-development-platform.md)
+- **The web build is a development platform, not an end-user platform** (Niklas, 11 Oct 2026, later the same day). He develops and views the game in the browser; end users get Android and desktop. Consequences: wasm size doesn't matter; browser performance only needs to be comfortable for development; native performance weighs most in engine/tech choices. This relaxes the earlier "web is a FULL platform" decision (Technical decisions below): browser-only end-user features (IndexedDB saves, mods from a zip/URL, WebRTC co-op transport) are no longer requirements unless Niklas brings them back. Everything still compiles to wasm32 and stays deterministic across native, wasm and Android. → [ADR-0006](adr/0006-web-as-development-platform.md) (supersedes [ADR-0005](adr/0005-web-as-full-end-user-platform.md))
+- **Minimal content at the start**: build the systems first, content later. → [ADR-0009](adr/0009-spike-first-systems-before-content.md)
+- **Wiki later, content wiki-ready now** (Niklas, 11 Oct 2026): all content (parts, materials, ships, later races, tech, lore) is organised so the same data files feed both the game and a future wiki. Details in `docs/content-model.md`. → [ADR-0016](adr/0016-wiki-ready-content-model.md)
+- The spike is built as the foundation of the real game, not as throwaway code. Plan and status: `docs/roadmap.md`. → [ADR-0009](adr/0009-spike-first-systems-before-content.md)
+- **Vessels and piloting (decided by Niklas, 11 Oct 2026; concept developed by the lead session):** → [GDR-0013](gdr/0013-vessels-and-piloting.md) (supersedes [GDR-0003](gdr/0003-pilot-one-ship-with-escort.md))
   - Every working logic core hosts a copy of the ship-mind. Any connected piece with at least one working logic core is a **vessel** of its owner: the main ship, escorts, drones and pieces split off a ship.
   - The player pilots exactly one vessel directly (the **focus**); every other own vessel runs its behavior (AI). The player can switch focus to any own vessel at any time, **instantly** (click/tap a friendly vessel, a hotkey, or a fleet bar in the HUD); the camera glides over.
   - **Splits:** each piece that still has a working core becomes its own vessel and **inherits the parent's behavior**, limited to the rule slots its own cores provide. If the piloted piece loses its last core, focus moves automatically to another vessel. Pieces without a working core become salvage; pieces with an unpowered core stay dark until power returns.
   - Enemies follow the same rules (shooting a raider in half can leave two raiders).
   - **Mind capacity:** the number of logic cores the mind can run at once is limited; the limit grows with progression (an exclusive resource, upgrades, research; details later). Cores beyond the limit stay dormant. During development the limit is a placeholder setting.
-- **Logic cores need power** (Niklas, 11 Oct 2026): an unpowered piece goes dark until power returns (supports "kill all power → capture").
-- **Power allocation (decided by Niklas, 11 Oct 2026):** customisable per part and partial instead of all-or-nothing.
+- **Logic cores need power** (Niklas, 11 Oct 2026): an unpowered piece goes dark until power returns (supports "kill all power → capture"). → [GDR-0014](gdr/0014-power-tiers-and-weights.md)
+- **Power allocation (decided by Niklas, 11 Oct 2026):** customisable per part and partial instead of all-or-nothing. → [GDR-0014](gdr/0014-power-tiers-and-weights.md)
   - Every consumer part has a **tier** (critical / high / normal / low / off) and a **weight** within its tier. Defaults come from the part type in content; the player overrides them per part in the drydock (e.g. front shields high, rear shields low); behaviors may change them in battle later.
   - When supply < demand: tiers are served in order; inside the tier that can't be fully served, the remaining power is shared by weight, so parts run at **partial output** (weapons fire slower, shields recharge slower, engines push less). A part type may define a minimum level below which it switches off.
-- **Locked flight with rear-only engines** (Niklas, 11 Oct 2026): a design trade-off. Strafing or braking while locked needs RCS pods or side/front thrusters; rear-only ships must turn around.
+- **Locked flight with rear-only engines** (Niklas, 11 Oct 2026): a design trade-off. Strafing or braking while locked needs RCS pods or side/front thrusters; rear-only ships must turn around. → [GDR-0011](gdr/0011-locked-flight-rear-engines-trade-off.md)
 - **Combat rules confirmed by Niklas (11 Oct 2026):**
-  - Shields: one bubble per powered emitter with its own recharging charge; absorbs energy fully, kinetic 50%, missiles fully; an emptied bubble stays down until 30% recharged; overlapping bubbles stack along the shot.
-  - Kinetic shots stop at the hull (no over-penetration; revisit with railguns).
-  - The capacitor bonus applies to lasers only; kinetic weapons get their own support part later.
-  - Guns fire along their rotated facing (broadside and rear guns are possible).
-- Other sim defaults (lead session, 11 Oct 2026): heat is simulated per part (not per cell); chain reactions come later as an `explosion` block in content; lasers are hitscan and burn the first block; kinetic shots are projectiles with penetration, recoil and ricochet off slopes (>60° from the face normal: 60% speed, 50% damage); AI ships lead their projectile shots, and the player's lock aims at the lead point for projectile weapons.
-- **Turning (decided by Niklas, 11 Oct 2026):** three sources, all data-driven:
+  - Shields: one bubble per powered emitter with its own recharging charge; absorbs energy fully, kinetic 50%, missiles fully; an emptied bubble stays down until 30% recharged; overlapping bubbles stack along the shot. → [GDR-0021](gdr/0021-shields.md)
+  - Kinetic shots stop at the hull (no over-penetration; revisit with railguns). → [GDR-0019](gdr/0019-damage-model.md)
+  - The capacitor bonus applies to lasers only; kinetic weapons get their own support part later. → [GDR-0018](gdr/0018-weapon-families.md)
+  - Guns fire along their rotated facing (broadside and rear guns are possible). → [GDR-0018](gdr/0018-weapon-families.md)
+- Other sim defaults (lead session, 11 Oct 2026): heat is simulated per part (not per cell); chain reactions come later as an `explosion` block in content; lasers are hitscan and burn the first block; kinetic shots are projectiles with penetration, recoil and ricochet off slopes (>60° from the face normal: 60% speed, 50% damage); AI ships lead their projectile shots, and the player's lock aims at the lead point for projectile weapons. → [GDR-0022](gdr/0022-heat-per-part.md) (heat per part), [GDR-0020](gdr/0020-damage-v1-defaults.md) (chain reactions, lasers, kinetic shots, ricochet), [GDR-0023](gdr/0023-shot-leading.md) (leading); all `Accepted (provisional, lead)`
+- **Turning (decided by Niklas, 11 Oct 2026):** three sources, all data-driven: → [GDR-0010](gdr/0010-turning-sources.md)
   - a bit of built-in turning help from logic cores (a small reaction torque);
   - dedicated parts: gyros (pure torque) and RCS thrusters (small, multi-directional);
   - regular engines contribute too: off-axis engines through differential thrust, and every engine through a small gimbal angle (lead's interpretation, a per-engine placeholder that can be 0).
   The flight computer allocates across all of them. (Thrusters-only gave the Halvex Runner ~9 s per 90° turn, and the raider couldn't turn at all.)
-- **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `art/ships/halvex-runner.*` stays as the original concept art.
-- **No fixed raster graphics** (Niklas, 11 Oct 2026): all game art is vector (SVG icons, meshes, procedural shapes, vector fonts). Raster textures are generated in memory at runtime at the resolution the display needs and regenerated when zoom or DPI changes. Icons will move into the content pack (`content/base/icons/`), so mods can bring their own and the wiki can show the SVGs directly.
-- Open (11 Oct 2026): ship speed and fight length. With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build.
+- **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `art/ships/halvex-runner.*` stays as the original concept art. → [GDR-0012](gdr/0012-halvex-runner-follows-rules.md)
+- **No fixed raster graphics** (Niklas, 11 Oct 2026): all game art is vector (SVG icons, meshes, procedural shapes, vector fonts). Raster textures are generated in memory at runtime at the resolution the display needs and regenerated when zoom or DPI changes. Icons will move into the content pack (`content/base/icons/`), so mods can bring their own and the wiki can show the SVGs directly. → [ADR-0021](adr/0021-no-fixed-raster-graphics.md)
+- **Physics engine: Rapier2D** (Niklas, 11 Oct 2026, from `docs/results/physics-benchmark.md`): Rapier2D 0.36 with `enhanced-determinism`, one compound collider per ship piece (greedy-merged rectangles plus slope triangles). Avian 2D and box2d-rust lost; Box2D C was a reference number only. → [ADR-0014](adr/0014-physics-engine-by-benchmark.md)
+- **The main repo holds only chosen code** (Niklas, 11 Oct 2026): experiments and benchmarks live in separate local repos. The physics benchmark harness moves out of `crates/bench` into its own local repo `space-game-physics-bench` next to `space-game`; only the report stays here. The `PhysicsBackend` trait and the `FreeFlight` stand-in are removed once Rapier is integrated (no dead code). → [ADR-0025](adr/0025-main-repo-holds-only-chosen-code.md) (supersedes [ADR-0013](adr/0013-physics-backend-trait.md))
+- Open (11 Oct 2026): ship speed and fight length. With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build. → no record until decided; listed under "Open" in [`docs/gdr/README.md`](gdr/README.md).
 
 ## Combat (decided 10 Oct 2026)
 
-- Pace scales with ship size (small = fast/twitchy, big = slow/heavy, same physics), overall leaning fast/arcade. Mid-range fights (1–2 screens, smooth zoom); weapon ranges differ. Always real-time, no pause/slow-mo.
-- Aiming: fixed guns aimed by turning + target lock; turrets via behavior trees; player can set target priorities (engines first, weapons first, nearest threat).
-- Damage: outer blocks first; penetration by type (laser burns first block, railgun pierces ~3, missiles splash); slopes deflect kinetic shots at shallow incidence (>60° from face normal); chain reactions (reactors, capacitors, drives explode); ramming damage by mass and speed (ram prows are a build).
-- Shields: a bubble per emitter over nearby blocks, overlapping bubbles stack, need power. Energy absorbed well, kinetics partly pass, missiles detonate on the bubble.
-- Overheat: shutdown by default; overdrive option for burst output at risk of damage/explosion.
-- Repairs mid-fight: repair drones (use repair material, can be shot down).
-- Capture: kill all power → dark logic core → copy yourself in.
-- Sensors moderate (targeting range, scan detail; nearby always visible). HUD minimal + hull map of own ship.
-- Race styles: automatons small packs; Grown regenerate + ram; Swarm drone floods from hive carriers; Lattice long-range prisms + refractive crystal armor; Phase walkers blink strikes with armor-piercing lances; guardians breakable machines whose behavior changes as sections break.
+- Pace scales with ship size (small = fast/twitchy, big = slow/heavy, same physics), overall leaning fast/arcade. Mid-range fights (1–2 screens, smooth zoom); weapon ranges differ. Always real-time, no pause/slow-mo. → [GDR-0016](gdr/0016-combat-pace-and-aiming.md)
+- Aiming: fixed guns aimed by turning + target lock; turrets via behavior trees; player can set target priorities (engines first, weapons first, nearest threat). → [GDR-0016](gdr/0016-combat-pace-and-aiming.md)
+- Damage: outer blocks first; penetration by type (laser burns first block, railgun pierces ~3, missiles splash); slopes deflect kinetic shots at shallow incidence (>60° from face normal); chain reactions (reactors, capacitors, drives explode); ramming damage by mass and speed (ram prows are a build). → [GDR-0019](gdr/0019-damage-model.md)
+- Shields: a bubble per emitter over nearby blocks, overlapping bubbles stack, need power. Energy absorbed well, kinetics partly pass, missiles detonate on the bubble. → [GDR-0021](gdr/0021-shields.md)
+- Overheat: shutdown by default; overdrive option for burst output at risk of damage/explosion. → [GDR-0004](gdr/0004-grid-ship-building-no-wiring.md)
+- Repairs mid-fight: repair drones (use repair material, can be shot down). → [GDR-0017](gdr/0017-combat-support-repair-capture-sensors.md)
+- Capture: kill all power → dark logic core → copy yourself in. → [GDR-0017](gdr/0017-combat-support-repair-capture-sensors.md)
+- Sensors moderate (targeting range, scan detail; nearby always visible). HUD minimal + hull map of own ship. → [GDR-0017](gdr/0017-combat-support-repair-capture-sensors.md)
+- Race styles: automatons small packs; Grown regenerate + ram; Swarm drone floods from hive carriers; Lattice long-range prisms + refractive crystal armor; Phase walkers blink strikes with armor-piercing lances; guardians breakable machines whose behavior changes as sections break. → [GDR-0027](gdr/0027-races.md)
 - Board has a damage sandbox (laser/railgun/missile vs sample or drydock ship; click to fire at CoM, drag to aim; shows ricochets, shield bubbles, chain explosions, hull-map HUD).
 
 ## World (decided 10 Oct 2026, interactive Q&A)
 
-- Player: an awakened ship-mind that wakes in an abandoned precursor shipyard at the rim; the shipyard is the fixed home (drydock + research). Story light.
-- Galaxy: one seamless procedural galaxy of star clusters linked by lanes; handcrafted set pieces placed in; new seed per game. Board sketch uses ~80 clusters.
-- Journey inward: rim → outer reach → middle reach → inner reach → core (precursor archive: final gate + best tech). ~50 h to the core; core loop (explore, bigger ships, co-op/arena) continues after. New game+ decided later.
-- Gating: difficulty by distance + race territory + environmental hazards: stellar heat (outer), ion storms & nebulae (middle), radiation rising (inner → core). A precursor guardian at every band gate; beat it to add the gate to your network.
-- Bands/races: Rim = rogue automatons (feral precursor drones, early foes, salvage-rich); Outer = The Grown (wary; organic regrowing hulls; boss: giant Grown ships); Middle = The Swarm (hostile by nature, no standing; hives = bosses; raids neighbours); Inner = The Lattice (neutral, open to standing, likely allies) + Phase walkers (wary; phase tech; giant phase ships). Precursors gone: gates, guardians, megastructures, archive, and you.
-- Races exist mainly for variety and tech (each teaches its own branch); access, allies, missions exist but stay light. Races rarely clash (they stay in their regions), the Swarm is the exception.
-- World state: static; cleared encounters come back slowly over time.
-- Clusters: large, 10+ min to cross; a default voyage covers one cluster (15–30 min, phone-friendly). Longer voyage types exist (deep expeditions, boss hunts, megastructure dives) but are never forced.
-- Activities in clusters: fights, salvage & scanning, light missions (from race stations). (Design challenges/puzzles not chosen as a main activity.)
-- Travel: cruise inside clusters, warp along lanes for shorter hops, precursor gates for long distances.
-- Supplies per voyage: ammo, fuel, repair material; refilled at home; outposts refill + heavy repairs. Long-term only research matters.
-- Haul: salvage only becomes research once brought home. Death = respawn home with ship, part of haul left as a wreck.
-- Salvage: loose debris by fly-through or tractor beam; intact parts on big wrecks cut free. Cargo bays are ship parts (cargo 1×1 = 4 units, hold 2×2 = 20) → design trade-off.
-- Scanning: research data (counts once home), persistent cluster map, lore, enemy intel (parts + behavior tree).
-- Content types: derelicts/graveyards, race stations, outposts, bosses (precursor guardians, swarm hives, giant ships), megastructures/anomalies; more added over development (all data).
-- Fleet secondary: escorts built at home (command capacity), drone hangars, capture disabled ships by copying yourself into their logic core; faction allies maybe.
-- Enemy designs: handcrafted + evolved offline (curated per race style) + runtime variation (not full generation).
-- Multiplayer: co-op voyages in the host's galaxy; arena PvP with your actual ship. Bosses solo-able, easier in co-op.
+- Player: an awakened ship-mind that wakes in an abandoned precursor shipyard at the rim; the shipyard is the fixed home (drydock + research). Story light. → [GDR-0002](gdr/0002-awakened-ship-mind-light-story.md)
+- Galaxy: one seamless procedural galaxy of star clusters linked by lanes; handcrafted set pieces placed in; new seed per game. Board sketch uses ~80 clusters. → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md)
+- Journey inward: rim → outer reach → middle reach → inner reach → core (precursor archive: final gate + best tech). ~50 h to the core; core loop (explore, bigger ships, co-op/arena) continues after. New game+ decided later. → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md)
+- Gating: difficulty by distance + race territory + environmental hazards: stellar heat (outer), ion storms & nebulae (middle), radiation rising (inner → core). A precursor guardian at every band gate; beat it to add the gate to your network. → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md)
+- Bands/races: Rim = rogue automatons (feral precursor drones, early foes, salvage-rich); Outer = The Grown (wary; organic regrowing hulls; boss: giant Grown ships); Middle = The Swarm (hostile by nature, no standing; hives = bosses; raids neighbours); Inner = The Lattice (neutral, open to standing, likely allies) + Phase walkers (wary; phase tech; giant phase ships). Precursors gone: gates, guardians, megastructures, archive, and you. → [GDR-0027](gdr/0027-races.md)
+- Races exist mainly for variety and tech (each teaches its own branch); access, allies, missions exist but stay light. Races rarely clash (they stay in their regions), the Swarm is the exception. → [GDR-0027](gdr/0027-races.md)
+- World state: static; cleared encounters come back slowly over time. → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md)
+- Clusters: large, 10+ min to cross; a default voyage covers one cluster (15–30 min, phone-friendly). Longer voyage types exist (deep expeditions, boss hunts, megastructure dives) but are never forced. → [GDR-0028](gdr/0028-clusters-and-voyages.md)
+- Activities in clusters: fights, salvage & scanning, light missions (from race stations). (Design challenges/puzzles not chosen as a main activity.) → [GDR-0028](gdr/0028-clusters-and-voyages.md)
+- Travel: cruise inside clusters, warp along lanes for shorter hops, precursor gates for long distances. → [GDR-0028](gdr/0028-clusters-and-voyages.md)
+- Supplies per voyage: ammo, fuel, repair material; refilled at home; outposts refill + heavy repairs. Long-term only research matters. → [GDR-0028](gdr/0028-clusters-and-voyages.md)
+- Haul: salvage only becomes research once brought home. Death = respawn home with ship, part of haul left as a wreck. → [GDR-0025](gdr/0025-research-from-salvage.md), [GDR-0029](gdr/0029-mild-death-bonded-matter.md)
+- Salvage: loose debris by fly-through or tractor beam; intact parts on big wrecks cut free. Cargo bays are ship parts (cargo 1×1 = 4 units, hold 2×2 = 20) → design trade-off. → [GDR-0025](gdr/0025-research-from-salvage.md)
+- Scanning: research data (counts once home), persistent cluster map, lore, enemy intel (parts + behavior tree). → [GDR-0025](gdr/0025-research-from-salvage.md)
+- Content types: derelicts/graveyards, race stations, outposts, bosses (precursor guardians, swarm hives, giant ships), megastructures/anomalies; more added over development (all data). → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md)
+- Fleet secondary: escorts built at home (command capacity), drone hangars, capture disabled ships by copying yourself into their logic core; faction allies maybe. → [GDR-0003](gdr/0003-pilot-one-ship-with-escort.md) (superseded 11 Oct 2026 by [GDR-0013](gdr/0013-vessels-and-piloting.md)); capture: [GDR-0017](gdr/0017-combat-support-repair-capture-sensors.md); allies: [GDR-0027](gdr/0027-races.md)
+- Enemy designs: handcrafted + evolved offline (curated per race style) + runtime variation (not full generation). → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Multiplayer: co-op voyages in the host's galaxy; arena PvP with your actual ship. Bosses solo-able, easier in co-op. → [GDR-0033](gdr/0033-multiplayer-coop-and-arena.md)
 - Board has an interactive galaxy generator (seeded) with clickable cluster close-ups.
-- Shipyard (home): research lab, fabricator (parts + escorts; upgrades unlock bigger/alien parts), test range (simulated fights vs archived enemies and own past designs).
-- Ship size growth: drydock expansions (frigate/cruiser/capital frames) + mind capacity (how many parts the ship-mind controls; raised by logic cores and research).
-- Part cost = bonded matter: a new part consumes its materials once to bond its precursor programmable matter to your mind. Destroyed ships' bonded matter is recalled through the gates and re-forms at home (rebuild free). The haul isn't bonded, so it stays behind as a wreck. Refitting returns a removed part's matter.
-- Guardians: huge breakable precursor machines built from parts; their parts are precursor tech loot. Solo-able.
-- Allies: only inside specific race missions.
-- First hour: wake as a tiny drone in a dead shipyard → salvage nearby automaton wrecks → repair the drydock → build first real ship → first rim voyage → first research.
-- Galaxy size ~80 clusters for now; MUST stay expandable (cluster count, band sizes, races, set pieces are generator params/data; saves must tolerate added clusters/bands).
+- Shipyard (home): research lab, fabricator (parts + escorts; upgrades unlock bigger/alien parts), test range (simulated fights vs archived enemies and own past designs). → [GDR-0002](gdr/0002-awakened-ship-mind-light-story.md)
+- Ship size growth: drydock expansions (frigate/cruiser/capital frames) + mind capacity (how many parts the ship-mind controls; raised by logic cores and research). → [GDR-0006](gdr/0006-ship-scale-no-fixed-cap.md) (mind capacity was redefined on 11 Oct 2026 as the number of running logic cores, [GDR-0013](gdr/0013-vessels-and-piloting.md))
+- Part cost = bonded matter: a new part consumes its materials once to bond its precursor programmable matter to your mind. Destroyed ships' bonded matter is recalled through the gates and re-forms at home (rebuild free). The haul isn't bonded, so it stays behind as a wreck. Refitting returns a removed part's matter. → [GDR-0029](gdr/0029-mild-death-bonded-matter.md)
+- Guardians: huge breakable precursor machines built from parts; their parts are precursor tech loot. Solo-able. → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md)
+- Allies: only inside specific race missions. → [GDR-0027](gdr/0027-races.md)
+- First hour: wake as a tiny drone in a dead shipyard → salvage nearby automaton wrecks → repair the drydock → build first real ship → first rim voyage → first research. → [GDR-0002](gdr/0002-awakened-ship-mind-light-story.md)
+- Galaxy size ~80 clusters for now; MUST stay expandable (cluster count, band sizes, races, set pieces are generator params/data; saves must tolerate added clusters/bands). → [GDR-0026](gdr/0026-procedural-galaxy-and-bands.md), [ADR-0024](adr/0024-saves-seed-and-deltas.md)
 
 ## Materials and fabrication (decided 10 Oct 2026)
 
-- No generic scrap. 30+ materials tied to where you've been (board sketch: 46 = 25 raw + 21 refined).
-- Sources: harvesting in clusters (asteroids, comets, gas, star skimming), salvage (dismantling returns a part's materials + research data), race-specific sources (Grown tissue/spores/heartwood, Swarm chitin/resin/nerve cores, Lattice crystal shards/resonant crystal, Phase residue/rift silt), precursor sites (precursor alloy, programmable matter, gate shards, archive keys), mission rewards (rarest race materials).
-- Materials follow hazards: He-3 needs heat shielding (star skimming), ionized gas from ion storms, hot isotopes from radiation zones.
-- Recipes are chains, but NO factory buildings/logistics: the fabricator resolves chains automatically if raw materials are in storage and the hub has the needed upgrades (smelter, kiln, cryo plant, electronics bench, magnetics lab, fuel works, munitions bay, fusion workshop; race: bio-vat, hive press, crystal annealer, phase chamber; precursor forge last).
-- Bonded matter: a new part consumes its materials once; destroyed ships re-form free at home; refit returns matter. Salvaged parts: install as-is (small programmable-matter bonding cost) or dismantle for research + materials.
-- Every logic core needs programmable matter (hosts a copy of you); automaton cores at the rim are the first source.
-- Harvesting: tool parts (mining laser, gas scoop, tractor) + harvest drones later.
-- Storage at home unlimited; voyage cargo hold is the only limit. Every source refills slowly (rare ones too). Fabrication only at home; on voyages repair material only patches damage.
+- No generic scrap. 30+ materials tied to where you've been (board sketch: 46 = 25 raw + 21 refined). → [GDR-0031](gdr/0031-materials-and-fabrication.md)
+- Sources: harvesting in clusters (asteroids, comets, gas, star skimming), salvage (dismantling returns a part's materials + research data), race-specific sources (Grown tissue/spores/heartwood, Swarm chitin/resin/nerve cores, Lattice crystal shards/resonant crystal, Phase residue/rift silt), precursor sites (precursor alloy, programmable matter, gate shards, archive keys), mission rewards (rarest race materials). → [GDR-0031](gdr/0031-materials-and-fabrication.md)
+- Materials follow hazards: He-3 needs heat shielding (star skimming), ionized gas from ion storms, hot isotopes from radiation zones. → [GDR-0031](gdr/0031-materials-and-fabrication.md)
+- Recipes are chains, but NO factory buildings/logistics: the fabricator resolves chains automatically if raw materials are in storage and the hub has the needed upgrades (smelter, kiln, cryo plant, electronics bench, magnetics lab, fuel works, munitions bay, fusion workshop; race: bio-vat, hive press, crystal annealer, phase chamber; precursor forge last). → [GDR-0031](gdr/0031-materials-and-fabrication.md)
+- Bonded matter: a new part consumes its materials once; destroyed ships re-form free at home; refit returns matter. Salvaged parts: install as-is (small programmable-matter bonding cost) or dismantle for research + materials. → [GDR-0029](gdr/0029-mild-death-bonded-matter.md)
+- Every logic core needs programmable matter (hosts a copy of you); automaton cores at the rim are the first source. → [GDR-0031](gdr/0031-materials-and-fabrication.md)
+- Harvesting: tool parts (mining laser, gas scoop, tractor) + harvest drones later. → [GDR-0031](gdr/0031-materials-and-fabrication.md)
+- Storage at home unlimited; voyage cargo hold is the only limit. Every source refills slowly (rare ones too). Fabrication only at home; on voyages repair material only patches damage. → [GDR-0031](gdr/0031-materials-and-fabrication.md)
 - Board has an interactive recipe explorer (23 example parts) and a material catalog.
 
 ## Evolution / balancing design
 
-- Genome: part list (optionally mirror-locked) + behavior tree.
-- Operators: add/remove/move/swap parts, change materials; reorder rules, nudge thresholds, swap subtrees; crossover splices hull sections and subtrees.
-- Fitness from real fights: win rate vs a rotating pool (hall of fame of past champions + hand-made archetypes) to avoid overfitting.
-- Diversity: MAP-Elites archive (best design per trait niche, e.g. speed × range); empty niches show unviable designs.
-- Outer loop tunes part stats to maximize viable niches / reduce dominance; human reviews proposals.
-- Exploit hunting: unconstrained runs to find ramming/spinning/recoil/AI loopholes; each becomes a regression scenario.
-- Board has a live toy "Evolution lab" (in-browser GA on the drydock rules, formula fitness, 60 build points, 30×80). First run found: engines mid-ship/at the nose (rules only require open space behind an engine), no radiators, long reactive 1×3 slope wings.
+- Genome: part list (optionally mirror-locked) + behavior tree. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Operators: add/remove/move/swap parts, change materials; reorder rules, nudge thresholds, swap subtrees; crossover splices hull sections and subtrees. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Fitness from real fights: win rate vs a rotating pool (hall of fame of past champions + hand-made archetypes) to avoid overfitting. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Diversity: MAP-Elites archive (best design per trait niche, e.g. speed × range); empty niches show unviable designs. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Outer loop tunes part stats to maximize viable niches / reduce dominance; human reviews proposals. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Exploit hunting: unconstrained runs to find ramming/spinning/recoil/AI loopholes; each becomes a regression scenario. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
+- Board has a live toy "Evolution lab" (in-browser GA on the drydock rules, formula fitness, 60 build points, 30×80). First run found: engines mid-ship/at the nose (rules only require open space behind an engine), no radiators, long reactive 1×3 slope wings. → [GDR-0032](gdr/0032-balancing-arena-evolution.md)
 
 ## Tech research (10 Oct 2026)
 
@@ -185,31 +189,31 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 - box2d-rust 1.4.0 (18 Sep 2026): pure Rust port of Box2D 3.1, bit-exact with C in FallingHinges determinism test.
 - Box2D v3 itself is C (not C++), bindable via bindgen. Box2D 3.1 lists cross-platform determinism, SIMD.
 - Rapier: determinism guide/mode.
-- Godot (ruled out by Niklas): 4.7.x latest.
+- Godot (ruled out by Niklas): 4.7.x latest. → [ADR-0002](adr/0002-all-rust-stack-with-bevy.md)
 
 ## Scripting candidates (researched 10 Oct 2026)
 
-- Rhai (Rust): braces, built-in max-operations limit, only registered API visible; tree-walking interpreter (fine for goal-level logic). → chosen direction.
-- pocketpy, QuickJS, Godot Sandbox, WASM (expert tier), Lua/Luau (rejected, `end`).
+- Rhai (Rust): braces, built-in max-operations limit, only registered API visible; tree-walking interpreter (fine for goal-level logic). → chosen direction. → [ADR-0019](adr/0019-rhai-scripting.md)
+- pocketpy, QuickJS, Godot Sandbox, WASM (expert tier), Lua/Luau (rejected, `end`). → [ADR-0019](adr/0019-rhai-scripting.md)
 
 ## UI (decided 10 Oct 2026)
 
 Mockups: Design canvas "Space Game UI Mockups", https://claude.ai/artifact/T3u2Bdp7jB6zpLJLRdBAjn (6 boards: phone drydock, flight HUD, home ring menu, behavior editor, galaxy map + autopilot; desktop drydock 1280×720).
 
-- Orientation: landscape only (phone and desktop).
-- Drydock input: paint for blocks/armor (drag to paint, material picked once), drag and drop for big machines (reactors, drives, holds). Live stats (power, heat, thrust/mass, yaw, firepower, cargo, mind capacity, device load) + test-fly straight from the drydock. Overlays: heat, mass, bonus (adjacency), shields, arcs.
-- Desktop drydock adds: search + category tabs in the palette, keyboard shortcuts, part inspector with variant picker (stat diff preview), upgrade materials (bonded once) with "missing → where to find it" and "track on map".
-- Behavior editor: node graph on all platforms (priority list of rules: condition → maneuver), Rhai nodes tagged, limited rule slots per logic core, graph/text toggle, "test in range".
-- Style: diegetic "ship-mind interface": thin lines, corner brackets, mono labels, same palette as the board; no skeuomorphic cockpit.
-- Flight HUD: customizable (move/hide widgets), classic default: hull map + supplies top-left, target panel with priority chips top-right, stick bottom-left, fire + ability buttons bottom-right, off-screen markers.
-- Home: ring menu around the docked ship (drydock, research, fabricator, test range, launch voyage, storage, galaxy map, behavior).
-- Travel: autopilot for transit (route over lanes on the galaxy map, supplies check), manual in fights; auto hand-over when a hostile locks on.
+- Orientation: landscape only (phone and desktop). → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
+- Drydock input: paint for blocks/armor (drag to paint, material picked once), drag and drop for big machines (reactors, drives, holds). Live stats (power, heat, thrust/mass, yaw, firepower, cargo, mind capacity, device load) + test-fly straight from the drydock. Overlays: heat, mass, bonus (adjacency), shields, arcs. → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
+- Desktop drydock adds: search + category tabs in the palette, keyboard shortcuts, part inspector with variant picker (stat diff preview), upgrade materials (bonded once) with "missing → where to find it" and "track on map". → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
+- Behavior editor: node graph on all platforms (priority list of rules: condition → maneuver), Rhai nodes tagged, limited rule slots per logic core, graph/text toggle, "test in range". → [GDR-0008](gdr/0008-ui-ship-mind-interface.md), [GDR-0015](gdr/0015-layered-behavior.md)
+- Style: diegetic "ship-mind interface": thin lines, corner brackets, mono labels, same palette as the board; no skeuomorphic cockpit. → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
+- Flight HUD: customizable (move/hide widgets), classic default: hull map + supplies top-left, target panel with priority chips top-right, stick bottom-left, fire + ability buttons bottom-right, off-screen markers. → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
+- Home: ring menu around the docked ship (drydock, research, fabricator, test range, launch voyage, storage, galaxy map, behavior). → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
+- Travel: autopilot for transit (route over lanes on the galaxy map, supplies check), manual in fights; auto hand-over when a hostile locks on. → [GDR-0008](gdr/0008-ui-ship-mind-interface.md)
 
 ## Ship look (in progress, 10 Oct 2026)
 
 - Feedback: ships looked too blocky in flight; the UI and ship look should be "a bit" fancier. "UI" here mainly means the ship-related screens.
 - Style reference from Niklas: a dark blue-black, bioluminescent look. Glowing teal line art (#8cefdb), a gold accent (#eed595) and white numbers. Floating HUD numbers with wide-tracked uppercase labels, no boxed panels. Dotted rings, particles, soft halos. Background #050e15 → #010409.
-- Decided direction: the drydock stays a grid of tiles. In flight, a cosmetic skin pass applies; physics and damage still use the cells.
+- Decided direction: the drydock stays a grid of tiles. In flight, a cosmetic skin pass applies; physics and damage still use the cells. → [GDR-0007](gdr/0007-ship-style-2a.md) (the skin pass was dropped in revision 2)
 - Silhouette options (mockups canvas, "Ship look" board):
   - A plated (2 px chamfers)
   - B sculpted (rounded corners, filleted steps, internals hidden under 2×2 plates; recommended)
@@ -219,11 +223,11 @@ Mockups: Design canvas "Space Game UI Mockups", https://claude.ai/artifact/T3u2B
   2. Luminous: closest to the reference. Dark hull, soft teal edge glow, aura, particle trails, floating HUD.
   3. Neon line: hull drawn as glowing line art, strongest glow.
   4. Hybrid: lit plating with a faint glow, in the reference atmosphere with a floating HUD.
-- Revision 2 of the options, after feedback that the ship looked weird and Niklas wants to see the blocks:
+- Revision 2 of the options, after feedback that the ship looked weird and Niklas wants to see the blocks: → [GDR-0007](gdr/0007-ship-style-2a.md)
   - The smoothed skins are dropped. In flight, every part stays its own visible tile with seams (same as the drydock).
   - New sample ship: 12×7 cells, arrowhead shape. Slopes form the leading and trailing edges, beams sit at the nose with the fusion reactor right behind them, pulse turrets on the wing tips, torch drive plus 2 thrusters at the tail.
   - All four options use the identical block layout, glyphs, scene and floating HUD. Only the tile surface and glow differ: metal / dark + soft teal edge / neon seams / mid-tone + faint glow.
-- Round 2 feedback:
+- Round 2 feedback: → [GDR-0007](gdr/0007-ship-style-2a.md)
   - Not 1 or 3; something between 2 and 4, with 2 the favourite.
   - He dislikes the 3D bevel look of the blocks ("outdated ppt shapes").
 - Round 2 boards, all flat with no bevels and no per-block gradients, same scene and HUD:
@@ -231,7 +235,7 @@ Mockups: Design canvas "Space Game UI Mockups", https://claude.ai/artifact/T3u2B
   - 2b flat + one soft light across the whole hull
   - 2c flat tiles with small gaps and slightly rounded corners
   - 2d flat mid-tone (4 without the 3D), faint glow
-- DECIDED (10 Oct 2026): style 2a, refined:
+- DECIDED (10 Oct 2026): style 2a, refined: → [GDR-0007](gdr/0007-ship-style-2a.md)
   - Flat blocks in dark teal-grey (#142a2e) with thin dark seams (#03070a). No bevels, no per-block gradients.
   - Machine tiles are one flat colour (#0f1c25) with the glowing icon placed directly on it (no dark inner square).
   - Soft teal hull glow (halo .18, line .32) and a faint aura.
@@ -249,15 +253,17 @@ Mockups: Design canvas "Space Game UI Mockups", https://claude.ai/artifact/T3u2B
 
 ## Drydock sketch (in the artifact, placeholder numbers)
 
-Grid 16×12, mirror axis between columns 7|8. Parts: Block, Slope 1×1/1×2/1×3 (auto-orient, click to cycle 8 orientations, Bevel converts outer block corners), Fission 1×1 (10 power), Fusion 2×2 (30), Capacitor, Pulse laser 1×1, Beam laser 1×2, Shield, Radiator, Thruster 1×1 (12), Torch drive 2×2 (45), Logic core. Materials: steel (mass 2/hp 1 per cell), composite (1.5/1.4), reactive (2.4/2.1); slopes scale by area. Build points: block 1, slopes .5/1/1.5 (×1/1.5/2 by material), fission 4, fusion 10, cap 2, pulse 3, beam 7, shield 3, radiator 2, thruster 3, torch 9, core 3. Heat = steady-state cell diffusion; overheated parts shut down. Guns need a clear column ahead; engines need open cells behind.
+Grid 16×12, mirror axis between columns 7|8. Parts: Block, Slope 1×1/1×2/1×3 (auto-orient, click to cycle 8 orientations, Bevel converts outer block corners), Fission 1×1 (10 power), Fusion 2×2 (30), Capacitor, Pulse laser 1×1, Beam laser 1×2, Shield, Radiator, Thruster 1×1 (12), Torch drive 2×2 (45), Logic core. Materials: steel (mass 2/hp 1 per cell), composite (1.5/1.4), reactive (2.4/2.1); slopes scale by area. Build points: block 1, slopes .5/1/1.5 (×1/1.5/2 by material), fission 4, fusion 10, cap 2, pulse 3, beam 7, shield 3, radiator 2, thruster 3, torch 9, core 3. Heat = steady-state cell diffusion; overheated parts shut down. Guns need a clear column ahead; engines need open cells behind. → [GDR-0004](gdr/0004-grid-ship-building-no-wiring.md) (the rules; the numbers are placeholders)
 
 ## Still open
+
+Current lists: "Open" in [`docs/gdr/README.md`](gdr/README.md) and [`docs/adr/README.md`](adr/README.md). The list below is the concept-phase snapshot.
 
 Pre-spike questions: all answered 10 Oct 2026 (see Technical decisions → Spike and Touch controls). Glow method (sprites vs bloom) is measured in the spike.
 
 Can wait until after the spike:
 - Spike results (Bevy on a mid-range phone, 60 fps with 20 ships?)
-- Physics benchmark: performance is top priority. Compare Rapier2D, box2d-rust, Avian (C Box2D only as reference) on game-like scenarios (compound ships, debris, thousands of raycasts, breakage) on desktop and phone. Note: this sandbox can't download rustup components (static.rust-lang.org blocked) but has cargo 1.97 installed.
+- Physics benchmark: performance is top priority. Compare Rapier2D, box2d-rust, Avian (C Box2D only as reference) on game-like scenarios (compound ships, debris, thousands of raycasts, breakage) on desktop and phone. Note: this sandbox can't download rustup components (static.rust-lang.org blocked) but has cargo 1.97 installed. → decided 11 Oct 2026: Rapier2D, [ADR-0014](adr/0014-physics-engine-by-benchmark.md)
 - Mind capacity numbers (start value, growth)
 - Engines anywhere vs. rear only? (evolution found nose/mid-ship engines are legal)
 - Tree size per family that stays fun
