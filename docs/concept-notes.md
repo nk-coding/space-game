@@ -95,8 +95,12 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
   - Chain reactions come later as an `explosion` block in content (reactors, capacitors, drives).
   - Capacitor bonus applies to parts tagged `laser` (as its text says), not to every gun.
   - Guns fire along their rotated facing.
-- Open (asked 11 Oct 2026): how ships turn. With thrusters only, the Halvex Runner turns 90° in ~9 s and the raider can't turn at all. Until Niklas decides, the flight computer has an EXPERIMENTAL "turn assist" torque that can be switched off to compare.
-- Open (asked 11 Oct 2026): Halvex Runner sample layout: its four radiators are boxed in (never vent), both wing-tip pulse lasers are blocked by the slope in front, and a boxed-in shield emitter overheats after ~8 s at full load.
+- **Turning (decided by Niklas, 11 Oct 2026):** three sources, all data-driven:
+  - a bit of built-in turning help from logic cores (a small reaction torque);
+  - dedicated parts: gyros (pure torque) and RCS thrusters (small, multi-directional);
+  - regular engines contribute too: off-axis engines through differential thrust, and every engine through a small gimbal angle (lead's interpretation, a per-engine placeholder that can be 0).
+  The flight computer allocates across all of them. (Thrusters-only gave the Halvex Runner ~9 s per 90° turn, and the raider couldn't turn at all.)
+- **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `art/ships/halvex-runner.*` stays as the original concept art.
 
 ## Combat (decided 10 Oct 2026)
 
