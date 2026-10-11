@@ -65,10 +65,20 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 - Pin exact dependency versions (`bevy = "=0.20.0"` style) for engine-level crates; Bevy breaks APIs every 4–5 months.
 
+## Decision records
+
+Two numbered series (decided by Niklas, 11 Oct 2026):
+- `docs/adr/NNNN-<slug>.md`: **Architecture Decision Records**, for technical decisions (crates, determinism, content format, rendering, physics, tooling, platforms).
+- `docs/gdr/NNNN-<slug>.md`: **Game Design Records**, for gameplay and design decisions (ship rules, combat, controls, progression, world, look).
+
+Each series has a `README.md` index and a `0000-template.md`. Records are short: status, date, who decided, context, options considered, decision, consequences, links. Records are never rewritten to change a decision: a new record **supersedes** the old one, and the old one's status says so. `docs/concept-notes.md` is the overview and links to the records.
+
+When work produces a decision (or a provisional default), write or propose the record in the same change. Agents may add records with status `Proposed`; a decision becomes `Accepted` when Niklas decides it, or is `Accepted (provisional, lead)` when the lead session sets a default for him to review.
+
 ## Working with Niklas
 
-- Explain trade-offs briefly and recommend one option. For decisions he prefers short multiple-choice questions (recommended option first). Visual comparisons beat text when the question is about looks.
-- When a decision is made or changed, update `docs/concept-notes.md` (and the roadmap) with the date.
+- Explain trade-offs briefly and recommend one option. He wants design questions asked **interactively** (the question tool, multiple choice, recommended option first), not as lists in chat. Visual comparisons beat text when the question is about looks.
+- When a decision is made or changed, write the ADR/GDR, update `docs/concept-notes.md` (and the roadmap), with the date.
 
 ## Glossary
 
