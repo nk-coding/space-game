@@ -1,4 +1,4 @@
-//! Weapons v1, engine-independent (every hit test goes through `PhysicsBackend::raycast`):
+//! Weapons v1 (every hit test is a ray cast through the physics world, `Physics::raycast`):
 //!
 //! * **Beams** (continuous hit-scan): `dps × work × DT` per tick on the first block in range.
 //! * **Pulses** (discrete hit-scan): a cooldown per gun; each pulse deals `damage / rate` to the first block.
@@ -24,7 +24,7 @@ use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
 use crate::mass::to_piece;
 use crate::math::{Rot, Vec2};
-use crate::physics::{PhysicsBackend, RayHit};
+use crate::physics::RayHit;
 use crate::ship::Ship;
 use crate::world::Sim;
 
@@ -134,7 +134,7 @@ struct ShotEnd {
     hit: bool,
 }
 
-impl<P: PhysicsBackend> Sim<P> {
+impl Sim {
     /// Weapons for one tick: bubbles, projectile flight, gun fire. Called by `step` after the systems.
     pub(crate) fn weapons_step(&mut self) {
         self.beams.clear();

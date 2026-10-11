@@ -3,8 +3,8 @@
 //! No Bevy, no graphics, no threads, no filesystem, no wall-clock; builds for wasm32. Ships are grids of parts
 //! split into pieces (one rigid body each, with mass properties and convex colliders); power, heat, bonuses,
 //! damage and breakage run per tick; an always-on flight computer turns pilot input, maneuvers or behaviors into
-//! actuator commands. The physics engine plugs in behind [`PhysicsBackend`]; until it is chosen, the
-//! engine-free [`FreeFlight`] backend moves the bodies (`Sim` = `Sim<FreeFlight>`).
+//! actuator commands. Rapier2D moves the bodies, resolves collisions (ramming damage) and answers ray casts
+//! ([`Physics`]); no Rapier type appears in this crate's public API.
 //!
 //! # Frames and units
 //!
@@ -59,7 +59,7 @@ pub use alloc::{Actuation, TorqueSource};
 pub use behavior::{BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
 pub use breakage::{DamageOutcome, DamageTarget};
 pub use collider::ConvexPolygon;
-pub use config::{FlightTuning, SimConfig};
+pub use config::{FlightTuning, PhysicsTuning, SimConfig};
 pub use data::PowerTier;
 pub use design::{ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
@@ -69,7 +69,7 @@ pub use ids::{PieceId, ShipId};
 pub use maneuver::Maneuver;
 pub use mass::MassProps;
 pub use math::{Rot, Vec2};
-pub use physics::{BodyDesc, BodyKey, Contact, FreeFlight, PhysicsBackend, RayHit};
+pub use physics::{BodyKey, Contact, Physics, RayHit};
 pub use power::{Consumer, PowerSetting};
 pub use rng::{Pcg32, Stream};
 pub use scenario::ScenarioKind;
@@ -78,7 +78,7 @@ pub use ship::{
     Wrench, inherited_velocity, thruster_wrench,
 };
 pub use weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
-pub use world::{DamageCommand, PartHit, ShipCommand, Sim, TickInputs};
+pub use world::{DamageCommand, PartHit, ShipCommand, Sim, StepPhase, TickInputs};
 
 /// Fixed simulation rate (settled: 30 Hz).
 pub const TICK_HZ: u32 = 30;

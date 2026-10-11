@@ -3,7 +3,7 @@
 //! grow with the content, and both roll their inputs and hits on the `Scenario` RNG stream.
 //!
 //! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
-//!   a blast every 75 ticks: power, heat, damage, splits; bodies move under the `FreeFlight` backend. Plus one
+//!   a blast every 75 ticks: power, heat, damage, splits, collisions and ramming. Plus one
 //!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
 //!   base ships do.
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
@@ -14,7 +14,7 @@
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
 //!   (rule slots drop).
 //!
-//! When the physics engine lands, the same scenarios run on it and the same check compares the hashes.
+//! The state hash includes the physics (Rapier) state, so the native-vs-wasm check covers the engine too.
 
 use std::sync::Arc;
 

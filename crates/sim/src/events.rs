@@ -68,7 +68,9 @@ pub enum SimEvent {
     ShipSpawned { ship: ShipId },
     /// A ship was removed with all its pieces.
     ShipRemoved { ship: ShipId },
-    /// Two bodies started touching (reported by the physics backend; ramming damage later).
+    /// Two pieces pushed each other this tick with at least `PhysicsTuning::impact_min_impulse` (sparks,
+    /// sound). Above `PhysicsTuning::ram_threshold` it carries ramming damage, already dealt to `part_a` and
+    /// `part_b` (destroyed parts follow as `PartDestroyed`).
     Impact(crate::physics::Contact),
     /// A pulse or projectile left a gun (beams are continuous: see `Sim::beams()`). `to` is where a pulse
     /// ended (hit, shield or full range); for projectiles the end of their range if nothing stops them.
