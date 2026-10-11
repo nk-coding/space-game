@@ -1,6 +1,7 @@
 //! The shared load test (`sim::scenario::load_test`): n ships, half Halvex Runners and half automaton
-//! raiders, all under the combat brain, engaging at once. Reports step times and what happened. Native only
-//! (wall-clock is used here, in the tool, never in the sim); the browser client runs the same setup.
+//! raiders, all under the content behavior `raider_basic`, engaging at once. Reports step times and what
+//! happened. Native only (wall-clock is used here, in the tool, never in the sim); the browser client runs the
+//! same setup.
 //!
 //! `cargo run --release -p sim --example load_test -- [--ships 1,5,20] [--ticks 1800] [--seed 42]`
 //! (or `scripts/load-test-native.sh`).

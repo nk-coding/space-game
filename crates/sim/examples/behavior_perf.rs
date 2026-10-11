@@ -3,14 +3,14 @@
 //!
 //! `cargo run --release -p sim --example behavior_perf -- [--ticks 900] [--runs 5]`
 //!
-//! Reports `Sim::step` with behaviors (built-in nodes; plus one Rhai condition evaluated at every think)
-//! against the same fight under the old raider brain, and the think pass alone (all 20 ships at once; a
-//! normal tick thinks for about a third of them).
+//! Reports `Sim::step` with the 10-rule behavior (built-in nodes; plus one Rhai condition evaluated at every
+//! think) against the same fight under the 2-rule `raider_basic`, and the think pass alone (all 20 ships at
+//! once; a normal tick thinks for about a third of them).
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use sim::{Body, RaiderBrain, ShipCommand, ShipDesign, Sim, TickInputs, Vec2};
+use sim::{Body, ShipCommand, ShipDesign, Sim, TickInputs, Vec2};
 
 const TEN_RULES: &str = "target nearest(engines)
 when hull < 20% -> flee
@@ -26,7 +26,7 @@ always -> approach(67%)";
 
 #[derive(Clone, Copy)]
 enum Mode {
-    Brain,
+    Raider,
     Behavior,
     Scripted,
 }
@@ -52,12 +52,12 @@ fn fleet(mode: Mode) -> Sim {
             early.clone(),
             Body::at(Vec2::new(x, 90.0), core::f32::consts::PI),
         );
+        let program = match mode {
+            Mode::Raider => w.behaviors().id("raider_basic"),
+            _ => Some(id),
+        };
         for s in [a, b] {
-            let cmd = match mode {
-                Mode::Brain => ShipCommand::Brain(Some(RaiderBrain::default())),
-                _ => ShipCommand::Behavior(Some(id)),
-            };
-            w.command(s, cmd);
+            w.command(s, ShipCommand::Behavior(program));
         }
     }
     w
@@ -98,7 +98,10 @@ fn main() {
         println!("| {label} | {m:.1} µs | {med:.1} µs | {p95:.1} µs | {min:.1} µs |");
     };
     for (label, mode) in [
-        ("`Sim::step`, raider brain (reference)", Mode::Brain),
+        (
+            "`Sim::step`, `raider_basic` (2 rules, reference)",
+            Mode::Raider,
+        ),
         ("`Sim::step`, 10-rule behavior", Mode::Behavior),
         (
             "`Sim::step`, 10-rule behavior + a Rhai condition at every think",

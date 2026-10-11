@@ -2,7 +2,7 @@
 //!
 //! No Bevy, no graphics, no threads, no filesystem, no wall-clock; builds for wasm32. Ships are grids of parts
 //! split into pieces (one rigid body each, with mass properties and convex colliders); power, heat, bonuses,
-//! damage and breakage run per tick; an always-on flight computer turns pilot input, maneuvers or brains into
+//! damage and breakage run per tick; an always-on flight computer turns pilot input, maneuvers or behaviors into
 //! actuator commands. The physics engine plugs in behind [`PhysicsBackend`]; until it is chosen, the
 //! engine-free [`FreeFlight`] backend moves the bodies (`Sim` = `Sim<FreeFlight>`).
 //!
@@ -64,7 +64,7 @@ pub use events::{PieceSnapshot, SimEvent, SplitEvent};
 pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
 pub use hash::{StateHash, StateHasher};
 pub use ids::{PieceId, ShipId};
-pub use maneuver::{Maneuver, RaiderBrain};
+pub use maneuver::Maneuver;
 pub use mass::MassProps;
 pub use math::{Rot, Vec2};
 pub use physics::{BodyDesc, BodyKey, Contact, FreeFlight, PhysicsBackend, RayHit};

@@ -168,6 +168,7 @@ fn main() {
                     ShipControls {
                         throttle: vec![0.8; design.engines.len()],
                         fire: true,
+                        guns: Vec::new(),
                         shields: true,
                     },
                 )
@@ -260,6 +261,7 @@ fn main() {
                         ShipControls {
                             throttle: vec![0.0; gb.engines.len()],
                             fire: true,
+                            guns: Vec::new(),
                             shields: true,
                         },
                     )

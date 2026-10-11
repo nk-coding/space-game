@@ -7,7 +7,8 @@
 //!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
 //!   base ships do.
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
-//!   fire), automaton ships by the raider brain, fewer hits: flight computer, allocation, maneuvers, brains.
+//!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
+//!   computer, allocation, maneuvers, fire at will.
 //! * [`ScenarioKind::Behavior`]: every ship under a content behavior (raiders: `raider_basic`; ship-mind
 //!   ships: `skirmisher` and three player programs with target priorities, among them an escort following
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
@@ -19,11 +20,11 @@ use std::sync::Arc;
 
 use data::Content;
 
+use crate::behavior::BehaviorLibrary;
 use crate::breakage::DamageTarget;
 use crate::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
 use crate::flight::{PilotInput, Target};
-use crate::maneuver::RaiderBrain;
 use crate::math::{Vec2, cos, sin};
 use crate::rng::Stream;
 use crate::ship::{Body, Ship, ShipControls};
@@ -143,9 +144,18 @@ impl Scenario {
                 linvel: Vec2::new(-sin(a) * 2.0, cos(a) * 2.0),
                 angvel: ((k % 5) as f32 - 2.0) * 0.15,
             };
-            let id = sim.spawn_ship(Arc::clone(&design), body);
-            if kind == ScenarioKind::Flight && design.faction != "ship_mind" {
-                sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
+            sim.spawn_ship(Arc::clone(&design), body);
+        }
+        if kind == ScenarioKind::Flight {
+            sim.set_behaviors(library(content)?);
+            let enemies: Vec<(crate::ShipId, Option<crate::BehaviorId>)> = sim
+                .ships()
+                .iter()
+                .filter(|s| s.design().faction != "ship_mind")
+                .map(|s| (s.id(), sim.behaviors().default_for(s.design())))
+                .collect();
+            for (id, b) in enemies {
+                sim.command(id, ShipCommand::Behavior(b));
             }
         }
         if kind == ScenarioKind::Behavior {
@@ -208,7 +218,7 @@ impl Scenario {
         self.inputs.commands.clear();
         self.inputs.damage.clear();
         if let ScenarioKind::Load(_) = kind {
-            return; // brains fly and fight on their own
+            return; // behaviors fly and fight on their own
         }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
@@ -218,7 +228,7 @@ impl Scenario {
                 (
                     s.id(),
                     s.design().engines.len(),
-                    s.brain().is_some() || s.behavior().is_some(),
+                    s.behavior().is_some(),
                     s.design().id == HEAT_STRESS,
                 )
             })
@@ -230,8 +240,8 @@ impl Scenario {
             .filter(|s| s.design().faction != "ship_mind")
             .map(|s| s.id())
             .collect();
-        for (k, &(id, engines, brain, heat_stress)) in ships.iter().enumerate() {
-            if brain || !(tick + k as u64 * 3).is_multiple_of(kind.reroll_every()) {
+        for (k, &(id, engines, autonomous, heat_stress)) in ships.iter().enumerate() {
+            if autonomous || !(tick + k as u64 * 3).is_multiple_of(kind.reroll_every()) {
                 continue;
             }
             let rng = self.sim.rng(Stream::Scenario);
@@ -257,6 +267,7 @@ impl Scenario {
                         ShipControls {
                             throttle,
                             fire,
+                            guns: Vec::new(),
                             shields,
                         },
                     ));
@@ -344,10 +355,19 @@ always -> approach(70%)";
 
 /// Behavior scenario: raiders fly their faction default; the first ship-mind ship is piloted (random input,
 /// the leader); the others cycle through the skirmisher, the hunter, the guard and an escort of the leader.
+/// The content's behavior library, with problems as one message.
+fn library(content: &Content) -> Result<BehaviorLibrary, String> {
+    BehaviorLibrary::new(content).map_err(|p| {
+        p.iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
+    })
+}
+
 fn assign_behaviors(content: &Content, sim: &mut Sim) -> Result<(), String> {
     let show = |e: Vec<String>| e.join("; ");
-    let mut lib = crate::behavior::BehaviorLibrary::new(content)
-        .map_err(|p| show(p.iter().map(|p| p.to_string()).collect()))?;
+    let mut lib = library(content)?;
     let mut add = |id: &str, text: &str| {
         lib.add_text(id, text)
             .map_err(|e| show(e.iter().map(|e| e.to_string()).collect()))
@@ -439,14 +459,15 @@ fn nth_alive(ship: &Ship, n: u32) -> PartIdx {
 
 /// The shared load test (native perf runs and the browser client use the same setup): `n` ships on the
 /// embedded base content, half Halvex Runners (rounded up) facing half automaton raiders 80 m away, every ship
-/// under the combat brain (approach, attack, orbit, fire with lead), so they engage at once and produce
-/// projectiles, hits and debris. With `n = 1` the lone runner orbits a point and fires into space.
+/// under the content behavior `raider_basic` (approach, then strafe around the target; fire at will with
+/// lead), so they engage at once and produce projectiles, hits and debris. With `n = 1` the lone runner orbits
+/// a point and fires into space.
 pub fn load_test(n: usize, seed: u64) -> Sim {
     load_test_with(&data::base_content(), n, seed)
         .expect("base content has the runner and the raider")
 }
 
-/// [`load_test`] on any content that has `halvex_runner` and `automaton_raider`.
+/// [`load_test`] on any content that has `halvex_runner`, `automaton_raider` and the behavior `raider_basic`.
 pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, String> {
     let get = |id: &str| -> Result<Arc<ShipDesign>, String> {
         let bp = content
@@ -457,6 +478,11 @@ pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, Str
     };
     let (runner, raider) = (get("halvex_runner")?, get("automaton_raider")?);
     let mut sim = Sim::new(seed);
+    sim.set_behaviors(library(content)?);
+    let fight = sim
+        .behaviors()
+        .id("raider_basic")
+        .ok_or("load test needs the behavior `raider_basic`")?;
     let runners = n.div_ceil(2);
     let raiders = n / 2;
     for k in 0..runners {
@@ -476,7 +502,7 @@ pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, Str
                 },
             );
         } else {
-            sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
+            sim.command(id, ShipCommand::Behavior(Some(fight)));
         }
     }
     for k in 0..raiders {
@@ -485,7 +511,7 @@ pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, Str
             Arc::clone(&raider),
             Body::at(Vec2::new(x, 80.0), core::f32::consts::PI),
         );
-        sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
+        sim.command(id, ShipCommand::Behavior(Some(fight)));
     }
     Ok(sim)
 }

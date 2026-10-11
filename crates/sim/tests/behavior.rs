@@ -1,6 +1,6 @@
 //! Behaviors: vocabulary ↔ implementation checks, rule evaluation (first match wins, why the others
-//! failed, rule slots, no target), target selectors and priorities, the content raider against the old
-//! raider brain, Rhai conditions (sandbox, budget, determinism), cadence and API details.
+//! failed, rule slots, no target), target selectors and priorities, fire at will per gun facing, Rhai
+//! conditions (sandbox, budget, determinism), cadence and API details.
 
 mod common;
 
@@ -10,8 +10,8 @@ use sim::behavior::{
 };
 
 use sim::{
-    Body, DamageTarget, Maneuver, PilotInput, RaiderBrain, ShipCommand, ShipId, Sim, SimEvent,
-    Target, TickInputs, Vec2,
+    Body, DamageTarget, Maneuver, PilotInput, ShipCommand, ShipId, Sim, SimEvent, Target,
+    TickInputs, Vec2,
 };
 
 fn lib() -> BehaviorLibrary {
@@ -339,11 +339,12 @@ fn target_selectors_priorities_and_stickiness() {
     assert_eq!(target(&mut w, "target attacker\nalways -> hold").0, None);
 
     // b starts hunting the runner: now it is the attacker and, aiming at us, the bigger threat.
-    w.command(b, ShipCommand::Brain(Some(RaiderBrain::default())));
+    let hunt = w.behaviors().id("raider_basic");
+    w.command(b, ShipCommand::Behavior(hunt));
     run(&mut w, 1);
     assert_eq!(target(&mut w, "target attacker\nalways -> hold").0, Some(b));
     assert_eq!(target(&mut w, "target threat\nalways -> hold").0, Some(b));
-    w.command(b, ShipCommand::Brain(None));
+    w.command(b, ShipCommand::Behavior(None));
 
     // Stickiness: the current target stays unless another is clearly nearer.
     let near = |w: &mut Sim, y: f32| {
@@ -392,87 +393,92 @@ fn target_selectors_priorities_and_stickiness() {
     assert!(ad.parts[state(&w, me).aim_part().unwrap() as usize].logic);
 }
 
-/// The content raider (`raider_basic`) against the old hard-coded brain: same fight, similar numbers.
-#[test]
-fn content_raider_fights_like_the_raider_brain() {
-    fn fight(use_behavior: bool) -> (Option<u64>, u32, u32, f32, f32) {
-        let c = content();
-        let mut w = world_with_lib(lib());
-        let runner = w.spawn_ship(design(&c, "halvex_runner"), Body::at(Vec2::ZERO, 0.0));
-        let mut raiders = Vec::new();
-        for k in 0..3 {
-            let x = (k as f32 - 1.0) * 20.0;
-            let r = w.spawn_ship(
-                design(&c, "automaton_raider"),
-                Body::at(Vec2::new(x, 80.0), core::f32::consts::PI),
-            );
-            let cmd = if use_behavior {
-                ShipCommand::Behavior(w.behaviors().default_for(w.ship(r).unwrap().design()))
-            } else {
-                ShipCommand::Brain(Some(RaiderBrain::default()))
-            };
-            w.command(r, cmd);
-            raiders.push(r);
-        }
-        let (mut first, mut shots, mut hits) = (None, 0, 0);
-        let (mut dist_sum, mut samples, mut orbit_ticks) = (0.0f32, 0u32, 0u32);
-        for t in 0..1200u64 {
-            w.step(&TickInputs::default());
-            for e in w.events() {
-                match e {
-                    SimEvent::ShotFired { ship, .. } if raiders.contains(ship) => {
-                        shots += 1;
-                        first.get_or_insert(t);
-                    }
-                    SimEvent::Hit { ship, .. } if *ship == runner => hits += 1,
-                    _ => {}
-                }
-            }
-            let rp = w.ship(runner).unwrap();
-            let rpos = rp.piece(rp.control_piece().unwrap()).unwrap().com_world();
-            for &r in &raiders {
-                let s = w.ship(r).unwrap();
-                if let Some(p) = s.control_piece().and_then(|c| s.piece(c)) {
-                    dist_sum += (p.com_world() - rpos).length();
-                    samples += 1;
-                }
-                let orbiting = match (s.brain(), s.behavior()) {
-                    (Some(b), _) => b.phase == sim::maneuver::RaiderPhase::Orbit,
-                    (_, Some(b)) => matches!(b.maneuver(), Maneuver::Orbit { .. }),
-                    _ => false,
-                };
-                orbit_ticks += orbiting as u32;
-            }
-        }
-        (
-            first,
-            shots,
-            hits,
-            dist_sum / samples.max(1) as f32,
-            orbit_ticks as f32 / samples.max(1) as f32,
-        )
-    }
-    let brain = fight(false);
-    let content = fight(true);
-    println!(
-        "brain   first {:?} shots {} hits {} mean dist {:.1} orbit share {:.2}",
-        brain.0, brain.1, brain.2, brain.3, brain.4
-    );
-    println!(
-        "content first {:?} shots {} hits {} mean dist {:.1} orbit share {:.2}",
-        content.0, content.1, content.2, content.3, content.4
-    );
-    let (b_first, c_first) = (brain.0.unwrap() as f32, content.0.unwrap() as f32);
-    assert!((b_first - c_first).abs() <= 15.0, "first shot");
-    let near = |a: f32, b: f32, rel: f32| (a - b).abs() <= rel * a.max(b) + 2.0;
-    assert!(near(brain.1 as f32, content.1 as f32, 0.25), "shots");
-    assert!(near(brain.2 as f32, content.2 as f32, 0.35), "hits");
-    assert!(near(brain.3, content.3, 0.1), "mean distance");
-    assert!((brain.4 - content.4).abs() < 0.1, "share of time orbiting");
-    assert!(content.1 > 0 && content.2 > 0, "the content raiders fight");
+/// A cross of four pulse lasers (front, right, rear, left) around a reactor, a logic core behind it.
+fn gun_cross() -> Vec<P<'static>> {
+    vec![
+        ("pulse_laser", 1, 0, 0, false, None),
+        ("pulse_laser", 0, 1, 3, false, None),
+        ("fission_reactor", 1, 1, 0, false, None),
+        ("pulse_laser", 2, 1, 1, false, None),
+        ("logic_core", 1, 2, 0, false, None),
+        ("pulse_laser", 1, 3, 2, false, None),
+    ]
 }
 
-/// Content with extra Rhai conditions on top of the base pack.
+/// Fire at will per gun (GDR-0034): with the target ahead, right, behind or left, exactly the gun facing it
+/// fires, whatever the maneuver (here: hold).
+#[test]
+fn fire_at_will_fires_each_gun_along_its_facing() {
+    let c = content();
+    let cross = custom(&c, &gun_cross());
+    for (x, y) in [(0.0, 30.0), (30.0, 0.0), (0.0, -30.0), (-30.0, 0.0)] {
+        let mut w = world_with_lib(lib());
+        let me = w.spawn_ship(cross.clone(), Body::at(Vec2::ZERO, 0.0));
+        let foe = w.spawn_ship(
+            design(&c, "automaton_raider"),
+            Body::at(Vec2::new(x, y), 0.0),
+        );
+        program(&mut w, me, "target nearest\nalways -> hold");
+        let mut shots = std::collections::BTreeSet::new();
+        for _ in 0..30 {
+            w.step(&TickInputs::default());
+            for e in w.events() {
+                if let SimEvent::ShotFired { ship, gun, .. } = e
+                    && *ship == me
+                {
+                    shots.insert(*gun);
+                }
+            }
+        }
+        let s = w.ship(me).unwrap();
+        let piece = s.piece(s.control_piece().unwrap()).unwrap();
+        let d = w.ship(foe).unwrap().pieces()[0].com_world() - piece.com_world();
+        let to = d * (1.0 / d.length());
+        let facing: Vec<u32> = piece
+            .guns
+            .iter()
+            .filter(|g| g.dir.dot(to) > 0.9)
+            .map(|g| g.part)
+            .collect();
+        assert_eq!(facing.len(), 1, "one gun faces ({x}, {y})");
+        assert_eq!(
+            shots.into_iter().collect::<Vec<_>>(),
+            facing,
+            "target at ({x}, {y}): only the gun facing it fires"
+        );
+        let slots = &s.controls().guns;
+        assert_eq!(slots.iter().filter(|f| **f).count(), 1, "{slots:?}");
+    }
+}
+
+/// Out of a gun's reach, or outside its cone, it holds fire.
+#[test]
+fn fire_at_will_respects_each_guns_reach_and_cone() {
+    let c = content();
+    let cross = custom(&c, &gun_cross());
+    // 60 m pulse lasers fire within 93.3% of their reach: 70 m ahead is out of reach; 30 m at 45° is
+    // outside every cone.
+    for (x, y) in [(0.0, 70.0), (21.2, 21.2)] {
+        let mut w = world_with_lib(lib());
+        let me = w.spawn_ship(cross.clone(), Body::at(Vec2::ZERO, 0.0));
+        w.spawn_ship(
+            design(&c, "automaton_raider"),
+            Body::at(Vec2::new(x, y), 0.0),
+        );
+        program(&mut w, me, "target nearest\nalways -> hold");
+        let mut fired = false;
+        for _ in 0..30 {
+            w.step(&TickInputs::default());
+            fired |= w
+                .events()
+                .iter()
+                .any(|e| matches!(e, SimEvent::ShotFired { ship, .. } if *ship == me));
+        }
+        assert!(!fired, "target at ({x}, {y})");
+        assert!(state(&w, me).target().is_some());
+    }
+}
+
 fn scripted_lib() -> BehaviorLibrary {
     let base = data::base_pack().unwrap();
     let m = data::Pack::from_files([
@@ -605,14 +611,8 @@ fn thinks_on_the_first_tick_then_every_period_staggered() {
 }
 
 #[test]
-fn brain_and_behavior_replace_each_other() {
+fn behavior_commands_assign_and_release() {
     let (mut w, me, _) = duel(&[(0.0, 80.0)]);
-    w.command(me, ShipCommand::Brain(Some(RaiderBrain::default())));
-    program(&mut w, me, "always -> face");
-    assert!(w.ship(me).unwrap().brain().is_none());
-    w.command(me, ShipCommand::Brain(Some(RaiderBrain::default())));
-    assert!(w.ship(me).unwrap().behavior().is_none());
-    w.command(me, ShipCommand::Brain(None));
     w.command(me, ShipCommand::Behavior(Some(sim::BehaviorId(9999))));
     assert!(
         w.ship(me).unwrap().behavior().is_none(),

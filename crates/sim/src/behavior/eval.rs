@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use data::Quantity;
+use data::{Delivery, Quantity};
 use rhai::Scope;
 
 use super::compile::{Action, AimAt, Cond, Flag, OrbitDir, SelectorKind, Sensor, Test};
@@ -17,15 +17,16 @@ use crate::DT;
 use crate::config::{FlightTuning, SimConfig};
 use crate::design::{PartIdx, Stat};
 use crate::flight::{
-    AimMode, FlightGoal, HelmMode, Kin, Target, TargetState, find_ship, resolve_target,
+    AimMode, Fire, FlightGoal, HelmMode, Kin, Target, TargetState, find_ship, lead_point,
+    resolve_target,
 };
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::ShipId;
 use crate::maneuver::Maneuver;
 use crate::mass::to_piece;
-use crate::math::Vec2;
+use crate::math::{Rot, Vec2, atan2};
 use crate::physics::wrap_angle;
-use crate::ship::Ship;
+use crate::ship::{Piece, Ship};
 
 /// Why a condition did not hold.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -391,11 +392,8 @@ struct Ctx<'a> {
     script_error: Option<String>,
 }
 
-/// The ship a ship aims at: its brain's or behavior's target, or its pilot's lock.
+/// The ship a ship aims at: its behavior's target, or its pilot's lock.
 pub(crate) fn aims_at(s: &Ship) -> Option<ShipId> {
-    if let Some(b) = &s.brain {
-        return b.target;
-    }
     if let Some(b) = &s.behavior {
         return b.focus;
     }
@@ -559,27 +557,57 @@ pub(crate) fn aim_state(
     resolve_target(ships, &Target::Ship(focus))
 }
 
-/// The per-tick part: the maneuver's goal (relative to the aim point) and fire at will: fire while the aim
-/// point (or its lead point) is within [`tuning::FIRE_CONE`] of the nose and within
-/// [`tuning::FIRE_RANGE`] × reach.
+/// The per-tick part: the maneuver's goal (relative to the aim point) and fire at will at the aim point
+/// (each gun checks its own facing in [`guns_at_will`]).
 pub(crate) fn fly(
     st: &BehaviorState,
     kin: &Kin,
     ships: &[Ship],
     tuning_f: &FlightTuning,
-) -> (FlightGoal, bool) {
+) -> (FlightGoal, Fire) {
     let ts = st.focus.and_then(|f| aim_state(ships, f, st.aim_part));
     let goal = st.maneuver.goal_for(kin, ts, tuning_f);
-    let fire = match ts {
-        Some(ts) if kin.reach > 0.0 => {
-            let aim = kin.aim_point(&ts, AimMode::Auto);
-            let dist = (ts.pos - kin.pos).length();
-            let off = wrap_angle(Kin::nose_heading(aim - kin.pos) - kin.angle).abs();
-            dist < kin.reach * tuning::FIRE_RANGE && off < tuning::FIRE_CONE
+    (goal, ts.map_or(Fire::Hold, Fire::AtWill))
+}
+
+/// Fire at will, per gun: a gun fires when the target (its lead point, for projectile guns) is within
+/// [`tuning::FIRE_CONE`] of the gun's facing and within [`tuning::FIRE_RANGE`] × the gun's reach, measured
+/// from its muzzle. Broadside and rear guns fire whenever the target crosses their line (GDR-0034). Fills
+/// `guns` per gun slot (`slots` = the design's gun count; no allocation once warmed up) and returns whether
+/// any gun fires.
+pub(crate) fn guns_at_will(
+    piece: &Piece,
+    ts: &TargetState,
+    slots: usize,
+    guns: &mut Vec<bool>,
+) -> bool {
+    guns.clear();
+    guns.resize(slots, false);
+    let rot = Rot::from_angle(piece.body.angle);
+    let com = piece.body.pos + rot.apply(piece.mass.com);
+    let mut any = false;
+    for g in piece.guns.iter().filter(|g| g.clear) {
+        let muzzle = piece.body.pos + rot.apply(g.muzzle);
+        if (ts.pos - muzzle).length() >= g.range * tuning::FIRE_RANGE {
+            continue;
         }
-        _ => false,
-    };
-    (goal, fire)
+        let aim = match g.delivery {
+            Delivery::Projectile { speed, .. } => {
+                let v_muzzle =
+                    piece.body.linvel + Vec2::cross_scalar(piece.body.angvel, muzzle - com);
+                lead_point(muzzle, v_muzzle, ts.pos, ts.vel, speed)
+            }
+            Delivery::Beam | Delivery::Pulse { .. } => ts.pos,
+        };
+        let (dir, to) = (rot.apply(g.dir), aim - muzzle);
+        if atan2(dir.cross(to), dir.dot(to)).abs() < tuning::FIRE_CONE
+            && let Some(f) = guns.get_mut(g.slot as usize)
+        {
+            *f = true;
+            any = true;
+        }
+    }
+    any
 }
 
 impl Ctx<'_> {

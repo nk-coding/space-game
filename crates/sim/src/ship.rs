@@ -21,7 +21,6 @@ use crate::design::{
 use crate::flight::{FlightTelemetry, HelmMode};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
-use crate::maneuver::RaiderBrain;
 use crate::mass::{MassProps, combine, to_piece};
 use crate::math::{Rot, Vec2, sin};
 
@@ -83,8 +82,12 @@ pub fn inherited_velocity(v: Vec2, omega: f32, com_old: Vec2, com_new: Vec2) -> 
 pub struct ShipControls {
     /// Throttle 0..1 per engine slot (`ShipDesign::engines` order).
     pub throttle: Vec<f32>,
-    /// All guns fire (fire groups come later).
+    /// Trigger: guns fire (all of them, unless `guns` picks some).
     pub fire: bool,
+    /// Which guns fire while `fire` is on, per gun slot (`ShipDesign::guns` order). Empty = all of them (pilot
+    /// and helm). Fire at will (behaviors) fills it per gun: each gun fires when the target is inside its own
+    /// cone along its facing.
+    pub guns: Vec<bool>,
     /// Shield emitters on.
     pub shields: bool,
 }
@@ -94,8 +97,15 @@ impl ShipControls {
         ShipControls {
             throttle: vec![0.0; engines],
             fire: false,
+            guns: Vec::new(),
             shields: true,
         }
+    }
+
+    /// Does the gun in this slot fire? (`fire`, and `guns` lets it.)
+    #[inline]
+    pub fn gun_fires(&self, slot: u32) -> bool {
+        self.fire && self.guns.get(slot as usize).copied().unwrap_or(true)
     }
 }
 
@@ -418,8 +428,7 @@ pub struct Ship {
     /// The controlling piece; `None` = the ship is dark for good (lost every core of that piece).
     pub(crate) control: Option<PieceId>,
     pub(crate) helm: HelmMode,
-    pub(crate) brain: Option<RaiderBrain>,
-    /// A behavior program flies the ship (overrides the helm, like a brain).
+    /// A behavior program flies the ship (overrides the helm).
     pub(crate) behavior: Option<crate::behavior::BehaviorState>,
     /// Whose lock the `locked` target selector follows (an escort's leader).
     pub(crate) leader: Option<ShipId>,
@@ -473,7 +482,6 @@ impl Ship {
             pending_destroyed: Vec::new(),
             control: None,
             helm: HelmMode::Raw,
-            brain: None,
             behavior: None,
             leader: None,
             telemetry: FlightTelemetry::default(),
@@ -591,10 +599,6 @@ impl Ship {
         &self.helm
     }
 
-    pub fn brain(&self) -> Option<&RaiderBrain> {
-        self.brain.as_ref()
-    }
-
     /// The running behavior and its debug view (active rule, why the others failed, target), if any.
     pub fn behavior(&self) -> Option<&crate::behavior::BehaviorState> {
         self.behavior.as_ref()
@@ -670,6 +674,7 @@ impl Ship {
             .throttle
             .resize(self.design.engines.len(), 0.0);
         self.controls.fire = c.fire;
+        self.controls.guns.clone_from(&c.guns);
         self.controls.shields = c.shields;
     }
 
@@ -1215,7 +1220,9 @@ impl Ship {
                 } else {
                     match c.kind {
                         ConsumerKind::Engine => activity[c.part as usize].clamp(0.0, 1.0),
-                        ConsumerKind::Weapon => controls.fire as u8 as f32,
+                        ConsumerKind::Weapon => {
+                            controls.gun_fires(d.slot_of_part[c.part as usize]) as u8 as f32
+                        }
                         ConsumerKind::Shield => controls.shields as u8 as f32,
                         ConsumerKind::Logic | ConsumerKind::Other => 1.0,
                     }
@@ -1402,19 +1409,16 @@ impl StateHash for Ship {
             h.f32(t);
         }
         h.bool(self.controls.fire);
+        h.u32(self.controls.guns.len() as u32);
+        for &g in &self.controls.guns {
+            h.bool(g);
+        }
         h.bool(self.controls.shields);
         h.u32(self.control.map_or(u32::MAX, |c| c.0));
         for &c in &self.gun_cooldown {
             h.f32(c);
         }
         self.helm.hash_state(h);
-        match &self.brain {
-            Some(b) => {
-                h.u8(1);
-                b.hash_state(h);
-            }
-            None => h.u8(0),
-        }
         match &self.behavior {
             Some(b) => {
                 h.u8(1);

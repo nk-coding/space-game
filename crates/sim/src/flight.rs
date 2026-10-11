@@ -17,7 +17,7 @@ use crate::config::{FlightTuning, SimConfig};
 use crate::design::NO_SLOT;
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
-use crate::maneuver::{Maneuver, RaiderBrain};
+use crate::maneuver::Maneuver;
 use crate::math::{Rot, Vec2, atan2, cos, sqrt};
 use crate::physics::wrap_angle;
 use crate::ship::{Piece, Ship, Wrench};
@@ -365,25 +365,40 @@ pub(crate) fn find_ship(ships: &[Ship], id: ShipId) -> Option<&Ship> {
         .map(|k| &ships[k])
 }
 
+/// What the guns do this tick.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Fire {
+    Hold,
+    /// Every gun fires (pilot trigger, helm `fire: true`).
+    All,
+    /// Fire at will at a target (behaviors): each gun fires when the target is inside its own cone along its
+    /// facing and within its reach (`behavior::guns_at_will`).
+    AtWill(TargetState),
+}
+
+impl Fire {
+    fn all_if(fire: bool) -> Fire {
+        if fire { Fire::All } else { Fire::Hold }
+    }
+}
+
 /// The outcome of planning one ship (computed for all ships before any is changed).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Plan {
     pub goal: Option<FlightGoal>,
-    pub fire: bool,
+    pub fire: Fire,
     pub raw: bool,
-    pub brain: Option<RaiderBrain>,
 }
 
 impl Plan {
     const DARK: Plan = Plan {
         goal: None,
-        fire: false,
+        fire: Fire::Hold,
         raw: false,
-        brain: None,
     };
 }
 
-/// Pass 1: decide the goal of one ship from its helm (or brain, or behavior), reading the whole world.
+/// Pass 1: decide the goal of one ship from its helm (or behavior), reading the whole world.
 pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
     let Some(piece) = ship.control_piece().and_then(|c| ship.piece(c)) else {
         return Plan::DARK;
@@ -393,48 +408,34 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
     }
     let tuning = &cfg.flight;
     let kin = Kin::of(piece, tuning);
-    if let Some(brain) = &ship.brain {
-        let (next, maneuver, fire) = brain.think(ship, &kin, ships);
-        return Plan {
-            goal: Some(maneuver.goal(&kin, ships, tuning)),
-            fire,
-            raw: false,
-            brain: Some(next),
-        };
-    }
     if let Some(b) = &ship.behavior {
         let (goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
         return Plan {
             goal: Some(goal),
             fire,
             raw: false,
-            brain: None,
         };
     }
     match &ship.helm {
         HelmMode::Raw => Plan {
             goal: None,
-            fire: ship.controls.fire,
+            fire: Fire::all_if(ship.controls.fire),
             raw: true,
-            brain: None,
         },
         HelmMode::Goal { goal, fire } => Plan {
             goal: Some(*goal),
-            fire: *fire,
+            fire: Fire::all_if(*fire),
             raw: false,
-            brain: None,
         },
         HelmMode::Maneuver { maneuver, fire } => Plan {
             goal: Some(maneuver.goal(&kin, ships, tuning)),
-            fire: *fire,
+            fire: Fire::all_if(*fire),
             raw: false,
-            brain: None,
         },
         HelmMode::Pilot(input) => Plan {
             goal: Some(pilot_goal(input, &kin, ships, tuning)),
-            fire: input.fire,
+            fire: Fire::all_if(input.fire),
             raw: false,
-            brain: None,
         },
     }
 }
@@ -520,11 +521,9 @@ pub fn turn_rate(e: f32, alpha: f32, tuning: &FlightTuning) -> f32 {
 
 /// Pass 2: turn the plan into actuator commands for the controlling piece; other pieces get nothing.
 pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
-    if let Some(b) = plan.brain {
-        ship.brain = Some(b);
-    }
     let control = ship.control_piece();
     let Ship {
+        design,
         pieces,
         parts,
         controls,
@@ -553,7 +552,20 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             }
             continue;
         }
-        controls.fire = plan.fire;
+        match plan.fire {
+            Fire::Hold | Fire::All => {
+                controls.fire = plan.fire == Fire::All;
+                controls.guns.clear();
+            }
+            Fire::AtWill(ts) => {
+                controls.fire = crate::behavior::guns_at_will(
+                    piece,
+                    &ts,
+                    design.guns.len(),
+                    &mut controls.guns,
+                );
+            }
+        }
         let Some(goal) = plan.goal else {
             continue;
         };

@@ -1,4 +1,4 @@
-//! Flight computer, allocation, maneuvers, raider brain, physics backend and interpolation.
+//! Flight computer, allocation, maneuvers, the content raider, physics backend and interpolation.
 
 mod common;
 
@@ -7,11 +7,10 @@ use core::f32::consts::{FRAC_PI_2, PI};
 use common::*;
 use sim::alloc::{Actuation, AllocTable, allocate};
 use sim::flight::Kin;
-use sim::maneuver::raider;
 use sim::physics::wrap_angle;
 use sim::{
-    Body, DamageTarget, FlightGoal, HeadingGoal, Maneuver, PilotInput, RaiderBrain, ShipCommand,
-    SimEvent, Target, TickInputs, Vec2,
+    Body, DamageTarget, FlightGoal, HeadingGoal, Maneuver, PilotInput, ShipCommand, SimEvent,
+    Target, TickInputs, Vec2,
 };
 
 const SHIPS: [&str; 2] = ["halvex_runner", "automaton_raider"];
@@ -431,7 +430,7 @@ fn maneuvers_approach_orbit_and_hold() {
 }
 
 #[test]
-fn raider_brain_hunts_and_fires() {
+fn content_raider_hunts_and_fires() {
     let c = content();
     let mut w = sim::Sim::new(5);
     let runner = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
@@ -439,7 +438,7 @@ fn raider_brain_hunts_and_fires() {
         design(&c, "automaton_raider"),
         Body::at(Vec2::new(120.0, 40.0), PI),
     );
-    w.command(raider, ShipCommand::Brain(Some(RaiderBrain::default())));
+    fight(&mut w, &c, raider);
     let mut fired = 0;
     let mut closest = f32::MAX;
     for _ in 0..2400 {
@@ -450,14 +449,11 @@ fn raider_brain_hunts_and_fires() {
             fired += 1;
         }
     }
-    // The cannon reaches 75 m; the brain engages within 1.2 × that.
-    assert!(
-        closest < raider::ENGAGE * 75.0,
-        "closest approach {closest}"
-    );
+    // The cannon reaches 75 m; `raider_basic` closes to 67% of that, then strafes around within 120%.
+    assert!(closest < 1.2 * 75.0, "closest approach {closest}");
     assert!(fired > 30, "fired on {fired} ticks");
     assert_eq!(
-        w.ship(raider).unwrap().brain().unwrap().target,
+        w.ship(raider).unwrap().behavior().unwrap().target(),
         Some(runner)
     );
 }

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use data::{Blueprint, Content, Placement};
-use sim::{Body, PartIdx, ShipControls, ShipDesign, ShipId, Sim, TickInputs};
+use sim::{Body, PartIdx, ShipCommand, ShipControls, ShipDesign, ShipId, Sim, TickInputs};
 
 pub fn content() -> Content {
     data::base_content()
@@ -64,10 +64,21 @@ pub fn world_with(design: Arc<ShipDesign>) -> (Sim, ShipId) {
     (w, s)
 }
 
+/// Puts a ship under its faction's content behavior (`raider_basic` for automatons), loading the content's
+/// behavior library first if the world has none (that drops every ship's behavior).
+pub fn fight(w: &mut Sim, c: &Content, ship: ShipId) {
+    if w.behaviors().id("raider_basic").is_none() {
+        w.set_behaviors(sim::BehaviorLibrary::new(c).expect("base behaviors compile"));
+    }
+    let b = w.behaviors().default_for(w.ship(ship).unwrap().design());
+    w.command(ship, ShipCommand::Behavior(b));
+}
+
 pub fn controls(engines: usize, throttle: f32, fire: bool, shields: bool) -> ShipControls {
     ShipControls {
         throttle: vec![throttle; engines],
         fire,
+        guns: Vec::new(),
         shields,
     }
 }

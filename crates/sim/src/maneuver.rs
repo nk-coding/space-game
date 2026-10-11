@@ -1,14 +1,10 @@
 //! Built-in maneuvers: the layer between behaviors (`behavior.rs`) and the flight computer. Each maneuver turns
-//! into a [`FlightGoal`] every tick. Plus the old hard-coded combat brain (approach → attack → orbit, aimed
-//! with lead), kept for API stability; the content behavior `raider_basic` replaces it. Ranges and timings are
-//! **placeholders**.
+//! into a [`FlightGoal`] every tick. Ranges are **placeholders**.
 
 use crate::config::FlightTuning;
 use crate::flight::{AimMode, FlightGoal, HeadingGoal, Kin, Target, TargetState, resolve_target};
 use crate::hash::{StateHash, StateHasher};
-use crate::ids::ShipId;
 use crate::math::Vec2;
-use crate::physics::wrap_angle;
 use crate::ship::Ship;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -191,144 +187,6 @@ fn seek(kin: &Kin, at: Vec2, at_vel: Vec2, standoff: f32, tuning: &FlightTuning)
         return at_vel;
     }
     to * (kin.arrive_speed(gap, tuning) / dist) + at_vel
-}
-
-/// Placeholder numbers of the combat brain. Distances scale with the ship's reach (the longest range of its
-/// clear guns), so the same brain works for raiders (cannon, 75 m) and runners (pulse lasers, 60 m).
-pub mod raider {
-    /// Beyond `reach × ENGAGE`, the ship approaches.
-    pub const ENGAGE: f32 = 1.2;
-    /// Attack stand-off: `reach × STANDOFF` (a raider: 50 m, outside the beam lasers' 45 m).
-    pub const STANDOFF: f32 = 0.667;
-    pub const ORBIT: f32 = 0.6;
-    /// Fires when the target is within `reach × FIRE` and the aim point within `FIRE_CONE` of the nose.
-    pub const FIRE: f32 = 0.933;
-    pub const FIRE_CONE: f32 = 0.12;
-    /// Reach assumed for a ship without clear guns.
-    pub const DEFAULT_REACH: f32 = 60.0;
-    pub const ATTACK_TICKS: u32 = 150;
-    pub const ORBIT_TICKS: u32 = 120;
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RaiderPhase {
-    Seek,
-    Attack,
-    Orbit,
-}
-
-/// The trivial combat AI (named for the automaton raiders, works for any armed ship): pick the nearest active
-/// ship of another faction, approach it, then alternate between attacking from stand-off range and orbiting;
-/// aim with lead for projectile guns (`AimMode::Auto`) and fire whenever the aim point is on the nose. No
-/// randomness.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RaiderBrain {
-    pub target: Option<ShipId>,
-    pub phase: RaiderPhase,
-    pub phase_ticks: u32,
-}
-
-impl Default for RaiderBrain {
-    fn default() -> Self {
-        RaiderBrain {
-            target: None,
-            phase: RaiderPhase::Seek,
-            phase_ticks: 0,
-        }
-    }
-}
-
-impl RaiderBrain {
-    /// Next brain state, the maneuver to fly and whether to fire.
-    pub(crate) fn think(
-        &self,
-        me: &Ship,
-        kin: &Kin,
-        ships: &[Ship],
-    ) -> (RaiderBrain, Maneuver, bool) {
-        use raider::*;
-        let faction = &me.design().faction;
-        let mut best: Option<(f32, ShipId, TargetState)> = None;
-        for s in ships {
-            if s.id() == me.id() || &s.design().faction == faction {
-                continue;
-            }
-            let Some(p) = s.control_piece().and_then(|c| s.piece(c)) else {
-                continue;
-            };
-            if !p.active {
-                continue;
-            }
-            let ts = TargetState {
-                pos: p.com_world(),
-                vel: p.body.linvel,
-            };
-            let d = (ts.pos - kin.pos).length();
-            if best.is_none_or(|b| d < b.0) {
-                best = Some((d, s.id(), ts));
-            }
-        }
-        let Some((dist, target, ts)) = best else {
-            return (RaiderBrain::default(), Maneuver::Brake, false);
-        };
-        let ticks = if self.target == Some(target) {
-            self.phase_ticks + 1
-        } else {
-            0
-        };
-        let mut next = RaiderBrain {
-            target: Some(target),
-            phase: self.phase,
-            phase_ticks: ticks,
-        };
-        let switch = |phase| RaiderBrain {
-            target: Some(target),
-            phase,
-            phase_ticks: 0,
-        };
-        let reach = if kin.reach > 0.0 {
-            kin.reach
-        } else {
-            DEFAULT_REACH
-        };
-        if dist > reach * ENGAGE {
-            if self.phase != RaiderPhase::Seek {
-                next = switch(RaiderPhase::Seek);
-            }
-        } else {
-            match self.phase {
-                RaiderPhase::Seek => next = switch(RaiderPhase::Attack),
-                RaiderPhase::Attack if ticks >= ATTACK_TICKS => next = switch(RaiderPhase::Orbit),
-                RaiderPhase::Orbit if ticks >= ORBIT_TICKS => next = switch(RaiderPhase::Attack),
-                _ => {}
-            }
-        }
-        let t = Target::Ship(target);
-        let maneuver = match next.phase {
-            RaiderPhase::Seek | RaiderPhase::Attack => Maneuver::Approach {
-                target: t,
-                range: reach * STANDOFF,
-                aim: AimMode::Auto,
-            },
-            RaiderPhase::Orbit => Maneuver::Orbit {
-                target: t,
-                radius: reach * ORBIT,
-                ccw: me.id().0.is_multiple_of(2),
-            },
-        };
-        let aim = kin.aim_point(&ts, AimMode::Auto);
-        let off_nose = wrap_angle(Kin::nose_heading(aim - kin.pos) - kin.angle).abs();
-        let fire = dist < reach * FIRE && off_nose < FIRE_CONE;
-        (next, maneuver, fire)
-    }
-}
-
-impl StateHash for RaiderBrain {
-    fn hash_state(&self, h: &mut StateHasher) {
-        h.u32(self.target.map_or(u32::MAX, |t| t.0));
-        h.u8(self.phase as u8);
-        h.u32(self.phase_ticks);
-    }
 }
 
 impl StateHash for Maneuver {

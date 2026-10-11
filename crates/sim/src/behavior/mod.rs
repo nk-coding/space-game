@@ -11,7 +11,7 @@
 //!   scripts of custom conditions.
 //! * **Library**: [`BehaviorLibrary::new`] compiles the vocabulary and every content behavior;
 //!   [`BehaviorLibrary::add_text`] adds a player's program. Hand it to the sim with `Sim::set_behaviors`.
-//! * **Commands**: `ShipCommand::Behavior(Some(id))` (overrides the helm, like a brain), `Behavior(None)`,
+//! * **Commands**: `ShipCommand::Behavior(Some(id))` (overrides the helm), `Behavior(None)`,
 //!   `ShipCommand::Leader(Some(ship))` (whose lock the `locked` selector follows).
 //! * **Cadence**: a ship thinks every [`tuning::THINK_PERIOD`] ticks (10 Hz), staggered by ship id
 //!   (`(tick + id) % period == 0`), and on the first tick after it gets a behavior. Between thinks the chosen
@@ -33,7 +33,7 @@ use data::{BehaviorNode, Content, Kind, NodeRole, ParamType, Problem, Quantity, 
 
 pub use compile::AimAt;
 pub use eval::{BehaviorState, RuleStatus, Why};
-pub(crate) use eval::{Scratch, fly, think_all};
+pub(crate) use eval::{Scratch, fly, guns_at_will, think_all};
 pub use script::{SCRIPT_API, ScriptFault, ShipView};
 
 use crate::design::ShipDesign;
@@ -42,9 +42,10 @@ use crate::design::ShipDesign;
 pub mod tuning {
     /// Ticks between two thinks of one ship (3 = 10 Hz at 30 Hz), staggered by ship id.
     pub const THINK_PERIOD: u64 = 3;
-    /// Fire at will: the aim point must be within this share of the weapon reach (as the old raider brain).
+    /// Fire at will: the target must be within this share of a gun's reach (measured from its muzzle).
     pub const FIRE_RANGE: f32 = 0.933;
-    /// Fire at will: and within this angle of the nose (rad).
+    /// Fire at will: and its aim point (lead point, for projectile guns) within this angle of the gun's
+    /// facing (rad).
     pub const FIRE_CONE: f32 = 0.12;
     /// Reach (m) assumed for a ship without clear guns, for `%` distances.
     pub const DEFAULT_REACH: f32 = 60.0;

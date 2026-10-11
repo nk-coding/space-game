@@ -370,10 +370,7 @@ fn raiders_shoot_back() {
         design(&c, "automaton_raider"),
         Body::at(Vec2::new(60.0, 30.0), 2.0),
     );
-    w.command(
-        raider,
-        sim::ShipCommand::Brain(Some(sim::RaiderBrain::default())),
-    );
+    fight(&mut w, &c, raider);
     let mut hits_on_runner = 0;
     let mut shots = 0;
     for _ in 0..1800 {

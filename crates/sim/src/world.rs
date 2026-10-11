@@ -4,9 +4,9 @@
 //! # One tick (`Sim::step`)
 //!
 //! 1. Events of the previous step are dropped (events from calls made since then are kept).
-//! 2. Inputs, in list order: raw `controls`, `commands` (pilot input, maneuvers, brains), scripted `damage`.
+//! 2. Inputs, in list order: raw `controls`, `commands` (pilot input, maneuvers, behaviors), scripted `damage`.
 //! 3. Breakage is resolved (connectivity, splits); bodies are created, updated or removed in the backend.
-//! 4. Flight: every ship is planned from the same snapshot of the world (brains, maneuvers, pilot input),
+//! 4. Flight: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input),
 //!    then the flight computer allocates the actuators of each controlling piece.
 //! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
 //! 6. Physics: split ghosts expire, wrenches are applied, the backend steps `DT`, bodies are read back
@@ -24,7 +24,7 @@ use crate::events::SimEvent;
 use crate::flight::{self, HelmMode, PilotInput};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
-use crate::maneuver::{Maneuver, RaiderBrain};
+use crate::maneuver::Maneuver;
 use crate::math::{Rot, Vec2};
 use crate::physics::{BodyDesc, BodyKey, FreeFlight, PhysicsBackend, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
@@ -51,11 +51,8 @@ pub enum ShipCommand {
         goal: flight::FlightGoal,
         fire: bool,
     },
-    /// Hand the ship to a brain (`Some`) or take it back (`None`). A brain overrides the helm. Clears a
-    /// behavior.
-    Brain(Option<RaiderBrain>),
     /// Hand the ship to a behavior of the sim's [`BehaviorLibrary`] (`Some`) or take it back (`None`). A
-    /// behavior overrides the helm, like a brain, and clears the brain. Unknown ids are ignored.
+    /// behavior overrides the helm. Unknown ids are ignored.
     Behavior(Option<BehaviorId>),
     /// Set the ship whose lock the `locked` target selector follows (an escort's leader), or none.
     Leader(Option<ShipId>),
@@ -293,12 +290,6 @@ impl<P: PhysicsBackend> Sim<P> {
                     s.helm = HelmMode::Maneuver { maneuver, fire }
                 }
                 ShipCommand::Goal { goal, fire } => s.helm = HelmMode::Goal { goal, fire },
-                ShipCommand::Brain(b) => {
-                    if b.is_some() {
-                        s.behavior = None;
-                    }
-                    s.brain = b;
-                }
                 ShipCommand::Behavior(None) => s.behavior = None,
                 ShipCommand::Behavior(Some(id)) => {
                     let program = self.behaviors.get(id).cloned();
@@ -307,7 +298,6 @@ impl<P: PhysicsBackend> Sim<P> {
                         Err(_) => return,
                     };
                     if let Some(p) = program {
-                        s.brain = None;
                         s.behavior = Some(BehaviorState::new(id, p));
                     }
                 }
