@@ -1,9 +1,10 @@
 # Simulation core (`crates/sim`)
 
-Written 11 Oct 2026, updated the same evening (phase 3a: physics seam, flight computer, maneuvers). Status:
-everything that does not depend on the physics engine is in place; the engine (still being chosen) plugs in
-behind the [`PhysicsBackend`](#the-physics-seam) trait, and until then the engine-free `FreeFlight` backend
-moves the ships. All numbers in the heat, power and flight models are **placeholders** for feel.
+Written 11 Oct 2026, updated the same evening (phase 3a: physics seam, flight computer, maneuvers; then
+weapons v1 and shields). Status: everything that does not depend on the physics engine is in place; the engine
+(still being chosen) plugs in behind the [`PhysicsBackend`](#the-physics-seam) trait, and until then the
+engine-free `FreeFlight` backend moves the ships. Collisions and ramming wait for the engine. All numbers in the
+heat, power, flight and weapon models are **placeholders** for feel.
 
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
 `wasm32-wasip1`. Dependencies: `data` (content) and `libm` (pinned `=0.2.16`, `arch` feature off).
@@ -24,6 +25,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate`, `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry` |
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit), `RaiderBrain` |
+| `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `physics` | `PhysicsBackend` trait, `BodyKey`, `BodyDesc`, `RayHit`, `Contact`, the `FreeFlight` backend, `wrap_angle` |
 | `breakage` | `Ship::apply_damage`, `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
@@ -62,11 +64,14 @@ numbers).
    are updated, created and removed in the backend, and split pieces ghost each other for a few ticks.
 4. **Flight**: every ship is planned from the same snapshot of the world (brains, maneuvers, pilot input →
    `FlightGoal`), then the flight computer allocates the actuators of each controlling piece.
-5. **Systems** per ship: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
-6. **Physics**: expired ghosts are cleared, wrenches applied (force rotated to world, at the centre of mass),
+5. **Systems** per ship: power → heat → wrench (engines, RCS, gimbals, gyros, cores), gun output, shield
+   regeneration.
+6. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
+   (beams and pulses hit at once, projectiles spawn, recoil adds to the wrench); breakage is resolved again.
+7. **Physics**: expired ghosts are cleared, wrenches applied (force rotated to world, at the centre of mass),
    the backend steps `DT`, bodies are read back (the previous pose is kept for interpolation), new contacts
    become `SimEvent::Impact`.
-7. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
+8. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
 
 ## Determinism
 
@@ -102,7 +107,8 @@ How it is checked:
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
 - **Result (11 Oct 2026, with FreeFlight physics and the flight computer)**: native x86_64 vs wasm32 (Node 24 /
   V8) **identical** for core and flight, seed 42 (1800 ticks), flight seeds 1, 7, 123456789 and core seed 7
-  (3000 ticks each). Dev and release builds also agree.
+  (3000 ticks each). Dev and release builds also agree. **With weapons v1** (same evening): core and flight
+  seed 42 (1800 ticks) and flight seed 7 (3000 ticks) identical.
 
 Scenarios (`sim::scenario`), both spawning two copies of every blueprint in the content:
 
@@ -110,7 +116,8 @@ Scenarios (`sim::scenario`), both spawning two copies of every blueprint in the 
   one heat-stress ship (three beams on two reactors, always firing, never hit) so overheating stays covered.
   Seed 42, 1800 ticks: 266 parts destroyed, 50 splits, 248 overheated part-ticks.
 - `flight`: player ships flown by random pilot input (stick, lock on an enemy, drift, fire), automaton ships
-  by the raider brain, fewer hits. Seed 42, 1800 ticks: 128 parts destroyed, 21 splits, 5651 firing ship-ticks.
+  by the raider brain, fewer scripted hits; all weapons fire for real. Seed 42, 1800 ticks: 136 parts
+  destroyed, 26 splits, 1002 pulses and projectiles fired, 78 hull hits, 13 shield hits.
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -226,9 +233,9 @@ damage, fire rate, thrust, gimbal, RCS thrust, torque, shield radius (others are
 
 ### Guns
 
-`Piece::guns` (`GunMount`): muzzle (centre of the facing side), unit direction, `clear`, `fire_rate`,
-`dps = damage × fire_rate`, and `output` (dps this tick). Projectiles and hits come with the physics engine;
-`Sim::raycast` already maps a ray to the first part hit.
+`Piece::guns` (`GunMount`): muzzle (centre of the facing side), unit direction, `clear`, `fire_rate`
+(bonus multiplier), `dps = damage × fire_rate`, `output` (dps this tick), `family`, `delivery`, `range`,
+`rate` (shots/s with the bonus), `shot_damage` (`damage / base rate`). Firing: see [Weapons](#weapons).
 
 ## Flight
 
@@ -305,8 +312,55 @@ limited by the centripetal acceleration the ship can hold, radial error correcte
 `FlightGoal` every tick; an unresolvable target brakes.
 
 `RaiderBrain` (hard-coded until behavior trees): the nearest active ship of another faction is the target;
-beyond 70 m it approaches to 30 m, then alternates attack (approach/face, 4 s) and orbit (28 m, 3 s, direction
-by ship id); it fires when the target is within 55 m and 0.15 rad of the nose. No randomness.
+beyond 90 m it approaches to 50 m (outside the 45 m beam lasers, inside its 75 m cannon), then alternates attack
+(approach/face, 5 s) and orbit (45 m, 4 s, direction by ship id); it fires when the target is within 70 m and
+0.12 rad of the nose. No randomness. Constants in `maneuver::raider`.
+
+## Weapons
+
+All hit tests go through `PhysicsBackend::raycast` (FreeFlight's brute force today, the engine's later); a
+shooter never hits its own ship. A gun fires while `output > 0`: firing commanded (`PilotInput.fire`,
+`ShipControls.fire` or a brain), clear line of fire, powered, not overheated, piece active. Guns are fixed and
+aimed by turning the ship.
+
+| Delivery (content) | Behaviour |
+|---|---|
+| `Beam` | continuous hit-scan; each tick `dps × work × DT` to the first block in range; `Sim::beams()` lists this tick's beams (`from`, `to`, `hit`) |
+| `Pulse(rate)` | a cooldown per gun (`rate × fire_rate` shots/s, slower when browned out); each pulse is a hit-scan dealing `damage / rate` to the first block |
+| `Projectile(rate, speed, penetration, recoil)` | same cooldown; a `Projectile` entity at the muzzle with the muzzle's velocity (`v + ω × r`) plus `speed`, living `range / speed` s |
+
+- **Lasers** (beam, pulse) burn the first block only.
+- **Projectiles**: each tick the segment they travel is ray-cast. On a hull hit the block takes the damage; if
+  it breaks, the excess carries on along the shot through the next blocks of the same piece (grid walk) until
+  `penetration` blocks are used up, the damage runs out or the shot leaves the hull (it does not fly on to
+  another ship). The automaton cannon has penetration 1; the tests' railgun mod pierces 3.
+- **Ricochet**: a kinetic shot that hits a slope face more than 60° from the face normal glances off: it is
+  mirrored on the face and keeps 60% speed and 50% damage; the slope takes nothing; at most 2 ricochets.
+- **Recoil**: `recoil` kN·s per shot pushes the shooter back at the muzzle for one tick (force and torque added
+  to the piece's wrench).
+- **Shields**: every working emitter of an active piece projects a bubble of `shield_radius` around itself
+  with `capacity`, regenerating `regen × work` per second. A shot whose path enters a bubble of another ship
+  loses `damage × absorb[family]` (content: energy 1.0, kinetic 0.5, missile 1.0) up to what the bubble has
+  left. Bubbles along the path are crossed in entry order, so overlapping bubbles stack (each takes its share
+  of what reaches it). A shot that starts inside a bubble passes it. A bubble that runs empty collapses and
+  stays down until it has recharged 30% of its capacity. A beam that a bubble fully absorbs ends at the bubble.
+- Tuning constants (`weapons::tuning`, placeholders): ricochet cosine 0.5, speed 0.6, damage 0.5, max 2
+  ricochets, shield restart 0.3.
+
+Events (in `Sim::events()`, for visuals and sound):
+
+| Event | When |
+|---|---|
+| `ShotFired { ship, piece, gun, kind, from, to, projectile }` | every pulse (`to` = where it ended) and every projectile (`to` = end of its range); not for beams |
+| `Hit { by, ship, piece, part, point, normal, damage, absorbed, family }` | damage reached a part (after shields); beams: once per tick on target |
+| `ProjectileSpawned { id, owner, pos, vel }`, `ProjectileGone { id, pos, reason }` | `reason` = `Hit`, `Absorbed` or `Expired` |
+| `Ricochet { id, point, normal, vel }` | a kinetic shot glanced off a slope |
+| `ShieldHit { by, ship, piece, part, point, absorbed, left, depleted }` | a shot entered a bubble (`point` = entry); `depleted` = it collapsed |
+
+Queries each frame: `Sim::projectiles()` (`pos`, `prev_pos`, `vel`; draw at `prev_pos + (pos − prev_pos) ×
+alpha`), `Sim::beams()` (this tick's beams), `Sim::bubbles()` (`centre`, `radius`, `left`, `capacity` of every
+bubble that is up), and per emitter `ship.part(i).shield` and `.shield_down`. `Sim::spawn_projectile` creates a
+projectile directly (tools, tests).
 
 ## The physics seam
 
@@ -375,6 +429,9 @@ for ship in world.ships() { for piece in ship.pieces() {
 }}
 ```
 
+- Weapons: draw `world.beams()` as lines, `world.projectiles()` as tracers (interpolate `prev_pos → pos`),
+  `world.bubbles()` as dotted rings (alpha from `left / capacity`); flash on `ShieldHit`, sparks on `Hit` and
+  `Ricochet`, muzzle flashes on `ShotFired`.
 - Enemies: `world.command(raider, ShipCommand::Brain(Some(RaiderBrain::default())))`.
 - Debug HUD: `ship.telemetry()` (top speed, goal, heading target), `piece.power`, `ship.parts()[i].heat`.
 - Keep stable ids: visuals keyed by `(ShipId, PieceId)`; a split keeps the parent's `PieceId` for the kept part.
@@ -393,6 +450,12 @@ building Bevy; medians of 3 runs):
 | `state_hash` (whole world) | 0.63 ms | 1.27 ms |
 | lose one part of a 2000-part piece (resolve + rebuild + body update) | 0.20 ms | 0.56 ms |
 | cut a 50-part row and split a 2000-part piece | 0.18 ms | — |
+
+**Combat** (same tool, VM load ~8.4, medians of 3 runs): 20 gunboats (50×40 slabs, 17 pulse lasers + 17
+cannons each, shield emitters inside) in two lines 60 m apart, every gun firing for 150 ticks: `Sim::step`
+mean **1.47 ms**, p95 4.3 ms (the p95 ticks are synchronized cannon salvos: every cooldown starts at 0); about
+120 live projectiles on average, 680 at the first salvo; 3520 shots and 2080 hits in 150 ticks. Compared with
+the same ships not fighting (~0.85 ms), weapons, shields and the breakage they cause add about 0.6 ms.
 
 The flight computer + allocation for 20 big ships costs well under 0.1 ms per tick (the step difference is
 within the noise; 20 × 1.5 µs for allocation). The per-tick code allocates nothing once warmed up.
@@ -416,5 +479,17 @@ Open:
    a hard turn swings the nose past the stick before it settles (a "drift turn"). Alternative: keep the nose on
    the stick and only use the thrust that happens to help (slower, sideways drift remains). Recommend (a)
    **current behaviour**; judge in the browser.
-4. **Raider brain numbers** (engage 70 m, stand-off 30 m, orbit 28 m, fire cone 0.15 rad) are placeholders;
-   tune once weapons fire for real.
+4. **Raider brain numbers** (engage 90 m, stand-off 50 m, orbit 45 m, fire range 70 m, cone 0.12 rad) are
+   placeholders. A stationary Halvex Runner that just locks and fires kills three raiders about 15 s after
+   contact and takes 3–4 damage: the raiders are slow (0.76 m/s²) and the runner's pulse lasers reach 60 m.
+   Tune together with question 1 in the browser.
+5. **Shield absorption model.** Now: a bubble takes a share per family (energy 100%, kinetic 50%) until empty,
+   then collapses until 30% recharged; overlapping bubbles each take their share in turn. Options: (a)
+   **keep this** (simple, readable) (recommended); (b) the bubbles of one ship share one pool; (c) kinetic
+   shots are only slowed, not reduced.
+6. **Penetration beyond the hull.** A projectile that breaks through the last block of a piece stops (it does
+   not continue to the next ship). Recommend (a) **keep** until railguns exist; (b) let it fly on.
+7. **Aiming.** Lasers hit instantly (aim = turn the ship). Projectiles have flight time and nobody leads yet:
+   raiders aim at the target's current position, so a moving player dodges them. Recommend (a) **raiders lead
+   their shots next** (cheap, makes them a threat); (b) leave it.
+8. **Missiles, disruption, drones** are not built yet (`absorb` already lists missiles: bubbles stop them).
