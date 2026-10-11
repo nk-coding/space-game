@@ -17,8 +17,9 @@ use crate::RenderToggles;
 enum Script {
     /// Slow drift around the origin with a gentle turn.
     Drift,
-    /// Circle the origin; negative speed = clockwise.
-    Orbit { radius: f32, speed: f32, phase: f32 },
+    /// Circle the origin on an ellipse (`squash` = height / width, so the raiders stay on a landscape
+    /// screen); negative speed = clockwise.
+    Orbit { radius: f32, squash: f32, speed: f32, phase: f32 },
 }
 
 #[derive(Resource)]
@@ -45,10 +46,24 @@ fn setup(
     mut toggles: ResMut<RenderToggles>,
 ) {
     let content = data::base_content();
-    let runner = content.ships.get("halvex_runner").expect("base content has halvex_runner");
+    // `?ship=<blueprint id>` shows another blueprint in the player's place.
+    let player_id = params.text("ship").unwrap_or("halvex_runner");
+    let runner = content.ships.get(player_id).or_else(|| {
+        warn!("unknown ship `{player_id}`, showing halvex_runner");
+        content.ships.get("halvex_runner")
+    });
+    let runner = runner.expect("base content has halvex_runner");
     let raider = content.ships.get("automaton_raider").expect("base content has automaton_raider");
     let runner_v = ship_visual(&content, runner, &style).expect("halvex_runner visual");
     let raider_v = ship_visual(&content, raider, &style).expect("automaton_raider visual");
+    info!(
+        "showcase: {} {} parts, pivot {:?}; automaton_raider {} parts, pivot {:?}",
+        runner.id,
+        runner_v.parts.len(),
+        runner_v.pivot,
+        raider_v.parts.len(),
+        raider_v.pivot
+    );
 
     let still = params.flag("still").unwrap_or(false);
     let start = params.f32("t").unwrap_or(4.0) as f64;
@@ -59,11 +74,8 @@ fn setup(
     commands.entity(player).insert((Script::Drift, TrailEmitter::default()));
     toggles.ring_target = Some(player);
 
-    let orbits = [
-        Script::Orbit { radius: 11.5, speed: 0.16, phase: 0.35 },
-        Script::Orbit { radius: 14.0, speed: -0.12, phase: 2.6 },
-        Script::Orbit { radius: 16.5, speed: 0.1, phase: 4.3 },
-    ];
+    // One shared ellipse, evenly spaced, so the raiders never cross each other.
+    let orbits = [0.5f32, 2.594, 4.689].map(|phase| Script::Orbit { radius: 12.0, squash: 0.62, speed: 0.13, phase });
     for (k, s) in orbits.into_iter().enumerate() {
         let pose = pose_of(s, start_ticks, still);
         let e = spawn_ship_view(&mut commands, &mut meshes, &atlas, &style, &raider_v, pose, 10.0 + k as f32, &toggles);
@@ -80,11 +92,12 @@ fn pose_of(script: Script, ticks: u64, still: bool) -> Pose2 {
             Vec2::new(2.2 * (0.11 * t).sin(), 1.3 * (0.07 * t + 1.0).sin()),
             0.22 * (0.09 * t).sin() + 0.08 * (0.23 * t).sin(),
         ),
-        Script::Orbit { radius, speed, phase } => {
+        Script::Orbit { radius, squash, speed, phase } => {
             let a = phase + if still { 0.0 } else { speed * t };
-            let pos = Vec2::new(a.cos(), a.sin()) * radius;
+            let r = radius * (1.0 + if still { 0.0 } else { 0.04 * (0.5 * t + 2.0 * phase).sin() });
+            let pos = Vec2::new(a.cos(), squash * a.sin()) * r;
             // Nose (local +y) along the direction of travel.
-            let vel = Vec2::new(-a.sin(), a.cos()) * speed.signum();
+            let vel = Vec2::new(-a.sin(), squash * a.cos()) * speed.signum();
             Pose2::new(pos, (-vel.x).atan2(vel.y))
         }
     }

@@ -65,7 +65,8 @@ impl SimPose {
     }
 }
 
-/// Engine throttles (0..1) in the order of the ship's engine mounts. Written by the sim bridge.
+/// Engine throttles (0..1) in the order of `ShipView::engines` (each mount names its blueprint part index).
+/// Written by the sim bridge.
 #[derive(Component, Clone, Debug, Default)]
 pub struct EngineThrottle(pub Vec<f32>);
 

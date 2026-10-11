@@ -7,6 +7,6 @@ cd "$(dirname "$0")/../crates/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 if [[ "${1:-}" == "--release" ]]; then
   shift
-  exec trunk serve --release --cargo-profile wasm-release --address 0.0.0.0 --port 8080 "$@"
+  exec trunk serve --release --cargo-profile "${WASM_PROFILE:-release}" --address 0.0.0.0 --port 8080 "$@"
 fi
 exec trunk serve --address 0.0.0.0 --port 8080 "$@"

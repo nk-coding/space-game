@@ -27,6 +27,7 @@ use crate::RenderToggles;
 
 #[derive(Clone, Debug)]
 pub struct ShipVisual {
+    /// One entry per blueprint placement, in blueprint order (index = part index in `Blueprint::parts`).
     pub parts: Vec<PartVisual>,
     /// Outline loops of the main piece (blueprint frame); `bool` = closed.
     pub hull_loops: Vec<(Vec<Vec2>, bool)>,
@@ -91,6 +92,9 @@ pub struct GunVisual {
 /// Where an engine sits on the ship (ship-local, y up).
 #[derive(Clone, Copy, Debug)]
 pub struct EngineMount {
+    /// Index of the engine part in the blueprint (`Blueprint::parts`), for mapping sim throttles.
+    #[allow(dead_code, reason = "read by the sim bridge once the sim drives ships")]
+    pub part: usize,
     pub nozzle: Vec2,
     /// Exhaust direction (unit, ship-local).
     pub exhaust: Vec2,
@@ -110,10 +114,8 @@ pub struct ShipView {
     pub mesh_style: Handle<Mesh>,
     pub mesh_style_noglow: Handle<Mesh>,
     pub mesh_debug: Handle<Mesh>,
-    pub enemy: bool,
+    /// Hull glow colour (trails use it too).
     pub glow: Color,
-    /// Radius of the ship's bounding circle around the pivot (metres).
-    pub radius: f32,
 }
 
 #[derive(Component)]
@@ -168,7 +170,7 @@ pub fn spawn_ship_view(
 
     // Engines
     let mut engines = Vec::new();
-    for p in &v.parts {
+    for (part, p) in v.parts.iter().enumerate() {
         let Some(e) = p.engine else { continue };
         if !e.clear || !p.main {
             continue;
@@ -177,6 +179,7 @@ pub fn spawn_ship_view(
         let back = p.center - p.facing * (extent_along(p) / 2.0 - 0.05);
         let (len_idle, len_full) = plume_lengths(e.large);
         engines.push(EngineMount {
+            part,
             nozzle: to_local(back),
             exhaust: dir_local(-p.facing),
             large: e.large,
@@ -184,9 +187,6 @@ pub fn spawn_ship_view(
             len_full,
         });
     }
-
-    let corners = [v.bounds_min, v.bounds_max, Vec2::new(v.bounds_min.x, v.bounds_max.y), Vec2::new(v.bounds_max.x, v.bounds_min.y)];
-    let radius = corners.iter().map(|c| (to_local(*c)).length()).fold(0.0, f32::max);
 
     let root = commands
         .spawn((
@@ -279,9 +279,7 @@ pub fn spawn_ship_view(
         mesh_style,
         mesh_style_noglow,
         mesh_debug,
-        enemy: v.enemy,
         glow: v.glow,
-        radius,
     });
     root
 }

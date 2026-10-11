@@ -24,13 +24,9 @@ pub struct Style {
     pub aura_opacity: f32,
     pub shield_color: Color,
     pub shield_opacity: f32,
-    pub muzzle: Color,
     pub particle: Color,
     pub dotted_ring: Color,
     pub ui_label: Color,
-    pub ui_dim: Color,
-    pub ui_number: Color,
-    pub ui_teal: Color,
 }
 
 impl Style {
@@ -55,13 +51,9 @@ impl Style {
             aura_opacity: atlas.token_f32("ship.aura.opacity_center"),
             shield_color: atlas.token_color("ship.shield_ring.color"),
             shield_opacity: atlas.token_f32("ship.shield_ring.opacity"),
-            muzzle: atlas.token_color("ship.muzzle"),
             particle: atlas.token_color("ui.particle"),
             dotted_ring: atlas.token_color("ui.dotted_ring"),
             ui_label: atlas.token_color("ui.label"),
-            ui_dim: atlas.token_color("ui.dim"),
-            ui_number: atlas.token_color("ui.number"),
-            ui_teal: atlas.token_color("ui.teal"),
         }
     }
 

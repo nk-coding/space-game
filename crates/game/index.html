@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#010409" />
   <title>Space Game</title>
-  <!-- Release builds run wasm-opt; the cargo profile comes from the command line (scripts/web-build.sh). -->
-  <link data-trunk rel="rust" data-bin="game" data-wasm-opt="s" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
+  <!-- Release builds run wasm-opt (tuned for speed: the web build is the development platform, size doesn't
+       matter); the cargo profile comes from the command line (scripts/web-build.sh). -->
+  <link data-trunk rel="rust" data-bin="game" data-wasm-opt="3" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #010409; }
     body {

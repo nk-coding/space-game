@@ -30,6 +30,10 @@ impl Params {
         self.0.get(key).and_then(|v| v.parse().ok())
     }
 
+    pub fn text(&self, key: &str) -> Option<&str> {
+        self.0.get(key).map(String::as_str)
+    }
+
     pub fn flag(&self, key: &str) -> Option<bool> {
         self.0.get(key).map(|v| !matches!(v.as_str(), "0" | "false" | "off" | "no"))
     }

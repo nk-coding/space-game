@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Release web build (cargo profile `wasm-release` + wasm-opt) into crates/game/dist, then report sizes.
-# Serve the result with any static file server, e.g. `scripts/web-serve-dist.sh`.
+# Optimised web build into crates/game/dist, then report sizes. Serve it with `scripts/web-serve-dist.sh`.
+# The web build is the development platform (not shipped to players), so it is tuned for speed: cargo profile
+# `release` (opt-level 3) + wasm-opt -O3. `WASM_PROFILE=wasm-release scripts/web-build.sh` uses the root
+# Cargo.toml's size-tuned profile instead.
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
 cd "$(dirname "$0")/../crates/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
-trunk build --release --cargo-profile wasm-release "$@"
+trunk build --release --cargo-profile "${WASM_PROFILE:-release}" "$@"
 wasm=$(ls dist/*.wasm | head -1)
 js=$(ls dist/*.js | head -1)
 raw=$(stat -c %s "$wasm")

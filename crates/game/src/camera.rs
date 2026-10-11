@@ -32,7 +32,7 @@ pub struct CameraRig {
 
 impl Default for CameraRig {
     fn default() -> Self {
-        Self { center: Vec2::ZERO, px_per_m: 40.0, follow: None, drag_last: None, pinch_last: None, touch_last: None }
+        Self { center: Vec2::ZERO, px_per_m: 34.0, follow: None, drag_last: None, pinch_last: None, touch_last: None }
     }
 }
 
@@ -53,7 +53,7 @@ pub fn camera_bundle() -> impl Bundle {
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
             scaling_mode: ScalingMode::WindowSize,
-            scale: 1.0 / 40.0,
+            scale: 1.0 / 34.0,
             ..OrthographicProjection::default_2d()
         }),
     )

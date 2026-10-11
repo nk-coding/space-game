@@ -1,6 +1,6 @@
 # Web build of the game client. From this directory:
 #   trunk serve            (dev build, http://0.0.0.0:8080)
-#   trunk build --release --cargo-profile wasm-release   (see scripts/web-build.sh)
+#   trunk build --release   (optimised; see scripts/web-build.sh)
 [build]
 target = "index.html"
 dist = "dist"

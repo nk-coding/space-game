@@ -184,3 +184,30 @@ fn build_image() -> Image {
     image.texture_descriptor.mip_level_count = levels as u32;
     image
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every icon key used by content must have a baked atlas region (re-run atlas-tool when art changes).
+    #[test]
+    fn atlas_has_every_content_icon() {
+        let (regions, tokens) = parse_index(ATLAS_TXT, 1.0, 1.0);
+        let content = data::base_content();
+        let mut missing = Vec::new();
+        for part in content.parts.iter() {
+            if let Some(icon) = &part.icon
+                && !regions.contains_key(&format!("icon/{icon}"))
+            {
+                missing.push(format!("{} -> icon/{icon}", part.id));
+            }
+        }
+        assert!(missing.is_empty(), "atlas is missing icons (run `cargo run -p atlas-tool --release`): {missing:?}");
+        for tone in data::art_keys::ARMOR_TONES {
+            assert!(tokens.contains_key(&format!("ship.armor.{tone}")), "token ship.armor.{tone} missing");
+        }
+        for key in data::art_keys::SYSTEM_COLORS {
+            assert!(tokens.contains_key(&format!("ship.system_colors.{key}")), "token ship.system_colors.{key} missing");
+        }
+    }
+}
