@@ -7,6 +7,7 @@ use core::f32::consts::{FRAC_PI_2, PI};
 use common::*;
 use sim::alloc::{Actuation, AllocTable, allocate};
 use sim::flight::Kin;
+use sim::maneuver::raider;
 use sim::physics::wrap_angle;
 use sim::{
     Body, DamageTarget, FlightGoal, HeadingGoal, Maneuver, PilotInput, RaiderBrain, ShipCommand,
@@ -448,7 +449,7 @@ fn raider_brain_hunts_and_fires() {
             fired += 1;
         }
     }
-    assert!(closest < 45.0, "closest approach {closest}");
+    assert!(closest < raider::ENGAGE_RANGE, "closest approach {closest}");
     assert!(fired > 30, "fired on {fired} ticks");
     assert_eq!(
         w.ship(raider).unwrap().brain().unwrap().target,

@@ -69,6 +69,25 @@ fn big_ship(w: i32, h: i32) -> Blueprint {
     }
 }
 
+/// A `w × h` combat slab: pulse lasers and automaton cannons alternate along the nose row, shield emitters
+/// and reactors inside, thrusters at the tail.
+fn gunboat(w: i32, h: i32) -> Blueprint {
+    let mut bp = big_ship(w, h);
+    bp.id = "perf_gunboat".into();
+    for p in &mut bp.parts {
+        if p.y == 0 {
+            *p = match p.x % 3 {
+                0 => place("pulse_laser", p.x, 0, None),
+                1 => place("automaton_cannon", p.x, 0, None),
+                _ => place("armor_block", p.x, 0, Some("composite")),
+            };
+        } else if p.y == 2 && p.x % 6 == 3 {
+            *p = place("shield_emitter", p.x, p.y, None);
+        }
+    }
+    bp
+}
+
 fn stats(mut v: Vec<f64>) -> (f64, f64) {
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mean = v.iter().sum::<f64>() / v.len() as f64;
@@ -212,6 +231,72 @@ fn main() {
         tmax.len(),
         t.elapsed().as_secs_f64() * 1e6 / n as f64
     );
+
+    // Combat: two lines of gunboats facing each other 60 m apart, every gun firing (beams via the pulse
+    // lasers' hit-scan, cannons with projectiles, shields up).
+    {
+        let gb = Arc::new(ShipDesign::compile(&content, &gunboat(w, h)).unwrap());
+        let mut world = Sim::new(2);
+        let ids: Vec<_> = (0..ships)
+            .map(|k| {
+                let line = k % 2;
+                let x = (k / 2) as f32 * (w as f32 + 10.0);
+                let (y, angle) = if line == 0 {
+                    (0.0, 0.0)
+                } else {
+                    (60.0 + h as f32, core::f32::consts::PI)
+                };
+                world.spawn_ship(Arc::clone(&gb), Body::at(Vec2::new(x, y), angle))
+            })
+            .collect();
+        let fire = TickInputs {
+            controls: ids
+                .iter()
+                .map(|&id| {
+                    (
+                        id,
+                        ShipControls {
+                            throttle: vec![0.0; gb.engines.len()],
+                            fire: true,
+                            shields: true,
+                        },
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let p = &world.ship(ids[0]).unwrap().pieces()[0];
+        let guns = p.guns.len();
+        let mut step = Vec::new();
+        let (mut live_max, mut live_sum, mut shots, mut hits) = (0usize, 0usize, 0usize, 0usize);
+        for t in 0..ticks.min(150) {
+            let input = if t == 0 {
+                fire.clone()
+            } else {
+                TickInputs::default()
+            };
+            let t0 = Instant::now();
+            world.step(&input);
+            step.push(t0.elapsed().as_secs_f64() * 1e3);
+            let live = world.projectiles().len();
+            live_max = live_max.max(live);
+            live_sum += live;
+            for e in world.events() {
+                match e {
+                    sim::SimEvent::ShotFired { .. } => shots += 1,
+                    sim::SimEvent::Hit { .. } => hits += 1,
+                    _ => {}
+                }
+            }
+        }
+        let n = step.len();
+        let (m, p95) = stats(step);
+        println!(
+            "combat ({ships} gunboats, {guns} guns each, shields): step mean {m:.3} ms, p95 {p95:.3} ms; \
+             live projectiles avg {} max {live_max}; {shots} shots, {hits} hits in {n} ticks",
+            live_sum / n
+        );
+    }
 
     // Breakage: one part in the middle (rebuild one big piece), then a full row (split).
     let ship = ids[0];

@@ -121,15 +121,15 @@ fn seek(kin: &Kin, at: Vec2, at_vel: Vec2, standoff: f32, tuning: &FlightTuning)
 /// Placeholder numbers of the raider brain.
 pub mod raider {
     /// Beyond this, the raider approaches.
-    pub const ENGAGE_RANGE: f32 = 70.0;
-    /// Attack stand-off distance.
-    pub const ATTACK_RANGE: f32 = 30.0;
-    pub const ORBIT_RADIUS: f32 = 28.0;
+    pub const ENGAGE_RANGE: f32 = 90.0;
+    /// Attack stand-off distance: outside the beam lasers' reach (45 m), inside its cannon's (75 m).
+    pub const ATTACK_RANGE: f32 = 50.0;
+    pub const ORBIT_RADIUS: f32 = 45.0;
     /// Fires when the target is closer than this and within `FIRE_CONE` of the nose.
-    pub const FIRE_RANGE: f32 = 55.0;
-    pub const FIRE_CONE: f32 = 0.15;
-    pub const ATTACK_TICKS: u32 = 120;
-    pub const ORBIT_TICKS: u32 = 90;
+    pub const FIRE_RANGE: f32 = 70.0;
+    pub const FIRE_CONE: f32 = 0.12;
+    pub const ATTACK_TICKS: u32 = 150;
+    pub const ORBIT_TICKS: u32 = 120;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
