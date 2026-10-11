@@ -15,6 +15,10 @@ libm = { version = "=0.2.16", default-features = false }
 # would go through the platform libm), no time, no modules/import, no eval; `sync` so the sim stays
 # Send + Sync (Bevy resource); `f32_float` to match the sim. See `src/behavior/script.rs`.
 rhai = { version = "=1.26.1", default-features = false, features = ["std", "sync", "f32_float", "no_time", "no_module", "no_custom_syntax"] }
+# The physics engine (ADR-0014). `enhanced-determinism`: libm math in glam/simba, deterministic hash maps and
+# iteration order (cannot be combined with `simd8`). Default features off: no `block-solver` (the benchmarked
+# configuration). Single-threaded (no `parallel`) until numbers justify it on native.
+rapier2d = { version = "=0.36.1", default-features = false, features = ["dim2", "f32", "std", "enhanced-determinism"] }
 
 [[example]]
 name = "determinism"

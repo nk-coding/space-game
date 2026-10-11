@@ -1,16 +1,19 @@
 # Simulation core (`crates/sim`)
 
 Written 11 Oct 2026, updated the same evening (phase 3a: physics seam, flight computer, maneuvers; then
-weapons v1 and shields). Status: everything that does not depend on the physics engine is in place; the engine
-(still being chosen) plugs in behind the [`PhysicsBackend`](#the-physics-seam) trait, and until then the
-engine-free `FreeFlight` backend moves the ships. Collisions and ramming wait for the engine. All numbers in the
-heat, power, flight and weapon models are **placeholders** for feel.
+weapons v1 and shields). All numbers in the heat, power, flight, weapon and ramming models are **placeholders**
+for feel.
 
 Behavior system v1 (behaviors, Rhai conditions) added late on 11 Oct 2026: see [Behaviors](#behaviors).
 
+**Rapier2D integrated on 12 Oct 2026** (phase 2b, ADR-0014): bodies, collisions, ramming v1, ghosting after
+splits and ray casts run on Rapier; the engine-free `FreeFlight` stand-in and the generic `PhysicsBackend` trait
+are gone (ADR-0025). See [Physics](#physics-rapier2d).
+
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
-`wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off) and `rhai`
-(pinned `=1.26.1`, sandboxed; see [Rhai conditions](#rhai-conditions)).
+`wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off), `rhai`
+(pinned `=1.26.1`, sandboxed; see [Rhai conditions](#rhai-conditions)) and `rapier2d` (pinned `=0.36.1`,
+`enhanced-determinism`, default features off, single thread).
 
 ## Module map
 
@@ -20,7 +23,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `rng` | `Pcg32` (reference PCG32), `splitmix64`, `Stream` (one per system), `RngStreams` |
 | `hash` | `StateHasher` (FNV-1a 64 over 32-bit words), `StateHash` trait, `fnv1a64` |
 | `ids` | `ShipId`, `PieceId` (monotonic `u32`, never reused), `IdAlloc` |
-| `config` | `SimConfig` (thrust/torque scales, split ghost ticks, `FlightTuning`) |
+| `config` | `SimConfig` (thrust/torque scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`) |
 | `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun/engine mounts and their blockers), shared by `Arc` |
 | `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
 | `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
@@ -31,14 +34,14 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
 | `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
-| `physics` | `PhysicsBackend` trait, `BodyKey`, `BodyDesc`, `RayHit`, `Contact`, the `FreeFlight` backend, `wrap_angle` |
+| `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `breakage` | `Ship::apply_damage`, `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
-| `world` | `Sim<P = FreeFlight>` (tick, config, RNG, ships, backend, events, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit` |
-| `scenario` | the deterministic `core` and `flight` scenarios |
+| `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
+| `scenario` | the deterministic `core`, `flight`, `load` and `behavior` scenarios |
 
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
-numbers), `load_test`, `behavior_perf` (behavior cost).
+numbers, Rapier vs the rest), `load_test` (also Rapier vs the rest), `behavior_perf` (behavior cost).
 
 ## Frames and units
 
@@ -66,7 +69,7 @@ numbers), `load_test`, `behavior_perf` (behavior cost).
 2. Inputs in list order: raw `controls` (switch the ship to `HelmMode::Raw`), `commands` (pilot input,
    maneuver, goal, behavior, leader), scripted `damage`.
 3. `resolve_breakage`: each damaged piece is processed once (connectivity, rebuild, splits) → events; bodies
-   are updated, created and removed in the backend, and split pieces ghost each other for a few ticks.
+   are updated, created and removed in the physics, and split pieces ghost each other for a few ticks.
 4. **Behaviors think**: every ship with a behavior whose turn it is (every 3 ticks, staggered) picks its target
    and rule from one snapshot of the world; the decisions are applied afterwards (see [Behaviors](#behaviors)).
 5. **Flight**: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input →
@@ -76,10 +79,16 @@ numbers), `load_test`, `behavior_perf` (behavior cost).
    regeneration.
 7. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
    (beams and pulses hit at once, projectiles spawn, recoil adds to the wrench); breakage is resolved again.
-8. **Physics**: expired ghosts are cleared, wrenches applied (force rotated to world, at the centre of mass),
-   the backend steps `DT`, bodies are read back (the previous pose is kept for interpolation), new contacts
-   become `SimEvent::Impact`.
-9. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
+8. **Physics**: expired ghosts are cleared, this tick's wrenches replace the last ones (force rotated to world,
+   at the centre of mass), Rapier steps `DT` (4 substeps).
+9. **Impacts**: contacts of the step become `SimEvent::Impact` (closing speed from the velocities before the
+   step), bodies are read back (the previous pose is kept for interpolation), impacts above the ramming
+   threshold damage the touching part on both sides, and breakage is resolved once more.
+10. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
+
+`Sim::step_profiled(&inputs, |phase| ...)` is the same step with a callback at the start of every `StepPhase`
+(`Inputs`, `Flight`, `Systems`, `Weapons`, `Physics`, `Impacts`, `Hash`, `Done`), so tools can time the phases
+with their own clock (`load_test` and `sim_perf` report the Rapier step separately).
 
 ## Determinism
 
@@ -101,16 +110,21 @@ The rules (also in `src/math.rs`, enforced where possible):
   counters, and per ship the controls (including the per-gun fire mask), control piece, helm and behavior state,
   every part's flags, hp, heat, piece, power share and work, and per piece its parts, flags, ghost timer, frame
   origin, mass properties, body, power balance, consumer power settings (part, tier, weight, in allocation
-  order), wrench, collider vertices, gun output and actuator commands.
-  Floats by exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug
-  builds, on demand in release. `PhysicsBackend::hash_state` can add engine-internal state.
+  order), wrench, collider vertices, gun output and actuator commands; then Rapier's own state per body in key
+  order (translation, rotation as cos/sin, linear and angular velocity, sleeping and ghost flags). Floats by
+  exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug builds, on
+  demand in release.
+- **Physics**: Rapier2D with `enhanced-determinism` (libm in glam/simba, deterministic hash maps and iteration
+  order; never combined with `simd8`), single-threaded. The sim makes every Rapier call in a fixed order (ships
+  by id, pieces by id); contacts are sorted by body key before the sim reads them. Angles are read back with
+  `sim::math::atan2` and written with `Rot::from_angle` (libm), never std trig.
 
 How it is checked:
 
 - `cargo test -p sim` (`tests/determinism.rs`): same seed → identical hash sequence (core 600 ticks, flight 900
   ticks); different seeds → different hashes and different runs; a cloned world continues identically; a 1e-6
   change in one part's hp changes the hash; incrementally maintained caches equal a full recompute.
-- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight]` builds the `determinism`
+- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|load|behavior]` builds the `determinism`
   example natively and for `wasm32-wasip1`, runs the wasm under Node's built-in WASI (`scripts/wasi-run.mjs`)
   and compares the per-tick hashes, printing the first divergent tick (exit 1). `--compare A.txt B.txt` compares
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
@@ -124,25 +138,30 @@ How it is checked:
   identical. **With power tiers and weights** (12 Oct): core, flight, load and behavior, seed 42, 1800 ticks:
   identical. (The hash streams differ from the previous version from tick 1 on, since power settings are hashed
   and idle consumers now show their tier's level; the scenario counters are unchanged except one more shot in
-  `core`, 567.)
+  `core`, 567.) **With Rapier2D** (12 Oct 2026, release builds, on top of power tiers): core, flight, load (20
+  ships) and behavior, seeds 42 and 7, 1800 ticks each: native x86_64 vs wasm32 under Node 24 **identical**
+  (8 runs, 4–64 impacts and up to 24 rams per run). (The load scenario rolls no random input: both seeds give
+  the same fight, different hashes.)
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, plus
   one heat-stress ship (three beams on two reactors, always firing, never hit) so overheating stays covered.
-  Seed 42, 1800 ticks: 266 parts destroyed, 50 splits, 248 overheated part-ticks.
+  Seed 42, 1800 ticks (Rapier): 266 parts destroyed, 43 splits, 248 overheated part-ticks, 8 impacts.
 - `flight`: player ships flown by random pilot input (stick, lock on an enemy, drift, fire), automaton ships
   by their faction's behavior (`raider_basic`; the raider brain until 12 Oct), fewer scripted hits; all
   weapons fire for real. Seed 42, 1800 ticks (brain, 11 Oct): 136 parts destroyed, 26 splits, 1002 pulses and
   projectiles fired, 78 hull hits, 13 shield hits; with `raider_basic` and fire at will per gun (12 Oct): 139
-  parts destroyed, 22 splits, 844 shots, 105 hull hits, 25 shield hits.
+  parts destroyed, 22 splits, 844 shots, 105 hull hits, 25 shield hits; with Rapier (12 Oct): 138 parts
+  destroyed, 26 splits, 999 shots, 82 hull hits, 17 shield hits, 11 impacts (1 ram).
 
 - `load` (`ScenarioKind::Load(n)`, `--ships N`, default 20): the shared [load test](#the-load-test).
 - `behavior`: two of every blueprint, every ship under a behavior: raiders `raider_basic`, the first ship-mind
   ship piloted by random input (the leader), the others `skirmisher` (with the Rhai condition `closing_in`) and
   three player programs typed as text (`weakest(engines)`, `threat(weapons)`, an escort on `locked(power)`
   following the leader), plus hits and blasts that knock out cores (slots drop). Seed 42, 1800 ticks (12 Oct, fire at will
-  per gun): 114 parts destroyed, 19 splits, 400 shots, 111 hull hits, 1548 Rhai evaluations.
+  per gun): 114 parts destroyed, 19 splits, 400 shots, 111 hull hits, 1548 Rhai evaluations; with Rapier:
+  112 parts destroyed, 18 splits, 399 shots, 95 hull hits, 1520 Rhai evaluations, 23 impacts (5 rams).
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -517,11 +536,11 @@ allocation inside Rhai. Fire at will costs one `atan2` per clear gun per tick.
 
 ## Weapons
 
-All hit tests go through `PhysicsBackend::raycast` (FreeFlight's brute force today, the engine's later); a
-shooter never hits its own ship. A gun fires while `output > 0`: firing commanded (`PilotInput.fire`,
-`ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of fire, powered, not
-overheated, piece active. Guns are fixed: the pilot aims by turning the ship; under a behavior each gun fires
-when the target crosses its own facing.
+All hit tests are ray casts through Rapier's query pipeline (`Physics::raycast`, see [Physics](#physics-rapier2d));
+a shooter never hits any piece of its own ship. A gun fires while `output > 0`: firing commanded
+(`PilotInput.fire`, `ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of
+fire, powered, not overheated, piece active. Guns are fixed: the pilot aims by turning the ship; under a
+behavior each gun fires when the target crosses its own facing.
 
 | Delivery (content) | Behaviour |
 |---|---|
@@ -575,44 +594,144 @@ alpha`), `Sim::beams()` (this tick's beams), `Sim::bubbles()` (`centre`, `radius
 bubble that is up), and per emitter `ship.part(i).shield` and `.shield_down`. `Sim::spawn_projectile` creates a
 projectile directly (tools, tests).
 
-## The physics seam
+## Physics (Rapier2D)
 
-```rust
-pub trait PhysicsBackend {
-    fn create_body(&mut self, key: BodyKey, desc: &BodyDesc);   // pose, velocities, explicit mass, convex colliders
-    fn update_body(&mut self, key: BodyKey, desc: &BodyDesc);   // new colliders + mass, new velocities, same pose
-    fn remove_body(&mut self, key: BodyKey);
-    fn set_ghost(&mut self, key: BodyKey, ghost: bool);         // ghost bodies of one ship ignore each other
-    fn set_body(&mut self, key: BodyKey, body: Body);           // teleport
-    fn apply_wrench(&mut self, key: BodyKey, force: Vec2, torque: f32); // world force at the CoM, cleared by step
-    fn step(&mut self, dt: f32);
-    fn body(&self, key: BodyKey) -> Option<Body>;
-    fn raycast(&self, origin: Vec2, dir: Vec2, max: f32, exclude: Option<ShipId>) -> Option<RayHit>;
-    fn contacts(&self) -> &[Contact];                           // started during the last step
-    fn hash_state(&self, _h: &mut StateHasher) {}
-}
+Rapier2D `=0.36.1` (ADR-0014) with `enhanced-determinism`, default features off (no `block-solver`: the
+benchmarked configuration), single-threaded (`parallel` off; see [Performance](#performance) for whether it
+would pay on native). `physics.rs` wraps it in the concrete type `Physics`; `Sim` owns one and makes every call
+itself, in a fixed order. **No Rapier type appears in the public API**: the client sees `Body`, `BodyKey`,
+`RayHit`, `Contact`, `PhysicsTuning` and `Sim::physics()` (read-only: `body`, `is_ghost`, `is_sleeping`,
+`mass_props`, `raycast`, `len`).
+
+The engine-free `FreeFlight` stand-in and the generic `PhysicsBackend` trait were removed on 12 Oct 2026
+(ADR-0025: the main repo holds only chosen code). `Sim` has no backend type parameter; switching engines later
+means rewriting `physics.rs` (about 580 lines with docs, plus tests).
+
+### Bodies
+
+- One dynamic body per piece, keyed `BodyKey { ship, piece }` (orders by ship, then piece; the body's and the
+  collider's user data hold the key).
+- One collider per body holding a `SharedShape::compound` of the piece's colliders (`collider.rs`: greedy-merged
+  rectangles as cuboids, slope triangles as triangles); sub-shape `k` is `piece.colliders[k]`.
+- **The sim is the authority on mass**: colliders carry zero mass properties and the body gets the piece's
+  `MassProps` (mass, centre of mass, inertia) as explicit additional mass properties. Rapier adds them to zero,
+  so its centre of mass equals the sim's bit for bit (test `rapier_mass_properties_are_the_pieces`).
+- **Changes**: a piece that loses parts gets a new compound in place (`set_shape`, same handles; measured at
+  ~0.04 ms per split in the benchmark) and new mass properties; a split creates bodies for the new pieces. Rapier
+  keeps the frame origin when the centre of mass moves and does not correct the velocity, so the sim hands over
+  `v + ω × (com_new − com_old)` (`ship::inherited_velocity`) for the kept piece and every new one, as the
+  benchmark adapter did.
+- Read-back after each step: `Body.pos` = Rapier's translation (the frame origin), `Body.angle` =
+  `atan2(sin, cos)` of Rapier's rotation (libm), `Body.linvel` = velocity of the centre of mass.
+- Wrenches: each tick's force (world frame, at the centre of mass) and torque replace the last tick's (Rapier
+  keeps user forces until reset, so they are reset first). A non-zero wrench wakes a sleeping body.
+
+### Settings (`SimConfig::physics`: `PhysicsTuning`, placeholders, part of the state hash)
+
+| Field | Default | Meaning |
+|---|---|---|
+| `substeps` | 4 | solver substeps per tick at `DT = 1/30 s` (as benchmarked) |
+| `friction` | 0.5 | hull friction (as benchmarked) |
+| `restitution` | 0.2 | hull bounce; 0 would make rammed ships stick together |
+| `sleep_speed` | 0.01 m/s | a body sleeps after its fastest point stayed below this for `sleep_time`; ≤ 0 = never |
+| `sleep_time` | 2 s | |
+| `ccd_prediction` | 4 m | soft CCD reach per tick (speculative contacts up to ~120 m/s) |
+| `impact_min_impulse` | 1 kN·s | weaker contacts are not reported (resting contacts) |
+| `ram_threshold` | 20 kN·s | impulse per tick above which a contact deals ramming damage |
+| `ram_damage` | 0.02 hp per kN·s | ramming damage per kN·s above the threshold, to each side |
+
+Gravity is always zero. `Sim::set_config` applies a new `PhysicsTuning` to the world and to every body at once.
+
+### Sleeping
+
+Rapier's island sleeping stays on, with a far lower threshold than Rapier's default (0.05 m/s for 0.5 s): nothing
+slows down in space, so only a body that really stopped (a parked, dead or idle ship, wreckage that came to rest)
+sleeps, and a sleeping body costs nothing in the solver. A sleeping body wakes when a wrench is set on it
+(thrust, gyros, recoil), when an awake body touches it (contacts wake the island), when it loses a part (new
+mass properties), or when it is teleported. Shots alone do not wake it: weapons v1 transfers no momentum.
+Drifting wreckage never sleeps. Test: `sleeping_bodies_wake_on_thrust_and_on_hits`.
+
+### Continuous collision
+
+Projectiles are sim-side ray casts (they cannot tunnel), so CCD is only about bodies. Every body has Rapier's
+**soft CCD** (`ccd_prediction`, 4 m per tick): its broad-phase box grows along its motion and the narrow phase
+creates speculative contacts from the relative velocity, so pieces closing at up to ~120 m/s stop at the hull
+instead of passing through 1 m parts; it costs only where bodies come within one tick of each other. Full
+("bullet") CCD is off: no body is small and fast. Rapier's automatic CCD against fixed bodies stays on (there
+are no fixed bodies yet).
+
+### Ghosting after splits
+
+Every piece of a split (the kept one and the new ones) is a ghost for `split_ghost_ticks` (10 ticks): a flag
+in its collider's user data plus Rapier's contact-pair filter hook, which drops a pair when both colliders are
+ghosts of the same ship. It is a pure function of the two colliders (deterministic), and other pairs never
+run the hook. Ghosts still collide with other ships. So freshly separated pieces never push each other apart;
+afterwards pieces of one ship collide like any others. Tests: `split_pieces_ghost_each_other_then_collide`,
+`ghosts_of_one_ship_pass_through_each_other`.
+
+### Ray casts
+
+`Physics::raycast(origin, dir, max, exclude)` → `RayHit { key, distance, point, local_point, normal }`, through
+Rapier's query pipeline over the broad-phase BVH, with a predicate on the collider's user data that skips every
+piece of one ship (`exclude`, the shooter). Rays are solid: one that starts inside a body hits it at distance 0.
+Bodies created or moved between steps (splits at the start of a tick, teleports) go into the BVH at once, so
+guns see them in the same tick. Equal distances resolve in the BVH's traversal order (deterministic).
+`Sim::raycast` maps the hit to a part (`part_at_local` just inside the surface).
+
+### Collisions, impacts and ramming (v1)
+
+All bodies collide (ships and their pieces; pieces of one ship once the ghost time is over). After each step,
+every touching pair whose normal impulse in that step (all contact points, all substeps) reached
+`impact_min_impulse` becomes a `Contact`, sorted by `(a, b)` with `a < b`, and is reported as
+`SimEvent::Impact(contact)`. Rapier counts only the velocity solve in the impulse, so pushing overlapping bodies
+apart (penetration recovery) is no impact and deals no damage.
+
+| `Contact` field | Meaning |
+|---|---|
+| `a`, `b` | the two bodies |
+| `point` | world contact point on `a`'s surface: the impulse-weighted centre of all contact points |
+| `normal` | world normal from `a` to `b` |
+| `impulse` | normal impulse of the step (kN·s = t·m/s) |
+| `relative_speed` | closing speed along the normal at the point, from the velocities before the step (m/s, > 0 = approaching) |
+| `part_a`, `part_b` | the part under the point on each side |
+| `damage` | ramming damage dealt to `part_a` and to `part_b` each (0 below the threshold) |
+
+**Ramming damage** (concept: "ramming damage by mass and speed; ram prows are a build"):
+
+```
+damage = max(0, impulse − ram_threshold) × ram_damage        to part_a and to part_b, each
 ```
 
-`BodyKey { ship, piece }` orders by ship, then piece. `Sim<P>` owns the backend and makes every call itself, in a
-fixed order: bodies on spawn and on breakage events, ghosts on splits (`split_ghost_ticks`), wrenches and the
-step every tick, read-back afterwards. To add an engine:
+The impulse already carries mass and speed: head-on, `impulse ≈ (1 + e) · μ · v` with the reduced mass
+`μ = m_a·m_b / (m_a + m_b)` and the closing speed `v`. Both sides take the same damage (the same impulse acts on
+both hulls), so armour and hit points decide who breaks: a ram prow is heavy, tough armour at the nose. Damage
+is applied right after the step and the breakage is resolved in the same tick (`PartDestroyed`, `Split` follow
+the `Impact`). Shields do not stop rams. With the defaults:
 
-1. Implement the trait (Rapier: one `RigidBody` per key with `set_additional_mass_properties`/explicit
-   `MassProperties` and one convex collider per `ConvexPolygon`; ghosts via collision groups or a contact
-   filter on the ship id; deterministic mode, single thread on the web).
-2. `Sim::with_backend(seed, config, backend)`; the client uses `Sim<YourBackend>` instead of `Sim`.
-3. Add its scenario to the `determinism` example and run `scripts/determinism-check.sh --scenario <name>`.
-4. Ramming damage later: turn `SimEvent::Impact(Contact)` (impulse, closing speed) into damage via
-   `Ship::part_at_local`.
+| Collision | Impulse | Damage to each side |
+|---|---|---|
+| two raiders (15.8 t) head-on at 8 m/s each (measured, test) | 157 kN·s | 2.7 hp (both nose cannons, 1 hp, destroyed) |
+| raider rammed by a Halvex Runner (106.5 t), 10 m/s | ~165 kN·s | ~2.9 hp |
+| two runners head-on, 10 m/s closing | ~640 kN·s | ~12 hp |
+| two raiders touching at 1 m/s (test) | < 20 kN·s | none (impact only) |
+| a runner pushing another at full thrust (69 kN) | ~2.3 kN·s per tick | none |
 
-`FreeFlight` (the stand-in): semi-implicit Euler about each body's centre of mass, no collisions (`contacts()`
-is empty), ray casts against the convex colliders with bounding-circle culling.
+The part under a contact: the contact point moved 5 cm into the hull (against the normal) and looked up with
+`Ship::part_at_local`; if that misses, the centre of the strongest manifold, then the strongest manifold's
+sub-shape (a slope triangle names its part; a merged rectangle is looked up at the point clamped into it). The
+centre of all points is used because two flat faces touch at the ends of their overlap, which usually sit on a
+neighbouring slope's corner.
+
+v1 limits: one part per side, per pair and tick (a long scrape spreads over ticks, not over parts); no excess
+damage carried into the next part; no content stat for rams yet (a `ram` bonus on prow parts could scale the
+damage later).
 
 ## Damage and breakage
 
 - `Sim::apply_damage(ship, DamageTarget::Part(i) | Cell((x, y)), amount)` → `Ignored`, `Damaged { hp_left }`
   or `Destroyed { excess }` (excess for penetration later). A destroyed part leaves the grid at once.
-- `Sim::resolve_breakage()` (also step 3 of every tick) processes each damaged piece once: drop dead parts,
+- Damage comes from scripted commands, weapons and rams ([Collisions](#collisions-impacts-and-ramming-v1)).
+- `Sim::resolve_breakage()` (steps 3, 7 and 9 of every tick) processes each damaged piece once: drop dead parts,
   flood-fill the rest; one component → `SimEvent::PieceChanged`; several → `SimEvent::Split`; none →
   `SimEvent::PieceDestroyed`. Every destroyed part emits `SimEvent::PartDestroyed { volatile }`.
 - On a split the main component keeps the piece id, frame and body. Every other component gets a new
@@ -645,6 +764,8 @@ for ship in world.ships() { for piece in ship.pieces() {
 - Weapons: draw `world.beams()` as lines, `world.projectiles()` as tracers (interpolate `prev_pos → pos`),
   `world.bubbles()` as dotted rings (alpha from `left / capacity`); flash on `ShieldHit`, sparks on `Hit` and
   `Ricochet`, muzzle flashes on `ShotFired`.
+- Collisions: `SimEvent::Impact(contact)` at `contact.point` (scale sparks and sound by `impulse`; `damage > 0`
+  is a ram). Ships now collide, so spawn them apart.
 - Enemies: `world.set_behaviors(BehaviorLibrary::new(&content)?)` once, then
   `world.command(raider, ShipCommand::Behavior(world.behaviors().default_for(&design)))` (see
   [Behaviors](#behaviors)).
@@ -656,28 +777,51 @@ for ship in world.ships() { for piece in ship.pieces() {
 
 ## Performance
 
-`cargo run --release -p sim --example sim_perf`: 20 ships × 2000 parts (40 000 parts; each ship 100 thruster
-rows of which 50 RCS nozzles, 62 torque sources, guns firing), native, VM load average ~11 (other agents
-building Bevy; medians of 3 runs):
+`cargo run --release -p sim --example sim_perf`: 20 ships × 2000 parts (40 000 parts; each ship one collider
+(a 50×40 slab merges into one rectangle), 100 thruster rows of which 50 RCS nozzles, 62 torque sources, guns
+firing), native. Step times are split with `Sim::step_profiled` into the Rapier step and the rest (the sim's own
+systems). 12 Oct 2026 with Rapier (on `dev` `fa08197`: fire at will per gun, before power tiers), VM load
+average ~7, medians of 3 runs, each run giving mean / median / p95 in ms; the FreeFlight build of the same `dev`
+commit, run alternately, for reference:
 
-| What | Mean | p95 |
-|---|---|---|
-| `Sim::step`, raw throttles (systems + FreeFlight for 20 ships) | 0.81 ms | 1.86 ms |
-| `Sim::step`, pilot input with lock (+ flight computer and allocation) | 0.88 ms | 1.93 ms |
-| `allocate` alone (100 rows, 62 torque sources) | 1.5 µs | — |
-| `state_hash` (whole world) | 0.63 ms | 1.27 ms |
-| lose one part of a 2000-part piece (resolve + rebuild + body update) | 0.20 ms | 0.56 ms |
-| cut a 50-part row and split a 2000-part piece | 0.18 ms | — |
+| What | Step mean / median / p95 | Rapier step mean / median / p95 | FreeFlight step mean / p95 |
+|---|---|---|---|
+| raw throttles, 20 ships | 0.58 / 0.47 / 0.89 | 0.027 / 0.013 / 0.046 | 0.56 / 0.76 |
+| pilot input with lock (+ flight computer and allocation) | 0.64 / 0.50 / 0.79 | 0.024 / 0.015 / 0.045 | 0.64 / 1.22 |
+| combat: 20 gunboats firing (below) | 1.18 / 0.79 / 3.4 | 0.023 / 0.013 / 0.062 | 1.04 / 3.0 |
 
-**Combat** (same tool, VM load ~6–8, noisy): 20 gunboats (50×40 slabs, 17 pulse lasers + 17 cannons each,
-shield emitters inside) in two lines 60 m apart, every gun firing for 150 ticks: `Sim::step` mean 1.4–2.2 ms,
-p95 3.5–7.8 ms; about 90 live projectiles on average, 340 at most (680 before the cooldowns were staggered).
-The slow ticks are the first wave of hits, about 40 destroyed parts per tick, each rebuilding a 2000-part piece
-(`PERF_DETAIL=1` lists them); ticks without destroyed parts average about 1.1 ms. Huge slab ships are the worst
-case for piece rebuilds; see [The load test](#the-load-test) for realistic ships.
+| What | Time |
+|---|---|
+| `allocate` alone (100 rows, 62 torque sources) | 0.8–1.0 µs |
+| `state_hash` (whole world, now with Rapier's body state) | 0.44 ms mean (FreeFlight build 0.42 ms) |
+| lose one part of a 2000-part piece (resolve + rebuild + body update), median of 20 | 0.08 ms, of which Rapier ≤ 0.001 ms |
+| cut a 50-part row and split a 2000-part piece, median of 20 | 0.09–0.11 ms, of which Rapier 0.003–0.012 ms |
 
-The flight computer + allocation for 20 big ships costs well under 0.1 ms per tick (the step difference is
-within the noise; 20 × 1.5 µs for allocation). The per-tick code allocates nothing once warmed up.
+The Rapier step for 20 big bodies is ~0.013 ms (median); the sim's own systems (power, heat, weapons, breakage)
+dominate at 0.45–0.8 ms, as with FreeFlight. Rebuilding a piece's compound and creating split bodies is
+negligible next to the sim's own breakage work (the split's Rapier part is within the benchmark's ~0.04 ms per
+split with merged rectangles). An earlier run at load ~10 (before the rebase) gave about twice these medians and
+p95 values up to 5× higher for both builds: the VM's noise.
+
+**Combat** (same tool): 20 gunboats (50×40 slabs, 17 pulse lasers + 17 cannons each, shield emitters inside) in
+two lines 60 m apart, every gun firing for 150 ticks; about 90 live projectiles on average, 340 at most. The slow
+ticks are the first wave of hits, about 40 destroyed parts per tick, each rebuilding a 2000-part piece
+(`PERF_DETAIL=1` lists them). Huge slab ships are the worst case for piece rebuilds; see
+[The load test](#the-load-test) for realistic ships.
+
+The flight computer + allocation for 20 big ships costs well under 0.1 ms per tick. The sim's per-tick code
+allocates nothing once warmed up (Rapier's step manages its own buffers).
+
+**Compared with the benchmark** (`docs/results/physics-benchmark.md`, Rapier compound with merged rectangles,
+lockstep at load ~2): `ships-merged` (20 ships of 200–2048 cells, 1276 shapes, colliding pairs, all spinning)
+stepped in 0.06 ms median / 0.18 ms p95. Here the Rapier step is 0.013–0.015 ms median for 20 ships, lower because
+the scenes are lighter: 20 slabs of one rectangle each, or 20 small ships of 7–20 shapes with a few collisions;
+p95 is 0.025–0.06 ms at load ~7. Even with one body the step costs ~2 µs (pipeline overhead). No big difference
+to explain.
+
+**Threads**: `parallel` stays off. The Rapier step of these scenes is 0.01–0.02 ms; in the benchmark rayon helped
+only on the big combined scenes (several ms) and hurt small ones. Revisit when a real scene's Rapier step passes
+~1 ms on native (desktop/Android only; the web build is single-threaded anyway).
 
 ## The load test
 
@@ -689,22 +833,21 @@ calls the same function; the final state hash of a run matches the `determinism 
 output, so native and browser runs can be compared.
 
 `scripts/load-test-native.sh [--ships 1,5,20] [--ticks 1800] [--seed 42]` runs the `load_test` example and
-prints a table. Native release, 1800 ticks, seed 42, VM load ~5–6, typical of 3 runs (FreeFlight: no
-collisions yet):
+prints a table, with the Rapier step alone next to the whole step. Native release, 1800 ticks, seed 42, 12 Oct
+2026 with Rapier (on `dev` `fa08197`: `raider_basic`, fire at will per gun, before power tiers), VM load ~7,
+medians of 3 runs (ms; the FreeFlight build of the same `dev` commit, run alternately, for reference):
 
-| Ships | Mean | Median | p95 | Max | Pieces max | Projectiles avg / max | Shots | Hits | Splits | Active at end |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 0.001 ms | 0.001 ms | 0.001 ms | 0.07 ms | 1 | 0 / 0 | 552 | 0 | 0 | 1 |
-| 5 | 0.003 ms | 0.003 ms | 0.004 ms | 0.09 ms | 5 | 0 / 3 | 94 | 213 | 0 | 3 |
-| 20 | 0.013 ms | 0.012 ms | 0.019 ms | 0.10–0.57 ms | 21 | 0.9 / 11 | 418 | 848 | 2 | 11 |
+| Ships | Step mean / median / p95 | Rapier step mean / median / p95 | FreeFlight mean / median / p95 | Impacts / rams | Shots | Hits | Splits | Active at end |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 0.003 / 0.003 / 0.004 | 0.002 / 0.002 / 0.002 | 0.001 / 0.001 / 0.001 | 0 / 0 | 552 | 0 | 0 | 1 |
+| 5 | 0.010 / 0.007 / 0.013 | 0.006 / 0.005 / 0.007 | 0.003 / 0.003 / 0.004 | 20 / 6 | 72 | 164 | 1 | 3 |
+| 20 | 0.029 / 0.025 / 0.047 | 0.017 / 0.014 / 0.025 | 0.012 / 0.011 / 0.019 | 64 / 24 | 318 | 787 | 1 | 11 |
 
-12 Oct 2026, every ship under `raider_basic` with fire at will per gun instead of the raider brain, VM load ~10,
-3 runs: 20 ships median 0.016–0.017 ms, p95 0.038–0.047 ms, 22 pieces max, 327 shots, 966 hits, 2 splits, 10
-active at end (final hash `d8cfba40e2ae85ec`); 5 ships median 0.004–0.005 ms, 76 shots, 182 hits, 2 splits;
-1 ship unchanged (552 shots). The higher medians are mostly the VM load (5–6 before, ~10 now).
-
-The sim core itself is very cheap at these ship sizes (a runner has 56 parts): 20 fighting ships cost about
-13 µs per tick. The physics engine will dominate once it is in.
+Max values were 0.1–1.8 ms (load spikes). With 20 fighting ships the Rapier step is ~0.014 ms (median) and the
+sim's own systems ~0.011 ms (as with FreeFlight): Rapier a bit more than doubles the cost of a tick at these ship
+sizes (a runner has 56 parts), which is still tiny. The fight itself changed: ships now collide (64 impacts, 24 of
+them rams), so the counts differ from the FreeFlight run (327 shots, 966 hits, 2 splits, 10 active at the end;
+final hash `d8cfba40e2ae85ec`).
 
 ## Design questions for Niklas
 
@@ -742,3 +885,16 @@ Behaviors (asked 11 Oct 2026; **answered by Niklas on 12 Oct**, GDR-0034 to GDR-
 9. No `or`: **confirmed** (two rules with the same action).
 10. Unpiloted ship-mind vessels default to `skirmisher`: **confirmed**. Rule slots (6 per logic core, 2 per
     automaton core, lowest rules drop first): **confirmed**.
+
+Physics (Rapier integration, 12 Oct 2026; defaults in [Collisions](#collisions-impacts-and-ramming-v1)):
+
+11. **Ramming numbers.** v1 deals `(impulse − 20 kN·s) × 0.02` hp to the touching part of each side: a raider
+    ramming a runner at 10 m/s takes out about 3 hp per side, a gentle bump nothing. (a) **Keep the formula and
+    tune the two numbers in the browser** (recommended); (b) add a content stat (`ram`) so prow parts deal more
+    and take less; (c) spread the damage over every touching part instead of one per side.
+12. **Do shields stop rams?** v1: no, bubbles only stop shots. (a) **No** (recommended: ramming answers
+    shield-heavy ships); (b) bubbles absorb part of a ram.
+13. **Friendly collisions.** Every body collides with every other; three raiders spawned 20 m apart and
+    converging on one target rammed each other (seen in the old brain-vs-behavior test). (a) **Keep, and add a
+    separation term to the flight computer later** (recommended); (b) no collisions within a faction (one more
+    case in the contact filter).

@@ -1,35 +1,61 @@
-//! The simulation world: tick counter, config, RNG streams, ships, the physics backend, events and the state
+//! The simulation world: tick counter, config, RNG streams, ships, the physics world, events and the state
 //! hash.
 //!
 //! # One tick (`Sim::step`)
 //!
 //! 1. Events of the previous step are dropped (events from calls made since then are kept).
 //! 2. Inputs, in list order: raw `controls`, `commands` (pilot input, maneuvers, behaviors), scripted `damage`.
-//! 3. Breakage is resolved (connectivity, splits); bodies are created, updated or removed in the backend.
-//! 4. Flight: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input),
-//!    then the flight computer allocates the actuators of each controlling piece.
+//! 3. Breakage is resolved (connectivity, splits); bodies are created, updated or removed in the physics.
+//! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
+//!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
 //! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
-//! 6. Physics: split ghosts expire, wrenches are applied, the backend steps `DT`, bodies are read back
-//!    (previous pose kept for interpolation), new contacts become `SimEvent::Impact`.
-//! 7. `tick += 1`; debug builds store the state hash.
+//! 6. Weapons (shields, projectiles, guns), then breakage again.
+//! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT`, contacts become
+//!    `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back
+//!    (previous pose kept for interpolation); impacts above the ramming threshold damage the touching parts,
+//!    and breakage is resolved once more.
+//! 8. `tick += 1`; debug builds store the state hash.
 
 use std::sync::Arc;
 
-use crate::DT;
 use crate::behavior::{self, BehaviorId, BehaviorLibrary, BehaviorState};
 use crate::breakage::{DamageOutcome, DamageTarget};
 use crate::config::SimConfig;
-use crate::design::ShipDesign;
+use crate::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
 use crate::flight::{self, HelmMode, PilotInput};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
 use crate::maneuver::Maneuver;
 use crate::math::{Rot, Vec2};
-use crate::physics::{BodyDesc, BodyKey, FreeFlight, PhysicsBackend, RayHit};
+use crate::physics::{BodyDesc, BodyKey, Contact, Physics, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
-use crate::ship::{Body, Ship, ShipControls};
+use crate::ship::{Body, Piece, Ship, ShipControls};
 use crate::weapons::{BeamTrace, Bubble, Projectile};
+
+/// The phases of one [`Sim::step`], in order, for profiling tools ([`Sim::step_profiled`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepPhase {
+    /// Inputs and breakage resolution.
+    Inputs,
+    /// Behaviors and the flight computer.
+    Flight,
+    /// Power, heat, wrenches, guns.
+    Systems,
+    /// Shields, projectiles, firing, breakage.
+    Weapons,
+    /// The Rapier step (with setting wrenches and ghosts).
+    Physics,
+    /// Contacts → impacts, read-back, ramming damage and its breakage.
+    Impacts,
+    /// The debug-build state hash.
+    Hash,
+    /// The step is over.
+    Done,
+}
+
+/// A contact point is moved this far into the hull (against the outward normal) to find the part under it.
+const CONTACT_NUDGE: f32 = 0.05;
 
 /// Scripted damage (tests, scenarios, replays).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,15 +104,15 @@ pub struct TickInputs {
 pub struct PartHit {
     pub ship: ShipId,
     pub piece: PieceId,
-    /// The part under the hit point (`None` only if the backend and the grid disagree).
-    pub part: Option<crate::design::PartIdx>,
+    /// The part under the hit point (`None` only if the physics and the grid disagree).
+    pub part: Option<PartIdx>,
     pub hit: RayHit,
 }
 
 /// The deterministic world. Same seed + same config + same inputs = same state hash every tick, on every
-/// platform. `P` is the physics backend (`FreeFlight` until the engine is chosen).
+/// platform.
 #[derive(Clone, Debug)]
-pub struct Sim<P: PhysicsBackend = FreeFlight> {
+pub struct Sim {
     tick: u64,
     seed: u64,
     config: SimConfig,
@@ -94,7 +120,9 @@ pub struct Sim<P: PhysicsBackend = FreeFlight> {
     pub(crate) ids: IdAlloc,
     /// Ascending id.
     pub(crate) ships: Vec<Ship>,
-    pub(crate) physics: P,
+    pub(crate) physics: Physics,
+    /// This tick's impacts (scratch, reused).
+    impacts: Vec<Contact>,
     pub(crate) events: Vec<SimEvent>,
     /// Events before this index belong to the previous step.
     events_mark: usize,
@@ -112,19 +140,13 @@ pub struct Sim<P: PhysicsBackend = FreeFlight> {
     behavior_scratch: behavior::Scratch,
 }
 
-impl Sim<FreeFlight> {
-    /// A world with the default config and the engine-free `FreeFlight` backend.
-    pub fn new(seed: u64) -> Sim<FreeFlight> {
-        Sim::with_backend(seed, SimConfig::default(), FreeFlight::new())
+impl Sim {
+    /// A world with the default config.
+    pub fn new(seed: u64) -> Sim {
+        Sim::with_config(seed, SimConfig::default())
     }
 
-    pub fn with_config(seed: u64, config: SimConfig) -> Sim<FreeFlight> {
-        Sim::with_backend(seed, config, FreeFlight::new())
-    }
-}
-
-impl<P: PhysicsBackend> Sim<P> {
-    pub fn with_backend(seed: u64, config: SimConfig, physics: P) -> Sim<P> {
+    pub fn with_config(seed: u64, config: SimConfig) -> Sim {
         Sim {
             tick: 0,
             seed,
@@ -132,7 +154,8 @@ impl<P: PhysicsBackend> Sim<P> {
             rng: RngStreams::new(seed),
             ids: IdAlloc::default(),
             ships: Vec::new(),
-            physics,
+            physics: Physics::new(config.physics),
+            impacts: Vec::new(),
             events: Vec::new(),
             events_mark: 0,
             tick_hash: None,
@@ -198,9 +221,10 @@ impl<P: PhysicsBackend> Sim<P> {
         &self.config
     }
 
-    /// Changes the config. Thrust and torque scales apply to every ship at once.
+    /// Changes the config. Thrust and torque scales and the physics tuning apply to every ship at once.
     pub fn set_config(&mut self, config: SimConfig) {
         self.config = config;
+        self.physics.configure(config.physics);
         for s in &mut self.ships {
             s.thrust_scale = config.thrust_scale;
             s.torque_scale = config.torque_scale;
@@ -220,7 +244,8 @@ impl<P: PhysicsBackend> Sim<P> {
         self.rng.get(s)
     }
 
-    pub fn physics(&self) -> &P {
+    /// The physics world (read-only: bodies, ghosts, sleeping, ray casts).
+    pub fn physics(&self) -> &Physics {
         &self.physics
     }
 
@@ -277,7 +302,7 @@ impl<P: PhysicsBackend> Sim<P> {
         self.ships.binary_search_by_key(&id, |s| s.id()).ok()
     }
 
-    /// Sets a piece's pose and velocities in the sim and the backend (tools, tests, respawn).
+    /// Sets a piece's pose and velocities in the sim and the physics (tools, tests, respawn).
     pub fn teleport(&mut self, ship: ShipId, piece: PieceId, body: Body) {
         if let Some(p) = self.ship_mut(ship).and_then(|s| s.piece_mut(piece)) {
             p.body = body;
@@ -383,7 +408,7 @@ impl<P: PhysicsBackend> Sim<P> {
     }
 
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
-    /// the backend.
+    /// the physics.
     pub fn resolve_breakage(&mut self) {
         for k in 0..self.ships.len() {
             let from = self.events.len();
@@ -394,7 +419,7 @@ impl<P: PhysicsBackend> Sim<P> {
         }
     }
 
-    /// Mirrors new breakage events of ship `k` into the backend and starts split ghosting.
+    /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting.
     fn sync_bodies(&mut self, k: usize, from: usize) {
         let ghost_until = self.tick + self.config.split_ghost_ticks as u64;
         for e in from..self.events.len() {
@@ -480,6 +505,13 @@ impl<P: PhysicsBackend> Sim<P> {
 
     /// Advances the world by one fixed step of [`crate::DT`].
     pub fn step(&mut self, inputs: &TickInputs) {
+        self.step_profiled(inputs, |_| {});
+    }
+
+    /// [`Sim::step`] that calls `mark` at the start of every [`StepPhase`] (and with `Done` at the end), so
+    /// a tool can time the phases with its own clock. `mark` sees nothing of the state and changes nothing.
+    pub fn step_profiled(&mut self, inputs: &TickInputs, mut mark: impl FnMut(StepPhase)) {
+        mark(StepPhase::Inputs);
         self.events.drain(..self.events_mark);
 
         for (id, c) in &inputs.controls {
@@ -496,6 +528,7 @@ impl<P: PhysicsBackend> Sim<P> {
         self.resolve_breakage();
 
         // Behaviors decide (each ship every few ticks, from one snapshot), then flight flies the decisions.
+        mark(StepPhase::Flight);
         behavior::think_all(
             &mut self.ships,
             &self.behaviors,
@@ -518,15 +551,19 @@ impl<P: PhysicsBackend> Sim<P> {
         }
         self.plans = plans;
 
+        mark(StepPhase::Systems);
         for s in &mut self.ships {
             s.update_systems();
         }
 
         // Weapons (shields, projectiles, guns), then whatever they broke.
+        mark(StepPhase::Weapons);
         self.weapons_step();
         self.resolve_breakage();
 
-        // Physics.
+        // Physics: ghosts expire, this tick's wrenches replace the last ones (world force at the centre of
+        // mass), one Rapier step.
+        mark(StepPhase::Physics);
         for s in &mut self.ships {
             let sid = s.id();
             for p in &mut s.pieces {
@@ -538,13 +575,19 @@ impl<P: PhysicsBackend> Sim<P> {
                     p.ghost_until = 0;
                     self.physics.set_ghost(key, false);
                 }
-                if p.wrench.force != Vec2::ZERO || p.wrench.torque != 0.0 {
-                    let f = Rot::from_angle(p.body.angle).apply(p.wrench.force);
-                    self.physics.apply_wrench(key, f, p.wrench.torque);
-                }
+                let f = if p.wrench.force != Vec2::ZERO {
+                    Rot::from_angle(p.body.angle).apply(p.wrench.force)
+                } else {
+                    Vec2::ZERO
+                };
+                self.physics.set_wrench(key, f, p.wrench.torque);
             }
         }
-        self.physics.step(DT);
+        self.physics.step();
+
+        // Contacts → impacts (needs the velocities from before the step), read-back, ramming.
+        mark(StepPhase::Impacts);
+        self.collect_impacts();
         for s in &mut self.ships {
             let sid = s.id();
             for p in &mut s.pieces {
@@ -558,14 +601,98 @@ impl<P: PhysicsBackend> Sim<P> {
                 }
             }
         }
-        for c in self.physics.contacts() {
-            self.events.push(SimEvent::Impact(*c));
-        }
+        self.ram();
 
         self.tick += 1;
         self.events_mark = self.events.len();
         if cfg!(debug_assertions) {
+            mark(StepPhase::Hash);
             self.tick_hash = Some(self.state_hash());
+        }
+        mark(StepPhase::Done);
+    }
+
+    /// Ship index and piece of a body.
+    fn piece_of(&self, key: BodyKey) -> Option<(usize, &Piece)> {
+        let k = self.ship_index(key.ship)?;
+        Some((k, self.ships[k].piece(key.piece)?))
+    }
+
+    /// Turns the physics contacts of the step into [`Contact`]s: closing speed at the contact point from the
+    /// velocities before the step (`Piece::body` still holds them) about the centres of mass after it, the
+    /// part under the point on each side, and the ramming damage. Call before the bodies are read back.
+    fn collect_impacts(&mut self) {
+        let t = self.config.physics;
+        let mut impacts = std::mem::take(&mut self.impacts);
+        impacts.clear();
+        for rc in &self.physics.contacts {
+            let (Some((ka, pa)), Some((kb, pb))) = (self.piece_of(rc.a), self.piece_of(rc.b))
+            else {
+                continue;
+            };
+            let (Some(ba), Some(bb)) = (self.physics.body(rc.a), self.physics.body(rc.b)) else {
+                continue;
+            };
+            let velocity = |p: &Piece, after: &Body| {
+                let r = rc.point - after.to_world(p.mass.com);
+                p.body.linvel + Vec2::cross_scalar(p.body.angvel, r)
+            };
+            let closing = (velocity(pa, &ba) - velocity(pb, &bb)).dot(rc.normal);
+            // The normal points out of `a` and into `b`.
+            let out_a = Rot::from_angle(ba.angle).apply_inverse(rc.normal);
+            let out_b = Rot::from_angle(bb.angle).apply_inverse(rc.normal * -1.0);
+            let damage = if rc.impulse > t.ram_threshold {
+                (rc.impulse - t.ram_threshold) * t.ram_damage
+            } else {
+                0.0
+            };
+            impacts.push(Contact {
+                a: rc.a,
+                b: rc.b,
+                point: rc.point,
+                normal: rc.normal,
+                impulse: rc.impulse,
+                relative_speed: closing,
+                part_a: contact_part(
+                    &self.ships[ka],
+                    pa,
+                    [rc.local_a, rc.strongest_a],
+                    out_a,
+                    rc.sub_a,
+                ),
+                part_b: contact_part(
+                    &self.ships[kb],
+                    pb,
+                    [rc.local_b, rc.strongest_b],
+                    out_b,
+                    rc.sub_b,
+                ),
+                damage,
+            });
+        }
+        self.impacts = impacts;
+    }
+
+    /// Reports this tick's impacts and deals their ramming damage to the touching part of each side (equal
+    /// on both: the same impulse acts on both hulls, so armour and hit points decide who breaks), then
+    /// resolves what broke.
+    fn ram(&mut self) {
+        let mut rammed = false;
+        for n in 0..self.impacts.len() {
+            let c = self.impacts[n];
+            self.events.push(SimEvent::Impact(c));
+            if c.damage <= 0.0 {
+                continue;
+            }
+            for (key, part) in [(c.a, c.part_a), (c.b, c.part_b)] {
+                if let (Some(part), Some(k)) = (part, self.ship_index(key.ship)) {
+                    rammed |= self.ships[k].apply_damage(DamageTarget::Part(part), c.damage)
+                        != DamageOutcome::Ignored;
+                }
+            }
+        }
+        if rammed {
+            self.resolve_breakage();
         }
     }
 
@@ -582,7 +709,37 @@ impl<P: PhysicsBackend> Sim<P> {
     }
 }
 
-impl<P: PhysicsBackend> StateHash for Sim<P> {
+/// The part of `piece` under a contact (piece frame), looked up with `Ship::part_at_local` at the contact's
+/// centre `centre`, then at the centre of its strongest manifold `strongest`, each moved [`CONTACT_NUDGE`]
+/// into the hull (against `outward`, the contact normal in the piece frame). If both miss (corners), the
+/// strongest manifold's sub-shape decides: a slope triangle names its part, a merged rectangle is looked up
+/// at the point clamped into it.
+fn contact_part(
+    ship: &Ship,
+    piece: &Piece,
+    [centre, strongest]: [Vec2; 2],
+    outward: Vec2,
+    sub: u32,
+) -> Option<PartIdx> {
+    for point in [centre, strongest] {
+        if let Some(p) = ship.part_at_local(piece.id, point - outward * CONTACT_NUDGE) {
+            return Some(p);
+        }
+    }
+    let poly = piece.colliders.get(sub as usize)?;
+    if poly.part.is_some() {
+        return poly.part;
+    }
+    let (min, max) = (poly.points()[0], poly.points()[2]);
+    let e = 1e-3;
+    let q = Vec2::new(
+        strongest.x.clamp(min.x + e, max.x - e),
+        strongest.y.clamp(min.y + e, max.y - e),
+    );
+    ship.part_at_local(piece.id, q)
+}
+
+impl StateHash for Sim {
     fn hash_state(&self, h: &mut StateHasher) {
         h.u64(self.tick);
         h.u64(self.seed);

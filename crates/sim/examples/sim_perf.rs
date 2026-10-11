@@ -1,5 +1,6 @@
-//! Rough cost of the sim core on large synthetic ships, with the `FreeFlight` backend. Native only;
-//! wall-clock is used here, in the tool, never in the sim.
+//! Rough cost of the sim core on large synthetic ships, with Rapier physics; step times are split into the
+//! Rapier step and the rest (the sim's own systems) with `Sim::step_profiled`. Native only; wall-clock is
+//! used here, in the tool, never in the sim.
 //!
 //! `cargo run --release -p sim --example sim_perf -- [--ships 20] [--w 50] [--h 40] [--ticks 300]`
 
@@ -9,8 +10,8 @@ use std::time::Instant;
 use data::{Blueprint, Placement};
 use sim::alloc::{Actuation, AllocTable, allocate};
 use sim::{
-    Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, Target, TickInputs,
-    Vec2,
+    Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, StepPhase, Target,
+    TickInputs, Vec2,
 };
 
 fn place(part: &str, x: i32, y: i32, material: Option<&str>) -> Placement {
@@ -97,8 +98,60 @@ fn stats(mut v: Vec<f64>) -> (f64, f64) {
     (mean, p95)
 }
 
-fn time_steps(world: &mut Sim, inputs: &TickInputs, ticks: usize) -> ((f64, f64), (f64, f64)) {
-    let mut step = Vec::new();
+/// One step, timed: the whole step and the Rapier step alone (`StepPhase::Physics` → `Impacts`), in ms.
+fn timed_step(world: &mut Sim, inputs: &TickInputs) -> (f64, f64) {
+    let t0 = Instant::now();
+    let (mut p0, mut p1) = (t0, t0);
+    world.step_profiled(inputs, |phase| match phase {
+        StepPhase::Physics => p0 = Instant::now(),
+        StepPhase::Impacts => p1 = Instant::now(),
+        _ => {}
+    });
+    (
+        t0.elapsed().as_secs_f64() * 1e3,
+        (p1 - p0).as_secs_f64() * 1e3,
+    )
+}
+
+/// Per-tick step times: the whole step, the Rapier step, and the rest (the sim's own systems).
+#[derive(Default)]
+struct StepTimes {
+    step: Vec<f64>,
+    rapier: Vec<f64>,
+}
+
+impl StepTimes {
+    fn push(&mut self, (step, rapier): (f64, f64)) {
+        self.step.push(step);
+        self.rapier.push(rapier);
+    }
+
+    /// "mean / median / p95" of the step, the Rapier step and the rest.
+    fn line(&self) -> String {
+        let three = |v: &[f64]| {
+            let mut v = v.to_vec();
+            v.sort_by(|a, b| a.total_cmp(b));
+            let mean = v.iter().sum::<f64>() / v.len().max(1) as f64;
+            let at = |q: f64| v[((v.len() as f64 * q) as usize).min(v.len() - 1)];
+            format!("{mean:.3} / {:.3} / {:.3}", at(0.5), at(0.95))
+        };
+        let rest: Vec<f64> = self
+            .step
+            .iter()
+            .zip(&self.rapier)
+            .map(|(s, r)| s - r)
+            .collect();
+        format!(
+            "step {} ms; Rapier step {}; sim systems {} (mean / median / p95)",
+            three(&self.step),
+            three(&self.rapier),
+            three(&rest)
+        )
+    }
+}
+
+fn time_steps(world: &mut Sim, inputs: &TickInputs, ticks: usize) -> (StepTimes, (f64, f64)) {
+    let mut times = StepTimes::default();
     let mut hash = Vec::new();
     for t in 0..ticks {
         let first = if t == 0 {
@@ -106,14 +159,12 @@ fn time_steps(world: &mut Sim, inputs: &TickInputs, ticks: usize) -> ((f64, f64)
         } else {
             TickInputs::default()
         };
-        let t0 = Instant::now();
-        world.step(&first);
-        step.push(t0.elapsed().as_secs_f64() * 1e3);
+        times.push(timed_step(world, &first));
         let t0 = Instant::now();
         std::hint::black_box(world.state_hash());
         hash.push(t0.elapsed().as_secs_f64() * 1e3);
     }
-    (stats(step), stats(hash))
+    (times, stats(hash))
 }
 
 fn main() {
@@ -177,8 +228,8 @@ fn main() {
             .collect(),
         ..Default::default()
     };
-    let ((m, p95), (hm, hp95)) = time_steps(&mut world, &raw, ticks);
-    println!("step, raw throttles ({ships} ships): mean {m:.3} ms, p95 {p95:.3} ms");
+    let (times, (hm, hp95)) = time_steps(&mut world, &raw, ticks);
+    println!("raw throttles ({ships} ships): {}", times.line());
     println!("state_hash: mean {hm:.3} ms, p95 {hp95:.3} ms");
 
     // Pilot input with a lock: flight computer + allocation every tick for every ship.
@@ -204,8 +255,8 @@ fn main() {
             .collect(),
         ..Default::default()
     };
-    let ((m, p95), _) = time_steps(&mut world, &pilot, ticks);
-    println!("step, pilot + lock ({ships} ships): mean {m:.3} ms, p95 {p95:.3} ms");
+    let (times, _) = time_steps(&mut world, &pilot, ticks);
+    println!("pilot + lock ({ships} ships): {}", times.line());
 
     // The allocator alone on one big piece.
     let p = &world.ship(ids[0]).unwrap().pieces()[0];
@@ -272,7 +323,7 @@ fn main() {
         };
         let p = &world.ship(ids[0]).unwrap().pieces()[0];
         let guns = p.guns.len();
-        let mut step = Vec::new();
+        let mut times = StepTimes::default();
         let mut destroyed: Vec<usize> = Vec::new();
         let (mut live_max, mut live_sum, mut shots, mut hits) = (0usize, 0usize, 0usize, 0usize);
         for t in 0..ticks.min(150) {
@@ -281,9 +332,7 @@ fn main() {
             } else {
                 TickInputs::default()
             };
-            let t0 = Instant::now();
-            world.step(&input);
-            step.push(t0.elapsed().as_secs_f64() * 1e3);
+            times.push(timed_step(&mut world, &input));
             let live = world.projectiles().len();
             live_max = live_max.max(live);
             live_sum += live;
@@ -298,9 +347,9 @@ fn main() {
             }
             destroyed.push(d);
         }
-        let n = step.len();
+        let n = times.step.len();
         if std::env::var("PERF_DETAIL").is_ok() {
-            for (t, ms) in step.iter().enumerate() {
+            for (t, ms) in times.step.iter().enumerate() {
                 if *ms > 3.0 {
                     println!(
                         "  slow tick {t}: {ms:.2} ms, destroyed parts {}",
@@ -308,7 +357,8 @@ fn main() {
                     );
                 }
             }
-            let quiet: Vec<f64> = step
+            let quiet: Vec<f64> = times
+                .step
                 .iter()
                 .zip(&destroyed)
                 .filter(|(_, d)| **d == 0)
@@ -320,35 +370,52 @@ fn main() {
                 quiet.iter().sum::<f64>() / quiet.len().max(1) as f64
             );
         }
-        let (m, p95) = stats(step);
         println!(
-            "combat ({ships} gunboats, {guns} guns each, shields): step mean {m:.3} ms, p95 {p95:.3} ms; \
+            "combat ({ships} gunboats, {guns} guns each, shields): {}; \
              live projectiles avg {} max {live_max}; {shots} shots, {hits} hits in {n} ticks",
+            times.line(),
             live_sum / n
         );
     }
 
-    // Breakage: one part in the middle (rebuild one big piece), then a full row (split).
-    let ship = ids[0];
-    let mut one = Vec::new();
-    for k in 0..20 {
-        world.apply_damage(ship, DamageTarget::Cell((5 + k, h / 2)), 1e9);
+    // Breakage, 20 samples each: one part in the middle of ship 0 (rebuild one big piece), then a full row of
+    // every ship (split). Each is timed twice: the sim's own work on a clone of the ship (no physics), and
+    // `Sim::resolve_breakage` (the same plus the Rapier bodies: compound rebuild, mass, new bodies).
+    let median = |mut v: Vec<f64>| {
+        v.sort_by(|a, b| a.total_cmp(b));
+        v[v.len() / 2]
+    };
+    let breakage = |world: &mut Sim, ship: sim::ShipId, cells: &[(i32, i32)]| {
+        let mut alone = world.ship(ship).unwrap().clone();
+        for &c in cells {
+            alone.apply_damage(DamageTarget::Cell(c), 1e9);
+            world.apply_damage(ship, DamageTarget::Cell(c), 1e9);
+        }
+        let (mut ids, mut events) = (sim::ids::IdAlloc::default(), Vec::new());
+        let t = Instant::now();
+        alone.resolve_breakage(&mut ids, &mut events);
+        let sim_ms = t.elapsed().as_secs_f64() * 1e3;
         let t = Instant::now();
         world.resolve_breakage();
-        one.push(t.elapsed().as_secs_f64() * 1e3);
-    }
-    let (m, p95) = stats(one);
+        (sim_ms, t.elapsed().as_secs_f64() * 1e3)
+    };
+    let report = |what: &str, samples: Vec<(f64, f64)>| {
+        let total = median(samples.iter().map(|s| s.1).collect());
+        let alone = median(samples.iter().map(|s| s.0).collect());
+        let rapier = median(samples.iter().map(|s| s.1 - s.0).collect());
+        println!(
+            "{what}: median {total:.3} ms with Rapier, {alone:.3} ms sim alone, Rapier part {rapier:.3} ms"
+        );
+    };
+    let lose: Vec<(f64, f64)> = (0..20)
+        .map(|k| breakage(&mut world, ids[0], &[(5 + k, h / 2)]))
+        .collect();
+    report("lose one part (no split), rebuild piece + body", lose);
+    let row: Vec<(i32, i32)> = (0..w).map(|x| (x, h / 3)).collect();
+    let split: Vec<(f64, f64)> = ids.iter().map(|&s| breakage(&mut world, s, &row)).collect();
+    report(&format!("cut a full row ({w} parts) and split"), split);
     println!(
-        "lose one part (no split), rebuild piece + update body: mean {m:.3} ms, p95 {p95:.3} ms"
-    );
-    for x in 0..w {
-        world.apply_damage(ship, DamageTarget::Cell((x, h / 3)), 1e9);
-    }
-    let t = Instant::now();
-    world.resolve_breakage();
-    let split_ms = t.elapsed().as_secs_f64() * 1e3;
-    println!(
-        "cut a full row ({w} parts) and split: {split_ms:.3} ms, pieces now {}",
-        world.ship(ship).unwrap().pieces().len()
+        "pieces of ship 0 now {}",
+        world.ship(ids[0]).unwrap().pieces().len()
     );
 }

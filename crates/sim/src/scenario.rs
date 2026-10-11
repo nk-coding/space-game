@@ -3,7 +3,7 @@
 //! grow with the content, and both roll their inputs and hits on the `Scenario` RNG stream.
 //!
 //! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
-//!   a blast every 75 ticks: power, heat, damage, splits; bodies move under the `FreeFlight` backend. Plus one
+//!   a blast every 75 ticks: power, heat, damage, splits, collisions and ramming. Plus one
 //!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
 //!   base ships do.
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
@@ -14,7 +14,7 @@
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
 //!   (rule slots drop).
 //!
-//! When the physics engine lands, the same scenarios run on it and the same check compares the hashes.
+//! The state hash includes the physics (Rapier) state, so the native-vs-wasm check covers the engine too.
 
 use std::sync::Arc;
 
@@ -99,6 +99,9 @@ pub struct ScenarioStats {
     pub ricochets: u32,
     /// Rhai condition evaluations.
     pub script_evals: u64,
+    /// Collisions (`SimEvent::Impact`) and those that dealt ramming damage.
+    pub impacts: u32,
+    pub rams: u32,
 }
 
 pub struct Scenario {
@@ -190,6 +193,10 @@ impl Scenario {
                 SimEvent::Hit { .. } => self.stats.hits += 1,
                 SimEvent::ShieldHit { .. } => self.stats.shield_hits += 1,
                 SimEvent::Ricochet { .. } => self.stats.ricochets += 1,
+                SimEvent::Impact(c) => {
+                    self.stats.impacts += 1;
+                    self.stats.rams += (c.damage > 0.0) as u32;
+                }
                 _ => {}
             }
         }
