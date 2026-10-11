@@ -1,0 +1,608 @@
+//! Vector art, rasterised at runtime (rule: no fixed raster graphics).
+//!
+//! * **Sources**: the icons are content (`content/base/icons/<key>.svg`, `data::Content::icon_svg`; mods
+//!   override them by key); the style tokens (`art/tokens.json`) are embedded at build time ([`tokens`]). FX
+//!   textures (glow dots, halo profile, aura, plumes, barrel) are defined here as SVG or as functions of `(u, v)`.
+//! * **Layout** ([`Layout`]): every region has a fixed rectangle in *atlas units* (1 unit = 1 ship cell at full
+//!   density). A texture for a pixel density `tier` (pixels per cell) is the layout scaled by `tier`, so the
+//!   normalised UV of a region never changes between tiers: meshes keep their UVs when the texture is swapped.
+//!   Soft regions (icon glows, plumes, aura) are stored at half density (they are blurry anyway).
+//! * **Rasteriser** ([`Rasterizer`]): renders region by region (`step`), so a client can spread the work over
+//!   frames, then [`Rasterizer::finish`] bleeds colour into transparent texels and builds an alpha-weighted
+//!   mip chain. Output: straight-alpha sRGB RGBA8, mip levels concatenated.
+//!
+//! No Bevy, no threads, no filesystem; builds for wasm32 and Android.
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::sync::Arc;
+
+use resvg::{tiny_skia, usvg};
+
+mod embedded {
+    include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
+}
+
+/// SVG user units per ship cell in all art sources.
+pub const UNITS_PER_CELL: f32 = 20.0;
+/// Pixel-density tiers (pixels per cell). Powers of two; the top tier keeps the atlas within 4096 pixels.
+pub const MIN_TIER: u32 = 32;
+pub const MAX_TIER: u32 = 512;
+/// Layout width in atlas units (the atlas is `LAYOUT_WIDTH × tier` pixels wide).
+const LAYOUT_WIDTH: f32 = 8.0;
+/// Gutter between regions, atlas units.
+const GUTTER: f32 = 1.0 / 16.0;
+/// Most mip levels generated.
+const MAX_MIPS: u32 = 7;
+
+/// The tier (pixels per cell) for a needed pixel density, rounded up to a power of two and clamped.
+pub fn tier_for(px_per_cell: f32) -> u32 {
+    let need = px_per_cell.max(1.0).ceil() as u32;
+    need.next_power_of_two().clamp(MIN_TIER, MAX_TIER)
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Tokens
+
+/// `art/tokens.json`, flattened to `dotted.path → value` (arrays by index).
+#[derive(Clone, Debug, Default)]
+pub struct Tokens {
+    map: BTreeMap<String, String>,
+}
+
+impl Tokens {
+    pub fn get(&self, path: &str) -> Option<&str> {
+        self.map.get(path).map(String::as_str)
+    }
+    pub fn f32(&self, path: &str) -> Option<f32> {
+        self.get(path).and_then(|v| v.parse().ok())
+    }
+    fn must(&self, path: &str) -> &str {
+        self.get(path).unwrap_or_else(|| panic!("style token `{path}` missing in art/tokens.json"))
+    }
+    fn must_f32(&self, path: &str) -> f32 {
+        self.f32(path).unwrap_or_else(|| panic!("style token `{path}` is not a number"))
+    }
+}
+
+/// The embedded style tokens.
+pub fn tokens() -> Tokens {
+    let v: serde_json::Value = serde_json::from_str(embedded::TOKENS_JSON).expect("art/tokens.json parses");
+    let mut map = BTreeMap::new();
+    flatten("", &v, &mut map);
+    Tokens { map }
+}
+
+fn flatten(prefix: &str, v: &serde_json::Value, out: &mut BTreeMap<String, String>) {
+    match v {
+        serde_json::Value::Object(m) => {
+            for (k, v) in m {
+                if !k.starts_with('_') {
+                    flatten(&if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") }, v, out);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (i, v) in items.iter().enumerate() {
+                flatten(&format!("{prefix}.{i}"), v, out);
+            }
+        }
+        serde_json::Value::String(s) => {
+            out.insert(prefix.to_string(), s.clone());
+        }
+        other => {
+            out.insert(prefix.to_string(), other.to_string());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Layout
+
+#[derive(Clone, Debug)]
+enum Source {
+    /// An SVG document, rendered to fill the region.
+    Svg(String),
+    Proc(Proc),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Proc {
+    White,
+    DotSoft,
+    DotHard,
+    /// Radial alpha: 1 → `mid` at 0.55 → 0.
+    Aura { mid: f32 },
+    AuraLinear,
+    /// Box of half-width `hw` blurred by `sigma`, over ±`half` (cells).
+    Halo { hw: f32, sigma: f32, half: f32 },
+}
+
+/// One region of the atlas.
+#[derive(Clone, Debug)]
+pub struct RegionDef {
+    pub name: String,
+    /// `[x, y, w, h]` in atlas units.
+    pub rect: [f32; 4],
+    /// Size of the art in ship cells (1 cell = 1 m).
+    pub cells: [f32; 2],
+    /// Anchor (nozzle, muzzle, centre) in cells from the region's top-left corner.
+    pub origin: [f32; 2],
+    source: Source,
+}
+
+/// Where everything sits in the atlas, independent of the pixel density.
+#[derive(Clone, Debug)]
+pub struct Layout {
+    pub regions: Vec<RegionDef>,
+    /// `[width, height]` in atlas units.
+    pub size: [f32; 2],
+    index: BTreeMap<String, usize>,
+}
+
+impl Layout {
+    /// Every content icon, its glow layer and the FX textures, packed into shelves.
+    pub fn new(content: &data::Content) -> Layout {
+        let t = tokens();
+        let mut regs: Vec<(RegionDef, [f32; 2])> = Vec::new();
+        let mut add = |name: String, size_u: [f32; 2], cells: [f32; 2], origin: [f32; 2], source: Source| {
+            regs.push((RegionDef { name, rect: [0.0; 4], cells, origin, source }, size_u));
+        };
+
+        for (key, icon) in &content.icons {
+            let src = icon.svg.as_str();
+            let (vw, vh) = view_box_size(src).unwrap_or_else(|| panic!("icon {key}: no viewBox"));
+            let cells = [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL];
+            let (crisp, glow) = split_glow(src);
+            // The glow is clipped to the tile anyway: limit the blur's filter region to the viewBox (the sources
+            // use 220 % of the bounding box, ~5x the pixels).
+            let glow = glow.map(|g| {
+                g.replace(
+                    "<filter id=\"gl\" x=\"-60%\" y=\"-60%\" width=\"220%\" height=\"220%\">",
+                    &format!("<filter id=\"gl\" filterUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"{vw}\" height=\"{vh}\">"),
+                )
+            });
+            add(format!("icon/{key}"), cells, cells, [0.0; 2], Source::Svg(crisp));
+            if let Some(g) = glow {
+                add(format!("glow/{key}"), [cells[0] / 2.0, cells[1] / 2.0], cells, [0.0; 2], Source::Svg(g));
+            }
+        }
+
+        add("fx/white".into(), [0.125; 2], [0.125; 2], [0.0; 2], Source::Proc(Proc::White));
+        add("fx/dot_soft".into(), [0.5; 2], [0.5; 2], [0.25; 2], Source::Proc(Proc::DotSoft));
+        add("fx/dot_hard".into(), [0.5; 2], [0.5; 2], [0.25; 2], Source::Proc(Proc::DotHard));
+        let c = t.must_f32("ship.aura.opacity_center");
+        let mid = t.must_f32("ship.aura.opacity_mid") / c;
+        add("fx/aura".into(), [0.75; 2], [1.0; 2], [0.5; 2], Source::Proc(Proc::Aura { mid }));
+        add("fx/aura_linear".into(), [0.75; 2], [1.0; 2], [0.5; 2], Source::Proc(Proc::AuraLinear));
+        let hw = t.must_f32("ship.hull_glow.halo_width_cells") / 2.0;
+        let sigma = t.must_f32("ship.hull_glow.halo_blur_std_cells");
+        let half = hw + 3.0 * sigma;
+        add("fx/halo".into(), [0.5, 0.0625], [2.0 * half, 2.0 * half / 8.0], [half, 0.0], Source::Proc(Proc::Halo { hw, sigma, half }));
+
+        // Engine plumes: gradient triangle over a blurred copy, nozzle at the origin, pointing down (+y). Shapes
+        // and lengths follow drawFlame() in docs/concept/reference/concept-board-script.js at full thrust.
+        let stop = |i: usize, j: usize| t.must(&format!("ship.plume.gradient.{i}.{j}")).to_string();
+        let teal_stops: Vec<(String, String, String)> = (0..3).map(|i| (stop(i, 0), stop(i, 1), stop(i, 2))).collect();
+        // Enemy plume: gPlR in art/ships/automaton-raider.svg.
+        let coral_stops: Vec<(String, String, String)> = vec![
+            ("#ffe6df".into(), "0.9".into(), "0".into()),
+            ("#ec8f7c".into(), "0.5".into(), "0.3".into()),
+            ("#ec8f7c".into(), "0".into(), "1".into()),
+        ];
+        let glow_op = t.must_f32("ship.plume.glow_opacity");
+        let glow_sigma = t.must_f32("ship.plume.glow_blur_std_cells") * UNITS_PER_CELL;
+        let teal = t.must("ship.hull_glow.color").to_string();
+        let coral = t.must("ship.hull_glow.enemy_color").to_string();
+        for (size, half_w, len) in [("small", 0.3f32, 1.15f32), ("large", 0.75, 2.05)] {
+            for (tint, stops, glow_col) in [("teal", &teal_stops, &teal), ("coral", &coral_stops, &coral)] {
+                let (hw, l) = (half_w * UNITS_PER_CELL, len * UNITS_PER_CELL);
+                let m = (3.0 * glow_sigma).ceil();
+                let (x0, y0, vw, vh) = (-hw - m, -m, 2.0 * (hw + m), l + 2.0 * m);
+                let mut stop_xml = String::new();
+                for (col, op, off) in stops.iter() {
+                    let _ = write!(stop_xml, "<stop offset=\"{off}\" stop-color=\"{col}\" stop-opacity=\"{op}\"/>");
+                }
+                let svg = format!(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{vw}\" height=\"{vh}\" viewBox=\"{x0} {y0} {vw} {vh}\">\
+                     <defs><linearGradient id=\"p\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">{stop_xml}</linearGradient>\
+                     <filter id=\"b\" filterUnits=\"userSpaceOnUse\" x=\"{x0}\" y=\"{y0}\" width=\"{vw}\" height=\"{vh}\"><feGaussianBlur stdDeviation=\"{glow_sigma}\"/></filter></defs>\
+                     <polygon points=\"{a},0 {hw},0 0,{l}\" fill=\"{glow_col}\" opacity=\"{glow_op}\" filter=\"url(#b)\"/>\
+                     <polygon points=\"{a},0 {hw},0 0,{l}\" fill=\"url(#p)\"/></svg>",
+                    a = -hw
+                );
+                let cells = [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL];
+                add(
+                    format!("fx/plume_{size}_{tint}"),
+                    [cells[0] / 2.0, cells[1] / 2.0],
+                    cells,
+                    [-x0 / UNITS_PER_CELL, -y0 / UNITS_PER_CELL],
+                    Source::Svg(svg),
+                );
+            }
+        }
+
+        // Gun barrel (halvex-runner.svg): 5 x 16 units, metal gradient, dark rim. Origin = muzzle end.
+        let offsets = [0.0, 0.45, 0.7, 1.0];
+        let mut stop_xml = String::new();
+        for (i, o) in offsets.iter().enumerate() {
+            let _ = write!(stop_xml, "<stop offset=\"{o}\" stop-color=\"{}\"/>", t.must(&format!("ship.barrel_gradient.{i}")));
+        }
+        let (bx0, by0, bw, bh) = (-3.0f32, -0.5f32, 6.0f32, 17.0f32);
+        let svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{bw}\" height=\"{bh}\" viewBox=\"{bx0} {by0} {bw} {bh}\">\
+             <defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">{stop_xml}</linearGradient></defs>\
+             <rect x=\"-2.5\" y=\"0\" width=\"5\" height=\"16\" rx=\"1\" fill=\"url(#g)\" stroke=\"#0a0f16\" stroke-width=\".6\"/></svg>"
+        );
+        let cells = [bw / UNITS_PER_CELL, bh / UNITS_PER_CELL];
+        add("fx/barrel".into(), cells, cells, [-bx0 / UNITS_PER_CELL, -by0 / UNITS_PER_CELL], Source::Svg(svg));
+
+        pack(regs)
+    }
+
+    pub fn get(&self, name: &str) -> Option<&RegionDef> {
+        self.index.get(name).map(|&i| &self.regions[i])
+    }
+
+    /// Normalised `[u0, v0, u1, v1]` of a region (the same at every tier).
+    pub fn uv(&self, r: &RegionDef) -> [f32; 4] {
+        let [x, y, w, h] = r.rect;
+        [x / self.size[0], y / self.size[1], (x + w) / self.size[0], (y + h) / self.size[1]]
+    }
+
+    /// Atlas size in pixels at a tier.
+    pub fn pixel_size(&self, tier: u32) -> (u32, u32) {
+        ((self.size[0] * tier as f32).round() as u32, (self.size[1] * tier as f32).round() as u32)
+    }
+}
+
+fn snap(x: f32) -> f32 {
+    (x / GUTTER).ceil() * GUTTER
+}
+
+/// Shelf packing in atlas units: tallest first, rows of `LAYOUT_WIDTH`. Positions are multiples of the gutter,
+/// the height is rounded up so every mip level has an integer size at the smallest tier.
+fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
+    let mut order: Vec<usize> = (0..regs.len()).collect();
+    order.sort_by(|&a, &b| {
+        regs[b].1[1].total_cmp(&regs[a].1[1]).then(regs[b].1[0].total_cmp(&regs[a].1[0])).then(regs[a].0.name.cmp(&regs[b].0.name))
+    });
+    let (mut x, mut y, mut shelf) = (GUTTER, GUTTER, 0.0f32);
+    for &i in &order {
+        let [w, h] = regs[i].1;
+        assert!(w + 2.0 * GUTTER <= LAYOUT_WIDTH, "region {} too wide", regs[i].0.name);
+        if x + w + GUTTER > LAYOUT_WIDTH {
+            x = GUTTER;
+            y = snap(y + shelf + GUTTER);
+            shelf = 0.0;
+        }
+        regs[i].0.rect = [x, y, w, h];
+        x = snap(x + w + GUTTER);
+        shelf = shelf.max(h);
+    }
+    let height = ((y + shelf + GUTTER) * 2.0).ceil() / 2.0; // multiple of 0.5 unit: integral mips down to 16 px
+    let regions: Vec<RegionDef> = regs.into_iter().map(|r| r.0).collect();
+    let index = regions.iter().enumerate().map(|(i, r)| (r.name.clone(), i)).collect();
+    Layout { regions, size: [LAYOUT_WIDTH, height], index }
+}
+
+fn view_box_size(svg: &str) -> Option<(f32, f32)> {
+    let start = svg.find("viewBox=\"")? + "viewBox=\"".len();
+    let end = start + svg[start..].find('"')?;
+    let nums: Vec<f32> = svg[start..end].split_whitespace().filter_map(|n| n.parse().ok()).collect();
+    (nums.len() == 4).then(|| (nums[2], nums[3]))
+}
+
+/// Splits an icon SVG into (crisp glyph, glow-only) documents. The glow is every `<g filter="url(#gl)" ...>`
+/// element (with its opacity) after `</defs>`.
+fn split_glow(src: &str) -> (String, Option<String>) {
+    let defs_end = src.find("</defs>").map(|i| i + "</defs>".len()).unwrap_or_else(|| src.find('>').map_or(0, |i| i + 1));
+    let svg_end = src.rfind("</svg>").unwrap_or(src.len());
+    let head = &src[..defs_end];
+    let body = &src[defs_end..svg_end];
+    let mut crisp = String::new();
+    let mut glow = String::new();
+    let mut rest = body;
+    while let Some(start) = rest.find("<g filter=\"url(#gl)\"") {
+        crisp.push_str(&rest[..start]);
+        let len = balanced_g_len(&rest[start..]);
+        glow.push_str(&rest[start..start + len]);
+        rest = &rest[start + len..];
+    }
+    crisp.push_str(rest);
+    (format!("{head}{crisp}</svg>"), (!glow.is_empty()).then(|| format!("{head}{glow}</svg>")))
+}
+
+fn balanced_g_len(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0;
+    while i < bytes.len() {
+        if s[i..].starts_with("</g>") {
+            depth -= 1;
+            i += 4;
+            if depth == 0 {
+                return i;
+            }
+            continue;
+        }
+        if s[i..].starts_with("<g") && matches!(bytes.get(i + 2), Some(b' ') | Some(b'>')) {
+            let close = s[i..].find('>').map_or(bytes.len() - 1, |c| c + i);
+            if bytes[close - 1] != b'/' {
+                depth += 1;
+            }
+            i = close + 1;
+            continue;
+        }
+        i += 1;
+    }
+    s.len()
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Rasteriser
+
+/// A finished atlas: straight-alpha sRGB RGBA8, mip levels concatenated (level 0 first).
+pub struct Raster {
+    pub tier: u32,
+    pub width: u32,
+    pub height: u32,
+    pub levels: u32,
+    pub data: Vec<u8>,
+}
+
+/// Renders a layout at one tier, one region per [`Rasterizer::step`].
+pub struct Rasterizer {
+    layout: Arc<Layout>,
+    tier: u32,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+    next: usize,
+}
+
+impl Rasterizer {
+    pub fn new(layout: Arc<Layout>, tier: u32) -> Self {
+        let (width, height) = layout.pixel_size(tier);
+        Self { layout, tier, width, height, rgba: vec![0; (width * height * 4) as usize], next: 0 }
+    }
+
+    pub fn tier(&self) -> u32 {
+        self.tier
+    }
+
+    /// Renders the next region. Returns `true` when every region is done.
+    pub fn step(&mut self) -> Result<bool, String> {
+        let Some(r) = self.layout.regions.get(self.next) else { return Ok(true) };
+        self.next += 1;
+        let t = self.tier as f32;
+        let (px, py) = ((r.rect[0] * t).round() as u32, (r.rect[1] * t).round() as u32);
+        let (pw, ph) = ((r.rect[2] * t).round().max(1.0) as u32, (r.rect[3] * t).round().max(1.0) as u32);
+        let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or("empty region")?;
+        match &r.source {
+            Source::Svg(svg) => {
+                let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).map_err(|e| format!("{}: {e}", r.name))?;
+                let size = tree.size();
+                let tf = tiny_skia::Transform::from_scale(pw as f32 / size.width(), ph as f32 / size.height());
+                resvg::render(&tree, tf, &mut pm.as_mut());
+            }
+            Source::Proc(p) => procedural(*p, &mut pm),
+        }
+        copy_region(&pm, &mut self.rgba, self.width, px, py);
+        Ok(self.next >= self.layout.regions.len())
+    }
+
+    /// Renders everything that is left.
+    pub fn run(&mut self) -> Result<(), String> {
+        while !self.step()? {}
+        Ok(())
+    }
+
+    /// Builds the mip chain.
+    pub fn finish(self) -> Raster {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let mut levels = 1u32;
+        let mut data = self.rgba;
+        data.reserve(w * h * 4 / 3 + 64);
+        let (mut lw, mut lh, mut prev) = (w, h, 0usize);
+        while levels < MAX_MIPS && lw % 2 == 0 && lh % 2 == 0 && lw.min(lh) >= 32 {
+            let (nw, nh) = (lw / 2, lh / 2);
+            let start = data.len();
+            data.resize(start + nw * nh * 4, 0);
+            for y in 0..nh {
+                for x in 0..nw {
+                    let mut sum = [0u32; 3];
+                    let mut plain = [0u32; 3];
+                    let mut a_sum = 0u32;
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        let i = prev + ((2 * y + dy) * lw + 2 * x + dx) * 4;
+                        let a = data[i + 3] as u32;
+                        for c in 0..3 {
+                            sum[c] += data[i + c] as u32 * a;
+                            plain[c] += data[i + c] as u32;
+                        }
+                        a_sum += a;
+                    }
+                    let o = start + (y * nw + x) * 4;
+                    for c in 0..3 {
+                        data[o + c] = if a_sum > 0 { (sum[c] / a_sum) as u8 } else { (plain[c] / 4) as u8 };
+                    }
+                    data[o + 3] = ((a_sum + 2) / 4) as u8;
+                }
+            }
+            prev = start;
+            lw = nw;
+            lh = nh;
+            levels += 1;
+        }
+        // Pull: nearly transparent texels take the (alpha-weighted) colour of their parent texel, coarse to
+        // fine, so bilinear filtering never blends towards black or noisy colours at shape edges.
+        const SOLID: u8 = 24;
+        let mut offsets = Vec::with_capacity(levels as usize);
+        let (mut lw, mut lh, mut off) = (w, h, 0usize);
+        for _ in 0..levels {
+            offsets.push((off, lw, lh));
+            off += lw * lh * 4;
+            lw /= 2;
+            lh /= 2;
+        }
+        for l in (0..levels as usize - 1).rev() {
+            let (o, lw, lh) = offsets[l];
+            let (po, pw, ph) = offsets[l + 1];
+            let (fine, coarse) = data.split_at_mut(po);
+            for y in 0..lh {
+                let py = (y / 2).min(ph - 1);
+                for x in 0..lw {
+                    let i = o + (y * lw + x) * 4;
+                    if fine[i + 3] < SOLID {
+                        let p = ((py * pw) + (x / 2).min(pw - 1)) * 4;
+                        fine[i..i + 3].copy_from_slice(&coarse[p..p + 3]);
+                    }
+                }
+            }
+        }
+        Raster { tier: self.tier, width: self.width, height: self.height, levels, data }
+    }
+}
+
+/// Renders a whole layout at once.
+pub fn rasterise(layout: &Arc<Layout>, tier: u32) -> Result<Raster, String> {
+    let mut r = Rasterizer::new(layout.clone(), tier);
+    r.run()?;
+    Ok(r.finish())
+}
+
+/// Copies a premultiplied region into the straight-alpha atlas (colour fringes are fixed later by the
+/// push-pull pass in [`Rasterizer::finish`]).
+fn copy_region(pm: &tiny_skia::Pixmap, atlas: &mut [u8], atlas_w: u32, px: u32, py: u32) {
+    let (w, h) = (pm.width() as usize, pm.height() as usize);
+    let src = pm.data();
+    for y in 0..h {
+        let row = ((py as usize + y) * atlas_w as usize + px as usize) * 4;
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            let o = row + x * 4;
+            let a = src[i + 3] as u32;
+            if a > 0 {
+                for c in 0..3 {
+                    atlas[o + c] = ((src[i + c] as u32 * 255 + a / 2) / a).min(255) as u8;
+                }
+            }
+            atlas[o + 3] = a as u8;
+        }
+    }
+}
+
+fn to_u8(x: f32) -> u8 {
+    (x.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+/// Procedural regions, written premultiplied (white × alpha) like tiny-skia output.
+fn procedural(p: Proc, pm: &mut tiny_skia::Pixmap) {
+    let (w, h) = (pm.width(), pm.height());
+    let data = pm.data_mut();
+    for y in 0..h {
+        for x in 0..w {
+            let (u, v) = ((x as f32 + 0.5) / w as f32, (y as f32 + 0.5) / h as f32);
+            let a = match p {
+                Proc::White => 1.0,
+                Proc::DotSoft => {
+                    let r2 = ((u - 0.5) * (u - 0.5) + (v - 0.5) * (v - 0.5)) / 0.25;
+                    if r2 >= 1.0 { 0.0 } else { (-(r2 * 9.0) / 2.0).exp() }
+                }
+                Proc::DotHard => {
+                    // Anti-aliased disc of radius 0.46, supersampled 4x4.
+                    let (pxu, pxv) = (1.0 / w as f32, 1.0 / h as f32);
+                    let mut cov = 0.0;
+                    for sy in 0..4 {
+                        for sx in 0..4 {
+                            let dx = u - 0.5 + (sx as f32 - 1.5) * pxu / 4.0;
+                            let dy = v - 0.5 + (sy as f32 - 1.5) * pxv / 4.0;
+                            if dx * dx + dy * dy <= 0.46 * 0.46 {
+                                cov += 1.0 / 16.0;
+                            }
+                        }
+                    }
+                    cov
+                }
+                Proc::Aura { mid } => {
+                    let t = ((u - 0.5).hypot(v - 0.5) / 0.5).min(1.0);
+                    if t < 0.55 { 1.0 + (mid - 1.0) * t / 0.55 } else { mid * (1.0 - (t - 0.55) / 0.45) }
+                }
+                Proc::AuraLinear => 1.0 - ((u - 0.5).hypot(v - 0.5) / 0.5).min(1.0),
+                Proc::Halo { hw, sigma, half } => {
+                    let xc = (u - 0.5) * 2.0 * half;
+                    let n = 48;
+                    let mut s = 0.0;
+                    for i in 0..n {
+                        let t = -hw + (i as f32 + 0.5) / n as f32 * 2.0 * hw;
+                        let d = (xc - t) / sigma;
+                        s += (-0.5 * d * d).exp();
+                    }
+                    s * (2.0 * hw / n as f32) / (sigma * (2.0 * std::f32::consts::PI).sqrt())
+                }
+            };
+            let a = to_u8(a);
+            let i = ((y * w + x) * 4) as usize;
+            data[i..i + 4].copy_from_slice(&[a, a, a, a]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every icon key used by content has an SVG, and the whole atlas rasterises at two tiers.
+    #[test]
+    fn content_icons_rasterise_at_two_tiers() {
+        let content = data::base_content();
+        let mut missing = Vec::new();
+        for part in content.parts.iter() {
+            if let Some(icon) = &part.icon
+                && content.icon_svg(icon).is_none()
+            {
+                missing.push(format!("{} -> {icon}", part.id));
+            }
+        }
+        assert!(missing.is_empty(), "icons without SVG: {missing:?}");
+        let layout = Arc::new(Layout::new(&content));
+        for tier in [64, 256] {
+            let r = rasterise(&layout, tier).expect("rasterises");
+            assert_eq!((r.width, r.height), layout.pixel_size(tier));
+            assert!(r.levels >= 3, "mips at tier {tier}");
+            for part in content.parts.iter() {
+                if let Some(icon) = &part.icon {
+                    let reg = layout.get(&format!("icon/{icon}")).expect("icon region");
+                    // the region is not empty
+                    let [x, y, w, h] = reg.rect.map(|v| (v * tier as f32).round() as u32);
+                    let mut alpha = 0u64;
+                    for yy in y..y + h {
+                        for xx in x..x + w {
+                            alpha += r.data[((yy * r.width + xx) * 4 + 3) as usize] as u64;
+                        }
+                    }
+                    assert!(alpha > 0, "icon {icon} is empty at tier {tier}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn uv_is_tier_independent_and_tiers_fit() {
+        let layout = Layout::new(&data::base_content());
+        for tier in [MIN_TIER, 64, 128, 256, MAX_TIER] {
+            let (w, h) = layout.pixel_size(tier);
+            assert!(w <= 4096 && h <= 4096, "tier {tier}: {w}x{h}");
+        }
+        assert_eq!(tier_for(10.0), MIN_TIER);
+        assert_eq!(tier_for(100.0), 128);
+        assert_eq!(tier_for(5000.0), MAX_TIER);
+    }
+
+    #[test]
+    fn tokens_parse() {
+        let t = tokens();
+        assert_eq!(t.get("ship.machine_tile"), Some("#0f1c25"));
+    }
+}
