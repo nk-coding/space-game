@@ -1,6 +1,6 @@
 # Roadmap
 
-Living plan, kept up to date by the lead session. Decisions themselves live in `concept-notes.md`.
+Living plan, kept up to date by the lead session. Decisions live in `adr/` and `gdr/` (overview: `concept-notes.md`).
 Started 11 Oct 2026. Web first, Android later, minimal content, wiki-ready data.
 
 The original spike plan (`spike-plan.md`) still defines what must be answered. The spike code is written as the real foundation of the game rather than as throwaway code. Phone measurements are deferred until Android work starts.
