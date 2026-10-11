@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [ADR-0016](0016-wiki-ready-content-model.md), [ADR-0017](0017-embedded-content-in-memory-loader.md), [ADR-0019](0019-rhai-scripting.md), [ADR-0023](0023-host-authoritative-netcode.md), GDR-0024, GDR-0032, `docs/content-model.md`
+- Related: [ADR-0016](0016-wiki-ready-content-model.md), [ADR-0017](0017-embedded-content-in-memory-loader.md), [ADR-0019](0019-rhai-scripting.md), [ADR-0023](0023-host-authoritative-netcode.md), [GDR-0024](../gdr/0024-tech-trees-no-mk-levels.md), [GDR-0032](../gdr/0032-balancing-arena-evolution.md), `docs/content-model.md`
 
 ## Context
 

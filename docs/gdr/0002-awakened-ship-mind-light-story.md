@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
-- Related: [GDR-0013](0013-vessels-and-piloting.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), GDR-0026, GDR-0029, GDR-0031
+- Related: [GDR-0013](0013-vessels-and-piloting.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0029](0029-mild-death-bonded-matter.md), [GDR-0031](0031-materials-and-fabrication.md)
 
 ## Context
 

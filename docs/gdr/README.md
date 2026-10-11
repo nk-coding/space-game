@@ -32,6 +32,16 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0021](0021-shields.md) | Shields are one bubble per powered emitter; bubbles stack and collapse when emptied | Accepted | 2026-10-10; 2026-10-11 |
 | [0022](0022-heat-per-part.md) | Heat is simulated per part, with shutdown hysteresis | Accepted (provisional, lead) | 2026-10-11 |
 | [0023](0023-shot-leading.md) | AI ships lead their shots; the player's lock aims at the lead point for projectile weapons | Accepted (provisional, lead) | 2026-10-11 |
+| [0024](0024-tech-trees-no-mk-levels.md) | Big tech trees per family, with node kinds instead of Mk levels | Accepted | concept phase |
+| [0025](0025-research-from-salvage.md) | Research comes from salvage and scans, and only counts once brought home | Accepted | 2026-10-10 |
+| [0026](0026-procedural-galaxy-and-bands.md) | One procedural galaxy, five bands from rim to core, gated by guardians | Accepted | 2026-10-10 |
+| [0027](0027-races.md) | Rogue automatons and four alien races, one per band, mainly for variety and tech | Accepted | 2026-10-10 |
+| [0028](0028-clusters-and-voyages.md) | Clusters are large; a default voyage covers one cluster in 15–30 minutes | Accepted | 2026-10-10 |
+| [0029](0029-mild-death-bonded-matter.md) | Death is mild: bonded matter re-forms your ship at home; the unbonded haul stays as a wreck | Accepted | 2026-10-10 |
+| [0030](0030-no-economy.md) | No economy: no credits, no trading; parts keep build-point costs for balance | Accepted | concept phase |
+| [0031](0031-materials-and-fabrication.md) | No generic scrap: materials come from places, and the fabricator resolves recipe chains without factory logistics | Accepted | 2026-10-10 |
+| [0032](0032-balancing-arena-evolution.md) | Balance with an AI-vs-AI arena and evolutionary search; enemies are handcrafted plus evolved | Accepted | concept phase |
+| [0033](0033-multiplayer-coop-and-arena.md) | Multiplayer later: co-op voyages in the host's galaxy and arena PvP with your own ships | Accepted | 2026-10-10 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

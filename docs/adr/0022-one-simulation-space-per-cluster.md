@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [ADR-0010](0010-cross-platform-determinism.md), [ADR-0023](0023-host-authoritative-netcode.md), [ADR-0024](0024-saves-seed-and-deltas.md), GDR-0026, GDR-0028
+- Related: [ADR-0010](0010-cross-platform-determinism.md), [ADR-0023](0023-host-authoritative-netcode.md), [ADR-0024](0024-saves-seed-and-deltas.md), [GDR-0026](../gdr/0026-procedural-galaxy-and-bands.md), [GDR-0028](../gdr/0028-clusters-and-voyages.md)
 
 ## Context
 

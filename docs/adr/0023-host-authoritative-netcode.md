@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [ADR-0005](0005-web-as-full-end-user-platform.md), [ADR-0006](0006-web-as-development-platform.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0015](0015-ron-content-packs-and-mods.md), [ADR-0022](0022-one-simulation-space-per-cluster.md), GDR-0033
+- Related: [ADR-0005](0005-web-as-full-end-user-platform.md), [ADR-0006](0006-web-as-development-platform.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0015](0015-ron-content-packs-and-mods.md), [ADR-0022](0022-one-simulation-space-per-cluster.md), [GDR-0033](../gdr/0033-multiplayer-coop-and-arena.md)
 
 ## Context
 

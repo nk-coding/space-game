@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10 (rules); 2026-10-11 (implementation choices)
 - Decided by: Niklas (rules, concept phase); lead session (PCG32, FNV-1a, libm, clippy bans, the native-vs-wasm check)
-- Related: [ADR-0003](0003-crate-architecture.md), [ADR-0011](0011-30hz-sim-60fps-interpolation.md), [ADR-0013](0013-physics-backend-trait.md), [ADR-0014](0014-physics-engine-by-benchmark.md), [ADR-0023](0023-host-authoritative-netcode.md), [ADR-0024](0024-saves-seed-and-deltas.md), GDR-0032, `docs/sim.md` "Determinism"
+- Related: [ADR-0003](0003-crate-architecture.md), [ADR-0011](0011-30hz-sim-60fps-interpolation.md), [ADR-0013](0013-physics-backend-trait.md), [ADR-0014](0014-physics-engine-by-benchmark.md), [ADR-0023](0023-host-authoritative-netcode.md), [ADR-0024](0024-saves-seed-and-deltas.md), [GDR-0032](../gdr/0032-balancing-arena-evolution.md), `docs/sim.md` "Determinism"
 
 ## Context
 
