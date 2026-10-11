@@ -52,7 +52,7 @@ Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/ch
 
 ## Rendering in Bevy (suggestion, to be measured in the spike)
 
-- Rasterise `assets/icons/*.icon-only.svg` into a texture atlas at build time, at a few sizes or with mipmaps.
+- ~~Rasterise the icons into a texture atlas at build time.~~ Superseded (ADR-0021, ADR-0028): icons are SVGs in `content/base/icons/`, rasterised in memory at runtime at the resolution the display needs, regenerated when zoom or DPI changes.
 - Draw tiles as coloured quads or sprites, with the seam baked into the tile texture or drawn as a second, slightly smaller quad. Draw icons on top.
 - Build the hull edge as a line mesh from the boundary edges of the main piece. Skip straight sides covered by a neighbour; slope faces are always boundary. `drawHullGlow` in `reference/concept-board-script.js` shows the edge rule.
 - Glow: try additive sprites or a pre-blurred line texture first. Full-screen bloom is the expensive option on phones and WebGL2, and the spike measures both.

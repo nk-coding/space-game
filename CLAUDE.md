@@ -17,7 +17,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 | `docs/sim.md`, `docs/client.md`, `docs/behavior-format.md` | How the simulation, the Bevy client and the behavior rule format work. |
 | `docs/results/` | Benchmark and spike results (the physics benchmark harness itself lives in the separate local repo `../space-game-physics-bench`). |
 | `docs/concept/` | The archived concept bundle: `boards/` (concept board HTML + screenshots, UI mockups PNG + source), `reference/` (`drydock-model.js` = drydock rules in plain JS, `concept-board-script.js`, `data-draft/*.ron`, Python generators), `CLAUDE.original.md`. Paths inside the old docs that say `reference/…` or `boards/…` now live under `docs/concept/`; `assets/…` now lives under `art/`. |
-| `art/` | Art sources: `icons/*.svg` (each part as a style-2a tile, `*.icon-only.svg` = glyph without tile), `ships/` (Halvex Runner SVG + `halvex-runner.layout.json`, automaton raider SVG), `tokens.json` (all colours/style constants), `overview.png`. |
+| `art/` | Art sources outside the content: `ships/` (Halvex Runner SVG + `halvex-runner.layout.json`, automaton raider SVG: the original concept art), `tokens.json` (all colours/style constants), `overview.png`. Part icons live in the content pack: `content/base/icons/<key>.svg` (ADR-0028). |
 | `content/base/` | The base game content pack (RON). Loaded exactly like a mod. |
 | `crates/` | Cargo workspace members (every dir with a `Cargo.toml` is a member). |
 

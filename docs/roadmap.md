@@ -23,7 +23,7 @@ Status: 2a (everything engine-independent: determinism foundation, ship model, p
 
 ## Phase 3: flight and feel (web)
 
-Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS, gyros, core assist), maneuvers and raider brain done in `sim`. Weapons v1 (lasers, projectiles, recoil, ricochet, shields) in progress in `sim`. Raiders lead their shots; shared load-test scenario exists. Client bridge (30 Hz sim + interpolation + input, weapons visuals, flight HUD, live tuning sliders, browser load test, browser hash check) in progress. Behavior system v1 (rule lists as content, text format, rule slots, Rhai conditions) done 12 Oct (`behavior-format.md`); follow-ups (fire at will per gun facing, RaiderBrain removed) in progress. Power tiers + weights and icons-in-content-pack in progress.
+Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS, gyros, core assist), maneuvers and raider brain done in `sim`. Weapons v1 (lasers, projectiles, recoil, ricochet, shields) in progress in `sim`. Raiders lead their shots; shared load-test scenario exists. Client bridge (30 Hz sim + interpolation + input, weapons visuals, flight HUD, live tuning sliders, browser load test, browser hash check) in progress. Behavior system v1 (rule lists as content, text format, rule slots, Rhai conditions) done 12 Oct (`behavior-format.md`); follow-ups (fire at will per gun facing, RaiderBrain removed) in progress. Power tiers + weights with partial output (GDR-0014) and icons in the content pack (ADR-0028) done 12 Oct. Client: new keyboard controls (A/D rotate, W/S thrust, Q/E strafe, smart lock aim) in progress.
 
 - Flight computer (stick = fly that way, braking, drift toggle, soft top speed), target lock, WASD + mouse.
 - 30 Hz sim with 60 fps interpolation in the client.
@@ -35,8 +35,7 @@ After the Rapier merge:
 - Engine exhaust damages and heats parts in its path (replaces the open-space rule; plume from engine data).
 
 - Vessel model in `sim`: cored pieces become vessels on split (inherit behavior, slot-limited), focus switching, mind capacity (running cores limit), logic cores control up to N parts each, owners/teams. Client: fleet bar, focus hotkey, camera glide.
-- Power allocation: tiers + weights with partial output, per-part overrides in blueprints, minimum operating levels.
-- Icons move into the content pack (`content/base/icons/*.svg`), served by `data`; the client's `icon_svg(key)` switches to it; the wiki export includes them.
+- Client switches to icons from the content pack (`content.icon_svg`), then `art/icons` is removed.
 
 ## Phase 4: measurement
 
