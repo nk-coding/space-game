@@ -50,7 +50,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 - Linux VM without GPU, 15 cores, ~11 GB RAM + 7 GB swap. **No sudo** (apt is unavailable). Native Bevy windows are pointless here (software rendering); look at the game through the web build.
 - Rust via rustup (`source ~/.cargo/env` if `cargo` isn't on PATH): stable 1.99, targets `x86_64-unknown-linux-gnu` and `wasm32-unknown-unknown`. `trunk` 0.21.14 and `cargo-binstall` are in `~/.cargo/bin`.
-- crates.io and GitHub are reachable (crates.io API needs a User-Agent header).
+- crates.io and GitHub are reachable (crates.io API needs a User-Agent header: use a generic one like `space-game-dev-tools`; never put personal data such as names or email addresses into requests).
 - Heavy builds (Bevy, physics engines): several agents may build at the same time, so pass `-j 6` (or `CARGO_BUILD_JOBS=6`) to keep RAM in check.
 - **Headless browser check:** `node /home/devbox/workspace/tools/headless/shot.mjs <url> <out.png> [waitMs] [w] [h]` opens a page in headless Chromium (WebGL2 via SwiftShader, slow but correct), prints console messages and page errors (wasm panics show up here), and saves a screenshot. Use it to verify any web work, then look at the PNG with the Read tool. SwiftShader timings say nothing about real performance.
 - The VM's address on the LAN side is `10.77.6.2`. Serve web builds with `--address 0.0.0.0` so Niklas can open them from the host browser (e.g. `http://10.77.6.2:8080`).
