@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [ADR-0005](0005-web-as-full-end-user-platform.md), [ADR-0006](0006-web-as-development-platform.md), [ADR-0009](0009-spike-first-systems-before-content.md), [ADR-0011](0011-30hz-sim-60fps-interpolation.md), ADR-0014, GDR-0006, `docs/spike-plan.md`
+- Related: [ADR-0005](0005-web-as-full-end-user-platform.md), [ADR-0006](0006-web-as-development-platform.md), [ADR-0009](0009-spike-first-systems-before-content.md), [ADR-0011](0011-30hz-sim-60fps-interpolation.md), [ADR-0014](0014-physics-engine-by-benchmark.md), [GDR-0006](../gdr/0006-ship-scale-no-fixed-cap.md), `docs/spike-plan.md`
 
 ## Context
 

@@ -10,6 +10,20 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | GDR | Title | Status | Date |
 |---|---|---|---|
 | [0001](0001-record-game-design-decisions.md) | Record game design decisions | Accepted | 2026-10-11 |
+| [0002](0002-awakened-ship-mind-light-story.md) | The player is an awakened ship-mind at a precursor shipyard; the story stays light | Accepted | 2026-10-10 |
+| [0003](0003-pilot-one-ship-with-escort.md) | You pilot one ship with a small scripted escort; the fleet is secondary | Superseded by [GDR-0013](0013-vessels-and-piloting.md) | 2026-10-10 |
+| [0004](0004-grid-ship-building-no-wiring.md) | Ships are built on a grid of parts with no wiring: power pool per piece, heat and radiators, adjacency bonuses | Accepted | concept phase |
+| [0005](0005-fully-physical-ships.md) | Ships are fully physical and break apart | Accepted | concept phase |
+| [0006](0006-ship-scale-no-fixed-cap.md) | Ships are ~60×60 blocks and up, with no fixed block cap | Accepted | 2026-10-10 |
+| [0007](0007-ship-style-2a.md) | Ships use style 2a: flat tiles with seams, glowing icons, a soft teal hull glow | Accepted | 2026-10-10 |
+| [0008](0008-ui-ship-mind-interface.md) | The UI is a diegetic ship-mind interface with a floating HUD, landscape only | Accepted | 2026-10-10 |
+| [0009](0009-stick-and-lock-controls.md) | Controls: stick + lock with an always-on flight computer; letting go brakes | Accepted | 2026-10-10 |
+| [0010](0010-turning-sources.md) | Ships turn with core assist, gyros, RCS pods and their engines (gimbal and differential thrust) | Accepted | 2026-10-11 |
+| [0011](0011-locked-flight-rear-engines-trade-off.md) | Ships with rear-only engines can't brake or strafe while locked: a design trade-off | Accepted | 2026-10-11 |
+| [0012](0012-halvex-runner-follows-rules.md) | The Halvex Runner's layout follows the drydock rules; the content blueprint is the source of truth | Accepted | 2026-10-11 |
+| [0013](0013-vessels-and-piloting.md) | Every piece with a working logic core is a vessel; you pilot one and switch focus instantly | Accepted | 2026-10-11 |
+| [0014](0014-power-tiers-and-weights.md) | Power is allocated by tiers and weights with partial output; logic cores need power | Accepted | 2026-10-11 |
+| [0015](0015-layered-behavior.md) | Behavior is layered: rule lists over built-in maneuvers over an always-on flight computer | Accepted | concept phase |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -4,7 +4,7 @@
 - Date: 2026-10-11
 - Decided by: Niklas
 - Supersedes: [ADR-0005](0005-web-as-full-end-user-platform.md)
-- Related: [ADR-0004](0004-target-platforms-and-performance-first.md), [ADR-0007](0007-development-setup-vm-and-host-browser.md), [ADR-0009](0009-spike-first-systems-before-content.md), ADR-0014, `CLAUDE.md` "Current priorities", `docs/concept-notes.md` "Development start"
+- Related: [ADR-0004](0004-target-platforms-and-performance-first.md), [ADR-0007](0007-development-setup-vm-and-host-browser.md), [ADR-0009](0009-spike-first-systems-before-content.md), [ADR-0014](0014-physics-engine-by-benchmark.md), `CLAUDE.md` "Current priorities", `docs/concept-notes.md` "Development start"
 
 ## Context
 

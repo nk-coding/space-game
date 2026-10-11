@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [ADR-0003](0003-crate-architecture.md), ADR-0014, ADR-0019, `docs/concept-notes.md` "Background", "Technical decisions", "Tech research"
+- Related: [ADR-0003](0003-crate-architecture.md), [ADR-0014](0014-physics-engine-by-benchmark.md), [ADR-0019](0019-rhai-scripting.md), `docs/concept-notes.md` "Background", "Technical decisions", "Tech research"
 
 ## Context
 

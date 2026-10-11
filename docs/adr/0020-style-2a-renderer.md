@@ -3,7 +3,7 @@
 - Status: Accepted (provisional, lead)
 - Date: 2026-10-11
 - Decided by: lead session (client work; default for Niklas to review)
-- Related: [ADR-0011](0011-30hz-sim-60fps-interpolation.md), [ADR-0021](0021-no-fixed-raster-graphics.md), GDR-0007, `docs/style-guide.md` "Rendering in Bevy", `docs/client.md`, `docs/results/web-client-*.png`
+- Related: [ADR-0011](0011-30hz-sim-60fps-interpolation.md), [ADR-0021](0021-no-fixed-raster-graphics.md), [GDR-0007](../gdr/0007-ship-style-2a.md), `docs/style-guide.md` "Rendering in Bevy", `docs/client.md`, `docs/results/web-client-*.png`
 
 ## Context
 

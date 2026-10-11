@@ -3,7 +3,7 @@
 - Status: Superseded by [ADR-0006](0006-web-as-development-platform.md)
 - Date: 2026-10-11
 - Decided by: Niklas
-- Related: [ADR-0004](0004-target-platforms-and-performance-first.md), ADR-0015, ADR-0023, ADR-0024, `docs/concept-notes.md` "Technical decisions" (Web)
+- Related: [ADR-0004](0004-target-platforms-and-performance-first.md), [ADR-0015](0015-ron-content-packs-and-mods.md), [ADR-0023](0023-host-authoritative-netcode.md), [ADR-0024](0024-saves-seed-and-deltas.md), `docs/concept-notes.md` "Technical decisions" (Web)
 
 ## Context
 

@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10 (spike plan); 2026-10-11 (foundation, minimal content)
 - Decided by: Niklas (spike plan, minimal content); the "foundation, not throwaway" rule is unattributed in the sources (written by the lead session)
-- Related: [ADR-0004](0004-target-platforms-and-performance-first.md), [ADR-0006](0006-web-as-development-platform.md), ADR-0014, `docs/spike-plan.md`, `docs/roadmap.md`
+- Related: [ADR-0004](0004-target-platforms-and-performance-first.md), [ADR-0006](0006-web-as-development-platform.md), [ADR-0014](0014-physics-engine-by-benchmark.md), `docs/spike-plan.md`, `docs/roadmap.md`
 
 ## Context
 

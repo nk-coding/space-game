@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [ADR-0002](0002-all-rust-stack-with-bevy.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0015](0015-ron-content-packs-and-mods.md), GDR-0015, `docs/concept-notes.md` "Scripting candidates"
+- Related: [ADR-0002](0002-all-rust-stack-with-bevy.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0015](0015-ron-content-packs-and-mods.md), [GDR-0015](../gdr/0015-layered-behavior.md), `docs/concept-notes.md` "Scripting candidates"
 
 ## Context
 

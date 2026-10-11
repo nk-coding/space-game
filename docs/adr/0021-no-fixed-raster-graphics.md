@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-11
 - Decided by: Niklas
-- Related: [ADR-0016](0016-wiki-ready-content-model.md), [ADR-0020](0020-style-2a-renderer.md), GDR-0007, `CLAUDE.md` "Hard rules"
+- Related: [ADR-0016](0016-wiki-ready-content-model.md), [ADR-0020](0020-style-2a-renderer.md), [GDR-0007](../gdr/0007-ship-style-2a.md), `CLAUDE.md` "Hard rules"
 
 ## Context
 
