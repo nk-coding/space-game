@@ -40,3 +40,6 @@ with a core, and a ship whose controlling piece lost its last core went dark for
 - The sim still implements the provisional salvage rule; the vessel model (owners and teams, focus switching, fleet
   bar, camera glide) is queued in the roadmap.
 - Open: mind capacity numbers and the exclusive resource; whether mind capacity still limits ship size (GDR-0006).
+
+12 Oct 2026: GDR-0038 refines mind capacity: each logic core runs up to N parts, so capping the running cores
+caps ship size indirectly; drydock frames still set the grid size.

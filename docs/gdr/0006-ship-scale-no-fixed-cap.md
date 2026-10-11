@@ -27,3 +27,6 @@ ships to capital ships.
 - Note: on 10 Oct mind capacity meant "how many parts the ship-mind controls", raised by logic cores and research.
   On 11 Oct GDR-0013 defined it as the number of logic cores the mind can run at once. Whether it still limits
   ship size is open.
+
+12 Oct 2026: GDR-0038 answers it: each logic core runs up to N parts and mind capacity caps the running cores,
+so mind capacity limits ship size indirectly; the drydock frames still set the grid size.

@@ -1,6 +1,6 @@
 # GDR-0004: Ships are built on a grid of parts with no wiring: power pool per piece, heat and radiators, adjacency bonuses
 
-- Status: Accepted
+- Status: Accepted; the engine rule ("engines need open space behind") is superseded by [GDR-0039](0039-engine-exhaust-hurts-parts.md)
 - Date: concept phase (exact day not recorded; settled by 2026-10-11)
 - Decided by: Niklas
 - Related: [GDR-0005](0005-fully-physical-ships.md), [GDR-0012](0012-halvex-runner-follows-rules.md), [GDR-0014](0014-power-tiers-and-weights.md), [GDR-0022](0022-heat-per-part.md), [GDR-0030](0030-no-economy.md), `docs/concept/reference/drydock-model.js`, `docs/content-model.md`
@@ -36,3 +36,6 @@ Layout should matter through mass, heat and power. The concept board's drydock s
 - Content declares bonuses on the granting part, so mods can add parts without editing others.
 - Open: engines anywhere with open space behind, or only on the rear edge? (The evolution lab found nose and
   mid-ship engines legal.) Overdrive is not built yet.
+
+12 Oct 2026: GDR-0039 replaces the engine rule and answers the engine-placement question: engines may sit
+anywhere, and their exhaust damages and heats the parts in its path. Everything else here stands.
