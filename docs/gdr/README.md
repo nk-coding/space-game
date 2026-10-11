@@ -24,6 +24,14 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0013](0013-vessels-and-piloting.md) | Every piece with a working logic core is a vessel; you pilot one and switch focus instantly | Accepted | 2026-10-11 |
 | [0014](0014-power-tiers-and-weights.md) | Power is allocated by tiers and weights with partial output; logic cores need power | Accepted | 2026-10-11 |
 | [0015](0015-layered-behavior.md) | Behavior is layered: rule lists over built-in maneuvers over an always-on flight computer | Accepted | concept phase |
+| [0016](0016-combat-pace-and-aiming.md) | Combat is real-time, fast-leaning and mid-range; fixed guns are aimed by turning with a lock | Accepted | 2026-10-10 |
+| [0017](0017-combat-support-repair-capture-sensors.md) | Repair drones mid-fight, capture by killing all power, moderate sensors, a minimal HUD | Accepted | 2026-10-10 |
+| [0018](0018-weapon-families.md) | All six weapon families; the capacitor bonus is for lasers only; guns fire along their facing | Accepted | concept phase; 2026-10-11 |
+| [0019](0019-damage-model.md) | Damage: outer blocks first, penetration by weapon type, ricochets off slopes, chain reactions, ramming | Accepted | 2026-10-10; 2026-10-11 |
+| [0020](0020-damage-v1-defaults.md) | Damage v1 defaults: hitscan lasers, kinetic projectiles with ricochet, chain reactions later | Accepted (provisional, lead) | 2026-10-11 |
+| [0021](0021-shields.md) | Shields are one bubble per powered emitter; bubbles stack and collapse when emptied | Accepted | 2026-10-10; 2026-10-11 |
+| [0022](0022-heat-per-part.md) | Heat is simulated per part, with shutdown hysteresis | Accepted (provisional, lead) | 2026-10-11 |
+| [0023](0023-shot-leading.md) | AI ships lead their shots; the player's lock aims at the lead point for projectile weapons | Accepted (provisional, lead) | 2026-10-11 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -4,7 +4,7 @@
 - Date: 2026-10-11
 - Decided by: Niklas (concept developed by the lead session)
 - Supersedes: [GDR-0003](0003-pilot-one-ship-with-escort.md)
-- Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0005](0005-fully-physical-ships.md), [GDR-0006](0006-ship-scale-no-fixed-cap.md), [GDR-0014](0014-power-tiers-and-weights.md), [GDR-0015](0015-layered-behavior.md), GDR-0017, `docs/roadmap.md` "Queued"
+- Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0005](0005-fully-physical-ships.md), [GDR-0006](0006-ship-scale-no-fixed-cap.md), [GDR-0014](0014-power-tiers-and-weights.md), [GDR-0015](0015-layered-behavior.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), `docs/roadmap.md` "Queued"
 
 ## Context
 

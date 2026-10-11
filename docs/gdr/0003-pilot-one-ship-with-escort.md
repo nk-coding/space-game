@@ -3,7 +3,7 @@
 - Status: Superseded by [GDR-0013](0013-vessels-and-piloting.md)
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0015](0015-layered-behavior.md), GDR-0017, GDR-0027
+- Related: [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0015](0015-layered-behavior.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), GDR-0027
 
 ## Context
 

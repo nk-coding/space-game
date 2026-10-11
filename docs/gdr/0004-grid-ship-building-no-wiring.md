@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: concept phase (exact day not recorded; settled by 2026-10-11)
 - Decided by: Niklas
-- Related: [GDR-0005](0005-fully-physical-ships.md), [GDR-0012](0012-halvex-runner-follows-rules.md), [GDR-0014](0014-power-tiers-and-weights.md), GDR-0022, GDR-0030, `docs/concept/reference/drydock-model.js`, `docs/content-model.md`
+- Related: [GDR-0005](0005-fully-physical-ships.md), [GDR-0012](0012-halvex-runner-follows-rules.md), [GDR-0014](0014-power-tiers-and-weights.md), [GDR-0022](0022-heat-per-part.md), GDR-0030, `docs/concept/reference/drydock-model.js`, `docs/content-model.md`
 
 ## Context
 

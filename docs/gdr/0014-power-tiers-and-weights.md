@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-11
 - Decided by: Niklas
-- Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0013](0013-vessels-and-piloting.md), GDR-0017, GDR-0021, `docs/sim.md` "Power"
+- Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0013](0013-vessels-and-piloting.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), [GDR-0021](0021-shields.md), `docs/sim.md` "Power"
 
 ## Context
 

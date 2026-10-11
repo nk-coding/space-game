@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [GDR-0010](0010-turning-sources.md), [GDR-0011](0011-locked-flight-rear-engines-trade-off.md), [GDR-0015](0015-layered-behavior.md), GDR-0016, GDR-0023, `docs/sim.md` "Flight", `docs/spike-plan.md` "Flight model"
+- Related: [GDR-0010](0010-turning-sources.md), [GDR-0011](0011-locked-flight-rear-engines-trade-off.md), [GDR-0015](0015-layered-behavior.md), [GDR-0016](0016-combat-pace-and-aiming.md), [GDR-0023](0023-shot-leading.md), `docs/sim.md` "Flight", `docs/spike-plan.md` "Flight model"
 
 ## Context
 

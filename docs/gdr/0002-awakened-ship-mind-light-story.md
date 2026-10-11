@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas (interactive Q&A)
-- Related: [GDR-0013](0013-vessels-and-piloting.md), GDR-0017, GDR-0026, GDR-0029, GDR-0031
+- Related: [GDR-0013](0013-vessels-and-piloting.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), GDR-0026, GDR-0029, GDR-0031
 
 ## Context
 

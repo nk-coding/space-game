@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: concept phase (exact day not recorded; settled by 2026-10-11)
 - Decided by: Niklas
-- Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0006](0006-ship-scale-no-fixed-cap.md), [GDR-0013](0013-vessels-and-piloting.md), GDR-0019, [ADR-0013](../adr/0013-physics-backend-trait.md), [ADR-0014](../adr/0014-physics-engine-by-benchmark.md)
+- Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0006](0006-ship-scale-no-fixed-cap.md), [GDR-0013](0013-vessels-and-piloting.md), [GDR-0019](0019-damage-model.md), [ADR-0013](../adr/0013-physics-backend-trait.md), [ADR-0014](../adr/0014-physics-engine-by-benchmark.md)
 
 ## Context
 

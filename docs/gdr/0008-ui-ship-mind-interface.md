@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-10
 - Decided by: Niklas
-- Related: [GDR-0007](0007-ship-style-2a.md), [GDR-0009](0009-stick-and-lock-controls.md), [GDR-0015](0015-layered-behavior.md), GDR-0017, `docs/style-guide.md` "UI", `docs/concept/boards/ui-mockups/`
+- Related: [GDR-0007](0007-ship-style-2a.md), [GDR-0009](0009-stick-and-lock-controls.md), [GDR-0015](0015-layered-behavior.md), [GDR-0017](0017-combat-support-repair-capture-sensors.md), `docs/style-guide.md` "UI", `docs/concept/boards/ui-mockups/`
 
 ## Context
 

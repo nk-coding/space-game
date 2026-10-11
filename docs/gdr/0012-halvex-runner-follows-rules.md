@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-11
 - Decided by: Niklas
-- Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0007](0007-ship-style-2a.md), [GDR-0010](0010-turning-sources.md), GDR-0022, `docs/content-model.md` "Ships"
+- Related: [GDR-0004](0004-grid-ship-building-no-wiring.md), [GDR-0007](0007-ship-style-2a.md), [GDR-0010](0010-turning-sources.md), [GDR-0022](0022-heat-per-part.md), `docs/content-model.md` "Ships"
 
 ## Context
 
