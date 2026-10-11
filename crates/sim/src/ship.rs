@@ -3,9 +3,10 @@
 //!
 //! # Cost model
 //!
-//! Everything that depends only on topology (which parts are alive) is cached per piece and rebuilt only
-//! when the piece loses a part ([`Piece`] fields: mass properties, colliders, bonuses, power lists, thruster
-//! table, gun mounts). The per-tick code walks flat arrays and allocates nothing.
+//! Everything that depends only on topology (which parts are alive) is cached and updated only when a part
+//! is destroyed: per part (exposure, bonus-adjusted stats, heat constants) only around the destroyed part;
+//! per piece (mass properties, colliders, power lists, thruster table, gun mounts) once per damaged piece in
+//! `resolve_breakage`. The per-tick code walks compact cached rows and allocates nothing.
 
 use std::sync::Arc;
 
@@ -221,12 +222,44 @@ pub struct Piece {
     pub guns: Vec<GunMount>,
     /// Engine force and torque this tick, for the physics layer.
     pub wrench: Wrench,
-    reactors: Vec<PartIdx>,
+    reactors: Vec<Reactor>,
     /// Consumers in brown-out priority order.
-    consumers: Vec<PartIdx>,
+    consumers: Vec<Consumer>,
     /// Parts that make heat without a power role (e.g. capacitors).
     heaters: Vec<PartIdx>,
     pub(crate) dirty: bool,
+}
+
+/// A reactor row, cached for the per-tick loop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Reactor {
+    part: PartIdx,
+    /// Output with bonuses.
+    output: f32,
+}
+
+/// A power consumer row, cached for the per-tick loop (no `PartSpec` access per tick).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Consumer {
+    pub part: PartIdx,
+    pub kind: ConsumerKind,
+    /// Engine or gun slot (`design::NO_SLOT` otherwise).
+    pub slot: u32,
+    /// Draw at full activity, with bonuses.
+    pub draw: f32,
+}
+
+/// Heat constants of one part, cached when its exposure or bonuses change (compact for the per-tick loop).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct HeatK {
+    /// Heat capacity.
+    cap: f32,
+    /// Loss coefficient to space (base + open sides × side loss or radiator vent).
+    loss: f32,
+    /// Heat at full work, with bonuses.
+    out: f32,
+    /// Shutdown level, with bonuses.
+    limit: f32,
 }
 
 impl Piece {
@@ -257,7 +290,7 @@ impl Piece {
     }
 
     /// Consumers in the order they get power.
-    pub fn consumers(&self) -> &[PartIdx] {
+    pub fn consumers(&self) -> &[Consumer] {
         &self.consumers
     }
 
@@ -280,6 +313,7 @@ pub(crate) struct Scratch {
     pub mark: Vec<u32>,
     pub stack: Vec<PartIdx>,
     pub groups: Vec<(u32, u32)>,
+    pub affected: Vec<PartIdx>,
     pub colliders: ColliderScratch,
 }
 
@@ -294,6 +328,8 @@ pub struct Ship {
     pub(crate) parts: Vec<PartState>,
     /// Effective stats (base + adjacency bonuses), cached on topology changes.
     pub(crate) stats: Vec<PartStats>,
+    /// Heat constants per part, cached with `stats`.
+    pub(crate) heat_k: Vec<HeatK>,
     /// Alive pieces, ascending id.
     pub(crate) pieces: Vec<Piece>,
     pub(crate) controls: ShipControls,
@@ -329,6 +365,7 @@ impl Ship {
             controls: ShipControls::idle(design.engines.len()),
             grid: design.grid.clone(),
             stats: design.parts.iter().map(|s| s.base).collect(),
+            heat_k: vec![HeatK::default(); n],
             parts,
             pieces: Vec::new(),
             power_priority: DEFAULT_POWER_PRIORITY,
@@ -337,6 +374,12 @@ impl Ship {
             design,
         };
         let all: Vec<PartIdx> = (0..n as u32).collect();
+        for &p in &all {
+            ship.refresh_exposure(p);
+        }
+        for &p in &all {
+            ship.refresh_stats(p);
+        }
         let comps = ship.components(&all);
         let main = ship.main_component(&comps);
         let origins: Vec<[f32; 2]> = comps.iter().map(|c| ship.com_bp(c)).collect();
@@ -552,9 +595,111 @@ impl Ship {
         best
     }
 
-    /// Recomputes everything topology-derived for piece `k`: core flag, exposure, bonuses, clearances, mass
-    /// properties, colliders, power lists, thruster table and gun mounts. Keeps the piece's frame origin.
-    /// Parts' `piece` ids must already be set.
+    /// Recounts the open sides of part `p` from the grid (no allocation). Exposure only changes when a
+    /// linked neighbour is destroyed, so `apply_damage` calls this for those neighbours only.
+    pub(crate) fn refresh_exposure(&mut self, p: PartIdx) {
+        let s = self.design.parts[p as usize].shape;
+        let (w, h) = s.dims();
+        let mut open = 0u32;
+        for y in s.y..s.y + h as i32 {
+            for x in s.x..s.x + w as i32 {
+                if self.grid.occupant((x, y)) == Some(p as usize) {
+                    open += self.grid.exposure((x, y));
+                }
+            }
+        }
+        self.parts[p as usize].open_sides = open.min(u16::MAX as u32) as u16;
+    }
+
+    /// Recomputes the effective stats (adjacency bonuses) and heat constants of part `t`. Bonuses change
+    /// only when a source dies or a source's venting changes, i.e. around destroyed parts. Sources are linked
+    /// to `t`, and linked alive parts are always in the same piece.
+    pub(crate) fn refresh_stats(&mut self, t: PartIdx) {
+        let d = &*self.design;
+        let spec = &d.parts[t as usize];
+        let mut add = [0.0f32; Stat::COUNT];
+        let mut pct = [0.0f32; Stat::COUNT];
+        let groups = &mut self.scratch.groups;
+        groups.clear();
+        for b in d.bonuses_in.get(t as usize) {
+            let src = &self.parts[b.source as usize];
+            if !src.alive || (b.needs_venting && src.open_sides == 0) {
+                continue;
+            }
+            let count = match groups.iter_mut().find(|g| g.0 == b.group) {
+                Some(g) => &mut g.1,
+                None => {
+                    groups.push((b.group, 0));
+                    &mut groups.last_mut().unwrap().1
+                }
+            };
+            if *count >= b.max_stacks {
+                continue;
+            }
+            *count += 1;
+            match b.effect {
+                Effect::Add(x) => add[b.stat as usize] += x,
+                Effect::Percent(x) => pct[b.stat as usize] += x,
+            }
+        }
+        let mut st = spec.base;
+        for k in 0..Stat::COUNT {
+            if add[k] != 0.0 || pct[k] != 0.0 {
+                st.v[k] = (st.v[k] + add[k]) * (1.0 + pct[k] / 100.0);
+            }
+        }
+        self.stats[t as usize] = st;
+        let per_side = if spec.is_radiator {
+            st.get(Stat::HeatVent)
+        } else {
+            tuning::HEAT_LOSS_OPEN_SIDE
+        };
+        let open = self.parts[t as usize].open_sides as f32;
+        self.heat_k[t as usize] = HeatK {
+            cap: spec.heat_capacity,
+            loss: tuning::HEAT_LOSS_BASE * spec.area + open * per_side,
+            out: st.get(Stat::HeatOutput),
+            limit: st.get(Stat::HeatLimit),
+        };
+    }
+
+    /// Test helper: recomputes every per-part cache from scratch and compares it with the incrementally
+    /// maintained one. `Err` names the first mismatch.
+    #[doc(hidden)]
+    pub fn verify_caches(&self) -> Result<(), String> {
+        let mut fresh = self.clone();
+        let alive: Vec<PartIdx> = (0..self.parts.len() as PartIdx)
+            .filter(|&p| self.parts[p as usize].alive)
+            .collect();
+        for &p in &alive {
+            fresh.refresh_exposure(p);
+        }
+        for &p in &alive {
+            fresh.refresh_stats(p);
+        }
+        for &p in &alive {
+            let i = p as usize;
+            if fresh.parts[i].open_sides != self.parts[i].open_sides {
+                return Err(format!("part {p}: open sides {} vs fresh {}", self.parts[i].open_sides, fresh.parts[i].open_sides));
+            }
+            if fresh.stats[i] != self.stats[i] || fresh.heat_k[i] != self.heat_k[i] {
+                return Err(format!("part {p}: stats {:?} vs fresh {:?}", self.stats[i], fresh.stats[i]));
+            }
+        }
+        for (k, piece) in self.pieces.iter().enumerate() {
+            let mut f = fresh.clone();
+            f.rebuild_piece(k);
+            let fp = &f.pieces[k];
+            if fp.mass != piece.mass || fp.colliders != piece.colliders || fp.consumers != piece.consumers {
+                return Err(format!("piece {:?}: caches differ from a rebuild", piece.id));
+            }
+        }
+        Ok(())
+    }
+
+    /// Recomputes the piece-level caches of piece `k`: core flag, clearances, mass properties, colliders,
+    /// power lists, thruster table and gun mounts. Keeps the piece's frame origin. Parts' `piece` ids, exposure
+    /// and stats must already be current.
     pub(crate) fn rebuild_piece(&mut self, k: usize) {
         let design = Arc::clone(&self.design);
         let d = &*design;
@@ -565,60 +710,8 @@ impl Ship {
         piece.dirty = false;
         let pid = piece.id;
 
-        // Core flag and exposure.
-        piece.has_core = false;
-        for &p in &piece.parts {
-            let spec = &d.parts[p as usize];
-            piece.has_core |= spec.logic;
-            let open: u32 = spec
-                .shape
-                .cells()
-                .into_iter()
-                .filter(|&c| self.grid.occupant(c) == Some(p as usize))
-                .map(|c| self.grid.exposure(c))
-                .sum();
-            self.parts[p as usize].open_sides = open.min(u16::MAX as u32) as u16;
-        }
-
-        // Adjacency bonuses → effective stats.
-        for &t in &piece.parts {
-            let spec = &d.parts[t as usize];
-            let mut add = [0.0f32; Stat::COUNT];
-            let mut pct = [0.0f32; Stat::COUNT];
-            let groups = &mut self.scratch.groups;
-            groups.clear();
-            for b in d.bonuses_in.get(t as usize) {
-                let src = &self.parts[b.source as usize];
-                if !src.alive || src.piece != pid {
-                    continue;
-                }
-                if b.needs_venting && src.open_sides == 0 {
-                    continue;
-                }
-                let count = match groups.iter_mut().find(|g| g.0 == b.group) {
-                    Some(g) => &mut g.1,
-                    None => {
-                        groups.push((b.group, 0));
-                        &mut groups.last_mut().unwrap().1
-                    }
-                };
-                if *count >= b.max_stacks {
-                    continue;
-                }
-                *count += 1;
-                match b.effect {
-                    Effect::Add(x) => add[b.stat as usize] += x,
-                    Effect::Percent(x) => pct[b.stat as usize] += x,
-                }
-            }
-            let mut st = spec.base;
-            for s in 0..Stat::COUNT {
-                if add[s] != 0.0 || pct[s] != 0.0 {
-                    st.v[s] = (st.v[s] + add[s]) * (1.0 + pct[s] / 100.0);
-                }
-            }
-            self.stats[t as usize] = st;
-        }
+        // Core flag.
+        piece.has_core = piece.parts.iter().any(|&p| d.parts[p as usize].logic);
 
         // Clearances: only alive parts of the same piece block.
         let blocked = |blockers: &[PartIdx], parts: &[PartState]| {
@@ -663,22 +756,26 @@ impl Ship {
         piece.heaters.clear();
         for &p in &piece.parts {
             let spec = &d.parts[p as usize];
+            let st = &self.stats[p as usize];
             if spec.reactor {
-                piece.reactors.push(p);
-            } else if spec.consumer.is_some() {
-                piece.consumers.push(p);
-            } else if spec.base.get(Stat::HeatOutput) > 0.0 {
+                piece.reactors.push(Reactor {
+                    part: p,
+                    output: st.get(Stat::PowerOutput),
+                });
+            } else if let Some(kind) = spec.consumer {
+                piece.consumers.push(Consumer {
+                    part: p,
+                    kind,
+                    slot: d.slot_of_part[p as usize],
+                    draw: st.get(Stat::PowerDraw),
+                });
+            } else if st.get(Stat::HeatOutput) > 0.0 {
                 piece.heaters.push(p);
             }
         }
-        let rank = |p: PartIdx| {
-            let kind = d.parts[p as usize].consumer.unwrap_or(ConsumerKind::Other);
-            self.power_priority
-                .iter()
-                .position(|&k| k == kind)
-                .unwrap_or(ConsumerKind::COUNT)
-        };
-        piece.consumers.sort_by_key(|&p| (rank(p), p));
+        let prio = self.power_priority;
+        let rank = |k: ConsumerKind| prio.iter().position(|&x| x == k).unwrap_or(ConsumerKind::COUNT);
+        piece.consumers.sort_by_key(|c| (rank(c.kind), c.part));
 
         // Thruster table and gun mounts.
         piece.thrusters.clear();
@@ -747,7 +844,7 @@ impl Ship {
         let Ship {
             design,
             parts,
-            stats,
+            heat_k,
             pieces,
             controls,
             scratch,
@@ -759,32 +856,32 @@ impl Ship {
             let active = piece.has_core;
             // Power: reactors fill the pool, consumers draw in priority order.
             let mut supply = 0.0f32;
-            for &r in &piece.reactors {
-                let ps = &parts[r as usize];
+            for r in &piece.reactors {
+                let ps = &parts[r.part as usize];
                 if ps.alive && !ps.overheated {
-                    supply += stats[r as usize].get(Stat::PowerOutput);
+                    supply += r.output;
                 }
             }
             let mut remaining = supply;
             let (mut demand, mut served) = (0.0f32, 0.0f32);
-            for &c in &piece.consumers {
-                let ps = &mut parts[c as usize];
+            for c in &piece.consumers {
+                let ps = &mut parts[c.part as usize];
                 let act = if !active || ps.overheated || !ps.clear {
                     0.0
                 } else {
-                    match d.parts[c as usize].consumer {
-                        Some(ConsumerKind::Engine) => controls
+                    match c.kind {
+                        ConsumerKind::Engine => controls
                             .throttle
-                            .get(d.slot_of_part[c as usize] as usize)
+                            .get(c.slot as usize)
                             .copied()
                             .unwrap_or(0.0)
                             .clamp(0.0, 1.0),
-                        Some(ConsumerKind::Weapon) => controls.fire as u8 as f32,
-                        Some(ConsumerKind::Shield) => controls.shields as u8 as f32,
-                        _ => 1.0,
+                        ConsumerKind::Weapon => controls.fire as u8 as f32,
+                        ConsumerKind::Shield => controls.shields as u8 as f32,
+                        ConsumerKind::Logic | ConsumerKind::Other => 1.0,
                     }
                 };
-                let want = stats[c as usize].get(Stat::PowerDraw) * act;
+                let want = c.draw * act;
                 let got = want.min(remaining);
                 remaining -= got;
                 demand += want;
@@ -798,8 +895,8 @@ impl Ship {
             } else {
                 0.0
             };
-            for &r in &piece.reactors {
-                let ps = &mut parts[r as usize];
+            for r in &piece.reactors {
+                let ps = &mut parts[r.part as usize];
                 ps.power = 1.0;
                 ps.work = if ps.overheated { 0.0 } else { reactor_work };
             }
@@ -833,10 +930,9 @@ impl Ship {
         let e = &mut scratch.energy;
         e.clear();
         e.resize(parts.len(), 0.0);
-        for (i, ps) in parts.iter().enumerate() {
+        for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
             if ps.alive {
-                e[i] = ps.heat * d.parts[i].heat_capacity
-                    + stats[i].get(Stat::HeatOutput) * ps.work * DT;
+                *e = ps.heat * k.cap + k.out * ps.work * DT;
             }
         }
         for l in &d.links {
@@ -848,24 +944,15 @@ impl Ship {
             e[a] -= q;
             e[b] += q;
         }
-        for (i, ps) in parts.iter_mut().enumerate() {
+        for ((ps, k), &e) in parts.iter_mut().zip(heat_k.iter()).zip(e.iter()) {
             if !ps.alive {
                 continue;
             }
-            let spec = &d.parts[i];
-            let st = &stats[i];
-            let per_side = if spec.is_radiator {
-                st.get(Stat::HeatVent)
-            } else {
-                tuning::HEAT_LOSS_OPEN_SIDE
-            };
-            let loss = tuning::HEAT_LOSS_BASE * spec.area + ps.open_sides as f32 * per_side;
-            let h = e[i] / (spec.heat_capacity + loss * DT);
+            let h = e / (k.cap + k.loss * DT);
             ps.heat = if h > 0.0 { h } else { 0.0 };
-            let limit = st.get(Stat::HeatLimit);
-            if ps.heat > limit {
+            if ps.heat > k.limit {
                 ps.overheated = true;
-            } else if ps.overheated && ps.heat < limit * tuning::OVERHEAT_RESUME {
+            } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
                 ps.overheated = false;
             }
         }
@@ -933,13 +1020,12 @@ impl StateHash for Ship {
         h.bool(self.controls.shields);
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {
-            h.bool(ps.alive);
+            h.u32(ps.alive as u32 | (ps.overheated as u32) << 1);
             if !ps.alive {
                 continue;
             }
             h.f32(ps.hp);
             h.f32(ps.heat);
-            h.bool(ps.overheated);
             h.u32(ps.piece.0);
             h.f32(ps.power);
             h.f32(ps.work);

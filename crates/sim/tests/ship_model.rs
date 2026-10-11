@@ -154,7 +154,7 @@ fn brownout_follows_priority_order() {
     let kinds: Vec<ConsumerKind> = p
         .consumers()
         .iter()
-        .map(|&i| d.parts[i as usize].consumer.unwrap())
+        .map(|c| c.kind)
         .collect();
     assert_eq!(
         kinds,

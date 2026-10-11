@@ -1,5 +1,8 @@
-//! Stable state hashing: FNV-1a 64 over the little-endian bytes of every hashed value, implemented in-crate so
-//! the hash never changes with a dependency update or between platforms.
+//! Stable state hashing, implemented in-crate so the hash never changes with a dependency update or between
+//! platforms: **FNV-1a 64 applied to 32-bit words** (`h = (h ^ word) * FNV_PRIME`). Feeding whole little-endian
+//! words instead of bytes needs a quarter of the multiplies (the state of 20 big ships is ~1 MB). Every
+//! value is split into 32-bit words (`u64` = low word, then high word; `u8`/`bool` = one word). Byte strings
+//! ([`StateHasher::write_bytes`], [`fnv1a64`]) use the classic byte-wise FNV-1a 64.
 //!
 //! Floats are hashed by their exact bit pattern (`to_bits`), so any difference in the last bit shows up.
 //! The only exception is NaN: all NaNs hash as one canonical pattern, because NaN payloads differ between
@@ -39,33 +42,37 @@ impl StateHasher {
         }
     }
 
+    /// Absorbs one 32-bit word.
+    #[inline]
+    fn word(&mut self, w: u32) {
+        self.h ^= w as u64;
+        self.h = self.h.wrapping_mul(FNV_PRIME);
+    }
+
     #[inline]
     pub fn u8(&mut self, v: u8) {
-        self.byte(v);
+        self.word(v as u32);
     }
 
     #[inline]
     pub fn bool(&mut self, v: bool) {
-        self.byte(v as u8);
+        self.word(v as u32);
     }
 
     #[inline]
     pub fn u32(&mut self, v: u32) {
-        for b in v.to_le_bytes() {
-            self.byte(b);
-        }
+        self.word(v);
     }
 
     #[inline]
     pub fn i32(&mut self, v: i32) {
-        self.u32(v as u32);
+        self.word(v as u32);
     }
 
     #[inline]
     pub fn u64(&mut self, v: u64) {
-        for b in v.to_le_bytes() {
-            self.byte(b);
-        }
+        self.word(v as u32);
+        self.word((v >> 32) as u32);
     }
 
     /// Exact bit pattern; NaN canonicalised (and asserted against in debug builds).
@@ -124,5 +131,17 @@ mod tests {
             s.u32(1.5f32.to_bits());
             s.finish()
         });
+        // One word: xor then multiply.
+        let mut s = StateHasher::new();
+        s.u32(7);
+        assert_eq!(s.finish(), (FNV_OFFSET ^ 7).wrapping_mul(FNV_PRIME));
+        // Sign flips in two different words do not cancel.
+        let two = |a: f32, b: f32| {
+            let mut s = StateHasher::new();
+            s.f32(a);
+            s.f32(b);
+            s.finish()
+        };
+        assert_ne!(two(1.0, 2.0), two(-1.0, -2.0));
     }
 }

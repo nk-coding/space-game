@@ -78,3 +78,18 @@ fn debug_builds_hash_every_tick() {
     sc.sim.step(&TickInputs::default());
     assert_eq!(sc.sim.last_tick_hash(), Some(sc.sim.state_hash()));
 }
+
+#[test]
+fn incremental_caches_match_a_full_recompute() {
+    let content = common::content();
+    let mut sc = Scenario::new(&content, 11).unwrap();
+    for t in 0..900 {
+        sc.step();
+        if t % 30 == 0 {
+            for ship in sc.sim.ships() {
+                ship.verify_caches().unwrap_or_else(|e| panic!("tick {t}, {:?}: {e}", ship.id()));
+            }
+        }
+    }
+    assert!(sc.stats.splits > 0);
+}

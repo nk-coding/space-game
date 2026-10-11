@@ -5,6 +5,8 @@
 //! Damage is applied immediately; topology changes are batched: [`Ship::resolve_breakage`] processes every
 //! damaged piece once, however many of its parts died this tick.
 
+use std::sync::Arc;
+
 use data::Cell;
 
 use crate::design::PartIdx;
@@ -61,6 +63,27 @@ impl Ship {
         ps.work = 0.0;
         let piece = ps.piece;
         self.grid.remove(part);
+        // Exposure changes only for the linked neighbours; bonuses only for them and their neighbours
+        // (a source died, or a source's venting changed).
+        let design = Arc::clone(&self.design);
+        let nb = design.neighbors.get(part);
+        let mut affected = std::mem::take(&mut self.scratch.affected);
+        affected.clear();
+        for &n in nb {
+            if self.parts[n as usize].alive {
+                self.refresh_exposure(n);
+                affected.push(n);
+                affected.extend_from_slice(design.neighbors.get(n as usize));
+            }
+        }
+        affected.sort_unstable();
+        affected.dedup();
+        for &t in &affected {
+            if self.parts[t as usize].alive {
+                self.refresh_stats(t);
+            }
+        }
+        self.scratch.affected = affected;
         if let Some(k) = self.piece_index(piece) {
             self.pieces[k].dirty = true;
         }
