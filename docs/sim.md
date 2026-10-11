@@ -108,9 +108,10 @@ How it is checked:
 - **Result (11 Oct 2026, with FreeFlight physics and the flight computer)**: native x86_64 vs wasm32 (Node 24 /
   V8) **identical** for core and flight, seed 42 (1800 ticks), flight seeds 1, 7, 123456789 and core seed 7
   (3000 ticks each). Dev and release builds also agree. **With weapons v1** (same evening): core and flight
-  seed 42 (1800 ticks) and flight seed 7 (3000 ticks) identical.
+  seed 42 (1800 ticks) and flight seed 7 (3000 ticks) identical. **With leading and the load test**: core,
+  flight and load (20 ships) seed 42, 1800 ticks, identical.
 
-Scenarios (`sim::scenario`), both spawning two copies of every blueprint in the content:
+Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, plus
   one heat-stress ship (three beams on two reactors, always firing, never hit) so overheating stays covered.
@@ -118,6 +119,8 @@ Scenarios (`sim::scenario`), both spawning two copies of every blueprint in the 
 - `flight`: player ships flown by random pilot input (stick, lock on an enemy, drift, fire), automaton ships
   by the raider brain, fewer scripted hits; all weapons fire for real. Seed 42, 1800 ticks: 136 parts
   destroyed, 26 splits, 1002 pulses and projectiles fired, 78 hull hits, 13 shield hits.
+
+- `load` (`ScenarioKind::Load(n)`, `--ships N`, default 20): the shared [load test](#the-load-test).
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -271,9 +274,9 @@ Pilot input (concept: touch controls):
   ship never thrusts while too fast. Sluggish ships get a lower top speed and take longer to reach it.
 - **Released stick**: brakes to a stop (`Auto` heading: flip-and-burn if needed), unless `drift` is set
   (coast, keep the heading).
-- **Lock** (`Target::Ship / Piece / Point`): the nose stays on the target; the stick strafes with whatever
-  thrusters push that way (RCS); released = brake. A ship with engines only at the back cannot brake or strafe
-  while locked.
+- **Lock** (`Target::Ship / Piece / Point`): the nose stays on the target, or on its lead point (see
+  `PilotInput.aim` under [Aiming](#aiming-and-leading)); the stick strafes with whatever thrusters push that
+  way (RCS); released = brake. A ship with engines only at the back cannot brake or strafe while locked.
 
 `Ship::telemetry()` shows the top speed, goal, heading target, requested force/torque and the expected wrench.
 
@@ -306,15 +309,20 @@ Pilot input (concept: touch controls):
 
 ### Maneuvers and the raider brain (`maneuver.rs`)
 
-`Maneuver::Brake`, `Hold { at }`, `FaceTarget(target)`, `Approach { target, range }` (close in at the speed it
-can still stop from, then face the target and keep pace), `Orbit { target, radius, ccw }` (tangential speed
+`Maneuver::Brake`, `Hold { at }`, `FaceTarget { target, aim }`, `Approach { target, range, aim }` (close in at
+the speed it can still stop from, then face the target or its lead point and keep pace), `Orbit { target,
+radius, ccw }` (tangential speed
 limited by the centripetal acceleration the ship can hold, radial error corrected). Each becomes a
 `FlightGoal` every tick; an unresolvable target brakes.
 
-`RaiderBrain` (hard-coded until behavior trees): the nearest active ship of another faction is the target;
-beyond 90 m it approaches to 50 m (outside the 45 m beam lasers, inside its 75 m cannon), then alternates attack
-(approach/face, 5 s) and orbit (45 m, 4 s, direction by ship id); it fires when the target is within 70 m and
-0.12 rad of the nose. No randomness. Constants in `maneuver::raider`.
+`RaiderBrain` (hard-coded until behavior trees; works for any armed ship): the nearest active ship of another
+faction is the target. Its distances scale with the ship's **reach** (longest range of its clear guns):
+beyond 1.2 × reach it approaches to 0.667 × reach, then alternates attack (approach and face with
+`AimMode::Auto`, 5 s) and orbit (0.6 × reach, 4 s, direction by ship id); it fires when the target is within
+0.933 × reach and the **aim point** (lead point for cannon ships) is within 0.12 rad of the nose. A raider
+(cannon, 75 m): engage 90 m, stand-off 50 m (outside the 45 m beams), orbit 45 m, fire 70 m. A Halvex Runner
+(pulse lasers, 60 m): engage 72 m, stand-off 40 m, orbit 36 m, fire 56 m. No randomness. Constants in
+`maneuver::raider`.
 
 ## Weapons
 
@@ -356,6 +364,19 @@ Events (in `Sim::events()`, for visuals and sound):
 | `ProjectileSpawned { id, owner, pos, vel }`, `ProjectileGone { id, pos, reason }` | `reason` = `Hit`, `Absorbed` or `Expired` |
 | `Ricochet { id, point, normal, vel }` | a kinetic shot glanced off a slope |
 | `ShieldHit { by, ship, piece, part, point, absorbed, left, depleted }` | a shot entered a bubble (`point` = entry); `depleted` = it collapsed |
+
+### Aiming and leading
+
+- `flight::intercept_time(r, v, speed)` / `lead_point(shooter, shooter_vel, target, target_vel, speed)`:
+  first-order intercept (constant target velocity) with the shot inheriting the shooter's velocity, as the sim
+  fires them; only `sqrt`, no transcendentals. A target that cannot be caught is aimed at directly.
+- `AimMode` (`PilotInput.aim`, `Maneuver::FaceTarget/Approach { aim }`): `Target` (nose on the target),
+  `Lead` (nose on the lead point of the ship's strongest projectile gun), `Auto` (default: lead if the ship's
+  strongest gun by damage per second fires projectiles, else the target). A ship that mixes lasers and cannons
+  therefore aims for whichever does most of its damage; the other kind still fires when it happens to bear.
+- Guns start with **staggered cooldowns** (spread over one firing period, from a hash of ship id and part
+  index), so a fleet's guns never fire in lock-step. A gun that is not firing reloads to ready, so a fresh
+  trigger fires at once (a player's alpha strike).
 
 Queries each frame: `Sim::projectiles()` (`pos`, `prev_pos`, `vel`; draw at `prev_pos + (pos − prev_pos) ×
 alpha`), `Sim::beams()` (this tick's beams), `Sim::bubbles()` (`centre`, `radius`, `left`, `capacity` of every
@@ -451,20 +472,45 @@ building Bevy; medians of 3 runs):
 | lose one part of a 2000-part piece (resolve + rebuild + body update) | 0.20 ms | 0.56 ms |
 | cut a 50-part row and split a 2000-part piece | 0.18 ms | — |
 
-**Combat** (same tool, VM load ~8.4, medians of 3 runs): 20 gunboats (50×40 slabs, 17 pulse lasers + 17
-cannons each, shield emitters inside) in two lines 60 m apart, every gun firing for 150 ticks: `Sim::step`
-mean **1.47 ms**, p95 4.3 ms (the p95 ticks are synchronized cannon salvos: every cooldown starts at 0); about
-120 live projectiles on average, 680 at the first salvo; 3520 shots and 2080 hits in 150 ticks. Compared with
-the same ships not fighting (~0.85 ms), weapons, shields and the breakage they cause add about 0.6 ms.
+**Combat** (same tool, VM load ~6–8, noisy): 20 gunboats (50×40 slabs, 17 pulse lasers + 17 cannons each,
+shield emitters inside) in two lines 60 m apart, every gun firing for 150 ticks: `Sim::step` mean 1.4–2.2 ms,
+p95 3.5–7.8 ms; about 90 live projectiles on average, 340 at most (680 before the cooldowns were staggered).
+The slow ticks are the first wave of hits, about 40 destroyed parts per tick, each rebuilding a 2000-part piece
+(`PERF_DETAIL=1` lists them); ticks without destroyed parts average about 1.1 ms. Huge slab ships are the worst
+case for piece rebuilds; see [The load test](#the-load-test) for realistic ships.
 
 The flight computer + allocation for 20 big ships costs well under 0.1 ms per tick (the step difference is
 within the noise; 20 × 1.5 µs for allocation). The per-tick code allocates nothing once warmed up.
+
+## The load test
+
+`sim::scenario::load_test(n, seed) -> Sim` (and `load_test_with(&content, n, seed)`): `n` ships on the base
+content, ⌈n/2⌉ Halvex Runners in a line facing ⌊n/2⌋ automaton raiders 80 m away, every ship under the combat
+brain, so they engage at once and produce projectiles, hits and (eventually) debris. With `n = 1` the lone
+runner orbits a point and fires into space. The browser client calls the same function; the final state hash
+of a run matches the `determinism --scenario load --ships n` output, so native and browser runs can be compared.
+
+`scripts/load-test-native.sh [--ships 1,5,20] [--ticks 1800] [--seed 42]` runs the `load_test` example and
+prints a table. Native release, 1800 ticks, seed 42, VM load ~5–6, typical of 3 runs (FreeFlight: no
+collisions yet):
+
+| Ships | Mean | Median | p95 | Max | Pieces max | Projectiles avg / max | Shots | Hits | Splits | Active at end |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 0.001 ms | 0.001 ms | 0.001 ms | 0.07 ms | 1 | 0 / 0 | 552 | 0 | 0 | 1 |
+| 5 | 0.003 ms | 0.003 ms | 0.004 ms | 0.09 ms | 5 | 0 / 3 | 94 | 213 | 0 | 3 |
+| 20 | 0.013 ms | 0.012 ms | 0.019 ms | 0.10–0.57 ms | 21 | 0.9 / 11 | 418 | 848 | 2 | 11 |
+
+The sim core itself is very cheap at these ship sizes (a runner has 56 parts): 20 fighting ships cost about
+13 µs per tick. The physics engine will dominate once it is in.
 
 ## Design questions for Niklas
 
 Answered (provisionally, lead session 11 Oct 2026; easy to change, see the sections above): split-off cored
 pieces are salvage; a core needs power; fixed brown-out order; chain reactions later via content; heat per
 part. Turning: decided by Niklas (cores, gyros, RCS, gimbals). Halvex Runner layout: fixed in content.
+Weapons (lead session, 11 Oct 2026, defaults Niklas may change): shields keep per-family shares with a collapse
+until 30% recharged; a penetrating shot stops at the hull; raiders lead their shots (done, plus `AimMode` for
+the player's lock). Fight length: Niklas tunes speed and ranges in the browser with live sliders.
 
 Open:
 
@@ -483,13 +529,4 @@ Open:
    placeholders. A stationary Halvex Runner that just locks and fires kills three raiders about 15 s after
    contact and takes 3–4 damage: the raiders are slow (0.76 m/s²) and the runner's pulse lasers reach 60 m.
    Tune together with question 1 in the browser.
-5. **Shield absorption model.** Now: a bubble takes a share per family (energy 100%, kinetic 50%) until empty,
-   then collapses until 30% recharged; overlapping bubbles each take their share in turn. Options: (a)
-   **keep this** (simple, readable) (recommended); (b) the bubbles of one ship share one pool; (c) kinetic
-   shots are only slowed, not reduced.
-6. **Penetration beyond the hull.** A projectile that breaks through the last block of a piece stops (it does
-   not continue to the next ship). Recommend (a) **keep** until railguns exist; (b) let it fly on.
-7. **Aiming.** Lasers hit instantly (aim = turn the ship). Projectiles have flight time and nobody leads yet:
-   raiders aim at the target's current position, so a moving player dodges them. Recommend (a) **raiders lead
-   their shots next** (cheap, makes them a threat); (b) leave it.
-8. **Missiles, disruption, drones** are not built yet (`absorb` already lists missiles: bubbles stop them).
+5. **Missiles, disruption, drones** are not built yet (`absorb` already lists missiles: bubbles stop them).
