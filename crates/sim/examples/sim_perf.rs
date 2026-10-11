@@ -9,7 +9,8 @@ use std::time::Instant;
 use data::{Blueprint, Placement};
 use sim::alloc::{Actuation, AllocTable, allocate};
 use sim::{
-    Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, Target, TickInputs, Vec2,
+    Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, Target, TickInputs,
+    Vec2,
 };
 
 fn place(part: &str, x: i32, y: i32, material: Option<&str>) -> Placement {
@@ -79,7 +80,11 @@ fn time_steps(world: &mut Sim, inputs: &TickInputs, ticks: usize) -> ((f64, f64)
     let mut step = Vec::new();
     let mut hash = Vec::new();
     for t in 0..ticks {
-        let first = if t == 0 { inputs.clone() } else { TickInputs::default() };
+        let first = if t == 0 {
+            inputs.clone()
+        } else {
+            TickInputs::default()
+        };
         let t0 = Instant::now();
         world.step(&first);
         step.push(t0.elapsed().as_secs_f64() * 1e3);
@@ -111,7 +116,12 @@ fn main() {
     let spawn = |world: &mut Sim| -> (Vec<sim::ShipId>, f64) {
         let t = Instant::now();
         let ids: Vec<_> = (0..ships)
-            .map(|k| world.spawn_ship(Arc::clone(&design), Body::at(Vec2::new(k as f32 * 80.0, 0.0), 0.0)))
+            .map(|k| {
+                world.spawn_ship(
+                    Arc::clone(&design),
+                    Body::at(Vec2::new(k as f32 * 80.0, 0.0), 0.0),
+                )
+            })
             .collect();
         (ids, t.elapsed().as_secs_f64() * 1e3 / ships as f64)
     };
@@ -133,7 +143,14 @@ fn main() {
         controls: ids
             .iter()
             .map(|&id| {
-                (id, ShipControls { throttle: vec![0.8; design.engines.len()], fire: true, shields: true })
+                (
+                    id,
+                    ShipControls {
+                        throttle: vec![0.8; design.engines.len()],
+                        fire: true,
+                        shields: true,
+                    },
+                )
             })
             .collect(),
         ..Default::default()
@@ -151,7 +168,15 @@ fn main() {
             .enumerate()
             .map(|(k, &id)| {
                 let lock = Some(Target::Ship(ids[(k + 1) % ids.len()]));
-                (id, ShipCommand::Pilot(PilotInput { stick: Vec2::new(0.6, 0.8), lock, drift: false, fire: true }))
+                (
+                    id,
+                    ShipCommand::Pilot(PilotInput {
+                        stick: Vec2::new(0.6, 0.8),
+                        lock,
+                        drift: false,
+                        fire: true,
+                    }),
+                )
             })
             .collect(),
         ..Default::default()
@@ -170,7 +195,16 @@ fn main() {
     for k in 0..n {
         act.resize(fmax.len(), tmax.len());
         let f = Vec2::new((k % 7) as f32 * 30.0 - 90.0, (k % 5) as f32 * 200.0 - 100.0);
-        std::hint::black_box(allocate(&p.thrusters, &table, &fmax, &tmax, f, (k % 3) as f32 * 5e4 - 5e4, true, &mut act));
+        std::hint::black_box(allocate(
+            &p.thrusters,
+            &table,
+            &fmax,
+            &tmax,
+            f,
+            (k % 3) as f32 * 5e4 - 5e4,
+            true,
+            &mut act,
+        ));
     }
     println!(
         "allocate ({} rows, {} torque sources): {:.2} µs per call",
@@ -189,7 +223,9 @@ fn main() {
         one.push(t.elapsed().as_secs_f64() * 1e3);
     }
     let (m, p95) = stats(one);
-    println!("lose one part (no split), rebuild piece + update body: mean {m:.3} ms, p95 {p95:.3} ms");
+    println!(
+        "lose one part (no split), rebuild piece + update body: mean {m:.3} ms, p95 {p95:.3} ms"
+    );
     for x in 0..w {
         world.apply_damage(ship, DamageTarget::Cell((x, h / 3)), 1e9);
     }

@@ -81,7 +81,13 @@ pub trait PhysicsBackend {
     fn body(&self, key: BodyKey) -> Option<Body>;
     /// First hit along a ray from `origin` in unit direction `dir`, up to `max_distance`, ignoring the
     /// bodies of `exclude`. Ties go to the lower key.
-    fn raycast(&self, origin: Vec2, dir: Vec2, max_distance: f32, exclude: Option<ShipId>) -> Option<RayHit>;
+    fn raycast(
+        &self,
+        origin: Vec2,
+        dir: Vec2,
+        max_distance: f32,
+        exclude: Option<ShipId>,
+    ) -> Option<RayHit>;
     /// Contacts that started during the last step.
     fn contacts(&self) -> &[Contact];
     /// Feeds engine-internal state into the state hash (optional; poses are hashed by the sim anyway).
@@ -126,7 +132,11 @@ impl FfBody {
     fn set_shape(&mut self, desc: &BodyDesc) {
         let m = desc.mass;
         self.inv_mass = if m.mass > 0.0 { 1.0 / m.mass } else { 0.0 };
-        self.inv_inertia = if m.inertia > 0.0 { 1.0 / m.inertia } else { 0.0 };
+        self.inv_inertia = if m.inertia > 0.0 {
+            1.0 / m.inertia
+        } else {
+            0.0
+        };
         self.com = m.com;
         self.colliders.clear();
         self.colliders.extend_from_slice(desc.colliders);
@@ -250,7 +260,13 @@ impl PhysicsBackend for FreeFlight {
         self.index(key).ok().map(|i| self.bodies[i].body)
     }
 
-    fn raycast(&self, origin: Vec2, dir: Vec2, max_distance: f32, exclude: Option<ShipId>) -> Option<RayHit> {
+    fn raycast(
+        &self,
+        origin: Vec2,
+        dir: Vec2,
+        max_distance: f32,
+        exclude: Option<ShipId>,
+    ) -> Option<RayHit> {
         let mut best: Option<RayHit> = None;
         let mut best_t = max_distance;
         for b in &self.bodies {
@@ -362,7 +378,14 @@ mod tests {
             com: Vec2::ZERO,
             inertia: 4.0,
         };
-        ff.create_body(key, &BodyDesc { body: Body::default(), mass, colliders: &cols });
+        ff.create_body(
+            key,
+            &BodyDesc {
+                body: Body::default(),
+                mass,
+                colliders: &cols,
+            },
+        );
         for _ in 0..30 {
             ff.apply_wrench(key, Vec2::new(4.0, 0.0), 0.0);
             ff.step(1.0 / 30.0);
@@ -380,16 +403,32 @@ mod tests {
     fn raycast_hits_the_nearest_face() {
         let mut ff = FreeFlight::new();
         let cols = [square()];
-        let mass = MassProps { mass: 1.0, com: Vec2::ZERO, inertia: 1.0 };
+        let mass = MassProps {
+            mass: 1.0,
+            com: Vec2::ZERO,
+            inertia: 1.0,
+        };
         for (k, x) in [(0u32, 10.0f32), (1, 5.0)] {
-            let key = BodyKey { ship: ShipId(k), piece: PieceId(k) };
-            ff.create_body(key, &BodyDesc { body: Body::at(Vec2::new(x, 0.0), 0.3), mass, colliders: &cols });
+            let key = BodyKey {
+                ship: ShipId(k),
+                piece: PieceId(k),
+            };
+            ff.create_body(
+                key,
+                &BodyDesc {
+                    body: Body::at(Vec2::new(x, 0.0), 0.3),
+                    mass,
+                    colliders: &cols,
+                },
+            );
         }
         let hit = ff.raycast(Vec2::ZERO, Vec2::X, 100.0, None).unwrap();
         assert_eq!(hit.key.ship, ShipId(1));
         assert!(hit.distance > 3.5 && hit.distance < 4.0, "{}", hit.distance);
         assert!(hit.normal.x < -0.9);
-        let hit = ff.raycast(Vec2::ZERO, Vec2::X, 100.0, Some(ShipId(1))).unwrap();
+        let hit = ff
+            .raycast(Vec2::ZERO, Vec2::X, 100.0, Some(ShipId(1)))
+            .unwrap();
         assert_eq!(hit.key.ship, ShipId(0));
         assert!(ff.raycast(Vec2::ZERO, Vec2::Y, 100.0, None).is_none());
         assert!(ff.raycast(Vec2::ZERO, Vec2::X, 3.0, None).is_none());

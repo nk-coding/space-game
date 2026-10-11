@@ -1,8 +1,10 @@
 //! Engine-independent, deterministic simulation core for Space Game. See `docs/sim.md` for the full picture.
 //!
-//! No Bevy, no graphics, no threads, no filesystem, no wall-clock; builds for wasm32. The physics engine
-//! plugs in later on top of what is here: pieces with mass properties and convex colliders, split events,
-//! and per-piece engine force/torque.
+//! No Bevy, no graphics, no threads, no filesystem, no wall-clock; builds for wasm32. Ships are grids of parts
+//! split into pieces (one rigid body each, with mass properties and convex colliders); power, heat, bonuses,
+//! damage and breakage run per tick; an always-on flight computer turns pilot input, maneuvers or brains into
+//! actuator commands. The physics engine plugs in behind [`PhysicsBackend`]; until it is chosen, the
+//! engine-free [`FreeFlight`] backend moves the bodies (`Sim` = `Sim<FreeFlight>`).
 //!
 //! # Frames and units
 //!
@@ -54,19 +56,20 @@ pub use alloc::{Actuation, TorqueSource};
 pub use breakage::{DamageOutcome, DamageTarget};
 pub use collider::ConvexPolygon;
 pub use config::{FlightTuning, SimConfig};
-pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
-pub use maneuver::{Maneuver, RaiderBrain};
-pub use physics::{BodyDesc, BodyKey, Contact, FreeFlight, PhysicsBackend, RayHit};
 pub use design::{ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
+pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
 pub use hash::{StateHash, StateHasher};
 pub use ids::{PieceId, ShipId};
+pub use maneuver::{Maneuver, RaiderBrain};
 pub use mass::MassProps;
 pub use math::{Rot, Vec2};
+pub use physics::{BodyDesc, BodyKey, Contact, FreeFlight, PhysicsBackend, RayHit};
 pub use rng::{Pcg32, Stream};
+pub use scenario::ScenarioKind;
 pub use ship::{
-    Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster, Wrench,
-    inherited_velocity, thruster_wrench,
+    Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,
+    Wrench, inherited_velocity, thruster_wrench,
 };
 pub use world::{DamageCommand, PartHit, ShipCommand, Sim, TickInputs};
 

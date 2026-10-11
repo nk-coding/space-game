@@ -15,6 +15,7 @@
 
 use std::sync::Arc;
 
+use crate::DT;
 use crate::breakage::{DamageOutcome, DamageTarget};
 use crate::config::SimConfig;
 use crate::design::ShipDesign;
@@ -27,7 +28,6 @@ use crate::math::{Rot, Vec2};
 use crate::physics::{BodyDesc, BodyKey, FreeFlight, PhysicsBackend, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
 use crate::ship::{Body, Ship, ShipControls};
-use crate::DT;
 
 /// Scripted damage (tests, scenarios, replays).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -45,7 +45,10 @@ pub enum ShipCommand {
     /// Fly a built-in maneuver.
     Maneuver { maneuver: Maneuver, fire: bool },
     /// Fly a goal directly (tools, tests).
-    Goal { goal: flight::FlightGoal, fire: bool },
+    Goal {
+        goal: flight::FlightGoal,
+        fire: bool,
+    },
     /// Hand the ship to a brain (`Some`) or take it back (`None`). A brain overrides the helm.
     Brain(Option<RaiderBrain>),
 }
@@ -161,7 +164,10 @@ impl<P: PhysicsBackend> Sim<P> {
         let ship = Ship::new(id, design, body, &mut self.ids, &self.config);
         for p in ship.pieces() {
             self.physics.create_body(
-                BodyKey { ship: id, piece: p.id },
+                BodyKey {
+                    ship: id,
+                    piece: p.id,
+                },
                 &BodyDesc {
                     body: p.body,
                     mass: p.mass,
@@ -179,7 +185,10 @@ impl<P: PhysicsBackend> Sim<P> {
         let k = self.ship_index(id)?;
         let ship = self.ships.remove(k);
         for p in ship.pieces() {
-            self.physics.remove_body(BodyKey { ship: id, piece: p.id });
+            self.physics.remove_body(BodyKey {
+                ship: id,
+                piece: p.id,
+            });
         }
         self.events.push(SimEvent::ShipRemoved { ship: id });
         Some(ship)
@@ -217,7 +226,9 @@ impl<P: PhysicsBackend> Sim<P> {
         if let Some(s) = self.ship_mut(ship) {
             match cmd {
                 ShipCommand::Pilot(p) => s.helm = HelmMode::Pilot(p),
-                ShipCommand::Maneuver { maneuver, fire } => s.helm = HelmMode::Maneuver { maneuver, fire },
+                ShipCommand::Maneuver { maneuver, fire } => {
+                    s.helm = HelmMode::Maneuver { maneuver, fire }
+                }
                 ShipCommand::Goal { goal, fire } => s.helm = HelmMode::Goal { goal, fire },
                 ShipCommand::Brain(b) => s.brain = b,
             }
@@ -230,7 +241,12 @@ impl<P: PhysicsBackend> Sim<P> {
     }
 
     /// Applies damage now. Splits are resolved in the next step or by [`Sim::resolve_breakage`].
-    pub fn apply_damage(&mut self, ship: ShipId, target: DamageTarget, amount: f32) -> DamageOutcome {
+    pub fn apply_damage(
+        &mut self,
+        ship: ShipId,
+        target: DamageTarget,
+        amount: f32,
+    ) -> DamageOutcome {
         match self.ship_mut(ship) {
             Some(s) => s.apply_damage(target, amount),
             None => DamageOutcome::Ignored,
@@ -259,8 +275,15 @@ impl<P: PhysicsBackend> Sim<P> {
                 SimEvent::PieceChanged { piece, .. } => {
                     if let Some(p) = ship.piece(piece.id) {
                         self.physics.update_body(
-                            BodyKey { ship: sid, piece: p.id },
-                            &BodyDesc { body: p.body, mass: p.mass, colliders: &p.colliders },
+                            BodyKey {
+                                ship: sid,
+                                piece: p.id,
+                            },
+                            &BodyDesc {
+                                body: p.body,
+                                mass: p.mass,
+                                colliders: &p.colliders,
+                            },
                         );
                     }
                 }
@@ -268,12 +291,21 @@ impl<P: PhysicsBackend> Sim<P> {
                     let mut ids = vec![split.kept.id];
                     ids.extend(split.spawned.iter().map(|s| s.id));
                     for (n, &pid) in ids.iter().enumerate() {
-                        let Some(p) = ship.piece_mut(pid) else { continue };
+                        let Some(p) = ship.piece_mut(pid) else {
+                            continue;
+                        };
                         if self.config.split_ghost_ticks > 0 {
                             p.ghost_until = ghost_until;
                         }
-                        let key = BodyKey { ship: sid, piece: pid };
-                        let desc = BodyDesc { body: p.body, mass: p.mass, colliders: &p.colliders };
+                        let key = BodyKey {
+                            ship: sid,
+                            piece: pid,
+                        };
+                        let desc = BodyDesc {
+                            body: p.body,
+                            mass: p.mass,
+                            colliders: &p.colliders,
+                        };
                         if n == 0 {
                             self.physics.update_body(key, &desc);
                         } else {
@@ -285,7 +317,10 @@ impl<P: PhysicsBackend> Sim<P> {
                     }
                 }
                 SimEvent::PieceDestroyed { piece, .. } => {
-                    self.physics.remove_body(BodyKey { ship: sid, piece: *piece });
+                    self.physics.remove_body(BodyKey {
+                        ship: sid,
+                        piece: *piece,
+                    });
                 }
                 _ => {}
             }
@@ -293,7 +328,13 @@ impl<P: PhysicsBackend> Sim<P> {
     }
 
     /// First part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter).
-    pub fn raycast(&self, origin: Vec2, dir: Vec2, max_distance: f32, exclude: Option<ShipId>) -> Option<PartHit> {
+    pub fn raycast(
+        &self,
+        origin: Vec2,
+        dir: Vec2,
+        max_distance: f32,
+        exclude: Option<ShipId>,
+    ) -> Option<PartHit> {
         let hit = self.physics.raycast(origin, dir, max_distance, exclude)?;
         let ship = self.ship(hit.key.ship)?;
         // Nudge the point into the solid so it lands inside the hit cell.
@@ -328,7 +369,11 @@ impl<P: PhysicsBackend> Sim<P> {
         // Flight: plan every ship from the same world, then act.
         let mut plans = std::mem::take(&mut self.plans);
         plans.clear();
-        plans.extend(self.ships.iter().map(|s| flight::plan(s, &self.ships, &self.config)));
+        plans.extend(
+            self.ships
+                .iter()
+                .map(|s| flight::plan(s, &self.ships, &self.config)),
+        );
         for (s, plan) in self.ships.iter_mut().zip(&plans) {
             flight::execute(s, plan, &self.config);
         }
@@ -342,7 +387,10 @@ impl<P: PhysicsBackend> Sim<P> {
         for s in &mut self.ships {
             let sid = s.id();
             for p in &mut s.pieces {
-                let key = BodyKey { ship: sid, piece: p.id };
+                let key = BodyKey {
+                    ship: sid,
+                    piece: p.id,
+                };
                 if p.ghost_until != 0 && self.tick >= p.ghost_until {
                     p.ghost_until = 0;
                     self.physics.set_ghost(key, false);
@@ -359,7 +407,10 @@ impl<P: PhysicsBackend> Sim<P> {
             for p in &mut s.pieces {
                 p.prev_pos = p.body.pos;
                 p.prev_angle = p.body.angle;
-                if let Some(b) = self.physics.body(BodyKey { ship: sid, piece: p.id }) {
+                if let Some(b) = self.physics.body(BodyKey {
+                    ship: sid,
+                    piece: p.id,
+                }) {
                     p.body = b;
                 }
             }

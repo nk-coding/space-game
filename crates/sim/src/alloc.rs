@@ -75,8 +75,10 @@ impl AllocTable {
         for g in &mut t.groups {
             g.sort_by(|&a, &b| k(a).total_cmp(&k(b)).then(a.cmp(&b)));
         }
-        t.pos.sort_by(|&a, &b| k(b).total_cmp(&k(a)).then(a.cmp(&b)));
-        t.neg.sort_by(|&a, &b| k(a).total_cmp(&k(b)).then(a.cmp(&b)));
+        t.pos
+            .sort_by(|&a, &b| k(b).total_cmp(&k(a)).then(a.cmp(&b)));
+        t.neg
+            .sort_by(|&a, &b| k(a).total_cmp(&k(b)).then(a.cmp(&b)));
         t
     }
 }
@@ -185,16 +187,32 @@ pub fn allocate(
         std::mem::swap(&mut lo, &mut hi);
     }
     let target = torque.clamp(lo, hi);
-    let lam = if hi - lo > 1e-6 { (target - lo) / (hi - lo) } else { 0.5 };
+    let lam = if hi - lo > 1e-6 {
+        (target - lo) / (hi - lo)
+    } else {
+        0.5
+    };
     for (rows, &f) in table.groups.iter().zip(&fg) {
         if f <= 0.0 {
             continue;
         }
         if lam < 1.0 {
-            greedy(rows.iter().copied(), th, fmax, f, Some((&mut out.throttle, 1.0 - lam)));
+            greedy(
+                rows.iter().copied(),
+                th,
+                fmax,
+                f,
+                Some((&mut out.throttle, 1.0 - lam)),
+            );
         }
         if lam > 0.0 {
-            greedy(rows.iter().rev().copied(), th, fmax, f, Some((&mut out.throttle, lam)));
+            greedy(
+                rows.iter().rev().copied(),
+                th,
+                fmax,
+                f,
+                Some((&mut out.throttle, lam)),
+            );
         }
     }
     let mut made = 0.0f32;
@@ -228,7 +246,11 @@ pub fn allocate(
             let frac = (rest / cap).clamp(-1.0, 1.0);
             for (i, t) in th.iter().enumerate() {
                 if t.gimbal > 0.0 && out.throttle[i] > 0.0 && t.torque_per_lateral != 0.0 {
-                    out.deflect[i] = if t.torque_per_lateral > 0.0 { frac } else { -frac };
+                    out.deflect[i] = if t.torque_per_lateral > 0.0 {
+                        frac
+                    } else {
+                        -frac
+                    };
                 }
             }
             rest -= frac * cap;

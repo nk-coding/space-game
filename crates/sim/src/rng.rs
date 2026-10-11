@@ -140,9 +140,8 @@ pub struct RngStreams {
 impl RngStreams {
     pub fn new(world_seed: u64) -> RngStreams {
         RngStreams {
-            streams: Stream::ALL.map(|s| {
-                Pcg32::new(splitmix64(world_seed ^ splitmix64(s.id())), s.id())
-            }),
+            streams: Stream::ALL
+                .map(|s| Pcg32::new(splitmix64(world_seed ^ splitmix64(s.id())), s.id())),
         }
     }
 
@@ -171,7 +170,9 @@ mod tests {
         let got: Vec<u32> = (0..6).map(|_| r.next_u32()).collect();
         assert_eq!(
             got,
-            vec![0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e]
+            vec![
+                0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e
+            ]
         );
     }
 
@@ -189,10 +190,7 @@ mod tests {
         for _ in 0..100 {
             a.get(Stream::Damage).next_u32();
         }
-        assert_eq!(
-            a.get(Stream::Ai).next_u64(),
-            b.get(Stream::Ai).next_u64()
-        );
+        assert_eq!(a.get(Stream::Ai).next_u64(), b.get(Stream::Ai).next_u64());
         // Different streams differ.
         let mut c = RngStreams::new(7);
         let x = c.get(Stream::Weapons).next_u64();

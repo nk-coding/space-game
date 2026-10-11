@@ -52,7 +52,10 @@ fn inherited_velocity_is_rigid_body_motion() {
     // ω = 2 rad/s ccw, the new centre 1 m to the right of the old one: it moves up at 2 m/s extra.
     let v = inherited_velocity(Vec2::new(1.0, 2.0), 2.0, Vec2::ZERO, Vec2::new(1.0, 0.0));
     assert_eq!(v, Vec2::new(1.0, 4.0));
-    assert_eq!(inherited_velocity(Vec2::new(1.0, 2.0), 0.0, Vec2::ZERO, Vec2::new(5.0, 5.0)), Vec2::new(1.0, 2.0));
+    assert_eq!(
+        inherited_velocity(Vec2::new(1.0, 2.0), 0.0, Vec2::ZERO, Vec2::new(5.0, 5.0)),
+        Vec2::new(1.0, 2.0)
+    );
 }
 
 #[test]
@@ -75,7 +78,11 @@ fn runner_splits_down_the_middle() {
     let centre = [(5, 0), (6, 0), (5, 2), (5, 4), (6, 4), (5, 5)];
     kill_now(&mut w, s, &centre);
 
-    let destroyed = w.events().iter().filter(|e| matches!(e, SimEvent::PartDestroyed { .. })).count();
+    let destroyed = w
+        .events()
+        .iter()
+        .filter(|e| matches!(e, SimEvent::PartDestroyed { .. }))
+        .count();
     assert_eq!(destroyed, 6);
     let splits: Vec<_> = w
         .events()
@@ -103,10 +110,20 @@ fn runner_splits_down_the_middle() {
     // Parts are partitioned; the kept piece is the left half (lowest part index on a tie).
     let mut all: Vec<PartIdx> = a.parts.iter().chain(&b.parts).copied().collect();
     all.sort();
-    let alive: Vec<PartIdx> = (0..d.parts.len() as PartIdx).filter(|&i| ship.part(i).alive).collect();
+    let alive: Vec<PartIdx> = (0..d.parts.len() as PartIdx)
+        .filter(|&i| ship.part(i).alive)
+        .collect();
     assert_eq!(all, alive);
-    let core_x = |p: &sim::Piece| p.parts.iter().find(|&&i| d.parts[i as usize].logic).map(|&i| d.parts[i as usize].shape.x);
-    assert!(core_x(a).unwrap() < 6 && core_x(b).unwrap() >= 6, "a core in each half");
+    let core_x = |p: &sim::Piece| {
+        p.parts
+            .iter()
+            .find(|&&i| d.parts[i as usize].logic)
+            .map(|&i| d.parts[i as usize].shape.x)
+    };
+    assert!(
+        core_x(a).unwrap() < 6 && core_x(b).unwrap() >= 6,
+        "a core in each half"
+    );
     for &p in &b.parts {
         assert_eq!(ship.part(p).piece, b.id);
     }
@@ -116,11 +133,19 @@ fn runner_splits_down_the_middle() {
         .iter()
         .map(|&cell| d.parts[d.grid.occupant(cell).unwrap()].mass)
         .sum();
-    assert!(close(a.mass.mass + b.mass.mass, parent.mass.mass - lost, 1e-3));
+    assert!(close(
+        a.mass.mass + b.mass.mass,
+        parent.mass.mass - lost,
+        1e-3
+    ));
     assert!(close(a.mass.mass, b.mass.mass, 1e-4));
     assert!(close(a.mass.inertia, b.mass.inertia, 1e-2));
     let com_a_bp = [a.origin[0] + a.mass.com.x, a.origin[1] - a.mass.com.y];
-    assert!(close(com_a_bp[0] + b.origin[0], 12.0, 1e-4), "{com_a_bp:?} vs {:?}", b.origin);
+    assert!(
+        close(com_a_bp[0] + b.origin[0], 12.0, 1e-4),
+        "{com_a_bp:?} vs {:?}",
+        b.origin
+    );
     assert!(close(com_a_bp[1], b.origin[1], 1e-4));
     // The new piece's frame sits on its centre of mass; colliders and snapshots match the live pieces.
     assert_eq!(b.mass.com, Vec2::ZERO);
@@ -131,13 +156,20 @@ fn runner_splits_down_the_middle() {
     let after = part_positions(&w, s);
     for (i, (p0, p1)) in before.iter().zip(&after).enumerate() {
         if let (Some(p0), Some(p1)) = (p0, p1) {
-            assert!((*p0 - *p1).length() < 1e-4, "part {i} moved from {p0:?} to {p1:?}");
+            assert!(
+                (*p0 - *p1).length() < 1e-4,
+                "part {i} moved from {p0:?} to {p1:?}"
+            );
         }
     }
     // Velocities: rigid-body motion of the old body at each new centre of mass; spin unchanged.
     for p in [a, b] {
         let want = inherited_velocity(body.linvel, body.angvel, com_old, p.com_world());
-        assert!((p.body.linvel - want).length() < 1e-4, "{:?} vs {want:?}", p.body.linvel);
+        assert!(
+            (p.body.linvel - want).length() < 1e-4,
+            "{:?} vs {want:?}",
+            p.body.linvel
+        );
         assert_eq!(p.body.angvel, body.angvel);
         assert_eq!(p.body.angle, body.angle);
     }
@@ -154,7 +186,11 @@ fn runner_splits_down_the_middle() {
     }
     // The split pose in the event equals the live body.
     assert_eq!(new.body, b.body);
-    assert!((new.body.pos - (body.pos + sim::Rot::from_angle(body.angle).apply(new.offset_in_parent))).length() < 1e-5);
+    assert!(
+        (new.body.pos - (body.pos + sim::Rot::from_angle(body.angle).apply(new.offset_in_parent)))
+            .length()
+            < 1e-5
+    );
 }
 
 #[test]
@@ -165,8 +201,16 @@ fn raider_breaks_into_salvage() {
     let id0 = w.ship(s).unwrap().pieces()[0].id;
     // Losing only the core leaves one piece, but it is salvage now: the thruster stops.
     w.step(&kill(s, &[(1, 1)]));
-    assert!(w.events().iter().any(|e| matches!(e, SimEvent::PieceChanged { piece, .. } if piece.salvage)));
-    assert!(w.events().iter().any(|e| matches!(e, SimEvent::ControlLost { .. })));
+    assert!(
+        w.events()
+            .iter()
+            .any(|e| matches!(e, SimEvent::PieceChanged { piece, .. } if piece.salvage))
+    );
+    assert!(
+        w.events()
+            .iter()
+            .any(|e| matches!(e, SimEvent::ControlLost { .. }))
+    );
     assert_eq!(w.ship(s).unwrap().control_piece(), None);
     w.step(&inputs(s, controls(1, 1.0, true, true)));
     let p = &w.ship(s).unwrap().pieces()[0];
@@ -186,14 +230,22 @@ fn raider_breaks_into_salvage() {
     assert_eq!(split.kept.id, id0);
     assert_eq!(split.spawned.len(), 1);
     assert!(split.kept.salvage && split.spawned[0].salvage);
-    let col = |x: i32| -> Vec<PartIdx> { (0..3).map(|y| d.grid.occupant((x, y)).unwrap() as PartIdx).collect() };
+    let col = |x: i32| -> Vec<PartIdx> {
+        (0..3)
+            .map(|y| d.grid.occupant((x, y)).unwrap() as PartIdx)
+            .collect()
+    };
     let mut left = col(0);
     left.sort();
     let mut right = col(2);
     right.sort();
     assert_eq!(split.kept.parts, left);
     assert_eq!(split.spawned[0].parts, right);
-    assert!(close(split.kept.mass.mass, split.spawned[0].mass.mass, 1e-5));
+    assert!(close(
+        split.kept.mass.mass,
+        split.spawned[0].mass.mass,
+        1e-5
+    ));
 }
 
 #[test]
@@ -204,9 +256,16 @@ fn last_part_destroys_the_piece() {
     let all: Vec<(i32, i32)> = (0..3).flat_map(|y| (0..3).map(move |x| (x, y))).collect();
     w.step(&kill(s, &all));
     assert!(w.ship(s).unwrap().pieces().is_empty());
-    assert!(w.events().iter().any(|e| matches!(e, SimEvent::PieceDestroyed { .. })));
+    assert!(
+        w.events()
+            .iter()
+            .any(|e| matches!(e, SimEvent::PieceDestroyed { .. }))
+    );
     // Further damage is ignored and nothing breaks.
-    assert_eq!(w.apply_damage(s, DamageTarget::Cell((1, 1)), 1.0), DamageOutcome::Ignored);
+    assert_eq!(
+        w.apply_damage(s, DamageTarget::Cell((1, 1)), 1.0),
+        DamageOutcome::Ignored
+    );
     w.step(&TickInputs::default());
 }
 
@@ -216,8 +275,15 @@ fn damage_outcomes() {
     let d = design(&c, "halvex_runner");
     let (mut w, s) = world_with(d.clone());
     let armor = find(&d, "armor_block", 3, 1); // composite: 1.4 hp
-    assert_eq!(w.apply_damage(s, DamageTarget::Part(armor), 0.0), DamageOutcome::Ignored);
-    assert_eq!(w.apply_damage(s, DamageTarget::Cell((0, 0)), 1.0), DamageOutcome::Ignored, "empty cell");
+    assert_eq!(
+        w.apply_damage(s, DamageTarget::Part(armor), 0.0),
+        DamageOutcome::Ignored
+    );
+    assert_eq!(
+        w.apply_damage(s, DamageTarget::Cell((0, 0)), 1.0),
+        DamageOutcome::Ignored,
+        "empty cell"
+    );
     match w.apply_damage(s, DamageTarget::Part(armor), 1.0) {
         DamageOutcome::Damaged { hp_left } => assert!(close(hp_left, 0.4, 1e-5)),
         o => panic!("{o:?}"),
@@ -226,7 +292,10 @@ fn damage_outcomes() {
         DamageOutcome::Destroyed { excess } => assert!(close(excess, 0.6, 1e-5)),
         o => panic!("{o:?}"),
     }
-    assert_eq!(w.apply_damage(s, DamageTarget::Part(armor), 1.0), DamageOutcome::Ignored);
+    assert_eq!(
+        w.apply_damage(s, DamageTarget::Part(armor), 1.0),
+        DamageOutcome::Ignored
+    );
     assert!(w.ship(s).unwrap().grid().occupant((3, 1)).is_none());
 }
 
@@ -280,7 +349,10 @@ fn pieces_keep_splitting_with_fresh_ids() {
     w.step(&kill(s, &[(8, 1), (8, 2), (8, 3), (8, 4), (8, 5)]));
     let ship = w.ship(s).unwrap();
     let ids: Vec<u32> = ship.pieces().iter().map(|p| p.id.0).collect();
-    assert!(ids.windows(2).all(|w| w[0] < w[1]), "pieces stay sorted by id: {ids:?}");
+    assert!(
+        ids.windows(2).all(|w| w[0] < w[1]),
+        "pieces stay sorted by id: {ids:?}"
+    );
     assert!(ship.pieces().len() >= 3);
     // Exactly one piece per alive part, and each part knows its piece.
     for p in ship.pieces() {

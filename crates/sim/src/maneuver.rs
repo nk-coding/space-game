@@ -21,7 +21,11 @@ pub enum Maneuver {
     /// Close in to `range` metres, then face the target and keep pace.
     Approach { target: Target, range: f32 },
     /// Circle the target at `radius`, counter-clockwise if `ccw`.
-    Orbit { target: Target, radius: f32, ccw: bool },
+    Orbit {
+        target: Target,
+        radius: f32,
+        ccw: bool,
+    },
 }
 
 impl Maneuver {
@@ -61,11 +65,19 @@ impl Maneuver {
                 }
                 None => brake,
             },
-            Maneuver::Orbit { target, radius, ccw } => match resolve_target(ships, &target) {
+            Maneuver::Orbit {
+                target,
+                radius,
+                ccw,
+            } => match resolve_target(ships, &target) {
                 Some(ts) => {
                     let r = kin.pos - ts.pos;
                     let dist = r.length();
-                    let out = if dist > 1e-3 { r * (1.0 / dist) } else { Vec2::Y };
+                    let out = if dist > 1e-3 {
+                        r * (1.0 / dist)
+                    } else {
+                        Vec2::Y
+                    };
                     let tangent = if ccw { out.perp() } else { -out.perp() };
                     // Tangential speed: a share of top speed, limited by the centripetal acceleration the ship
                     // can hold.
@@ -73,7 +85,8 @@ impl Maneuver {
                     let speed = (0.6 * kin.top_speed).min(crate::math::sqrt(lateral));
                     let err = dist - radius;
                     let radial = kin.arrive_speed(err.abs(), tuning);
-                    let v = tangent * speed + out * (if err > 0.0 { -radial } else { radial }) + ts.vel;
+                    let v =
+                        tangent * speed + out * (if err > 0.0 { -radial } else { radial }) + ts.vel;
                     FlightGoal {
                         heading: HeadingGoal::Auto,
                         velocity: Some(v),
@@ -147,7 +160,12 @@ impl Default for RaiderBrain {
 
 impl RaiderBrain {
     /// Next brain state, the maneuver to fly and whether to fire.
-    pub(crate) fn think(&self, me: &Ship, kin: &Kin, ships: &[Ship]) -> (RaiderBrain, Maneuver, bool) {
+    pub(crate) fn think(
+        &self,
+        me: &Ship,
+        kin: &Kin,
+        ships: &[Ship],
+    ) -> (RaiderBrain, Maneuver, bool) {
         use raider::*;
         let faction = &me.design().faction;
         let mut best: Option<(f32, ShipId, Vec2)> = None;
@@ -170,7 +188,11 @@ impl RaiderBrain {
         let Some((dist, target, pos)) = best else {
             return (RaiderBrain::default(), Maneuver::Brake, false);
         };
-        let ticks = if self.target == Some(target) { self.phase_ticks + 1 } else { 0 };
+        let ticks = if self.target == Some(target) {
+            self.phase_ticks + 1
+        } else {
+            0
+        };
         let mut next = RaiderBrain {
             target: Some(target),
             phase: self.phase,
@@ -236,7 +258,11 @@ impl StateHash for Maneuver {
                 target.hash_state(h);
                 h.f32(*range);
             }
-            Maneuver::Orbit { target, radius, ccw } => {
+            Maneuver::Orbit {
+                target,
+                radius,
+                ccw,
+            } => {
                 h.u8(4);
                 target.hash_state(h);
                 h.f32(*radius);

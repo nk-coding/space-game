@@ -11,6 +11,7 @@
 
 use core::f32::consts::{FRAC_PI_2, PI};
 
+use crate::DT;
 use crate::alloc::allocate;
 use crate::config::{FlightTuning, SimConfig};
 use crate::design::NO_SLOT;
@@ -20,7 +21,6 @@ use crate::maneuver::{Maneuver, RaiderBrain};
 use crate::math::{Rot, Vec2, atan2, cos, sqrt};
 use crate::physics::wrap_angle;
 use crate::ship::{Piece, Ship, Wrench};
-use crate::DT;
 
 /// What a lock or a maneuver points at.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,9 +79,15 @@ pub enum HelmMode {
     /// No flight computer: engine throttles straight from `ShipControls` (tests, tools).
     Raw,
     Pilot(PilotInput),
-    Maneuver { maneuver: Maneuver, fire: bool },
+    Maneuver {
+        maneuver: Maneuver,
+        fire: bool,
+    },
     /// A goal set directly (tools, tests).
-    Goal { goal: FlightGoal, fire: bool },
+    Goal {
+        goal: FlightGoal,
+        fire: bool,
+    },
 }
 
 /// What the flight computer did this tick (for HUDs and tuning).
@@ -154,7 +160,11 @@ impl Kin {
         let inertia = p.mass.inertia.max(1e-6);
         let accel = caps[best] / mass;
         let diff = a.torque_ccw.min(a.torque_cw);
-        let diff = if diff > 0.0 { diff } else { 0.5 * a.torque_ccw.max(a.torque_cw) };
+        let diff = if diff > 0.0 {
+            diff
+        } else {
+            0.5 * a.torque_ccw.max(a.torque_cw)
+        };
         let rot = Rot::from_angle(p.body.angle);
         Kin {
             pos: p.body.pos + rot.apply(p.mass.com),
@@ -184,8 +194,16 @@ impl Kin {
 
     /// Most force the thrust groups can push along body-frame unit vector `u`.
     pub fn cap_along(&self, u: Vec2) -> f32 {
-        let cx = if u.x >= 0.0 { self.caps[2] } else { self.caps[3] };
-        let cy = if u.y >= 0.0 { self.caps[0] } else { self.caps[1] };
+        let cx = if u.x >= 0.0 {
+            self.caps[2]
+        } else {
+            self.caps[3]
+        };
+        let cy = if u.y >= 0.0 {
+            self.caps[0]
+        } else {
+            self.caps[1]
+        };
         let (ax, ay) = (u.x.abs(), u.y.abs());
         let mut c = f32::INFINITY;
         if ax > 1e-6 {
@@ -230,7 +248,10 @@ pub fn resolve_target(ships: &[Ship], t: &Target) -> Option<TargetState> {
             let s = find_ship(ships, id)?;
             let p = match s.control_piece() {
                 Some(c) => s.piece(c)?,
-                None => s.pieces().iter().max_by_key(|p| (p.parts.len(), std::cmp::Reverse(p.id)))?,
+                None => s
+                    .pieces()
+                    .iter()
+                    .max_by_key(|p| (p.parts.len(), std::cmp::Reverse(p.id)))?,
             };
             Some(piece_state(p))
         }
@@ -311,7 +332,12 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
 }
 
 /// Stick and lock → goal.
-pub fn pilot_goal(input: &PilotInput, kin: &Kin, ships: &[Ship], tuning: &FlightTuning) -> FlightGoal {
+pub fn pilot_goal(
+    input: &PilotInput,
+    kin: &Kin,
+    ships: &[Ship],
+    tuning: &FlightTuning,
+) -> FlightGoal {
     let mut stick = input.stick;
     let len = stick.length();
     if len > 1.0 {
@@ -335,7 +361,11 @@ pub fn pilot_goal(input: &PilotInput, kin: &Kin, ships: &[Ship], tuning: &Flight
     }
     if !pushed {
         return FlightGoal {
-            heading: if input.drift { HeadingGoal::Keep } else { HeadingGoal::Auto },
+            heading: if input.drift {
+                HeadingGoal::Keep
+            } else {
+                HeadingGoal::Auto
+            },
             velocity: released_velocity,
         };
     }
@@ -353,7 +383,11 @@ pub fn pilot_goal(input: &PilotInput, kin: &Kin, ships: &[Ship], tuning: &Flight
     // direction as it shrinks (w ∝ |dv|): the nose settles exactly on the stick once the velocity has arrived,
     // and small sideways errors still get some thrust along them.
     let dv_len = dv.length();
-    let w = if kin.top_speed > 0.0 { (dv_len / (0.1 * kin.top_speed)).min(1.0) } else { 0.0 };
+    let w = if kin.top_speed > 0.0 {
+        (dv_len / (0.1 * kin.top_speed)).min(1.0)
+    } else {
+        0.0
+    };
     let mut h = s_dir * (1.0 - w);
     if dv_len > 1e-6 {
         h += dv * (w / dv_len);
@@ -463,13 +497,21 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         fmax.clear();
         fmax.extend(piece.thrusters.iter().map(|t| {
             let ps = &parts[t.part as usize];
-            if t.clear && ps.alive && !ps.overheated { t.max_force } else { 0.0 }
+            if t.clear && ps.alive && !ps.overheated {
+                t.max_force
+            } else {
+                0.0
+            }
         }));
         let tmax = &mut scratch.tmax;
         tmax.clear();
         tmax.extend(piece.torque_sources.iter().map(|s| {
             let ps = &parts[s.part as usize];
-            if ps.alive && !ps.overheated { s.max } else { 0.0 }
+            if ps.alive && !ps.overheated {
+                s.max
+            } else {
+                0.0
+            }
         }));
         let expected = allocate(
             &piece.thrusters,

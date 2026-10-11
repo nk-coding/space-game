@@ -79,7 +79,11 @@ impl StateHasher {
     #[inline]
     pub fn f32(&mut self, v: f32) {
         debug_assert!(!v.is_nan(), "NaN in hashed sim state");
-        self.u32(if v.is_nan() { CANONICAL_NAN } else { v.to_bits() });
+        self.u32(if v.is_nan() {
+            CANONICAL_NAN
+        } else {
+            v.to_bits()
+        });
     }
 
     #[inline]

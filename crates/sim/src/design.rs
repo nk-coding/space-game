@@ -275,7 +275,10 @@ impl ShipDesign {
         for (i, (pl, def)) in ship.parts.iter().zip(&defs).enumerate() {
             let shape = *grid.shape(i);
             let mass = content.placement_mass(pl).ok_or_else(|| {
-                format!("ship `{}` part {i} (`{}`): no mass (missing armour material?)", ship.id, pl.part)
+                format!(
+                    "ship `{}` part {i} (`{}`): no mass (missing armour material?)",
+                    ship.id, pl.part
+                )
             })?;
             let hp = content.placement_hp(pl).ok_or_else(|| {
                 format!("ship `{}` part {i} (`{}`): no hit points", ship.id, pl.part)
@@ -283,17 +286,25 @@ impl ShipDesign {
             let (centroid, inertia) = polygon_mass(&shape.polygon(), mass);
             let power = def.power.clone().unwrap_or_default();
             let heat = def.heat.clone().unwrap_or_default();
-            let mut base = PartStats { v: [0.0; Stat::COUNT] };
+            let mut base = PartStats {
+                v: [0.0; Stat::COUNT],
+            };
             base.set(Stat::PowerOutput, power.output);
             base.set(Stat::PowerDraw, power.draw);
             base.set(Stat::HeatOutput, heat.output);
             base.set(Stat::HeatLimit, heat.limit.unwrap_or(f32::INFINITY));
-            base.set(Stat::HeatVent, def.radiator.as_ref().map_or(0.0, |r| r.vent));
+            base.set(
+                Stat::HeatVent,
+                def.radiator.as_ref().map_or(0.0, |r| r.vent),
+            );
             base.set(Stat::Damage, def.weapon.as_ref().map_or(0.0, |w| w.damage));
             base.set(Stat::FireRate, 1.0);
             base.set(Stat::Thrust, def.engine.as_ref().map_or(0.0, |e| e.thrust));
             base.set(Stat::Gimbal, def.engine.as_ref().map_or(0.0, |e| e.gimbal));
-            base.set(Stat::ShieldRadius, def.shield.as_ref().map_or(0.0, |s| s.radius));
+            base.set(
+                Stat::ShieldRadius,
+                def.shield.as_ref().map_or(0.0, |s| s.radius),
+            );
             base.set(Stat::Torque, def.gyro.as_ref().map_or(0.0, |g| g.torque));
             base.set(Stat::RcsThrust, def.rcs.as_ref().map_or(0.0, |r| r.thrust));
             let consumer = (power.draw > 0.0).then(|| {
@@ -395,7 +406,10 @@ impl ShipDesign {
                 if let Selector::Part(id) = &b.target
                     && !content.parts.contains(id)
                 {
-                    warnings.push(format!("part `{}` bonus {k}: unknown target part `{id}`", def.id));
+                    warnings.push(format!(
+                        "part `{}` bonus {k}: unknown target part `{id}`",
+                        def.id
+                    ));
                 }
             }
         }

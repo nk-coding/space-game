@@ -147,9 +147,16 @@ impl Scenario {
             }
         }
         for ship in self.sim.ships() {
-            self.stats.overheated_part_ticks +=
-                ship.parts().iter().filter(|p| p.alive && p.overheated).count() as u64;
-            if ship.pieces().iter().any(|p| p.guns.iter().any(|g| g.output > 0.0)) {
+            self.stats.overheated_part_ticks += ship
+                .parts()
+                .iter()
+                .filter(|p| p.alive && p.overheated)
+                .count() as u64;
+            if ship
+                .pieces()
+                .iter()
+                .any(|p| p.guns.iter().any(|g| g.output > 0.0))
+            {
                 self.stats.firing_ticks += 1;
             }
         }
@@ -166,7 +173,14 @@ impl Scenario {
             .sim
             .ships()
             .iter()
-            .map(|s| (s.id(), s.design().engines.len(), s.brain().is_some(), s.design().id == HEAT_STRESS))
+            .map(|s| {
+                (
+                    s.id(),
+                    s.design().engines.len(),
+                    s.brain().is_some(),
+                    s.design().id == HEAT_STRESS,
+                )
+            })
             .collect();
         let enemies: Vec<crate::ShipId> = self
             .sim
@@ -197,13 +211,26 @@ impl Scenario {
                         .collect();
                     let fire = stressed || rng.chance(0.6);
                     let shields = rng.chance(0.85);
-                    self.inputs.controls.push((id, ShipControls { throttle, fire, shields }));
+                    self.inputs.controls.push((
+                        id,
+                        ShipControls {
+                            throttle,
+                            fire,
+                            shields,
+                        },
+                    ));
                 }
                 ScenarioKind::Flight => {
                     let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
-                    let len = if rng.chance(0.2) { 0.0 } else { rng.range_f32(0.2, 1.0) };
+                    let len = if rng.chance(0.2) {
+                        0.0
+                    } else {
+                        rng.range_f32(0.2, 1.0)
+                    };
                     let lock = if !enemies.is_empty() && rng.chance(0.5) {
-                        Some(Target::Ship(enemies[rng.below(enemies.len() as u32) as usize]))
+                        Some(Target::Ship(
+                            enemies[rng.below(enemies.len() as u32) as usize],
+                        ))
                     } else {
                         None
                     };

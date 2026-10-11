@@ -17,7 +17,10 @@ fn same_seed_gives_identical_hash_sequence() {
     // The scenario exercises what it should.
     assert!(sa.parts_destroyed > 50, "{sa:?}");
     assert!(sa.splits > 5, "{sa:?}");
-    assert!(sa.overheated_part_ticks > 0, "the heat-stress ship overheats: {sa:?}");
+    assert!(
+        sa.overheated_part_ticks > 0,
+        "the heat-stress ship overheats: {sa:?}"
+    );
     // Hashes change every tick (time, heat and motion all move).
     assert!(a.windows(2).all(|w| w[0] != w[1]));
 }
@@ -87,7 +90,8 @@ fn incremental_caches_match_a_full_recompute() {
         sc.step();
         if t % 30 == 0 {
             for ship in sc.sim.ships() {
-                ship.verify_caches().unwrap_or_else(|e| panic!("tick {t}, {:?}: {e}", ship.id()));
+                ship.verify_caches()
+                    .unwrap_or_else(|e| panic!("tick {t}, {:?}: {e}", ship.id()));
             }
         }
     }

@@ -12,18 +12,18 @@ use std::sync::Arc;
 
 use data::{Dir, Effect, ShipGrid};
 
+use crate::DT;
 use crate::alloc::{Actuation, AllocTable, TorqueSource, wrench_of};
 use crate::collider::{ColliderScratch, ConvexPolygon, build_colliders};
-use crate::flight::{FlightTelemetry, HelmMode};
-use crate::maneuver::RaiderBrain;
 use crate::design::{
     ConsumerKind, DEFAULT_POWER_PRIORITY, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat,
 };
+use crate::flight::{FlightTelemetry, HelmMode};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
+use crate::maneuver::RaiderBrain;
 use crate::mass::{MassProps, combine, to_piece};
 use crate::math::{Rot, Vec2, sin};
-use crate::DT;
 
 /// Heat model constants. **PLACEHOLDERS** for feel; the steady state matches the concept-board drydock
 /// (`docs/concept/reference/drydock-model.js`): `loss · T = gen − Σ K (T − T_neighbour)`.
@@ -477,7 +477,10 @@ impl Ship {
             ship.pieces.push(Piece::new(pid, comp, origins[k], b));
         }
         if let Some(&first) = ship.pieces.get(main).map(|p| &p.id)
-            && ship.pieces[main].parts.iter().any(|&p| ship.design.parts[p as usize].logic)
+            && ship.pieces[main]
+                .parts
+                .iter()
+                .any(|&p| ship.design.parts[p as usize].logic)
         {
             ship.control = Some(first);
             ship.pieces[main].controlled = true;
@@ -626,7 +629,8 @@ impl Ship {
             let mut sign = 0.0f32;
             for k in 0..poly.len() {
                 let (a, b) = (poly[k], poly[(k + 1) % poly.len()]);
-                let c = (b.x - a.x) as f32 * (by - a.y as f32) - (b.y - a.y) as f32 * (bx - a.x as f32);
+                let c =
+                    (b.x - a.x) as f32 * (by - a.y as f32) - (b.y - a.y) as f32 * (bx - a.x as f32);
                 if c != 0.0 {
                     if sign != 0.0 && c.signum() != sign {
                         return None;
@@ -791,18 +795,30 @@ impl Ship {
         for &p in &alive {
             let i = p as usize;
             if fresh.parts[i].open_sides != self.parts[i].open_sides {
-                return Err(format!("part {p}: open sides {} vs fresh {}", self.parts[i].open_sides, fresh.parts[i].open_sides));
+                return Err(format!(
+                    "part {p}: open sides {} vs fresh {}",
+                    self.parts[i].open_sides, fresh.parts[i].open_sides
+                ));
             }
             if fresh.stats[i] != self.stats[i] || fresh.heat_k[i] != self.heat_k[i] {
-                return Err(format!("part {p}: stats {:?} vs fresh {:?}", self.stats[i], fresh.stats[i]));
+                return Err(format!(
+                    "part {p}: stats {:?} vs fresh {:?}",
+                    self.stats[i], fresh.stats[i]
+                ));
             }
         }
         for (k, piece) in self.pieces.iter().enumerate() {
             let mut f = fresh.clone();
             f.rebuild_piece(k);
             let fp = &f.pieces[k];
-            if fp.mass != piece.mass || fp.colliders != piece.colliders || fp.consumers != piece.consumers {
-                return Err(format!("piece {:?}: caches differ from a rebuild", piece.id));
+            if fp.mass != piece.mass
+                || fp.colliders != piece.colliders
+                || fp.consumers != piece.consumers
+            {
+                return Err(format!(
+                    "piece {:?}: caches differ from a rebuild",
+                    piece.id
+                ));
             }
         }
         Ok(())
@@ -885,7 +901,11 @@ impl Ship {
             }
         }
         let prio = self.power_priority;
-        let rank = |k: ConsumerKind| prio.iter().position(|&x| x == k).unwrap_or(ConsumerKind::COUNT);
+        let rank = |k: ConsumerKind| {
+            prio.iter()
+                .position(|&x| x == k)
+                .unwrap_or(ConsumerKind::COUNT)
+        };
         piece.consumers.sort_by_key(|c| (rank(c.kind), c.part));
 
         // Torque sources (gyros, logic cores) and cores.
@@ -906,7 +926,14 @@ impl Ship {
         piece.thrusters.clear();
         piece.guns.clear();
         let com = piece.mass.com;
-        let row = |slot: u32, part: PartIdx, dir: Vec2, point: Vec2, max_force: f32, clear: bool, gimbal: f32, rcs: bool| {
+        let row = |slot: u32,
+                   part: PartIdx,
+                   dir: Vec2,
+                   point: Vec2,
+                   max_force: f32,
+                   clear: bool,
+                   gimbal: f32,
+                   rcs: bool| {
             let arm = point - com;
             let lat = dir.perp();
             Thruster {
@@ -932,7 +959,11 @@ impl Ship {
             if spec.is_engine && slot != NO_SLOT {
                 let e = &d.engines[slot as usize];
                 let deg = st.get(Stat::Gimbal).clamp(0.0, 89.0);
-                let gimbal = if deg > 0.0 { sin(deg * (core::f32::consts::PI / 180.0)) } else { 0.0 };
+                let gimbal = if deg > 0.0 {
+                    sin(deg * (core::f32::consts::PI / 180.0))
+                } else {
+                    0.0
+                };
                 piece.thrusters.push(row(
                     slot,
                     p,
@@ -975,7 +1006,10 @@ impl Ship {
                 if !open {
                     continue;
                 }
-                let centre = [c.0 as f32 + 0.5 + 0.5 * dx as f32, c.1 as f32 + 0.5 + 0.5 * dy as f32];
+                let centre = [
+                    c.0 as f32 + 0.5 + 0.5 * dx as f32,
+                    c.1 as f32 + 0.5 + 0.5 * dy as f32,
+                ];
                 piece.thrusters.push(row(
                     NO_SLOT,
                     p,
@@ -1012,7 +1046,9 @@ impl Ship {
         auth.torque_pure = piece.torque_sources.iter().map(|s| s.max).sum();
         piece.authority = auth;
         piece.alloc = AllocTable::build(&piece.thrusters);
-        piece.act.resize(piece.thrusters.len(), piece.torque_sources.len());
+        piece
+            .act
+            .resize(piece.thrusters.len(), piece.torque_sources.len());
         piece.output.clear();
         piece.output.resize(piece.thrusters.len(), 0.0);
         piece.active = piece.controlled && piece.has_core;
@@ -1118,18 +1154,32 @@ impl Ship {
             fmax.clear();
             fmax.extend(piece.thrusters.iter().map(|t| {
                 let ps = &parts[t.part as usize];
-                if active && t.clear && ps.alive && !ps.overheated { t.max_force * ps.power } else { 0.0 }
+                if active && t.clear && ps.alive && !ps.overheated {
+                    t.max_force * ps.power
+                } else {
+                    0.0
+                }
             }));
             let tmax = &mut scratch.tmax;
             tmax.clear();
             tmax.extend(piece.torque_sources.iter().map(|src| {
                 let ps = &parts[src.part as usize];
-                if active && ps.alive && !ps.overheated { src.max * ps.power } else { 0.0 }
+                if active && ps.alive && !ps.overheated {
+                    src.max * ps.power
+                } else {
+                    0.0
+                }
             }));
-            if piece.act.throttle.len() == piece.thrusters.len() && piece.act.torque.len() == tmax.len() {
+            if piece.act.throttle.len() == piece.thrusters.len()
+                && piece.act.torque.len() == tmax.len()
+            {
                 piece.wrench = wrench_of(&piece.thrusters, fmax, tmax, &piece.act);
                 for (i, t) in piece.thrusters.iter().enumerate() {
-                    piece.output[i] = if t.max_force > 0.0 { piece.act.throttle[i] * fmax[i] / t.max_force } else { 0.0 };
+                    piece.output[i] = if t.max_force > 0.0 {
+                        piece.act.throttle[i] * fmax[i] / t.max_force
+                    } else {
+                        0.0
+                    };
                 }
             } else {
                 piece.wrench = Wrench::default();
@@ -1153,7 +1203,8 @@ impl Ship {
             if !parts[a].alive || !parts[b].alive {
                 continue;
             }
-            let q = tuning::HEAT_CONDUCTANCE * l.edges as f32 * (parts[a].heat - parts[b].heat) * DT;
+            let q =
+                tuning::HEAT_CONDUCTANCE * l.edges as f32 * (parts[a].heat - parts[b].heat) * DT;
             e[a] -= q;
             e[b] += q;
         }
