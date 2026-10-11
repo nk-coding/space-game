@@ -12,8 +12,10 @@ A behavior is a **priority list of rules**. Several times a second the ship look
 conditions (violet in the editor) and one action (teal). Actions are built-in maneuvers (approach, orbit,
 ...); the flight computer flies them, so a behavior can never send a ship spinning.
 
-Guns **fire at will** whatever the action: whenever the target (or, for cannons, the point where the target
-will be) is in front of the nose and within reach.
+Guns **fire at will** whatever the action, each gun on its own: a gun fires whenever the target (for cannons,
+the point where the target will be when the shot gets there) is in front of **that gun** and within its reach.
+Front guns fire while the ship faces the target; side and rear guns fire when the target crosses their line,
+e.g. while the ship orbits.
 
 A ship can run only as many rules as its **logic cores** give it rule slots (a logic core gives six, an
 automaton core two). Rules below that line are inactive; if a core is shot away or overheats, the lowest rules

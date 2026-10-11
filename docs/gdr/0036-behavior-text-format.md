@@ -1,8 +1,8 @@
-# GDR-0036: The behavior text format: one line per rule, `when ... and ... -> action`, no `end`
+# GDR-0036: The behavior text format: one line per rule, `when ... and ... -> action`, no `end`, no `or`
 
-- Status: Proposed
-- Date: 2026-10-11
-- Decided by: behavior agent (proposal for Niklas to review)
+- Status: Accepted
+- Date: 2026-10-11 (proposal); 2026-10-12 (accepted; no `or` confirmed by Niklas)
+- Decided by: Niklas (no `or`: two rules with the same action); behavior agent (the rest of the format; proposal accepted 2026-10-12)
 - Related: [GDR-0015](0015-layered-behavior.md), [ADR-0019](../adr/0019-rhai-scripting.md), [ADR-0026](../adr/0026-behavior-programs-text-in-content.md), `docs/behavior-format.md`
 
 ## Context
@@ -39,6 +39,8 @@ always -> approach(67%)
 - `not` in front of a condition; `<`, `<=`, `>`, `>=`. Case-insensitive names; `if`, `→`, `≤`, `≥` accepted for
   phones and printed canonically. Errors give line, column, what was expected and a "did you mean".
 - Parse → print → parse is lossless; the printed form is canonical.
+- No `or` and no nesting (confirmed by Niklas, 12 Oct): "this or that" is two rules with the same action, so
+  every case costs its rule slot.
 
 ## Consequences
 

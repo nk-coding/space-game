@@ -27,7 +27,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority`, `inherited_velocity`, heat `tuning` constants |
 | `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate`, `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry` |
-| `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee), `RaiderBrain` (legacy) |
+| `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
 | `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `physics` | `PhysicsBackend` trait, `BodyKey`, `BodyDesc`, `RayHit`, `Contact`, the `FreeFlight` backend, `wrap_angle` |
@@ -63,13 +63,14 @@ numbers), `load_test`, `behavior_perf` (behavior cost).
 1. Events of the previous step are dropped (events from calls made since, such as `spawn_ship` or a direct
    `resolve_breakage`, are kept).
 2. Inputs in list order: raw `controls` (switch the ship to `HelmMode::Raw`), `commands` (pilot input,
-   maneuver, goal, brain), scripted `damage`.
+   maneuver, goal, behavior, leader), scripted `damage`.
 3. `resolve_breakage`: each damaged piece is processed once (connectivity, rebuild, splits) → events; bodies
    are updated, created and removed in the backend, and split pieces ghost each other for a few ticks.
 4. **Behaviors think**: every ship with a behavior whose turn it is (every 3 ticks, staggered) picks its target
    and rule from one snapshot of the world; the decisions are applied afterwards (see [Behaviors](#behaviors)).
-5. **Flight**: every ship is planned from the same snapshot of the world (brains, behaviors, maneuvers, pilot
-   input → `FlightGoal`), then the flight computer allocates the actuators of each controlling piece.
+5. **Flight**: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input →
+   `FlightGoal` and what the guns do), then the flight computer allocates the actuators of each controlling
+   piece and fire at will picks the guns that fire (per gun facing).
 6. **Systems** per ship: power → heat → wrench (engines, RCS, gimbals, gyros, cores), gun output, shield
    regeneration.
 7. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
@@ -87,7 +88,7 @@ The rules (also in `src/math.rs`, enforced where possible):
 - **RNG**: in-crate PCG32 (checked against the reference vector of pcg-random.org), so a dependency update can
   never change the numbers. One stream per system (`Stream::Damage`, `Weapons`, `Debris`, `Ai`, `Scenario`),
   seeded with `splitmix64(world_seed ^ splitmix64(stream_id))` and using `stream_id` as the PCG sequence.
-  Stream ids are part of the save/replay format: append only, never renumber. (The raider brain uses no
+  Stream ids are part of the save/replay format: append only, never renumber. (Behaviors use no
   randomness.)
 - **Math**: `f32` everywhere. `+ − × ÷`, `sqrt`, `abs`, `floor`, `min/max`, comparisons and casts are exact
   IEEE operations. Transcendentals go through `sim::math` (libm, pure Rust). `crates/sim/clippy.toml` bans
@@ -96,11 +97,11 @@ The rules (also in `src/math.rs`, enforced where possible):
 - **Containers**: `Vec` and `BTreeMap` only; every loop runs in index order. Ids are monotonic counters.
   The flight plan reads one snapshot for all ships, so ship order never matters.
 - **State hash**: `Sim::state_hash()` = FNV-1a 64 fed with 32-bit words: tick, seed, config, RNG states, id
-  counters, and per ship the controls, control piece, helm and brain state, every part's flags, hp, heat,
-  piece, power share and work, and per piece its parts, flags, ghost timer, frame origin, mass properties,
-  body, power balance, wrench, collider vertices, gun output and actuator commands. Floats by exact bits; NaN
-  canonicalised (and debug-asserted never to occur). Computed every tick in debug builds, on demand in release.
-  `PhysicsBackend::hash_state` can add engine-internal state.
+  counters, and per ship the controls (including the per-gun fire mask), control piece, helm and behavior state,
+  every part's flags, hp, heat, piece, power share and work, and per piece its parts, flags, ghost timer, frame
+  origin, mass properties, body, power balance, wrench, collider vertices, gun output and actuator commands.
+  Floats by exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug
+  builds, on demand in release. `PhysicsBackend::hash_state` can add engine-internal state.
 
 How it is checked:
 
@@ -116,7 +117,9 @@ How it is checked:
   (3000 ticks each). Dev and release builds also agree. **With weapons v1** (same evening): core and flight
   seed 42 (1800 ticks) and flight seed 7 (3000 ticks) identical. **With leading and the load test**: core,
   flight and load (20 ships) seed 42, 1800 ticks, identical. **With behaviors and Rhai** (11 Oct, late):
-  behavior (1548 Rhai evaluations), core, flight and load, seed 42, 1800 ticks each: identical.
+  behavior (1548 Rhai evaluations), core, flight and load, seed 42, 1800 ticks each: identical. **With fire at
+  will per gun and the raider brain removed** (12 Oct): the same four, plus flight seed 7 (3000 ticks):
+  identical.
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -124,15 +127,17 @@ Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every bluep
   one heat-stress ship (three beams on two reactors, always firing, never hit) so overheating stays covered.
   Seed 42, 1800 ticks: 266 parts destroyed, 50 splits, 248 overheated part-ticks.
 - `flight`: player ships flown by random pilot input (stick, lock on an enemy, drift, fire), automaton ships
-  by the raider brain, fewer scripted hits; all weapons fire for real. Seed 42, 1800 ticks: 136 parts
-  destroyed, 26 splits, 1002 pulses and projectiles fired, 78 hull hits, 13 shield hits.
+  by their faction's behavior (`raider_basic`; the raider brain until 12 Oct), fewer scripted hits; all
+  weapons fire for real. Seed 42, 1800 ticks (brain, 11 Oct): 136 parts destroyed, 26 splits, 1002 pulses and
+  projectiles fired, 78 hull hits, 13 shield hits; with `raider_basic` and fire at will per gun (12 Oct): 139
+  parts destroyed, 22 splits, 844 shots, 105 hull hits, 25 shield hits.
 
 - `load` (`ScenarioKind::Load(n)`, `--ships N`, default 20): the shared [load test](#the-load-test).
 - `behavior`: two of every blueprint, every ship under a behavior: raiders `raider_basic`, the first ship-mind
   ship piloted by random input (the leader), the others `skirmisher` (with the Rhai condition `closing_in`) and
   three player programs typed as text (`weakest(engines)`, `threat(weapons)`, an escort on `locked(power)`
-  following the leader), plus hits and blasts that knock out cores (slots drop). Seed 42, 1800 ticks: 112 parts
-  destroyed, 18 splits, 411 shots, 110 hull hits, 1548 Rhai evaluations.
+  following the leader), plus hits and blasts that knock out cores (slots drop). Seed 42, 1800 ticks (12 Oct, fire at will
+  per gun): 114 parts destroyed, 19 splits, 400 shots, 111 hull hits, 1548 Rhai evaluations.
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -259,7 +264,7 @@ damage, fire rate, thrust, gimbal, RCS thrust, torque, shield radius (others are
 Every tick, for the controlling piece of every active ship:
 
 1. **Goal** (`FlightGoal { heading, velocity }`) from the helm: `HelmMode::Pilot(PilotInput)`,
-   `HelmMode::Maneuver`, `HelmMode::Goal` (tools) or a brain. `HelmMode::Raw` skips the flight computer.
+   `HelmMode::Maneuver`, `HelmMode::Goal` (tools) or a behavior. `HelmMode::Raw` skips the flight computer.
 2. **Velocity**: dead-beat `F = m · R⁻¹ · (v_des − v) / DT` (piece frame); the allocation clamps it to what the
    thrusters can do, so nothing overshoots. `velocity: None` = coast.
 3. **Heading**: `HeadingGoal::Angle(nose angle)`, `Thrust(world dir)` (point the best thrust axis there),
@@ -319,7 +324,7 @@ Pilot input (concept: touch controls):
 
 (90° turn from rest to within 1°, holding position; overshoot under 0.4° for all four.)
 
-### Maneuvers and the raider brain (`maneuver.rs`)
+### Maneuvers (`maneuver.rs`)
 
 `Maneuver::Brake`, `Hold { at }`, `FaceTarget { target, aim }`, `Approach { target, range, aim }` (close in at
 the speed it can still stop from, then face the target or its lead point and keep pace), `Orbit { target,
@@ -332,15 +337,8 @@ ships turn away; otherwise like `Approach`) and `Flee { from }` (straight away a
 behaviors. `Maneuver::goal_for(kin, target_state, tuning)` takes an already resolved target (behaviors fly
 relative to an aim point on the target ship).
 
-`RaiderBrain` (**legacy**: the content behavior `raider_basic` replaces it and fights the same, see
-[Behaviors](#behaviors); kept for API stability until the client switches): the nearest active ship of another
-faction is the target. Its distances scale with the ship's **reach** (longest range of its clear guns):
-beyond 1.2 × reach it approaches to 0.667 × reach, then alternates attack (approach and face with
-`AimMode::Auto`, 5 s) and orbit (0.6 × reach, 4 s, direction by ship id); it fires when the target is within
-0.933 × reach and the **aim point** (lead point for cannon ships) is within 0.12 rad of the nose. A raider
-(cannon, 75 m): engage 90 m, stand-off 50 m (outside the 45 m beams), orbit 45 m, fire 70 m. A Halvex Runner
-(pulse lasers, 60 m): engage 72 m, stand-off 40 m, orbit 36 m, fire 56 m. No randomness. Constants in
-`maneuver::raider`.
+The hard-coded `RaiderBrain` was deleted on 12 Oct 2026 (Niklas; ADR-0025, no dead code): the content behavior
+`raider_basic` flies the same fight (see [Behaviors](#behaviors)).
 
 ## Behaviors
 
@@ -376,21 +374,31 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   piece (or its centre). Then the rules in order, within the working slots: conditions short-circuit left to
   right; the first rule whose conditions hold and whose action has what it needs wins.
 - **Fly** (every tick, in `flight::plan`): the stored maneuver's goal relative to the aim point's current
-  position and velocity (`aim_state`), and **fire at will**: aim point (or its lead point) within 0.12 rad of
-  the nose and within 0.933 × reach (the raider brain's numbers). No matching rule: `Maneuver::Brake`.
+  position and velocity (`aim_state`). No matching rule: `Maneuver::Brake`.
+- **Fire at will, per gun** (Niklas, 12 Oct 2026; GDR-0034): the plan carries the aim point's state
+  (`Fire::AtWill`); when the flight computer runs, `guns_at_will` checks every clear gun of the controlling
+  piece on its own: it fires when the target is within 0.933 × **its** reach from its muzzle and the aim point
+  (for projectile guns its own lead point, from muzzle position and velocity) is within 0.12 rad of **its**
+  facing. The result is the per-slot mask `ShipControls::guns` (weapon power demand reads
+  `ShipControls::gun_fires(slot)`, so a gun that holds draws no power and does not fire). Broadside and rear
+  guns fire whenever the target crosses their line, e.g. while orbiting. One `atan2` per clear gun per tick;
+  no allocation once warmed up. Pilot and helm fire set `fire` with an empty mask (all guns).
 - **Slots**: `Ship::rule_slots()` = `rule_slots_of(control piece)`: the sum of `rule_slots` of the piece's
   working (alive, not overheated) logic cores, 0 while the piece is dark. Rules beyond are `NoSlot`.
 - **Conditions** (built-in): `hull` (Σ hp on the controlling piece / intact hp), `shield` (charge / capacity of
   working emitters; no emitters → `NoValue`), `shield_down`, `heat` (hottest part / its limit), `power`
-  (served / demand), `target_in_range(d)`, `target_hull`, `target_on_me` (its brain or behavior target, or its
-  pilot lock, is me), `under_attack`, `enemies_near(r)`, `cycle(p)` and `target_time` (integer ticks since the
+  (served / demand), `target_in_range(d)`, `target_hull`, `target_on_me` (its behavior target, or its pilot
+  lock, is me), `under_attack`, `enemies_near(r)`, `cycle(p)` and `target_time` (integer ticks since the
   target was picked). Target conditions without a target fail with `NoTarget`, regardless of `not`.
-- **Actions** → maneuvers: `approach(r)` → `Approach`, `orbit(r, dir)` → `Orbit` (`auto` = by ship id parity,
-  as the brain), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`. All aim
+- **Actions** → maneuvers: `approach(r)` → `Approach`, `orbit(r, dir)` → `Orbit` (`auto` = by ship id
+  parity), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`. All aim
   with `AimMode::Auto` (lead for projectile ships).
 - **Targets**: `nearest` (distance), `weakest` (hull share, ties by distance), `threat` ((d + 50) / firepower,
   firepower × 2 if it aims at me), `attacker` (nearest enemy aiming at me), `locked` (the lock of
-  `Ship::leader()`: its pilot lock, brain or behavior target).
+  `Ship::leader()`: its pilot lock or behavior target).
+- **`raider_basic`** (the automatons' default; it replaced the raider brain): with a cannon raider (75 m reach)
+  it approaches to 50 m (67%), and within 90 m (120%) orbits at 45 m (60%) for the last 4 s of every 9 s;
+  its cannon fires at will within 70 m (93.3%).
 
 ### API
 
@@ -411,9 +419,8 @@ st.target(); st.aim_part(); st.maneuver(); st.slots(); st.last_think(); st.scrip
 st.program().program.to_text();       // the source, e.g. for a scan report
 ```
 
-- `ShipCommand::Behavior(Some(id))` replaces a brain (and `Brain(Some)` replaces a behavior); a behavior
-  overrides the helm. `Behavior(None)` hands the ship back to the helm. Unknown ids are ignored.
-  `set_behaviors` drops every ship's behavior (handles refer to the old library).
+- `ShipCommand::Behavior(Some(id))`: a behavior overrides the helm. `Behavior(None)` hands the ship back to the
+  helm. Unknown ids are ignored. `set_behaviors` drops every ship's behavior (handles refer to the old library).
 - `BehaviorState::inherit()` copies a running behavior (shared program, same target and timers, thinks on its
   next tick): the hook for the vessel split (GDR-0013).
 - State hash: each ship's behavior state (id, program fingerprint, target, aim part, acquisition tick, active
@@ -433,26 +440,32 @@ Rhai's optimizer). Out of budget, errors and non-bool results count as false (`W
 ### Cost
 
 `cargo run --release -p sim --example behavior_perf`: 20 ships (10 Halvex Runners vs 10 Sample Early), every
-ship under a 10-rule behavior (built-in nodes, `target nearest(engines)`). VM load average ~10 (other agents
-building), so the numbers are noisy; the run with the median mean of 5 runs × 900 ticks, two invocations:
+ship under a 10-rule behavior (built-in nodes, `target nearest(engines)`), against the same fight under the
+2-rule `raider_basic`. The think pass is timed as 10 back-to-back passes over all 20 ships (a normal tick thinks
+for a third of them). 12 Oct 2026, with fire at will per gun, VM load average ~10 (other agents building), so
+the numbers are noisy; the run with the median mean of 5 runs × 900 ticks, ranges over two invocations:
 
 | What | Min | Median | Mean | p95 |
 |---|---|---|---|---|
-| Think pass, all 20 ships at once (built-in nodes) | 10–13 µs | 16–17 µs | 24 µs | 51–53 µs |
-| Think pass, all 20 ships at once (+ one Rhai condition per think) | 20–25 µs | 26–37 µs | 42–51 µs | 81–91 µs |
-| `Sim::step` with the behaviors | 22–25 µs | 31–32 µs | 42–45 µs | 63–82 µs |
-| `Sim::step`, the same fight under the raider brain | 18–22 µs | 21–34 µs | 28–65 µs | 49–94 µs |
+| Think pass, all 20 ships at once (built-in nodes) | 5.0–5.3 µs | 8.4–18.2 µs | 12.8–15.9 µs | 24–26 µs |
+| Think pass, all 20 ships at once (+ one Rhai condition per think) | 8.5–11.3 µs | 33–34 µs | 31–34 µs | 47–51 µs |
+| `Sim::step` with the 10-rule behavior | 10–12 µs | 17–23 µs | 20–25 µs | 28–49 µs |
+| `Sim::step` with the 10-rule behavior + the Rhai condition | 11–19 µs | 22–27 µs | 24–31 µs | 36–49 µs |
+| `Sim::step` with `raider_basic` (2 rules) | 8–19 µs | 20 µs | 21–22 µs | 22–24 µs |
 
-One think costs about 0.5–0.8 µs per ship for ten rules; with the 3-tick cadence behaviors add about 4–6 µs per
-tick for 20 ships. A Rhai condition adds about 0.5–1 µs per evaluation. The think pass allocates nothing once
-warmed up (`tests/behavior_alloc.rs`); a Rhai evaluation makes one small allocation inside Rhai.
+One think costs well under a microsecond per ship for ten rules (0.25–0.9 µs by min and median); with the
+3-tick cadence behaviors add a few µs per tick for 20 ships, and ten rules are within the noise of two. (11 Oct,
+same load: think pass min 10–13 µs, median 16–17 µs.) A Rhai condition adds about 0.5–1 µs per evaluation. The
+think pass allocates nothing once warmed up (`tests/behavior_alloc.rs`); a Rhai evaluation makes one small
+allocation inside Rhai. Fire at will costs one `atan2` per clear gun per tick.
 
 ## Weapons
 
 All hit tests go through `PhysicsBackend::raycast` (FreeFlight's brute force today, the engine's later); a
 shooter never hits its own ship. A gun fires while `output > 0`: firing commanded (`PilotInput.fire`,
-`ShipControls.fire` or a brain), clear line of fire, powered, not overheated, piece active. Guns are fixed and
-aimed by turning the ship.
+`ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of fire, powered, not
+overheated, piece active. Guns are fixed: the pilot aims by turning the ship; under a behavior each gun fires
+when the target crosses its own facing.
 
 | Delivery (content) | Behaviour |
 |---|---|
@@ -578,7 +591,7 @@ for ship in world.ships() { for piece in ship.pieces() {
   `Ricochet`, muzzle flashes on `ShotFired`.
 - Enemies: `world.set_behaviors(BehaviorLibrary::new(&content)?)` once, then
   `world.command(raider, ShipCommand::Behavior(world.behaviors().default_for(&design)))` (see
-  [Behaviors](#behaviors)); the legacy `ShipCommand::Brain(Some(RaiderBrain::default()))` still works.
+  [Behaviors](#behaviors)).
 - Debug HUD: `ship.telemetry()` (top speed, goal, heading target), `piece.power`, `ship.parts()[i].heat`.
 - Keep stable ids: visuals keyed by `(ShipId, PieceId)`; a split keeps the parent's `PieceId` for the kept part.
 
@@ -610,10 +623,11 @@ within the noise; 20 × 1.5 µs for allocation). The per-tick code allocates not
 ## The load test
 
 `sim::scenario::load_test(n, seed) -> Sim` (and `load_test_with(&content, n, seed)`): `n` ships on the base
-content, ⌈n/2⌉ Halvex Runners in a line facing ⌊n/2⌋ automaton raiders 80 m away, every ship under the combat
-brain, so they engage at once and produce projectiles, hits and (eventually) debris. With `n = 1` the lone
-runner orbits a point and fires into space. The browser client calls the same function; the final state hash
-of a run matches the `determinism --scenario load --ships n` output, so native and browser runs can be compared.
+content, ⌈n/2⌉ Halvex Runners in a line facing ⌊n/2⌋ automaton raiders 80 m away, every ship under the content
+behavior `raider_basic` (the raider brain until 12 Oct), so they engage at once and produce projectiles, hits
+and (eventually) debris. With `n = 1` the lone runner orbits a point and fires into space. The browser client
+calls the same function; the final state hash of a run matches the `determinism --scenario load --ships n`
+output, so native and browser runs can be compared.
 
 `scripts/load-test-native.sh [--ships 1,5,20] [--ticks 1800] [--seed 42]` runs the `load_test` example and
 prints a table. Native release, 1800 ticks, seed 42, VM load ~5–6, typical of 3 runs (FreeFlight: no
@@ -624,6 +638,11 @@ collisions yet):
 | 1 | 0.001 ms | 0.001 ms | 0.001 ms | 0.07 ms | 1 | 0 / 0 | 552 | 0 | 0 | 1 |
 | 5 | 0.003 ms | 0.003 ms | 0.004 ms | 0.09 ms | 5 | 0 / 3 | 94 | 213 | 0 | 3 |
 | 20 | 0.013 ms | 0.012 ms | 0.019 ms | 0.10–0.57 ms | 21 | 0.9 / 11 | 418 | 848 | 2 | 11 |
+
+12 Oct 2026, every ship under `raider_basic` with fire at will per gun instead of the raider brain, VM load ~10,
+3 runs: 20 ships median 0.016–0.017 ms, p95 0.038–0.047 ms, 22 pieces max, 327 shots, 966 hits, 2 splits, 10
+active at end (final hash `d8cfba40e2ae85ec`); 5 ships median 0.004–0.005 ms, 76 shots, 182 hits, 2 splits;
+1 ship unchanged (552 shots). The higher medians are mostly the VM load (5–6 before, ~10 now).
 
 The sim core itself is very cheap at these ship sizes (a runner has 56 parts): 20 fighting ships cost about
 13 µs per tick. The physics engine will dominate once it is in.
@@ -650,23 +669,17 @@ Open:
    a hard turn swings the nose past the stick before it settles (a "drift turn"). Alternative: keep the nose on
    the stick and only use the thrust that happens to help (slower, sideways drift remains). Recommend (a)
    **current behaviour**; judge in the browser.
-4. **Raider brain numbers** (engage 90 m, stand-off 50 m, orbit 45 m, fire range 70 m, cone 0.12 rad) are
-   placeholders. A stationary Halvex Runner that just locks and fires kills three raiders about 15 s after
-   contact and takes 3–4 damage: the raiders are slow (0.76 m/s²) and the runner's pulse lasers reach 60 m.
-   Tune together with question 1 in the browser.
+4. **`raider_basic` numbers** (engage 90 m, stand-off 50 m, orbit 45 m, fire range 70 m, cone 0.12 rad; the
+   raider brain's until 12 Oct) are placeholders. A stationary Halvex Runner that just locks and fires kills
+   three raiders about 15 s after contact and takes 3–4 damage: the raiders are slow (0.76 m/s²) and the
+   runner's pulse lasers reach 60 m. Tune together with question 1 in the browser.
 5. **Missiles, disruption, drones** are not built yet (`absorb` already lists missiles: bubbles stop them).
 
-Behaviors (11 Oct 2026, late; proposals in GDR-0034 to GDR-0037, recommended option first):
+Behaviors (asked 11 Oct 2026; **answered by Niklas on 12 Oct**, GDR-0034 to GDR-0037 accepted):
 
-6. **Fire at will with side and rear guns.** Fire at will checks the nose only, so broadside and rear guns never
-   fire under behaviors. (a) **Check each gun's facing against the target and fire per gun** (needs per-gun
-   fire flags; recommended); (b) keep nose-only until fire groups exist.
-7. **Retire `RaiderBrain`.** The content raider matches it (74 vs 74 shots, first shot within 2 ticks, same
-   orbit share in a 40 s fight). (a) **Switch the client and the load test to behaviors, then delete the brain**
-   (recommended); (b) keep both.
-8. **Per-rule targets.** v1 has one target line per behavior. (a) **Keep one target line** until a preset needs
-   more (recommended); (b) an optional target per action (`flee(from: threat)`).
-9. **`or` in conditions.** (a) **No `or`: two rules with the same action** (recommended; slots stay honest);
-   (b) allow `or` (one rule slot for several cases).
-10. **Default behavior of the ship-mind's unpiloted ships** is `skirmisher` (flees below 25% hull, dodges while
-    its shields recharge). (a) **Keep** (recommended); (b) a plain attacker without retreat.
+6. Fire at will with side and rear guns: **per gun facing** (done).
+7. `RaiderBrain`: **deleted** after the client and the load test switched to behaviors.
+8. One target line per behavior: **kept**.
+9. No `or`: **confirmed** (two rules with the same action).
+10. Unpiloted ship-mind vessels default to `skirmisher`: **confirmed**. Rule slots (6 per logic core, 2 per
+    automaton core, lowest rules drop first): **confirmed**.

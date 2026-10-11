@@ -1,8 +1,8 @@
 # ADR-0027: Rhai runs as a raw, sandboxed engine with f32 floats, no `**`, libm math and an operation budget
 
-- Status: Proposed
-- Date: 2026-10-11
-- Decided by: behavior agent (proposal for Niklas to review)
+- Status: Accepted
+- Date: 2026-10-11 (proposal); 2026-10-12 (accepted)
+- Decided by: behavior agent (proposal, accepted 2026-10-12 with the behavior records)
 - Related: [ADR-0019](0019-rhai-scripting.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0004](0004-target-platforms-and-performance-first.md), [ADR-0026](0026-behavior-programs-text-in-content.md), [GDR-0015](../gdr/0015-layered-behavior.md), `docs/behavior-format.md` "Rhai conditions"
 
 ## Context

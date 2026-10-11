@@ -277,7 +277,7 @@ keyword), so there is no second representation to keep in sync and errors point 
 
 `target` is optional (default `nearest`); a rule may end in a `# note`. Rules are written in canonical form
 (the printer's output; a test checks the base pack). Base behaviors: `raider_basic` (the automatons' default,
-the old hard-coded raider brain as data, two rules for one automaton core) and `skirmisher` (the ship-mind's
+two rules for one automaton core; it replaced the hard-coded raider brain) and `skirmisher` (the ship-mind's
 default for unpiloted ships, six rules, uses the Rhai condition).
 
 ## Coordinates and geometry

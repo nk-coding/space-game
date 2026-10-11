@@ -42,10 +42,10 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0031](0031-materials-and-fabrication.md) | No generic scrap: materials come from places, and the fabricator resolves recipe chains without factory logistics | Accepted | 2026-10-10 |
 | [0032](0032-balancing-arena-evolution.md) | Balance with an AI-vs-AI arena and evolutionary search; enemies are handcrafted plus evolved | Accepted | concept phase |
 | [0033](0033-multiplayer-coop-and-arena.md) | Multiplayer later: co-op voyages in the host's galaxy and arena PvP with your own ships | Accepted | 2026-10-10 |
-| [0034](0034-behavior-first-match-fire-at-will.md) | Behaviors pick the first matching rule about ten times a second; guns fire at will; no match means hold | Proposed | 2026-10-11 |
-| [0035](0035-rule-slots-per-core.md) | Rule slots: six per logic core, two per automaton core; the lowest rules switch off first | Proposed | 2026-10-11 |
-| [0036](0036-behavior-text-format.md) | The behavior text format: one line per rule, `when ... and ... -> action`, no `end` | Proposed | 2026-10-11 |
-| [0037](0037-behavior-vocabulary-as-content.md) | The behavior vocabulary is content; v1 has 24 nodes, target selectors with aim priorities, and the raider pack as data | Proposed | 2026-10-11 |
+| [0034](0034-behavior-first-match-fire-at-will.md) | Behaviors pick the first matching rule about ten times a second; each gun fires at will along its facing; no match means hold | Accepted | 2026-10-11; 2026-10-12 |
+| [0035](0035-rule-slots-per-core.md) | Rule slots: six per logic core, two per automaton core; the lowest rules switch off first | Accepted | 2026-10-11; 2026-10-12 |
+| [0036](0036-behavior-text-format.md) | The behavior text format: one line per rule, `when ... and ... -> action`, no `end`, no `or` | Accepted | 2026-10-11; 2026-10-12 |
+| [0037](0037-behavior-vocabulary-as-content.md) | The behavior vocabulary is content; v1 has 24 nodes, one target line with aim priorities, and the raider pack as data | Accepted | 2026-10-11; 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
@@ -58,7 +58,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 
 Not decided yet, so no record. Write one when Niklas decides.
 
-- **Ship speed and fight length.** With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build (lead's recommendation: raise thrust in content, `docs/sim.md` design question 1). The raider brain's distances (question 4) are tuned with it.
+- **Ship speed and fight length.** With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build (lead's recommendation: raise thrust in content, `docs/sim.md` design question 1). The `raider_basic` distances (question 4) are tuned with it.
 - **Feel of "fly that way"** for forward-only ships: let the nose swing past the stick ("drift turn", current behaviour, recommended) or keep the nose on the stick (`docs/sim.md` design question 3).
 - **Engine placement:** anywhere with open space behind, or only on the rear edge? The evolution lab found nose and mid-ship engines legal.
 - **Mind capacity numbers** (start value, growth, the exclusive resource), and whether it still limits ship size ([GDR-0006](0006-ship-scale-no-fixed-cap.md) vs [GDR-0013](0013-vessels-and-piloting.md)).

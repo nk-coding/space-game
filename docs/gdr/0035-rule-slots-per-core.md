@@ -1,8 +1,8 @@
 # GDR-0035: Rule slots: six per logic core, two per automaton core; the lowest rules switch off first
 
-- Status: Proposed
-- Date: 2026-10-11
-- Decided by: behavior agent (proposal for Niklas to review)
+- Status: Accepted
+- Date: 2026-10-11 (proposal); 2026-10-12 (confirmed by Niklas)
+- Decided by: Niklas (confirmed the proposal: 6/2 slots, lowest rules drop first); behavior agent (proposal)
 - Related: [GDR-0015](0015-layered-behavior.md), [GDR-0013](0013-vessels-and-piloting.md), [GDR-0034](0034-behavior-first-match-fire-at-will.md), `docs/behavior-format.md`, `docs/content-model.md` "Behaviors"
 
 ## Context
@@ -28,6 +28,7 @@ lost mid-fight or a behavior is longer than the ship's slots.
 - Validation: a ship's effective behavior must fit the slots of its intact cores (a ship without cores is not
   checked: it cannot think).
 - Placeholders: logic core 6, automaton core 2. The raider pack fits in two rules.
+- Niklas (12 Oct) confirmed the numbers and that the lowest rules drop first (not a player-chosen order).
 
 ## Consequences
 
