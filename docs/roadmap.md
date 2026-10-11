@@ -15,13 +15,15 @@ The original spike plan (`spike-plan.md`) still defines what must be answered. T
 
 ## Phase 2: core simulation
 
-Status: 2a (everything engine-independent: determinism foundation, ship model, power, heat, bonuses, engines, damage/split events, native-vs-wasm hash check) in progress since 11 Oct. 2b (physics integration) waits for the engine decision.
+Status: 2a (everything engine-independent: determinism foundation, ship model, power, heat, bonuses, engines, damage/split events, native-vs-wasm hash check) done 11 Oct (`docs/sim.md`). 2b (physics integration) waits for the engine decision; a `PhysicsBackend` trait with a collision-free `FreeFlight` stand-in exists.
 
 - Ship model in `sim` from `data` blueprints: occupancy grid, per-part HP, pieces (connectivity with slope rules), mass/CoM/inertia, power pool per piece, simple heat, thrust/torque, gun and engine clearance.
 - Determinism infrastructure: fixed 30 Hz step, RNG streams, state hash per tick, native-vs-wasm hash test.
 - Physics integration with the chosen engine: compound bodies per piece, splitting with inherited velocity and spin.
 
 ## Phase 3: flight and feel (web)
+
+Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS, gyros, core assist), maneuvers and raider brain done in `sim`. Weapons v1 (lasers, projectiles, recoil, ricochet, shields) in progress in `sim`. Client bridge (30 Hz sim + interpolation + input) next, after the renderer.
 
 - Flight computer (stick = fly that way, braking, drift toggle, soft top speed), target lock, WASD + mouse.
 - 30 Hz sim with 60 fps interpolation in the client.
