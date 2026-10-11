@@ -117,11 +117,12 @@ fn colliders_cover_each_piece_exactly() {
             }
         }
     }
-    // The runner: 12 slopes stay triangles, the 44 square-ish parts merge into far fewer rectangles.
-    let (w, s) = world_with(design(&c, "halvex_runner"));
+    // The runner: every slope stays a triangle, the square-ish parts merge into far fewer rectangles.
+    let d = design(&c, "halvex_runner");
+    let (w, s) = world_with(d.clone());
     let p = &w.ship(s).unwrap().pieces()[0];
     let tris = p.colliders.iter().filter(|k| k.points().len() == 3).count();
-    assert_eq!(tris, 12);
+    assert_eq!(tris, d.parts.iter().filter(|p| p.slope).count());
     assert!(p.colliders.len() - tris <= 16, "{} rects", p.colliders.len() - tris);
 }
 
@@ -204,13 +205,23 @@ fn runner_power_balance() {
     let d = design(&c, "halvex_runner");
     let (mut w, s) = world_with(d.clone());
     w.step(&inputs(s, controls(3, 1.0, true, true)));
-    let p = &w.ship(s).unwrap().pieces()[0];
-    // Reactors: fission 10 + 10, fusion 30; every radiator is enclosed, so no venting bonus.
-    assert_eq!(p.power.supply, 50.0);
-    // Everything that can work: beams 2×9, shields 2×3, cores 2×1, thrusters 2×2, torch 6.
-    // The wing-tip pulse lasers have a slope in front of them, so they never fire.
-    assert_eq!(p.power.demand, 36.0);
-    assert_eq!(p.power.served, 36.0);
+    let ship = w.ship(s).unwrap();
+    let p = &ship.pieces()[0];
+    // Supply = every reactor's output with its radiator bonuses; the layout's venting radiators add some.
+    let base: f32 = d.parts.iter().map(|x| x.base.get(Stat::PowerOutput)).sum();
+    let bonus: f32 = (0..d.parts.len() as u32).map(|i| ship.stats(i).get(Stat::PowerOutput)).sum();
+    assert_eq!(p.power.supply, bonus);
+    assert!(bonus > base, "venting radiators beside reactors add power");
+    // Demand at full throttle with guns firing (raw controls: gyros idle): guns with a clear line of fire,
+    // shields, cores, engines with a clear exhaust.
+    let want: f32 = p
+        .consumers()
+        .iter()
+        .filter(|c| ship.part(c.part).clear && !(c.kind == sim::ConsumerKind::Engine && !d.parts[c.part as usize].is_engine))
+        .map(|c| c.draw)
+        .sum();
+    assert_eq!(p.power.demand, want);
+    assert_eq!(p.power.served, want.min(p.power.supply));
 }
 
 // ---------- heat ----------
@@ -280,7 +291,18 @@ fn radiators_vent_only_through_open_sides() {
 #[test]
 fn overheated_parts_shut_down_until_they_cool() {
     let c = content();
-    let d = design(&c, "halvex_runner");
+    // Three beams side by side on top of a fusion and a fission reactor: runs hot when firing.
+    let d = custom(
+        &c,
+        &[
+            ("beam_laser", 0, 0, 0, false, None),
+            ("beam_laser", 1, 0, 0, false, None),
+            ("beam_laser", 2, 0, 0, false, None),
+            ("fusion_reactor", 0, 2, 0, false, None),
+            ("fission_reactor", 2, 2, 0, false, None),
+            ("logic_core", 2, 3, 0, false, None),
+        ],
+    );
     let (mut w, s) = world_with(d.clone());
     let n = d.parts.len();
     let mut prev = vec![false; n];
@@ -307,12 +329,12 @@ fn overheated_parts_shut_down_until_they_cool() {
         }
     };
     for _ in 0..3000 {
-        w.step(&inputs(s, controls(3, 1.0, true, true)));
+        w.step(&inputs(s, controls(0, 1.0, true, true)));
         check(&w, &mut prev, &mut went_hot, &mut recovered);
     }
-    assert!(went_hot > 0, "flat out for 100 s, something must overheat");
+    assert!(went_hot > 0, "firing for 100 s, something must overheat");
     for _ in 0..3000 {
-        w.step(&inputs(s, controls(3, 0.0, false, false)));
+        w.step(&inputs(s, controls(0, 0.0, false, false)));
         check(&w, &mut prev, &mut went_hot, &mut recovered);
     }
     assert!(recovered > 0);
@@ -357,18 +379,28 @@ fn capacitors_speed_up_lasers_up_to_max_stacks() {
 #[test]
 fn radiator_starts_venting_when_its_neighbour_is_shot_away() {
     let c = content();
-    let d = design(&c, "halvex_runner");
+    // core | fission | radiator, the radiator boxed in by armour.
+    let d = custom(
+        &c,
+        &[
+            ("logic_core", 0, 1, 0, false, None),
+            ("fission_reactor", 1, 1, 0, false, None),
+            ("radiator", 2, 1, 0, false, None),
+            ("armor_block", 2, 0, 0, false, Some("steel")),
+            ("armor_block", 3, 1, 0, false, Some("steel")),
+            ("armor_block", 2, 2, 0, false, Some("steel")),
+        ],
+    );
     let (mut w, s) = world_with(d.clone());
-    w.step(&inputs(s, controls(3, 1.0, true, true)));
-    assert_eq!(w.ship(s).unwrap().pieces()[0].power.supply, 50.0);
-    // The armour block left of the radiator at (2,2) goes; the radiator now vents and feeds the fission
-    // reactor at (3,2).
-    w.apply_damage(s, DamageTarget::Cell((1, 2)), 10.0);
-    w.step(&inputs(s, controls(3, 1.0, true, true)));
+    w.step(&inputs(s, controls(0, 0.0, false, true)));
+    assert_eq!(w.ship(s).unwrap().pieces()[0].power.supply, 10.0);
+    // The armour block right of the radiator goes: the radiator vents and feeds the reactor.
+    w.apply_damage(s, DamageTarget::Cell((3, 1)), 10.0);
+    w.step(&inputs(s, controls(0, 0.0, false, true)));
     let ship = w.ship(s).unwrap();
-    assert_eq!(ship.part(find(&d, "radiator", 2, 2)).open_sides, 1);
-    assert_eq!(ship.pieces()[0].power.supply, 52.0);
-    assert_eq!(ship.stats(find(&d, "fission_reactor", 3, 2)).get(Stat::PowerOutput), 12.0);
+    assert_eq!(ship.part(find(&d, "radiator", 2, 1)).open_sides, 1);
+    assert_eq!(ship.pieces()[0].power.supply, 12.0);
+    assert_eq!(ship.stats(find(&d, "fission_reactor", 1, 1)).get(Stat::PowerOutput), 12.0);
 }
 
 // ---------- engines ----------
@@ -439,11 +471,25 @@ fn gun_mounts_and_line_of_fire() {
         assert_eq!(g.dir, Vec2::new(0.0, 1.0));
         assert!(close(g.muzzle.x.abs(), 0.5, 1e-6) && close(g.muzzle.y, oy, 1e-6), "{:?}", g.muzzle);
     }
-    // Wing-tip pulse lasers: blocked by the slope in front until it is shot away.
-    let pulse = find(&d, "pulse_laser", 0, 3);
-    assert!(!w.ship(s).unwrap().part(pulse).clear);
-    w.apply_damage(s, DamageTarget::Cell((0, 2)), 10.0);
+    // Every gun of the runner has a clear line of fire and fires.
     w.step(&inputs(s, controls(3, 0.0, true, true)));
+    assert!(w.ship(s).unwrap().pieces()[0].guns.iter().all(|g| g.clear && g.output > 0.0));
+
+    // A pulse laser with armour in front: blocked until the armour is shot away.
+    let d = custom(
+        &c,
+        &[
+            ("armor_block", 0, 0, 0, false, Some("steel")),
+            ("pulse_laser", 0, 1, 0, false, None),
+            ("fission_reactor", 1, 1, 0, false, None),
+            ("logic_core", 0, 2, 0, false, None),
+        ],
+    );
+    let (mut w, s) = world_with(d.clone());
+    let pulse = find(&d, "pulse_laser", 0, 1);
+    assert!(!w.ship(s).unwrap().part(pulse).clear);
+    w.apply_damage(s, DamageTarget::Cell((0, 0)), 10.0);
+    w.step(&inputs(s, controls(0, 0.0, true, true)));
     let ship = w.ship(s).unwrap();
     assert!(ship.part(pulse).clear);
     let g = ship.pieces()[0].guns.iter().find(|g| g.part == pulse).unwrap();

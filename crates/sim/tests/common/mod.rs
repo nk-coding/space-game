@@ -74,7 +74,7 @@ pub fn controls(engines: usize, throttle: f32, fire: bool, shields: bool) -> Shi
 pub fn inputs(ship: ShipId, c: ShipControls) -> TickInputs {
     TickInputs {
         controls: vec![(ship, c)],
-        damage: vec![],
+        ..Default::default()
     }
 }
 

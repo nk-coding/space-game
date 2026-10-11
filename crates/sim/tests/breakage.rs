@@ -11,7 +11,6 @@ use sim::{
 
 fn kill(ship: ShipId, cells: &[(i32, i32)]) -> TickInputs {
     TickInputs {
-        controls: vec![],
         damage: cells
             .iter()
             .map(|&c| DamageCommand {
@@ -20,7 +19,16 @@ fn kill(ship: ShipId, cells: &[(i32, i32)]) -> TickInputs {
                 amount: 100.0,
             })
             .collect(),
+        ..Default::default()
     }
+}
+
+/// Destroys the parts in `cells` and resolves breakage without stepping (bodies do not move).
+fn kill_now(w: &mut sim::Sim, ship: ShipId, cells: &[(i32, i32)]) {
+    for &c in cells {
+        w.apply_damage(ship, DamageTarget::Cell(c), 100.0);
+    }
+    w.resolve_breakage();
 }
 
 /// World position of every alive part's centroid.
@@ -65,7 +73,7 @@ fn runner_splits_down_the_middle() {
 
     // The centre column: both beams, the fusion reactor, two armour blocks and the torch drive.
     let centre = [(5, 0), (6, 0), (5, 2), (5, 4), (6, 4), (5, 5)];
-    w.step(&kill(s, &centre));
+    kill_now(&mut w, s, &centre);
 
     let destroyed = w.events().iter().filter(|e| matches!(e, SimEvent::PartDestroyed { .. })).count();
     assert_eq!(destroyed, 6);
@@ -84,8 +92,9 @@ fn runner_splits_down_the_middle() {
     assert_eq!(split.spawned.len(), 1);
     let new = &split.spawned[0];
     assert!(new.id > parent.id);
-    // Both halves keep a logic core: neither is salvage.
-    assert!(!split.kept.salvage && !new.salvage);
+    // Both halves keep a logic core, but only the controlling piece stays active; the other is salvage.
+    assert!(!split.kept.salvage && new.salvage);
+    assert_eq!(w.ship(s).unwrap().control_piece(), Some(parent.id));
 
     let ship = w.ship(s).unwrap();
     assert_eq!(ship.pieces().len(), 2);
@@ -96,8 +105,8 @@ fn runner_splits_down_the_middle() {
     all.sort();
     let alive: Vec<PartIdx> = (0..d.parts.len() as PartIdx).filter(|&i| ship.part(i).alive).collect();
     assert_eq!(all, alive);
-    assert!(a.parts.contains(&find(&d, "logic_core", 4, 3)));
-    assert!(b.parts.contains(&find(&d, "logic_core", 7, 3)));
+    let core_x = |p: &sim::Piece| p.parts.iter().find(|&&i| d.parts[i as usize].logic).map(|&i| d.parts[i as usize].shape.x);
+    assert!(core_x(a).unwrap() < 6 && core_x(b).unwrap() >= 6, "a core in each half");
     for &p in &b.parts {
         assert_eq!(ship.part(p).piece, b.id);
     }
@@ -156,7 +165,9 @@ fn raider_breaks_into_salvage() {
     let id0 = w.ship(s).unwrap().pieces()[0].id;
     // Losing only the core leaves one piece, but it is salvage now: the thruster stops.
     w.step(&kill(s, &[(1, 1)]));
-    assert!(matches!(w.events().last(), Some(SimEvent::PieceChanged { piece, .. }) if piece.salvage));
+    assert!(w.events().iter().any(|e| matches!(e, SimEvent::PieceChanged { piece, .. } if piece.salvage)));
+    assert!(w.events().iter().any(|e| matches!(e, SimEvent::ControlLost { .. })));
+    assert_eq!(w.ship(s).unwrap().control_piece(), None);
     w.step(&inputs(s, controls(1, 1.0, true, true)));
     let p = &w.ship(s).unwrap().pieces()[0];
     assert!(p.salvage());
@@ -233,8 +244,8 @@ fn losing_a_part_shifts_the_centre_of_mass() {
     let s = w.spawn_ship(d.clone(), body);
     let com_old = w.ship(s).unwrap().pieces()[0].com_world();
     let before = part_positions(&w, s);
-    // The left wing-tip pulse laser goes; the ship stays in one piece.
-    w.step(&kill(s, &[(0, 3)]));
+    // A part on the left wing tip goes; the ship stays in one piece.
+    kill_now(&mut w, s, &[(0, 3)]);
     let ev = w.events().iter().find_map(|e| match e {
         SimEvent::PieceChanged { piece, .. } => Some(piece.clone()),
         _ => None,

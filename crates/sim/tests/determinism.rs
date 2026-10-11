@@ -2,7 +2,7 @@
 
 mod common;
 
-use sim::scenario::{self, Scenario};
+use sim::scenario::{self, Scenario, ScenarioKind};
 use sim::{DamageTarget, TickInputs};
 
 #[test]
@@ -17,7 +17,7 @@ fn same_seed_gives_identical_hash_sequence() {
     // The scenario exercises what it should.
     assert!(sa.parts_destroyed > 50, "{sa:?}");
     assert!(sa.splits > 5, "{sa:?}");
-    assert!(sa.overheated_part_ticks > 0, "{sa:?}");
+    assert!(sa.overheated_part_ticks > 0, "the heat-stress ship overheats: {sa:?}");
     // Hashes change every tick (time, heat and motion all move).
     assert!(a.windows(2).all(|w| w[0] != w[1]));
 }
@@ -42,12 +42,12 @@ fn cloned_world_continues_identically() {
     assert_eq!(a.state_hash(), b.state_hash());
     let ship = a.ships()[0].id();
     let inputs = TickInputs {
-        controls: vec![],
         damage: vec![sim::DamageCommand {
             ship,
             target: DamageTarget::Part(0),
             amount: 0.5,
         }],
+        ..Default::default()
     };
     for _ in 0..100 {
         a.step(&inputs);
@@ -92,4 +92,18 @@ fn incremental_caches_match_a_full_recompute() {
         }
     }
     assert!(sc.stats.splits > 0);
+}
+
+#[test]
+fn flight_scenario_is_deterministic_and_busy() {
+    let (a, sa) = scenario::run_kind(ScenarioKind::Flight, 42, 900);
+    let (b, sb) = scenario::run_kind(ScenarioKind::Flight, 42, 900);
+    if let Some(t) = a.iter().zip(&b).position(|(x, y)| x != y) {
+        panic!("diverged at tick {}", t + 1);
+    }
+    assert_eq!(sa, sb);
+    assert!(sa.firing_ticks > 100, "{sa:?}");
+    assert!(sa.splits > 0 && sa.parts_destroyed > 20, "{sa:?}");
+    let (c, _) = scenario::run_kind(ScenarioKind::Flight, 43, 900);
+    assert!(a.iter().zip(&c).all(|(x, y)| x != y));
 }
