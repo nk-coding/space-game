@@ -107,6 +107,10 @@ fn flight_scenario_is_deterministic_and_busy() {
     }
     assert_eq!(sa, sb);
     assert!(sa.firing_ticks > 100, "{sa:?}");
+    assert!(
+        sa.shots > 50 && sa.hits > 20,
+        "weapons fire and hit: {sa:?}"
+    );
     assert!(sa.splits > 0 && sa.parts_destroyed > 20, "{sa:?}");
     let (c, _) = scenario::run_kind(ScenarioKind::Flight, 43, 900);
     assert!(a.iter().zip(&c).all(|(x, y)| x != y));
