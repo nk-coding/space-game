@@ -97,13 +97,9 @@ fn base_warnings_are_known() {
         .filter(|p| p.severity == Severity::Warning)
         .map(|p| p.to_string())
         .collect();
-    // The original Halvex Runner layout: wing-tip pulse lasers behind 1×1 slopes, all six radiators boxed in.
-    // Fixed in the runner layout commit (Niklas, 11 Oct 2026).
-    assert_eq!(warnings.len(), 8, "{warnings:#?}");
-    assert!(
-        warnings.iter().all(|w| w.contains("halvex_runner")),
-        "{warnings:#?}"
-    );
+    // Every base ship works under the drydock rules: guns can fire, engines and RCS have open space,
+    // radiators vent, ships are one piece.
+    assert!(warnings.is_empty(), "{warnings:#?}");
 }
 
 #[test]
@@ -211,7 +207,7 @@ fn placement_mass_and_centroid() {
         .iter()
         .map(|p| c.placement_mass(p).unwrap())
         .sum();
-    assert_eq!(mass, 103.0);
+    assert_eq!(mass, 106.5);
     // slope_1x2 at (3,0) flipped: corners (5,0), (5,1), (3,1).
     let i = ship
         .parts
