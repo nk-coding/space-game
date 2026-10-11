@@ -1,0 +1,15 @@
+# Web build of the game client. From this directory:
+#   trunk serve            (dev build, http://0.0.0.0:8080)
+#   trunk build --release --cargo-profile wasm-release   (see scripts/web-build.sh)
+[build]
+target = "index.html"
+dist = "dist"
+
+[serve]
+addresses = ["0.0.0.0"]
+port = 8080
+# Don't open a browser in the VM.
+open = false
+
+[watch]
+ignore = ["dist"]

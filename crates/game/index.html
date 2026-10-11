@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#010409" />
+  <title>Space Game</title>
+  <!-- Release builds run wasm-opt; the cargo profile comes from the command line (scripts/web-build.sh). -->
+  <link data-trunk rel="rust" data-bin="game" data-wasm-opt="s" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #010409; }
+    body {
+      /* the same backdrop as in the game, shown while the wasm loads */
+      background: radial-gradient(ellipse 75% 85% at 50% 45%, #0a1820, #050e15 55%, #010409);
+      color: #869099; font: 12px/1.4 system-ui, sans-serif; letter-spacing: 0.3em; text-transform: uppercase;
+    }
+    #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
+              background: #010409ee; color: #8cefdb; z-index: 10; padding: 2em; }
+    /* landscape only on phones */
+    @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+  </style>
+</head>
+<body>
+  <div id="loading">loading</div>
+  <div id="rotate">rotate your device to landscape</div>
+  <canvas id="game" tabindex="0" oncontextmenu="return false"></canvas>
+  <script>
+    // Give the canvas keyboard focus so the toggles work without a click first.
+    addEventListener("load", () => document.getElementById("game").focus());
+  </script>
+</body>
+</html>

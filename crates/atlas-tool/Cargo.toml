@@ -1,0 +1,12 @@
+[package]
+name = "atlas-tool"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Bakes art/icons/*.icon-only.svg, glow layers, FX textures and art/tokens.json into the game's texture atlas."
+
+[dependencies]
+resvg = "=0.48.1"
+png = "0.18"
+serde_json = "1"

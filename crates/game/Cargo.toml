@@ -1,0 +1,32 @@
+[package]
+name = "game"
+version = "0.1.0"
+description = "The Bevy client: web (wasm32 + WebGL2) first, desktop and Android later."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+data = { path = "../data" }
+# Only what a 2D game needs. No audio and no gamepads for now (the VM lacks alsa/udev headers).
+bevy = { version = "=0.20.0", default-features = false, features = [
+  "std",
+  "default_app",          # asset, log, state, async executor, reflect auto-register
+  "2d_api",               # camera, color, image, mesh, shader, material, text, window, png, sprite, gizmos
+  "bevy_render",
+  "bevy_core_pipeline",
+  "bevy_post_process",    # bloom (toggle)
+  "bevy_sprite_render",   # sprites, Mesh2d, ColorMaterial
+  "ui_api",               # debug overlay
+  "ui_bevy_render",
+  "default_font",
+  "bevy_winit",
+  "webgl2",
+  "keyboard",
+  "mouse",
+  "touch",
+  "x11",                  # native desktop builds (winit loads libX11 at runtime, no headers needed)
+] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Location"] }
