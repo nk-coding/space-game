@@ -1,7 +1,7 @@
 //! Prints the per-tick state hashes of the deterministic scenario, one `tick hash` line per tick.
 //! Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh` runs both and compares.
 //!
-//! Usage: `determinism [--seed N] [--ticks N] [--scenario core]`
+//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight]`
 
 fn main() {
     let mut seed: u64 = 42;
@@ -17,10 +17,9 @@ fn main() {
             other => panic!("unknown argument {other}"),
         }
     }
-    let (hashes, stats) = match scenario.as_str() {
-        "core" => sim::scenario::run(seed, ticks),
-        other => panic!("unknown scenario {other} (known: core)"),
-    };
+    let kind = sim::scenario::ScenarioKind::from_name(&scenario)
+        .unwrap_or_else(|| panic!("unknown scenario {scenario} (known: core, flight)"));
+    let (hashes, stats) = sim::scenario::run_kind(kind, seed, ticks);
     println!("# sim determinism scenario={scenario} seed={seed} ticks={ticks}");
     for (t, h) in hashes.iter().enumerate() {
         println!("{} {:016x}", t + 1, h);
@@ -30,12 +29,13 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
         stats.pieces_spawned,
         stats.pieces_destroyed,
-        stats.overheated_part_ticks
+        stats.overheated_part_ticks,
+        stats.firing_ticks
     );
 }

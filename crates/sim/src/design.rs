@@ -25,7 +25,8 @@ pub enum ConsumerKind {
     Logic,
     /// Shield emitters.
     Shield,
-    /// Engines.
+    /// Everything that moves the ship: engines, RCS pods and gyros (one tier, so turning and thrust brown
+    /// out together).
     Engine,
     /// Guns.
     Weapon,
@@ -59,10 +60,16 @@ pub enum Stat {
     FireRate,
     Thrust,
     ShieldRadius,
+    /// Pure reaction torque (gyros, logic cores), kN·m.
+    Torque,
+    /// Thrust per RCS nozzle, kN.
+    RcsThrust,
+    /// Engine gimbal, degrees to either side.
+    Gimbal,
 }
 
 impl Stat {
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 12;
 
     pub fn from_id(id: &str) -> Option<Stat> {
         Some(match id {
@@ -75,6 +82,9 @@ impl Stat {
             "fire_rate" => Stat::FireRate,
             "thrust" => Stat::Thrust,
             "shield_radius" => Stat::ShieldRadius,
+            "torque" => Stat::Torque,
+            "rcs_thrust" => Stat::RcsThrust,
+            "gimbal" => Stat::Gimbal,
             _ => return None,
         })
     }
@@ -118,6 +128,8 @@ pub struct PartSpec {
     pub base: PartStats,
     pub weapon: Option<WeaponFamily>,
     pub is_engine: bool,
+    /// Reaction-control pod: one nozzle per straight side open to space.
+    pub is_rcs: bool,
     pub is_radiator: bool,
     pub is_shield: bool,
     pub logic: bool,
@@ -280,13 +292,16 @@ impl ShipDesign {
             base.set(Stat::Damage, def.weapon.as_ref().map_or(0.0, |w| w.damage));
             base.set(Stat::FireRate, 1.0);
             base.set(Stat::Thrust, def.engine.as_ref().map_or(0.0, |e| e.thrust));
+            base.set(Stat::Gimbal, def.engine.as_ref().map_or(0.0, |e| e.gimbal));
             base.set(Stat::ShieldRadius, def.shield.as_ref().map_or(0.0, |s| s.radius));
+            base.set(Stat::Torque, def.gyro.as_ref().map_or(0.0, |g| g.torque));
+            base.set(Stat::RcsThrust, def.rcs.as_ref().map_or(0.0, |r| r.thrust));
             let consumer = (power.draw > 0.0).then(|| {
                 if def.logic.is_some() {
                     ConsumerKind::Logic
                 } else if def.shield.is_some() {
                     ConsumerKind::Shield
-                } else if def.engine.is_some() {
+                } else if def.engine.is_some() || def.gyro.is_some() || def.rcs.is_some() {
                     ConsumerKind::Engine
                 } else if def.weapon.is_some() {
                     ConsumerKind::Weapon
@@ -308,6 +323,7 @@ impl ShipDesign {
                 base,
                 weapon: def.weapon.as_ref().map(|w| w.family),
                 is_engine: def.engine.is_some(),
+                is_rcs: def.rcs.is_some(),
                 is_radiator: def.radiator.is_some(),
                 is_shield: def.shield.is_some(),
                 logic: def.logic.is_some(),

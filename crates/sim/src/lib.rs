@@ -32,21 +32,31 @@
 
 #![forbid(unsafe_code)]
 
+pub mod alloc;
 pub mod breakage;
 pub mod collider;
+pub mod config;
 pub mod design;
 pub mod events;
+pub mod flight;
 pub mod hash;
 pub mod ids;
+pub mod maneuver;
 pub mod mass;
 pub mod math;
+pub mod physics;
 pub mod rng;
 pub mod scenario;
 pub mod ship;
 pub mod world;
 
+pub use alloc::{Actuation, TorqueSource};
 pub use breakage::{DamageOutcome, DamageTarget};
 pub use collider::ConvexPolygon;
+pub use config::{FlightTuning, SimConfig};
+pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
+pub use maneuver::{Maneuver, RaiderBrain};
+pub use physics::{BodyDesc, BodyKey, Contact, FreeFlight, PhysicsBackend, RayHit};
 pub use design::{ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
 pub use hash::{StateHash, StateHasher};
@@ -58,7 +68,7 @@ pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster, Wrench,
     inherited_velocity, thruster_wrench,
 };
-pub use world::{DamageCommand, Sim, TickInputs};
+pub use world::{DamageCommand, PartHit, ShipCommand, Sim, TickInputs};
 
 /// Fixed simulation rate (settled: 30 Hz).
 pub const TICK_HZ: u32 = 30;

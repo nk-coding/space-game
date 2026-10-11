@@ -91,6 +91,18 @@ impl Ship {
         DamageOutcome::Destroyed { excess }
     }
 
+    /// The controlling piece keeps control only while it has a core. Returns true if control was lost now.
+    fn check_control(&mut self, k: usize) -> bool {
+        let p = &mut self.pieces[k];
+        if p.controlled && !p.has_core {
+            p.controlled = false;
+            p.active = false;
+            self.control = None;
+            return true;
+        }
+        false
+    }
+
     /// Chain-reaction hook (later): called for every destroyed part during breakage resolution. Volatile parts
     /// (reactors now; the rule should move into content as an `explosion` block) will queue blast damage on
     /// nearby parts here, rolled on `Stream::Damage`, and resolution will loop until nothing else breaks.
@@ -131,6 +143,10 @@ impl Ship {
                 let id = self.pieces[k].id;
                 self.pieces.remove(k);
                 events.push(SimEvent::PieceDestroyed { ship, piece: id });
+                if self.control == Some(id) {
+                    self.control = None;
+                    events.push(SimEvent::ControlLost { ship });
+                }
                 continue;
             }
             let mut comps = self.components(&alive);
@@ -143,6 +159,7 @@ impl Ship {
             if comps.len() == 1 {
                 self.pieces[k].parts = comps.pop().unwrap();
                 self.rebuild_piece(k);
+                let lost = self.check_control(k);
                 let p = &mut self.pieces[k];
                 p.body.linvel = inherited_velocity(
                     parent_body.linvel,
@@ -154,6 +171,9 @@ impl Ship {
                     ship,
                     piece: snapshot(p, Vec2::ZERO),
                 });
+                if lost {
+                    events.push(SimEvent::ControlLost { ship });
+                }
                 k += 1;
                 continue;
             }
@@ -174,6 +194,7 @@ impl Ship {
             }
             self.pieces[k].parts = kept_parts;
             self.rebuild_piece(k);
+            let lost = self.check_control(k);
             {
                 let p = &mut self.pieces[k];
                 p.body.linvel = inherited_velocity(
@@ -213,6 +234,9 @@ impl Ship {
                 kept,
                 spawned,
             }));
+            if lost {
+                events.push(SimEvent::ControlLost { ship });
+            }
             k += 1;
         }
     }

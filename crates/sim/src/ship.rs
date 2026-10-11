@@ -12,14 +12,17 @@ use std::sync::Arc;
 
 use data::{Dir, Effect, ShipGrid};
 
+use crate::alloc::{Actuation, AllocTable, TorqueSource, wrench_of};
 use crate::collider::{ColliderScratch, ConvexPolygon, build_colliders};
+use crate::flight::{FlightTelemetry, HelmMode};
+use crate::maneuver::RaiderBrain;
 use crate::design::{
     ConsumerKind, DEFAULT_POWER_PRIORITY, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat,
 };
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
 use crate::mass::{MassProps, combine, to_piece};
-use crate::math::{Rot, Vec2};
+use crate::math::{Rot, Vec2, sin};
 use crate::DT;
 
 /// Heat model constants. **PLACEHOLDERS** for feel; the steady state matches the concept-board drydock
@@ -135,10 +138,11 @@ pub struct Wrench {
     pub torque: f32,
 }
 
-/// One row of a piece's thruster table (for the flight computer). Piece frame.
+/// One row of a piece's thruster table (for the flight computer): an engine, or one nozzle of an RCS pod.
+/// Piece frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Thruster {
-    /// Engine slot (index into `ShipControls::throttle`).
+    /// Engine slot (index into `ShipControls::throttle`); `design::NO_SLOT` for RCS nozzles.
     pub slot: u32,
     pub part: PartIdx,
     /// Unit direction of the force on the ship (towards the engine's facing side; the exhaust goes the other
@@ -154,13 +158,22 @@ pub struct Thruster {
     pub max_force: f32,
     /// Exhaust clear. Blocked engines stay in the table with `clear == false` and produce nothing.
     pub clear: bool,
+    /// `sin` of the max gimbal angle: lateral force up to `gimbal × thrust` (0 = fixed nozzle).
+    pub gimbal: f32,
+    /// Unit lateral direction of the gimbal force (`dir` turned 90° counter-clockwise).
+    pub lat: Vec2,
+    /// Torque per kN of lateral force: `arm × lat`.
+    pub torque_per_lateral: f32,
+    /// An RCS nozzle (else an engine).
+    pub rcs: bool,
 }
 
-/// Net force and torque of `thrusters` at the given throttles (by slot), ignoring power and heat.
+/// Net force and torque of the engines among `thrusters` at the given throttles (by slot), ignoring power,
+/// heat, gimbals and RCS nozzles.
 pub fn thruster_wrench(thrusters: &[Thruster], throttle: impl Fn(u32) -> f32) -> Wrench {
     let mut w = Wrench::default();
     for t in thrusters {
-        if !t.clear {
+        if !t.clear || t.slot == NO_SLOT {
             continue;
         }
         let f = t.max_force * throttle(t.slot).clamp(0.0, 1.0);
@@ -183,6 +196,8 @@ pub struct ThrustAuthority {
     pub torque_ccw: f32,
     /// Sum of negative torques, as a positive number.
     pub torque_cw: f32,
+    /// Pure torque of gyros and logic cores (either sense), with the global torque scale.
+    pub torque_pure: f32,
 }
 
 /// A gun of a piece. Piece frame.
@@ -213,15 +228,35 @@ pub struct Piece {
     pub origin: [f32; 2],
     pub mass: MassProps,
     pub colliders: Vec<ConvexPolygon>,
-    /// Has an alive logic core. Pieces without one are salvage: systems idle, no hull glow.
+    /// Has an alive logic core.
     pub has_core: bool,
+    /// The ship's controlling piece (holds the controlling core). Every other piece is salvage: dark for good.
+    pub controlled: bool,
+    /// Controlled, with a working, powered core this tick: systems run and the hull glows. A controlled piece
+    /// without power goes dark until power returns.
+    pub active: bool,
+    /// Pose and velocity of the body (synced from the physics backend after each step).
     pub body: Body,
+    /// Pose at the end of the previous tick, for render interpolation (`render_pose`).
+    pub prev_pos: Vec2,
+    pub prev_angle: f32,
     pub power: PowerState,
     pub thrusters: Vec<Thruster>,
+    /// Gyros and logic cores with reaction torque.
+    pub torque_sources: Vec<TorqueSource>,
     pub authority: ThrustAuthority,
     pub guns: Vec<GunMount>,
-    /// Engine force and torque this tick, for the physics layer.
+    /// This tick's actuator commands (written by the flight computer or from raw controls).
+    pub act: Actuation,
+    /// Actual output of each thruster row this tick, 0..1 of its max force (throttle × power). Plumes.
+    pub output: Vec<f32>,
+    /// Force (piece frame) and torque this tick from engines, RCS, gimbals, gyros and cores, for the physics
+    /// layer.
     pub wrench: Wrench,
+    /// Collisions with other pieces of the same ship are off until this tick (after a split; 0 = never off).
+    pub ghost_until: u64,
+    pub(crate) alloc: AllocTable,
+    cores: Vec<PartIdx>,
     reactors: Vec<Reactor>,
     /// Consumers in brown-out priority order.
     consumers: Vec<Consumer>,
@@ -271,12 +306,22 @@ impl Piece {
             mass: MassProps::default(),
             colliders: Vec::new(),
             has_core: false,
+            controlled: false,
+            active: false,
+            prev_pos: body.pos,
+            prev_angle: body.angle,
             body,
             power: PowerState::default(),
             thrusters: Vec::new(),
+            torque_sources: Vec::new(),
             authority: ThrustAuthority::default(),
             guns: Vec::new(),
+            act: Actuation::default(),
+            output: Vec::new(),
             wrench: Wrench::default(),
+            ghost_until: 0,
+            alloc: AllocTable::default(),
+            cores: Vec::new(),
             reactors: Vec::new(),
             consumers: Vec::new(),
             heaters: Vec::new(),
@@ -284,9 +329,17 @@ impl Piece {
         }
     }
 
-    /// No logic core: drifting salvage.
+    /// Not the controlling piece: drifting salvage (no hull glow, systems off), even with a core.
     pub fn salvage(&self) -> bool {
-        !self.has_core
+        !self.controlled
+    }
+
+    /// Pose for rendering between the previous and the current tick: `alpha` 0 = previous, 1 = current.
+    /// The angle takes the short way round.
+    pub fn render_pose(&self, alpha: f32) -> (Vec2, f32) {
+        let pos = self.prev_pos + (self.body.pos - self.prev_pos) * alpha;
+        let d = crate::physics::wrap_angle(self.body.angle - self.prev_angle);
+        (pos, crate::physics::wrap_angle(self.prev_angle + d * alpha))
     }
 
     /// Consumers in the order they get power.
@@ -315,6 +368,9 @@ pub(crate) struct Scratch {
     pub groups: Vec<(u32, u32)>,
     pub affected: Vec<PartIdx>,
     pub colliders: ColliderScratch,
+    pub fmax: Vec<f32>,
+    pub tmax: Vec<f32>,
+    pub activity: Vec<f32>,
 }
 
 /// A ship: one blueprint instance, possibly broken into several pieces.
@@ -338,12 +394,27 @@ pub struct Ship {
     pub(crate) scratch: Scratch,
     /// Parts destroyed since the last breakage resolution.
     pub(crate) pending_destroyed: Vec<PartIdx>,
+    /// The controlling piece; `None` = the ship is dark for good (lost every core of that piece).
+    pub(crate) control: Option<PieceId>,
+    pub(crate) helm: HelmMode,
+    pub(crate) brain: Option<RaiderBrain>,
+    pub(crate) telemetry: FlightTelemetry,
+    /// Global multipliers from `SimConfig` (thrust: engines and RCS; torque: gyros and cores).
+    pub(crate) thrust_scale: f32,
+    pub(crate) torque_scale: f32,
 }
 
 impl Ship {
     /// Builds a ship from a design. `body` is the pose of the blueprint's main piece (the one with a logic
-    /// core, else the largest); the frame origin of every piece is its centre of mass.
-    pub fn new(id: ShipId, design: Arc<ShipDesign>, body: Body, ids: &mut IdAlloc) -> Ship {
+    /// core, else the largest); the frame origin of every piece is its centre of mass. The main piece is the
+    /// controlling piece if it has a core.
+    pub(crate) fn new(
+        id: ShipId,
+        design: Arc<ShipDesign>,
+        body: Body,
+        ids: &mut IdAlloc,
+        cfg: &crate::config::SimConfig,
+    ) -> Ship {
         let n = design.parts.len();
         let parts = design
             .parts
@@ -371,6 +442,12 @@ impl Ship {
             power_priority: DEFAULT_POWER_PRIORITY,
             scratch: Scratch::default(),
             pending_destroyed: Vec::new(),
+            control: None,
+            helm: HelmMode::Raw,
+            brain: None,
+            telemetry: FlightTelemetry::default(),
+            thrust_scale: cfg.thrust_scale,
+            torque_scale: cfg.torque_scale,
             design,
         };
         let all: Vec<PartIdx> = (0..n as u32).collect();
@@ -398,6 +475,12 @@ impl Ship {
                 angvel: body.angvel,
             };
             ship.pieces.push(Piece::new(pid, comp, origins[k], b));
+        }
+        if let Some(&first) = ship.pieces.get(main).map(|p| &p.id)
+            && ship.pieces[main].parts.iter().any(|&p| ship.design.parts[p as usize].logic)
+        {
+            ship.control = Some(first);
+            ship.pieces[main].controlled = true;
         }
         for k in 0..ship.pieces.len() {
             ship.rebuild_piece(k);
@@ -439,14 +522,33 @@ impl Ship {
         self.piece_index(id).map(|k| &self.pieces[k])
     }
 
-    /// Mutable access for the physics layer (to write `body` back after a physics step).
-    pub fn piece_mut(&mut self, id: PieceId) -> Option<&mut Piece> {
+    pub(crate) fn piece_mut(&mut self, id: PieceId) -> Option<&mut Piece> {
         self.piece_index(id).map(move |k| &mut self.pieces[k])
     }
 
-    /// Bodies of all pieces, for the physics layer's sync-back.
-    pub fn pieces_mut(&mut self) -> impl Iterator<Item = (PieceId, &mut Body)> {
-        self.pieces.iter_mut().map(|p| (p.id, &mut p.body))
+    /// The controlling piece (`None`: the ship is dark for good).
+    pub fn control_piece(&self) -> Option<PieceId> {
+        self.control
+    }
+
+    /// Is the ship flying this tick (controlling piece with a powered core)?
+    pub fn is_active(&self) -> bool {
+        self.control
+            .and_then(|c| self.piece(c))
+            .is_some_and(|p| p.active)
+    }
+
+    pub fn helm(&self) -> &HelmMode {
+        &self.helm
+    }
+
+    pub fn brain(&self) -> Option<&RaiderBrain> {
+        self.brain.as_ref()
+    }
+
+    /// What the flight computer did last tick.
+    pub fn telemetry(&self) -> &FlightTelemetry {
+        &self.telemetry
     }
 
     pub(crate) fn piece_index(&self, id: PieceId) -> Option<usize> {
@@ -475,8 +577,10 @@ impl Ship {
         &self.controls
     }
 
-    /// Replaces the controls (the throttle list is resized to the engine count).
+    /// Replaces the controls (the throttle list is resized to the engine count) and switches the helm to
+    /// `HelmMode::Raw` (no flight computer).
     pub fn set_controls(&mut self, c: &ShipControls) {
+        self.helm = HelmMode::Raw;
         self.controls.throttle.clone_from(&c.throttle);
         self.controls
             .throttle
@@ -784,50 +888,62 @@ impl Ship {
         let rank = |k: ConsumerKind| prio.iter().position(|&x| x == k).unwrap_or(ConsumerKind::COUNT);
         piece.consumers.sort_by_key(|c| (rank(c.kind), c.part));
 
-        // Thruster table and gun mounts.
+        // Torque sources (gyros, logic cores) and cores.
+        piece.cores.clear();
+        piece.torque_sources.clear();
+        for &p in &piece.parts {
+            let spec = &d.parts[p as usize];
+            if spec.logic {
+                piece.cores.push(p);
+            }
+            let t = self.stats[p as usize].get(Stat::Torque) * self.torque_scale;
+            if t > 0.0 {
+                piece.torque_sources.push(TorqueSource { part: p, max: t });
+            }
+        }
+
+        // Thruster table (engines, then RCS nozzles) and gun mounts.
         piece.thrusters.clear();
         piece.guns.clear();
-        let mut auth = ThrustAuthority::default();
+        let com = piece.mass.com;
+        let row = |slot: u32, part: PartIdx, dir: Vec2, point: Vec2, max_force: f32, clear: bool, gimbal: f32, rcs: bool| {
+            let arm = point - com;
+            let lat = dir.perp();
+            Thruster {
+                slot,
+                part,
+                dir,
+                point,
+                arm,
+                torque_per_force: arm.cross(dir),
+                max_force,
+                clear,
+                gimbal,
+                lat,
+                torque_per_lateral: arm.cross(lat),
+                rcs,
+            }
+        };
         for &p in &piece.parts {
             let slot = d.slot_of_part[p as usize];
-            if slot == NO_SLOT {
-                continue;
-            }
             let spec = &d.parts[p as usize];
             let st = &self.stats[p as usize];
             let clear = self.parts[p as usize].clear;
-            if spec.is_engine {
+            if spec.is_engine && slot != NO_SLOT {
                 let e = &d.engines[slot as usize];
-                let dir = dir_vec(e.facing);
-                let point = to_piece(e.point, piece.origin);
-                let arm = point - piece.mass.com;
-                let t = Thruster {
+                let deg = st.get(Stat::Gimbal).clamp(0.0, 89.0);
+                let gimbal = if deg > 0.0 { sin(deg * (core::f32::consts::PI / 180.0)) } else { 0.0 };
+                piece.thrusters.push(row(
                     slot,
-                    part: p,
-                    dir,
-                    point,
-                    arm,
-                    torque_per_force: arm.cross(dir),
-                    max_force: st.get(Stat::Thrust),
+                    p,
+                    dir_vec(e.facing),
+                    to_piece(e.point, piece.origin),
+                    st.get(Stat::Thrust) * self.thrust_scale,
                     clear,
-                };
-                if clear {
-                    let f = t.max_force;
-                    match e.facing {
-                        Dir::Up => auth.forward += f,
-                        Dir::Down => auth.backward += f,
-                        Dir::Right => auth.right += f,
-                        Dir::Left => auth.left += f,
-                    }
-                    let tq = t.torque_per_force * f;
-                    if tq > 0.0 {
-                        auth.torque_ccw += tq;
-                    } else {
-                        auth.torque_cw -= tq;
-                    }
-                }
-                piece.thrusters.push(t);
-            } else {
+                    gimbal,
+                    false,
+                ));
+            } else if spec.weapon.is_some() && slot != NO_SLOT {
                 let g = &d.guns[slot as usize];
                 let fire_rate = st.get(Stat::FireRate);
                 piece.guns.push(GunMount {
@@ -842,11 +958,69 @@ impl Ship {
                 });
             }
         }
+        // RCS: one nozzle per straight side whose neighbouring cell is empty or belongs to another piece. It
+        // pushes away from its side, at the side's centre.
+        for &p in &piece.parts {
+            let spec = &d.parts[p as usize];
+            if !spec.is_rcs {
+                continue;
+            }
+            let thrust = self.stats[p as usize].get(Stat::RcsThrust) * self.thrust_scale;
+            for (c, side) in spec.shape.connectable_sides() {
+                let (dx, dy) = side.delta();
+                let open = match self.grid.occupant((c.0 + dx, c.1 + dy)) {
+                    None => true,
+                    Some(o) => o != p as usize && self.parts[o].piece != pid,
+                };
+                if !open {
+                    continue;
+                }
+                let centre = [c.0 as f32 + 0.5 + 0.5 * dx as f32, c.1 as f32 + 0.5 + 0.5 * dy as f32];
+                piece.thrusters.push(row(
+                    NO_SLOT,
+                    p,
+                    dir_vec(side.opposite()),
+                    to_piece(centre, piece.origin),
+                    thrust,
+                    true,
+                    0.0,
+                    true,
+                ));
+            }
+        }
+
+        // Authority of the clear rows and the pure torque.
+        let mut auth = ThrustAuthority::default();
+        for t in &piece.thrusters {
+            if !t.clear {
+                continue;
+            }
+            let f = t.max_force;
+            match crate::alloc::group_of(t.dir) {
+                0 => auth.forward += f,
+                1 => auth.backward += f,
+                2 => auth.right += f,
+                _ => auth.left += f,
+            }
+            let tq = t.torque_per_force * f;
+            if tq > 0.0 {
+                auth.torque_ccw += tq;
+            } else {
+                auth.torque_cw -= tq;
+            }
+        }
+        auth.torque_pure = piece.torque_sources.iter().map(|s| s.max).sum();
         piece.authority = auth;
+        piece.alloc = AllocTable::build(&piece.thrusters);
+        piece.act.resize(piece.thrusters.len(), piece.torque_sources.len());
+        piece.output.clear();
+        piece.output.resize(piece.thrusters.len(), 0.0);
+        piece.active = piece.controlled && piece.has_core;
         self.pieces[k] = piece;
     }
 
-    /// One tick of the ship systems: power → heat → engine wrench and gun output. No allocation.
+    /// One tick of the ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun
+    /// output. Reads this tick's actuator commands (`Piece::act`). No allocation once warmed up.
     pub fn update_systems(&mut self) {
         let Ship {
             design,
@@ -858,10 +1032,14 @@ impl Ship {
             ..
         } = self;
         let d = &**design;
+        let activity = &mut scratch.activity;
+        if activity.len() != parts.len() {
+            activity.clear();
+            activity.resize(parts.len(), 0.0);
+        }
 
         for piece in pieces.iter_mut() {
-            let active = piece.has_core;
-            // Power: reactors fill the pool, consumers draw in priority order.
+            // Power supply first: a controlled piece is active only with a working core and some power.
             let mut supply = 0.0f32;
             for r in &piece.reactors {
                 let ps = &parts[r.part as usize];
@@ -869,6 +1047,29 @@ impl Ship {
                     supply += r.output;
                 }
             }
+            let core_ok = piece.cores.iter().any(|&c| {
+                let ps = &parts[c as usize];
+                ps.alive && !ps.overheated
+            });
+            let active = piece.controlled && core_ok && supply > 0.0;
+            piece.active = active;
+
+            // What the movers were told to do (engines and RCS pods: summed throttle; gyros: |use|).
+            for c in &piece.consumers {
+                activity[c.part as usize] = 0.0;
+            }
+            if active {
+                for (i, t) in piece.thrusters.iter().enumerate() {
+                    activity[t.part as usize] += piece.act.throttle.get(i).copied().unwrap_or(0.0);
+                }
+                for (j, src) in piece.torque_sources.iter().enumerate() {
+                    let u = piece.act.torque.get(j).copied().unwrap_or(0.0).abs();
+                    let a = &mut activity[src.part as usize];
+                    *a = a.max(u);
+                }
+            }
+
+            // Consumers draw in brown-out priority order.
             let mut remaining = supply;
             let (mut demand, mut served) = (0.0f32, 0.0f32);
             for c in &piece.consumers {
@@ -877,12 +1078,7 @@ impl Ship {
                     0.0
                 } else {
                     match c.kind {
-                        ConsumerKind::Engine => controls
-                            .throttle
-                            .get(c.slot as usize)
-                            .copied()
-                            .unwrap_or(0.0)
-                            .clamp(0.0, 1.0),
+                        ConsumerKind::Engine => activity[c.part as usize].clamp(0.0, 1.0),
                         ConsumerKind::Weapon => controls.fire as u8 as f32,
                         ConsumerKind::Shield => controls.shields as u8 as f32,
                         ConsumerKind::Logic | ConsumerKind::Other => 1.0,
@@ -917,17 +1113,27 @@ impl Ship {
                 served,
             };
 
-            // Engines → wrench; guns → output.
-            let mut w = Wrench::default();
-            for t in &piece.thrusters {
-                let work = parts[t.part as usize].work;
-                if work > 0.0 {
-                    let f = t.max_force * work;
-                    w.force += t.dir * f;
-                    w.torque += t.torque_per_force * f;
+            // Wrench at the power each actuator actually got.
+            let fmax = &mut scratch.fmax;
+            fmax.clear();
+            fmax.extend(piece.thrusters.iter().map(|t| {
+                let ps = &parts[t.part as usize];
+                if active && t.clear && ps.alive && !ps.overheated { t.max_force * ps.power } else { 0.0 }
+            }));
+            let tmax = &mut scratch.tmax;
+            tmax.clear();
+            tmax.extend(piece.torque_sources.iter().map(|src| {
+                let ps = &parts[src.part as usize];
+                if active && ps.alive && !ps.overheated { src.max * ps.power } else { 0.0 }
+            }));
+            if piece.act.throttle.len() == piece.thrusters.len() && piece.act.torque.len() == tmax.len() {
+                piece.wrench = wrench_of(&piece.thrusters, fmax, tmax, &piece.act);
+                for (i, t) in piece.thrusters.iter().enumerate() {
+                    piece.output[i] = if t.max_force > 0.0 { piece.act.throttle[i] * fmax[i] / t.max_force } else { 0.0 };
                 }
+            } else {
+                piece.wrench = Wrench::default();
             }
-            piece.wrench = w;
             for g in &mut piece.guns {
                 g.output = g.dps * parts[g.part as usize].work;
             }
@@ -997,7 +1203,8 @@ impl StateHash for Piece {
         h.f32(self.mass.mass);
         h.vec2(self.mass.com);
         h.f32(self.mass.inertia);
-        h.bool(self.has_core);
+        h.u32(self.has_core as u32 | (self.controlled as u32) << 1 | (self.active as u32) << 2);
+        h.u64(self.ghost_until);
         self.body.hash_state(h);
         h.f32(self.power.supply);
         h.f32(self.power.demand);
@@ -1013,6 +1220,14 @@ impl StateHash for Piece {
         for g in &self.guns {
             h.f32(g.output);
         }
+        h.u32(self.act.throttle.len() as u32);
+        for i in 0..self.act.throttle.len() {
+            h.f32(self.act.throttle[i]);
+            h.f32(self.act.deflect[i]);
+        }
+        for &t in &self.act.torque {
+            h.f32(t);
+        }
     }
 }
 
@@ -1025,6 +1240,15 @@ impl StateHash for Ship {
         }
         h.bool(self.controls.fire);
         h.bool(self.controls.shields);
+        h.u32(self.control.map_or(u32::MAX, |c| c.0));
+        self.helm.hash_state(h);
+        match &self.brain {
+            Some(b) => {
+                h.u8(1);
+                b.hash_state(h);
+            }
+            None => h.u8(0),
+        }
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {
             h.u32(ps.alive as u32 | (ps.overheated as u32) << 1);

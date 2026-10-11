@@ -1,11 +1,15 @@
-//! A deterministic scenario without physics, for the determinism check (native vs wasm vs browser) and for
-//! tests: ships with powered systems heating up, controls and damage rolled on the `Scenario` RNG stream,
-//! parts destroyed, pieces splitting.
+//! Deterministic scenarios for the determinism check (native vs wasm, later the browser) and for tests. Both
+//! spawn two copies of every ship blueprint in the content (load order), so they need no hard-coded ids and
+//! grow with the content, and both roll their inputs and hits on the `Scenario` RNG stream.
 //!
-//! It spawns two copies of every ship blueprint in the content (load order), so it needs no hard-coded ids
-//! and grows with the content. Bodies move with a trivial free-flight stand-in ([`free_flight`]: engine
-//! wrench → velocity → pose, no collisions) so the hash also covers rotations (libm) and the split
-//! kinematics. The physics layer will replace the stand-in and plug into the same check.
+//! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
+//!   a blast every 75 ticks: power, heat, damage, splits; bodies move under the `FreeFlight` backend. Plus one
+//!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
+//!   base ships do.
+//! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
+//!   fire), automaton ships by the raider brain, fewer hits: flight computer, allocation, maneuvers, brains.
+//!
+//! When the physics engine lands, the same scenarios run on it and the same check compares the hashes.
 
 use std::sync::Arc;
 
@@ -14,18 +18,52 @@ use data::Content;
 use crate::breakage::DamageTarget;
 use crate::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
-use crate::math::{Rot, Vec2, cos, sin};
+use crate::flight::{PilotInput, Target};
+use crate::maneuver::RaiderBrain;
+use crate::math::{Vec2, cos, sin};
 use crate::rng::Stream;
 use crate::ship::{Body, Ship, ShipControls};
-use crate::world::{DamageCommand, Sim, TickInputs};
-use crate::DT;
+use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
 
-/// Chance per tick of a random hit on a random alive part.
-const HIT_CHANCE: f32 = 0.25;
-/// Every this many ticks a heavy blast hits a part and all its neighbours (provokes splits).
-const BLAST_EVERY: u64 = 75;
-/// Controls of each ship are re-rolled every this many ticks (staggered per ship).
-const REROLL_EVERY: u64 = 20;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScenarioKind {
+    Core,
+    Flight,
+}
+
+impl ScenarioKind {
+    pub fn from_name(name: &str) -> Option<ScenarioKind> {
+        match name {
+            "core" => Some(ScenarioKind::Core),
+            "flight" => Some(ScenarioKind::Flight),
+            _ => None,
+        }
+    }
+
+    /// Chance per tick of a random hit on a random alive part.
+    fn hit_chance(self) -> f32 {
+        match self {
+            ScenarioKind::Core => 0.25,
+            ScenarioKind::Flight => 0.08,
+        }
+    }
+
+    /// Every this many ticks a heavy blast hits a part and all its neighbours (provokes splits).
+    fn blast_every(self) -> u64 {
+        match self {
+            ScenarioKind::Core => 75,
+            ScenarioKind::Flight => 150,
+        }
+    }
+
+    /// Inputs of each ship are re-rolled every this many ticks (staggered per ship).
+    fn reroll_every(self) -> u64 {
+        match self {
+            ScenarioKind::Core => 20,
+            ScenarioKind::Flight => 45,
+        }
+    }
+}
 
 /// Counters over the run, for the summary line.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -36,17 +74,25 @@ pub struct ScenarioStats {
     pub pieces_destroyed: u32,
     /// Part-ticks spent overheated (summed over all parts and ticks).
     pub overheated_part_ticks: u64,
+    /// Ship-ticks with at least one gun firing.
+    pub firing_ticks: u64,
 }
 
 pub struct Scenario {
     pub sim: Sim,
     pub stats: ScenarioStats,
+    pub kind: ScenarioKind,
     inputs: TickInputs,
 }
 
 impl Scenario {
-    /// Two ships of every blueprint in `content`, placed on a circle, spinning a little.
+    /// The core scenario.
     pub fn new(content: &Content, seed: u64) -> Result<Scenario, String> {
+        Scenario::with_kind(content, seed, ScenarioKind::Core)
+    }
+
+    /// Two ships of every blueprint in `content`, placed on a circle, spinning a little.
+    pub fn with_kind(content: &Content, seed: u64, kind: ScenarioKind) -> Result<Scenario, String> {
         let mut sim = Sim::new(seed);
         let designs: Vec<Arc<ShipDesign>> = content
             .ships
@@ -54,25 +100,38 @@ impl Scenario {
             .map(|b| ShipDesign::compile(content, b).map(Arc::new))
             .collect::<Result<_, _>>()?;
         let n = designs.len() * 2;
+        let radius = match kind {
+            ScenarioKind::Core => 60.0,
+            ScenarioKind::Flight => 90.0,
+        };
         for k in 0..n {
             let design = Arc::clone(&designs[k % designs.len()]);
             let a = k as f32 * (core::f32::consts::TAU / n as f32);
             let body = Body {
-                pos: Vec2::new(cos(a) * 60.0, sin(a) * 60.0),
+                pos: Vec2::new(cos(a) * radius, sin(a) * radius),
                 angle: a,
                 linvel: Vec2::new(-sin(a) * 2.0, cos(a) * 2.0),
                 angvel: ((k % 5) as f32 - 2.0) * 0.15,
             };
-            sim.spawn_ship(design, body);
+            let id = sim.spawn_ship(Arc::clone(&design), body);
+            if kind == ScenarioKind::Flight && design.faction != "ship_mind" {
+                sim.command(id, ShipCommand::Brain(Some(RaiderBrain::default())));
+            }
+        }
+        if kind == ScenarioKind::Core
+            && let Ok(d) = ShipDesign::compile(content, &heat_stress_blueprint())
+        {
+            sim.spawn_ship(Arc::new(d), Body::at(Vec2::new(0.0, -15.0), 0.0));
         }
         Ok(Scenario {
             sim,
             stats: ScenarioStats::default(),
+            kind,
             inputs: TickInputs::default(),
         })
     }
 
-    /// One tick: roll inputs, step the sim, move bodies, count events. Returns the state hash.
+    /// One tick: roll inputs, step the sim, count events. Returns the state hash.
     pub fn step(&mut self) -> u64 {
         self.roll_inputs();
         self.sim.step(&self.inputs);
@@ -84,67 +143,92 @@ impl Scenario {
                     self.stats.pieces_spawned += s.spawned.len() as u32;
                 }
                 SimEvent::PieceDestroyed { .. } => self.stats.pieces_destroyed += 1,
-                SimEvent::PieceChanged { .. } => {}
+                _ => {}
             }
         }
-        for ship in self.sim.ships_mut() {
-            free_flight(ship);
+        for ship in self.sim.ships() {
             self.stats.overheated_part_ticks +=
                 ship.parts().iter().filter(|p| p.alive && p.overheated).count() as u64;
+            if ship.pieces().iter().any(|p| p.guns.iter().any(|g| g.output > 0.0)) {
+                self.stats.firing_ticks += 1;
+            }
         }
         self.sim.state_hash()
     }
 
     fn roll_inputs(&mut self) {
         let tick = self.sim.tick();
+        let kind = self.kind;
         self.inputs.controls.clear();
+        self.inputs.commands.clear();
         self.inputs.damage.clear();
-        let ships: Vec<(crate::ShipId, usize)> = self
+        let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
             .ships()
             .iter()
-            .map(|s| (s.id(), s.design().engines.len()))
+            .map(|s| (s.id(), s.design().engines.len(), s.brain().is_some(), s.design().id == HEAT_STRESS))
             .collect();
-        for (k, &(id, engines)) in ships.iter().enumerate() {
-            if !(tick + k as u64 * 3).is_multiple_of(REROLL_EVERY) {
+        let enemies: Vec<crate::ShipId> = self
+            .sim
+            .ships()
+            .iter()
+            .filter(|s| s.design().faction != "ship_mind")
+            .map(|s| s.id())
+            .collect();
+        for (k, &(id, engines, brain, heat_stress)) in ships.iter().enumerate() {
+            if brain || !(tick + k as u64 * 3).is_multiple_of(kind.reroll_every()) {
                 continue;
             }
             let rng = self.sim.rng(Stream::Scenario);
-            // Every second ship runs flat out, so heat builds up and parts overheat and recover.
-            let stressed = k % 2 == 1;
-            let throttle = (0..engines)
-                .map(|_| {
-                    if stressed {
-                        1.0
-                    } else if rng.chance(0.3) {
-                        0.0
+            match kind {
+                ScenarioKind::Core => {
+                    // Every second ship (and the heat-stress ship) runs flat out, so heat builds up.
+                    let stressed = k % 2 == 1 || heat_stress;
+                    let throttle = (0..engines)
+                        .map(|_| {
+                            if stressed {
+                                1.0
+                            } else if rng.chance(0.3) {
+                                0.0
+                            } else {
+                                rng.next_f32()
+                            }
+                        })
+                        .collect();
+                    let fire = stressed || rng.chance(0.6);
+                    let shields = rng.chance(0.85);
+                    self.inputs.controls.push((id, ShipControls { throttle, fire, shields }));
+                }
+                ScenarioKind::Flight => {
+                    let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
+                    let len = if rng.chance(0.2) { 0.0 } else { rng.range_f32(0.2, 1.0) };
+                    let lock = if !enemies.is_empty() && rng.chance(0.5) {
+                        Some(Target::Ship(enemies[rng.below(enemies.len() as u32) as usize]))
                     } else {
-                        rng.next_f32()
-                    }
-                })
-                .collect();
-            let fire = stressed || rng.chance(0.6);
-            let shields = rng.chance(0.85);
-            self.inputs.controls.push((
-                id,
-                ShipControls {
-                    throttle,
-                    fire,
-                    shields,
-                },
-            ));
+                        None
+                    };
+                    let input = PilotInput {
+                        stick: Vec2::new(cos(a), sin(a)) * len,
+                        lock,
+                        drift: rng.chance(0.2),
+                        fire: rng.chance(0.7),
+                    };
+                    self.inputs.commands.push((id, ShipCommand::Pilot(input)));
+                }
+            }
         }
 
-        let hit = self.sim.rng(Stream::Scenario).chance(HIT_CHANCE);
-        let blast = tick > 0 && tick.is_multiple_of(BLAST_EVERY);
+        let hit = self.sim.rng(Stream::Scenario).chance(kind.hit_chance());
+        let blast = tick > 0 && tick.is_multiple_of(kind.blast_every());
         if !(hit || blast) {
             return;
         }
-        // A random ship that still has parts, then a random alive part of it.
+        // A random ship that still has parts (not the heat-stress ship), then a random alive part of it.
         let targets: Vec<(crate::ShipId, u32)> = self
             .sim
             .ships()
             .iter()
+            .filter(|s| s.design().id != HEAT_STRESS)
             .map(|s| (s.id(), s.parts().iter().filter(|p| p.alive).count() as u32))
             .filter(|&(_, n)| n > 0)
             .collect();
@@ -174,6 +258,40 @@ impl Scenario {
     }
 }
 
+const HEAT_STRESS: &str = "heat_stress";
+
+/// Three beam lasers side by side on a fusion and a fission reactor, no radiators: overheats when it fires.
+/// A test fixture built from base part ids (skipped if a content pack lacks them).
+fn heat_stress_blueprint() -> data::Blueprint {
+    let p = |part: &str, x: i32, y: i32| data::Placement {
+        part: part.into(),
+        x,
+        y,
+        rot: 0,
+        flip: false,
+        material: None,
+    };
+    data::Blueprint {
+        id: HEAT_STRESS.into(),
+        name: "Heat stress".into(),
+        summary: "Determinism-scenario fixture that overheats.".into(),
+        description: None,
+        lore: None,
+        tags: vec![],
+        faction: "ship_mind".into(),
+        size: (3, 4),
+        parts: vec![
+            p("beam_laser", 0, 0),
+            p("beam_laser", 1, 0),
+            p("beam_laser", 2, 0),
+            p("fusion_reactor", 0, 2),
+            p("fission_reactor", 2, 2),
+            p("logic_core", 2, 3),
+        ],
+        source: Default::default(),
+    }
+}
+
 fn nth_alive(ship: &Ship, n: u32) -> PartIdx {
     let mut k = 0;
     for (i, p) in ship.parts().iter().enumerate() {
@@ -187,30 +305,15 @@ fn nth_alive(ship: &Ship, n: u32) -> PartIdx {
     0
 }
 
-/// Free-flight stand-in for the physics layer (NOT physics: no collisions, symplectic Euler): applies each
-/// piece's engine wrench and moves its body.
-pub fn free_flight(ship: &mut Ship) {
-    for p in ship.pieces.iter_mut() {
-        if p.mass.mass <= 0.0 {
-            continue;
-        }
-        let rot = Rot::from_angle(p.body.angle);
-        let com = p.body.pos + rot.apply(p.mass.com);
-        p.body.linvel += rot.apply(p.wrench.force) * (DT / p.mass.mass);
-        if p.mass.inertia > 0.0 {
-            p.body.angvel += p.wrench.torque * (DT / p.mass.inertia);
-        }
-        // Move the centre of mass, turn about it, then place the frame origin.
-        let com = com + p.body.linvel * DT;
-        p.body.angle += p.body.angvel * DT;
-        p.body.pos = com - Rot::from_angle(p.body.angle).apply(p.mass.com);
-    }
-}
-
-/// Runs the scenario on the embedded base content and returns the state hash after every tick.
-pub fn run(seed: u64, ticks: u64) -> (Vec<u64>, ScenarioStats) {
+/// Runs a scenario on the embedded base content and returns the state hash after every tick.
+pub fn run_kind(kind: ScenarioKind, seed: u64, ticks: u64) -> (Vec<u64>, ScenarioStats) {
     let content = data::base_content();
-    let mut sc = Scenario::new(&content, seed).expect("base content compiles");
+    let mut sc = Scenario::with_kind(&content, seed, kind).expect("base content compiles");
     let hashes = (0..ticks).map(|_| sc.step()).collect();
     (hashes, sc.stats)
+}
+
+/// The core scenario (see [`run_kind`]).
+pub fn run(seed: u64, ticks: u64) -> (Vec<u64>, ScenarioStats) {
+    run_kind(ScenarioKind::Core, seed, ticks)
 }

@@ -26,7 +26,7 @@ pub struct PieceSnapshot {
     /// `linvel = v + ω × (com_new − com_old)`); for the kept piece the parent's pose with `linvel` corrected
     /// for its shifted centre of mass.
     pub body: Body,
-    /// No logic core: drifts as salvage (no hull glow, systems idle).
+    /// Not the ship's controlling piece: drifts as salvage (no hull glow, systems off).
     pub salvage: bool,
 }
 
@@ -60,4 +60,12 @@ pub enum SimEvent {
     Split(SplitEvent),
     /// A piece lost its last part: remove its body.
     PieceDestroyed { ship: ShipId, piece: PieceId },
+    /// The ship's controlling piece lost its last core (or was destroyed): the whole ship is dark for good.
+    ControlLost { ship: ShipId },
+    /// A ship was spawned: create a body and visuals per piece (`Sim::ship(ship).pieces()`).
+    ShipSpawned { ship: ShipId },
+    /// A ship was removed with all its pieces.
+    ShipRemoved { ship: ShipId },
+    /// Two bodies started touching (reported by the physics backend; ramming damage later).
+    Impact(crate::physics::Contact),
 }

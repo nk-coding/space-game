@@ -32,7 +32,8 @@ impl ConvexPolygon {
         a2 / 2.0
     }
 
-    fn rect(min: Vec2, max: Vec2) -> ConvexPolygon {
+    /// An axis-aligned rectangle (counter-clockwise).
+    pub fn rect(min: Vec2, max: Vec2) -> ConvexPolygon {
         ConvexPolygon {
             points: [
                 min,
