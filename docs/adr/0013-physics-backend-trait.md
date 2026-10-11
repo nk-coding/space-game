@@ -1,6 +1,6 @@
 # ADR-0013: Physics sits behind a `PhysicsBackend` trait, with `FreeFlight` as the stand-in
 
-- Status: Accepted (provisional, lead)
+- Status: Superseded by [ADR-0025](0025-main-repo-holds-only-chosen-code.md)
 - Date: 2026-10-11
 - Decided by: lead session (default for Niklas to review)
 - Related: [ADR-0003](0003-crate-architecture.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0014](0014-physics-engine-by-benchmark.md), GDR-0019, `docs/sim.md` "The physics seam"
@@ -34,3 +34,6 @@ rest of the simulation.
 - Collisions and ramming damage wait for the real engine (`Impact` events will become ramming damage).
 - Adding the engine: implement the trait, construct `Sim::with_backend`, add its determinism scenario.
 - Engine features outside the trait (joints, continuous collision, and so on) need a trait change first.
+
+Superseded on 11 Oct 2026: Niklas chose Rapier2D (ADR-0014) and decided that the main repo holds only chosen code
+(ADR-0025), so the generic trait and `FreeFlight` are removed once Rapier is integrated. Until then they stay.

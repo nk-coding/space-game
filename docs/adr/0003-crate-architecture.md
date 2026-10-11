@@ -1,9 +1,9 @@
-# ADR-0003: Crate architecture: engine-free `sim` and `data`, Bevy `game`, `bench` as its own workspace
+# ADR-0003: Crate architecture: engine-free `sim` and `data`, a Bevy `game` client, the physics benchmark kept outside
 
 - Status: Accepted
-- Date: 2026-10-10 (crate plan); 2026-10-11 (`bench` workspace, tool crates)
-- Decided by: Niklas (crate plan, concept phase); lead session (`bench` as a separate workspace, tool crates)
-- Related: [ADR-0002](0002-all-rust-stack-with-bevy.md), [ADR-0010](0010-cross-platform-determinism.md), ADR-0013, ADR-0014, ADR-0017, ADR-0023, GDR-0032, `CLAUDE.md` "Crates"
+- Date: 2026-10-10 (crate plan); 2026-10-11 (tool crates; benchmark moved out of the repo, ADR-0025)
+- Decided by: Niklas (crate plan, concept phase; benchmark in its own repo); lead session (tool crates)
+- Related: [ADR-0002](0002-all-rust-stack-with-bevy.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0013](0013-physics-backend-trait.md), [ADR-0014](0014-physics-engine-by-benchmark.md), [ADR-0025](0025-main-repo-holds-only-chosen-code.md), [ADR-0017](0017-embedded-content-in-memory-loader.md), [ADR-0023](0023-host-authoritative-netcode.md), GDR-0032, `CLAUDE.md` "Crates"
 
 ## Context
 
@@ -25,9 +25,10 @@ on 11 Oct.
 - `data`: content schema, pack loader from in-memory files (ADR-0017), validation, shared blueprint geometry.
   No Bevy. Used by `sim`, `game` and tools (wiki).
 - `game`: the Bevy client: rendering at 60 fps with interpolation, UI, input, audio.
-- `bench`: the physics benchmark, a **separate cargo workspace** (own `[workspace]`, `Cargo.lock` and
-  `target/`), excluded from the main one, so Box2D C, Avian's Bevy version and engine features never enter the
-  game's dependency graph.
+- The physics benchmark lives in a **separate local repo**, `space-game-physics-bench`, next to `space-game`;
+  only its report (`docs/results/physics-benchmark.md`) stays here (Niklas, 11 Oct 2026, ADR-0025). Until then
+  it was a separate cargo workspace inside the repo (`crates/bench`, set up by the lead session), so Box2D C,
+  Avian's Bevy version and engine features never entered the game's dependency graph.
 - Tools: `content-tool` (validate, export JSON) and `atlas-tool` (its committed PNG output conflicts with
   ADR-0021).
 - Planned: `net` (ADR-0023), `arena` (headless fights, evolution, balance reports, determinism checks;
@@ -37,6 +38,6 @@ on 11 Oct.
 ## Consequences
 
 - Visuals live only in the client: `sim` knows nothing about colours or icons.
-- The client uses the sim's backend-independent API; the physics engine plugs in behind a trait (ADR-0013).
-- If Avian won the benchmark it would conflict with this split; the spike plan says to discuss that with Niklas
-  before building on it.
+- Physics is Rapier2D inside `sim` (ADR-0014); the client never talks to the engine directly. Avian, which ties
+  the core to Bevy's ECS, would have conflicted with this split.
+- Only chosen code lives in this repo (ADR-0025).
