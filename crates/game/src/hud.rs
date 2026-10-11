@@ -74,7 +74,7 @@ fn keyboard_toggles(
 fn apply_bloom(mut commands: Commands, toggles: Res<RenderToggles>, camera: Single<(Entity, Has<Bloom>), With<MainCamera>>) {
     let (entity, has) = *camera;
     if toggles.bloom && !has {
-        commands.entity(entity).insert(Bloom { intensity: 0.12, ..Bloom::NATURAL });
+        commands.entity(entity).insert(Bloom { intensity: 0.3, ..Bloom::NATURAL });
     } else if !toggles.bloom && has {
         // The camera keeps `Hdr` (needed for sRGB compositing on WebGL2, see `spawn_camera`).
         commands.entity(entity).remove::<Bloom>();

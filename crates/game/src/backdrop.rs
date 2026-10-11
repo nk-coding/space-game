@@ -174,8 +174,10 @@ fn place_dust(
         let tile = first + Vec2::new(ix as f32, iy as f32);
         let needed = (tile * TILE - q).cmple(view / 2.0);
         let origin = tile * TILE + cam_pos * (1.0 - f);
-        tf.translation.x = origin.x;
-        tf.translation.y = origin.y;
+        if tf.translation.truncate() != origin {
+            tf.translation.x = origin.x;
+            tf.translation.y = origin.y;
+        }
         let on = needed.all() && !toggles.debug_shapes;
         let v = if on { Visibility::Inherited } else { Visibility::Hidden };
         if *vis != v {
