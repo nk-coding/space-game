@@ -299,11 +299,23 @@ fn main() {
         if std::env::var("PERF_DETAIL").is_ok() {
             for (t, ms) in step.iter().enumerate() {
                 if *ms > 3.0 {
-                    println!("  slow tick {t}: {ms:.2} ms, destroyed parts {}", destroyed[t]);
+                    println!(
+                        "  slow tick {t}: {ms:.2} ms, destroyed parts {}",
+                        destroyed[t]
+                    );
                 }
             }
-            let quiet: Vec<f64> = step.iter().zip(&destroyed).filter(|(_, d)| **d == 0).map(|(s, _)| *s).collect();
-            println!("  ticks without destroyed parts: {} of {n}, mean {:.3} ms", quiet.len(), quiet.iter().sum::<f64>() / quiet.len().max(1) as f64);
+            let quiet: Vec<f64> = step
+                .iter()
+                .zip(&destroyed)
+                .filter(|(_, d)| **d == 0)
+                .map(|(s, _)| *s)
+                .collect();
+            println!(
+                "  ticks without destroyed parts: {} of {n}, mean {:.3} ms",
+                quiet.len(),
+                quiet.iter().sum::<f64>() / quiet.len().max(1) as f64
+            );
         }
         let (m, p95) = stats(step);
         println!(

@@ -110,7 +110,7 @@ fn format_problem(p: &Problem, dir: Option<&Path>) -> String {
     if let Some(f) = &p.field {
         s += &format!(", field `{f}`");
     }
-    s + ": " + &p.message
+    s + ": " + p.message.as_str()
 }
 
 fn report(problems: &[(Problem, Option<PathBuf>)]) -> (usize, usize) {
@@ -131,7 +131,13 @@ fn load_content(dirs: &[PathBuf], opts: &ValidateOptions) -> Result<(Content, us
         }
     };
     let content = Content::merge(&loaded.packs);
-    let problems: Vec<(Problem, Option<PathBuf>)> = data::validate_with(&content, opts)
+    let mut found = data::validate_with(&content, opts);
+    // Behavior nodes must match what the sim implements; Rhai conditions must compile. Only meaningful once
+    // the content itself is valid.
+    if !found.iter().any(Problem::is_error) {
+        found.extend(sim::behavior::check_vocabulary(&content));
+    }
+    let problems: Vec<(Problem, Option<PathBuf>)> = found
         .into_iter()
         .map(|p| {
             let dir = p

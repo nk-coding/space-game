@@ -172,7 +172,7 @@ fn syntax_errors_name_line_and_column() {
 
     let long = format!(
         "when {} -> hold",
-        vec!["shield_down"; MAX_CONDITIONS + 1].join(" and ")
+        ["shield_down"; MAX_CONDITIONS + 1].join(" and ")
     );
     assert!(text_errors(&long)[0].2.contains("at most"));
 

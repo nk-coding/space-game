@@ -263,6 +263,8 @@ pub(crate) struct Scratch {
     outs: Vec<Out>,
     /// Hull share per ship index for this pass (NaN = not computed yet).
     hull: Vec<f32>,
+    /// Centre of mass and velocity of each ship's controlling piece, once per pass (each costs a sin/cos).
+    centres: Vec<Option<TargetState>>,
     /// One scope per Rhai script of the library.
     pub(crate) scopes: Vec<Scope<'static>>,
     /// Rhai evaluations so far (diagnostics; not part of the state).
@@ -289,11 +291,22 @@ pub(crate) fn think_all(
     if scratch.outs.len() < n {
         scratch.outs.resize_with(n, Out::default);
     }
+    let any_due = ships.iter().any(|s| {
+        s.behavior
+            .as_ref()
+            .is_some_and(|st| all || due(st, s.id(), tick))
+    });
+    if !any_due {
+        return;
+    }
     scratch.hull.clear();
     scratch.hull.resize(n, f32::NAN);
+    scratch.centres.clear();
+    scratch.centres.extend(ships.iter().map(centre));
     let Scratch {
         outs,
         hull,
+        centres,
         scopes,
         script_evals,
     } = scratch;
@@ -319,6 +332,7 @@ pub(crate) fn think_all(
                 focus: None,
                 acquired: 0,
                 hull,
+                centres,
                 lazy: Lazy::default(),
                 lib,
                 scopes,
@@ -331,7 +345,7 @@ pub(crate) fn think_all(
     }
     for k in 0..n {
         let out = &mut outs[k];
-        if !out.valid {
+        if !std::mem::take(&mut out.valid) {
             continue;
         }
         if let Some(st) = ships[k].behavior.as_mut() {
@@ -369,6 +383,7 @@ struct Ctx<'a> {
     focus: Option<(usize, TargetState, f32)>,
     acquired: u64,
     hull: &'a mut [f32],
+    centres: &'a [Option<TargetState>],
     lazy: Lazy,
     lib: &'a BehaviorLibrary,
     scopes: &'a mut [Scope<'static>],
@@ -500,6 +515,7 @@ fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
         return None;
     }
     let p = s.piece(s.control_piece()?)?;
+    let rot = crate::math::Rot::from_angle(p.body.angle);
     let mut best: Option<(f32, PartIdx)> = None;
     for &i in &p.parts {
         let spec = &s.design().parts[i as usize];
@@ -515,7 +531,7 @@ fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
             continue;
         }
         let local = to_piece(spec.centroid, p.origin);
-        let d = (p.body.to_world(local) - from).length_squared();
+        let d = (p.body.pos + rot.apply(local) - from).length_squared();
         if best.is_none_or(|b| d < b.0) {
             best = Some((d, i));
         }
@@ -715,7 +731,7 @@ impl Ctx<'_> {
             if !is_enemy(me, s) {
                 continue;
             }
-            let Some(ts) = centre(s) else {
+            let Some(ts) = self.centres[k] else {
                 continue;
             };
             let d = (ts.pos - from).length();
@@ -858,8 +874,9 @@ impl Ctx<'_> {
                 let me = self.me;
                 self.world
                     .iter()
-                    .filter(|s| is_enemy(me, s))
-                    .filter_map(centre)
+                    .zip(self.centres)
+                    .filter(|(s, _)| is_enemy(me, s))
+                    .filter_map(|(_, c)| *c)
                     .filter(|ts| (ts.pos - from).length() <= r)
                     .count() as f32
             }
