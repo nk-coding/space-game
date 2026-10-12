@@ -30,7 +30,7 @@ the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)).
 | Unlock | click empty space, or Esc | tap empty space |
 | Next target (nearest first) | Tab | – |
 | Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
-| Switch vessel (the focus) | V / Shift+V, or click a friendly vessel | tap a friendly vessel |
+| Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), or click a friendly vessel | tap a friendly vessel |
 | Zoom | wheel, + / − | pinch |
 | Camera | F: follow ↔ free (drag with the middle button) | – |
 | Tuning panel | T | – |
@@ -58,9 +58,11 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 ## Scenes (`scene.rs`)
 
 - **Sandbox** (default): the player flies the Halvex Runner. Waves of automaton raiders (raider brain) spawn
-  105–125 m away; a new wave starts 4 s after the last raider of a wave goes dark. Wrecks and salvage drift
-  away and are removed when they are more than 320 m from the player or dark for 75 s. A ship that lost control
-  for good re-forms after 3 s.
+  105–125 m away; a new wave starts 4 s after the last raider vessel goes dark (a raider shot in half can be
+  two raiders). Wrecks and salvage drift away and are removed when they are more than 320 m from the player or
+  dark for 75 s (the player's vessels, dark or dormant, stay). When the focus loses its last logic core the sim
+  moves the focus to another vessel of the player (a split-off half too); when the player has no vessel left,
+  a new runner re-forms after 3 s.
 - **Showcase**: no combat, free camera; for looking at the renderer.
 - **Load test**: see below.
 
@@ -101,8 +103,14 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   dark, without glow sprites lit / dark, debug shapes) are built lazily; `piece.active` picks lit or dark
   (salvage and unpowered pieces are dimmed and lose the hull glow). Shield rings are per-emitter meshes whose
   alpha follows the capacity left; hidden while the bubble is down.
-- **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `PieceDestroyed` /
-  `ShipRemoved` despawn them; `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet`, `ShieldHit` become effects.
+- **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `VesselFormed` with a
+  parent moves a split-off piece's view to its new ship, `PieceDestroyed` / `ShipRemoved` despawn them;
+  `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet`, `ShieldHit` become effects.
+- **Vessels** (`scene.rs`, 12 Oct 2026): the sim owns owners, vessels and the focus (`docs/sim.md` "Vessels").
+  The player is `scene::PLAYER` (`Owner(0)`), the raiders `scene::ENEMY` (`Owner(1)`). The sandbox gives every
+  vessel its default behavior and sends `ShipCommand::Focus` for the runner; `PilotFocus` mirrors
+  `Sim::focus(PLAYER)` at the start of every tick (so a switch shows one tick later), and V / clicks send
+  `Focus` commands. Friendly checks, Tab targets and off-screen markers use owners (`Ship::team`).
 - **Effects** (`fx.rs`): immediate mode. Systems push `FxSprite`s into `FxQueue` every frame; `flush` writes them
   into a pool of reused sprites (all from the atlas, batched). Plumes come from `piece.thrusters[i]` ×
   `piece.output[i]` (RCS nozzles: small puffs; engine gimbal from `piece.act.deflect`), beams from
