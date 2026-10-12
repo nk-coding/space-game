@@ -56,6 +56,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0045](0045-shields-absorb-rams-no-friendly-ram-damage.md) | Shields absorb ram damage; vessels of the same team bump without ram damage | Accepted | 2026-10-12 |
 | [0046](0046-exhaust-hits-own-parts-and-enemies.md) | Engine exhaust hits the ship's own parts and enemies, not other friendly vessels | Accepted | 2026-10-12 |
 | [0047](0047-ramming-crushes-inward-bumps-free.md) | Ramming crushes inward; bumps below 100 kN·s are free | Accepted | 2026-10-12 |
+| [0048](0048-no-friendly-fire.md) | No friendly fire: shots pass through the shooter's own vessels | Accepted | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
