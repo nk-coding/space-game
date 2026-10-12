@@ -345,6 +345,26 @@ fn parts_over_the_control_capacity_idle_by_power_priority_and_come_back() {
 }
 
 #[test]
+fn a_runner_that_loses_a_core_idles_its_last_guns() {
+    // Base numbers (docs/sim.md "Vessels"): load 18 against 2 × 16; one core gone leaves 16, so 2 idle: the
+    // gun tier, highest part index first: both pulse lasers (cost 1 each), the beams (cost 2) keep firing.
+    let c = content();
+    let d = design(&c, "halvex_runner");
+    let (mut w, s) = world_with(d.clone());
+    step(&mut w, 1);
+    assert_eq!(w.ship(s).unwrap().control().unwrap().load, 18);
+    w.apply_damage(s, DamageTarget::Part(find(&d, "logic_core", 3, 4)), 10.0);
+    step(&mut w, 1);
+    let ship = w.ship(s).unwrap();
+    assert_eq!(ship.control().unwrap().capacity, 16);
+    let idle: Vec<&str> = (0..d.parts.len())
+        .filter(|&i| ship.part(i as PartIdx).idle)
+        .map(|i| d.parts[i].id.as_str())
+        .collect();
+    assert_eq!(idle, ["pulse_laser", "pulse_laser"]);
+}
+
+#[test]
 fn over_mind_capacity_the_newest_vessels_go_dormant_and_the_focus_never_does() {
     let c = content();
     let runner = design(&c, "halvex_runner");

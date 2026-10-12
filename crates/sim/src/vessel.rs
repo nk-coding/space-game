@@ -211,9 +211,12 @@ impl Ship {
                 t.grid.remove(i);
             }
         }
+        // The piece's caches (mass, colliders, power lists, thrusters, guns, control load) were built for
+        // this piece already and stay valid; only control changes.
         piece.controlled = true;
+        piece.active = piece.has_core;
+        piece.control_dirty = true;
         t.pieces.push(piece);
-        t.rebuild_piece(0);
         t
     }
 }
