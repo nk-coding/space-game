@@ -1031,19 +1031,21 @@ release, load average 7.8–8.2, three runs each:
 | `sim_perf` combat (20 gunboats) | 2.4–2.6 µs | 4.2–10 µs |
 
 Whole steps, interleaved with a build of `dev` before this change (`05c7cc7`), five load-test and three
-`sim_perf` runs each, load average 9–10 (so noisy), medians of the per-run medians / p95 in ms:
+`sim_perf` runs each, native release, on an idle VM (load average 0.1–0.3), medians of the per-run medians / p95
+in ms:
 
 | What | Before | After |
 |---|---|---|
-| load test, 20 ships, step | 0.015 / 0.047 | 0.020 / 0.048 |
-| the same, Rapier step alone | 0.007 / 0.026 | 0.010 / 0.024 |
-| `sim_perf` raw throttles, step | 0.67 / 1.70 | 0.82 / 1.56 |
-| `sim_perf` pilot + lock, step | 1.32 / 3.98 | 0.81 / 1.96 |
-| `sim_perf` combat, step | 1.44 / 5.89 | 1.50 / 5.01 |
+| load test, 20 ships, step | 0.018 / 0.048 | 0.019 / 0.048 |
+| the same, Rapier step alone | 0.008 / 0.025 | 0.009 / 0.024 |
+| `sim_perf` raw throttles (1000 engines firing into space), step | 0.433 / 0.589 | 0.398 / 0.645 |
+| `sim_perf` pilot + lock, step | 0.582 / 1.428 | 0.435 / 0.747 |
+| `sim_perf` combat (two owners: the same fight before and after), step | 0.763 / 2.517 | 0.749 / 2.507 |
 
-The load test's fight itself changed (no friendly fire: 214 → 202 shots, 971 → 839 hits, 167 → 175 impacts), and
-its Rapier step alone moved as much as the rest; the plume pass is about 1 µs of it. The `sim_perf` differences are
-the VM's noise.
+The load test's fight itself changed (no friendly fire: 214 → 202 shots, 971 → 839 hits, 167 → 175 impacts); the
+plume pass is under 1 µs of its step. The `sim_perf` pilot run got cheaper because its slabs (all one owner) no
+longer shoot each other apart; raw throttles and combat are the same within noise. (A first round at load
+average 9–10 gave the same picture with medians 1.5–2× higher.)
 
 ## Physics (Rapier2D)
 
