@@ -50,6 +50,34 @@ fn embedded_base_pack_loads_and_validates() {
     }
 }
 
+/// The embed is not stale: it holds exactly the pack's `.ron` and `.svg` files outside `wiki/`, as on disk
+/// (see `build.rs`; a moved file keeps its old mtime).
+#[test]
+fn embedded_pack_matches_disk() {
+    let mut disk: Vec<(String, String)> = read_dir_files(&repo_root().join("content/base"))
+        .into_iter()
+        .filter(|(path, _)| {
+            !path.starts_with("wiki/")
+                && !path.split('/').any(|c| c.starts_with('.'))
+                && (path.ends_with(".ron") || path.ends_with(".svg"))
+        })
+        .collect();
+    disk.sort();
+    let embedded: Vec<(String, String)> = data::base_pack_files()
+        .iter()
+        .map(|(p, s)| (p.to_string(), s.to_string()))
+        .collect();
+    let names = |v: &[(String, String)]| v.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
+    assert_eq!(
+        names(&embedded),
+        names(&disk),
+        "stale embed: touch crates/data/build.rs"
+    );
+    for ((path, a), (_, b)) in embedded.iter().zip(&disk) {
+        assert!(a == b, "stale embed of {path}: touch crates/data/build.rs");
+    }
+}
+
 #[test]
 fn disk_pack_with_wiki_validates() {
     let c =
