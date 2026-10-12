@@ -58,6 +58,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0047](0047-ramming-crushes-inward-bumps-free.md) | Ramming crushes inward; bumps below 100 kN·s are free | Accepted | 2026-10-12 |
 | [0048](0048-no-friendly-fire.md) | No friendly fire: shots pass through the shooter's own vessels | Accepted | 2026-10-12 |
 | [0049](0049-engine-plume-v1.md) | Engine plume v1: damage and heat scale with thrust, blocked plumes keep thrust, enemy bubbles absorb plumes | Accepted (provisional, lead) | 2026-10-12 |
+| [0050](0050-fleet-bar.md) | The fleet bar: a strip at the top centre, shown with two or more vessels or a dormant one; a tap focuses, a tap on a dormant vessel wakes it | Accepted (provisional, lead) | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

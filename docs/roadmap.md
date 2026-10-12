@@ -29,42 +29,37 @@ Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS,
 - 30 Hz sim with 60 fps interpolation in the client.
 - Automaton raiders with a trivial AI (approach, orbit, fire). Basic weapons and damage, breakage, debris.
 
-## In progress (12 Oct 2026, second session)
+## State at the end of 12 Oct 2026 (before the move to a more powerful machine)
 
-Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0047, `docs/concept-notes.md`):
-- Done: engine rated speed instead of the soft top speed, a calm cruise flame, "Agile" ships (GDR-0041,
-  GDR-0042; `raider_basic` retuned to stand off at 85% and orbit at 67% of its reach).
-- Done: shields as glowing energy bubbles, one batched procedural mesh (GDR-0043, ADR-0029); see them hit with
-  `?scene=showcase&fire=1&zoom=70`. The content embed in `data/build.rs` now tracks every file and directory.
-- Done: the vessel model in `sim` (GDR-0013, 0038, 0044, 0045; `docs/sim.md` "Vessels"): owners, split-off
-  vessels inheriting slot-limited behavior, focus as a sim command with automatic fallback, control cost and
-  capacity with idle-by-priority, mind capacity with newest-dormant and wake/swap, friendly and shielded rams;
-  ramming v2 (GDR-0047). Placeholders: logic core N 16, automaton core N 4, player mind capacity 24.
+Done this session (Niklas's play-test feedback, decided interactively; GDR-0041 to GDR-0050, `docs/concept-notes.md`):
+- Engine rated speed instead of the soft top speed, a calm cruise flame, "Agile" ships (GDR-0041, GDR-0042).
+- Shields as glowing energy bubbles (GDR-0043, ADR-0029; two batched meshes so the focus draws above others).
+- The vessel model in `sim` (GDR-0013, 0038, 0044, 0045): owners, split-off vessels, focus, control and mind
+  capacity, dormant/wake; ramming v2 (GDR-0047); no friendly fire (GDR-0048); engine plumes (GDR-0039, 0046,
+  0049); the flight computer plans only with working actuators.
+- Client: fleet bar (GDR-0050), camera glide, focus draw order, `?damage=` for the player only, `?mind=N`, faster
+  atlas tier switches (no 178 ms mip hitch), F3 atlas line; browser-vs-native hash IDENTICAL.
+- Checks at the end: 199 tests, content validation clean, determinism native vs wasm IDENTICAL (all scenarios).
 
-- Done: engine plumes burn parts in their path (GDR-0039, 0046, 0049), no friendly fire (GDR-0048), the flight
-  computer plans only with working actuators.
-
-Running now:
-- Client: fleet bar, camera glide on focus switches, focus draw order, `?damage=` for the player only,
-  browser-vs-native hash, screenshot checks (the atlas tier switch is already faster: 521c479).
+Next session: first re-check CLAUDE.md "Development environment" on the new machine (cores, RAM, disk, IP, paths
+of the headless helper and the physics bench repo, the guard hook in the workspace's `.claude/settings.json`).
 
 Open questions for Niklas (ask interactively):
-- Mind capacity numbers and N per core type: lead placeholders until he sets them.
-- Vessel model lead defaults to review (`docs/sim.md` "Vessels", marked *lead default*): focus fallback order;
-  a dark focus keeps the focus; dormant vessels are fully dark but owned; reactors idle after every consumer.
-  Known limits: the flight computer doesn't know idle actuators; shots have no friendly rule (a split-off vessel
-  can hit its parent).
-- Shield collapses are rare in play (regen 1.5/s vs ~0.4 per cannon hit, kinetic passes half to the hull): a
-  balance question once fights are tuned. All bubbles draw on one layer above every ship.
-- Plume defaults and numbers (GDR-0049), whether plumes push what they hit, drawing the plume's full reach
-  (`docs/sim.md` questions 16–18).
-- Lead defaults to review: diagonal top speed can beat a rating (per-axis falloff); differential thrust nudges a
-  locked ship sideways at speed; A/D spins the Runner at ~4.6 rad/s (`docs/sim.md` questions 14, 15).
+- Mind capacity numbers and N per core type (placeholders: logic core 16, automaton core 4, player 24).
+- Plume defaults and numbers (GDR-0049), whether plumes push what they hit (`docs/sim.md` questions 16–18).
+- Fleet bar defaults (GDR-0050): placement, waking without focusing, no number hotkeys.
+- Vessel model lead defaults (`docs/sim.md` "Vessels", *lead default*): focus fallback order, a dark focus keeps
+  the focus, dormant vessels fully dark but owned, reactors idle last.
+- Lead defaults: diagonal top speed can beat a rating; differential thrust nudges a locked ship sideways at
+  speed; A/D spins the Runner at ~4.6 rad/s (`docs/sim.md` questions 14, 15).
+- Balance: `raider_basic` stand-off/orbit sit on a knife edge around the beam range; the `skirmisher` wingmen
+  win only 3–5 of 12 waves; shields rarely collapse (regen 1.5/s vs ~0.4 per cannon hit).
 
 Client leftovers:
-- Browser-vs-native hash (`?hashlog=1&load=20` vs `determinism --scenario load`) and browser load-test numbers (`?load=1|5|20`) not run yet.
-- Mipmap generation after an atlas tier switch is one frame (178 ms hitch at tier 256); spread over frames / async on native.
-- Not verified: tuning panel visuals, touch input, `?fleet=N` wingmen and V switching; focus vessel draw order after a switch; `?damage=` scales enemy weapons too.
+- If Niklas still sees blur at high zoom: get the F3 atlas line from his browser. Region steps at tier 512 still
+  cost up to ~50 ms (large plumes).
+- Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note).
+- Browser load-test numbers (`?load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
 
 ## Queued
 

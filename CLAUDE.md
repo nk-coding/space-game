@@ -52,6 +52,8 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Development environment (the VM)
 
+(Written for the first VM. Niklas plans to move the project to a more powerful machine after 12 Oct 2026: re-check the numbers and paths below there. Outside this repo the tooling also needs `../space-game-physics-bench`, `../tools/headless/` (the headless helper) and the guard hook in the workspace's `.claude/settings.json`, which runs `scripts/hooks/guard-bash.py`.)
+
 - Linux VM without GPU, 15 cores, ~11 GB RAM + 7 GB swap. **No sudo** (apt is unavailable). Native Bevy windows are pointless here (software rendering); look at the game through the web build.
 - Rust via rustup (`source ~/.cargo/env` if `cargo` isn't on PATH): stable 1.99, targets `x86_64-unknown-linux-gnu` and `wasm32-unknown-unknown`. `trunk` 0.21.14 and `cargo-binstall` are in `~/.cargo/bin`.
 - crates.io and GitHub are reachable (crates.io API needs a User-Agent header: use a generic one like `space-game-dev-tools`; never put personal data such as names or email addresses into requests).
