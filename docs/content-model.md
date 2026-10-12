@@ -316,6 +316,14 @@ the format of the content ships, so an export can go into a pack's `ships/` fold
 - Writing and reading back gives an equal blueprint (tested on every base ship, on power overrides, on every
   `rot`/`flip`, and on quotes, backslashes, line breaks, control characters and unicode in every string).
 
+**Ship totals** (added 12 Oct 2026). `Content::ship_totals(&blueprint)` returns `ShipTotals`: the per-part stat
+values that add up, summed over every placement (connected or not): `build_points` (hull parts times their
+material's factor), `mass`, `hp`, `power_output`, `power_draw`, `thrust`, `cargo_capacity`, `rule_slots`,
+`control_cost`, `control_capacity`, plus `logic_cores` (placements with a `logic` block). Bonuses and sim-level
+numbers (net power, heat, thrust per direction) are not in it; the main piece's rule slots and control are
+`ship_rule_slots` and `ship_control`. It works on invalid designs too (unknown parts are skipped). The export's
+ship `totals` come from it.
+
 The Halvex Runner started as an exact conversion of `art/ships/halvex-runner.layout.json`. On 11 Oct 2026 Niklas
 decided that its layout must work under the drydock rules. The **content blueprint is now the source of truth**
 and `art/ships/halvex-runner.*` stays the original concept art. The adjusted layout keeps the occupied cells, the
@@ -529,8 +537,8 @@ cargo run -p content-tool -- list part
 `stat_lines` (identical to the drydock), `stat_lines_by_material` for hull parts, `geometry` (area, polygon,
 connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygon`, `center` and `piece`,
 plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals` (including `control_cost` and
-`control_capacity`), `rule_slots`, `control_load`, `control_capacity` (of the main piece) and
-`effective_behavior`.
+`control_capacity`; from `Content::ship_totals`, a key present when some part has that stat line), `rule_slots`,
+`control_load`, `control_capacity` (of the main piece) and `effective_behavior`.
 `frames` (added 12 Oct 2026) hold the header fields, `size` and the usual `text_keys`, `links` and `wiki`.
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
@@ -583,6 +591,9 @@ grid.open_sides(i);                                      // Vec<((x, y), Dir)>: 
 dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
 content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
+part.build_points_in(armor); part.mass_in(armor); part.hp_in(armor);  // a part's numbers in an armour material
+let t = content.ship_totals(ship);   // ShipTotals: sums over every placement (build points with material factor,
+                                     // mass, hp, power output/draw, thrust, cargo, logic cores, rule slots, control)
 content.icon_svg("pulse-laser");                         // Option<&str>: SVG text of icons/pulse-laser.svg
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship

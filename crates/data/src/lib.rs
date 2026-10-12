@@ -38,7 +38,7 @@ pub use kind::Kind;
 pub use load::{Content, Pack, SCHEMA_VERSION, ron_options};
 pub use model::*;
 pub use problem::{Problem, Severity};
-pub use stats::{BonusInfo, StatLine};
+pub use stats::{BonusInfo, ShipTotals, StatLine};
 pub use table::Table;
 pub use text::{Link, parse_links, text_key};
 pub use validate::{validate, validate_ship};

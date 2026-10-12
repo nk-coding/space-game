@@ -1,5 +1,5 @@
 //! Drydock plumbing in `data`: checking a design on its own (`validate_ship`), the blueprint text format
-//! (`blueprint_to_ron`, `parse_blueprint`) and drydock frames as content.
+//! (`blueprint_to_ron`, `parse_blueprint`), drydock frames as content and per-ship totals (`ship_totals`).
 
 mod common;
 
@@ -598,5 +598,82 @@ fn frame_errors() {
         e[0].kind == Some(Kind::Frame) && e[0].message.contains("duplicate id"),
         "{}",
         e[0]
+    );
+}
+
+#[test]
+fn ship_totals_are_the_sums_of_the_part_stat_lines() {
+    let c = content();
+    for s in c.ships.iter() {
+        let t = c.ship_totals(s);
+        let sum = |stat: &str| -> f32 {
+            s.parts
+                .iter()
+                .flat_map(|pl| {
+                    c.part_stats(c.parts.get(&pl.part).unwrap(), c.placement_material(pl))
+                })
+                .filter(|l| l.bonus.is_none() && l.stat == stat)
+                .map(|l| l.value)
+                .sum()
+        };
+        for (stat, value) in [
+            ("build_points", t.build_points),
+            ("mass", t.mass),
+            ("hp", t.hp),
+            ("power_output", t.power_output),
+            ("power_draw", t.power_draw),
+            ("thrust", t.thrust),
+            ("cargo_capacity", t.cargo_capacity),
+            ("rule_slots", t.rule_slots as f32),
+            ("control_cost", t.control_cost as f32),
+            ("control_capacity", t.control_capacity as f32),
+        ] {
+            assert_eq!(value, sum(stat), "{} {stat}", s.id);
+        }
+        // Base ships are one piece, so the sums equal the main piece's numbers.
+        assert_eq!(
+            c.ship_control(s),
+            (t.control_cost, t.control_capacity),
+            "{}",
+            s.id
+        );
+        assert_eq!(c.ship_rule_slots(s), t.rule_slots, "{}", s.id);
+    }
+    let runner = c.ship_totals(c.ships.get("halvex_runner").unwrap());
+    assert_eq!((runner.mass, runner.logic_cores), (106.5, 2));
+}
+
+#[test]
+fn ship_totals_count_every_placement_of_any_design() {
+    let c = content();
+    let part = |id: &str| c.parts.get(id).unwrap();
+    // Two pieces: the thruster at the corner is cut off, yet counts.
+    let d = design(vec![
+        at("logic_core", 0, 1),
+        at("pulse_laser", 1, 1),
+        hull("armor_block", 1, 0, "steel"),
+        at("thruster", 3, 3),
+    ]);
+    let t = c.ship_totals(&d);
+    assert_eq!(t.control_cost, 2);
+    assert_eq!(c.ship_control(&d), (1, 16));
+    assert_eq!(t.thrust, part("thruster").engine.as_ref().unwrap().thrust);
+    assert_eq!(t.logic_cores, 1);
+    // An invalid design: unknown parts are skipped, a hull part without material adds only its build points.
+    let d = design(vec![
+        at("armor_block", 0, 0),
+        at("warp_core", 1, 0),
+        at("logic_core", 2, 0),
+    ]);
+    let t = c.ship_totals(&d);
+    let core = part("logic_core");
+    assert_eq!(
+        t.build_points,
+        part("armor_block").build_points + core.build_points
+    );
+    assert_eq!((t.mass, t.hp), (core.mass.unwrap(), core.hp.unwrap()));
+    assert_eq!(
+        c.ship_totals(&design(Vec::new())),
+        data::ShipTotals::default()
     );
 }

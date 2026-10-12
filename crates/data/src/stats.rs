@@ -1,11 +1,12 @@
 //! Displayable stat lines. The drydock inspector, tooltips and the wiki all call [`Content::part_stats`],
 //! so they show identical numbers, labels and units. Labels, units, precision and order come from
-//! `stats.ron`; which component field feeds which stat id is fixed here.
+//! `stats.ron`; which component field feeds which stat id is fixed here. [`Content::ship_totals`] sums the
+//! per-part values over a blueprint.
 
 use serde::{Deserialize, Serialize};
 
 use crate::load::Content;
-use crate::model::{Better, Condition, Effect, Material, Part, Selector};
+use crate::model::{Better, Blueprint, Condition, Effect, Material, Part, Selector};
 
 /// Stat ids the code emits. Each must be defined in `stats.ron` (checked by validation).
 pub const BUILTIN_STATS: &[&str] = &[
@@ -57,6 +58,28 @@ pub struct StatLine {
     pub better: Better,
     /// Set for adjacency bonuses this part grants to its neighbours.
     pub bonus: Option<BonusInfo>,
+}
+
+/// Sums over every placement of a blueprint ([`Content::ship_totals`]): the per-part stat values that add up,
+/// in the units of their stats.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ShipTotals {
+    /// Hull parts scaled by their material's `build_point_factor`.
+    pub build_points: f32,
+    pub mass: f32,
+    pub hp: f32,
+    /// Power output and draw at full load, before bonuses.
+    pub power_output: f32,
+    pub power_draw: f32,
+    /// Engine thrust in every direction together, before bonuses.
+    pub thrust: f32,
+    pub cargo_capacity: f32,
+    /// Placements with a `logic` block.
+    pub logic_cores: u32,
+    pub rule_slots: u32,
+    /// Summed [`Part::control_cost`] (defaults included).
+    pub control_cost: u32,
+    pub control_capacity: u32,
 }
 
 /// Who receives a bonus line's effect.
@@ -116,31 +139,17 @@ impl Content {
     /// one only the base build points are shown. Unknown stat ids are skipped (validation reports them).
     pub fn part_stats(&self, part: &Part, material: Option<&Material>) -> Vec<StatLine> {
         let mut v: Vec<(&str, f32)> = Vec::new();
-        let armor = material
-            .and_then(|m| m.armor.as_ref())
-            .filter(|_| part.hull);
-        v.push((
-            "build_points",
-            part.build_points * armor.map_or(1.0, |a| a.build_point_factor),
-        ));
+        let armor = material.and_then(|m| m.armor.as_ref());
+        v.push(("build_points", part.build_points_in(armor)));
         let control = part.control_cost();
         if control > 0 {
             v.push(("control_cost", control as f32));
         }
-        match (part.hull, armor) {
-            (true, Some(a)) => {
-                v.push(("mass", a.mass_per_cell * part.area()));
-                v.push(("hp", a.hp_per_cell * part.area()));
-            }
-            (true, None) => {}
-            (false, _) => {
-                if let Some(m) = part.mass {
-                    v.push(("mass", m));
-                }
-                if let Some(h) = part.hp {
-                    v.push(("hp", h));
-                }
-            }
+        if let Some(m) = part.mass_in(armor) {
+            v.push(("mass", m));
+        }
+        if let Some(h) = part.hp_in(armor) {
+            v.push(("hp", h));
         }
         if let Some(p) = &part.power {
             if p.output != 0.0 {
@@ -249,6 +258,43 @@ impl Content {
             });
         }
         lines
+    }
+
+    /// Sums over every placement of a blueprint: the values of the per-part stat lines that add up (as
+    /// [`Content::part_stats`] gives them with the placement's material), plus the number of logic cores.
+    ///
+    /// Every placement counts, connected or not; the rule slots and control of the intact ship's main piece are
+    /// [`Content::ship_rule_slots`] and [`Content::ship_control`]. Bonuses and what the sim works out (net power
+    /// under load, heat, thrust per direction) are not in here. Works on any blueprint, valid or not: unknown
+    /// parts are skipped, a hull part without an armour material adds only its base build points.
+    pub fn ship_totals(&self, ship: &Blueprint) -> ShipTotals {
+        let mut t = ShipTotals::default();
+        for p in &ship.parts {
+            let Some(part) = self.parts.get(&p.part) else {
+                continue;
+            };
+            let armor = self.placement_armor(p);
+            t.build_points += part.build_points_in(armor);
+            t.mass += part.mass_in(armor).unwrap_or(0.0);
+            t.hp += part.hp_in(armor).unwrap_or(0.0);
+            if let Some(x) = &part.power {
+                t.power_output += x.output;
+                t.power_draw += x.draw;
+            }
+            if let Some(e) = &part.engine {
+                t.thrust += e.thrust;
+            }
+            if let Some(c) = &part.cargo {
+                t.cargo_capacity += c.capacity;
+            }
+            if let Some(l) = &part.logic {
+                t.logic_cores += 1;
+                t.rule_slots = t.rule_slots.saturating_add(l.rule_slots);
+                t.control_capacity = t.control_capacity.saturating_add(l.control_capacity);
+            }
+            t.control_cost = t.control_cost.saturating_add(part.control_cost());
+        }
+        t
     }
 
     /// Stat lines of a material (armour values per cell).

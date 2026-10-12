@@ -559,6 +559,31 @@ impl Part {
     pub fn area(&self) -> f32 {
         self.footprint().area()
     }
+    /// Build points when placed in `armor`: hull parts scale by its `build_point_factor`, other parts ignore it.
+    pub fn build_points_in(&self, armor: Option<&ArmorSpec>) -> f32 {
+        match armor {
+            Some(a) if self.hull => self.build_points * a.build_point_factor,
+            _ => self.build_points,
+        }
+    }
+    /// Mass when placed in `armor`: hull parts `mass_per_cell × area` (`None` without armour), other parts their
+    /// `mass`.
+    pub fn mass_in(&self, armor: Option<&ArmorSpec>) -> Option<f32> {
+        if self.hull {
+            armor.map(|a| a.mass_per_cell * self.area())
+        } else {
+            self.mass
+        }
+    }
+    /// Hit points when placed in `armor`: hull parts `hp_per_cell × area` (`None` without armour), other parts
+    /// their `hp`.
+    pub fn hp_in(&self, armor: Option<&ArmorSpec>) -> Option<f32> {
+        if self.hull {
+            armor.map(|a| a.hp_per_cell * self.area())
+        } else {
+            self.hp
+        }
+    }
     /// Does the part draw or make power (the parts that can go idle)?
     pub fn has_power_role(&self) -> bool {
         self.power

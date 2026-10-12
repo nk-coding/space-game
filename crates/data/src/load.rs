@@ -458,15 +458,15 @@ impl Content {
         p.material.as_deref().and_then(|m| self.materials.get(m))
     }
 
+    /// The armour spec of a placement's material (hull parts only).
+    pub fn placement_armor(&self, p: &Placement) -> Option<&ArmorSpec> {
+        self.placement_material(p)?.armor.as_ref()
+    }
+
     /// Mass of a placed part: the part's `mass`, or for hull parts the material's `mass_per_cell × area`.
     /// `None` if the part or a hull part's armour material is unknown.
     pub fn placement_mass(&self, p: &Placement) -> Option<f32> {
-        let part = self.parts.get(&p.part)?;
-        if part.hull {
-            Some(self.placement_material(p)?.armor.as_ref()?.mass_per_cell * part.area())
-        } else {
-            part.mass
-        }
+        self.parts.get(&p.part)?.mass_in(self.placement_armor(p))
     }
 
     /// The behavior a ship flies under when nobody pilots it: its own `behavior`, else its faction's.
@@ -526,11 +526,6 @@ impl Content {
 
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
     pub fn placement_hp(&self, p: &Placement) -> Option<f32> {
-        let part = self.parts.get(&p.part)?;
-        if part.hull {
-            Some(self.placement_material(p)?.armor.as_ref()?.hp_per_cell * part.area())
-        } else {
-            part.hp
-        }
+        self.parts.get(&p.part)?.hp_in(self.placement_armor(p))
     }
 }

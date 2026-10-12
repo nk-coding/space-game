@@ -461,18 +461,11 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
             .is_some_and(|p| p.logic.is_some())
     };
     let main = grid.main_piece(&pieces, is_core);
-    let mut totals: BTreeMap<String, f32> = BTreeMap::new();
     let placements: Vec<Value> = s
         .parts
         .iter()
         .enumerate()
         .map(|(i, pl)| {
-            let part = c.parts.get(&pl.part).unwrap();
-            for line in c.part_stats(part, c.placement_material(pl)) {
-                if line.bonus.is_none() {
-                    *totals.entry(line.stat).or_default() += line.value;
-                }
-            }
             let shape = grid.shape(i);
             json!({
                 "part": pl.part, "x": pl.x, "y": pl.y, "rot": pl.rot, "flip": pl.flip, "material": pl.material,
@@ -485,28 +478,29 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
         })
         .collect();
     // Sums of per-part stat values that add up meaningfully (sim-level numbers like net power under load,
-    // heat or thrust after clearance checks are not computed here).
-    let summed = [
-        "build_points",
-        "mass",
-        "hp",
-        "power_output",
-        "power_draw",
-        "thrust",
-        "cargo_capacity",
-        "rule_slots",
-        "control_cost",
-        "control_capacity",
-    ];
-    // Rounded: f32 sums carry float noise (70.400009) that would leak into the wiki.
-    let totals: BTreeMap<&str, f64> = summed
-        .iter()
-        .filter_map(|k| {
-            totals
-                .get(*k)
-                .map(|v| (*k, (*v as f64 * 1e4).round() / 1e4))
-        })
-        .collect();
+    // heat or thrust after clearance checks are not computed here). A key is present when some part has that
+    // stat line. Rounded: f32 sums carry float noise (70.400009) that would leak into the wiki.
+    let t = c.ship_totals(s);
+    let totals: BTreeMap<&str, f64> = [
+        ("build_points", t.build_points, true),
+        ("mass", t.mass, true),
+        ("hp", t.hp, true),
+        ("power_output", t.power_output, t.power_output > 0.0),
+        ("power_draw", t.power_draw, t.power_draw > 0.0),
+        ("thrust", t.thrust, t.thrust > 0.0),
+        ("cargo_capacity", t.cargo_capacity, t.cargo_capacity > 0.0),
+        ("rule_slots", t.rule_slots as f32, t.logic_cores > 0),
+        ("control_cost", t.control_cost as f32, t.control_cost > 0),
+        (
+            "control_capacity",
+            t.control_capacity as f32,
+            t.logic_cores > 0,
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, _, present)| *present)
+    .map(|(k, v, _)| (k, (v as f64 * 1e4).round() / 1e4))
+    .collect();
     v["rule_slots"] = json!(c.ship_rule_slots(s));
     let (control_load, control_capacity) = c.ship_control(s);
     v["control_load"] = json!(control_load);
@@ -522,4 +516,68 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
             .unwrap_or_default()
     );
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A ship's `totals` are the sums of its parts' stat lines (what the export shows per part), key for key:
+    /// a key appears when some part has that line.
+    #[test]
+    fn ship_totals_sum_the_part_stat_lines() {
+        let base = data::fs::load_pack_dir(&pack_dirs(&[])[0]).unwrap();
+        // Next to the base ships: a core without rule slots or capacity, and no power, engine or cargo.
+        let m = Pack::from_files([
+            (
+                "pack.ron",
+                r#"(id: "test_mod", name: "T", version: "1", schema_version: 1, depends: ["base"])"#,
+            ),
+            (
+                "parts/p.ron",
+                r#"(id: "dummy_core", name: "Dummy core", summary: "S.", category: "logic", size: (1, 1),
+                    build_points: 0, mass: 1, hp: 1, logic: (rule_slots: 0, control_capacity: 0))"#,
+            ),
+            (
+                "ships/s.ron",
+                r#"(id: "s", name: "S", summary: "S.", faction: "ship_mind", size: (2, 1), parts: [
+                    (part: "dummy_core", x: 0, y: 0), (part: "slope_1x1", x: 1, y: 0, material: "composite"),
+                ])"#,
+            ),
+        ])
+        .unwrap();
+        let c = Content::load(&[base, m]).unwrap();
+        let summed = [
+            "build_points",
+            "mass",
+            "hp",
+            "power_output",
+            "power_draw",
+            "thrust",
+            "cargo_capacity",
+            "rule_slots",
+            "control_cost",
+            "control_capacity",
+        ];
+        for s in c.ships.iter() {
+            let mut sums: BTreeMap<String, f32> = BTreeMap::new();
+            for pl in &s.parts {
+                let part = c.parts.get(&pl.part).unwrap();
+                for line in c.part_stats(part, c.placement_material(pl)) {
+                    if line.bonus.is_none() {
+                        *sums.entry(line.stat).or_default() += line.value;
+                    }
+                }
+            }
+            let want: BTreeMap<String, f64> = sums
+                .into_iter()
+                .filter(|(k, _)| summed.contains(&k.as_str()))
+                .map(|(k, v)| (k, (v as f64 * 1e4).round() / 1e4))
+                .collect();
+            assert_eq!(ship_json(&c, s)["totals"], json!(want), "{}", s.id);
+        }
+        let edge = &ship_json(&c, c.ships.get("s").unwrap())["totals"];
+        assert_eq!(edge["rule_slots"], json!(0.0));
+        assert!(edge.get("power_output").is_none() && edge.get("thrust").is_none());
+    }
 }
