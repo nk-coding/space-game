@@ -416,13 +416,13 @@ pub struct Piece {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct HeatK {
     /// Heat capacity.
-    cap: f32,
+    pub cap: f32,
     /// Loss coefficient to space (base + open sides × side loss or radiator vent).
-    loss: f32,
+    pub loss: f32,
     /// Heat at full work, with bonuses.
-    out: f32,
+    pub out: f32,
     /// Shutdown level, with bonuses.
-    limit: f32,
+    pub limit: f32,
 }
 
 impl Piece {
@@ -949,9 +949,11 @@ impl Ship {
         let spec = &d.parts[t as usize];
         let mut add = [0.0f32; Stat::COUNT];
         let mut pct = [0.0f32; Stat::COUNT];
-        applied_bonuses(d, &self.parts, t, &mut self.scratch.groups, |b| match b.effect {
-            Effect::Add(x) => add[b.stat as usize] += x,
-            Effect::Percent(x) => pct[b.stat as usize] += x,
+        applied_bonuses(d, &self.parts, t, &mut self.scratch.groups, |b| {
+            match b.effect {
+                Effect::Add(x) => add[b.stat as usize] += x,
+                Effect::Percent(x) => pct[b.stat as usize] += x,
+            }
         });
         let mut st = spec.base;
         for k in 0..Stat::COUNT {
@@ -1048,10 +1050,7 @@ impl Ship {
             let spec = &d.parts[p as usize];
             let clear = slot == NO_SLOT
                 || spec.is_engine
-                || !d.gun_blockers.get(slot as usize).iter().any(|&b| {
-                    let s = &self.parts[b as usize];
-                    s.alive && s.piece == pid
-                });
+                || gun_blockers(d, &self.parts, slot, pid).next().is_none();
             self.parts[p as usize].clear = clear;
         }
 
@@ -1457,6 +1456,24 @@ pub(crate) fn applied_bonuses<'a>(
         *count += 1;
         apply(b);
     }
+}
+
+/// The parts that block gun `slot`'s line of fire now: the alive parts of `piece` among its static blockers
+/// (`ShipDesign::gun_blockers`). A gun is clear when there are none.
+pub(crate) fn gun_blockers<'a>(
+    d: &'a ShipDesign,
+    parts: &'a [PartState],
+    slot: u32,
+    piece: PieceId,
+) -> impl Iterator<Item = PartIdx> + 'a {
+    d.gun_blockers
+        .get(slot as usize)
+        .iter()
+        .copied()
+        .filter(move |&b| {
+            let s = &parts[b as usize];
+            s.alive && s.piece == piece
+        })
 }
 
 /// Output of a piece's working reactors (alive, not overheated, not idle), with bonuses.
