@@ -47,9 +47,14 @@ fn fleet(mode: Mode) -> Sim {
     let id = w.behaviors_mut().add_text("ten", &text).unwrap();
     for k in 0..10 {
         let x = (k as f32 - 4.5) * 25.0;
-        let a = w.spawn_ship(runner.clone(), Body::at(Vec2::new(x, 0.0), 0.0));
+        let a = w.spawn_ship(
+            runner.clone(),
+            sim::Owner(1),
+            Body::at(Vec2::new(x, 0.0), 0.0),
+        );
         let b = w.spawn_ship(
             early.clone(),
+            sim::Owner(2),
             Body::at(Vec2::new(x, 90.0), core::f32::consts::PI),
         );
         let program = match mode {

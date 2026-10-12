@@ -5,14 +5,19 @@
 //! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
 //!   a blast every 75 ticks: power, heat, damage, splits, collisions and ramming. Plus one
 //!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
-//!   base ships do.
+//!   base ships do, and a ram run every 600 ticks (a ship-mind and an automaton vessel launched head-on, away
+//!   from the others: shields and the inward crush of GDR-0047).
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
 //!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
 //!   computer, allocation, maneuvers, fire at will.
 //! * [`ScenarioKind::Behavior`]: every ship under a content behavior (raiders: `raider_basic`; ship-mind
 //!   ships: `skirmisher` and three player programs with target priorities, among them an escort following
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
-//!   (rule slots drop).
+//!   (rule slots drop). The leader is the player's focus, and the player's mind capacity is
+//!   [`BEHAVIOR_MIND_CAPACITY`] cores, so the newest ship-mind vessels start dormant and wake as others fall.
+//!
+//! Owners: ship-mind ships belong to [`Owner::PLAYER`], every other faction's to `Owner(1)`
+//! ([`scenario_owner`]). Splits leave vessels of their own (GDR-0013), so ship counts grow during a run.
 //!
 //! The state hash includes the physics (Rapier) state, so the native-vs-wasm check covers the engine too.
 
@@ -28,7 +33,18 @@ use crate::flight::{PilotInput, Target};
 use crate::math::{Vec2, cos, sin};
 use crate::rng::Stream;
 use crate::ship::{Body, Ship, ShipControls};
+use crate::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
+
+/// The owner a scenario gives a design's ships: ship-mind ships are the player's, everyone else is one
+/// enemy side.
+pub fn scenario_owner(design: &ShipDesign) -> Owner {
+    if design.faction == "ship_mind" {
+        Owner::PLAYER
+    } else {
+        Owner(1)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScenarioKind {
@@ -102,6 +118,13 @@ pub struct ScenarioStats {
     /// Collisions (`SimEvent::Impact`) and those that dealt ramming damage.
     pub impacts: u32,
     pub rams: u32,
+    /// Vessels formed by splits (`VesselFormed` with a parent) and vessels lost (`VesselLost`).
+    pub split_vessels: u32,
+    pub vessels_lost: u32,
+    /// Mind events: vessels gone dormant, woken, focus changes.
+    pub dormant: u32,
+    pub woken: u32,
+    pub focus_changes: u32,
 }
 
 pub struct Scenario {
@@ -127,7 +150,11 @@ impl Scenario {
                 inputs: TickInputs::default(),
             });
         }
-        let mut sim = Sim::new(seed);
+        let mut config = crate::SimConfig::default();
+        if kind == ScenarioKind::Behavior {
+            config.mind_capacity[Owner::PLAYER.0 as usize] = BEHAVIOR_MIND_CAPACITY;
+        }
+        let mut sim = Sim::with_config(seed, config);
         let designs: Vec<Arc<ShipDesign>> = content
             .ships
             .iter()
@@ -147,14 +174,15 @@ impl Scenario {
                 linvel: Vec2::new(-sin(a) * 2.0, cos(a) * 2.0),
                 angvel: ((k % 5) as f32 - 2.0) * 0.15,
             };
-            sim.spawn_ship(Arc::clone(&design), body);
+            let owner = scenario_owner(&design);
+            sim.spawn_ship(design, owner, body);
         }
         if kind == ScenarioKind::Flight {
             sim.set_behaviors(library(content)?);
             let enemies: Vec<(crate::ShipId, Option<crate::BehaviorId>)> = sim
                 .ships()
                 .iter()
-                .filter(|s| s.design().faction != "ship_mind")
+                .filter(|s| s.owner() != Owner::PLAYER)
                 .map(|s| (s.id(), sim.behaviors().default_for(s.design())))
                 .collect();
             for (id, b) in enemies {
@@ -167,7 +195,11 @@ impl Scenario {
         if kind == ScenarioKind::Core
             && let Ok(d) = ShipDesign::compile(content, &heat_stress_blueprint())
         {
-            sim.spawn_ship(Arc::new(d), Body::at(Vec2::new(0.0, -15.0), 0.0));
+            sim.spawn_ship(
+                Arc::new(d),
+                Owner::PLAYER,
+                Body::at(Vec2::new(0.0, -15.0), 0.0),
+            );
         }
         Ok(Scenario {
             sim,
@@ -197,6 +229,11 @@ impl Scenario {
                     self.stats.impacts += 1;
                     self.stats.rams += (c.damage > 0.0) as u32;
                 }
+                SimEvent::VesselFormed { from: Some(_), .. } => self.stats.split_vessels += 1,
+                SimEvent::VesselLost { .. } => self.stats.vessels_lost += 1,
+                SimEvent::VesselDormant { .. } => self.stats.dormant += 1,
+                SimEvent::VesselWoken { .. } => self.stats.woken += 1,
+                SimEvent::FocusChanged { .. } => self.stats.focus_changes += 1,
                 _ => {}
             }
         }
@@ -227,6 +264,9 @@ impl Scenario {
         if let ScenarioKind::Load(_) = kind {
             return; // behaviors fly and fight on their own
         }
+        if kind == ScenarioKind::Core && tick % RAM_RUN_EVERY == RAM_RUN_EVERY / 2 {
+            self.ram_run(tick / RAM_RUN_EVERY);
+        }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
             .ships()
@@ -244,7 +284,7 @@ impl Scenario {
             .sim
             .ships()
             .iter()
-            .filter(|s| s.design().faction != "ship_mind")
+            .filter(|s| s.owner() != Owner::PLAYER)
             .map(|s| s.id())
             .collect();
         for (k, &(id, engines, autonomous, heat_stress)) in ships.iter().enumerate() {
@@ -346,6 +386,43 @@ impl Scenario {
     }
 }
 
+/// The core scenario's ram run comes every this many ticks (half-way through each period).
+const RAM_RUN_EVERY: u64 = 600;
+
+impl Scenario {
+    /// Launches the first ship-mind vessel (its controlling piece) and the main piece of the first ship that is
+    /// no player vessel (an automaton, or a wreck: salvage is nobody's friend) head-on at 20 m/s each, far from
+    /// the rest, so a hard ram is part of the determinism check.
+    fn ram_run(&mut self, n: u64) {
+        let ships = self.sim.ships();
+        let a = ships
+            .iter()
+            .filter(|s| s.team() == Some(Owner::PLAYER))
+            .find_map(|s| Some((s.id(), s.control_piece()?)));
+        let b = ships
+            .iter()
+            .filter(|s| s.team() != Some(Owner::PLAYER))
+            .find_map(|s| Some((s.id(), s.main_piece()?)));
+        let (Some(a), Some(b)) = (a, b) else {
+            return;
+        };
+        let x = 400.0 + n as f32 * 100.0;
+        let launch = |pos: Vec2, angle: f32, vy: f32| Body {
+            pos,
+            angle,
+            linvel: Vec2::new(0.0, vy),
+            angvel: 0.0,
+        };
+        self.sim
+            .teleport(a.0, a.1, launch(Vec2::new(x, 0.0), 0.0, 20.0));
+        self.sim.teleport(
+            b.0,
+            b.1,
+            launch(Vec2::new(x, 16.0), core::f32::consts::PI, -20.0),
+        );
+    }
+}
+
 /// Player programs of the behavior scenario (text form, as typed in the editor).
 const HUNTER: &str = "target weakest(engines)
 when hull < 30% -> flee
@@ -393,7 +470,7 @@ fn assign_behaviors(content: &Content, sim: &mut Sim) -> Result<(), String> {
         .map(|s| {
             (
                 s.id(),
-                s.design().faction == "ship_mind",
+                s.owner() == Owner::PLAYER,
                 sim.behaviors().default_for(s.design()),
             )
         })
@@ -406,7 +483,8 @@ fn assign_behaviors(content: &Content, sim: &mut Sim) -> Result<(), String> {
             continue;
         }
         let Some(l) = leader else {
-            leader = Some(id); // piloted by the scenario's random input
+            leader = Some(id); // piloted by the scenario's random input: the player's focus
+            sim.command(id, ShipCommand::Focus);
             continue;
         };
         let program = programs[k % programs.len()].or(default);
@@ -418,6 +496,10 @@ fn assign_behaviors(content: &Content, sim: &mut Sim) -> Result<(), String> {
 }
 
 const HEAT_STRESS: &str = "heat_stress";
+
+/// The player's mind capacity in the behavior scenario (logic cores): fewer than its ship-mind ships have, so
+/// dormant vessels, waking and the focus are part of the determinism check.
+pub const BEHAVIOR_MIND_CAPACITY: u32 = 8;
 
 /// Three beam lasers side by side on a fusion and a fission reactor, no radiators: overheats when it fires.
 /// A test fixture built from base part ids (skipped if a content pack lacks them).
@@ -496,7 +578,11 @@ pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, Str
     let raiders = n / 2;
     for k in 0..runners {
         let x = (k as f32 - (runners as f32 - 1.0) / 2.0) * 25.0;
-        let id = sim.spawn_ship(Arc::clone(&runner), Body::at(Vec2::new(x, 0.0), 0.0));
+        let id = sim.spawn_ship(
+            Arc::clone(&runner),
+            Owner::PLAYER,
+            Body::at(Vec2::new(x, 0.0), 0.0),
+        );
         if raiders == 0 {
             let maneuver = crate::maneuver::Maneuver::Orbit {
                 target: crate::flight::Target::Point(Vec2::new(0.0, 50.0)),
@@ -518,6 +604,7 @@ pub fn load_test_with(content: &Content, n: usize, seed: u64) -> Result<Sim, Str
         let x = (k as f32 - (raiders as f32 - 1.0) / 2.0) * 20.0;
         let id = sim.spawn_ship(
             Arc::clone(&raider),
+            Owner(1),
             Body::at(Vec2::new(x, 80.0), core::f32::consts::PI),
         );
         sim.command(id, ShipCommand::Behavior(Some(fight)));

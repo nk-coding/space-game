@@ -31,6 +31,7 @@
         icon: "torch-drive",
         size: (2, 2),
         build_points: 9,
+        control_cost: 2, // big machine: lead placeholder (12 Oct 2026)
         mass: 9,
         hp: 4,
         power: (draw: 6),

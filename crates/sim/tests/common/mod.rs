@@ -59,9 +59,11 @@ pub fn find(d: &ShipDesign, part: &str, x: i32, y: i32) -> PartIdx {
         .unwrap_or_else(|| panic!("no {part} at {x},{y}")) as PartIdx
 }
 
+/// A world with one ship of `design`, owned as in the scenarios (ship-mind ships are the player's).
 pub fn world_with(design: Arc<ShipDesign>) -> (Sim, ShipId) {
     let mut w = Sim::new(1);
-    let s = w.spawn_ship(design, Body::default());
+    let owner = sim::scenario::scenario_owner(&design);
+    let s = w.spawn_ship(design, owner, Body::default());
     (w, s)
 }
 

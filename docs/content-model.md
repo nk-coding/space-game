@@ -81,9 +81,10 @@ may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`High
 green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
 the game requires these ids: `build_points mass hp power_output power_draw power_min_level heat_output heat_limit heat_vent
 damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal rcs_thrust rcs_rated_speed torque
-shield_radius shield_capacity shield_regen cargo_capacity rule_slots mass_per_cell hp_per_cell build_point_factor`.
-`fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are placeholders except that the sim reads
-mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated speeds in m/s; 1 cell = 1 m.
+shield_radius shield_capacity shield_regen cargo_capacity rule_slots control_cost control_capacity mass_per_cell
+hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
+placeholders except that the sim reads mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated
+speeds in m/s; 1 cell = 1 m.
 
 ### Categories (`categories.ron`)
 
@@ -130,6 +131,7 @@ A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_p
 | `size` | footprint `(w, h)` in cells before rotation |
 | `shape` | `Rect` (default) or `Slope` |
 | `build_points` | cost against the drydock budget (no economy; balancing and enemy scaling) |
+| `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
 | `hull` | `true`: takes an armor material per placement; then `mass`/`hp` must be absent |
 | `mass`, `hp` | required for non-hull parts |
 
@@ -146,7 +148,7 @@ Optional component blocks (a part has any combination):
 | `rcs` | `thrust` (kN per nozzle), `rated_speed` (m/s, required) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre, and fades out towards `rated_speed` along its own push direction like an engine |
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
-| `logic` | `rule_slots` | hosts a mind, runs behavior rules |
+| `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
 | `bonuses` | list, see below | adjacency bonuses this part grants |
 
 **Weapon delivery** (`weapon.delivery`, added 11 Oct 2026):
@@ -193,6 +195,27 @@ power: (draw: 9, tier: Low, min_level: 0.5),   // beam laser: fed after everythi
 them at runtime. `min_level` belongs to the part type. The exact rule is in `docs/sim.md` "Power". Base content
 (lead defaults, placeholders): logic core `Critical`; shield emitter `High`, minimum 25%; propulsion `Normal`;
 guns `Low`, beam laser minimum 50%.
+
+**Control** (GDR-0038, GDR-0044; fields added 12 Oct 2026). Every logic core runs up to its
+`logic.control_capacity` of control cost; a vessel's capacity is the sum over its running cores, its load the
+`control_cost` of its parts. Parts beyond the capacity go idle in the power brown-out order (the sim's rule:
+`docs/sim.md` "Vessels").
+
+```ron
+control_cost: 2,                                 // a big machine (fusion reactor, torch drive, beam laser)
+logic: (rule_slots: 6, control_capacity: 16),    // the logic core
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `control_cost` (part) | 0 for hull parts, logic cores and parts without a power role (radiators, capacitors, cargo); 1 for parts that draw or make power | control cost against the vessel's capacity, at most 100; shown as the stat line `control_cost` (only when above 0) |
+| `logic.control_capacity` | required | control cost one core of this type runs; stat line `control_capacity` |
+
+Passive parts cost 0 because idling has nothing to switch off on them (validation warns about a cost on a part
+without a power role). Base content (lead placeholders, 12 Oct 2026): logic core 16, automaton core 4; fusion
+reactor, torch drive and beam laser cost 2; every base ship runs all its parts (Halvex Runner 18 of 32, raider
+2 of 4, sample early 8 of 32, sample mid 16 of 32). `Content::ship_control(ship)` gives `(load, capacity)` of an
+intact ship's main piece.
 
 **Turning** (decided 11 Oct 2026) comes from three sources the flight computer allocates across: the `gyro`
 torque of logic cores and gyro parts, RCS pods, and engines (differential thrust plus `gimbal`). RCS is its own
@@ -404,6 +427,9 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
   hull parts.
 - Rated speed: `engine.rated_speed` and `rcs.rated_speed` are required (a missing one is a parse error) and
   above 0.
+- Control: `control_cost` at most 100 (`data::MAX_CONTROL_COST`). Warnings: a `control_cost` above 0 on a part
+  that draws and makes no power (it can never idle), a logic core with `control_capacity` 0, a ship whose control
+  load exceeds its cores' capacity (the lowest-priority parts start idle).
 - Behavior nodes: ids and option ids not keywords (`when if always and or not target`), unique parameter and
   option ids, defaults that parse and fit their type and range, required parameters before optional ones,
   `value` only on conditions, `script` only on flag conditions.
@@ -430,7 +456,9 @@ cargo run -p content-tool -- list part
 `text_keys`, `links` (targets mentioned in its texts) and `wiki` (markdown or null). Parts add `color_key`,
 `stat_lines` (identical to the drydock), `stat_lines_by_material` for hull parts, `geometry` (area, polygon,
 connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygon`, `center` and `piece`,
-plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals`, `rule_slots` and `effective_behavior`.
+plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals` (including `control_cost` and
+`control_capacity`), `rule_slots`, `control_load`, `control_capacity` (of the main piece) and
+`effective_behavior`.
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
 `default_of_factions` and `flown_by_ships`. Categories list their parts,
@@ -485,6 +513,7 @@ content.part_color(part); content.placement_material(&p); content.placement_mass
 content.icon_svg("pulse-laser");                         // Option<&str>: SVG text of icons/pulse-laser.svg
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
+content.ship_control(ship); part.control_cost();              // (load, capacity) of the intact ship; cost with default
 let program = data::behavior::Program::parse(text)?;         // text form (or behavior.program() for RON form)
 program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>

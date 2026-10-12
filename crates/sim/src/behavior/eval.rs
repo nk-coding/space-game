@@ -405,8 +405,9 @@ pub(crate) fn aims_at(s: &Ship) -> Option<ShipId> {
     }
 }
 
+/// An active vessel of another owner (salvage, dark and dormant vessels are no targets).
 fn is_enemy(me: &Ship, s: &Ship) -> bool {
-    s.id() != me.id() && s.design().faction != me.design().faction && s.is_active()
+    s.id() != me.id() && !crate::vessel::friendly(me.team(), s.team()) && s.is_active()
 }
 
 /// Centre of mass and velocity of a ship's controlling piece.

@@ -7,6 +7,7 @@ use crate::ids::{PieceId, ShipId};
 use crate::mass::MassProps;
 use crate::math::Vec2;
 use crate::ship::Body;
+use crate::vessel::Owner;
 use crate::weapons::{GoneReason, ProjectileId, ShotKind};
 use data::WeaponFamily;
 
@@ -28,7 +29,9 @@ pub struct PieceSnapshot {
     /// `linvel = v + ω × (com_new − com_old)`); for the kept piece the parent's pose with `linvel` corrected
     /// for its shifted centre of mass.
     pub body: Body,
-    /// Not the ship's controlling piece: drifts as salvage (no hull glow, systems off).
+    /// Not the ship's controlling piece: drifts as salvage (no hull glow, systems off). A spawned piece that
+    /// still has a logic core becomes a vessel of its own right away: `SimEvent::VesselFormed` follows in
+    /// the same tick and moves it to a new ship.
     pub salvage: bool,
 }
 
@@ -62,15 +65,40 @@ pub enum SimEvent {
     Split(SplitEvent),
     /// A piece lost its last part: remove its body.
     PieceDestroyed { ship: ShipId, piece: PieceId },
-    /// The ship's controlling piece lost its last core (or was destroyed): the whole ship is dark for good.
+    /// The ship's controlling piece lost its last core (or was destroyed): the ship is salvage now, dark for
+    /// good (`VesselLost` follows).
     ControlLost { ship: ShipId },
+    /// A vessel formed (GDR-0013): a ship spawned with a logic core (`from: None`), or a piece that kept a
+    /// logic core split off a vessel and became a ship of its own, a vessel of the same owner that inherits
+    /// the parent's behavior. `from` = the ship and piece it left: the piece keeps its id, so the client
+    /// moves the view of `(from.0, from.1)` to `(ship, from.1)` (the body moved the same way).
+    VesselFormed {
+        ship: ShipId,
+        owner: Owner,
+        from: Option<(ShipId, PieceId)>,
+    },
+    /// A vessel lost its last logic core or was removed: what is left is salvage.
+    VesselLost { ship: ShipId, owner: Owner },
+    /// The owner runs more logic cores than its mind capacity: this vessel went dormant (dark like
+    /// salvage, still owned; GDR-0044).
+    VesselDormant { ship: ShipId, owner: Owner },
+    /// A dormant vessel runs again (capacity freed up, a wake command, or it became the focus).
+    VesselWoken { ship: ShipId, owner: Owner },
+    /// The owner's focus (the vessel its player pilots) moved: by `ShipCommand::Focus`, or because the focus
+    /// was lost. `to: None`: the owner has no vessel left.
+    FocusChanged {
+        owner: Owner,
+        from: Option<ShipId>,
+        to: Option<ShipId>,
+    },
     /// A ship was spawned: create a body and visuals per piece (`Sim::ship(ship).pieces()`).
     ShipSpawned { ship: ShipId },
     /// A ship was removed with all its pieces.
     ShipRemoved { ship: ShipId },
     /// Two pieces pushed each other this tick with at least `PhysicsTuning::impact_min_impulse` (sparks,
-    /// sound). Above `PhysicsTuning::ram_threshold` it carries ramming damage, already dealt to `part_a` and
-    /// `part_b` (destroyed parts follow as `PartDestroyed`).
+    /// sound). Above `PhysicsTuning::ram_threshold` it carries ramming damage (none between vessels of one
+    /// owner), already dealt after shields (`ShieldHit` for what bubbles took): to `part_a` and `part_b`, the
+    /// excess crushing on inward (destroyed parts follow as `PartDestroyed`).
     Impact(crate::physics::Contact),
     /// A pulse or projectile left a gun (beams are continuous: see `Sim::beams()`). `to` is where a pulse
     /// ended (hit, shield or full range); for projectiles the end of their range if nothing stops them.

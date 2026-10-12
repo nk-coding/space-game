@@ -36,7 +36,7 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
@@ -50,6 +50,11 @@ fn main() {
         stats.ricochets,
         stats.script_evals,
         stats.impacts,
-        stats.rams
+        stats.rams,
+        stats.split_vessels,
+        stats.vessels_lost,
+        stats.dormant,
+        stats.woken,
+        stats.focus_changes
     );
 }

@@ -5,15 +5,18 @@
 //!
 //! 1. Events of the previous step are dropped (events from calls made since then are kept).
 //! 2. Inputs, in list order: raw `controls`, `commands` (pilot input, maneuvers, behaviors), scripted `damage`.
-//! 3. Breakage is resolved (connectivity, splits); bodies are created, updated or removed in the physics.
+//! 3. Breakage is resolved (connectivity, splits); bodies are created, updated or removed in the physics;
+//!    split-off pieces with a logic core become vessels of their own, and the mind pass (focus, dormant
+//!    vessels; `vessel.rs`) runs if anything changed.
 //! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
 //!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
 //! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
 //! 6. Weapons (shields, projectiles, guns), then breakage again.
 //! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT`, contacts become
 //!    `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back
-//!    (previous pose kept for interpolation); impacts above the ramming threshold damage the touching parts,
-//!    and breakage is resolved once more.
+//!    (previous pose kept for interpolation); impacts above the ramming threshold crush inward from the
+//!    touching parts (none between vessels of one owner; shield bubbles covering the point absorb first), and
+//!    breakage is resolved once more.
 //! 8. `tick += 1`; debug builds store the state hash.
 
 use std::sync::Arc;
@@ -31,6 +34,7 @@ use crate::math::{Rot, Vec2};
 use crate::physics::{BodyDesc, BodyKey, Contact, Physics, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
 use crate::ship::{Body, Piece, Ship, ShipControls};
+use crate::vessel::{self, MindRow, Owner};
 use crate::weapons::{BeamTrace, Bubble, Projectile};
 
 /// The phases of one [`Sim::step`], in order, for profiling tools ([`Sim::step_profiled`]).
@@ -78,7 +82,8 @@ pub enum ShipCommand {
         fire: bool,
     },
     /// Hand the ship to a behavior of the sim's [`BehaviorLibrary`] (`Some`) or take it back (`None`). A
-    /// behavior overrides the helm. Unknown ids are ignored.
+    /// behavior overrides the helm. Unknown ids are ignored. For its owner's focus (piloted) it sets the
+    /// behavior the vessel runs once the focus leaves it.
     Behavior(Option<BehaviorId>),
     /// Set the ship whose lock the `locked` target selector follows (an escort's leader), or none.
     Leader(Option<ShipId>),
@@ -88,6 +93,12 @@ pub enum ShipCommand {
         part: crate::design::PartIdx,
         setting: crate::power::PowerSetting,
     },
+    /// Make this vessel its owner's focus (instant; GDR-0013): it is piloted from now on (its behavior is
+    /// parked) and never goes dormant; the vessel the focus left runs its behavior again. Ignored for salvage.
+    Focus,
+    /// Wake this vessel (GDR-0044): it claims its owner's mind capacity before every vessel not woken since,
+    /// so the newest other vessels go dormant to make room. Ignored for salvage.
+    Wake,
 }
 
 /// Everything from outside that affects one tick. Applied in list order.
@@ -138,6 +149,13 @@ pub struct Sim {
     /// Behavior programs (shared; ships refer to them by `BehaviorId`).
     behaviors: BehaviorLibrary,
     behavior_scratch: behavior::Scratch,
+    /// The focus of each owner that has one, ascending owner (`vessel.rs`).
+    pub(crate) focus: Vec<(Owner, ShipId)>,
+    /// Claim counter of the mind pass (formation and wake order).
+    pub(crate) mind_seq: i64,
+    /// Something changed that the mind pass must look at (vessels, cores, focus, config).
+    pub(crate) mind_dirty: bool,
+    pub(crate) mind_scratch: Vec<MindRow>,
 }
 
 impl Sim {
@@ -166,6 +184,10 @@ impl Sim {
             shield_scratch: Vec::new(),
             behaviors: BehaviorLibrary::default(),
             behavior_scratch: behavior::Scratch::default(),
+            focus: Vec::new(),
+            mind_seq: 0,
+            mind_dirty: false,
+            mind_scratch: Vec::new(),
         }
     }
 
@@ -177,6 +199,7 @@ impl Sim {
         self.behaviors = lib;
         for s in &mut self.ships {
             s.behavior = None;
+            s.parked = None;
         }
     }
 
@@ -220,7 +243,8 @@ impl Sim {
         &self.config
     }
 
-    /// Changes the config. Thrust, torque and speed scales and the physics tuning apply to every ship at once.
+    /// Changes the config. Thrust, torque and speed scales, the physics tuning and the mind capacities apply to
+    /// every ship at once.
     pub fn set_config(&mut self, config: SimConfig) {
         self.config = config;
         self.physics.configure(config.physics);
@@ -232,6 +256,8 @@ impl Sim {
                 s.rebuild_piece(k);
             }
         }
+        self.mind_dirty = true;
+        self.update_minds();
     }
 
     /// Simulated time in seconds (`tick × DT`, computed in f64 for display; never fed back into the sim).
@@ -249,10 +275,13 @@ impl Sim {
         &self.physics
     }
 
-    /// Spawns a ship. `body` is the pose and velocity of the blueprint's main piece. Emits `ShipSpawned`.
-    pub fn spawn_ship(&mut self, design: Arc<ShipDesign>, body: Body) -> ShipId {
+    /// Spawns a ship for `owner`. `body` is the pose and velocity of the blueprint's main piece. Emits
+    /// `ShipSpawned`, and `VesselFormed` if it has a logic core (a blueprint in several pieces with cores in
+    /// more than one: each further cored piece becomes a vessel of its own). It may start dormant if its
+    /// owner's mind capacity is used up (`VesselDormant`).
+    pub fn spawn_ship(&mut self, design: Arc<ShipDesign>, owner: Owner, body: Body) -> ShipId {
         let id = self.ids.ship();
-        let ship = Ship::new(id, design, body, &mut self.ids, &self.config);
+        let ship = Ship::new(id, design, owner, body, &mut self.ids, &self.config);
         for p in ship.pieces() {
             self.physics.create_body(
                 BodyKey {
@@ -268,10 +297,17 @@ impl Sim {
         }
         self.ships.push(ship);
         self.events.push(SimEvent::ShipSpawned { ship: id });
+        let k = self.ships.len() - 1;
+        if self.ships[k].is_vessel() {
+            self.vessel_formed(k, None);
+        }
+        self.form_vessels(k);
+        self.update_minds();
         id
     }
 
-    /// Removes a ship and all its bodies. Emits `ShipRemoved`.
+    /// Removes a ship and all its bodies. Emits `VesselLost` (if it was a vessel) and `ShipRemoved`; a
+    /// removed focus moves on.
     pub fn remove_ship(&mut self, id: ShipId) -> Option<Ship> {
         let k = self.ship_index(id)?;
         let ship = self.ships.remove(k);
@@ -281,7 +317,15 @@ impl Sim {
                 piece: p.id,
             });
         }
+        if ship.is_vessel() {
+            self.events.push(SimEvent::VesselLost {
+                ship: id,
+                owner: ship.owner(),
+            });
+            self.mind_dirty = true;
+        }
         self.events.push(SimEvent::ShipRemoved { ship: id });
+        self.update_minds();
         Some(ship)
     }
 
@@ -298,7 +342,7 @@ impl Sim {
         self.ship_index(id).map(move |k| &mut self.ships[k])
     }
 
-    fn ship_index(&self, id: ShipId) -> Option<usize> {
+    pub(crate) fn ship_index(&self, id: ShipId) -> Option<usize> {
         self.ships.binary_search_by_key(&id, |s| s.id()).ok()
     }
 
@@ -314,29 +358,36 @@ impl Sim {
 
     /// Hands a command to a ship now (same as putting it into the next tick's inputs).
     pub fn command(&mut self, ship: ShipId, cmd: ShipCommand) {
-        if let Some(s) = self.ship_mut(ship) {
-            match cmd {
-                ShipCommand::Pilot(p) => s.helm = HelmMode::Pilot(p),
-                ShipCommand::Maneuver { maneuver, fire } => {
-                    s.helm = HelmMode::Maneuver { maneuver, fire }
-                }
-                ShipCommand::Goal { goal, fire } => s.helm = HelmMode::Goal { goal, fire },
-                ShipCommand::Behavior(None) => s.behavior = None,
-                ShipCommand::Behavior(Some(id)) => {
-                    let program = self.behaviors.get(id).cloned();
-                    let s = match self.ships.binary_search_by_key(&ship, |s| s.id()) {
-                        Ok(k) => &mut self.ships[k],
-                        Err(_) => return,
-                    };
-                    if let Some(p) = program {
-                        s.behavior = Some(BehaviorState::new(id, p));
-                    }
-                }
-                ShipCommand::Leader(l) => s.leader = l,
-                ShipCommand::Power { part, setting } => {
-                    s.set_power_setting(part, setting);
-                }
+        let Some(k) = self.ship_index(ship) else {
+            return;
+        };
+        let piloted = self.focus(self.ships[k].owner()) == Some(ship);
+        match cmd {
+            ShipCommand::Focus => return self.set_focus(ship),
+            ShipCommand::Wake => return self.wake(ship),
+            _ => {}
+        }
+        let program = match cmd {
+            ShipCommand::Behavior(Some(id)) => match self.behaviors.get(id) {
+                Some(p) => Some(BehaviorState::new(id, Arc::clone(p))),
+                None => return,
+            },
+            _ => None,
+        };
+        let s = &mut self.ships[k];
+        match cmd {
+            ShipCommand::Pilot(p) => s.helm = HelmMode::Pilot(p),
+            ShipCommand::Maneuver { maneuver, fire } => {
+                s.helm = HelmMode::Maneuver { maneuver, fire }
             }
+            ShipCommand::Goal { goal, fire } => s.helm = HelmMode::Goal { goal, fire },
+            ShipCommand::Behavior(_) if piloted => s.parked = program,
+            ShipCommand::Behavior(_) => s.behavior = program,
+            ShipCommand::Leader(l) => s.leader = l,
+            ShipCommand::Power { part, setting } => {
+                s.set_power_setting(part, setting);
+            }
+            ShipCommand::Focus | ShipCommand::Wake => {}
         }
     }
 
@@ -408,15 +459,44 @@ impl Sim {
     }
 
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
-    /// the physics.
+    /// the physics. Split-off pieces with a logic core become vessels of their own (new ships, after the
+    /// existing ones); lost vessels and cores update the minds (focus, dormant vessels).
     pub fn resolve_breakage(&mut self) {
         for k in 0..self.ships.len() {
             let from = self.events.len();
             self.ships[k].resolve_breakage(&mut self.ids, &mut self.events);
             if self.events.len() > from {
                 self.sync_bodies(k, from);
+                self.after_breakage(k, from);
             }
         }
+        self.update_minds();
+    }
+
+    /// Vessel bookkeeping after ship `k`'s breakage events `from..`: a lost core or a lost vessel wakes the
+    /// mind pass, cored pieces of a split become vessels.
+    fn after_breakage(&mut self, k: usize, from: usize) {
+        let mut lost = false;
+        for e in &self.events[from..] {
+            match *e {
+                SimEvent::PartDestroyed { part, .. }
+                    if self.ships[k].design.parts[part as usize].logic =>
+                {
+                    self.mind_dirty = true;
+                }
+                SimEvent::ControlLost { .. } => lost = true,
+                _ => {}
+            }
+        }
+        if lost {
+            let s = &self.ships[k];
+            self.events.push(SimEvent::VesselLost {
+                ship: s.id(),
+                owner: s.owner(),
+            });
+            self.mind_dirty = true;
+        }
+        self.form_vessels(k);
     }
 
     /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting.
@@ -466,7 +546,7 @@ impl Sim {
                             self.physics.create_body(key, &desc);
                         }
                         if self.config.split_ghost_ticks > 0 {
-                            self.physics.set_ghost(key, true);
+                            self.physics.set_ghost(key, Some(sid));
                         }
                     }
                 }
@@ -572,7 +652,7 @@ impl Sim {
                 };
                 if p.ghost_until != 0 && self.tick >= p.ghost_until {
                     p.ghost_until = 0;
-                    self.physics.set_ghost(key, false);
+                    self.physics.set_ghost(key, None);
                 }
                 let f = if p.wrench.force != Vec2::ZERO {
                     Rot::from_angle(p.body.angle).apply(p.wrench.force)
@@ -640,7 +720,12 @@ impl Sim {
             // The normal points out of `a` and into `b`.
             let out_a = Rot::from_angle(ba.angle).apply_inverse(rc.normal);
             let out_b = Rot::from_angle(bb.angle).apply_inverse(rc.normal * -1.0);
-            let damage = if rc.impulse > t.ram_threshold {
+            // Vessels of one owner bump without ram damage (GDR-0045); salvage is nobody's friend.
+            let friendly = vessel::friendly(
+                self.ships[ka].piece_team(rc.a.piece),
+                self.ships[kb].piece_team(rc.b.piece),
+            );
+            let damage = if rc.impulse > t.ram_threshold && !friendly {
                 (rc.impulse - t.ram_threshold) * t.ram_damage
             } else {
                 0.0
@@ -672,9 +757,10 @@ impl Sim {
         self.impacts = impacts;
     }
 
-    /// Reports this tick's impacts and deals their ramming damage to the touching part of each side (equal
-    /// on both: the same impulse acts on both hulls, so armour and hit points decide who breaks), then
-    /// resolves what broke.
+    /// Reports this tick's impacts and deals their ramming damage to each side (equal on both: the same
+    /// impulse acts on both hulls, so armour and hit points decide who breaks): the shield bubbles covering
+    /// the contact point take their kinetic share first (GDR-0045), the rest crushes inward from the touching
+    /// part (GDR-0047). Then resolves what broke.
     fn ram(&mut self) {
         let mut rammed = false;
         for n in 0..self.impacts.len() {
@@ -683,10 +769,14 @@ impl Sim {
             if c.damage <= 0.0 {
                 continue;
             }
-            for (key, part) in [(c.a, c.part_a), (c.b, c.part_b)] {
+            // The normal points out of `a` into `b`: inward is against it for `a`, along it for `b`.
+            for (key, part, by, inward) in [
+                (c.a, c.part_a, c.b, c.normal * -1.0),
+                (c.b, c.part_b, c.a, c.normal),
+            ] {
                 if let (Some(part), Some(k)) = (part, self.ship_index(key.ship)) {
-                    rammed |= self.ships[k].apply_damage(DamageTarget::Part(part), c.damage)
-                        != DamageOutcome::Ignored;
+                    let hull = self.ram_shields(by, c.point, c.damage);
+                    rammed |= self.ram_crush(k, key, part, c.point, inward, hull);
                 }
             }
         }
@@ -752,6 +842,7 @@ impl StateHash for Sim {
         h.u32(ns);
         h.u32(np);
         h.u32(nq);
+        self.hash_minds(h);
         h.u32(self.ships.len() as u32);
         for s in &self.ships {
             s.hash_state(h);

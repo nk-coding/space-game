@@ -422,6 +422,30 @@ impl<'a> Validator<'a> {
         if let Some(x) = &p.cargo {
             self.number(p, "cargo.capacity", x.capacity, 0.0, true);
         }
+        if let Some(c) = p.control_cost {
+            if c > MAX_CONTROL_COST {
+                self.err(
+                    p,
+                    "control_cost",
+                    format!("at most {MAX_CONTROL_COST}, got {c}"),
+                );
+            } else if c > 0 && !p.has_power_role() {
+                self.warn(
+                    p,
+                    "control_cost",
+                    "the part draws and makes no power, so it can never go idle; it only uses up control capacity",
+                );
+            }
+        }
+        if let Some(l) = &p.logic
+            && l.control_capacity == 0
+        {
+            self.warn(
+                p,
+                "logic.control_capacity",
+                "a core with no control capacity runs no parts",
+            );
+        }
         for (k, b) in p.bonuses.iter().enumerate() {
             let f = format!("bonuses[{k}]");
             match &b.target {
@@ -739,6 +763,16 @@ impl<'a> Validator<'a> {
             }
         }
         // Design warnings (valid content, but probably not intended).
+        let (load, capacity) = self.c.ship_control(s);
+        if capacity > 0 && load > capacity {
+            self.warn(
+                s,
+                "parts",
+                format!(
+                    "control load {load} exceeds the logic cores' control capacity {capacity}: the lowest-priority parts start idle"
+                ),
+            );
+        }
         let grid = self.c.ship_grid(s).unwrap();
         let pieces = grid.pieces();
         if pieces.len() > 1 {

@@ -63,9 +63,17 @@ fn hp(w: &sim::Sim, s: ShipId, d: &sim::ShipDesign, x: i32, y: i32) -> f32 {
 /// Shooter at the origin facing +y; wall 20 m ahead, offset so the shot runs down column 2.
 fn range(c: &Content, gun: &'static str) -> (sim::Sim, ShipId, ShipId, Arc<sim::ShipDesign>) {
     let mut w = sim::Sim::new(1);
-    let shooter = w.spawn_ship(custom(c, &gunboat(gun)), Body::default());
+    let shooter = w.spawn_ship(
+        custom(c, &gunboat(gun)),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     let d = custom(c, &wall());
-    let target = w.spawn_ship(d.clone(), Body::at(Vec2::new(0.4, 20.0), 0.0));
+    let target = w.spawn_ship(
+        d.clone(),
+        sim::Owner::PLAYER,
+        Body::at(Vec2::new(0.4, 20.0), 0.0),
+    );
     (w, shooter, target, d)
 }
 
@@ -164,10 +172,18 @@ fn railgun_pierces_three_blocks_and_recoils() {
 fn cannon_stops_in_the_first_block() {
     let c = content();
     let mut w = sim::Sim::new(1);
-    let raider = w.spawn_ship(design(&c, "automaton_raider"), Body::default());
+    let raider = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        sim::Owner(1),
+        Body::default(),
+    );
     let d = custom(&c, &wall());
     // The raider's cannon sits on its centre line (x = 0); aim it down wall column 2.
-    let t = w.spawn_ship(d.clone(), Body::at(Vec2::new(0.4, 20.0), 0.0));
+    let t = w.spawn_ship(
+        d.clone(),
+        sim::Owner::PLAYER,
+        Body::at(Vec2::new(0.4, 20.0), 0.0),
+    );
     // One shot, then cease fire and let it land.
     let mut ticks = 0;
     while !w
@@ -193,7 +209,7 @@ fn cannon_stops_in_the_first_block() {
 /// A lone 1×3 slope (steel) at the origin: its face runs from (−1, 0.67) to (2, −0.33) in world metres.
 fn slope_target(w: &mut sim::Sim, c: &Content) -> (ShipId, u32) {
     let d = custom(c, &[("slope_1x3", 0, 0, 0, false, Some("steel"))]);
-    (w.spawn_ship(d, Body::default()), 0)
+    (w.spawn_ship(d, sim::Owner::PLAYER, Body::default()), 0)
 }
 
 #[test]
@@ -274,9 +290,17 @@ fn shielded() -> Vec<P<'static>> {
 fn shields_absorb_energy_then_collapse() {
     let c = content();
     let mut w = sim::Sim::new(1);
-    let s = w.spawn_ship(custom(&c, &gunboat("beam_laser")), Body::default());
+    let s = w.spawn_ship(
+        custom(&c, &gunboat("beam_laser")),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     let td = custom(&c, &shielded());
-    let t = w.spawn_ship(td.clone(), Body::at(Vec2::new(0.0, 20.0), 0.0));
+    let t = w.spawn_ship(
+        td.clone(),
+        sim::Owner::PLAYER,
+        Body::at(Vec2::new(0.0, 20.0), 0.0),
+    );
     let emitter = find(&td, "shield_emitter", 0, 2);
     let cap = w.ship(t).unwrap().part(emitter).shield;
     assert!(cap > 0.0);
@@ -333,7 +357,7 @@ fn shields_let_half_of_a_kinetic_shot_through() {
     let c = content();
     let mut w = sim::Sim::new(1);
     let td = custom(&c, &shielded());
-    let t = w.spawn_ship(td, Body::at(Vec2::new(0.0, 20.0), 0.0));
+    let t = w.spawn_ship(td, sim::Owner::PLAYER, Body::at(Vec2::new(0.0, 20.0), 0.0));
     w.step(&TickInputs::default()); // the emitter powers up and the bubble appears
     w.spawn_projectile(
         ShipId(999),
@@ -365,9 +389,14 @@ fn shields_let_half_of_a_kinetic_shot_through() {
 fn raiders_shoot_back() {
     let c = content();
     let mut w = sim::Sim::new(5);
-    let runner = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
+    let runner = w.spawn_ship(
+        design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     let raider = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body::at(Vec2::new(60.0, 30.0), 2.0),
     );
     fight(&mut w, &c, raider);

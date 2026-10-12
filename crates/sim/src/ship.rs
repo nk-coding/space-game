@@ -153,6 +153,9 @@ pub struct PartState {
     /// Shield emitters: the bubble collapsed and stays down until it has recharged
     /// `weapons::tuning::SHIELD_RESTART` of its capacity.
     pub shield_down: bool,
+    /// Idle: its vessel's control load exceeds the capacity of its running logic cores, and this part is
+    /// among the lowest power priorities (see [`crate::control`]). It does nothing and draws no power.
+    pub idle: bool,
 }
 
 /// Power balance of a piece this tick.
@@ -287,11 +290,14 @@ pub struct Piece {
     pub colliders: Vec<ConvexPolygon>,
     /// Has an alive logic core.
     pub has_core: bool,
-    /// The ship's controlling piece (holds the controlling core). Every other piece is salvage: dark for good.
+    /// The ship's controlling piece: the vessel (it holds the ship's logic cores). Every other piece of the
+    /// ship is salvage without a core (cored pieces of a split become vessels of their own, GDR-0013).
     pub controlled: bool,
-    /// Controlled, with a working, powered core this tick: systems run and the hull glows. A controlled piece
-    /// without power goes dark until power returns.
+    /// Controlled, not dormant, with a working, powered core this tick: systems run and the hull glows. A
+    /// controlled piece without power goes dark until power returns.
     pub active: bool,
+    /// Control load and capacity (GDR-0044, see [`crate::control`]).
+    pub control: crate::control::ControlState,
     /// Pose and velocity of the body (synced from the physics backend after each step).
     pub body: Body,
     /// Pose at the end of the previous tick, for render interpolation (`render_pose`).
@@ -330,6 +336,8 @@ pub struct Piece {
     /// Parts that make heat without a power role (e.g. capacitors).
     pub(crate) heaters: Vec<PartIdx>,
     pub(crate) dirty: bool,
+    /// The idle set must be recomputed (rebuilt piece, changed power setting).
+    pub(crate) control_dirty: bool,
 }
 
 /// Heat constants of one part, cached when its exposure or bonuses change (compact for the per-tick loop).
@@ -356,6 +364,7 @@ impl Piece {
             has_core: false,
             controlled: false,
             active: false,
+            control: crate::control::ControlState::default(),
             prev_pos: body.pos,
             prev_angle: body.angle,
             body,
@@ -377,6 +386,7 @@ impl Piece {
             consumers: Vec::new(),
             heaters: Vec::new(),
             dirty: false,
+            control_dirty: true,
         }
     }
 
@@ -469,6 +479,18 @@ pub struct Ship {
     pub(crate) speed_scale: f32,
     /// Seconds until each gun slot may fire again (≤ 0: ready).
     pub(crate) gun_cooldown: Vec<f32>,
+    /// Who the ship belongs to (GDR-0013). Counts for game rules only while the ship is a vessel
+    /// ([`Ship::team`]); salvage has no owner.
+    pub(crate) owner: crate::vessel::Owner,
+    /// The vessel is dormant: over its owner's mind capacity (GDR-0044), dark like salvage but still owned.
+    pub(crate) dormant: bool,
+    /// Order in which the vessel claims its owner's mind capacity (lower first): its formation order, or a
+    /// fresh negative key when it was woken or the focus left it. Set by the sim (`vessel.rs`).
+    pub(crate) claim: i64,
+    /// Tick the vessel formed (spawned, or split off another vessel).
+    pub(crate) formed: u64,
+    /// While the vessel is its owner's focus (piloted), the behavior it runs again when the focus leaves.
+    pub(crate) parked: Option<crate::behavior::BehaviorState>,
 }
 
 impl Ship {
@@ -478,6 +500,7 @@ impl Ship {
     pub(crate) fn new(
         id: ShipId,
         design: Arc<ShipDesign>,
+        owner: crate::vessel::Owner,
         body: Body,
         ids: &mut IdAlloc,
         cfg: &crate::config::SimConfig,
@@ -498,6 +521,7 @@ impl Ship {
                 work: 0.0,
                 shield: 0.0,
                 shield_down: false,
+                idle: false,
             })
             .collect();
         let mut ship = Ship {
@@ -521,6 +545,11 @@ impl Ship {
             speed_scale: cfg.speed_scale,
             gun_cooldown: vec![0.0; design.guns.len()],
             design,
+            owner,
+            dormant: false,
+            claim: 0,
+            formed: 0,
+            parked: None,
         };
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
@@ -942,8 +971,14 @@ impl Ship {
         piece.dirty = false;
         let pid = piece.id;
 
-        // Core flag.
+        // Core flag and control load.
         piece.has_core = piece.parts.iter().any(|&p| d.parts[p as usize].logic);
+        piece.control.load = piece
+            .parts
+            .iter()
+            .map(|&p| d.parts[p as usize].control_cost)
+            .sum();
+        piece.control_dirty = true;
 
         // Clearances: only alive parts of the same piece block.
         let blocked = |blockers: &[PartIdx], parts: &[PartState]| {
@@ -1163,7 +1198,7 @@ impl Ship {
         piece.output.resize(rows, 0.0);
         piece.cruise.clear();
         piece.cruise.resize(rows, 0.0);
-        piece.active = piece.controlled && piece.has_core;
+        piece.active = piece.controlled && piece.has_core && !self.dormant;
         self.pieces[k] = piece;
     }
 
@@ -1178,6 +1213,7 @@ impl Ship {
             pieces,
             controls,
             scratch,
+            dormant,
             ..
         } = self;
         let d = &**design;
@@ -1188,11 +1224,14 @@ impl Ship {
         }
 
         for piece in pieces.iter_mut() {
-            // Power supply first: a controlled piece is active only with a working core and some power.
+            // Control first (which parts idle), then the power supply: a controlled piece is active only
+            // when its vessel is not dormant and it has a working core and some power.
+            let running = piece.controlled && !*dormant;
+            crate::control::update(piece, parts, d, running);
             let mut supply = 0.0f32;
             for r in &piece.reactors {
                 let ps = &parts[r.part as usize];
-                if ps.alive && !ps.overheated {
+                if ps.alive && !ps.overheated && !ps.idle {
                     supply += r.output;
                 }
             }
@@ -1200,7 +1239,7 @@ impl Ship {
                 let ps = &parts[c as usize];
                 ps.alive && !ps.overheated
             });
-            let active = piece.controlled && core_ok && supply > 0.0;
+            let active = piece.controlled && !*dormant && core_ok && supply > 0.0;
             piece.active = active;
 
             // What the movers were told to do (engines and RCS pods: summed throttle times the rated-speed
@@ -1226,7 +1265,7 @@ impl Ship {
             want.clear();
             for c in &piece.consumers {
                 let ps = &parts[c.part as usize];
-                let act = if !active || ps.overheated || !ps.clear {
+                let act = if !active || ps.overheated || !ps.clear || ps.idle {
                     0.0
                 } else {
                     match c.kind {
@@ -1248,8 +1287,8 @@ impl Ship {
             let (demand, served) = crate::power::allocate(&piece.consumers, want, fed, level);
             for (c, &l) in piece.consumers.iter().zip(level.iter()) {
                 let ps = &mut parts[c.part as usize];
-                ps.power = l;
-                ps.work = activity[c.part as usize] * l;
+                ps.power = if ps.idle { 0.0 } else { l };
+                ps.work = activity[c.part as usize] * ps.power;
             }
             let reactor_work = if served > 0.0 && supply > 0.0 {
                 let load = (served / supply).min(1.0);
@@ -1259,12 +1298,20 @@ impl Ship {
             };
             for r in &piece.reactors {
                 let ps = &mut parts[r.part as usize];
-                ps.power = 1.0;
-                ps.work = if ps.overheated { 0.0 } else { reactor_work };
+                ps.power = if ps.idle { 0.0 } else { 1.0 };
+                ps.work = if ps.overheated || ps.idle {
+                    0.0
+                } else {
+                    reactor_work
+                };
             }
             for &h in &piece.heaters {
                 let ps = &mut parts[h as usize];
-                ps.work = if active && !ps.overheated { 1.0 } else { 0.0 };
+                ps.work = if active && !ps.overheated && !ps.idle {
+                    1.0
+                } else {
+                    0.0
+                };
             }
             // Shield bubbles recharge while their emitter works.
             for &e in &piece.shields {
@@ -1398,6 +1445,9 @@ impl StateHash for Piece {
         h.vec2(self.mass.com);
         h.f32(self.mass.inertia);
         h.u32(self.has_core as u32 | (self.controlled as u32) << 1 | (self.active as u32) << 2);
+        h.u32(self.control.load);
+        h.u32(self.control.capacity);
+        h.u32(self.control.idle);
         h.u64(self.ghost_until);
         self.body.hash_state(h);
         h.f32(self.power.supply);
@@ -1452,9 +1502,20 @@ impl StateHash for Ship {
             None => h.u8(0),
         }
         h.u32(self.leader.map_or(u32::MAX, |l| l.0));
+        h.u8(self.owner.0);
+        h.bool(self.dormant);
+        h.u64(self.claim as u64);
+        h.u64(self.formed);
+        match &self.parked {
+            Some(b) => {
+                h.u8(1);
+                b.hash_state(h);
+            }
+            None => h.u8(0),
+        }
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {
-            h.u32(ps.alive as u32 | (ps.overheated as u32) << 1);
+            h.u32(ps.alive as u32 | (ps.overheated as u32) << 1 | (ps.idle as u32) << 2);
             if !ps.alive {
                 continue;
             }

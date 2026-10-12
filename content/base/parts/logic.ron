@@ -16,7 +16,7 @@
         hp: 1,
         power: (draw: 1, tier: Critical),
         heat: (output: 0.4, limit: 3),
-        logic: (rule_slots: 6),
+        logic: (rule_slots: 6, control_capacity: 16), // control capacity: lead placeholder (12 Oct 2026)
         gyro: (torque: 500),
     ),
 ]

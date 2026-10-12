@@ -482,6 +482,30 @@ impl Content {
             .sum()
     }
 
+    /// Control of an intact ship's main piece (GDR-0044): `(load, capacity)` = the summed `control_cost` of
+    /// its parts and the summed `logic.control_capacity` of its logic cores. Load above capacity means the
+    /// lowest-priority parts start idle. `(0, 0)` for a ship whose grid does not build.
+    pub fn ship_control(&self, ship: &Blueprint) -> (u32, u32) {
+        let Ok(grid) = self.ship_grid(ship) else {
+            return (0, 0);
+        };
+        let part = |i: usize| self.parts.get(&ship.parts[i].part);
+        let pieces = grid.pieces();
+        let Some(main) = grid.main_piece(&pieces, |i| part(i).is_some_and(|p| p.logic.is_some()))
+        else {
+            return (0, 0);
+        };
+        pieces.parts[main]
+            .iter()
+            .filter_map(|&i| part(i))
+            .fold((0, 0), |(load, cap), p| {
+                (
+                    load + p.control_cost(),
+                    cap + p.logic.as_ref().map_or(0, |l| l.control_capacity),
+                )
+            })
+    }
+
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
     pub fn placement_hp(&self, p: &Placement) -> Option<f32> {
         let part = self.parts.get(&p.part)?;

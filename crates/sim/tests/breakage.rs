@@ -5,8 +5,8 @@ mod common;
 use common::*;
 use sim::mass::to_piece;
 use sim::{
-    Body, DamageCommand, DamageOutcome, DamageTarget, PartIdx, ShipId, SimEvent, TickInputs, Vec2,
-    inherited_velocity,
+    Body, DamageCommand, DamageOutcome, DamageTarget, Owner, PartIdx, ShipId, SimEvent, TickInputs,
+    Vec2, inherited_velocity,
 };
 
 fn kill(ship: ShipId, cells: &[(i32, i32)]) -> TickInputs {
@@ -31,18 +31,21 @@ fn kill_now(w: &mut sim::Sim, ship: ShipId, cells: &[(i32, i32)]) {
     w.resolve_breakage();
 }
 
-/// World position of every alive part's centroid.
-fn part_positions(w: &sim::Sim, s: ShipId) -> Vec<Option<Vec2>> {
-    let ship = w.ship(s).unwrap();
-    let d = ship.design();
+/// World position of every alive part's centroid, wherever its ship (split-off vessels hold their own
+/// parts).
+fn part_positions(w: &sim::Sim, ships: &[ShipId]) -> Vec<Option<Vec2>> {
+    let d = w.ship(ships[0]).unwrap().design().clone();
     (0..d.parts.len())
         .map(|i| {
-            let ps = ship.part(i as PartIdx);
-            if !ps.alive {
-                return None;
-            }
-            let p = ship.piece(ps.piece).unwrap();
-            Some(p.body.to_world(to_piece(d.parts[i].centroid, p.origin)))
+            ships.iter().find_map(|&s| {
+                let ship = w.ship(s).unwrap();
+                let ps = ship.part(i as PartIdx);
+                if !ps.alive {
+                    return None;
+                }
+                let p = ship.piece(ps.piece).unwrap();
+                Some(p.body.to_world(to_piece(d.parts[i].centroid, p.origin)))
+            })
         })
         .collect()
 }
@@ -69,9 +72,9 @@ fn runner_splits_down_the_middle() {
         linvel: Vec2::new(3.0, -1.0),
         angvel: 0.7,
     };
-    let s = w.spawn_ship(d.clone(), body);
+    let s = w.spawn_ship(d.clone(), Owner::PLAYER, body);
     let parent = w.ship(s).unwrap().pieces()[0].clone();
-    let before = part_positions(&w, s);
+    let before = part_positions(&w, &[s]);
     let com_old = parent.com_world();
 
     // The centre column: both beams, the fusion reactor, two armour blocks and the torch drive.
@@ -99,21 +102,36 @@ fn runner_splits_down_the_middle() {
     assert_eq!(split.spawned.len(), 1);
     let new = &split.spawned[0];
     assert!(new.id > parent.id);
-    // Both halves keep a logic core, but only the controlling piece stays active; the other is salvage.
+    // Both halves keep a logic core: the kept piece stays this ship's vessel, the other becomes a vessel of
+    // its own (GDR-0013), a new ship of the same owner with the same piece id.
     assert!(!split.kept.salvage && new.salvage);
     assert_eq!(w.ship(s).unwrap().control_piece(), Some(parent.id));
+    let t = w.ships()[1].id();
+    assert!(w.events().contains(&SimEvent::VesselFormed {
+        ship: t,
+        owner: Owner::PLAYER,
+        from: Some((s, new.id))
+    }));
 
     let ship = w.ship(s).unwrap();
-    assert_eq!(ship.pieces().len(), 2);
-    let (a, b) = (&ship.pieces()[0], &ship.pieces()[1]);
+    let ship_t = w.ship(t).unwrap();
+    assert_eq!((ship.pieces().len(), ship_t.pieces().len()), (1, 1));
+    assert_eq!(ship_t.control_piece(), Some(new.id));
+    assert_eq!(ship_t.team(), Some(Owner::PLAYER));
+    let (a, b) = (&ship.pieces()[0], &ship_t.pieces()[0]);
     assert_eq!((a.id, b.id), (split.kept.id, new.id));
+    assert!(ship.verify_caches().is_ok() && ship_t.verify_caches().is_ok());
     // Parts are partitioned; the kept piece is the left half (lowest part index on a tie).
     let mut all: Vec<PartIdx> = a.parts.iter().chain(&b.parts).copied().collect();
     all.sort();
     let alive: Vec<PartIdx> = (0..d.parts.len() as PartIdx)
-        .filter(|&i| ship.part(i).alive)
+        .filter(|&i| ship.part(i).alive || ship_t.part(i).alive)
         .collect();
     assert_eq!(all, alive);
+    assert!(
+        (0..d.parts.len() as PartIdx).all(|i| !(ship.part(i).alive && ship_t.part(i).alive)),
+        "each part lives in one ship"
+    );
     let core_x = |p: &sim::Piece| {
         p.parts
             .iter()
@@ -125,7 +143,7 @@ fn runner_splits_down_the_middle() {
         "a core in each half"
     );
     for &p in &b.parts {
-        assert_eq!(ship.part(p).piece, b.id);
+        assert_eq!(ship_t.part(p).piece, b.id);
     }
 
     // Mass: conserved minus the destroyed parts; the halves mirror each other.
@@ -153,7 +171,7 @@ fn runner_splits_down_the_middle() {
     assert_eq!(split.kept.colliders, a.colliders);
 
     // Nothing jumped: every surviving part is where it was.
-    let after = part_positions(&w, s);
+    let after = part_positions(&w, &[s, t]);
     for (i, (p0, p1)) in before.iter().zip(&after).enumerate() {
         if let (Some(p0), Some(p1)) = (p0, p1) {
             assert!(
@@ -180,8 +198,8 @@ fn runner_splits_down_the_middle() {
     let want = inherited_velocity(body.linvel, body.angvel, com_old, c_rem) * m;
     assert!((mom - want).length() < 1e-2, "{mom:?} vs {want:?}");
     // Each half has its own closed hull outline.
-    for p in [a, b] {
-        let loops = data::geometry::hull_loops(&ship.piece_hull_edges(p.id));
+    for (sh, p) in [(ship, a), (ship_t, b)] {
+        let loops = data::geometry::hull_loops(&sh.piece_hull_edges(p.id));
         assert!(!loops.is_empty() && loops.iter().all(|l| l.closed));
     }
     // The split pose in the event equals the live body.
@@ -310,9 +328,9 @@ fn losing_a_part_shifts_the_centre_of_mass() {
         linvel: Vec2::new(0.5, 0.25),
         angvel: -0.6,
     };
-    let s = w.spawn_ship(d.clone(), body);
+    let s = w.spawn_ship(d.clone(), Owner::PLAYER, body);
     let com_old = w.ship(s).unwrap().pieces()[0].com_world();
-    let before = part_positions(&w, s);
+    let before = part_positions(&w, &[s]);
     // A part on the left wing tip goes; the ship stays in one piece.
     kill_now(&mut w, s, &[(0, 3)]);
     let ev = w.events().iter().find_map(|e| match e {
@@ -330,7 +348,7 @@ fn losing_a_part_shifts_the_centre_of_mass() {
     // Thrusters' lever arms follow the new centre of mass.
     let t = p.thrusters[0];
     assert!(((t.point - p.mass.com) - t.arm).length() < 1e-6);
-    let after = part_positions(&w, s);
+    let after = part_positions(&w, &[s]);
     for (p0, p1) in before.iter().zip(&after) {
         if let (Some(p0), Some(p1)) = (p0, p1) {
             assert!((*p0 - *p1).length() < 1e-5);
@@ -344,16 +362,20 @@ fn pieces_keep_splitting_with_fresh_ids() {
     let d = design(&c, "halvex_runner");
     let (mut w, s) = world_with(d.clone());
     w.step(&kill(s, &[(5, 0), (6, 0), (5, 2), (5, 4), (6, 4), (5, 5)]));
-    assert_eq!(w.ship(s).unwrap().pieces().len(), 2);
-    // Cut the right half again: the right wing (x ≥ 9) loses its link at x = 8.
-    w.step(&kill(s, &[(8, 1), (8, 2), (8, 3), (8, 4), (8, 5)]));
-    let ship = w.ship(s).unwrap();
+    assert_eq!(w.ship(s).unwrap().pieces().len(), 1);
+    // The right half is a vessel of its own. Cut it again at x = 8 (its core at (8, 4) goes too): the right
+    // wing (x ≥ 9) loses its link and drifts off; no piece keeps a core, so no new vessel forms.
+    let t = w.ships()[1].id();
+    w.step(&kill(t, &[(8, 1), (8, 2), (8, 3), (8, 4), (8, 5)]));
+    let ship = w.ship(t).unwrap();
     let ids: Vec<u32> = ship.pieces().iter().map(|p| p.id.0).collect();
     assert!(
         ids.windows(2).all(|w| w[0] < w[1]),
         "pieces stay sorted by id: {ids:?}"
     );
-    assert!(ship.pieces().len() >= 3);
+    assert!(ship.pieces().len() >= 2);
+    assert_eq!(w.ships().len(), 2, "no new vessel");
+    assert!(!ship.is_vessel());
     // Exactly one piece per alive part, and each part knows its piece.
     for p in ship.pieces() {
         for &i in &p.parts {

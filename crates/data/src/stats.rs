@@ -10,6 +10,7 @@ use crate::model::{Better, Condition, Effect, Material, Part, Selector};
 /// Stat ids the code emits. Each must be defined in `stats.ron` (checked by validation).
 pub const BUILTIN_STATS: &[&str] = &[
     "build_points",
+    "control_cost",
     "mass",
     "hp",
     "power_output",
@@ -35,6 +36,7 @@ pub const BUILTIN_STATS: &[&str] = &[
     "shield_regen",
     "cargo_capacity",
     "rule_slots",
+    "control_capacity",
     "mass_per_cell",
     "hp_per_cell",
     "build_point_factor",
@@ -118,6 +120,10 @@ impl Content {
             "build_points",
             part.build_points * armor.map_or(1.0, |a| a.build_point_factor),
         ));
+        let control = part.control_cost();
+        if control > 0 {
+            v.push(("control_cost", control as f32));
+        }
         match (part.hull, armor) {
             (true, Some(a)) => {
                 v.push(("mass", a.mass_per_cell * part.area()));
@@ -198,6 +204,7 @@ impl Content {
         }
         if let Some(l) = &part.logic {
             v.push(("rule_slots", l.rule_slots as f32));
+            v.push(("control_capacity", l.control_capacity as f32));
         }
         let mut lines = self.sorted(v.into_iter().filter_map(|(s, x)| self.line(s, x)).collect());
 

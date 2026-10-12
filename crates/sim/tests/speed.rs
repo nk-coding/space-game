@@ -94,6 +94,7 @@ fn braking_and_sideways_keep_full_thrust() {
         let mut w = sim::Sim::new(1);
         let s = w.spawn_ship(
             d.clone(),
+            sim::Owner::PLAYER,
             Body {
                 linvel: vel,
                 ..Default::default()

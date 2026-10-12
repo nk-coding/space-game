@@ -10,9 +10,10 @@
 //!   the sim hands over `v + ω × (com_new − com_old)` itself (`ship::inherited_velocity`).
 //! * Zero gravity, `DT` split into `PhysicsTuning::substeps` solver substeps, placeholder friction and
 //!   restitution, sleeping below a low speed, soft CCD (speculative contacts) on every body.
-//! * **Ghosts**: after a split every piece of the ship carries a ghost flag (bit 64 of its collider's user
-//!   data) and the contact-pair filter hook; the filter drops pairs of two ghosts of the same ship. A pure
-//!   function of the two colliders, so it is deterministic.
+//! * **Ghosts**: after a split every piece of the ship carries a ghost group (bits 64..96 of its collider's
+//!   user data: the split ship's id + 1) and the contact-pair filter hook; the filter drops pairs of two ghosts
+//!   of the same group, so a piece that split off as a vessel of its own (a new ship) still ghosts its parent.
+//!   A pure function of the two colliders, so it is deterministic.
 //! * **Ray casts** go through Rapier's query pipeline (the broad-phase BVH) with a predicate that skips one
 //!   ship. Bodies created or moved between steps are put into the BVH at once, so rays see them.
 //! * **Contacts**: after each step every touching pair whose normal impulse reached
@@ -77,7 +78,10 @@ pub struct Contact {
     /// disagree).
     pub part_a: Option<crate::design::PartIdx>,
     pub part_b: Option<crate::design::PartIdx>,
-    /// Ramming damage dealt to `part_a` and to `part_b` each (0 below `PhysicsTuning::ram_threshold`).
+    /// Ramming damage to each side, before shields: shield bubbles covering the point take their kinetic
+    /// share first (`SimEvent::ShieldHit`), the rest hits `part_a` / `part_b` and what exceeds a part's hit
+    /// points crushes on inward (GDR-0047). 0 below `PhysicsTuning::ram_threshold` and between vessels of one
+    /// owner (GDR-0045).
     pub damage: f32,
 }
 
@@ -136,8 +140,13 @@ pub fn wrap_angle(a: f32) -> f32 {
     }
 }
 
-/// Bit 64 of a collider's user data: the piece is a split ghost.
-const GHOST: u128 = 1 << 64;
+/// Bits 64..96 of a collider's user data: the split ghost group + 1 (0 = no ghost).
+const GHOST_SHIFT: u32 = 64;
+const GHOST_MASK: u128 = (u32::MAX as u128) << GHOST_SHIFT;
+
+fn ghost_group(data: u128) -> u32 {
+    (data >> GHOST_SHIFT) as u32
+}
 
 fn user_data(key: BodyKey) -> u128 {
     key.ship.0 as u128 | (key.piece.0 as u128) << 32
@@ -200,17 +209,16 @@ fn configure_body(rb: &mut RigidBody, t: &PhysicsTuning) {
     }
 }
 
-/// Drops contacts between two ghosts of the same ship.
+/// Drops contacts between two ghosts of the same group (the pieces of one split).
 struct GhostFilter;
 
 impl PhysicsHooks for GhostFilter {
     fn filter_contact_pair(&self, c: &PairFilterContext) -> Option<SolverFlags> {
         let (a, b) = (
-            c.colliders[c.collider1].user_data,
-            c.colliders[c.collider2].user_data,
+            ghost_group(c.colliders[c.collider1].user_data),
+            ghost_group(c.colliders[c.collider2].user_data),
         );
-        let same_ship = (a as u32) == (b as u32);
-        if same_ship && a & GHOST != 0 && b & GHOST != 0 {
+        if a != 0 && a == b {
             None
         } else {
             Some(SolverFlags::COMPUTE_RIGID_IMPULSES)
@@ -315,20 +323,35 @@ impl Physics {
         }
     }
 
-    /// Ghost bodies of one ship don't collide with each other (set on all pieces of a split for a few
-    /// ticks, so freshly separated pieces never push each other apart).
-    pub(crate) fn set_ghost(&mut self, key: BodyKey, ghost: bool) {
+    /// Ghost bodies of one group don't collide with each other (set on all pieces of a split for a few
+    /// ticks, group = the ship that split, so freshly separated pieces never push each other apart). `None`
+    /// ends it.
+    pub(crate) fn set_ghost(&mut self, key: BodyKey, group: Option<ShipId>) {
         let Some(h) = self.handles.get(&key) else {
             return;
         };
         let co = &mut self.world.colliders[h.collider];
-        if ghost {
-            co.user_data |= GHOST;
-            co.set_active_hooks(ActiveHooks::FILTER_CONTACT_PAIRS);
-        } else {
-            co.user_data &= !GHOST;
-            co.set_active_hooks(ActiveHooks::empty());
+        co.user_data &= !GHOST_MASK;
+        match group {
+            Some(g) => {
+                co.user_data |= (g.0 as u128 + 1) << GHOST_SHIFT;
+                co.set_active_hooks(ActiveHooks::FILTER_CONTACT_PAIRS);
+            }
+            None => co.set_active_hooks(ActiveHooks::empty()),
         }
+    }
+
+    /// Moves a body to a new key (a piece that split off as a vessel of its own changes ship). The Rapier
+    /// body, its contacts and its ghost group stay; only the key and the user data change.
+    pub(crate) fn rekey(&mut self, from: BodyKey, to: BodyKey) {
+        let Some(h) = self.handles.remove(&from) else {
+            return;
+        };
+        let w = &mut self.world;
+        let keep = |d: u128| (d & !((1u128 << GHOST_SHIFT) - 1)) | user_data(to);
+        w.bodies[h.body].user_data = keep(w.bodies[h.body].user_data);
+        w.colliders[h.collider].user_data = keep(w.colliders[h.collider].user_data);
+        self.handles.insert(to, h);
     }
 
     /// Moves a body and sets its velocities (tools, tests, respawn).
@@ -466,7 +489,7 @@ impl Physics {
     /// Is this body a split ghost?
     pub fn is_ghost(&self, key: BodyKey) -> Option<bool> {
         let h = self.handles.get(&key)?;
-        Some(self.world.colliders[h.collider].user_data & GHOST != 0)
+        Some(ghost_group(self.world.colliders[h.collider].user_data) != 0)
     }
 
     /// Is this body asleep (not simulated until something wakes it)?
@@ -559,7 +582,7 @@ impl core::fmt::Debug for Physics {
 
 impl StateHash for Physics {
     /// Rapier's own state per body, in key order: pose (translation, rotation as cos/sin), velocities,
-    /// sleeping and ghost flags. The sim hashes the derived `Body` of every piece as well.
+    /// sleeping flag and ghost group. The sim hashes the derived `Body` of every piece as well.
     fn hash_state(&self, h: &mut StateHasher) {
         h.u32(self.handles.len() as u32);
         for (key, hd) in &self.handles {
@@ -574,10 +597,8 @@ impl StateHash for Physics {
             h.f32(v.x);
             h.f32(v.y);
             h.f32(rb.angvel());
-            h.u32(
-                rb.is_sleeping() as u32
-                    | ((self.world.colliders[hd.collider].user_data & GHOST != 0) as u32) << 1,
-            );
+            h.bool(rb.is_sleeping());
+            h.u32(ghost_group(self.world.colliders[hd.collider].user_data));
         }
     }
 }
@@ -744,10 +765,11 @@ mod tests {
     }
 
     #[test]
-    fn ghosts_of_one_ship_pass_through_each_other() {
-        // Two squares 0.5 m apart closing at 4 m/s: ghosts of one ship fly through each other; ghosts of
-        // different ships, and pieces that are no ghosts, collide.
-        let run = |a: BodyKey, b: BodyKey, ghost: bool| {
+    fn ghosts_of_one_group_pass_through_each_other() {
+        // Two squares 0.5 m apart closing at 4 m/s: ghosts of one group fly through each other (also across
+        // ships: a split-off vessel keeps its parent's group, and a rekeyed body keeps its group); ghosts of
+        // different groups, and pieces that are no ghosts, collide.
+        let run = |a: BodyKey, b: BodyKey, ga: Option<u32>, gb: Option<u32>| {
             let mut ph = Physics::new(PhysicsTuning::default());
             let cols = square();
             let moving = |x: f32, v: f32| Body {
@@ -756,8 +778,11 @@ mod tests {
             };
             add(&mut ph, a, moving(0.0, 2.0), &cols);
             add(&mut ph, b, moving(2.5, -2.0), &cols);
-            ph.set_ghost(a, ghost);
-            ph.set_ghost(b, ghost);
+            ph.set_ghost(a, ga.map(ShipId));
+            ph.set_ghost(b, gb.map(ShipId));
+            let moved = key(9, b.piece.0);
+            ph.rekey(b, moved);
+            assert_eq!(ph.is_ghost(moved), Some(gb.is_some()));
             let mut contacts = 0;
             for _ in 0..10 {
                 ph.step();
@@ -765,10 +790,11 @@ mod tests {
             }
             (ph.body(a).unwrap().linvel.x, contacts)
         };
-        assert_eq!(run(key(0, 0), key(0, 1), true), (2.0, 0));
-        let (v, n) = run(key(0, 0), key(1, 1), true);
+        assert_eq!(run(key(0, 0), key(0, 1), Some(0), Some(0)), (2.0, 0));
+        assert_eq!(run(key(0, 0), key(1, 1), Some(0), Some(0)), (2.0, 0));
+        let (v, n) = run(key(0, 0), key(1, 1), Some(0), Some(1));
         assert!(v < 1.0 && n > 0, "{v} {n}");
-        let (v, n) = run(key(0, 0), key(0, 1), false);
+        let (v, n) = run(key(0, 0), key(0, 1), None, None);
         assert!(v < 1.0 && n > 0, "{v} {n}");
     }
 }

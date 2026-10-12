@@ -76,7 +76,7 @@ fn w_thrusts_along_the_nose_and_cancels_drift() {
     let angle = 0.6f32;
     let nose = Vec2::new(-angle.sin(), angle.cos());
     let side = Vec2::new(angle.cos(), angle.sin());
-    let s = w.spawn_ship(rcs_ship(&c), Body { pos: Vec2::ZERO, angle, linvel: side * 3.0, angvel: 0.0 });
+    let s = w.spawn_ship(rcs_ship(&c), sim::Owner::PLAYER, Body { pos: Vec2::ZERO, angle, linvel: side * 3.0, angvel: 0.0 });
     steer(&mut w, s, axes(0.0, 1.0, 0.0), 600);
     let b = body(&w, s);
     let n = Vec2::new(-b.angle.sin(), b.angle.cos());
@@ -86,7 +86,7 @@ fn w_thrusts_along_the_nose_and_cancels_drift() {
     assert!((b.angle - angle).abs() < 0.05, "W does not turn the ship");
     // Drift on: W is pure thrust, the sideways component is kept.
     let mut w = sim::Sim::new(3);
-    let s = w.spawn_ship(rcs_ship(&c), Body { pos: Vec2::ZERO, angle, linvel: side * 3.0, angvel: 0.0 });
+    let s = w.spawn_ship(rcs_ship(&c), sim::Owner::PLAYER, Body { pos: Vec2::ZERO, angle, linvel: side * 3.0, angvel: 0.0 });
     steer(&mut w, s, PilotInput { drift: true, ..axes(0.0, 1.0, 0.0) }, 300);
     let b = body(&w, s);
     assert!(b.linvel.dot(side) > 2.5, "drift keeps momentum: {:?}", b.linvel);
@@ -108,8 +108,8 @@ fn smart_aim_picks_a_side_gun_when_the_front_guns_are_gone() {
     );
     let front = find(&d, "pulse_laser", 1, 0);
     let mut w = sim::Sim::new(5);
-    let me = w.spawn_ship(d, Body::default());
-    let target = w.spawn_ship(design(&c, "automaton_raider"), Body::at(Vec2::new(30.0, 20.0), 0.0));
+    let me = w.spawn_ship(d, sim::Owner::PLAYER, Body::default());
+    let target = w.spawn_ship(design(&c, "automaton_raider"), sim::Owner(1), Body::at(Vec2::new(30.0, 20.0), 0.0));
     let lock = PilotInput { lock: Some(Target::Ship(target)), ..axes(0.0, 0.0, 0.0) };
     steer(&mut w, me, lock, 300);
     let to = {
@@ -149,8 +149,8 @@ fn the_nudge_springs_back() {
     // In flight: a locked ship follows the nudge and comes back to the target when it springs back.
     let c = content();
     let mut w = sim::Sim::new(9);
-    let me = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
-    let target = w.spawn_ship(design(&c, "automaton_raider"), Body::at(Vec2::new(0.0, 60.0), 0.0));
+    let me = w.spawn_ship(design(&c, "halvex_runner"), sim::Owner::PLAYER, Body::default());
+    let target = w.spawn_ship(design(&c, "automaton_raider"), sim::Owner(1), Body::at(Vec2::new(0.0, 60.0), 0.0));
     let mut nudge = 0.0;
     let tick = |w: &mut sim::Sim, turn: f32, n: &mut f32| {
         *n = nudge_step(*n, turn);

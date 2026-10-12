@@ -265,16 +265,11 @@ fn update_text(
                 }
             },
             HudText::Subtitle => {
-                let alive = scene.wave_ships.iter().filter(|id| world.sim.ship(**id).is_some_and(|s| s.is_active())).count();
+                let alive = world.sim.vessels(crate::scene::ENEMY).filter(|v| v.state == sim::VesselState::Running).count();
                 match scene.kind {
                     SceneKind::Sandbox => {
                         let _ = write!(s, "RAIDERS {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
-                        let vessels: Vec<ShipId> = scene
-                            .fleet
-                            .iter()
-                            .copied()
-                            .filter(|id| world.sim.ship(*id).is_some_and(|s| s.control_piece().is_some()))
-                            .collect();
+                        let vessels: Vec<ShipId> = crate::scene::player_vessels(&world);
                         if vessels.len() > 1 {
                             let k = focus.0.and_then(|f| vessels.iter().position(|v| *v == f)).map(|k| k + 1).unwrap_or(0);
                             let _ = write!(s, "  ·  VESSEL {k} / {}  (V)", vessels.len());
@@ -548,12 +543,12 @@ fn offscreen_markers(
     if !toggles.hud {
         return;
     }
-    let faction = &me.design().faction;
+    let team = me.team();
     let px = 1.0 / rig.zoom;
     let half = rig.half_extent();
     let inset = Vec2::splat(34.0 * px);
     for s in world.sim.ships() {
-        if !s.is_active() || &s.design().faction == faction {
+        if !s.is_active() || sim::friendly(team, s.team()) {
             continue;
         }
         let Some(p) = s.control_piece().and_then(|c| s.piece(c)) else { continue };

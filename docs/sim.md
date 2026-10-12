@@ -6,6 +6,10 @@ for feel.
 
 Behavior system v1 (behaviors, Rhai conditions) added late on 11 Oct 2026: see [Behaviors](#behaviors).
 
+**The vessel model on 12 Oct 2026** (GDR-0013, GDR-0038, GDR-0044, GDR-0045): owners, split-off vessels, focus,
+control capacity and idle parts, mind capacity and dormant vessels, friendly and shielded rams. See
+[Vessels](#vessels).
+
 **Rapier2D integrated on 12 Oct 2026** (phase 2b, ADR-0014): bodies, collisions, ramming v1, ghosting after
 splits and ray casts run on Rapier; the engine-free `FreeFlight` stand-in and the generic `PhysicsBackend` trait
 are gone (ADR-0025). See [Physics](#physics-rapier2d).
@@ -27,7 +31,8 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `rng` | `Pcg32` (reference PCG32), `splitmix64`, `Stream` (one per system), `RngStreams` |
 | `hash` | `StateHasher` (FNV-1a 64 over 32-bit words), `StateHash` trait, `fnv1a64` |
 | `ids` | `ShipId`, `PieceId` (monotonic `u32`, never reused), `IdAlloc` |
-| `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`) |
+| `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`, mind capacity per owner) |
+| `control` | `ControlState`, the per-piece control capacity and idle pass (GDR-0044) |
 | `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun/engine mounts and their blockers), shared by `Arc` |
 | `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
 | `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
@@ -41,6 +46,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `breakage` | `Ship::apply_damage`, `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
+| `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
 | `scenario` | the deterministic `core`, `flight`, `load` and `behavior` scenarios |
 
@@ -73,7 +79,9 @@ numbers, Rapier vs the rest), `load_test` (also Rapier vs the rest), `behavior_p
 2. Inputs in list order: raw `controls` (switch the ship to `HelmMode::Raw`), `commands` (pilot input,
    maneuver, goal, behavior, leader), scripted `damage`.
 3. `resolve_breakage`: each damaged piece is processed once (connectivity, rebuild, splits) → events; bodies
-   are updated, created and removed in the physics, and split pieces ghost each other for a few ticks.
+   are updated, created and removed in the physics, and split pieces ghost each other for a few ticks. Cored
+   pieces of a split become vessels of their own, and the mind pass runs if anything changed (see
+   [Vessels](#vessels)).
 4. **Behaviors think**: every ship with a behavior whose turn it is (every 3 ticks, staggered) picks its target
    and rule from one snapshot of the world; the decisions are applied afterwards (see [Behaviors](#behaviors)).
 5. **Flight**: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input →
@@ -87,7 +95,8 @@ numbers, Rapier vs the rest), `load_test` (also Rapier vs the rest), `behavior_p
    at the centre of mass), Rapier steps `DT` (4 substeps).
 9. **Impacts**: contacts of the step become `SimEvent::Impact` (closing speed from the velocities before the
    step), bodies are read back (the previous pose is kept for interpolation), impacts above the ramming
-   threshold damage the touching part on both sides, and breakage is resolved once more.
+   threshold crush inward from the touching part on both sides (after shields; none within one owner), and
+   breakage is resolved once more.
 10. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
 
 `Sim::step_profiled(&inputs, |phase| ...)` is the same step with a callback at the start of every `StepPhase`
@@ -176,7 +185,9 @@ Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every bluep
   per gun): 114 parts destroyed, 19 splits, 400 shots, 111 hull hits, 1548 Rhai evaluations; with Rapier:
   112 parts destroyed, 18 splits, 399 shots, 95 hull hits, 1520 Rhai evaluations, 23 impacts (5 rams); with
   rated speed and the agile content (12 Oct): 122 parts destroyed, 21 splits, 284 shots, 110 hull hits, 1338
-  Rhai evaluations, 74 impacts (11 rams).
+  Rhai evaluations, 74 impacts (11 rams). Since the vessel model (12 Oct) the leader is the player's focus and
+  the player's mind capacity is 8 cores, so some ship-mind vessels start dormant; counters in
+  [Vessels](#determinism-and-scenarios).
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -217,19 +228,22 @@ links. So "static lists filtered by alive" is always the current topology, and n
   (its linked neighbours, and their neighbours for bonuses). `Ship::verify_caches` checks this equals a full
   recompute (tested over 900 scenario ticks).
 
-### Control, salvage and dark pieces (provisional rules, lead session 11 Oct 2026)
+### Control, salvage and dark pieces
 
 - The **controlling piece** (`Ship::control_piece()`, `Piece::controlled`) is the blueprint's main piece if it
-  has a logic core. On a split it stays with the part that keeps the parent's id (the component with a core,
-  then the most parts). It holds control only while it has a core: if it loses its last core, or is
-  destroyed, the ship is dark for good (`SimEvent::ControlLost`).
-- **Every other piece is salvage** (`Piece::salvage()`), even with a core: its systems stay off and the client
-  drops its hull glow.
-- **A logic core needs power**: the controlling piece is `active` only while a core is alive, not overheated
-  and the piece has supply > 0. An unpowered (or core-overheated) piece goes dark (no thrust, shields, guns
-  or flight computer) and wakes up when power returns. Supports "kill all power → capture".
-- To change any of these, see `Ship::new` (initial control), `Ship::check_control` (`breakage.rs`) and the
-  `active` line at the top of `Ship::update_systems`.
+  has a logic core: the ship's vessel. On a split it stays with the part that keeps the parent's id (the
+  component with a core, then the most parts). It holds control only while it has a core: if it loses its last
+  core, or is destroyed, the ship is salvage for good (`SimEvent::ControlLost`, `VesselLost`).
+- **Every other cored piece of a split becomes a vessel of its own** (a new ship; GDR-0013, see
+  [Vessels](#vessels)); the pieces left in a ship besides its controlling one have no core: salvage
+  (`Piece::salvage()`), systems off, no hull glow. (Until 12 Oct 2026 every other piece was salvage, even with
+  a core: the lead's provisional rule.)
+- **A logic core needs power** (GDR-0014): the controlling piece is `active` only while its vessel is not
+  dormant, a core is alive and not overheated, and the piece has supply > 0. An unpowered (or core-overheated)
+  piece goes dark (no thrust, shields, guns or flight computer) and wakes up when power returns. Supports "kill
+  all power → capture".
+- See `Ship::new` (initial control), `Ship::check_control` (`breakage.rs`), the `active` line at the top of
+  `Ship::update_systems` and `Sim::form_vessels` (`vessel.rs`).
 
 ### Mass properties and colliders
 
@@ -520,7 +534,7 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   after this tick's input breakage) into a per-ship scratch slot; then all decisions are applied. Per-pass
   caches: each ship's centre (one sin/cos per ship per pass instead of per candidate) and hull share (lazy).
 - **A think**: `Kin` of the controlling piece; reach = longest clear gun (60 m without guns). The target line
-  picks the target among active enemy ships (other faction), keeping the current one unless another's cost is
+  picks the target among active vessels of other owners (until 12 Oct: other factions), keeping the current one unless another's cost is
   below 0.8 × its own; the aim point is the nearest working part of the chosen kind on the target's controlling
   piece (or its centre). Then the rules in order, within the working slots: conditions short-circuit left to
   right; the first rule whose conditions hold and whose action has what it needs wins.
@@ -593,7 +607,7 @@ farther than 45 m, drift on). "After contact" = after the first raider shot; hp 
 let content = data::base_content();
 let mut world = sim::Sim::new(seed);
 world.set_behaviors(sim::BehaviorLibrary::new(&content)?);           // before commanding behaviors
-let raider = world.spawn_ship(raider_design.clone(), body);
+let raider = world.spawn_ship(raider_design.clone(), sim::Owner(1), body);
 world.command(raider, ShipCommand::Behavior(world.behaviors().default_for(&raider_design))); // raider_basic
 let mine = world.behaviors_mut().add_text("my_escort", "target locked\nalways -> face")?; // player program
 world.command(escort, ShipCommand::Behavior(Some(mine)));
@@ -609,7 +623,8 @@ st.program().program.to_text();       // the source, e.g. for a scan report
 - `ShipCommand::Behavior(Some(id))`: a behavior overrides the helm. `Behavior(None)` hands the ship back to the
   helm. Unknown ids are ignored. `set_behaviors` drops every ship's behavior (handles refer to the old library).
 - `BehaviorState::inherit()` copies a running behavior (shared program, same target and timers, thinks on its
-  next tick): the hook for the vessel split (GDR-0013).
+  next tick): a vessel that splits off inherits its parent's behavior this way (GDR-0013, see
+  [Vessels](#vessels)).
 - State hash: each ship's behavior state (id, program fingerprint, target, aim part, acquisition tick, active
   rule, maneuver, slots, last think) and its leader. Per-rule statuses are debug data and not hashed.
 
@@ -645,6 +660,194 @@ One think costs well under a microsecond per ship for ten rules (0.25–0.9 µs 
 same load: think pass min 10–13 µs, median 16–17 µs.) A Rhai condition adds about 0.5–1 µs per evaluation. The
 think pass allocates nothing once warmed up (`tests/behavior_alloc.rs`); a Rhai evaluation makes one small
 allocation inside Rhai. Fire at will costs one `atan2` per clear gun per tick.
+
+## Vessels
+
+The vessel model (12 Oct 2026; GDR-0013, GDR-0038, GDR-0044 and GDR-0045, decided by Niklas). Code: `src/vessel.rs`
+(owners, vessels, focus, mind capacity), `src/control.rs` (control capacity, idle parts), the ram rules in
+`world.rs` and `weapons.rs`. Every number is a **placeholder**. Rules marked *lead default* were set by the
+vessel agent for Niklas to review.
+
+### Owners
+
+- Every ship has an `Owner` (`Owner(u8)`): `Sim::spawn_ship(design, owner, body)`. `Owner::PLAYER` (`Owner(0)`)
+  is the player by convention: `SimConfig::default()` gives it the player's mind capacity. The scenarios and the
+  client give ship-mind ships `Owner::PLAYER` and automatons `Owner(1)` (`scenario::scenario_owner`).
+- An owner counts for game rules only while the ship is a vessel: `Ship::team()` is `Some(owner)` for a vessel,
+  `None` for salvage (`Ship::owner()` keeps the owner on wrecks, for later salvage rights). Per body,
+  `Ship::piece_team(piece)` / `Sim::piece_team(key)`: only the vessel's piece has an owner.
+- `sim::friendly(a, b)`: both `Some` and equal. Salvage is friendly to nobody (GDR-0046 lead default). For now an
+  owner is its own team; co-op players on one team would get their own owners and a team table behind
+  `friendly`.
+- Uses: behavior targets are active vessels of other owners (until now: another faction); same-owner rams deal
+  no damage; the client's friendly clicks, Tab targets and off-screen markers.
+
+### Vessels and splits
+
+- A ship holds at most **one vessel: its controlling piece**, the piece with the ship's logic cores. It is a
+  vessel while that piece has an alive logic core (`Ship::is_vessel`); unpowered or overheated cores leave it a
+  vessel that is dark until they work again (`VesselState::Dark`). The other pieces of a ship are salvage
+  without a core.
+- **On a split**, every piece other than the kept one that still has an alive logic core becomes a ship of its
+  own (`Sim::form_vessels`, right after the breakage): a new `ShipId` (after every existing one), the same
+  `PieceId`, the same owner. Part states, power settings, controls, helm, leader and gun cooldowns are copied;
+  each ship keeps only its own parts alive and in its grid. Pieces never link to each other, so exposure,
+  bonuses and clearances do not change (`verify_caches` holds for both). The Rapier body is re-keyed
+  (`Physics::rekey`: the same body with its contacts), and its ghost group stays the ship that split, so the
+  halves still ghost each other for `split_ghost_ticks`.
+- **Behavior**: the new vessel inherits the parent's behavior (`BehaviorState::inherit`: a copy of the running
+  one, or of the one the focus parked; same target and timers, thinks on its next tick), limited to the rule
+  slots of its own cores (GDR-0035: the lowest rules drop). A piece split off the focus that had no parked
+  behavior gets its content default (`skirmisher` for ship-mind ships), and never the pilot's input (its helm is
+  `Maneuver::Brake`). A piece split off an unpiloted ship without a behavior keeps the parent's helm (tests and
+  scenarios that fly maneuvers or raw throttles).
+- A blueprint built in several pieces with cores in more than one: at spawn every further cored piece becomes
+  a vessel of its own the same way.
+- A shot never hits its own ship (all its pieces). A split-off vessel is another ship of the same owner, so the
+  two can hit each other with shots (there is no friendly-fire rule for shots yet).
+- Enemies follow the same rules: a raider shot in half can be two raiders (test).
+
+### Focus
+
+- `ShipCommand::Focus` makes a vessel its owner's focus, at once (a tick input, so replays and co-op see it).
+  The focus is **piloted**: its behavior is parked (`Ship::parked_behavior`; `ShipCommand::Behavior` on the focus
+  sets the parked one), its helm is `Pilot` (a released stick, i.e. brake, until pilot input arrives), and it
+  never goes dormant. The vessel the focus left runs its behavior again (its content default if it had none;
+  without a library it brakes) and gets a fresh mind claim, so it stays awake.
+- An owner has no focus until one is commanded (scenarios and tests fly their ships as before; AI owners never
+  have one). `Sim::focus(owner)`.
+- **A lost focus moves on** (the focus ship lost its last logic core or was removed), in the mind pass: to the
+  owner's best other vessel, *lead default*: running before dark before dormant, then the heaviest vessel piece,
+  then the lowest ship id. A dormant one wakes (the focus runs first). No vessel left: no focus.
+  `SimEvent::FocusChanged { owner, from, to }`.
+- *Lead default*: a focus that is only dark (cores unpowered or overheated) keeps the focus, so a brown-out never
+  yanks the player to another ship; the player switches by hand.
+
+### Control capacity and idle parts (GDR-0038, GDR-0044)
+
+- Content: every part has a `control_cost` (default by kind: hull parts, logic cores and passive parts 0, parts
+  that draw or make power 1; big machines 2 in the base content), every logic core a `logic.control_capacity`
+  ("N"). See `docs/content-model.md`.
+- Per vessel: **load** = the control cost of its parts; **capacity** = N summed over its running cores (alive,
+  not overheated, the vessel not dormant). Salvage and dormant vessels have capacity 0 and no idle parts.
+- Load over capacity: parts go **idle** in the brown-out order of GDR-0014, the reverse of the allocation order
+  with every tier and weight setting (content, drydock placement, `ShipCommand::Power`): `Off` first, then `Low`,
+  `Normal`, `High`; inside a tier the lowest weight first, the higher part index first on ties; reactors (they
+  make power, they have no tier) after every consumer, *lead default*; parts with a cost but no power role last
+  (content validation warns about those). Parts are idled until the idled cost covers the excess (a cost-2 part
+  may idle where 1 would do).
+- An idle part does nothing: it asks for no power (`PartState::power` and `work` 0), engines, RCS and gyros
+  push nothing, guns hold, a shield emitter drops its bubble (keeps its charge), a reactor makes nothing. Idle
+  parts run again as soon as the capacity covers them (a core cools down, a vessel wakes, the load drops).
+- The flight computer does not know which actuators idle: it plans with the full thruster table, and an idle
+  engine just produces nothing (as an unpowered one does). A later refinement can drop idle rows from the
+  allocation.
+- Cost: per piece and tick one pass over its logic cores (the capacity); the idle set is recomputed only when
+  the capacity changes, the piece was rebuilt or a power setting changed (one pass over its parts). No
+  allocation. Exposed: `PartState::idle`, `Piece::control` (`ControlState { load, capacity, idle }`),
+  `Ship::control()`.
+
+Base content (placeholders): logic core N 16, automaton core N 4; fusion reactor, torch drive and beam laser cost
+2. Every base ship runs all its parts:
+
+| Ship | Cores | Control load | Capacity | Idle when one core is lost |
+|---|---|---|---|---|
+| Halvex Runner | 2 logic | 18 | 32 | 2: both pulse lasers (gun tier, highest part index first; test) |
+| Automaton raider | 1 automaton | 2 | 4 | the raider is salvage without its core |
+| Sample early | 2 logic | 8 | 32 | nothing |
+| Sample mid | 2 logic | 16 | 32 | nothing |
+
+### Mind capacity and dormant vessels (GDR-0013, GDR-0044)
+
+- `SimConfig::mind_capacity[owner]`: how many logic cores of the owner's vessels run at once (owners beyond the
+  table: no limit). Placeholders: player 24 cores (twelve Halvex Runners; the sandbox's `?fleet=8` uses 18), AI
+  owners 1000. A vessel takes its alive cores (dark ones included).
+- **Claim order** (*lead default* for the details the decision left open): the focus first; then vessels with a
+  fresh claim (`ShipCommand::Wake`, or the vessel the focus just left), the most recent first; then the others by
+  formation, oldest first. Each vessel runs if its cores fit what is left of the capacity, else it is
+  **dormant**; a smaller vessel further down may still fit. So over capacity the newest vessels go dormant first,
+  the focus never does, and freed capacity wakes the dormant vessels in the same order.
+- `ShipCommand::Wake`: the vessel claims capacity before every vessel not woken since; the newest of those goes
+  dormant to make room (a swap, GDR-0044's fleet bar).
+- **Dormant** (*lead default*, as recommended): fully dark like salvage, but still owned: no behavior, no thrust,
+  no power allocation (parts draw nothing, `power` 0), no shield bubble (the charge stays), no control capacity,
+  not a target for enemy behaviors (they target active vessels); same-owner rams stay harmless, and it stays in
+  the fleet list.
+- The mind pass (`Sim::update_minds`) runs only when something changed: a vessel formed or was lost, a logic
+  core was destroyed, a focus or wake command, a config change. One pass over the ships and a sort of the
+  vessels in a reused buffer.
+
+### Ramming between vessels (GDR-0045)
+
+- Contacts between vessels of one owner resolve physically but deal **no ram damage** (`Contact::damage` 0; the
+  impact is still reported). Salvage (no owner) rams and is rammed as before.
+- **Shields absorb rams**: the ram damage to each side is first taken by the shield bubbles of this tick that
+  cover the contact point (`|point − centre| ≤ radius`), each its kinetic share (`absorb[Kinetic]`, 0.5 for the
+  base emitter; GDR-0021) of what reaches it, in bubble order (ship, piece, emitter), except the bubbles of the
+  other side's piece (as a shot passes its shooter's bubbles). The same absorb step as shots
+  (`ShieldHit { by: the rammer }`, a bubble that runs empty collapses); the rest hits the part. The bubbles are
+  the ones collected in this tick's weapons phase (positions before the physics step).
+- **Crush** (GDR-0047, decided by Niklas on 12 Oct 2026): what the shields leave hits the touching part, and
+  what exceeds its hit points carries on to the next part inward, along the contact normal into the hull, until
+  it is used up or leaves the hull (`Sim::ram_crush`, the grid walk of penetrating shots; the emptied cells of a
+  big part just crushed are passed through). The threshold rose from 20 to 100 kN·s, so bumps are free; the
+  numbers are in [Collisions](#collisions-impacts-and-ramming-v1).
+
+### Events and queries (for the fleet bar)
+
+| | |
+|---|---|
+| `SimEvent::VesselFormed { ship, owner, from }` | a vessel formed; `from: Some((ship, piece))` for a split-off piece (the client moves that view to the new ship), `None` at spawn |
+| `SimEvent::VesselLost { ship, owner }` | lost its last logic core (after `ControlLost`) or removed |
+| `SimEvent::VesselDormant` / `VesselWoken { ship, owner }` | mind capacity |
+| `SimEvent::FocusChanged { owner, from, to }` | focus command, or the focus was lost |
+| `Sim::vessels(owner)` | iterator of `VesselInfo { ship, piece, owner, state, focus, cores, control, formed }`, ascending ship id, no allocation |
+| `Sim::vessel(ship)`, `Sim::focus(owner)`, `Sim::mind_load(owner)` | one vessel; the focus; `(cores running, capacity)` |
+| `Ship::team()`, `is_vessel()`, `is_dormant()`, `vessel_state()`, `core_count()`, `control()`, `formed()`, `parked_behavior()` | per ship |
+
+The state hash covers owners, dormant flags, claims and formation ticks, parked behaviors, per-part idle flags,
+per-piece control load, capacity and idle cost, the focus per owner, the claim counter, the mind capacities in
+the config and the physics ghost groups.
+
+### Cost
+
+Per tick: one pass over each piece's logic cores (the control capacity) and two more flag checks per consumer;
+the idle set and the mind pass run only when something changed. A split that forms a vessel copies the ship's
+per-part state (parts, stats, heat constants, settings, grid) into the new ship: microseconds for the base ships
+(at most 56 parts). Measured 12 Oct 2026 (before the agile-ship merge and GDR-0047), native release,
+interleaved with a build of the commit before (3 runs each, load average 2–7, medians in ms):
+
+| What | Before | After |
+|---|---|---|
+| load test, 20 ships, step median | 0.022–0.024 | 0.023–0.025 |
+| `sim_perf`, 20 × 2000 parts (25 logic cores each), raw throttles, step median | 0.384–0.410 | 0.397–0.409 |
+| `sim_perf` combat (20 gunboats), step median | 0.68–0.73 | 0.68–0.76 |
+| cut a 2000-part slab in two (`Sim::resolve_breakage`), both halves with cores | 0.08–0.11 | 0.13–0.15 (the second half becomes a vessel) |
+
+The per-tick differences are within the VM's noise; the split pays about 0.05 ms for copying 2000 parts' state.
+
+### Determinism and scenarios
+
+The behavior scenario now makes its piloted leader the player's focus and caps the player's mind capacity at
+8 cores (`scenario::BEHAVIOR_MIND_CAPACITY`; the ship-mind ships have 12), so dormant vessels, waking and the
+focus are part of the cross-platform check; the core scenario forms a split vessel, and every 600 ticks it
+launches a ship-mind vessel and an automaton (or a wreck) head-on at 20 m/s each, so a hard ram with the crush is
+covered too (with the agile ships the flight, load and behavior scenarios ram on their own as well). 12 Oct
+2026, on `dev` with the rated-speed and agile-ship merge, dev profile (optimised dependencies), 1800 ticks,
+native x86_64 vs wasm32-wasip1 under Node 24: core, flight, load (20 ships) and behavior, seeds 42 and 7:
+**identical** (8 runs). Counters with seed 42 (new: split vessels, vessels lost, dormant, woken, focus changes):
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Impacts / rams | Split vessels | Lost | Dormant / woken / focus |
+|---|---|---|---|---|---|---|---|---|
+| core | 266 | 50 | 711 | 2 | 1 / 0 | 0 | 8 | 0 / 0 / 0 |
+| flight | 141 | 23 | 980 | 166 | 213 / 1 | 0 | 4 | 0 / 0 / 0 |
+| load (20) | 87 | 2 | 214 | 971 | 167 / 3 | 0 | 10 | 0 / 0 / 0 |
+| behavior | 119 | 21 | 465 | 97 | 251 / 0 | 0 | 4 | 2 / 2 / 1 |
+
+Seed 7 adds a split vessel in the core, flight and behavior scenarios, a ram in core (the ram run) and behavior,
+and 3 dormant / 3 woken vessels in behavior. Most impacts are bumps: within one owner they are free, and below
+100 kN·s between owners too (the load test had 24 rams before the vessel model, most of them a side ramming its
+own ships).
 
 ## Weapons
 
@@ -749,8 +952,8 @@ means rewriting `physics.rs` (about 580 lines with docs, plus tests).
 | `sleep_time` | 2 s | |
 | `ccd_prediction` | 4 m | soft CCD reach per tick (speculative contacts up to ~120 m/s) |
 | `impact_min_impulse` | 1 kN·s | weaker contacts are not reported (resting contacts) |
-| `ram_threshold` | 20 kN·s | impulse per tick above which a contact deals ramming damage |
-| `ram_damage` | 0.02 hp per kN·s | ramming damage per kN·s above the threshold, to each side |
+| `ram_threshold` | 100 kN·s | impulse per tick above which a contact deals ramming damage (GDR-0047; 20 until 12 Oct) |
+| `ram_damage` | 0.02 hp per kN·s | ramming damage per kN·s above the threshold, to each side, crushing inward |
 
 Gravity is always zero. `Sim::set_config` applies a new `PhysicsTuning` to the world and to every body at once.
 
@@ -774,12 +977,13 @@ are no fixed bodies yet).
 
 ### Ghosting after splits
 
-Every piece of a split (the kept one and the new ones) is a ghost for `split_ghost_ticks` (10 ticks): a flag
-in its collider's user data plus Rapier's contact-pair filter hook, which drops a pair when both colliders are
-ghosts of the same ship. It is a pure function of the two colliders (deterministic), and other pairs never
-run the hook. Ghosts still collide with other ships. So freshly separated pieces never push each other apart;
-afterwards pieces of one ship collide like any others. Tests: `split_pieces_ghost_each_other_then_collide`,
-`ghosts_of_one_ship_pass_through_each_other`.
+Every piece of a split (the kept one and the new ones) is a ghost for `split_ghost_ticks` (10 ticks): a ghost
+group in its collider's user data (the id of the ship that split) plus Rapier's contact-pair filter hook, which
+drops a pair when both colliders are ghosts of the same group. A piece that split off as a vessel of its own
+moves to a new ship but keeps its group, so it ghosts its parent too. It is a pure function of the two
+colliders (deterministic), and other pairs never run the hook. Ghosts still collide with other ships. So
+freshly separated pieces never push each other apart; afterwards they collide like any others. Tests:
+`split_pieces_ghost_each_other_then_collide`, `ghosts_of_one_group_pass_through_each_other`.
 
 ### Ray casts
 
@@ -806,46 +1010,52 @@ apart (penetration recovery) is no impact and deals no damage.
 | `impulse` | normal impulse of the step (kN·s = t·m/s) |
 | `relative_speed` | closing speed along the normal at the point, from the velocities before the step (m/s, > 0 = approaching) |
 | `part_a`, `part_b` | the part under the point on each side |
-| `damage` | ramming damage dealt to `part_a` and to `part_b` each (0 below the threshold) |
+| `damage` | ramming damage to `part_a` and to `part_b` each, before shields (0 below the threshold and between vessels of one owner) |
 
 **Ramming damage** (concept: "ramming damage by mass and speed; ram prows are a build"):
 
 ```
-damage = max(0, impulse − ram_threshold) × ram_damage        to part_a and to part_b, each
+damage = max(0, impulse − ram_threshold) × ram_damage        to each side (GDR-0047: 100 kN·s, 0.02 hp/kN·s)
 ```
+
+Each side's damage goes through that side's shield bubbles first (GDR-0045), then hits the touching part
+(`part_a`, `part_b`); what exceeds a part's hit points **crushes inward** to the next part along the contact
+normal, and so on until it is used up or the walk leaves the hull (GDR-0047, `Sim::ram_crush`; the grid walk of
+penetrating shots, without their block limit).
 
 The impulse already carries mass and speed: head-on, `impulse ≈ (1 + e) · μ · v` with the reduced mass
 `μ = m_a·m_b / (m_a + m_b)` and the closing speed `v`. Both sides take the same damage (the same impulse acts on
 both hulls), so armour and hit points decide who breaks: a ram prow is heavy, tough armour at the nose. Damage
 is applied right after the step and the breakage is resolved in the same tick (`PartDestroyed`, `Split` follow
-the `Impact`). Shields do not stop rams. With the defaults:
+the `Impact`). Since 12 Oct 2026 (GDR-0045): vessels of one owner deal each other no ram damage, and shield
+bubbles covering the contact point absorb their kinetic share first (see
+[Ramming between vessels](#ramming-between-vessels-gdr-0045)). With the defaults, between two owners and
+without shields:
 
 | Collision | Impulse | Damage to each side |
 |---|---|---|
-| two raiders (15.8 t) head-on at 8 m/s each (measured, test) | 157 kN·s | 2.7 hp (both nose cannons, 1 hp, destroyed) |
-| raider rammed by a Halvex Runner (106.5 t), 10 m/s | ~165 kN·s | ~2.9 hp |
-| two runners head-on, 10 m/s closing | ~640 kN·s | ~12 hp |
-| two raiders touching at 1 m/s (test) | < 20 kN·s | none (impact only) |
+| two raiders (15.8 t) head-on at 8 m/s each (measured, test) | 157 kN·s | 1.1 hp (the nose cannon, 1 hp, destroyed; 0.1 into the core) |
+| raider rammed by a Halvex Runner (106.5 t), 10 m/s | ~165 kN·s | ~1.3 hp |
+| two runners head-on, 10 m/s closing | ~640 kN·s | ~11 hp |
+| a raider bumping another at 4 m/s each (test), or touching at 1 m/s | < 100 kN·s | none (impact only) |
 | a runner pushing another at full thrust (69 kN, 11 Oct content) | ~2.3 kN·s per tick | none |
 
-At the new speeds (GDR-0042; measured 12 Oct 2026, both ships coasting nose to nose, one contact tick each; the
-rule unchanged and still open with Niklas):
+At the new speeds (GDR-0042; impulses measured 12 Oct 2026 on the speed branch, both ships coasting nose to
+nose, one contact tick each; damage by the GDR-0047 rule, crushing inward from the touching part):
 
-| Collision | Closing speed | Impulse | Damage to each side (rule) | Parts destroyed |
-|---|---|---|---|---|
-| Halvex Runner at its top speed (22 m/s) into a raider at rest | 22 m/s | 378 kN·s | 7.2 hp | 1 each (raider's nose cannon, a 2 hp Runner part) |
-| Runner (22) and raider (20) head-on | 42 m/s | 720 kN·s | 14.0 hp | 1 each |
-| raider at its top speed (20) into a Runner at rest | 20 m/s | 343 kN·s | 6.5 hp | 1 each |
-| two raiders head-on at 20 m/s each | 40 m/s | 404 kN·s | 7.7 hp | 1 each |
-| two Runners head-on at 22 m/s each | 44 m/s | 2946 kN·s | 58.5 hp | 1 each |
-| Runner (22) into a raider broadside | 22 m/s | 378 kN·s | 7.2 hp | 1 each |
-| raiders of one pack bumping on the way in (sandbox, every wave) | 20–30 m/s | 160–310 kN·s | 2.8–5.8 hp | often a cannon |
-| for comparison: Runner at 10 m/s into a raider at rest | 10 m/s | 172 kN·s | 3.1 hp | 1 each |
+| Collision | Closing speed | Impulse | Damage to each side |
+|---|---|---|---|
+| Halvex Runner at its top speed (22 m/s) into a raider at rest | 22 m/s | 378 kN·s | 5.6 hp (2–3 raider blocks, a dent in the Runner's nose) |
+| Runner (22) and raider (20) head-on | 42 m/s | 720 kN·s | 12.4 hp (the raider mostly wrecked) |
+| raider at its top speed (20) into a Runner at rest | 20 m/s | 343 kN·s | 4.9 hp |
+| two raiders head-on at 20 m/s each | 40 m/s | 404 kN·s | 6.1 hp: cannon, core and thruster (4 hp) crushed (test) |
+| two Runners head-on at 22 m/s each | 44 m/s | 2946 kN·s | 57 hp |
+| Runner (22) into a raider broadside | 22 m/s | 378 kN·s | 5.6 hp |
+| raiders of one pack bumping on the way in (sandbox, every wave) | 20–30 m/s | 160–310 kN·s | none (one owner); 1.2–4.2 hp between owners |
+| for comparison: Runner at 10 m/s into a raider at rest | 10 m/s | 172 kN·s | 1.4 hp |
 
-v1 deals its damage to one part per side, so every row above destroys exactly one part per side however big the
-impulse (the 58 hp of two Runners land on a 2 hp part). Full thrust now also crosses the threshold in a sustained
-push: two Runners pushing nose to nose at full thrust (1100 kN each) press ~37 kN·s per tick into the contact,
-about 0.33 hp per tick to each side; a Runner pushing a free raider presses only ~5 kN·s per tick.
+A sustained push stays below the threshold: two Runners pushing nose to nose at full thrust (1100 kN each) press
+~37 kN·s per tick into the contact, a Runner pushing a free raider ~5 kN·s per tick: no damage.
 
 The part under a contact: the contact point moved 5 cm into the hull (against the normal) and looked up with
 `Ship::part_at_local`; if that misses, the centre of the strongest manifold, then the strongest manifold's
@@ -853,9 +1063,10 @@ sub-shape (a slope triangle names its part; a merged rectangle is looked up at t
 centre of all points is used because two flat faces touch at the ends of their overlap, which usually sit on a
 neighbouring slope's corner.
 
-v1 limits: one part per side, per pair and tick (a long scrape spreads over ticks, not over parts); no excess
-damage carried into the next part; no content stat for rams yet (a `ram` bonus on prow parts could scale the
-damage later).
+Limits: one contact point per side, per pair and tick (a long scrape spreads over ticks, not over parts); the
+crush runs in a straight line from that point; no content stat for rams yet (a `ram` bonus on prow parts could
+scale the damage later). A reinforced prow (high-hp armour at the nose) is the ramming build (GDR-0019,
+GDR-0047).
 
 ## Damage and breakage
 
@@ -868,7 +1079,9 @@ damage later).
 - On a split the main component keeps the piece id, frame and body. Every other component gets a new
   `PieceId`, a frame on its own centre of mass, the parent's angle and angular velocity, and
   `linvel = v + ω × (com_new − com_old)` (`ship::inherited_velocity`). The kept piece's `linvel` is corrected
-  the same way. Tests check that no surviving part moves and that linear momentum is conserved.
+  the same way. Tests check that no surviving part moves and that linear momentum is conserved. A new
+  component that has a logic core then moves to a ship of its own, a vessel (`SimEvent::VesselFormed` after the
+  `Split`; see [Vessels](#vessels)).
 - `Sim::raycast(origin, dir, max, exclude)` → `PartHit { ship, piece, part, hit }`.
 - Chain reactions: `Ship::chain_reaction(part)` is the hook (does nothing yet); the plan is an `explosion`
   block in content.
@@ -879,11 +1092,12 @@ damage later).
 let content = data::base_content();
 let runner = Arc::new(sim::ShipDesign::compile(&content, content.ships.get("halvex_runner").unwrap())?);
 let mut world = sim::Sim::new(seed);                               // or Sim::with_config(seed, config)
-let me = world.spawn_ship(runner, sim::Body::at(Vec2::ZERO, 0.0));
+let me = world.spawn_ship(runner, sim::Owner::PLAYER, sim::Body::at(Vec2::ZERO, 0.0));
+world.command(me, sim::ShipCommand::Focus);                         // the vessel the player pilots
 // every FixedUpdate (30 Hz):
 let input = sim::PilotInput { stick, lock, drift, fire };          // stick in world terms, |stick| ≤ 1
 world.step(&sim::TickInputs { commands: vec![(me, sim::ShipCommand::Pilot(input))], ..Default::default() });
-for e in world.events() { /* ShipSpawned, Split (spawn visuals for `spawned`), PieceDestroyed, ControlLost, ... */ }
+for e in world.events() { /* ShipSpawned, Split (spawn visuals for `spawned`), VesselFormed (move a view), ... */ }
 // every frame (60 fps), alpha = Time<Fixed>::overstep_fraction():
 for ship in world.ships() { for piece in ship.pieces() {
     let (pos, angle) = piece.render_pose(alpha);                   // world, y up, CCW
@@ -906,7 +1120,10 @@ for ship in world.ships() { for piece in ship.pieces() {
 - Power: `ship.parts()[i].power` (0..1) dims a part's icon at partial power; the drydock writes the player's
   tiers and weights into the blueprint placements; in flight `ShipCommand::Power { part, setting }` changes
   them (see [Power](#power)).
-- Keep stable ids: visuals keyed by `(ShipId, PieceId)`; a split keeps the parent's `PieceId` for the kept part.
+- Keep stable ids: visuals keyed by `(ShipId, PieceId)`; a split keeps the parent's `PieceId` for the kept part,
+  and a piece that becomes a vessel of its own keeps its `PieceId` under the new ship (`VesselFormed.from`).
+- Vessels: `world.focus(owner)`, `world.vessels(owner)` (fleet bar), `ShipCommand::Focus` / `Wake`; see
+  [Vessels](#vessels).
 
 ## Performance
 
@@ -1034,13 +1251,12 @@ Behaviors (asked 11 Oct 2026; **answered by Niklas on 12 Oct**, GDR-0034 to GDR-
 
 Physics (Rapier integration, 12 Oct 2026; defaults in [Collisions](#collisions-impacts-and-ramming-v1)):
 
-11. **Ramming numbers.** v1 deals `(impulse − 20 kN·s) × 0.02` hp to the touching part of each side: a raider
-    ramming a runner at 10 m/s takes out about 3 hp per side, a gentle bump nothing. (a) **Keep the formula and
-    tune the two numbers in the browser** (recommended); (b) add a content stat (`ram`) so prow parts deal more
-    and take less; (c) spread the damage over every touching part instead of one per side.
-12. **Do shields stop rams?** v1: no, bubbles only stop shots. (a) **No** (recommended: ramming answers
-    shield-heavy ships); (b) bubbles absorb part of a ram.
-13. **Friendly collisions.** Every body collides with every other; three raiders spawned 20 m apart and
-    converging on one target rammed each other (seen in the old brain-vs-behavior test). (a) **Keep, and add a
-    separation term to the flight computer later** (recommended); (b) no collisions within a faction (one more
-    case in the contact filter).
+11. **Ramming numbers.** **Answered by Niklas (12 Oct 2026, GDR-0047)**: `max(0, impulse − 100 kN·s) × 0.02`
+    hp per side (placeholders), crushing inward from the touching part past the parts it destroys; bumps below
+    100 kN·s are free. Done (see [Collisions](#collisions-impacts-and-ramming-v1)).
+12. **Do shields stop rams?** **Answered by Niklas (12 Oct 2026, GDR-0045)**: bubbles absorb ram damage at
+    the contact point first (the kinetic share), the rest hits the hull; the collision itself is unchanged.
+    Done (see [Vessels](#ramming-between-vessels-gdr-0045)).
+13. **Friendly collisions.** **Answered by Niklas (12 Oct 2026, GDR-0045)**: vessels of one owner collide
+    physically but deal no ram damage. Done. A separation term in the flight computer, so own vessels avoid
+    each other, is still a good idea later.

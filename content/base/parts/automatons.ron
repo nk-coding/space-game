@@ -17,7 +17,7 @@
         hp: 2,
         power: (output: 6),
         heat: (output: 1, limit: 4),
-        logic: (rule_slots: 2),
+        logic: (rule_slots: 2, control_capacity: 4), // control capacity: lead placeholder (12 Oct 2026)
         gyro: (torque: 600),
     ),
     (

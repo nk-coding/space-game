@@ -491,6 +491,8 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
         "thrust",
         "cargo_capacity",
         "rule_slots",
+        "control_cost",
+        "control_capacity",
     ];
     // Rounded: f32 sums carry float noise (70.400009) that would leak into the wiki.
     let totals: BTreeMap<&str, f64> = summed
@@ -502,6 +504,9 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
         })
         .collect();
     v["rule_slots"] = json!(c.ship_rule_slots(s));
+    let (control_load, control_capacity) = c.ship_control(s);
+    v["control_load"] = json!(control_load);
+    v["control_capacity"] = json!(control_capacity);
     v["effective_behavior"] = json!(c.ship_behavior(s).map(|b| &b.id));
     v["placements"] = json!(placements);
     v["totals"] = json!(totals);
