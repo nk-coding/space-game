@@ -96,3 +96,32 @@ pub fn inputs(ship: ShipId, c: ShipControls) -> TickInputs {
 pub fn close(a: f32, b: f32, eps: f32) -> bool {
     (a - b).abs() <= eps
 }
+
+/// The agility turn (GDR-0042): 90° counter-clockwise from rest, holding position, stepped for 10 s. Returns
+/// (seconds until the heading is within 1°, the largest angular acceleration seen in rad/s², the largest
+/// overshoot after that in rad).
+pub fn turn_90(design: Arc<ShipDesign>) -> (Option<f32>, f32, f32) {
+    use core::f32::consts::FRAC_PI_2;
+    let (mut w, s) = world_with(design);
+    let goal = sim::FlightGoal {
+        heading: sim::HeadingGoal::Angle(FRAC_PI_2),
+        velocity: Some(sim::Vec2::ZERO),
+    };
+    w.command(s, ShipCommand::Goal { goal, fire: false });
+    let (mut turn, mut alpha, mut omega, mut overshoot) = (None, 0.0f32, 0.0f32, 0.0f32);
+    for t in 1..=300 {
+        w.step(&TickInputs::default());
+        let ship = w.ship(s).unwrap();
+        let b = ship.piece(ship.control_piece().unwrap()).unwrap().body;
+        alpha = alpha.max((b.angvel - omega).abs() * 30.0);
+        omega = b.angvel;
+        let e = sim::physics::wrap_angle(FRAC_PI_2 - b.angle);
+        if turn.is_none() && e.abs() < 1f32.to_radians() {
+            turn = Some(t as f32 / 30.0);
+        }
+        if turn.is_some() {
+            overshoot = overshoot.max(-e);
+        }
+    }
+    (turn, alpha, overshoot)
+}

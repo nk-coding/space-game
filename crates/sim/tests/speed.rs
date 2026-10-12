@@ -3,16 +3,11 @@
 
 mod common;
 
-use core::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
 use common::*;
 use sim::flight::Kin;
-use sim::physics::wrap_angle;
-use sim::{
-    Body, FlightGoal, HeadingGoal, PilotInput, ShipCommand, ShipDesign, SimConfig, TickInputs,
-    Vec2, rated_falloff,
-};
+use sim::{Body, PilotInput, ShipCommand, ShipDesign, SimConfig, TickInputs, Vec2, rated_falloff};
 
 fn control(w: &sim::Sim, s: sim::ShipId) -> &sim::Piece {
     let ship = w.ship(s).unwrap();
@@ -219,26 +214,7 @@ fn top_speed_per_direction_comes_from_the_thrusters_pushing_that_way() {
 /// 0 → 95% of top speed s).
 fn agility(c: &data::Content, id: &str) -> (f32, f32, f32, f32, f32, f32) {
     // 90° turn from rest to within 1°, holding position.
-    let (mut w, s) = world_with(design(c, id));
-    let goal = FlightGoal {
-        heading: HeadingGoal::Angle(FRAC_PI_2),
-        velocity: Some(Vec2::ZERO),
-    };
-    w.command(s, ShipCommand::Goal { goal, fire: false });
-    let (mut turn, mut alpha, mut omega, mut overshoot) = (None, 0.0f32, 0.0f32, 0.0f32);
-    for t in 1..=300 {
-        w.step(&TickInputs::default());
-        let b = control(&w, s).body;
-        alpha = alpha.max((b.angvel - omega).abs() * 30.0);
-        omega = b.angvel;
-        let e = wrap_angle(FRAC_PI_2 - b.angle);
-        if turn.is_none() && e.abs() < 1f32.to_radians() {
-            turn = Some(t as f32 / 30.0);
-        }
-        if turn.is_some() {
-            overshoot = overshoot.max(-e);
-        }
-    }
+    let (turn, alpha, overshoot) = turn_90(design(c, id));
     let turn = turn.unwrap_or_else(|| panic!("{id} never turned"));
     assert!(overshoot < 2f32.to_radians(), "{id}: overshoot {}°", overshoot.to_degrees());
     // 0 → 95% of the top speed with the stick along the nose.
