@@ -1427,6 +1427,14 @@ negligible next to the sim's own breakage work (the split's Rapier part is withi
 split with merged rectangles). An earlier run at load ~10 (before the rebase) gave about twice these medians and
 p95 values up to 5× higher for both builds: the VM's noise.
 
+**New VM** (12 Oct 2026, late evening, `dev` `5b824b6`; AMD Ryzen 9 9950X3D, 16 vCPUs; the numbers above are from
+the old VM, an Intel Core Ultra 7 155H), medians over 15 runs at load average 0.9–1.6, ms: raw throttles step
+0.234 / 0.224 / 0.267 (mean / median / p95; Rapier 0.010 / 0.007 / 0.013), pilot + lock 0.250 / 0.240 / 0.293
+(Rapier 0.010 / 0.008 / 0.017), combat 0.542 / 0.425 / 1.633 (Rapier 0.008 / 0.007 / 0.013); `state_hash` 0.285 ms
+mean; lose one part 0.051 ms; cut a row and split 0.105 ms (Rapier 0.04 ms). That is about 1.8× faster than the
+old VM idle on the same sim code (raw 0.398 / 0.645, pilot 0.435 / 0.747, combat 0.749 / 2.507 median / p95, see
+[Engine plumes](#engine-plumes)). During a 6-job cargo build (load 9–11, 10 runs) the medians rose by 9–15 %.
+
 **Combat** (same tool): 20 gunboats (50×40 slabs, 17 pulse lasers + 17 cannons each, shield emitters inside) in
 two lines 60 m apart, every gun firing for 150 ticks; about 90 live projectiles on average, 340 at most. The slow
 ticks are the first wave of hits, about 40 destroyed parts per tick, each rebuilding a 2000-part piece
@@ -1472,6 +1480,20 @@ sim's own systems ~0.011 ms (as with FreeFlight): Rapier a bit more than doubles
 sizes (a runner has 56 parts), which is still tiny. The fight itself changed: ships now collide (64 impacts, 24 of
 them rams), so the counts differ from the FreeFlight run (327 shots, 966 hits, 2 splits, 10 active at the end;
 final hash `d8cfba40e2ae85ec`).
+
+**New VM** (12 Oct 2026, late evening, `dev` `5b824b6`; AMD Ryzen 9 9950X3D, 16 vCPUs; the table above is the old
+VM, an Intel Core Ultra 7 155H, and an older fight), medians over 15 runs at load average 0.9–1.6, ms:
+
+| Ships | Step mean / median / p95 | Rapier step median / p95 | Impacts / rams | Shots | Hits | Splits | Active at end |
+|---|---|---|---|---|---|---|---|
+| 1 | 0.003 / 0.002 / 0.003 | 0.002 / 0.002 | 0 / 0 | 552 | 0 | 0 | 1 |
+| 5 | 0.004 / 0.003 / 0.007 | 0.002 / 0.004 | 11 / 0 | 29 | 166 | 0 | 3 |
+| 20 | 0.015 / 0.011 / 0.028 | 0.006 / 0.015 | 175 / 1 | 202 | 839 | 3 | 10 |
+
+The 20-ship fight is the one measured on the idle old VM in [Engine plumes](#engine-plumes) (0.019 / 0.048 median /
+p95, Rapier 0.009 / 0.024): about 40 % less per tick. During a 6-job cargo build (load 9–11, 10 runs): 0.012 /
+0.029 (Rapier 0.007 / 0.016). Final state hash with 20 ships `a884134ca1f6bfeb`. Browser comparison and the
+spike's answers: `docs/results/spike-summary.md`.
 
 ## Design questions for Niklas
 
