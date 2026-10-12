@@ -51,6 +51,7 @@ pub mod math;
 pub mod physics;
 mod plume;
 pub mod power;
+pub mod report;
 pub mod rng;
 pub mod scenario;
 pub mod ship;
@@ -75,6 +76,7 @@ pub use mass::MassProps;
 pub use math::{Rot, Vec2};
 pub use physics::{BodyKey, Contact, Physics, RayHit};
 pub use power::{Consumer, PowerSetting};
+pub use report::{DesignReport, design_report};
 pub use rng::{Pcg32, Stream};
 pub use scenario::ScenarioKind;
 pub use ship::{

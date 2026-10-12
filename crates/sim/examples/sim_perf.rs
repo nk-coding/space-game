@@ -3,6 +3,10 @@
 //! used here, in the tool, never in the sim.
 //!
 //! `cargo run --release -p sim --example sim_perf -- [--ships 20] [--w 50] [--h 40] [--ticks 300]`
+//!
+//! `--report`: times `sim::design_report` (the drydock's live stats) for the base ships and the slab.
+//! `--calibrate`: measures one ship's cost per tick for several designs next to the report's device-load estimate
+//! (the data behind `sim::report::tuning`); `--ships` sets the copies per design (at most 10).
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -167,10 +171,162 @@ fn time_steps(world: &mut Sim, inputs: &TickInputs, ticks: usize) -> (StepTimes,
     (times, stats(hash))
 }
 
+/// Median and p95 of a sample.
+fn median_p95(mut v: Vec<f64>) -> (f64, f64) {
+    v.sort_by(|a, b| a.total_cmp(b));
+    let at = |q: f64| v[((v.len() as f64 * q) as usize).min(v.len() - 1)];
+    (at(0.5), at(0.95))
+}
+
+/// `--report`: how long `sim::design_report` takes for the base ships and a `w × h` slab (the drydock
+/// recomputes it after every edit), with `ShipDesign::compile` alone for comparison.
+fn report_timing(content: &data::Content, w: i32, h: i32) {
+    let mut designs: Vec<(String, Blueprint)> = content
+        .ships
+        .iter()
+        .map(|s| (s.id.clone(), s.clone()))
+        .collect();
+    designs.push((format!("slab {w}x{h}"), big_ship(w, h)));
+    designs.push((format!("gunboat {w}x{h}"), gunboat(w, h)));
+    let cfg = sim::SimConfig::default();
+    println!("| Design | Parts | Report median / p95 (µs) | Compile median (µs) | Device load |");
+    for (name, bp) in &designs {
+        let r = sim::design_report(content, bp, &cfg).unwrap();
+        let runs = if bp.parts.len() > 500 { 60 } else { 600 };
+        let (mut report, mut compile) = (Vec::new(), Vec::new());
+        for _ in 0..runs {
+            let t = Instant::now();
+            std::hint::black_box(sim::design_report(content, bp, &cfg).unwrap());
+            report.push(t.elapsed().as_secs_f64() * 1e6);
+            let t = Instant::now();
+            std::hint::black_box(ShipDesign::compile(content, bp).unwrap());
+            compile.push(t.elapsed().as_secs_f64() * 1e6);
+        }
+        let (rm, rp) = median_p95(report);
+        let (cm, _) = median_p95(compile);
+        println!(
+            "| {name} | {} | {rm:.1} / {rp:.1} | {cm:.1} | {:.1} µs/tick ({:?}) |",
+            bp.parts.len(),
+            r.device.cost_us,
+            r.device.class
+        );
+    }
+}
+
+/// `--calibrate`: the measured cost of one ship for one tick (native, `copies` copies flying apart under pilot
+/// input with every gun firing, median step ÷ copies) next to the device-load estimate of `sim::report` and its
+/// cost drivers, for the base ships and slabs of several sizes. Feeds the coefficients in `sim::report::tuning`.
+fn calibrate(content: &data::Content, copies: usize, ticks: usize) {
+    let mut designs: Vec<(String, Blueprint)> = content
+        .ships
+        .iter()
+        .map(|s| (s.id.clone(), s.clone()))
+        .collect();
+    for (w, h) in [(12, 10), (16, 12), (30, 20), (50, 40)] {
+        designs.push((format!("slab {w}x{h}"), big_ship(w, h)));
+    }
+    designs.push(("gunboat 50x40".into(), gunboat(50, 40)));
+    let cfg = sim::SimConfig::default();
+    println!(
+        "| Design | Parts | Rows | Torque sources | Guns | Pieces | Colliders | Flight / systems / weapons / physics / other µs | Measured µs/ship | Estimate µs |"
+    );
+    for (name, bp) in &designs {
+        let r = sim::design_report(content, bp, &cfg).unwrap();
+        let d = Arc::new(ShipDesign::compile(content, bp).unwrap());
+        let mut world = Sim::new(3);
+        let ids: Vec<_> = (0..copies)
+            .map(|k| {
+                world.spawn_ship(
+                    Arc::clone(&d),
+                    sim::Owner(1),
+                    Body::at(Vec2::new(k as f32 * 150.0, 0.0), 0.0),
+                )
+            })
+            .collect();
+        let pilot = TickInputs {
+            commands: ids
+                .iter()
+                .map(|&id| {
+                    (
+                        id,
+                        ShipCommand::Pilot(PilotInput {
+                            stick: Vec2::new(0.0, 1.0),
+                            fire: true,
+                            ..Default::default()
+                        }),
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        };
+        world.step(&pilot);
+        for _ in 0..30 {
+            world.step(&TickInputs::default());
+        }
+        // Per tick: the whole step and its phases (flight, systems, weapons, physics, the rest), in µs.
+        let mut phases: [Vec<f64>; 6] = Default::default();
+        for _ in 0..ticks {
+            let t0 = Instant::now();
+            let mut at = [t0; 5];
+            world.step_profiled(&TickInputs::default(), |phase| match phase {
+                StepPhase::Flight => at[0] = Instant::now(),
+                StepPhase::Systems => at[1] = Instant::now(),
+                StepPhase::Weapons => at[2] = Instant::now(),
+                StepPhase::Physics => at[3] = Instant::now(),
+                StepPhase::Impacts => at[4] = Instant::now(),
+                _ => {}
+            });
+            let total = t0.elapsed().as_secs_f64() * 1e6;
+            let us = |a: Instant, b: Instant| (b - a).as_secs_f64() * 1e6;
+            let parts = [
+                us(at[0], at[1]),
+                us(at[1], at[2]),
+                us(at[2], at[3]),
+                us(at[3], at[4]),
+            ];
+            for (k, v) in parts.iter().enumerate() {
+                phases[k].push(*v);
+            }
+            phases[4].push(total - parts.iter().sum::<f64>());
+            phases[5].push(total);
+        }
+        let per = |v: &Vec<f64>| median_p95(v.clone()).0 / copies as f64;
+        let c = r.device.drivers;
+        println!(
+            "| {name} | {} | {} | {} | {} | {} | {} | {:.2} / {:.2} / {:.2} / {:.2} / {:.2} | {:.2} | {:.2} |",
+            c.parts,
+            c.rows,
+            c.torque_sources,
+            c.guns,
+            c.pieces,
+            c.colliders,
+            per(&phases[0]),
+            per(&phases[1]),
+            per(&phases[2]),
+            per(&phases[3]),
+            per(&phases[4]),
+            per(&phases[5]),
+            r.device.cost_us
+        );
+    }
+}
+
 fn main() {
     let (mut ships, mut w, mut h, mut ticks) = (20usize, 50i32, 40i32, 300usize);
+    let (mut report, mut calib) = (false, false);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
+        match a.as_str() {
+            "--report" => {
+                report = true;
+                continue;
+            }
+            "--calibrate" => {
+                calib = true;
+                continue;
+            }
+            _ => {}
+        }
         let v: i64 = args.next().expect("value").parse().expect("number");
         match a.as_str() {
             "--ships" => ships = v as usize,
@@ -181,6 +337,15 @@ fn main() {
         }
     }
     let content = data::base_content();
+    if report || calib {
+        if report {
+            report_timing(&content, w, h);
+        }
+        if calib {
+            calibrate(&content, ships.min(10), ticks);
+        }
+        return;
+    }
     let bp = big_ship(w, h);
     let t = Instant::now();
     let design = Arc::new(ShipDesign::compile(&content, &bp).unwrap());
