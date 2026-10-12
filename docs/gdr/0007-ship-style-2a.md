@@ -34,3 +34,8 @@ accent, white numbers, soft halos.
 
 - Exact colours and sizes are in `docs/style-guide.md` and `art/tokens.json`; the renderer is ADR-0020.
 - Tech shows through new parts, sizes and materials on the hull, not through skins.
+
+## Notes
+
+- 2026-10-12: the dotted shield rings are superseded by glowing energy bubbles,
+  [GDR-0043](0043-shields-as-energy-bubbles.md) (Niklas). The rest of this record stands.

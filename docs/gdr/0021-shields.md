@@ -27,3 +27,8 @@ Not recorded beyond the concept and the confirmed v1 rules.
 
 - Kinetic weapons are the answer to shields, energy weapons to armor (GDR-0018).
 - Shield emitters compete for power (GDR-0014); per-family shares live in content.
+
+## Notes
+
+- 2026-10-12: shields are no longer drawn as dotted rings but as glowing energy bubbles,
+  [GDR-0043](0043-shields-as-energy-bubbles.md) (Niklas). The rules above are unchanged.
