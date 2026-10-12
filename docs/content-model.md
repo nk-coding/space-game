@@ -431,6 +431,15 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 `Content::load` fails on errors; `data::validate` returns errors and warnings. Each problem names pack, file,
 line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
 
+`data::validate_ship(&content, &blueprint)` (added 12 Oct 2026, for the drydock) runs exactly the checks
+`validate` runs on a content ship (header and ship rules, the same code) on one blueprint that need not be in the
+content, such as a design being edited or a file being imported. Its problems carry kind `ship`, the blueprint's
+id and the field paths (`parts[k]`, `parts[k].material`, `parts[k].power.weight`, `size`, `faction`, ...), so the
+editor can mark the placement; `source` is set only for a blueprint loaded from a pack. Placement errors (unknown
+part, material, `rot`, power override, outside the frame, overlap) end the check of that ship in both functions:
+the ship-wide rules after them (rule slots, control load, pieces, line of fire, RCS and radiator exposure) need a
+clean grid and report nothing until the placements are fixed. Header errors do not hold them back.
+
 - Errors: RON syntax and unknown fields, unknown file locations, malformed wiki paths, missing `pack.ron`,
   unsupported `schema_version`, dependency order, packs loaded twice, duplicate ids within a pack, bad id/tag
   format, empty name/summary, dangling references (category, faction, material, part, bonus targets, tags,
@@ -539,6 +548,7 @@ content.icon_svg("pulse-laser");                         // Option<&str>: SVG te
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
 content.ship_control(ship); part.control_cost();              // (load, capacity) of the intact ship; cost with default
+data::validate_ship(&content, &design);                      // Vec<Problem>: the content checks on one blueprint
 let program = data::behavior::Program::parse(text)?;         // text form (or behavior.program() for RON form)
 program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>

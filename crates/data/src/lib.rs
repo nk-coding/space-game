@@ -38,7 +38,7 @@ pub use problem::{Problem, Severity};
 pub use stats::{BonusInfo, StatLine};
 pub use table::Table;
 pub use text::{Link, parse_links, text_key};
-pub use validate::validate;
+pub use validate::{validate, validate_ship};
 
 #[cfg(feature = "embed")]
 mod embedded {
