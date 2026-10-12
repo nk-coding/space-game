@@ -213,7 +213,12 @@ fn normalize_path(p: &str) -> String {
 }
 
 fn parse_problem(e: &ron::error::SpannedError, src: &Source) -> Problem {
-    let mut p = Problem::error(e.code.to_string()).at(src);
+    parse_error(e).at(src)
+}
+
+/// A RON parse error with its line and column, without a file.
+pub(crate) fn parse_error(e: &ron::error::SpannedError) -> Problem {
+    let mut p = Problem::error(e.code.to_string());
     p.line = Some((e.span.start.line, e.span.start.col));
     p
 }

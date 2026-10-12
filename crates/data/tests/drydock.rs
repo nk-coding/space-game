@@ -1,9 +1,13 @@
-//! Drydock plumbing in `data`: checking a design on its own (`validate_ship`).
+//! Drydock plumbing in `data`: checking a design on its own (`validate_ship`) and the blueprint text format
+//! (`blueprint_to_ron`, `parse_blueprint`).
 
 mod common;
 
 use common::*;
-use data::{Blueprint, Content, Kind, Pack, Placement, Problem, Severity, validate, validate_ship};
+use data::{
+    Blueprint, Content, Kind, Pack, Placement, PowerOverride, PowerTier, Problem, Severity,
+    blueprint_to_ron, parse_blueprint, validate, validate_ship,
+};
 
 const MOD_MANIFEST: &str =
     r#"(id: "test_mod", name: "Test mod", version: "1.0.0", schema_version: 1, depends: ["base"])"#;
@@ -263,5 +267,218 @@ fn placement_errors_hold_back_the_ship_wide_checks() {
         has(&p, Severity::Warning, "parts", "2 pieces"),
         "{}",
         show(&p)
+    );
+}
+
+/// Writes, reads back and writes again: the blueprint and the text must come back unchanged.
+fn round_trip(bp: &Blueprint) -> String {
+    let text = blueprint_to_ron(bp);
+    let back = parse_blueprint(&text).unwrap_or_else(|p| panic!("{}\n{text}", show(&p)));
+    assert_eq!(&back, bp, "{text}");
+    assert_eq!(blueprint_to_ron(&back), text);
+    text
+}
+
+#[test]
+fn base_ship_files_are_written_back_exactly() {
+    let c = content();
+    let files: Vec<_> = data::base_pack_files()
+        .iter()
+        .filter(|(path, _)| path.starts_with("ships/"))
+        .collect();
+    assert_eq!(files.len(), c.ships.len());
+    for (path, text) in files {
+        // The file without its leading comment lines is exactly what the writer produces.
+        let body: String = text
+            .lines()
+            .skip_while(|l| l.starts_with("//"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let ship = c.ships.iter().find(|s| s.source.file == *path).unwrap();
+        let mut bare = ship.clone();
+        bare.source = Default::default();
+        assert_eq!(blueprint_to_ron(ship), body, "{path}");
+        assert_eq!(round_trip(&bare), body, "{path}");
+        // Comments are fine when reading.
+        assert_eq!(parse_blueprint(text).unwrap(), bare, "{path}");
+    }
+}
+
+#[test]
+fn blueprint_text_format_and_defaults() {
+    let mut bp = design(vec![
+        hull("armor_block", 0, 0, "steel"),
+        at("logic_core", 1, 0),
+        Placement {
+            rot: 3,
+            flip: true,
+            power: Some(PowerOverride {
+                tier: Some(PowerTier::High),
+                weight: Some(2.0),
+            }),
+            ..at("thruster", 2, 0)
+        },
+    ]);
+    // Only what differs from the defaults is written; `source` never is.
+    assert_eq!(
+        round_trip(&bp),
+        r#"(
+    id: "my_design",
+    name: "My design",
+    summary: "A design from the drydock.",
+    faction: "ship_mind",
+    size: (4, 4),
+    parts: [
+        (part: "armor_block", x: 0, y: 0, material: "steel"),
+        (part: "logic_core", x: 1, y: 0),
+        (part: "thruster", x: 2, y: 0, rot: 3, flip: true, power: (tier: High, weight: 2)),
+    ],
+)
+"#
+    );
+    bp.description = Some("Long text.".into());
+    bp.lore = Some("Old text.".into());
+    bp.tags = vec!["fast".into(), "cheap".into()];
+    bp.behavior = Some("skirmisher".into());
+    bp.parts.clear();
+    assert_eq!(
+        round_trip(&bp),
+        r#"(
+    id: "my_design",
+    name: "My design",
+    summary: "A design from the drydock.",
+    description: "Long text.",
+    lore: "Old text.",
+    tags: ["fast", "cheap"],
+    faction: "ship_mind",
+    behavior: "skirmisher",
+    size: (4, 4),
+    parts: [],
+)
+"#
+    );
+    // A blueprint read from a pack writes the same text: `source` is not part of it.
+    let mut loaded = bp.clone();
+    loaded.source = data::Source {
+        pack: "base".into(),
+        file: "ships/x.ron".into(),
+    };
+    assert_eq!(blueprint_to_ron(&loaded), blueprint_to_ron(&bp));
+}
+
+#[test]
+fn every_rotation_flip_and_power_override_round_trips() {
+    let mut parts = Vec::new();
+    for rot in [0, 1, 2, 3, 7, 255] {
+        for flip in [false, true] {
+            parts.push(Placement {
+                rot,
+                flip,
+                ..hull("slope_1x2", rot as i32, -(flip as i32), "composite")
+            });
+        }
+    }
+    let tiers = PowerTier::ALL.into_iter().map(Some).chain([None]);
+    for tier in tiers {
+        for weight in [
+            None,
+            Some(1.0),
+            Some(0.1),
+            Some(1.0 / 3.0),
+            Some(100.0),
+            Some(f32::MAX),
+            Some(f32::MIN_POSITIVE),
+            Some(1e-45),
+            Some(-0.0),
+            Some(f32::INFINITY),
+            Some(f32::NEG_INFINITY),
+        ] {
+            parts.push(Placement {
+                power: Some(PowerOverride { tier, weight }),
+                ..at("shield_emitter", i32::MIN, i32::MAX)
+            });
+        }
+    }
+    let mut bp = design(parts);
+    bp.size = (u32::MAX, 0);
+    let text = round_trip(&bp);
+    assert!(text.contains("power: ()"), "{text}");
+    assert!(text.contains("power: (tier: Critical)"), "{text}");
+    assert!(text.contains("power: (weight: 0.1)"), "{text}");
+    assert!(text.contains("rot: 255, flip: true"), "{text}");
+    // NaN is not equal to itself, so it is checked on its own.
+    let nan = design(vec![Placement {
+        power: Some(PowerOverride {
+            tier: None,
+            weight: Some(f32::NAN),
+        }),
+        ..at("shield_emitter", 0, 0)
+    }]);
+    let back = parse_blueprint(&blueprint_to_ron(&nan)).unwrap();
+    assert!(back.parts[0].power.unwrap().weight.unwrap().is_nan());
+}
+
+#[test]
+fn awkward_strings_round_trip() {
+    let awkward = [
+        "say \"hi\"",
+        r"back\slash \n \u{41} \\",
+        "two\nlines\r\nand\ttabs",
+        "nul \0 bell \u{7} del \u{7f} c1 \u{9f}",
+        "Kühler · 90° × 2 — 船 🚀 \u{2028} \u{200f}",
+        "// not a comment /* nor this */ #![enable(implicit_some)]",
+        "\"), parts: [], x: (",
+        "",
+        " ",
+    ];
+    for s in awkward {
+        let mut bp = design(vec![Placement {
+            material: Some(s.into()),
+            ..at(s, 0, 0)
+        }]);
+        bp.id = s.into();
+        bp.name = s.into();
+        bp.summary = s.into();
+        bp.description = Some(s.into());
+        bp.lore = Some(s.into());
+        bp.tags = vec![s.into(), s.into()];
+        bp.faction = s.into();
+        bp.behavior = Some(s.into());
+        let text = round_trip(&bp);
+        // One field per line: line breaks inside strings are escaped.
+        assert_eq!(text.lines().count(), 14, "{text}");
+    }
+}
+
+#[test]
+fn parse_errors_name_line_and_column() {
+    let text = blueprint_to_ron(&design(vec![at("logic_core", 0, 0)]));
+    // Unknown fields, `source` included (it is never read from text).
+    for (extra, needle) in [
+        ("colour: \"red\",", "colour"),
+        ("source: (pack: \"base\", file: \"x.ron\"),", "source"),
+    ] {
+        let bad = text.replacen("    size:", &format!("    {extra}\n    size:"), 1);
+        let p = parse_blueprint(&bad).unwrap_err();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].kind, Some(Kind::Ship));
+        assert_eq!(p[0].line.map(|(l, _)| l), Some(6), "{}", p[0]);
+        assert!(p[0].message.contains(needle), "{}", p[0]);
+        assert!(p[0].is_error() && p[0].source.is_none());
+    }
+    let p = parse_blueprint(&text.replace("    faction: \"ship_mind\",\n", "")).unwrap_err();
+    assert!(p[0].message.contains("faction"), "{}", p[0]);
+    // One blueprint, not a list.
+    assert!(parse_blueprint(&format!("[{text}]")).is_err());
+    // Explicit `Some(..)` and comments still read.
+    let explicit = text.replace(
+        "x: 0, y: 0)",
+        "x: 0, y: 0, material: Some(\"steel\")) // note",
+    );
+    assert_eq!(
+        parse_blueprint(&explicit).unwrap().parts[0]
+            .material
+            .as_deref(),
+        Some("steel")
     );
 }

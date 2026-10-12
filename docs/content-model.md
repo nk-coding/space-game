@@ -279,6 +279,23 @@ ship flies when nobody pilots it; default: its faction's (`Content::ship_behavio
 Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raider.svg`), `sample_early` and
 `sample_mid` (from the concept-board drafts).
 
+**Blueprint text** (added 12 Oct 2026, for the drydock). Saved player designs and exported blueprints use exactly
+the format of the content ships, so an export can go into a pack's `ships/` folder as is:
+
+- `data::blueprint_to_ron(&blueprint)` writes one blueprint in the style of `content/base/ships/*.ron`: the header
+  fields in the order `id`, `name`, `summary`, `description`, `lore`, `tags`, `faction`, `behavior`, then `size`
+  and `parts: [` with one placement per line (`part`, `x`, `y`, `rot`, `flip`, `material`, `power`), four-space
+  indent. Defaults are left out: `rot: 0`, `flip: false`, absent `material`/`power`/`description`/`lore`/
+  `behavior`, empty `tags`; a `power` override writes only the fields it sets. `source` is never written.
+  Strings escape `"`, `\` and control characters (`\n`, `\t`, `\u{..}`) and keep other unicode as is; floats
+  are written as the shortest text that reads back to the same value. The output is deterministic; a test
+  checks that it reproduces every base ship file byte for byte (after its leading comments).
+- `data::parse_blueprint(text)` reads one blueprint with the pack loader's options (implicit `Some`, unknown
+  fields are errors, `source` is not a readable field, comments are fine). It checks syntax and schema only;
+  `data::validate_ship` checks the result against the content.
+- Writing and reading back gives an equal blueprint (tested on every base ship, on power overrides, on every
+  `rot`/`flip`, and on quotes, backslashes, line breaks, control characters and unicode in every string).
+
 The Halvex Runner started as an exact conversion of `art/ships/halvex-runner.layout.json`. On 11 Oct 2026 Niklas
 decided that its layout must work under the drydock rules. The **content blueprint is now the source of truth**
 and `art/ships/halvex-runner.*` stays the original concept art. The adjusted layout keeps the occupied cells, the
@@ -549,6 +566,8 @@ content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
 content.ship_control(ship); part.control_cost();              // (load, capacity) of the intact ship; cost with default
 data::validate_ship(&content, &design);                      // Vec<Problem>: the content checks on one blueprint
+let text = data::blueprint_to_ron(&design);                  // the RON of a saved or exported design
+let design = data::parse_blueprint(&text)?;                  // Result<Blueprint, Vec<Problem>>: syntax and schema
 let program = data::behavior::Program::parse(text)?;         // text form (or behavior.program() for RON form)
 program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>

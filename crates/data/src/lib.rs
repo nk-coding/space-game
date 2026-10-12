@@ -1,4 +1,5 @@
-//! Game content for Space Game: schema, pack loader, validation, stat lines and shared blueprint geometry.
+//! Game content for Space Game: schema, pack loader, validation, stat lines, shared blueprint geometry and the
+//! blueprint text format of drydock designs.
 //!
 //! No Bevy, no threads, no filesystem in the core: packs are built from in-memory `(path, contents)` pairs,
 //! so the same code runs natively, on wasm32 and later on Android. See `docs/content-model.md`.
@@ -14,6 +15,7 @@
 
 pub mod art_keys;
 pub mod behavior;
+pub mod blueprint;
 pub mod geometry;
 pub mod kind;
 pub mod load;
@@ -28,6 +30,7 @@ pub mod validate;
 #[cfg(feature = "fs")]
 pub mod fs;
 
+pub use blueprint::{blueprint_to_ron, parse_blueprint};
 pub use geometry::{
     Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
 };
