@@ -41,6 +41,12 @@ Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0047, `docs/
   capacity with idle-by-priority, mind capacity with newest-dormant and wake/swap, friendly and shielded rams;
   ramming v2 (GDR-0047). Placeholders: logic core N 16, automaton core N 4, player mind capacity 24.
 
+Running now:
+- Engine exhaust damage (GDR-0039, 0046), no friendly fire (GDR-0048), allocator ignores idle actuators: agent
+  in a worktree.
+- Client: fleet bar, camera glide on focus switches, focus draw order, `?damage=` for the player only,
+  browser-vs-native hash, screenshot checks: agent in the main tree.
+
 Open questions for Niklas (ask interactively):
 - Mind capacity numbers and N per core type: lead placeholders until he sets them.
 - Vessel model lead defaults to review (`docs/sim.md` "Vessels", marked *lead default*): focus fallback order;
