@@ -1,6 +1,10 @@
-//! The world camera: 2D orthographic, 1 world unit = 1 m = 1 cell, never rotates (WASD are screen/world
-//! directions). Modes: follow the player's ship (sandbox), frame the whole fight (load test), or free (drag to
-//! pan). Zoom with the wheel or a pinch; both position and zoom ease towards their targets.
+//! The world camera: 2D orthographic, 1 world unit = 1 m = 1 cell, never rotates. Modes: follow the focused
+//! vessel (sandbox), frame the whole fight (load test), or free (drag to pan). Zoom with the wheel or a pinch;
+//! both position and zoom ease towards their targets (time-based, so framerate-independent).
+//!
+//! A focus switch glides over (GDR-0013): the follow point snaps to the new vessel and the camera eases from
+//! where it was onto it over 0.3–0.5 s (longer for longer jumps, smootherstep). Only in follow mode: a free
+//! camera stays put, dragging during a glide ends it, and the zoom is untouched.
 
 use bevy::camera::ScalingMode;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
@@ -14,6 +18,11 @@ use crate::sim_bridge::{SimWorld, piece_com, v2};
 
 pub const MIN_PX_PER_M: f32 = 3.0;
 pub const MAX_PX_PER_M: f32 = 160.0;
+/// Follow lag (time constant, s).
+const FOLLOW_TAU: f32 = 0.12;
+/// Focus-switch glide: duration for a short hop and for a jump of [`GLIDE_FAR`] metres or more.
+const GLIDE_SECONDS: (f32, f32) = (0.3, 0.5);
+const GLIDE_FAR: f32 = 150.0;
 
 #[derive(Component)]
 pub struct MainCamera;
@@ -42,9 +51,11 @@ pub struct CameraRig {
     pub user_zoom: bool,
     /// Where the focused vessel is (for the range rings), if any.
     pub focus: Option<Vec2>,
-    /// The vessel followed last frame; a change starts a slower glide.
+    /// The vessel followed last frame; a change starts a glide.
     followed: Option<sim::ShipId>,
-    glide: f32,
+    /// Where plain following puts the camera; during a glide the camera eases from its old place onto it.
+    follow_pos: Vec2,
+    glide: Option<Glide>,
     /// Viewport size in logical pixels (last frame).
     pub viewport: Vec2,
     drag_last: Option<Vec2>,
@@ -62,7 +73,8 @@ impl Default for CameraRig {
             user_zoom: false,
             focus: None,
             followed: None,
-            glide: 0.0,
+            follow_pos: Vec2::ZERO,
+            glide: None,
             viewport: Vec2::new(1280.0, 720.0),
             drag_last: None,
             pinch_last: None,
@@ -70,7 +82,52 @@ impl Default for CameraRig {
     }
 }
 
+/// A focus-switch glide in progress.
+#[derive(Clone, Copy, Debug)]
+struct Glide {
+    /// Camera position minus the follow point at the switch; shrinks to zero.
+    offset: Vec2,
+    seconds: f32,
+    duration: f32,
+}
+
+/// Zero speed and acceleration at both ends.
+fn smootherstep(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
 impl CameraRig {
+    /// The focus moved to a vessel at `f`: the follow point snaps there, the camera eases from where it is.
+    fn start_glide(&mut self, f: Vec2) {
+        let offset = self.pos - f;
+        let far = (offset.length() / GLIDE_FAR).min(1.0);
+        let duration = GLIDE_SECONDS.0 + (GLIDE_SECONDS.1 - GLIDE_SECONDS.0) * far;
+        self.follow_pos = f;
+        self.glide = Some(Glide { offset, seconds: 0.0, duration });
+    }
+
+    /// Follow mode, one frame: trail the focus at `f` (exponential, time constant [`FOLLOW_TAU`]); during a glide
+    /// the camera is the follow point plus the switch offset, shrinking to zero along a smootherstep.
+    fn follow(&mut self, f: Vec2, dt: f32) {
+        let k = 1.0 - (-dt / FOLLOW_TAU).exp();
+        match self.glide.as_mut() {
+            Some(g) => {
+                g.seconds += dt;
+                let offset = g.offset * (1.0 - smootherstep(g.seconds / g.duration));
+                if g.seconds >= g.duration {
+                    self.glide = None;
+                }
+                self.follow_pos = self.follow_pos.lerp(f, k);
+                self.pos = self.follow_pos + offset;
+            }
+            None => {
+                self.pos = self.pos.lerp(f, k);
+                self.follow_pos = self.pos;
+            }
+        }
+    }
+
     /// World point under a logical screen position (y down).
     pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
         let d = screen - self.viewport / 2.0;
@@ -210,25 +267,26 @@ fn update_camera(
     let dt = time.delta_secs().min(0.1);
     let alpha = fixed.overstep_fraction().clamp(0.0, 1.0);
 
-    // The focused vessel (controlling piece, else the main piece). Switching vessels glides over.
-    if focus.0 != rig.followed {
-        if rig.followed.is_some() {
-            rig.glide = 1.0;
-        }
-        rig.followed = focus.0;
-    }
-    rig.glide = (rig.glide - dt).max(0.0);
+    // The focused vessel (controlling piece, else the main piece).
     rig.focus = focus.0.and_then(|id| world.sim.ship(id)).and_then(|s| {
         let pid = s.control_piece().or_else(|| s.main_piece())?;
         s.piece(pid).map(|p| piece_com(p, alpha))
     });
+    // A new focus: glide over from where the camera is.
+    if focus.0 != rig.followed {
+        rig.followed = focus.0;
+        if let (CamMode::Follow, Some(f)) = (rig.mode, rig.focus) {
+            rig.start_glide(f);
+        }
+    }
+    if rig.mode != CamMode::Follow {
+        rig.glide = None;
+    }
 
     match rig.mode {
         CamMode::Follow => {
             if let Some(f) = rig.focus {
-                let tau = 0.12 + 0.35 * rig.glide;
-                let k = 1.0 - (-dt / tau).exp();
-                rig.pos = rig.pos.lerp(f, k);
+                rig.follow(f, dt);
             }
         }
         CamMode::Frame => {
@@ -270,6 +328,49 @@ fn update_camera(
         let s = 1.0 / rig.zoom;
         if (o.scale - s).abs() > f32::EPSILON * s {
             o.scale = s;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Glides a camera from the origin to a vessel 100 m away that flies at 20 m/s, at `fps` (a multiple of 10);
+    /// returns the camera position every 0.1 s of the first 0.7 s and the largest jump between two frames,
+    /// scaled to a 60 Hz frame.
+    fn glide_path(fps: u32) -> (Vec<Vec2>, f32) {
+        let mut rig = CameraRig::default();
+        let start = Vec2::new(100.0, 0.0);
+        rig.start_glide(start);
+        let dt = 1.0 / fps as f32;
+        let (mut path, mut jump, mut last) = (Vec::new(), 0.0f32, rig.pos);
+        for frame in 1..=(fps * 7 / 10) {
+            let t = frame as f32 * dt;
+            rig.follow(start + Vec2::new(0.0, 20.0 * t), dt);
+            jump = jump.max(rig.pos.distance(last) * fps as f32 / 60.0);
+            last = rig.pos;
+            if frame % (fps / 10) == 0 {
+                path.push(rig.pos);
+            }
+        }
+        (path, jump)
+    }
+
+#[test]
+    fn focus_glide_is_quick_smooth_and_framerate_independent() {
+        let (a, jump_a) = glide_path(30);
+        let (b, jump_b) = glide_path(150);
+        // Arrives within the glide (0.3-0.5 s): at 0.6 s the camera trails the vessel by its follow lag only.
+        let end = *a.last().unwrap();
+        assert!(end.distance(Vec2::new(100.0, 20.0 * 0.7)) < 20.0 * 0.7 * FOLLOW_TAU + 1.0, "{end}");
+        // Smooth: no frame jumps far above the glide's peak speed (smootherstep: 1.875 x 100 m / 0.43 s, about
+        // 7.3 m per 60 Hz frame).
+        assert!(jump_a < 8.5 && jump_b < 8.5, "{jump_a} {jump_b}");
+        // The same path at 30 and 150 fps.
+        assert_eq!(a.len(), 7);
+        for (p, q) in a.iter().zip(&b) {
+            assert!(p.distance(*q) < 1.0, "{p} vs {q}");
         }
     }
 }
