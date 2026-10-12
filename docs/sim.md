@@ -44,6 +44,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
 | `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
 | `power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
+| `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
 | `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate`, `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry` |
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
@@ -58,7 +59,8 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `scenario` | the deterministic `core`, `flight`, `load` and `behavior` scenarios |
 
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
-numbers, Rapier vs the rest), `load_test` (also Rapier vs the rest), `behavior_perf` (behavior cost).
+numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` measures its device-load model),
+`load_test` (also Rapier vs the rest), `behavior_perf` (behavior cost).
 
 ## Frames and units
 
@@ -1266,6 +1268,136 @@ for ship in world.ships() { for piece in ship.pieces() {
   and a piece that becomes a vessel of its own keeps its `PieceId` under the new ship (`VesselFormed.from`).
 - Vessels: `world.focus(owner)`, `world.vessels(owner)` (fleet bar), `ShipCommand::Focus` / `Wake`; see
   [Vessels](#vessels).
+- Drydock: `sim::design_report(&content, &blueprint, &config)` after every edit, with the content and config the
+  game flies with; see [Design report (drydock)](#design-report-drydock).
+
+## Design report (drydock)
+
+Added 12 Oct 2026 for Drydock v1 (GDR-0008: live stats and overlays after every edit). Code: `src/report.rs`,
+tests `tests/report.rs`. All numbers in `report::tuning` are **placeholders**.
+
+```rust
+let report = sim::design_report(&content, &blueprint, &config)?;   // pure, deterministic, no world
+report.flight_ready();                                            // no blocker among report.issues
+```
+
+`design_report(content, blueprint, config) -> Result<DesignReport, String>` works on any in-memory blueprint
+(overlaps and the frame are not checked; `Err` only for unknown parts or materials). It builds the ship exactly
+as `Sim::spawn_ship` does (`ShipDesign::compile`, then `Ship::new`: exposure, stats after bonuses, pieces, mass,
+colliders, consumer rows, thruster and RCS tables, gun mounts) and runs the sim's own code on the main piece:
+the control pass (`control::update`, the GDR-0044 idle order), the authority (`refresh_authority`, `Kin::of`)
+and one power pass (`ship::power_pass`, the function `update_systems` calls every tick). The rules the report
+needed were moved out of `Ship` into shared functions (`applied_bonuses`, `reactor_supply`,
+`consumer_activity`, `reactor_work`, `power_pass`, `gun_blockers`, `plume::own_burn`, `Thruster::burns`,
+`Piece::firepower`); the hash streams of all four determinism scenarios stayed byte-identical. Only the
+steady-state heat solve and the turn estimate are the report's own, on the sim's constants and functions.
+
+**What it holds** (blueprint frame, blueprint part indices; structured data, the client words it):
+
+| Field | What |
+|---|---|
+| `pieces`, `main`, `falls_off` | the connected pieces (parts, `vessel` = has a logic core, `powered`), the main piece (the sim's rule: cored first, then most parts, then earlier), the parts not on it |
+| `parts[i]` | stats after bonuses, open (venting) sides, steady-state heat and `heat / limit`, power level at full use, idle |
+| `bonuses` | every bonus that applies (target, source, stat, effect), for the bonus overlay |
+| `mass`, `centre_of_mass`, `inertia`, `hp`, `cargo`, `rule_slots` | main piece |
+| `power` | supply (working reactors after bonuses), demand at full use, served, deficit, the consumer rows in allocation order with what each asks and gets |
+| `heat` | peak `heat / limit` and its part, the parts above their limit (they would shut down) |
+| `flight` | thrust and acceleration per direction (forward, backward, right, left), top speed per direction (GDR-0041), pure and differential torque, the planning `α`, the 90° turn time, the yaw balance |
+| `guns`, `firepower` | per gun: muzzle, facing, clear, blockers, range, dps, rate, family, delivery; Σ dps of the main piece's clear guns |
+| `engines` | per engine: facing, thrust, its plume lanes (origin, exhaust direction, length, the own part it burns and how far it reaches) |
+| `shields` | per emitter: centre and bubble radius after bonuses |
+| `control` | load, capacity, the parts that idle |
+| `build_points` | Σ part `build_points` × the material's `build_point_factor` for hull parts (the rule of `Content::part_stats`) |
+| `device` | estimated native µs per tick, a class (`Light`, `Moderate`, `Heavy`, `TooHeavy`) and the cost drivers |
+| `issues` | blockers: `NoLogicCore`, `CoresUnpowered`, `NoThrust`; warnings: `PowerDeficit`, `Overheat`, `GunBlocked`, `PlumeBurnsOwnPart`, `FallsOff`, `ControlOverCapacity` (part lists in each) |
+
+**Assumptions.**
+
+- *Capabilities at full power*: thrust, torque, top speeds, the turn and firepower are what the main piece's
+  actuators and clear guns make at full power with bonuses, idle parts left out, as if the piece runs (a working,
+  powered core). The power section says whether the reactors can feed it all at once; the client can scale by a
+  part's level if it wants the brown-out view.
+- *Full use* for power and heat: every consumer at full activity at once: engines and RCS pods at full thrust,
+  gyros at full torque, guns with a clear line of fire firing, shields on, logic cores and other consumers on.
+  Idle parts and blocked guns ask for nothing. It is the worst case.
+- *Heat* is the steady state of the dynamic model at full use: per alive part `loss·T = out·work − Σ K·edges·(T −
+  T_n)` (the fixed point of the tick in [Heat](#heat-dynamic-lumped-per-part)), with each part's work from that
+  power pass (reactors `1/3 + 2/3 × served/supply`). The shutdown above a limit is not applied (those parts are
+  flagged), and plume heat on own parts is left out (the burn is flagged). Solved with Jacobi-preconditioned
+  conjugate gradients in f64 (gather-form rows, dot products in four fixed lanes: the same result everywhere),
+  to a relative residual of 1e-7. Against 300 s of stepped ticks of a rig that runs everything flat out without
+  moving (`steady_heat_matches_a_long_stepped_run`: opposed thrusters, lasers, a shield, a reactor between
+  radiators, a capacitor) every part agrees within 3e-6 relative (the test allows 0.2%), and so do the power
+  levels, exactly.
+- Only the *main piece* is analysed (mass, power, heat, flight, control); other pieces fall off at spawn and
+  report no heat and no power.
+- *Turn time*: the flight computer's heading loop in one dimension, tick by tick, from rest to 90° within 1°
+  (the agility test's criterion): each tick it asks `τ = I · (turn_rate(e, α_plan) − ω) / DT`, gets at most the
+  pure torque plus the differential thrust of that sense while the error is above 3° (`TURN_WITH_THRUST`), and
+  moves as Rapier integrates a constant torque over `S` substeps: `θ += ω·DT + (S+1)/(2S)·(τ/I)·DT²`,
+  `ω += τ/I·DT`. Against the stepped agility turn (`tests/speed.rs`), base ships, 12 Oct 2026: raider 0.400 s,
+  runner 0.767 s, sample early 0.900 s, sample mid 2.033 s, **all equal to the tick** (without the substep term
+  the raider came out 0.467 s, 17% slow). It ignores what the velocity hold and the gimbals add.
+- *Yaw balance*: `yaw` is the torque the forward thrust rows make at full thrust about the centre of mass
+  (counter-clockwise positive); `yaw_hold` is what the flight computer can hold against it while flying straight
+  (pure torque plus the forward engines' gimbals; differential thrust is only used for real turns);
+  `yaw_balanced = |yaw| ≤ yaw_hold`.
+
+**Base ships** (content of 12 Oct 2026, default config):
+
+| Ship | Power supply / demand | Peak heat (full use) | Thrust → accel | Top speed | 90° turn | Firepower | Control | Device load (est / measured) |
+|---|---|---|---|---|---|---|---|---|
+| Automaton raider | 6 / 4 | 42% | 200 kN → 12.7 m/s² | 20 m/s | 0.40 s | 1.2 dps | 2 / 4 | 0.58 / 0.63 µs |
+| Halvex Runner | 54 / 50 | **109%** (shield emitter; both beams and both emitters over) | 1100 kN → 10.3 m/s² | 22 m/s | 0.77 s | 8.3 dps | 18 / 32 | 1.21 / 1.15 µs |
+| Sample early | 24 / 20 | 82% | 400 kN → 9.3 m/s² | 20 m/s | 0.90 s | 2.3 dps | 8 / 32 | 0.82 / 0.84 µs |
+| Sample mid | 58 / 44 | 78% | 1100 kN → 12.5 m/s² | 22 m/s | 2.03 s | 8.3 dps | 16 / 32 | 1.07 / 1.11 µs |
+
+The Runner overheats at full use: with both gyros, both beams and the shields running at once the emitters beside
+the fusion reactor settle at 109% of their limit (consistent with [Heat](#heat-dynamic-lumped-per-part): "flat
+out with the gyros working all the time the shield emitters overheat"). In combat it does not get there.
+
+**Device load** (GDR-0006). The estimate is a cost model per step phase, fitted with `sim_perf --calibrate`
+(10 copies of each design flying apart under pilot input with every gun firing, median step ÷ 10, split with
+`Sim::step_profiled`; native release on the dev VM, 12 Oct 2026, three runs agreeing within 3%):
+
+```
+µs/tick ≈ 0.09 per ship + 0.0043 × parts (power, heat)  + 0.0045 × (thruster rows + torque sources) (flight)
+        + 0.05 × guns + 0.27 × pieces + 0.018 × collider shapes (Rapier)
+```
+
+| Design | Parts | Flight / systems / weapons / physics µs | Measured | Estimate |
+|---|---|---|---|---|
+| Automaton raider | 9 | 0.07 / 0.06 / 0.06 / 0.44 | 0.63 | 0.58 |
+| Halvex Runner | 56 | 0.09 / 0.26 / 0.17 / 0.63 | 1.15 | 1.21 |
+| Sample early | 26 | 0.08 / 0.14 / 0.09 / 0.53 | 0.84 | 0.82 |
+| Sample mid | 42 | 0.08 / 0.20 / 0.18 / 0.62 | 1.11 | 1.07 |
+| Slab 12×10 (`sim_perf` layout) | 120 | 0.17 / 0.56 / 0.04 / 0.27 | 1.06 | 1.16 |
+| Slab 16×12 | 192 | 0.20 / 0.86 / 0.06 / 0.26 | 1.40 | 1.56 |
+| Slab 30×20 | 600 | 0.35 / 2.44 / 0.12 / 0.29 | 3.21 | 3.68 |
+| Slab 50×40 | 2000 | 0.78 / 8.05 / 1.31 / 0.38 | 10.5 | 10.4 |
+| Gunboat 50×40 (34 guns, 82 shield emitters) | 2000 | 0.77 / 8.1 / 9.2 / 0.39 | 18.8 | 11.4 |
+
+Within 15% except the gunboat: its weapons phase is not the design's alone. Every shot segment walks the whole
+bubble list of the world (`Sim::shield_pass`, friendly bubbles included until the owner check), so with 10
+gunboats (~820 bubbles) a shot costs about five times what it costs among runners. Small ships are dominated by the Rapier body (~0.27 µs) and their
+collider shapes; big ones by the power and heat passes (~4.3 ns per part). Classes (placeholders): `Light` up to
+2.5 µs (a Runner is 1.2), `Moderate` up to 10, `Heavy` up to 40 (a 2000-part slab is 10.4), `TooHeavy` above.
+The numbers are for this VM's native build; a device factor (phones are slower) is for later.
+
+**Cost of the report** (`sim_perf --report`, native release, 600 runs (60 for the slabs), three runs at load
+average 9.7 while other builds ran, medians of the run medians):
+
+| Design | Parts | Report median / p95 | of which `ShipDesign::compile` |
+|---|---|---|---|
+| Automaton raider | 9 | 4.8 / 5.5 µs | 2.5 µs |
+| Halvex Runner | 56 | 24 / 49 µs | 13 µs |
+| Sample early / mid | 26 / 42 | 11 / 18 µs | 6 / 10 µs |
+| Slab 50×40 | 2000 | 1.32 / 2.0 ms | 0.55 ms |
+
+For the slab the rest is mostly `Ship::new` (~0.15 ms) and the heat solve (~0.6 ms). A diagonal incomplete
+Cholesky preconditioner cut the CG iterations to a third (144 → 43 at 1e-9) but its triangular sweeps are
+sequential chains and came out slower; Jacobi with gather-form rows and four-lane dot products was the fastest
+of the three tried.
 
 ## Performance
 
