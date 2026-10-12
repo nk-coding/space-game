@@ -2,19 +2,23 @@
 //! Niklas picks them, then they move into content / `SimConfig` defaults.
 //!
 //! * Live (applied to the running sim with `Sim::set_config`): thrust scale, torque scale (separately or
-//!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate.
+//!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate, the
+//!   player's mind capacity (logic cores running at once; fewer than the fleet has puts the newest vessels to
+//!   sleep, GDR-0044).
 //! * Next wave: raiders per wave.
 //! * Immediate: drift default.
 //! * **Reset**: weapon range and damage scales change the content the designs are compiled from, so they
-//!   apply with "Apply & reset" (the scene restarts).
+//!   apply with "Apply & reset" (the scene restarts). The range scale applies to every side, the damage scale
+//!   to the player's ships only (the raiders keep their content damage).
 //!
-//! Every value can also come from the URL (`?thrust=4&torque=2&speed=1.5&turn=6&range=1.5&damage=1&raiders=3&drift=1`),
-//! and the panel shows that query string ready to copy.
+//! Every value can also come from the URL
+//! (`?thrust=4&torque=2&speed=1.5&turn=6&mind=24&range=1.5&damage=1&raiders=3&drift=1`), and the panel shows that
+//! query string ready to copy.
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use data::Content;
-use sim::SimConfig;
+use sim::{Owner, SimConfig};
 
 use crate::controls::PlayerInput;
 use crate::params::Params;
@@ -28,6 +32,8 @@ pub struct Tuning {
     pub link: bool,
     pub speed: f32,
     pub max_turn_rate: f32,
+    /// The player's mind capacity (`SimConfig::mind_capacity`).
+    pub mind_capacity: u32,
     pub range_scale: f32,
     pub damage_scale: f32,
     pub raiders_per_wave: u32,
@@ -48,6 +54,7 @@ impl Tuning {
             link: p.flag("link").unwrap_or(false),
             speed: p.f32("speed").unwrap_or(d.speed_scale),
             max_turn_rate: p.f32("turn").unwrap_or(d.flight.max_turn_rate),
+            mind_capacity: p.f32("mind").map(|m| m.max(0.0) as u32).unwrap_or(d.mind_capacity(Owner::PLAYER)),
             range_scale: range,
             damage_scale: damage,
             raiders_per_wave: p.f32("raiders").map(|r| r as u32).unwrap_or(3),
@@ -64,17 +71,20 @@ impl Tuning {
         c.torque_scale = self.torque;
         c.speed_scale = self.speed;
         c.flight.max_turn_rate = self.max_turn_rate;
+        c.mind_capacity[Owner::PLAYER.0 as usize] = self.mind_capacity;
         c
     }
 
-    /// Content with weapon range and damage scaled.
-    pub fn scaled_content(&self, base: &Content) -> Content {
+    /// Content with the weapon scales applied: the player's ships compile from `player` = true (range and
+    /// damage scaled), every other side's from `false` (range only).
+    pub fn scaled_content(&self, base: &Content, player: bool) -> Content {
+        let damage = if player { self.damage_scale } else { 1.0 };
         let mut c = base.clone();
-        if self.range_scale != 1.0 || self.damage_scale != 1.0 {
+        if self.range_scale != 1.0 || damage != 1.0 {
             for p in c.parts.iter_mut() {
                 if let Some(w) = p.weapon.as_mut() {
                     w.range *= self.range_scale;
-                    w.damage *= self.damage_scale;
+                    w.damage *= damage;
                 }
             }
         }
@@ -84,11 +94,12 @@ impl Tuning {
     /// The values as a copyable line and as a URL query.
     pub fn text(&self) -> String {
         format!(
-            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} weapon_range_scale={:.2} weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&range={:.2}&damage={:.2}&raiders={}&drift={}",
+            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} mind_capacity={} weapon_range_scale={:.2} player_weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&mind={}&range={:.2}&damage={:.2}&raiders={}&drift={}",
             self.thrust,
             self.torque,
             self.speed,
             self.max_turn_rate,
+            self.mind_capacity,
             self.range_scale,
             self.damage_scale,
             self.raiders_per_wave,
@@ -97,6 +108,7 @@ impl Tuning {
             self.torque,
             self.speed,
             self.max_turn_rate,
+            self.mind_capacity,
             self.range_scale,
             self.damage_scale,
             self.raiders_per_wave,
@@ -163,6 +175,7 @@ fn panel(
             }
             ui.add(egui::Slider::new(&mut t.speed, 0.25..=4.0).logarithmic(true).text("speed scale (rated speeds)"));
             ui.add(egui::Slider::new(&mut t.max_turn_rate, 0.5..=12.0).text("max turn rate"));
+            ui.add(egui::Slider::new(&mut t.mind_capacity, 1..=48).text("mind capacity (cores)"));
             ui.checkbox(&mut t.drift, "drift (released stick coasts)");
             ui.separator();
             ui.label(egui::RichText::new("Next wave").strong());
@@ -170,7 +183,7 @@ fn panel(
             ui.separator();
             ui.label(egui::RichText::new("On reset").strong());
             ui.add(egui::Slider::new(&mut t.range_scale, 0.25..=4.0).logarithmic(true).text("weapon range"));
-            ui.add(egui::Slider::new(&mut t.damage_scale, 0.25..=4.0).logarithmic(true).text("weapon damage"));
+            ui.add(egui::Slider::new(&mut t.damage_scale, 0.25..=4.0).logarithmic(true).text("weapon damage (yours)"));
             let pending = (t.range_scale, t.damage_scale) != t.applied;
             ui.horizontal(|ui| {
                 if ui.button(if pending { "Apply & reset" } else { "Reset scene" }).clicked() {

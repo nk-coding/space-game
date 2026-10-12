@@ -160,14 +160,16 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
             world
         }
         SceneKind::Sandbox | SceneKind::Showcase => {
-            let content = tuning.scaled_content(&base);
+            // The tuning's damage scale is the player's only: other sides compile from their own content.
+            let content = tuning.scaled_content(&base, true);
+            let others = tuning.scaled_content(&base, false);
             let mut sim = sim::Sim::with_config(scene.seed, tuning.config());
             match BehaviorLibrary::new(&content) {
                 Ok(lib) => sim.set_behaviors(lib),
                 Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
             }
-            let mut world = SimWorld::new(sim, content);
-            let Some(runner) = world.design("halvex_runner") else { return world };
+            let mut world = SimWorld::new(sim, content).with_others(others);
+            let Some(runner) = world.design("halvex_runner", PLAYER) else { return world };
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
             let mut fleet = vec![me];
             if scene.kind == SceneKind::Sandbox {
@@ -194,7 +196,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
                 // from (about 45-50 m), so hits come at once.
                 let attack = params.flag("fire").unwrap_or(false);
                 let (n, dist) = if attack { (tuning.raiders_per_wave.max(1), 46.0) } else { (3, 16.0) };
-                if let Some(raider) = world.design("automaton_raider") {
+                if let Some(raider) = world.design("automaton_raider", ENEMY) {
                     for k in 0..n {
                         let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
                         let pos = Vec2::new(a.cos(), a.sin()) * dist;
@@ -291,7 +293,7 @@ fn scene_tick(
         if let Some(me) = wreck {
             world.sim.remove_ship(me);
         }
-        if let Some(runner) = world.design("halvex_runner") {
+        if let Some(runner) = world.design("halvex_runner", PLAYER) {
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(at, 0.0));
             let behavior = world.sim.behaviors().default_for(&runner);
             world.sim.command(me, ShipCommand::Behavior(behavior));
@@ -322,7 +324,7 @@ fn scene_tick(
             .map(|p| v2(p.com_world()))
             .unwrap_or(Vec2::ZERO);
         let n = tuning.raiders_per_wave.max(1);
-        if let Some(raider) = world.design("automaton_raider") {
+        if let Some(raider) = world.design("automaton_raider", ENEMY) {
             let base = scene.rng.range(0.0, std::f32::consts::TAU);
             for k in 0..n {
                 let a = base + (k as f32 - (n as f32 - 1.0) / 2.0) * 0.32;

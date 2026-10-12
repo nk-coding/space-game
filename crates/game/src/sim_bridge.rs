@@ -14,7 +14,7 @@ use std::sync::Arc;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use data::Content;
-use sim::{PieceId, ShipDesign, ShipId, SimEvent, Stat};
+use sim::{Owner, PieceId, ShipDesign, ShipId, SimEvent, Stat};
 
 use crate::RenderToggles;
 use crate::atlas::Atlas;
@@ -95,9 +95,14 @@ impl HashLog {
 #[derive(Resource)]
 pub struct SimWorld {
     pub sim: SimT,
-    /// Content the designs are compiled from (weapon scales from the tuning panel applied).
+    /// Content the player's designs are compiled from (weapon scales from the tuning panel applied); the HUD
+    /// and the visuals read it too.
     pub content: Content,
-    designs: BTreeMap<String, Arc<ShipDesign>>,
+    /// Content every other owner's designs are compiled from, when it differs (the tuning's damage scale is the
+    /// player's only).
+    others: Option<Content>,
+    /// Compiled designs: the player's, every other owner's.
+    designs: [BTreeMap<String, Arc<ShipDesign>>; 2],
     visuals: BTreeMap<String, Arc<DesignVisual>>,
     /// Inputs for the next tick (filled by the scene, cleared after each step).
     pub inputs: sim::TickInputs,
@@ -115,7 +120,8 @@ impl SimWorld {
         Self {
             sim,
             content,
-            designs: BTreeMap::new(),
+            others: None,
+            designs: Default::default(),
             visuals: BTreeMap::new(),
             inputs: sim::TickInputs::default(),
             views: BTreeMap::new(),
@@ -126,16 +132,24 @@ impl SimWorld {
         }
     }
 
-    /// The compiled design of a blueprint (cached).
-    pub fn design(&mut self, id: &str) -> Option<Arc<ShipDesign>> {
-        if let Some(d) = self.designs.get(id) {
+    /// Content for every owner but the player (see [`SimWorld::others`]).
+    pub fn with_others(mut self, others: Content) -> Self {
+        self.others = Some(others);
+        self
+    }
+
+    /// The compiled design of a blueprint for ships of `owner` (cached).
+    pub fn design(&mut self, id: &str, owner: Owner) -> Option<Arc<ShipDesign>> {
+        let theirs = owner != Owner::PLAYER && self.others.is_some();
+        if let Some(d) = self.designs[theirs as usize].get(id) {
             return Some(d.clone());
         }
-        let bp = self.content.ships.get(id)?;
-        match ShipDesign::compile(&self.content, bp) {
+        let content = if theirs { self.others.as_ref()? } else { &self.content };
+        let bp = content.ships.get(id)?;
+        match ShipDesign::compile(content, bp) {
             Ok(d) => {
                 let d = Arc::new(d);
-                self.designs.insert(id.to_string(), d.clone());
+                self.designs[theirs as usize].insert(id.to_string(), d.clone());
                 Some(d)
             }
             Err(e) => {
@@ -143,11 +157,6 @@ impl SimWorld {
                 None
             }
         }
-    }
-
-    /// Drops compiled designs (after the content changed). Visuals stay (they don't depend on stats).
-    pub fn forget_designs(&mut self) {
-        self.designs.clear();
     }
 
     fn visual(&mut self, id: &str, style: &Style) -> Option<Arc<DesignVisual>> {
