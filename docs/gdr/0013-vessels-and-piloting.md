@@ -43,3 +43,6 @@ with a core, and a ship whose controlling piece lost its last core went dark for
 
 12 Oct 2026: GDR-0038 refines mind capacity: each logic core runs up to N parts, so capping the running cores
 caps ship size indirectly; drydock frames still set the grid size.
+
+12 Oct 2026: [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md): over mind capacity, the newest vessels go
+dormant first, the player can swap them in the fleet bar, and the focus vessel never goes dormant.

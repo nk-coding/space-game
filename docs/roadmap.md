@@ -29,27 +29,32 @@ Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS,
 - 30 Hz sim with 60 fps interpolation in the client.
 - Automaton raiders with a trivial AI (approach, orbit, fire). Basic weapons and damage, breakage, debris.
 
-## Next session (state at end of 12 Oct 2026)
+## In progress (12 Oct 2026, second session)
+
+Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0046, `docs/concept-notes.md`):
+- Engine rated speed instead of the soft top speed, a calm cruise flame at the cap, "Agile" ships (GDR-0041,
+  GDR-0042): agent in a worktree (sim, content, plumes, tuning panel).
+- Shields as glowing energy bubbles (GDR-0043) and a robust content embed in `data/build.rs`: agent in the
+  main tree.
+- Vessel model in `sim` (GDR-0013, 0038, 0044, 0045): agent in a worktree.
 
 Open questions for Niklas (ask interactively):
-- Ramming numbers (threshold 20 kN·s, 0.02 hp per kN·s), whether shields stop rams, whether same-team ships collide/ram each other (docs/sim.md items 11–13).
-- Armour material swatches now live in `content/base/icons/` (agent's call): fine?
-- GDR-0039: engine exhaust also hurts other ships' parts (lead's reading): fine?
-- Speed / fight length: Niklas tunes with the tuning panel (T) and reports values.
+- Ramming numbers (threshold 20 kN·s, 0.02 hp per kN·s): show him the impulses at the new speeds first.
+- Mind capacity numbers and N per core type: lead placeholders until he sets them.
 
 Client leftovers:
 - Browser-vs-native hash (`?hashlog=1&load=20` vs `determinism --scenario load`) and browser load-test numbers (`?load=1|5|20`) not run yet.
 - Mipmap generation after an atlas tier switch is one frame (178 ms hitch at tier 256); spread over frames / async on native.
 - Not verified: tuning panel visuals, touch input, `?fleet=N` wingmen and V switching; focus vessel draw order after a switch; `?damage=` scales enemy weapons too.
-- `data` build script misses files moved with preserved mtimes (git mv): the wasm embed went stale once (`cargo clean -p data --target wasm32-unknown-unknown` fixes it). Make the embed robust (e.g. hash the file list).
 
 ## Queued
 
 Now unblocked (Rapier merged):
-- Engine exhaust damages and heats parts in its path (replaces the open-space rule; plume from engine data).
+- Engine exhaust damages and heats parts in its path (replaces the open-space rule; plume from engine data);
+  hits own parts and enemies, not friendly vessels (GDR-0046). After the speed change and the vessel model
+  (needs teams).
+- Client side of the vessel model: fleet bar (wake/swap dormant vessels), focus hotkey, camera glide.
 
-- Vessel model in `sim`: cored pieces become vessels on split (inherit behavior, slot-limited), focus switching, mind capacity (running cores limit), logic cores control up to N parts each, owners/teams. Client: fleet bar, focus hotkey, camera glide.
-- Client switches to icons from the content pack (`content.icon_svg`), then `art/icons` is removed.
 
 ## Phase 4: measurement
 
@@ -58,6 +63,9 @@ Now unblocked (Rapier merged):
 - `results/spike-summary.md` answering the spike questions that can be answered without the phone.
 
 ## Later
+
+- **Fancier backdrop** (Niklas, 12 Oct 2026): planets, nebulas and so on. The current backdrop is sufficient for
+  now.
 
 - Drydock (web first), behavior trees + Rhai, salvage/research, galaxy, home ring menu.
 - Android build + phone measurements (deferred spike questions 4–7 on the phone).

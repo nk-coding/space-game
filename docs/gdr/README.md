@@ -49,6 +49,9 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0038](0038-logic-cores-control-parts.md) | Each logic core runs up to N parts; mind capacity caps the running cores and so the ship's size | Accepted | 2026-10-12 |
 | [0039](0039-engine-exhaust-hurts-parts.md) | Engines may sit anywhere; their exhaust damages and heats the parts in its path | Accepted | 2026-10-12 |
 | [0040](0040-keyboard-flight-and-smart-lock-aim.md) | PC keyboard flight controls: rotate + thrust + strafe, smart lock aim with A/D nudge | Accepted | 2026-10-12 |
+| [0044](0044-control-cost-priority-idle-dormant-newest.md) | Parts have a control cost; parts over the cores' limit idle by power priority; the newest vessels go dormant first | Accepted | 2026-10-12 |
+| [0045](0045-shields-absorb-rams-no-friendly-ram-damage.md) | Shields absorb ram damage; vessels of the same team bump without ram damage | Accepted | 2026-10-12 |
+| [0046](0046-exhaust-hits-own-parts-and-enemies.md) | Engine exhaust hits the ship's own parts and enemies, not other friendly vessels | Accepted | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
@@ -63,8 +66,9 @@ Not decided yet, so no record. Write one when Niklas decides.
 
 - **Ship speed and fight length.** With concept-board numbers ships reach ~0.7 m/s² and ~10 m/s, and a Halvex Runner kills three raiders ~15 s after contact. Niklas tunes this with live sliders in the browser build (lead's recommendation: raise thrust in content, `docs/sim.md` design question 1). The `raider_basic` distances (question 4) are tuned with it.
 - **Feel of "fly that way"** for forward-only ships: let the nose swing past the stick ("drift turn", current behaviour, recommended) or keep the nose on the stick (`docs/sim.md` design question 3).
-- **Mind capacity numbers** (start value, growth, the exclusive resource) and the parts per core ([GDR-0013](0013-vessels-and-piloting.md), [GDR-0038](0038-logic-cores-control-parts.md)); which parts count against a core and what happens to parts beyond the limit (GDR-0038).
-- **Engine plume** numbers and details: throttle scaling, thrust when blocked, shields ([GDR-0039](0039-engine-exhaust-hurts-parts.md)).
+- **Mind capacity numbers** (start value, growth, the exclusive resource) and N parts per core type ([GDR-0013](0013-vessels-and-piloting.md), [GDR-0038](0038-logic-cores-control-parts.md), [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md)); lead placeholders until then.
+- **Engine plume** numbers and details: throttle scaling, thrust when blocked, shields ([GDR-0039](0039-engine-exhaust-hurts-parts.md); who it hits: [GDR-0046](0046-exhaust-hits-own-parts-and-enemies.md)).
+- **Ramming numbers** (threshold 20 kN·s, 0.02 hp per kN·s): retuned after the speed change, then shown to Niklas (`docs/sim.md` design question 11).
 - **Other research sources** besides salvage and scans ([GDR-0025](0025-research-from-salvage.md)).
 - **Tree size per family** that stays fun instead of tedious ([GDR-0024](0024-tech-trees-no-mk-levels.md)).
 - **Overdrive** details ([GDR-0004](0004-grid-ship-building-no-wiring.md)); **missiles, disruption and drones** are not built yet ([GDR-0018](0018-weapon-families.md)).

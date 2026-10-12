@@ -38,3 +38,6 @@ behind it gives no thrust, and the validator warns about a blocked exhaust.
 - RCS pods are unchanged: engine rules never apply to them (GDR-0010).
 - Open, to decide with the implementation: the plume numbers per engine (placeholders), whether damage and
   heat scale with throttle, whether a blocked plume still gives full thrust, and whether shields stop it.
+
+12 Oct 2026: [GDR-0046](0046-exhaust-hits-own-parts-and-enemies.md) settles the lead's reading: the plume hits the
+ship's own parts and enemies, not other friendly vessels.

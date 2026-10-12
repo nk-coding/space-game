@@ -34,3 +34,7 @@ capacity had meant "how many parts the ship-mind controls". Nothing tied a core 
 - Open, to decide with the vessel model: which parts count (every part, or only parts that do something, not
   armor); what happens to parts beyond the limit (for example after a core is shot away mid-fight); N per core
   type; the mind capacity numbers (still open from GDR-0013).
+
+12 Oct 2026: [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md) answers the open questions: parts have a control
+cost in their data (structure 0); parts over the limit go idle by power priority; the newest vessels go dormant
+first. N per core type and the mind capacity numbers stay open.

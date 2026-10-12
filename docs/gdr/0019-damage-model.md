@@ -29,3 +29,6 @@ and how armor and slopes pay off.
 
 - The v1 implementation details are lead defaults (GDR-0020).
 - Ramming waits for collisions from the physics engine (ADR-0014).
+
+12 Oct 2026: [GDR-0045](0045-shields-absorb-rams-no-friendly-ram-damage.md): shields absorb ram damage, and vessels of
+the same team bump without ram damage.
