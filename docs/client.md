@@ -162,7 +162,8 @@ under the scene title, shown while the player flies a vessel and has two or more
 - **Chips**, one per vessel in `Sim::vessels(PLAYER)` order (ascending ship id, the V order), numbered from 1:
   violet pips for the logic cores (`VesselInfo::cores`), a thin bar of the control load against the capacity
   (`VesselInfo::control`: teal, gold above 85 %, coral while parts idle; empty while dormant) and a state word:
-  `PILOT` (the focus: teal number and corner brackets), `AUTO`, `DARK` (coral), `DORMANT` (dimmed). Hover
+  `PILOT` (the focus: teal number and corner brackets), `AUTO`, `DARK` (coral; a dark focus keeps its teal
+  number and brackets), `DORMANT` (dimmed). Hover
   brightens the brackets. Chips are 68 × 50 px.
 - **Input**: a click or tap on a chip sends `ShipCommand::Focus` (running or dark vessel) or `ShipCommand::Wake`
   (dormant: it swaps in, the newest vessel not woken since goes dormant, GDR-0044); a tap on the focus does

@@ -40,8 +40,8 @@ Hotkeys:
 - A **mind row**: `MIND 8 / 24` (logic cores running against the mind capacity) and a thin violet bar.
 - One **chip** per vessel, in ship-id order (the V order), numbered from 1: one violet pip per logic core, a thin
   bar of its control load against its capacity (teal; gold above 85 %; coral while parts idle), and a state word:
-  `PILOT` (the focus, teal corner brackets), `AUTO` (runs its behavior), `DARK` (cores unpowered or overheated,
-  coral), `DORMANT` (over the mind capacity, dimmed). Chips are 68 × 50 px (touch targets above 44 px).
+  `PILOT` (the focus), `AUTO` (runs its behavior), `DARK` (cores unpowered or overheated, coral; also for a dark
+  focus), `DORMANT` (over the mind capacity, dimmed). The focus has a teal number and teal corner brackets. Chips are 68 × 50 px (touch targets above 44 px).
 - Shown while the player flies a vessel and has two or more vessels or any dormant one; hidden with the HUD (H).
 - A click or tap on a running or dark vessel focuses it; on a dormant one wakes it (another goes dormant); on the
   focus does nothing. Clicks on the bar never lock or fire in the world.

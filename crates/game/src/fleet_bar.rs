@@ -6,8 +6,8 @@
 //!   violet bar.
 //! * One **chip** per vessel: its number, one violet pip per logic core, a thin bar of its control load against
 //!   its capacity (teal, gold above 85 %, coral while parts idle) and a state word: `PILOT` (the focus), `AUTO`
-//!   (running its behavior), `DARK` (cores unpowered or overheated), `DORMANT` (over the mind capacity). The
-//!   focus has bright teal corner brackets.
+//!   (running its behavior), `DARK` (cores unpowered or overheated; also for a dark focus), `DORMANT` (over the
+//!   mind capacity). The focus has a teal number and bright teal corner brackets.
 //! * Click or tap a chip: a running or dark vessel takes the focus (`ShipCommand::Focus`), a dormant one wakes
 //!   (`ShipCommand::Wake`: it swaps in, the newest other vessel goes dormant).
 //! * Shown only while the player flies a vessel and has two or more, or any dormant one; single-ship play stays
@@ -378,8 +378,9 @@ fn update_bar(
             };
         } else if let Some(&ChipState(k)) = state {
             let Some(v) = chip_info(k) else { continue };
+            // A dark focus says DARK (its teal brackets still mark the focus).
             let (word, wc) = match v.state {
-                _ if v.focus => ("PILOT", ui.teal),
+                VesselState::Running if v.focus => ("PILOT", ui.teal),
                 VesselState::Running => ("AUTO", ui.label),
                 VesselState::Dark => ("DARK", ui.coral),
                 VesselState::Dormant => ("DORMANT", ui.dim),
