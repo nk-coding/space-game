@@ -41,3 +41,8 @@ behind it gives no thrust, and the validator warns about a blocked exhaust.
 
 12 Oct 2026: [GDR-0046](0046-exhaust-hits-own-parts-and-enemies.md) settles the lead's reading: the plume hits the
 ship's own parts and enemies, not other friendly vessels.
+
+12 Oct 2026: implemented; the clear-exhaust rule is gone. [GDR-0049](0049-engine-plume-v1.md) records the lead
+defaults for the open questions (Accepted, provisional): damage and heat scale with the engine's thrust output, a
+blocked plume keeps full thrust, bubbles of non-friendly ships absorb the plume like energy damage (own bubbles
+never), each plume lane stops at the first part it hits; plume numbers per engine in the content (placeholders).

@@ -518,11 +518,23 @@ impl Physics {
         max_distance: f32,
         exclude: Option<ShipId>,
     ) -> Option<RayHit> {
+        self.raycast_skipping(origin, dir, max_distance, |key| {
+            exclude.is_some_and(|s| key.ship == s)
+        })
+    }
+
+    /// [`Physics::raycast`] that ignores every body for which `skip(key)` is true (the sim's shots and plumes
+    /// pass through friendly vessels). `skip` runs only for bodies whose bounding box the ray crosses.
+    pub(crate) fn raycast_skipping(
+        &self,
+        origin: Vec2,
+        dir: Vec2,
+        max_distance: f32,
+        skip: impl Fn(BodyKey) -> bool,
+    ) -> Option<RayHit> {
         let w = &self.world;
-        let skip = |_: ColliderHandle, c: &rapier2d::prelude::Collider| {
-            exclude.is_none_or(|s| c.user_data as u32 != s.0)
-        };
-        let filter = QueryFilter::default().predicate(&skip);
+        let keep = |_: ColliderHandle, c: &rapier2d::prelude::Collider| !skip(key_of(c.user_data));
+        let filter = QueryFilter::default().predicate(&keep);
         let qp = w.broad_phase.as_query_pipeline(
             w.narrow_phase.query_dispatcher(),
             &w.bodies,

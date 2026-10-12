@@ -79,10 +79,16 @@ pub enum Stat {
     RatedSpeed,
     /// RCS nozzle rated speed (m/s).
     RcsRatedSpeed,
+    /// Engine plume reach behind the engine (m).
+    PlumeLength,
+    /// Engine plume damage per second at full thrust.
+    PlumeDamage,
+    /// Engine plume heat per second at full thrust.
+    PlumeHeat,
 }
 
 impl Stat {
-    pub const COUNT: usize = 17;
+    pub const COUNT: usize = 20;
 
     pub fn from_id(id: &str) -> Option<Stat> {
         Some(match id {
@@ -103,6 +109,9 @@ impl Stat {
             "shield_regen" => Stat::ShieldRegen,
             "rated_speed" => Stat::RatedSpeed,
             "rcs_rated_speed" => Stat::RcsRatedSpeed,
+            "plume_length" => Stat::PlumeLength,
+            "plume_damage" => Stat::PlumeDamage,
+            "plume_heat" => Stat::PlumeHeat,
             _ => return None,
         })
     }
@@ -248,6 +257,17 @@ pub struct EngineSpec {
     pub point: [f32; 2],
     /// The side the engine pushes towards (the exhaust leaves through the opposite side).
     pub facing: Dir,
+    /// Its plume lanes: `ShipDesign::plume_lanes[lanes[0]..lanes[1]]`, one per cell of its back side.
+    pub lanes: [u32; 2],
+}
+
+/// One lane of an engine's exhaust plume: a straight line from the back face of one of the engine's cells,
+/// along the exhaust (away from `EngineSpec::facing`). The plume's damage and heat are shared evenly over the
+/// engine's lanes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlumeLane {
+    /// Centre of the cell's back face, blueprint frame: where the plume leaves the engine.
+    pub origin: [f32; 2],
 }
 
 /// A blueprint compiled for the simulation. Immutable; shared by all ships of this design.
@@ -273,8 +293,12 @@ pub struct ShipDesign {
     pub slot_of_part: Vec<u32>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
     pub gun_blockers: Csr<PartIdx>,
-    /// Parts that block each engine's exhaust (cells directly behind), per engine slot.
-    pub exhaust_blockers: Csr<PartIdx>,
+    /// Every engine's plume lanes (see `EngineSpec::lanes`).
+    pub plume_lanes: Vec<PlumeLane>,
+    /// Per plume lane, the parts in its path to the grid edge in order: `(distance, part)`, the distance (m)
+    /// from the lane's origin to where the plume enters the part's first cell on the lane. A plume burns the
+    /// first of them that is alive and in the engine's piece, if it is within its length (`plume.rs`).
+    pub plume_path: Csr<(f32, PartIdx)>,
     /// Content problems that do not stop the sim (e.g. bonuses on stats the sim does not model yet).
     pub warnings: Vec<String>,
     /// Hit points of the intact ship (sum over all parts): the 100% of the `hull` behavior sensors.
@@ -342,6 +366,10 @@ impl ShipDesign {
                 Stat::RatedSpeed,
                 def.engine.as_ref().map_or(0.0, |e| e.rated_speed),
             );
+            let plume = def.engine.as_ref().map(|e| &e.plume);
+            base.set(Stat::PlumeLength, plume.map_or(0.0, |p| p.length));
+            base.set(Stat::PlumeDamage, plume.map_or(0.0, |p| p.damage));
+            base.set(Stat::PlumeHeat, plume.map_or(0.0, |p| p.heat));
             let shield = def.shield.as_ref();
             base.set(Stat::ShieldRadius, shield.map_or(0.0, |s| s.radius));
             base.set(Stat::ShieldCapacity, shield.map_or(0.0, |s| s.capacity));
@@ -495,7 +523,8 @@ impl ShipDesign {
         let mut engines = Vec::new();
         let mut guns = Vec::new();
         let mut gun_blockers = Vec::new();
-        let mut exhaust_blockers = Vec::new();
+        let mut plume_lanes = Vec::new();
+        let mut plume_path = Vec::new();
         for (i, spec) in parts.iter().enumerate() {
             let shape = spec.shape;
             let (w, h) = shape.dims();
@@ -503,12 +532,14 @@ impl ShipDesign {
             let facing = shape.facing();
             if spec.is_engine {
                 slot_of_part[i] = engines.len() as u32;
+                let first = plume_lanes.len() as u32;
+                lanes_of(&grid, i, facing.opposite(), bounds, &mut plume_lanes, &mut plume_path);
                 engines.push(EngineSpec {
                     part: i as u32,
                     point: shape.center(),
                     facing,
+                    lanes: [first, plume_lanes.len() as u32],
                 });
-                exhaust_blockers.push(border_scan(&grid, i, facing.opposite(), false, bounds));
             } else if spec.weapon.is_some() {
                 slot_of_part[i] = guns.len() as u32;
                 let muzzle = match facing {
@@ -522,7 +553,7 @@ impl ShipDesign {
                     muzzle,
                     facing,
                 });
-                gun_blockers.push(border_scan(&grid, i, facing, true, bounds));
+                gun_blockers.push(line_of_fire_blockers(&grid, i, facing, bounds));
             }
         }
 
@@ -540,7 +571,8 @@ impl ShipDesign {
             guns,
             slot_of_part,
             gun_blockers: Csr::from_lists(gun_blockers),
-            exhaust_blockers: Csr::from_lists(exhaust_blockers),
+            plume_lanes,
+            plume_path: Csr::from_lists(plume_path),
             warnings,
             hp_total,
             behavior: content.ship_behavior(ship).map(|b| b.id.clone()),
@@ -552,40 +584,77 @@ impl ShipDesign {
     }
 }
 
-/// Parts in the cells beyond part `i`'s `dir` side: only the adjacent row (`to_edge == false`, exhaust) or
-/// every cell to the edge of the grid (`to_edge == true`, line of fire). Same rule as
-/// `ShipGrid::exhaust_clear` / `line_of_fire_clear`, but returning the blockers so breakage can re-check cheaply.
-fn border_scan(
+/// Parts in the cells straight ahead of gun `i`'s `dir` side, to the edge of the grid. Same rule as
+/// `ShipGrid::line_of_fire_clear`, but returning the blockers so breakage can re-check cheaply.
+fn line_of_fire_blockers(
     grid: &ShipGrid,
     i: usize,
     dir: Dir,
-    to_edge: bool,
     bounds: Option<data::Bounds>,
 ) -> Vec<PartIdx> {
-    let (dx, dy) = dir.delta();
-    let Some(b) = bounds else {
-        return Vec::new();
-    };
-    let inside = |(x, y): (i32, i32)| x >= b.min_x && y >= b.min_y && x < b.max_x && y < b.max_y;
     let mut out = Vec::new();
-    for c in grid.shape(i).cells() {
-        if grid.occupant((c.0 + dx, c.1 + dy)) == Some(i) {
-            continue;
-        }
-        let mut p = (c.0 + dx, c.1 + dy);
-        while inside(p) {
+    for c in border_cells(grid, i, dir) {
+        for (_, p) in cells_beyond(c, dir, bounds) {
             if let Some(o) = grid.occupant(p)
                 && o != i
             {
-                out.push(o as u32);
+                out.push(o as PartIdx);
             }
-            if !to_edge {
-                break;
-            }
-            p = (p.0 + dx, p.1 + dy);
         }
     }
     out.sort_unstable();
     out.dedup();
     out
+}
+
+/// The plume lanes of engine `i` exhausting towards `dir`: one per cell on its back side, each with the parts in
+/// its path to the grid edge, in order, with the distance from the lane's origin to their first cell on it.
+fn lanes_of(
+    grid: &ShipGrid,
+    i: usize,
+    dir: Dir,
+    bounds: Option<data::Bounds>,
+    lanes: &mut Vec<PlumeLane>,
+    paths: &mut Vec<Vec<(f32, PartIdx)>>,
+) {
+    for c in border_cells(grid, i, dir) {
+        lanes.push(PlumeLane {
+            origin: dir.side_center(c),
+        });
+        let mut path: Vec<(f32, PartIdx)> = Vec::new();
+        for (k, p) in cells_beyond(c, dir, bounds) {
+            if let Some(o) = grid.occupant(p)
+                && o != i
+                && path.last().is_none_or(|&(_, q)| q != o as PartIdx)
+            {
+                path.push((k as f32, o as PartIdx));
+            }
+        }
+        paths.push(path);
+    }
+}
+
+/// Cells of part `i` on its `dir` side whose neighbour in `dir` is not part of `i`.
+fn border_cells(grid: &ShipGrid, i: usize, dir: Dir) -> impl Iterator<Item = data::Cell> + '_ {
+    let (dx, dy) = dir.delta();
+    grid.shape(i)
+        .cells()
+        .into_iter()
+        .filter(move |c| grid.occupant((c.0 + dx, c.1 + dy)) != Some(i))
+}
+
+/// The cells beyond cell `c` in direction `dir` up to the edge of `bounds`, with the number of cells passed
+/// before each (0 for the neighbour of `c`).
+fn cells_beyond(
+    c: data::Cell,
+    dir: Dir,
+    bounds: Option<data::Bounds>,
+) -> impl Iterator<Item = (usize, data::Cell)> {
+    let (dx, dy) = dir.delta();
+    let inside = move |(x, y): data::Cell| {
+        bounds.is_some_and(|b| x >= b.min_x && y >= b.min_y && x < b.max_x && y < b.max_y)
+    };
+    (1..)
+        .map(move |k: i32| (k as usize - 1, (c.0 + dx * k, c.1 + dy * k)))
+        .take_while(move |&(_, p)| inside(p))
 }

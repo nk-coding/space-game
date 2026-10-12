@@ -315,7 +315,7 @@ fn draw_ships_fx(
                 // helm asks for. `calm` = how much of the flame is cruise rather than burn.
                 let cruise = if th.rcs { 0.0 } else { piece.cruise.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0) };
                 let level = out.max(cruise);
-                if level < 0.02 || !th.clear {
+                if level < 0.02 {
                     view.emit[i] = 0.0;
                     continue;
                 }

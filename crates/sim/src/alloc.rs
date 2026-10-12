@@ -61,9 +61,6 @@ impl AllocTable {
     pub fn build(th: &[Thruster]) -> AllocTable {
         let mut t = AllocTable::default();
         for (i, x) in th.iter().enumerate() {
-            if !x.clear {
-                continue;
-            }
             t.groups[group_of(x.dir)].push(i as u32);
             if x.torque_per_force > 0.0 {
                 t.pos.push(i as u32);
@@ -161,7 +158,7 @@ fn greedy<I: Iterator<Item = u32>>(
 }
 
 /// Allocates `force` (piece frame, kN) and `torque` (kN·m) over the actuators. `fmax[i]`: available force of
-/// row `i` now, after the rated-speed falloff (0 for blocked, overheated or dead engines, and at the rating);
+/// row `i` now, after the rated-speed falloff (0 for rows that cannot push this tick, and at the rating);
 /// `tmax[j]`: available torque of source `j`.
 /// `differential`: may add unrequested thrust to turn (step 4); the flight computer allows it only for real
 /// turns, not for holding a heading. Writes `out` (resized by the caller) and returns the expected wrench.

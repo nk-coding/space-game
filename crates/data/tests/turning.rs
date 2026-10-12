@@ -52,7 +52,7 @@ fn turning_stat_lines() {
     );
     let thruster = lines("thruster");
     let ids: Vec<&str> = thruster.iter().map(|(s, _)| s.as_str()).collect();
-    // stats.ron order: thrust, rated speed, then gimbal.
+    // stats.ron order: thrust, rated speed, gimbal, then the plume.
     assert_eq!(
         ids,
         [
@@ -64,11 +64,15 @@ fn turning_stat_lines() {
             "heat_limit",
             "thrust",
             "rated_speed",
-            "gimbal"
+            "gimbal",
+            "plume_length",
+            "plume_damage",
+            "plume_heat"
         ]
     );
     assert_eq!(thruster[7].1, "20 m/s");
-    assert_eq!(thruster.last().unwrap().1, "5°");
+    assert_eq!(thruster[8].1, "5°");
+    assert_eq!(thruster[9].1, "3 m");
     assert!(lines("logic_core").iter().any(|(s, _)| s == "torque"));
 }
 
@@ -155,12 +159,15 @@ fn load(path: &str, ron: &str) -> Result<Content, Vec<data::Problem>> {
     ])
 }
 
+/// A harmless engine plume for test parts (the plume is required).
+const PLUME: &str = "plume: (length: 1, damage: 0, heat: 0)";
+
 #[test]
 fn turning_validation() {
     let head = r#"id: "p", name: "P", summary: "S.", category: "propulsion", size: (1, 1), build_points: 1, mass: 1, hp: 1"#;
     let err = load(
         "parts/p.ron",
-        &format!("({head}, engine: (thrust: 5, rated_speed: 10, gimbal: 60))"),
+        &format!("({head}, engine: (thrust: 5, rated_speed: 10, gimbal: 60, {PLUME}))"),
     )
     .unwrap_err();
     assert!(
@@ -193,17 +200,37 @@ fn turning_validation() {
         show(&err)
     );
     // Gimbal defaults to 0 and is optional.
-    load("parts/p.ron", &format!("({head}, engine: (thrust: 5, rated_speed: 10))")).unwrap();
+    load("parts/p.ron", &format!("({head}, engine: (thrust: 5, rated_speed: 10, {PLUME}))")).unwrap();
     // The rated speed is required (a parse error) and positive (engines and RCS).
-    let missing = format!("({head}, engine: (thrust: 5))");
+    let missing = format!("({head}, engine: (thrust: 5, {PLUME}))");
     let err = Pack::from_files([("pack.ron", MOD), ("parts/p.ron", missing.as_str())]).unwrap_err();
     assert!(err.iter().any(|p| p.message.contains("rated_speed")), "{}", show(&err));
-    for block in ["engine: (thrust: 5, rated_speed: 0)", "rcs: (thrust: 5, rated_speed: -3)"] {
+    for block in [
+        format!("engine: (thrust: 5, rated_speed: 0, {PLUME})"),
+        "rcs: (thrust: 5, rated_speed: -3)".to_string(),
+    ] {
         let err = load("parts/p.ron", &format!("({head}, {block})")).unwrap_err();
         assert!(
             err.iter()
                 .any(|p| p.field.as_deref().is_some_and(|f| f.ends_with(".rated_speed"))),
             "{block}: {}",
+            show(&err)
+        );
+    }
+    // The plume is required too (GDR-0049); its numbers are not negative and its length at most 50 m.
+    let missing = format!("({head}, engine: (thrust: 5, rated_speed: 10))");
+    let err = Pack::from_files([("pack.ron", MOD), ("parts/p.ron", missing.as_str())]).unwrap_err();
+    assert!(err.iter().any(|p| p.message.contains("plume")), "{}", show(&err));
+    for (plume, field) in [
+        ("(length: 1, damage: -1, heat: 0)", "engine.plume.damage"),
+        ("(length: 1, damage: 0, heat: -2)", "engine.plume.heat"),
+        ("(length: 80, damage: 1, heat: 1)", "engine.plume.length"),
+    ] {
+        let block = format!("({head}, engine: (thrust: 5, rated_speed: 10, plume: {plume}))");
+        let err = load("parts/p.ron", &block).unwrap_err();
+        assert!(
+            err.iter().any(|p| p.field.as_deref() == Some(field)),
+            "{plume}: {}",
             show(&err)
         );
     }

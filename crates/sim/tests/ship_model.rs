@@ -216,7 +216,7 @@ fn runner_power_balance() {
     assert_eq!(p.power.supply, bonus);
     assert!(bonus > base, "venting radiators beside reactors add power");
     // Demand at full throttle with guns firing (raw controls: gyros idle): guns with a clear line of fire,
-    // shields, cores, engines with a clear exhaust.
+    // shields, cores, engines.
     let want: f32 = p
         .consumers()
         .iter()
@@ -461,7 +461,7 @@ fn runner_thrusts_straight_at_full_throttle() {
     assert!(
         p.thrusters
             .iter()
-            .all(|t| t.clear && t.dir == Vec2::new(0.0, 1.0))
+            .all(|t| t.dir == Vec2::new(0.0, 1.0) && t.plume_length > 0.0)
     );
     let full = p.max_wrench(&[1.0, 1.0, 1.0]);
     assert!(close(full.force.x, 0.0, 1e-6) && close(full.force.y, total, 1e-3));
@@ -483,31 +483,6 @@ fn runner_thrusts_straight_at_full_throttle() {
     w.step(&inputs(s, controls(3, 1.0, false, true)));
     let p = &w.ship(s).unwrap().pieces()[0];
     assert!(close(p.wrench.force.y, total, 1e-3) && p.wrench.torque.abs() < 1e-2);
-}
-
-#[test]
-fn blocked_exhaust_gives_no_thrust_until_cleared() {
-    let c = content();
-    let d = custom(
-        &c,
-        &[
-            ("logic_core", 0, 0, 0, false, None),
-            ("fission_reactor", 1, 0, 0, false, None),
-            ("thruster", 1, 1, 0, false, None),
-            ("armor_block", 1, 2, 0, false, Some("steel")),
-        ],
-    );
-    let (mut w, s) = world_with(d.clone());
-    w.step(&inputs(s, controls(1, 1.0, false, true)));
-    let p = &w.ship(s).unwrap().pieces()[0];
-    assert!(!p.thrusters[0].clear);
-    assert_eq!(p.wrench, sim::Wrench::default());
-    assert_eq!(p.authority.forward, 0.0);
-    w.apply_damage(s, DamageTarget::Cell((1, 2)), 10.0);
-    w.step(&inputs(s, controls(1, 1.0, false, true)));
-    let p = &w.ship(s).unwrap().pieces()[0];
-    assert!(p.thrusters[0].clear);
-    assert!(close(p.wrench.force.y, engine(&c, "thruster").0, 1e-4));
 }
 
 // ---------- guns ----------

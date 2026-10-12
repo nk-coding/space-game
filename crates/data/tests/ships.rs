@@ -328,9 +328,6 @@ fn guns_and_engines_of_base_ships() {
     let grid = c.ship_grid(ship).unwrap();
     for (i, p) in ship.parts.iter().enumerate() {
         let part = c.parts.get(&p.part).unwrap();
-        if part.engine.is_some() {
-            assert!(grid.exhaust_clear(i), "{} at {},{}", p.part, p.x, p.y);
-        }
         if part.weapon.is_some() {
             assert!(grid.line_of_fire_clear(i), "{} at {},{}", p.part, p.x, p.y);
         }

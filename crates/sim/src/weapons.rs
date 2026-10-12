@@ -6,9 +6,13 @@
 //!   tick the segment they travel is ray-cast. On a hit they damage the block and, if it breaks, carry the
 //!   excess through up to `penetration` blocks of that piece (grid walk). Recoil pushes the shooter. Shallow
 //!   hits on a slope face (more than 60° from its normal) ricochet with less speed and damage.
+//! * **No friendly fire** (GDR-0048): shots ignore the shooter's own ship and every vessel of its owner (the
+//!   owner it was fired with, kept by projectiles): no hit, no damage, no shield drain; they fly on. Salvage and
+//!   other owners are hit.
 //! * **Shields**: every working emitter projects a bubble (`shield_radius`) around itself. A shot that enters a
-//!   bubble of another ship loses `damage × absorb[family]` to it (up to what the bubble has left); bubbles
-//!   along the path are crossed in order, so overlapping bubbles stack. A shot starting inside a bubble passes.
+//!   bubble of a non-friendly ship loses `damage × absorb[family]` to it (up to what the bubble has left);
+//!   bubbles along the path are crossed in order, so overlapping bubbles stack. A shot starting inside a bubble
+//!   passes.
 //!   Ram damage (GDR-0045) at a contact point inside bubbles is absorbed the same way, with the kinetic share,
 //!   by every bubble covering the point except the rammer's own ([`Sim::ram_shields`]).
 //! * **Ram crush** (GDR-0047): what is left of the ram damage hits the touching part and carries inward past
@@ -31,6 +35,7 @@ use crate::math::{Rot, Vec2};
 use crate::physics::BodyKey;
 use crate::physics::RayHit;
 use crate::ship::Ship;
+use crate::vessel::{Owner, friendly};
 use crate::world::Sim;
 
 /// Weapon tuning. **PLACEHOLDERS.**
@@ -76,7 +81,11 @@ pub enum GoneReason {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Projectile {
     pub id: ProjectileId,
+    /// The ship that fired it (never hit by it).
     pub owner: ShipId,
+    /// The owner it was fired for (GDR-0048): it passes through every vessel of this owner, even if the ship
+    /// that fired it has become salvage since. `None`: fired by salvage (tools), friendly to nobody.
+    pub team: Option<Owner>,
     pub family: WeaponFamily,
     /// World position now and at the end of the previous tick (render: lerp `prev_pos → pos` by alpha).
     pub pos: Vec2,
@@ -117,12 +126,15 @@ pub struct Bubble {
     pub capacity: f32,
     pub absorb: [f32; FAMILIES],
     pub(crate) ship_index: usize,
+    /// The bubble's vessel owner (bubbles exist only on running vessels).
+    pub(crate) team: Option<crate::vessel::Owner>,
 }
 
 impl StateHash for Projectile {
     fn hash_state(&self, h: &mut StateHasher) {
         h.u32(self.id.0);
         h.u32(self.owner.0);
+        h.u32(self.team.map_or(u32::MAX, |o| o.0 as u32));
         h.u32(family_index(self.family) as u32);
         h.vec2(self.pos);
         h.vec2(self.vel);
@@ -223,12 +235,14 @@ struct ShotEnd {
 }
 
 impl Sim {
-    /// Weapons for one tick: bubbles, projectile flight, gun fire. Called by `step` after the systems.
+    /// Weapons for one tick: bubbles, projectile flight, gun fire, engine plumes (`plume.rs`). Called by `step`
+    /// after the systems.
     pub(crate) fn weapons_step(&mut self) {
         self.beams.clear();
         self.collect_bubbles();
         self.advance_projectiles();
         self.fire_guns();
+        self.plumes();
     }
 
     fn collect_bubbles(&mut self) {
@@ -258,17 +272,21 @@ impl Sim {
                         capacity: st.get(crate::Stat::ShieldCapacity),
                         absorb: spec.absorb,
                         ship_index: k,
+                        team: ship.piece_team(piece.id),
                     });
                 }
             }
         }
     }
 
-    /// Bubbles of other ships the segment `from + t·dir, t ∈ [0, len]` enters take their share of `damage`, in
-    /// order along the path. Returns the distance where the shot was fully absorbed, if it was.
+    /// Bubbles of non-friendly ships (not the shooter `owner`'s, not those of `team`'s vessels) the segment
+    /// `from + t·dir, t ∈ [0, len]` enters take their share of `damage`, in order along the path. Returns the
+    /// distance where the shot was fully absorbed, if it was.
+    #[allow(clippy::too_many_arguments)]
     fn shield_pass(
         &mut self,
         owner: ShipId,
+        team: Option<Owner>,
         family: WeaponFamily,
         from: Vec2,
         dir: Vec2,
@@ -282,7 +300,11 @@ impl Sim {
         let entries = &mut self.shield_scratch;
         entries.clear();
         for (b, bub) in self.bubbles.iter().enumerate() {
-            if bub.ship == owner || bub.left <= 0.0 || bub.absorb[fi] <= 0.0 {
+            if bub.ship == owner
+                || friendly(team, bub.team)
+                || bub.left <= 0.0
+                || bub.absorb[fi] <= 0.0
+            {
                 continue;
             }
             let oc = from - bub.centre;
@@ -318,7 +340,14 @@ impl Sim {
     /// Bubble `b` takes its share of `damage` (family index `fi`): `damage × absorb[fi]`, up to what it has
     /// left. Updates the emitter (collapses at 0), reports a `ShieldHit` at `point` by `by` and returns what
     /// it took.
-    fn absorb(&mut self, b: usize, fi: usize, by: ShipId, point: Vec2, damage: f32) -> f32 {
+    pub(crate) fn absorb(
+        &mut self,
+        b: usize,
+        fi: usize,
+        by: ShipId,
+        point: Vec2,
+        damage: f32,
+    ) -> f32 {
         let bub = &mut self.bubbles[b];
         let take = (damage * bub.absorb[fi]).min(bub.left);
         if take <= 0.0 {
@@ -373,7 +402,7 @@ impl Sim {
     }
 
     /// The part under a ray hit and its ship index.
-    fn hit_target(&self, h: &RayHit) -> Option<(usize, PartIdx)> {
+    pub(crate) fn hit_target(&self, h: &RayHit) -> Option<(usize, PartIdx)> {
         let k = self
             .ships
             .binary_search_by_key(&h.key.ship, |s| s.id())
@@ -417,20 +446,37 @@ impl Sim {
         out
     }
 
+    /// The first body a shot of ship `owner` (fired for `team`) hits: never its own ship nor a vessel of its
+    /// owner (GDR-0048).
+    fn shot_cast(
+        &self,
+        owner: ShipId,
+        team: Option<Owner>,
+        from: Vec2,
+        dir: Vec2,
+        len: f32,
+    ) -> Option<RayHit> {
+        self.physics.raycast_skipping(from, dir, len, |key| {
+            key.ship == owner || friendly(team, self.body_team(key))
+        })
+    }
+
     /// A hit-scan shot (beam tick or pulse): shields along the way, then the first block only.
+    #[allow(clippy::too_many_arguments)]
     fn hitscan(
         &mut self,
         owner: ShipId,
+        team: Option<Owner>,
         family: WeaponFamily,
         from: Vec2,
         dir: Vec2,
         range: f32,
         damage: f32,
     ) -> ShotEnd {
-        let hit = self.physics.raycast(from, dir, range, Some(owner));
+        let hit = self.shot_cast(owner, team, from, dir, range);
         let len = hit.map_or(range, |h| h.distance);
         let mut left = damage;
-        if let Some(t) = self.shield_pass(owner, family, from, dir, len, &mut left) {
+        if let Some(t) = self.shield_pass(owner, team, family, from, dir, len, &mut left) {
             return ShotEnd {
                 to: from + dir * t,
                 hit: false,
@@ -598,10 +644,11 @@ impl Sim {
                 if remaining <= 0.0 {
                     break;
                 }
-                let hit = self.physics.raycast(p.pos, dir, remaining, Some(p.owner));
+                let hit = self.shot_cast(p.owner, p.team, p.pos, dir, remaining);
                 let len = hit.map_or(remaining, |h| h.distance);
                 let before = p.damage;
-                if let Some(t) = self.shield_pass(p.owner, p.family, p.pos, dir, len, &mut p.damage)
+                if let Some(t) =
+                    self.shield_pass(p.owner, p.team, p.family, p.pos, dir, len, &mut p.damage)
                 {
                     p.pos += dir * t;
                     gone = Some(GoneReason::Absorbed);
@@ -675,6 +722,7 @@ impl Sim {
 
     fn fire_gun(&mut self, k: usize, owner: ShipId, pi: usize, gi: usize) {
         let ship: &Ship = &self.ships[k];
+        let team = ship.team();
         let piece = &ship.pieces[pi];
         let g = piece.guns[gi];
         let slot = g.slot as usize;
@@ -695,7 +743,7 @@ impl Sim {
         let com_local = piece.mass.com;
         match g.delivery {
             Delivery::Beam => {
-                let end = self.hitscan(owner, g.family, from, dir, g.range, g.output * DT);
+                let end = self.hitscan(owner, team, g.family, from, dir, g.range, g.output * DT);
                 self.beams.push(BeamTrace {
                     ship: owner,
                     piece: pid,
@@ -714,8 +762,15 @@ impl Sim {
                     self.ships[k].gun_cooldown[slot] += 1.0 / g.rate;
                     match g.delivery {
                         Delivery::Pulse { .. } => {
-                            let end =
-                                self.hitscan(owner, g.family, from, dir, g.range, g.shot_damage);
+                            let end = self.hitscan(
+                                owner,
+                                team,
+                                g.family,
+                                from,
+                                dir,
+                                g.range,
+                                g.shot_damage,
+                            );
                             self.events.push(SimEvent::ShotFired {
                                 ship: owner,
                                 piece: pid,
@@ -737,6 +792,7 @@ impl Sim {
                             self.projectiles.push(Projectile {
                                 id,
                                 owner,
+                                team,
                                 family: g.family,
                                 pos: from,
                                 prev_pos: from,

@@ -10,8 +10,8 @@ use crate::problem::Problem;
 use crate::stats::BUILTIN_STATS;
 use crate::text::parse_links;
 
-/// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns
-/// or engines, unused icons).
+/// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns,
+/// unused icons).
 pub fn validate(c: &Content) -> Vec<Problem> {
     let mut v = Validator { c, out: Vec::new() };
     v.packs();
@@ -47,6 +47,8 @@ struct Validator<'a> {
 
 /// Largest allowed engine gimbal, in degrees.
 pub const MAX_GIMBAL: f32 = 45.0;
+/// Longest allowed engine plume, in metres (keeps the plume casts short).
+pub const MAX_PLUME_LENGTH: f32 = 50.0;
 
 pub(crate) fn is_snake_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -395,6 +397,16 @@ impl<'a> Validator<'a> {
                     p,
                     "engine.gimbal",
                     format!("at most {MAX_GIMBAL} degrees, got {}", x.gimbal),
+                );
+            }
+            self.number(p, "engine.plume.length", x.plume.length, 0.0, false);
+            self.number(p, "engine.plume.damage", x.plume.damage, 0.0, false);
+            self.number(p, "engine.plume.heat", x.plume.heat, 0.0, false);
+            if x.plume.length > MAX_PLUME_LENGTH {
+                self.err(
+                    p,
+                    "engine.plume.length",
+                    format!("at most {MAX_PLUME_LENGTH} m, got {}", x.plume.length),
                 );
             }
         }
@@ -794,16 +806,6 @@ impl<'a> Validator<'a> {
                     format!("parts[{k}]"),
                     format!(
                         "`{}` at ({}, {}) has no clear line of fire",
-                        pl.part, pl.x, pl.y
-                    ),
-                );
-            }
-            if part.engine.is_some() && !grid.exhaust_clear(k) {
-                self.warn(
-                    s,
-                    format!("parts[{k}]"),
-                    format!(
-                        "`{}` at ({}, {}) has its exhaust blocked",
                         pl.part, pl.x, pl.y
                     ),
                 );

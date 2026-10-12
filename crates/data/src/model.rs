@@ -352,7 +352,8 @@ pub enum Delivery {
     },
 }
 
-/// Pushes towards the part's forward side; needs open cells directly behind its back side.
+/// Pushes towards the part's forward side. It may sit anywhere (GDR-0039): its exhaust plume leaves through the
+/// back side and damages and heats the first part in its path, the ship's own included.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineSpec {
@@ -365,6 +366,22 @@ pub struct EngineSpec {
     /// The deflected thrust acts at the same point, so it adds torque without moving the engine.
     #[serde(default)]
     pub gimbal: f32,
+    /// The exhaust plume (required).
+    pub plume: PlumeSpec,
+}
+
+/// An engine's exhaust plume (GDR-0039, GDR-0049): it reaches `length` metres straight back from the engine's
+/// back side and burns the first part in its path (own ship or not, except other vessels of the same owner),
+/// with damage and heat scaled by the engine's thrust output.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlumeSpec {
+    /// Reach behind the engine's back side, m (0 = no plume).
+    pub length: f32,
+    /// Damage per second at full thrust, shared over the plume's width (one lane per exhaust cell).
+    pub damage: f32,
+    /// Heat per second at full thrust (same units as `heat.output`), shared the same way.
+    pub heat: f32,
 }
 
 /// Pure reaction torque about the centre of mass, in either direction, without thrust: a gyro, or the small

@@ -18,6 +18,12 @@ are gone (ADR-0025). See [Physics](#physics-rapier2d).
 speed (no drag, a cruise flame at the cap) instead of the soft top speed, and the base ships are about four times
 as agile. See [Top speed and the cruise flame](#top-speed-and-the-cruise-flame).
 
+**Engine plumes, no friendly fire and planning with working actuators on 12 Oct 2026** (GDR-0039, GDR-0046,
+GDR-0048, GDR-0049): engines may sit anywhere and their exhaust burns the first part in its path (the clear-exhaust
+rule is gone); shots pass through the shooter's own vessels; the flight computer plans only with actuators that
+can produce. See [Engine plumes](#engine-plumes), [Weapons](#weapons) and
+[Planning with what works](#planning-with-what-works).
+
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
 `wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off), `rhai`
 (pinned `=1.26.1`, sandboxed; see [Rhai conditions](#rhai-conditions)) and `rapier2d` (pinned `=0.36.1`,
@@ -33,17 +39,18 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `ids` | `ShipId`, `PieceId` (monotonic `u32`, never reused), `IdAlloc` |
 | `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`, mind capacity per owner) |
 | `control` | `ControlState`, the per-piece control capacity and idle pass (GDR-0044) |
-| `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun/engine mounts and their blockers), shared by `Arc` |
+| `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun mounts and their blockers, engine mounts with their plume lanes and paths), shared by `Arc` |
 | `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
 | `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
-| `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
+| `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
 | `power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate`, `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry` |
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
-| `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
+| `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
+| `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
 | `breakage` | `Ship::apply_damage`, `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
@@ -88,9 +95,10 @@ numbers, Rapier vs the rest), `load_test` (also Rapier vs the rest), `behavior_p
    `FlightGoal` and what the guns do), then the flight computer allocates the actuators of each controlling
    piece and fire at will picks the guns that fire (per gun facing).
 6. **Systems** per ship: power → heat → wrench (engines, RCS, gimbals, gyros, cores), gun output, shield
-   regeneration.
+   regeneration, then each piece's authority (what can push and turn, for the next plan).
 7. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
-   (beams and pulses hit at once, projectiles spawn, recoil adds to the wrench); breakage is resolved again.
+   (beams and pulses hit at once, projectiles spawn, recoil adds to the wrench), then every firing engine's plume
+   burns the first part in its path ([Engine plumes](#engine-plumes)); breakage is resolved again.
 8. **Physics**: expired ghosts are cleared, this tick's wrenches replace the last ones (force rotated to world,
    at the centre of mass), Rapier steps `DT` (4 substeps).
 9. **Impacts**: contacts of the step become `SimEvent::Impact` (closing speed from the velocities before the
@@ -157,12 +165,33 @@ How it is checked:
   the same fight, different hashes.) **With rated speed and the agile content** (GDR-0041/0042, 12 Oct 2026,
   release builds): core, flight, load (20 ships) and behavior with seed 42, flight and load with seed 7, 1800
   ticks each: native x86_64 vs wasm32 under Node **identical**. The falloff and the cruise level use only
-  `+ − × ÷` and comparisons.
+  `+ − × ÷` and comparisons. **With engine plumes, no friendly fire and planning with working actuators**
+  (12 Oct 2026, release builds, on top of the vessel model): core, flight, load (20 ships) and behavior, seeds 42
+  and 7, 1800 ticks each: native x86_64 vs wasm32 under Node 24 **identical** (8 runs). The plume pass uses only
+  `+ − × ÷`, `sqrt`, comparisons and Rapier ray casts, in ship, piece, row and lane order; projectiles hash the
+  owner they were fired for. The hash streams differ from the version before from tick 1 on (the core scenario
+  spawns the burner and rolls its inputs too), and the fights changed (no friendly fire, plumes). Counters
+  with seed 42 (`burns` = `SimEvent::PlumeHit`):
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Shield hits | Impacts / rams | Burns | Overheated part-ticks |
+|---|---|---|---|---|---|---|---|---|
+| core | 271 | 48 | 599 | 35 | 0 | 147 / 1 | 220 | 124 |
+| flight | 133 | 21 | 919 | 47 | 13 | 172 / 1 | 8 | 0 |
+| load (20) | 83 | 3 | 202 | 839 | 11 | 175 / 1 | 4 | 0 |
+| behavior | 119 | 21 | 465 | 89 | 4 | 251 / 0 | 25 | 0 |
+
+Seed 7: core 214 burns (the burner and the plume runs), flight 6, load 4, behavior 1. Most of the core
+scenario's 147 impacts are pieces of one ship pushing against each other after splits (the random inputs changed
+with the burner). The flight scenario's hull hits fell from 166 to 47, mostly because ship-mind ships no
+longer hit each other.
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, plus
-  one heat-stress ship (three beams on two reactors, always firing, never hit) so overheating stays covered.
+  one heat-stress ship (three beams on two reactors, always firing, never hit) so overheating stays covered, and
+  (since 12 Oct 2026) a burner (two thrusters in one column facing each other, their thrust cancelling, reactive
+  blocks between them: the own-hull plume) and a plume run every 600 ticks (an automaton or a wreck put right
+  behind a ship-mind vessel's engine at full throttle: a plume on another owner's hull).
   Seed 42, 1800 ticks (Rapier): 266 parts destroyed, 43 splits, 248 overheated part-ticks, 8 impacts; with rated
   speed (12 Oct): 266 parts destroyed, 50 splits, 248 overheated part-ticks, 781 shots, no impacts.
 - `flight`: player ships flown by random pilot input (stick, lock on an enemy, drift, fire), automaton ships
@@ -207,8 +236,10 @@ static topology:
 - **neighbours** per part (CSR lists);
 - **bonus links**: for every part, the bonuses it can receive (source, effect, `max_stacks` group, venting
   condition), from the content `bonuses` blocks;
-- **guns / engines**: slots, muzzle (centre of the facing side), thrust point (part centre), facing, and the
-  parts that block the line of fire (to the grid edge) or the exhaust (row directly behind).
+- **guns / engines**: slots, muzzle (centre of the facing side), thrust point (part centre), facing, the parts
+  that block a gun's line of fire (to the grid edge), and per engine its **plume lanes** (one per cell of its back
+  side, from the centre of that cell's back face) with the parts in each lane's path to the grid edge, in order,
+  with the distance to each (`ShipDesign::plume_lanes`, `plume_path`).
 
 Key fact: whether two alive parts are linked depends only on those two parts, and destruction only removes
 links. So "static lists filtered by alive" is always the current topology, and nothing static is recomputed.
@@ -219,11 +250,11 @@ links. So "static lists filtered by alive" is always the current topology, and n
   its demand served this tick, see [Power](#power)), `work` (0..1, how hard it worked).
 - `power_settings`: tier and weight per consumer part (the blueprint's at spawn; `Ship::set_power_setting`).
 - `grid`: a clone of the design's `data::ShipGrid`; destroyed parts are removed. All pieces share it (pieces
-  are never linked to each other, so cell queries stay correct after splits; line of fire, exhaust and RCS
+  are never linked to each other, so cell queries stay correct after splits; line of fire, plume paths and RCS
   nozzles only count parts of the same piece).
-- `pieces`: one per connected group = one rigid body. Each caches mass properties, colliders, cores, power
-  lists, the thruster table (engines + RCS nozzles), torque sources, allocation table, authority and gun
-  mounts, rebuilt only when it loses a part.
+- `pieces`: one per connected group = one rigid body. Each caches mass properties, colliders, its bounding
+  radius, cores, power lists, the thruster table (engines + RCS nozzles), torque sources, allocation table, gun
+  mounts and its plume reach, rebuilt only when it loses a part; its authority is refreshed every tick.
 - Per-part caches (exposure, bonus-adjusted stats, heat constants) are updated only around a destroyed part
   (its linked neighbours, and their neighbours for bonuses). `Ship::verify_caches` checks this equals a full
   recompute (tested over 900 scenario ticks).
@@ -343,8 +374,9 @@ RCS rated speed (others are reported in `ShipDesign::warnings`).
 
 ### Actuators: engines, RCS, gimbals, gyros, cores
 
-- **Engines** push towards their facing side, along the line through their centre, only while the exhaust is
-  clear. `gimbal` (degrees) lets an engine swing its thrust: modelled as a lateral force up to
+- **Engines** push towards their facing side, along the line through their centre. They may sit anywhere
+  (GDR-0039): a part behind one takes its plume ([Engine plumes](#engine-plumes)), and the engine keeps full
+  thrust. `gimbal` (degrees) lets an engine swing its thrust: modelled as a lateral force up to
   `throttle × thrust × sin(gimbal)` at the engine (axial thrust unchanged), so it costs nothing extra but adds
   a little side force with the torque.
 - **RCS pods**: one nozzle (thruster row) per straight side whose neighbouring cell is empty or belongs to
@@ -354,9 +386,10 @@ RCS rated speed (others are reported in `ShipDesign::warnings`).
 - **Rated speed** (engines and RCS nozzles, GDR-0041): each row's thrust fades with the piece's velocity along its
   push direction, see [Top speed and the cruise flame](#top-speed-and-the-cruise-flame).
 - `Piece::thrusters` (`Thruster`: slot (engines only), part, unit `dir`, `point`, `arm`, `torque_per_force`,
-  `max_force`, `rated`, `clear`, `gimbal`, `lat`, `torque_per_lateral`, `rcs`), `Piece::torque_sources`, and
-  `Piece::authority` (thrust per direction, differential torque, pure torque, top speed per direction) are the
-  flight computer's view.
+  `max_force`, `rated`, `plume_length`, `plume_damage`, `plume_heat` (engines only), `gimbal`, `lat`,
+  `torque_per_lateral`, `rcs`), `Piece::torque_sources`, and `Piece::authority` (thrust per direction,
+  differential torque, pure torque, top speed per direction, of the actuators that can produce now, see
+  [Planning with what works](#planning-with-what-works)) are the flight computer's view.
 - `SimConfig::thrust_scale` / `torque_scale` / `speed_scale` multiply all thrust / pure torque / rated speeds (1 =
   content values) for feel tests.
 
@@ -385,7 +418,8 @@ Every tick, for the controlling piece of every active ship:
 4. **Flip, then burn**: while the ship turns its thrust towards the needed direction (`Thrust`/`Auto`), the
    translation force fades in from 25° to 8° of heading error, so slow-turning ships do not chase their own
    velocity vector.
-5. **Allocation** (`alloc.rs`), fixed passes, no iteration: per axis group the requested force, with the free
+5. **Allocation** (`alloc.rs`), fixed passes, no iteration, over the actuators that can produce this tick
+   ([Planning with what works](#planning-with-what-works)): per axis group the requested force, with the free
    choice of torque inside the group (blend of the least-torque and most-torque fills; a symmetric ship asked
    for pure translation gets exactly symmetric throttles); then pure torque (gyros, cores, shared evenly);
    then gimbals of firing engines; then **differential thrust**, which adds unrequested force, only for real
@@ -408,6 +442,30 @@ Pilot input (concept: touch controls):
 
 `Ship::telemetry()` shows the top speed (best axis), goal, heading target, requested force/torque and the expected
 wrench.
+
+### Planning with what works
+
+Since 12 Oct 2026 the flight computer plans only with the actuators that can produce this tick
+(`ship::producing`: alive, not overheated, not idle (GDR-0044) and powered, i.e. its last power level above 0); a
+dark or dormant vessel does not fly at all. Code: `ship::refresh_authority`, the `fmax`/`tmax` lines in
+`flight::execute`.
+
+- `Piece::authority` (`ThrustAuthority`) counts those thruster rows and torque sources, each at its last power
+  level (partial power scales its output). It is refreshed after every systems step (after the heat step, so a
+  part that just overheated is out) and on rebuilds, and is zero while the piece is not active. `Kin` takes the
+  thrust per axis, the top speed per axis (`speeds`, `top_speed`) and the planning angular acceleration from it,
+  so the turn-rate planning, the stick's full length, `Auto`'s flip decision and every maneuver's top speed follow
+  what still works.
+- The allocation's `fmax`/`tmax` leave the same actuators out (0) but are **not** scaled by partial power: power
+  caps what the movers of a tier draw together, so the dead-beat request is met exactly whenever the power
+  suffices, and in a brown-out the systems hand out what there is (scaling the request up by the last level
+  would overshoot as soon as the demand drops).
+- Cost: one pass over each active piece's thruster rows and torque sources per tick; no allocation.
+- Test `a_runner_with_idle_actuators_turns_and_brakes_cleanly` (`tests/flight.rs`): a Halvex Runner that lost a
+  logic core, one gyro set to the lowest power priority, so it idles together with a pulse laser (load 18,
+  capacity 16): 90° in 1.07 s with 0.44° overshoot, and a stop from 21 m/s (flip and burn) in 3.3 s without
+  flying backwards. Planned with the idle gyro, as before, the same stop flew backwards at up to 5.7 m/s and was
+  still spinning at 2.3 rad/s.
 
 ### Top speed and the cruise flame
 
@@ -432,14 +490,15 @@ Decided by Niklas on 12 Oct 2026 ([GDR-0041](gdr/0041-engine-rated-speed.md)); i
   same falloff.
 - **No drag**: a coasting ship keeps its speed (test `raw_thrust_tops_out_at_the_rated_speed_and_coasting_keeps_it`).
 - **Top speed per direction** (`ThrustAuthority::speed`, `Kin::speeds`): per thrust group (forward, backward,
-  right, left) the highest rating among its clear rows. The groups push independently, so the reachable
+  right, left) the highest rating among its rows that can push now
+  ([Planning with what works](#planning-with-what-works)). The groups push independently, so the reachable
   velocities form a box in the piece frame; `Kin::top_along(u)` is the farthest point of the box along `u`
   (groups without thrusters are left out). A diagonal can therefore be faster than either axis: a ship with
   22 m/s forward and 14 m/s RCS sideways reaches 26 m/s flying crabwise. "Fly that way" turns the best axis onto
   the stick and flies at its rating; a locked ship strafing diagonally gets the box. See the design questions.
 - **Cruise flame**: whenever the goal has a velocity, every engine row gets `Actuation::cruise` = (goal velocity
   in the piece frame · engine direction) / its group's top speed, clamped to 0..1; the systems publish
-  `Piece::cruise` = that × the engine's power level (0 if blocked, dead, overheated or the piece is dark). Full
+  `Piece::cruise` = that × the engine's power level (0 if idle, dead, overheated, unpowered or the piece is dark). Full
   stick at the top speed = 1 (the engine pushes nothing, `Piece::output` ≈ 0, but the flame stays); **partial
   stick** = the stick share (holding half the top speed shows a gentle half flame, decided by the agent so that a
   held speed never looks like dead engines); maneuvers and behaviors (an approach, an orbit, matching a target's
@@ -680,7 +739,8 @@ vessel agent for Niklas to review.
   owner is its own team; co-op players on one team would get their own owners and a team table behind
   `friendly`.
 - Uses: behavior targets are active vessels of other owners (until now: another faction); same-owner rams deal
-  no damage; the client's friendly clicks, Tab targets and off-screen markers.
+  no damage; shots and engine plumes pass through same-owner vessels (GDR-0048, GDR-0046); the client's friendly
+  clicks, Tab targets and off-screen markers.
 
 ### Vessels and splits
 
@@ -703,8 +763,8 @@ vessel agent for Niklas to review.
   scenarios that fly maneuvers or raw throttles).
 - A blueprint built in several pieces with cores in more than one: at spawn every further cored piece becomes
   a vessel of its own the same way.
-- A shot never hits its own ship (all its pieces). A split-off vessel is another ship of the same owner, so the
-  two can hit each other with shots (there is no friendly-fire rule for shots yet).
+- A shot never hits its own ship (all its pieces) nor any other vessel of its owner (GDR-0048), so a split-off
+  vessel and its parent fire through each other.
 - Enemies follow the same rules: a raider shot in half can be two raiders (test).
 
 ### Focus
@@ -739,9 +799,9 @@ vessel agent for Niklas to review.
 - An idle part does nothing: it asks for no power (`PartState::power` and `work` 0), engines, RCS and gyros
   push nothing, guns hold, a shield emitter drops its bubble (keeps its charge), a reactor makes nothing. Idle
   parts run again as soon as the capacity covers them (a core cools down, a vessel wakes, the load drops).
-- The flight computer does not know which actuators idle: it plans with the full thruster table, and an idle
-  engine just produces nothing (as an unpowered one does). A later refinement can drop idle rows from the
-  allocation.
+- The flight computer plans only with actuators that can produce, so idle engines, RCS pods and gyros drop out of
+  its plan at once ([Planning with what works](#planning-with-what-works); until 12 Oct 2026 it planned with the
+  full thruster table, and a ship that lost a core misjudged its thrust and torque).
 - Cost: per piece and tick one pass over its logic cores (the capacity); the idle set is recomputed only when
   the capacity changes, the piece was rebuilt or a power setting changed (one pass over its parts). No
   allocation. Exposed: `PartState::idle`, `Piece::control` (`ControlState { load, capacity, idle }`),
@@ -852,7 +912,11 @@ own ships).
 ## Weapons
 
 All hit tests are ray casts through Rapier's query pipeline (`Physics::raycast`, see [Physics](#physics-rapier2d));
-a shooter never hits any piece of its own ship. A gun fires while `output > 0`: firing commanded
+a shooter never hits any piece of its own ship, nor any vessel of its owner: **no friendly fire** (GDR-0048,
+12 Oct 2026). Shots fly through the shooter's own vessels (no hit, no damage, no shield drain) and hit whatever
+lies behind; salvage (no owner) and other owners are hit as before. A projectile keeps the owner it was fired for
+(`Projectile::team`, hashed; GDR-0048's lead default), also after ricochets and when its ship has become salvage
+since. A gun fires while `output > 0`: firing commanded
 (`PilotInput.fire`, `ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of
 fire, powered, not overheated, piece active. Guns are fixed: the pilot aims by turning the ship; under a
 behavior each gun fires when the target crosses its own facing.
@@ -873,8 +937,8 @@ behavior each gun fires when the target crosses its own facing.
 - **Recoil**: `recoil` kN·s per shot pushes the shooter back at the muzzle for one tick (force and torque added
   to the piece's wrench).
 - **Shields**: every working emitter of an active piece projects a bubble of `shield_radius` around itself
-  with `capacity`, regenerating `regen × work` per second. A shot whose path enters a bubble of another ship
-  loses `damage × absorb[family]` (content: energy 1.0, kinetic 0.5, missile 1.0) up to what the bubble has
+  with `capacity`, regenerating `regen × work` per second. A shot whose path enters a bubble of a non-friendly
+  ship (not its own, not a vessel of its owner) loses `damage × absorb[family]` (content: energy 1.0, kinetic 0.5, missile 1.0) up to what the bubble has
   left. Bubbles along the path are crossed in entry order, so overlapping bubbles stack (each takes its share
   of what reaches it). A shot that starts inside a bubble passes it. A bubble that runs empty collapses and
   stays down until it has recharged 30% of its capacity. A beam that a bubble fully absorbs ends at the bubble.
@@ -889,7 +953,8 @@ Events (in `Sim::events()`, for visuals and sound):
 | `Hit { by, ship, piece, part, point, normal, damage, absorbed, family }` | damage reached a part (after shields); beams: once per tick on target |
 | `ProjectileSpawned { id, owner, pos, vel }`, `ProjectileGone { id, pos, reason }` | `reason` = `Hit`, `Absorbed` or `Expired` |
 | `Ricochet { id, point, normal, vel }` | a kinetic shot glanced off a slope |
-| `ShieldHit { by, ship, piece, part, point, absorbed, left, depleted }` | a shot entered a bubble (`point` = entry); `depleted` = it collapsed |
+| `ShieldHit { by, ship, piece, part, point, absorbed, left, depleted }` | a shot entered a bubble (`point` = entry), or a bubble covering a plume's hit point took its share; `depleted` = it collapsed |
+| `PlumeHit { by, engine, ship, piece, part, point, damage, heat, absorbed }` | an engine plume burned a part, one per lane and part per tick ([Engine plumes](#engine-plumes)) |
 
 ### Aiming and leading
 
@@ -908,6 +973,79 @@ Queries each frame: `Sim::projectiles()` (`pos`, `prev_pos`, `vel`; draw at `pre
 alpha`), `Sim::beams()` (this tick's beams), `Sim::bubbles()` (`centre`, `radius`, `left`, `capacity` of every
 bubble that is up), and per emitter `ship.part(i).shield` and `.shield_down`. `Sim::spawn_projectile` creates a
 projectile directly (tools, tests).
+
+## Engine plumes
+
+Engines may sit anywhere (GDR-0039, decided by Niklas); the clear-exhaust rule (an engine with a part of its own
+piece right behind it gave no thrust) was removed on 12 Oct 2026. Instead each firing engine's exhaust plume
+burns the first part in its path: the ship's own (the layout rule), enemy vessels, salvage and debris, never
+other vessels of the same owner (GDR-0046). Rules marked *lead default* are [GDR-0049](gdr/0049-engine-plume-v1.md)
+(Accepted, provisional) for Niklas to review. Code: `src/plume.rs`; numbers are **placeholders**.
+
+- **Content**: `engine.plume: (length, damage, heat)`, metres behind the engine's back side, damage and heat per
+  second at full thrust (stats `plume_length`, `plume_damage`, `plume_heat`; bonuses can change them). Base:
+  thruster 3 m, 1 /s, 1.5 /s; torch drive 6 m, 3 /s, 4 /s.
+- **Lanes**: one per cell of the engine's back side (a thruster one, a 2×2 torch drive two), a straight line from
+  the centre of that cell's back face along the exhaust (against the push direction). The damage and heat are
+  shared evenly over the lanes.
+- **How hard** (*lead default*): damage and heat scale with the engine's thrust output this tick
+  (`Piece::output`: throttle × power level × rated-speed falloff), so an idle engine burns nothing and one holding
+  its rated speed (a cruise flame, no thrust) next to nothing. Per lane and tick: `damage × output × DT / lanes`,
+  likewise for heat, added to the part's heat level as `heat / heat capacity` (the units of `heat.output`).
+- **Thrust** (*lead default*): a blocked plume gives full thrust; the cost is the burning.
+- **Own vessel**: the parts of the engine's own piece in a lane come precomputed from the blueprint
+  (`ShipDesign::plume_path`, to the grid edge); the first alive one within the plume's length is hit. The ship's
+  own shield bubbles never stop its own exhaust (*lead default*).
+- **Other bodies**: one Rapier ray cast per lane, up to the own hit (or the full length), skipping the engine's
+  own piece and every vessel of the same owner (`Physics::raycast_skipping`). Enemy vessels, salvage (the ship's
+  own wrecked pieces included) and debris are hit. Bubbles of non-friendly ships covering the hit point absorb the
+  plume like energy damage (their `absorb[Energy]` share, in bubble order, `ShieldHit { by: the engine's ship }`),
+  and the heat goes with the damage in proportion (*lead default*).
+- **Depth** (*lead default*): each lane stops at the first part it hits, on whichever ship; that part takes the
+  lane's damage and heat. Once it is destroyed the plume reaches further, from the next tick on (it burns its way
+  through).
+- **When**: in the weapons phase after the guns (the bubbles of this tick, bodies at their start-of-tick poses);
+  the breakage is resolved with the weapons'. Events: `SimEvent::PlumeHit { by, engine, ship, piece, part, point,
+  damage, heat, absorbed }` per part burned per lane and tick (`ship == by` for the own hull).
+- **For the client**: `Thruster::plume_length` is each engine's reach (static content with bonuses; the drawn
+  flame keeps its own length for now); `PlumeHit` marks where a plume is blocked and burning.
+
+Measured (tests in `tests/plume.rs`): a Halvex Runner holding its torch drive (all engines at full thrust) 0.5 m
+from a raider's nose for one second deals 2.8 hp and wrecks 2 parts while it pulls 10 m away; a thruster buried
+against a composite armour block (1.4 hp), held at rest at full thrust, burns through it in 1.40 s and through the
+next one 1.4 s later. The base ships' engines all exhaust into open space, so they never burn themselves; in the
+scenarios plumes also hit enemies on their own (seed 42, 1800 ticks: 8 plume hits in `flight`, 4 in `load`, 25 in
+`behavior`; see [Determinism](#determinism)).
+
+**Cost.** A piece whose plumes reach neither a part of its own (`Piece::plume_blocked`, cached on rebuilds) nor
+another body is skipped after one scan of the bodies' bounding circles (`Piece::radius` about the frame origin,
+against `Piece::plume_reach`); a lane casts only if a body near the piece can be within its reach. So plumes into
+empty space cost a few comparisons per ship, and a ray cast happens only at close quarters. No allocation once
+warmed up. Measured 12 Oct 2026 with a temporary profiling mark around the plume pass (not in the repo), native
+release, load average 7.8–8.2, three runs each:
+
+| Scene | Plume pass median | p95 |
+|---|---|---|
+| load test, 20 ships fighting (1800 ticks) | 0.64–0.71 µs | 1.5–1.9 µs |
+| `sim_perf` raw throttles, 20 slabs × 50 thrusters firing (1000 lanes, nothing in reach) | 1.8–2.1 µs (25 µs before the per-piece skip) | 3.2–3.5 µs |
+| `sim_perf` combat (20 gunboats) | 2.4–2.6 µs | 4.2–10 µs |
+
+Whole steps, interleaved with a build of `dev` before this change (`05c7cc7`), five load-test and three
+`sim_perf` runs each, native release, on an idle VM (load average 0.1–0.3), medians of the per-run medians / p95
+in ms:
+
+| What | Before | After |
+|---|---|---|
+| load test, 20 ships, step | 0.018 / 0.048 | 0.019 / 0.048 |
+| the same, Rapier step alone | 0.008 / 0.025 | 0.009 / 0.024 |
+| `sim_perf` raw throttles (1000 engines firing into space), step | 0.433 / 0.589 | 0.398 / 0.645 |
+| `sim_perf` pilot + lock, step | 0.582 / 1.428 | 0.435 / 0.747 |
+| `sim_perf` combat (two owners: the same fight before and after), step | 0.763 / 2.517 | 0.749 / 2.507 |
+
+The load test's fight itself changed (no friendly fire: 214 → 202 shots, 971 → 839 hits, 167 → 175 impacts); the
+plume pass is under 1 µs of its step. The `sim_perf` pilot run got cheaper because its slabs (all one owner) no
+longer shoot each other apart; raw throttles and combat are the same within noise. (A first round at load
+average 9–10 gave the same picture with medians 1.5–2× higher.)
 
 ## Physics (Rapier2D)
 
@@ -989,7 +1127,9 @@ freshly separated pieces never push each other apart; afterwards they collide li
 
 `Physics::raycast(origin, dir, max, exclude)` → `RayHit { key, distance, point, local_point, normal }`, through
 Rapier's query pipeline over the broad-phase BVH, with a predicate on the collider's user data that skips every
-piece of one ship (`exclude`, the shooter). Rays are solid: one that starts inside a body hits it at distance 0.
+piece of one ship (`exclude`, the shooter). Rays are solid: one that starts inside a body hits it at distance 0. Inside the sim, shots and plumes cast with
+`Physics::raycast_skipping`, a predicate on the body key that also skips friendly vessels (the owner lookup runs
+only for bodies whose bounding box the ray crosses).
 Bodies created or moved between steps (splits at the start of a tick, teleports) go into the BVH at once, so
 guns see them in the same tick. Equal distances resolve in the BVH's traversal order (deterministic).
 `Sim::raycast` maps the hit to a part (`part_at_local` just inside the surface).
@@ -1072,7 +1212,8 @@ GDR-0047).
 
 - `Sim::apply_damage(ship, DamageTarget::Part(i) | Cell((x, y)), amount)` → `Ignored`, `Damaged { hp_left }`
   or `Destroyed { excess }` (excess for penetration later). A destroyed part leaves the grid at once.
-- Damage comes from scripted commands, weapons and rams ([Collisions](#collisions-impacts-and-ramming-v1)).
+- Damage comes from scripted commands, weapons, engine plumes ([Engine plumes](#engine-plumes)) and rams
+  ([Collisions](#collisions-impacts-and-ramming-v1)).
 - `Sim::resolve_breakage()` (steps 3, 7 and 9 of every tick) processes each damaged piece once: drop dead parts,
   flood-fill the rest; one component → `SimEvent::PieceChanged`; several → `SimEvent::Split`; none →
   `SimEvent::PieceDestroyed`. Every destroyed part emits `SimEvent::PartDestroyed { volatile }`.
@@ -1103,13 +1244,14 @@ for ship in world.ships() { for piece in ship.pieces() {
     let (pos, angle) = piece.render_pose(alpha);                   // world, y up, CCW
     // parts: blueprint (x, y) → piece frame (x − origin.x, origin.y − y); glow if piece.active
     // plumes: piece.thrusters[i] with piece.output[i] (0..1, thrust after power and speed falloff) and
-    // piece.cruise[i] (0..1, the calm cruise flame of an engine holding a speed; 0 for RCS nozzles)
+    // piece.cruise[i] (0..1, the calm cruise flame of an engine holding a speed; 0 for RCS nozzles);
+    // its reach: piece.thrusters[i].plume_length (m back from the engine; burns arrive as SimEvent::PlumeHit)
 }}
 ```
 
 - Weapons: draw `world.beams()` as lines, `world.projectiles()` as tracers (interpolate `prev_pos → pos`),
   `world.bubbles()` as dotted rings (alpha from `left / capacity`); flash on `ShieldHit`, sparks on `Hit` and
-  `Ricochet`, muzzle flashes on `ShotFired`.
+  `Ricochet`, muzzle flashes on `ShotFired`, a burn (or a blocked flame) at the point of each `PlumeHit`.
 - Collisions: `SimEvent::Impact(contact)` at `contact.point` (scale sparks and sound by `impulse`; `damage > 0`
   is a ram). Ships now collide, so spawn them apart.
 - Enemies: `world.set_behaviors(BehaviorLibrary::new(&content)?)` once, then
@@ -1239,6 +1381,16 @@ Rated speed (GDR-0041, 12 Oct 2026):
     it pushes a locked Runner a few metres per hard turn, which it cannot brake (engines only at the back). (a)
     **Accept** (recommended: the gyros do most of the turning); (b) use differential thrust only when gyros and
     cores are saturated for longer than a few ticks.
+
+Engine plumes ([GDR-0049](gdr/0049-engine-plume-v1.md), lead defaults of 12 Oct 2026 for Niklas to review):
+
+16. **Plume numbers.** Thruster 3 m, 1 damage/s, 1.5 heat/s; torch drive 6 m, 3 damage/s, 4 heat/s: a torch drive
+    held on a raider for a second wrecks a part or two, a buried thruster burns through an armour block in 1.4 s.
+    Tune in content.
+17. **Does a plume push?** It transfers no momentum now (cheap; a plume is a short-range burner, not a tractor).
+    (a) **keep** (recommended); (b) push the part it hits with a share of the engine's thrust.
+18. **Drawn flame vs reach.** The client draws a flame of 0.4–2 m; the sim's reach is 3–6 m. (a) **draw the reach
+    faintly** when something is in it (recommended); (b) draw every plume at its full reach.
 
 Behaviors (asked 11 Oct 2026; **answered by Niklas on 12 Oct**, GDR-0034 to GDR-0037 accepted):
 

@@ -835,15 +835,6 @@ impl ShipGrid {
             true
         })
     }
-
-    /// An engine's exhaust: the cells directly behind its back side are empty (as in `analyze`).
-    pub fn exhaust_clear(&self, i: usize) -> bool {
-        let dir = self.shapes[i].facing().opposite();
-        let (dx, dy) = dir.delta();
-        self.border_cells(i, dir)
-            .into_iter()
-            .all(|c| self.occupant((c.0 + dx, c.1 + dy)).is_none())
-    }
 }
 
 /// Chains hull segments into polylines. Straight runs and collinear slope faces are merged into single

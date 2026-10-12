@@ -1,16 +1,21 @@
 // Propulsion. PLACEHOLDER NUMBERS, all for feel only: thrust, torque and rated speeds were set on 12 Oct 2026 for
 // the agility target "Agile" (GDR-0042: Halvex Runner 90° in ~0.8 s, 0 → ~22 m/s in ~2.5 s; small ships
 // snappier), about 16× the concept-board thrust; gimbal values are invented.
-// Engines push towards the part's forward side and need open cells directly behind them; `gimbal` swings their
-// thrust a few degrees to either side. `rated_speed` (GDR-0041): the thrust fades out as the ship's speed along
-// the push direction approaches it, so the fastest engines pushing a way set the top speed that way. Gyros turn
-// the ship without thrust; RCS pods fire a nozzle out of every side that is open to space.
+// Engines push towards the part's forward side and may sit anywhere (GDR-0039); `gimbal` swings their thrust a
+// few degrees to either side. `rated_speed` (GDR-0041): the thrust fades out as the ship's speed along the push
+// direction approaches it, so the fastest engines pushing a way set the top speed that way. `plume` (GDR-0039,
+// GDR-0049): the exhaust reaches `length` m behind the engine and burns the first part in its path (the ship's
+// own, enemies and wrecks; never other vessels of the same owner) with `damage` and `heat` per second at full
+// thrust, scaled by the thrust it gives. PLACEHOLDER plume numbers (lead, 12 Oct 2026): a torch drive held on a
+// raider for about a second wrecks a part or two; an engine buried in the hull burns through an armour block in
+// a second or two. Gyros turn the ship without thrust; RCS pods fire a nozzle out of every side that is open to
+// space (they have no plume).
 // Power tier: everything that moves the ship is `Normal` (the default), so thrust and turning brown out together.
 [
     (
         id: "thruster",
         name: "Thruster",
-        summary: "A small engine that needs open space behind it.",
+        summary: "A small engine. Its exhaust burns whatever is right behind it.",
         tags: ["engine"],
         category: "propulsion",
         icon: "thruster",
@@ -20,7 +25,7 @@
         hp: 1,
         power: (draw: 2),
         heat: (output: 0.8, limit: 3.2),
-        engine: (thrust: 200, rated_speed: 20, gimbal: 5),
+        engine: (thrust: 200, rated_speed: 20, gimbal: 5, plume: (length: 3, damage: 1, heat: 1.5)),
     ),
     (
         id: "torch_drive",
@@ -36,7 +41,7 @@
         hp: 4,
         power: (draw: 6),
         heat: (output: 4, limit: 5),
-        engine: (thrust: 700, rated_speed: 22, gimbal: 3),
+        engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, heat: 4)),
     ),
     (
         id: "gyro",

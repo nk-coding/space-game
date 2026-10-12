@@ -144,7 +144,22 @@ pub enum SimEvent {
         /// Velocity after the bounce.
         vel: Vec2,
     },
-    /// A shot entered a shield bubble, which took `absorbed` of its damage.
+    /// An engine's exhaust plume burned a part this tick (GDR-0049): one per plume lane and part hit (the lane
+    /// stops there). `by` and `engine`: the ship and engine part whose plume it is (the ship's own parts
+    /// included: `ship == by`). `damage` and `heat` (heat units, as `heat.output × DT`) after shields;
+    /// `absorbed` = what shield bubbles took of the damage (`ShieldHit` for each).
+    PlumeHit {
+        by: ShipId,
+        engine: PartIdx,
+        ship: ShipId,
+        piece: PieceId,
+        part: PartIdx,
+        point: Vec2,
+        damage: f32,
+        heat: f32,
+        absorbed: f32,
+    },
+    /// A shot (or a plume) entered a shield bubble, which took `absorbed` of its damage.
     ShieldHit {
         by: ShipId,
         ship: ShipId,
