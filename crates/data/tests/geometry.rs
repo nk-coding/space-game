@@ -298,7 +298,7 @@ fn rotating_a_placement_four_times_is_identity() {
 }
 
 #[test]
-fn guns_and_engines_respect_rotation() {
+fn guns_respect_rotation() {
     let gun = at(Footprint::rect(1, 1), 1, 1, 0, false);
     let g = ShipGrid::new(vec![gun, block(1, 3), block(2, 1)]);
     assert!(g.line_of_fire_clear(0));
@@ -310,10 +310,4 @@ fn guns_and_engines_respect_rotation() {
     let turned = at(Footprint::rect(1, 1), 1, 1, 1, false);
     let g = ShipGrid::new(vec![turned, block(1, -2), block(4, 1)]);
     assert!(!g.line_of_fire_clear(0), "a gun turned right fires right");
-
-    let engine = at(Footprint::rect(2, 2), 0, 0, 0, false);
-    let g = ShipGrid::new(vec![engine, block(0, 3)]);
-    assert!(g.exhaust_clear(0), "only the row directly behind counts");
-    let g = ShipGrid::new(vec![engine, block(1, 2)]);
-    assert!(!g.exhaust_clear(0));
 }

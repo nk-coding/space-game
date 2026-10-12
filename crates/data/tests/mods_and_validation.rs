@@ -422,8 +422,10 @@ fn ship_warnings() {
         "{}",
         show(&w)
     );
+    // Engines may sit anywhere (GDR-0039): a part right behind the thruster is no warning any more (its plume
+    // burns it in the sim instead).
     assert!(
-        w.iter().any(|p| p.message.contains("exhaust blocked")),
+        !w.iter().any(|p| p.message.contains("exhaust")),
         "{}",
         show(&w)
     );

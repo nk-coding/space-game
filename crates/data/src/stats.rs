@@ -28,6 +28,9 @@ pub const BUILTIN_STATS: &[&str] = &[
     "thrust",
     "rated_speed",
     "gimbal",
+    "plume_length",
+    "plume_damage",
+    "plume_heat",
     "rcs_thrust",
     "rcs_rated_speed",
     "torque",
@@ -186,6 +189,9 @@ impl Content {
             if e.gimbal != 0.0 {
                 v.push(("gimbal", e.gimbal));
             }
+            v.push(("plume_length", e.plume.length));
+            v.push(("plume_damage", e.plume.damage));
+            v.push(("plume_heat", e.plume.heat));
         }
         if let Some(r) = &part.rcs {
             v.push(("rcs_thrust", r.thrust));
