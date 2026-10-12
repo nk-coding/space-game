@@ -38,6 +38,8 @@ pub struct ShipVisual {
     pub enemy: bool,
     /// Navigation lights (blueprint frame position, colour).
     pub nav_lights: Vec<(Vec2, Color)>,
+    /// The faint aura behind lit ships in space (not in the drydock or on UI icons).
+    pub aura: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -243,8 +245,9 @@ fn angle_up_to(d: Vec2) -> f32 {
 
 /// The body in style 2a, bottom to top. `glow` adds the pre-blurred layers (icon glows, hull halo, soft muzzle
 /// glows); `lit` = an active piece (hull edge, full brightness). Dark pieces (salvage, unpowered) are dimmed
-/// and lose the hull glow.
-fn build_body(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: bool, lit: bool) -> Mesh {
+/// and lose the hull glow. Also draws the drydock's ship and the part icons in its UI (`ui_icons`), so every
+/// tile looks the same everywhere.
+pub(crate) fn build_body(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: bool, lit: bool) -> Mesh {
     let to_local = |p: Vec2| v.to_local(p);
     let dir_local = |d: Vec2| Vec2::new(d.x, -d.y);
     let white = atlas.region("fx/white").uv_center();
@@ -253,7 +256,7 @@ fn build_body(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: bool, lit: boo
 
     // 0. Aura behind lit pieces: centred on the bounding box, radius 0.85 x the larger side (drawAura in the
     //    concept board).
-    if glow && lit {
+    if glow && lit && v.aura {
         let c = (to_local(v.bounds_min) + to_local(v.bounds_max)) / 2.0;
         let side = (v.bounds_max - v.bounds_min).max_element();
         let (r, a) = if v.enemy { (atlas.region("fx/aura_linear"), 0.12) } else { (atlas.region("fx/aura"), style.aura_opacity) };

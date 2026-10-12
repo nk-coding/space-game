@@ -117,6 +117,15 @@ impl MeshBuf {
         }
     }
 
+    /// A mesh that draws nothing (one degenerate triangle: the renderer warns about meshes without vertices),
+    /// for a mesh handle whose content comes later.
+    pub fn placeholder() -> Mesh {
+        let mut m = MeshBuf::default();
+        let p = Vec2::ZERO;
+        m.quad_uv([p; 4], [p; 4], [0.0; 4]);
+        m.into_mesh()
+    }
+
     pub fn into_mesh(self) -> Mesh {
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.pos);
