@@ -97,8 +97,8 @@ pub enum SimEvent {
     ShipRemoved { ship: ShipId },
     /// Two pieces pushed each other this tick with at least `PhysicsTuning::impact_min_impulse` (sparks,
     /// sound). Above `PhysicsTuning::ram_threshold` it carries ramming damage (none between vessels of one
-    /// owner), already dealt to `part_a` and `part_b` after shields (`ShieldHit` for what bubbles took,
-    /// destroyed parts follow as `PartDestroyed`).
+    /// owner), already dealt after shields (`ShieldHit` for what bubbles took): to `part_a` and `part_b`, the
+    /// excess crushing on inward (destroyed parts follow as `PartDestroyed`).
     Impact(crate::physics::Contact),
     /// A pulse or projectile left a gun (beams are continuous: see `Sim::beams()`). `to` is where a pulse
     /// ended (hit, shield or full range); for projectiles the end of their range if nothing stops them.

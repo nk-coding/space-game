@@ -5,7 +5,8 @@
 //! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
 //!   a blast every 75 ticks: power, heat, damage, splits, collisions and ramming. Plus one
 //!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
-//!   base ships do.
+//!   base ships do, and a ram run every 600 ticks (a ship-mind and an automaton vessel launched head-on, away
+//!   from the others: shields and the inward crush of GDR-0047).
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
 //!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
 //!   computer, allocation, maneuvers, fire at will.
@@ -263,6 +264,9 @@ impl Scenario {
         if let ScenarioKind::Load(_) = kind {
             return; // behaviors fly and fight on their own
         }
+        if kind == ScenarioKind::Core && tick % RAM_RUN_EVERY == RAM_RUN_EVERY / 2 {
+            self.ram_run(tick / RAM_RUN_EVERY);
+        }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
             .ships()
@@ -379,6 +383,43 @@ impl Scenario {
                 });
             }
         }
+    }
+}
+
+/// The core scenario's ram run comes every this many ticks (half-way through each period).
+const RAM_RUN_EVERY: u64 = 600;
+
+impl Scenario {
+    /// Launches the first ship-mind vessel (its controlling piece) and the main piece of the first ship that is
+    /// no player vessel (an automaton, or a wreck: salvage is nobody's friend) head-on at 20 m/s each, far from
+    /// the rest, so a hard ram is part of the determinism check.
+    fn ram_run(&mut self, n: u64) {
+        let ships = self.sim.ships();
+        let a = ships
+            .iter()
+            .filter(|s| s.team() == Some(Owner::PLAYER))
+            .find_map(|s| Some((s.id(), s.control_piece()?)));
+        let b = ships
+            .iter()
+            .filter(|s| s.team() != Some(Owner::PLAYER))
+            .find_map(|s| Some((s.id(), s.main_piece()?)));
+        let (Some(a), Some(b)) = (a, b) else {
+            return;
+        };
+        let x = 400.0 + n as f32 * 100.0;
+        let launch = |pos: Vec2, angle: f32, vy: f32| Body {
+            pos,
+            angle,
+            linvel: Vec2::new(0.0, vy),
+            angvel: 0.0,
+        };
+        self.sim
+            .teleport(a.0, a.1, launch(Vec2::new(x, 0.0), 0.0, 20.0));
+        self.sim.teleport(
+            b.0,
+            b.1,
+            launch(Vec2::new(x, 16.0), core::f32::consts::PI, -20.0),
+        );
     }
 }
 

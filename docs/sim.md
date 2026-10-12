@@ -91,7 +91,8 @@ numbers, Rapier vs the rest), `load_test` (also Rapier vs the rest), `behavior_p
    at the centre of mass), Rapier steps `DT` (4 substeps).
 9. **Impacts**: contacts of the step become `SimEvent::Impact` (closing speed from the velocities before the
    step), bodies are read back (the previous pose is kept for interpolation), impacts above the ramming
-   threshold damage the touching part on both sides, and breakage is resolved once more.
+   threshold crush inward from the touching part on both sides (after shields; none within one owner), and
+   breakage is resolved once more.
 10. `tick += 1`; debug builds store `state_hash()` (`last_tick_hash()`).
 
 `Sim::step_profiled(&inputs, |phase| ...)` is the same step with a callback at the start of every `StepPhase`
@@ -674,7 +675,11 @@ Base content (placeholders): logic core N 16, automaton core N 4; fusion reactor
   other side's piece (as a shot passes its shooter's bubbles). The same absorb step as shots
   (`ShieldHit { by: the rammer }`, a bubble that runs empty collapses); the rest hits the part. The bubbles are
   the ones collected in this tick's weapons phase (positions before the physics step).
-- The ramming numbers are unchanged (threshold 20 kN·s, 0.02 hp per kN·s; open for Niklas).
+- **Crush** (GDR-0047, decided by Niklas on 12 Oct 2026): what the shields leave hits the touching part, and
+  what exceeds its hit points carries on to the next part inward, along the contact normal into the hull, until
+  it is used up or leaves the hull (`Sim::ram_crush`, the grid walk of penetrating shots; the emptied cells of a
+  big part just crushed are passed through). The threshold rose from 20 to 100 kN·s, so bumps are free; the
+  numbers are in [Collisions](#collisions-impacts-and-ramming-v1).
 
 ### Events and queries (for the fleet bar)
 
@@ -713,20 +718,22 @@ The per-tick differences are within the VM's noise; the split pays about 0.05 ms
 
 The behavior scenario now makes its piloted leader the player's focus and caps the player's mind capacity at
 8 cores (`scenario::BEHAVIOR_MIND_CAPACITY`; the ship-mind ships have 12), so dormant vessels, waking and the
-focus are part of the cross-platform check; the core scenario forms a split vessel. 12 Oct 2026, dev profile
+focus are part of the cross-platform check; the core scenario forms a split vessel, and every 600 ticks it
+launches a ship-mind vessel and an automaton (or a wreck) head-on at 20 m/s each, so a hard ram with the crush is
+covered too (at the current speeds the other scenarios have no contact above 100 kN·s). 12 Oct 2026, dev profile
 (optimised dependencies), 1800 ticks, native x86_64 vs wasm32-wasip1 under Node 24: core, flight, load (20
 ships) and behavior, seeds 42 and 7: **identical** (8 runs). Counters with seed 42 (new: split vessels, vessels
 lost, dormant, woken, focus changes):
 
 | Scenario | Parts destroyed | Splits | Shots | Hits | Impacts / rams | Split vessels | Lost | Dormant / woken / focus |
 |---|---|---|---|---|---|---|---|---|
-| core | 266 | 42 | 563 | 146 | 5 / 0 | 1 | 9 | 0 / 0 / 0 |
-| flight | 138 | 26 | 999 | 82 | 11 / 1 | 0 | 3 | 0 / 0 / 0 |
+| core | 266 | 43 | 563 | 146 | 6 / 1 | 1 | 9 | 0 / 0 / 0 |
+| flight | 138 | 26 | 999 | 82 | 11 / 0 | 0 | 3 | 0 / 0 / 0 |
 | load (20) | 93 | 3 | 347 | 821 | 108 / 0 | 0 | 10 | 0 / 0 / 0 |
 | behavior | 110 | 21 | 428 | 66 | 31 / 0 | 0 | 2 | 2 / 2 / 1 |
 
 The load test has no rams any more (before: 24): its ships rammed their own side, which now bumps without
-damage. The flight scenario's counters are unchanged.
+damage, and the 100 kN·s threshold takes the flight scenario's one ram.
 
 ## Weapons
 
@@ -831,8 +838,8 @@ means rewriting `physics.rs` (about 580 lines with docs, plus tests).
 | `sleep_time` | 2 s | |
 | `ccd_prediction` | 4 m | soft CCD reach per tick (speculative contacts up to ~120 m/s) |
 | `impact_min_impulse` | 1 kN·s | weaker contacts are not reported (resting contacts) |
-| `ram_threshold` | 20 kN·s | impulse per tick above which a contact deals ramming damage |
-| `ram_damage` | 0.02 hp per kN·s | ramming damage per kN·s above the threshold, to each side |
+| `ram_threshold` | 100 kN·s | impulse per tick above which a contact deals ramming damage (GDR-0047; 20 until 12 Oct) |
+| `ram_damage` | 0.02 hp per kN·s | ramming damage per kN·s above the threshold, to each side, crushing inward |
 
 Gravity is always zero. `Sim::set_config` applies a new `PhysicsTuning` to the world and to every body at once.
 
@@ -894,8 +901,13 @@ apart (penetration recovery) is no impact and deals no damage.
 **Ramming damage** (concept: "ramming damage by mass and speed; ram prows are a build"):
 
 ```
-damage = max(0, impulse − ram_threshold) × ram_damage        to part_a and to part_b, each
+damage = max(0, impulse − ram_threshold) × ram_damage        to each side (GDR-0047: 100 kN·s, 0.02 hp/kN·s)
 ```
+
+Each side's damage goes through that side's shield bubbles first (GDR-0045), then hits the touching part
+(`part_a`, `part_b`); what exceeds a part's hit points **crushes inward** to the next part along the contact
+normal, and so on until it is used up or the walk leaves the hull (GDR-0047, `Sim::ram_crush`; the grid walk of
+penetrating shots, without their block limit).
 
 The impulse already carries mass and speed: head-on, `impulse ≈ (1 + e) · μ · v` with the reduced mass
 `μ = m_a·m_b / (m_a + m_b)` and the closing speed `v`. Both sides take the same damage (the same impulse acts on
@@ -908,11 +920,15 @@ without shields:
 
 | Collision | Impulse | Damage to each side |
 |---|---|---|
-| two raiders (15.8 t) head-on at 8 m/s each (measured, test) | 157 kN·s | 2.7 hp (both nose cannons, 1 hp, destroyed) |
-| raider rammed by a Halvex Runner (106.5 t), 10 m/s | ~165 kN·s | ~2.9 hp |
-| two runners head-on, 10 m/s closing | ~640 kN·s | ~12 hp |
-| two raiders touching at 1 m/s (test) | < 20 kN·s | none (impact only) |
+| two raiders (15.8 t) head-on at 8 m/s each (measured, test) | 157 kN·s | 1.1 hp (the nose cannon, 1 hp, destroyed; 0.1 into the core) |
+| two raiders head-on at 20 m/s each (test) | ~390 kN·s | ~5.8 hp: cannon, core and thruster (4 hp) crushed |
+| raider rammed by a Halvex Runner (106.5 t), 10 m/s | ~165 kN·s | ~1.3 hp |
+| two runners head-on, 10 m/s closing | ~640 kN·s | ~11 hp |
+| a raider bumping another at 4 m/s each (test), or touching at 1 m/s | < 100 kN·s | none (impact only) |
 | a runner pushing another at full thrust (69 kN) | ~2.3 kN·s per tick | none |
+| at the agile speeds (GDR-0041/0042, measured on the speed branch): the Runner at 22 m/s into a raider | 378 kN·s | 5.6 hp (2–3 raider blocks, a dent in the Runner's nose) |
+| the same, head-on | ~720 kN·s | ~12 hp (the raider mostly wrecked) |
+| raiders of one pack bumping on the way in | 160–310 kN·s | none (same owner); 1.2–4.2 hp between owners |
 
 The part under a contact: the contact point moved 5 cm into the hull (against the normal) and looked up with
 `Ship::part_at_local`; if that misses, the centre of the strongest manifold, then the strongest manifold's
@@ -920,9 +936,10 @@ sub-shape (a slope triangle names its part; a merged rectangle is looked up at t
 centre of all points is used because two flat faces touch at the ends of their overlap, which usually sit on a
 neighbouring slope's corner.
 
-v1 limits: one part per side, per pair and tick (a long scrape spreads over ticks, not over parts); no excess
-damage carried into the next part; no content stat for rams yet (a `ram` bonus on prow parts could scale the
-damage later).
+Limits: one contact point per side, per pair and tick (a long scrape spreads over ticks, not over parts); the
+crush runs in a straight line from that point; no content stat for rams yet (a `ram` bonus on prow parts could
+scale the damage later). A reinforced prow (high-hp armour at the nose) is the ramming build (GDR-0019,
+GDR-0047).
 
 ## Damage and breakage
 
@@ -1092,10 +1109,9 @@ Behaviors (asked 11 Oct 2026; **answered by Niklas on 12 Oct**, GDR-0034 to GDR-
 
 Physics (Rapier integration, 12 Oct 2026; defaults in [Collisions](#collisions-impacts-and-ramming-v1)):
 
-11. **Ramming numbers.** v1 deals `(impulse − 20 kN·s) × 0.02` hp to the touching part of each side: a raider
-    ramming a runner at 10 m/s takes out about 3 hp per side, a gentle bump nothing. (a) **Keep the formula and
-    tune the two numbers in the browser** (recommended); (b) add a content stat (`ram`) so prow parts deal more
-    and take less; (c) spread the damage over every touching part instead of one per side.
+11. **Ramming numbers.** **Answered by Niklas (12 Oct 2026, GDR-0047)**: `max(0, impulse − 100 kN·s) × 0.02`
+    hp per side (placeholders), crushing inward from the touching part past the parts it destroys; bumps below
+    100 kN·s are free. Done (see [Collisions](#collisions-impacts-and-ramming-v1)).
 12. **Do shields stop rams?** **Answered by Niklas (12 Oct 2026, GDR-0045)**: bubbles absorb ram damage at
     the contact point first (the kinetic share), the rest hits the hull; the collision itself is unchanged.
     Done (see [Vessels](#ramming-between-vessels-gdr-0045)).

@@ -78,9 +78,10 @@ pub struct Contact {
     /// disagree).
     pub part_a: Option<crate::design::PartIdx>,
     pub part_b: Option<crate::design::PartIdx>,
-    /// Ramming damage to `part_a` and to `part_b` each, before shields: shield bubbles covering the point
-    /// take their kinetic share first (`SimEvent::ShieldHit`), the rest hits the part. 0 below
-    /// `PhysicsTuning::ram_threshold` and between vessels of one owner (GDR-0045).
+    /// Ramming damage to each side, before shields: shield bubbles covering the point take their kinetic
+    /// share first (`SimEvent::ShieldHit`), the rest hits `part_a` / `part_b` and what exceeds a part's hit
+    /// points crushes on inward (GDR-0047). 0 below `PhysicsTuning::ram_threshold` and between vessels of one
+    /// owner (GDR-0045).
     pub damage: f32,
 }
 

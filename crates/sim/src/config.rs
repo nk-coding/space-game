@@ -62,9 +62,11 @@ pub struct PhysicsTuning {
     pub ccd_prediction: f32,
     /// Contacts whose impulse in a tick stays below this (kN·s) are not reported (resting contacts).
     pub impact_min_impulse: f32,
-    /// Ramming: the impulse in a tick (kN·s) above which a contact damages the touching parts.
+    /// Ramming: the impulse in a tick (kN·s) above which a contact deals damage (GDR-0047: 100, bumps below
+    /// it are free).
     pub ram_threshold: f32,
-    /// Ramming: damage per kN·s of impulse above `ram_threshold`, dealt to the touching part of each side.
+    /// Ramming: damage per kN·s of impulse above `ram_threshold`, dealt to each side: to the touching part,
+    /// the excess carried inward (GDR-0047).
     pub ram_damage: f32,
 }
 
@@ -78,7 +80,7 @@ impl Default for PhysicsTuning {
             sleep_time: 2.0,
             ccd_prediction: 4.0,
             impact_min_impulse: 1.0,
-            ram_threshold: 20.0,
+            ram_threshold: 100.0,
             ram_damage: 0.02,
         }
     }

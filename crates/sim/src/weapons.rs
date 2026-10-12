@@ -11,6 +11,8 @@
 //!   along the path are crossed in order, so overlapping bubbles stack. A shot starting inside a bubble passes.
 //!   Ram damage (GDR-0045) at a contact point inside bubbles is absorbed the same way, with the kinetic share,
 //!   by every bubble covering the point except the rammer's own ([`Sim::ram_shields`]).
+//! * **Ram crush** (GDR-0047): what is left of the ram damage hits the touching part and carries inward past
+//!   the parts it destroys, along the same grid walk as a penetrating shot ([`Sim::ram_crush`]).
 //!
 //! Order inside a tick (after the ship systems, before physics): bubbles are collected, live projectiles fly,
 //! then every gun fires; breakage is resolved afterwards. All loops run in id/index order.
@@ -128,6 +130,89 @@ impl StateHash for Projectile {
         h.u32(self.pierce);
         h.f32(self.life);
         h.u8(self.ricochets);
+    }
+}
+
+/// A straight walk through the blueprint grid cells of a piece (a DDA), for damage that carries on through the
+/// hull: penetrating shots and ram crush. Blueprint frame (y down).
+struct GridWalk {
+    x: f32,
+    y: f32,
+    dx: f32,
+    dy: f32,
+    cx: i32,
+    cy: i32,
+    sx: i32,
+    sy: i32,
+    tx: f32,
+    ty: f32,
+    tdx: f32,
+    tdy: f32,
+}
+
+impl GridWalk {
+    /// From the piece-frame point `local` of a piece whose frame origin is the blueprint point `origin`, along
+    /// the piece-frame direction `dir` (unit); the walk starts just inside the cell under the point.
+    fn new(origin: [f32; 2], local: Vec2, dir: Vec2) -> GridWalk {
+        let (dx, dy) = (dir.x, -dir.y);
+        let (mut x, mut y) = (origin[0] + local.x, origin[1] - local.y);
+        x += dx * 1e-3;
+        y += dy * 1e-3;
+        let (cx, cy) = (x.floor() as i32, y.floor() as i32);
+        let (sx, sy) = (if dx > 0.0 { 1 } else { -1 }, if dy > 0.0 { 1 } else { -1 });
+        let inv = |d: f32| {
+            if d.abs() > 1e-9 {
+                1.0 / d.abs()
+            } else {
+                f32::INFINITY
+            }
+        };
+        let next = |c: i32, p: f32, d: f32| {
+            if d > 0.0 {
+                (c as f32 + 1.0 - p) * inv(d)
+            } else if d < 0.0 {
+                (p - c as f32) * inv(d)
+            } else {
+                f32::INFINITY
+            }
+        };
+        GridWalk {
+            x,
+            y,
+            dx,
+            dy,
+            cx,
+            cy,
+            sx,
+            sy,
+            tx: next(cx, x, dx),
+            ty: next(cy, y, dy),
+            tdx: inv(dx),
+            tdy: inv(dy),
+        }
+    }
+
+    /// Steps into the next cell: the cell, and the distance along the walk where it is entered.
+    fn step(&mut self) -> ((i32, i32), f32) {
+        let travelled;
+        if self.tx < self.ty {
+            self.cx += self.sx;
+            travelled = self.tx;
+            self.tx += self.tdx;
+        } else {
+            self.cy += self.sy;
+            travelled = self.ty;
+            self.ty += self.tdy;
+        }
+        ((self.cx, self.cy), travelled)
+    }
+
+    /// The piece-frame point at distance `t` along the walk.
+    fn local_at(&self, origin: [f32; 2], t: f32) -> Vec2 {
+        Vec2::new(
+            self.x + self.dx * t - origin[0],
+            origin[1] - (self.y + self.dy * t),
+        )
     }
 }
 
@@ -419,51 +504,16 @@ impl Sim {
         };
         let pid = h.key.piece;
         // Walk the blueprint grid from the hit point along the shot.
-        let dl = rot.apply_inverse(dir);
-        let (dx, dy) = (dl.x, -dl.y);
-        let (mut x, mut y) = (origin[0] + h.local_point.x, origin[1] - h.local_point.y);
-        // Start just inside the first cell.
-        x += dx * 1e-3;
-        y += dy * 1e-3;
-        let (mut cx, mut cy) = (x.floor() as i32, y.floor() as i32);
-        let (sx, sy) = (if dx > 0.0 { 1 } else { -1 }, if dy > 0.0 { 1 } else { -1 });
-        let inv = |d: f32| {
-            if d.abs() > 1e-9 {
-                1.0 / d.abs()
-            } else {
-                f32::INFINITY
-            }
-        };
-        let (tdx, tdy) = (inv(dx), inv(dy));
-        let next = |c: i32, p: f32, d: f32| {
-            if d > 0.0 {
-                (c as f32 + 1.0 - p) * inv(d)
-            } else if d < 0.0 {
-                (p - c as f32) * inv(d)
-            } else {
-                f32::INFINITY
-            }
-        };
-        let (mut tx, mut ty) = (next(cx, x, dx), next(cy, y, dy));
+        let mut walk = GridWalk::new(origin, h.local_point, rot.apply_inverse(dir));
         let mut last = first;
-        let mut travelled: f32;
         for _ in 0..tuning::MAX_WALK {
             let carry = match out {
                 DamageOutcome::Destroyed { excess } if excess > 0.0 && pierce > 0 => excess,
                 _ => return,
             };
-            // Next cell.
-            if tx < ty {
-                cx += sx;
-                travelled = tx;
-                tx += tdx;
-            } else {
-                cy += sy;
-                travelled = ty;
-                ty += tdy;
-            }
+            let (cell, travelled) = walk.step();
             let ship = &self.ships[k];
-            let Some(o) = ship.grid().occupant((cx, cy)) else {
+            let Some(o) = ship.grid().occupant(cell) else {
                 // Left the hull: the shot stops (it does not fly on to other ships).
                 return;
             };
@@ -473,13 +523,59 @@ impl Sim {
             }
             last = o;
             pierce -= 1;
-            let local = Vec2::new(
-                x + dx * travelled - origin[0],
-                origin[1] - (y + dy * travelled),
-            );
+            let local = walk.local_at(origin, travelled);
             let point = h.point + rot.apply(local - h.local_point);
             out = self.damage_part(owner, family, k, o, point, -dir, carry, 0.0);
         }
+    }
+
+    /// Ram damage to the body `key` of ship `k` (GDR-0047): `damage` hits the touching part `first`; what
+    /// exceeds its hit points carries on to the next part inward (along `inward`, world, unit, from the contact
+    /// `point`), and so on until it is used up or the walk leaves the piece's hull (an empty cell or another
+    /// piece's). The emptied cells of a big part just crushed are passed through. Returns whether any part took
+    /// damage. (Shields have taken their share already: [`Sim::ram_shields`].)
+    pub(crate) fn ram_crush(
+        &mut self,
+        k: usize,
+        key: BodyKey,
+        first: PartIdx,
+        point: Vec2,
+        inward: Vec2,
+        damage: f32,
+    ) -> bool {
+        let mut out = self.ships[k].apply_damage(DamageTarget::Part(first), damage);
+        if out == DamageOutcome::Ignored {
+            return false;
+        }
+        let Some(piece) = self.ships[k].piece(key.piece) else {
+            return true;
+        };
+        let (origin, rot) = (piece.origin, Rot::from_angle(piece.body.angle));
+        let local = rot.apply_inverse(point - piece.body.pos);
+        let mut walk = GridWalk::new(origin, local, rot.apply_inverse(inward));
+        let mut last = first;
+        for _ in 0..tuning::MAX_WALK {
+            let carry = match out {
+                DamageOutcome::Destroyed { excess } if excess > 0.0 => excess,
+                _ => break,
+            };
+            let (cell, _) = walk.step();
+            let ship = &self.ships[k];
+            let o = match ship.grid().occupant(cell) {
+                Some(o) => o as PartIdx,
+                None if ship.design().grid.occupant(cell) == Some(last as usize) => continue,
+                None => break,
+            };
+            if o == last {
+                continue;
+            }
+            if ship.part(o).piece != key.piece {
+                break;
+            }
+            last = o;
+            out = self.ships[k].apply_damage(DamageTarget::Part(o), carry);
+        }
+        true
     }
 
     fn advance_projectiles(&mut self) {

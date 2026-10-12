@@ -449,8 +449,8 @@ fn over_mind_capacity_the_newest_vessels_go_dormant_and_the_focus_never_does() {
     assert!(raiders.iter().all(|&s| !w.ship(s).unwrap().is_dormant()));
 }
 
-/// Two raiders head-on at 8 m/s each.
-fn ram(owner_b: Owner) -> (sim::Sim, ShipId, ShipId) {
+/// Two raiders head-on at `speed` m/s each.
+fn ram(owner_b: Owner, speed: f32) -> (sim::Sim, ShipId, ShipId) {
     let c = content();
     let d = design(&c, "automaton_raider");
     let mut w = sim::Sim::new(1);
@@ -460,9 +460,19 @@ fn ram(owner_b: Owner) -> (sim::Sim, ShipId, ShipId) {
         linvel: Vec2::new(0.0, vy),
         angvel: 0.0,
     };
-    let a = w.spawn_ship(d.clone(), Owner(1), mv(Vec2::ZERO, 0.0, 8.0));
-    let b = w.spawn_ship(d, owner_b, mv(Vec2::new(0.0, 12.0), PI, -8.0));
+    let a = w.spawn_ship(d.clone(), Owner(1), mv(Vec2::ZERO, 0.0, speed));
+    let b = w.spawn_ship(d, owner_b, mv(Vec2::new(0.0, 12.0), PI, -speed));
     (w, a, b)
+}
+
+/// Hit points a ship lost (destroyed parts count in full).
+fn hp_lost(w: &sim::Sim, s: ShipId) -> f32 {
+    let ship = w.ship(s).unwrap();
+    ship.parts()
+        .iter()
+        .zip(&ship.design().parts)
+        .map(|(p, d)| d.hp - if p.alive { p.hp } else { 0.0 })
+        .sum()
 }
 
 fn impacts(w: &sim::Sim) -> Vec<sim::Contact> {
@@ -477,7 +487,7 @@ fn impacts(w: &sim::Sim) -> Vec<sim::Contact> {
 
 #[test]
 fn vessels_of_one_owner_bump_without_ram_damage() {
-    let (mut w, a, b) = ram(Owner(1));
+    let (mut w, a, b) = ram(Owner(1), 12.0);
     let mut contacts = Vec::new();
     for _ in 0..30 {
         w.step(&TickInputs::default());
@@ -502,9 +512,58 @@ fn vessels_of_one_owner_bump_without_ram_damage() {
     assert!(va.y < 0.0, "{va:?}");
 }
 
-/// A 3×3 block with a shield emitter in the middle, rammed head-on by a raider of another owner. Returns the
-/// hit points the touched part of each side lost, and the bubble's charge after the ram.
-fn shielded_ram(shields: bool) -> (f32, f32, f32, Vec<SimEvent>) {
+#[test]
+fn a_hard_ram_crushes_inward_past_the_parts_it_destroys() {
+    // Head-on at 20 m/s each (about 390 kN·s): ~5.8 hp per side, more than the raider's centre column holds
+    // (cannon 1, core 2, thruster 1 hp): the nose is crushed and the damage carries through the core to the
+    // tail (GDR-0047). The side columns are untouched.
+    let (mut w, a, b) = ram(Owner(2), 20.0);
+    let mut hit = None;
+    for _ in 0..30 {
+        w.step(&TickInputs::default());
+        if let Some(c) = impacts(&w).into_iter().find(|c| c.damage > 0.0) {
+            hit = Some(c);
+            break;
+        }
+    }
+    let c = hit.expect("a ram");
+    let t = w.config().physics;
+    assert!(c.impulse > 300.0, "{c:?}");
+    assert!((c.damage - (c.impulse - t.ram_threshold) * t.ram_damage).abs() < 1e-4);
+    let d = w.ship(a).unwrap().design().clone();
+    let column: Vec<PartIdx> = (0..3)
+        .map(|y| d.grid.occupant((1, y)).unwrap() as PartIdx)
+        .collect();
+    for s in [a, b] {
+        let ship = w.ship(s).unwrap();
+        assert!(
+            column.iter().all(|&p| !ship.part(p).alive),
+            "{s:?}: the centre column is crushed"
+        );
+        assert!(
+            (0..d.parts.len() as PartIdx)
+                .filter(|p| !column.contains(p))
+                .all(|p| ship.part(p).alive && ship.part(p).hp == d.parts[p as usize].hp),
+            "{s:?}: the sides are untouched"
+        );
+        assert!(ship.team().is_none(), "the core went with the column");
+    }
+    // Below the threshold a bump is free: 4 m/s each is about 80 kN·s.
+    let (mut w, a, b) = ram(Owner(2), 4.0);
+    let mut impulses = Vec::new();
+    for _ in 0..40 {
+        w.step(&TickInputs::default());
+        impulses.extend(impacts(&w).into_iter().map(|c| (c.impulse, c.damage)));
+    }
+    assert!(impulses.iter().any(|&(i, _)| i > 40.0), "{impulses:?}");
+    assert!(impulses.iter().all(|&(_, d)| d == 0.0), "{impulses:?}");
+    assert_eq!((hp_lost(&w, a), hp_lost(&w, b)), (0.0, 0.0));
+}
+
+/// A 3×3 block with a shield emitter in the middle, rammed head-on at 20 m/s by a raider of another owner.
+/// Returns the hit points each side lost, the bubble's charge after the ram, the tick's events and the ram
+/// damage per side.
+fn shielded_ram(shields: bool) -> (f32, f32, f32, Vec<SimEvent>, f32) {
     let c = content();
     let block = custom(
         &c,
@@ -529,7 +588,7 @@ fn shielded_ram(shields: bool) -> (f32, f32, f32, Vec<SimEvent>) {
         Body {
             pos: Vec2::new(0.0, 12.0),
             angle: PI,
-            linvel: Vec2::new(0.0, -8.0),
+            linvel: Vec2::new(0.0, -20.0),
             angvel: 0.0,
         },
     );
@@ -551,37 +610,35 @@ fn shielded_ram(shields: bool) -> (f32, f32, f32, Vec<SimEvent>) {
         (c.b, c.a)
     };
     assert_eq!((ks.ship, kr.ship), (s, r));
-    let part = |k: sim::BodyKey| if k == c.a { c.part_a } else { c.part_b }.unwrap();
-    let lost = |id: ShipId, p: PartIdx| {
-        let ship = w.ship(id).unwrap();
-        ship.design().parts[p as usize].hp - ship.part(p).hp
-    };
     (
-        lost(ks.ship, part(ks)),
-        lost(kr.ship, part(kr)),
+        hp_lost(&w, s),
+        hp_lost(&w, r),
         w.ship(s).unwrap().part(emitter).shield,
         events,
+        c.damage,
     )
 }
 
 #[test]
 fn a_shielded_ram_drains_the_bubble_first() {
-    let (hull_off, raider_off, charge_off, _) = shielded_ram(false);
-    let (hull_on, raider_on, charge_on, events) = shielded_ram(true);
-    assert!(hull_off > 0.5, "{hull_off}");
+    let (hull_off, raider_off, charge_off, _, ram_off) = shielded_ram(false);
+    let (hull_on, raider_on, charge_on, events, ram_on) = shielded_ram(true);
+    assert!(
+        ram_off > 1.0 && (ram_on - ram_off).abs() < 0.05 * ram_off,
+        "{ram_off} {ram_on}"
+    );
+    // Without a bubble the block takes the whole ram (crushing on past its nose armour).
+    assert!((hull_off - ram_off).abs() < 1e-3, "{hull_off} vs {ram_off}");
     // The bubble covering the contact point takes the kinetic share (half) of the ram; the rest hits the
     // hull. The raider has no bubble and takes the full ram (the block's bubble does not shield the rammer).
     assert!(
-        (hull_on - hull_off * 0.5).abs() < 0.05 * hull_off,
-        "{hull_on} vs {hull_off}"
+        (hull_on - ram_on * 0.5).abs() < 1e-3,
+        "{hull_on} vs {ram_on}"
     );
-    assert!((raider_on - raider_off).abs() < 0.05 * raider_off);
+    assert!((raider_on - ram_on).abs() < 1e-3 && (raider_off - ram_off).abs() < 1e-3);
     let cap = 6.0;
     assert_eq!(charge_off, cap, "no bubble, nothing drained");
-    assert!(
-        (cap - charge_on - hull_off * 0.5).abs() < 0.05 * hull_off,
-        "{charge_on}"
-    );
+    assert!((cap - charge_on - ram_on * 0.5).abs() < 1e-3, "{charge_on}");
     assert!(
         events
             .iter()

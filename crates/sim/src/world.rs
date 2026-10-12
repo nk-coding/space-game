@@ -14,9 +14,9 @@
 //! 6. Weapons (shields, projectiles, guns), then breakage again.
 //! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT`, contacts become
 //!    `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back
-//!    (previous pose kept for interpolation); impacts above the ramming threshold damage the touching parts
-//!    (none between vessels of one owner; shield bubbles covering the point absorb first), and breakage is
-//!    resolved once more.
+//!    (previous pose kept for interpolation); impacts above the ramming threshold crush inward from the
+//!    touching parts (none between vessels of one owner; shield bubbles covering the point absorb first), and
+//!    breakage is resolved once more.
 //! 8. `tick += 1`; debug builds store the state hash.
 
 use std::sync::Arc;
@@ -758,10 +758,10 @@ impl Sim {
         self.impacts = impacts;
     }
 
-    /// Reports this tick's impacts and deals their ramming damage to the touching part of each side (equal
-    /// on both: the same impulse acts on both hulls, so armour and hit points decide who breaks), after the
-    /// shield bubbles covering the contact point took their kinetic share (GDR-0045), then resolves what
-    /// broke.
+    /// Reports this tick's impacts and deals their ramming damage to each side (equal on both: the same
+    /// impulse acts on both hulls, so armour and hit points decide who breaks): the shield bubbles covering
+    /// the contact point take their kinetic share first (GDR-0045), the rest crushes inward from the touching
+    /// part (GDR-0047). Then resolves what broke.
     fn ram(&mut self) {
         let mut rammed = false;
         for n in 0..self.impacts.len() {
@@ -770,11 +770,14 @@ impl Sim {
             if c.damage <= 0.0 {
                 continue;
             }
-            for (key, part, by) in [(c.a, c.part_a, c.b), (c.b, c.part_b, c.a)] {
+            // The normal points out of `a` into `b`: inward is against it for `a`, along it for `b`.
+            for (key, part, by, inward) in [
+                (c.a, c.part_a, c.b, c.normal * -1.0),
+                (c.b, c.part_b, c.a, c.normal),
+            ] {
                 if let (Some(part), Some(k)) = (part, self.ship_index(key.ship)) {
                     let hull = self.ram_shields(by, c.point, c.damage);
-                    rammed |= self.ships[k].apply_damage(DamageTarget::Part(part), hull)
-                        != DamageOutcome::Ignored;
+                    rammed |= self.ram_crush(k, key, part, c.point, inward, hull);
                 }
             }
         }
