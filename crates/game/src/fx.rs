@@ -150,7 +150,21 @@ pub struct Effects {
     rng: Rng,
     /// Weapon / glow colour per ship (filled lazily).
     ship_colors: BTreeMap<ShipId, (Color, Color)>,
+    /// Where engine plumes are burning a part now (`SimEvent::PlumeHit`, refreshed every tick while it lasts).
+    burns: Vec<Burn>,
 }
+
+/// A plume lane blocked by a part: the engine (ship, part) and the world point it burns.
+#[derive(Clone, Copy)]
+struct Burn {
+    ship: ShipId,
+    engine: sim::PartIdx,
+    point: Vec2,
+    age: f32,
+}
+
+/// A burn not refreshed for this long is over (plume hits come every tick, 33 ms).
+const BURN_SECONDS: f32 = 0.12;
 
 impl Default for Effects {
     fn default() -> Self {
@@ -161,6 +175,7 @@ impl Default for Effects {
             trail: Vec::with_capacity(1024),
             rng: Rng::new(0xF0F0_1234),
             ship_colors: BTreeMap::new(),
+            burns: Vec::with_capacity(32),
         }
     }
 }
@@ -172,6 +187,7 @@ impl Effects {
         self.lines.clear();
         self.trail.clear();
         self.ship_colors.clear();
+        self.burns.clear();
     }
 
     fn spray(&mut self, pos: Vec2, dir: Vec2, spread: f32, n: usize, speed: (f32, f32), life: (f32, f32), size: f32, color: Color) {
@@ -218,6 +234,18 @@ impl Effects {
         let c = Color::srgb(1.0, 0.85, 0.6);
         self.flash(point, c, 0.7, 0.12);
         self.spray(point, vel.normalize_or_zero(), 0.35, 5, (8.0, 16.0), (0.12, 0.3), 0.06, c);
+    }
+
+    /// An engine's plume burns a part at `point` (one lane, this tick): the plume's real reach is drawn faintly
+    /// up to it while it lasts (`draw_ships_fx`).
+    pub fn burn(&mut self, ship: ShipId, engine: sim::PartIdx, point: Vec2) {
+        let same = |b: &Burn| b.ship == ship && b.engine == engine && b.point.distance_squared(point) < 0.36;
+        if let Some(b) = self.burns.iter_mut().find(|b| same(b)) {
+            b.point = point;
+            b.age = 0.0;
+        } else if self.burns.len() < 64 {
+            self.burns.push(Burn { ship, engine, point, age: 0.0 });
+        }
     }
 
     /// A part or piece destroyed.
@@ -364,6 +392,13 @@ fn draw_ships_fx(
                     color: Color::WHITE.with_alpha(0.55 + 0.45 * level),
                     z: Z_TRAILS,
                 });
+                // The plume burns a part beyond the drawn flame (GDR-0049: the sim's reach is 3-6 m): a faint streak
+                // out to it and an ember where it burns.
+                for b in fx.burns.iter().filter(|b| b.ship == ship.id() && b.engine == th.part) {
+                    let k = (1.0 - b.age / BURN_SECONDS).clamp(0.0, 1.0) * level;
+                    queue.line(&regions.halo, at, b.point, 0.35 * width, view.glow.with_alpha(0.22 * k), Z_TRAILS);
+                    queue.dot(&regions.soft, b.point, 0.9, Color::srgb(1.0, 0.72, 0.45).with_alpha(0.55 * k), Z_TRAILS + 0.1);
+                }
                 // Cruise: a hot, steady core down the middle of the calm flame.
                 if calm > 0.0 {
                     let p = &style.plume;
@@ -473,9 +508,14 @@ fn draw_effects(
         fx.flashes.clear();
         fx.lines.clear();
         fx.trail.clear();
+        fx.burns.clear();
         return;
     }
     let fx = &mut *fx;
+    fx.burns.retain_mut(|b| {
+        b.age += dt;
+        b.age < BURN_SECONDS
+    });
     let drag = (-2.5 * dt).exp();
     fx.sparks.retain_mut(|s| {
         s.age += dt;

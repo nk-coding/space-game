@@ -295,6 +295,7 @@ fn apply_events(
             SimEvent::ShotFired { ship, kind, from, to, .. } => Act::Shot(*ship, *kind, v2(*from), v2(*to)),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
+            SimEvent::PlumeHit { by, engine, point, .. } => Act::Burn(*by, *engine, v2(*point)),
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
             }
@@ -376,6 +377,7 @@ fn apply_events(
                 fx.hit(point, normal, color, damage);
             }
             Act::Ricochet(point, vel) => fx.ricochet(point, vel),
+            Act::Burn(ship, engine, point) => fx.burn(ship, engine, point),
             Act::Shield(ship, piece, part, point, absorbed, depleted) => {
                 // The ripple starts where the shot entered: a direction from the emitter in the piece frame (the
                 // bubble turns with the ship), from the tick's pose, so it works while the view is being rebuilt;
@@ -409,6 +411,8 @@ enum Act {
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
+    /// An engine's plume (ship, engine part) burns a part at a point.
+    Burn(ShipId, sim::PartIdx, Vec2),
     Shield(ShipId, PieceId, sim::PartIdx, Vec2, f32, bool),
 }
 
