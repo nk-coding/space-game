@@ -293,6 +293,8 @@ impl Ship {
             row.tier = setting.tier;
             row.weight = w;
             sort_rows(&mut p.consumers);
+            // The idle order (GDR-0044) follows the allocation order.
+            p.control_dirty = true;
         }
         true
     }

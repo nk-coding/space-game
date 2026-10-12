@@ -147,9 +147,14 @@ fn stick_sets_course_and_speed_and_release_brakes() {
 fn lock_keeps_the_nose_on_a_moving_target() {
     let c = content();
     let mut w = sim::Sim::new(1);
-    let hunter = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
+    let hunter = w.spawn_ship(
+        design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     let prey = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body {
             pos: Vec2::new(40.0, 30.0),
             linvel: Vec2::new(-1.5, 1.0),
@@ -364,7 +369,11 @@ fn rcs_nozzles_follow_open_sides_and_strafe() {
 fn maneuvers_approach_orbit_and_hold() {
     let c = content();
     let mut w = sim::Sim::new(3);
-    let ship = w.spawn_ship(design(&c, "automaton_raider"), Body::default());
+    let ship = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        sim::Owner(1),
+        Body::default(),
+    );
     let beacon = Target::Point(Vec2::new(0.0, 80.0));
     w.command(
         ship,
@@ -433,9 +442,14 @@ fn maneuvers_approach_orbit_and_hold() {
 fn content_raider_hunts_and_fires() {
     let c = content();
     let mut w = sim::Sim::new(5);
-    let runner = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
+    let runner = w.spawn_ship(
+        design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     let raider = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body::at(Vec2::new(120.0, 40.0), PI),
     );
     fight(&mut w, &c, raider);
@@ -555,6 +569,7 @@ fn render_pose_interpolates_between_ticks() {
     let mut w = sim::Sim::new(1);
     let s = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body {
             angle: PI - 0.01,
             linvel: Vec2::new(3.0, 0.0),
@@ -581,7 +596,11 @@ fn raycast_finds_the_part_under_the_hit() {
     let c = content();
     let d = design(&c, "automaton_raider");
     let mut w = sim::Sim::new(1);
-    let s = w.spawn_ship(d.clone(), Body::at(Vec2::new(20.0, 0.0), 0.0));
+    let s = w.spawn_ship(
+        d.clone(),
+        sim::Owner::PLAYER,
+        Body::at(Vec2::new(20.0, 0.0), 0.0),
+    );
     let hit = w
         .raycast(Vec2::ZERO, Vec2::new(1.0, 0.0), 100.0, None)
         .expect("hit");
@@ -631,9 +650,14 @@ fn lead_point_intercepts_a_moving_target() {
 fn crossing_hits(aim: sim::flight::AimMode) -> usize {
     let c = content();
     let mut w = sim::Sim::new(9);
-    let shooter = w.spawn_ship(design(&c, "automaton_raider"), Body::default());
+    let shooter = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        sim::Owner(1),
+        Body::default(),
+    );
     let target = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body {
             pos: Vec2::new(-20.0, 50.0),
             linvel: Vec2::new(8.0, 0.0),

@@ -9,6 +9,8 @@
 //! * **Shields**: every working emitter projects a bubble (`shield_radius`) around itself. A shot that enters a
 //!   bubble of another ship loses `damage × absorb[family]` to it (up to what the bubble has left); bubbles
 //!   along the path are crossed in order, so overlapping bubbles stack. A shot starting inside a bubble passes.
+//!   Ram damage (GDR-0045) at a contact point inside bubbles is absorbed the same way, with the kinetic share,
+//!   by every bubble covering the point except the rammer's own ([`Sim::ram_shields`]).
 //!
 //! Order inside a tick (after the ship systems, before physics): bubbles are collected, live projectiles fly,
 //! then every gun fires; breakage is resolved afterwards. All loops run in id/index order.
@@ -24,6 +26,7 @@ use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
 use crate::mass::to_piece;
 use crate::math::{Rot, Vec2};
+use crate::physics::BodyKey;
 use crate::physics::RayHit;
 use crate::ship::Ship;
 use crate::world::Sim;
@@ -218,39 +221,70 @@ impl Sim {
         entries.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         for n in 0..self.shield_scratch.len() {
             let (t, b) = self.shield_scratch[n];
-            let bub = &mut self.bubbles[b as usize];
-            let take = (*damage * bub.absorb[fi]).min(bub.left);
-            if take <= 0.0 {
-                continue;
-            }
-            bub.left -= take;
-            if bub.left < 1e-6 {
-                bub.left = 0.0;
-            }
-            *damage -= take;
-            let (ship_index, part, left) = (bub.ship_index, bub.part, bub.left);
-            let ps = &mut self.ships[ship_index].parts[part as usize];
-            ps.shield = left;
-            if left <= 0.0 {
-                ps.shield_down = true;
-            }
-            let bub = self.bubbles[b as usize];
-            self.events.push(SimEvent::ShieldHit {
-                by: owner,
-                ship: bub.ship,
-                piece: bub.piece,
-                part,
-                point: from + dir * t,
-                absorbed: take,
-                left,
-                depleted: left <= 0.0,
-            });
+            *damage -= self.absorb(b as usize, fi, owner, from + dir * t, *damage);
             if *damage <= 1e-6 {
                 *damage = 0.0;
                 return Some(t);
             }
         }
         None
+    }
+
+    /// Bubble `b` takes its share of `damage` (family index `fi`): `damage × absorb[fi]`, up to what it has
+    /// left. Updates the emitter (collapses at 0), reports a `ShieldHit` at `point` by `by` and returns what
+    /// it took.
+    fn absorb(&mut self, b: usize, fi: usize, by: ShipId, point: Vec2, damage: f32) -> f32 {
+        let bub = &mut self.bubbles[b];
+        let take = (damage * bub.absorb[fi]).min(bub.left);
+        if take <= 0.0 {
+            return 0.0;
+        }
+        bub.left -= take;
+        if bub.left < 1e-6 {
+            bub.left = 0.0;
+        }
+        let (ship_index, part, left) = (bub.ship_index, bub.part, bub.left);
+        let ps = &mut self.ships[ship_index].parts[part as usize];
+        ps.shield = left;
+        if left <= 0.0 {
+            ps.shield_down = true;
+        }
+        let bub = self.bubbles[b];
+        self.events.push(SimEvent::ShieldHit {
+            by,
+            ship: bub.ship,
+            piece: bub.piece,
+            part,
+            point,
+            absorbed: take,
+            left,
+            depleted: left <= 0.0,
+        });
+        take
+    }
+
+    /// Ram damage at a contact `point` (GDR-0045): every bubble of this tick that covers the point takes its
+    /// kinetic share of what reaches it (in bubble order: ship, piece, emitter), except the bubbles of the
+    /// rammer `by` itself (as a shot passes its shooter's bubbles). Returns the damage left for the hull.
+    pub(crate) fn ram_shields(&mut self, by: BodyKey, point: Vec2, mut damage: f32) -> f32 {
+        let fi = family_index(WeaponFamily::Kinetic);
+        for b in 0..self.bubbles.len() {
+            if damage <= 1e-6 {
+                return 0.0;
+            }
+            let bub = &self.bubbles[b];
+            if (bub.ship == by.ship && bub.piece == by.piece)
+                || bub.left <= 0.0
+                || bub.absorb[fi] <= 0.0
+                || (point - bub.centre).length_squared() > bub.radius * bub.radius
+                // The emitter left with a split-off vessel after the bubbles were collected.
+                || !self.ships[bub.ship_index].parts[bub.part as usize].alive
+            {
+                continue;
+            }
+            damage -= self.absorb(b, fi, by.ship, point, damage);
+        }
+        damage
     }
 
     /// The part under a ray hit and its ship index.

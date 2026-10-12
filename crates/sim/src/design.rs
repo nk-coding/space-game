@@ -151,6 +151,10 @@ pub struct PartSpec {
     pub logic: bool,
     /// Behavior rules this logic core can run (`logic.rule_slots`; 0 for other parts).
     pub rule_slots: u32,
+    /// Control capacity of this logic core (`logic.control_capacity`, GDR-0038 "N"; 0 for other parts).
+    pub control_capacity: u32,
+    /// What the part costs against its vessel's control capacity (content `control_cost`, default by kind).
+    pub control_cost: u32,
     pub cargo: f32,
     /// `Some` for parts that draw power.
     pub consumer: Option<ConsumerKind>,
@@ -388,6 +392,8 @@ impl ShipDesign {
                 is_shield: def.shield.is_some(),
                 logic: def.logic.is_some(),
                 rule_slots: def.logic.as_ref().map_or(0, |l| l.rule_slots),
+                control_capacity: def.logic.as_ref().map_or(0, |l| l.control_capacity),
+                control_cost: def.control_cost(),
                 cargo: def.cargo.as_ref().map_or(0.0, |c| c.capacity),
                 consumer,
                 power_setting,

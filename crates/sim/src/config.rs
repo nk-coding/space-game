@@ -2,6 +2,7 @@
 //! peers) must use the same config. All numbers are **placeholders** for feel.
 
 use crate::hash::{StateHash, StateHasher};
+use crate::vessel::{MAX_OWNERS, Owner};
 
 /// Flight-computer tuning (see `flight.rs` and `docs/sim.md`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -94,6 +95,21 @@ pub struct SimConfig {
     pub split_ghost_ticks: u32,
     pub flight: FlightTuning,
     pub physics: PhysicsTuning,
+    /// Mind capacity per owner (GDR-0013, GDR-0038): how many logic cores of its vessels run at once. Over
+    /// it the newest vessels go dormant (GDR-0044); the focus never does. Index = `Owner.0`; owners beyond
+    /// the table have no limit. **PLACEHOLDERS** (lead, 12 Oct 2026): owner 0 (the player by convention) 24
+    /// cores (twelve Halvex Runners), AI owners 1000.
+    pub mind_capacity: [u32; MAX_OWNERS],
+}
+
+impl SimConfig {
+    /// The mind capacity of an owner (`u32::MAX` beyond the table).
+    pub fn mind_capacity(&self, owner: Owner) -> u32 {
+        self.mind_capacity
+            .get(owner.0 as usize)
+            .copied()
+            .unwrap_or(u32::MAX)
+    }
 }
 
 impl Default for SimConfig {
@@ -104,6 +120,7 @@ impl Default for SimConfig {
             split_ghost_ticks: 10,
             flight: FlightTuning::default(),
             physics: PhysicsTuning::default(),
+            mind_capacity: [24, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
         }
     }
 }
@@ -139,6 +156,9 @@ impl StateHash for SimConfig {
             p.ram_damage,
         ] {
             h.f32(v);
+        }
+        for &c in &self.mind_capacity {
+            h.u32(c);
         }
     }
 }

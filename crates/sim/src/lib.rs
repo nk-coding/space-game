@@ -26,7 +26,7 @@
 //! let content = data::base_content();
 //! let design = Arc::new(sim::ShipDesign::compile(&content, content.ships.get("halvex_runner").unwrap()).unwrap());
 //! let mut world = sim::Sim::new(42);
-//! let ship = world.spawn_ship(design, sim::Body::default());
+//! let ship = world.spawn_ship(design, sim::Owner::PLAYER, sim::Body::default());
 //! world.step(&sim::TickInputs::default());
 //! let piece = &world.ship(ship).unwrap().pieces()[0];
 //! assert!(piece.mass.mass > 0.0 && piece.colliders.len() > 0);
@@ -39,6 +39,7 @@ pub mod behavior;
 pub mod breakage;
 pub mod collider;
 pub mod config;
+pub mod control;
 pub mod design;
 pub mod events;
 pub mod flight;
@@ -52,6 +53,7 @@ pub mod power;
 pub mod rng;
 pub mod scenario;
 pub mod ship;
+pub mod vessel;
 pub mod weapons;
 pub mod world;
 
@@ -60,6 +62,7 @@ pub use behavior::{BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
 pub use breakage::{DamageOutcome, DamageTarget};
 pub use collider::ConvexPolygon;
 pub use config::{FlightTuning, PhysicsTuning, SimConfig};
+pub use control::ControlState;
 pub use data::PowerTier;
 pub use design::{ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
@@ -77,6 +80,7 @@ pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,
     Wrench, inherited_velocity, thruster_wrench,
 };
+pub use vessel::{MAX_OWNERS, Owner, VesselInfo, VesselState, friendly};
 pub use weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
 pub use world::{DamageCommand, PartHit, ShipCommand, Sim, StepPhase, TickInputs};
 

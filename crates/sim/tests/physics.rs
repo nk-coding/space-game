@@ -8,7 +8,7 @@ use core::f32::consts::PI;
 use common::*;
 use sim::mass::to_piece;
 use sim::{
-    Body, BodyKey, Contact, DamageTarget, PartIdx, ShipId, SimEvent, TickInputs, Vec2,
+    Body, BodyKey, Contact, DamageTarget, Owner, PartIdx, ShipId, SimEvent, TickInputs, Vec2,
     inherited_velocity,
 };
 
@@ -38,11 +38,12 @@ fn idle(w: &mut sim::Sim, ticks: u32) -> Vec<Contact> {
     all
 }
 
-/// A raider at `pos` facing `angle`, coasting at `vel`.
-fn raider(w: &mut sim::Sim, pos: Vec2, angle: f32, vel: Vec2) -> ShipId {
+/// A raider of `owner` at `pos` facing `angle`, coasting at `vel`.
+fn raider(w: &mut sim::Sim, owner: Owner, pos: Vec2, angle: f32, vel: Vec2) -> ShipId {
     let c = content();
     w.spawn_ship(
         design(&c, "automaton_raider"),
+        owner,
         Body {
             pos,
             angle,
@@ -63,27 +64,31 @@ fn split_pieces_carry_their_inherited_velocity_in_rapier() {
         linvel: Vec2::new(3.0, -1.0),
         angvel: 0.7,
     };
-    let s = w.spawn_ship(d.clone(), body);
+    let s = w.spawn_ship(d.clone(), Owner::PLAYER, body);
     let parent = w.ship(s).unwrap().pieces()[0].clone();
     let com_old = parent.com_world();
-    // The centre column: the runner splits down the middle.
+    // The centre column: the runner splits down the middle. Each half keeps a logic core, so the second
+    // half is a vessel of its own: a new ship with one piece (its body moved to the new key).
     for cell in [(5, 0), (6, 0), (5, 2), (5, 4), (6, 4), (5, 5)] {
         w.apply_damage(s, DamageTarget::Cell(cell), 100.0);
     }
     w.resolve_breakage();
-    let ship = w.ship(s).unwrap();
-    assert_eq!(ship.pieces().len(), 2);
+    assert_eq!(w.ships().len(), 2);
+    let ships = [s, w.ships()[1].id()];
     // Rapier holds the velocities the sim handed over (centre of mass moved, new body created).
-    for (k, p) in ship.pieces().iter().enumerate() {
+    for &id in &ships {
+        let ship = w.ship(id).unwrap();
+        assert_eq!(ship.pieces().len(), 1);
+        let p = &ship.pieces()[0];
         let want = inherited_velocity(body.linvel, body.angvel, com_old, p.com_world());
-        let rb = w.physics().body(key(&w, s, k)).unwrap();
+        let rb = w.physics().body(key(&w, id, 0)).unwrap();
         assert!((rb.linvel - want).length() < 1e-4, "{rb:?} vs {want:?}");
         assert_eq!(rb.angvel, body.angvel);
         assert!((rb.pos - p.body.pos).length() < 1e-5 && (rb.angle - p.body.angle).abs() < 1e-6);
     }
     // One free step later both halves still move with the old body (to second order in DT), and the
     // velocities are unchanged: no forces, and the two halves are ghosts.
-    let before: Vec<Option<Vec2>> = parts_world(&w, s);
+    let before: Vec<Option<Vec2>> = parts_world(&w, &ships);
     let rigid = |p: Vec2| {
         let dt = sim::DT;
         let r = sim::Rot::from_angle(body.angvel * dt).apply(p - com_old);
@@ -91,18 +96,20 @@ fn split_pieces_carry_their_inherited_velocity_in_rapier() {
     };
     w.step(&TickInputs::default());
     assert!(impacts(&w).is_empty());
-    let after = parts_world(&w, s);
+    let after = parts_world(&w, &ships);
     for (p0, p1) in before.iter().zip(&after) {
         if let (Some(p0), Some(p1)) = (p0, p1) {
             assert!((rigid(*p0) - *p1).length() < 2e-3, "{p0:?} → {p1:?}");
         }
     }
-    let ship = w.ship(s).unwrap();
-    let (m, mom) = ship.pieces().iter().fold((0.0, Vec2::ZERO), |(m, mom), p| {
+    let pieces: Vec<&sim::Piece> = ships
+        .iter()
+        .flat_map(|&id| w.ship(id).unwrap().pieces())
+        .collect();
+    let (m, mom) = pieces.iter().fold((0.0, Vec2::ZERO), |(m, mom), p| {
         (m + p.mass.mass, mom + p.body.linvel * p.mass.mass)
     });
-    let c_rem = ship
-        .pieces()
+    let c_rem = pieces
         .iter()
         .fold(Vec2::ZERO, |c, p| c + p.com_world() * p.mass.mass)
         * (1.0 / m);
@@ -115,16 +122,19 @@ fn split_pieces_carry_their_inherited_velocity_in_rapier() {
     assert!((mom * (1.0 / m) - want).length() < 1e-3, "{mom:?}");
 }
 
-/// World centroid of every alive part.
-fn parts_world(w: &sim::Sim, s: ShipId) -> Vec<Option<Vec2>> {
-    let ship = w.ship(s).unwrap();
-    let d = ship.design();
+/// World centroid of every alive part of one blueprint, wherever its ship (a split-off vessel holds its own
+/// parts).
+fn parts_world(w: &sim::Sim, ships: &[ShipId]) -> Vec<Option<Vec2>> {
+    let d = w.ship(ships[0]).unwrap().design().clone();
     (0..d.parts.len())
         .map(|i| {
-            let ps = ship.part(i as PartIdx);
-            ps.alive.then(|| {
-                let p = ship.piece(ps.piece).unwrap();
-                p.body.to_world(to_piece(d.parts[i].centroid, p.origin))
+            ships.iter().find_map(|&s| {
+                let ship = w.ship(s).unwrap();
+                let ps = ship.part(i as PartIdx);
+                ps.alive.then(|| {
+                    let p = ship.piece(ps.piece).unwrap();
+                    p.body.to_world(to_piece(d.parts[i].centroid, p.origin))
+                })
             })
         })
         .collect()
@@ -133,9 +143,15 @@ fn parts_world(w: &sim::Sim, s: ShipId) -> Vec<Option<Vec2>> {
 #[test]
 fn head_on_ram_reports_an_impact_and_damages_both_noses() {
     let mut w = sim::Sim::new(1);
-    // Nose to nose, 8 m/s each.
-    let a = raider(&mut w, Vec2::ZERO, 0.0, Vec2::new(0.0, 8.0));
-    let b = raider(&mut w, Vec2::new(0.0, 12.0), PI, Vec2::new(0.0, -8.0));
+    // Nose to nose, 8 m/s each, of two owners (one owner's vessels deal no ram damage, GDR-0045).
+    let a = raider(&mut w, Owner(1), Vec2::ZERO, 0.0, Vec2::new(0.0, 8.0));
+    let b = raider(
+        &mut w,
+        Owner(2),
+        Vec2::new(0.0, 12.0),
+        PI,
+        Vec2::new(0.0, -8.0),
+    );
     let hp0: Vec<Vec<f32>> = [a, b]
         .iter()
         .map(|&s| w.ship(s).unwrap().parts().iter().map(|p| p.hp).collect())
@@ -189,8 +205,14 @@ fn head_on_ram_reports_an_impact_and_damages_both_noses() {
 #[test]
 fn a_gentle_bump_is_an_impact_without_damage() {
     let mut w = sim::Sim::new(1);
-    let a = raider(&mut w, Vec2::ZERO, 0.0, Vec2::new(0.0, 0.5));
-    let b = raider(&mut w, Vec2::new(0.0, 3.5), PI, Vec2::new(0.0, -0.5));
+    let a = raider(&mut w, Owner(1), Vec2::ZERO, 0.0, Vec2::new(0.0, 0.5));
+    let b = raider(
+        &mut w,
+        Owner(2),
+        Vec2::new(0.0, 3.5),
+        PI,
+        Vec2::new(0.0, -0.5),
+    );
     let all = idle(&mut w, 60);
     assert!(!all.is_empty(), "they touch");
     assert!(
@@ -212,9 +234,10 @@ fn a_gentle_bump_is_an_impact_without_damage() {
 fn raycasts_skip_every_piece_of_the_own_ship() {
     let c = content();
     let mut w = sim::Sim::new(1);
-    let me = w.spawn_ship(design(&c, "automaton_raider"), Body::default());
+    let me = w.spawn_ship(design(&c, "automaton_raider"), Owner(1), Body::default());
     let other = w.spawn_ship(
         design(&c, "automaton_raider"),
+        Owner(2),
         Body::at(Vec2::new(0.0, 30.0), 0.0),
     );
     // From inside the own hull straight up: without exclusion the own hull is hit at once.
@@ -267,7 +290,7 @@ fn raycasts_skip_every_piece_of_the_own_ship() {
 #[test]
 fn split_pieces_ghost_each_other_then_collide() {
     let mut w = sim::Sim::new(1);
-    let s = raider(&mut w, Vec2::ZERO, 0.0, Vec2::ZERO);
+    let s = raider(&mut w, Owner(1), Vec2::ZERO, 0.0, Vec2::ZERO);
     // Cut the middle column: a left and a right piece, 1 m apart.
     for cell in [(1, 0), (1, 1), (1, 2)] {
         w.apply_damage(s, DamageTarget::Cell(cell), 100.0);
@@ -358,8 +381,8 @@ fn sleeping_bodies_wake_on_thrust_and_on_hits() {
     let c = content();
     let d = design(&c, "automaton_raider");
     let mut w = sim::Sim::new(1);
-    let parked = w.spawn_ship(d.clone(), Body::default());
-    let other = w.spawn_ship(d.clone(), Body::at(Vec2::new(30.0, 0.0), 0.0));
+    let parked = w.spawn_ship(d.clone(), Owner(1), Body::default());
+    let other = w.spawn_ship(d.clone(), Owner(1), Body::at(Vec2::new(30.0, 0.0), 0.0));
     let sleep = (w.config().physics.sleep_time / sim::DT) as u32 + 15;
     idle(&mut w, sleep);
     let (kp, ko) = (key(&w, parked, 0), key(&w, other, 0));

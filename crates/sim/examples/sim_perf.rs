@@ -191,6 +191,7 @@ fn main() {
             .map(|k| {
                 world.spawn_ship(
                     Arc::clone(&design),
+                    sim::Owner(1),
                     Body::at(Vec2::new(k as f32 * 80.0, 0.0), 0.0),
                 )
             })
@@ -301,7 +302,11 @@ fn main() {
                 } else {
                     (60.0 + h as f32, core::f32::consts::PI)
                 };
-                world.spawn_ship(Arc::clone(&gb), Body::at(Vec2::new(x, y), angle))
+                world.spawn_ship(
+                    Arc::clone(&gb),
+                    sim::Owner(1 + line as u8),
+                    Body::at(Vec2::new(x, y), angle),
+                )
             })
             .collect();
         let fire = TickInputs {

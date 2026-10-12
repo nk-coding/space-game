@@ -55,12 +55,17 @@ fn state(w: &Sim, ship: ShipId) -> &sim::BehaviorState {
 fn duel(raiders: &[(f32, f32)]) -> (Sim, ShipId, Vec<ShipId>) {
     let c = content();
     let mut w = world_with_lib(lib());
-    let me = w.spawn_ship(design(&c, "halvex_runner"), Body::at(Vec2::ZERO, 0.0));
+    let me = w.spawn_ship(
+        design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
+        Body::at(Vec2::ZERO, 0.0),
+    );
     let rs = raiders
         .iter()
         .map(|&(x, y)| {
             w.spawn_ship(
                 design(&c, "automaton_raider"),
+                sim::Owner(1),
                 Body::at(Vec2::new(x, y), 0.0),
             )
         })
@@ -269,7 +274,11 @@ fn rules_beyond_the_working_slots_are_inactive() {
 fn without_a_target_target_rules_fail() {
     let c = content();
     let mut w = world_with_lib(lib());
-    let me = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
+    let me = w.spawn_ship(
+        design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     program(
         &mut w,
         me,
@@ -297,6 +306,7 @@ fn without_a_target_target_rules_fail() {
     // No shield emitters on a raider: `shield` has nothing to measure.
     let r = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body::at(Vec2::new(0.0, 300.0), 0.0),
     );
     program(&mut w, r, "when shield < 50% -> hold\nalways -> face");
@@ -370,6 +380,7 @@ fn target_selectors_priorities_and_stickiness() {
     let c = content();
     let leader = w.spawn_ship(
         design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
         Body::at(Vec2::new(30.0, 0.0), 0.0),
     );
     w.command(
@@ -413,9 +424,10 @@ fn fire_at_will_fires_each_gun_along_its_facing() {
     let cross = custom(&c, &gun_cross());
     for (x, y) in [(0.0, 30.0), (30.0, 0.0), (0.0, -30.0), (-30.0, 0.0)] {
         let mut w = world_with_lib(lib());
-        let me = w.spawn_ship(cross.clone(), Body::at(Vec2::ZERO, 0.0));
+        let me = w.spawn_ship(cross.clone(), sim::Owner::PLAYER, Body::at(Vec2::ZERO, 0.0));
         let foe = w.spawn_ship(
             design(&c, "automaton_raider"),
+            sim::Owner(1),
             Body::at(Vec2::new(x, y), 0.0),
         );
         program(&mut w, me, "target nearest\nalways -> hold");
@@ -460,9 +472,10 @@ fn fire_at_will_respects_each_guns_reach_and_cone() {
     // outside every cone.
     for (x, y) in [(0.0, 70.0), (21.2, 21.2)] {
         let mut w = world_with_lib(lib());
-        let me = w.spawn_ship(cross.clone(), Body::at(Vec2::ZERO, 0.0));
+        let me = w.spawn_ship(cross.clone(), sim::Owner::PLAYER, Body::at(Vec2::ZERO, 0.0));
         w.spawn_ship(
             design(&c, "automaton_raider"),
+            sim::Owner(1),
             Body::at(Vec2::new(x, y), 0.0),
         );
         program(&mut w, me, "target nearest\nalways -> hold");
@@ -513,9 +526,14 @@ fn scripted_lib() -> BehaviorLibrary {
 fn rhai_conditions_run_sandboxed_within_budget() {
     let c = content();
     let mut w = world_with_lib(scripted_lib());
-    let me = w.spawn_ship(design(&c, "halvex_runner"), Body::default());
+    let me = w.spawn_ship(
+        design(&c, "halvex_runner"),
+        sim::Owner::PLAYER,
+        Body::default(),
+    );
     let _r = w.spawn_ship(
         design(&c, "automaton_raider"),
+        sim::Owner(1),
         Body::at(Vec2::new(0.0, 80.0), 0.0),
     );
     program(
