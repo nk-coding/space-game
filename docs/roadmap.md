@@ -41,8 +41,9 @@ Done this session (Niklas's play-test feedback, decided interactively; GDR-0041 
   atlas tier switches (no 178 ms mip hitch), F3 atlas line; browser-vs-native hash IDENTICAL.
 - Checks at the end: 199 tests, content validation clean, determinism native vs wasm IDENTICAL (all scenarios).
 
-Next session: first re-check CLAUDE.md "Development environment" on the new machine (cores, RAM, disk, IP, paths
-of the headless helper and the physics bench repo, the guard hook in the workspace's `.claude/settings.json`).
+New VM (re-checked 12 Oct 2026, evening): 16 cores, ~17 GB RAM, `10.77.9.2`; Rust 1.99, trunk, the headless
+helper (rebuilt with Playwright) and the workspace guard hook are set up; 203 tests pass and the web build runs. The
+physics bench repo was not copied (not needed). Details in CLAUDE.md "Development environment".
 
 Open questions for Niklas (ask interactively):
 - Mind capacity numbers and N per core type (placeholders: logic core 16, automaton core 4, player 24).
@@ -61,12 +62,20 @@ Client leftovers:
 - Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note).
 - Browser load-test numbers (`?load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
 
-## Queued
+## Phase 5: Drydock v1 (started 12 Oct 2026, GDR-0051, ADR-0030)
 
-Now unblocked (Rapier merged):
-- Client side of the vessel model: fleet bar (wake/swap dormant vessels, `ShipCommand::Wake`), camera glide on
-  focus switches; V / Shift+V and click-to-focus already go through `ShipCommand::Focus`.
+Niklas chose the drydock as the next phase: unlimited parts (stats as information only), test-fly into the sandbox
+with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-drydock.png`.
 
+| Track | Goal | Status |
+|---|---|---|
+| 5A `sim::report` | Static design report with the sim's own rules: power, steady-state heat, thrust, top speed, turn, yaw, firepower, control, plumes, shields, device load, issues | wave 1, in progress |
+| 5B `data` plumbing | `validate_ship`, blueprint RON writer/reader, frames as content (frigate/cruiser/capital, placeholders), ship totals, ship-level stat labels | wave 1, in progress |
+| 5C `data::edit` | Pure editing model: legality, paint, fill, erase, bevel, slope orientation, mirror, undo/redo | wave 1, in progress |
+| 5D Client foundation | `Drydock` app state, static ship view with the flight tiles, the mockup's layout and widgets, test-fly round trip with an in-memory blueprint | wave 1, in progress |
+| 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2 |
+| 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2 |
+| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2 |
 
 ## Phase 4: measurement
 

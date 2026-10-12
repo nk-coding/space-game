@@ -38,6 +38,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0027](0027-rhai-sandbox-and-determinism.md) | Rhai runs as a raw, sandboxed engine with f32 floats, no `**`, libm math and an operation budget | Accepted | 2026-10-11; 2026-10-12 |
 | [0028](0028-icons-in-the-content-pack.md) | Icons live in the content pack as SVG text, loaded and validated by `data` | Accepted (provisional, lead) | 2026-10-12 |
 | [0029](0029-shield-bubbles-batched-procedural-mesh.md) | Shield bubbles are one batched world-space mesh with a procedural WESL material and max blending | Accepted (provisional, lead) | 2026-10-12 |
+| [0030](0030-drydock-architecture.md) | Drydock architecture: a pure editing model in `data`, a static design report in `sim`, player designs as content blueprints | Accepted (provisional, lead) | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
