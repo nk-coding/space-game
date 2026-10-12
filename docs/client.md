@@ -48,7 +48,7 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600) |
-| `thrust`, `torque`, `top`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query) |
+| `thrust`, `torque`, `speed`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query; `speed` replaced `top` on 12 Oct 2026) |
 | `fleet=N` | N extra Halvex Runners fly with you under their default behavior (`skirmisher`); switch with V |
 | `tuning=1` | open the tuning panel at start |
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
@@ -105,13 +105,34 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   `ShipRemoved` despawn them; `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet`, `ShieldHit` become effects.
 - **Effects** (`fx.rs`): immediate mode. Systems push `FxSprite`s into `FxQueue` every frame; `flush` writes them
   into a pool of reused sprites (all from the atlas, batched). Plumes come from `piece.thrusters[i]` ×
-  `piece.output[i]` (RCS nozzles: small puffs; engine gimbal from `piece.act.deflect`), beams from
-  `Sim::beams()` re-attached to the gun at the render pose, tracers from `Sim::projectiles()` interpolated.
-- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, speed, target panel, wave line,
-  warnings, help; lock ring and off-screen markers are world-space FX. Debug overlay and toggles: `hud.rs`.
-- **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), top speed factor and
-  max turn rate apply live (`Sim::set_config`); raiders per wave apply to the next wave; drift at once; weapon
-  range and damage scale rewrite the content the designs compile from, so they apply with "Apply & reset".
+  `piece.output[i]` and `piece.cruise[i]` (see Plumes below; RCS nozzles: small puffs; engine gimbal from
+  `piece.act.deflect`), beams from `Sim::beams()` re-attached to the gun at the render pose, tracers from
+  `Sim::projectiles()` interpolated.
+- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, speed with the top speed of the
+  best axis (`TOP 22`, from `ship.telemetry().top_speed`), target panel, wave line, warnings, help; lock ring and
+  off-screen markers are world-space FX. Debug overlay and toggles: `hud.rs`.
+- **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
+  engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
+  factor on 12 Oct 2026) and max turn rate apply live (`Sim::set_config`); raiders per wave apply to the next wave;
+  drift at once; weapon range and damage scale rewrite the content the designs compile from, so they apply with
+  "Apply & reset".
+
+## Plumes
+
+An engine plume shows two things from the sim (GDR-0041, `docs/sim.md` "Top speed and the cruise flame"):
+`piece.output[i]`, the share of the engine's thrust it actually makes this tick (after power and the rated-speed
+falloff), and `piece.cruise[i]`, the calm cruise level: how much of its top speed the helm asks the engine to hold
+(full stick at the top speed = 1, half stick = 0.5; released stick and drift = 0).
+
+- The flame's strength is `level = max(output, cruise)` (length from idle to full, opacity, width).
+- `calm = max(cruise − output, 0) / level`: 0 while the engine burns at least as hard as it cruises
+  (accelerating, braking, turning: the normal long flickering flame), 1 when it only cruises (at the top speed,
+  or holding a lower speed). The calm look, blended by `calm`: the flame is shorter (`ship.plume.cruise.length`,
+  0.75), flickers less (`flicker`, 0.2 of the burn's wobble), has a hot core (a soft streak in `core_color` /
+  `core_color_enemy` down the first `core_length` = 60% of the flame, `core_width` = 32% of its width, opacity
+  `core_opacity` × calm × level) and sheds fewer trail particles (`trail`, 0.35).
+- RCS nozzles have no cruise level: they puff only while they push.
+- All style numbers live in `art/tokens.json` under `ship.plume.cruise` (read once into `style::PlumeStyle`).
 
 ## Adding visuals
 

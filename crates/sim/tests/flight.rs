@@ -87,7 +87,7 @@ fn stick_sets_course_and_speed_and_release_brakes() {
         );
         assert!(
             vmax < 1.05 * top,
-            "{id}: soft top speed exceeded: {vmax} vs {top}"
+            "{id}: top speed exceeded: {vmax} vs {top}"
         );
         // The nose points along the stick (east = body angle −90°).
         assert!(
