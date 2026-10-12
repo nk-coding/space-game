@@ -482,9 +482,9 @@ fn power_share(s: &Ship) -> f32 {
 
 /// Damage per second of the controlling piece's clear guns.
 fn firepower(s: &Ship) -> f32 {
-    s.control_piece().and_then(|c| s.piece(c)).map_or(0.0, |p| {
-        p.guns.iter().filter(|g| g.clear).map(|g| g.dps).sum()
-    })
+    s.control_piece()
+        .and_then(|c| s.piece(c))
+        .map_or(0.0, |p| p.firepower())
 }
 
 fn reach_of(s: &Ship) -> f32 {

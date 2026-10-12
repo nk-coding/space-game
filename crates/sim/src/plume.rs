@@ -29,10 +29,11 @@ use data::WeaponFamily;
 use crate::DT;
 use crate::design::{NO_SLOT, PartIdx, family_index};
 use crate::events::SimEvent;
-use crate::ids::ShipId;
+use crate::ids::{PieceId, ShipId};
 use crate::mass::to_piece;
 use crate::math::{Rot, Vec2};
 use crate::physics::BodyKey;
+use crate::ship::PartState;
 use crate::vessel::{Owner, friendly};
 use crate::world::Sim;
 
@@ -67,6 +68,27 @@ pub(crate) struct PlumeScratch {
     circles: Vec<Circle>,
     near: Vec<u32>,
     burns: Vec<Burn>,
+}
+
+/// The part a plume lane burns on the engine's own piece: the first part on the lane's `path`
+/// (`ShipDesign::plume_path`) nearer than `length` that is alive and in `piece`, with its distance from the
+/// lane's origin. The one rule for the plume pass, `Piece::plume_blocked` and the design report.
+pub(crate) fn own_burn(
+    path: &[(f32, PartIdx)],
+    length: f32,
+    parts: &[PartState],
+    piece: PieceId,
+) -> Option<(f32, PartIdx)> {
+    for &(dist, part) in path {
+        if dist >= length {
+            break;
+        }
+        let ps = &parts[part as usize];
+        if ps.alive && ps.piece == piece {
+            return Some((dist, part));
+        }
+    }
+    None
 }
 
 /// Does the segment `from + t·dir, t ∈ [0, len]` come within `r` of `c`?
@@ -159,19 +181,8 @@ impl Sim {
                         continue; // nothing of its own in the way, nobody else in reach
                     }
                     // Its own piece: the first alive part in the lane within reach.
-                    let mut len = t.plume_length;
-                    let mut own = None;
-                    for &(dist, part) in path {
-                        if dist >= len {
-                            break;
-                        }
-                        let ps = &ship.parts[part as usize];
-                        if ps.alive && ps.piece == piece.id {
-                            own = Some((dist, part));
-                            len = dist;
-                            break;
-                        }
-                    }
+                    let own = own_burn(path, t.plume_length, &ship.parts, piece.id);
+                    let len = own.map_or(t.plume_length, |(dist, _)| dist);
                     let from = pos + rot.apply(to_piece(d.plume_lanes[l as usize].origin, piece.origin));
                     // Other bodies, nearer than that: one ray cast, only if one can be in reach.
                     let near = len > 0.0

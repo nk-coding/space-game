@@ -167,7 +167,7 @@ const AUTO_SETTLED: f32 = 0.05;
 /// Differential thrust (which pushes the ship) is used for turning only above this heading error (rad); below
 /// it (holding a heading, stopping a spin), gyros, cores and gimbals do the work. Every active piece has a
 /// core, and cores have reaction torque, so there is always some.
-const TURN_WITH_THRUST: f32 = 0.05;
+pub(crate) const TURN_WITH_THRUST: f32 = 0.05;
 /// Translation thrust fades in as the heading error drops from 25° (cos = ALIGN_NONE) to 8° (ALIGN_FULL)
 /// while the ship turns its thrust towards the needed direction.
 const ALIGN_NONE: f32 = 0.906_307_8;

@@ -15,7 +15,7 @@ use data::{Delivery, Dir, Effect, ShipGrid, WeaponFamily};
 use crate::DT;
 use crate::alloc::{Actuation, AllocTable, TorqueSource, wrench_of};
 use crate::collider::{ColliderScratch, ConvexPolygon, build_colliders};
-use crate::design::{ConsumerKind, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat};
+use crate::design::{BonusLink, ConsumerKind, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat};
 use crate::flight::{FlightTelemetry, HelmMode};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
@@ -221,6 +221,14 @@ impl Thruster {
     #[inline]
     pub fn falloff(&self, v_local: Vec2) -> f32 {
         rated_falloff(v_local.dot(self.dir), self.rated)
+    }
+
+    /// An engine whose plume can burn: it reaches past the engine and does damage or heat.
+    #[inline]
+    pub fn burns(&self) -> bool {
+        !(self.slot == NO_SLOT
+            || self.plume_length <= 0.0
+            || (self.plume_damage <= 0.0 && self.plume_heat <= 0.0))
     }
 }
 
@@ -485,6 +493,12 @@ impl Piece {
         thruster_wrench(&self.thrusters, |s| {
             throttle.get(s as usize).copied().unwrap_or(0.0)
         })
+    }
+
+    /// Damage per second of its clear guns at full power, with bonuses (the `threat` sensor's firepower and
+    /// the design report's).
+    pub fn firepower(&self) -> f32 {
+        self.guns.iter().filter(|g| g.clear).map(|g| g.dps).sum()
     }
 
     /// Centre of mass in world coordinates.
@@ -935,29 +949,10 @@ impl Ship {
         let spec = &d.parts[t as usize];
         let mut add = [0.0f32; Stat::COUNT];
         let mut pct = [0.0f32; Stat::COUNT];
-        let groups = &mut self.scratch.groups;
-        groups.clear();
-        for b in d.bonuses_in.get(t as usize) {
-            let src = &self.parts[b.source as usize];
-            if !src.alive || (b.needs_venting && src.open_sides == 0) {
-                continue;
-            }
-            let count = match groups.iter_mut().find(|g| g.0 == b.group) {
-                Some(g) => &mut g.1,
-                None => {
-                    groups.push((b.group, 0));
-                    &mut groups.last_mut().unwrap().1
-                }
-            };
-            if *count >= b.max_stacks {
-                continue;
-            }
-            *count += 1;
-            match b.effect {
-                Effect::Add(x) => add[b.stat as usize] += x,
-                Effect::Percent(x) => pct[b.stat as usize] += x,
-            }
-        }
+        applied_bonuses(d, &self.parts, t, &mut self.scratch.groups, |b| match b.effect {
+            Effect::Add(x) => add[b.stat as usize] += x,
+            Effect::Percent(x) => pct[b.stat as usize] += x,
+        });
         let mut st = spec.base;
         for k in 0..Stat::COUNT {
             if add[k] != 0.0 || pct[k] != 0.0 {
@@ -1238,22 +1233,15 @@ impl Ship {
         piece.plume_reach = 0.0;
         piece.plume_blocked = false;
         for t in &piece.thrusters {
-            if t.slot == NO_SLOT
-                || t.plume_length <= 0.0
-                || (t.plume_damage <= 0.0 && t.plume_heat <= 0.0)
-            {
+            if !t.burns() {
                 continue;
             }
             piece.plume_reach = piece.plume_reach.max(t.plume_length);
             let [l0, l1] = d.engines[t.slot as usize].lanes;
             for l in l0..l1 {
-                for &(dist, part) in d.plume_path.get(l as usize) {
-                    if dist >= t.plume_length {
-                        break;
-                    }
-                    let ps = &self.parts[part as usize];
-                    piece.plume_blocked |= ps.alive && ps.piece == pid;
-                }
+                let path = d.plume_path.get(l as usize);
+                piece.plume_blocked |=
+                    crate::plume::own_burn(path, t.plume_length, &self.parts, pid).is_some();
             }
         }
         piece
@@ -1297,13 +1285,7 @@ impl Ship {
             // when its vessel is not dormant and it has a working core and some power.
             let running = piece.controlled && !*dormant;
             crate::control::update(piece, parts, d, running);
-            let mut supply = 0.0f32;
-            for r in &piece.reactors {
-                let ps = &parts[r.part as usize];
-                if ps.alive && !ps.overheated && !ps.idle {
-                    supply += r.output;
-                }
-            }
+            let supply = reactor_supply(piece, parts);
             let core_ok = piece.cores.iter().any(|&c| {
                 let ps = &parts[c as usize];
                 ps.alive && !ps.overheated
@@ -1329,59 +1311,18 @@ impl Ship {
                 }
             }
 
-            // What each consumer asks for (draw × activity), then the allocation by tier and weight.
-            let want = &mut scratch.want;
-            want.clear();
-            for c in &piece.consumers {
-                let ps = &parts[c.part as usize];
-                let act = if !active || ps.overheated || !ps.clear || ps.idle {
-                    0.0
-                } else {
-                    match c.kind {
-                        ConsumerKind::Engine => activity[c.part as usize].clamp(0.0, 1.0),
-                        ConsumerKind::Weapon => {
-                            controls.gun_fires(d.slot_of_part[c.part as usize]) as u8 as f32
-                        }
-                        ConsumerKind::Shield => controls.shields as u8 as f32,
-                        ConsumerKind::Logic | ConsumerKind::Other => 1.0,
-                    }
-                };
-                activity[c.part as usize] = act;
-                want.push(c.draw * act);
-            }
-            let level = &mut scratch.level;
-            level.clear();
-            level.resize(want.len(), 0.0);
-            let fed = if active { supply } else { 0.0 };
-            let (demand, served) = crate::power::allocate(&piece.consumers, want, fed, level);
-            for (c, &l) in piece.consumers.iter().zip(level.iter()) {
-                let ps = &mut parts[c.part as usize];
-                ps.power = if ps.idle { 0.0 } else { l };
-                ps.work = activity[c.part as usize] * ps.power;
-            }
-            let reactor_work = if served > 0.0 && supply > 0.0 {
-                let load = (served / supply).min(1.0);
-                tuning::REACTOR_IDLE_HEAT + (1.0 - tuning::REACTOR_IDLE_HEAT) * load
-            } else {
-                0.0
-            };
-            for r in &piece.reactors {
-                let ps = &mut parts[r.part as usize];
-                ps.power = if ps.idle { 0.0 } else { 1.0 };
-                ps.work = if ps.overheated || ps.idle {
-                    0.0
-                } else {
-                    reactor_work
-                };
-            }
-            for &h in &piece.heaters {
-                let ps = &mut parts[h as usize];
-                ps.work = if active && !ps.overheated && !ps.idle {
-                    1.0
-                } else {
-                    0.0
-                };
-            }
+            // What each consumer asks for (draw × activity), the allocation by tier and weight, power and work.
+            let (demand, served) = power_pass(
+                piece,
+                parts,
+                activity,
+                &mut scratch.want,
+                &mut scratch.level,
+                supply,
+                active,
+                |slot| controls.gun_fires(slot),
+                controls.shields,
+            );
             // Shield bubbles recharge while their emitter works.
             for &e in &piece.shields {
                 let ps = &mut parts[e as usize];
@@ -1485,6 +1426,149 @@ impl Ship {
             refresh_authority(piece, parts);
         }
     }
+}
+
+/// The adjacency bonuses part `t` receives now, in the order they apply (its bonus links, sorted by source):
+/// the source is alive and, for a `SourceVenting` bonus, has an open side; at most `max_stacks` per group.
+/// `groups` is a scratch buffer (group, count). The one rule for [`Ship`]'s stats and the design report.
+pub(crate) fn applied_bonuses<'a>(
+    d: &'a ShipDesign,
+    parts: &[PartState],
+    t: PartIdx,
+    groups: &mut Vec<(u32, u32)>,
+    mut apply: impl FnMut(&'a BonusLink),
+) {
+    groups.clear();
+    for b in d.bonuses_in.get(t as usize) {
+        let src = &parts[b.source as usize];
+        if !src.alive || (b.needs_venting && src.open_sides == 0) {
+            continue;
+        }
+        let count = match groups.iter_mut().find(|g| g.0 == b.group) {
+            Some(g) => &mut g.1,
+            None => {
+                groups.push((b.group, 0));
+                &mut groups.last_mut().unwrap().1
+            }
+        };
+        if *count >= b.max_stacks {
+            continue;
+        }
+        *count += 1;
+        apply(b);
+    }
+}
+
+/// Output of a piece's working reactors (alive, not overheated, not idle), with bonuses.
+pub(crate) fn reactor_supply(piece: &Piece, parts: &[PartState]) -> f32 {
+    let mut supply = 0.0f32;
+    for r in &piece.reactors {
+        let ps = &parts[r.part as usize];
+        if ps.alive && !ps.overheated && !ps.idle {
+            supply += r.output;
+        }
+    }
+    supply
+}
+
+/// How hard a consumer is asked to work, 0..1: nothing while its piece is not active or the part is
+/// overheated, idle or a gun without a clear line of fire; else engines, RCS pods and gyros their `mover`
+/// activity (throttle × rated-speed falloff, |torque used|), guns `fires`, shield emitters `shields`, logic
+/// cores and other consumers 1.
+#[inline]
+pub(crate) fn consumer_activity(
+    kind: ConsumerKind,
+    ps: &PartState,
+    active: bool,
+    mover: f32,
+    fires: bool,
+    shields: bool,
+) -> f32 {
+    if !active || ps.overheated || !ps.clear || ps.idle {
+        0.0
+    } else {
+        match kind {
+            ConsumerKind::Engine => mover.clamp(0.0, 1.0),
+            ConsumerKind::Weapon => fires as u8 as f32,
+            ConsumerKind::Shield => shields as u8 as f32,
+            ConsumerKind::Logic | ConsumerKind::Other => 1.0,
+        }
+    }
+}
+
+/// Reactor work (heat share) for a piece whose consumers got `served` of `supply`: `REACTOR_IDLE_HEAT` at no
+/// load rising linearly to 1 at full load; 0 when nothing is served.
+#[inline]
+pub(crate) fn reactor_work(served: f32, supply: f32) -> f32 {
+    if served > 0.0 && supply > 0.0 {
+        let load = (served / supply).min(1.0);
+        tuning::REACTOR_IDLE_HEAT + (1.0 - tuning::REACTOR_IDLE_HEAT) * load
+    } else {
+        0.0
+    }
+}
+
+/// The power pass of one piece for one tick: each consumer's demand (`draw × consumer_activity`), the
+/// allocation by tier and weight ([`crate::power::allocate`]), then every part's power level and work:
+/// consumers their level (0 while idle) and `activity × level`, reactors full level and [`reactor_work`],
+/// heaters (heat without a power role) 1 while working. `activity[part]` holds the movers' activity on entry
+/// and each consumer's activity on return; `want` and `level` are scratch (per consumer row on return).
+/// `fires(slot)`: does the gun in this slot fire. Returns `(demand, served)`. The one power rule for
+/// [`Ship::update_systems`] and the design report.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn power_pass(
+    piece: &Piece,
+    parts: &mut [PartState],
+    activity: &mut [f32],
+    want: &mut Vec<f32>,
+    level: &mut Vec<f32>,
+    supply: f32,
+    active: bool,
+    fires: impl Fn(u32) -> bool,
+    shields: bool,
+) -> (f32, f32) {
+    want.clear();
+    for c in &piece.consumers {
+        let ps = &parts[c.part as usize];
+        let act = consumer_activity(
+            c.kind,
+            ps,
+            active,
+            activity[c.part as usize],
+            fires(c.slot),
+            shields,
+        );
+        activity[c.part as usize] = act;
+        want.push(c.draw * act);
+    }
+    level.clear();
+    level.resize(want.len(), 0.0);
+    let fed = if active { supply } else { 0.0 };
+    let (demand, served) = crate::power::allocate(&piece.consumers, want, fed, level);
+    for (c, &l) in piece.consumers.iter().zip(level.iter()) {
+        let ps = &mut parts[c.part as usize];
+        ps.power = if ps.idle { 0.0 } else { l };
+        ps.work = activity[c.part as usize] * ps.power;
+    }
+    let reactor_work = reactor_work(served, supply);
+    for r in &piece.reactors {
+        let ps = &mut parts[r.part as usize];
+        ps.power = if ps.idle { 0.0 } else { 1.0 };
+        ps.work = if ps.overheated || ps.idle {
+            0.0
+        } else {
+            reactor_work
+        };
+    }
+    for &h in &piece.heaters {
+        let ps = &mut parts[h as usize];
+        ps.work = if active && !ps.overheated && !ps.idle {
+            1.0
+        } else {
+            0.0
+        };
+    }
+    (demand, served)
 }
 
 /// Unit vector of a blueprint side in the piece frame (y up).
