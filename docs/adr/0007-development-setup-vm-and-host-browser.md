@@ -32,3 +32,6 @@ VM. A native Bevy window there would be software-rendered and slow.
 
 - Everything visual must work in WebGL2 in a browser.
 - Several agents build at once, so heavy builds use `-j 6` to keep RAM in check.
+
+12 Oct 2026: the project moved to a more powerful VM (16 cores, ~17 GB RAM, no GPU); it is `10.77.9.2` on the
+LAN. The setup and this decision are otherwise unchanged (`CLAUDE.md`, "Development environment").

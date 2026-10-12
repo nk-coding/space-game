@@ -52,16 +52,16 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Development environment (the VM)
 
-(Written for the first VM. Niklas plans to move the project to a more powerful machine after 12 Oct 2026: re-check the numbers and paths below there. Outside this repo the tooling also needs `../space-game-physics-bench`, `../tools/headless/` (the headless helper) and the guard hook in the workspace's `.claude/settings.json`, which runs `scripts/hooks/guard-bash.py`.)
+(Moved to a more powerful VM on 12 Oct 2026; numbers and paths below re-checked there. Outside this repo the tooling also needs `../tools/headless/` (the headless helper, rebuilt on the new VM with Playwright) and the guard hook in the workspace's `.claude/settings.json`, which runs `scripts/hooks/guard-bash.py`. The physics benchmark repo `../space-game-physics-bench` was not copied to the new VM; nothing in the game needs it.)
 
-- Linux VM without GPU, 15 cores, ~11 GB RAM + 7 GB swap. **No sudo** (apt is unavailable). Native Bevy windows are pointless here (software rendering); look at the game through the web build.
-- Rust via rustup (`source ~/.cargo/env` if `cargo` isn't on PATH): stable 1.99, targets `x86_64-unknown-linux-gnu` and `wasm32-unknown-unknown`. `trunk` 0.21.14 and `cargo-binstall` are in `~/.cargo/bin`.
+- Linux VM without GPU, 16 cores, ~17 GB RAM + 8 GB swap. **No sudo** (apt is unavailable). Native Bevy windows are pointless here (software rendering); look at the game through the web build.
+- Rust via rustup (`source ~/.cargo/env` if `cargo` isn't on PATH): stable 1.99, targets `x86_64-unknown-linux-gnu`, `wasm32-unknown-unknown` and `wasm32-wasip1` (for `scripts/determinism-check.sh`). `trunk` 0.21.14 and `cargo-binstall` are in `~/.cargo/bin`. Node 24 via nvm. A cold `cargo test --workspace` takes about 2.5 minutes.
 - crates.io and GitHub are reachable (crates.io API needs a User-Agent header: use a generic one like `space-game-dev-tools`; never put personal data such as names or email addresses into requests).
 - Heavy builds (Bevy, physics engines): several agents may build at the same time, so pass `-j 6` (or `CARGO_BUILD_JOBS=6`) to keep RAM in check.
 - **Wait loops must end.** Wrap every polling loop in `timeout <secs> bash -c '…'`. Never wait with `pgrep -f "<pattern>"`: it matches the loop's own shell, so `until ! pgrep -f …` spins forever (this stuck an agent for 5 hours). Wait on a PID (`while kill -0 $PID; do …`), a file, or the command itself instead. Never delete a directory a server or build is still running from, and stop your servers when you're done.
-- **Disk is tight** (48 GB total, ~10 GB free on 12 Oct 2026; it ran full twice). Every extra target dir costs 1–5 GB. Prefer the shared `target/`; if you need your own `CARGO_TARGET_DIR` to avoid lock contention, use `target/<your-name>` and **delete it when you finish**. Check `df -h /home` before big builds.
+- **Disk is tight** (48 GB total, ~26 GB free on the new VM after the first full build, 12 Oct 2026; the old VM ran full twice). Every extra target dir costs 1–5 GB. Prefer the shared `target/`; if you need your own `CARGO_TARGET_DIR` to avoid lock contention, use `target/<your-name>` and **delete it when you finish**. Check `df -h /home` before big builds.
 - **Headless browser check:** `node /home/devbox/workspace/tools/headless/shot.mjs <url> <out.png> [waitMs] [w] [h]` opens a page in headless Chromium (WebGL2 via SwiftShader, slow but correct), prints console messages and page errors (wasm panics show up here), and saves a screenshot. Use it to verify any web work, then look at the PNG with the Read tool. SwiftShader timings say nothing about real performance.
-- The VM's address on the LAN side is `10.77.6.2`. Serve web builds with `--address 0.0.0.0` so Niklas can open them from the host browser (e.g. `http://10.77.6.2:8080`).
+- The VM's address on the LAN side is `10.77.9.2` (new VM, 12 Oct 2026; the old one was `10.77.6.2`). Serve web builds with `--address 0.0.0.0` so Niklas can open them from the host browser (e.g. `http://10.77.9.2:8080`).
 - Timing measured in the VM is noisy, more so when other agents compile at the same time. Repeat runs, report median and p95, record the load average (`uptime`) next to the numbers.
 
 ## Git conventions

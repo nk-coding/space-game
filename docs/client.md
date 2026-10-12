@@ -7,7 +7,7 @@ must keep compiling (`cargo check -p game` natively). Written 11–12 Oct 2026.
 
 | What | Command |
 |---|---|
-| Dev build with live reload | `scripts/web-serve.sh` → http://10.77.6.2:8081 (port via `PORT=`) |
+| Dev build with live reload | `scripts/web-serve.sh` → http://10.77.9.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
 | Optimised build into `crates/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
 | Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); per region and mip step: `... --example profile -- <tier>` |
@@ -75,7 +75,7 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 
 ## Load test and determinism in the browser
 
-1. Open `http://10.77.6.2:8081/?load=20` (or 1, 5). The overlay shows frame and sim step times (mean, median,
+1. Open `http://10.77.9.2:8081/?load=20` (or 1, 5). The overlay shows frame and sim step times (mean, median,
    p95 over the last 600 frames / 900 ticks), ships, pieces and shots. Toggles 1/2/3 switch debug shapes, glow
    sprites and bloom; F frees the camera.
 2. After 60 s of wall time the console gets one line:
