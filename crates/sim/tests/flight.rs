@@ -652,7 +652,8 @@ fn lead_point_intercepts_a_moving_target() {
     );
 }
 
-/// A raider on the spot (lock, drift: no flying) shooting at a raider crossing at 8 m/s, 50 m away.
+/// A raider on the spot (lock, drift: no flying) shooting at an enemy raider (another owner: no friendly fire)
+/// crossing at 8 m/s, 50 m away.
 fn crossing_hits(aim: sim::flight::AimMode) -> usize {
     let c = content();
     let mut w = sim::Sim::new(9);
@@ -663,7 +664,7 @@ fn crossing_hits(aim: sim::flight::AimMode) -> usize {
     );
     let target = w.spawn_ship(
         design(&c, "automaton_raider"),
-        sim::Owner(1),
+        sim::Owner(2),
         Body {
             pos: Vec2::new(-20.0, 50.0),
             linvel: Vec2::new(8.0, 0.0),

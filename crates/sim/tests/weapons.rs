@@ -296,11 +296,8 @@ fn shields_absorb_energy_then_collapse() {
         Body::default(),
     );
     let td = custom(&c, &shielded());
-    let t = w.spawn_ship(
-        td.clone(),
-        sim::Owner::PLAYER,
-        Body::at(Vec2::new(0.0, 20.0), 0.0),
-    );
+    // An enemy vessel (no friendly fire: a player vessel would let the beam pass).
+    let t = w.spawn_ship(td.clone(), sim::Owner(1), Body::at(Vec2::new(0.0, 20.0), 0.0));
     let emitter = find(&td, "shield_emitter", 0, 2);
     let cap = w.ship(t).unwrap().part(emitter).shield;
     assert!(cap > 0.0);
@@ -416,4 +413,127 @@ fn raiders_shoot_back() {
     }
     assert!(shots > 10, "raider fired {shots} shots");
     assert!(hits_on_runner > 3, "{hits_on_runner} hits on the runner");
+}
+
+// ---------- no friendly fire (GDR-0048) ----------
+
+/// A 5×2 steel screen with a logic core and a reactor in its back row, and a shield emitter on the line of fire
+/// if `shield` (its bubble covers the shot's path): a vessel, not salvage.
+fn screen(shield: bool) -> Vec<P<'static>> {
+    let mut v: Vec<P<'static>> = (0..5)
+        .map(|x| ("armor_block", x, 0, 0, false, Some("steel")))
+        .collect();
+    v.push(("armor_block", 0, 1, 0, false, Some("steel")));
+    v.push(("fission_reactor", 1, 1, 0, false, None));
+    v.push(if shield {
+        ("shield_emitter", 2, 1, 0, false, None)
+    } else {
+        ("armor_block", 2, 1, 0, false, Some("steel"))
+    });
+    v.push(("logic_core", 3, 1, 0, false, None));
+    v.push(("armor_block", 4, 1, 0, false, Some("steel")));
+    v
+}
+
+/// A player shooter at the origin facing +y, a shielded player vessel 10 m ahead on its line of fire, and an
+/// enemy vessel (no shield) 20 m ahead behind it.
+fn screened(c: &Content, gun: &'static str) -> (sim::Sim, ShipId, ShipId, ShipId) {
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(custom(c, &gunboat(gun)), sim::Owner::PLAYER, Body::default());
+    let friend = w.spawn_ship(
+        custom(c, &screen(true)),
+        sim::Owner::PLAYER,
+        Body::at(Vec2::new(0.4, 10.0), 0.0),
+    );
+    let enemy = w.spawn_ship(
+        custom(c, &screen(false)),
+        sim::Owner(1),
+        Body::at(Vec2::new(0.4, 20.0), 0.0),
+    );
+    (w, s, friend, enemy)
+}
+
+/// Hull hits and shield hits on `ship` in the last step.
+fn hits_on(w: &sim::Sim, ship: ShipId) -> (usize, usize) {
+    let hull = w
+        .events()
+        .iter()
+        .filter(|e| matches!(e, SimEvent::Hit { ship: s, .. } if *s == ship))
+        .count();
+    let shield = w
+        .events()
+        .iter()
+        .filter(|e| matches!(e, SimEvent::ShieldHit { ship: s, .. } if *s == ship))
+        .count();
+    (hull, shield)
+}
+
+#[test]
+fn shots_pass_through_friendly_vessels_and_hit_the_enemy_behind() {
+    let c = content();
+    for gun in ["beam_laser", "pulse_laser", "automaton_cannon"] {
+        let (mut w, s, friend, enemy) = screened(&c, gun);
+        let state = |w: &sim::Sim| -> Vec<(f32, f32)> {
+            w.ship(friend)
+                .unwrap()
+                .parts()
+                .iter()
+                .map(|p| (p.hp, p.shield))
+                .collect()
+        };
+        let intact = state(&w);
+        let mut enemy_hits = 0;
+        for _ in 0..60 {
+            w.step(&fire(s));
+            assert_eq!(hits_on(&w, friend), (0, 0), "{gun}: the friendly vessel is hit");
+            enemy_hits += hits_on(&w, enemy).0;
+        }
+        assert!(w.bubbles().iter().any(|b| b.ship == friend), "{gun}: its bubble is up");
+        assert_eq!(state(&w), intact, "{gun}: no damage, no shield drain");
+        assert!(enemy_hits > 0, "{gun}: the enemy behind is hit");
+    }
+}
+
+#[test]
+fn salvage_of_the_own_owner_still_stops_shots() {
+    let c = content();
+    let (mut w, s, friend, enemy) = screened(&c, "pulse_laser");
+    // The screen loses its core: a wreck, friendly to nobody.
+    let d = w.ship(friend).unwrap().design().clone();
+    w.apply_damage(friend, sim::DamageTarget::Part(find(&d, "logic_core", 3, 1)), 10.0);
+    let mut wreck_hits = 0;
+    for _ in 0..30 {
+        w.step(&fire(s));
+        wreck_hits += hits_on(&w, friend).0;
+        assert_eq!(hits_on(&w, enemy).0, 0, "the wreck is in the way");
+    }
+    assert!(!w.ship(friend).unwrap().is_vessel() && wreck_hits > 0);
+}
+
+#[test]
+fn a_projectile_keeps_the_owner_it_was_fired_with() {
+    let c = content();
+    let (mut w, s, friend, enemy) = screened(&c, "pulse_laser");
+    w.step(&TickInputs::default()); // bubbles up
+    w.spawn_projectile(
+        s,
+        WeaponFamily::Kinetic,
+        Vec2::new(0.0, 2.0),
+        Vec2::new(0.0, 60.0),
+        0.8,
+        1,
+        1.0,
+    );
+    // The shooter becomes salvage while its shot is in flight: the shot still spares the player's vessels.
+    let d = w.ship(s).unwrap().design().clone();
+    w.apply_damage(s, sim::DamageTarget::Part(find(&d, "logic_core", 0, 2)), 10.0);
+    assert_eq!(w.projectiles()[0].team, Some(sim::Owner::PLAYER));
+    let mut enemy_hits = 0;
+    for _ in 0..20 {
+        w.step(&TickInputs::default());
+        assert!(!w.ship(s).unwrap().is_vessel());
+        assert_eq!(hits_on(&w, friend), (0, 0));
+        enemy_hits += hits_on(&w, enemy).0;
+    }
+    assert_eq!(enemy_hits, 1);
 }

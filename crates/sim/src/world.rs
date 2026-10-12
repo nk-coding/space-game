@@ -393,7 +393,8 @@ impl Sim {
         }
     }
 
-    /// Spawns a projectile directly (tools, tests). It flies from the next step on and never hits `owner`.
+    /// Spawns a projectile directly (tools, tests). It flies from the next step on and never hits `owner`, nor
+    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048).
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_projectile(
         &mut self,
@@ -406,9 +407,11 @@ impl Sim {
         life: f32,
     ) -> crate::weapons::ProjectileId {
         let id = self.ids.projectile();
+        let team = self.ship(owner).and_then(|s| s.team());
         self.projectiles.push(Projectile {
             id,
             owner,
+            team,
             family,
             pos,
             prev_pos: pos,
