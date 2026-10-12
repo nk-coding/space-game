@@ -92,6 +92,9 @@ pub struct Actuation {
     pub deflect: Vec<f32>,
     /// Use per torque source, −1..1 of its max torque.
     pub torque: Vec<f32>,
+    /// Cruise-flame level per thruster row, 0..1, set by the flight computer from the velocity goal (a look
+    /// only; see `Piece::cruise`). Not an actuator command: it moves nothing.
+    pub cruise: Vec<f32>,
 }
 
 impl Actuation {
@@ -100,6 +103,8 @@ impl Actuation {
         self.throttle.resize(rows, 0.0);
         self.deflect.clear();
         self.deflect.resize(rows, 0.0);
+        self.cruise.clear();
+        self.cruise.resize(rows, 0.0);
         self.torque.clear();
         self.torque.resize(sources, 0.0);
     }
@@ -156,7 +161,8 @@ fn greedy<I: Iterator<Item = u32>>(
 }
 
 /// Allocates `force` (piece frame, kN) and `torque` (kN·m) over the actuators. `fmax[i]`: available force of
-/// row `i` now (0 for blocked, overheated or dead engines); `tmax[j]`: available torque of source `j`.
+/// row `i` now, after the rated-speed falloff (0 for blocked, overheated or dead engines, and at the rating);
+/// `tmax[j]`: available torque of source `j`.
 /// `differential`: may add unrequested thrust to turn (step 4); the flight computer allows it only for real
 /// turns, not for holding a heading. Writes `out` (resized by the caller) and returns the expected wrench.
 #[allow(clippy::too_many_arguments)]

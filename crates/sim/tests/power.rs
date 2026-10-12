@@ -284,11 +284,12 @@ fn partial_power_scales_thrust_and_shield_recharge() {
     assert!(close(level(&b, sb, THRUSTER), l, 1e-6));
     assert!(close(level(&b, sb, SHIELD), l, 1e-6));
 
-    // Thrust: 12 kN at full power, 12 × 9/17 here.
+    // Thrust: the content thrust at full power, 9/17 of it here.
+    let full = c.parts.get("thruster").unwrap().engine.as_ref().unwrap().thrust;
     let fa = a.ship(sa).unwrap().pieces()[0].wrench.force;
     let fb = b.ship(sb).unwrap().pieces()[0].wrench.force;
-    assert!(close(fa.y, 12.0, 1e-4), "{fa:?}");
-    assert!(close(fb.y, 12.0 * l, 1e-4), "{fb:?}");
+    assert!(close(fa.y, full, 1e-4), "{fa:?}");
+    assert!(close(fb.y, full * l, 1e-4), "{fb:?}");
     let out = b.ship(sb).unwrap().pieces()[0].output[0];
     assert!(close(out, l, 1e-6), "the plume shows the partial output");
 

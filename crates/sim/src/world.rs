@@ -203,7 +203,6 @@ impl Sim {
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
-            &self.config,
             true,
         );
     }
@@ -221,13 +220,14 @@ impl Sim {
         &self.config
     }
 
-    /// Changes the config. Thrust and torque scales and the physics tuning apply to every ship at once.
+    /// Changes the config. Thrust, torque and speed scales and the physics tuning apply to every ship at once.
     pub fn set_config(&mut self, config: SimConfig) {
         self.config = config;
         self.physics.configure(config.physics);
         for s in &mut self.ships {
             s.thrust_scale = config.thrust_scale;
             s.torque_scale = config.torque_scale;
+            s.speed_scale = config.speed_scale;
             for k in 0..s.pieces.len() {
                 s.rebuild_piece(k);
             }
@@ -534,7 +534,6 @@ impl Sim {
             &self.behaviors,
             &mut self.behavior_scratch,
             self.tick,
-            &self.config,
             false,
         );
 

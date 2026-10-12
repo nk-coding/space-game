@@ -2,13 +2,13 @@
 //! Niklas picks them, then they move into content / `SimConfig` defaults.
 //!
 //! * Live (applied to the running sim with `Sim::set_config`): thrust scale, torque scale (separately or
-//!   linked), soft top speed factor, max turn rate.
+//!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate.
 //! * Next wave: raiders per wave.
 //! * Immediate: drift default.
 //! * **Reset**: weapon range and damage scales change the content the designs are compiled from, so they
 //!   apply with "Apply & reset" (the scene restarts).
 //!
-//! Every value can also come from the URL (`?thrust=4&torque=2&top=12&turn=3&range=1.5&damage=1&raiders=3&drift=1`),
+//! Every value can also come from the URL (`?thrust=4&torque=2&speed=1.5&turn=6&range=1.5&damage=1&raiders=3&drift=1`),
 //! and the panel shows that query string ready to copy.
 
 use bevy::prelude::*;
@@ -26,7 +26,7 @@ pub struct Tuning {
     pub thrust: f32,
     pub torque: f32,
     pub link: bool,
-    pub top_speed_k: f32,
+    pub speed: f32,
     pub max_turn_rate: f32,
     pub range_scale: f32,
     pub damage_scale: f32,
@@ -46,7 +46,7 @@ impl Tuning {
             thrust: p.f32("thrust").unwrap_or(d.thrust_scale),
             torque: p.f32("torque").unwrap_or(d.torque_scale),
             link: p.flag("link").unwrap_or(false),
-            top_speed_k: p.f32("top").unwrap_or(d.flight.top_speed_k),
+            speed: p.f32("speed").unwrap_or(d.speed_scale),
             max_turn_rate: p.f32("turn").unwrap_or(d.flight.max_turn_rate),
             range_scale: range,
             damage_scale: damage,
@@ -62,7 +62,7 @@ impl Tuning {
         let mut c = SimConfig::default();
         c.thrust_scale = self.thrust;
         c.torque_scale = self.torque;
-        c.flight.top_speed_k = self.top_speed_k;
+        c.speed_scale = self.speed;
         c.flight.max_turn_rate = self.max_turn_rate;
         c
     }
@@ -84,10 +84,10 @@ impl Tuning {
     /// The values as a copyable line and as a URL query.
     pub fn text(&self) -> String {
         format!(
-            "thrust_scale={:.2} torque_scale={:.2} top_speed_k={:.1} max_turn_rate={:.2} weapon_range_scale={:.2} weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&top={:.1}&turn={:.2}&range={:.2}&damage={:.2}&raiders={}&drift={}",
+            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} weapon_range_scale={:.2} weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&range={:.2}&damage={:.2}&raiders={}&drift={}",
             self.thrust,
             self.torque,
-            self.top_speed_k,
+            self.speed,
             self.max_turn_rate,
             self.range_scale,
             self.damage_scale,
@@ -95,7 +95,7 @@ impl Tuning {
             self.drift,
             self.thrust,
             self.torque,
-            self.top_speed_k,
+            self.speed,
             self.max_turn_rate,
             self.range_scale,
             self.damage_scale,
@@ -161,8 +161,8 @@ fn panel(
                     t.thrust = (t.thrust * t.torque / old_torque).clamp(0.25, 12.0);
                 }
             }
-            ui.add(egui::Slider::new(&mut t.top_speed_k, 4.0..=60.0).text("top speed k"));
-            ui.add(egui::Slider::new(&mut t.max_turn_rate, 0.5..=8.0).text("max turn rate"));
+            ui.add(egui::Slider::new(&mut t.speed, 0.25..=4.0).logarithmic(true).text("speed scale (rated speeds)"));
+            ui.add(egui::Slider::new(&mut t.max_turn_rate, 0.5..=12.0).text("max turn rate"));
             ui.checkbox(&mut t.drift, "drift (released stick coasts)");
             ui.separator();
             ui.label(egui::RichText::new("Next wave").strong());
