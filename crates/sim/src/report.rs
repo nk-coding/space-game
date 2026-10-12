@@ -644,7 +644,7 @@ pub fn design_report(
             hp += spec.hp;
         }
     }
-    let build_points = build_points(content, blueprint);
+    let build_points = content.ship_totals(blueprint).build_points;
     let device = device_load(&ship);
 
     let mut report = DesignReport {
@@ -864,25 +864,6 @@ fn dot(x: &[f64], y: &[f64]) -> f64 {
         lane[l] += a * b;
     }
     (lane[0] + lane[1]) + (lane[2] + lane[3])
-}
-
-/// Build points of a blueprint: each part's `build_points`, times its material's `build_point_factor` for hull
-/// parts (the rule of `Content::part_stats`). Unknown parts count 0.
-fn build_points(content: &Content, blueprint: &Blueprint) -> f32 {
-    blueprint
-        .parts
-        .iter()
-        .map(|pl| {
-            content.parts.get(&pl.part).map_or(0.0, |part| {
-                let factor = content
-                    .placement_material(pl)
-                    .and_then(|m| m.armor.as_ref())
-                    .filter(|_| part.hull)
-                    .map_or(1.0, |a| a.build_point_factor);
-                part.build_points * factor
-            })
-        })
-        .sum()
 }
 
 /// The device load of a ship: its cost drivers and the cost model of [`tuning`].
