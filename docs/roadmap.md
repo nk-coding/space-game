@@ -69,15 +69,20 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 
 | Track | Goal | Status |
 |---|---|---|
-| 5A `sim::report` | Static design report with the sim's own rules: power, steady-state heat, thrust, top speed, turn, yaw, firepower, control, plumes, shields, device load, issues | wave 1, in progress |
-| 5B `data` plumbing | `validate_ship`, blueprint RON writer/reader, frames as content (frigate/cruiser/capital, placeholders), ship totals, ship-level stat labels | wave 1, in progress |
-| 5C `data::edit` | Pure editing model: legality, paint, fill, erase, bevel, slope orientation, mirror, undo/redo | wave 1, in progress |
+| 5A `sim::report` | Static design report with the sim's own rules: power, steady-state heat, thrust, top speed, turn, yaw, firepower, control, plumes, shields, device load, issues | done 12 Oct (`docs/sim.md` "Design report"; Runner 24 µs; hashes unchanged) |
+| 5B `data` plumbing | `validate_ship`, blueprint RON writer/reader, frames as content (frigate/cruiser/capital, placeholders), ship totals, ship-level stat labels | done 12 Oct (`docs/content-model.md`) |
+| 5C `data::edit` | Pure editing model: legality, paint, fill, erase, bevel, slope orientation, mirror, undo/redo | done 12 Oct (`docs/drydock.md`) |
 | 5D Client foundation | `Drydock` app state, static ship view with the flight tiles, the mockup's layout and widgets, test-fly round trip with an in-memory blueprint | wave 1, in progress |
 | 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2 |
 | 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2 |
 | 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2 |
 
 ## Phase 4: measurement
+
+Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
+(all scenarios, two seeds); native load test 20 ships 0.011 ms median / 0.028 ms p95 per sim step. Pending: Niklas's
+browser numbers (load test, look cost, optional browser hash) and his verdict on the flight feel (steps in the
+summary). Phone questions stay deferred to Android.
 
 - Load test in the browser: 1, 5, 20 ships with debris and projectiles; style 2a vs. debug shapes; glow sprites vs. bloom.
 - Cross-platform hash: native vs. wasm (phone later).

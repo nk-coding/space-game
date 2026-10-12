@@ -60,6 +60,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0049](0049-engine-plume-v1.md) | Engine plume v1: damage and heat scale with thrust, blocked plumes keep thrust, enemy bubbles absorb plumes | Accepted (provisional, lead) | 2026-10-12 |
 | [0050](0050-fleet-bar.md) | The fleet bar: a strip at the top centre, shown with two or more vessels or a dormant one; a tap focuses, a tap on a dormant vessel wakes it | Accepted (provisional, lead) | 2026-10-12 |
 | [0051](0051-drydock-v1.md) | Drydock v1 comes next: unlimited parts, stats as information, test-fly into the sandbox, the mockup's look | Accepted | 2026-10-12 |
+| [0052](0052-drydock-stats-full-use.md) | Drydock stats show the ship at full use and full power; up to ~120 % heat reads "runs hot" | Accepted | 2026-10-12 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
