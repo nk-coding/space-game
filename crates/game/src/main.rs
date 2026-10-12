@@ -9,13 +9,15 @@
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
 //! - `shield`: shield bubbles (one batched mesh, procedural shader `shield.wesl`).
 //! - `controls`, `camera`: keyboard / mouse / touch input, follow / frame / free camera.
-//! - `flight_hud`, `hud`, `tuning`: flight HUD, debug overlay and toggles, live tuning panel (egui).
+//! - `flight_hud`, `fleet_bar`, `hud`, `tuning`: flight HUD, fleet bar (the player's vessels), debug overlay and
+//!   toggles, live tuning panel (egui).
 //! - `backdrop`: gradient, parallax dust, range rings.
 
 mod atlas;
 mod backdrop;
 mod camera;
 mod controls;
+mod fleet_bar;
 mod flight_hud;
 mod fx;
 mod hud;
@@ -96,6 +98,7 @@ fn main() {
             shield::ShieldPlugin,
             backdrop::BackdropPlugin,
             flight_hud::FlightHudPlugin,
+            fleet_bar::FleetBarPlugin,
             hud::HudPlugin,
         ))
         .add_systems(Startup, spawn_camera);

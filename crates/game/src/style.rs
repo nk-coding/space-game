@@ -27,6 +27,21 @@ pub struct Style {
     pub particle: Color,
     pub dotted_ring: Color,
     pub ui_label: Color,
+    /// The UI accents and text colours (`ui.*` in the tokens).
+    pub ui: UiPalette,
+}
+
+/// UI colours (`ui.*`, GDR-0008): teal primary, gold, coral (danger and enemies), violet (logic), grey labels,
+/// dim labels, white numbers. Pass them through [`ui_color`] for bevy_ui nodes.
+#[derive(Clone, Copy, Debug)]
+pub struct UiPalette {
+    pub teal: Color,
+    pub gold: Color,
+    pub coral: Color,
+    pub violet: Color,
+    pub label: Color,
+    pub dim: Color,
+    pub number: Color,
 }
 
 impl Style {
@@ -62,6 +77,15 @@ impl Style {
             particle: atlas.token_color("ui.particle"),
             dotted_ring: atlas.token_color("ui.dotted_ring"),
             ui_label: atlas.token_color("ui.label"),
+            ui: UiPalette {
+                teal: atlas.token_color("ui.teal"),
+                gold: atlas.token_color("ui.gold"),
+                coral: atlas.token_color("ui.coral"),
+                violet: atlas.token_color("ui.violet"),
+                label: atlas.token_color("ui.label"),
+                dim: atlas.token_color("ui.dim"),
+                number: atlas.token_color("ui.number"),
+            },
         }
     }
 

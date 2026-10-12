@@ -60,6 +60,11 @@ Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/ch
 - **Accents**: teal `#8cefdb` (primary), gold `#eed595`, coral `#ec8f7c` (danger and enemies), violet `#ae8cec` (logic and conditions).
 - **Controls**: pill buttons. The primary action is a glowing teal pill. Round glowing ring buttons for menus and tools.
 - **Layout**: a floating HUD with no boxed panels. The ring menu sits around the docked ship on the home screen.
+- **Fleet bar** ([GDR-0050](gdr/0050-fleet-bar.md), 12 Oct 2026): a row of chips at the top centre, no panel.
+  Each chip is outlined only by four thin corner brackets (grey at 40 %, teal for the focus); inside, the vessel's
+  number (white; teal for the focus, coral when dark, dim when dormant), small violet dots for its logic cores, a
+  2 px bar of its control load (teal, gold when nearly full, coral while parts idle) and a tiny tracked state
+  word (`PILOT`, `AUTO`, `DARK`, `DORMANT`). Above the chips: `MIND 8 / 24` with a thin violet bar.
 - Landscape only, on phone and desktop. See the mockups for the drydock (paint blocks, drag big machines), flight HUD, behavior editor (rule rows: violet conditions → teal actions) and galaxy map (dotted route, voyage panel with supplies and autopilot toggles).
 
 ## Rendering in Bevy (suggestion, to be measured in the spike)

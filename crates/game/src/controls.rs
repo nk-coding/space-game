@@ -6,7 +6,8 @@
 //!   empty space = unlock, hold the left button on empty space (or the right button, or Space) = fire. Tab =
 //!   next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
 //!   vessel list); clicking a friendly vessel switches to it. Both send `ShipCommand::Focus`; the sim moves the
-//!   focus and `scene::PilotFocus` mirrors it on the next tick.
+//!   focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and taps on the fleet bar
+//!   (`fleet_bar.rs`) are the bar's, never the world's.
 //! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button bottom-right, tap a
 //!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
 //!   (or with `?touch=1`).
@@ -17,6 +18,7 @@ use bevy_egui::input::{egui_wants_any_keyboard_input, egui_wants_any_pointer_inp
 use sim::{ShipCommand, ShipId, Target};
 
 use crate::camera::CameraRig;
+use crate::fleet_bar::FleetBar;
 use crate::scene::{PilotFocus, is_friendly, player_vessels};
 use crate::sim_bridge::{SimWorld, piece_com, sv, v2};
 use crate::style::{Style, ui_color};
@@ -70,6 +72,10 @@ impl PlayerInput {
     }
 }
 
+/// The input systems (keyboard, mouse, touch → [`PlayerInput`]), in `Update`.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ControlsSet;
+
 #[derive(Component)]
 struct StickBase;
 #[derive(Component)]
@@ -93,7 +99,8 @@ impl Plugin for ControlsPlugin {
                     combine,
                     touch_ui,
                 )
-                    .chain(),
+                    .chain()
+                    .in_set(ControlsSet),
             );
     }
 }
@@ -142,6 +149,7 @@ fn keyboard(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mouse(
     time: Res<Time<Real>>,
     buttons: Res<ButtonInput<MouseButton>>,
@@ -150,6 +158,7 @@ fn mouse(
     focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
+    fleet: Res<FleetBar>,
     mut input: ResMut<PlayerInput>,
 ) {
     if focus.0.is_none() {
@@ -159,6 +168,7 @@ fn mouse(
     let cursor = window.cursor_position();
     if buttons.just_pressed(MouseButton::Left)
         && let Some(c) = cursor
+        && !fleet.blocks(c)
     {
         let alpha = fixed.overstep_fraction();
         let hit = pick(&world, focus.0, rig.screen_to_world(c), 1.0 / rig.zoom, alpha);
@@ -181,6 +191,7 @@ fn mouse(
     input.key_fire = input.key_fire || lmb_fire || buttons.pressed(MouseButton::Right);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn touch(
     time: Res<Time<Real>>,
     touches: Res<Touches>,
@@ -189,6 +200,7 @@ fn touch(
     focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
+    fleet: Res<FleetBar>,
     mut input: ResMut<PlayerInput>,
 ) {
     let size = window.size();
@@ -198,6 +210,9 @@ fn touch(
     for t in touches.iter_just_pressed() {
         input.touch_ui = true;
         let p = t.position();
+        if fleet.blocks(p) {
+            continue;
+        }
         if focus.0.is_some() && input.stick_touch.is_none() && p.distance(stick_c) < STICK_RADIUS * 1.7 {
             input.stick_touch = Some((t.id(), stick_c));
         } else if focus.0.is_some() && input.fire_touch.is_none() && p.distance(fire_c) < FIRE_RADIUS * 1.4 {

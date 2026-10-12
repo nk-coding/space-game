@@ -101,7 +101,7 @@ fn number(fonts: &HudFonts, text: &str, size: f32, color: Color) -> impl Bundle 
     )
 }
 
-fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<Font>>, style: Res<Style>) {
+pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<Font>>, style: Res<Style>) {
     let fonts = HudFonts {
         regular: fonts_assets.add(Font::from_bytes(BARLOW_REGULAR.to_vec())),
         medium: fonts_assets.add(Font::from_bytes(BARLOW_MEDIUM.to_vec())),
@@ -134,8 +134,8 @@ fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<Font>>, sty
                         row.spawn((HullMap, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
                     });
             });
-            // Left: speed.
-            root.spawn(abs(Some(28.0), None, None, Some(250.0))).with_children(|c| {
+            // Left: speed, ending at mid-height (on a 390 px phone it sits between the hull block and the stick).
+            root.spawn(Node { bottom: percent(50), ..abs(Some(28.0), None, None, None) }).with_children(|c| {
                 c.spawn(label(&fonts, "SPEED", 12.0, grey));
                 c.spawn((HudText::SpeedValue, number(&fonts, "0", 34.0, white)));
                 c.spawn((HudText::SpeedSub, label(&fonts, "M/S", 11.0, dim)));
@@ -268,12 +268,8 @@ fn update_text(
                 let alive = world.sim.vessels(crate::scene::ENEMY).filter(|v| v.state == sim::VesselState::Running).count();
                 match scene.kind {
                     SceneKind::Sandbox => {
+                        // The player's vessels are in the fleet bar (`fleet_bar.rs`).
                         let _ = write!(s, "RAIDERS {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
-                        let vessels: Vec<ShipId> = crate::scene::player_vessels(&world);
-                        if vessels.len() > 1 {
-                            let k = focus.0.and_then(|f| vessels.iter().position(|v| *v == f)).map(|k| k + 1).unwrap_or(0);
-                            let _ = write!(s, "  ·  VESSEL {k} / {}  (V)", vessels.len());
-                        }
                     }
                     SceneKind::Load(_) => {
                         let active = world.sim.ships().iter().filter(|s| s.is_active()).count();
