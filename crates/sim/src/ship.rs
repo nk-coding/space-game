@@ -239,7 +239,10 @@ pub fn thruster_wrench(thrusters: &[Thruster], throttle: impl Fn(u32) -> f32) ->
     w
 }
 
-/// What a piece's thrusters can do at most, per direction (kN) and per turning sense (kN·m).
+/// What a piece's actuators can do now, per direction (kN) and per turning sense (kN·m): only rows and torque
+/// sources that can produce (alive, not overheated, not idle, powered; [`producing`]), each at the power level
+/// it was served last (partial power scales the output). All zero while the piece is not active (dark, dormant,
+/// salvage). Updated after every systems step and on rebuilds; the flight computer plans with it (`Kin`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ThrustAuthority {
     /// Along +y (the ship's nose).
@@ -257,6 +260,52 @@ pub struct ThrustAuthority {
     /// Reachable top speed per thrust group (forward, backward, right, left; m/s, as `flight::AXES`): the
     /// highest rated speed among the rows pushing that way, 0 if none (GDR-0041).
     pub speed: [f32; 4],
+}
+
+/// Can this actuator push or turn now? Alive, not overheated, not idle (GDR-0044) and powered (its last power
+/// level above 0). Rows and torque sources that cannot are left out of the flight computer's authority and
+/// allocation.
+#[inline]
+pub fn producing(ps: &PartState) -> bool {
+    ps.alive && !ps.overheated && !ps.idle && ps.power > 0.0
+}
+
+/// Recomputes `piece.authority` from the actuators that can produce now (see [`ThrustAuthority`]). One pass
+/// over the thruster rows and torque sources; no allocation.
+pub(crate) fn refresh_authority(piece: &mut Piece, parts: &[PartState]) {
+    let mut auth = ThrustAuthority::default();
+    if piece.active {
+        for t in &piece.thrusters {
+            let ps = &parts[t.part as usize];
+            if !producing(ps) {
+                continue;
+            }
+            let f = t.max_force * ps.power;
+            let g = crate::alloc::group_of(t.dir);
+            match g {
+                0 => auth.forward += f,
+                1 => auth.backward += f,
+                2 => auth.right += f,
+                _ => auth.left += f,
+            }
+            if f > 0.0 {
+                auth.speed[g] = auth.speed[g].max(t.rated);
+            }
+            let tq = t.torque_per_force * f;
+            if tq > 0.0 {
+                auth.torque_ccw += tq;
+            } else {
+                auth.torque_cw -= tq;
+            }
+        }
+        for src in &piece.torque_sources {
+            let ps = &parts[src.part as usize];
+            if producing(ps) {
+                auth.torque_pure += src.max * ps.power;
+            }
+        }
+    }
+    piece.authority = auth;
 }
 
 /// A gun of a piece. Piece frame.
@@ -1178,29 +1227,6 @@ impl Ship {
             }
         }
 
-        // Authority of the rows and the pure torque.
-        let mut auth = ThrustAuthority::default();
-        for t in &piece.thrusters {
-            let f = t.max_force;
-            let g = crate::alloc::group_of(t.dir);
-            match g {
-                0 => auth.forward += f,
-                1 => auth.backward += f,
-                2 => auth.right += f,
-                _ => auth.left += f,
-            }
-            if f > 0.0 {
-                auth.speed[g] = auth.speed[g].max(t.rated);
-            }
-            let tq = t.torque_per_force * f;
-            if tq > 0.0 {
-                auth.torque_ccw += tq;
-            } else {
-                auth.torque_cw -= tq;
-            }
-        }
-        auth.torque_pure = piece.torque_sources.iter().map(|s| s.max).sum();
-        piece.authority = auth;
         piece.alloc = AllocTable::build(&piece.thrusters);
         piece
             .act
@@ -1213,6 +1239,7 @@ impl Ship {
         piece.cruise.clear();
         piece.cruise.resize(rows, 0.0);
         piece.active = piece.controlled && piece.has_core && !self.dormant;
+        refresh_authority(&mut piece, &self.parts);
         self.pieces[k] = piece;
     }
 
@@ -1423,6 +1450,11 @@ impl Ship {
             } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
                 ps.overheated = false;
             }
+        }
+
+        // What the flight computer may plan with next tick (idle, unpowered and overheated actuators out).
+        for piece in pieces.iter_mut() {
+            refresh_authority(piece, parts);
         }
     }
 }

@@ -58,6 +58,88 @@ fn turns_to_a_heading_without_overshoot() {
     }
 }
 
+/// 90° turn to `FRAC_PI_2` holding position: (seconds to within 1°, overshoot in degrees).
+fn quarter_turn(w: &mut sim::Sim, s: sim::ShipId) -> (f32, f32) {
+    let goal = FlightGoal {
+        heading: HeadingGoal::Angle(FRAC_PI_2),
+        velocity: Some(Vec2::ZERO),
+    };
+    w.command(s, ShipCommand::Goal { goal, fire: false });
+    let (mut reached, mut overshoot) = (None, 0.0f32);
+    for t in 1..=450 {
+        w.step(&TickInputs::default());
+        let e = wrap_angle(FRAC_PI_2 - piece(w, s).body.angle);
+        if reached.is_none() && e.abs() < 1f32.to_radians() {
+            reached = Some(t as f32 / 30.0);
+        }
+        if reached.is_some() {
+            overshoot = overshoot.max(-e);
+        }
+    }
+    (reached.unwrap_or(f32::INFINITY), overshoot.to_degrees())
+}
+
+/// A Halvex Runner that lost a logic core, with one gyro set to the lowest power priority: it goes idle with a
+/// pulse laser (control load 18 against 16). The flight computer plans with what can still push and turn
+/// (GDR-0044: idle parts do nothing), so the 90° turn takes longer but does not overshoot, and a stop from speed
+/// (flip and burn: engines only at the back) neither overshoots the flip nor flies backwards.
+#[test]
+fn a_runner_with_idle_actuators_turns_and_brakes_cleanly() {
+    let c = content();
+    let d = design(&c, "halvex_runner");
+    let (mut w, s) = world_with(d.clone());
+    let gyro = find(&d, "gyro", 9, 3);
+    let low = sim::PowerSetting {
+        tier: sim::PowerTier::Low,
+        weight: 0.5,
+    };
+    w.command(s, ShipCommand::Power { part: gyro, setting: low });
+    w.apply_damage(s, DamageTarget::Part(find(&d, "logic_core", 3, 4)), 10.0);
+    idle(&mut w, 2);
+    let ship = w.ship(s).unwrap();
+    let idle_parts: Vec<&str> = (0..d.parts.len())
+        .filter(|&i| ship.part(i as sim::PartIdx).idle)
+        .map(|i| d.parts[i].id.as_str())
+        .collect();
+    assert_eq!(idle_parts, ["pulse_laser", "gyro"]);
+    // The planning authority leaves the idle gyro out: one gyro and one logic core turn the ship.
+    let torque = |id: &str| c.parts.get(id).unwrap().gyro.as_ref().unwrap().torque;
+    let p = piece(&w, s);
+    assert!(close(p.authority.torque_pure, torque("gyro") + torque("logic_core"), 1e-2), "{:?}", p.authority);
+
+    let (turn, overshoot) = quarter_turn(&mut w, s);
+    println!("runner, one core and one gyro idle: 90° in {turn:.2} s, overshoot {overshoot:.2}°");
+    assert!(turn < 2.0 && overshoot < 2.0, "90° in {turn} s, overshoot {overshoot}°");
+
+    // Up to speed along the nose (world −x after the turn), then release the stick: flip and burn.
+    let nose = Vec2::new(-1.0, 0.0);
+    w.command(s, ShipCommand::Pilot(PilotInput { stick: nose, ..Default::default() }));
+    idle(&mut w, 75);
+    let v0 = piece(&w, s).body.linvel;
+    assert!(v0.dot(nose) > 10.0, "{v0:?}");
+    w.command(s, ShipCommand::Pilot(PilotInput::default()));
+    let (mut backwards, mut stopped, mut spin_after) = (0.0f32, None, 0.0f32);
+    for t in 1..=300 {
+        w.step(&TickInputs::default());
+        let b = piece(&w, s).body;
+        backwards = backwards.max(-b.linvel.dot(nose));
+        if stopped.is_none() && b.linvel.length() < 0.05 {
+            stopped = Some(t as f32 / 30.0);
+        }
+        if stopped.is_some() {
+            spin_after = spin_after.max(b.angvel.abs());
+        }
+    }
+    let stopped = stopped.unwrap_or(f32::INFINITY);
+    println!(
+        "  stop from {:.1} m/s: {stopped:.2} s, flew backwards at up to {backwards:.2} m/s, spin after {spin_after:.3} rad/s",
+        v0.length()
+    );
+    assert!(stopped < 6.0, "stopped after {stopped} s");
+    assert!(backwards < 0.2, "flew backwards at {backwards} m/s");
+    assert!(spin_after < 0.05, "still spinning at {spin_after} rad/s");
+}
+
 #[test]
 fn stick_sets_course_and_speed_and_release_brakes() {
     let c = content();

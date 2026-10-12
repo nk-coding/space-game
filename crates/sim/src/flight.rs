@@ -24,7 +24,7 @@ use crate::ids::{PieceId, ShipId};
 use crate::maneuver::Maneuver;
 use crate::math::{Rot, Vec2, atan2, cos, sqrt};
 use crate::physics::wrap_angle;
-use crate::ship::{Piece, Ship, Wrench};
+use crate::ship::{Piece, Ship, Wrench, producing};
 
 /// What a lock or a maneuver points at.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -193,7 +193,7 @@ pub struct Kin {
     pub rot: Rot,
     pub mass: f32,
     pub inertia: f32,
-    /// Thrust per group (forward, backward, right, left), kN.
+    /// Thrust per group (forward, backward, right, left), kN: only what can push now (`ThrustAuthority`).
     pub caps: [f32; 4],
     /// Top speed per group (m/s): where its fastest thrusters stop pushing (`ThrustAuthority::speed`).
     pub speeds: [f32; 4],
@@ -203,7 +203,7 @@ pub struct Kin {
     pub accel: f32,
     /// Top speed along the best group (m/s): the stick's full length, `Flee`, the cap of every maneuver.
     pub top_speed: f32,
-    /// Planning angular acceleration (rad/s²).
+    /// Planning angular acceleration (rad/s²), from the torque sources and thrusters that can produce now.
     pub alpha: f32,
     /// Longest reach of the piece's clear guns (m; 0 = no guns).
     pub reach: f32,
@@ -835,12 +835,14 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         };
         let torque = kin.inertia * (omega_des - kin.omega) * (1.0 / DT);
 
-        // Availability now, after the speed falloff (power is settled later by the systems).
+        // Availability now, after the speed falloff: only actuators that can produce (not idle, powered, not
+        // overheated, alive: `ship::producing`). Partial power is not scaled in here: it caps what the piece's
+        // movers draw together, so the dead-beat request is exact whenever the power suffices, and the systems
+        // settle the rest (planning, `Kin`, uses the power levels).
         let fmax = &mut scratch.fmax;
         fmax.clear();
         fmax.extend(piece.thrusters.iter().zip(&piece.falloff).map(|(t, &f)| {
-            let ps = &parts[t.part as usize];
-            if ps.alive && !ps.overheated {
+            if producing(&parts[t.part as usize]) {
                 t.max_force * f
             } else {
                 0.0
@@ -849,8 +851,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         let tmax = &mut scratch.tmax;
         tmax.clear();
         tmax.extend(piece.torque_sources.iter().map(|s| {
-            let ps = &parts[s.part as usize];
-            if ps.alive && !ps.overheated {
+            if producing(&parts[s.part as usize]) {
                 s.max
             } else {
                 0.0
