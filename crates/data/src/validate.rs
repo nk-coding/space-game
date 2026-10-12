@@ -33,6 +33,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     });
     v.entries(c.materials.as_slice(), |v, e| v.material(e));
     v.entries(c.parts.as_slice(), |v, e| v.part(e));
+    v.entries(c.frames.as_slice(), |v, e| v.frame(e));
     v.entries(c.ships.as_slice(), |v, e| v.ship(e));
     v.entries(c.behavior_nodes.as_slice(), |v, e| v.behavior_node(e));
     v.entries(c.behaviors.as_slice(), |v, e| v.behavior(e));
@@ -69,6 +70,8 @@ struct Validator<'a> {
 pub const MAX_GIMBAL: f32 = 45.0;
 /// Longest allowed engine plume, in metres (keeps the plume casts short).
 pub const MAX_PLUME_LENGTH: f32 = 50.0;
+/// Longest allowed side of a drydock frame, in cells (placeholder: twice the capital frame).
+pub const MAX_FRAME_SIZE: u32 = 128;
 
 pub(crate) fn is_snake_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -514,6 +517,17 @@ impl<'a> Validator<'a> {
                     "must be at least 1 (or omitted for no limit)",
                 );
             }
+        }
+    }
+
+    fn frame(&mut self, f: &'a Frame) {
+        let (w, h) = f.size;
+        if !(1..=MAX_FRAME_SIZE).contains(&w) || !(1..=MAX_FRAME_SIZE).contains(&h) {
+            self.err(
+                f,
+                "size",
+                format!("each side must be 1 to {MAX_FRAME_SIZE} cells; got {w}×{h}"),
+            );
         }
     }
 

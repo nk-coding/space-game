@@ -114,6 +114,7 @@ impl Content {
         each(self.factions.as_slice(), &mut f);
         each(self.materials.as_slice(), &mut f);
         each(self.parts.as_slice(), &mut f);
+        each(self.frames.as_slice(), &mut f);
         each(self.ships.as_slice(), &mut f);
         each(self.behavior_nodes.as_slice(), &mut f);
         each(self.behaviors.as_slice(), &mut f);
@@ -143,6 +144,7 @@ impl Content {
         each(self.factions.iter_mut(), overrides, &mut used);
         each(self.materials.iter_mut(), overrides, &mut used);
         each(self.parts.iter_mut(), overrides, &mut used);
+        each(self.frames.iter_mut(), overrides, &mut used);
         each(self.ships.iter_mut(), overrides, &mut used);
         each(self.behavior_nodes.iter_mut(), overrides, &mut used);
         each(self.behaviors.iter_mut(), overrides, &mut used);

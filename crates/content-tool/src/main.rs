@@ -20,8 +20,8 @@ use serde_json::{Value, json};
 const USAGE: &str = "usage:
   content-tool validate [pack_dir...]
   content-tool export-json <out.json | -> [pack_dir...]
-  content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, ship,
-                                             behavior_node, behavior, page
+  content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, frame,
+                                             ship, behavior_node, behavior, page
 
 Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
@@ -157,12 +157,13 @@ fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
 fn validate(args: &[String]) -> Result<(), String> {
     let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} ships, {} behavior nodes, {} behaviors, {} icons, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
         content.materials.len(),
         content.parts.len(),
+        content.frames.len(),
         content.ships.len(),
         content.behavior_nodes.len(),
         content.behaviors.len(),
@@ -201,6 +202,7 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Faction => rows(c.factions.as_slice()),
         Kind::Material => rows(c.materials.as_slice()),
         Kind::Part => rows(c.parts.as_slice()),
+        Kind::Frame => rows(c.frames.as_slice()),
         Kind::Ship => rows(c.ships.as_slice()),
         Kind::BehaviorNode => rows(c.behavior_nodes.as_slice()),
         Kind::Behavior => rows(c.behaviors.as_slice()),
@@ -343,6 +345,7 @@ fn export(c: &Content) -> Value {
             v
         })
         .collect();
+    let frames: Vec<Value> = c.frames.iter().map(|e| entry_json(c, e)).collect();
     let ships: Vec<Value> = c.ships.iter().map(|s| ship_json(c, s)).collect();
     let behavior_nodes: Vec<Value> = c
         .behavior_nodes
@@ -438,6 +441,7 @@ fn export(c: &Content) -> Value {
         "factions": factions,
         "materials": materials,
         "parts": parts,
+        "frames": frames,
         "ships": ships,
         "behavior_nodes": behavior_nodes,
         "behaviors": behaviors,

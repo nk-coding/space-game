@@ -27,6 +27,7 @@ content/base/
   factions/*.ron           ship_mind, automatons
   materials/armor.ron      armor materials
   parts/<category>.ron     parts, one file per category (+ automatons.ron for enemy parts)
+  frames.ron               drydock frames (the design grid sizes); order = drydock order
   ships/<id>.ron           one blueprint per file
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
@@ -38,14 +39,14 @@ content/base/
 File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
-  `categories`, `factions`, `materials`, `parts`, `ships`, `behavior_nodes`, `behaviors`. File names are free;
-  group however reads best.
+  `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`. File names
+  are free; group however reads best.
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
   `icons/` as `<key>.svg` with a kebab-case key; other files (READMEs) are ignored.
 - Files are read in sorted path order, entries in file order. That is the **load order**, which is also the
-  display order for stats, categories and the drydock palette.
+  display order for stats, categories, frames and the drydock palette.
 - `wiki/` is for tools only. The game build never embeds it.
 
 ## Common header
@@ -255,6 +256,24 @@ plumes". Stat lines `plume_length` (m), `plume_damage` (/s), `plume_heat` (/s), 
 
 **Slopes** must be one cell high (`size: (w, 1)`) and hull parts. Steep variants come from rotation.
 
+### Frames (`frames.ron`, added 12 Oct 2026)
+
+Drydock frames set the grid size a design is built on (GDR-0006: frigate, cruiser and capital frames, bigger ones
+with drydock expansions). The common header plus `size`:
+
+```ron
+(id: "frigate", name: "Frigate", summary: "The first drydock frame: room for scouts, escorts and raiders.", size: (24, 24))
+```
+
+| Field | Notes |
+|---|---|
+| `size` | grid `(w, h)` in cells; each side 1 to 128 (`data::validate::MAX_FRAME_SIZE`, a placeholder) |
+
+Load order is the drydock's display order (`Content::frames`, a `Table<Frame>`); mods override and add frames by
+id like any other kind. Base frames (lead placeholders, 12 Oct 2026): `frigate` 24×24, `cruiser` 40×40,
+`capital` 64×64. Text keys `frame.<id>.name` etc., links `[[frame:id]]`, wiki prose `wiki/frame/<id>.md`.
+Blueprints keep their own `size` and name no frame (v1); every base ship fits the frigate frame.
+
 ### Ships (`ships/<id>.ron`)
 
 ```ron
@@ -269,7 +288,8 @@ plumes". Stat lines `plume_length` (m), `plume_damage` (/s), `plume_heat` (/s), 
 )
 ```
 
-`size` is the drydock frame; every placement must fit inside. A placement is `part`, `x`, `y`, `rot`
+`size` is the blueprint's own grid (its frame); every placement must fit inside. It does not refer to a `frames`
+entry (v1). A placement is `part`, `x`, `y`, `rot`
 (default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise) and `power`
 (optional, parts that draw power only): the player's override of the part's power tier and weight, e.g.
 `(part: "shield_emitter", x: 2, y: 6, power: (tier: Low))` or `power: (tier: High, weight: 2)`; either field
@@ -411,7 +431,7 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 - Fields that name another entry hold its id (`category: "power"`, `faction: "automatons"`,
   `material: "steel"`, `target: Part("capacitor")`); validation checks each target exists.
 - Any text field and wiki file may link: `[[kind:id]]` or `[[kind:id|label]]`, kind one of `stat category
-  faction material part ship behavior_node behavior page`. The game renders links as plain names (`Content::render_plain`), the wiki
+  faction material part frame ship behavior_node behavior page`. The game renders links as plain names (`Content::render_plain`), the wiki
   as hyperlinks. Broken links are errors.
 
 ## Text and localisation
@@ -465,7 +485,8 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   `icons/`, icons that are not usable SVG (see [Icons](#icons)), non-finite or out-of-range numbers, hull parts
   with `mass`/`hp`, non-hull parts without them, illegal slopes (not `w × 1`, or not hull), hull placements
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
-  overlapping placements, wiki pages for missing entries, broken or malformed links.
+  overlapping placements, frame sides outside 1–128 cells, wiki pages for missing entries, broken or malformed
+  links.
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
   an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
   placement `power` override. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
@@ -510,6 +531,7 @@ connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygo
 plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals` (including `control_cost` and
 `control_capacity`), `rule_slots`, `control_load`, `control_capacity` (of the main piece) and
 `effective_behavior`.
+`frames` (added 12 Oct 2026) hold the header fields, `size` and the usual `text_keys`, `links` and `wiki`.
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
 `default_of_factions` and `flown_by_ships`. Categories list their parts,

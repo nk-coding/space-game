@@ -610,6 +610,27 @@ pub struct Placement {
     pub power: Option<PowerOverride>,
 }
 
+/// `frames.ron` / `frames/*.ron`: a drydock frame (GDR-0006), the grid a design is built on. Bigger frames come
+/// with drydock expansions. Order in the files = order in the drydock.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Frame {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub lore: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Grid size `(w, h)` in cells, each side 1 to [`crate::validate::MAX_FRAME_SIZE`].
+    pub size: (u32, u32),
+    #[serde(skip_deserializing)]
+    pub source: Source,
+}
+entry!(Frame, Kind::Frame);
+
 /// An icon of a pack: `icons/<key>.svg`, kept as SVG text (rasterised by the client at runtime, shown as is
 /// by the wiki). Later packs replace icons with the same key.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
-//! Drydock plumbing in `data`: checking a design on its own (`validate_ship`) and the blueprint text format
-//! (`blueprint_to_ron`, `parse_blueprint`).
+//! Drydock plumbing in `data`: checking a design on its own (`validate_ship`), the blueprint text format
+//! (`blueprint_to_ron`, `parse_blueprint`) and drydock frames as content.
 
 mod common;
 
@@ -480,5 +480,123 @@ fn parse_errors_name_line_and_column() {
             .material
             .as_deref(),
         Some("steel")
+    );
+}
+
+#[test]
+fn base_frames_load_in_order() {
+    let c = content();
+    let frames: Vec<(&str, (u32, u32))> =
+        c.frames.iter().map(|f| (f.id.as_str(), f.size)).collect();
+    assert_eq!(
+        frames,
+        [
+            ("frigate", (24, 24)),
+            ("cruiser", (40, 40)),
+            ("capital", (64, 64))
+        ]
+    );
+    assert_eq!(c.frames.get("frigate").unwrap().source.file, "frames.ron");
+    // Every base ship fits the smallest frame.
+    let (w, h) = c.frames.get("frigate").unwrap().size;
+    assert!(c.ships.iter().all(|s| s.size.0 <= w && s.size.1 <= h));
+    // A kind like any other: text keys, names, links.
+    assert_eq!(Kind::from_dir("frames"), Some(Kind::Frame));
+    assert_eq!(Kind::from_key("frame"), Some(Kind::Frame));
+    assert_eq!(
+        c.texts().get("frame.capital.name").map(String::as_str),
+        Some("Capital")
+    );
+    assert!(c.exists(Kind::Frame, "cruiser"));
+    assert_eq!(c.name_of(Kind::Frame, "cruiser"), Some("Cruiser"));
+    assert_eq!(
+        c.render_plain("A [[frame:frigate]] hull."),
+        "A Frigate hull."
+    );
+}
+
+#[test]
+fn mods_add_and_override_frames() {
+    let m = Pack::from_files([
+        ("pack.ron", MOD_MANIFEST),
+        (
+            "frames/big.ron",
+            r#"[
+                (id: "frigate", name: "Frigate", summary: "A roomier frigate frame.", size: (30, 20)),
+                (id: "dreadnought", name: "Dreadnought", summary: "Beyond the [[frame:capital]].", size: (128, 96)),
+            ]"#,
+        ),
+        ("wiki/frame/dreadnought.md", "# Dreadnought\n\nSee [[frame:frigate]]."),
+    ])
+    .unwrap_or_else(|p| panic!("{}", show(&p)));
+    let c =
+        Content::load(&[data::base_pack().unwrap(), m]).unwrap_or_else(|p| panic!("{}", show(&p)));
+    let ids: Vec<&str> = c.frames.iter().map(|f| f.id.as_str()).collect();
+    assert_eq!(ids, ["frigate", "cruiser", "capital", "dreadnought"]);
+    let frigate = c.frames.get("frigate").unwrap();
+    assert_eq!(
+        (frigate.size, frigate.source.pack.as_str()),
+        ((30, 20), "test_mod")
+    );
+    assert!(c.wiki_page(Kind::Frame, "dreadnought").is_some());
+}
+
+#[test]
+fn frame_errors() {
+    let m = Pack::from_files([
+        ("pack.ron", MOD_MANIFEST),
+        (
+            "frames.ron",
+            r#"[
+                (id: "flat", name: "Flat", summary: "No height.", size: (10, 0)),
+                (id: "huge", name: "Huge", summary: "Too big.", size: (129, 10)),
+                (id: "Bad", name: " ", summary: "See [[frame:nothing]].", tags: ["x y"], size: (5, 5)),
+            ]"#,
+        ),
+    ])
+    .unwrap();
+    let e = Content::load(&[data::base_pack().unwrap(), m]).unwrap_err();
+    let frame = |id: &str, field: &str, needle: &str| {
+        assert!(
+            e.iter().any(|p| p.is_error()
+                && p.kind == Some(Kind::Frame)
+                && p.id.as_deref() == Some(id)
+                && p.field.as_deref() == Some(field)
+                && p.message.contains(needle)),
+            "{id} {field} {needle}\n{}",
+            show(&e)
+        )
+    };
+    frame("flat", "size", "1 to 128 cells; got 10×0");
+    frame("huge", "size", "got 129×10");
+    frame("Bad", "id", "snake_case");
+    frame("Bad", "name", "must not be empty");
+    frame("Bad", "summary", "points at nothing");
+    frame("Bad", "tags[0]", "snake_case");
+    // Unknown fields fail to parse; ids are unique within a pack.
+    let e = Pack::from_files([
+        ("pack.ron", MOD_MANIFEST),
+        (
+            "frames.ron",
+            r#"(id: "x", name: "X", summary: "S.", size: (1, 1), grid: 2)"#,
+        ),
+    ])
+    .unwrap_err();
+    assert!(
+        e[0].kind == Some(Kind::Frame) && e[0].message.contains("grid"),
+        "{}",
+        e[0]
+    );
+    let one = r#"(id: "x", name: "X", summary: "S.", size: (1, 1))"#;
+    let e = Pack::from_files([
+        ("pack.ron", MOD_MANIFEST),
+        ("frames/a.ron", one),
+        ("frames/b.ron", one),
+    ])
+    .unwrap_err();
+    assert!(
+        e[0].kind == Some(Kind::Frame) && e[0].message.contains("duplicate id"),
+        "{}",
+        e[0]
     );
 }
