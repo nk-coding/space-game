@@ -182,10 +182,9 @@ differential thrust pushing a locked ship (15). Stick + lock with the touch stic
 
 ## Steps for Niklas (host browser)
 
-Before you start: in the VM, run `scripts/web-serve.sh --release` in `~/workspace/space-game` (or ask the lead
-session to). It serves the optimised build at `http://10.77.9.2:8081`; the first release build takes a few minutes
-and is ready when the page loads. (If an agent already serves on 8081, start it with `PORT=8082` and use 8082 in
-the addresses below.)
+Before you start: the lead session serves the current optimised build at `http://10.77.9.2:8080` (Niklas's copy).
+If it is not up, run `scripts/web-build.sh` and then `PORT=8080 scripts/web-serve-dist.sh` in `~/workspace/space-game`
+(the release build takes a few minutes).
 
 Setup: use the browser you develop in, on mains power, window maximised, with nothing heavy running. Keep the
 game tab in front the whole time (background tabs are throttled). Open DevTools as a separate window (F12, then
@@ -193,33 +192,33 @@ game tab in front the whole time (background tabs are throttled). Open DevTools 
 
 **A. Load test (question 5).**
 
-1. Open `http://10.77.9.2:8081/?load=1` and don't touch anything. The overlay at the bottom left shows FPS, frame
+1. Open `http://10.77.9.2:8080/?load=1` and don't touch anything. The overlay at the bottom left shows FPS, frame
    ms and sim ms.
 2. After a bit more than 60 s the console prints one line that starts with `LOADTEST ships=1`. Copy it.
-3. Do the same with `http://10.77.9.2:8081/?load=5` and `http://10.77.9.2:8081/?load=20` (a fresh page load each).
+3. Do the same with `http://10.77.9.2:8080/?load=5` and `http://10.77.9.2:8080/?load=20` (a fresh page load each).
 
 **B. Cost of the look (question 6).** The same as A, a fresh page load each, copy each `LOADTEST` line:
 
-- `http://10.77.9.2:8081/?load=20&debug=1` (debug shapes)
-- `http://10.77.9.2:8081/?load=20&glow=0` (style 2a without glow sprites)
-- `http://10.77.9.2:8081/?load=20&bloom=1` (style 2a with glow sprites and bloom)
-- `http://10.77.9.2:8081/?load=20&glow=0&bloom=1` (bloom instead of glow sprites)
+- `http://10.77.9.2:8080/?load=20&debug=1` (debug shapes)
+- `http://10.77.9.2:8080/?load=20&glow=0` (style 2a without glow sprites)
+- `http://10.77.9.2:8080/?load=20&bloom=1` (style 2a with glow sprites and bloom)
+- `http://10.77.9.2:8080/?load=20&glow=0&bloom=1` (bloom instead of glow sprites)
 
 The `?load=20` run from A is the default (style 2a, glow sprites, no bloom). To compare live instead, the keys 1
 (debug shapes), 2 (glow sprites) and 3 (bloom) switch the same things; the overlay's frame times cover the last 600
 frames, so wait about 15 s after a switch before reading them.
 
 **C. Browser hash (question 2, optional, one minute).** Open
-`http://10.77.9.2:8081/?hashlog=1&load=20&hashticks=600` and wait about half a minute until the console prints
+`http://10.77.9.2:8080/?hashlog=1&load=20&hashticks=600` and wait about half a minute until the console prints
 `# hashlog done`. The line before it should read
 `# final=86eb72a03591bff2 label=load ships=20 seed=42 (browser) ticks=600`. Copy it.
 
-**D. Flight feel (question 7).** Open `http://10.77.9.2:8081/` (the sandbox) and fly the Halvex Runner for a few
+**D. Flight feel (question 7).** Open `http://10.77.9.2:8080/` (the sandbox) and fly the Halvex Runner for a few
 waves: W/S thrust, A/D rotate, Q/E strafe, let go to brake, X for drift, click a raider to lock (Tab for the next
 one), hold Space or the right mouse button to fire. Then say for each of these whether it feels right, or what is
 wrong: keyboard flight; the lock (it turns your guns onto the target, A/D nudge the aim); braking when you let go;
 top speed and acceleration (~22 m/s, 90° in ~0.8 s) with the calm cruise flame at top speed. If you change
-anything in the tuning panel (T), copy the query string it prints.
+anything in the tuning panel (U; T now opens the drydock), copy the query string it prints.
 
 **What to send back:**
 

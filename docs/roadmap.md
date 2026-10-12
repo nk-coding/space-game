@@ -62,6 +62,26 @@ Client leftovers:
 - Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note).
 - Browser load-test numbers (`?load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
 
+## State at the end of the 12–13 Oct 2026 session (new VM)
+
+Done: the new VM is set up (CLAUDE.md); Drydock v1 wave 1 is merged (5A–5D below): `?scene=drydock` or T opens the
+drydock with the Halvex Runner in the mockup's layout; the palette, search, categories, armour and overlay pills,
+the selected part and test flights (T, waves toggle C) work; nothing can be edited or saved yet. Phase 4's spike
+summary is written. Checks at the end: 250 tests pass (1 ignored timing test), the web build runs headless with no
+errors, determinism native vs wasm IDENTICAL on the new VM. Niklas asked to stop after wave 1.
+
+Next session: wave 2 of the drydock (5E–5G), three agents in their own worktrees, each with its own target dir
+(CLAUDE.md: never share a target dir between checkouts). Wave-2 hooks from the foundation: `DrydockAction` handlers
+go in `drydock::DockSet::Apply`; `PlayerDesign { blueprint, frame, revision }` (bump `revision` after an edit);
+`DrydockUi`, `DrydockStatus`, `DrydockStats`, `DrydockCursor` (`docs/client.md` "Drydock").
+
+Open questions for Niklas (ask interactively):
+- Browser numbers and the flight-feel verdict: steps in `results/spike-summary.md` (port 8080).
+- Drydock defaults (GDR-0053): hide automaton parts and plate until salvage unlocks them? fill as a rectangle or a
+  bucket? bevel as a mode or a one-shot command? the frame sizes.
+- Still open from 12 Oct (below): mind capacity numbers, plume defaults, fleet bar defaults, vessel model lead
+  defaults, flight lead defaults, fight balance.
+
 ## Phase 5: Drydock v1 (started 12 Oct 2026, GDR-0051, ADR-0030)
 
 Niklas chose the drydock as the next phase: unlimited parts (stats as information only), test-fly into the sandbox
@@ -72,10 +92,10 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 | 5A `sim::report` | Static design report with the sim's own rules: power, steady-state heat, thrust, top speed, turn, yaw, firepower, control, plumes, shields, device load, issues | done 12 Oct (`docs/sim.md` "Design report"; Runner 24 µs; hashes unchanged) |
 | 5B `data` plumbing | `validate_ship`, blueprint RON writer/reader, frames as content (frigate/cruiser/capital, placeholders), ship totals, ship-level stat labels | done 12 Oct (`docs/content-model.md`) |
 | 5C `data::edit` | Pure editing model: legality, paint, fill, erase, bevel, slope orientation, mirror, undo/redo | done 12 Oct (`docs/drydock.md`) |
-| 5D Client foundation | `Drydock` app state, static ship view with the flight tiles, the mockup's layout and widgets, test-fly round trip with an in-memory blueprint | wave 1, in progress |
-| 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2 |
-| 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2 |
-| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2 |
+| 5D Client foundation | `Drydock` app state, static ship view with the flight tiles, the mockup's layout and widgets, test-fly round trip with an in-memory blueprint | done 13 Oct (`client.md` "Drydock", `results/drydock-*.png`) |
+| 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2, next session |
+| 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2, next session |
+| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2, next session |
 
 ## Phase 4: measurement
 

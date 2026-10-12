@@ -61,6 +61,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0050](0050-fleet-bar.md) | The fleet bar: a strip at the top centre, shown with two or more vessels or a dormant one; a tap focuses, a tap on a dormant vessel wakes it | Accepted (provisional, lead) | 2026-10-12 |
 | [0051](0051-drydock-v1.md) | Drydock v1 comes next: unlimited parts, stats as information, test-fly into the sandbox, the mockup's look | Accepted | 2026-10-12 |
 | [0052](0052-drydock-stats-full-use.md) | Drydock stats show the ship at full use and full power; up to ~120 % heat reads "runs hot" | Accepted | 2026-10-12 |
+| [0053](0053-drydock-v1-lead-defaults.md) | Drydock v1 defaults: frames, tools, mirror, keys and test flight | Accepted (provisional, lead) | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

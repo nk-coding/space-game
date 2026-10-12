@@ -5,6 +5,25 @@ The ship editor: Drydock v1 (decided by Niklas, 12 Oct 2026) follows the desktop
 MIRROR M, BEVEL Shift+B, undo/redo) and the concept board (`docs/concept/boards/concept-board/02-drydock.png`).
 Parts are unlimited in v1.
 
+## Where the pieces live
+
+Decisions: [GDR-0051](gdr/0051-drydock-v1.md) (scope), [GDR-0052](gdr/0052-drydock-stats-full-use.md) (stats at full
+use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [ADR-0030](adr/0030-drydock-architecture.md)
+(architecture).
+
+| Piece | Where | Doc |
+|---|---|---|
+| Editing model (legality, tools, mirror, undo) | `data::edit::Drydock` | below |
+| One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::blueprint`, `Content.frames`, `Content::ship_totals`, `data::stats::SHIP_STATS` | `content-model.md` |
+| Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
+| The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
+
+Status (13 Oct 2026): wave 1 is merged. The screen shows the design with the flight tiles, the mockup's layout,
+the palette with search, the selected part, and test flights with the waves toggle. Not wired yet (wave 2):
+editing in the client (tools, selection, inspector with power overrides, undo/redo through `data::edit`), the
+stats panel, status line and overlays from `sim::report`, and saving, loading and exporting designs plus the
+blueprints list and frame choice.
+
 ## Editing model
 
 `data::edit::Drydock` (`crates/data/src/edit.rs`) is the editing model: no Bevy, no threads, no filesystem, so it
