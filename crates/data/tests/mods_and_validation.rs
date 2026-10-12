@@ -468,3 +468,102 @@ fn single_entry_and_list_files_and_comments() {
     ]);
     assert_eq!(m.categories[0].color.as_deref(), Some("power"));
 }
+
+#[test]
+fn control_cost_defaults_base_numbers_and_validation() {
+    let c = content();
+    let cost = |id: &str| c.parts.get(id).unwrap().control_cost();
+    // Defaults by kind: hull and cores 0, parts that draw or make power 1, passive parts 0; big machines 2 in
+    // content (lead placeholders).
+    for (id, want) in [
+        ("armor_block", 0),
+        ("slope_1x3", 0),
+        ("logic_core", 0),
+        ("automaton_core", 0),
+        ("radiator", 0),
+        ("capacitor", 0),
+        ("cargo_hold", 0),
+        ("fission_reactor", 1),
+        ("pulse_laser", 1),
+        ("shield_emitter", 1),
+        ("thruster", 1),
+        ("gyro", 1),
+        ("rcs_pod", 1),
+        ("automaton_cannon", 1),
+        ("fusion_reactor", 2),
+        ("torch_drive", 2),
+        ("beam_laser", 2),
+    ] {
+        assert_eq!(cost(id), want, "{id}");
+    }
+    // Every base ship runs all its parts with headroom.
+    for (ship, load, capacity) in [
+        ("halvex_runner", 18, 32),
+        ("automaton_raider", 2, 4),
+        ("sample_early", 8, 32),
+        ("sample_mid", 16, 32),
+    ] {
+        assert_eq!(
+            c.ship_control(c.ships.get(ship).unwrap()),
+            (load, capacity),
+            "{ship}"
+        );
+    }
+    let lines = c.part_stats(c.parts.get("torch_drive").unwrap(), None);
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.stat == "control_cost" && l.value == 2.0),
+        "{lines:?}"
+    );
+    let lines = c.part_stats(c.parts.get("logic_core").unwrap(), None);
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.stat == "control_capacity" && l.value == 16.0),
+        "{lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.stat == "control_cost"),
+        "cores cost nothing"
+    );
+
+    let e = errors_with(
+        "parts/p.ron",
+        &format!(
+            "({PART_HEAD}, category: \"power\", mass: 1, hp: 1, control_cost: 101, power: (draw: 1))"
+        ),
+    );
+    assert_error(&e, "p", "control_cost", "at most 100");
+    // Warnings: a passive part with a cost, a ship over its cores' capacity.
+    let m = pack(&[
+        ("pack.ron", MOD_MANIFEST),
+        (
+            "parts/p.ron",
+            &format!("({PART_HEAD}, category: \"power\", mass: 1, hp: 1, control_cost: 20)"),
+        ),
+        (
+            "ships/s.ron",
+            r#"(id: "s", name: "S", summary: "S.", faction: "ship_mind", size: (2, 1), parts: [
+                (part: "logic_core", x: 0, y: 0), (part: "p", x: 1, y: 0),
+            ])"#,
+        ),
+    ]);
+    let c = Content::load(&[base(), m]).unwrap();
+    let w: Vec<Problem> = data::validate(&c)
+        .into_iter()
+        .filter(|p| p.severity == Severity::Warning)
+        .collect();
+    assert!(
+        w.iter()
+            .any(|p| p.id.as_deref() == Some("p") && p.message.contains("never go idle")),
+        "{}",
+        show(&w)
+    );
+    assert!(
+        w.iter()
+            .any(|p| p.id.as_deref() == Some("s") && p.message.contains("control load 20 exceeds")),
+        "{}",
+        show(&w)
+    );
+}

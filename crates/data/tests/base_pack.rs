@@ -115,6 +115,7 @@ fn stat_lines_follow_stats_ron() {
         ids,
         [
             "build_points",
+            "control_cost",
             "mass",
             "hp",
             "power_output",
@@ -122,8 +123,10 @@ fn stat_lines_follow_stats_ron() {
             "heat_limit"
         ]
     );
-    assert_eq!(lines[3].text, "10 MW");
-    assert_eq!(lines[3].label, "Power output");
+    assert_eq!(lines[1].text, "1");
+    assert_eq!(lines[1].label, "Control cost");
+    assert_eq!(lines[4].text, "10 MW");
+    assert_eq!(lines[4].label, "Power output");
 
     let cap = c.parts.get("capacitor").unwrap();
     let bonus = c

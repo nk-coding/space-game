@@ -25,6 +25,7 @@
         icon: "fusion-reactor",
         size: (2, 2),
         build_points: 10,
+        control_cost: 2, // big machine: lead placeholder (12 Oct 2026)
         mass: 12,
         hp: 4,
         power: (output: 30),

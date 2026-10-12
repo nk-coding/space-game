@@ -29,6 +29,7 @@
         icon: "beam-laser",
         size: (1, 2),
         build_points: 7,
+        control_cost: 2, // big machine: lead placeholder (12 Oct 2026)
         mass: 4,
         hp: 2,
         power: (draw: 9, tier: Low, min_level: 0.5),

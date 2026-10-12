@@ -409,7 +409,13 @@ pub struct CargoSpec {
 #[serde(deny_unknown_fields)]
 pub struct LogicSpec {
     pub rule_slots: u32,
+    /// How much control cost of parts the core can run (GDR-0038, "N"): a vessel's control capacity is the
+    /// sum over its running cores. Parts beyond it go idle by power priority (GDR-0044).
+    pub control_capacity: u32,
 }
+
+/// Highest control cost a part may have (validation).
+pub const MAX_CONTROL_COST: u32 = 100;
 
 /// Which parts a bonus applies to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -477,6 +483,11 @@ pub struct Part {
     #[serde(default)]
     pub shape: Shape,
     pub build_points: f32,
+    /// What the part costs against its vessel's control capacity (GDR-0044). Default from the part's kind
+    /// ([`Part::control_cost`]): 0 for hull parts, logic cores and passive parts, 1 for parts that draw or
+    /// make power.
+    #[serde(default)]
+    pub control_cost: Option<u32>,
     /// Takes an armour material per placement; mass, hit points and build-point factor come from it.
     #[serde(default)]
     pub hull: bool,
@@ -524,6 +535,22 @@ impl Part {
     /// Area in cells (slopes count half their footprint).
     pub fn area(&self) -> f32 {
         self.footprint().area()
+    }
+    /// Does the part draw or make power (the parts that can go idle)?
+    pub fn has_power_role(&self) -> bool {
+        self.power
+            .as_ref()
+            .is_some_and(|p| p.draw > 0.0 || p.output > 0.0)
+    }
+    /// Control cost against the vessel's control capacity: the `control_cost` field, else the default by
+    /// kind. Hull parts and logic cores cost 0 (a core runs parts, it is not run), parts that draw or make
+    /// power cost 1, passive parts (radiators, capacitors, cargo) 0: idling has nothing to switch off on them.
+    pub fn control_cost(&self) -> u32 {
+        match self.control_cost {
+            Some(c) => c,
+            None if self.hull || self.logic.is_some() => 0,
+            None => self.has_power_role() as u32,
+        }
     }
     pub fn has_tag(&self, tag: &str) -> bool {
         self.tags.iter().any(|t| t == tag)

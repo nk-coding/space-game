@@ -35,6 +35,7 @@ fn turning_stat_lines() {
     let lines = |id: &str| -> Vec<(String, String)> {
         c.part_stats(c.parts.get(id).unwrap(), None)
             .into_iter()
+            .filter(|l| l.stat != "control_cost") // checked in mods_and_validation.rs
             .map(|l| (l.stat, l.text))
             .collect()
     };

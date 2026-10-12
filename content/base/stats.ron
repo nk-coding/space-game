@@ -3,6 +3,7 @@
 // Units are placeholders until the sim fixes its units (only 1 cell = 1 m is decided).
 [
     (id: "build_points", name: "Build points", summary: "Cost against the drydock's build-point budget.", unit: "BP", decimals: 1, better: Lower),
+    (id: "control_cost", name: "Control cost", summary: "How much of its vessel's control capacity the part uses. Parts beyond the capacity go idle, lowest power priority first.", decimals: 0, better: Lower),
     (id: "mass", name: "Mass", summary: "Weight of the part. Heavier ships turn and accelerate slower.", unit: "t", decimals: 2, better: Lower),
     (id: "hp", name: "Hit points", summary: "Damage the part takes before it is destroyed.", unit: "HP", decimals: 2, better: Higher),
     (id: "power_output", name: "Power output", summary: "Power the part adds to its piece's shared pool.", unit: "MW", decimals: 1, better: Higher),
@@ -27,6 +28,7 @@
     (id: "shield_radius", name: "Shield radius", summary: "Radius of the shield bubble around the emitter.", unit: "m", decimals: 1, better: Higher),
     (id: "cargo_capacity", name: "Cargo", summary: "Units of salvage the part holds.", unit: "units", decimals: 0, better: Higher),
     (id: "rule_slots", name: "Rule slots", summary: "Behavior rules the core can run.", decimals: 0, better: Higher),
+    (id: "control_capacity", name: "Control capacity", summary: "Control cost of parts the core can run; a vessel's capacity is the sum over its running cores.", decimals: 0, better: Higher),
     (id: "mass_per_cell", name: "Mass per cell", summary: "Mass of one full cell of this armor; slopes count half a cell per footprint cell.", unit: "t", decimals: 2, better: Lower),
     (id: "hp_per_cell", name: "Hit points per cell", summary: "Hit points of one full cell of this armor.", unit: "HP", decimals: 2, better: Higher),
     (id: "build_point_factor", name: "Build point factor", summary: "Multiplies the build points of hull parts made of this armor.", unit: "×", decimals: 2, better: Lower),
