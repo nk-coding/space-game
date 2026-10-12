@@ -10,8 +10,10 @@
 //!   (`ShipDesign::plume_path`): the first alive one within reach is hit. Its own shield bubbles never stop it.
 //! * **Other bodies.** Enemy vessels, salvage and debris (other owners, or none) are found with one ray cast per
 //!   lane through Rapier's query pipeline, skipping the engine's own piece and every vessel of the same owner
-//!   (GDR-0046). The cast runs only when another body's bounding circle can be within reach of the lane, so
-//!   plumes into empty space cost a few comparisons. Shield bubbles of non-friendly ships covering the hit point
+//!   (GDR-0046). The cast runs only when another body's bounding circle can be within reach of the lane, and a
+//!   piece whose plumes reach neither a part of its own (`Piece::plume_blocked`, cached on rebuilds) nor another
+//!   body (one scan of the bounding circles against `Piece::plume_reach`) is skipped as a whole, so plumes into
+//!   empty space cost a few comparisons per ship. Shield bubbles of non-friendly ships covering the hit point
 //!   absorb the plume's damage first, like energy damage (their `absorb[Energy]` share), and the heat in
 //!   proportion.
 //! * The lane stops at the first part it hits, on whichever ship (its own or another); that part takes the lane's
@@ -93,17 +95,8 @@ impl Sim {
                 continue;
             };
             let piece = &ship.pieces[pi];
-            if !piece.active {
-                continue;
-            }
-            // The longest plume burning now; nothing to do without one.
-            let mut reach = 0.0f32;
-            for (i, t) in piece.thrusters.iter().enumerate() {
-                if t.slot != NO_SLOT && piece.output[i] > 0.0 {
-                    reach = reach.max(t.plume_length);
-                }
-            }
-            if reach <= 0.0 {
+            let reach = piece.plume_reach;
+            if !piece.active || reach <= 0.0 {
                 continue;
             }
             if !circles_ready {
@@ -140,6 +133,9 @@ impl Sim {
                     sc.near.push(b as u32);
                 }
             }
+            if sc.near.is_empty() && !piece.plume_blocked {
+                continue; // no part of its own in a plume, nobody else in reach
+            }
             let d = &*ship.design;
             let rot = Rot::from_angle(piece.body.angle);
             for (i, t) in piece.thrusters.iter().enumerate() {
@@ -158,10 +154,14 @@ impl Sim {
                 }
                 let exhaust = rot.apply(-t.dir);
                 for l in l0..l1 {
+                    let path = d.plume_path.get(l as usize);
+                    if path.is_empty() && sc.near.is_empty() {
+                        continue; // nothing of its own in the way, nobody else in reach
+                    }
                     // Its own piece: the first alive part in the lane within reach.
                     let mut len = t.plume_length;
                     let mut own = None;
-                    for &(dist, part) in d.plume_path.get(l as usize) {
+                    for &(dist, part) in path {
                         if dist >= len {
                             break;
                         }

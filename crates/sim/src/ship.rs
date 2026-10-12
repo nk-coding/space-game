@@ -385,6 +385,11 @@ pub struct Piece {
     pub wrench: Wrench,
     /// Collisions with other pieces of the same ship are off until this tick (after a split; 0 = never off).
     pub ghost_until: u64,
+    /// The longest plume of its engines (m; 0 = no plume), and whether some engine's plume lane runs into a part
+    /// of this piece within reach (a buried engine). Cached on rebuilds, so the plume pass skips a piece with
+    /// nothing in reach after one proximity scan (`plume.rs`).
+    pub(crate) plume_reach: f32,
+    pub(crate) plume_blocked: bool,
     pub(crate) alloc: AllocTable,
     cores: Vec<PartIdx>,
     /// Shield emitters.
@@ -439,6 +444,8 @@ impl Piece {
             cruise: Vec::new(),
             wrench: Wrench::default(),
             ghost_until: 0,
+            plume_reach: 0.0,
+            plume_blocked: false,
             alloc: AllocTable::default(),
             cores: Vec::new(),
             shields: Vec::new(),
@@ -1228,6 +1235,27 @@ impl Ship {
         }
 
         piece.alloc = AllocTable::build(&piece.thrusters);
+        piece.plume_reach = 0.0;
+        piece.plume_blocked = false;
+        for t in &piece.thrusters {
+            if t.slot == NO_SLOT
+                || t.plume_length <= 0.0
+                || (t.plume_damage <= 0.0 && t.plume_heat <= 0.0)
+            {
+                continue;
+            }
+            piece.plume_reach = piece.plume_reach.max(t.plume_length);
+            let [l0, l1] = d.engines[t.slot as usize].lanes;
+            for l in l0..l1 {
+                for &(dist, part) in d.plume_path.get(l as usize) {
+                    if dist >= t.plume_length {
+                        break;
+                    }
+                    let ps = &self.parts[part as usize];
+                    piece.plume_blocked |= ps.alive && ps.piece == pid;
+                }
+            }
+        }
         piece
             .act
             .resize(piece.thrusters.len(), piece.torque_sources.len());
