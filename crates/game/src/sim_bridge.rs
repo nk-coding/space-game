@@ -280,6 +280,8 @@ fn apply_events(
                 Act::Split(split.ship, ids, count)
             }
             SimEvent::PieceDestroyed { ship, piece } => Act::PieceGone(*ship, *piece),
+            // A piece with a logic core split off and became a vessel (ship) of its own: same piece id, new ship.
+            SimEvent::VesselFormed { ship, from: Some((old, piece)), .. } => Act::Moved(*ship, *old, *piece),
             SimEvent::ShipRemoved { ship } => Act::ShipGone(*ship),
             SimEvent::PartDestroyed { ship, piece, part, volatile } => Act::PartGone(*ship, *piece, *part, *volatile),
             SimEvent::ShotFired { ship, kind, from, to, .. } => Act::Shot(*ship, *kind, v2(*from), v2(*to)),
@@ -300,6 +302,12 @@ fn apply_events(
                 }
             }
             Act::Rebuild(ship, piece) => {
+                respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, piece);
+            }
+            Act::Moved(ship, old, piece) => {
+                if let Some(e) = world.views.remove(&(old, piece)) {
+                    commands.entity(e).despawn();
+                }
                 respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, piece);
             }
             Act::Split(ship, ids, count) => {
@@ -383,6 +391,8 @@ enum Act {
     None,
     Spawned(ShipId),
     Rebuild(ShipId, PieceId),
+    /// The view of `(old, piece)` now belongs to `(ship, piece)`.
+    Moved(ShipId, ShipId, PieceId),
     Split(ShipId, [PieceId; 8], usize),
     PieceGone(ShipId, PieceId),
     ShipGone(ShipId),

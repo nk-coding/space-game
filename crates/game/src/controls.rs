@@ -4,8 +4,9 @@
 //! * **PC** (GDR-0040): A/D rotate, W/S thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a
 //!   lock the ship aims its strongest guns and A/D nudge the aim (springs back). Left-click a ship = lock, click
 //!   empty space = unlock, hold the left button on empty space (or the right button, or Space) = fire. Tab =
-//!   next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the fleet; clicking a
-//!   friendly vessel switches to it (the focus, `scene::PilotFocus`).
+//!   next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
+//!   vessel list); clicking a friendly vessel switches to it. Both send `ShipCommand::Focus`; the sim moves the
+//!   focus and `scene::PilotFocus` mirrors it on the next tick.
 //! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button bottom-right, tap a
 //!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
 //!   (or with `?touch=1`).
@@ -13,10 +14,10 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::{egui_wants_any_keyboard_input, egui_wants_any_pointer_input};
-use sim::{ShipId, Target};
+use sim::{ShipCommand, ShipId, Target};
 
 use crate::camera::CameraRig;
-use crate::scene::{PilotFocus, Scene, is_friendly};
+use crate::scene::{PilotFocus, is_friendly, player_vessels};
 use crate::sim_bridge::{SimWorld, piece_com, sv, v2};
 use crate::style::{Style, ui_color};
 
@@ -106,9 +107,8 @@ fn release_keys(mut input: ResMut<PlayerInput>) {
 fn keyboard(
     keys: Res<ButtonInput<KeyCode>>,
     mut input: ResMut<PlayerInput>,
-    world: Res<SimWorld>,
-    scene: Res<Scene>,
-    mut focus: ResMut<PilotFocus>,
+    mut world: ResMut<SimWorld>,
+    focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
 ) {
     let k = |a: KeyCode, b: KeyCode| keys.pressed(a) || keys.pressed(b);
@@ -128,16 +128,16 @@ fn keyboard(
     if keys.just_pressed(KeyCode::Tab) {
         input.lock = next_target(&world, focus.0, input.locked_ship(), rig.focus);
     }
-    // Cycle the focus through the fleet's vessels that still have control.
+    // Cycle the focus through the player's vessels (a focus command for the sim).
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let step = if keys.just_pressed(KeyCode::KeyV) { if shift { -1 } else { 1 } } else { 0 };
-    if step != 0 {
-        let vessels: Vec<ShipId> =
-            scene.fleet.iter().copied().filter(|id| world.sim.ship(*id).is_some_and(|s| s.control_piece().is_some())).collect();
+    if step != 0 && focus.0.is_some() {
+        let vessels = player_vessels(&world);
         if !vessels.is_empty() {
             let k = focus.0.and_then(|f| vessels.iter().position(|v| *v == f)).unwrap_or(0) as i32;
             let n = vessels.len() as i32;
-            focus.0 = Some(vessels[((k + step) % n + n) as usize % vessels.len()]);
+            let next = vessels[((k + step) % n + n) as usize % vessels.len()];
+            world.inputs.commands.push((next, ShipCommand::Focus));
         }
     }
 }
@@ -146,8 +146,8 @@ fn mouse(
     time: Res<Time<Real>>,
     buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window, With<PrimaryWindow>>,
-    world: Res<SimWorld>,
-    mut focus: ResMut<PilotFocus>,
+    mut world: ResMut<SimWorld>,
+    focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
     mut input: ResMut<PlayerInput>,
@@ -162,7 +162,7 @@ fn mouse(
     {
         let alpha = fixed.overstep_fraction();
         let hit = pick(&world, focus.0, rig.screen_to_world(c), 1.0 / rig.zoom, alpha);
-        apply_pick(hit, &world, &mut focus, &mut input);
+        apply_pick(hit, &mut world, &focus, &mut input);
         input.lmb = Some(LmbPress { at: c, time: now, on_ship: hit.is_some() });
     }
     let mut lmb_fire = false;
@@ -185,8 +185,8 @@ fn touch(
     time: Res<Time<Real>>,
     touches: Res<Touches>,
     window: Single<&Window, With<PrimaryWindow>>,
-    world: Res<SimWorld>,
-    mut focus: ResMut<PilotFocus>,
+    mut world: ResMut<SimWorld>,
+    focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
     mut input: ResMut<PlayerInput>,
@@ -223,7 +223,7 @@ fn touch(
                 if hit.is_none() {
                     input.lock = None;
                 }
-                apply_pick(hit, &world, &mut focus, &mut input);
+                apply_pick(hit, &mut world, &focus, &mut input);
             }
         }
     }
@@ -245,13 +245,13 @@ fn combine(touches: Res<Touches>, mut input: ResMut<PlayerInput>) {
     input.fire = input.key_fire || input.fire_touch.is_some();
 }
 
-/// A click or tap on a ship: friendly vessels with control take the focus, anything else is locked.
-fn apply_pick(hit: Option<Target>, world: &SimWorld, focus: &mut PilotFocus, input: &mut PlayerInput) {
+/// A click or tap on a ship: the player's vessels take the focus (a command for the sim), anything else is
+/// locked.
+fn apply_pick(hit: Option<Target>, world: &mut SimWorld, focus: &PilotFocus, input: &mut PlayerInput) {
     match hit {
-        Some(Target::Ship(id)) if is_friendly(world, id) && world.sim.ship(id).is_some_and(|s| s.control_piece().is_some()) => {
+        Some(Target::Ship(id)) if is_friendly(world, id) => {
             if focus.0 != Some(id) {
-                focus.0 = Some(id);
-                input.lock = None;
+                world.inputs.commands.push((id, ShipCommand::Focus));
             }
         }
         Some(t) => input.lock = Some(t),
@@ -287,13 +287,13 @@ pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, m_per_px: f32, a
 /// Next active enemy ship by distance from the player (wraps around).
 pub fn next_target(world: &SimWorld, player: Option<ShipId>, current: Option<ShipId>, from: Option<Vec2>) -> Option<Target> {
     let player_ship = player.and_then(|p| world.sim.ship(p))?;
-    let faction = &player_ship.design().faction;
+    let team = player_ship.team();
     let from = from.unwrap_or(Vec2::ZERO);
     let mut list: Vec<(f32, ShipId)> = world
         .sim
         .ships()
         .iter()
-        .filter(|s| s.is_active() && &s.design().faction != faction)
+        .filter(|s| s.is_active() && !sim::friendly(team, s.team()))
         .filter_map(|s| s.control_piece().and_then(|c| s.piece(c)).map(|p| (v2(p.com_world()).distance(from), s.id())))
         .collect();
     list.sort_by(|a, b| a.0.total_cmp(&b.0));

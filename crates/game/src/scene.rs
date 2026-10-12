@@ -2,8 +2,12 @@
 //!
 //! * **sandbox** (default): the player flies the Halvex Runner (the focus); waves of automaton raiders under
 //!   their content behavior (`raider_basic`), a new wave a few seconds after the last raider goes dark; the
-//!   player's other vessels (`?fleet=N`) fly their default behavior (`skirmisher`); wrecks and salvage drift away and are
-//!   cleaned up far from the player; a lost ship respawns.
+//!   player's other vessels (`?fleet=N`, and pieces that split off with a logic core) fly their default
+//!   behavior (`skirmisher`); wrecks and salvage drift away and are cleaned up far from the player; when the
+//!   player has no vessel left, a new runner re-forms.
+//!
+//! Owners, vessels and the focus live in the sim (`sim::vessel`): the player is [`PLAYER`], the raiders
+//! [`ENEMY`]; [`PilotFocus`] mirrors `Sim::focus(PLAYER)`, and focus switches are `ShipCommand::Focus`.
 //! * **showcase** (`?scene=showcase`): the runner holds position, three raiders orbit it without firing.
 //! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //!
@@ -13,7 +17,7 @@ use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 use sim::flight::{PilotAxes, nudge_step};
-use sim::{Body, BehaviorLibrary, Maneuver, PilotInput, ShipCommand, ShipId, Target};
+use sim::{Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipId, Target};
 
 use crate::backdrop::Rng;
 use crate::camera::{CamMode, CameraRig};
@@ -23,17 +27,23 @@ use crate::params::Params;
 use crate::sim_bridge::{HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
 use crate::tuning::Tuning;
 
-/// The player's faction (content `factions/ship_mind.ron`). Owner/team until the sim has owners.
-pub const PLAYER_FACTION: &str = "ship_mind";
+/// The player's owner in the sim, and the raiders'.
+pub const PLAYER: Owner = Owner::PLAYER;
+pub const ENEMY: Owner = Owner(1);
 
-/// The vessel the player's input drives. Camera, HUD and controls all read this. Every other vessel of the
-/// player runs its behaviour (the raider brain for now).
+/// The vessel the player's input drives: a copy of `Sim::focus(PLAYER)`, refreshed every tick. Camera, HUD and
+/// controls all read this. Every other vessel of the player runs its behaviour.
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PilotFocus(pub Option<ShipId>);
 
-/// Is this ship on the player's team?
+/// Is this ship a vessel of the player?
 pub fn is_friendly(world: &SimWorld, ship: ShipId) -> bool {
-    world.sim.ship(ship).is_some_and(|s| s.design().faction == PLAYER_FACTION)
+    world.sim.ship(ship).is_some_and(|s| s.team() == Some(PLAYER))
+}
+
+/// The player's vessels (ascending ship id), for focus cycling and the HUD.
+pub fn player_vessels(world: &SimWorld) -> Vec<ShipId> {
+    world.sim.vessels(PLAYER).map(|v| v.ship).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,8 +57,8 @@ pub enum SceneKind {
 pub struct Scene {
     pub kind: SceneKind,
     pub seed: u64,
-    /// The player's vessels (sandbox), in spawn order.
-    pub fleet: Vec<ShipId>,
+    /// The last vessel the player flew (where a new runner re-forms; its wreck is removed then).
+    last_focus: Option<ShipId>,
     /// Extra runners flying with the player (`?fleet=N`).
     wingmen: u32,
     pub wave: u32,
@@ -67,7 +77,7 @@ impl Scene {
         Self {
             kind,
             seed,
-            fleet: Vec::new(),
+            last_focus: None,
             wingmen: 0,
             wave: 0,
             wave_ships: Vec::new(),
@@ -157,16 +167,22 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
             }
             let mut world = SimWorld::new(sim, content);
             let Some(runner) = world.design("halvex_runner") else { return world };
-            let me = world.sim.spawn_ship(runner.clone(), Body::at(sim::Vec2::ZERO, 0.0));
-            scene.fleet.push(me);
-            focus.0 = Some(me);
+            let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
+            let mut fleet = vec![me];
             if scene.kind == SceneKind::Sandbox {
                 for k in 0..scene.wingmen {
                     let x = (k as f32 / 2.0).floor() + 1.0;
                     let side = if k % 2 == 0 { -1.0 } else { 1.0 };
-                    let id = world.sim.spawn_ship(runner.clone(), Body::at(sim::Vec2::new(side * 22.0 * x, -12.0 * x), 0.0));
-                    scene.fleet.push(id);
+                    let id = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::new(side * 22.0 * x, -12.0 * x), 0.0));
+                    fleet.push(id);
                 }
+                // Every vessel gets its default behaviour (`skirmisher`); the focus parks it while piloted.
+                let behavior = world.sim.behaviors().default_for(&runner);
+                for id in fleet {
+                    world.sim.command(id, ShipCommand::Behavior(behavior));
+                }
+                world.sim.command(me, ShipCommand::Focus);
+                focus.0 = world.sim.focus(PLAYER);
             }
             rig.mode = CamMode::Follow;
             rig.auto_mode = CamMode::Follow;
@@ -177,14 +193,13 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
                     for k in 0..3 {
                         let a = k as f32 * std::f32::consts::TAU / 3.0 + 0.4;
                         let pos = Vec2::new(a.cos(), a.sin()) * 16.0;
-                        let id = world.sim.spawn_ship(raider.clone(), Body::at(sv(pos), a));
+                        let id = world.sim.spawn_ship(raider.clone(), ENEMY, Body::at(sv(pos), a));
                         let orbit = Maneuver::Orbit { target: Target::Ship(me), radius: 16.0, ccw: true };
                         world.sim.command(id, ShipCommand::Maneuver { maneuver: orbit, fire: false });
                     }
                 }
-                // The showcase is for looking: nobody flies the runner.
+                // The showcase is for looking: nobody flies the runner (no focus).
                 focus.0 = None;
-                scene.fleet.clear();
                 rig.mode = CamMode::Free;
                 rig.auto_mode = CamMode::Free;
             } else {
@@ -210,28 +225,20 @@ fn scene_tick(
     let tick = world.sim.tick();
     let now = world.sim.time_seconds();
 
-    // The focus lost control for good: hand it to another vessel of the fleet, else re-form.
-    if let Some(me) = focus.0
-        && world.sim.ship(me).is_none_or(|s| s.control_piece().is_none())
-        && let Some(next) = scene.fleet.iter().copied().find(|id| world.sim.ship(*id).is_some_and(|s| s.control_piece().is_some()))
-    {
-        focus.0 = Some(next);
+    // The sim owns the focus (it moves on by itself when the focus is lost); the client mirrors it.
+    let now_focus = world.sim.focus(PLAYER);
+    if now_focus != focus.0 {
+        focus.0 = now_focus;
         player_input.lock = None;
     }
-    // Other vessels of the fleet run their behaviour (faction default: `skirmisher`); the focus is flown by hand.
-    for &id in &scene.fleet {
-        let Some(s) = world.sim.ship(id) else { continue };
-        let wants_behavior = Some(id) != focus.0;
-        if wants_behavior != s.behavior().is_some() {
-            let b = if wants_behavior { world.sim.behaviors().default_for(s.design()) } else { None };
-            world.inputs.commands.push((id, ShipCommand::Behavior(b)));
-        }
+    if now_focus.is_some() {
+        scene.last_focus = now_focus;
     }
 
     // The focus.
     if let Some(me) = focus.0 {
         match world.sim.ship(me) {
-            Some(ship) if ship.control_piece().is_some() => {
+            Some(ship) if ship.is_vessel() => {
                 // Drop a lock on a target that went dark or vanished.
                 let input = &mut *player_input;
                 let lock = match input.lock {
@@ -256,36 +263,36 @@ fn scene_tick(
                 };
                 world.inputs.commands.push((me, ShipCommand::Pilot(pilot)));
             }
-            Some(_) => {
-                // Control lost for good: respawn in a moment.
-                if scene.respawn_tick.is_none() {
-                    scene.respawn_tick = Some(tick + 90);
-                    scene.banner = Some(("SHIP LOST".into(), now + 3.0));
-                }
-            }
-            None => {}
+            _ => {}
         }
+    } else if scene.respawn_tick.is_none() && scene.last_focus.is_some() {
+        // No vessel left: re-form in a moment.
+        scene.respawn_tick = Some(tick + 90);
+        scene.banner = Some(("SHIP LOST".into(), now + 3.0));
     }
     if let Some(t) = scene.respawn_tick
         && tick >= t
     {
         scene.respawn_tick = None;
-        let at = focus.0.and_then(|me| world.sim.ship(me)).and_then(|s| s.main_piece().and_then(|p| s.piece(p))).map(|p| p.com_world()).unwrap_or(sim::Vec2::ZERO);
-        if let Some(me) = focus.0 {
+        let wreck = scene.last_focus.take().filter(|id| world.sim.ship(*id).is_some_and(|s| !s.is_vessel()));
+        let at = wreck.and_then(|me| world.sim.ship(me)).and_then(|s| s.main_piece().and_then(|p| s.piece(p))).map(|p| p.com_world()).unwrap_or(sim::Vec2::ZERO);
+        if let Some(me) = wreck {
             world.sim.remove_ship(me);
-            scene.fleet.retain(|id| *id != me);
         }
         if let Some(runner) = world.design("halvex_runner") {
-            let me = world.sim.spawn_ship(runner, Body::at(at, 0.0));
-            scene.fleet.insert(0, me);
-            focus.0 = Some(me);
+            let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(at, 0.0));
+            let behavior = world.sim.behaviors().default_for(&runner);
+            world.sim.command(me, ShipCommand::Behavior(behavior));
+            world.sim.command(me, ShipCommand::Focus);
+            focus.0 = world.sim.focus(PLAYER);
+            scene.last_focus = focus.0;
             player_input.lock = None;
             scene.banner = Some(("RE-FORMED".into(), now + 2.5));
         }
     }
 
-    // Waves.
-    let alive = scene.wave_ships.iter().filter(|id| world.sim.ship(**id).is_some_and(|s| s.is_active())).count();
+    // Waves (a raider shot in half can be two raiders: count the enemy's running vessels).
+    let alive = world.sim.vessels(ENEMY).filter(|v| v.state == sim::VesselState::Running).count();
     if alive == 0 && scene.next_wave_tick.is_none() && !scene.wave_ships.is_empty() {
         scene.next_wave_tick = Some(tick + 120);
         scene.banner = Some((format!("WAVE {} CLEARED", scene.wave), now + 3.0));
@@ -312,7 +319,7 @@ fn scene_tick(
                 let to = (centre - pos).normalize_or_zero();
                 let body = Body { pos: sv(pos), angle: (-to.x).atan2(to.y), linvel: sv(to * 3.0), angvel: 0.0 };
                 let behavior = world.sim.behaviors().default_for(&raider);
-                let id = world.sim.spawn_ship(raider.clone(), body);
+                let id = world.sim.spawn_ship(raider.clone(), ENEMY, body);
                 world.sim.command(id, ShipCommand::Behavior(behavior));
                 scene.wave_ships.push(id);
             }
@@ -330,7 +337,8 @@ fn scene_tick(
             .unwrap_or(Vec2::ZERO);
         let mut remove: Vec<ShipId> = Vec::new();
         for s in world.sim.ships() {
-            if scene.fleet.contains(&s.id()) || s.is_active() {
+            // The player's vessels stay (dark and dormant ones too).
+            if s.team() == Some(PLAYER) || s.is_active() {
                 continue;
             }
             let since = *scene.dark_since.entry(s.id()).or_insert_with(|| {
