@@ -36,10 +36,9 @@ Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0046, `docs/
   GDR-0042): agent in a worktree (sim, content, plumes, tuning panel).
 - Shields as glowing energy bubbles (GDR-0043) and a robust content embed in `data/build.rs`: agent in the
   main tree.
-- Vessel model in `sim` (GDR-0013, 0038, 0044, 0045): agent in a worktree.
+- Vessel model in `sim` (GDR-0013, 0038, 0044, 0045) and ramming v2 (GDR-0047): agent in a worktree.
 
 Open questions for Niklas (ask interactively):
-- Ramming numbers (threshold 20 kN·s, 0.02 hp per kN·s): show him the impulses at the new speeds first.
 - Mind capacity numbers and N per core type: lead placeholders until he sets them.
 
 Client leftovers:
