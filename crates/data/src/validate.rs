@@ -8,7 +8,7 @@ use crate::kind::Kind;
 use crate::load::{Content, SCHEMA_VERSION};
 use crate::model::*;
 use crate::problem::Problem;
-use crate::stats::BUILTIN_STATS;
+use crate::stats::{BUILTIN_STATS, SHIP_STATS};
 use crate::text::parse_links;
 
 /// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns,
@@ -284,7 +284,7 @@ impl<'a> Validator<'a> {
                 v.err(e, "decimals", "at most 6 decimals");
             }
         });
-        for id in BUILTIN_STATS {
+        for id in BUILTIN_STATS.iter().chain(SHIP_STATS) {
             if !self.c.stats.contains(id) {
                 self.out.push(
                     Problem::error(format!(

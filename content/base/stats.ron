@@ -37,4 +37,16 @@
     (id: "mass_per_cell", name: "Mass per cell", summary: "Mass of one full cell of this armor; slopes count half a cell per footprint cell.", unit: "t", decimals: 2, better: Lower),
     (id: "hp_per_cell", name: "Hit points per cell", summary: "Hit points of one full cell of this armor.", unit: "HP", decimals: 2, better: Higher),
     (id: "build_point_factor", name: "Build point factor", summary: "Multiplies the build points of hull parts made of this armor.", unit: "×", decimals: 2, better: Lower),
+    // Ship-level stats of the drydock's stats panel (data::stats::SHIP_STATS; the sim's design report computes
+    // them). The panel shows build points, mass, hit points, cargo and rule slots with the part stats above.
+    // Units, precision and the summaries' definitions are placeholders (lead, 12 Oct 2026).
+    (id: "power_use", name: "Power", summary: "Power the parts draw at full load, shown against what the ship's reactors make.", unit: "MW", decimals: 1, better: Neutral),
+    (id: "peak_heat", name: "Peak heat", summary: "How hot the hottest part runs at full load, as a share of its shutdown limit.", unit: "%", decimals: 0, better: Lower),
+    (id: "acceleration", name: "Thrust/mass", summary: "Forward thrust divided by mass: how quickly the ship gains speed.", unit: "m/s²", decimals: 2, better: Higher),
+    (id: "top_speed", name: "Top speed", summary: "Fastest speed along the ship's best thrust direction, set by the rated speed of the engines pushing that way.", unit: "m/s", decimals: 1, better: Higher),
+    (id: "turn_time", name: "Turn 90°", summary: "Time to turn a quarter circle from rest, with every turning source at full power.", unit: "s", decimals: 1, better: Lower),
+    (id: "yaw", name: "Yaw", summary: "How evenly the thrust pushes around the centre of mass; uneven thrust turns the ship while it accelerates.", decimals: 2, better: Neutral),
+    (id: "firepower", name: "Firepower", summary: "Damage per second of all guns together at full power, with bonuses.", unit: "/s", decimals: 1, better: Higher),
+    (id: "control_load", name: "Control", summary: "Control cost of the parts against the capacity of the logic cores; parts beyond it go idle.", decimals: 0, better: Neutral),
+    (id: "device_load", name: "Device load", summary: "How heavy the design is to simulate on this device; very heavy designs can slow the game down.", decimals: 0, better: Neutral),
 ]

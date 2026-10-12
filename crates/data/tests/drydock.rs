@@ -1,11 +1,13 @@
 //! Drydock plumbing in `data`: checking a design on its own (`validate_ship`), the blueprint text format
-//! (`blueprint_to_ron`, `parse_blueprint`), drydock frames as content and per-ship totals (`ship_totals`).
+//! (`blueprint_to_ron`, `parse_blueprint`), drydock frames as content, per-ship totals (`ship_totals`) and the
+//! ship-level stat descriptors (`SHIP_STATS`).
 
 mod common;
 
 use common::*;
+use data::stats::{BUILTIN_STATS, SHIP_STATS};
 use data::{
-    Blueprint, Content, Kind, Pack, Placement, PowerOverride, PowerTier, Problem, Severity,
+    Better, Blueprint, Content, Kind, Pack, Placement, PowerOverride, PowerTier, Problem, Severity,
     blueprint_to_ron, parse_blueprint, validate, validate_ship,
 };
 
@@ -675,5 +677,68 @@ fn ship_totals_count_every_placement_of_any_design() {
     assert_eq!(
         c.ship_totals(&design(Vec::new())),
         data::ShipTotals::default()
+    );
+}
+
+#[test]
+fn ship_stats_are_described_in_stats_ron() {
+    let c = content();
+    let want = [
+        ("power_use", "Power", "MW", Better::Neutral),
+        ("peak_heat", "Peak heat", "%", Better::Lower),
+        ("acceleration", "Thrust/mass", "m/s²", Better::Higher),
+        ("top_speed", "Top speed", "m/s", Better::Higher),
+        ("turn_time", "Turn 90°", "s", Better::Lower),
+        ("yaw", "Yaw", "", Better::Neutral),
+        ("firepower", "Firepower", "/s", Better::Higher),
+        ("control_load", "Control", "", Better::Neutral),
+        ("device_load", "Device load", "", Better::Neutral),
+    ];
+    assert_eq!(SHIP_STATS, want.map(|w| w.0));
+    for (id, label, unit, better) in want {
+        let s = c.stats.get(id).unwrap();
+        assert_eq!(
+            (s.name.as_str(), s.unit.as_str(), s.better),
+            (label, unit, better),
+            "{id}"
+        );
+        assert!(!BUILTIN_STATS.contains(&id), "{id}");
+    }
+    // The panel shows the summed values under the part stat ids.
+    for id in ["build_points", "mass", "hp", "cargo_capacity", "rule_slots"] {
+        assert!(BUILTIN_STATS.contains(&id), "{id}");
+    }
+    // Formatted like part stat lines.
+    let text = |id: &str, v: f32| c.stat_line(id, v).unwrap().text;
+    assert_eq!(text("acceleration", 0.78), "0.78 m/s²");
+    assert_eq!(text("peak_heat", 91.0), "91%");
+    assert_eq!(text("turn_time", 3.5), "3.5 s");
+    assert_eq!(text("firepower", 8.3), "8.3/s");
+    assert_eq!(text("power_use", 44.0), "44 MW");
+    assert_eq!(c.stat_line("control_load", 18.0).unwrap().label, "Control");
+    assert!(c.stat_line("warp_factor", 1.0).is_none());
+    // Required like the part stats: a pack without one fails validation.
+    let files: Vec<(&str, String)> = data::base_pack_files()
+        .iter()
+        .map(|&(path, text)| {
+            let text = match path {
+                "stats.ron" => text
+                    .lines()
+                    .filter(|l| !l.contains("\"turn_time\""))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                _ => text.to_string(),
+            };
+            (path, text)
+        })
+        .collect();
+    let e = Content::load(&[Pack::from_files(files).unwrap()]).unwrap_err();
+    assert!(
+        e.iter().any(|p| p.is_error()
+            && p.kind == Some(Kind::Stat)
+            && p.id.as_deref() == Some("turn_time")
+            && p.message.contains("not defined in stats.ron")),
+        "{}",
+        show(&e)
     );
 }

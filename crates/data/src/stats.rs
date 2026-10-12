@@ -46,6 +46,29 @@ pub const BUILTIN_STATS: &[&str] = &[
     "build_point_factor",
 ];
 
+/// Ship-level stat ids of the drydock's stats panel; the values come from the sim's design report. Each must be
+/// defined in `stats.ron` (checked by validation, like [`BUILTIN_STATS`]). The panel shows build points, mass,
+/// hit points, cargo and rule slots under their part stat ids, summed over the ship ([`Content::ship_totals`]).
+pub const SHIP_STATS: &[&str] = &[
+    // Power used against power produced, in MW.
+    "power_use",
+    // Hottest part as a share of its limit, in %.
+    "peak_heat",
+    // Thrust over mass, in m/s².
+    "acceleration",
+    "top_speed",
+    // Time for a quarter turn, in s.
+    "turn_time",
+    // How evenly the thrust pushes around the centre of mass.
+    "yaw",
+    // Damage per second of all guns.
+    "firepower",
+    // Control load against capacity.
+    "control_load",
+    // Simulation cost of the design on this device.
+    "device_load",
+];
+
 /// One displayable stat.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatLine {
@@ -114,7 +137,9 @@ pub fn with_unit(number: &str, unit: &str) -> String {
 }
 
 impl Content {
-    fn line(&self, stat: &str, value: f32) -> Option<StatLine> {
+    /// One value of a stat as a line: label, unit, precision and better-direction from `stats.ron` (part
+    /// stats, material stats and the ship-level [`SHIP_STATS`] alike). `None` if `stats.ron` lacks the stat.
+    pub fn stat_line(&self, stat: &str, value: f32) -> Option<StatLine> {
         let def = self.stats.get(stat)?;
         let text = with_unit(&format_number(value, def.decimals), &def.unit);
         Some(StatLine {
@@ -221,7 +246,11 @@ impl Content {
             v.push(("rule_slots", l.rule_slots as f32));
             v.push(("control_capacity", l.control_capacity as f32));
         }
-        let mut lines = self.sorted(v.into_iter().filter_map(|(s, x)| self.line(s, x)).collect());
+        let mut lines = self.sorted(
+            v.into_iter()
+                .filter_map(|(s, x)| self.stat_line(s, x))
+                .collect(),
+        );
 
         for b in &part.bonuses {
             let Some(def) = self.stats.get(&b.stat) else {
@@ -307,7 +336,11 @@ impl Content {
             ("hp_per_cell", a.hp_per_cell),
             ("build_point_factor", a.build_point_factor),
         ];
-        self.sorted(v.into_iter().filter_map(|(s, x)| self.line(s, x)).collect())
+        self.sorted(
+            v.into_iter()
+                .filter_map(|(s, x)| self.stat_line(s, x))
+                .collect(),
+        )
     }
 }
 

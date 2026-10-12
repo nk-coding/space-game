@@ -88,6 +88,27 @@ hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `
 placeholders except that the sim reads mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated
 speeds in m/s; 1 cell = 1 m.
 
+**Ship stats** (added 12 Oct 2026). The drydock's stats panel shows ship-level values that the sim's design
+report computes; their labels and units live in `stats.ron` too, and the game requires these ids
+(`data::stats::SHIP_STATS`, a separate list from the part stats `BUILTIN_STATS`):
+
+| id | Label | Unit | Better | Shown as |
+|---|---|---|---|---|
+| `power_use` | Power | MW | Neutral | used / produced |
+| `peak_heat` | Peak heat | % | Lower | hottest part against its limit |
+| `acceleration` | Thrust/mass | m/s² | Higher | |
+| `top_speed` | Top speed | m/s | Higher | |
+| `turn_time` | Turn 90° | s | Lower | |
+| `yaw` | Yaw | — | Neutral | |
+| `firepower` | Firepower | /s | Higher | damage per second of all guns |
+| `control_load` | Control | — | Neutral | load / capacity |
+| `device_load` | Device load | — | Neutral | |
+
+The panel shows build points, mass, hit points, cargo and rule slots under their part stat ids (`build_points`,
+`mass`, `hp`, `cargo_capacity`, `rule_slots`), summed by `Content::ship_totals`. `Content::stat_line(id, value)`
+formats any value of any stat the way part stat lines are formatted. Precision and the summaries' exact
+definitions are placeholders until the design report settles them.
+
 ### Categories (`categories.ron`)
 
 `hull`, `power`, `weapons`, `defense`, `heat`, `propulsion`, `logic`, `cargo`. Optional `color` = system
@@ -590,6 +611,7 @@ grid.bounds(); grid.line_of_fire_clear(i); grid.remove(i); grid.shape(i).centroi
 grid.open_sides(i);                                      // Vec<((x, y), Dir)>: RCS nozzles of part i
 dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
+content.stat_line("top_speed", 21.5);                    // Option<StatLine>: any stat value, labelled and formatted
 content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
 part.build_points_in(armor); part.mass_in(armor); part.hp_in(armor);  // a part's numbers in an armour material
 let t = content.ship_totals(ship);   // ShipTotals: sums over every placement (build points with material factor,
