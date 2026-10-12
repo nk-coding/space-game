@@ -7,18 +7,24 @@
 //!   changes (spawn / rebuild / despawn piece views, keyed by `(ShipId, PieceId)`) and effects.
 //! * Every frame, views read `piece.render_pose(alpha)` with `alpha = Time<Fixed>::overstep_fraction()`
 //!   (`ship_view::sync_piece_views`). Nothing writes back into the sim except the inputs.
+//! * Designs come from content ids ([`SimWorld::design`], cached per id: raiders) or from an in-memory blueprint
+//!   ([`SimWorld::design_from`]: the player's design from the drydock, compiled fresh every time). Design
+//!   visuals are cached per compiled design (its `Arc`), never per id, so an edited blueprint flown again under
+//!   the same id never meets a stale visual.
+//! * The FixedUpdate chain runs only in flight (`AppMode::Flight`); the drydock keeps an empty world.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use data::Content;
+use data::{Blueprint, Content};
 use sim::{Owner, PieceId, ShipDesign, ShipId, SimEvent, Stat};
 
 use crate::RenderToggles;
 use crate::atlas::Atlas;
 use crate::fx::Effects;
+use crate::mode::AppMode;
 use crate::shield::ShieldBubbles;
 use crate::ship_model::{DesignVisual, design_visual};
 use crate::ship_view::{PieceView, Z_FOCUS, spawn_piece_view, world_of};
@@ -92,6 +98,11 @@ impl HashLog {
     }
 }
 
+/// The loaded content packs (the base pack today), parsed once at start. The drydock, the UI icons and new
+/// scenes read it; [`SimWorld::content`] is the copy a running scene compiles from (tuning scales applied).
+#[derive(Resource)]
+pub struct GameContent(pub Content);
+
 #[derive(Resource)]
 pub struct SimWorld {
     pub sim: SimT,
@@ -101,9 +112,12 @@ pub struct SimWorld {
     /// Content every other owner's designs are compiled from, when it differs (the tuning's damage scale is the
     /// player's only).
     others: Option<Content>,
-    /// Compiled designs: the player's, every other owner's.
+    /// Compiled content designs by id: the player's, every other owner's.
     designs: [BTreeMap<String, Arc<ShipDesign>>; 2],
-    visuals: BTreeMap<String, Arc<DesignVisual>>,
+    /// The blueprints of designs compiled from memory ([`SimWorld::design_from`]), by design identity.
+    blueprints: BTreeMap<usize, (Arc<ShipDesign>, Blueprint)>,
+    /// Visuals by design identity (`Arc::as_ptr`; the stored `Arc` keeps the address from being reused).
+    visuals: BTreeMap<usize, (Arc<ShipDesign>, Arc<DesignVisual>)>,
     /// Inputs for the next tick (filled by the scene, cleared after each step).
     pub inputs: sim::TickInputs,
     /// Live piece views.
@@ -122,6 +136,7 @@ impl SimWorld {
             content,
             others: None,
             designs: Default::default(),
+            blueprints: BTreeMap::new(),
             visuals: BTreeMap::new(),
             inputs: sim::TickInputs::default(),
             views: BTreeMap::new(),
@@ -159,19 +174,42 @@ impl SimWorld {
         }
     }
 
-    fn visual(&mut self, id: &str, style: &Style) -> Option<Arc<DesignVisual>> {
-        if let Some(v) = self.visuals.get(id) {
+    /// Compiles an in-memory blueprint (the player's design) for ships of `owner`. Not cached by id: every
+    /// call compiles afresh, so an edited blueprint under the same id is never confused with an older one.
+    pub fn design_from(&mut self, bp: &Blueprint, owner: Owner) -> Option<Arc<ShipDesign>> {
+        let content = if owner != Owner::PLAYER && self.others.is_some() { self.others.as_ref()? } else { &self.content };
+        match ShipDesign::compile(content, bp) {
+            Ok(d) => {
+                let d = Arc::new(d);
+                self.blueprints.insert(Arc::as_ptr(&d) as usize, (d.clone(), bp.clone()));
+                Some(d)
+            }
+            Err(e) => {
+                error!("cannot compile ship `{}`: {e}", bp.id);
+                None
+            }
+        }
+    }
+
+    /// The look of a compiled design (cached per design): from its in-memory blueprint, else from the content
+    /// blueprint of its id (content designs, and the load test's, which the sim compiles itself).
+    fn visual(&mut self, design: &Arc<ShipDesign>, style: &Style) -> Option<Arc<DesignVisual>> {
+        let key = Arc::as_ptr(design) as usize;
+        if let Some((_, v)) = self.visuals.get(&key) {
             return Some(v.clone());
         }
-        let bp = self.content.ships.get(id)?;
+        let bp = match self.blueprints.get(&key) {
+            Some((_, bp)) => bp,
+            None => self.content.ships.get(&design.id)?,
+        };
         match design_visual(&self.content, bp, style) {
             Ok(v) => {
                 let v = Arc::new(v);
-                self.visuals.insert(id.to_string(), v.clone());
+                self.visuals.insert(key, (design.clone(), v.clone()));
                 Some(v)
             }
             Err(e) => {
-                error!("no visual for `{id}`: {e}");
+                error!("no visual for `{}`: {e}", design.id);
                 None
             }
         }
@@ -198,7 +236,11 @@ pub enum SimSet {
 impl Plugin for SimBridgePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::<Fixed>::from_hz(sim::TICK_HZ as f64))
-            .configure_sets(FixedUpdate, (SimSet::Inputs, SimSet::Step, SimSet::Events).chain())
+            .insert_resource(GameContent(data::base_content()))
+            .configure_sets(
+                FixedUpdate,
+                (SimSet::Inputs, SimSet::Step, SimSet::Events).chain().run_if(in_state(AppMode::Flight)),
+            )
             .add_systems(FixedUpdate, (step_sim.in_set(SimSet::Step), apply_events.in_set(SimSet::Events)))
             .add_systems(
                 PostUpdate,
@@ -417,8 +459,8 @@ enum Act {
 }
 
 fn weapon_color(world: &mut SimWorld, ship: ShipId, style: &Style) -> Color {
-    let id = world.sim.ship(ship).map(|s| s.design().id.clone());
-    id.and_then(|id| world.visual(&id, style)).map(|v| v.weapon_color).unwrap_or(Color::WHITE)
+    let design = world.sim.ship(ship).map(|s| s.design().clone());
+    design.and_then(|d| world.visual(&d, style)).map(|v| v.weapon_color).unwrap_or(Color::WHITE)
 }
 
 /// (Re)creates the view of one piece from the current sim state.
@@ -439,8 +481,8 @@ fn respawn_view(
         commands.entity(e).despawn();
         world.views.remove(&(ship, piece));
     }
-    let Some(design_id) = world.sim.ship(ship).map(|s| s.design().id.clone()) else { return };
-    let Some(dv) = world.visual(&design_id, style) else { return };
+    let Some(design) = world.sim.ship(ship).map(|s| s.design().clone()) else { return };
+    let Some(dv) = world.visual(&design, style) else { return };
     let layer = world.next_layer();
     let Some(s) = world.sim.ship(ship) else { return };
     let Some(p) = s.piece(piece) else { return };

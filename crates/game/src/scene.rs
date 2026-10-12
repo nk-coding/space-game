@@ -1,31 +1,42 @@
 //! Scenes: what is in the world and who flies it. Chosen by URL parameters:
 //!
-//! * **sandbox** (default): the player flies the Halvex Runner (the focus); waves of automaton raiders under
-//!   their content behavior (`raider_basic`), a new wave a few seconds after the last raider goes dark; the
-//!   player's other vessels (`?fleet=N`, and pieces that split off with a logic core) fly their default
+//! * **sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at start a copy of the
+//!   Halvex Runner) as the focus; waves of automaton raiders under their content behavior (`raider_basic`), a
+//!   new wave a few seconds after the last raider goes dark (C turns the waves off and on); the player's other
+//!   vessels (`?fleet=N` more of the design, and pieces that split off with a logic core) fly their default
 //!   behavior (`skirmisher`); wrecks and salvage drift away and are cleaned up far from the player; when the
-//!   player has no vessel left, a new runner re-forms.
-//! * **showcase** (`?scene=showcase`): the runner holds position, three raiders orbit it without firing; with
-//!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).//! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
+//!   player has no vessel left, a new one re-forms.
+//! * **test flight**: the sandbox launched from the drydock (T). Losing every vessel returns to the drydock
+//!   after the same 3 s instead of re-forming; T returns at any time. The design itself is never touched.
+//! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
+//!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
+//! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //!
-//! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step).
+//! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step). Leaving
+//! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from the drydock
+//! (`OnEnter`) builds the test flight.
 //!
 //! Owners, vessels and the focus live in the sim (`sim::vessel`): the player is [`PLAYER`], the raiders
 //! [`ENEMY`]; [`PilotFocus`] mirrors `Sim::focus(PLAYER)`, and focus switches are `ShipCommand::Focus`.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use bevy_egui::input::egui_wants_any_keyboard_input;
 use sim::flight::{PilotAxes, nudge_step};
-use sim::{Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipId, Target};
+use sim::{Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipDesign, ShipId, Target};
 
 use crate::backdrop::Rng;
 use crate::camera::{CamMode, CameraRig};
 use crate::controls::PlayerInput;
+use crate::drydock::PlayerDesign;
 use crate::fx::Effects;
+use crate::mode::AppMode;
 use crate::params::Params;
 use crate::shield::ShieldBubbles;
-use crate::sim_bridge::{HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
+use crate::sim_bridge::{GameContent, HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
 use crate::tuning::Tuning;
 
 /// The player's owner in the sim, and the raiders'.
@@ -58,9 +69,17 @@ pub enum SceneKind {
 pub struct Scene {
     pub kind: SceneKind,
     pub seed: u64,
-    /// The last vessel the player flew (where a new runner re-forms; its wreck is removed then).
+    /// Launched from the drydock: losing every vessel returns there instead of re-forming.
+    pub test_flight: bool,
+    /// Raider waves come (sandbox; C toggles). Off: the raiders are gone and no wave starts.
+    pub waves: bool,
+    /// The drydock asked for a test flight; `OnEnter(AppMode::Flight)` builds it.
+    pub launch: bool,
+    /// The player's design as compiled for this scene (the player, the wingmen and re-forms fly it).
+    player_design: Option<Arc<ShipDesign>>,
+    /// The last vessel the player flew (where a new one re-forms; its wreck is removed then).
     last_focus: Option<ShipId>,
-    /// Extra runners flying with the player (`?fleet=N`).
+    /// Extra copies of the design flying with the player (`?fleet=N`).
     wingmen: u32,
     pub wave: u32,
     pub wave_ships: Vec<ShipId>,
@@ -78,6 +97,10 @@ impl Scene {
         Self {
             kind,
             seed,
+            test_flight: false,
+            waves: true,
+            launch: false,
+            player_design: None,
             last_focus: None,
             wingmen: 0,
             wave: 0,
@@ -89,6 +112,15 @@ impl Scene {
             banner: None,
             kills: 0,
         }
+    }
+
+    /// A fresh scene of the same kind and seed that keeps the settings that outlive a scene.
+    fn restart(&self) -> Self {
+        let mut s = Scene::new(self.kind, self.seed);
+        s.wingmen = self.wingmen;
+        s.test_flight = self.test_flight;
+        s.waves = self.waves;
+        s
     }
 }
 
@@ -113,38 +145,59 @@ impl Plugin for ScenePlugin {
         };
         let mut scene = Scene::new(kind, seed);
         scene.wingmen = params.f32("fleet").map(|n| n.clamp(0.0, 8.0) as u32).unwrap_or(0);
-        app.insert_resource(scene)
+        // A world exists from the start (the initial state's enter systems run before Startup builds the scene).
+        app.insert_resource(empty_world(&scene))
+            .insert_resource(scene)
             .init_resource::<PilotFocus>()
             .init_resource::<ResetRequest>()
             .add_systems(Startup, setup)
             .add_systems(FixedUpdate, scene_tick.in_set(SimSet::Inputs))
-            .add_systems(Update, reset);
+            .add_systems(
+                Update,
+                (reset, toggle_waves.run_if(not(egui_wants_any_keyboard_input))).run_if(in_state(AppMode::Flight)),
+            )
+            .add_systems(OnExit(AppMode::Flight), leave_flight)
+            .add_systems(OnEnter(AppMode::Flight), launch_test_flight);
     }
 }
 
+/// What a new scene is built from.
+#[derive(SystemParam)]
+struct SceneInputs<'w> {
+    tuning: Res<'w, Tuning>,
+    params: Res<'w, Params>,
+    content: Res<'w, GameContent>,
+    design: Res<'w, PlayerDesign>,
+}
+
+/// The scene at start (in the drydock the world stays empty).
 fn setup(
-    mut commands: Commands,
+    mut world: ResMut<SimWorld>,
     mut scene: ResMut<Scene>,
     mut focus: ResMut<PilotFocus>,
-    tuning: Res<Tuning>,
-    params: Res<Params>,
+    inputs: SceneInputs,
+    mode: Res<State<AppMode>>,
     mut rig: ResMut<CameraRig>,
 ) {
-    let world = build_world(&mut scene, &mut focus, &tuning, &params, &mut rig);
-    commands.insert_resource(world);
+    if *mode.get() == AppMode::Flight {
+        *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
+    }
+}
+
+/// The world while the drydock is open: no ships (flight systems that read the world find nothing).
+fn empty_world(scene: &Scene) -> SimWorld {
+    SimWorld::new(sim::Sim::new(scene.seed), data::Content::default())
 }
 
 /// Creates the sim world for the current scene kind.
-fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, params: &Params, rig: &mut CameraRig) -> SimWorld {
-    let base = data::base_content();
-    let wingmen = scene.wingmen;
-    *scene = Scene::new(scene.kind, scene.seed);
-    scene.wingmen = wingmen;
+fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, rig: &mut CameraRig) -> SimWorld {
+    let (tuning, params, base) = (&*inputs.tuning, &*inputs.params, &inputs.content.0);
+    *scene = scene.restart();
     focus.0 = None;
     match scene.kind {
         SceneKind::Load(n) => {
             let sim = sim::scenario::load_test(n as usize, scene.seed);
-            let mut world = SimWorld::new(sim, base);
+            let mut world = SimWorld::new(sim, base.clone());
             if params.flag("hashlog").unwrap_or(false) {
                 let ticks = params.f32("hashticks").map(|t| t as u64).unwrap_or(600);
                 let label = format!("load ships={n} seed={} (browser)", scene.seed);
@@ -161,15 +214,17 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
         }
         SceneKind::Sandbox | SceneKind::Showcase => {
             // The tuning's damage scale is the player's only: other sides compile from their own content.
-            let content = tuning.scaled_content(&base, true);
-            let others = tuning.scaled_content(&base, false);
+            let content = tuning.scaled_content(base, true);
+            let others = tuning.scaled_content(base, false);
             let mut sim = sim::Sim::with_config(scene.seed, tuning.config());
             match BehaviorLibrary::new(&content) {
                 Ok(lib) => sim.set_behaviors(lib),
                 Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
             }
             let mut world = SimWorld::new(sim, content).with_others(others);
-            let Some(runner) = world.design("halvex_runner", PLAYER) else { return world };
+            let Some(runner) = world.design_from(&inputs.design.blueprint, PLAYER) else { return world };
+            scene.player_design = Some(runner.clone());
+            // `Body` places the design's main piece, wherever the blueprint sits in its drydock frame.
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
             let mut fleet = vec![me];
             if scene.kind == SceneKind::Sandbox {
@@ -216,11 +271,74 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
                 focus.0 = None;
                 rig.mode = CamMode::Free;
                 rig.auto_mode = CamMode::Free;
-            } else {
+            } else if scene.waves {
                 scene.next_wave_tick = Some(45);
             }
             world
         }
+    }
+}
+
+/// T in the drydock (or TEST-FLY): the sandbox with the player's design, raider waves on.
+fn launch_test_flight(
+    mut scene: ResMut<Scene>,
+    mut focus: ResMut<PilotFocus>,
+    inputs: SceneInputs,
+    mut rig: ResMut<CameraRig>,
+    mut world: ResMut<SimWorld>,
+) {
+    if !std::mem::take(&mut scene.launch) {
+        return;
+    }
+    scene.kind = SceneKind::Sandbox;
+    scene.test_flight = true;
+    scene.waves = true;
+    *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
+    info!("test flight: {} parts, revision {}", inputs.design.blueprint.parts.len(), inputs.design.revision);
+}
+
+/// Leaving flight (T, or a lost test flight): the world empties, views and effects go, the clock runs again.
+#[allow(clippy::too_many_arguments)]
+fn leave_flight(
+    mut commands: Commands,
+    mut scene: ResMut<Scene>,
+    mut world: ResMut<SimWorld>,
+    mut focus: ResMut<PilotFocus>,
+    mut fx: ResMut<Effects>,
+    mut shields: ResMut<ShieldBubbles>,
+    mut input: ResMut<PlayerInput>,
+    mut time: ResMut<Time<Virtual>>,
+) {
+    despawn_all_views(&mut commands, &mut world);
+    fx.clear();
+    shields.clear();
+    input.lock = None;
+    focus.0 = None;
+    time.unpause();
+    *scene = scene.restart();
+    scene.test_flight = false;
+    *world = empty_world(&scene);
+}
+
+/// C in the sandbox: raider waves off (the raiders leave at once, no new wave) or on again (a wave soon).
+fn toggle_waves(keys: Res<ButtonInput<KeyCode>>, mut scene: ResMut<Scene>, mut world: ResMut<SimWorld>) {
+    if scene.kind != SceneKind::Sandbox || !keys.just_pressed(KeyCode::KeyC) {
+        return;
+    }
+    scene.waves = !scene.waves;
+    let now = world.sim.time_seconds();
+    if scene.waves {
+        scene.next_wave_tick = Some(world.sim.tick() + 60);
+        scene.banner = Some(("RAIDER WAVES ON".into(), now + 2.5));
+    } else {
+        // Every raider vessel goes (their wrecks stay salvage); the views follow the sim's `ShipRemoved` events.
+        let raiders: Vec<ShipId> = world.sim.vessels(ENEMY).map(|v| v.ship).collect();
+        for id in raiders {
+            world.sim.remove_ship(id);
+        }
+        scene.wave_ships.clear();
+        scene.next_wave_tick = None;
+        scene.banner = Some(("RAIDER WAVES OFF".into(), now + 2.5));
     }
 }
 
@@ -230,6 +348,7 @@ fn scene_tick(
     tuning: Res<Tuning>,
     mut player_input: ResMut<PlayerInput>,
     mut focus: ResMut<PilotFocus>,
+    mut next_mode: ResMut<NextState<AppMode>>,
 ) {
     if scene.kind != SceneKind::Sandbox {
         return;
@@ -280,20 +399,25 @@ fn scene_tick(
             _ => {}
         }
     } else if scene.respawn_tick.is_none() && scene.last_focus.is_some() {
-        // No vessel left: re-form in a moment.
+        // No vessel left: re-form in a moment, or back to the drydock after a test flight.
         scene.respawn_tick = Some(tick + 90);
-        scene.banner = Some(("SHIP LOST".into(), now + 3.0));
+        let banner = if scene.test_flight { "SHIP LOST  ·  BACK TO THE DRYDOCK" } else { "SHIP LOST" };
+        scene.banner = Some((banner.into(), now + 3.0));
     }
     if let Some(t) = scene.respawn_tick
         && tick >= t
     {
         scene.respawn_tick = None;
+        if scene.test_flight {
+            next_mode.set(AppMode::Drydock);
+            return;
+        }
         let wreck = scene.last_focus.take().filter(|id| world.sim.ship(*id).is_some_and(|s| !s.is_vessel()));
         let at = wreck.and_then(|me| world.sim.ship(me)).and_then(|s| s.main_piece().and_then(|p| s.piece(p))).map(|p| p.com_world()).unwrap_or(sim::Vec2::ZERO);
         if let Some(me) = wreck {
             world.sim.remove_ship(me);
         }
-        if let Some(runner) = world.design("halvex_runner", PLAYER) {
+        if let Some(runner) = scene.player_design.clone() {
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(at, 0.0));
             let behavior = world.sim.behaviors().default_for(&runner);
             world.sim.command(me, ShipCommand::Behavior(behavior));
@@ -307,12 +431,13 @@ fn scene_tick(
 
     // Waves (a raider shot in half can be two raiders: count the enemy's running vessels).
     let alive = world.sim.vessels(ENEMY).filter(|v| v.state == sim::VesselState::Running).count();
-    if alive == 0 && scene.next_wave_tick.is_none() && !scene.wave_ships.is_empty() {
+    if scene.waves && alive == 0 && scene.next_wave_tick.is_none() && !scene.wave_ships.is_empty() {
         scene.next_wave_tick = Some(tick + 120);
         scene.banner = Some((format!("WAVE {} CLEARED", scene.wave), now + 3.0));
     }
     if let Some(t) = scene.next_wave_tick
         && tick >= t
+        && scene.waves
     {
         scene.next_wave_tick = None;
         scene.wave += 1;
@@ -373,7 +498,8 @@ fn scene_tick(
     }
 }
 
-/// Rebuilds the whole scene (tuning changes that need fresh designs, or the reset key).
+/// Rebuilds the whole scene (tuning changes that need fresh designs, or the reset key). A test flight stays a
+/// test flight; the waves keep their setting.
 #[allow(clippy::too_many_arguments)]
 fn reset(
     mut commands: Commands,
@@ -381,8 +507,7 @@ fn reset(
     mut request: ResMut<ResetRequest>,
     mut scene: ResMut<Scene>,
     mut world: ResMut<SimWorld>,
-    tuning: Res<Tuning>,
-    params: Res<Params>,
+    inputs: SceneInputs,
     mut rig: ResMut<CameraRig>,
     mut fx: ResMut<Effects>,
     mut shields: ResMut<ShieldBubbles>,
@@ -400,6 +525,6 @@ fn reset(
     fx.clear();
     shields.clear();
     input.lock = None;
-    *world = build_world(&mut scene, &mut focus, &tuning, &params, &mut rig);
+    *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
     info!("scene reset ({:?})", scene.kind);
 }

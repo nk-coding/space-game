@@ -5,6 +5,11 @@
 //! A focus switch glides over (GDR-0013): the follow point snaps to the new vessel and the camera eases from
 //! where it was onto it over 0.3–0.5 s (longer for longer jumps, smootherstep). Only in follow mode: a free
 //! camera stays put, dragging during a glide ends it, and the zoom is untouched.
+//!
+//! The camera always covers the whole window. [`CameraRig::view_offset`] moves the point the rig centres on
+//! away from the window centre (the drydock centres its grid between the side panels); the screen ↔ world
+//! helpers include it. Flight input (wheel, drag, pinch, F) runs only in flight; the drydock drives the rig
+//! itself (`drydock::view`).
 
 use bevy::camera::ScalingMode;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
@@ -13,6 +18,7 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
 
 use crate::controls::PlayerInput;
+use crate::mode::AppMode;
 use crate::scene::PilotFocus;
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 
@@ -58,6 +64,8 @@ pub struct CameraRig {
     glide: Option<Glide>,
     /// Viewport size in logical pixels (last frame).
     pub viewport: Vec2,
+    /// Where on screen `pos` sits, relative to the window centre (logical pixels, y down). Zero in flight.
+    pub view_offset: Vec2,
     drag_last: Option<Vec2>,
     pinch_last: Option<(f32, Vec2)>,
 }
@@ -76,6 +84,7 @@ impl Default for CameraRig {
             follow_pos: Vec2::ZERO,
             glide: None,
             viewport: Vec2::new(1280.0, 720.0),
+            view_offset: Vec2::ZERO,
             drag_last: None,
             pinch_last: None,
         }
@@ -128,15 +137,32 @@ impl CameraRig {
         }
     }
 
+    /// The logical screen point (y down) the rig centres `pos` on.
+    pub fn view_center(&self) -> Vec2 {
+        self.viewport / 2.0 + self.view_offset
+    }
     /// World point under a logical screen position (y down).
     pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
-        let d = screen - self.viewport / 2.0;
+        let d = screen - self.view_center();
         self.pos + Vec2::new(d.x, -d.y) / self.zoom
     }
     /// Logical screen position (y down) of a world point.
     pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
         let d = (world - self.pos) * self.zoom;
-        self.viewport / 2.0 + Vec2::new(d.x, -d.y)
+        self.view_center() + Vec2::new(d.x, -d.y)
+    }
+    /// Zooms the target by `factor` within `min..max` px per metre. With a screen point, a free camera keeps
+    /// the world point under it in place (wheel zoom around the cursor).
+    pub fn zoom_around(&mut self, factor: f32, around: Option<Vec2>, min: f32, max: f32) {
+        let old = self.zoom_target;
+        self.zoom_target = (self.zoom_target * factor).clamp(min, max);
+        if self.mode == CamMode::Free
+            && let Some(screen) = around
+        {
+            let d = screen - self.view_center();
+            let d = Vec2::new(d.x, -d.y);
+            self.pos += d / old - d / self.zoom_target;
+        }
     }
     /// Half the visible world size.
     pub fn half_extent(&self) -> Vec2 {
@@ -149,7 +175,10 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CameraRig>()
-            .add_systems(Update, (wheel_and_drag.run_if(not(egui_wants_any_pointer_input)), pinch))
+            .add_systems(
+                Update,
+                (wheel_and_drag.run_if(not(egui_wants_any_pointer_input)), pinch).run_if(in_state(AppMode::Flight)),
+            )
             .add_systems(
                 PostUpdate,
                 update_camera
@@ -174,17 +203,8 @@ pub fn camera_bundle(zoom: f32) -> impl Bundle {
 }
 
 fn zoom_by(rig: &mut CameraRig, factor: f32, around: Option<Vec2>) {
-    let old = rig.zoom_target;
-    rig.zoom_target = (rig.zoom_target * factor).clamp(MIN_PX_PER_M, MAX_PX_PER_M);
+    rig.zoom_around(factor, around, MIN_PX_PER_M, MAX_PX_PER_M);
     rig.user_zoom = true;
-    // Free camera: keep the point under the cursor in place.
-    if rig.mode == CamMode::Free
-        && let Some(screen) = around
-    {
-        let d = screen - rig.viewport / 2.0;
-        let d = Vec2::new(d.x, -d.y);
-        rig.pos += d / old - d / rig.zoom_target;
-    }
 }
 
 fn wheel_and_drag(
@@ -322,8 +342,10 @@ fn update_camera(
     rig.zoom = z.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
 
     let (mut tf, mut proj) = camera.into_inner();
-    tf.translation.x = rig.pos.x;
-    tf.translation.y = rig.pos.y;
+    // The camera covers the whole window; `pos` sits at the view centre.
+    let at = rig.pos - Vec2::new(rig.view_offset.x, -rig.view_offset.y) / rig.zoom;
+    tf.translation.x = at.x;
+    tf.translation.y = at.y;
     if let Projection::Orthographic(o) = proj.as_mut() {
         let s = 1.0 / rig.zoom;
         if (o.scale - s).abs() > f32::EPSILON * s {

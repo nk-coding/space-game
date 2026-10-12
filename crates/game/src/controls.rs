@@ -19,6 +19,7 @@ use sim::{ShipCommand, ShipId, Target};
 
 use crate::camera::CameraRig;
 use crate::fleet_bar::FleetBar;
+use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PilotFocus, is_friendly, player_vessels};
 use crate::sim_bridge::{SimWorld, piece_com, sv, v2};
 use crate::style::{Style, ui_color};
@@ -72,7 +73,7 @@ impl PlayerInput {
     }
 }
 
-/// The input systems (keyboard, mouse, touch → [`PlayerInput`]), in `Update`.
+/// The input systems (keyboard, mouse, touch → [`PlayerInput`]), in `Update`, in flight only.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ControlsSet;
 
@@ -88,6 +89,7 @@ pub struct ControlsPlugin;
 impl Plugin for ControlsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerInput>()
+            .configure_sets(Update, ControlsSet.run_if(in_state(AppMode::Flight)))
             .add_systems(Startup, spawn_touch_ui)
             .add_systems(
                 Update,
@@ -327,6 +329,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<crate::
     commands
         .spawn((
             StickBase,
+            FlightUi,
             Node {
                 position_type: PositionType::Absolute,
                 left: px(50),
@@ -362,7 +365,9 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<crate::
     commands
         .spawn((
             FireButton,
+            FlightUi,
             Node {
+
                 position_type: PositionType::Absolute,
                 right: px(50),
                 bottom: px(50),

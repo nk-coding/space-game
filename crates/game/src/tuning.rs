@@ -1,5 +1,5 @@
-//! Live tuning panel (egui, `T` to open). For feel tests in the browser; the values are placeholders until
-//! Niklas picks them, then they move into content / `SimConfig` defaults.
+//! Live tuning panel (egui, `U` to open; flight only, T is the drydock). For feel tests in the browser; the
+//! values are placeholders until Niklas picks them, then they move into content / `SimConfig` defaults.
 //!
 //! * Live (applied to the running sim with `Sim::set_config`): thrust scale, torque scale (separately or
 //!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate, the
@@ -21,6 +21,7 @@ use data::Content;
 use sim::{Owner, SimConfig};
 
 use crate::controls::PlayerInput;
+use crate::mode::AppMode;
 use crate::params::Params;
 use crate::scene::{ResetRequest, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, console_out};
@@ -125,14 +126,15 @@ impl Plugin for TuningPlugin {
         let t = Tuning::from_params(&params);
         app.insert_resource(t)
             .add_systems(Startup, |t: Res<Tuning>, mut input: ResMut<PlayerInput>| input.drift = t.drift)
-            .add_systems(Update, toggle_panel)
-            .add_systems(EguiPrimaryContextPass, panel);
+            .add_systems(Update, toggle_panel.run_if(in_state(AppMode::Flight)))
+            .add_systems(EguiPrimaryContextPass, panel.run_if(in_state(AppMode::Flight)));
     }
 }
 
 fn toggle_panel(keys: Res<ButtonInput<KeyCode>>, mut t: ResMut<Tuning>, mut contexts: EguiContexts) {
     let typing = contexts.ctx_mut().is_ok_and(|c| c.egui_wants_keyboard_input());
-    if keys.just_pressed(KeyCode::KeyT) && !typing {
+    if keys.just_pressed(KeyCode::KeyU) && !typing {
+
         t.open = !t.open;
     }
 }

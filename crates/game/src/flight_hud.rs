@@ -4,7 +4,7 @@
 //! * top left: hull % and a tiny hull map of the player's ship;
 //! * left: speed (m/s), the top speed and the drift state;
 //! * top right: target panel (name, hull %, distance);
-//! * top centre: scene / wave line, centre: banners (wave cleared, ship lost);
+//! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies.
 //!
@@ -13,15 +13,16 @@
 use std::fmt::Write as _;
 
 use bevy::prelude::*;
-use bevy::text::LetterSpacing;
 use sim::{ShipId, Stat, Target};
 
 use crate::camera::{CameraRig, CameraSet};
 use crate::controls::PlayerInput;
 use crate::fx::{FxQueue, FxRegions, Z_HUD};
+use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PilotFocus, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
+use crate::ui_kit::{label, number, set_text};
 use crate::{RenderToggles, ship_view::PieceView};
 
 static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
@@ -78,27 +79,9 @@ impl Plugin for FlightHudPlugin {
             scratch: String::with_capacity(256),
         })
         .add_systems(Startup, spawn_hud)
-        .add_systems(Update, (update_text, update_hull_map).chain())
+        .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
         .add_systems(PostUpdate, (lock_ring, offscreen_markers).after(CameraSet).before(crate::fx::FxFlush));
     }
-}
-
-fn label(fonts: &HudFonts, text: &str, size: f32, color: Color) -> impl Bundle {
-    (
-        Text::new(text),
-        TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(size), ..default() },
-        TextColor(color),
-        LetterSpacing::Px(size * 0.3),
-    )
-}
-
-fn number(fonts: &HudFonts, text: &str, size: f32, color: Color) -> impl Bundle {
-    (
-        Text::new(text),
-        TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(size), ..default() },
-        TextColor(color),
-        LetterSpacing::Px(size * 0.06),
-    )
 }
 
 pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<Font>>, style: Res<Style>) {
@@ -123,7 +106,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
     };
 
     commands
-        .spawn((HudRoot, Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() }))
+        .spawn((HudRoot, FlightUi, Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() }))
         .with_children(|root| {
             // Top left: hull.
             root.spawn(abs(Some(28.0), None, Some(18.0), None)).with_children(|c| {
@@ -165,13 +148,6 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                     c.spawn((HudText::Help, label(&fonts, "", 10.0, dim)));
                 });
         });
-}
-
-fn set_text(text: &mut Text, s: &str) {
-    if text.0 != s {
-        text.0.clear();
-        text.0.push_str(s);
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -257,7 +233,8 @@ fn update_text(
             }
             HudText::Title => match scene.kind {
                 SceneKind::Sandbox => {
-                    let _ = write!(s, "SANDBOX  ·  WAVE {}", scene.wave);
+                    let name = if scene.test_flight { "TEST FLIGHT" } else { "SANDBOX" };
+                    let _ = write!(s, "{name}  ·  WAVE {}", scene.wave);
                 }
                 SceneKind::Showcase => s.push_str("SHOWCASE"),
                 SceneKind::Load(n) => {
@@ -270,6 +247,7 @@ fn update_text(
                     SceneKind::Sandbox => {
                         // The player's vessels are in the fleet bar (`fleet_bar.rs`).
                         let _ = write!(s, "RAIDERS {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
+                        s.push_str(if scene.waves { "  ·  WAVES ON" } else { "  ·  WAVES OFF (C)" });
                     }
                     SceneKind::Load(_) => {
                         let active = world.sim.ships().iter().filter(|s| s.is_active()).count();
@@ -296,9 +274,9 @@ fn update_text(
                     s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM");
                 }
                 SceneKind::Sandbox => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · T TUNING · F3 DEBUG · H HIDE",
+                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · U TUNING · F3 DEBUG · H HIDE",
                 ),
-                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE"),
+                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK"),
             },
         }
         set_text(&mut text, scratch);
@@ -342,8 +320,9 @@ fn target_text(kind: HudText, s: &mut String, world: &SimWorld, input: &PlayerIn
     let (Some(ship), Some(piece)) = (ship, piece) else { return };
     match kind {
         HudText::TargetName => {
-            let name = world.content.ships.get(&ship.design().id).map(|b| b.name.as_str()).unwrap_or("UNKNOWN");
+            let name = &ship.design().name;
             if piece.controlled {
+
                 for c in name.chars() {
                     s.extend(c.to_uppercase());
                 }

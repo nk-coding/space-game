@@ -20,7 +20,6 @@
 use std::fmt::Write as _;
 
 use bevy::prelude::*;
-use bevy::text::LetterSpacing;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
@@ -30,9 +29,11 @@ use crate::RenderToggles;
 use crate::camera::CameraRig;
 use crate::controls::ControlsSet;
 use crate::flight_hud::HudFonts;
+use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PLAYER, PilotFocus};
 use crate::sim_bridge::SimWorld;
 use crate::style::{Style, UiPalette, ui_color};
+use crate::ui_kit;
 
 /// Chips in the pool (more vessels: a window around the focus and a "+N").
 const MAX_CHIPS: usize = 12;
@@ -114,34 +115,25 @@ impl Plugin for FleetBarPlugin {
             .add_systems(Startup, spawn_bar.after(crate::flight_hud::spawn_hud))
             .add_systems(
                 Update,
-                (fleet_input.run_if(not(egui_wants_any_pointer_input)), update_bar).chain().before(ControlsSet),
+                (fleet_input.run_if(not(egui_wants_any_pointer_input)), update_bar)
+                    .chain()
+                    .before(ControlsSet)
+                    .run_if(in_state(AppMode::Flight)),
             );
     }
 }
 
 fn spawn_bar(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let ui = style.ui;
-    let label = |text: &str, size: f32, color: Color| {
-        (
-            Text::new(text),
-            TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(size), ..default() },
-            TextColor(ui_color(color, 1.0)),
-            LetterSpacing::Px(size * 0.3),
-        )
-    };
-    let number = |text: &str, size: f32, color: Color| {
-        (
-            Text::new(text),
-            TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(size), ..default() },
-            TextColor(ui_color(color, 1.0)),
-            LetterSpacing::Px(size * 0.06),
-        )
-    };
+    let label = |text: &str, size: f32, color: Color| ui_kit::label(&fonts, text, size, ui_color(color, 1.0));
+    let number = |text: &str, size: f32, color: Color| ui_kit::number(&fonts, text, size, ui_color(color, 1.0));
     let track = |w: f32| Node { width: px(w), height: px(2), ..default() };
     commands
         .spawn((
             FleetRoot,
+            FlightUi,
             Node {
+
                 position_type: PositionType::Absolute,
                 top: px(62),
                 width: percent(100),
