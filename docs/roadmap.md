@@ -41,11 +41,12 @@ Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0047, `docs/
   capacity with idle-by-priority, mind capacity with newest-dormant and wake/swap, friendly and shielded rams;
   ramming v2 (GDR-0047). Placeholders: logic core N 16, automaton core N 4, player mind capacity 24.
 
+- Done: engine plumes burn parts in their path (GDR-0039, 0046, 0049), no friendly fire (GDR-0048), the flight
+  computer plans only with working actuators.
+
 Running now:
-- Engine exhaust damage (GDR-0039, 0046), no friendly fire (GDR-0048), allocator ignores idle actuators: agent
-  in a worktree.
 - Client: fleet bar, camera glide on focus switches, focus draw order, `?damage=` for the player only,
-  browser-vs-native hash, screenshot checks: agent in the main tree.
+  browser-vs-native hash, screenshot checks (the atlas tier switch is already faster: 521c479).
 
 Open questions for Niklas (ask interactively):
 - Mind capacity numbers and N per core type: lead placeholders until he sets them.
@@ -55,6 +56,8 @@ Open questions for Niklas (ask interactively):
   can hit its parent).
 - Shield collapses are rare in play (regen 1.5/s vs ~0.4 per cannon hit, kinetic passes half to the hull): a
   balance question once fights are tuned. All bubbles draw on one layer above every ship.
+- Plume defaults and numbers (GDR-0049), whether plumes push what they hit, drawing the plume's full reach
+  (`docs/sim.md` questions 16–18).
 - Lead defaults to review: diagonal top speed can beat a rating (per-axis falloff); differential thrust nudges a
   locked ship sideways at speed; A/D spins the Runner at ~4.6 rad/s (`docs/sim.md` questions 14, 15).
 
@@ -66,8 +69,6 @@ Client leftovers:
 ## Queued
 
 Now unblocked (Rapier merged):
-- Engine exhaust damages and heats parts in its path (replaces the open-space rule; plume from engine data);
-  hits own parts and enemies, not friendly vessels (GDR-0046). Unblocked: owners and teams exist now.
 - Client side of the vessel model: fleet bar (wake/swap dormant vessels, `ShipCommand::Wake`), camera glide on
   focus switches; V / Shift+V and click-to-focus already go through `ShipCommand::Focus`.
 
