@@ -140,7 +140,8 @@ pub struct PartState {
     /// Sides open to space (straight sides not linked to a neighbour, plus one per slope-face cell).
     /// Cached on topology changes.
     pub open_sides: u16,
-    /// Guns: line of fire clear; engines: exhaust clear (only parts of the same piece block). True otherwise.
+    /// Guns: line of fire clear (only parts of the same piece block). True for every other part (engines may
+    /// sit anywhere, GDR-0039: their plume burns what is behind them instead).
     pub clear: bool,
     /// Share of its power demand served this tick: 1 = full, between = partial output, 0 = off or no power.
     /// A consumer that asks for nothing shows the level its tier and weight are served at (see
@@ -197,8 +198,14 @@ pub struct Thruster {
     /// Rated speed with bonuses and `SimConfig::speed_scale` (m/s): the thrust fades out as the piece's
     /// velocity along `dir` approaches it ([`rated_falloff`]).
     pub rated: f32,
-    /// Exhaust clear. Blocked engines stay in the table with `clear == false` and produce nothing.
-    pub clear: bool,
+    /// Engines: how far the exhaust plume reaches behind the engine (m, with bonuses; 0 for RCS nozzles). The
+    /// plume leaves through the back side, against `dir`, one lane per back cell (`ShipDesign::plume_lanes`),
+    /// and burns the first part in its path (`plume.rs`).
+    pub plume_length: f32,
+    /// Engines: plume damage and heat per second at full output (with bonuses; shared over the lanes, scaled
+    /// by `Piece::output`). 0 for RCS nozzles.
+    pub plume_damage: f32,
+    pub plume_heat: f32,
     /// `sin` of the max gimbal angle: lateral force up to `gimbal × thrust` (0 = fixed nozzle).
     pub gimbal: f32,
     /// Unit lateral direction of the gimbal force (`dir` turned 90° counter-clockwise).
@@ -222,7 +229,7 @@ impl Thruster {
 pub fn thruster_wrench(thrusters: &[Thruster], throttle: impl Fn(u32) -> f32) -> Wrench {
     let mut w = Wrench::default();
     for t in thrusters {
-        if !t.clear || t.slot == NO_SLOT {
+        if t.slot == NO_SLOT {
             continue;
         }
         let f = t.max_force * throttle(t.slot).clamp(0.0, 1.0);
@@ -232,7 +239,7 @@ pub fn thruster_wrench(thrusters: &[Thruster], throttle: impl Fn(u32) -> f32) ->
     w
 }
 
-/// What a piece's clear thrusters can do at most, per direction (kN) and per turning sense (kN·m).
+/// What a piece's thrusters can do at most, per direction (kN) and per turning sense (kN·m).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ThrustAuthority {
     /// Along +y (the ship's nose).
@@ -248,7 +255,7 @@ pub struct ThrustAuthority {
     /// Pure torque of gyros and logic cores (either sense), with the global torque scale.
     pub torque_pure: f32,
     /// Reachable top speed per thrust group (forward, backward, right, left; m/s, as `flight::AXES`): the
-    /// highest rated speed among the clear rows pushing that way, 0 if none (GDR-0041).
+    /// highest rated speed among the rows pushing that way, 0 if none (GDR-0041).
     pub speed: [f32; 4],
 }
 
@@ -288,6 +295,9 @@ pub struct Piece {
     pub origin: [f32; 2],
     pub mass: MassProps,
     pub colliders: Vec<ConvexPolygon>,
+    /// Bounding radius about the frame origin (m): every collider lies within it (cheap proximity tests, e.g.
+    /// whether a plume can reach another body).
+    pub radius: f32,
     /// Has an alive logic core.
     pub has_core: bool,
     /// The ship's controlling piece: the vessel (it holds the ship's logic cores). Every other piece of the
@@ -361,6 +371,7 @@ impl Piece {
             origin,
             mass: MassProps::default(),
             colliders: Vec::new(),
+            radius: 0.0,
             has_core: false,
             controlled: false,
             active: false,
@@ -958,7 +969,7 @@ impl Ship {
         Ok(())
     }
 
-    /// Recomputes the piece-level caches of piece `k`: core flag, clearances, mass properties, colliders,
+    /// Recomputes the piece-level caches of piece `k`: core flag, lines of fire, mass properties, colliders,
     /// power lists, thruster table and gun mounts. Keeps the piece's frame origin. Parts' `piece` ids, exposure
     /// and stats must already be current.
     pub(crate) fn rebuild_piece(&mut self, k: usize) {
@@ -980,23 +991,16 @@ impl Ship {
             .sum();
         piece.control_dirty = true;
 
-        // Clearances: only alive parts of the same piece block.
-        let blocked = |blockers: &[PartIdx], parts: &[PartState]| {
-            blockers.iter().any(|&b| {
-                let s = &parts[b as usize];
-                s.alive && s.piece == pid
-            })
-        };
+        // Lines of fire: only alive parts of the same piece block. Engines are never blocked (GDR-0039).
         for &p in &piece.parts {
             let slot = d.slot_of_part[p as usize];
             let spec = &d.parts[p as usize];
-            let clear = if slot == NO_SLOT {
-                true
-            } else if spec.is_engine {
-                !blocked(d.exhaust_blockers.get(slot as usize), &self.parts)
-            } else {
-                !blocked(d.gun_blockers.get(slot as usize), &self.parts)
-            };
+            let clear = slot == NO_SLOT
+                || spec.is_engine
+                || !d.gun_blockers.get(slot as usize).iter().any(|&b| {
+                    let s = &self.parts[b as usize];
+                    s.alive && s.piece == pid
+                });
             self.parts[p as usize].clear = clear;
         }
 
@@ -1016,6 +1020,13 @@ impl Ship {
             &mut self.scratch.colliders,
             &mut piece.colliders,
         );
+        let mut r2 = 0.0f32;
+        for c in &piece.colliders {
+            for q in c.points() {
+                r2 = r2.max(q.length_squared());
+            }
+        }
+        piece.radius = crate::math::sqrt(r2);
 
         // Power lists (reactors, consumers in allocation order, heaters).
         self.rebuild_power_lists(&mut piece);
@@ -1047,7 +1058,7 @@ impl Ship {
                    dir: Vec2,
                    point: Vec2,
                    (max_force, rated): (f32, f32),
-                   clear: bool,
+                   plume: [f32; 3],
                    gimbal: f32,
                    rcs: bool| {
             let arm = point - com;
@@ -1061,7 +1072,9 @@ impl Ship {
                 torque_per_force: arm.cross(dir),
                 max_force,
                 rated,
-                clear,
+                plume_length: plume[0],
+                plume_damage: plume[1],
+                plume_heat: plume[2],
                 gimbal,
                 lat,
                 torque_per_lateral: arm.cross(lat),
@@ -1090,7 +1103,11 @@ impl Ship {
                         st.get(Stat::Thrust) * self.thrust_scale,
                         st.get(Stat::RatedSpeed) * self.speed_scale,
                     ),
-                    clear,
+                    [
+                        st.get(Stat::PlumeLength),
+                        st.get(Stat::PlumeDamage),
+                        st.get(Stat::PlumeHeat),
+                    ],
                     gimbal,
                     false,
                 ));
@@ -1154,19 +1171,16 @@ impl Ship {
                     dir_vec(side.opposite()),
                     to_piece(centre, piece.origin),
                     thrust,
-                    true,
+                    [0.0; 3],
                     0.0,
                     true,
                 ));
             }
         }
 
-        // Authority of the clear rows and the pure torque.
+        // Authority of the rows and the pure torque.
         let mut auth = ThrustAuthority::default();
         for t in &piece.thrusters {
-            if !t.clear {
-                continue;
-            }
             let f = t.max_force;
             let g = crate::alloc::group_of(t.dir);
             match g {
@@ -1339,7 +1353,7 @@ impl Ship {
             level.clear();
             for t in &piece.thrusters {
                 let ps = &parts[t.part as usize];
-                level.push(if active && t.clear && ps.alive && !ps.overheated {
+                level.push(if active && ps.alive && !ps.overheated {
                     ps.power
                 } else {
                     0.0

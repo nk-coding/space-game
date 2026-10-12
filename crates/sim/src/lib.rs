@@ -49,6 +49,7 @@ pub mod maneuver;
 pub mod mass;
 pub mod math;
 pub mod physics;
+mod plume;
 pub mod power;
 pub mod rng;
 pub mod scenario;

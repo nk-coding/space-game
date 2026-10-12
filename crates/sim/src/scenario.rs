@@ -5,8 +5,10 @@
 //! * [`ScenarioKind::Core`]: raw engine throttles and fire flags (every second ship flat out), random hits and
 //!   a blast every 75 ticks: power, heat, damage, splits, collisions and ramming. Plus one
 //!   heat-stress ship (three beams on two reactors, always firing) so overheating stays covered whatever the
-//!   base ships do, and a ram run every 600 ticks (a ship-mind and an automaton vessel launched head-on, away
-//!   from the others: shields and the inward crush of GDR-0047).
+//!   base ships do, a ram run every 600 ticks (a ship-mind and an automaton vessel launched head-on, away
+//!   from the others: shields and the inward crush of GDR-0047), a burner (two buried thrusters facing each
+//!   other, burning the blocks between them: the own-hull plume of GDR-0049) and a plume run every 600 ticks (an
+//!   automaton or a wreck right behind a ship-mind vessel's engine at full throttle).
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
 //!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
 //!   computer, allocation, maneuvers, fire at will.
@@ -118,6 +120,8 @@ pub struct ScenarioStats {
     /// Collisions (`SimEvent::Impact`) and those that dealt ramming damage.
     pub impacts: u32,
     pub rams: u32,
+    /// Engine plume hits (`SimEvent::PlumeHit`, one per lane and tick).
+    pub burns: u32,
     /// Vessels formed by splits (`VesselFormed` with a parent) and vessels lost (`VesselLost`).
     pub split_vessels: u32,
     pub vessels_lost: u32,
@@ -201,6 +205,11 @@ impl Scenario {
                 Body::at(Vec2::new(0.0, -15.0), 0.0),
             );
         }
+        if kind == ScenarioKind::Core
+            && let Ok(d) = ShipDesign::compile(content, &burner_blueprint())
+        {
+            sim.spawn_ship(Arc::new(d), Owner::PLAYER, Body::at(Vec2::new(-300.0, 0.0), 0.0));
+        }
         Ok(Scenario {
             sim,
             stats: ScenarioStats::default(),
@@ -229,6 +238,7 @@ impl Scenario {
                     self.stats.impacts += 1;
                     self.stats.rams += (c.damage > 0.0) as u32;
                 }
+                SimEvent::PlumeHit { .. } => self.stats.burns += 1,
                 SimEvent::VesselFormed { from: Some(_), .. } => self.stats.split_vessels += 1,
                 SimEvent::VesselLost { .. } => self.stats.vessels_lost += 1,
                 SimEvent::VesselDormant { .. } => self.stats.dormant += 1,
@@ -267,6 +277,9 @@ impl Scenario {
         if kind == ScenarioKind::Core && tick % RAM_RUN_EVERY == RAM_RUN_EVERY / 2 {
             self.ram_run(tick / RAM_RUN_EVERY);
         }
+        if kind == ScenarioKind::Core && tick % RAM_RUN_EVERY == RAM_RUN_EVERY * 3 / 4 {
+            self.plume_run(tick / RAM_RUN_EVERY);
+        }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
             .ships()
@@ -276,7 +289,7 @@ impl Scenario {
                     s.id(),
                     s.design().engines.len(),
                     s.behavior().is_some(),
-                    s.design().id == HEAT_STRESS,
+                    s.design().id == HEAT_STRESS || s.design().id == BURNER,
                 )
             })
             .collect();
@@ -351,12 +364,12 @@ impl Scenario {
         if !(hit || blast) {
             return;
         }
-        // A random ship that still has parts (not the heat-stress ship), then a random alive part of it.
+        // A random ship that still has parts (not the heat-stress ship or the burner), then a random alive part.
         let targets: Vec<(crate::ShipId, u32)> = self
             .sim
             .ships()
             .iter()
-            .filter(|s| s.design().id != HEAT_STRESS)
+            .filter(|s| s.design().id != HEAT_STRESS && s.design().id != BURNER)
             .map(|s| (s.id(), s.parts().iter().filter(|p| p.alive).count() as u32))
             .filter(|&(_, n)| n > 0)
             .collect();
@@ -420,6 +433,53 @@ impl Scenario {
             b.1,
             launch(Vec2::new(x, 16.0), core::f32::consts::PI, -20.0),
         );
+    }
+}
+
+impl Scenario {
+    /// Puts the first ship-mind vessel with an engine plume far from the rest, at rest, nose up, and the main
+    /// piece of the first ship that is no player vessel (an automaton, or a wreck) right behind that engine's
+    /// first plume lane (its bounding circle half a metre off the lane's origin), then opens that vessel's
+    /// throttles: the plume burns an enemy (or salvage) for a few ticks until the vessel pulls away.
+    fn plume_run(&mut self, n: u64) {
+        let ships = self.sim.ships();
+        let a = ships
+            .iter()
+            .filter(|s| s.team() == Some(Owner::PLAYER) && s.design().id != BURNER)
+            .find_map(|s| {
+                let piece = s.piece(s.control_piece()?)?;
+                let row = piece
+                    .thrusters
+                    .iter()
+                    .find(|t| t.slot != crate::design::NO_SLOT && t.plume_length > 0.0)?;
+                let lane = s.design().engines[row.slot as usize].lanes[0];
+                let origin = s.design().plume_lanes.get(lane as usize)?.origin;
+                let local = crate::mass::to_piece(origin, piece.origin);
+                Some((s.id(), piece.id, local, -row.dir, s.design().engines.len()))
+            });
+        let b = ships
+            .iter()
+            .filter(|s| s.team() != Some(Owner::PLAYER))
+            .find_map(|s| {
+                let p = s.piece(s.main_piece()?)?;
+                Some((s.id(), p.id, p.radius))
+            });
+        let (Some((sa, pa, lane, exhaust, engines)), Some((sb, pb, radius))) = (a, b) else {
+            return;
+        };
+        let at = Vec2::new(-400.0 - n as f32 * 100.0, 0.0);
+        self.sim.teleport(sa, pa, Body::at(at, 0.0));
+        self.sim
+            .teleport(sb, pb, Body::at(at + lane + exhaust * (radius + 0.5), 0.0));
+        self.inputs.controls.push((
+            sa,
+            ShipControls {
+                throttle: vec![1.0; engines],
+                fire: false,
+                guns: Vec::new(),
+                shields: true,
+            },
+        ));
     }
 }
 
@@ -530,6 +590,49 @@ fn heat_stress_blueprint() -> data::Blueprint {
             p("fission_reactor", 2, 2),
             p("logic_core", 2, 3),
         ],
+        behavior: None,
+        source: Default::default(),
+    }
+}
+
+const BURNER: &str = "burner";
+
+/// A burner: two thrusters in one column facing each other (their thrust cancels, so it stays put) with reactive
+/// blocks between them, framed by steel. Their plumes burn the blocks from both ends, then each other (GDR-0049).
+/// A test fixture built from base part ids (skipped if a content pack lacks them).
+fn burner_blueprint() -> data::Blueprint {
+    let p = |part: &str, x: i32, y: i32, rot: u8, material: Option<&str>| data::Placement {
+        part: part.into(),
+        x,
+        y,
+        rot,
+        flip: false,
+        material: material.map(Into::into),
+        power: None,
+    };
+    let mut parts = vec![
+        p("logic_core", 0, 0, 0, None),
+        p("fission_reactor", 1, 0, 0, None),
+        p("thruster", 1, 1, 0, None),
+        p("thruster", 1, 5, 2, None),
+    ];
+    for y in 2..5 {
+        parts.push(p("armor_block", 1, y, 0, Some("reactive")));
+    }
+    for y in 1..6 {
+        parts.push(p("armor_block", 0, y, 0, Some("steel")));
+        parts.push(p("armor_block", 2, y, 0, Some("steel")));
+    }
+    data::Blueprint {
+        id: BURNER.into(),
+        name: "Burner".into(),
+        summary: "Determinism-scenario fixture that burns its own hull.".into(),
+        description: None,
+        lore: None,
+        tags: vec![],
+        faction: "ship_mind".into(),
+        size: (3, 6),
+        parts,
         behavior: None,
         source: Default::default(),
     }

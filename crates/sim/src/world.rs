@@ -11,7 +11,7 @@
 //! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
 //!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
 //! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
-//! 6. Weapons (shields, projectiles, guns), then breakage again.
+//! 6. Weapons (shields, projectiles, guns) and engine plumes, then breakage again.
 //! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT`, contacts become
 //!    `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back
 //!    (previous pose kept for interpolation); impacts above the ramming threshold crush inward from the
@@ -146,6 +146,7 @@ pub struct Sim {
     /// Shield bubbles this tick.
     pub(crate) bubbles: Vec<Bubble>,
     pub(crate) shield_scratch: Vec<(f32, u32)>,
+    pub(crate) plume_scratch: crate::plume::PlumeScratch,
     /// Behavior programs (shared; ships refer to them by `BehaviorId`).
     behaviors: BehaviorLibrary,
     behavior_scratch: behavior::Scratch,
@@ -182,6 +183,7 @@ impl Sim {
             beams: Vec::new(),
             bubbles: Vec::new(),
             shield_scratch: Vec::new(),
+            plume_scratch: Default::default(),
             behaviors: BehaviorLibrary::default(),
             behavior_scratch: behavior::Scratch::default(),
             focus: Vec::new(),
@@ -635,7 +637,7 @@ impl Sim {
             s.update_systems();
         }
 
-        // Weapons (shields, projectiles, guns), then whatever they broke.
+        // Weapons (shields, projectiles, guns) and engine plumes, then whatever they broke.
         mark(StepPhase::Weapons);
         self.weapons_step();
         self.resolve_breakage();

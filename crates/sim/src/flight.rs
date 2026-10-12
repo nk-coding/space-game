@@ -840,7 +840,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         fmax.clear();
         fmax.extend(piece.thrusters.iter().zip(&piece.falloff).map(|(t, &f)| {
             let ps = &parts[t.part as usize];
-            if t.clear && ps.alive && !ps.overheated {
+            if ps.alive && !ps.overheated {
                 t.max_force * f
             } else {
                 0.0

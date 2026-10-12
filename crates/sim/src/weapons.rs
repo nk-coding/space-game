@@ -117,6 +117,8 @@ pub struct Bubble {
     pub capacity: f32,
     pub absorb: [f32; FAMILIES],
     pub(crate) ship_index: usize,
+    /// The bubble's vessel owner (bubbles exist only on running vessels).
+    pub(crate) team: Option<crate::vessel::Owner>,
 }
 
 impl StateHash for Projectile {
@@ -223,12 +225,14 @@ struct ShotEnd {
 }
 
 impl Sim {
-    /// Weapons for one tick: bubbles, projectile flight, gun fire. Called by `step` after the systems.
+    /// Weapons for one tick: bubbles, projectile flight, gun fire, engine plumes (`plume.rs`). Called by `step`
+    /// after the systems.
     pub(crate) fn weapons_step(&mut self) {
         self.beams.clear();
         self.collect_bubbles();
         self.advance_projectiles();
         self.fire_guns();
+        self.plumes();
     }
 
     fn collect_bubbles(&mut self) {
@@ -258,6 +262,7 @@ impl Sim {
                         capacity: st.get(crate::Stat::ShieldCapacity),
                         absorb: spec.absorb,
                         ship_index: k,
+                        team: ship.piece_team(piece.id),
                     });
                 }
             }
@@ -318,7 +323,14 @@ impl Sim {
     /// Bubble `b` takes its share of `damage` (family index `fi`): `damage × absorb[fi]`, up to what it has
     /// left. Updates the emitter (collapses at 0), reports a `ShieldHit` at `point` by `by` and returns what
     /// it took.
-    fn absorb(&mut self, b: usize, fi: usize, by: ShipId, point: Vec2, damage: f32) -> f32 {
+    pub(crate) fn absorb(
+        &mut self,
+        b: usize,
+        fi: usize,
+        by: ShipId,
+        point: Vec2,
+        damage: f32,
+    ) -> f32 {
         let bub = &mut self.bubbles[b];
         let take = (damage * bub.absorb[fi]).min(bub.left);
         if take <= 0.0 {
@@ -373,7 +385,7 @@ impl Sim {
     }
 
     /// The part under a ray hit and its ship index.
-    fn hit_target(&self, h: &RayHit) -> Option<(usize, PartIdx)> {
+    pub(crate) fn hit_target(&self, h: &RayHit) -> Option<(usize, PartIdx)> {
         let k = self
             .ships
             .binary_search_by_key(&h.key.ship, |s| s.id())
