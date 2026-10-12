@@ -31,16 +31,19 @@ Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS,
 
 ## In progress (12 Oct 2026, second session)
 
-Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0046, `docs/concept-notes.md`):
-- Engine rated speed instead of the soft top speed, a calm cruise flame at the cap, "Agile" ships (GDR-0041,
-  GDR-0042): agent in a worktree (sim, content, plumes, tuning panel).
-- Shields as glowing energy bubbles (GDR-0043) and a robust content embed in `data/build.rs`: agent in the
-  main tree.
-- Vessel model in `sim` (GDR-0013, 0038, 0044, 0045): agent in a worktree.
+Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0047, `docs/concept-notes.md`):
+- Done: engine rated speed instead of the soft top speed, a calm cruise flame, "Agile" ships (GDR-0041,
+  GDR-0042; `raider_basic` retuned to stand off at 85% and orbit at 67% of its reach).
+- Done: shields as glowing energy bubbles, one batched procedural mesh (GDR-0043, ADR-0029); see them hit with
+  `?scene=showcase&fire=1&zoom=70`. The content embed in `data/build.rs` now tracks every file and directory.
+- Vessel model in `sim` (GDR-0013, 0038, 0044, 0045) and ramming v2 (GDR-0047): agent in a worktree.
 
 Open questions for Niklas (ask interactively):
-- Ramming numbers (threshold 20 kN·s, 0.02 hp per kN·s): show him the impulses at the new speeds first.
 - Mind capacity numbers and N per core type: lead placeholders until he sets them.
+- Shield collapses are rare in play (regen 1.5/s vs ~0.4 per cannon hit, kinetic passes half to the hull): a
+  balance question once fights are tuned. All bubbles draw on one layer above every ship.
+- Lead defaults to review: diagonal top speed can beat a rating (per-axis falloff); differential thrust nudges a
+  locked ship sideways at speed; A/D spins the Runner at ~4.6 rad/s (`docs/sim.md` questions 14, 15).
 
 Client leftovers:
 - Browser-vs-native hash (`?hashlog=1&load=20` vs `determinism --scenario load`) and browser load-test numbers (`?load=1|5|20`) not run yet.

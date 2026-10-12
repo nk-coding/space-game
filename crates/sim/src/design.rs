@@ -75,10 +75,14 @@ pub enum Stat {
     ShieldCapacity,
     /// Shield capacity regained per second.
     ShieldRegen,
+    /// Engine rated speed (m/s): its thrust fades out towards it along its push direction.
+    RatedSpeed,
+    /// RCS nozzle rated speed (m/s).
+    RcsRatedSpeed,
 }
 
 impl Stat {
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 17;
 
     pub fn from_id(id: &str) -> Option<Stat> {
         Some(match id {
@@ -97,6 +101,8 @@ impl Stat {
             "range" => Stat::Range,
             "shield_capacity" => Stat::ShieldCapacity,
             "shield_regen" => Stat::ShieldRegen,
+            "rated_speed" => Stat::RatedSpeed,
+            "rcs_rated_speed" => Stat::RcsRatedSpeed,
             _ => return None,
         })
     }
@@ -332,6 +338,10 @@ impl ShipDesign {
             base.set(Stat::FireRate, 1.0);
             base.set(Stat::Thrust, def.engine.as_ref().map_or(0.0, |e| e.thrust));
             base.set(Stat::Gimbal, def.engine.as_ref().map_or(0.0, |e| e.gimbal));
+            base.set(
+                Stat::RatedSpeed,
+                def.engine.as_ref().map_or(0.0, |e| e.rated_speed),
+            );
             let shield = def.shield.as_ref();
             base.set(Stat::ShieldRadius, shield.map_or(0.0, |s| s.radius));
             base.set(Stat::ShieldCapacity, shield.map_or(0.0, |s| s.capacity));
@@ -345,6 +355,10 @@ impl ShipDesign {
             }
             base.set(Stat::Torque, def.gyro.as_ref().map_or(0.0, |g| g.torque));
             base.set(Stat::RcsThrust, def.rcs.as_ref().map_or(0.0, |r| r.thrust));
+            base.set(
+                Stat::RcsRatedSpeed,
+                def.rcs.as_ref().map_or(0.0, |r| r.rated_speed),
+            );
             let consumer = (power.draw > 0.0).then(|| {
                 if def.logic.is_some() {
                     ConsumerKind::Logic

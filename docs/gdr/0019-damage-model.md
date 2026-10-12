@@ -32,3 +32,6 @@ and how armor and slopes pay off.
 
 12 Oct 2026: [GDR-0045](0045-shields-absorb-rams-no-friendly-ram-damage.md): shields absorb ram damage, and vessels of
 the same team bump without ram damage.
+
+12 Oct 2026: [GDR-0047](0047-ramming-crushes-inward-bumps-free.md): ram damage starts above 100 kN·s and crushes inward
+past destroyed parts.

@@ -192,6 +192,7 @@ impl Ship {
             telemetry: FlightTelemetry::default(),
             thrust_scale: self.thrust_scale,
             torque_scale: self.torque_scale,
+            speed_scale: self.speed_scale,
             gun_cooldown: self.gun_cooldown.clone(),
             owner: self.owner,
             dormant: false,

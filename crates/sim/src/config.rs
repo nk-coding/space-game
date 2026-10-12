@@ -7,9 +7,6 @@ use crate::vessel::{MAX_OWNERS, Owner};
 /// Flight-computer tuning (see `flight.rs` and `docs/sim.md`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlightTuning {
-    /// Soft top speed: `v_top = top_speed_k × sqrt(a)`, `a` = the best thrust axis's force / mass
-    /// (m/s per √(m/s²)). Big, sluggish ships get a lower top speed and take longer to reach it.
-    pub top_speed_k: f32,
     /// Hard cap on the commanded turn rate (rad/s).
     pub max_turn_rate: f32,
     /// Fraction of the angular acceleration the heading controller plans with when braking a turn (< 1 avoids
@@ -31,10 +28,9 @@ pub struct FlightTuning {
 impl Default for FlightTuning {
     fn default() -> Self {
         FlightTuning {
-            top_speed_k: 12.0,
-            max_turn_rate: 3.0,
+            max_turn_rate: 6.0,
             turn_margin: 0.7,
-            turn_gain: 8.0,
+            turn_gain: 12.0,
             stop_margin: 0.6,
             position_gain: 1.2,
             stick_deadzone: 0.05,
@@ -93,6 +89,9 @@ pub struct SimConfig {
     pub thrust_scale: f32,
     /// Global multiplier on all pure torque (gyros, logic cores; 1 = content values). For feel tests.
     pub torque_scale: f32,
+    /// Global multiplier on the rated speed of every engine and RCS nozzle, and so on every ship's top speed
+    /// (1 = content values). For feel tests.
+    pub speed_scale: f32,
     /// Ticks after a split during which the ship's pieces ignore each other in collisions.
     pub split_ghost_ticks: u32,
     pub flight: FlightTuning,
@@ -119,6 +118,7 @@ impl Default for SimConfig {
         SimConfig {
             thrust_scale: 1.0,
             torque_scale: 1.0,
+            speed_scale: 1.0,
             split_ghost_ticks: 10,
             flight: FlightTuning::default(),
             physics: PhysicsTuning::default(),
@@ -131,10 +131,10 @@ impl StateHash for SimConfig {
     fn hash_state(&self, h: &mut StateHasher) {
         h.f32(self.thrust_scale);
         h.f32(self.torque_scale);
+        h.f32(self.speed_scale);
         h.u32(self.split_ghost_ticks);
         let f = &self.flight;
         for v in [
-            f.top_speed_k,
             f.max_turn_rate,
             f.turn_margin,
             f.turn_gain,

@@ -2,17 +2,17 @@
 //!
 //! ```text
 //! piece root  Transform (= piece.render_pose(alpha) every frame), PieceView
-//! ├── body     Mesh2d: aura, barrels, seams, tiles, icon glows, icons, hull halo + line, muzzle glows, nav lights
-//! └── ring×n   Mesh2d per shield emitter: dotted ring, alpha = capacity left (own material)
+//! └── body     Mesh2d: aura, barrels, seams, tiles, icon glows, icons, hull halo + line, muzzle glows, nav lights
 //! ```
 //!
-//! Plumes, trails, beams, tracers and sparks are immediate-mode FX sprites (`fx.rs`). The body mesh has five
+//! Plumes, trails, beams, tracers and sparks are immediate-mode FX sprites (`fx.rs`); shield bubbles are one
+//! batched mesh for all ships (`shield.rs`), placed from the piece views. The body mesh has five
 //! variants (style 2a lit/dark, without pre-blurred glow lit/dark, debug shapes), built lazily on first use;
 //! toggles and power changes swap the handle. Local coordinates are the sim's piece frame
 //! (`blueprint (x, y) → (x − origin.x, origin.y − y)`), so the transform is the sim pose as is.
 
 use bevy::prelude::*;
-use sim::{PieceId, ShipId, Stat};
+use sim::{PieceId, ShipId};
 
 use crate::RenderToggles;
 use crate::atlas::Atlas;
@@ -79,15 +79,6 @@ impl ShipVisual {
 // ---------------------------------------------------------------------------------------------------------
 // Components
 
-pub struct ShieldRing {
-    pub part: u32,
-    pub entity: Entity,
-    pub material: Handle<ColorMaterial>,
-    pub alpha: f32,
-    /// Hit flash, decays to 0.
-    pub flash: f32,
-}
-
 #[derive(Component)]
 pub struct PieceView {
     pub ship: ShipId,
@@ -96,7 +87,6 @@ pub struct PieceView {
     meshes: [Option<Handle<Mesh>>; 5],
     variant: usize,
     pub body: Entity,
-    pub rings: Vec<ShieldRing>,
     /// Hull glow on (the piece is active).
     pub lit: bool,
     pub z: f32,
@@ -112,12 +102,6 @@ pub struct PieceView {
 
 #[derive(Component)]
 pub struct PieceBody;
-
-const Z_RING: f32 = 0.2;
-
-fn visible(on: bool) -> Visibility {
-    if on { Visibility::Inherited } else { Visibility::Hidden }
-}
 
 fn variant(toggles: &RenderToggles, lit: bool) -> usize {
     match (toggles.debug_shapes, toggles.glow_sprites, lit) {
@@ -144,7 +128,6 @@ fn build_variant(v: &ShipVisual, k: usize, atlas: &Atlas, style: &Style) -> Mesh
 pub fn spawn_piece_view(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
     atlas: &Atlas,
     style: &Style,
     toggles: &RenderToggles,
@@ -172,43 +155,9 @@ pub fn spawn_piece_view(
         .spawn((PieceBody, Mesh2d(mesh), MeshMaterial2d(atlas.material.clone()), Transform::default()))
         .id();
 
-    // Shield rings: one mesh + material per emitter so each can fade with its own capacity.
-    let mut rings = Vec::new();
-    let dot = atlas.region("fx/dot_hard");
-    for p in &visual.parts {
-        let Some(r) = p.shield_radius else { continue };
-        if r <= 0.0 {
-            continue;
-        }
-        let centre = visual.to_local(p.center);
-        let mut m = MeshBuf::default();
-        let n = ((std::f32::consts::TAU * r) / 0.225).round().max(8.0) as usize;
-        for j in 0..n {
-            let a = j as f32 / n as f32 * std::f32::consts::TAU;
-            m.region_at(&dot, centre + Vec2::new(a.cos(), a.sin()) * r, Vec2::splat(0.08 / 0.92), 0.0, vcol(style.shield_color, 1.0));
-        }
-        let material = materials.add(ColorMaterial {
-            color: Color::WHITE.with_alpha(style.shield_opacity),
-            texture: Some(atlas.image.clone()),
-            alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
-            ..default()
-        });
-        let entity = commands
-            .spawn((
-                Mesh2d(meshes.add(m.into_mesh())),
-                MeshMaterial2d(material.clone()),
-                Transform::from_xyz(0.0, 0.0, Z_RING),
-                Visibility::Hidden,
-            ))
-            .id();
-        rings.push(ShieldRing { part: p.index, entity, material, alpha: style.shield_opacity, flash: 0.0 });
-    }
-
-    let mut children = vec![body];
-    children.extend(rings.iter().map(|r| r.entity));
     let lc = visual.to_local((visual.bounds_min + visual.bounds_max) / 2.0);
     let radius = (visual.bounds_max - visual.bounds_min).length() / 2.0;
-    commands.entity(root).add_children(&children).insert(PieceView {
+    commands.entity(root).add_child(body).insert(PieceView {
         ship: ship.id(),
         piece: piece.id,
         enemy: visual.enemy,
@@ -218,7 +167,6 @@ pub fn spawn_piece_view(
         meshes: mesh_slots,
         variant: k,
         body,
-        rings,
         lit,
         z,
         emit: Vec::new(),
@@ -228,23 +176,19 @@ pub fn spawn_piece_view(
     root
 }
 
-/// Every frame: pose from the sim (interpolated), lit/dark and toggle mesh swaps, shield rings.
+/// Every frame: pose from the sim (interpolated), lit/dark and toggle mesh swaps.
 #[allow(clippy::too_many_arguments)]
 pub fn sync_piece_views(
     world: Res<SimWorld>,
     fixed: Res<Time<Fixed>>,
-    time: Res<Time>,
     toggles: Res<RenderToggles>,
     atlas: Res<Atlas>,
     style: Res<Style>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut views: Query<(&mut PieceView, &mut Transform)>,
     mut bodies: Query<&mut Mesh2d, With<PieceBody>>,
-    mut vis: Query<&mut Visibility>,
 ) {
     let alpha = fixed.overstep_fraction().clamp(0.0, 1.0);
-    let dt = time.delta_secs();
     for (mut view, mut tf) in &mut views {
         let Some(ship) = world.sim.ship(view.ship) else { continue };
         let Some(piece) = ship.piece(view.piece) else { continue };
@@ -266,29 +210,6 @@ pub fn sync_piece_views(
             }
             view.variant = k;
             view.lit = lit;
-        }
-
-        for ring in &mut view.rings {
-            let st = ship.part(ring.part);
-            let cap = ship.stats(ring.part).get(Stat::ShieldCapacity).max(1e-3);
-            let up = st.alive && !st.shield_down && piece.active && !toggles.debug_shapes;
-            if let Ok(mut v) = vis.get_mut(ring.entity) {
-                let want = visible(up);
-                if *v != want {
-                    *v = want;
-                }
-            }
-            ring.flash = (ring.flash - dt * 4.0).max(0.0);
-            if !up {
-                continue;
-            }
-            let a = (style.shield_opacity * (0.35 + 0.65 * (st.shield / cap).clamp(0.0, 1.0)) + ring.flash * 0.6).min(1.0);
-            if (a - ring.alpha).abs() > 0.01
-                && let Some(mut mat) = materials.get_mut(&ring.material)
-            {
-                mat.color = Color::WHITE.with_alpha(a);
-                ring.alpha = a;
-            }
         }
     }
 }

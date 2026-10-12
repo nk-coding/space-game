@@ -80,10 +80,11 @@ Display information for every number the UI and wiki show: `name` (label), `summ
 may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`Higher`, `Lower`, `Neutral`, for
 green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
 the game requires these ids: `build_points mass hp power_output power_draw power_min_level heat_output heat_limit heat_vent
-damage range shot_rate shot_speed penetration recoil thrust gimbal rcs_thrust torque shield_radius
-shield_capacity shield_regen cargo_capacity rule_slots control_cost control_capacity mass_per_cell hp_per_cell
-build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are placeholders
-except that the sim reads mass in t, thrust in kN and torque in kN·m (so kN / t = m/s²); 1 cell = 1 m.
+damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal rcs_thrust rcs_rated_speed torque
+shield_radius shield_capacity shield_regen cargo_capacity rule_slots control_cost control_capacity mass_per_cell
+hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
+placeholders except that the sim reads mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated
+speeds in m/s; 1 cell = 1 m.
 
 ### Categories (`categories.ron`)
 
@@ -142,9 +143,9 @@ Optional component blocks (a part has any combination):
 | `heat` | `output`, `limit` | heat at full load; shutdown level (none = never) |
 | `radiator` | `vent` | heat dumped per straight side open to space |
 | `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second), `range` (m), `delivery` (see below, default `Beam`) | fixed gun, fires along the part's forward side, needs a clear line of fire |
-| `engine` | `thrust`, `gimbal` (degrees, default 0, at most 45) | pushes along the part's forward side, needs open cells right behind it; can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque |
+| `engine` | `thrust`, `rated_speed` (m/s, required), `gimbal` (degrees, default 0, at most 45) | pushes along the part's forward side, needs open cells right behind it; can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque. Its thrust fades out as the ship's speed along its push direction approaches `rated_speed` (full up to 80%, none at 100%; braking and sideways it keeps full thrust), so the fastest engines pushing a way set the ship's top speed that way (GDR-0041) |
 | `gyro` | `torque` (kN·m) | pure reaction torque about the centre of mass, either direction, no thrust. On the gyro part, and as the small built-in turning help of logic cores |
-| `rcs` | `thrust` (kN per nozzle) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre |
+| `rcs` | `thrust` (kN per nozzle), `rated_speed` (m/s, required) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre, and fades out towards `rated_speed` along its own push direction like an engine |
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
@@ -223,6 +224,12 @@ never mistake an RCS pod for a rear engine, and the wiki can describe it on its 
 pod is "at full use"; how draw and heat scale with use is up to the sim. The gyro sits in the `propulsion`
 category (it moves the ship, draws power like the engines and shares their power tier and colour), not
 `logic`.
+
+**Rated speed** (decided 12 Oct 2026, GDR-0041): every `engine` and `rcs` block has a `rated_speed`; there is no
+global speed cap and no drag. The stat lines are `rated_speed` (engines) and `rcs_rated_speed` (RCS nozzles), both
+labelled "Rated speed", so bonuses can raise them per part type (e.g. `(target: Tag("engine"), stat:
+"rated_speed", effect: Percent(10))`) and the wiki shows them. Base values (placeholders): thruster 20 m/s, torch
+drive 22 m/s, RCS pod 14 m/s. Thrust and torque numbers were set for the agility target of GDR-0042.
 
 **Slopes** must be one cell high (`size: (w, 1)`) and hull parts. Steep variants come from rotation.
 
@@ -313,8 +320,8 @@ keyword), so there is no second representation to keep in sync and errors point 
     summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)",
-        "always -> approach(67%)",
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)",
+        "always -> approach(85%)",
     ],
 )
 ```
@@ -418,6 +425,8 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
   the same weight range.
 - Turning parts: `engine.gimbal` between 0 and 45 degrees, `gyro.torque` and `rcs.thrust` above 0, no `rcs` on
   hull parts.
+- Rated speed: `engine.rated_speed` and `rcs.rated_speed` are required (a missing one is a parse error) and
+  above 0.
 - Control: `control_cost` at most 100 (`data::MAX_CONTROL_COST`). Warnings: a `control_cost` above 0 on a part
   that draws and makes no power (it can never idle), a logic core with `control_capacity` 0, a ship whose control
   load exceeds its cores' capacity (the lowest-priority parts start idle).

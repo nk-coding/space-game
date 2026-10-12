@@ -388,6 +388,7 @@ impl<'a> Validator<'a> {
         }
         if let Some(x) = &p.engine {
             self.number(p, "engine.thrust", x.thrust, 0.0, true);
+            self.number(p, "engine.rated_speed", x.rated_speed, 0.0, true);
             self.number(p, "engine.gimbal", x.gimbal, 0.0, false);
             if x.gimbal > MAX_GIMBAL {
                 self.err(
@@ -402,6 +403,7 @@ impl<'a> Validator<'a> {
         }
         if let Some(x) = &p.rcs {
             self.number(p, "rcs.thrust", x.thrust, 0.0, true);
+            self.number(p, "rcs.rated_speed", x.rated_speed, 0.0, true);
             if p.hull {
                 self.err(p, "rcs", "hull parts cannot carry RCS nozzles");
             }

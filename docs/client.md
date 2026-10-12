@@ -45,10 +45,11 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 | Parameter | Meaning |
 |---|---|
 | `scene=showcase` | runner holding position, three raiders orbiting it, no combat (default: the sandbox) |
+| `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the runner under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600) |
-| `thrust`, `torque`, `top`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query) |
+| `thrust`, `torque`, `speed`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query; `speed` replaced `top` on 12 Oct 2026) |
 | `fleet=N` | N extra Halvex Runners fly with you under their default behavior (`skirmisher`); switch with V |
 | `tuning=1` | open the tuning panel at start |
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
@@ -63,7 +64,11 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
   dark for 75 s (the player's vessels, dark or dormant, stay). When the focus loses its last logic core the sim
   moves the focus to another vessel of the player (a split-off half too); when the player has no vessel left,
   a new runner re-forms after 3 s.
-- **Showcase**: no combat, free camera; for looking at the renderer.
+- **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
+  raiders per wave, `raiders=N`) start 46 m out and attack the runner, which holds still and doesn't fire back:
+  its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the runner breaks up after
+  about half a minute (Shift+R starts over), and with the base numbers (regen 1.5/s against about 0.4 per
+  hit) the bubbles rarely empty; collapses need concentrated fire.
 - **Load test**: see below.
 
 ## Load test and determinism in the browser
@@ -90,7 +95,7 @@ FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::s
                                                                   (Sim::step, timing,       (views: spawn / rebuild /
                                                                    hash log)                 despawn; effects from events)
 Update                controls (keys, mouse, touch → PlayerInput), camera input, HUD text, tuning panel (egui)
-PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark, shield rings)
+PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark)  →  shield::draw_bubbles
                       camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers)  →  fx::flush
 ```
 
@@ -101,32 +106,84 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   piece frame (pivot = `piece.origin`, so the transform is exactly `piece.render_pose(alpha)`), with the sim's
   line-of-fire flags, shield radii and hull edges (`Ship::piece_hull_edges`). Body mesh variants (style 2a lit /
   dark, without glow sprites lit / dark, debug shapes) are built lazily; `piece.active` picks lit or dark
-  (salvage and unpowered pieces are dimmed and lose the hull glow). Shield rings are per-emitter meshes whose
-  alpha follows the capacity left; hidden while the bubble is down.
+  (salvage and unpowered pieces are dimmed and lose the hull glow).
 - **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `VesselFormed` with a
   parent moves a split-off piece's view to its new ship, `PieceDestroyed` / `ShipRemoved` despawn them;
-  `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet`, `ShieldHit` become effects.
+  `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet` become effects; `ShieldHit` starts a ripple in the bubble (and
+  its shatter when it emptied it).
 - **Vessels** (`scene.rs`, 12 Oct 2026): the sim owns owners, vessels and the focus (`docs/sim.md` "Vessels").
   The player is `scene::PLAYER` (`Owner(0)`), the raiders `scene::ENEMY` (`Owner(1)`). The sandbox gives every
   vessel its default behavior and sends `ShipCommand::Focus` for the runner; `PilotFocus` mirrors
   `Sim::focus(PLAYER)` at the start of every tick (so a switch shows one tick later), and V / clicks send
   `Focus` commands. Friendly checks, Tab targets and off-screen markers use owners (`Ship::team`).
+- **Shield bubbles** (`shield.rs`, `shield.wesl`): see below.
 - **Effects** (`fx.rs`): immediate mode. Systems push `FxSprite`s into `FxQueue` every frame; `flush` writes them
   into a pool of reused sprites (all from the atlas, batched). Plumes come from `piece.thrusters[i]` ×
-  `piece.output[i]` (RCS nozzles: small puffs; engine gimbal from `piece.act.deflect`), beams from
-  `Sim::beams()` re-attached to the gun at the render pose, tracers from `Sim::projectiles()` interpolated.
-- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, speed, target panel, wave line,
-  warnings, help; lock ring and off-screen markers are world-space FX. Debug overlay and toggles: `hud.rs`.
-- **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), top speed factor and
-  max turn rate apply live (`Sim::set_config`); raiders per wave apply to the next wave; drift at once; weapon
-  range and damage scale rewrite the content the designs compile from, so they apply with "Apply & reset".
+  `piece.output[i]` and `piece.cruise[i]` (see Plumes below; RCS nozzles: small puffs; engine gimbal from
+  `piece.act.deflect`), beams from `Sim::beams()` re-attached to the gun at the render pose, tracers from
+  `Sim::projectiles()` interpolated.
+- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, speed with the top speed of the
+  best axis (`TOP 22`, from `ship.telemetry().top_speed`), target panel, wave line, warnings, help; lock ring and
+  off-screen markers are world-space FX. Debug overlay and toggles: `hud.rs`.
+- **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
+  engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
+  factor on 12 Oct 2026) and max turn rate apply live (`Sim::set_config`); raiders per wave apply to the next wave;
+  drift at once; weapon range and damage scale rewrite the content the designs compile from, so they apply with
+  "Apply & reset".
+
+## Plumes
+
+An engine plume shows two things from the sim (GDR-0041, `docs/sim.md` "Top speed and the cruise flame"):
+`piece.output[i]`, the share of the engine's thrust it actually makes this tick (after power and the rated-speed
+falloff), and `piece.cruise[i]`, the calm cruise level: how much of its top speed the helm asks the engine to hold
+(full stick at the top speed = 1, half stick = 0.5; released stick and drift = 0).
+
+- The flame's strength is `level = max(output, cruise)` (length from idle to full, opacity, width).
+- `calm = max(cruise − output, 0) / level`: 0 while the engine burns at least as hard as it cruises
+  (accelerating, braking, turning: the normal long flickering flame), 1 when it only cruises (at the top speed,
+  or holding a lower speed). The calm look, blended by `calm`: the flame is shorter (`ship.plume.cruise.length`,
+  0.75), flickers less (`flicker`, 0.2 of the burn's wobble), has a hot core (a soft streak in `core_color` /
+  `core_color_enemy` down the first `core_length` = 60% of the flame, `core_width` = 32% of its width, opacity
+  `core_opacity` × calm × level) and sheds fewer trail particles (`trail`, 0.35).
+- RCS nozzles have no cruise level: they puff only while they push.
+- All style numbers live in `art/tokens.json` under `ship.plume.cruise` (read once into `style::PlumeStyle`).
+
+## Shield bubbles
+
+The look is [GDR-0043](gdr/0043-shields-as-energy-bubbles.md) (values: `ship.shield_bubble` in `art/tokens.json`);
+the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md). Written 12 Oct 2026.
+
+- **One mesh, one material, one draw call for every bubble.** `draw_bubbles` walks the piece views every frame
+  and writes one quad per visible bubble (centre at the render pose, half-size = radius + 4 glow widths, more
+  while shattering) into a world-space mesh at z 200 (above every ship, below the weapon effects), in place,
+  like the FX meshes. Each quad carries its bubble's state as vertex attributes: offset from the centre, radius,
+  seed; charge, presence, shatter progress; four hits (direction in world space, age, strength). The material
+  (`BubbleMaterial`) holds only the style tokens and is never changed, so there are no per-frame material
+  updates; the shimmer and flicker run on `globals.time` (virtual time: they pause with P).
+  Why: per-bubble materials (the old rings) cost a draw call and a bind-group update per bubble per frame;
+  WebGL2 has no storage buffers, and a uniform array would still change the material every frame.
+- **Max blending** (colour and alpha, factors One/One): overlapping bubbles of a ship show the brighter of the two
+  instead of a bright lens, and quad order does not matter. A bubble only adds light: its faint fill vanishes over
+  hull tiles (keeps the ship readable), the rim and the hits still show. The shader outputs `colour × intensity`,
+  with the colour sRGB-encoded under `SRGB_OUTPUT` (the camera composites in sRGB, see Gotchas).
+- **State** lives in `ShieldBubbles`, keyed by `(ShipId, emitter part)`, not in the piece view: the shot that
+  empties a bubble often destroys a part too, and the rebuilt view would cut the shatter short. A bubble shows
+  when the sim projects it (`piece.active`, emitter alive, `work > 0`, charge > 0, not `shield_down`: the same
+  test as `weapons::collect_bubbles`); it grows in over 0.35 s and fades out over 0.12 s. Hits closer than
+  0.16 s and about 20° to an existing one strengthen it instead of adding a ripple (beams hit every tick); a fifth
+  hit replaces the oldest. States without a view are dropped each frame; Shift+R clears them.
+- **The shader** (`shield.wesl`, WESL, embedded with `embedded_asset!`): rim line with an energy-conserving width
+  when it is thinner than a pixel (`fwidth`), glow, fresnel-like fill, two value-noise layers for the shimmer and
+  veins, a time-hashed stutter below `low_share`, four hit terms (ripple ring, impact flash, light along the rim),
+  and while shattering a Voronoi crack pattern plus 20 rim shards. The Voronoi only runs while a bubble shatters.
+- **Debug shapes** (`1`) hide the bubbles; the glow-sprite toggle (`2`) does not affect them (they are not sprites).
 
 ## Adding visuals
 
 - **A new part icon**: add `art/icons/<key>.svg` and `<key>.icon-only.svg` (glow in a
   `<g filter="url(#gl)" opacity="0.55">` group) and set `icon: "<key>"` on the part; the `art` crate embeds it
   at build time and its test checks that every content icon rasterises.
-- **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line or ring), call it from the event
+- **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line), call it from the event
   match in `sim_bridge::apply_events`, draw it in `fx::draw_effects`. Continuous visuals that follow sim state
   (like plumes) go in `fx::draw_ships_fx` and read the sim at the render pose.
 - **A new FX texture**: add it to `Layout::new` in `crates/art` (as SVG or a `Proc` function of `(u, v)` with a
@@ -137,7 +194,12 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 
 ## Gotchas
 
-- `CompositingSpace::Srgb` (browser-like blending) needs `Hdr` on WebGL2 in Bevy 0.20, see `main.rs`.
+- `CompositingSpace::Srgb` (browser-like blending) needs `Hdr` on WebGL2 in Bevy 0.20, see `main.rs`. A custom
+  `Material2d` shader has to encode its output itself when `SRGB_OUTPUT` is defined (like `ColorMaterial` does).
+- Bevy 0.20 shaders are WESL: plain `.wgsl` files get no imports. Embed a shader with `embedded_asset!(app,
+  "x.wesl")` and refer to it as `embedded_path!("x.wesl")` with the `embedded` source; import the 2D mesh
+  bindings as `bevy_sprite_render::mesh2d::{functions, view_bindings::globals, …}`. Take derivatives (`fwidth`)
+  before any branch on varyings (WGSL uniformity rules).
 - Debug wasm builds are ~100 MB and the sim runs with debug assertions (state hash every tick); use
   `scripts/web-serve.sh --release` for timings.
 - SwiftShader (headless Chromium) runs the style-2a scene at a few fps: its numbers say nothing about real GPUs.

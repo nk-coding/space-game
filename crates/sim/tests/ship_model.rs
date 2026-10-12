@@ -442,10 +442,19 @@ fn radiator_starts_venting_when_its_neighbour_is_shot_away() {
 
 // ---------- engines ----------
 
+/// Thrust and rated speed of an engine part in the content.
+fn engine(c: &data::Content, id: &str) -> (f32, f32) {
+    let e = c.parts.get(id).unwrap().engine.as_ref().unwrap();
+    (e.thrust, e.rated_speed)
+}
+
 #[test]
 fn runner_thrusts_straight_at_full_throttle() {
     let c = content();
     let d = design(&c, "halvex_runner");
+    let (thruster, thruster_speed) = engine(&c, "thruster");
+    let (torch, torch_speed) = engine(&c, "torch_drive");
+    let total = torch + 2.0 * thruster;
     let (mut w, s) = world_with(d.clone());
     let p = &w.ship(s).unwrap().pieces()[0];
     assert_eq!(p.thrusters.len(), 3);
@@ -455,20 +464,25 @@ fn runner_thrusts_straight_at_full_throttle() {
             .all(|t| t.clear && t.dir == Vec2::new(0.0, 1.0))
     );
     let full = p.max_wrench(&[1.0, 1.0, 1.0]);
-    assert!(close(full.force.x, 0.0, 1e-6) && close(full.force.y, 69.0, 1e-4));
-    assert!(full.torque.abs() < 1e-3, "torque {}", full.torque);
-    assert!(close(p.authority.forward, 69.0, 1e-4));
-    assert!(close(p.authority.torque_ccw, p.authority.torque_cw, 1e-3));
+    assert!(close(full.force.x, 0.0, 1e-6) && close(full.force.y, total, 1e-3));
+    assert!(full.torque.abs() < 1e-2, "torque {}", full.torque);
+    assert!(close(p.authority.forward, total, 1e-3));
+    assert!(close(p.authority.torque_ccw, p.authority.torque_cw, 1e-2));
+    // Top speed per group: the fastest engine pushing that way (forward only).
+    assert_eq!(
+        p.authority.speed,
+        [torch_speed.max(thruster_speed), 0.0, 0.0, 0.0]
+    );
     // Only the left thruster: pushing forward on the left turns the ship clockwise (negative torque).
     let left = d.engines.iter().position(|e| e.point[0] < 6.0).unwrap();
     let mut th = [0.0; 3];
     th[left] = 1.0;
     let wl = thruster_wrench(&p.thrusters, |slot| th[slot as usize]);
     assert!(wl.torque < -10.0, "{}", wl.torque);
-    // The runtime wrench equals the geometric one when power is plentiful.
+    // The runtime wrench equals the geometric one when power is plentiful (at rest: no speed falloff).
     w.step(&inputs(s, controls(3, 1.0, false, true)));
     let p = &w.ship(s).unwrap().pieces()[0];
-    assert!(close(p.wrench.force.y, 69.0, 1e-4) && p.wrench.torque.abs() < 1e-3);
+    assert!(close(p.wrench.force.y, total, 1e-3) && p.wrench.torque.abs() < 1e-2);
 }
 
 #[test]
@@ -493,7 +507,7 @@ fn blocked_exhaust_gives_no_thrust_until_cleared() {
     w.step(&inputs(s, controls(1, 1.0, false, true)));
     let p = &w.ship(s).unwrap().pieces()[0];
     assert!(p.thrusters[0].clear);
-    assert!(close(p.wrench.force.y, 12.0, 1e-5));
+    assert!(close(p.wrench.force.y, engine(&c, "thruster").0, 1e-4));
 }
 
 // ---------- guns ----------

@@ -5,13 +5,13 @@
 //!   player's other vessels (`?fleet=N`, and pieces that split off with a logic core) fly their default
 //!   behavior (`skirmisher`); wrecks and salvage drift away and are cleaned up far from the player; when the
 //!   player has no vessel left, a new runner re-forms.
+//! * **showcase** (`?scene=showcase`): the runner holds position, three raiders orbit it without firing; with
+//!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).//! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
+//!
+//! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step).
 //!
 //! Owners, vessels and the focus live in the sim (`sim::vessel`): the player is [`PLAYER`], the raiders
 //! [`ENEMY`]; [`PilotFocus`] mirrors `Sim::focus(PLAYER)`, and focus switches are `ShipCommand::Focus`.
-//! * **showcase** (`?scene=showcase`): the runner holds position, three raiders orbit it without firing.
-//! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
-//!
-//! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step).
 
 use std::collections::BTreeMap;
 
@@ -24,6 +24,7 @@ use crate::camera::{CamMode, CameraRig};
 use crate::controls::PlayerInput;
 use crate::fx::Effects;
 use crate::params::Params;
+use crate::shield::ShieldBubbles;
 use crate::sim_bridge::{HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
 use crate::tuning::Tuning;
 
@@ -189,13 +190,24 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, tuning: &Tuning, param
             rig.pos = Vec2::ZERO;
             if scene.kind == SceneKind::Showcase {
                 world.sim.command(me, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at: sim::Vec2::ZERO }, fire: false });
+                // Attacking raiders (as many as the tuning's raiders per wave) start where their behavior fights
+                // from (about 45-50 m), so hits come at once.
+                let attack = params.flag("fire").unwrap_or(false);
+                let (n, dist) = if attack { (tuning.raiders_per_wave.max(1), 46.0) } else { (3, 16.0) };
                 if let Some(raider) = world.design("automaton_raider") {
-                    for k in 0..3 {
-                        let a = k as f32 * std::f32::consts::TAU / 3.0 + 0.4;
-                        let pos = Vec2::new(a.cos(), a.sin()) * 16.0;
-                        let id = world.sim.spawn_ship(raider.clone(), ENEMY, Body::at(sv(pos), a));
-                        let orbit = Maneuver::Orbit { target: Target::Ship(me), radius: 16.0, ccw: true };
-                        world.sim.command(id, ShipCommand::Maneuver { maneuver: orbit, fire: false });
+                    for k in 0..n {
+                        let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
+                        let pos = Vec2::new(a.cos(), a.sin()) * dist;
+                        // Attackers face the runner (like wave spawns); orbiters keep the old pose.
+                        let facing = if attack { a.cos().atan2(-a.sin()) } else { a };
+                        let id = world.sim.spawn_ship(raider.clone(), ENEMY, Body::at(sv(pos), facing));
+                        let command = if attack {
+                            ShipCommand::Behavior(world.sim.behaviors().default_for(&raider))
+                        } else {
+                            let orbit = Maneuver::Orbit { target: Target::Ship(me), radius: 16.0, ccw: true };
+                            ShipCommand::Maneuver { maneuver: orbit, fire: false }
+                        };
+                        world.sim.command(id, command);
                     }
                 }
                 // The showcase is for looking: nobody flies the runner (no focus).
@@ -371,6 +383,7 @@ fn reset(
     params: Res<Params>,
     mut rig: ResMut<CameraRig>,
     mut fx: ResMut<Effects>,
+    mut shields: ResMut<ShieldBubbles>,
     mut input: ResMut<PlayerInput>,
     mut focus: ResMut<PilotFocus>,
 ) {
@@ -383,6 +396,7 @@ fn reset(
     request.0 = false;
     despawn_all_views(&mut commands, &mut world);
     fx.clear();
+    shields.clear();
     input.lock = None;
     *world = build_world(&mut scene, &mut focus, &tuning, &params, &mut rig);
     info!("scene reset ({:?})", scene.kind);

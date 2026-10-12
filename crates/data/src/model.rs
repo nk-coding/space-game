@@ -357,6 +357,10 @@ pub enum Delivery {
 #[serde(deny_unknown_fields)]
 pub struct EngineSpec {
     pub thrust: f32,
+    /// Rated speed (m/s): the thrust fades out as the ship's velocity along the engine's push direction
+    /// approaches it (full thrust up to 80%, none at 100%); braking or sideways the engine keeps full thrust.
+    /// A ship's top speed in a direction is the rating of its fastest thrusters pushing that way.
+    pub rated_speed: f32,
     /// Maximum thrust deflection in degrees to either side of the engine's axis (0 = fixed nozzle).
     /// The deflected thrust acts at the same point, so it adds torque without moving the engine.
     #[serde(default)]
@@ -381,6 +385,8 @@ pub struct GyroSpec {
 pub struct RcsSpec {
     /// Thrust per nozzle (kN) at full power.
     pub thrust: f32,
+    /// Rated speed (m/s) of every nozzle, along its own push direction (as for engines).
+    pub rated_speed: f32,
 }
 
 /// Projects a shield bubble over the hull around it.

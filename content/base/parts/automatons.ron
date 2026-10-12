@@ -1,4 +1,5 @@
-// Parts of the rogue automatons. PLACEHOLDER NUMBERS (invented for feel; no concept-board values exist).
+// Parts of the rogue automatons. PLACEHOLDER NUMBERS (invented for feel; no concept-board values exist). The core
+// torque makes the raider the snappiest base ship (agility target, GDR-0042, 12 Oct 2026).
 // They use the enemy (coral) system colour instead of their category's.
 [
     (
@@ -17,7 +18,7 @@
         power: (output: 6),
         heat: (output: 1, limit: 4),
         logic: (rule_slots: 2, control_capacity: 4), // control capacity: lead placeholder (12 Oct 2026)
-        gyro: (torque: 50),
+        gyro: (torque: 600),
     ),
     (
         id: "automaton_cannon",

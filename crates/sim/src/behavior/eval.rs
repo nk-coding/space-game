@@ -14,7 +14,7 @@ use super::compile::{Action, AimAt, Cond, Flag, OrbitDir, SelectorKind, Sensor, 
 use super::script::{ScriptFault, ShipView};
 use super::{Behavior, BehaviorId, BehaviorLibrary, tuning};
 use crate::DT;
-use crate::config::{FlightTuning, SimConfig};
+use crate::config::FlightTuning;
 use crate::design::{PartIdx, Stat};
 use crate::flight::{
     AimMode, Fire, FlightGoal, HelmMode, Kin, Target, TargetState, find_ship, lead_point,
@@ -285,7 +285,6 @@ pub(crate) fn think_all(
     lib: &BehaviorLibrary,
     scratch: &mut Scratch,
     tick: u64,
-    cfg: &SimConfig,
     all: bool,
 ) {
     let n = ships.len();
@@ -340,7 +339,7 @@ pub(crate) fn think_all(
                 script_evals,
                 script_error: None,
             };
-            cx.think(st, cfg, out);
+            cx.think(st, out);
             out.script_error = cx.script_error.take();
         }
     }
@@ -623,12 +622,12 @@ impl Ctx<'_> {
         self.hull[k]
     }
 
-    fn think(&mut self, st: &BehaviorState, cfg: &SimConfig, out: &mut Out) {
+    fn think(&mut self, st: &BehaviorState, out: &mut Out) {
         let me = self.me;
         let Some(piece) = me.control_piece().and_then(|c| me.piece(c)) else {
             return;
         };
-        let kin = Kin::of(piece, &cfg.flight);
+        let kin = Kin::of(piece);
         self.reach = if kin.reach > 0.0 {
             kin.reach
         } else {

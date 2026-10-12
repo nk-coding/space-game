@@ -31,7 +31,17 @@ Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/ch
 - **Aura**: a very faint radial teal glow behind ships in flight (0.10 at the centre, 0.04 midway, fading to 0).
 - **Engines**: a teal plume (white-teal at the nozzle, fading out) over a blurred glow, plus a dotted particle trail.
 - **Guns**: beam lasers show a short metal barrel through the nose with a cyan muzzle glow when the line of fire is clear.
-- **Shields**: dotted rings in `#8fb0f2` (round dots, about 4.5 units apart on a 20-unit cell), not solid circles.
+- **Shields**: glowing energy bubbles in `#8fb0f2` ([GDR-0043](gdr/0043-shields-as-energy-bubbles.md), 12 Oct 2026; they
+  replace the dotted rings). Values: `ship.shield_bubble` in `art/tokens.json`.
+  - Fill almost clear in the middle (opacity 0.02, so the tiles stay readable), rising to 0.2 at the rim.
+  - A crisp rim line (about 0.05 cells, opacity 0.6, tinted towards the near-white `#e4ecff`) over a soft glow
+    (opacity 0.3, falling off over about 0.38 cells outside, faster inside).
+  - A slow shimmer drifts over the fill (brightness ±27 %, faint veins towards the rim).
+  - A hit: a flash where the shot entered, a ripple ring spreading across the bubble, the rim widening and
+    whitening around the impact (0.7 s).
+  - Below 30 % charge: stutter, wobble and a crackling, broken rim.
+  - Collapse: a pop, cracks across the membrane, fragments going dark, rim shards flying out (0.85 s).
+  - Overlapping bubbles never add up: the brighter one shows. A bubble that is down is not drawn.
 
 ### Rejected, and why
 
@@ -44,6 +54,8 @@ Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/ch
 ## UI
 
 - **Backdrop**: a dark blue-black radial gradient (`#0a1820` → `#050e15` → `#010409`) with faint particles (`#6c9b95`) and dotted rings (`#414c52`).
+  - Later (Niklas, 12 Oct 2026): a fancier background (planets, nebulas and the like). The current backdrop is
+    sufficient for now.
 - **Text**: Barlow. Labels are uppercase with wide letter-spacing (0.2–0.38em) in grey `#869099` or dim `#5d6a74`. Numbers are white `#ebf5ff` with a slight glow.
 - **Accents**: teal `#8cefdb` (primary), gold `#eed595`, coral `#ec8f7c` (danger and enemies), violet `#ae8cec` (logic and conditions).
 - **Controls**: pill buttons. The primary action is a glowing teal pill. Round glowing ring buttons for menus and tools.
@@ -56,4 +68,5 @@ Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/ch
 - Draw tiles as coloured quads or sprites, with the seam baked into the tile texture or drawn as a second, slightly smaller quad. Draw icons on top.
 - Build the hull edge as a line mesh from the boundary edges of the main piece. Skip straight sides covered by a neighbour; slope faces are always boundary. `drawHullGlow` in `reference/concept-board-script.js` shows the edge rule.
 - Glow: try additive sprites or a pre-blurred line texture first. Full-screen bloom is the expensive option on phones and WebGL2, and the spike measures both.
+- Shield bubbles are a procedural shader (no textures), all bubbles in one mesh and one draw call, blended with `max` (ADR-0029).
 - Keep every visual on the client: the `sim` crate knows nothing about colours or icons.

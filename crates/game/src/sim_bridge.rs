@@ -14,11 +14,12 @@ use std::sync::Arc;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use data::Content;
-use sim::{PieceId, ShipDesign, ShipId, SimEvent};
+use sim::{PieceId, ShipDesign, ShipId, SimEvent, Stat};
 
 use crate::RenderToggles;
 use crate::atlas::Atlas;
 use crate::fx::Effects;
+use crate::shield::ShieldBubbles;
 use crate::ship_model::{DesignVisual, design_visual};
 use crate::ship_view::{PieceView, spawn_piece_view, world_of};
 use crate::style::Style;
@@ -246,13 +247,13 @@ fn apply_events(
     mut commands: Commands,
     mut world: ResMut<SimWorld>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     atlas: Res<Atlas>,
     style: Res<Style>,
     toggles: Res<RenderToggles>,
     focus: Res<crate::scene::PilotFocus>,
     mut fx: ResMut<Effects>,
-    mut views: Query<(&mut PieceView, &Transform)>,
+    mut shields: ResMut<ShieldBubbles>,
+    views: Query<(&PieceView, &Transform)>,
 ) {
     let world = &mut *world;
     let n = world.sim.events().len();
@@ -287,8 +288,8 @@ fn apply_events(
             SimEvent::ShotFired { ship, kind, from, to, .. } => Act::Shot(*ship, *kind, v2(*from), v2(*to)),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
-            SimEvent::ShieldHit { ship, piece, part, point, depleted, .. } => {
-                Act::Shield(*ship, *piece, *part, v2(*point), *depleted)
+            SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
+                Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
             }
             _ => Act::None,
         };
@@ -298,17 +299,17 @@ fn apply_events(
                 let count = world.sim.ship(ship).map(|s| s.pieces().len()).unwrap_or(0);
                 for j in 0..count {
                     let Some(pid) = world.sim.ship(ship).map(|s| s.pieces()[j].id) else { break };
-                    respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, pid);
+                    respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, pid);
                 }
             }
             Act::Rebuild(ship, piece) => {
-                respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, piece);
+                respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, piece);
             }
             Act::Moved(ship, old, piece) => {
                 if let Some(e) = world.views.remove(&(old, piece)) {
                     commands.entity(e).despawn();
                 }
-                respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, piece);
+                respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, piece);
             }
             Act::Split(ship, ids, count) => {
                 for &pid in &ids[..count] {
@@ -318,11 +319,11 @@ fn apply_events(
                         for j in 0..pieces {
                             let Some(p) = world.sim.ship(ship).map(|s| s.pieces()[j].id) else { break };
                             if !world.views.contains_key(&(ship, p)) {
-                                respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, p);
+                                respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, p);
                             }
                         }
                     } else {
-                        respawn_view(&mut commands, world, &mut meshes, &mut materials, &atlas, &style, &toggles, player, ship, pid);
+                        respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, pid);
                     }
                 }
             }
@@ -368,18 +369,19 @@ fn apply_events(
                 fx.hit(point, normal, color, damage);
             }
             Act::Ricochet(point, vel) => fx.ricochet(point, vel),
-            Act::Shield(ship, piece, part, point, depleted) => {
-                fx.shield_hit(point, style.shield_color);
-                if let Some(&e) = world.views.get(&(ship, piece))
-                    && let Ok((mut v, tf)) = views.get_mut(e)
+            Act::Shield(ship, piece, part, point, absorbed, depleted) => {
+                // The ripple starts where the shot entered: a direction from the emitter in the piece frame (the
+                // bubble turns with the ship), from the tick's pose, so it works while the view is being rebuilt;
+                // its strength is the share of the capacity the shot took.
+                if let Some(s) = world.sim.ship(ship)
+                    && let Some(pc) = s.piece(piece)
                 {
-                    if let Some(r) = v.rings.iter_mut().find(|r| r.part == part) {
-                        r.flash = 1.0;
-                    }
-                    if depleted && let Some(p) = v.visual.parts.iter().find(|p| p.index == part) {
-                        let c = tf.transform_point(v.visual.to_local(p.center).extend(0.0)).truncate();
-                        fx.collapse(c, p.shield_radius.unwrap_or(2.0), style.shield_color);
-                    }
+                    let [cx, cy] = s.design().parts[part as usize].shape.center();
+                    let centre = Vec2::new(cx - pc.origin[0], pc.origin[1] - cy);
+                    let local = Mat2::from_angle(-pc.body.angle) * (point - v2(pc.body.pos));
+                    let dir = (local - centre).normalize_or(Vec2::Y);
+                    let share = absorbed / s.stats(part).get(Stat::ShieldCapacity).max(1e-3);
+                    shields.hit(ship, part, dir, share, depleted);
                 }
             }
         }
@@ -400,7 +402,7 @@ enum Act {
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
-    Shield(ShipId, PieceId, sim::PartIdx, Vec2, bool),
+    Shield(ShipId, PieceId, sim::PartIdx, Vec2, f32, bool),
 }
 
 fn weapon_color(world: &mut SimWorld, ship: ShipId, style: &Style) -> Color {
@@ -414,7 +416,6 @@ fn respawn_view(
     commands: &mut Commands,
     world: &mut SimWorld,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
     atlas: &Atlas,
     style: &Style,
     toggles: &RenderToggles,
@@ -432,7 +433,7 @@ fn respawn_view(
     let z = world.z_for(player == Some(ship) && world.sim.ship(ship).and_then(|s| s.control_piece()) == Some(piece));
     let Some(s) = world.sim.ship(ship) else { return };
     let Some(p) = s.piece(piece) else { return };
-    let e = spawn_piece_view(commands, meshes, materials, atlas, style, toggles, &dv, s, p, z, 1.0);
+    let e = spawn_piece_view(commands, meshes, atlas, style, toggles, &dv, s, p, z, 1.0);
     world.views.insert((ship, piece), e);
 }
 
