@@ -15,7 +15,7 @@ The original spike plan (`spike-plan.md`) still defines what must be answered. T
 
 ## Phase 2: core simulation
 
-Status: 2a (everything engine-independent: determinism foundation, ship model, power, heat, bonuses, engines, damage/split events, native-vs-wasm hash check) done 11 Oct (`docs/sim.md`). 2b (Rapier2D integration: compound collider per piece, collisions, ramming v1, ghosting after splits; FreeFlight stand-in and generic trait removed) in progress since 11 Oct.
+Status: 2a (everything engine-independent: determinism foundation, ship model, power, heat, bonuses, engines, damage/split events, native-vs-wasm hash check) done 11 Oct (`docs/sim.md`). 2b (Rapier2D integration: compound collider per piece, collisions, ramming v1, ghosting after splits; FreeFlight stand-in and generic trait removed) done and merged 12 Oct.
 
 - Ship model in `sim` from `data` blueprints: occupancy grid, per-part HP, pieces (connectivity with slope rules), mass/CoM/inertia, power pool per piece, simple heat, thrust/torque, gun and engine clearance.
 - Determinism infrastructure: fixed 30 Hz step, RNG streams, state hash per tick, native-vs-wasm hash test.
@@ -23,15 +23,29 @@ Status: 2a (everything engine-independent: determinism foundation, ship model, p
 
 ## Phase 3: flight and feel (web)
 
-Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS, gyros, core assist), maneuvers and raider brain done in `sim`. Weapons v1 (lasers, projectiles, recoil, ricochet, shields) in progress in `sim`. Raiders lead their shots; shared load-test scenario exists. Client bridge (30 Hz sim + interpolation + input, weapons visuals, flight HUD, live tuning sliders, browser load test, browser hash check) in progress. Behavior system v1 (rule lists as content, text format, rule slots, Rhai conditions) done 12 Oct (`behavior-format.md`); follow-ups (fire at will per gun facing, RaiderBrain removed) in progress. Power tiers + weights with partial output (GDR-0014) and icons in the content pack (ADR-0028) done 12 Oct. Client: new keyboard controls (A/D rotate, W/S thrust, Q/E strafe, smart lock aim) in progress.
+Status 11 Oct: flight computer, thrust/torque allocation (engines + gimbal, RCS, gyros, core assist), maneuvers and raider brain done in `sim`. Weapons v1 (lasers, projectiles, recoil, ricochet, shields) in progress in `sim`. Raiders lead their shots; shared load-test scenario exists. Client bridge (30 Hz sim + interpolation + input, weapons visuals, flight HUD, live tuning sliders, browser load test, browser hash check) in progress. Behavior system v1 (rule lists as content, text format, rule slots, Rhai conditions) done 12 Oct (`behavior-format.md`); follow-ups (fire at will per gun facing, RaiderBrain removed) in progress. Power tiers + weights with partial output (GDR-0014) and icons in the content pack (ADR-0028) done 12 Oct. Client driven by the sim, done 12 Oct (`client.md`): sandbox with raider waves, keyboard flight (GDR-0040), lock with smart aim, weapons FX, flight HUD, egui tuning panel, vessel focus (V), runtime SVG rasterisation (`crates/art`).
 
 - Flight computer (stick = fly that way, braking, drift toggle, soft top speed), target lock, WASD + mouse.
 - 30 Hz sim with 60 fps interpolation in the client.
 - Automaton raiders with a trivial AI (approach, orbit, fire). Basic weapons and damage, breakage, debris.
 
+## Next session (state at end of 12 Oct 2026)
+
+Open questions for Niklas (ask interactively):
+- Ramming numbers (threshold 20 kN·s, 0.02 hp per kN·s), whether shields stop rams, whether same-team ships collide/ram each other (docs/sim.md items 11–13).
+- Armour material swatches now live in `content/base/icons/` (agent's call): fine?
+- GDR-0039: engine exhaust also hurts other ships' parts (lead's reading): fine?
+- Speed / fight length: Niklas tunes with the tuning panel (T) and reports values.
+
+Client leftovers:
+- Browser-vs-native hash (`?hashlog=1&load=20` vs `determinism --scenario load`) and browser load-test numbers (`?load=1|5|20`) not run yet.
+- Mipmap generation after an atlas tier switch is one frame (178 ms hitch at tier 256); spread over frames / async on native.
+- Not verified: tuning panel visuals, touch input, `?fleet=N` wingmen and V switching; focus vessel draw order after a switch; `?damage=` scales enemy weapons too.
+- `data` build script misses files moved with preserved mtimes (git mv): the wasm embed went stale once (`cargo clean -p data --target wasm32-unknown-unknown` fixes it). Make the embed robust (e.g. hash the file list).
+
 ## Queued
 
-After the Rapier merge:
+Now unblocked (Rapier merged):
 - Engine exhaust damages and heats parts in its path (replaces the open-space rule; plume from engine data).
 
 - Vessel model in `sim`: cored pieces become vessels on split (inherit behavior, slot-limited), focus switching, mind capacity (running cores limit), logic cores control up to N parts each, owners/teams. Client: fleet bar, focus hotkey, camera glide.
