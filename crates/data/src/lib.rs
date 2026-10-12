@@ -16,6 +16,7 @@
 pub mod art_keys;
 pub mod behavior;
 pub mod blueprint;
+pub mod edit;
 pub mod geometry;
 pub mod kind;
 pub mod load;
@@ -31,6 +32,7 @@ pub mod validate;
 pub mod fs;
 
 pub use blueprint::{blueprint_to_ron, parse_blueprint};
+pub use edit::Drydock;
 pub use geometry::{
     Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
 };
