@@ -10,6 +10,8 @@ pub enum Kind {
     Faction,
     Material,
     Part,
+    /// A drydock frame: the grid a design is built on (GDR-0006).
+    Frame,
     Ship,
     /// A word of the behavior language (condition, action, target selector).
     BehaviorNode,
@@ -20,12 +22,13 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 9] = [
+    pub const ALL: [Kind; 10] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
         Kind::Material,
         Kind::Part,
+        Kind::Frame,
         Kind::Ship,
         Kind::BehaviorNode,
         Kind::Behavior,
@@ -39,6 +42,7 @@ impl Kind {
             Kind::Faction => "faction",
             Kind::Material => "material",
             Kind::Part => "part",
+            Kind::Frame => "frame",
             Kind::Ship => "ship",
             Kind::BehaviorNode => "behavior_node",
             Kind::Behavior => "behavior",
@@ -54,6 +58,7 @@ impl Kind {
             Kind::Faction => Some("factions"),
             Kind::Material => Some("materials"),
             Kind::Part => Some("parts"),
+            Kind::Frame => Some("frames"),
             Kind::Ship => Some("ships"),
             Kind::BehaviorNode => Some("behavior_nodes"),
             Kind::Behavior => Some("behaviors"),

@@ -1,4 +1,5 @@
-//! Validation of merged content. Every problem names pack, file, kind, id and field where possible.
+//! Validation of merged content ([`validate`]) and of a single blueprint against it ([`validate_ship`], for
+//! drydock designs). Every problem names pack, file, kind, id and field where possible.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -7,7 +8,7 @@ use crate::kind::Kind;
 use crate::load::{Content, SCHEMA_VERSION};
 use crate::model::*;
 use crate::problem::Problem;
-use crate::stats::BUILTIN_STATS;
+use crate::stats::{BUILTIN_STATS, SHIP_STATS};
 use crate::text::parse_links;
 
 /// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns,
@@ -32,11 +33,31 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     });
     v.entries(c.materials.as_slice(), |v, e| v.material(e));
     v.entries(c.parts.as_slice(), |v, e| v.part(e));
+    v.entries(c.frames.as_slice(), |v, e| v.frame(e));
     v.entries(c.ships.as_slice(), |v, e| v.ship(e));
     v.entries(c.behavior_nodes.as_slice(), |v, e| v.behavior_node(e));
     v.entries(c.behaviors.as_slice(), |v, e| v.behavior(e));
     v.icons();
     v.wiki();
+    v.out
+}
+
+/// Validates one blueprint against the content with exactly the checks [`validate`] runs on every content ship:
+/// the header (id, name, summary, tags, links in its texts) and the ship rules. The blueprint need not be part of
+/// `c`: a design in the drydock or a file being imported is checked the same way.
+///
+/// Every problem has kind `ship`, the blueprint's id and a field path (`size`, `parts[3]`, `parts[3].material`,
+/// `parts[3].power.weight`, ...), so an editor can map it to a placement. `source` is set only for a blueprint
+/// loaded from a pack.
+///
+/// Placement errors (unknown part, missing or wrong material, `rot` out of range, bad power override, outside
+/// the frame, overlaps) end the check: the ship-wide rules after them (rule slots, control load, pieces, lines of
+/// fire, RCS and radiator exposure) need a well-formed grid, so they report nothing until the placements are
+/// clean. A blueprint without parts stops at that error too.
+pub fn validate_ship(c: &Content, bp: &Blueprint) -> Vec<Problem> {
+    let mut v = Validator { c, out: Vec::new() };
+    v.header(bp);
+    v.ship(bp);
     v.out
 }
 
@@ -49,6 +70,8 @@ struct Validator<'a> {
 pub const MAX_GIMBAL: f32 = 45.0;
 /// Longest allowed engine plume, in metres (keeps the plume casts short).
 pub const MAX_PLUME_LENGTH: f32 = 50.0;
+/// Longest allowed side of a drydock frame, in cells (placeholder: twice the capital frame).
+pub const MAX_FRAME_SIZE: u32 = 128;
 
 pub(crate) fn is_snake_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -57,22 +80,21 @@ pub(crate) fn is_snake_id(id: &str) -> bool {
 }
 
 impl<'a> Validator<'a> {
+    fn push<T: Entry>(&mut self, p: Problem, e: &T, field: impl Into<String>) {
+        let mut p = p.entry(T::KIND, e.id()).field(field);
+        // An entry built in memory (a drydock design) comes from no pack.
+        if *e.source() != Source::default() {
+            p = p.at(e.source());
+        }
+        self.out.push(p);
+    }
+
     fn err<T: Entry>(&mut self, e: &T, field: impl Into<String>, msg: impl Into<String>) {
-        self.out.push(
-            Problem::error(msg)
-                .at(e.source())
-                .entry(T::KIND, e.id())
-                .field(field),
-        );
+        self.push(Problem::error(msg), e, field);
     }
 
     fn warn<T: Entry>(&mut self, e: &T, field: impl Into<String>, msg: impl Into<String>) {
-        self.out.push(
-            Problem::warning(msg)
-                .at(e.source())
-                .entry(T::KIND, e.id())
-                .field(field),
-        );
+        self.push(Problem::warning(msg), e, field);
     }
 
     fn packs(&mut self) {
@@ -123,34 +145,39 @@ impl<'a> Validator<'a> {
     /// Header checks for every entry of a kind, then the kind-specific checks.
     fn entries<T: Entry>(&mut self, items: &'a [T], mut check: impl FnMut(&mut Self, &'a T)) {
         for e in items {
-            if !is_snake_id(e.id()) {
+            self.header(e);
+            check(self, e);
+        }
+    }
+
+    /// The checks every entry gets: id and tag format, non-empty name and summary, links in its texts.
+    fn header<T: Entry>(&mut self, e: &T) {
+        if !is_snake_id(e.id()) {
+            self.err(
+                e,
+                "id",
+                "ids must be snake_case: a-z, 0-9 and _, starting with a letter",
+            );
+        }
+        if e.name().trim().is_empty() {
+            self.err(e, "name", "name must not be empty");
+        }
+        if e.summary().trim().is_empty() {
+            self.err(e, "summary", "summary must not be empty");
+        }
+        for (k, t) in e.tags().iter().enumerate() {
+            if !is_snake_id(t) {
                 self.err(
                     e,
-                    "id",
-                    "ids must be snake_case: a-z, 0-9 and _, starting with a letter",
+                    format!("tags[{k}]"),
+                    format!("tag `{t}` must be snake_case"),
                 );
             }
-            if e.name().trim().is_empty() {
-                self.err(e, "name", "name must not be empty");
+        }
+        for (field, text) in e.text_fields() {
+            for problem in self.link_problems(text) {
+                self.err(e, field, problem);
             }
-            if e.summary().trim().is_empty() {
-                self.err(e, "summary", "summary must not be empty");
-            }
-            for (k, t) in e.tags().iter().enumerate() {
-                if !is_snake_id(t) {
-                    self.err(
-                        e,
-                        format!("tags[{k}]"),
-                        format!("tag `{t}` must be snake_case"),
-                    );
-                }
-            }
-            for (field, text) in e.text_fields() {
-                for problem in self.link_problems(text) {
-                    self.err(e, field, problem);
-                }
-            }
-            check(self, e);
         }
     }
 
@@ -257,7 +284,7 @@ impl<'a> Validator<'a> {
                 v.err(e, "decimals", "at most 6 decimals");
             }
         });
-        for id in BUILTIN_STATS {
+        for id in BUILTIN_STATS.iter().chain(SHIP_STATS) {
             if !self.c.stats.contains(id) {
                 self.out.push(
                     Problem::error(format!(
@@ -490,6 +517,17 @@ impl<'a> Validator<'a> {
                     "must be at least 1 (or omitted for no limit)",
                 );
             }
+        }
+    }
+
+    fn frame(&mut self, f: &'a Frame) {
+        let (w, h) = f.size;
+        if !(1..=MAX_FRAME_SIZE).contains(&w) || !(1..=MAX_FRAME_SIZE).contains(&h) {
+            self.err(
+                f,
+                "size",
+                format!("each side must be 1 to {MAX_FRAME_SIZE} cells; got {w}×{h}"),
+            );
         }
     }
 

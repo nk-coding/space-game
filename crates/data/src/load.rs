@@ -29,6 +29,7 @@ pub struct Pack {
     pub factions: Vec<Faction>,
     pub materials: Vec<Material>,
     pub parts: Vec<Part>,
+    pub frames: Vec<Frame>,
     pub ships: Vec<Blueprint>,
     pub behavior_nodes: Vec<BehaviorNode>,
     pub behaviors: Vec<Behavior>,
@@ -43,7 +44,8 @@ impl Pack {
     ///
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
-    ///   `materials`, `parts`, `ships`, `behavior_nodes`, `behaviors`. A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`. A file holds one entry `( ... )`
+    ///   or a list `[ ( ... ), ... ]`.
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
     /// * Anything else that is not `.ron` or `.svg` is ignored (READMEs, `.gitkeep`); unknown `.ron` files and
@@ -99,6 +101,7 @@ impl Pack {
             factions: Vec::new(),
             materials: Vec::new(),
             parts: Vec::new(),
+            frames: Vec::new(),
             ships: Vec::new(),
             behavior_nodes: Vec::new(),
             behaviors: Vec::new(),
@@ -128,6 +131,7 @@ impl Pack {
                     Some(Kind::Faction) => parse_into(text, &src, &mut pack.factions, &mut problems),
                     Some(Kind::Material) => parse_into(text, &src, &mut pack.materials, &mut problems),
                     Some(Kind::Part) => parse_into(text, &src, &mut pack.parts, &mut problems),
+                    Some(Kind::Frame) => parse_into(text, &src, &mut pack.frames, &mut problems),
                     Some(Kind::Ship) => parse_into(text, &src, &mut pack.ships, &mut problems),
                     Some(Kind::BehaviorNode) => {
                         parse_into(text, &src, &mut pack.behavior_nodes, &mut problems)
@@ -137,7 +141,7 @@ impl Pack {
                     }
                     _ => problems.push(
                         Problem::error(
-                            "unknown content file location; RON files belong in stats, categories, factions, materials, parts, ships, behavior_nodes or behaviors",
+                            "unknown content file location; RON files belong in stats, categories, factions, materials, parts, frames, ships, behavior_nodes or behaviors",
                         )
                         .at(&src),
                     ),
@@ -171,7 +175,7 @@ impl Pack {
                 match parsed {
                     Some((kind, id)) => pack.wiki.push(WikiPage { kind, id: id.to_string(), markdown: text.to_string(), source: src }),
                     None if path.ends_with(".md") => problems.push(
-                        Problem::error("wiki files must be wiki/<kind>/<id>.md with kind stat, category, faction, material, part, ship, behavior_node, behavior or page")
+                        Problem::error("wiki files must be wiki/<kind>/<id>.md with kind stat, category, faction, material, part, frame, ship, behavior_node, behavior or page")
                             .at(&src),
                     ),
                     None => {}
@@ -184,6 +188,7 @@ impl Pack {
         check_duplicates(&pack.factions, &mut problems);
         check_duplicates(&pack.materials, &mut problems);
         check_duplicates(&pack.parts, &mut problems);
+        check_duplicates(&pack.frames, &mut problems);
         check_duplicates(&pack.ships, &mut problems);
         check_duplicates(&pack.behavior_nodes, &mut problems);
         check_duplicates(&pack.behaviors, &mut problems);
@@ -213,7 +218,12 @@ fn normalize_path(p: &str) -> String {
 }
 
 fn parse_problem(e: &ron::error::SpannedError, src: &Source) -> Problem {
-    let mut p = Problem::error(e.code.to_string()).at(src);
+    parse_error(e).at(src)
+}
+
+/// A RON parse error with its line and column, without a file.
+pub(crate) fn parse_error(e: &ron::error::SpannedError) -> Problem {
+    let mut p = Problem::error(e.code.to_string());
     p.line = Some((e.span.start.line, e.span.start.col));
     p
 }
@@ -284,6 +294,8 @@ pub struct Content {
     pub factions: Table<Faction>,
     pub materials: Table<Material>,
     pub parts: Table<Part>,
+    /// Drydock frames in load order, which is also the drydock's display order.
+    pub frames: Table<Frame>,
     pub ships: Table<Blueprint>,
     pub behavior_nodes: Table<BehaviorNode>,
     pub behaviors: Table<Behavior>,
@@ -319,6 +331,10 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.parts.upsert(e)));
+            p.frames
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.frames.upsert(e)));
             p.ships
                 .iter()
                 .cloned()
@@ -361,6 +377,7 @@ impl Content {
             Kind::Faction => self.factions.contains(id),
             Kind::Material => self.materials.contains(id),
             Kind::Part => self.parts.contains(id),
+            Kind::Frame => self.frames.contains(id),
             Kind::Ship => self.ships.contains(id),
             Kind::BehaviorNode => self.behavior_nodes.contains(id),
             Kind::Behavior => self.behaviors.contains(id),
@@ -376,6 +393,7 @@ impl Content {
             Kind::Faction => self.factions.get(id).map(|e| e.name.as_str()),
             Kind::Material => self.materials.get(id).map(|e| e.name.as_str()),
             Kind::Part => self.parts.get(id).map(|e| e.name.as_str()),
+            Kind::Frame => self.frames.get(id).map(|e| e.name.as_str()),
             Kind::Ship => self.ships.get(id).map(|e| e.name.as_str()),
             Kind::BehaviorNode => self.behavior_nodes.get(id).map(|e| e.name.as_str()),
             Kind::Behavior => self.behaviors.get(id).map(|e| e.name.as_str()),
@@ -440,15 +458,15 @@ impl Content {
         p.material.as_deref().and_then(|m| self.materials.get(m))
     }
 
+    /// The armour spec of a placement's material (hull parts only).
+    pub fn placement_armor(&self, p: &Placement) -> Option<&ArmorSpec> {
+        self.placement_material(p)?.armor.as_ref()
+    }
+
     /// Mass of a placed part: the part's `mass`, or for hull parts the material's `mass_per_cell × area`.
     /// `None` if the part or a hull part's armour material is unknown.
     pub fn placement_mass(&self, p: &Placement) -> Option<f32> {
-        let part = self.parts.get(&p.part)?;
-        if part.hull {
-            Some(self.placement_material(p)?.armor.as_ref()?.mass_per_cell * part.area())
-        } else {
-            part.mass
-        }
+        self.parts.get(&p.part)?.mass_in(self.placement_armor(p))
     }
 
     /// The behavior a ship flies under when nobody pilots it: its own `behavior`, else its faction's.
@@ -508,11 +526,6 @@ impl Content {
 
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
     pub fn placement_hp(&self, p: &Placement) -> Option<f32> {
-        let part = self.parts.get(&p.part)?;
-        if part.hull {
-            Some(self.placement_material(p)?.armor.as_ref()?.hp_per_cell * part.area())
-        } else {
-            part.hp
-        }
+        self.parts.get(&p.part)?.hp_in(self.placement_armor(p))
     }
 }

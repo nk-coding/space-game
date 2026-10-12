@@ -559,6 +559,31 @@ impl Part {
     pub fn area(&self) -> f32 {
         self.footprint().area()
     }
+    /// Build points when placed in `armor`: hull parts scale by its `build_point_factor`, other parts ignore it.
+    pub fn build_points_in(&self, armor: Option<&ArmorSpec>) -> f32 {
+        match armor {
+            Some(a) if self.hull => self.build_points * a.build_point_factor,
+            _ => self.build_points,
+        }
+    }
+    /// Mass when placed in `armor`: hull parts `mass_per_cell × area` (`None` without armour), other parts their
+    /// `mass`.
+    pub fn mass_in(&self, armor: Option<&ArmorSpec>) -> Option<f32> {
+        if self.hull {
+            armor.map(|a| a.mass_per_cell * self.area())
+        } else {
+            self.mass
+        }
+    }
+    /// Hit points when placed in `armor`: hull parts `hp_per_cell × area` (`None` without armour), other parts
+    /// their `hp`.
+    pub fn hp_in(&self, armor: Option<&ArmorSpec>) -> Option<f32> {
+        if self.hull {
+            armor.map(|a| a.hp_per_cell * self.area())
+        } else {
+            self.hp
+        }
+    }
     /// Does the part draw or make power (the parts that can go idle)?
     pub fn has_power_role(&self) -> bool {
         self.power
@@ -609,6 +634,27 @@ pub struct Placement {
     #[serde(default)]
     pub power: Option<PowerOverride>,
 }
+
+/// `frames.ron` / `frames/*.ron`: a drydock frame (GDR-0006), the grid a design is built on. Bigger frames come
+/// with drydock expansions. Order in the files = order in the drydock.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Frame {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub lore: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Grid size `(w, h)` in cells, each side 1 to [`crate::validate::MAX_FRAME_SIZE`].
+    pub size: (u32, u32),
+    #[serde(skip_deserializing)]
+    pub source: Source,
+}
+entry!(Frame, Kind::Frame);
 
 /// An icon of a pack: `icons/<key>.svg`, kept as SVG text (rasterised by the client at runtime, shown as is
 /// by the wiki). Later packs replace icons with the same key.
