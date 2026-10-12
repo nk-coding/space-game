@@ -7,7 +7,7 @@
 //!
 //! Drawn here: engine plumes and RCS puffs (from `piece.thrusters` × `piece.output`), dotted engine trails,
 //! beams (attached to the gun at the render pose), pulse flashes, interpolated projectile tracers, muzzle
-//! flashes, hit and ricochet sparks, shield hit flashes, shield collapse rings and part bursts.
+//! flashes, hit and ricochet sparks and part bursts. Shield hits and collapses play in the bubbles (`shield.rs`).
 
 use std::collections::BTreeMap;
 
@@ -140,22 +140,12 @@ struct Line {
     color: Color,
 }
 
-#[derive(Clone, Copy)]
-struct Ring {
-    centre: Vec2,
-    radius: f32,
-    age: f32,
-    life: f32,
-    color: Color,
-}
-
 /// Short-lived effects spawned from sim events (world space, tick time).
 #[derive(Resource)]
 pub struct Effects {
     sparks: Vec<Spark>,
     flashes: Vec<Flash>,
     lines: Vec<Line>,
-    rings: Vec<Ring>,
     trail: Vec<Spark>,
     rng: Rng,
     /// Weapon / glow colour per ship (filled lazily).
@@ -168,7 +158,6 @@ impl Default for Effects {
             sparks: Vec::with_capacity(512),
             flashes: Vec::with_capacity(256),
             lines: Vec::with_capacity(128),
-            rings: Vec::with_capacity(16),
             trail: Vec::with_capacity(1024),
             rng: Rng::new(0xF0F0_1234),
             ship_colors: BTreeMap::new(),
@@ -181,7 +170,6 @@ impl Effects {
         self.sparks.clear();
         self.flashes.clear();
         self.lines.clear();
-        self.rings.clear();
         self.trail.clear();
         self.ship_colors.clear();
     }
@@ -230,17 +218,6 @@ impl Effects {
         let c = Color::srgb(1.0, 0.85, 0.6);
         self.flash(point, c, 0.7, 0.12);
         self.spray(point, vel.normalize_or_zero(), 0.35, 5, (8.0, 16.0), (0.12, 0.3), 0.06, c);
-    }
-
-    pub fn shield_hit(&mut self, point: Vec2, color: Color) {
-        self.flash(point, color, 1.3, 0.28);
-        self.spray(point, Vec2::Y, std::f32::consts::PI, 4, (1.0, 3.0), (0.2, 0.35), 0.05, color);
-    }
-
-    /// A shield bubble collapsed: an expanding dotted ring.
-    pub fn collapse(&mut self, centre: Vec2, radius: f32, color: Color) {
-        self.rings.push(Ring { centre, radius, age: 0.0, life: 0.6, color });
-        self.flash(centre, color, radius * 1.2, 0.35);
     }
 
     /// A part or piece destroyed.
@@ -470,7 +447,6 @@ fn draw_effects(
         fx.sparks.clear();
         fx.flashes.clear();
         fx.lines.clear();
-        fx.rings.clear();
         fx.trail.clear();
         return;
     }
@@ -516,19 +492,6 @@ fn draw_effects(
         let k = 1.0 - l.age / l.life;
         queue.line(&regions.halo, l.from, l.to, 0.7, l.color.with_alpha(0.9 * k), Z_WEAPONS);
         queue.line(&regions.white, l.from, l.to, 0.07, core_tint(l.color).with_alpha(k), Z_WEAPONS + 0.1);
-    }
-    fx.rings.retain_mut(|r| {
-        r.age += dt;
-        r.age < r.life
-    });
-    for r in &fx.rings {
-        let k = r.age / r.life;
-        let radius = r.radius * (1.0 + 0.45 * k);
-        let n = ((std::f32::consts::TAU * radius) / 0.35) as usize;
-        for j in 0..n {
-            let a = j as f32 / n as f32 * std::f32::consts::TAU;
-            queue.dot(&regions.hard, r.centre + Vec2::new(a.cos(), a.sin()) * radius, 0.14, r.color.with_alpha(0.8 * (1.0 - k)), Z_SPARKS);
-        }
     }
 }
 

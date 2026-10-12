@@ -7,6 +7,7 @@
 //! - `scene`: sandbox (player + raider waves), showcase, load test; writes the player's pilot input.
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame.
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
+//! - `shield`: shield bubbles (one batched mesh, procedural shader `shield.wesl`).
 //! - `controls`, `camera`: keyboard / mouse / touch input, follow / frame / free camera.
 //! - `flight_hud`, `hud`, `tuning`: flight HUD, debug overlay and toggles, live tuning panel (egui).
 //! - `backdrop`: gradient, parallax dust, range rings.
@@ -21,6 +22,7 @@ mod hud;
 mod meshbuf;
 mod params;
 mod scene;
+mod shield;
 mod ship_model;
 mod ship_view;
 mod sim_bridge;
@@ -91,6 +93,7 @@ fn main() {
             camera::CameraPlugin,
             controls::ControlsPlugin,
             fx::FxPlugin,
+            shield::ShieldPlugin,
             backdrop::BackdropPlugin,
             flight_hud::FlightHudPlugin,
             hud::HudPlugin,

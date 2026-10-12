@@ -22,8 +22,7 @@ pub struct Style {
     pub line_width: f32,
     pub line_opacity: f32,
     pub aura_opacity: f32,
-    pub shield_color: Color,
-    pub shield_opacity: f32,
+    pub shield: ShieldStyle,
     pub particle: Color,
     pub dotted_ring: Color,
     pub ui_label: Color,
@@ -49,8 +48,7 @@ impl Style {
             line_width: atlas.token_f32("ship.hull_glow.line_width_cells"),
             line_opacity: atlas.token_f32("ship.hull_glow.line_opacity"),
             aura_opacity: atlas.token_f32("ship.aura.opacity_center"),
-            shield_color: atlas.token_color("ship.shield_ring.color"),
-            shield_opacity: atlas.token_f32("ship.shield_ring.opacity"),
+            shield: ShieldStyle::from_atlas(atlas),
             particle: atlas.token_color("ui.particle"),
             dotted_ring: atlas.token_color("ui.dotted_ring"),
             ui_label: atlas.token_color("ui.label"),
@@ -63,6 +61,48 @@ impl Style {
 
     pub fn system_color(&self, key: &str) -> Color {
         self.system.get(key).copied().unwrap_or(self.ui_label)
+    }
+}
+
+/// Shield bubble look (`ship.shield_bubble.*`, GDR-0043). Widths in cells (= metres), times in seconds.
+#[derive(Clone, Debug)]
+pub struct ShieldStyle {
+    pub color: Color,
+    /// Rim line core and hit flashes.
+    pub core: Color,
+    pub fill_center_opacity: f32,
+    pub fill_rim_opacity: f32,
+    pub rim_opacity: f32,
+    pub rim_width: f32,
+    pub glow_opacity: f32,
+    pub glow_width: f32,
+    /// Depth of the shimmer (0 = none).
+    pub shimmer: f32,
+    pub shimmer_speed: f32,
+    /// Share of capacity below which the bubble flickers.
+    pub low_share: f32,
+    pub hit_seconds: f32,
+    pub collapse_seconds: f32,
+}
+
+impl ShieldStyle {
+    fn from_atlas(atlas: &Atlas) -> Self {
+        let f = |k: &str| atlas.token_f32(&format!("ship.shield_bubble.{k}"));
+        Self {
+            color: atlas.token_color("ship.shield_bubble.color"),
+            core: atlas.token_color("ship.shield_bubble.core_color"),
+            fill_center_opacity: f("fill_center_opacity"),
+            fill_rim_opacity: f("fill_rim_opacity"),
+            rim_opacity: f("rim_opacity"),
+            rim_width: f("rim_width_cells"),
+            glow_opacity: f("glow_opacity"),
+            glow_width: f("glow_width_cells"),
+            shimmer: f("shimmer"),
+            shimmer_speed: f("shimmer_speed_cells"),
+            low_share: f("low_share"),
+            hit_seconds: f("hit_seconds"),
+            collapse_seconds: f("collapse_seconds"),
+        }
     }
 }
 
