@@ -80,7 +80,8 @@ Display information for every number the UI and wiki show: `name` (label), `summ
 may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`Higher`, `Lower`, `Neutral`, for
 green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
 the game requires these ids: `build_points mass hp power_output power_draw power_min_level heat_output heat_limit heat_vent
-damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal rcs_thrust rcs_rated_speed torque
+damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal plume_length plume_damage plume_heat
+rcs_thrust rcs_rated_speed torque
 shield_radius shield_capacity shield_regen cargo_capacity rule_slots control_cost control_capacity mass_per_cell
 hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
 placeholders except that the sim reads mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated
@@ -143,7 +144,7 @@ Optional component blocks (a part has any combination):
 | `heat` | `output`, `limit` | heat at full load; shutdown level (none = never) |
 | `radiator` | `vent` | heat dumped per straight side open to space |
 | `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second), `range` (m), `delivery` (see below, default `Beam`) | fixed gun, fires along the part's forward side, needs a clear line of fire |
-| `engine` | `thrust`, `rated_speed` (m/s, required), `gimbal` (degrees, default 0, at most 45) | pushes along the part's forward side, needs open cells right behind it; can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque. Its thrust fades out as the ship's speed along its push direction approaches `rated_speed` (full up to 80%, none at 100%; braking and sideways it keeps full thrust), so the fastest engines pushing a way set the ship's top speed that way (GDR-0041) |
+| `engine` | `thrust`, `rated_speed` (m/s, required), `gimbal` (degrees, default 0, at most 45), `plume: (length, damage, heat)` (required, see below) | pushes along the part's forward side and may sit anywhere (GDR-0039); can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque. Its thrust fades out as the ship's speed along its push direction approaches `rated_speed` (full up to 80%, none at 100%; braking and sideways it keeps full thrust), so the fastest engines pushing a way set the ship's top speed that way (GDR-0041). Its exhaust plume burns the first part behind it |
 | `gyro` | `torque` (kN·m) | pure reaction torque about the centre of mass, either direction, no thrust. On the gyro part, and as the small built-in turning help of logic cores |
 | `rcs` | `thrust` (kN per nozzle), `rated_speed` (m/s, required) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre, and fades out towards `rated_speed` along its own push direction like an engine |
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
@@ -219,8 +220,8 @@ intact ship's main piece.
 
 **Turning** (decided 11 Oct 2026) comes from three sources the flight computer allocates across: the `gyro`
 torque of logic cores and gyro parts, RCS pods, and engines (differential thrust plus `gimbal`). RCS is its own
-block rather than an engine mode on purpose: code that handles `engine` (rear exhaust, clear-exhaust rule) must
-never mistake an RCS pod for a rear engine, and the wiki can describe it on its own. Power draw of a gyro or RCS
+block rather than an engine mode on purpose: code that handles `engine` (rear exhaust, plume) must never mistake an
+RCS pod for a rear engine, and the wiki can describe it on its own. Power draw of a gyro or RCS
 pod is "at full use"; how draw and heat scale with use is up to the sim. The gyro sits in the `propulsion`
 category (it moves the ship, draws power like the engines and shares their power tier and colour), not
 `logic`.
@@ -230,6 +231,27 @@ global speed cap and no drag. The stat lines are `rated_speed` (engines) and `rc
 labelled "Rated speed", so bonuses can raise them per part type (e.g. `(target: Tag("engine"), stat:
 "rated_speed", effect: Percent(10))`) and the wiki shows them. Base values (placeholders): thruster 20 m/s, torch
 drive 22 m/s, RCS pod 14 m/s. Thrust and torque numbers were set for the agility target of GDR-0042.
+
+**Plume** (GDR-0039, GDR-0046, GDR-0049; added 12 Oct 2026). Engines may sit anywhere; there is no open-space
+rule. Every `engine` block has a required `plume`:
+
+```ron
+engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, heat: 4)),   // torch drive
+```
+
+| Field | Meaning |
+|---|---|
+| `length` | how far the exhaust reaches behind the engine's back side, m (0 = no plume; at most 50, `data::validate::MAX_PLUME_LENGTH`) |
+| `damage` | damage per second at full thrust to the first part in its path |
+| `heat` | heat per second at full thrust into that part (same units as `heat.output`) |
+
+The plume runs straight back from the engine, one lane per cell of its back side (the numbers are shared over
+the lanes), and burns the first part in each lane: the ship's own, an enemy's or a wreck's, never another vessel
+of the same owner. Damage and heat scale with the thrust the engine actually gives (none when idle, next to none
+at its rated speed); enemy shield bubbles absorb it like energy damage. The sim's rule is in `docs/sim.md` "Engine
+plumes". Stat lines `plume_length` (m), `plume_damage` (/s), `plume_heat` (/s), all labelled "Plume ..." and
+`Neutral` (a longer or hotter plume is not simply better). Base values (placeholders, lead, 12 Oct 2026): thruster
+3 m, 1 /s, 1.5 /s; torch drive 6 m, 3 /s, 4 /s. RCS pods have no plume.
 
 **Slopes** must be one cell high (`size: (w, 1)`) and hull parts. Steep variants come from rotation.
 
@@ -347,8 +369,9 @@ All in the **blueprint frame**, 1 cell = 1 m:
   core, else the one with most parts.
 - **Hull edge** (for the glow): slope faces are always edge; a straight side is edge unless a neighbour in the
   same piece covers it with a straight side.
-- **Guns** need every cell straight ahead of their facing side empty, to the edge of the grid. **Engines** need
-  the cells directly behind their back side empty. "Facing" is local forward turned by `rot`/`flip`.
+- **Guns** need every cell straight ahead of their facing side empty, to the edge of the grid. **Engines** may sit
+  anywhere (GDR-0039; until 12 Oct 2026 they needed the cells directly behind their back side empty): their plume
+  leaves through the back side and burns what is there. "Facing" is local forward turned by `rot`/`flip`.
 - **Open to space**, two rules:
   - `ShipGrid::exposure(cell)` (the drydock's venting rule, used for radiators and heat loss): straight sides
     not linked to a neighbour, plus one for a slope face. A straight side facing a slope's face counts.
@@ -418,8 +441,8 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, wiki pages for missing entries, broken or malformed links.
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
-  an engine with a blocked exhaust, an RCS part without any side open to space, a radiator that cannot vent,
-  an icon nothing uses, an empty placement `power` override.
+  an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
+  placement `power` override. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
 - Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
   `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
   the same weight range.
@@ -427,6 +450,8 @@ line/column (parse errors), kind, id and field path (e.g. `parts[3].material`).
   hull parts.
 - Rated speed: `engine.rated_speed` and `rcs.rated_speed` are required (a missing one is a parse error) and
   above 0.
+- Plume: `engine.plume` is required (a parse error when missing); `length`, `damage` and `heat` are finite and not
+  negative, `length` at most 50 m.
 - Control: `control_cost` at most 100 (`data::MAX_CONTROL_COST`). Warnings: a `control_cost` above 0 on a part
   that draws and makes no power (it can never idle), a logic core with `control_capacity` 0, a ship whose control
   load exceeds its cores' capacity (the lowest-priority parts start idle).
@@ -505,7 +530,7 @@ let pieces = grid.pieces();                              // Pieces { parts, piec
 let main = grid.main_piece(&pieces, |i| part_of(i).logic.is_some());
 let edges = grid.piece_hull_edges(&pieces, main.unwrap()); // Vec<HullSegment>, as drawHullGlow
 let loops = data::geometry::hull_loops(&edges);          // closed outlines, collinear points merged
-grid.bounds(); grid.line_of_fire_clear(i); grid.exhaust_clear(i); grid.remove(i); grid.shape(i).centroid();
+grid.bounds(); grid.line_of_fire_clear(i); grid.remove(i); grid.shape(i).centroid();
 grid.open_sides(i);                                      // Vec<((x, y), Dir)>: RCS nozzles of part i
 dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
