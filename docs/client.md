@@ -30,7 +30,8 @@ the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)).
 | Unlock | click empty space, or Esc | tap empty space |
 | Next target (nearest first) | Tab | – |
 | Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
-| Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), or click a friendly vessel | tap a friendly vessel |
+| Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
+| Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
 | Zoom | wheel, + / − | pinch |
 | Camera | F: follow ↔ free (drag with the middle button) | – |
 | Tuning panel | T | – |
@@ -49,8 +50,9 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600) |
-| `thrust`, `torque`, `speed`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query; `speed` replaced `top` on 12 Oct 2026) |
-| `fleet=N` | N extra Halvex Runners fly with you under their default behavior (`skirmisher`); switch with V |
+| `thrust`, `torque`, `speed`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026) |
+| `mind=N` | the player's mind capacity in logic cores (default 24; a runner has 2): `?fleet=3&mind=4` leaves two runners dormant, for trying the fleet bar's swap |
+| `fleet=N` | N extra Halvex Runners fly with you under their default behavior (`skirmisher`); switch with V or the fleet bar |
 | `tuning=1` | open the tuning panel at start |
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
 | `zoom=N` | start zoom in px per metre |
@@ -88,13 +90,21 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 
    Changing tuning values during a hash run changes the hash (the config is part of the state).
 
+   Result 12 Oct 2026 (dev wasm build in headless Chromium vs native release x86_64, `dev` after the plume merge
+   60945ae): `load` 20 ships, seed 42, 600 ticks: **IDENTICAL** (final `86eb72a03591bff2`; also identical on the
+   commit before the merge, final `9ea129f5b628badc`); seed 7, 1800 ticks (`&seed=7&hashticks=1800`):
+   **IDENTICAL** (final `34fccbaae2c4e339`). Headless capture: `node scripts/web-drive.mjs
+   "<url>/?hashlog=1&load=20&debug=1&hud=0" <dir> "wait 120000" 480 270`, then keep the lines matching
+   `^[0-9]+ [0-9a-f]{16}$` and `^# ` (the console prints 30 lines per call).
+
 ## Structure
 
 ```
 FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::step_sim  →  sim_bridge::apply_events
                                                                   (Sim::step, timing,       (views: spawn / rebuild /
                                                                    hash log)                 despawn; effects from events)
-Update                controls (keys, mouse, touch → PlayerInput), camera input, HUD text, tuning panel (egui)
+Update                fleet bar input (before the controls), controls (keys, mouse, touch → PlayerInput), camera input,
+                      HUD text, fleet bar, tuning panel (egui)
 PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark)  →  shield::draw_bubbles
                       camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers)  →  fx::flush
 ```
@@ -114,8 +124,18 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Vessels** (`scene.rs`, 12 Oct 2026): the sim owns owners, vessels and the focus (`docs/sim.md` "Vessels").
   The player is `scene::PLAYER` (`Owner(0)`), the raiders `scene::ENEMY` (`Owner(1)`). The sandbox gives every
   vessel its default behavior and sends `ShipCommand::Focus` for the runner; `PilotFocus` mirrors
-  `Sim::focus(PLAYER)` at the start of every tick (so a switch shows one tick later), and V / clicks send
-  `Focus` commands. Friendly checks, Tab targets and off-screen markers use owners (`Ship::team`).
+  `Sim::focus(PLAYER)` at the start of every tick (so a switch shows one tick later), and V / clicks / the fleet
+  bar send `Focus` commands. Friendly checks, Tab targets and off-screen markers use owners (`Ship::team`).
+- **Fleet bar** (`fleet_bar.rs`, [GDR-0050](gdr/0050-fleet-bar.md)): see below.
+- **Camera glide** (`camera.rs`): when the focus changes (V, a click, the fleet bar, or the sim moving a lost
+  focus), the follow point snaps to the new vessel and the camera eases from where it was onto it with a
+  smootherstep over 0.3 s (a short hop) to 0.5 s (150 m or more), time-based, so the same at any frame rate (a
+  unit test checks 30 and 144 fps). Only in follow mode: a free camera stays put, a drag during the glide ends
+  it, the zoom is untouched.
+- **Draw order**: every piece view gets its own layer (z 10..89, round robin) when it is built; the focused
+  vessel's piece draws at z 100, decided every frame from `PilotFocus` (`ship_view::sync_piece_views`), so a
+  switch reorders at once (before, the z was fixed when the view was built: after a switch the old focus stayed
+  on top until its view was rebuilt).
 - **Shield bubbles** (`shield.rs`, `shield.wesl`): see below.
 - **Effects** (`fx.rs`): immediate mode. Systems push `FxSprite`s into `FxQueue` every frame; `flush` writes them
   into a pool of reused sprites (all from the atlas, batched). Plumes come from `piece.thrusters[i]` ×
@@ -123,13 +143,37 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   `piece.act.deflect`), beams from `Sim::beams()` re-attached to the gun at the render pose, tracers from
   `Sim::projectiles()` interpolated.
 - **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, speed with the top speed of the
-  best axis (`TOP 22`, from `ship.telemetry().top_speed`), target panel, wave line, warnings, help; lock ring and
-  off-screen markers are world-space FX. Debug overlay and toggles: `hud.rs`.
+  best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
+  hull block and the touch stick on a phone), target panel, wave line, warnings, help; lock ring and off-screen
+  markers are world-space FX. Debug overlay and toggles: `hud.rs`.
 - **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
   engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
   factor on 12 Oct 2026) and max turn rate apply live (`Sim::set_config`); raiders per wave apply to the next wave;
   drift at once; weapon range and damage scale rewrite the content the designs compile from, so they apply with
   "Apply & reset".
+
+## Fleet bar
+
+[GDR-0050](gdr/0050-fleet-bar.md) (provisional), `fleet_bar.rs`, written 12 Oct 2026. A strip at the top centre,
+under the scene title, shown while the player flies a vessel and has two or more vessels or any dormant one.
+
+- **Mind row**: `MIND 8 / 24`, `Sim::mind_load(PLAYER)` (logic cores running against the mind capacity), and a thin
+  violet bar.
+- **Chips**, one per vessel in `Sim::vessels(PLAYER)` order (ascending ship id, the V order), numbered from 1:
+  violet pips for the logic cores (`VesselInfo::cores`), a thin bar of the control load against the capacity
+  (`VesselInfo::control`: teal, gold above 85 %, coral while parts idle; empty while dormant) and a state word:
+  `PILOT` (the focus: teal number and corner brackets), `AUTO`, `DARK` (coral), `DORMANT` (dimmed). Hover
+  brightens the brackets. Chips are 68 × 50 px.
+- **Input**: a click or tap on a chip sends `ShipCommand::Focus` (running or dark vessel) or `ShipCommand::Wake`
+  (dormant: it swaps in, the newest vessel not woken since goes dormant, GDR-0044); a tap on the focus does
+  nothing. The bar hit-tests its laid-out node rectangles itself (bevy_ui's `Interaction` is deprecated in
+  0.20), before the controls; `FleetBar::blocks` keeps those clicks and taps out of the world (no lock, no fire,
+  no stick).
+- **Many vessels**: as many chips as fit between the hull block and the target panel (3 to 12); beyond that a
+  window around the focus and `+N`.
+- The chips are a fixed pool of nodes updated in place every frame (`Display::None` when unused); text, colours
+  and bar widths are written only when they change.
+- Colours: `ui.*` in `art/tokens.json` (`style::UiPalette`).
 
 ## Plumes
 
@@ -146,6 +190,11 @@ falloff), and `piece.cruise[i]`, the calm cruise level: how much of its top spee
   `core_color_enemy` down the first `core_length` = 60% of the flame, `core_width` = 32% of its width, opacity
   `core_opacity` × calm × level) and sheds fewer trail particles (`trail`, 0.35).
 - RCS nozzles have no cruise level: they puff only while they push.
+- **A burning plume** (GDR-0049): while `SimEvent::PlumeHit` arrives for an engine (every tick its plume burns a
+  part, its own hull, an enemy or salvage), a faint streak in the ship's glow colour runs from the nozzle out to
+  the burning point (the sim's reach is 3–6 m, the drawn flame 0.4–2 m) and a small orange ember glows there; both
+  fade 0.12 s after the last hit (`fx::Effects::burn`). Not seen in a screenshot yet: the base ships' engines
+  exhaust into open space, so it shows only at close quarters.
 - All style numbers live in `art/tokens.json` under `ship.plume.cruise` (read once into `style::PlumeStyle`).
 
 ## Shield bubbles
@@ -153,10 +202,13 @@ falloff), and `piece.cruise[i]`, the calm cruise level: how much of its top spee
 The look is [GDR-0043](gdr/0043-shields-as-energy-bubbles.md) (values: `ship.shield_bubble` in `art/tokens.json`);
 the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md). Written 12 Oct 2026.
 
-- **One mesh, one material, one draw call for every bubble.** `draw_bubbles` walks the piece views every frame
-  and writes one quad per visible bubble (centre at the render pose, half-size = radius + 4 glow widths, more
-  while shattering) into a world-space mesh at z 200 (above every ship, below the weapon effects), in place,
-  like the FX meshes. Each quad carries its bubble's state as vertex attributes: offset from the centre, radius,
+- **Two meshes, one material, two draw calls for every bubble.** `draw_bubbles` walks the piece views every
+  frame and writes one quad per visible bubble (centre at the render pose, half-size = radius + 4 glow widths,
+  more while shattering) into a world-space mesh, in place, like the FX meshes: the focused vessel's bubbles at
+  z 200 (above it, below the weapon effects), every other bubble at z 95 (above every other ship, below the
+  focus). So the focus flying over another ship's bubble stays on top of it (12 Oct 2026; before, all bubbles
+  were one mesh above every ship). Two non-focus ships still show the other's bubble over their hull: per-ship
+  layers would need a mesh per ship (ADR-0029's rejected option) or depth writes from the ship meshes. Each quad carries its bubble's state as vertex attributes: offset from the centre, radius,
   seed; charge, presence, shatter progress; four hits (direction in world space, age, strength). The material
   (`BubbleMaterial`) holds only the style tokens and is never changed, so there are no per-frame material
   updates; the shimmer and flicker run on `globals.time` (virtual time: they pause with P).
