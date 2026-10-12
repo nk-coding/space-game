@@ -14,6 +14,7 @@
 
 pub mod art_keys;
 pub mod behavior;
+pub mod edit;
 pub mod geometry;
 pub mod kind;
 pub mod load;
@@ -28,6 +29,7 @@ pub mod validate;
 #[cfg(feature = "fs")]
 pub mod fs;
 
+pub use edit::Drydock;
 pub use geometry::{
     Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
 };
