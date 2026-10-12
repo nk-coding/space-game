@@ -2,7 +2,7 @@
 //! wide-tracked uppercase labels in Barlow, white numbers, no boxes.
 //!
 //! * top left: hull % and a tiny hull map of the player's ship;
-//! * left: speed (m/s) and the drift state;
+//! * left: speed (m/s), the top speed and the drift state;
 //! * top right: target panel (name, hull %, distance);
 //! * top centre: scene / wave line, centre: banners (wave cleared, ship lost);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
@@ -243,6 +243,11 @@ fn update_text(
             }
             HudText::SpeedSub => {
                 s.push_str("M/S");
+                // The top speed of the engines pushing along the best axis (GDR-0041).
+                let top = player.map_or(0.0, |ship| ship.telemetry().top_speed);
+                if top > 0.0 {
+                    let _ = write!(s, "  ·  TOP {top:.0}");
+                }
                 if input.drift {
                     s.push_str("  ·  DRIFT");
                 }

@@ -333,17 +333,24 @@ fn draw_ships_fx(
             let omega = piece.body.angvel;
             for (i, th) in piece.thrusters.iter().enumerate() {
                 let out = piece.output.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
-                if out < 0.02 || !th.clear {
+                // Cruise flame (GDR-0041): an engine holding a speed (stick held at or below the top speed)
+                // pushes little or nothing, but keeps a calm flame scaled by how much of its top speed the
+                // helm asks for. `calm` = how much of the flame is cruise rather than burn.
+                let cruise = if th.rcs { 0.0 } else { piece.cruise.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0) };
+                let level = out.max(cruise);
+                if level < 0.02 || !th.clear {
                     view.emit[i] = 0.0;
                     continue;
                 }
+                let calm = (cruise - out).max(0.0) / level;
                 let dir = v2(th.dir);
                 let mut exhaust = -dir;
                 if th.gimbal > 0.0 {
                     let d = piece.act.deflect.get(i).copied().unwrap_or(0.0);
                     exhaust = (exhaust - v2(th.lat) * d * th.gimbal).normalize_or_zero();
                 }
-                let flicker = 1.0 + 0.05 * (t * 23.0 + i as f32 * 1.7).sin() + 0.03 * (t * 37.0 + i as f32).sin();
+                let wobble = 0.05 * (t * 23.0 + i as f32 * 1.7).sin() + 0.03 * (t * 37.0 + i as f32).sin();
+                let flicker = 1.0 + wobble * (1.0 - calm * (1.0 - style.plume.cruise_flicker));
                 if th.rcs {
                     // RCS: a small puff at the nozzle on the hull side.
                     let r = &regions.plume_small[tint];
@@ -365,24 +372,42 @@ fn draw_ships_fx(
                 let large = w.min(h) >= 2;
                 let nozzle = v2(th.point) - dir * (ext / 2.0 - 0.05);
                 let (idle, full) = if large { (0.75, 2.05) } else { (0.4, 1.15) };
-                let len = (idle + (full - idle) * out) * flicker;
+                let shorten = 1.0 - calm * (1.0 - style.plume.cruise_length);
+                let len = (idle + (full - idle) * level) * shorten * flicker;
                 let r = if large { &regions.plume_large[tint] } else { &regions.plume_small[tint] };
                 let ew = rot * exhaust;
                 let at = world_of(pos, angle, nozzle);
+                let width = 0.85 + 0.15 * level;
                 queue.push(FxSprite {
                     rect: r.uv,
                     pos: at,
                     angle: ew.x.atan2(-ew.y),
-                    size: r.cells * Vec2::new(0.85 + 0.15 * out, len / full),
+                    size: r.cells * Vec2::new(width, len / full),
                     anchor: r.anchor(),
-                    color: Color::WHITE.with_alpha(0.55 + 0.45 * out),
+                    color: Color::WHITE.with_alpha(0.55 + 0.45 * level),
                     z: Z_TRAILS,
                 });
+                // Cruise: a hot, steady core down the middle of the calm flame.
+                if calm > 0.0 {
+                    let p = &style.plume;
+                    let core_len = len * p.core_length;
+                    let nominal_width = if large { 1.5 } else { 0.6 };
+                    queue.push(FxSprite {
+                        rect: regions.soft.uv,
+                        pos: at + ew * (0.5 * core_len),
+                        angle: ew.x.atan2(-ew.y),
+                        size: Vec2::new(nominal_width * width * p.core_width, core_len),
+                        anchor: Vec2::ZERO,
+                        color: p.core[tint].with_alpha(p.core_opacity * calm * level),
+                        z: Z_TRAILS,
+                    });
+                }
 
-                // Trail particles from the plume tip, carried with the ship's velocity at that point.
-                if out > 0.05 {
+                // Trail particles from the plume tip, carried with the ship's velocity at that point (a thinner
+                // trail while cruising).
+                if level > 0.05 {
                     let (rate, speed, life, r0) = if large { (12.0, 7.4, 0.6, 0.095) } else { (14.0, 5.2, 0.45, 0.04) };
-                    let rate = rate * (0.5 + 0.5 * out);
+                    let rate = rate * (0.5 + 0.5 * level) * (1.0 - calm * (1.0 - style.plume.cruise_trail));
                     view.emit[i] += dt * rate;
                     let tip = at + ew * len;
                     let arm = tip - v2(piece.com_world());
