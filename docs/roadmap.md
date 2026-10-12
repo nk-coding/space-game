@@ -36,10 +36,17 @@ Niklas's play-test feedback, decided interactively (GDR-0041 to GDR-0047, `docs/
   GDR-0042; `raider_basic` retuned to stand off at 85% and orbit at 67% of its reach).
 - Done: shields as glowing energy bubbles, one batched procedural mesh (GDR-0043, ADR-0029); see them hit with
   `?scene=showcase&fire=1&zoom=70`. The content embed in `data/build.rs` now tracks every file and directory.
-- Vessel model in `sim` (GDR-0013, 0038, 0044, 0045) and ramming v2 (GDR-0047): agent in a worktree.
+- Done: the vessel model in `sim` (GDR-0013, 0038, 0044, 0045; `docs/sim.md` "Vessels"): owners, split-off
+  vessels inheriting slot-limited behavior, focus as a sim command with automatic fallback, control cost and
+  capacity with idle-by-priority, mind capacity with newest-dormant and wake/swap, friendly and shielded rams;
+  ramming v2 (GDR-0047). Placeholders: logic core N 16, automaton core N 4, player mind capacity 24.
 
 Open questions for Niklas (ask interactively):
 - Mind capacity numbers and N per core type: lead placeholders until he sets them.
+- Vessel model lead defaults to review (`docs/sim.md` "Vessels", marked *lead default*): focus fallback order;
+  a dark focus keeps the focus; dormant vessels are fully dark but owned; reactors idle after every consumer.
+  Known limits: the flight computer doesn't know idle actuators; shots have no friendly rule (a split-off vessel
+  can hit its parent).
 - Shield collapses are rare in play (regen 1.5/s vs ~0.4 per cannon hit, kinetic passes half to the hull): a
   balance question once fights are tuned. All bubbles draw on one layer above every ship.
 - Lead defaults to review: diagonal top speed can beat a rating (per-axis falloff); differential thrust nudges a
@@ -54,9 +61,9 @@ Client leftovers:
 
 Now unblocked (Rapier merged):
 - Engine exhaust damages and heats parts in its path (replaces the open-space rule; plume from engine data);
-  hits own parts and enemies, not friendly vessels (GDR-0046). After the speed change and the vessel model
-  (needs teams).
-- Client side of the vessel model: fleet bar (wake/swap dormant vessels), focus hotkey, camera glide.
+  hits own parts and enemies, not friendly vessels (GDR-0046). Unblocked: owners and teams exist now.
+- Client side of the vessel model: fleet bar (wake/swap dormant vessels, `ShipCommand::Wake`), camera glide on
+  focus switches; V / Shift+V and click-to-focus already go through `ShipCommand::Focus`.
 
 
 ## Phase 4: measurement
