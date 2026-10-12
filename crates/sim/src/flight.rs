@@ -5,14 +5,18 @@
 //! * **Heading**: time-optimal-ish turn rate `ω_des = sign(e)·min(ω_max, √(2·margin·α·|e|), gain·|e|)` with
 //!   `α` the piece's planning angular acceleration (pure torque + differential thrust), then
 //!   `τ = I·(ω_des − ω)/DT`. Big ships plan with their small `α` and do not overshoot; small ones snap.
-//! * **Velocity**: dead-beat `F = m·(v_des − v)/DT` in the piece frame, clamped by what the thrusters can do.
-//! * **Soft top speed**: `v_top = top_speed_k·√(a)`, `a` = force of the best thrust axis / mass.
+//! * **Velocity**: dead-beat `F = m·(v_des − v)/DT` in the piece frame, clamped by what the thrusters can do
+//!   at this tick's velocity (each row's rated-speed falloff, `ship::rated_falloff`), so it never overshoots.
+//! * **Top speed** (GDR-0041): each thrust group stops pushing at the rated speed of its fastest thrusters, so
+//!   the reachable velocities form a box in the piece frame (`Kin::speeds`, `Kin::top_along`). No drag.
+//! * **Cruise flame**: the share of each engine group's top speed that the velocity goal asks along the
+//!   engine's push direction (`Actuation::cruise`), so engines held at a speed do not look dead.
 //! * The plan runs on the state at the end of the last tick, so every ship sees the same world (order-free).
 
 use core::f32::consts::{FRAC_PI_2, PI};
 
 use crate::DT;
-use crate::alloc::allocate;
+use crate::alloc::{allocate, group_of};
 use crate::config::{FlightTuning, SimConfig};
 use crate::design::NO_SLOT;
 use crate::hash::{StateHash, StateHasher};
@@ -55,8 +59,8 @@ pub enum AimMode {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PilotInput {
     /// Touch stick, world direction, length 0..1 (longer is clamped). Without a lock: "fly that way", the length
-    /// sets the speed as a fraction of the soft top speed. With a lock: strafe that way. Ignored when `axes` is
-    /// set.
+    /// sets the speed as a fraction of the top speed. With a lock: strafe that way (up to the top speed the
+    /// thrusters reach that way). Ignored when `axes` is set.
     pub stick: Vec2,
     /// Keep the nose on this target.
     pub lock: Option<Target>,
@@ -146,6 +150,7 @@ pub enum HelmMode {
 /// What the flight computer did this tick (for HUDs and tuning).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct FlightTelemetry {
+    /// Top speed along the best thrust axis (m/s, `Kin::top_speed`).
     pub top_speed: f32,
     pub goal: Option<FlightGoal>,
     /// The nose angle it steers to, if any.
@@ -190,10 +195,13 @@ pub struct Kin {
     pub inertia: f32,
     /// Thrust per group (forward, backward, right, left), kN.
     pub caps: [f32; 4],
+    /// Top speed per group (m/s): where its fastest thrusters stop pushing (`ThrustAuthority::speed`).
+    pub speeds: [f32; 4],
     /// Group with the most thrust (forward wins ties).
     pub best: usize,
     /// Best group's acceleration (m/s²).
     pub accel: f32,
+    /// Top speed along the best group (m/s): the stick's full length, `Flee`, the cap of every maneuver.
     pub top_speed: f32,
     /// Planning angular acceleration (rad/s²).
     pub alpha: f32,
@@ -206,7 +214,7 @@ pub struct Kin {
 }
 
 impl Kin {
-    pub fn of(p: &Piece, tuning: &FlightTuning) -> Kin {
+    pub fn of(p: &Piece) -> Kin {
         let a = &p.authority;
         let caps = [a.forward, a.backward, a.right, a.left];
         let mut best = 0;
@@ -253,9 +261,10 @@ impl Kin {
             mass,
             inertia,
             caps,
+            speeds: a.speed,
             best,
             accel,
-            top_speed: tuning.top_speed_k * sqrt(accel),
+            top_speed: a.speed[best],
             alpha: (a.torque_pure + diff) / inertia,
             reach,
             projectile_speed,
@@ -307,6 +316,31 @@ impl Kin {
             c = c.min(cy / ay);
         }
         if c.is_finite() { c } else { 0.0 }
+    }
+
+    /// Top speed reachable along body-frame unit vector `u` (m/s). Each group stops pushing at its own top
+    /// speed, so the reachable velocities form a box; this is the farthest point of the box along `u`. Groups
+    /// without thrusters are left out (that part of `u` cannot be pushed at all, as before).
+    pub fn top_along(&self, u: Vec2) -> f32 {
+        let sx = if u.x >= 0.0 {
+            self.speeds[2]
+        } else {
+            self.speeds[3]
+        };
+        let sy = if u.y >= 0.0 {
+            self.speeds[0]
+        } else {
+            self.speeds[1]
+        };
+        let (ax, ay) = (u.x.abs(), u.y.abs());
+        let mut s = f32::INFINITY;
+        if ax > 1e-6 && sx > 0.0 {
+            s = s.min(sx / ax);
+        }
+        if ay > 1e-6 && sy > 0.0 {
+            s = s.min(sy / ay);
+        }
+        if s.is_finite() { s } else { 0.0 }
     }
 
     /// Deceleration the ship can plan on for stopping: the axis opposite its best one if strong enough,
@@ -446,7 +480,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
         return Plan::DARK;
     }
     let tuning = &cfg.flight;
-    let kin = Kin::of(piece, tuning);
+    let kin = Kin::of(piece);
     if let Some(b) = &ship.behavior {
         let (goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
         return Plan {
@@ -565,9 +599,12 @@ pub fn pilot_goal(
     let pushed = len > tuning.stick_deadzone;
     let released_velocity = if input.drift { None } else { Some(Vec2::ZERO) };
     if let Some(t) = lock {
+        // Strafe: the heading belongs to the lock, so the full stick is the top speed the thrusters reach
+        // along the stick from this heading.
         let heading = lock_heading(&t);
         let velocity = if pushed {
-            Some(stick * kin.top_speed)
+            let u = kin.rot.apply_inverse(stick) * (1.0 / stick.length());
+            Some(stick * kin.top_along(u))
         } else {
             released_velocity
         };
@@ -583,9 +620,10 @@ pub fn pilot_goal(
             velocity: released_velocity,
         };
     }
-    // Fly that way. For choosing the heading, a small overspeed along the stick (up to 10% of top speed) is
-    // ignored, so a ship with engines only at the back does not flip around for it (soft top speed); the
-    // velocity goal stays exact, so nothing thrusts while the ship is too fast.
+    // Fly that way: the ship turns its best axis onto the stick, so the full stick is that axis's top speed.
+    // For choosing the heading, a small overspeed along the stick (up to 10% of top speed, e.g. after a push)
+    // is ignored, so a ship with engines only at the back does not flip around for it; the velocity goal stays
+    // exact, so whatever can brake brakes.
     let v_des = stick * kin.top_speed;
     let s_dir = stick * (1.0 / stick.length());
     let mut dv = v_des - kin.vel;
@@ -630,12 +668,22 @@ fn keyboard_goal(
     let (turn, thrust, strafe) = (dz(axes.turn), dz(axes.thrust), dz(axes.strafe));
     let nose = kin.rot.apply(Vec2::new(0.0, 1.0));
     let side = kin.rot.apply(Vec2::new(1.0, 0.0));
-    let top = kin.top_speed;
+    // Each key's full press is the top speed of the thrusters that push that way.
+    let along = if thrust >= 0.0 {
+        kin.speeds[0]
+    } else {
+        kin.speeds[1]
+    };
+    let across = if strafe >= 0.0 {
+        kin.speeds[2]
+    } else {
+        kin.speeds[3]
+    };
     let moving = thrust != 0.0 || strafe != 0.0;
     let velocity = if input.drift {
-        // Pure thrust along the pressed axes up to the soft top speed; nothing else is corrected.
+        // Pure thrust along the pressed axes up to their top speed; nothing else is corrected.
         if moving {
-            let push = |key: f32, now: f32| {
+            let push = |key: f32, top: f32, now: f32| {
                 let want = key * top;
                 if key > 0.0 {
                     (want - now).max(0.0)
@@ -645,13 +693,17 @@ fn keyboard_goal(
                     0.0
                 }
             };
-            Some(kin.vel + nose * push(thrust, kin.vel.dot(nose)) + side * push(strafe, kin.vel.dot(side)))
+            Some(
+                kin.vel
+                    + nose * push(thrust, along, kin.vel.dot(nose))
+                    + side * push(strafe, across, kin.vel.dot(side)),
+            )
         } else {
             None
         }
     } else {
         // Go where it points: the velocity goal lies along the pressed axes only (zero = brake).
-        Some(nose * (thrust * top) + side * (strafe * top))
+        Some(nose * (thrust * along) + side * (strafe * across))
     };
     let heading = match locked {
         Some(h) => h,
@@ -693,8 +745,17 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         let rows = piece.thrusters.len();
         let sources = piece.torque_sources.len();
         piece.act.resize(rows, sources);
+        piece.falloff.clear();
+        piece.falloff.resize(rows, 1.0);
         if Some(piece.id) != control || !piece.active {
             continue;
+        }
+        // Rated-speed falloff of every row at this tick's velocity, for the allocation below and for the
+        // systems (raw throttles too): the same numbers both times.
+        let kin = Kin::of(piece);
+        let v_local = kin.rot.apply_inverse(kin.vel);
+        for (f, t) in piece.falloff.iter_mut().zip(&piece.thrusters) {
+            *f = t.falloff(v_local);
         }
         if plan.raw {
             for (i, t) in piece.thrusters.iter().enumerate() {
@@ -727,7 +788,6 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             continue;
         };
         let tuning = &cfg.flight;
-        let kin = Kin::of(piece, tuning);
 
         // Velocity → force in the piece frame.
         let (a_world, dv_len) = match goal.velocity {
@@ -775,13 +835,13 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         };
         let torque = kin.inertia * (omega_des - kin.omega) * (1.0 / DT);
 
-        // Availability now (power is settled later by the systems).
+        // Availability now, after the speed falloff (power is settled later by the systems).
         let fmax = &mut scratch.fmax;
         fmax.clear();
-        fmax.extend(piece.thrusters.iter().map(|t| {
+        fmax.extend(piece.thrusters.iter().zip(&piece.falloff).map(|(t, &f)| {
             let ps = &parts[t.part as usize];
             if t.clear && ps.alive && !ps.overheated {
-                t.max_force
+                t.max_force * f
             } else {
                 0.0
             }
@@ -806,6 +866,18 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             turning,
             &mut piece.act,
         );
+        // Cruise flame (GDR-0041): how much of its group's top speed the velocity goal asks along each
+        // engine's push direction. Holding the stick at any speed shows it (full stick at the top speed: 1);
+        // braking (goal 0) and coasting (no goal) show none.
+        if let Some(v) = goal.velocity {
+            let v_goal = kin.rot.apply_inverse(v);
+            for (c, t) in piece.act.cruise.iter_mut().zip(&piece.thrusters) {
+                let top = kin.speeds[group_of(t.dir)];
+                if !t.rcs && top > 0.0 {
+                    *c = (v_goal.dot(t.dir) / top).clamp(0.0, 1.0);
+                }
+            }
+        }
         *telemetry = FlightTelemetry {
             top_speed: kin.top_speed,
             goal: Some(goal),

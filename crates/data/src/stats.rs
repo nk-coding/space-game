@@ -25,8 +25,10 @@ pub const BUILTIN_STATS: &[&str] = &[
     "penetration",
     "recoil",
     "thrust",
+    "rated_speed",
     "gimbal",
     "rcs_thrust",
+    "rcs_rated_speed",
     "torque",
     "shield_radius",
     "shield_capacity",
@@ -174,12 +176,14 @@ impl Content {
         }
         if let Some(e) = &part.engine {
             v.push(("thrust", e.thrust));
+            v.push(("rated_speed", e.rated_speed));
             if e.gimbal != 0.0 {
                 v.push(("gimbal", e.gimbal));
             }
         }
         if let Some(r) = &part.rcs {
             v.push(("rcs_thrust", r.thrust));
+            v.push(("rcs_rated_speed", r.rated_speed));
         }
         if let Some(g) = &part.gyro {
             v.push(("torque", g.torque));

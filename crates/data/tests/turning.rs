@@ -40,17 +40,18 @@ fn turning_stat_lines() {
     };
     let gyro = lines("gyro");
     assert!(
-        gyro.contains(&("torque".into(), "300 kN·m".into())),
+        gyro.contains(&("torque".into(), "5000 kN·m".into())),
         "{gyro:?}"
     );
     let rcs = lines("rcs_pod");
     assert!(
-        rcs.contains(&("rcs_thrust".into(), "4 kN".into())),
+        rcs.contains(&("rcs_thrust".into(), "60 kN".into()))
+            && rcs.contains(&("rcs_rated_speed".into(), "14 m/s".into())),
         "{rcs:?}"
     );
     let thruster = lines("thruster");
     let ids: Vec<&str> = thruster.iter().map(|(s, _)| s.as_str()).collect();
-    // stats.ron order: thrust, then gimbal.
+    // stats.ron order: thrust, rated speed, then gimbal.
     assert_eq!(
         ids,
         [
@@ -61,9 +62,11 @@ fn turning_stat_lines() {
             "heat_output",
             "heat_limit",
             "thrust",
+            "rated_speed",
             "gimbal"
         ]
     );
+    assert_eq!(thruster[7].1, "20 m/s");
     assert_eq!(thruster.last().unwrap().1, "5°");
     assert!(lines("logic_core").iter().any(|(s, _)| s == "torque"));
 }
@@ -156,7 +159,7 @@ fn turning_validation() {
     let head = r#"id: "p", name: "P", summary: "S.", category: "propulsion", size: (1, 1), build_points: 1, mass: 1, hp: 1"#;
     let err = load(
         "parts/p.ron",
-        &format!("({head}, engine: (thrust: 5, gimbal: 60))"),
+        &format!("({head}, engine: (thrust: 5, rated_speed: 10, gimbal: 60))"),
     )
     .unwrap_err();
     assert!(
@@ -172,7 +175,7 @@ fn turning_validation() {
         "{}",
         show(&err)
     );
-    let err = load("parts/p.ron", &format!("({head}, rcs: (thrust: -1))")).unwrap_err();
+    let err = load("parts/p.ron", &format!("({head}, rcs: (thrust: -1, rated_speed: 10))")).unwrap_err();
     assert!(
         err.iter().any(|p| p.field.as_deref() == Some("rcs.thrust")),
         "{}",
@@ -180,7 +183,7 @@ fn turning_validation() {
     );
     let err = load(
         "parts/p.ron",
-        r#"(id: "p", name: "P", summary: "S.", category: "hull", size: (1, 1), build_points: 1, hull: true, rcs: (thrust: 1))"#,
+        r#"(id: "p", name: "P", summary: "S.", category: "hull", size: (1, 1), build_points: 1, hull: true, rcs: (thrust: 1, rated_speed: 10))"#,
     )
     .unwrap_err();
     assert!(
@@ -189,7 +192,20 @@ fn turning_validation() {
         show(&err)
     );
     // Gimbal defaults to 0 and is optional.
-    load("parts/p.ron", &format!("({head}, engine: (thrust: 5))")).unwrap();
+    load("parts/p.ron", &format!("({head}, engine: (thrust: 5, rated_speed: 10))")).unwrap();
+    // The rated speed is required (a parse error) and positive (engines and RCS).
+    let missing = format!("({head}, engine: (thrust: 5))");
+    let err = Pack::from_files([("pack.ron", MOD), ("parts/p.ron", missing.as_str())]).unwrap_err();
+    assert!(err.iter().any(|p| p.message.contains("rated_speed")), "{}", show(&err));
+    for block in ["engine: (thrust: 5, rated_speed: 0)", "rcs: (thrust: 5, rated_speed: -3)"] {
+        let err = load("parts/p.ron", &format!("({head}, {block})")).unwrap_err();
+        assert!(
+            err.iter()
+                .any(|p| p.field.as_deref().is_some_and(|f| f.ends_with(".rated_speed"))),
+            "{block}: {}",
+            show(&err)
+        );
+    }
 }
 
 #[test]

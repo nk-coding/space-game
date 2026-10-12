@@ -1,7 +1,10 @@
-// Propulsion. PLACEHOLDER NUMBERS: thrust from the concept-board drydock; gimbal, gyro and RCS values are invented, all for feel only.
+// Propulsion. PLACEHOLDER NUMBERS, all for feel only: thrust, torque and rated speeds were set on 12 Oct 2026 for
+// the agility target "Agile" (GDR-0042: Halvex Runner 90° in ~0.8 s, 0 → ~22 m/s in ~2.5 s; small ships
+// snappier), about 16× the concept-board thrust; gimbal values are invented.
 // Engines push towards the part's forward side and need open cells directly behind them; `gimbal` swings their
-// thrust a few degrees to either side. Gyros turn the ship without thrust; RCS pods fire a nozzle out of every
-// side that is open to space.
+// thrust a few degrees to either side. `rated_speed` (GDR-0041): the thrust fades out as the ship's speed along
+// the push direction approaches it, so the fastest engines pushing a way set the top speed that way. Gyros turn
+// the ship without thrust; RCS pods fire a nozzle out of every side that is open to space.
 // Power tier: everything that moves the ship is `Normal` (the default), so thrust and turning brown out together.
 [
     (
@@ -17,7 +20,7 @@
         hp: 1,
         power: (draw: 2),
         heat: (output: 0.8, limit: 3.2),
-        engine: (thrust: 12, gimbal: 5),
+        engine: (thrust: 200, rated_speed: 20, gimbal: 5),
     ),
     (
         id: "torch_drive",
@@ -32,7 +35,7 @@
         hp: 4,
         power: (draw: 6),
         heat: (output: 4, limit: 5),
-        engine: (thrust: 45, gimbal: 3),
+        engine: (thrust: 700, rated_speed: 22, gimbal: 3),
     ),
     (
         id: "gyro",
@@ -48,7 +51,7 @@
         hp: 1,
         power: (draw: 3),
         heat: (output: 1, limit: 4),
-        gyro: (torque: 300),
+        gyro: (torque: 5000),
     ),
     (
         id: "rcs_pod",
@@ -64,6 +67,6 @@
         hp: 1,
         power: (draw: 1),
         heat: (output: 0.4, limit: 3),
-        rcs: (thrust: 4),
+        rcs: (thrust: 60, rated_speed: 14),
     ),
 ]

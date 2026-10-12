@@ -12,6 +12,7 @@ pub struct Style {
     pub seam: Color,
     /// Seam width on each tile edge, in cells.
     pub seam_width: f32,
+    pub plume: PlumeStyle,
     /// Armour tone key (`ship.armor.<key>`) to tile colour.
     pub armor: HashMap<String, Color>,
     /// System colour key (`ship.system_colors.<key>`) to colour.
@@ -37,6 +38,15 @@ impl Style {
             machine_tile: atlas.token_color("ship.machine_tile"),
             seam: atlas.token_color("ship.seam"),
             seam_width: atlas.token_f32("ship.seam_width_cells"),
+            plume: PlumeStyle {
+                cruise_length: atlas.token_f32("ship.plume.cruise.length"),
+                cruise_flicker: atlas.token_f32("ship.plume.cruise.flicker"),
+                cruise_trail: atlas.token_f32("ship.plume.cruise.trail"),
+                core: [atlas.token_color("ship.plume.cruise.core_color"), atlas.token_color("ship.plume.cruise.core_color_enemy")],
+                core_opacity: atlas.token_f32("ship.plume.cruise.core_opacity"),
+                core_width: atlas.token_f32("ship.plume.cruise.core_width"),
+                core_length: atlas.token_f32("ship.plume.cruise.core_length"),
+            },
             armor: group("ship.armor", &["steel", "composite", "reactive", "enemy"]),
             system: group(
                 "ship.system_colors",
@@ -104,6 +114,25 @@ impl ShieldStyle {
             collapse_seconds: f("collapse_seconds"),
         }
     }
+}
+
+/// The calm cruise flame of an engine holding a speed (`ship.plume.cruise` in the tokens, GDR-0041). Shares
+/// are of the burning flame at the same level.
+#[derive(Clone, Debug)]
+pub struct PlumeStyle {
+    /// Flame length while cruising.
+    pub cruise_length: f32,
+    /// Flicker amplitude while cruising (steadier).
+    pub cruise_flicker: f32,
+    /// Trail particle rate while cruising.
+    pub cruise_trail: f32,
+    /// Hot core colour: player (teal) and enemy (coral) plumes.
+    pub core: [Color; 2],
+    pub core_opacity: f32,
+    /// Core width, share of the plume's width.
+    pub core_width: f32,
+    /// Core length, share of the flame's length.
+    pub core_length: f32,
 }
 
 /// Linear RGBA floats for a vertex colour, with an extra opacity factor.

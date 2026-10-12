@@ -1,6 +1,6 @@
 # GDR-0009: Controls: stick + lock with an always-on flight computer; letting go brakes
 
-- Status: Accepted; PC/WASD part superseded by [GDR-0040](0040-keyboard-flight-and-smart-lock-aim.md) (2026-10-12)
+- Status: Accepted; PC/WASD part superseded by [GDR-0040](0040-keyboard-flight-and-smart-lock-aim.md) (2026-10-12); soft top speed superseded by [GDR-0041](0041-engine-rated-speed.md) (2026-10-12: top speed from each engine's rated speed)
 - Date: 2026-10-10
 - Decided by: Niklas
 - Related: [GDR-0010](0010-turning-sources.md), [GDR-0011](0011-locked-flight-rear-engines-trade-off.md), [GDR-0015](0015-layered-behavior.md), [GDR-0016](0016-combat-pace-and-aiming.md), [GDR-0023](0023-shot-leading.md), `docs/sim.md` "Flight", `docs/spike-plan.md` "Flight model"
@@ -26,7 +26,8 @@ spike.
 - Tap or click a ship to lock it: the flight computer keeps the nose on it and the stick strafes.
 - Letting go brakes to a stop with the ship's own thrusters by default. A drift toggle (player setting) turns
   braking off.
-- Soft top speed from thrust and mass (implemented as `k × √(thrust / mass)`, a placeholder).
+- Soft top speed from thrust and mass (implemented as `k × √(thrust / mass)`, a placeholder). (Superseded on 12 Oct
+  2026 by GDR-0041: the top speed comes from each engine's rated speed.)
 - PC: WASD acts as the stick; the mouse locks and fires. (Superseded on 12 Oct 2026 by GDR-0040: ship-relative
   keys, smart lock aim.)
 

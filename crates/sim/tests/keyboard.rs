@@ -54,15 +54,16 @@ fn rcs_ship(c: &data::Content) -> std::sync::Arc<sim::ShipDesign> {
 fn rotate_input_turns_the_ship() {
     let c = content();
     let (mut w, s) = world_with(design(&c, "halvex_runner"));
-    steer(&mut w, s, axes(1.0, 0.0, 0.0), 45);
+    steer(&mut w, s, axes(1.0, 0.0, 0.0), 12);
     let left = body(&w, s).angle;
     assert!(left > 0.3 && left < 2.5, "A turns counter-clockwise: {left}");
+    assert!(body(&w, s).angvel > 1.0, "and keeps turning");
     // Released: stops turning (and holds roughly where it is).
     steer(&mut w, s, axes(0.0, 0.0, 0.0), 150);
     let held = body(&w, s);
     assert!(held.angvel.abs() < 0.02, "stops turning: {}", held.angvel);
     let (mut w, s) = world_with(design(&c, "halvex_runner"));
-    steer(&mut w, s, axes(-1.0, 0.0, 0.0), 45);
+    steer(&mut w, s, axes(-1.0, 0.0, 0.0), 12);
     let right = body(&w, s).angle;
     assert!(right < -0.3 && right > -2.5, "D turns clockwise: {right}");
 }
@@ -168,6 +169,15 @@ fn the_nudge_springs_back() {
     for _ in 0..450 {
         tick(&mut w, 0.0, &mut nudge);
     }
+    // Back on the target. (The turns' differential thrust nudged the runner a few metres, which it cannot brake
+    // under a lock with engines only at the back, so compare with the bearing now.)
     let back = body(&w, me).angle;
-    assert!(wrap(back - aimed).abs() < 0.05, "springs back to the target: {}", wrap(back - aimed));
+    let to = {
+        let t = w.ship(target).unwrap();
+        let ship = w.ship(me).unwrap();
+        t.piece(t.control_piece().unwrap()).unwrap().com_world()
+            - ship.piece(ship.control_piece().unwrap()).unwrap().com_world()
+    };
+    let bearing = to.y.atan2(to.x) - std::f32::consts::FRAC_PI_2;
+    assert!(wrap(back - bearing).abs() < 0.05, "springs back to the target: {}", wrap(back - bearing));
 }

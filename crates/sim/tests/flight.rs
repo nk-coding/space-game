@@ -87,7 +87,7 @@ fn stick_sets_course_and_speed_and_release_brakes() {
         );
         assert!(
             vmax < 1.05 * top,
-            "{id}: soft top speed exceeded: {vmax} vs {top}"
+            "{id}: top speed exceeded: {vmax} vs {top}"
         );
         // The nose points along the stick (east = body angle −90°).
         assert!(
@@ -230,6 +230,7 @@ fn row(x: f32, y: f32, dir: Vec2, force: f32, gimbal: f32) -> sim::Thruster {
         arm: point,
         torque_per_force: point.cross(dir),
         max_force: force,
+        rated: 20.0,
         clear: true,
         gimbal,
         lat,
@@ -337,10 +338,13 @@ fn rcs_nozzles_follow_open_sides_and_strafe() {
     idle(&mut w, 300);
     let p = piece(&w, s);
     assert!(p.body.linvel.x > 0.5, "{:?}", p.body.linvel);
+    // The nose stays on the point (which drifts a few degrees to the left as the ship slides).
+    let bearing = Kin::nose_heading(Vec2::new(0.0, 1000.0) - p.com_world());
     assert!(
-        p.body.angle.abs() < 2f32.to_radians(),
-        "nose {}",
-        p.body.angle.to_degrees()
+        wrap_angle(p.body.angle - bearing).abs() < 2f32.to_radians(),
+        "nose {} vs bearing {}",
+        p.body.angle.to_degrees(),
+        bearing.to_degrees()
     );
     let out: f32 = p
         .thrusters
@@ -449,7 +453,7 @@ fn content_raider_hunts_and_fires() {
             fired += 1;
         }
     }
-    // The cannon reaches 75 m; `raider_basic` closes to 67% of that, then strafes around within 120%.
+    // The cannon reaches 75 m; `raider_basic` closes to 85% of that, then strafes around within 120%.
     assert!(closest < 1.2 * 75.0, "closest approach {closest}");
     assert!(fired > 30, "fired on {fired} ticks");
     assert_eq!(
