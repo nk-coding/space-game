@@ -21,7 +21,7 @@ use crate::atlas::Atlas;
 use crate::fx::Effects;
 use crate::shield::ShieldBubbles;
 use crate::ship_model::{DesignVisual, design_visual};
-use crate::ship_view::{PieceView, spawn_piece_view, world_of};
+use crate::ship_view::{PieceView, Z_FOCUS, spawn_piece_view, world_of};
 use crate::style::Style;
 
 /// The simulation type the client runs. Change the backend here once the physics engine is chosen.
@@ -168,11 +168,9 @@ impl SimWorld {
         }
     }
 
-    /// Draw order: the focused vessel on top, every other piece on its own layer.
-    fn z_for(&mut self, player: bool) -> f32 {
-        if player {
-            return 100.0;
-        }
+    /// Draw order: every piece gets its own layer (z 10..89, round robin); the focused vessel draws above them
+    /// all at `ship_view::Z_FOCUS`, decided every frame in `sync_piece_views` (so a focus switch reorders at once).
+    fn next_layer(&mut self) -> f32 {
         self.next_z = (self.next_z + 1) % 80;
         10.0 + self.next_z as f32
     }
@@ -430,10 +428,11 @@ fn respawn_view(
     }
     let Some(design_id) = world.sim.ship(ship).map(|s| s.design().id.clone()) else { return };
     let Some(dv) = world.visual(&design_id, style) else { return };
-    let z = world.z_for(player == Some(ship) && world.sim.ship(ship).and_then(|s| s.control_piece()) == Some(piece));
+    let layer = world.next_layer();
     let Some(s) = world.sim.ship(ship) else { return };
     let Some(p) = s.piece(piece) else { return };
-    let e = spawn_piece_view(commands, meshes, atlas, style, toggles, &dv, s, p, z, 1.0);
+    let z = if player == Some(ship) && p.controlled { Z_FOCUS } else { layer };
+    let e = spawn_piece_view(commands, meshes, atlas, style, toggles, &dv, s, p, layer, z, 1.0);
     world.views.insert((ship, piece), e);
 }
 

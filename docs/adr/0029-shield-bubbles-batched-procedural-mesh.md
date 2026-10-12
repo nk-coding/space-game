@@ -51,3 +51,9 @@ composes shaders as WESL (WGSL plus imports and `@if`), and the 2D view bind gro
   the faint fill disappears over hull tiles (wanted), the rim and the hits still show.
 - The shader handles the `SRGB_OUTPUT` define the camera uses (ADR-0020); tonemapping in the shader and OKLab
   compositing are not handled.
+
+12 Oct 2026 (fleet-bar agent): the bubbles are now **two** batched meshes with the same material, one per layer:
+the focused vessel's bubbles at z 200 (above it), every other bubble at z 95 (above every other ship, below the
+focus at z 100). The focus flying over another ship's bubble no longer appears under it; two draw calls in all,
+whatever the number of bubbles. Two non-focus ships still show each other's bubbles over their hulls (one
+layer for all of them). See `docs/client.md` "Shield bubbles".

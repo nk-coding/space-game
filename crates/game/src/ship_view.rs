@@ -17,6 +17,7 @@ use sim::{PieceId, ShipId};
 use crate::RenderToggles;
 use crate::atlas::Atlas;
 use crate::meshbuf::{MeshBuf, ensure_ccw, inset_convex};
+use crate::scene::PilotFocus;
 use crate::ship_model::DesignVisual;
 use crate::sim_bridge::{SimWorld, v2};
 use crate::style::{Style, vcol};
@@ -89,6 +90,7 @@ pub struct PieceView {
     pub body: Entity,
     /// Hull glow on (the piece is active).
     pub lit: bool,
+    /// The piece's own draw layer (z 10..89); the focused vessel draws at [`Z_FOCUS`] instead.
     pub z: f32,
     pub enemy: bool,
     pub glow: Color,
@@ -102,6 +104,9 @@ pub struct PieceView {
 
 #[derive(Component)]
 pub struct PieceBody;
+
+/// The focused vessel's piece draws above every other ship (their layers are z 10..89).
+pub const Z_FOCUS: f32 = 100.0;
 
 fn variant(toggles: &RenderToggles, lit: bool) -> usize {
     match (toggles.debug_shapes, toggles.glow_sprites, lit) {
@@ -134,6 +139,7 @@ pub fn spawn_piece_view(
     dv: &DesignVisual,
     ship: &sim::Ship,
     piece: &sim::Piece,
+    layer: f32,
     z: f32,
     alpha: f32,
 ) -> Entity {
@@ -168,7 +174,7 @@ pub fn spawn_piece_view(
         variant: k,
         body,
         lit,
-        z,
+        z: layer,
         emit: Vec::new(),
         center: lc,
         radius,
@@ -180,6 +186,7 @@ pub fn spawn_piece_view(
 #[allow(clippy::too_many_arguments)]
 pub fn sync_piece_views(
     world: Res<SimWorld>,
+    focus: Res<PilotFocus>,
     fixed: Res<Time<Fixed>>,
     toggles: Res<RenderToggles>,
     atlas: Res<Atlas>,
@@ -193,7 +200,8 @@ pub fn sync_piece_views(
         let Some(ship) = world.sim.ship(view.ship) else { continue };
         let Some(piece) = ship.piece(view.piece) else { continue };
         let (pos, angle) = piece.render_pose(alpha);
-        tf.translation = Vec3::new(pos.x, pos.y, view.z);
+        let z = if focus.0 == Some(view.ship) && piece.controlled { Z_FOCUS } else { view.z };
+        tf.translation = Vec3::new(pos.x, pos.y, z);
         tf.rotation = Quat::from_rotation_z(angle);
 
         let lit = piece.active;
