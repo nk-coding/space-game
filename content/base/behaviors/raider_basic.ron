@@ -1,6 +1,9 @@
 // The rogue automatons' pack tactic (was the hard-coded `RaiderBrain`). Distances are shares of the weapon
-// reach, so it works for any armed ship: a raider (cannon, 75 m) engages from 90 m, attacks from 50 m and
-// orbits at 45 m. It fits the two rule slots of one automaton core. PLACEHOLDER numbers.
+// reach, so it works for any armed ship: a raider (cannon, 75 m) engages from 90 m, attacks from 64 m and
+// orbits at 50 m. It fits the two rule slots of one automaton core. PLACEHOLDER numbers.
+// Retuned on 12 Oct 2026 for the faster ships (GDR-0042): at 50 m / 45 m the pack sat inside the Halvex
+// Runner's pulse lasers (60 m) and beams (45 m) and died within a second or two each; now it shoots from just
+// outside the pulse lasers and circles just outside the beams (see docs/sim.md "Behaviors").
 (
     id: "raider_basic",
     name: "Raider pack",
@@ -9,7 +12,7 @@
     tags: ["automaton", "attack"],
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)",
-        "always -> approach(67%)",
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)",
+        "always -> approach(85%)",
     ],
 )

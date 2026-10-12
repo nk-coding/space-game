@@ -453,7 +453,7 @@ fn content_raider_hunts_and_fires() {
             fired += 1;
         }
     }
-    // The cannon reaches 75 m; `raider_basic` closes to 67% of that, then strafes around within 120%.
+    // The cannon reaches 75 m; `raider_basic` closes to 85% of that, then strafes around within 120%.
     assert!(closest < 1.2 * 75.0, "closest approach {closest}");
     assert!(fired > 30, "fired on {fired} ticks");
     assert_eq!(
