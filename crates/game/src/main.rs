@@ -2,9 +2,12 @@
 //! `docs/client.md` for controls, URL parameters and the structure.
 //!
 //! Module map:
+//! - `mode`: the app mode (flight or drydock; T switches) and what runs in which.
 //! - `atlas`, `style`, `meshbuf`: the baked texture atlas + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
-//! - `scene`: sandbox (player + raider waves), showcase, load test; writes the player's pilot input.
+//! - `scene`: sandbox (player + raider waves), test flight, showcase, load test; writes the player's pilot input.
+//! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
+//! - `ui_kit`, `ui_icons`: bevy_ui widgets with hand-made hit testing; vector icons in UI nodes.
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame.
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
 //! - `shield`: shield bubbles (one batched mesh, procedural shader `shield.wesl`).
@@ -17,11 +20,13 @@ mod atlas;
 mod backdrop;
 mod camera;
 mod controls;
+mod drydock;
 mod fleet_bar;
 mod flight_hud;
 mod fx;
 mod hud;
 mod meshbuf;
+mod mode;
 mod params;
 mod scene;
 mod shield;
@@ -30,6 +35,8 @@ mod ship_view;
 mod sim_bridge;
 mod style;
 mod tuning;
+mod ui_icons;
+mod ui_kit;
 
 use bevy::camera::{CompositingSpace, Hdr};
 use bevy::prelude::*;
@@ -84,14 +91,18 @@ fn main() {
             .set(bevy::log::LogPlugin { filter: "wgpu=error,naga=warn,bevy_render=warn".into(), ..default() }),
     );
     app.add_plugins(EguiPlugin::default());
+    app.insert_state(mode::AppMode::at_start(&params));
     app.insert_resource(ClearColor(Color::srgb_u8(0x01, 0x04, 0x09)))
         .insert_resource(RenderToggles::from_params(&params))
         .insert_resource(params)
         .add_plugins((
             atlas::AtlasPlugin,
             tuning::TuningPlugin,
+            mode::ModePlugin,
             scene::ScenePlugin,
             sim_bridge::SimBridgePlugin,
+            // After the bridge (it reads the content the bridge loads).
+            (drydock::DrydockPlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
             camera::CameraPlugin,
             controls::ControlsPlugin,
             fx::FxPlugin,

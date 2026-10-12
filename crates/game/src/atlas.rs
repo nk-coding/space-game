@@ -2,7 +2,8 @@
 //!
 //! `crates/art` embeds the SVG icons and style tokens, lays every region out in resolution-independent atlas
 //! units and rasterises the layout at a *tier* (pixels per ship cell, a power of two). This module picks the
-//! tier from what the screen needs (camera zoom × window scale factor, capped by the GPU's largest texture),
+//! tier from what the screen needs (camera zoom, or the part icons in the UI when they are larger
+//! ([`UiAtlasNeed`]), × window scale factor, capped by the GPU's largest texture),
 //! rasterises a new atlas when that tier changes (regions and mip chain spread over frames within a time
 //! budget, the old texture stays in use meanwhile; a job for a tier the zoom has already outgrown is dropped
 //! for the new one) and swaps the image in place. Region UVs are normalised and identical at every tier, so
@@ -108,6 +109,11 @@ struct Job {
     longest: f64,
 }
 
+/// Logical pixels per ship cell the part icons in the UI need now (`ui_icons`; 0 when none are shown). The
+/// atlas tier covers this as well as the world zoom.
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct UiAtlasNeed(pub f32);
+
 /// What the atlas does, for the debug overlay (F3).
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct AtlasStatus {
@@ -167,6 +173,7 @@ impl Plugin for AtlasPlugin {
         world.insert_resource(atlas);
         app.init_resource::<RasterJob>()
             .init_resource::<AtlasStatus>()
+            .init_resource::<UiAtlasNeed>()
             .add_systems(Update, (choose_tier, rasterise_step).chain());
     }
 }
@@ -184,11 +191,13 @@ fn max_tier(layout: &art::Layout, limit: u32) -> u32 {
     tier
 }
 
-/// The tier the screen needs: camera zoom (logical px per metre = per cell) × the window's scale factor, capped
-/// by what the GPU can hold.
+/// The tier the screen needs: camera zoom (logical px per metre = per cell, or the UI icons' when larger) × the
+/// window's scale factor, capped by what the GPU can hold.
+#[allow(clippy::too_many_arguments)]
 fn choose_tier(
     time: Res<Time<Real>>,
     rig: Res<CameraRig>,
+    ui_need: Res<UiAtlasNeed>,
     window: Single<&Window, With<PrimaryWindow>>,
     device: Option<Res<RenderDevice>>,
     atlas: Res<Atlas>,
@@ -202,7 +211,8 @@ fn choose_tier(
         info!("atlas: tiers up to {} px/cell (GPU textures up to {} px)", status.max_tier, device.limits().max_texture_dimension_2d);
     }
     let cap = if status.max_tier > 0 { status.max_tier } else { art::MAX_TIER };
-    let need = rig.zoom_target.max(rig.zoom) * window.scale_factor();
+    let need = rig.zoom_target.max(rig.zoom).max(ui_need.0) * window.scale_factor();
+
     status.need = need;
     let want = art::tier_for(need).min(cap);
     let building = job.job.as_ref().map(|j| j.raster.tier());

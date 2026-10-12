@@ -34,17 +34,21 @@ the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)).
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
 | Zoom | wheel, + / − | pinch |
 | Camera | F: follow ↔ free (drag with the middle button) | – |
-| Tuning panel | T | – |
+| Drydock (back to the ship editor; the design is untouched) | T | – |
+| Raider waves off / on (sandbox; off removes the raiders) | C | – |
+| Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the locked ship's active behavior rule) | F3 | – |
 | Render toggles | 1 debug shapes, 2 glow sprites, 3 bloom | – |
 | Hide HUD / pause / reset scene | H / P / Shift+R | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
+The drydock's keys are in [Drydock](#drydock).
 
 ## URL parameters
 
 | Parameter | Meaning |
 |---|---|
+| `scene=drydock` | start in the drydock (default: the sandbox) |
 | `scene=showcase` | runner holding position, three raiders orbiting it, no combat (default: the sandbox) |
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the runner under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
@@ -52,7 +56,7 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600) |
 | `thrust`, `torque`, `speed`, `turn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints this query; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026) |
 | `mind=N` | the player's mind capacity in logic cores (default 24; a runner has 2): `?fleet=3&mind=4` leaves two runners dormant, for trying the fleet bar's swap |
-| `fleet=N` | N extra Halvex Runners fly with you under their default behavior (`skirmisher`); switch with V or the fleet bar |
+| `fleet=N` | N extra copies of the player's design fly with you under their default behavior (`skirmisher`); switch with V or the fleet bar |
 | `tuning=1` | open the tuning panel at start |
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
 | `zoom=N` | start zoom in px per metre |
@@ -60,12 +64,17 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 
 ## Scenes (`scene.rs`)
 
-- **Sandbox** (default): the player flies the Halvex Runner. Waves of automaton raiders (raider brain) spawn
-  105–125 m away; a new wave starts 4 s after the last raider vessel goes dark (a raider shot in half can be
-  two raiders). Wrecks and salvage drift away and are removed when they are more than 320 m from the player or
-  dark for 75 s (the player's vessels, dark or dormant, stay). When the focus loses its last logic core the sim
-  moves the focus to another vessel of the player (a split-off half too); when the player has no vessel left,
-  a new runner re-forms after 3 s.
+- **Sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at start a copy of the Halvex
+  Runner). Waves of automaton raiders (raider brain) spawn 105–125 m away; a new wave starts 4 s after the last
+  raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
+  is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
+  `WAVES ON` / `WAVES OFF (C)`, Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
+  they are more than 320 m from the player or dark for 75 s (the player's vessels, dark or dormant, stay). When
+  the focus loses its last logic core the sim moves the focus to another vessel of the player (a split-off half
+  too); when the player has no vessel left, a new one re-forms after 3 s.
+- **Test flight**: the sandbox launched from the drydock (T or TEST-FLY), waves on, title `TEST FLIGHT`. Losing
+  every vessel returns to the drydock after the same 3 s (`SHIP LOST · BACK TO THE DRYDOCK`) instead of
+  re-forming; T returns at any time. Shift+R restarts the test flight.
 - **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
   raiders per wave, `raiders=N`) start 46 m out and attack the runner, which holds still and doesn't fire back:
   its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the runner breaks up after
@@ -101,17 +110,32 @@ Ships with engines only at the back can't brake or strafe while locked (GDR-0011
 
 ```
 FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::step_sim  →  sim_bridge::apply_events
-                                                                  (Sim::step, timing,       (views: spawn / rebuild /
+  (flight only)                                                   (Sim::step, timing,       (views: spawn / rebuild /
                                                                    hash log)                 despawn; effects from events)
-Update                fleet bar input (before the controls), controls (keys, mouse, touch → PlayerInput), camera input,
-                      HUD text, fleet bar, tuning panel (egui)
+Update                ui_kit (hit testing, text fields) → flight: fleet bar input, controls (keys, mouse, touch →
+                      PlayerInput), camera input, HUD text, fleet bar, tuning panel (egui) | drydock: DockSet::Input →
+                      Apply → Show → ui_kit styles
 PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark)  →  shield::draw_bubbles
-                      camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers)  →  fx::flush
+                      camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers;
+                      the drydock's frame overlay)  →  fx::flush;  ui_icons (after the UI layout and the camera)
 ```
+
+- **App mode** (`mode.rs`): `AppMode::{Flight, Drydock}`, a Bevy state; `?scene=drydock` starts in the drydock.
+  Flight systems run only in flight and drydock systems only in the drydock (`run_if(in_state(..))`), so input
+  never crosses over. The switch happens in the state's enter / exit schedules: `OnExit(Flight)` empties the
+  world (views, effects, bubbles, the lock go; the clock is unpaused), `OnEnter(Flight)` builds the test flight
+  when the drydock asked for one, the drydock's enter / exit set and restore the camera and the UI scale. Flight
+  UI roots carry `mode::FlightUi` and are hidden when the drydock opens. A `SimWorld` always exists (an empty one
+  in the drydock and before Startup), because many flight systems read it.
 
 - **`sim_bridge.rs`** owns `SimWorld { sim: SimT, content, designs, views, inputs, ... }`. `SimT` is the sim
   type (`sim::Sim` = FreeFlight); the bridge only uses the backend-independent API, so the physics engine plugs
-  in by changing that alias. Views are keyed by `(ShipId, PieceId)`.
+  in by changing that alias. Views are keyed by `(ShipId, PieceId)`. Content ships compile by id
+  (`SimWorld::design`, cached); the player's design compiles from its in-memory blueprint
+  (`SimWorld::design_from`, under the id `player:design`, never cached by id). Design visuals are cached per
+  compiled design (`Arc` identity), so a design edited and flown again never meets a stale visual.
+  `GameContent` holds the content packs, parsed once.
+
 - **One view per sim piece** (`ship_view.rs`): `ship_model::piece_visual` builds the piece's parts in the sim's
   piece frame (pivot = `piece.origin`, so the transform is exactly `piece.render_pose(alpha)`), with the sim's
   line-of-fire flags, shield radii and hull edges (`Ship::piece_hull_edges`). Body mesh variants (style 2a lit /
@@ -152,7 +176,83 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   drift at once; weapon range and damage scale rewrite the content the designs compile from, so they apply with
   "Apply & reset".
 
+## Drydock
+
+The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
+`docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 Oct 2026. This is the foundation:
+the mode, the static view of the player's design, the screen with its widgets and the test flight. Editing
+(`data::edit`), the live stats and issues (`sim::report`) and saving (the RON writer) plug in through the
+resources and the action message below; nothing is edited, computed or saved yet. Parts are unlimited in v1
+(no spare counts).
+
+Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydock-*.png`.
+
+| Keys (only while the search field does not have the keyboard) | |
+|---|---|
+| Tools | B paint, G fill, X erase, V select, Q / E rotate the part to place |
+| Mirror / bevel | M / Shift+B |
+| Armour material | 1–9 (the ARMOR pills in content order) |
+| Undo / redo / save | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y / Ctrl+S (the browser's save dialog stays shut) |
+| Search the parts | / (Esc or Enter leaves the field; a click elsewhere too) |
+| Zoom | wheel (around the cursor), + / −, the − / + buttons; 100 % = the whole frame fits |
+| Pan | Space + drag, or drag with the middle button |
+| Test flight | T or TEST-FLY (disabled, with the reason in the status line, while the design can't fly) |
+| Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
+
+The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · 24×24 FRAME` and the
+design's name; the ARMOR pills (every content material with an `armor` block) and the OVERLAY pills (HEAT,
+MASS, BONUS in gold, SHIELDS, ARCS: toggle state only); left the search, the category pills (content
+categories) and the part list (icon, name, footprint and one key stat from `Content::part_stats`: the first
+stat after build points, control, mass, hit points, power draw and heat, else the bonus it gives, else its hit
+points; the wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT,
+THRUST/MASS, YAW, FIREPOWER, CARGO, CONTROL, DEVICE LOAD, values `—` until `sim::report`) and SELECTED PART
+(the picked part: icon, name, footprint and category, summary, stat lines and bonus lines); below the grid the
+hover cell, mirror and axis, and the zoom; at the bottom undo / redo, MIRROR, BEVEL, the status line,
+BLUEPRINTS, EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
+screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is open). The phone layout comes later.
+
+- **Design** (`design.rs`): `PlayerDesign { blueprint, frame, revision }`. The blueprint is in frame coordinates
+  (`size` = the frame, the schema's "drydock frame"), at start a copy of `halvex_runner` centred in a 24 × 24
+  frame (a placeholder until frames are content), under the id `player:design` (content ids are snake_case, so
+  it never clashes). The player, the `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content
+  ships. `PlayerDesign::grounded` is the placeholder flight check (parts, a logic core on the main piece, the
+  design compiles); `check_design` turns it into `DrydockStatus` whenever `revision` changes.
+- **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, mirror, bevel, the brush rotation, the
+  picked part, the category, the search text), `DrydockStatus` (`grounded`, the status line and its tone),
+  `DrydockStats` (the stats grid's cells: label, value, tone, optional bar). The widgets only show these.
+- **Actions** (`actions.rs`): every button (`ActionButton(DrydockAction)`) and every shortcut sends one message,
+  `DrydockAction::{Tool, RotateCcw, RotateCw, Mirror, Bevel, Undo, Redo, Save, Export, Blueprints, TestFly, Menu,
+  Material, Overlay, Category, PickPart, ZoomIn, ZoomOut}`. Handled here: the UI state and TestFly (when the design
+  can fly: `Scene::launch` + `NextState(Flight)`); the camera handles the zoom. Undo, redo, save, export, the
+  blueprint list and the menu have no handler yet. New handlers read the message in a system in
+  `DockSet::Apply` (`Input → Apply → Show`, drydock only), change `PlayerDesign` (and bump `revision`), and
+  write `DrydockStats` / `DrydockStatus`; `DrydockCursor::cell` is the frame cell under the pointer.
+- **View** (`view.rs`): the design is drawn with the flight tiles: `ship_model::blueprint_visual` (every part;
+  line of fire from `ShipGrid::line_of_fire_clear`, the hull edge around all parts, nav lights on the main piece,
+  no aura) and `ship_view::build_body` into one mesh, replaced only when `revision` (or the glow toggle)
+  changes. Blueprint `(x, y)` is world `(x, −y)`. The frame overlay is immediate-mode FX (dots at the cell
+  corners, brackets, the dashed mirror axis while mirroring, the hover cell) drawn inside the grid viewport; a
+  veil in the backdrop's darkest colour (62 %) dims the world outside it, so a ship zoomed under the side panels
+  sinks into the background and the grid area reads lighter than the panels, as in the mockup.
+- **Camera**: the drydock drives the shared `CameraRig` (the atlas tier follows its zoom). `CameraRig::view_offset`
+  centres the rig on the grid viewport between the panels while the camera still covers the window, and the
+  screen ↔ world helpers include it. Opening the drydock remembers the flight zoom; leaving restores it and keeps
+  the drydock's view for the next visit.
+- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
+  gold, the glowing primary, disabled, bare list rows), ring buttons, value bars, corner brackets and a one-line
+  text field; hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
+  touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
+  camera, `UiPointer::typing` turns the shortcuts off.
+- **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, or a glyph Barlow lacks: undo, redo, play,
+  search, menu, diamond) is drawn as a world-space mesh of the main camera placed over the node's rectangle every
+  frame (screen → world through the rig, scale 1 / zoom, z 600). A part icon is a one-part blueprint through
+  `build_body`: the flight tile itself, composited in sRGB like the ships, so its colours are exactly the
+  flight tiles' (bevy_ui image nodes would sample the sRGB atlas without encoding for the sRGB compositing and
+  look too dark); `atlas::UiAtlasNeed` raises the atlas tier to the icons' pixels per cell. bevy_ui draws after
+  the world, so nodes over an icon should have at most a faint background.
+
 ## Fleet bar
+
 
 [GDR-0050](gdr/0050-fleet-bar.md) (provisional), `fleet_bar.rs`, written 12 Oct 2026. A strip at the top centre,
 under the scene title, shown while the player flies a vessel and has two or more vessels or any dormant one.

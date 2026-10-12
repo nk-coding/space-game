@@ -1,12 +1,13 @@
 //! Visual descriptions of ships: what each part looks like ([`DesignVisual`], once per blueprint, from `data`
-//! content) and what one live piece looks like ([`piece_visual`], from the `sim` state of that piece).
+//! content), what one live piece looks like ([`piece_visual`], from the `sim` state of that piece) and what a
+//! whole blueprint looks like at rest ([`blueprint_visual`], the drydock: every part, from the ship grid alone).
 //!
 //! Visual interpretation only (icon, tile tone, barrel sizes per gun art, nav lights). Shape and topology come
 //! from `data::geometry` and the sim: polygons, the piece's alive parts and frame origin, hull edges, line of
 //! fire, shield radius.
 
 use bevy::prelude::*;
-use data::{Blueprint, Content};
+use data::{Blueprint, Content, ShipGrid};
 use sim::{Piece, Ship, Stat};
 
 use crate::ship_view::{GunVisual, PartVisual, ShipVisual};
@@ -26,11 +27,11 @@ fn gun_art(icon: Option<&str>) -> (Option<(f32, f32)>, f32) {
 /// The look of every part of one blueprint (blueprint frame), computed once per design.
 #[derive(Clone, Debug)]
 pub struct DesignVisual {
-    pub id: String,
-    pub name: String,
     pub parts: Vec<PartVisual>,
     /// Full-rectangle (non-slope) parts, for nav lights.
     pub rect_part: Vec<bool>,
+    /// Logic cores (the static view finds the main piece with them).
+    pub logic_part: Vec<bool>,
     pub enemy: bool,
     /// Hull edge / aura / plume / trail tint.
     pub glow: Color,
@@ -44,6 +45,7 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
     let glow = if enemy { style.glow_enemy } else { style.glow_player };
     let mut parts = Vec::with_capacity(ship.parts.len());
     let mut rect_part = Vec::with_capacity(ship.parts.len());
+    let mut logic_part = Vec::with_capacity(ship.parts.len());
     let mut weapon_color = style.system_color(if enemy { "enemy" } else { "weapons" });
     for (i, pl) in ship.parts.iter().enumerate() {
         let def = content.parts.get(&pl.part).ok_or_else(|| format!("unknown part `{}`", pl.part))?;
@@ -83,8 +85,9 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
             shield_radius: def.shield.as_ref().map(|s| s.radius),
         });
         rect_part.push(def.shape == data::Shape::Rect);
+        logic_part.push(def.logic.is_some());
     }
-    Ok(DesignVisual { id: ship.id.clone(), name: ship.name.clone(), parts, rect_part, enemy, glow, weapon_color })
+    Ok(DesignVisual { parts, rect_part, logic_part, enemy, glow, weapon_color })
 }
 
 /// The visual of one live piece: its alive parts, drawn in the sim's piece frame (pivot = `piece.origin`), with
@@ -112,30 +115,8 @@ pub fn piece_visual(dv: &DesignVisual, ship: &Ship, piece: &Piece) -> ShipVisual
         .map(|l| (l.points.iter().map(|g| Vec2::new(g.x as f32, g.y as f32)).collect(), l.closed))
         .collect();
 
-    // Navigation lights on player ships (halvex-runner.svg): coral on the port wing tip, teal on starboard, at
-    // the outer bottom corner of the outermost full cell. Only the controlling piece carries them.
-    let mut nav_lights = Vec::new();
-    if !dv.enemy && piece.controlled {
-        let mut best_l: Option<(i32, i32)> = None;
-        let mut best_r: Option<(i32, i32)> = None;
-        for &i in &piece.parts {
-            if !dv.rect_part[i as usize] {
-                continue;
-            }
-            for c in ship.grid().shape(i as usize).cells() {
-                if best_l.is_none_or(|b| (-c.0, c.1) > (-b.0, b.1)) {
-                    best_l = Some(c);
-                }
-                if best_r.is_none_or(|b| (c.0, c.1) > (b.0, b.1)) {
-                    best_r = Some(c);
-                }
-            }
-        }
-        if let (Some(l), Some(r)) = (best_l, best_r) {
-            nav_lights.push((Vec2::new(l.0 as f32 + 0.2, l.1 as f32 + 0.85), Color::srgb_u8(0xec, 0x8f, 0x7c)));
-            nav_lights.push((Vec2::new(r.0 as f32 + 0.8, r.1 as f32 + 0.85), dv.glow));
-        }
-    }
+    // Navigation lights: only the controlling piece carries them.
+    let nav_lights = if piece.controlled { nav_lights(dv, ship.grid(), &piece.parts) } else { Vec::new() };
 
     ShipVisual {
         parts,
@@ -146,6 +127,85 @@ pub fn piece_visual(dv: &DesignVisual, ship: &Ship, piece: &Piece) -> ShipVisual
         glow: dv.glow,
         enemy: dv.enemy,
         nav_lights,
+        aura: true,
+    }
+}
+
+/// A whole blueprint at rest, in the blueprint frame (pivot at the blueprint origin, so local = `(x, −y)`):
+/// every part, with the tiles, icons and glows of flight. What the sim would decide is taken from the grid: a
+/// gun's line of fire ([`ShipGrid::line_of_fire_clear`]), the hull edge around all parts, the content's shield
+/// radius, nav lights on the main piece (the one with a logic core). No aura: the drydock is not space.
+pub fn blueprint_visual(dv: &DesignVisual, grid: &ShipGrid) -> ShipVisual {
+    let mut parts = Vec::with_capacity(dv.parts.len());
+    let mut min = Vec2::splat(f32::MAX);
+    let mut max = Vec2::splat(f32::MIN);
+    for (i, p) in dv.parts.iter().enumerate() {
+        let mut p = p.clone();
+        if let Some(g) = p.gun.as_mut() {
+            g.clear = grid.line_of_fire_clear(i);
+        }
+        for q in &p.polygon {
+            min = min.min(*q);
+            max = max.max(*q);
+        }
+        parts.push(p);
+    }
+    if parts.is_empty() {
+        (min, max) = (Vec2::ZERO, Vec2::ZERO);
+    }
+    let hull_loops = data::geometry::hull_loops(&grid.hull_edges(|_| true))
+        .into_iter()
+        .map(|l| (l.points.iter().map(|g| Vec2::new(g.x as f32, g.y as f32)).collect(), l.closed))
+        .collect();
+    let pieces = grid.pieces();
+    let nav = grid
+        .main_piece(&pieces, |i| dv.logic_part[i])
+        .filter(|&m| pieces.parts[m].iter().any(|&i| dv.logic_part[i]))
+        .map(|m| {
+            let main: Vec<u32> = pieces.parts[m].iter().map(|&i| i as u32).collect();
+            nav_lights(dv, grid, &main)
+        })
+        .unwrap_or_default();
+    ShipVisual {
+        parts,
+        hull_loops,
+        pivot: Vec2::ZERO,
+        bounds_min: min,
+        bounds_max: max,
+        glow: dv.glow,
+        enemy: dv.enemy,
+        nav_lights: nav,
+        aura: false,
+    }
+}
+
+/// Navigation lights of player ships (halvex-runner.svg): coral on the port wing tip, teal on starboard, at the
+/// outer bottom corner of the outermost full cell of `parts`.
+fn nav_lights(dv: &DesignVisual, grid: &ShipGrid, parts: &[u32]) -> Vec<(Vec2, Color)> {
+    if dv.enemy {
+        return Vec::new();
+    }
+    let mut best_l: Option<(i32, i32)> = None;
+    let mut best_r: Option<(i32, i32)> = None;
+    for &i in parts {
+        if !dv.rect_part[i as usize] {
+            continue;
+        }
+        for c in grid.shape(i as usize).cells() {
+            if best_l.is_none_or(|b| (-c.0, c.1) > (-b.0, b.1)) {
+                best_l = Some(c);
+            }
+            if best_r.is_none_or(|b| (c.0, c.1) > (b.0, b.1)) {
+                best_r = Some(c);
+            }
+        }
+    }
+    match (best_l, best_r) {
+        (Some(l), Some(r)) => vec![
+            (Vec2::new(l.0 as f32 + 0.2, l.1 as f32 + 0.85), Color::srgb_u8(0xec, 0x8f, 0x7c)),
+            (Vec2::new(r.0 as f32 + 0.8, r.1 as f32 + 0.85), dv.glow),
+        ],
+        _ => Vec::new(),
     }
 }
 

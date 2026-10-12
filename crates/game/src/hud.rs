@@ -1,7 +1,7 @@
 //! Debug overlay (`F3`; always on in the load test): fps, frame and sim step times (mean / median / p95 over
 //! a rolling window), entity and sim counts, the atlas tier against what the screen needs (window size and
-//! scale factor), render toggles. Keys: `1` debug shapes, `2` glow sprites,
-//! `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene.
+//! scale factor), render toggles. Keys: `F3` the overlay (everywhere); in flight only: `1` debug shapes, `2` glow
+//! sprites, `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene (`scene.rs`).
 //!
 //! In the load test the overlay also logs a one-line summary to the browser console after 60 s
 //! (`LOADTEST ...`).
@@ -18,6 +18,7 @@ use crate::RenderToggles;
 use crate::atlas::{Atlas, AtlasStatus};
 use crate::camera::{CameraRig, MainCamera};
 use crate::controls::PlayerInput;
+use crate::mode::AppMode;
 use crate::scene::{Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, Timings, console_out};
 use crate::style::{Style, ui_color};
@@ -47,7 +48,15 @@ impl Plugin for HudPlugin {
                 scratch: String::with_capacity(512),
             })
             .add_systems(Startup, spawn_debug)
-            .add_systems(Update, (keyboard_toggles.run_if(not(egui_wants_any_keyboard_input)), apply_bloom, update_debug));
+            .add_systems(
+                Update,
+                (
+                    keyboard_toggles.run_if(in_state(AppMode::Flight)).run_if(not(egui_wants_any_keyboard_input)),
+                    debug_toggle.run_if(not(egui_wants_any_keyboard_input)),
+                    apply_bloom,
+                    update_debug,
+                ),
+            );
     }
 }
 
@@ -74,9 +83,6 @@ fn keyboard_toggles(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<RenderT
     if keys.just_pressed(KeyCode::KeyH) {
         toggles.hud = !toggles.hud;
     }
-    if keys.just_pressed(KeyCode::F3) {
-        toggles.debug_info = !toggles.debug_info;
-    }
     if keys.just_pressed(KeyCode::KeyP) {
         if time.is_paused() {
             time.unpause();
@@ -86,7 +92,15 @@ fn keyboard_toggles(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<RenderT
     }
 }
 
-fn apply_bloom(mut commands: Commands, toggles: Res<RenderToggles>, camera: Single<(Entity, Has<Bloom>), With<MainCamera>>) {
+/// F3: the debug overlay, in every mode.
+fn debug_toggle(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<RenderToggles>) {
+    if keys.just_pressed(KeyCode::F3) {
+        toggles.debug_info = !toggles.debug_info;
+    }
+}
+
+fn apply_bloom(
+mut commands: Commands, toggles: Res<RenderToggles>, camera: Single<(Entity, Has<Bloom>), With<MainCamera>>) {
     let (entity, has) = *camera;
     if toggles.bloom && !has {
         commands.entity(entity).insert(Bloom { intensity: 0.3, ..Bloom::NATURAL });
@@ -105,6 +119,7 @@ fn update_debug(
     toggles: Res<RenderToggles>,
     rig: Res<CameraRig>,
     scene: Res<Scene>,
+    mode: Res<State<AppMode>>,
     input: Res<PlayerInput>,
     mut world: ResMut<SimWorld>,
     atlas: Res<Atlas>,
@@ -115,7 +130,8 @@ fn update_debug(
     let state = &mut *state;
     let now = time.elapsed_secs_f64();
     state.frame_ms.push(time.delta_secs() * 1000.0);
-    let load = matches!(scene.kind, SceneKind::Load(_));
+    // The load test shows the overlay while it runs (not in the drydock).
+    let load = matches!(scene.kind, SceneKind::Load(_)) && *mode.get() == AppMode::Flight;
     let started = *state.started.get_or_insert(now);
 
     // Load test summary after 60 s of wall time.
