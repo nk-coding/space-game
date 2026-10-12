@@ -10,7 +10,7 @@ must keep compiling (`cargo check -p game` natively). Written 11–12 Oct 2026.
 | Dev build with live reload | `scripts/web-serve.sh` → http://10.77.6.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
 | Optimised build into `crates/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
-| Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed) |
+| Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); per region and mip step: `... --example profile -- <tier>` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
 | Scripted input + screenshots | `node scripts/web-drive.mjs <url> <out-dir> "wait 20000; down KeyW; wait 3000; up KeyW; shot fly.png"` |
 
@@ -177,6 +177,31 @@ the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md).
   veins, a time-hashed stutter below `low_share`, four hit terms (ripple ring, impact flash, light along the rim),
   and while shattering a Voronoi crack pattern plus 20 rim shards. The Voronoi only runs while a bubble shatters.
 - **Debug shapes** (`1`) hide the bubbles; the glow-sprite toggle (`2`) does not affect them (they are not sprites).
+
+## The atlas at high zoom
+
+Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs` rasterises at runtime
+(ADR-0021, ADR-0028) at a *tier*: pixels per ship cell, a power of two from 32 to 512. Written 12 Oct 2026.
+
+- **Which tier**: what the screen needs, `zoom × window scale factor` (px per cell), rounded up to a power of two
+  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 3840; logged once at start). Up at once, down
+  only when half the tier is clearly enough. A new tier must be wanted for 0.25 s first (zooming through tiers
+  costs nothing).
+- **Rebuild**: regions one by one, then the mip chain a band of rows at a time (`art::Rasterizer::step`), within
+  6 ms of work per frame, 16 ms while the atlas on screen is stretched more than 2× (it looks blurry then). The old
+  atlas stays on screen until the new one is complete. A job for a lower tier than the zoom now needs is dropped
+  for the new one. Native release timings (12 Oct 2026): tier 256 ≈ 0.13 s of work, tier 512 ≈ 0.45 s (regions
+  0.42 s, mips 0.15 s in 400 steps of at most a few ms); the browser takes a few times longer. Before, the mip
+  chain was built in one frame (178 ms at tier 256 in the browser).
+- **Soft by design**: icon glows and plumes are stored at half density (they are blurred); at the highest zoom a
+  plume's edge is about 1.5 px soft. Everything else (icons, barrel) is 1:1 with the tier; tiles, seams, hull lines
+  and shield bubbles are geometry or shaders and stay sharp at any zoom.
+- **Checking blur**: F3 shows `atlas <tier> px/cell  need <px> (zoom x scale)  max <tier>  window <physical size>`
+  and the last rebuild. If the tier stays below `need` the rebuild is slow or capped; if `window` is not the CSS
+  size × the device pixel ratio, the canvas renders at a lower resolution than the screen.
+- **Headless HiDPI**: Playwright's `deviceScaleFactor` alone renders the canvas at CSS resolution
+  (`devicePixelContentBoxSize` reports CSS pixels), which looks blurry for the wrong reason; add Chromium's
+  `--force-device-scale-factor` with the same value to test a real HiDPI screen.
 
 ## Adding visuals
 

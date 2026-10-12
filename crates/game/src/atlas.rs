@@ -2,9 +2,11 @@
 //!
 //! `crates/art` embeds the SVG icons and style tokens, lays every region out in resolution-independent atlas
 //! units and rasterises the layout at a *tier* (pixels per ship cell, a power of two). This module picks the
-//! tier from what the screen needs (camera zoom × window scale factor), rasterises a new atlas when that tier
-//! changes (spread over frames, the old texture stays in use meanwhile) and swaps the image in place. Region
-//! UVs are normalised and identical at every tier, so meshes never need rebuilding.
+//! tier from what the screen needs (camera zoom × window scale factor, capped by the GPU's largest texture),
+//! rasterises a new atlas when that tier changes (regions and mip chain spread over frames within a time
+//! budget, the old texture stays in use meanwhile; a job for a tier the zoom has already outgrown is dropped
+//! for the new one) and swaps the image in place. Region UVs are normalised and identical at every tier, so
+//! meshes never need rebuilding. [`AtlasStatus`] reports what happens (F3 overlay).
 
 use std::sync::Arc;
 
@@ -14,6 +16,7 @@ use bevy::platform::collections::HashMap;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::renderer::RenderDevice;
 use bevy::sprite_render::AlphaMode2d;
 use bevy::window::PrimaryWindow;
 
@@ -21,8 +24,12 @@ use crate::camera::CameraRig;
 
 /// Work per frame while re-rasterising (the old atlas stays on screen meanwhile).
 const FRAME_BUDGET_MS: f64 = 6.0;
+/// Work per frame while the atlas on screen is stretched more than [`BLURRY`] times: it looks blurry, so
+/// finishing sooner beats a smooth frame rate.
+const BLURRY_BUDGET_MS: f64 = 16.0;
+const BLURRY: f32 = 2.0;
 /// A new tier has to be wanted this long before the atlas is rebuilt (zooming through tiers costs nothing).
-const SETTLE_SECONDS: f32 = 0.35;
+const SETTLE_SECONDS: f32 = 0.25;
 
 /// One region of the atlas.
 #[derive(Clone, Copy, Debug)]
@@ -88,9 +95,30 @@ pub fn parse_hex(s: &str) -> Option<Color> {
 /// A re-rasterisation in progress.
 #[derive(Resource, Default)]
 struct RasterJob {
-    job: Option<(art::Rasterizer, f64, u32)>,
+    job: Option<Job>,
     /// Tier wanted and since when (real seconds).
     wanted: Option<(u32, f32)>,
+}
+
+struct Job {
+    raster: art::Rasterizer,
+    /// Milliseconds spent so far, frames, and the longest single step.
+    spent: f64,
+    frames: u32,
+    longest: f64,
+}
+
+/// What the atlas does, for the debug overlay (F3).
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct AtlasStatus {
+    /// Pixels per cell the screen needs now (zoom × scale factor).
+    pub need: f32,
+    /// The highest tier the GPU's texture size limit allows.
+    pub max_tier: u32,
+    /// The tier being rasterised, if any.
+    pub building: Option<u32>,
+    /// The last rebuild: tier, milliseconds of work, frames, longest single step (ms).
+    pub last: Option<(u32, f64, u32, f64)>,
 }
 
 pub struct AtlasPlugin;
@@ -137,21 +165,49 @@ impl Plugin for AtlasPlugin {
         let atlas = Atlas { image, material, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
-        app.init_resource::<RasterJob>().add_systems(Update, (choose_tier, rasterise_step).chain());
+        app.init_resource::<RasterJob>()
+            .init_resource::<AtlasStatus>()
+            .add_systems(Update, (choose_tier, rasterise_step).chain());
     }
 }
 
-/// The tier the screen needs: camera zoom (logical px per metre = per cell) × the window's scale factor.
+/// The highest tier whose atlas fits the GPU's largest 2D texture.
+fn max_tier(layout: &art::Layout, limit: u32) -> u32 {
+    let mut tier = art::MAX_TIER;
+    while tier > art::MIN_TIER {
+        let (w, h) = layout.pixel_size(tier);
+        if w.max(h) <= limit {
+            break;
+        }
+        tier /= 2;
+    }
+    tier
+}
+
+/// The tier the screen needs: camera zoom (logical px per metre = per cell) × the window's scale factor, capped
+/// by what the GPU can hold.
 fn choose_tier(
     time: Res<Time<Real>>,
     rig: Res<CameraRig>,
     window: Single<&Window, With<PrimaryWindow>>,
+    device: Option<Res<RenderDevice>>,
     atlas: Res<Atlas>,
     mut job: ResMut<RasterJob>,
+    mut status: ResMut<AtlasStatus>,
 ) {
+    if status.max_tier == 0
+        && let Some(device) = device
+    {
+        status.max_tier = max_tier(&atlas.layout, device.limits().max_texture_dimension_2d);
+        info!("atlas: tiers up to {} px/cell (GPU textures up to {} px)", status.max_tier, device.limits().max_texture_dimension_2d);
+    }
+    let cap = if status.max_tier > 0 { status.max_tier } else { art::MAX_TIER };
     let need = rig.zoom_target.max(rig.zoom) * window.scale_factor();
-    let want = art::tier_for(need);
-    let cur = job.job.as_ref().map(|j| j.0.tier()).unwrap_or(atlas.tier);
+    status.need = need;
+    let want = art::tier_for(need).min(cap);
+    let building = job.job.as_ref().map(|j| j.raster.tier());
+    status.building = building;
+    let cur = building.unwrap_or(atlas.tier);
     // Hysteresis: go up as soon as the screen needs more; go down only when half the tier is clearly enough.
     let target = if want > cur || (want < cur && need < cur as f32 * 0.5 * 0.75) { want } else { cur };
     let now = time.elapsed_secs();
@@ -161,62 +217,70 @@ fn choose_tier(
     }
     match job.wanted {
         Some((t, since)) if t == target => {
-            if now - since >= SETTLE_SECONDS && job.job.is_none() {
-                let r = art::Rasterizer::new(atlas.layout.clone(), target);
-                job.job = Some((r, 0.0, 0));
+            // A job for a lower tier than the screen now needs is dropped: finishing it first would only delay
+            // the sharp one. A job for a higher tier runs on (zooming out is served by its mips).
+            let free = building.is_none_or(|b| b < target);
+            if now - since >= SETTLE_SECONDS && free {
+                let raster = art::Rasterizer::new(atlas.layout.clone(), target);
+                job.job = Some(Job { raster, spent: 0.0, frames: 0, longest: 0.0 });
                 job.wanted = None;
+                status.building = Some(target);
             }
         }
         _ => job.wanted = Some((target, now)),
     }
 }
 
-/// Renders regions until the frame budget is used, then finishes and swaps the image.
+/// Renders regions and mip rows until the frame budget is used; when the atlas is complete, swaps the image.
 fn rasterise_step(
     mut job: ResMut<RasterJob>,
     mut atlas: ResMut<Atlas>,
+    mut status: ResMut<AtlasStatus>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let Some((r, spent, frames)) = job.job.as_mut() else { return };
+    let Some(j) = job.job.as_mut() else { return };
+    let budget = if status.need > atlas.tier as f32 * BLURRY { BLURRY_BUDGET_MS } else { FRAME_BUDGET_MS };
     let t0 = Instant::now();
     let mut done = false;
-    while t0.elapsed().as_secs_f64() * 1e3 < FRAME_BUDGET_MS {
-        match r.step() {
-            Ok(true) => {
-                done = true;
-                break;
-            }
-            Ok(false) => {}
+    while !done && t0.elapsed().as_secs_f64() * 1e3 < budget {
+        let t = Instant::now();
+        match j.raster.step() {
+            Ok(d) => done = d,
             Err(e) => {
                 error!("atlas rasterisation failed: {e}");
                 job.job = None;
                 return;
             }
         }
+        j.longest = j.longest.max(t.elapsed().as_secs_f64() * 1e3);
     }
-    *spent += t0.elapsed().as_secs_f64() * 1e3;
-    *frames += 1;
+    j.spent += t0.elapsed().as_secs_f64() * 1e3;
+    j.frames += 1;
     if !done {
         return;
     }
-    let (r, spent, frames) = job.job.take().expect("job");
-    let tier = r.tier();
-    let t1 = Instant::now();
-    let raster = r.finish();
-    let finish_ms = t1.elapsed().as_secs_f64() * 1e3;
-    let (w, h) = (raster.width, raster.height);
+    let Job { raster, spent, frames, longest } = job.job.take().expect("job");
+    let tier = raster.tier();
+    let raster = match raster.finish() {
+        Ok(r) => r,
+        Err(e) => {
+            error!("atlas rasterisation failed: {e}");
+            return;
+        }
+    };
+    let (w, h, levels) = (raster.width, raster.height, raster.levels);
     let _ = images.insert(&atlas.image, image_from(raster));
     atlas.tier = tier;
+    status.building = None;
+    status.last = Some((tier, spent, frames, longest));
     // Re-bind every material that samples the atlas (they cache the old texture view).
     let ids: Vec<AssetId<ColorMaterial>> =
         materials.iter().filter(|(_, m)| m.texture.as_ref() == Some(&atlas.image)).map(|(id, _)| id).collect();
     for id in ids {
         let _ = materials.get_mut(id);
     }
-    info!(
-        "atlas: re-rasterised at {tier} px/cell ({w}x{h}): regions {spent:.1} ms over {frames} frames, mips {finish_ms:.1} ms"
-    );
+    info!("atlas: re-rasterised at {tier} px/cell ({w}x{h}, {levels} mips): {spent:.1} ms over {frames} frames, longest step {longest:.1} ms");
 }
 
 fn image_from(r: art::Raster) -> Image {

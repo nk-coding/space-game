@@ -7,9 +7,9 @@
 //!   density). A texture for a pixel density `tier` (pixels per cell) is the layout scaled by `tier`, so the
 //!   normalised UV of a region never changes between tiers: meshes keep their UVs when the texture is swapped.
 //!   Soft regions (icon glows, plumes, aura) are stored at half density (they are blurry anyway).
-//! * **Rasteriser** ([`Rasterizer`]): renders region by region (`step`), so a client can spread the work over
-//!   frames, then [`Rasterizer::finish`] bleeds colour into transparent texels and builds an alpha-weighted
-//!   mip chain. Output: straight-alpha sRGB RGBA8, mip levels concatenated.
+//! * **Rasteriser** ([`Rasterizer`]): renders region by region, then builds an alpha-weighted mip chain and
+//!   bleeds colour into transparent texels, a band of rows at a time (`step`), so a client can spread all the
+//!   work over frames. Output: straight-alpha sRGB RGBA8, mip levels concatenated.
 //!
 //! No Bevy, no threads, no filesystem; builds for wasm32 and Android.
 
@@ -351,29 +351,98 @@ pub struct Raster {
     pub data: Vec<u8>,
 }
 
-/// Renders a layout at one tier, one region per [`Rasterizer::step`].
+/// Renders a layout at one tier in small steps ([`Rasterizer::step`]): one region per step, then the mip chain
+/// a band of rows per step (downsampling level by level, then the colour pull, coarse to fine), so a client can
+/// spread all of it over frames. [`Rasterizer::finish`] only hands the result over.
 pub struct Rasterizer {
     layout: Arc<Layout>,
     tier: u32,
     width: u32,
     height: u32,
+    /// Every mip level, concatenated (allocated once).
     rgba: Vec<u8>,
+    /// `(offset in bytes, width, height)` per mip level.
+    levels: Vec<(usize, usize, usize)>,
     next: usize,
+    stage: Stage,
 }
+
+/// Where a [`Rasterizer`] is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Stage {
+    Regions,
+    /// Downsampling into `level` (1..), from output row `row`.
+    Down { level: usize, row: usize },
+    /// Pulling colour into the nearly transparent texels of `level`, from row `row`.
+    Pull { level: usize, row: usize },
+    Done,
+}
+
+/// Texels written per mip step (about a millisecond natively).
+const STEP_TEXELS: usize = 1 << 16;
+/// Texels below this alpha take their colour from the coarser level (see [`Rasterizer::pull_rows`]).
+const SOLID: u8 = 24;
 
 impl Rasterizer {
     pub fn new(layout: Arc<Layout>, tier: u32) -> Self {
         let (width, height) = layout.pixel_size(tier);
-        Self { layout, tier, width, height, rgba: vec![0; (width * height * 4) as usize], next: 0 }
+        let (mut lw, mut lh) = (width as usize, height as usize);
+        let mut levels = vec![(0, lw, lh)];
+        let mut total = lw * lh * 4;
+        while (levels.len() as u32) < MAX_MIPS && lw % 2 == 0 && lh % 2 == 0 && lw.min(lh) >= 32 {
+            lw /= 2;
+            lh /= 2;
+            levels.push((total, lw, lh));
+            total += lw * lh * 4;
+        }
+        Self { layout, tier, width, height, rgba: vec![0; total], levels, next: 0, stage: Stage::Regions }
     }
 
     pub fn tier(&self) -> u32 {
         self.tier
     }
 
-    /// Renders the next region. Returns `true` when every region is done.
+    /// Does the next piece of work: a region, or a band of mip rows. Returns `true` when everything is done.
     pub fn step(&mut self) -> Result<bool, String> {
-        let Some(r) = self.layout.regions.get(self.next) else { return Ok(true) };
+        match self.stage {
+            Stage::Regions => {
+                self.region()?;
+                if self.next >= self.layout.regions.len() {
+                    self.stage = if self.levels.len() > 1 { Stage::Down { level: 1, row: 0 } } else { Stage::Done };
+                }
+            }
+            Stage::Down { level, row } => {
+                let (_, w, h) = self.levels[level];
+                let end = (row + (STEP_TEXELS / w).max(1)).min(h);
+                self.down_rows(level, row, end);
+                self.stage = if end < h {
+                    Stage::Down { level, row: end }
+                } else if level + 1 < self.levels.len() {
+                    Stage::Down { level: level + 1, row: 0 }
+                } else {
+                    Stage::Pull { level: self.levels.len() - 2, row: 0 }
+                };
+            }
+            Stage::Pull { level, row } => {
+                let (_, w, h) = self.levels[level];
+                let end = (row + (STEP_TEXELS / w).max(1)).min(h);
+                self.pull_rows(level, row, end);
+                self.stage = if end < h {
+                    Stage::Pull { level, row: end }
+                } else if level > 0 {
+                    Stage::Pull { level: level - 1, row: 0 }
+                } else {
+                    Stage::Done
+                };
+            }
+            Stage::Done => {}
+        }
+        Ok(self.stage == Stage::Done)
+    }
+
+    /// Renders the next region into level 0.
+    fn region(&mut self) -> Result<(), String> {
+        let Some(r) = self.layout.regions.get(self.next) else { return Ok(()) };
         self.next += 1;
         let t = self.tier as f32;
         let (px, py) = ((r.rect[0] * t).round() as u32, (r.rect[1] * t).round() as u32);
@@ -389,91 +458,75 @@ impl Rasterizer {
             Source::Proc(p) => procedural(*p, &mut pm),
         }
         copy_region(&pm, &mut self.rgba, self.width, px, py);
-        Ok(self.next >= self.layout.regions.len())
+        Ok(())
     }
 
-    /// Renders everything that is left.
+    /// Rows `y0..y1` of mip `level`: each texel the alpha-weighted average of its four texels one level finer.
+    fn down_rows(&mut self, level: usize, y0: usize, y1: usize) {
+        let (o, nw, _) = self.levels[level];
+        let (prev, lw, _) = self.levels[level - 1];
+        let (fine, coarse) = self.rgba.split_at_mut(o);
+        for y in y0..y1 {
+            for x in 0..nw {
+                let mut sum = [0u32; 3];
+                let mut plain = [0u32; 3];
+                let mut a_sum = 0u32;
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    let i = prev + ((2 * y + dy) * lw + 2 * x + dx) * 4;
+                    let a = fine[i + 3] as u32;
+                    for c in 0..3 {
+                        sum[c] += fine[i + c] as u32 * a;
+                        plain[c] += fine[i + c] as u32;
+                    }
+                    a_sum += a;
+                }
+                let k = (y * nw + x) * 4;
+                for c in 0..3 {
+                    coarse[k + c] = sum[c].checked_div(a_sum).unwrap_or(plain[c] / 4) as u8;
+                }
+                coarse[k + 3] = ((a_sum + 2) / 4) as u8;
+            }
+        }
+    }
+
+    /// Pull, rows `y0..y1` of `level`: nearly transparent texels take the (alpha-weighted) colour of their parent
+    /// texel, coarse to fine, so bilinear filtering never blends towards black or noisy colours at shape edges.
+    fn pull_rows(&mut self, level: usize, y0: usize, y1: usize) {
+        let (o, lw, _) = self.levels[level];
+        let (po, pw, ph) = self.levels[level + 1];
+        let (fine, coarse) = self.rgba.split_at_mut(po);
+        for y in y0..y1 {
+            let py = (y / 2).min(ph - 1);
+            for x in 0..lw {
+                let i = o + (y * lw + x) * 4;
+                if fine[i + 3] < SOLID {
+                    let p = ((py * pw) + (x / 2).min(pw - 1)) * 4;
+                    fine[i..i + 3].copy_from_slice(&coarse[p..p + 3]);
+                }
+            }
+        }
+    }
+
+    /// Does everything that is left.
     pub fn run(&mut self) -> Result<(), String> {
         while !self.step()? {}
         Ok(())
     }
 
-    /// Builds the mip chain.
-    pub fn finish(self) -> Raster {
-        let (w, h) = (self.width as usize, self.height as usize);
-        let mut levels = 1u32;
-        let mut data = self.rgba;
-        data.reserve(w * h * 4 / 3 + 64);
-        let (mut lw, mut lh, mut prev) = (w, h, 0usize);
-        while levels < MAX_MIPS && lw % 2 == 0 && lh % 2 == 0 && lw.min(lh) >= 32 {
-            let (nw, nh) = (lw / 2, lh / 2);
-            let start = data.len();
-            data.resize(start + nw * nh * 4, 0);
-            for y in 0..nh {
-                for x in 0..nw {
-                    let mut sum = [0u32; 3];
-                    let mut plain = [0u32; 3];
-                    let mut a_sum = 0u32;
-                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                        let i = prev + ((2 * y + dy) * lw + 2 * x + dx) * 4;
-                        let a = data[i + 3] as u32;
-                        for c in 0..3 {
-                            sum[c] += data[i + c] as u32 * a;
-                            plain[c] += data[i + c] as u32;
-                        }
-                        a_sum += a;
-                    }
-                    let o = start + (y * nw + x) * 4;
-                    for c in 0..3 {
-                        data[o + c] = if a_sum > 0 { (sum[c] / a_sum) as u8 } else { (plain[c] / 4) as u8 };
-                    }
-                    data[o + 3] = ((a_sum + 2) / 4) as u8;
-                }
-            }
-            prev = start;
-            lw = nw;
-            lh = nh;
-            levels += 1;
-        }
-        // Pull: nearly transparent texels take the (alpha-weighted) colour of their parent texel, coarse to
-        // fine, so bilinear filtering never blends towards black or noisy colours at shape edges.
-        const SOLID: u8 = 24;
-        let mut offsets = Vec::with_capacity(levels as usize);
-        let (mut lw, mut lh, mut off) = (w, h, 0usize);
-        for _ in 0..levels {
-            offsets.push((off, lw, lh));
-            off += lw * lh * 4;
-            lw /= 2;
-            lh /= 2;
-        }
-        for l in (0..levels as usize - 1).rev() {
-            let (o, lw, lh) = offsets[l];
-            let (po, pw, ph) = offsets[l + 1];
-            let (fine, coarse) = data.split_at_mut(po);
-            for y in 0..lh {
-                let py = (y / 2).min(ph - 1);
-                for x in 0..lw {
-                    let i = o + (y * lw + x) * 4;
-                    if fine[i + 3] < SOLID {
-                        let p = ((py * pw) + (x / 2).min(pw - 1)) * 4;
-                        fine[i..i + 3].copy_from_slice(&coarse[p..p + 3]);
-                    }
-                }
-            }
-        }
-        Raster { tier: self.tier, width: self.width, height: self.height, levels, data }
+    /// The finished atlas (runs whatever work is left first).
+    pub fn finish(mut self) -> Result<Raster, String> {
+        self.run()?;
+        Ok(Raster { tier: self.tier, width: self.width, height: self.height, levels: self.levels.len() as u32, data: self.rgba })
     }
 }
 
 /// Renders a whole layout at once.
 pub fn rasterise(layout: &Arc<Layout>, tier: u32) -> Result<Raster, String> {
-    let mut r = Rasterizer::new(layout.clone(), tier);
-    r.run()?;
-    Ok(r.finish())
+    Rasterizer::new(layout.clone(), tier).finish()
 }
 
 /// Copies a premultiplied region into the straight-alpha atlas (colour fringes are fixed later by the
-/// push-pull pass in [`Rasterizer::finish`]).
+/// pull pass of the mip steps).
 fn copy_region(pm: &tiny_skia::Pixmap, atlas: &mut [u8], atlas_w: u32, px: u32, py: u32) {
     let (w, h) = (pm.width() as usize, pm.height() as usize);
     let src = pm.data();

@@ -1,5 +1,6 @@
 //! Debug overlay (`F3`; always on in the load test): fps, frame and sim step times (mean / median / p95 over
-//! a rolling window), entity and sim counts, render toggles. Keys: `1` debug shapes, `2` glow sprites,
+//! a rolling window), entity and sim counts, the atlas tier against what the screen needs (window size and
+//! scale factor), render toggles. Keys: `1` debug shapes, `2` glow sprites,
 //! `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene.
 //!
 //! In the load test the overlay also logs a one-line summary to the browser console after 60 s
@@ -10,9 +11,11 @@ use std::fmt::Write as _;
 use bevy::diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_keyboard_input;
 
 use crate::RenderToggles;
+use crate::atlas::{Atlas, AtlasStatus};
 use crate::camera::{CameraRig, MainCamera};
 use crate::controls::PlayerInput;
 use crate::scene::{Scene, SceneKind};
@@ -104,6 +107,9 @@ fn update_debug(
     scene: Res<Scene>,
     input: Res<PlayerInput>,
     mut world: ResMut<SimWorld>,
+    atlas: Res<Atlas>,
+    atlas_status: Res<AtlasStatus>,
+    window: Single<&Window, With<PrimaryWindow>>,
     text: Single<(&mut Text, &mut Visibility), With<DebugText>>,
 ) {
     let state = &mut *state;
@@ -163,6 +169,24 @@ fn update_debug(
         on(toggles.glow_sprites),
         on(toggles.bloom),
     );
+    // The atlas against what the screen needs (blurry art at high zoom: is the tier there?).
+    let a = &*atlas_status;
+    let _ = write!(
+        s,
+        "\natlas {} px/cell  need {:.0} (zoom x scale {:.2})  max {}  window {}x{} px",
+        atlas.tier,
+        a.need,
+        window.scale_factor(),
+        a.max_tier,
+        window.physical_width(),
+        window.physical_height(),
+    );
+    if let Some(t) = a.building {
+        let _ = write!(s, "  building {t}");
+    }
+    if let Some((t, ms, frames, longest)) = a.last {
+        let _ = write!(s, "  last {t}: {ms:.0} ms / {frames} frames, longest step {longest:.0} ms");
+    }
     // The locked ship's behavior: which rule decides (for tuning behaviors in the browser).
     if let Some(id) = input.locked_ship()
         && let Some(ship) = world.sim.ship(id)
