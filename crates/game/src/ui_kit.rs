@@ -18,7 +18,7 @@ use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use bevy::text::LetterSpacing;
-use bevy::ui::{ComputedNode, ComputedStackIndex, UiGlobalTransform};
+use bevy::ui::{CalculatedClip, ComputedNode, ComputedStackIndex, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
 use crate::flight_hud::HudFonts;
@@ -174,7 +174,7 @@ fn hit_test(
     buttons: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
     mut pointer: ResMut<UiPointer>,
-    mut hots: Query<(Entity, &mut Hot, &ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&ComputedStackIndex>)>,
+    mut hots: Query<(Entity, &mut Hot, &ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&ComputedStackIndex>, Option<&CalculatedClip>)>,
     blocks: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), With<UiBlock>>,
     mut fields: Query<(Entity, &mut TextField)>,
     mut clicks: MessageWriter<UiClick>,
@@ -182,8 +182,9 @@ fn hit_test(
     let scale = window.scale_factor();
     let topmost = |at: Vec2| {
         let mut best: Option<(u32, Entity)> = None;
-        for (e, _, node, tf, vis, stack) in &hots {
-            if vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, at) {
+        for (e, _, node, tf, vis, stack, clip) in &hots {
+            // A node scrolled out of a clipping parent (a scrolled list) is not under the pointer.
+            if vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, at) && clip.is_none_or(|c| c.contains_point(at)) {
                 let z = stack.map_or(0, |s| s.0);
                 if best.is_none_or(|b| z >= b.0) {
                     best = Some((z, e));

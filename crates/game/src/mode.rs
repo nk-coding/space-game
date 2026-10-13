@@ -1,13 +1,13 @@
-//! The app mode: flying ([`AppMode::Flight`]: the sandbox, the showcase, the load test) or building
-//! ([`AppMode::Drydock`]: the ship editor, `drydock/`). `?scene=drydock` starts in the drydock; everything else
-//! starts in flight.
+//! The app mode: flying ([`AppMode::Flight`]: the sandbox, the showcase, the load test), building
+//! ([`AppMode::Drydock`]: the ship editor, `drydock/`) or writing how a design thinks ([`AppMode::Behavior`]: the
+//! BEHAVIOR screen, `behavior_ui/`, opened from the drydock). `?scene=drydock` starts in the drydock,
+//! `?scene=behavior` on the BEHAVIOR screen; everything else starts in flight.
 //!
 //! **T** switches everywhere: in flight it opens the drydock (the design is untouched); in the drydock it
 //! launches a test flight (`drydock::actions`, the TEST-FLY button does the same). Losing every vessel in a test
 //! flight returns to the drydock (`scene.rs`).
 //!
-//! Systems of one mode run only in it (`run_if(in_state(..))`), so no flight input reaches the drydock and no
-//! drydock input reaches flight. The switch itself happens in the state's enter / exit schedules
+//! Systems of one mode run only in it (`run_if(in_state(..))`), so no input of one mode reaches another. The switch itself happens in the state's enter / exit schedules
 //! (`scene.rs`: the flight world; `drydock`: its camera and UI scale), so the first frame of a mode is
 //! already consistent. A [`SimWorld`](crate::sim_bridge::SimWorld) always exists: the drydock keeps an empty
 //! one, because many flight systems read it.
@@ -21,16 +21,22 @@ use crate::params::Params;
 pub enum AppMode {
     Flight,
     Drydock,
+    Behavior,
 }
 
 impl AppMode {
-    /// The mode the app starts in: the drydock for `?scene=drydock`, else flight.
+    /// The mode the app starts in: the drydock for `?scene=drydock`, the BEHAVIOR screen for `?scene=behavior`,
+    /// else flight.
     pub fn at_start(params: &Params) -> Self {
-        if params.text("scene") == Some("drydock") { AppMode::Drydock } else { AppMode::Flight }
+        match params.text("scene") {
+            Some("drydock") => AppMode::Drydock,
+            Some("behavior") => AppMode::Behavior,
+            _ => AppMode::Flight,
+        }
     }
 }
 
-/// Marks the root of a flight-only UI block (HUD, fleet bar, touch widgets). Hidden when the drydock opens;
+/// Marks the root of a flight-only UI block (HUD, fleet bar, touch widgets). Hidden when another mode opens;
 /// its own flight system shows it again (they set their visibility every frame while they run).
 #[derive(Component)]
 pub struct FlightUi;
@@ -43,9 +49,9 @@ impl Plugin for ModePlugin {
             Update,
             open_drydock.run_if(in_state(AppMode::Flight)).run_if(not(egui_wants_any_keyboard_input)),
         )
-        .add_systems(OnEnter(AppMode::Drydock), hide_flight_ui)
+        .add_systems(OnExit(AppMode::Flight), hide_flight_ui)
         // The initial OnEnter runs before Startup spawns the flight UI.
-        .add_systems(PostStartup, hide_flight_ui.run_if(in_state(AppMode::Drydock)));
+        .add_systems(PostStartup, hide_flight_ui.run_if(not(in_state(AppMode::Flight))));
     }
 }
 

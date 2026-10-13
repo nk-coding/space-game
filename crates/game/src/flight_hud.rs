@@ -25,7 +25,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_kit::{label, number, set_text};
 use crate::{RenderToggles, ship_view::PieceView};
 
-static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
+pub(crate) static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
 static BARLOW_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Barlow-Medium.ttf");
 
 #[derive(Resource, Clone)]
