@@ -29,6 +29,9 @@ pub struct BehaviorDraft {
     pub errors: Vec<TextError>,
     /// Goes up whenever the program changes or another draft opens (the graph rebuilds then); never goes back.
     revision: u64,
+    /// Goes up when another draft replaces this one ([`BehaviorDraft::replace`]): the editor's ids (rules,
+    /// conditions) mean nothing in the next one, so a selection made in this one must go.
+    generation: u64,
     /// `editor.revision()` when the draft last caught up with it.
     seen: u64,
     /// The draft when it was opened or last saved (see [`BehaviorDraft::dirty`]).
@@ -101,15 +104,31 @@ impl BehaviorDraft {
 
     fn with_editor(source: Option<String>, name: String, editor: BehaviorEditor) -> Self {
         let text = editor.text();
-        let mut d = Self { source, name, seen: editor.revision(), editor: Some(editor), text, errors: Vec::new(), revision: 1, clean: Snapshot::default() };
+        let mut d = Self {
+            source,
+            name,
+            seen: editor.revision(),
+            editor: Some(editor),
+            text,
+            errors: Vec::new(),
+            revision: 1,
+            generation: 0,
+            clean: Snapshot::default(),
+        };
         d.mark_clean();
         d
     }
 
-    /// Replaces this draft with another one (opened, loaded or new); the revision keeps going up.
+    /// Replaces this draft with another one (opened, loaded or new); the revision and the generation keep going up.
     pub fn replace(&mut self, mut next: BehaviorDraft) {
         next.revision = self.revision + 1;
+        next.generation = self.generation + 1;
         *self = next;
+    }
+
+    /// Goes up with every [`BehaviorDraft::replace`] (not with edits).
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// The last valid program: what the graph shows and what would fly.

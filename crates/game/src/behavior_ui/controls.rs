@@ -334,6 +334,15 @@ pub(super) fn commit_notes(mut fields: Query<(&mut NoteField, &TextField)>, mut 
     }
 }
 
+/// Leaving the screen ends a slider drag (its stroke is closed) and a rule drag, so neither replays when the
+/// screen opens again with the button still remembered as held.
+pub(super) fn drop_drags(mut slider: ResMut<SliderDrag>, mut rows: ResMut<super::reorder::RowDrag>, mut draft: ResMut<BehaviorDraft>) {
+    if slider.0.take().is_some() {
+        draft.edit(|ed| ed.end_stroke());
+    }
+    *rows = default();
+}
+
 /// The held slider follows the pointer (one undo step per drag); its fill, knob and value text follow in place.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn drag_sliders(
@@ -381,5 +390,32 @@ pub(super) fn drag_sliders(
         }
         Some(Err(why)) => state.note = Some((why.to_string(), time.elapsed_secs())),
         None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
+    use super::super::reorder::RowDrag;
+    use super::*;
+
+    /// A slider or rule drag held while the screen closes (Esc, T) does not replay when it opens again: the drags
+    /// end and the slider's stroke is closed.
+    #[test]
+    fn leaving_the_screen_ends_the_drags() {
+        let content = data::base_content();
+        let mut world = World::new();
+        let mut draft = BehaviorDraft::default();
+        draft.replace(BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), &content.behavior_nodes).unwrap());
+        let held = world.spawn_empty().id();
+        world.insert_resource(draft);
+        world.insert_resource(SliderDrag(Some(held)));
+        world.init_resource::<RowDrag>();
+        world.resource_mut::<RowDrag>().target = Some((2, 100.0));
+        world.resource_mut::<BehaviorDraft>().edit(|ed| ed.begin_stroke());
+        world.run_system_once(drop_drags).unwrap();
+        assert_eq!(world.resource::<SliderDrag>().0, None);
+        assert_eq!(world.resource::<RowDrag>().target, None);
     }
 }

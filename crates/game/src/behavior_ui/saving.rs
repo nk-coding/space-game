@@ -439,9 +439,10 @@ pub(super) fn autosave(time: Res<Time<Real>>, mut lib: Lib) {
     }
 }
 
-/// Leaving the screen: the working draft is written now.
+/// Leaving the screen: the working draft is written now (also an edit the autosave has not noted yet).
 pub(super) fn leave(mut lib: Lib) {
-    if lib.slot.timer.pending() || lib.slot.write_now {
+    let unnoted = lib.draft.editor().is_some() && lib.slot.noted.as_ref() != Some(&lib.draft.snapshot());
+    if lib.slot.timer.pending() || lib.slot.write_now || unnoted {
         lib.slot.write_now = false;
         write_working(&mut lib);
     }
@@ -561,6 +562,41 @@ mod tests {
 
     fn draft_of(content: &Content, behaviors: &PlayerBehaviors, id: &str) -> BehaviorDraft {
         BehaviorDraft::from_behavior(behaviors.behavior(content, id).unwrap(), &content.behavior_nodes).unwrap()
+    }
+
+    /// A world with what the screen's saving systems need (no window).
+    fn world(storage: Storage) -> World {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(GameContent(content));
+        world.insert_resource(storage);
+        world.init_resource::<Params>();
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<BehaviorDraft>();
+        world.init_resource::<DraftSlot>();
+        world.init_resource::<ScreenNote>();
+        world.init_resource::<EditorContext>();
+        world.init_resource::<BehaviorUi>();
+        world.init_resource::<Time<Real>>();
+        world
+    }
+
+    /// An edit in the frame the screen is left (a note committed by the same tap as the DRYDOCK pill) is written
+    /// with the working draft.
+    #[test]
+    fn leaving_writes_an_edit_the_autosave_has_not_seen() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = world(Storage::new(MemoryBackend::default()));
+        world.run_system_once(open).unwrap();
+        world.run_system_once(autosave).unwrap();
+        world.run_system_once(leave).unwrap();
+        // Typed after the last autosave of the visit.
+        assert!(world.resource_mut::<BehaviorDraft>().set_text("always -> orbit(50%)"));
+        world.run_system_once(leave).unwrap();
+        let w = world.resource::<Storage>().read::<WorkingBehavior>(WORKING).unwrap().unwrap().doc;
+        assert_eq!((w.text.as_str(), w.unsaved), ("always -> orbit(50%)", true));
     }
 
     #[test]

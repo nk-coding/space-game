@@ -132,14 +132,27 @@ impl Plugin for BehaviorPlugin {
             .add_systems(Startup, (screen::spawn, list::spawn, live::spawn).after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, show)
             .add_systems(OnEnter(AppMode::Behavior), (saving::open, controls::measure_reach))
-            .add_systems(OnExit(AppMode::Behavior), (list::leave, saving::leave, text_view::leave).chain())
+            .add_systems(OnExit(AppMode::Behavior), (controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(
                 Update,
                 (
                     (actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes, reorder::drag_rows).in_set(BehaviorSet::Input),
-                    (fit_window, actions::apply, edit::apply, controls::drag_sliders, screen::scroll).chain().in_set(BehaviorSet::Apply),
+                    // One order: the UI state, then what replaces or saves the draft, then edits of the draft on the
+                    // screen (they see a replaced draft's new ids), then the autosave (it sees every edit of the frame,
+                    // so leaving the screen in the same frame keeps it).
+                    (
+                        fit_window,
+                        actions::apply,
+                        (saving::title, saving::apply, list::apply, list::scroll).chain(),
+                        edit::apply,
+                        controls::drag_sliders,
+                        screen::scroll,
+                        saving::autosave,
+                    )
+                        .chain()
+                        .in_set(BehaviorSet::Apply),
                     (
                         screen::show_view,
                         screen::rebuild_graph,
@@ -156,16 +169,7 @@ impl Plugin for BehaviorPlugin {
                         .in_set(BehaviorSet::Show),
                 ),
             )
-            .add_systems(
-                Update,
-                (
-                    (saving::title, saving::apply, list::apply, list::scroll, saving::autosave)
-                        .chain()
-                        .after(actions::apply)
-                        .in_set(BehaviorSet::Apply),
-                    (saving::sync_title, list::sync).in_set(BehaviorSet::Show),
-                ),
-            )
+            .add_systems(Update, (saving::sync_title, list::sync).in_set(BehaviorSet::Show))
             // The live rule panel in the flight HUD (TEST IN RANGE).
             .add_systems(Update, live::update.run_if(in_state(AppMode::Flight)))
             .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))

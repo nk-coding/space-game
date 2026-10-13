@@ -166,7 +166,15 @@ pub(super) fn apply(
     mut ui: ResMut<BehaviorUi>,
     mut state: ResMut<EditState>,
     time: Res<Time<Real>>,
+    mut generation: Local<u64>,
 ) {
+    // Another draft (OPEN, USE, NEW, the design's behavior): ids of the old one may exist in it and name other
+    // rules, so the selection and an armed REPLACE go.
+    if draft.generation() != *generation {
+        *generation = draft.generation();
+        ui.selected = None;
+        state.replacing = None;
+    }
     for a in actions.read() {
         let Some(ed) = draft.editor() else { return };
         let edit = match a {
@@ -340,6 +348,42 @@ mod tests {
         // Without a fallback at the end: at the bottom.
         let ed = editor("when hull < 30% -> flee");
         assert_eq!(add_rule_edit(&ed), Some(Edit::AddRule { index: 1, action: "approach".into() }));
+    }
+
+    /// OPEN / USE / NEW replace the draft; ids from the old editor exist in the new one too (every editor counts
+    /// from 0), so a kept selection would name another rule, and Delete would delete it.
+    #[test]
+    fn another_draft_drops_the_selection_and_replace() {
+        let content = data::base_content();
+        let nodes = &content.behavior_nodes;
+        let mut world = World::new();
+        world.init_resource::<Messages<BehaviorAction>>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<EditState>();
+        let mut draft = BehaviorDraft::default();
+        draft.replace(BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), nodes).unwrap());
+        let cond = NodeRef::Cond(draft.editor().unwrap().rule_at(0).unwrap().conds[0]);
+        world.insert_resource(draft);
+        world.init_resource::<BehaviorUi>();
+        // The screen has been running with this draft; then a condition is selected and REPLACE armed.
+        let apply = world.register_system(apply);
+        world.run_system(apply).unwrap();
+        world.resource_mut::<BehaviorUi>().selected = Some(Selection::Node(cond));
+        world.resource_mut::<EditState>().replacing = Some(cond);
+        world.run_system(apply).unwrap();
+        // Still the same draft: kept.
+        assert_eq!(world.resource::<BehaviorUi>().selected, Some(Selection::Node(cond)));
+        assert_eq!(world.resource::<EditState>().replacing, Some(cond));
+        // OPEN raider_basic: the old ids name nodes of the new draft as well, but the selection goes.
+        let next = BehaviorDraft::from_behavior(content.behaviors.get("raider_basic").unwrap(), nodes).unwrap();
+        assert!(Selection::Node(cond).exists(next.editor().unwrap()));
+        world.resource_mut::<BehaviorDraft>().replace(next);
+        world.write_message(BehaviorAction::Delete);
+        let before = world.resource::<BehaviorDraft>().program().clone();
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<BehaviorUi>().selected, None);
+        assert_eq!(world.resource::<EditState>().replacing, None);
+        assert_eq!(*world.resource::<BehaviorDraft>().program(), before, "Delete reached the new draft");
     }
 
     #[test]
