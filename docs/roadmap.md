@@ -102,12 +102,15 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 Niklas chose the behavior editor after the drydock: its own screen from the drydock, graph and text views,
 behaviors saved on their own and picked by designs, TEST IN RANGE by watching or flying alongside.
 
+Status 13 Oct 2026: v1 done. 361 tests pass; the editor, saving, the BEHAVIORS list and both TEST IN RANGE modes
+work headless. Next: Niklas tries it; then his review of GDR-0053, 0056, 0058, 0059, 0060.
+
 | Track | Goal | Status |
 |---|---|---|
 | 6A `data::behavior_edit` | Pure editing model of a rule program: rules, conditions, parameters, target line, slots, undo, text round trip | done 13 Oct (`behavior-format.md` "Editing model") |
 | 6B Plumbing | Player behaviors in the storage layer, designs naming their behavior, share codes carrying it, the sim library, TEST IN RANGE modes (watch / fly alongside), the live active rule | done 13 Oct (`drydock.md` "Behaviors"; share codes `SGD2`) |
 | 6C Screen foundation | `AppMode::Behavior`, the mockup's layout, read-only graph view, text view with live errors, palette and inspector shells, BEHAVIOR button in the drydock | done 13 Oct (`client.md` "Behavior screen") |
-| 6D Wiring | Graph editing and the inspector through the model, saving, test buttons, live rule highlight | wave B, in progress |
+| 6D Wiring | Graph editing and the inspector through the model, saving, test buttons, live rule highlight | done 13 Oct (GDR-0060; `client.md` "Behavior screen") |
 
 ## Phase 4: measurement
 

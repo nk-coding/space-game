@@ -68,6 +68,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0057](0057-behavior-editor-v1.md) | Behavior editor v1: its own screen from the drydock; behaviors are saved on their own and designs pick one; test by watching or flying alongside; graph and text views | Accepted | 2026-10-13 |
 | [0058](0058-turning-v2-defaults.md) | Turning v2 defaults: the numbers, RCS couples and when engines help turning | Accepted (provisional, lead) | 2026-10-13 |
 | [0059](0059-behavior-editor-wave-a-defaults.md) | Behavior editor wave A defaults: editing rules, storage and tests, the screen | Accepted (provisional, lead) | 2026-10-13 |
+| [0060](0060-behavior-editor-wave-b-defaults.md) | Behavior editor wave B defaults: editing gestures, saving and linking, the live panel | Accepted (provisional, lead) | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
