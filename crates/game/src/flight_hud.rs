@@ -1015,7 +1015,7 @@ fn site_markers(
                 }
                 if t.1 == 0 {
                     set_text(&mut text, &name);
-                    set_color(&mut color, ui_color(c, a));
+                    set_color(&mut color, ui_color(c, if a < 0.8 { 0.95 } else { 1.0 }));
                 } else if dist >= 1000.0 {
                     set_text(&mut text, &format!("{:.1} KM", dist / 1000.0));
                 } else {
@@ -1025,23 +1025,45 @@ fn site_markers(
             spots[k] = Some((spot, ray.normalize_or_zero()));
         }
     }
-    // Each label beside its arrow, towards the view's centre, kept inside the view.
-    for (label, mut node, computed, mut vis) in &mut labels {
+    // Each label beside its arrow (towards the view's centre if there is room), kept inside the view and clear of
+    // the HUD and of the labels placed before it.
+    let mut order: Vec<_> = labels.iter_mut().collect();
+    order.sort_by_key(|l| l.0.0);
+    for (label, mut node, computed, mut vis) in order {
         let want = if spots[label.0].is_some() { Visibility::Inherited } else { Visibility::Hidden };
         if *vis != want {
             *vis = want;
         }
         let Some((spot, ray)) = spots[label.0] else { continue };
         let size = computed.size * computed.inverse_scale_factor;
-        let c = spot - ray * (26.0 + size.length() * 0.35);
-        let max = (rig.viewport - size - Vec2::splat(6.0)).max(Vec2::splat(6.0));
-        let at = (c - size / 2.0).clamp(Vec2::splat(6.0), max);
-        let (left, top) = (Val::Px(at.x.round()), Val::Px(at.y.round()));
+        let r = label_spot(spot, ray, size, rig.viewport, &rects);
+        rects.push(r.inflate(4.0));
+        let (left, top) = (Val::Px(r.min.x.round()), Val::Px(r.min.y.round()));
         if node.left != left || node.top != top {
             node.left = left;
             node.top = top;
         }
     }
+}
+
+/// Where a site marker's label of `size` goes (logical px, y down) for an arrow at `spot` whose ray points `ray`
+/// (unit, screen): towards the view's centre, else below, above, right or left of the arrow, the first place inside
+/// the `viewport` that meets none of `avoid`; the first one if none is free.
+fn label_spot(spot: Vec2, ray: Vec2, size: Vec2, viewport: Vec2, avoid: &[Rect]) -> Rect {
+    let gap = 18.0;
+    let candidates = [
+        spot - ray * (gap + 8.0 + (size.x * ray.x.abs() + size.y * ray.y.abs()) / 2.0),
+        spot + Vec2::new(0.0, gap + size.y / 2.0),
+        spot - Vec2::new(0.0, gap + size.y / 2.0),
+        spot + Vec2::new(gap + size.x / 2.0, 0.0),
+        spot - Vec2::new(gap + size.x / 2.0, 0.0),
+    ];
+    let max = (viewport - size - Vec2::splat(6.0)).max(Vec2::splat(6.0));
+    let place = |c: Vec2| {
+        let at = (c - size / 2.0).clamp(Vec2::splat(6.0), max);
+        Rect::from_corners(at, at + size)
+    };
+    candidates.iter().map(|&c| place(c)).find(|r| avoid.iter().all(|z| z.intersect(*r).is_empty())).unwrap_or_else(|| place(candidates[0]))
 }
 
 /// Where an off-screen marker sits (logical screen px, y down): on the `ray` from the view `centre` towards its
@@ -1105,6 +1127,22 @@ mod tests {
         assert!(!built.matches(third.ship(again)));
         built.set(third.ship(again));
         assert!(built.matches(third.ship(again)));
+    }
+
+    /// A site label sits towards the view's centre, or beside its arrow when the HUD or another label is there.
+    #[test]
+    fn site_labels_keep_clear_of_the_hud_and_each_other() {
+        let view = Vec2::new(1600.0, 900.0);
+        let size = Vec2::new(120.0, 30.0);
+        // An arrow at the top edge: the label goes below it.
+        let top = label_spot(Vec2::new(800.0, 40.0), Vec2::new(0.0, -1.0), size, view, &[]);
+        assert!(top.min.y > 40.0 && (top.center().x - 800.0).abs() < 1e-3, "{top:?}");
+        // Taken: the next free place beside the arrow.
+        let beside = label_spot(Vec2::new(800.0, 40.0), Vec2::new(0.0, -1.0), size, view, &[top]);
+        assert!(beside.intersect(top).is_empty(), "{beside:?}");
+        // Always inside the view.
+        let corner = label_spot(Vec2::new(10.0, 10.0), Vec2::new(-0.7, -0.7), size, view, &[]);
+        assert!(corner.min.x >= 6.0 && corner.min.y >= 6.0);
     }
 
     /// A marker for a ship up and to the left of a 1600 x 900 view: at the edge it sat on the hull block; it moves
