@@ -119,6 +119,7 @@ fn tip_of(place: Place) -> Option<Tip> {
         HomeAction::TestRange => "TEST RANGE",
         HomeAction::Fleet => "FLEET",
         HomeAction::Voyages => "VOYAGES",
+        HomeAction::Research => "RESEARCH",
     };
     Some(key_of(place).map_or(Tip::new(name), |(_, key)| Tip::key(name, key)))
 }
