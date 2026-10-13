@@ -79,7 +79,7 @@ fn the_fade_is_continuous_in_the_push_angle() {
     // `deg`: angle between the push (+y) and the motion.
     let at = |deg: f32, speed: f32| {
         let a = deg.to_radians();
-        let v = Vec2::new(a.sin(), a.cos()) * speed;
+        let v = Vec2::new(sim::math::sin(a), sim::math::cos(a)) * speed;
         t.falloff(v, v.length())
     };
     assert_eq!(at(0.0, 20.0), 0.0, "straight with the motion at the rating");
