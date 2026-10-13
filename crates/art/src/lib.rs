@@ -184,14 +184,12 @@ impl Layout {
 
         // Engine plumes: gradient triangle over a blurred copy, nozzle at the origin, pointing down (+y). Shapes
         // and lengths follow drawFlame() in docs/concept/reference/concept-board-script.js at full thrust.
-        let stop = |i: usize, j: usize| t.must(&format!("ship.plume.gradient.{i}.{j}")).to_string();
-        let teal_stops: Vec<(String, String, String)> = (0..3).map(|i| (stop(i, 0), stop(i, 1), stop(i, 2))).collect();
-        // Enemy plume: gPlR in art/ships/automaton-raider.svg.
-        let coral_stops: Vec<(String, String, String)> = vec![
-            ("#ffe6df".into(), "0.9".into(), "0".into()),
-            ("#ec8f7c".into(), "0.5".into(), "0.3".into()),
-            ("#ec8f7c".into(), "0".into(), "1".into()),
-        ];
+        // `(colour, opacity, offset)` per stop; the enemy plume is gPlR in art/ships/automaton-raider.svg.
+        let stops = |gradient: &str| -> Vec<(String, String, String)> {
+            let stop = |i: usize, j: usize| t.must(&format!("ship.plume.{gradient}.{i}.{j}")).to_string();
+            (0..3).map(|i| (stop(i, 0), stop(i, 1), stop(i, 2))).collect()
+        };
+        let (teal_stops, coral_stops) = (stops("gradient"), stops("gradient_enemy"));
         let glow_op = t.must_f32("ship.plume.glow_opacity");
         let glow_sigma = t.must_f32("ship.plume.glow_blur_std_cells") * UNITS_PER_CELL;
         let teal = t.must("ship.hull_glow.color").to_string();
@@ -231,10 +229,11 @@ impl Layout {
             let _ = write!(stop_xml, "<stop offset=\"{o}\" stop-color=\"{}\"/>", t.must(&format!("ship.barrel_gradient.{i}")));
         }
         let (bx0, by0, bw, bh) = (-3.0f32, -0.5f32, 6.0f32, 17.0f32);
+        let stroke = t.must("ship.barrel_stroke");
         let svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{bw}\" height=\"{bh}\" viewBox=\"{bx0} {by0} {bw} {bh}\">\
              <defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">{stop_xml}</linearGradient></defs>\
-             <rect x=\"-2.5\" y=\"0\" width=\"5\" height=\"16\" rx=\"1\" fill=\"url(#g)\" stroke=\"#0a0f16\" stroke-width=\".6\"/></svg>"
+             <rect x=\"-2.5\" y=\"0\" width=\"5\" height=\"16\" rx=\"1\" fill=\"url(#g)\" stroke=\"{stroke}\" stroke-width=\".6\"/></svg>"
         );
         let cells = [bw / UNITS_PER_CELL, bh / UNITS_PER_CELL];
         add("fx/barrel".into(), cells, cells, [-bx0 / UNITS_PER_CELL, -by0 / UNITS_PER_CELL], Source::Svg(svg));
