@@ -613,9 +613,11 @@ dark or dormant vessel does not fly at all. Code: `ship::refresh_authority`, the
 ### Top speed and the cruise flame
 
 Decided by Niklas on 12 Oct 2026 ([GDR-0041](gdr/0041-engine-rated-speed.md)); it replaces the soft top speed
-`k·√a`. The fade by the whole speed: Niklas, 13 Oct 2026 ([GDR-0055](gdr/0055-slower-crisper-turning.md)). Code:
-`ship::rated_falloff`, `Thruster::falloff`, `ThrustAuthority::speed`, `Kin::speeds`, `Kin::top_along`, the
-cruise lines at the end of `flight::execute`.
+`k·√a`. The fade by the whole speed: Niklas, 13 Oct 2026 ([GDR-0055](gdr/0055-slower-crisper-turning.md)); made
+continuous in the push angle and maneuver goals capped at the top speed: 13 Oct 2026
+([GDR-0064](gdr/0064-lock-feed-forward-and-ai-flight-fixes.md), lead). Code: `ship::rated_falloff`,
+`Thruster::falloff`, `ThrustAuthority::speed`, `Kin::speeds`, `Kin::top_along`, `Maneuver::goal_for`, the cruise
+lines at the end of `flight::execute`.
 
 - **Rated speed**: every engine (`engine.rated_speed`) and RCS pod (`rcs.rated_speed`, each nozzle) has one, with
   bonuses (stats `rated_speed`, `rcs_rated_speed`) and `SimConfig::speed_scale`. Base content (placeholders):
@@ -628,6 +630,19 @@ cruise lines at the end of `flight::execute`.
   first, so the acceleration stays constant for 80% of the way and the last 20% takes about a quarter of the
   time. Rotation-induced velocity is ignored (cheap, and a turning ship's points move sideways to the thrust
   anyway). Cost: one square root per flown piece per tick (`|v_local|`, shared by its rows).
+- **Continuous in the push angle** (GDR-0064; `tuning::FADE_ALONG` = 4, lead default): the fade uses
+  `min(|v|, 4 × the speed along the row's axis)` instead of `|v|`. A push within about 76° of the motion
+  (cos ≥ 1/4) fades exactly by the whole speed as above; from there the fade eases off to none for a push square
+  to the motion, with no jump anywhere (test `the_fade_is_continuous_in_the_push_angle`). Until then a sign test
+  decided: a forward engine whose push was a hair "with" the motion got nothing at the top speed, so a ship whose
+  velocity was 89° off its nose could not push along its nose at all (the balance study's sim issue 1; a locked
+  Runner sliding sideways ignored the stick). A push nearly square to the motion can now take a ship past its
+  rating by at most √(1 + 1/4²) − 1 ≈ 3%, and as the velocity turns towards the push the whole speed counts
+  again (test `a_locked_ship_at_top_speed_still_answers_the_stick_across_its_motion`: a Runner locked ahead while
+  sliding sideways at 22 m/s pushes along its nose to 5.8 m/s, 22.7 m/s in all; before, nothing). A ship with
+  engines only at the back that is locked at its top speed with its velocity less than about 76° off its nose
+  still cannot turn its velocity onto the nose without passing its rating: that is GDR-0011's trade-off (it
+  cannot brake or strafe while locked), not the fade.
 - **Where it applies**: the flight computer computes each row's falloff once per tick from the velocity at the
   start of the tick (`Piece::falloff`, also for raw throttles), allocates over `max_force × falloff`, and the
   systems use the same numbers for the wrench (`max_force × power × falloff`) and for the power demand
@@ -639,8 +654,9 @@ cruise lines at the end of `flight::execute`.
 - **Top speed per direction** (`ThrustAuthority::speed`, `Kin::speeds`): per thrust group (forward, backward,
   right, left) the highest rating among its rows that can push now
   ([Planning with what works](#planning-with-what-works)). With the whole-speed fade no ship gets faster than
-  its fastest thrusters, and diagonally no faster than the slowest group still pushing that way: the old box (a
-  ship with 22 m/s forward and 14 m/s RCS sideways reached 26 m/s crabwise) is gone.
+  its fastest thrusters, and diagonally no faster than the slowest group still pushing that way (up to the 3% a
+  push nearly square to the motion may add): the old box (a ship with 22 m/s forward and 14 m/s RCS sideways
+  reached 26 m/s crabwise) is gone.
 - **`Kin::top_along(u)`** (the locked touch stick's full length): the fastest velocity goal along `u` the flight
   computer reaches from rest. It pushes each group flat out until its share of the goal is there; the group that
   finishes last caps the speed at its own top speed, and the group that finishes first must get there before
@@ -740,6 +756,14 @@ ships turn away; otherwise like `Approach`) and `Flee { from }` (straight away a
 behaviors. "Top speed" in every maneuver (`Flee`, the cap of `arrive_speed`, the orbit's 60%) is `Kin::top_speed`,
 the rated top speed of the best axis (GDR-0041); a target that flees with faster engines gets away. `Maneuver::goal_for(kin, target_state, tuning)` takes an already resolved target (behaviors fly
 relative to an aim point on the target ship).
+
+**Goals are capped at the top speed** (GDR-0064, lead): `goal_for` scales every velocity goal down to
+`Kin::top_speed`. Matching a faster target (`face`, an approach at range), adding a moving target's velocity to an
+orbit or an approach, asked for more; a ship at its top speed then needed a push a hair "with" its motion, the
+whole-speed fade cut it off, and the heading logic (which plans with thrust, not with the fade) never turned:
+AI ships flew straight on, raiders for up to 34% of a fight (`docs/results/balance-2026-10-13.md`, sim issue 1).
+With the goal at most the top speed, the change it asks for at the top speed never points with the motion.
+Test `maneuver_goals_never_ask_for_more_than_the_top_speed`.
 
 The hard-coded `RaiderBrain` was deleted on 12 Oct 2026 (Niklas; ADR-0025, no dead code): the content behavior
 `raider_basic` flies the same fight (see [Behaviors](#behaviors)).

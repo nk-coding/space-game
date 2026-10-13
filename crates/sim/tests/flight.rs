@@ -267,6 +267,36 @@ fn lock_keeps_the_nose_on_a_moving_target() {
     // it cannot brake while locked. Ships with RCS can: see `rcs_nozzles_follow_open_sides_and_strafe`.)
 }
 
+/// GDR-0064: no maneuver asks for more than the ship's top speed. Goals beyond it (a target faster than the
+/// ship, an orbit around a moving target) left AI ships stuck at their top speed: the push they asked for was a
+/// hair "with" the motion, the whole-speed fade cut it off, and the heading logic never turned.
+#[test]
+fn maneuver_goals_never_ask_for_more_than_the_top_speed() {
+    let c = content();
+    let (mut w, s) = world_with(design(&c, "automaton_raider"));
+    w.step(&TickInputs::default());
+    let kin = Kin::of(piece(&w, s), w.ship(s).unwrap().parts());
+    let tuning = sim::SimConfig::default().flight;
+    assert!(kin.top_speed > 0.0);
+    let fast = |pos: Vec2| sim::flight::TargetState { pos, vel: Vec2::new(30.0, -10.0) };
+    let t = Target::Point(Vec2::ZERO);
+    let aim = sim::flight::AimMode::Auto;
+    for (m, at) in [
+        (Maneuver::Approach { target: t, range: 20.0, aim }, Vec2::new(0.0, 300.0)),
+        (Maneuver::Approach { target: t, range: 20.0, aim }, Vec2::new(0.0, 10.0)),
+        (Maneuver::KeepRange { target: t, range: 50.0, aim }, Vec2::new(0.0, 10.0)),
+        (Maneuver::KeepRange { target: t, range: 50.0, aim }, Vec2::new(0.0, 300.0)),
+        (Maneuver::Orbit { target: t, radius: 40.0, ccw: true }, Vec2::new(0.0, 40.0)),
+        (Maneuver::Orbit { target: t, radius: 40.0, ccw: false }, Vec2::new(0.0, 200.0)),
+        (Maneuver::FaceTarget { target: t, aim }, Vec2::new(0.0, 30.0)),
+        (Maneuver::Flee { from: t }, Vec2::new(0.0, 30.0)),
+    ] {
+        let goal = m.goal_for(&kin, Some(fast(at)), &tuning);
+        let v = goal.velocity.unwrap().length();
+        assert!(v <= kin.top_speed * (1.0 + 1e-5), "{m:?} at {at:?}: {v} > {}", kin.top_speed);
+    }
+}
+
 #[test]
 fn allocator_gives_zero_torque_for_symmetric_translation() {
     let c = content();

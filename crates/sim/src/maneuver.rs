@@ -1,5 +1,6 @@
 //! Built-in maneuvers: the layer between behaviors (`behavior/`) and the flight computer. Each maneuver turns
-//! into a [`FlightGoal`] every tick. Ranges are **placeholders**.
+//! into a [`FlightGoal`] every tick, never faster than the ship's top speed (GDR-0064). Ranges are
+//! **placeholders**.
 
 use crate::config::FlightTuning;
 use crate::flight::{AimMode, FlightGoal, HeadingGoal, Kin, Target, TargetState, resolve_target};
@@ -74,12 +75,27 @@ impl Maneuver {
 
     /// This tick's goal with the target already resolved (`ts`; ignored by maneuvers without a target).
     /// Behaviors use it to fly relative to an aim point on the target ship (e.g. its engines).
+    ///
+    /// The velocity goal is capped at the ship's top speed (`Kin::top_speed`, GDR-0064): matching a faster
+    /// target, or an orbit around a moving one, asked for more, and a ship at its top speed then pushed a hair
+    /// "with" its motion, got no thrust from the whole-speed fade and flew straight on.
     pub fn goal_for(
         &self,
         kin: &Kin,
         ts: Option<TargetState>,
         tuning: &FlightTuning,
     ) -> FlightGoal {
+        let mut goal = self.uncapped(kin, ts, tuning);
+        if let Some(v) = goal.velocity {
+            let speed = v.length();
+            if speed > kin.top_speed && kin.top_speed > 0.0 {
+                goal.velocity = Some(v * (kin.top_speed / speed));
+            }
+        }
+        goal
+    }
+
+    fn uncapped(&self, kin: &Kin, ts: Option<TargetState>, tuning: &FlightTuning) -> FlightGoal {
         let brake = FlightGoal {
             heading: HeadingGoal::Auto,
             velocity: Some(Vec2::ZERO),
