@@ -118,11 +118,12 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
         medium: fonts_assets.add(Font::from_bytes(BARLOW_MEDIUM.to_vec())),
     };
     commands.insert_resource(fonts.clone());
-    let grey = ui_color(style.ui_label, 1.0);
-    let white = ui_color(Color::srgb_u8(0xeb, 0xf5, 0xff), 1.0);
-    let coral = ui_color(style.glow_enemy, 1.0);
-    let teal = ui_color(style.glow_player, 1.0);
-    let dim = ui_color(Color::srgb_u8(0x5d, 0x6a, 0x74), 1.0);
+    let ui = &style.ui;
+    let grey = ui_color(ui.label, 1.0);
+    let white = ui_color(ui.number, 1.0);
+    let coral = ui_color(ui.coral, 1.0);
+    let teal = ui_color(ui.teal, 1.0);
+    let dim = ui_color(ui.dim, 1.0);
     let abs = |l: Option<f32>, r: Option<f32>, t: Option<f32>, b: Option<f32>| Node {
         position_type: PositionType::Absolute,
         left: l.map(px).unwrap_or(Val::Auto),
@@ -515,7 +516,7 @@ fn update_hull_map(
             ui_color(style.ui_label, 0.35)
         } else {
             let f = (st.hp / full).clamp(0.0, 1.0);
-            if f < 0.5 { ui_color(Color::srgb_u8(0xe2, 0xb1, 0x5c), 0.85) } else { ui_color(style.glow_player, 0.45 + 0.45 * f) }
+            if f < 0.5 { ui_color(style.system_color("power"), 0.85) } else { ui_color(style.glow_player, 0.45 + 0.45 * f) }
         };
         if bg.0 != c {
             bg.0 = c;

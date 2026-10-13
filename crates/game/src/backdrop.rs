@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use crate::atlas::Atlas;
 use crate::camera::{CameraRig, CameraSet, MainCamera};
 use crate::meshbuf::MeshBuf;
-use crate::style::{vcol, Style};
+use crate::style::{RadialGradient, Style, vcol};
 use crate::RenderToggles;
 
 const Z_BACKDROP: f32 = -900.0;
@@ -41,7 +41,11 @@ pub struct BackdropPlugin;
 
 impl Plugin for BackdropPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_backdrop.after(crate::spawn_camera))
+        // Outside the gradient mesh (and in screens that veil the world with it): the gradient's outer colour.
+        // The style exists from the atlas plugin on.
+        let clear = app.world().resource::<Style>().background.outer();
+        app.insert_resource(ClearColor(clear))
+            .add_systems(Startup, spawn_backdrop.after(crate::spawn_camera))
             .add_systems(PostUpdate, (fit_backdrop, place_dust, follow_rings).after(CameraSet));
     }
 }
@@ -72,14 +76,14 @@ fn spawn_backdrop(
     mut meshes: ResMut<Assets<Mesh>>,
     camera: Single<Entity, With<MainCamera>>,
 ) {
-    // The style-guide gradient as a mesh with vertex colours (resolution independent): CSS
-    // `radial-gradient(ellipse 75% 85% at 50% 45%, #0a1820, #050e15 55%, #010409)` in a unit square that is
-    // scaled to the viewport. Colours are interpolated in sRGB at every ring (like the browser); between rings
-    // the GPU interpolates, which is indistinguishable with this many rings.
+    // The style-guide gradient (`ui.background`, a CSS radial gradient) as a mesh with vertex colours
+    // (resolution independent) in a unit square that is scaled to the viewport. Colours are interpolated in sRGB
+    // at every ring (like the browser); between rings the GPU interpolates, which is indistinguishable with this
+    // many rings.
     let backdrop = commands
         .spawn((
             Backdrop,
-            Mesh2d(meshes.add(backdrop_mesh(&atlas))),
+            Mesh2d(meshes.add(backdrop_mesh(&atlas, &style.background))),
             MeshMaterial2d(atlas.material.clone()),
             Transform::from_xyz(0.0, 0.0, Z_BACKDROP),
         ))
@@ -154,26 +158,16 @@ fn fit_backdrop(
 }
 
 /// Unit-square backdrop gradient (x, y in -0.5..0.5, y up).
-fn backdrop_mesh(atlas: &Atlas) -> Mesh {
+fn backdrop_mesh(atlas: &Atlas, gradient: &RadialGradient) -> Mesh {
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::{Indices, PrimitiveTopology};
-    let stops = [(0.0f32, hex3(0x0a, 0x18, 0x20)), (0.55, hex3(0x05, 0x0e, 0x15)), (1.0, hex3(0x01, 0x04, 0x09))];
     let colour = |t: f32| {
-        let t = t.min(1.0);
-        let mut c = stops[2].1;
-        for w in stops.windows(2) {
-            if t <= w[1].0 {
-                let k = (t - w[0].0) / (w[1].0 - w[0].0);
-                c = [0, 1, 2].map(|i| w[0].1[i] + (w[1].1[i] - w[0].1[i]) * k);
-                break;
-            }
-        }
-        let l = Color::srgb(c[0], c[1], c[2]).to_linear();
+        let l = gradient.at(t).to_linear();
         [l.red, l.green, l.blue, 1.0]
     };
     let white = atlas.region("fx/white").uv_center();
     let (rings, segs) = (28usize, 72usize);
-    let centre = Vec2::new(0.0, 0.05);
+    let (centre, radii) = (Vec2::new(gradient.centre.x - 0.5, 0.5 - gradient.centre.y), gradient.radii);
     let mut pos = vec![[centre.x, centre.y, 0.0]];
     let mut col = vec![colour(0.0)];
     for r in 1..=rings {
@@ -181,7 +175,7 @@ fn backdrop_mesh(atlas: &Atlas) -> Mesh {
         let t = 1.1 * (r as f32 / rings as f32).powf(1.15);
         for s in 0..segs {
             let a = s as f32 / segs as f32 * std::f32::consts::TAU;
-            pos.push([centre.x + 0.75 * t * a.cos(), centre.y + 0.85 * t * a.sin(), 0.0]);
+            pos.push([centre.x + radii.x * t * a.cos(), centre.y + radii.y * t * a.sin(), 0.0]);
             col.push(colour(t));
         }
     }
@@ -204,10 +198,6 @@ fn backdrop_mesh(atlas: &Atlas) -> Mesh {
     m.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
     m.insert_indices(Indices::U32(idx));
     m
-}
-
-fn hex3(r: u8, g: u8, b: u8) -> [f32; 3] {
-    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
 }
 
 fn place_dust(

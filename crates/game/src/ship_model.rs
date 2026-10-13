@@ -35,6 +35,8 @@ pub struct DesignVisual {
     pub enemy: bool,
     /// Hull edge / aura / plume / trail tint.
     pub glow: Color,
+    /// The port navigation light (coral; starboard takes the glow).
+    pub port_light: Color,
     /// Weapon colour (muzzle flashes, beams, pulses).
     pub weapon_color: Color,
 }
@@ -87,7 +89,7 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
         rect_part.push(def.shape == data::Shape::Rect);
         logic_part.push(def.logic.is_some());
     }
-    Ok(DesignVisual { parts, rect_part, logic_part, enemy, glow, weapon_color })
+    Ok(DesignVisual { parts, rect_part, logic_part, enemy, glow, port_light: style.glow_enemy, weapon_color })
 }
 
 /// The visual of one live piece: its alive parts, drawn in the sim's piece frame (pivot = `piece.origin`), with
@@ -202,7 +204,7 @@ fn nav_lights(dv: &DesignVisual, grid: &ShipGrid, parts: &[u32]) -> Vec<(Vec2, C
     }
     match (best_l, best_r) {
         (Some(l), Some(r)) => vec![
-            (Vec2::new(l.0 as f32 + 0.2, l.1 as f32 + 0.85), Color::srgb_u8(0xec, 0x8f, 0x7c)),
+            (Vec2::new(l.0 as f32 + 0.2, l.1 as f32 + 0.85), dv.port_light),
             (Vec2::new(r.0 as f32 + 0.8, r.1 as f32 + 0.85), dv.glow),
         ],
         _ => Vec::new(),
