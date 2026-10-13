@@ -349,15 +349,47 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 - **Rebuild**: regions one by one, then the mip chain a band of rows at a time (`art::Rasterizer::step`), within
   6 ms of work per frame, 16 ms while the atlas on screen is stretched more than 2× (it looks blurry then). The old
   atlas stays on screen until the new one is complete. A job for a lower tier than the zoom now needs is dropped
-  for the new one. Native release timings (12 Oct 2026): tier 256 ≈ 0.13 s of work, tier 512 ≈ 0.45 s (regions
-  0.42 s, mips 0.15 s in 400 steps of at most a few ms); the browser takes a few times longer. Before, the mip
-  chain was built in one frame (178 ms at tier 256 in the browser).
+  for the new one (and a job that would rebuild the tier already on screen is dropped too). Native release
+  timings (12 Oct 2026): tier 256 ≈ 0.13 s of work, tier 512 ≈ 0.45 s (regions 0.42 s, mips 0.15 s in 400 steps
+  of at most a few ms); the browser takes a few times longer. Before, the mip chain was built in one frame
+  (178 ms at tier 256 in the browser).
+- **Switch** (`atlas::rasterise_step`): a finished atlas is added as a *new* image; the next frame the material's
+  texture handle is set to it (written through `get_mut`, so Bevy re-prepares the material and rebuilds its bind
+  group) and the old image goes with its last handle. One frame later because Bevy 0.20 does not order a
+  material's preparation after its images' (both run unordered in `RenderSystems::PrepareAssets`): switching in
+  the same frame could look up a texture that is not uploaded yet (Bevy would retry the material, and every
+  atlas mesh would vanish for a frame). A new image per tier also avoids Bevy's in-place update for an unchanged
+  texture size, which writes mip level 0 only and would leave stale mips. Memory: one atlas on the GPU (tier 32:
+  0.3 MB, 64: 1.3 MB, 128: 5.2 MB, 256: 21 MB, 512: 84 MB, mips included), two for the switch frame.
+- **Sampling** (`AtlasMaterial`, `atlas.wesl`): every atlas mesh (ships, effects, backdrop, the drydock's view and
+  its UI icons) draws with one material: atlas × vertex colour, alpha-blended, sRGB-encoded under `SRGB_OUTPUT`
+  like Bevy's `ColorMaterial`, which it replaced on 13 Oct 2026. The sampler is linear / linear / linear
+  (trilinear), clamp to edge. The shader samples with a mip LOD bias of −0.5 (`textureSampleBias`; WebGPU
+  samplers have no bias): the tier is the next power of two above what the screen needs, so the GPU's level of
+  detail lies between 0 and 1 at the tier's own zooms, and plain trilinear sampling blended in up to all of the
+  next level, which has less resolution than the screen (at 160 px/m on tier 256: 68 % from the 128 px/cell
+  level; icon edges ran over about 2 px where tile edges run over 1). With the bias the full level is used
+  until it is minified about 1.4×, and past 2× the next level takes over as before, so minified icons don't
+  alias. Same cost as before (one texture sample, one material, the same batching).
+- **What was wrong until 13 Oct 2026** (Niklas: pixelated, stair-stepped icons at 160 px/m while F3 said
+  `atlas 256 px/cell need 160`): the image was replaced in place and the material "touched" with
+  `let _ = materials.get_mut(id)`. In Bevy 0.20 `Assets::get_mut` returns an `AssetMut` guard that marks the
+  asset modified only when it is written through, so that touch did nothing: the material kept the bind group
+  of its first preparation, and every atlas mesh sampled the start atlas (64 px/cell, or 32 when the first
+  rebuild landed before the material was prepared) for the whole session, stretched 2.5–5× at 160 px/m, while
+  every later tier was rasterised and uploaded for nothing. Evidence: headless shots at 160 px/m with different
+  tier histories (64 → 256 and 64 → 32 → 256) had identical icons (mean difference ≤ 0.2 of 255, against 6.2
+  between before and after the fix); icon edges ran over 3–5 px. Comparison:
+  `docs/results/atlas-sharpness-flight-3440.png` (showcase, 3440 × 1305) and
+  `docs/results/atlas-sharpness-drydock.png` (drydock at 160 px/m).
 - **Soft by design**: icon glows and plumes are stored at half density (they are blurred); at the highest zoom a
   plume's edge is about 1.5 px soft. Everything else (icons, barrel) is 1:1 with the tier; tiles, seams, hull lines
   and shield bubbles are geometry or shaders and stay sharp at any zoom.
 - **Checking blur**: F3 shows `atlas <tier> px/cell  need <px> (zoom x scale)  max <tier>  window <physical size>`
-  and the last rebuild. If the tier stays below `need` the rebuild is slow or capped; if `window` is not the CSS
-  size × the device pixel ratio, the canvas renders at a lower resolution than the screen.
+  and the last rebuild; the tier is the one the material samples (it changes with the switch). If the tier stays
+  below `need` the rebuild is slow or capped; if `window` is not the CSS size × the device pixel ratio, the canvas
+  renders at a lower resolution than the screen. Icons that look stretched while the tier is at or above `need`
+  point at the binding (what went wrong before).
 - **Headless HiDPI**: Playwright's `deviceScaleFactor` alone renders the canvas at CSS resolution
   (`devicePixelContentBoxSize` reports CSS pixels), which looks blurry for the wrong reason; add Chromium's
   `--force-device-scale-factor` with the same value to test a real HiDPI screen.
@@ -379,7 +411,12 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 ## Gotchas
 
 - `CompositingSpace::Srgb` (browser-like blending) needs `Hdr` on WebGL2 in Bevy 0.20, see `main.rs`. A custom
-  `Material2d` shader has to encode its output itself when `SRGB_OUTPUT` is defined (like `ColorMaterial` does).
+  `Material2d` shader has to encode its output itself when `SRGB_OUTPUT` is defined (like `ColorMaterial`,
+  `atlas.wesl` and `shield.wesl` do).
+- Bevy 0.20's `Assets::get_mut` marks an asset modified only when it is written through the returned
+  `AssetMut`; `let _ = assets.get_mut(id)` changes nothing. A material's bind group is built from the images
+  present when it is prepared and is not rebuilt when an image changes (texture size and so the GPU texture
+  changing included): change the material itself, a frame after adding the new image (see the atlas switch).
 - Bevy 0.20 shaders are WESL: plain `.wgsl` files get no imports. Embed a shader with `embedded_asset!(app,
   "x.wesl")` and refer to it as `embedded_path!("x.wesl")` with the `embedded` source; import the 2D mesh
   bindings as `bevy_sprite_render::mesh2d::{functions, view_bindings::globals, …}`. Take derivatives (`fwidth`)

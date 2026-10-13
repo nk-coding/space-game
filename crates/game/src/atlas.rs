@@ -6,19 +6,22 @@
 //! ([`UiAtlasNeed`]), × window scale factor, capped by the GPU's largest texture),
 //! rasterises a new atlas when that tier changes (regions and mip chain spread over frames within a time
 //! budget, the old texture stays in use meanwhile; a job for a tier the zoom has already outgrown is dropped
-//! for the new one) and swaps the image in place. Region UVs are normalised and identical at every tier, so
-//! meshes never need rebuilding. [`AtlasStatus`] reports what happens (F3 overlay).
+//! for the new one) and switches the material to the new image a frame after adding it ([`rasterise_step`]).
+//! Region UVs are normalised and identical at every tier, so meshes never need rebuilding. Every atlas mesh
+//! draws with one [`AtlasMaterial`] (`atlas.wesl`: texture × vertex colour, sampled with a mip LOD bias so the
+//! icons stay as sharp as the geometry). [`AtlasStatus`] reports what happens (F3 overlay).
 
 use std::sync::Arc;
 
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::platform::collections::HashMap;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
 use bevy::render::renderer::RenderDevice;
-use bevy::sprite_render::AlphaMode2d;
+use bevy::shader::ShaderRef;
+use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
 use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraRig;
@@ -60,9 +63,8 @@ impl Region {
 
 #[derive(Resource)]
 pub struct Atlas {
-    pub image: Handle<Image>,
     /// Shared material for every atlas mesh (vertex colours tint the texture).
-    pub material: Handle<ColorMaterial>,
+    pub material: Handle<AtlasMaterial>,
     regions: HashMap<String, Region>,
     tokens: art::Tokens,
     layout: Arc<art::Layout>,
@@ -93,12 +95,34 @@ pub fn parse_hex(s: &str) -> Option<Color> {
     Srgba::hex(s.trim()).ok().map(Color::from)
 }
 
+/// The material of every atlas mesh: the atlas × the vertex colour, alpha-blended, like Bevy's `ColorMaterial`
+/// but sampled with a mip LOD bias of −0.5 (`atlas.wesl` says why).
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+pub struct AtlasMaterial {
+    #[texture(0)]
+    #[sampler(1)]
+    texture: Handle<Image>,
+}
+
+impl Material2d for AtlasMaterial {
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Path(AssetPath::from_path_buf(embedded_path!("atlas.wesl")).with_source("embedded"))
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
+}
+
 /// A re-rasterisation in progress.
 #[derive(Resource, Default)]
 struct RasterJob {
     job: Option<Job>,
     /// Tier wanted and since when (real seconds).
     wanted: Option<(u32, f32)>,
+    /// A finished atlas, added as a new image one frame before the material switches to it (see
+    /// [`rasterise_step`]), and its numbers for [`AtlasStatus::last`].
+    ready: Option<(Handle<Image>, Rebuild)>,
 }
 
 struct Job {
@@ -114,6 +138,9 @@ struct Job {
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct UiAtlasNeed(pub f32);
 
+/// A finished rebuild: tier, milliseconds of work, frames, longest single step (ms).
+pub type Rebuild = (u32, f64, u32, f64);
+
 /// What the atlas does, for the debug overlay (F3).
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct AtlasStatus {
@@ -123,8 +150,8 @@ pub struct AtlasStatus {
     pub max_tier: u32,
     /// The tier being rasterised, if any.
     pub building: Option<u32>,
-    /// The last rebuild: tier, milliseconds of work, frames, longest single step (ms).
-    pub last: Option<(u32, f64, u32, f64)>,
+    /// The last rebuild (now on screen).
+    pub last: Option<Rebuild>,
 }
 
 pub struct AtlasPlugin;
@@ -160,15 +187,12 @@ impl Plugin for AtlasPlugin {
                 )
             })
             .collect();
+        embedded_asset!(app, "atlas.wesl");
+        app.add_plugins(Material2dPlugin::<AtlasMaterial>::default());
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
-        let material = world.resource_mut::<Assets<ColorMaterial>>().add(ColorMaterial {
-            color: Color::WHITE,
-            alpha_mode: AlphaMode2d::Blend,
-            texture: Some(image.clone()),
-            ..default()
-        });
-        let atlas = Atlas { image, material, regions, tokens: art::tokens(), layout, tier };
+        let material = world.resource_mut::<Assets<AtlasMaterial>>().add(AtlasMaterial { texture: image });
+        let atlas = Atlas { material, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
         app.init_resource::<RasterJob>()
@@ -217,7 +241,7 @@ fn choose_tier(
     let want = art::tier_for(need).min(cap);
     let building = job.job.as_ref().map(|j| j.raster.tier());
     status.building = building;
-    let cur = building.unwrap_or(atlas.tier);
+    let cur = building.or(job.ready.as_ref().map(|r| r.1.0)).unwrap_or(atlas.tier);
     // Hysteresis: go up as soon as the screen needs more; go down only when half the tier is clearly enough.
     let target = if want > cur || (want < cur && need < cur as f32 * 0.5 * 0.75) { want } else { cur };
     let now = time.elapsed_secs();
@@ -231,24 +255,50 @@ fn choose_tier(
             // the sharp one. A job for a higher tier runs on (zooming out is served by its mips).
             let free = building.is_none_or(|b| b < target);
             if now - since >= SETTLE_SECONDS && free {
-                let raster = art::Rasterizer::new(atlas.layout.clone(), target);
-                job.job = Some(Job { raster, spent: 0.0, frames: 0, longest: 0.0 });
+                // Back to the tier on screen (a job for a lower one was running): just drop the job.
+                let same = target == atlas.tier && job.ready.is_none();
+                job.job = (!same).then(|| Job {
+                    raster: art::Rasterizer::new(atlas.layout.clone(), target),
+                    spent: 0.0,
+                    frames: 0,
+                    longest: 0.0,
+                });
                 job.wanted = None;
-                status.building = Some(target);
+                status.building = (!same).then_some(target);
             }
         }
         _ => job.wanted = Some((target, now)),
     }
 }
 
-/// Renders regions and mip rows until the frame budget is used; when the atlas is complete, swaps the image.
+/// Renders regions and mip rows until the frame budget is used. A complete atlas becomes a new image; one frame
+/// later, when the render world has uploaded it, the material switches to it.
+///
+/// Until 13 Oct 2026 the image was replaced in place and the material "touched" with `materials.get_mut(id)`.
+/// In Bevy 0.20 that is a no-op (`get_mut` returns an `AssetMut` guard that only marks the asset modified when
+/// it is written through), so the material's bind group kept the texture it was first prepared with: every
+/// atlas mesh sampled the start atlas (64 or 32 px/cell) for the whole session, stretched 2.5–5× at 160 px/m,
+/// while F3 showed the new tier. Now the material really changes (its texture handle). The new image is added
+/// one frame before the switch because Bevy does not order a material's preparation after its images' within
+/// `RenderSystems::PrepareAssets`: switching in the same frame could bind a texture that is not uploaded yet
+/// (Bevy then retries the material, and the atlas meshes would vanish for a frame). A new image per tier also
+/// avoids Bevy's in-place update for an unchanged texture size, which writes mip level 0 only.
 fn rasterise_step(
     mut job: ResMut<RasterJob>,
     mut atlas: ResMut<Atlas>,
     mut status: ResMut<AtlasStatus>,
     mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
 ) {
+    if let Some((image, last)) = job.ready.take() {
+        // The material switches (written through `get_mut`, so Bevy re-prepares it); the old image goes with its
+        // last handle.
+        if let Some(mut m) = materials.get_mut(&atlas.material) {
+            m.texture = image;
+        }
+        atlas.tier = last.0;
+        status.last = Some(last);
+    }
     let Some(j) = job.job.as_mut() else { return };
     let budget = if status.need > atlas.tier as f32 * BLURRY { BLURRY_BUDGET_MS } else { FRAME_BUDGET_MS };
     let t0 = Instant::now();
@@ -280,16 +330,8 @@ fn rasterise_step(
         }
     };
     let (w, h, levels) = (raster.width, raster.height, raster.levels);
-    let _ = images.insert(&atlas.image, image_from(raster));
-    atlas.tier = tier;
+    job.ready = Some((images.add(image_from(raster)), (tier, spent, frames, longest)));
     status.building = None;
-    status.last = Some((tier, spent, frames, longest));
-    // Re-bind every material that samples the atlas (they cache the old texture view).
-    let ids: Vec<AssetId<ColorMaterial>> =
-        materials.iter().filter(|(_, m)| m.texture.as_ref() == Some(&atlas.image)).map(|(id, _)| id).collect();
-    for id in ids {
-        let _ = materials.get_mut(id);
-    }
     info!("atlas: re-rasterised at {tier} px/cell ({w}x{h}, {levels} mips): {spent:.1} ms over {frames} frames, longest step {longest:.1} ms");
 }
 
