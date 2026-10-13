@@ -7,8 +7,9 @@
 //! launches a test flight (`drydock::actions`, the TEST-FLY button does the same). Losing every vessel in a test
 //! flight returns to the drydock (`scene.rs`).
 //!
-//! Systems of one mode run only in it (`run_if(in_state(..))`), so no input of one mode reaches another. The switch itself happens in the state's enter / exit schedules
-//! (`scene.rs`: the flight world; `drydock`: its camera and UI scale), so the first frame of a mode is
+//! Systems of one mode run only in it (`run_if(in_state(..))`), so no input of one mode reaches another. The
+//! switch itself happens in the state's enter / exit schedules (`scene.rs`: the flight world; `drydock`: its
+//! camera and UI scale; `behavior_ui`: the draft and the window fit), so the first frame of a mode is
 //! already consistent. A [`SimWorld`](crate::sim_bridge::SimWorld) always exists: the drydock keeps an empty
 //! one, because many flight systems read it.
 
