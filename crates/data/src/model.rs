@@ -338,6 +338,7 @@ pub struct WeaponSpec {
 
 /// How a weapon's shots travel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Delivery {
     /// A continuous hit-scan beam: damage per second while firing, burns the first block it touches.
     #[default]
@@ -362,9 +363,9 @@ pub enum Delivery {
 #[serde(deny_unknown_fields)]
 pub struct EngineSpec {
     pub thrust: f32,
-    /// Rated speed (m/s): the thrust fades out as the ship's velocity along the engine's push direction
-    /// approaches it (full thrust up to 80%, none at 100%); braking or sideways the engine keeps full thrust.
-    /// A ship's top speed in a direction is the rating of its fastest thrusters pushing that way.
+    /// Rated speed (m/s): while the engine pushes with the ship's motion, its thrust fades out as the ship's whole
+    /// speed approaches it (full thrust up to 80%, none at 100%, GDR-0041, GDR-0055); braking or sideways it keeps
+    /// full thrust. So the fastest engines set the ship's top speed.
     pub rated_speed: f32,
     /// Maximum thrust deflection in degrees to either side of the engine's axis (0 = fixed nozzle).
     /// The deflected thrust acts at the same point, so it adds torque without moving the engine.
@@ -406,7 +407,9 @@ pub struct GyroSpec {
 pub struct RcsSpec {
     /// Thrust per nozzle (kN) at full power.
     pub thrust: f32,
-    /// Rated speed (m/s) of every nozzle, along its own push direction (as for engines).
+    /// Rated speed (m/s) of every nozzle: a nozzle pushing with the ship's motion fades out as the ship's whole
+    /// speed approaches it, as an engine does (GDR-0055). Two nozzles of opposite sides fire as a turning couple
+    /// that keeps full thrust at any speed.
     pub rated_speed: f32,
 }
 
@@ -591,6 +594,10 @@ impl Part {
         } else {
             self.hp
         }
+    }
+    /// Does the part draw power (the parts that take a power tier, weight and placement override)?
+    pub fn draws_power(&self) -> bool {
+        self.power.as_ref().is_some_and(|p| p.draw > 0.0)
     }
     /// Does the part draw or make power (the parts that can go idle)?
     pub fn has_power_role(&self) -> bool {

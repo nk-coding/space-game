@@ -165,7 +165,7 @@ impl Catalog {
                     let info = PartInfo {
                         footprint: p.footprint(),
                         hull: p.hull,
-                        draws_power: p.power.as_ref().is_some_and(|x| x.draw > 0.0),
+                        draws_power: p.draws_power(),
                     };
                     (p.id.clone(), info)
                 })

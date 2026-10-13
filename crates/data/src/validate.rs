@@ -8,11 +8,13 @@ use crate::kind::Kind;
 use crate::load::{Content, SCHEMA_VERSION};
 use crate::model::*;
 use crate::problem::Problem;
-use crate::stats::{BUILTIN_STATS, SHIP_STATS};
+use crate::stats::{BONUS_STATS, BUILTIN_STATS, SHIP_STATS};
 use crate::text::parse_links;
 
-/// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns,
-/// unused icons).
+/// Validates merged content. Returns errors and warnings (warnings: a ship in several pieces, a gun without a clear
+/// line of fire, an RCS part with no side open to space, a radiator that cannot vent, an empty placement power
+/// override, a control load above the cores' capacity, a `control_cost` on a part without a power role, a core
+/// with no control capacity, an icon nothing uses).
 pub fn validate(c: &Content) -> Vec<Problem> {
     let mut v = Validator { c, out: Vec::new() };
     v.packs();
@@ -71,8 +73,20 @@ struct Validator<'a> {
 pub const MAX_GIMBAL: f32 = 45.0;
 /// Longest allowed engine plume, in metres (keeps the plume casts short).
 pub const MAX_PLUME_LENGTH: f32 = 50.0;
-/// Longest allowed side of a drydock frame, in cells (placeholder: twice the capital frame).
+/// Longest allowed side of a drydock frame and of a ship's `size`, in cells (placeholder: twice the capital
+/// frame). The drydock editor uses the same limit.
 pub const MAX_FRAME_SIZE: u32 = 128;
+/// Longest allowed side of a part's footprint, in cells (placeholder).
+pub const MAX_PART_SIDE: u32 = 16;
+/// Largest number in content (masses, hit points, thrust, damage, bonus amounts, ...): a sanity limit that keeps
+/// sums over a ship far from overflowing to infinity (placeholder).
+pub const MAX_NUMBER: f32 = 1.0e6;
+/// Most shots per second of a pulse or projectile weapon, before bonuses (placeholder: two per sim tick).
+pub const MAX_SHOT_RATE: f32 = 60.0;
+/// Largest `Percent` bonus; the smallest is above −100 (a stat never drops to 0 or below).
+pub const MAX_BONUS_PERCENT: f32 = 1000.0;
+/// Largest count in content: a projectile's penetration, a core's control capacity, a bonus's `max_stacks`.
+pub const MAX_COUNT: u32 = 10_000;
 
 pub(crate) fn is_snake_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -267,14 +281,34 @@ impl<'a> Validator<'a> {
         }
     }
 
+    /// A finite number above (`strict`) or at least `min`, and at most [`MAX_NUMBER`].
     fn number<T: Entry>(&mut self, e: &T, field: &str, x: f32, min: f32, strict: bool) {
-        let ok = x.is_finite() && if strict { x > min } else { x >= min };
+        let ok = x.is_finite() && x <= MAX_NUMBER && if strict { x > min } else { x >= min };
         if !ok {
             let rel = if strict { ">" } else { ">=" };
             self.err(
                 e,
                 field,
-                format!("must be a finite number {rel} {min}, got {x}"),
+                format!("must be a finite number {rel} {min} and at most {MAX_NUMBER}, got {x}"),
+            );
+        }
+    }
+
+    /// A count of at most `max`.
+    fn count<T: Entry>(&mut self, e: &T, field: &str, n: u32, max: u32) {
+        if n > max {
+            self.err(e, field, format!("at most {max}, got {n}"));
+        }
+    }
+
+    /// A shot rate: above 0 and at most [`MAX_SHOT_RATE`] per second.
+    fn shot_rate<T: Entry>(&mut self, e: &T, rate: f32) {
+        self.number(e, "weapon.delivery.rate", rate, 0.0, true);
+        if rate > MAX_SHOT_RATE {
+            self.err(
+                e,
+                "weapon.delivery.rate",
+                format!("at most {MAX_SHOT_RATE} shots per second, got {rate}"),
             );
         }
     }
@@ -328,6 +362,12 @@ impl<'a> Validator<'a> {
         let (w, h) = p.size;
         if w == 0 || h == 0 {
             self.err(p, "size", "footprint must be at least 1×1");
+        } else if w > MAX_PART_SIDE || h > MAX_PART_SIDE {
+            self.err(
+                p,
+                "size",
+                format!("each side of a footprint is at most {MAX_PART_SIDE} cells; got {w}×{h}"),
+            );
         }
         if p.shape == Shape::Slope {
             if h != 1 {
@@ -398,21 +438,20 @@ impl<'a> Validator<'a> {
             self.number(p, "weapon.range", x.range, 0.0, true);
             match x.delivery {
                 crate::model::Delivery::Beam => {}
-                crate::model::Delivery::Pulse { rate } => {
-                    self.number(p, "weapon.delivery.rate", rate, 0.0, true)
-                }
+                crate::model::Delivery::Pulse { rate } => self.shot_rate(p, rate),
                 crate::model::Delivery::Projectile {
                     rate,
                     speed,
                     penetration,
                     recoil,
                 } => {
-                    self.number(p, "weapon.delivery.rate", rate, 0.0, true);
+                    self.shot_rate(p, rate);
                     self.number(p, "weapon.delivery.speed", speed, 0.0, true);
                     self.number(p, "weapon.delivery.recoil", recoil, 0.0, false);
                     if penetration == 0 {
                         self.err(p, "weapon.delivery.penetration", "must be at least 1");
                     }
+                    self.count(p, "weapon.delivery.penetration", penetration, MAX_COUNT);
                 }
             }
         }
@@ -477,14 +516,16 @@ impl<'a> Validator<'a> {
                 );
             }
         }
-        if let Some(l) = &p.logic
-            && l.control_capacity == 0
-        {
-            self.warn(
-                p,
-                "logic.control_capacity",
-                "a core with no control capacity runs no parts",
-            );
+        if let Some(l) = &p.logic {
+            self.count(p, "logic.rule_slots", l.rule_slots, crate::behavior::MAX_RULES as u32);
+            self.count(p, "logic.control_capacity", l.control_capacity, MAX_COUNT);
+            if l.control_capacity == 0 {
+                self.warn(
+                    p,
+                    "logic.control_capacity",
+                    "a core with no control capacity runs no parts",
+                );
+            }
         }
         for (k, b) in p.bonuses.iter().enumerate() {
             let f = format!("bonuses[{k}]");
@@ -504,19 +545,42 @@ impl<'a> Validator<'a> {
             }
             if !self.c.stats.contains(&b.stat) {
                 self.err(p, format!("{f}.stat"), format!("unknown stat `{}`", b.stat));
-            }
-            let amount = match b.effect {
-                Effect::Add(x) | Effect::Percent(x) => x,
-            };
-            if !amount.is_finite() {
-                self.err(p, format!("{f}.effect"), "must be a finite number");
-            }
-            if b.max_stacks == Some(0) {
+            } else if !BONUS_STATS.contains(&b.stat.as_str()) {
                 self.err(
+                    p,
+                    format!("{f}.stat"),
+                    format!(
+                        "bonuses cannot change `{}`; they change {}",
+                        b.stat,
+                        BONUS_STATS.join(", ")
+                    ),
+                );
+            }
+            match b.effect {
+                Effect::Add(x) if !(x.is_finite() && x.abs() <= MAX_NUMBER) => self.err(
+                    p,
+                    format!("{f}.effect"),
+                    format!("must be a finite number from -{MAX_NUMBER} to {MAX_NUMBER}, got {x}"),
+                ),
+                Effect::Percent(x) if !(x.is_finite() && x > -100.0 && x <= MAX_BONUS_PERCENT) => {
+                    self.err(
+                        p,
+                        format!("{f}.effect"),
+                        format!(
+                            "a percentage above -100 and at most {MAX_BONUS_PERCENT}, got {x}"
+                        ),
+                    )
+                }
+                _ => {}
+            }
+            match b.max_stacks {
+                Some(0) => self.err(
                     p,
                     format!("{f}.max_stacks"),
                     "must be at least 1 (or omitted for no limit)",
-                );
+                ),
+                Some(n) => self.count(p, &format!("{f}.max_stacks"), n, MAX_COUNT),
+                None => {}
             }
         }
     }
@@ -789,7 +853,7 @@ impl<'a> Validator<'a> {
                 (None, false) => {}
             }
             if let Some(o) = &pl.power {
-                if part.power.as_ref().is_none_or(|x| x.draw <= 0.0) {
+                if !part.draws_power() {
                     self.err(
                         s,
                         format!("{f}.power"),

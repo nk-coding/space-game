@@ -627,3 +627,73 @@ fn locked_parts_and_materials() {
     let some = format!("[{}, {}]", lock("steel"), lock("composite"));
     assert!(errors_with("materials/armor.ron", &some).is_empty());
 }
+
+/// Numbers a mod could use to hang the sim or exhaust memory at load (review finding 5), unknown fields inside
+/// a weapon's delivery (finding 7) and bonuses on stats the sim does not change (finding 8).
+#[test]
+fn content_number_limits() {
+    let part = |rest: &str| errors_with("parts/p.ron", &format!("({PART_HEAD}, category: \"weapons\", mass: 1, hp: 1, {rest})"));
+    let gun = |delivery: &str| part(&format!("weapon: (family: Energy, damage: 1, range: 60, delivery: {delivery})"));
+    assert_error(&gun("Pulse(rate: 1e9)"), "p", "weapon.delivery.rate", "at most 60 shots per second");
+    assert_error(&gun("Pulse(rate: 61)"), "p", "weapon.delivery.rate", "at most 60");
+    assert!(gun("Pulse(rate: 60)").is_empty());
+    assert_error(
+        &gun("Projectile(rate: 1e6, speed: 90, penetration: 4000000000)"),
+        "p",
+        "weapon.delivery.penetration",
+        "at most 10000",
+    );
+    // Unknown fields inside the delivery are errors like everywhere else.
+    let e = gun("Projectile(rate: 2, speed: 300, penetration: 1, recoli: 5)");
+    assert!(e.iter().any(|p| p.message.contains("recoli")), "{}", show(&e));
+    // Every number has an upper bound.
+    assert_error(&part("weapon: (family: Energy, damage: 1e30, range: 60)"), "p", "weapon.damage", "at most 1000000");
+    assert_error(&errors_with("parts/p.ron", &format!("({PART_HEAD}, category: \"power\", mass: 1e7, hp: 1)")), "p", "mass", "at most");
+    // Footprints.
+    let big = r#"(id: "p", name: "P", summary: "S.", size: (70000, 70000), build_points: 1, category: "hull", hull: true)"#;
+    assert_error(&errors_with("parts/p.ron", big), "p", "size", "at most 16 cells");
+    let big = r#"(id: "p", name: "P", summary: "S.", size: (17, 1), build_points: 1, category: "hull", hull: true)"#;
+    assert_error(&errors_with("parts/p.ron", big), "p", "size", "at most 16 cells");
+    // Logic cores.
+    let core = |slots: u64, capacity: u64| {
+        errors_with("parts/p.ron", &format!("({PART_HEAD}, category: \"logic\", mass: 1, hp: 1, logic: (rule_slots: {slots}, control_capacity: {capacity}))"))
+    };
+    assert_error(&core(3_000_000_000, 16), "p", "logic.rule_slots", "at most 64");
+    assert_error(&core(6, 4_000_000_000), "p", "logic.control_capacity", "at most 10000");
+    assert!(core(64, 10_000).is_empty());
+    // Bonuses.
+    let bonus = |stat: &str, effect: &str| {
+        errors_with(
+            "parts/p.ron",
+            &format!("({PART_HEAD}, category: \"power\", mass: 1, hp: 1, bonuses: [(target: Tag(\"laser\"), stat: \"{stat}\", effect: {effect})])"),
+        )
+    };
+    assert_error(&bonus("fire_rate", "Percent(1e12)"), "p", "bonuses[0].effect", "at most 1000");
+    assert_error(&bonus("fire_rate", "Percent(-100)"), "p", "bonuses[0].effect", "above -100");
+    assert_error(&bonus("fire_rate", "Add(-1e9)"), "p", "bonuses[0].effect", "from -1000000");
+    assert_error(&bonus("hp", "Percent(20)"), "p", "bonuses[0].stat", "bonuses cannot change `hp`");
+    assert!(bonus("fire_rate", "Percent(1000)").is_empty());
+    assert!(bonus("thrust", "Add(-5)").is_empty());
+}
+
+/// Two cores whose rule slots add up past u32 do not overflow (a debug panic before), and huge parts in a ship
+/// are reported without building their cells.
+#[test]
+fn sums_and_huge_parts_in_ships_do_not_overflow() {
+    let core = r#"(id: "big_core", name: "Big core", summary: "S.", size: (1, 1), build_points: 1, category: "logic", mass: 1, hp: 1,
+        logic: (rule_slots: 3000000000, control_capacity: 3000000000))"#;
+    let huge = r#"(id: "huge_block", name: "Huge", summary: "S.", size: (70000, 70000), build_points: 1, category: "hull", hull: true)"#;
+    let ship = r#"(id: "s", name: "S", summary: "S.", faction: "ship_mind", size: (4, 4), parts: [
+        (part: "big_core", x: 0, y: 0), (part: "big_core", x: 1, y: 0), (part: "huge_block", x: 0, y: 1, material: "steel")])"#;
+    let m = Pack::from_files([("pack.ron", MOD_MANIFEST), ("parts/x.ron", &format!("[{core}, {huge}]")), ("ships/s.ron", ship)]).unwrap();
+    let c = Content::merge(&[base(), m]);
+    let problems = data::validate(&c);
+    assert_error(&problems, "big_core", "logic.rule_slots", "at most 64");
+    assert_error(&problems, "huge_block", "size", "at most 16");
+    assert_error(&problems, "s", "parts[2]", "does not fit the 4×4 frame");
+    let mut two_cores = c.ships.get("s").unwrap().clone();
+    two_cores.parts.truncate(2);
+    assert_eq!(c.ship_rule_slots(&two_cores), u32::MAX);
+    assert_eq!(c.ship_control(&two_cores), (0, u32::MAX));
+    assert_eq!(c.ship_totals(&two_cores).rule_slots, u32::MAX);
+}
