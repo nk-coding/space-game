@@ -89,7 +89,10 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
     let c = Content::load(&[base(), m]).unwrap_or_else(|p| panic!("{}", show(&p)));
     // New ids are appended after the base entries.
     assert_eq!(c.families.iter().last().unwrap().id, "missiles");
-    assert_eq!(c.families.get("missiles").unwrap().source.file, "families/extra.ron");
+    assert_eq!(
+        c.families.get("missiles").unwrap().source.file,
+        "families/extra.ron"
+    );
     let seeker = c.research.get("seeker").unwrap();
     assert_eq!(seeker.kind, ResearchKind::Variant);
     assert_eq!(seeker.cost.data["kinetic"], 2.5);
@@ -114,7 +117,10 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
     );
     let texts = c.texts();
     assert_eq!(texts["family.missiles.name"], "Missiles");
-    assert_eq!(texts["research.seeker.summary"], "Feeds [[family:missiles]].");
+    assert_eq!(
+        texts["research.seeker.summary"],
+        "Feeds [[family:missiles]]."
+    );
     assert!(texts.contains_key("start.alt.summary"));
     assert!(c.wiki_page(Kind::Research, "seeker").is_some());
     let mut c2 = c.clone();
@@ -132,16 +138,27 @@ fn mods_override_new_kinds_in_place() {
     )]);
     let c = Content::load(&[base(), m]).unwrap_or_else(|p| panic!("{}", show(&p)));
     assert_eq!(c.families.get("power").unwrap().name, "Power and storage");
-    assert_eq!(c.families.position("power"), base_only.families.position("power"));
+    assert_eq!(
+        c.families.position("power"),
+        base_only.families.position("power")
+    );
     assert_eq!(c.families.len(), base_only.families.len());
 }
 
 #[test]
 fn layout_errors_name_the_new_dirs_and_kinds() {
     let err = Pack::from_files([("pack.ron", MOD_MANIFEST), ("tech/x.ron", "[]")]).unwrap_err();
-    assert!(err[0].message.contains("families, research or starts"), "{}", err[0]);
+    assert!(
+        err[0].message.contains("families, research or starts"),
+        "{}",
+        err[0]
+    );
     let err = Pack::from_files([("pack.ron", MOD_MANIFEST), ("wiki/tech/x.md", "hi")]).unwrap_err();
-    assert!(err[0].message.contains("family, research, start or page"), "{}", err[0]);
+    assert!(
+        err[0].message.contains("family, research, start or page"),
+        "{}",
+        err[0]
+    );
     // Duplicate ids within a pack, as for every kind.
     let start = r#"(id: "s", name: "S", summary: "S.", ship: "sample_early", mind_capacity: 2)"#;
     let err = Pack::from_files([
@@ -207,7 +224,12 @@ fn salvage_on_parts() {
         r#"({PART}, salvage: (family: "lasers", data: -1, materials: {{"unobtainium": 1}}, fragment: {{"steel": 0}}))"#
     );
     let p = problems_with(&[("parts/p.ron", &bad)]);
-    assert_error(&p, "p", "salvage.family", "unknown research family `lasers`");
+    assert_error(
+        &p,
+        "p",
+        "salvage.family",
+        "unknown research family `lasers`",
+    );
     assert_error(&p, "p", "salvage.data", "finite number >= 0");
     assert_error(&p, "p", "salvage.materials.unobtainium", "unknown material");
     assert_error(&p, "p", "salvage.fragment.steel", "an amount of 1 to");
@@ -218,7 +240,12 @@ fn salvage_on_parts() {
         ),
     )]);
     assert_error(&p, "p", "salvage.data", "at most 10000");
-    assert_error(&p, "p", "salvage.fragment.programmable_matter", "an amount of 1 to");
+    assert_error(
+        &p,
+        "p",
+        "salvage.fragment.programmable_matter",
+        "an amount of 1 to",
+    );
     // Hull parts are salvaged per cell by their material.
     let p = problems_with(&[(
         "parts/p.ron",
@@ -228,7 +255,8 @@ fn salvage_on_parts() {
     assert_error(&p, "p", "salvage", "per cell by their material");
 }
 
-const ARMOR: &str = r#"armor: (tone: "steel", mass_per_cell: 1, hp_per_cell: 1, build_point_factor: 1)"#;
+const ARMOR: &str =
+    r#"armor: (tone: "steel", mass_per_cell: 1, hp_per_cell: 1, build_point_factor: 1)"#;
 
 #[test]
 fn salvage_on_materials() {
@@ -241,7 +269,12 @@ fn salvage_on_materials() {
         ),
     )]);
     assert_clean(&p, "good");
-    assert_error(&p, "bad", "salvage.family", "unknown research family `plating`");
+    assert_error(
+        &p,
+        "bad",
+        "salvage.family",
+        "unknown research family `plating`",
+    );
     assert_error(&p, "bad", "salvage.data", "finite number >= 0");
     assert_error(&p, "loose", "salvage", "only armour materials");
     // A hull cell gives data only: materials and fragments are part fields (a parse error here).
@@ -266,12 +299,23 @@ fn locked_frames() {
     let c = content();
     assert!(!c.frames.get("frigate").unwrap().locked);
     let lock = |id: &str, size: u32| {
-        format!(r#"(id: "{id}", name: "{id}", summary: "Locked.", size: ({size}, {size}), locked: true)"#)
+        format!(
+            r#"(id: "{id}", name: "{id}", summary: "Locked.", size: ({size}, {size}), locked: true)"#
+        )
     };
     // Some frames may be locked; not all of them.
     let p = problems_with(&[("frames.ron", &format!("[{}]", lock("cruiser", 40)))]);
-    assert!(!p.iter().any(|p| p.field.as_deref() == Some("locked")), "{}", show(&p));
-    let all = format!("[{}, {}, {}]", lock("frigate", 24), lock("cruiser", 40), lock("capital", 64));
+    assert!(
+        !p.iter().any(|p| p.field.as_deref() == Some("locked")),
+        "{}",
+        show(&p)
+    );
+    let all = format!(
+        "[{}, {}, {}]",
+        lock("frigate", 24),
+        lock("cruiser", 40),
+        lock("capital", 64)
+    );
     let p = problems_with(&[("frames.ron", &all)]);
     assert_error(&p, "frigate", "locked", "every frame is locked");
 }
@@ -306,13 +350,28 @@ fn node_references_and_amounts() {
     );
     let p = problems_with(&[("research/n.ron", &n)]);
     assert_error(&p, "n", "family", "unknown research family `lasers`");
-    assert_error(&p, "n", "cost.data.lasers", "unknown research family `lasers`");
+    assert_error(
+        &p,
+        "n",
+        "cost.data.lasers",
+        "unknown research family `lasers`",
+    );
     assert_error(&p, "n", "cost.data.energy", "finite number > 0");
     assert_error(&p, "n", "cost.data.power", "finite number > 0");
     assert_error(&p, "n", "cost.data.kinetic", "at most 10000");
     assert_error(&p, "n", "cost.materials.unobtainium", "unknown material");
-    assert_error(&p, "n", "cost.materials.programmable_matter", "an amount of 1 to");
-    assert_error(&p, "n", "requires[0]", "unknown research node `warp_theory`");
+    assert_error(
+        &p,
+        "n",
+        "cost.materials.programmable_matter",
+        "an amount of 1 to",
+    );
+    assert_error(
+        &p,
+        "n",
+        "requires[0]",
+        "unknown research node `warp_theory`",
+    );
     assert_error(&p, "n", "requires[2]", "listed twice");
     assert_error(&p, "n", "unlocks[0]", "unknown part `warp_core`");
     assert_error(&p, "n", "unlocks[1]", "unknown material `wood`");
@@ -334,7 +393,11 @@ fn unlocking_what_is_open_or_nothing_is_a_warning() {
     );
     let p = problems_with(&[("research/n.ron", &format!("[{n}, {empty}]"))]);
     assert!(of(&p, "n", Severity::Error).is_empty(), "{}", show(&p));
-    for (k, what) in [(0, "part `pulse_laser`"), (1, "material `steel`"), (2, "frame `frigate`")] {
+    for (k, what) in [
+        (0, "part `pulse_laser`"),
+        (1, "material `steel`"),
+        (2, "frame `frigate`"),
+    ] {
         assert_problem(&p, Severity::Warning, "n", &format!("unlocks[{k}]"), what);
     }
     assert_problem(&p, Severity::Warning, "e", "unlocks", "unlocks nothing");
@@ -346,11 +409,26 @@ fn requires_must_not_loop() {
     // a → b → c → a, plus d → b (into the loop, not part of it) and a node that requires itself.
     let file = format!(
         "[{}, {}, {}, {}, {}]",
-        node("a", r#"family: "power", kind: NewPart, cost: (), requires: ["b"], unlocks: [MindCapacity(1)]"#),
-        node("b", r#"family: "power", kind: NewPart, cost: (), requires: ["c"], unlocks: [MindCapacity(1)]"#),
-        node("c", r#"family: "power", kind: NewPart, cost: (), requires: ["a"], unlocks: [MindCapacity(1)]"#),
-        node("d", r#"family: "power", kind: NewPart, cost: (), requires: ["b"], unlocks: [MindCapacity(1)]"#),
-        node("me", r#"family: "power", kind: NewPart, cost: (), requires: ["me"], unlocks: [MindCapacity(1)]"#),
+        node(
+            "a",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["b"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "b",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["c"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "c",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["a"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "d",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["b"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "me",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["me"], unlocks: [MindCapacity(1)]"#
+        ),
     );
     let p = problems_with(&[("research/loop.ron", &file)]);
     let cycles: Vec<&Problem> = p.iter().filter(|p| p.message.contains("cycle")).collect();
@@ -361,13 +439,29 @@ fn requires_must_not_loop() {
     // A diamond (two paths to the same node) is no cycle.
     let file = format!(
         "[{}, {}, {}, {}]",
-        node("top", r#"family: "power", kind: NewPart, cost: (), requires: ["l", "r"], unlocks: [MindCapacity(1)]"#),
-        node("l", r#"family: "power", kind: NewPart, cost: (), requires: ["root"], unlocks: [MindCapacity(1)]"#),
-        node("r", r#"family: "power", kind: NewPart, cost: (), requires: ["root"], unlocks: [MindCapacity(1)]"#),
-        node("root", r#"family: "power", kind: NewPart, cost: (), unlocks: [MindCapacity(1)]"#),
+        node(
+            "top",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["l", "r"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "l",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["root"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "r",
+            r#"family: "power", kind: NewPart, cost: (), requires: ["root"], unlocks: [MindCapacity(1)]"#
+        ),
+        node(
+            "root",
+            r#"family: "power", kind: NewPart, cost: (), unlocks: [MindCapacity(1)]"#
+        ),
     );
     let p = problems_with(&[("research/diamond.ron", &file)]);
-    assert!(!p.iter().any(|p| p.message.contains("cycle")), "{}", show(&p));
+    assert!(
+        !p.iter().any(|p| p.message.contains("cycle")),
+        "{}",
+        show(&p)
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -404,7 +498,12 @@ fn a_start_needs_a_ship_a_new_game_can_fly() {
         "starts/s.ron",
         &start(r#"ship: "sample_early", mind_capacity: 1"#),
     )]);
-    assert_error(&p, "s", "mind_capacity", "2 logic cores, more than the mind capacity 1");
+    assert_error(
+        &p,
+        "s",
+        "mind_capacity",
+        "2 logic cores, more than the mind capacity 1",
+    );
     // A ship that fits no open frame.
     let wide = r#"(id: "wide", name: "Wide", summary: "S.", faction: "ship_mind", size: (30, 1), parts: [
         (part: "logic_core", x: 0, y: 0)])"#;
@@ -471,7 +570,11 @@ fn base_salvage_blocks() {
         assert_eq!((s.family.as_str(), s.data), (family, data), "{id}");
     }
     // Cores give programmable matter, and a destroyed core leaves a fragment of it (GDR-0063); nothing else does.
-    for p in c.parts.iter().filter_map(|p| p.salvage.as_ref().map(|s| (p, s))) {
+    for p in c
+        .parts
+        .iter()
+        .filter_map(|p| p.salvage.as_ref().map(|s| (p, s)))
+    {
         let core = p.0.logic.is_some();
         assert_eq!(!p.1.fragment.is_empty(), core, "{}", p.0.id);
         assert_eq!(!p.1.materials.is_empty(), core, "{}", p.0.id);
@@ -479,7 +582,10 @@ fn base_salvage_blocks() {
     assert_eq!(part("automaton_core").fragment["programmable_matter"], 1);
     assert_eq!(part("logic_core").materials["programmable_matter"], 1);
     let hull = |id: &str| c.materials.get(id).unwrap().salvage.clone().unwrap();
-    assert_eq!((hull("steel").family.as_str(), hull("steel").data), ("hull", 1.0));
+    assert_eq!(
+        (hull("steel").family.as_str(), hull("steel").data),
+        ("hull", 1.0)
+    );
     assert_eq!(hull("composite").data, 1.5);
     // Programmable matter: a material, but no armour.
     let pm = c.materials.get("programmable_matter").unwrap();
@@ -490,17 +596,38 @@ fn base_salvage_blocks() {
 #[test]
 fn base_locks_follow_the_early_game_kit() {
     let c = content();
-    let locked_parts: Vec<&str> =
-        c.parts.iter().filter(|p| p.locked).map(|p| p.id.as_str()).collect();
+    let locked_parts: Vec<&str> = c
+        .parts
+        .iter()
+        .filter(|p| p.locked)
+        .map(|p| p.id.as_str())
+        .collect();
     assert_eq!(
         locked_parts,
-        ["automaton_core", "automaton_cannon", "fusion_reactor", "torch_drive", "beam_laser"]
+        [
+            "automaton_core",
+            "automaton_cannon",
+            "fusion_reactor",
+            "torch_drive",
+            "beam_laser"
+        ]
     );
-    let locked_materials: Vec<&str> =
-        c.materials.iter().filter(|m| m.locked).map(|m| m.id.as_str()).collect();
-    assert_eq!(locked_materials, ["composite", "reactive", "automaton_plate"]);
-    let open_frames: Vec<&str> =
-        c.frames.iter().filter(|f| !f.locked).map(|f| f.id.as_str()).collect();
+    let locked_materials: Vec<&str> = c
+        .materials
+        .iter()
+        .filter(|m| m.locked)
+        .map(|m| m.id.as_str())
+        .collect();
+    assert_eq!(
+        locked_materials,
+        ["composite", "reactive", "automaton_plate"]
+    );
+    let open_frames: Vec<&str> = c
+        .frames
+        .iter()
+        .filter(|f| !f.locked)
+        .map(|f| f.id.as_str())
+        .collect();
     assert_eq!(open_frames, ["frigate"]);
 }
 

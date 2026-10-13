@@ -133,9 +133,15 @@ impl Pack {
                 };
                 match Kind::from_dir(dir) {
                     Some(Kind::Stat) => parse_into(text, &src, &mut pack.stats, &mut problems),
-                    Some(Kind::Category) => parse_into(text, &src, &mut pack.categories, &mut problems),
-                    Some(Kind::Faction) => parse_into(text, &src, &mut pack.factions, &mut problems),
-                    Some(Kind::Material) => parse_into(text, &src, &mut pack.materials, &mut problems),
+                    Some(Kind::Category) => {
+                        parse_into(text, &src, &mut pack.categories, &mut problems)
+                    }
+                    Some(Kind::Faction) => {
+                        parse_into(text, &src, &mut pack.factions, &mut problems)
+                    }
+                    Some(Kind::Material) => {
+                        parse_into(text, &src, &mut pack.materials, &mut problems)
+                    }
                     Some(Kind::Part) => parse_into(text, &src, &mut pack.parts, &mut problems),
                     Some(Kind::Frame) => parse_into(text, &src, &mut pack.frames, &mut problems),
                     Some(Kind::Ship) => parse_into(text, &src, &mut pack.ships, &mut problems),
@@ -185,7 +191,12 @@ impl Pack {
                     _ => None,
                 };
                 match parsed {
-                    Some((kind, id)) => pack.wiki.push(WikiPage { kind, id: id.to_string(), markdown: text.to_string(), source: src }),
+                    Some((kind, id)) => pack.wiki.push(WikiPage {
+                        kind,
+                        id: id.to_string(),
+                        markdown: text.to_string(),
+                        source: src,
+                    }),
                     None if path.ends_with(".md") => problems.push(
                         Problem::error(format!(
                             "wiki files must be wiki/<kind>/<id>.md with kind {}",
