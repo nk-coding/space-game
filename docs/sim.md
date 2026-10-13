@@ -777,7 +777,8 @@ early and 0.47 rad/s on the sample mid (what their first line can stop within a 
 
 ### Maneuvers (`maneuver.rs`)
 
-`Maneuver::Brake`, `Hold { at }`, `FaceTarget { target, aim }`, `Approach { target, range, aim }` (close in at
+`Maneuver::Brake`, `Hold { at }`, `FaceTarget { target, aim }`, `Escort { leader, distance }` (stay within
+`distance` of a leader: the behavior action `escort`, see [Evaluation](#evaluation)), `Approach { target, range, aim }` (close in at
 the speed it can still stop from, then face the target or its lead point and keep pace), `Orbit { target,
 radius, ccw }` (tangential speed
 limited by the centripetal acceleration the ship can hold, radial error corrected). Each becomes a
@@ -861,11 +862,27 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   lock, is me), `under_attack`, `enemies_near(r)`, `cycle(p)` and `target_time` (integer ticks since the
   target was picked; both need a target). Target conditions without a target fail with `NoTarget`, regardless of `not`.
 - **Actions** → maneuvers: `approach(r)` → `Approach`, `orbit(r, dir)` → `Orbit` (`auto` = by ship id
-  parity), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`. All aim
-  with `AimMode::Auto` (lead for projectile ships).
+  parity), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`,
+  `escort(d)` → `Escort` (GDR-0065, below). All aim with `AimMode::Auto` (lead for projectile ships).
+- **`escort(d)`** (GDR-0065, 13 Oct 2026; default 30 m): keep within `d` of the leader (`ShipCommand::Leader`, the
+  vessel whose lock `locked` follows: for the sandbox's `?fleet=` wingmen and TEST IN RANGE's wingman the
+  player's ship). It needs no target (a rule with it never fails with `NoTarget`), so it goes last, below the
+  rules that fight, and runs between fights. `Maneuver::Escort { leader, distance }`: farther than `d` it closes
+  in like an approach (`seek` to `d` off the leader, plus the leader's velocity, `HeadingGoal::Auto`), within
+  `d` it keeps pace (the leader's velocity); it flies relative to the leader, not the target, and guns still
+  fire at will at the target if there is one. Without a leader, or when the leader is no vessel any more, the
+  think picks `Maneuver::Brake` (it holds). Like every maneuver it never asks for more than the top speed, so an
+  escort of the same design as a leader flying flat out falls behind until the leader slows. Test
+  `an_escort_keeps_near_its_leader_and_fights_its_lock` (`tests/behavior.rs`): behind a Runner flying at
+  13 m/s the escort stays within 24.5 m, stops 11 m from it when it stops, and attacks what it locks.
 - **Targets**: `nearest` (distance), `weakest` (hull share, ties by distance), `threat` ((d + 50) / firepower,
   firepower × 2 if it aims at me), `attacker` (nearest enemy aiming at me), `locked` (the lock of
   `Ship::leader()`: its pilot lock or behavior target).
+- **`escort`** (the ship-mind's escort template, GDR-0065, from `docs/plans/slice-content.md` section 6): `target
+  locked(core)`; kite to 150% of its reach when below 30% hull with the target aiming at it; approach to 70%
+  (every gun within reach, nose on the target); `escort(30m)` when the leader has nothing locked. It never picks
+  its own fights. Not the default of any design yet (the BEHAVIOR screen lists it as a template); measured as
+  sandbox wingmen in `docs/results/balance-2026-10-13.md`.
 - **`raider_basic`** (the automatons' default; it replaced the raider brain): with a cannon raider (75 m reach)
   it approaches to 64 m (85%), and within 90 m (120%) orbits at 43.5 m (58%) for the last 4 s of every 9 s;
   its cannon fires at will within 70 m (93.3%). Until 12 Oct it stood off at 50 m (67%) and orbited at 45 m

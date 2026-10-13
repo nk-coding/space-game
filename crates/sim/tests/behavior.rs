@@ -610,6 +610,64 @@ fn an_engine_less_vessel_turns_its_guns_onto_its_target() {
     assert!(err.abs() < 2f32.to_radians(), "nose {}° off the target", err.to_degrees());
 }
 
+/// GDR-0065: the `escort` template keeps a vessel within 30 m of its leader while the leader has nothing locked
+/// (its last rule, `always -> escort(30m)`), and fights what the leader locks.
+#[test]
+fn an_escort_keeps_near_its_leader_and_fights_its_lock() {
+    let c = content();
+    let mut w = world_with_lib(lib());
+    let runner = design(&c, "halvex_runner");
+    let leader = w.spawn_ship(runner.clone(), sim::Owner::PLAYER, Body::default());
+    let escort = w.spawn_ship(runner, sim::Owner::PLAYER, Body::at(Vec2::new(-22.0, -12.0), 0.0));
+    let template = w.behaviors().id("escort");
+    assert!(template.is_some(), "the content has the escort template");
+    w.command(escort, ShipCommand::Behavior(template));
+    w.command(escort, ShipCommand::Leader(Some(leader)));
+    let centre = |w: &Sim, s: ShipId| {
+        let ship = w.ship(s).unwrap();
+        ship.piece(ship.control_piece().unwrap()).unwrap().com_world()
+    };
+    // The leader flies off to the right at 60% of its top speed, nothing locked: the escort follows.
+    let go = PilotInput { stick: Vec2::new(0.6, 0.0), ..Default::default() };
+    w.command(leader, ShipCommand::Pilot(go));
+    let mut worst = 0.0f32;
+    for t in 0..900 {
+        w.step(&TickInputs::default());
+        if t >= 600 {
+            worst = worst.max((centre(&w, escort) - centre(&w, leader)).length());
+        }
+    }
+    let st = state(&w, escort);
+    assert_eq!(st.active_rule(), Some(2), "{:?}", st.rules());
+    assert!(matches!(st.maneuver(), Maneuver::Escort { leader: Target::Ship(l), .. } if l == leader));
+    println!("escort while the leader flies at 13 m/s: farthest {worst:.1} m over the last 10 s");
+    assert!(centre(&w, leader).x > 200.0, "the leader went somewhere");
+    assert!(worst < 33.0, "the escort keeps within 30 m (and a little): {worst}");
+    // The leader stops: so does the escort, near it.
+    w.command(leader, ShipCommand::Pilot(PilotInput::default()));
+    run(&mut w, 450);
+    let ship = w.ship(escort).unwrap();
+    let v = ship.piece(ship.control_piece().unwrap()).unwrap().body.linvel.length();
+    let d = (centre(&w, escort) - centre(&w, leader)).length();
+    println!("the leader stopped: escort at {d:.1} m, {v:.2} m/s");
+    assert!(v < 0.5 && d < 33.0, "stopped near the leader: {v} m/s, {d} m");
+    // The leader locks a raider: the escort attacks it.
+    let raider = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        sim::Owner(1),
+        Body::at(centre(&w, leader) + Vec2::new(0.0, 150.0), 0.0),
+    );
+    w.command(leader, ShipCommand::Pilot(PilotInput { lock: Some(Target::Ship(raider)), ..Default::default() }));
+    run(&mut w, 6);
+    let st = state(&w, escort);
+    assert_eq!((st.target(), st.active_rule()), (Some(raider), Some(1)), "{:?}", st.rules());
+    // Without a leader the escort rule holds where it is.
+    w.command(leader, ShipCommand::Pilot(PilotInput::default()));
+    w.command(escort, ShipCommand::Leader(None));
+    run(&mut w, 6);
+    assert_eq!(state(&w, escort).maneuver(), Maneuver::Brake);
+}
+
 #[test]
 fn behavior_scenario_is_deterministic() {
     use sim::scenario::{ScenarioKind, run_kind};

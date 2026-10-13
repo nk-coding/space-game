@@ -52,8 +52,13 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 
 ### Actions
 
-`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `hold`. See the vocabulary in the wiki
-(or `content/base/behavior_nodes/actions.ron`) for what each does.
+`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `hold`, `escort(distance)`. See the
+vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
+
+`escort(distance)` (added 13 Oct 2026, GDR-0065; default `30m`) keeps the ship within that distance of its
+**leader**, the ship it escorts (for wingmen: the player's flagship): it closes in when farther and keeps pace
+when near. It is the one action that needs no target, so a rule with it always runs when its conditions hold;
+put it last, below the rules that fight, and it runs between fights. Without a leader the ship holds where it is.
 
 ### Target selectors
 
@@ -143,6 +148,19 @@ file says.
 
 A faction names the default behavior of its ships (`behavior: "raider_basic"`); a ship can name its own. The
 behavior a ship flies must fit the rule slots of its logic cores (validation checks it).
+
+The base templates: `raider_basic` (the automatons' default), `skirmisher` (the ship-mind's default for
+unpiloted vessels) and `escort` (for wingmen; added 13 Oct 2026, GDR-0065):
+
+```text
+target locked(core)
+when hull < 30% and target_on_me -> kite(150%)   # badly hurt and under its guns: open the gap
+always -> approach(70%)                          # nose on the leader's target, inside every gun's reach
+always -> escort(30m)                            # nothing locked: keep near the leader
+```
+
+It fights only what the leader has locked (`approach` fails without a target, so the next rule runs), aims at the
+target's core, and keeps near the leader between fights.
 
 The player's own behaviors are saved in exactly this format (one document per behavior, never under a content
 behavior's id), and a design names one the same way; see `docs/drydock.md` "Behaviors: storage, designs and

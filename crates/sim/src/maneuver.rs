@@ -37,6 +37,9 @@ pub enum Maneuver {
     },
     /// Run straight away from the target at top speed.
     Flee { from: Target },
+    /// Stay within `distance` metres of the leader (the behavior action `escort`, GDR-0065): close in like an
+    /// approach while farther (`HeadingGoal::Auto`), keep pace with it while within.
+    Escort { leader: Target, distance: f32 },
 }
 
 impl Maneuver {
@@ -49,6 +52,7 @@ impl Maneuver {
             | Maneuver::Orbit { target, .. }
             | Maneuver::KeepRange { target, .. } => Some(target),
             Maneuver::Flee { from } => Some(from),
+            Maneuver::Escort { leader, .. } => Some(leader),
         }
     }
 
@@ -64,6 +68,7 @@ impl Maneuver {
                 target.is_finite() && range.is_finite()
             }
             Maneuver::Orbit { target, radius, .. } => target.is_finite() && radius.is_finite(),
+            Maneuver::Escort { leader, distance } => leader.is_finite() && distance.is_finite(),
         }
     }
 
@@ -175,6 +180,13 @@ impl Maneuver {
                 }
                 None => brake,
             },
+            Maneuver::Escort { distance, .. } => match ts {
+                Some(ts) => FlightGoal {
+                    heading: HeadingGoal::Auto,
+                    velocity: Some(seek(kin, ts.pos, ts.vel, distance, tuning)),
+                },
+                None => brake,
+            },
         }
     }
 }
@@ -255,6 +267,11 @@ impl StateHash for Maneuver {
             Maneuver::Flee { from } => {
                 h.u8(6);
                 from.hash_state(h);
+            }
+            Maneuver::Escort { leader, distance } => {
+                h.u8(7);
+                leader.hash_state(h);
+                h.f32(*distance);
             }
         }
     }

@@ -1,0 +1,18 @@
+// The ship-mind's escort template (GDR-0065; drafted in docs/plans/slice-content.md section 6): fight what the
+// leader has locked, back off when badly hurt, and keep near the leader between fights. Three rules, so it fits a
+// logic core; a tamed automaton core (two rule slots) runs only the first two. Written because the `skirmisher`
+// picks its own fights (`nearest` sends it at any active enemy, including a pack the player meant to sneak past),
+// while a pilot who simply closes in and keeps the nose on the target wins most waves. PLACEHOLDER numbers.
+(
+    id: "escort",
+    name: "Escort",
+    summary: "Fight whatever your leader has locked, nose first, back off when badly hurt, and stay near the leader between fights.",
+    description: "Attacks only the [[behavior_node:locked|leader's lock]], so it never wakes a sleeping pack on its own; without a lock it [[behavior_node:escort|keeps near its leader]]. Aims at the target's core, which leaves more of the wreck to salvage.",
+    tags: ["escort", "attack"],
+    target: "locked(core)",
+    rules: [
+        "when hull < 30% and target_on_me -> kite(150%) # badly hurt and under its guns: open the gap",
+        "always -> approach(70%) # nose on the leader's target, inside every gun's reach",
+        "always -> escort(30m) # nothing locked: keep near the leader",
+    ],
+)

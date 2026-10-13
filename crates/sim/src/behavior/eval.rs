@@ -560,8 +560,8 @@ pub(crate) fn aim_state(
     resolve_target(ships, &Target::Ship(focus))
 }
 
-/// The per-tick part: the maneuver's goal (relative to the aim point) and fire at will at the aim point
-/// (each gun checks its own facing in [`guns_at_will`]).
+/// The per-tick part: the maneuver's goal (relative to the aim point; `escort` relative to the leader) and fire
+/// at will at the aim point (each gun checks its own facing in [`guns_at_will`]).
 pub(crate) fn fly(
     st: &BehaviorState,
     kin: &Kin,
@@ -569,7 +569,10 @@ pub(crate) fn fly(
     tuning_f: &FlightTuning,
 ) -> (FlightGoal, Fire) {
     let ts = st.focus.and_then(|f| aim_state(ships, f, st.aim_part));
-    let goal = st.maneuver.goal_for(kin, ts, tuning_f);
+    let goal = match st.maneuver {
+        m @ Maneuver::Escort { .. } => m.goal(kin, ships, tuning_f),
+        m => m.goal_for(kin, ts, tuning_f),
+    };
     (goal, ts.map_or(Fire::Hold, Fire::AtWill))
 }
 
@@ -702,6 +705,17 @@ impl Ctx<'_> {
     }
 
     fn maneuver(&self, action: Action, focus: Option<ShipId>) -> Maneuver {
+        if let Action::Escort(d) = action {
+            // The leader (`ShipCommand::Leader`, GDR-0065) while it is a vessel other than this one; else hold.
+            let me = self.me;
+            return match me.leader.and_then(|l| find_ship(self.world, l)) {
+                Some(l) if l.id() != me.id() && l.is_vessel() => Maneuver::Escort {
+                    leader: Target::Ship(l.id()),
+                    distance: d.metres(self.reach),
+                },
+                _ => Maneuver::Brake,
+            };
+        }
         let Some(id) = focus else {
             return Maneuver::Brake;
         };
@@ -732,7 +746,7 @@ impl Ctx<'_> {
                 aim: AimMode::Auto,
             },
             Action::Flee => Maneuver::Flee { from: target },
-            Action::Hold => Maneuver::Brake,
+            Action::Hold | Action::Escort(_) => Maneuver::Brake,
         }
     }
 
