@@ -9,8 +9,12 @@
 //! platforms (x86 and wasm produce different "default NaN" bits). A NaN in the state is a bug anyway; debug
 //! builds assert that none is hashed.
 
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+use data::hash::{FNV_OFFSET, FNV_PRIME};
+
+/// FNV-1a 64 of a byte string (`data::hash`, defined once for the career and the sim): behavior fingerprints,
+/// tests, hash streams.
+pub use data::hash::fnv1a64;
+
 const CANONICAL_NAN: u32 = 0x7fc0_0000;
 
 /// FNV-1a 64 hasher fed with typed values.
@@ -40,6 +44,12 @@ impl StateHasher {
         for &b in bytes {
             self.byte(b);
         }
+    }
+
+    /// A string: its byte length as a word, then its bytes (content ids in the state).
+    pub fn str(&mut self, s: &str) {
+        self.u32(s.len() as u32);
+        self.write_bytes(s.as_bytes());
     }
 
     /// Absorbs one 32-bit word.
@@ -103,22 +113,24 @@ pub trait StateHash {
     fn hash_state(&self, h: &mut StateHasher);
 }
 
-/// FNV-1a 64 of a byte string (handy for tests and for hashing hash streams).
-pub fn fnv1a64(bytes: &[u8]) -> u64 {
-    let mut h = StateHasher::new();
-    h.write_bytes(bytes);
-    h.finish()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Byte strings hash as `data::hash::fnv1a64` (pinned there), also after typed words.
     #[test]
-    fn fnv1a64_reference_vectors() {
-        assert_eq!(fnv1a64(b""), 0xcbf29ce484222325);
-        assert_eq!(fnv1a64(b"a"), 0xaf63dc4c8601ec8c);
-        assert_eq!(fnv1a64(b"foobar"), 0x85944171f73967e8);
+    fn byte_strings_hash_as_fnv1a64() {
+        for s in [&b""[..], b"a", b"foobar", b"yard_approach"] {
+            let mut h = StateHasher::new();
+            h.write_bytes(s);
+            assert_eq!(h.finish(), fnv1a64(s));
+        }
+        let mut h = StateHasher::new();
+        h.str("ab");
+        let mut w = StateHasher::new();
+        w.u32(2);
+        w.write_bytes(b"ab");
+        assert_eq!(h.finish(), w.finish());
     }
 
     #[test]

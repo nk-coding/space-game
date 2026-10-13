@@ -1,26 +1,28 @@
 //! Salvage v1 (GDR-0063, `docs/sim.md` "Salvage"): cargo, collecting, fragments and wrecks spawned as wrecks.
 //!
 //! * **Items** ([`Item`]): a whole part by content id (hull parts carry their armour material), or the fragment
-//!   a destroyed part with a logic block leaves. A part takes its footprint cells in cargo units
+//!   a destroyed part leaves. The content's `salvage` blocks decide what counts (compiled into the design,
+//!   `PartSpec::salvageable` and `PartSpec::fragment`): only parts with a block (hull parts: their material's)
+//!   are collected, and only parts whose block names a `fragment` leave one. A part takes its footprint cells in cargo units
 //!   (`PartSpec::cargo_units`), a fragment one.
 //! * **Cargo** ([`Cargo`], `Ship::cargo`): items and counts in item order, and the units in use. A vessel's hold
 //!   is the summed capacity of the alive cargo parts of its controlling piece (`Piece::cargo_capacity`); when it
 //!   drops below the load, the lowest-value items go. A lost vessel's ship keeps its cargo: its wreck carries
 //!   it.
 //! * **Value** (lead default): build points per cargo unit (hull parts with their material's factor); a
-//!   fragment is worth its part's build points. The content's `salvage` block will say more later; the sim does
-//!   not read the career's research values.
+//!   fragment is worth its part's build points. The sim does not read the career's research values.
 //! * **Collecting**: every `SalvageTuning::interval` ticks each running vessel of an owner that collects takes
-//!   one item that fits its free hold: the nearest loose fragment within reach of its hull, else from the
-//!   nearest salvage piece within reach (pieces in order of distance, the first one with something that fits):
-//!   its wreck's cargo first (the best item), then its best part (ties: the lowest part index). A stripped part
-//!   leaves through the destroy path without the destruction (`Ship::remove_part`: no `PartDestroyed`, no
+//!   one item that fits its free hold, from salvage within reach of its hull that moves no faster than
+//!   `SalvageTuning::max_speed` relative to it (fly slowly over a wreck, GDR-0063): the nearest loose fragment, else
+//!   from the nearest salvage piece (pieces in order of distance, the first one with something that fits): its
+//!   wreck's cargo first (the best item), then its best salvageable part (ties: the lowest part index). A stripped
+//!   part leaves through the destroy path without the destruction (`Ship::remove_part`: no `PartDestroyed`, no
 //!   fragment); the wreck may split as in any breakage. `SimEvent::Collected` tells the client.
-//! * **Fragments** ([`Loose`]): a part with a logic block destroyed by damage leaves one at its centroid with
-//!   its velocity: a point the sim moves every tick (no body, no collisions) until it is collected or its
-//!   `SalvageTuning::fragment_ticks` are over.
+//! * **Fragments** ([`Loose`]): a part whose salvage block names a fragment, destroyed by damage, leaves one at its
+//!   centroid with its velocity: a point the sim moves every tick (no body, no collisions) until it is collected
+//!   or its `SalvageTuning::fragment_ticks` are over.
 //! * **Wrecks spawned as wrecks** ([`Sim::spawn_wreck`]): burned out (no vessel ever forms from their cores),
-//!   a share of their parts already gone (rolled on `Stream::Encounter`).
+//!   a share of their parts already gone (rolled from the wreck's own seed).
 //!
 //! Everything here is in the state hash. Cost: one bounding-circle test per salvage piece and loose item per
 //! collecting vessel with free hold every `interval` ticks; for those that pass, the convex colliders are compared
@@ -35,12 +37,15 @@ use crate::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
-use crate::mass::to_piece;
 use crate::math::{Rot, Vec2, sqrt};
-use crate::rng::Stream;
-use crate::ship::{Body, Piece, Ship, inherited_velocity};
+use crate::rng::{Pcg32, Stream, splitmix64};
+use crate::ship::{Body, Piece, Ship};
 use crate::vessel::{Owner, VesselState};
 use crate::world::Sim;
+
+/// The PCG sequence of a wreck's own generator ([`Sim::spawn_wreck`]: seeded with `splitmix64(seed)`). Part of
+/// the replay format, like the stream ids.
+const WRECK_SEQUENCE: u64 = Stream::Encounter as u64;
 
 /// Something a hold carries. Ordered (cargo lists and ties follow this order).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -50,7 +55,7 @@ pub enum Item {
         part: String,
         material: Option<String>,
     },
-    /// What a destroyed part with a logic block leaves (content part id of that part).
+    /// What a destroyed part whose salvage block names a `fragment` leaves (content part id of that part).
     Fragment { part: String },
 }
 
@@ -63,28 +68,23 @@ impl Item {
     }
 }
 
-fn hash_str(h: &mut StateHasher, s: &str) {
-    h.u32(s.len() as u32);
-    h.write_bytes(s.as_bytes());
-}
-
 impl StateHash for Item {
     fn hash_state(&self, h: &mut StateHasher) {
         match self {
             Item::Part { part, material } => {
                 h.u8(0);
-                hash_str(h, part);
+                h.str(part);
                 match material {
                     Some(m) => {
                         h.u8(1);
-                        hash_str(h, m);
+                        h.str(m);
                     }
                     None => h.u8(0),
                 }
             }
             Item::Fragment { part } => {
                 h.u8(1);
-                hash_str(h, part);
+                h.str(part);
             }
         }
     }
@@ -163,8 +163,9 @@ impl Cargo {
     }
 
     /// Drops the lowest-value items (ties: the last in item order), one at a time, until the load fits
-    /// `capacity`.
-    pub(crate) fn shed(&mut self, capacity: u32) {
+    /// `capacity`. Returns what went, with counts, in the order it went.
+    pub(crate) fn shed(&mut self, capacity: u32) -> Vec<(Item, u32)> {
+        let mut gone: Vec<(Item, u32)> = Vec::new();
         while self.used > capacity {
             let mut worst: Option<(&Item, f32)> = None;
             for (item, s) in &self.items {
@@ -172,10 +173,15 @@ impl Cargo {
                     worst = Some((item, s.value));
                 }
             }
-            let Some((item, _)) = worst else { return };
+            let Some((item, _)) = worst else { break };
             let item = item.clone();
             self.take(&item);
+            match gone.iter_mut().find(|(i, _)| *i == item) {
+                Some((_, n)) => *n += 1,
+                None => gone.push((item, 1)),
+            }
         }
+        gone
     }
 }
 
@@ -248,6 +254,9 @@ pub(crate) struct SalvageState {
     next_loose: u32,
     /// Salvage pieces within reach of one collector: `(hull distance, ship index, piece index)`.
     near: Vec<(f32, usize, usize)>,
+    /// Pieces stripped earlier in this pass `(ship index, piece index)`: their colliders are stale until the
+    /// breakage is resolved at the end of the pass, so later collectors leave them for the next pass.
+    stripped: Vec<(usize, usize)>,
     /// The bounding box of each of one collector's colliders (its frame).
     boxes: Vec<Aabb>,
 }
@@ -304,28 +313,13 @@ impl Ship {
         )
     }
 
-    /// World position of part `p`'s centroid (in its piece's pose) and the velocity of that point.
-    fn part_motion(&self, p: PartIdx) -> Option<(Vec2, Vec2)> {
-        let piece = self.piece(self.parts[p as usize].piece)?;
-        let rot = Rot::from_angle(piece.body.angle);
-        let local = to_piece(self.design.parts[p as usize].centroid, piece.origin);
-        let b = &piece.body;
-        let vel = inherited_velocity(
-            b.linvel,
-            b.angvel,
-            rot.apply(piece.mass.com),
-            rot.apply(local),
-        );
-        Some((b.pos + rot.apply(local), vel))
-    }
-
-    /// The best alive part of piece `q` that fits into `free` units: highest value per unit, ties the lowest
-    /// part index.
+    /// The best alive salvageable part of piece `q` that fits into `free` units: highest value per unit, ties the
+    /// lowest part index.
     fn best_part(&self, q: usize, free: u32) -> Option<PartIdx> {
         let mut best: Option<(PartIdx, f32)> = None;
         for &p in &self.pieces[q].parts {
             let spec = &self.design.parts[p as usize];
-            if !self.parts[p as usize].alive || spec.cargo_units > free {
+            if !self.parts[p as usize].alive || !spec.salvageable || spec.cargo_units > free {
                 continue;
             }
             let value = spec.build_points / spec.cargo_units as f32;
@@ -487,13 +481,23 @@ fn near(a: &Piece, b_pos: Vec2, b_radius: f32, reach: f32) -> bool {
     (b_pos - a.body.pos).length_squared() <= lim * lim
 }
 
-/// What collector `k` (a vessel with `free` units) takes this pass, if anything.
-fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) -> Option<Pick> {
+/// What collector `k` (a vessel with `free` units) takes this pass, if anything: from salvage within `reach` of its
+/// hull and at most `max_speed` relative to it.
+fn pick(
+    ships: &[Ship],
+    st: &mut SalvageState,
+    k: usize,
+    free: u32,
+    reach: f32,
+    max_speed: f32,
+) -> Option<Pick> {
     let c = &ships[k];
     let cp = c.piece(c.control?)?;
     if cp.colliders.is_empty() {
         return None;
     }
+    let v = cp.body.linvel;
+    let slow = |u: Vec2| (u - v).length_squared() <= max_speed * max_speed;
     st.boxes.clear();
     st.boxes
         .extend(cp.colliders.iter().map(|c| Aabb::of(c.points())));
@@ -508,7 +512,7 @@ fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) 
     // Loose items first: the nearest that fits (ties: the lower id).
     let mut best: Option<(f32, usize)> = None;
     for (i, l) in st.loose.iter().enumerate() {
-        if l.units > free || !near(cp, l.pos, 0.0, reach) {
+        if l.units > free || !slow(l.vel) || !near(cp, l.pos, 0.0, reach) {
             continue;
         }
         if let Some(d) = hull.point_distance(l.pos, reach)
@@ -525,7 +529,11 @@ fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) 
     st.near.clear();
     for (j, s) in ships.iter().enumerate() {
         for (q, p) in s.pieces.iter().enumerate() {
-            if p.controlled || !near(cp, p.body.pos, p.radius, reach) {
+            if p.controlled
+                || !slow(p.body.linvel)
+                || !near(cp, p.body.pos, p.radius, reach)
+                || st.stripped.contains(&(j, q))
+            {
                 continue;
             }
             if let Some(d) = hull.piece_distance(p, reach) {
@@ -561,20 +569,22 @@ impl Sim {
     }
 
     /// Spawns a ship as a wreck (a derelict): burned out, so no vessel ever forms from its logic cores, with
-    /// `damage` (0..1) of its parts already gone, chosen on `Stream::Encounter` and removed without
-    /// destruction (no `PartDestroyed`, no fragments); then breakage splits it into pieces as usual (`Split` /
-    /// `PieceChanged` / `PieceDestroyed` follow `ShipSpawned`). `owner` is kept for later salvage rights
-    /// (`Ship::owner`); the wreck counts for nobody (`Ship::team` is `None`). Used by the voyage director.
+    /// `damage` (0..1) of its parts already gone, chosen from `seed` alone (a generator of its own, so the same
+    /// seed gives the same wreck whenever and wherever it spawns; the voyage plan rolls one per wreck) and removed
+    /// without destruction (no `PartDestroyed`, no fragments); then breakage splits it into pieces as usual
+    /// (`Split` / `PieceChanged` / `PieceDestroyed` follow `ShipSpawned`); only the wreck's breakage is resolved.
+    /// `owner` is kept for later salvage rights (`Ship::owner`); the wreck counts for nobody (`Ship::team` is
+    /// `None`). NaN or infinite numbers in `body` count as 0. Used by the voyage director.
     pub fn spawn_wreck(
         &mut self,
         design: Arc<ShipDesign>,
         owner: Owner,
         body: Body,
         damage: f32,
+        seed: u64,
     ) -> ShipId {
-        let id = self.ids.ship();
-        let config = *self.config();
-        let mut ship = Ship::new(id, design, owner, body, &mut self.ids, &config);
+        let k = self.new_ship(design, owner, body);
+        let ship = &mut self.ships[k];
         ship.burned_out = true;
         ship.control = None;
         for p in &mut ship.pieces {
@@ -584,33 +594,33 @@ impl Sim {
         let n = ship.parts.len();
         // A NaN share casts to 0 parts.
         let count = ((damage.clamp(0.0, 1.0) * n as f32) as usize).min(n);
-        let k = self.add_ship(ship);
         // A partial Fisher–Yates shuffle picks `count` distinct parts.
         let mut order: Vec<u32> = (0..n as u32).collect();
-        let rng = self.rng(Stream::Encounter);
+        let mut rng = Pcg32::new(splitmix64(seed), WRECK_SEQUENCE);
         for i in 0..count {
             let j = i + rng.below((n - i) as u32) as usize;
             order.swap(i, j);
         }
         for &p in &order[..count] {
-            self.ships[k].remove_part(p as usize);
+            ship.remove_part(p as usize);
         }
-        self.resolve_breakage();
-        id
+        self.resolve_ship(k);
+        self.update_minds();
+        self.ships[k].id
     }
 
-    /// Fragments for ship `k`'s parts with a logic block destroyed by damage since its last breakage
-    /// resolution (call before it): at each part's centroid, with the velocity of that point of its piece.
+    /// Fragments for ship `k`'s parts that leave one (`PartSpec::fragment`) destroyed by damage since its last
+    /// breakage resolution (call before it): at each part's centroid, with the velocity of that point of its piece.
     pub(crate) fn spawn_fragments(&mut self, k: usize) {
         let expires = self.tick() + self.config().salvage.fragment_ticks as u64;
         let s = &self.ships[k];
         let st = &mut self.salvage;
         for &p in &s.pending_destroyed {
             let spec = &s.design.parts[p as usize];
-            if !spec.logic {
+            if !spec.fragment {
                 continue;
             }
-            let Some((pos, vel)) = s.part_motion(p) else {
+            let Some((pos, vel)) = s.part_world(p) else {
                 continue;
             };
             st.loose.push(Loose {
@@ -629,7 +639,8 @@ impl Sim {
         }
     }
 
-    /// Ship `k`'s hold after breakage: a vessel whose hold shrank below its load drops its lowest-value items.
+    /// Ship `k`'s hold after breakage: a vessel whose hold shrank below its load drops its lowest-value items
+    /// (`SimEvent::CargoLost` for each kind).
     pub(crate) fn shed_cargo(&mut self, k: usize) {
         let s = &mut self.ships[k];
         if !s.is_vessel() {
@@ -637,7 +648,10 @@ impl Sim {
         }
         let capacity = s.cargo_capacity();
         if s.cargo.used > capacity {
-            s.cargo.shed(capacity);
+            let ship = s.id;
+            for (item, count) in s.cargo.shed(capacity) {
+                self.events.push(SimEvent::CargoLost { ship, item, count });
+            }
         }
     }
 
@@ -661,6 +675,7 @@ impl Sim {
             return;
         }
         let mut stripped = false;
+        self.salvage.stripped.clear();
         for k in 0..self.ships.len() {
             let c = &self.ships[k];
             if !t.collects(c.owner) || c.vessel_state() != Some(VesselState::Running) {
@@ -670,7 +685,7 @@ impl Sim {
             if free == 0 {
                 continue;
             }
-            if let Some(pick) = pick(&self.ships, &mut self.salvage, k, free, t.reach) {
+            if let Some(pick) = pick(&self.ships, &mut self.salvage, k, free, t.reach, t.max_speed) {
                 stripped |= self.take(k, pick);
             }
         }
@@ -712,13 +727,14 @@ impl Sim {
             Pick::Part { j, q, part } => {
                 let s = &mut self.ships[j];
                 let (item, units, value) = s.part_item(part);
-                let at = s.part_motion(part).map_or(s.pieces[q].com_world(), |m| m.0);
+                let at = s.part_world(part).map_or(s.pieces[q].com_world(), |m| m.0);
                 let from = Salvaged::Part {
                     ship: s.id,
                     piece: s.pieces[q].id,
                     part,
                 };
                 s.remove_part(part as usize);
+                self.salvage.stripped.push((j, q));
                 (item, units, value, from, at, true)
             }
         };

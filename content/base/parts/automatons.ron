@@ -11,7 +11,7 @@
         summary: "The feral mind and power plant of a rogue automaton.",
         description: "A precursor drone core gone wild. Salvaged cores are the first source of [[material:programmable_matter|programmable matter]] for new [[part:logic_core|logic cores]].",
         tags: ["automaton", "core"],
-        locked: true, // hidden in the drydock until salvage or research unlocks it (Niklas, 13 Oct 2026)
+        locked: true, // not in a new game until research unlocks it (Niklas, 13 Oct 2026; GDR-0063)
         category: "logic",
         icon: "automaton-core",
         color: "enemy",

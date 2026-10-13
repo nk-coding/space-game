@@ -54,6 +54,30 @@ fn kill_cores(w: &Sim, ship: ShipId) -> Vec<DamageCommand> {
         .collect()
 }
 
+/// Damage that destroys every gun of a ship (its cores keep running: disarmed, GDR-0068).
+fn kill_guns(w: &Sim, ship: ShipId) -> Vec<DamageCommand> {
+    let s = w.ship(ship).unwrap();
+    (0..s.parts().len())
+        .filter(|&i| s.parts()[i].alive && s.design().parts[i].weapon.is_some())
+        .map(|i| DamageCommand {
+            ship,
+            target: DamageTarget::Part(i as PartIdx),
+            amount: 1000.0,
+        })
+        .collect()
+}
+
+/// The goal site of the voyage underway: its index and position.
+fn goal(w: &Sim) -> (usize, Vec2) {
+    let v = w.voyage().unwrap();
+    let k = v.sites().iter().position(|s| s.goal()).unwrap();
+    (k, v.sites()[k].pos())
+}
+
+fn state(w: &Sim, k: usize) -> SiteState {
+    w.voyage().unwrap().sites()[k].state()
+}
+
 #[test]
 fn plans_are_reproducible_and_follow_the_content() {
     let c = content();
@@ -184,7 +208,7 @@ fn sites_spawn_lazily_sleep_and_wake() {
 }
 
 #[test]
-fn a_site_wakes_when_one_of_its_ships_is_hurt_and_clears_when_none_runs() {
+fn a_site_wakes_when_one_of_its_ships_stops_running_and_clears_when_all_are_destroyed() {
     let c = content();
     let (mut w, me) = voyage_world(&c, "yard_approach", 3);
     // Park far from everything but within the spawn radius of the goal.
@@ -354,4 +378,373 @@ fn the_hunter_and_the_warden_are_flight_ready() {
         assert_eq!(r.power.deficit, 0.0);
         assert!(r.flight.yaw_balanced && r.flight.turn_90.is_some());
     }
+}
+
+/// GDR-0068: a site clears when its enemies are destroyed or disarmed. Shooting every gun off an awake pack clears
+/// it (the goal, so the voyage too) while their cores still run, and disarmed enemies no longer block the recall.
+#[test]
+fn disarmed_enemies_clear_their_site_and_do_not_block_the_recall() {
+    let c = content();
+    let (mut w, me) = voyage_world(&c, "yard_approach", 3);
+    let (k, pos) = goal(&w);
+    put(&mut w, me, pos + Vec2::new(0.0, -60.0));
+    step(&mut w);
+    assert_eq!(state(&w, k), SiteState::Awake);
+    assert!(!w.can_recall(Owner::PLAYER), "armed raiders within 200 m");
+    let ships = w.voyage().unwrap().sites()[k].ships().to_vec();
+    // All but one disarmed: the site stays awake, the last armed raider still blocks the recall.
+    let damage = ships[1..].iter().flat_map(|&s| kill_guns(&w, s)).collect();
+    w.step(&TickInputs {
+        damage,
+        ..Default::default()
+    });
+    assert_eq!(state(&w, k), SiteState::Awake);
+    assert!(!w.can_recall(Owner::PLAYER));
+    w.step(&TickInputs {
+        damage: kill_guns(&w, ships[0]),
+        ..Default::default()
+    });
+    assert!(w.events().contains(&SimEvent::SiteCleared {
+        site: k as u32,
+        goal: true
+    }));
+    assert!(w.voyage().unwrap().goal_cleared());
+    for &s in &ships {
+        let ship = w.ship(s).unwrap();
+        assert_eq!(ship.vessel_state(), Some(sim::VesselState::Running));
+        assert!(!ship.is_armed());
+        assert!(w.awake_enemy(Owner::PLAYER, ship) && !w.armed_enemy(Owner::PLAYER, ship));
+    }
+    assert!(w.can_recall(Owner::PLAYER), "only armed awake enemies block the recall");
+}
+
+/// Clearing is final, so it must not fire on a passing state (13 Oct 2026 review): an awake site whose armed
+/// enemies all went dormant (their owner's mind capacity cut to 0) stays awake; dormant enemies do not block the
+/// recall; once they run again they do.
+#[test]
+fn dormant_armed_enemies_keep_their_site_open() {
+    let c = content();
+    let (mut w, me) = voyage_world(&c, "yard_approach", 3);
+    let (k, pos) = goal(&w);
+    put(&mut w, me, pos + Vec2::new(0.0, -60.0));
+    step(&mut w);
+    assert_eq!(state(&w, k), SiteState::Awake);
+    let ships = w.voyage().unwrap().sites()[k].ships().to_vec();
+    let mut config = *w.config();
+    config.mind_capacity[ENEMY.0 as usize] = 0;
+    w.set_config(config);
+    for _ in 0..3 {
+        step(&mut w);
+    }
+    for &s in &ships {
+        assert_eq!(
+            w.ship(s).unwrap().vessel_state(),
+            Some(sim::VesselState::Dormant)
+        );
+    }
+    assert_eq!(state(&w, k), SiteState::Awake, "dormant is not disarmed");
+    assert!(w.can_recall(Owner::PLAYER));
+    config.mind_capacity[ENEMY.0 as usize] = 1000;
+    w.set_config(config);
+    step(&mut w);
+    assert_eq!(state(&w, k), SiteState::Awake);
+    assert!(!w.can_recall(Owner::PLAYER));
+}
+
+/// The Warden's heart has a gun of its own (GDR-0068): with its fists cut off and still armed, a disarmed heart
+/// keeps the goal open; disarming the fists too clears it while all three cores still run.
+#[test]
+fn the_warden_is_cleared_when_every_section_is_disarmed() {
+    let c = content();
+    let (mut w, me) = voyage_world(&c, "wardens_gate", 11);
+    let (k, pos) = goal(&w);
+    put(&mut w, me, pos + Vec2::new(0.0, -500.0));
+    step(&mut w);
+    let site = &w.voyage().unwrap().sites()[k];
+    let warden = *site
+        .ships()
+        .iter()
+        .find(|&&s| w.ship(s).unwrap().design().id == "automaton_warden")
+        .unwrap();
+    let raiders: Vec<ShipId> = site
+        .ships()
+        .iter()
+        .copied()
+        .filter(|&s| s != warden)
+        .collect();
+    assert!(w.ship(warden).unwrap().is_armed());
+    let d = w.ship(warden).unwrap().design().clone();
+    let bridges = [find(&d, "armor_block", 2, 1), find(&d, "armor_block", 6, 1)];
+    let mut damage: Vec<DamageCommand> = bridges
+        .map(|p| DamageCommand {
+            ship: warden,
+            target: DamageTarget::Part(p),
+            amount: 1000.0,
+        })
+        .to_vec();
+    damage.extend(raiders.iter().flat_map(|&s| kill_cores(&w, s)));
+    w.step(&TickInputs {
+        damage,
+        ..Default::default()
+    });
+    assert_eq!(
+        state(&w, k),
+        SiteState::Awake,
+        "woken by the raiders' lost cores"
+    );
+    let fists: Vec<ShipId> = w.voyage().unwrap().sites()[k]
+        .ships()
+        .iter()
+        .copied()
+        .filter(|&s| s != warden && !raiders.contains(&s))
+        .collect();
+    assert_eq!(fists.len(), 2);
+    // The heart alone: its core, its cannon and its shield.
+    let heart = w.ship(warden).unwrap();
+    assert!(heart.is_armed() && heart.is_vessel());
+    w.step(&TickInputs {
+        damage: kill_guns(&w, warden),
+        ..Default::default()
+    });
+    assert!(!w.ship(warden).unwrap().is_armed());
+    assert_eq!(state(&w, k), SiteState::Awake, "the fists are still armed");
+    let damage = fists.iter().flat_map(|&s| kill_guns(&w, s)).collect();
+    w.step(&TickInputs {
+        damage,
+        ..Default::default()
+    });
+    assert_eq!(state(&w, k), SiteState::Cleared);
+    for s in std::iter::once(warden).chain(fists) {
+        assert!(w.ship(s).unwrap().is_vessel(), "the cores still run");
+    }
+}
+
+/// A sleeping site wakes when one of its ships is hit (`SimEvent::Hit`): a shot from far outside the wake radius
+/// that leaves the ship running.
+#[test]
+fn a_shot_wakes_a_sleeping_site() {
+    let c = content();
+    let (mut w, me) = voyage_world(&c, "yard_approach", 3);
+    let (k, pos) = goal(&w);
+    put(&mut w, me, pos + Vec2::new(0.0, -500.0));
+    step(&mut w);
+    assert_eq!(state(&w, k), SiteState::Asleep);
+    let target = w.voyage().unwrap().sites()[k].ships()[0];
+    let at = w.ship(target).unwrap().pieces()[0].com_world();
+    let from = at + Vec2::new(-4.0, 0.0);
+    let vel = Vec2::new(90.0, 0.0);
+    w.spawn_projectile(me, data::WeaponFamily::Kinetic, from, vel, 0.1, 1, 1.0);
+    let mut hit = false;
+    for _ in 0..4 {
+        let events = step(&mut w);
+        hit = events
+            .iter()
+            .any(|e| matches!(e, SimEvent::Hit { ship, .. } if *ship == target));
+        if hit {
+            assert!(events.contains(&SimEvent::SiteWoke { site: k as u32 }));
+            break;
+        }
+    }
+    assert!(hit, "the shot hit");
+    assert_eq!(state(&w, k), SiteState::Awake);
+    assert_eq!(
+        w.ship(target).unwrap().vessel_state(),
+        Some(sim::VesselState::Running)
+    );
+}
+
+/// Wrecks are a pure function of the plan (13 Oct 2026 review): each carries its own damage seed, so the same plan
+/// gives the same wrecks whatever order the sites spawn in, and the plan never shares draws with the sim's
+/// encounter stream for the same seed.
+#[test]
+fn wrecks_do_not_depend_on_the_order_the_sites_spawn_in() {
+    let c = content();
+    let p = plan(&c, "halvex_drift", 9);
+    let seeds: Vec<u64> = p.sites.iter().flat_map(|s| s.wrecks.iter().map(|w| w.seed)).collect();
+    assert!(seeds.len() >= 2 && seeds.iter().all(|&s| s != 0));
+    assert!(p.sites.iter().all(|s| s.ships.iter().all(|x| x.seed == 0)));
+    // The first draws of the sim's encounter stream are not the plan's wreck seeds.
+    let mut sim = Sim::new(9);
+    let first = sim.rng(sim::Stream::Encounter).next_u64();
+    assert!(!seeds.contains(&first));
+
+    let wrecks_by_site = |order: &[usize]| -> Vec<Vec<Vec<bool>>> {
+        let (mut w, me) = voyage_world(&c, "halvex_drift", 9);
+        let n = w.voyage().unwrap().sites().len();
+        let mut out = vec![Vec::new(); n];
+        for &k in order {
+            let pos = w.voyage().unwrap().sites()[k].pos();
+            // Other sites within the spawn radius spawn too: record each site the step it spawned.
+            put(&mut w, me, pos + Vec2::new(0.0, -500.0));
+            step(&mut w);
+            for (j, s) in w.voyage().unwrap().sites().iter().enumerate() {
+                if out[j].is_empty() && s.state() != SiteState::Unspawned {
+                    out[j] = s
+                        .wrecks()
+                        .iter()
+                        .map(|&id| w.ship(id).unwrap().parts().iter().map(|p| p.alive).collect())
+                        .collect();
+                    out[j].push(Vec::new()); // marks "spawned" even without wrecks
+                }
+            }
+        }
+        out
+    };
+    let n = p.sites.len();
+    let forward: Vec<usize> = (0..n).collect();
+    let backward: Vec<usize> = (0..n).rev().collect();
+    let (a, b) = (wrecks_by_site(&forward), wrecks_by_site(&backward));
+    assert!(a.iter().all(|s| !s.is_empty()), "every site spawned");
+    assert_eq!(a, b);
+}
+
+/// A one-site plan (tests): `ships` at `pos`, nothing else.
+fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
+    VoyagePlan {
+        voyage: "test".into(),
+        seed: 1,
+        radius: 1000.0,
+        entry: Body::at(Vec2::new(0.0, -1000.0), 0.0),
+        sites: vec![sim::SitePlan {
+            encounter: "raider_pack".into(),
+            goal: true,
+            pos: Vec2::ZERO,
+            wake_radius,
+            ships,
+            wrecks: Vec::new(),
+        }],
+    }
+}
+
+/// A blueprint in two cored pieces (13 Oct 2026 review): the second forms a vessel of its own at spawn. Its
+/// vessels join the site in id order, hold where they are, and a hit on one wakes the site.
+#[test]
+fn a_site_ship_in_several_cored_pieces_keeps_the_list_ascending() {
+    let c = content();
+    let twin = custom(
+        &c,
+        &[
+            ("automaton_cannon", 0, 0, 0, false, None),
+            ("automaton_core", 0, 1, 0, false, None),
+            ("automaton_cannon", 3, 0, 0, false, None),
+            ("automaton_core", 3, 1, 0, false, None),
+        ],
+    );
+    let spawn = |x: f32| sim::Spawn {
+        design: twin.clone(),
+        body: Body::at(Vec2::new(x, 0.0), 0.0),
+        damage: 0.0,
+        seed: 0,
+    };
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(one_site(vec![spawn(0.0), spawn(20.0)], 100.0), Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
+    step(&mut w);
+    let ships = w.voyage().unwrap().sites()[0].ships().to_vec();
+    assert_eq!(ships.len(), 4, "two ships, each with a split-off vessel");
+    assert!(ships.windows(2).all(|p| p[0] < p[1]), "{ships:?}");
+    for &s in &ships {
+        let ship = w.ship(s).unwrap();
+        assert!(ship.is_vessel());
+        assert!(
+            matches!(ship.helm(), HelmMode::Maneuver { maneuver: Maneuver::Hold { .. }, fire: false }),
+            "{s:?}: {:?}",
+            ship.helm()
+        );
+        assert_eq!(w.voyage().unwrap().site_of(s), Some(0));
+    }
+    assert_eq!(state(&w, 0), SiteState::Asleep);
+    // A shot at a split-off vessel wakes the site.
+    let target = ships[1];
+    let at = w.ship(target).unwrap().pieces()[0].com_world();
+    w.spawn_projectile(me, data::WeaponFamily::Kinetic, at + Vec2::new(-4.0, 0.0), Vec2::new(90.0, 0.0), 0.1, 1, 1.0);
+    for _ in 0..4 {
+        step(&mut w);
+    }
+    assert_eq!(state(&w, 0), SiteState::Awake);
+}
+
+/// A sleeper also wakes when its bubble takes a whole shot (`ShieldHit` only) or when it is rammed hard enough to
+/// take damage (`Impact` with damage), while it still runs.
+#[test]
+fn a_shot_into_a_bubble_or_a_ram_wakes_a_sleeping_site() {
+    let c = content();
+    // A small shielded ship whose bubble reaches past its hull takes an energy shot whole.
+    let shielded = custom(
+        &c,
+        &[
+            ("logic_core", 0, 0, 0, false, None),
+            ("fission_reactor", 1, 0, 0, false, None),
+            ("shield_emitter", 2, 0, 0, false, None),
+        ],
+    );
+    let warden = sim::Spawn {
+        design: shielded,
+        body: Body::default(),
+        damage: 0.0,
+        seed: 0,
+    };
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(one_site(vec![warden], 100.0), Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
+    for _ in 0..5 {
+        step(&mut w);
+    }
+    let id = w.voyage().unwrap().sites()[0].ships()[0];
+    let (centre, radius) = w
+        .bubbles()
+        .iter()
+        .find(|b| b.ship == id)
+        .map(|b| (b.centre, b.radius))
+        .expect("the bubble is up");
+    let from = centre + Vec2::new(radius + 2.0, 0.0);
+    w.spawn_projectile(me, data::WeaponFamily::Energy, from, Vec2::new(-90.0, 0.0), 0.5, 1, 1.0);
+    let (mut shield, mut hit, mut woke) = (false, false, false);
+    for _ in 0..4 {
+        for e in step(&mut w) {
+            shield |= matches!(e, SimEvent::ShieldHit { ship, .. } if ship == id);
+            hit |= matches!(e, SimEvent::Hit { .. });
+            woke |= e == SimEvent::SiteWoke { site: 0 };
+        }
+    }
+    assert!(shield && !hit, "the bubble took it all");
+    // It woke (and, unarmed, cleared at once: GDR-0068).
+    assert!(woke);
+
+    // A drifting wreck rams a sleeping raider.
+    let raider = sim::Spawn {
+        design: design(&c, "automaton_raider"),
+        body: Body::default(),
+        damage: 0.0,
+        seed: 0,
+    };
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(one_site(vec![raider], 100.0), Owner::PLAYER, ENEMY);
+    w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
+    step(&mut w);
+    let id = w.voyage().unwrap().sites()[0].ships()[0];
+    // From behind, on its armour and thruster.
+    let ram = Body {
+        linvel: Vec2::new(0.0, 25.0),
+        ..Body::at(Vec2::new(0.0, -6.0), 0.0)
+    };
+    w.spawn_wreck(design(&c, "automaton_raider"), Owner(2), ram, 0.0, 0);
+    let (mut rammed, mut woke) = (false, false);
+    for _ in 0..10 {
+        for e in step(&mut w) {
+            rammed |= matches!(e, SimEvent::Impact(c) if c.damage > 0.0 && (c.a.ship == id || c.b.ship == id));
+            woke |= e == SimEvent::SiteWoke { site: 0 };
+        }
+        if rammed {
+            break;
+        }
+    }
+    assert!(rammed && woke, "the wreck rammed the raider: {rammed} {woke}");
+    assert_eq!(
+        w.ship(id).unwrap().vessel_state(),
+        Some(sim::VesselState::Running)
+    );
 }

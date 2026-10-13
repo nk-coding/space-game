@@ -301,16 +301,23 @@ impl Sim {
     /// more than one: each further cored piece becomes a vessel of its own). It may start dormant if its
     /// owner's mind capacity is used up (`VesselDormant`). NaN or infinite numbers in `body` count as 0.
     pub fn spawn_ship(&mut self, design: Arc<ShipDesign>, owner: Owner, body: Body) -> ShipId {
-        let id = self.ids.ship();
-        let body = body.finite_or_zero();
-        let ship = Ship::new(id, design, owner, body, &mut self.ids, &self.config);
-        let k = self.add_ship(ship);
+        let k = self.new_ship(design, owner, body);
+        let id = self.ships[k].id();
         if self.ships[k].is_vessel() {
             self.vessel_formed(k, None);
         }
         self.form_vessels(k);
         self.update_minds();
         id
+    }
+
+    /// A ship from outside (`spawn_ship`, `spawn_wreck`): a new id, built with NaN or infinite numbers in `body`
+    /// counting as 0, added (`ShipSpawned`). Returns its index.
+    pub(crate) fn new_ship(&mut self, design: Arc<ShipDesign>, owner: Owner, body: Body) -> usize {
+        let id = self.ids.ship();
+        let body = body.finite_or_zero();
+        let ship = Ship::new(id, design, owner, body, &mut self.ids, &self.config);
+        self.add_ship(ship)
     }
 
     /// Adds a new ship (its id after every existing one): a body per piece, `ShipSpawned`. Returns its index.
@@ -506,22 +513,28 @@ impl Sim {
     }
 
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
-    /// the physics. Destroyed parts with a logic block leave fragments; split-off pieces with a logic core
+    /// the physics. Destroyed parts whose salvage block names a fragment leave one; split-off pieces with a logic core
     /// become vessels of their own (new ships, after the existing ones); lost vessels and cores update the
     /// minds (focus, dormant vessels); a vessel whose hold shrank drops cargo.
     pub fn resolve_breakage(&mut self) {
         for k in 0..self.ships.len() {
-            if !self.ships[k].pending_destroyed.is_empty() {
-                self.spawn_fragments(k);
-            }
-            let from = self.events.len();
-            self.ships[k].resolve_breakage(&mut self.ids, &mut self.events);
-            if self.events.len() > from {
-                self.sync_bodies(k, from);
-                self.after_breakage(k, from);
-            }
+            self.resolve_ship(k);
         }
         self.update_minds();
+    }
+
+    /// Resolves the breakage of ship `k` alone (fragments, splits, bodies, vessels formed, its hold); the caller
+    /// runs the mind pass (`update_minds`).
+    pub(crate) fn resolve_ship(&mut self, k: usize) {
+        if !self.ships[k].pending_destroyed.is_empty() {
+            self.spawn_fragments(k);
+        }
+        let from = self.events.len();
+        self.ships[k].resolve_breakage(&mut self.ids, &mut self.events);
+        if self.events.len() > from {
+            self.sync_bodies(k, from);
+            self.after_breakage(k, from);
+        }
     }
 
     /// Vessel bookkeeping after ship `k`'s breakage events `from..`: a lost core or a lost vessel wakes the

@@ -1,22 +1,23 @@
 //! The voyage director (GDR-0062, ADR-0033; `docs/sim.md` "Voyages"): one voyage is one small cluster (one `Sim`,
 //! ADR-0022) with seeded sites.
 //!
-//! * **Rolling** ([`VoyagePlan::roll`]): from the content's voyage and a seed, on a generator of
-//!   `Stream::Encounter` (seeded like the sim's own stream for that seed): where each site lies (inside the radius,
+//! * **Rolling** ([`VoyagePlan::roll`]): from the content's voyage and a seed, on a generator of its own (salted
+//!   with [`PLAN_STREAM`], so it never shares draws with the sim's streams for the same seed): where each site lies (inside the radius,
 //!   no two sites or a site and the entry closer than the spacing's min, each within its max of an earlier one or
 //!   the entry; the goal last, the farthest from the entry of a few good spots), how many ships and wrecks each
-//!   holds, where they lie around it, and the compiled designs. The fleet enters at the cluster's edge
+//!   holds, where they lie around it, each wreck's damage seed, and the compiled designs. The fleet enters at the cluster's edge
 //!   ([`VoyagePlan::entry`]).
 //! * **Lazy spawning**: [`Sim::start_voyage`] hands the plan to the sim; at the end of every step a site's ships
 //!   (holding where they spawned, `Maneuver::Hold`) and wrecks (`Sim::spawn_wreck`) spawn once a vessel of the
 //!   player owner comes within `VoyageTuning::spawn_radius` of it.
 //! * **Waking**: a sleeping site's ships fly their behavior (their own or their faction's) once a player vessel
-//!   comes within the encounter's wake radius, one of them is hit, or one of them stopped being a running vessel
-//!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site.
-//! * **Clearing**: an awake site is cleared when none of its ships is a running vessel any more
-//!   (`SimEvent::SiteCleared { goal }`); clearing is final. A site that rolled no ships is quiet: nothing wakes there
-//!   and it is never cleared.
-//! * **Recall** ([`Sim::can_recall`], GDR-0062): no awake vessel of another owner within
+//!   comes within the encounter's wake radius, one of them is hit (a shot or a plume on the hull, a shot its bubble
+//!   took, a ram that deals damage), or one of them stopped being a running vessel (`SimEvent::SiteWoke`). Vessels
+//!   that split off a site's ships belong to the site.
+//! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
+//!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
+//!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
+//! * **Recall** ([`Sim::can_recall`], GDR-0062, GDR-0068): no armed awake enemy ([`Sim::armed_enemy`]) within
 //!   `VoyageTuning::recall_radius` of any of the owner's vessels.
 //!
 //! Everything works by owner (the player and the enemy side passed to `start_voyage`), so co-op can add more
@@ -34,9 +35,10 @@ use crate::events::SimEvent;
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::ShipId;
 use crate::maneuver::Maneuver;
+use crate::mass::combine;
 use crate::math::{Vec2, cos, sin, sqrt};
-use crate::rng::{Pcg32, RngStreams, Stream};
-use crate::ship::Body;
+use crate::rng::{Pcg32, splitmix64};
+use crate::ship::{Body, Ship};
 use crate::vessel::{Owner, VesselState, friendly};
 use crate::world::{ShipCommand, Sim};
 
@@ -46,7 +48,7 @@ use crate::world::{ShipCommand, Sim};
 pub struct VoyageTuning {
     /// A site's ships and wrecks spawn when a player vessel comes this close to it (m).
     pub spawn_radius: f32,
-    /// Recall works when no awake enemy vessel is this close to any of the owner's vessels (m).
+    /// Recall works when no armed awake enemy vessel is this close to any of the owner's vessels (m).
     pub recall_radius: f32,
 }
 
@@ -78,6 +80,11 @@ const PLACE_TRIES: u32 = 64;
 /// Good spots compared for the goal (the farthest from the entry wins).
 const GOAL_CHOICES: u32 = 8;
 
+/// The salt and PCG sequence of the plan's generator: `Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)),
+/// PLAN_STREAM)`, derived like an RNG stream (`rng.rs`) with an id no stream has ("voyage" in ASCII). Part of the
+/// save format (`data::career::GENERATOR` 2): never change it.
+pub const PLAN_STREAM: u64 = 0x766f_7961_6765;
+
 /// One ship or wreck a site spawns.
 #[derive(Clone, Debug)]
 pub struct Spawn {
@@ -86,6 +93,9 @@ pub struct Spawn {
     pub body: Body,
     /// Wrecks: the share of its parts already gone (0 for ships).
     pub damage: f32,
+    /// Wrecks: the seed that picks which parts are gone (`Sim::spawn_wreck`; 0 for ships). Rolled with the plan,
+    /// so a wreck does not depend on when or in which order the sites spawn.
+    pub seed: u64,
 }
 
 /// One site of a rolled voyage.
@@ -121,8 +131,7 @@ impl VoyagePlan {
     /// designs. The same content, voyage and seed give the same plan on every platform. `Err` for content that
     /// does not validate (an unknown encounter or ship).
     pub fn roll(content: &Content, voyage: &data::Voyage, seed: u64) -> Result<VoyagePlan, String> {
-        let mut streams = RngStreams::new(seed);
-        let rng = streams.get(Stream::Encounter);
+        let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM);
         let radius = voyage.radius;
         let entry = Vec2::new(0.0, -radius);
 
@@ -182,17 +191,19 @@ impl VoyagePlan {
                 ships.iter().chain(&wrecks).map(|(d, _)| hull_radius(d)),
             );
             let mut bodies = bodies.into_iter();
-            let mut spawns = |list: Vec<(Arc<ShipDesign>, f32)>| -> Vec<Spawn> {
+            let mut spawns = |list: Vec<(Arc<ShipDesign>, f32)>, rng: Option<&mut Pcg32>| -> Vec<Spawn> {
+                let mut rng = rng;
                 list.into_iter()
                     .map(|(design, damage)| Spawn {
                         design,
                         body: bodies.next().unwrap(),
                         damage,
+                        seed: rng.as_deref_mut().map_or(0, |r| r.next_u64()),
                     })
                     .collect()
             };
-            let ships = spawns(ships);
-            let wrecks = spawns(wrecks);
+            let ships = spawns(ships, None);
+            let wrecks = spawns(wrecks, Some(&mut *rng));
             sites.push(SitePlan {
                 encounter: e.id.clone(),
                 goal,
@@ -264,12 +275,31 @@ fn place_site(
     good.or(best).map_or(Vec2::ZERO, |(_, p)| p)
 }
 
-/// Radius of a design's hull circle about its middle (m): half the diagonal of its grid's bounds.
+/// Radius of a design's hull circle about the point a spawn pose places (m): the farthest corner of any of its
+/// parts from its main piece's centre of mass (the frame origin `Ship::new` puts at the pose; the same quantity as
+/// `Piece::radius`, for the whole blueprint). 1 for a design without parts.
 fn hull_radius(d: &ShipDesign) -> f32 {
-    d.grid.bounds().map_or(1.0, |b| {
-        let (w, h) = (b.width() as f32, b.height() as f32);
-        0.5 * sqrt(w * w + h * h)
-    })
+    let pieces = d.grid.pieces();
+    let Some(main) = d.grid.main_piece(&pieces, |i| d.parts[i].logic) else {
+        return 1.0;
+    };
+    let com = combine(
+        pieces.parts[main].iter().map(|&i| {
+            let s = &d.parts[i];
+            (s.mass, s.centroid, s.inertia)
+        }),
+        [0.0, 0.0],
+    )
+    .1;
+    let mut r2 = 0.0f32;
+    for s in &d.parts {
+        for c in s.shape.polygon() {
+            let [x, y] = c.to_f32();
+            let (dx, dy) = (x - com[0], y - com[1]);
+            r2 = r2.max(dx * dx + dy * dy);
+        }
+    }
+    sqrt(r2)
 }
 
 /// Poses for things of these hull radii around a site: random spots and headings, hull circles at least
@@ -311,7 +341,7 @@ pub enum SiteState {
     Asleep,
     /// Its ships fly their behavior.
     Awake,
-    /// None of its ships is a running vessel any more (final).
+    /// Each of its ships is destroyed or disarmed: none is a vessel that is still armed (GDR-0068; final).
     Cleared,
 }
 
@@ -411,8 +441,8 @@ impl Voyage {
             .iter()
             .any(|s| s.plan.goal && s.state == SiteState::Cleared)
     }
-    /// Is this ship one of a sleeping site's?
-    fn asleep(&self, ship: ShipId) -> bool {
+    /// Is this ship one of a sleeping site's (or a vessel split off one)?
+    pub fn asleep(&self, ship: ShipId) -> bool {
         self.site_of(ship)
             .is_some_and(|k| self.sites[k].state == SiteState::Asleep)
     }
@@ -422,23 +452,19 @@ impl Voyage {
     }
 }
 
-fn hash_str(h: &mut StateHasher, s: &str) {
-    h.u32(s.len() as u32);
-    h.write_bytes(s.as_bytes());
-}
-
 impl StateHash for Spawn {
     fn hash_state(&self, h: &mut StateHasher) {
-        hash_str(h, &self.design.id);
+        h.str(&self.design.id);
         self.body.hash_state(h);
         h.f32(self.damage);
+        h.u64(self.seed);
     }
 }
 
 impl StateHash for Site {
     fn hash_state(&self, h: &mut StateHasher) {
         let p = &self.plan;
-        hash_str(h, &p.encounter);
+        h.str(&p.encounter);
         h.bool(p.goal);
         h.vec2(p.pos);
         h.f32(p.wake_radius);
@@ -460,7 +486,7 @@ impl StateHash for Site {
 
 impl StateHash for Voyage {
     fn hash_state(&self, h: &mut StateHasher) {
-        hash_str(h, &self.voyage);
+        h.str(&self.voyage);
         h.u64(self.seed);
         h.f32(self.radius);
         self.entry.hash_state(h);
@@ -507,11 +533,27 @@ impl Sim {
         self.voyage.as_deref()
     }
 
-    /// May `owner` recall home now (GDR-0062)? It needs a vessel, and no awake vessel of another owner may be
-    /// within `VoyageTuning::recall_radius` of any of its vessels: running, and not one of a sleeping site's ships.
+    /// Is `ship` an awake enemy of `owner`: a running vessel of another owner that is not one of a sleeping voyage
+    /// site's ships? Without a voyage every running vessel of another owner is awake (sandbox waves).
+    pub fn awake_enemy(&self, owner: Owner, ship: &Ship) -> bool {
+        ship.team().is_some()
+            && !friendly(ship.team(), Some(owner))
+            && ship.vessel_state() == Some(VesselState::Running)
+            && !self.voyage().is_some_and(|v| v.asleep(ship.id()))
+    }
+
+    /// Is `ship` an armed awake enemy of `owner` ([`Sim::awake_enemy`] and [`Ship::is_armed`])? Only these block
+    /// `owner`'s recall (GDR-0068); the voyage scenario and the voyage runner fight them.
+    pub fn armed_enemy(&self, owner: Owner, ship: &Ship) -> bool {
+        ship.is_armed() && self.awake_enemy(owner, ship)
+    }
+
+    /// May `owner` recall home now (GDR-0062, GDR-0068)? It needs a vessel, and no armed awake enemy
+    /// ([`Sim::armed_enemy`]) may be within `VoyageTuning::recall_radius` (centre of mass to centre of mass) of any
+    /// of its vessels.
     pub fn can_recall(&self, owner: Owner) -> bool {
         let r = self.config().voyage.recall_radius;
-        let at = |s: &crate::ship::Ship| Some(s.piece(s.control_piece()?)?.com_world());
+        let at = |s: &Ship| Some(s.piece(s.control_piece()?)?.com_world());
         let mine = || {
             self.ships
                 .iter()
@@ -524,18 +566,19 @@ impl Sim {
         !self
             .ships
             .iter()
-            .filter(|s| {
-                s.team().is_some()
-                    && !friendly(s.team(), Some(owner))
-                    && s.vessel_state() == Some(VesselState::Running)
-                    && !self.voyage().is_some_and(|v| v.asleep(s.id()))
-            })
+            .filter(|s| self.armed_enemy(owner, s))
             .filter_map(at)
             .any(|q| mine().any(|p| (q - p).length_squared() <= r * r))
     }
 
     fn running(&self, ship: ShipId) -> bool {
         self.ship(ship).and_then(|s| s.vessel_state()) == Some(VesselState::Running)
+    }
+
+    /// Does `ship` keep its site from clearing (GDR-0068): a vessel (running, dark or dormant: those states pass)
+    /// that is still armed?
+    fn fights(&self, ship: ShipId) -> bool {
+        self.ship(ship).is_some_and(|s| s.is_vessel() && s.is_armed())
     }
 
     /// The director's pass at the end of a step: spawn the sites near player vessels, follow the events since the
@@ -560,27 +603,35 @@ impl Sim {
                 self.spawn_site(&mut v, k);
             }
         }
+        let mark = |v: &mut Voyage, ship: ShipId| {
+            if let Some(k) = v.site_of(ship)
+                && v.sites[k].ships.binary_search(&ship).is_ok()
+            {
+                v.sites[k].hit = true;
+            }
+        };
         for e in &self.events {
-            match *e {
-                SimEvent::VesselFormed {
+            match e {
+                &SimEvent::VesselFormed {
                     ship,
                     from: Some((parent, _)),
                     ..
                 } => {
                     if let Some(k) = v.site_of(parent)
-                        && v.sites[k].ships.contains(&parent)
+                        && v.sites[k].ships.binary_search(&parent).is_ok()
+                        && let Err(i) = v.sites[k].ships.binary_search(&ship)
                     {
-                        // New ids are the highest so far: the list stays ascending.
-                        v.sites[k].ships.push(ship);
+                        v.sites[k].ships.insert(i, ship);
                         v.site_of.insert(ship, k as u32);
                     }
                 }
-                SimEvent::Hit { ship, .. } | SimEvent::PlumeHit { ship, .. } => {
-                    if let Some(k) = v.site_of(ship)
-                        && v.sites[k].ships.binary_search(&ship).is_ok()
-                    {
-                        v.sites[k].hit = true;
-                    }
+                // Hurt or shot at: a hit on the hull or by a plume, a shot its bubble took, a ram with damage.
+                &SimEvent::Hit { ship, .. }
+                | &SimEvent::PlumeHit { ship, .. }
+                | &SimEvent::ShieldHit { ship, .. } => mark(&mut v, ship),
+                SimEvent::Impact(c) if c.damage > 0.0 => {
+                    mark(&mut v, c.a.ship);
+                    mark(&mut v, c.b.ship);
                 }
                 _ => {}
             }
@@ -605,7 +656,7 @@ impl Sim {
             }
             let site = &mut v.sites[k];
             site.hit = false;
-            if site.state == SiteState::Awake && !site.ships.iter().any(|&s| self.running(s)) {
+            if site.state == SiteState::Awake && !site.ships.iter().any(|&s| self.fights(s)) {
                 site.state = SiteState::Cleared;
                 self.events.push(SimEvent::SiteCleared {
                     site: k as u32,
@@ -616,7 +667,9 @@ impl Sim {
         self.voyage = Some(v);
     }
 
-    /// Spawns site `k`: its ships for the enemy, holding where they are, then its wrecks.
+    /// Spawns site `k`: its ships for the enemy, holding where they are (with the vessels a blueprint in several
+    /// cored pieces forms at spawn), then its wrecks. New ships come after every existing one, so the site's list
+    /// stays ascending.
     fn spawn_site(&mut self, v: &mut Voyage, k: usize) {
         let Voyage {
             sites,
@@ -626,20 +679,28 @@ impl Sim {
         } = v;
         let site = &mut sites[k];
         for s in &site.plan.ships {
-            let id = self.spawn_ship(Arc::clone(&s.design), *enemy, s.body);
-            let hold = Maneuver::Hold { at: s.body.pos };
-            self.command(
-                id,
-                ShipCommand::Maneuver {
-                    maneuver: hold,
-                    fire: false,
-                },
-            );
-            site.ships.push(id);
-            site_of.insert(id, k as u32);
+            let first = self.ships.len();
+            self.spawn_ship(Arc::clone(&s.design), *enemy, s.body);
+            for j in first..self.ships.len() {
+                let ship = &self.ships[j];
+                let id = ship.id();
+                let at = match ship.control_piece().and_then(|c| ship.piece(c)) {
+                    Some(p) if j > first => p.com_world(),
+                    _ => s.body.pos,
+                };
+                self.command(
+                    id,
+                    ShipCommand::Maneuver {
+                        maneuver: Maneuver::Hold { at },
+                        fire: false,
+                    },
+                );
+                site.ships.push(id);
+                site_of.insert(id, k as u32);
+            }
         }
         for w in &site.plan.wrecks {
-            let id = self.spawn_wreck(Arc::clone(&w.design), *enemy, w.body, w.damage);
+            let id = self.spawn_wreck(Arc::clone(&w.design), *enemy, w.body, w.damage, w.seed);
             site.wrecks.push(id);
             site_of.insert(id, k as u32);
         }
@@ -667,6 +728,32 @@ mod tests {
         assert_eq!(seen, [true; 3]);
         assert_eq!(roll_count(&mut rng, (3, 3)), 3);
         assert_eq!(roll_count(&mut rng, (5, 1)), 5);
+    }
+
+    /// The hull circle is about the point a spawn pose places, the main piece's centre of mass (13 Oct 2026
+    /// review): every collider of a spawned ship lies inside it, also for a lopsided blueprint.
+    #[test]
+    fn hull_circles_hold_the_spawned_ship() {
+        let content = data::base_content();
+        for bp in content.ships.iter() {
+            let d = Arc::new(ShipDesign::compile(&content, bp).unwrap());
+            let r = hull_radius(&d);
+            let mut w = Sim::new(1);
+            let at = Vec2::new(30.0, -20.0);
+            let id = w.spawn_ship(Arc::clone(&d), Owner(1), Body::at(at, 0.7));
+            let mut far = 0.0f32;
+            for s in w.ships() {
+                for p in s.pieces() {
+                    for c in &p.colliders {
+                        for &v in c.points() {
+                            far = far.max((p.body.to_world(v) - at).length());
+                        }
+                    }
+                }
+            }
+            assert!(far <= r + 1e-3, "{}: {far} > {r}", bp.id);
+            assert!(w.ship(id).is_some());
+        }
     }
 
     #[test]

@@ -26,7 +26,8 @@ only. Every question takes the `Content` it should be answered against.
 `Career` holds **facts only**. Everything that can be derived from content is derived on demand and never stored,
 so a content rebalance (a node's cost, a part's unlock) applies to old saves without a migration. The game stores
 `Career::to_ron()` as a document in `saves/` (ADR-0031 adds the header line) and reads it back with
-`Career::from_ron(text)` followed by `Career::reconcile(&content)`.
+`Career::from_ron(text)` followed by `Career::reconcile(&content)`. `from_ron` takes a blueprint's input limits
+(at most `limits::MAX_DOCUMENT_BYTES`, a leading byte order mark skipped).
 
 ```ron
 // space-game: saves, format 1, saved 1760351234
@@ -36,7 +37,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
     ],
     start: "rim_awakening",
     seed: 4207,
-    generator: 1,
+    generator: 2,
     researched: [
         "automaton_cannon",
         "tamed_core",
@@ -91,7 +92,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `packs` | the packs `(id, version)` it was last played with; informational (a note when one is missing at load) |
 | `start` | the content start it began from |
 | `seed` | the game seed (ADR-0024); voyage seeds come from it |
-| `generator` | the voyage roller's version (`career::GENERATOR`, 1); old versions must stay reproducible |
+| `generator` | the voyage roller's version (`career::GENERATOR`, 2); see [Voyage roller versions](#voyage-roller-versions) |
 | `researched` | research node ids, in the order researched |
 | `data` | research data in store per family (f32, only amounts above 0) |
 | `materials` | materials in store (whole numbers, only amounts above 0) |
@@ -104,8 +105,11 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 
 The text is written with the pack loader's options (`Some(..)` left out, four-space indent) and is deterministic;
 unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (1) is the format the game's
-document header carries: raise it when the meaning of a field changes and migrate older formats when reading; new
-fields with a default need no new format. The last haul's report is history (what was credited), not derived.
+document header carries: raise it when a field is added or its meaning changes, and migrate older formats when
+reading. Unknown fields are errors, so a field added without a new format would make an older build call a newer
+save damaged instead of newer; with the format raised, its storage reports `Newer`. The last haul's report is
+history (what was credited), not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
+below) is never written over: the game keeps it as it is ("How the game uses it" below).
 
 ## Derived values
 
@@ -159,8 +163,9 @@ family and `materials`; `items()` counts both kinds.
   voyage's `launched` and the log, and marks the voyage underway. The game writes the save now, so closing the game
   mid-voyage counts as losing it (GDR-0062; see loading below).
 - **Seed** (`voyage_seed(id)`, the next launch's): `splitmix64(seed ^ splitmix64(fnv1a64(id) ^ launched))`, with
-  64-bit FNV-1a over the id's UTF-8 bytes (never Rust's `DefaultHasher`) and the SplitMix64 finaliser the sim's
-  RNG streams use. The same save rolls the same voyage; each launch rolls a new one. It is part of the save format:
+  64-bit FNV-1a over the id's UTF-8 bytes (never Rust's `DefaultHasher`) and one step of SplitMix64 (it adds the
+  generator's increment, then mixes), both defined once in `data::hash` for the career and the sim's RNG streams and
+  pinned by tests. The same save rolls the same voyage; each launch rolls a new one. It is part of the save format:
   changing it needs a new `GENERATOR`. Fixed values are tested (`tests/career.rs` `voyage_seeds_are_fixed`):
   seed 4207, `yard_approach`, no launches → 9993844787240758234; after one launch → 8810720374438629928.
 - **End** (`voyage_ended(&content, id, end)`, refused with `NotUnderway` for any voyage but the one underway):
@@ -184,8 +189,9 @@ ready. Entries, in this order: per ship (flagship first, then escorts by index, 
 then for the fleet
 
 3. `TooManyCores { cores, capacity }`: its logic cores (all ships) exceed the mind capacity.
-4. `NoCargo`: no ship has cargo room, so nothing salvaged can come home. A warning only: `Readiness::blocks()` is
-   false for it alone.
+4. `NoCargo`: no ship has a hold (`Content::ship_hold`: cargo on its main piece, as the sim counts it; cargo on a
+   piece that falls off at spawn holds nothing), so nothing salvaged can come home. A warning only:
+   `Readiness::blocks()` is false for it alone.
 
 The drydock and the map show the first entry. Flight-readiness (power, thrust: the design report) is the sim's
 question and is checked by the game next to this list.
@@ -198,24 +204,42 @@ path such as `researched[1]` or `data.lasers`) for the status line:
 
 - a pack of `packs` that is not loaded now is noted; `packs` becomes the current list;
 - an unknown `start` is replaced by the content's first start;
-- a `generator` outside 1 to `GENERATOR` is reset to `GENERATOR`;
 - researched nodes the content doesn't have, or listed twice, are dropped (their unlocks go with them);
 - data of unknown families and materials the content doesn't have are dropped, in the stores and in the last haul's
   report; data that is not finite or below 0 is dropped; amounts above `MAX_DATA` or `MAX_MATERIALS` are lowered to
   it; zero amounts are dropped silently;
 - records of voyages the content doesn't know are dropped, and so is a last haul from one;
 - a voyage still `underway` was interrupted: it ends as `Lost` (ticks 0) when its launch is on record, else the
-  mark is dropped.
+  mark is dropped;
+- last (the least interesting note, so the status line shows another first): a `generator` below `GENERATOR` is
+  migrated to it with a note (0, which no build writes, too).
 
 The queries themselves cope with content that was not reconciled (an unknown start gives mind capacity 0 plus
-research and no open voyages; unknown nodes unlock nothing).
+research and opens only the voyages whose `opens_after` are all cleared; unknown nodes unlock nothing; research data
+that is not finite counts as none, so it never pays).
+
+### Voyage roller versions
+
+`generator` names the voyage roller a career's voyages roll with (ADR-0024): the voyage seed and the sim's
+`VoyagePlan::roll` (`docs/sim.md` "Rolling a plan").
+
+| Version | What changed |
+|---|---|
+| 1 | 13 Oct 2026 (track 7E): the plan drew on a generator seeded like the sim's encounter stream; wrecks rolled their missing parts on that stream when they spawned, so a wreck depended on the order the sites were reached |
+| 2 | 13 Oct 2026 (review): the plan's generator is salted (`sim::voyage::PLAN_STREAM`), and each wreck carries its own damage seed in the plan |
+
+An older save is migrated, not replayed: nothing a save stores refers to a rolled voyage (no mid-voyage saves,
+GDR-0062; a voyage underway at load counts as lost; every launch rolls anew), so a version 1 career simply rolls its
+next launches with version 2, with a note. Its voyage seeds are the same in both versions. A save from a newer build
+(`generator` above `GENERATOR`) is refused by `Career::from_ron` (an error on `generator`), never reset: this build
+would roll its voyages differently. The game keeps it as it is and never writes over it.
 
 ## Bounds and defaults (placeholders, 13 Oct 2026, track 7C)
 
 | Constant | Value | What |
 |---|---|---|
 | `career::FORMAT` | 1 | the save's format version |
-| `career::GENERATOR` | 1 | the voyage roller's version, voyage seeds included |
+| `career::GENERATOR` | 2 | the voyage roller's version, voyage seeds included |
 | `career::MAX_DATA` | 1,000,000 | research data per family a store holds (100 × the largest content cost) |
 | `career::MAX_MATERIALS` | 1,000,000 | of one material a store holds |
 | `career::DATA_EPSILON` | 0.001 | research data that close to a cost pays it |
@@ -237,7 +261,8 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there,
   `reconcile` (the first change and how many more become a note on home). No save, or `?newgame=1`: a new game from
   the content's first start, seeded with the clock (Unix seconds), written at once; the drydock then docks a copy
   of the start's ship (`rim_skiff`), saving the last design's unsaved changes first so BLUEPRINTS keeps them.
-- **A save that doesn't read** (broken RON, unknown fields, a header from a newer build) is **kept as it is**: the
+- **A save that doesn't read** (broken RON, unknown fields, a header from a newer build, a newer voyage roller) is
+  **kept as it is**: the
   game runs a new career in memory as a stand-in, never writes it, keeps the drydock's design and says so on home
   ("THE SAVE IS KEPT AS IT IS"). `?newgame=1` starts over in its place. Content without any start gets the same
   treatment (a stand-in career that unlocks what the content doesn't lock, mind capacity 0).

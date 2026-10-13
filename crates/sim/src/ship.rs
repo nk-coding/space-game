@@ -811,6 +811,28 @@ impl Ship {
             .is_some_and(|p| p.active)
     }
 
+    /// Armed (GDR-0068): the controlling piece still has a gun and a power source (alive parts). Only losses that
+    /// never come back count: a gun that overheats, idles, browns out or has its line of fire blocked keeps its
+    /// ship armed (the blocker can be shot off); a piece without a reactor never fires again. One look-up, no
+    /// allocation. False for salvage.
+    pub fn is_armed(&self) -> bool {
+        self.control
+            .and_then(|c| self.piece(c))
+            .is_some_and(|p| !p.guns.is_empty() && !p.reactors.is_empty())
+    }
+
+    /// World position of part `p`'s centroid in the pose of the piece it is (or, destroyed, was last) on, and the
+    /// velocity of that point of the piece (`v + ω × r`). `None` if that piece is gone. The one rule for
+    /// fragments, collected parts and the behaviors' part aim.
+    pub fn part_world(&self, p: PartIdx) -> Option<(Vec2, Vec2)> {
+        let piece = self.piece(self.parts[p as usize].piece)?;
+        let rot = Rot::from_angle(piece.body.angle);
+        let local = rot.apply(to_piece(self.design.parts[p as usize].centroid, piece.origin));
+        let b = &piece.body;
+        let vel = inherited_velocity(b.linvel, b.angvel, rot.apply(piece.mass.com), local);
+        Some((b.pos + local, vel))
+    }
+
     pub fn helm(&self) -> &HelmMode {
         &self.helm
     }

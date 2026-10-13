@@ -24,19 +24,32 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::hash::{fnv1a64, splitmix64};
 use crate::kind::Kind;
-use crate::load::{Content, parse_error, ron_options};
+use crate::limits::MAX_DOCUMENT_BYTES;
+use crate::load::{Content, parse_error, ron_options, strip_bom};
 use crate::model::{Blueprint, Frame, ResearchNode, Unlock};
 use crate::problem::Problem;
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
-/// document header (ADR-0031). Raise it when the meaning of a field changes, and migrate older formats when
-/// reading; new fields with a default need no new format.
+/// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
+/// when reading: an older build refuses unknown fields, so only a new format lets its storage report the save as
+/// newer instead of damaged.
 pub const FORMAT: u32 = 1;
 
-/// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible). It covers
-/// [`Career::voyage_seed`] too: changing how voyage seeds are made needs a new version.
-pub const GENERATOR: u32 = 1;
+/// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible or be
+/// migrated). It covers [`Career::voyage_seed`] and the sim's `VoyagePlan::roll` (the draw order, the plan's own
+/// generator, the wreck seeds): changing either needs a new version.
+///
+/// * 1 (13 Oct 2026): the plan drew on a generator seeded like the sim's encounter stream, and wrecks rolled their
+///   missing parts on that stream when they spawned.
+/// * 2 (13 Oct 2026, review): the plan's generator is salted (`sim::voyage::PLAN_STREAM`) and each wreck carries a
+///   seed of its own in the plan.
+///
+/// An older save is migrated by [`Career::reconcile`]: nothing it stores refers to a rolled voyage (no mid-voyage
+/// saves, GDR-0062; a launch rolls anew), so it simply rolls its next launches with this version. A save from a
+/// newer build is refused by [`Career::from_ron`].
+pub const GENERATOR: u32 = 2;
 
 /// Most research data of one family a store holds (a sanity bound, placeholder): a hundred times the largest cost
 /// content may ask for ([`crate::validate::MAX_RESEARCH_DATA`]).
@@ -322,7 +335,8 @@ pub enum Readiness {
     LockedMaterial { ship: FleetSlot, material: String },
     /// The fleet has more logic cores than the ship-mind runs at once.
     TooManyCores { cores: u32, capacity: u32 },
-    /// A warning only: no ship of the fleet has cargo room, so nothing salvaged can come home.
+    /// A warning only: no ship of the fleet has a hold (cargo on its main piece, `Content::ship_hold`), so nothing
+    /// salvaged can come home.
     NoCargo,
 }
 
@@ -358,12 +372,33 @@ impl Career {
 
     /// Reads a career written by [`Career::to_ron`] (or by hand) with the pack loader's options: `Some(..)` may
     /// be left out, unknown fields are errors. Only the syntax and the schema are checked; call
-    /// [`Career::reconcile`] next. `Err` holds the parse error with its line and column (one problem, in a list
+    /// [`Career::reconcile`] next. Text from outside has a blueprint's limits: at most
+    /// [`crate::limits::MAX_DOCUMENT_BYTES`], a leading byte order mark skipped. `Err` holds the parse error with its line and column (one problem, in a list
     /// like [`crate::parse_blueprint`]'s).
+    ///
+    /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
+    /// roll its voyages differently. The game keeps such a save aside and never writes over it.
     pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
-        ron_options()
-            .from_str(text)
-            .map_err(|e| vec![parse_error(&e)])
+        if text.len() > MAX_DOCUMENT_BYTES {
+            return Err(vec![Problem::error(format!(
+                "the text is too long for a save ({} bytes, at most {MAX_DOCUMENT_BYTES})",
+                text.len()
+            ))]);
+        }
+        let career: Career = ron_options()
+            .from_str(strip_bom(text))
+            .map_err(|e| vec![parse_error(&e)])?;
+        if career.generator > GENERATOR {
+            return Err(vec![
+                Problem::error(format!(
+                    "the save was written by a newer build (voyage roller version {}, this build knows up to \
+                     {GENERATOR}): it is kept as it is; open it with that build",
+                    career.generator
+                ))
+                .field("generator"),
+            ]);
+        }
+        Ok(career)
     }
 
     /// The career as RON: deterministic, four-space indent, ending in a newline (like
@@ -416,17 +451,6 @@ impl Career {
                 }
             });
             notes.push(note.entry(Kind::Start, &old).field("start"));
-        }
-
-        if !(1..=GENERATOR).contains(&self.generator) {
-            notes.push(
-                Problem::warning(format!(
-                    "unknown voyage roller version {}: voyages roll with version {GENERATOR}",
-                    self.generator
-                ))
-                .field("generator"),
-            );
-            self.generator = GENERATOR;
         }
 
         let mut kept: Vec<String> = Vec::new();
@@ -516,6 +540,28 @@ impl Career {
                 self.last_haul = None;
             }
         }
+
+        // Last: the least interesting change for the status line, which shows the first.
+        if self.generator == 0 {
+            notes.push(
+                Problem::warning(format!(
+                    "unknown voyage roller version 0: voyages roll with version {GENERATOR}"
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
+        } else if self.generator < GENERATOR {
+            // No stored fact refers to a rolled voyage, so the migration loses nothing (see `GENERATOR`).
+            notes.push(
+                Problem::warning(format!(
+                    "voyages were rolled with version {} of the roller: from now on they roll with version \
+                     {GENERATOR}",
+                    self.generator
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
+        }
         notes
     }
 
@@ -551,6 +597,16 @@ impl Career {
     /// Research data in store per family (amounts above 0 only).
     pub fn data(&self) -> &BTreeMap<String, f32> {
         &self.data
+    }
+
+    /// The research data of one family that can pay: an amount that is not finite or below 0 (a save not
+    /// reconciled yet) counts as none.
+    fn store(&self, family: &str) -> f32 {
+        self.data
+            .get(family)
+            .copied()
+            .filter(|x| x.is_finite() && *x > 0.0)
+            .unwrap_or(0.0)
     }
 
     /// Materials in store (amounts above 0 only).
@@ -678,7 +734,7 @@ impl Career {
     ) -> Result<&'c ResearchNode, Refusal> {
         let n = self.payable(content, node)?;
         for (family, &cost) in &n.cost.data {
-            let left = self.data.get(family).copied().unwrap_or(0.0) - cost;
+            let left = self.store(family) - cost;
             if left > DATA_EPSILON {
                 self.data.insert(family.clone(), left);
             } else {
@@ -805,7 +861,7 @@ impl Career {
         }
         let mut short = Vec::new();
         for (family, &cost) in &n.cost.data {
-            let have = self.data.get(family).copied().unwrap_or(0.0);
+            let have = self.store(family);
             if have + DATA_EPSILON < cost {
                 short.push(Shortfall::Data {
                     family: family.clone(),
@@ -906,7 +962,7 @@ pub fn voyage_ready(
             .enumerate()
             .map(|(k, e)| (FleetSlot::Escort(k), e)),
     );
-    let (mut cores, mut cargo) = (0u32, 0.0f32);
+    let (mut cores, mut cargo) = (0u32, 0u32);
     for (slot, ship) in fleet {
         let (w, h) = ship.size;
         let fits = |f: &&Frame| f.size.0 >= w && f.size.1 >= h;
@@ -947,9 +1003,8 @@ pub fn voyage_ready(
                     material: material.to_string(),
                 }),
         );
-        let totals = content.ship_totals(ship);
-        cores = cores.saturating_add(totals.logic_cores);
-        cargo += totals.cargo_capacity;
+        cores = cores.saturating_add(content.ship_totals(ship).logic_cores);
+        cargo = cargo.saturating_add(content.ship_hold(ship));
     }
     if cores > mind_capacity {
         out.push(Readiness::TooManyCores {
@@ -957,7 +1012,7 @@ pub fn voyage_ready(
             capacity: mind_capacity,
         });
     }
-    if cargo <= 0.0 {
+    if cargo == 0 {
         out.push(Readiness::NoCargo);
     }
     out
@@ -1057,39 +1112,4 @@ fn clean_materials(
         }
         *x > 0
     });
-}
-
-/// 64-bit FNV-1a: a fixed, platform-independent hash (Rust's `DefaultHasher` may change between releases).
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| {
-        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
-/// SplitMix64 finaliser (Steele, Lea, Flood 2014), as the sim's RNG streams use it.
-fn splitmix64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    x ^ (x >> 31)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The reference values of the FNV specification's test suite (and the offset basis for no bytes).
-    #[test]
-    fn fnv1a64_matches_the_reference() {
-        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
-        assert_eq!(fnv1a64(b"foobar"), 0x8594_4171_f739_67e8);
-    }
-
-    /// The reference outputs of SplitMix64 seeded with 0 (`next()` adds the increment first).
-    #[test]
-    fn splitmix64_matches_the_reference() {
-        assert_eq!(splitmix64(0), 0xe220_a839_7b1d_cdaf);
-        assert_eq!(splitmix64(0x9E37_79B9_7F4A_7C15), 0x6e78_9e6a_a1b9_65f4);
-    }
 }

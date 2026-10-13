@@ -180,6 +180,11 @@ pub struct PartSpec {
     /// Cargo units the part takes in a hold when salvaged: its footprint cells (`size.0 × size.1`, a code rule;
     /// a slope counts its whole footprint).
     pub cargo_units: u32,
+    /// Collectors take it (content: the part has a `salvage` block; a hull part, its material has one).
+    pub salvageable: bool,
+    /// Destroyed by damage, it leaves a fragment to scoop (content: its `salvage` block names a non-empty
+    /// `fragment`).
+    pub fragment: bool,
     /// `Some` for parts that draw power.
     pub consumer: Option<ConsumerKind>,
     /// Consumers: tier and weight at spawn (the part's content default, or the placement's override).
@@ -453,6 +458,15 @@ impl ShipDesign {
                 material: if def.hull { pl.material.clone() } else { None },
                 build_points: def.build_points_in(content.placement_armor(pl)),
                 cargo_units: def.size.0.saturating_mul(def.size.1).max(1),
+                salvageable: if def.hull {
+                    content
+                        .placement_material(pl)
+                        .is_some_and(|m| m.salvage.is_some())
+                } else {
+                    def.salvage.is_some()
+                },
+                fragment: !def.hull
+                    && def.salvage.as_ref().is_some_and(|s| !s.fragment.is_empty()),
                 consumer,
                 power_setting,
                 power_min_level: power.min_level,

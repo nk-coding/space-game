@@ -499,17 +499,6 @@ fn reach_of(s: &Ship) -> f32 {
     })
 }
 
-/// World position of a part's centroid (its piece must exist).
-fn part_pos(s: &Ship, i: PartIdx) -> Option<(Vec2, &crate::ship::Piece)> {
-    let ps = s.part(i);
-    if !ps.alive {
-        return None;
-    }
-    let piece = s.piece(ps.piece)?;
-    let local = to_piece(s.design().parts[i as usize].centroid, piece.origin);
-    Some((piece.body.to_world(local), piece))
-}
-
 /// The nearest working part of a kind on a ship's controlling piece (target priority).
 fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
     if aim == AimAt::Centre {
@@ -550,10 +539,9 @@ pub(crate) fn aim_state(
     if let Some(i) = part {
         let s = find_ship(ships, focus)?;
         if (i as usize) < s.parts().len()
-            && let Some((pos, piece)) = part_pos(s, i)
+            && s.part(i).alive
+            && let Some((pos, vel)) = s.part_world(i)
         {
-            let vel =
-                piece.body.linvel + Vec2::cross_scalar(piece.body.angvel, pos - piece.com_world());
             return Some(TargetState { pos, vel });
         }
     }

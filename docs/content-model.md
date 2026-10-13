@@ -151,8 +151,9 @@ An armour material may carry a `salvage` block (what one cell of hull area in it
 
 `locked` (optional, default `false`, added 13 Oct 2026), on materials, parts and frames alike: not available to
 the player until unlocked (research: an unlock of a [research node](#research-nodes-added-13-oct-2026)
-clears it per player, GDR-0063). The drydock hides locked parts and materials (palette, armor pills, the 1–9
-keys); content ships that use them still load, open in the drydock and fly. The base pack locks the automatons'
+clears it per player, GDR-0063). The free drydock hides locked parts and materials (palette, armor pills, the 1–9
+keys); the career's drydock shows them dimmed until researched (GDR-0065); content ships that use them still load,
+open in the drydock and fly. The base pack locks the automatons'
 core, cannon and plate (GDR-0054) and the mid-game kit (GDR-0063): composite and reactive armour, the fusion
 reactor, the beam laser, the torch drive, and the cruiser and capital frames (Niklas, 13 Oct 2026). A new game
 has everything else (the early-game kit: steel, fission reactor,
@@ -186,7 +187,7 @@ what is locked; a development switch (`?unlock=all`) is planned.
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
 | `hull` | `true`: takes an armor material per placement; then `mass`/`hp` must be absent |
 | `mass`, `hp` | required for non-hull parts |
-| `locked` | optional, default `false`: not available to the player until unlocked (research); the drydock hides it. Content ships may still use it (the raider flies its locked automaton parts) |
+| `locked` | optional, default `false`: not in a new game until research unlocks it; the free drydock hides it, the career's shows it dimmed (GDR-0065). Content ships may still use it (the raider flies its locked automaton parts) |
 | `salvage` | optional, non-hull parts only: what the part gives when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A part without it is never collected |
 
 Optional component blocks (a part has any combination):
@@ -364,7 +365,9 @@ Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raide
 two slopes, so it turns 90° in about 0.67 s by the design report instead of 1.6 s and its reactors feed the gyros;
 early-game kit only; a lead placeholder), and the voyages' enemies `automaton_hunter` (5×4, two cannons on forward
 prongs, one core) and `automaton_warden` (9×7, the boss of `wardens_gate`: a shielded heart and two armed fists,
-three cores, so it fights on in pieces), both from `docs/plans/slice-content.md` 2 (placeholders).
+three cores, so it fights on in pieces), both from `docs/plans/slice-content.md` 2 (placeholders). Since GDR-0068
+(a site clears when its enemies are destroyed or disarmed) the Warden's heart has a cannon in its nose in place of
+its second shield emitter, so the heart must be beaten too and each section still runs on its own core's 6 MW.
 
 **Blueprint text** (added 12 Oct 2026, for the drydock). Saved player designs and exported blueprints use exactly
 the format of the content ships, so an export can go into a pack's `ships/` folder as is:
@@ -470,9 +473,11 @@ the leader's lock, keep near the leader between fights; GDR-0065).
 ### Salvage (added 13 Oct 2026)
 
 What a salvaged part gives when the haul is dismantled at home (GDR-0063): research data for one
-[family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The block is pure data: the
-sim collects parts and fragments into cargo by its own rules and never reads it; the career model turns a haul into
-data and materials with it (`docs/career.md` "Unloading a haul"). A part without the block is never collected.
+[family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The career model turns a haul
+into data and materials with it (`docs/career.md` "Unloading a haul"). The sim reads only two facts from it
+(compiled into the ship's design): a part without the block (a hull part: its material without one) is never
+collected, and only a part whose block has a non-empty `fragment` leaves a fragment when destroyed. What a
+collector takes first and how much room an item needs are sim rules (`docs/sim.md` "Salvage").
 
 ```ron
 // parts/automatons.ron
@@ -553,8 +558,8 @@ armour, Automaton plate and the capital frame stay locked.
 
 ### Starts (`starts.ron`, added 13 Oct 2026)
 
-How a new game begins. A new game has every part, material and frame that is not `locked`, plus what the start
-names.
+How a new game begins. A new game has every part, material and frame that is not `locked` (a start names no unlocks
+of its own). The content needs at least one start (an error otherwise).
 
 ```ron
 (
@@ -569,7 +574,7 @@ names.
 
 | Field | Notes |
 |---|---|
-| `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, no more logic cores than `mind_capacity` |
+| `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, a logic core, and no more logic cores than `mind_capacity`. A ship without a hold (cargo on its main piece) is a warning: nothing salvaged would come home |
 | `mind_capacity` | 1 to 100 (`data::validate::MAX_MIND_CAPACITY`, a sanity bound) |
 | `voyages` | optional: voyage ids, each known and listed once. Clearing a voyage opens those that name it in `opens_after` ([Voyages](#voyages-voyagesron-added-13-oct-2026)) |
 
@@ -607,12 +612,12 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
 |---|---|
 | `band` | snake_case key; text only until bands are content |
 | `map` | each coordinate 0 to 1 |
-| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning) |
+| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning, and so is one that opens only after voyages that can never open) |
 | `radius` | m, above 0 and at most 20000 (`data::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
 | `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |
 | `minutes` | `(min, max)`, `1 ≤ min ≤ max ≤ 600` |
 | `cleared` | optional text (a text key `voyage.<id>.cleared`): the debrief's line the first time the goal falls |
-| `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear) |
+| `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear), one of them armed (`Content::ship_armed`: a weapon and power on its main piece; GDR-0068) |
 
 Base voyages (placeholders, `docs/plans/slice-content.md` 3.3), in one file in chain order: `yard_approach` (open at
 the start; 600 m, raider pair ×2, derelict field, **raider pack**), `halvex_drift` (900 m, raider pack ×2, precursor
@@ -753,18 +758,21 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   `Content::unit_hull_part`), every armor material locked, every frame locked.
 - Career content (added 13 Oct 2026): unknown families, materials, nodes, ships and unlock targets; amounts out
   of range; `salvage` on a hull part or a material without `armor`; a node listed twice in `requires`; cycles in
-  `requires`; a start whose ship uses locked parts or materials, fits no open frame or has more logic cores than
-  its mind capacity; unknown or repeated voyages. Details in [Salvage](#salvage-added-13-oct-2026),
+  `requires`; no start at all; a start whose ship uses locked parts or materials, fits no open frame, has no
+  logic core or more logic cores than its mind capacity; unknown or repeated voyages. Details in [Salvage](#salvage-added-13-oct-2026),
   [Research nodes](#research-nodes-added-13-oct-2026) and [Starts](#starts-startsron-added-13-oct-2026).
 - Voyages and encounters (added 13 Oct 2026): unknown encounters, ships and voyages; cycles in `opens_after`; no
-  goal, two goals, a goal with a count above 1 or whose encounter may roll no ships; a fighting ship without a
+  goal, two goals, a goal with a count above 1 or whose encounter may roll no ships, or no armed ship (a weapon and
+  power on its main piece, GDR-0068: the site would clear the moment it wakes); a fighting ship without a
   logic core; an encounter with neither ships nor wrecks; numbers out of range (`MAX_VOYAGE_RADIUS`,
   `MAX_VOYAGE_SITES`, `MAX_ENCOUNTER_COUNT`, `MAX_VOYAGE_MINUTES`). Details in
   [Voyages](#voyages-voyagesron-added-13-oct-2026) and [Encounters](#encounters-encountersron-added-13-oct-2026).
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
   an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
   placement `power` override, a research node that unlocks an entry that is not `locked` or unlocks nothing, an
-  encounter ship without a behavior, a voyage that no start opens and that opens after nothing. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
+  encounter ship without a behavior, a voyage that no start opens and that opens after nothing, a voyage that
+  opens only after voyages that can never open, a start ship without a hold. (An engine with parts behind it is no
+  warning since GDR-0039: its plume burns them.)
 - Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
   `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
   the same weight range.
@@ -810,7 +818,8 @@ cargo run -p content-tool -- export-json content.json  # resolved content for an
 cargo run -p content-tool -- list part
 ```
 
-`export-json` (`format_version` 1) holds every kind in load order with all fields plus, per entry,
+`export-json` (`format_version` 1) holds every kind in load order with all fields (numbers that are content f32s
+written as their shortest text: `0.28`, not `0.2800000011920929`) plus, per entry,
 `text_keys`, `links` (targets mentioned in its texts) and `wiki` (markdown or null). Parts add `color_key`,
 `stat_lines` (identical to the drydock), `stat_lines_by_material` for hull parts, `geometry` (area, polygon,
 connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygon`, `center` and `piece`,
@@ -821,6 +830,8 @@ plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals` (including 
 Parts, materials and frames add `unlocked_by` (the research nodes that unlock them); parts and armour materials
 carry their `salvage` block. `families` (added 13 Oct 2026) add `salvaged_from_parts`, `salvaged_from_materials`
 (what feeds them) and `research` (their nodes); `research` nodes add `required_by`; `starts` hold their fields.
+`voyages` (added 13 Oct 2026) add `site_count` (sites in all), `opens` (the voyages that open after it) and
+`opened_by_starts`; `encounters` add `used_by_voyages`; ships add `in_encounters`.
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
 `default_of_factions` and `flown_by_ships`. Categories list their parts,

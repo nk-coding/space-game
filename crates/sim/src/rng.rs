@@ -7,13 +7,9 @@
 //!   never share a sequence and adding a draw in one system never shifts another system's numbers.
 //! * Stream ids are part of the save/replay format: **append only, never renumber**.
 
-/// SplitMix64 finaliser (Steele, Lea, Flood 2014): a good 64-bit mixer, used to derive stream seeds.
-pub fn splitmix64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    x ^ (x >> 31)
-}
+/// SplitMix64 (one step of the generator, `data::hash`): derives the stream seeds. Part of the save and replay
+/// format, defined once in `data` for the career and the sim.
+pub use data::hash::splitmix64;
 
 const PCG_MULT: u64 = 6_364_136_223_846_793_005;
 
@@ -113,8 +109,9 @@ pub enum Stream {
     Ai = 3,
     /// Test scenarios and scripted hazards (determinism check). Never used by game systems.
     Scenario = 4,
-    /// Encounters: site placement and counts (the voyage director), and which parts of a wreck spawned as a
-    /// wreck are already destroyed (`Sim::spawn_wreck`).
+    /// Encounter rolls made while a voyage runs (none yet). The voyage plan is rolled before the sim on a
+    /// generator of its own (`VoyagePlan::roll`), and a wreck's missing parts come from its own seed
+    /// (`Sim::spawn_wreck`), so neither ever shares draws with this stream.
     Encounter = 5,
 }
 
@@ -178,12 +175,6 @@ mod tests {
                 0xa15c02b7, 0x7b47f409, 0xba1d3330, 0x83d2f293, 0xbfa4784b, 0xcbed606e
             ]
         );
-    }
-
-    #[test]
-    fn splitmix64_matches_reference() {
-        // First output of the SplitMix64 generator seeded with 0 is splitmix64(0).
-        assert_eq!(splitmix64(0), 0xe220a8397b1dcdaf);
     }
 
     #[test]

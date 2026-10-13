@@ -564,7 +564,7 @@ fn clearing_a_voyage_opens_the_next() {
 #[test]
 fn voyage_seeds_are_fixed() {
     // Values computed independently (FNV-1a 64 and SplitMix64 by their reference definitions); they are part of
-    // the save format (GENERATOR 1) and must never change.
+    // the save format (the same in GENERATOR 1 and 2) and must never change.
     let c = content();
     let mut career = new_game(&c);
     assert_eq!(career.voyage_seed(FIRST), 9_993_844_787_240_758_234);
@@ -630,15 +630,18 @@ fn locked_parts_and_materials_are_named_once_per_ship() {
     );
     assert!(found.iter().all(Readiness::blocks));
     assert_eq!(voyage_ready(&c, &Unlocks::all(&c), 2, &runner, &[]), []);
-    // A part the content doesn't have counts as locked.
+    // A part the content doesn't have counts as locked (and a ship that cannot be built has no hold).
     let mut odd = ship(&c, "rim_skiff");
     odd.parts[2].part = "warp_core".into();
     assert_eq!(
         voyage_ready(&c, &u, 2, &odd, &[]),
-        [Readiness::LockedPart {
-            ship: flag,
-            part: "warp_core".into()
-        }]
+        [
+            Readiness::LockedPart {
+                ship: flag,
+                part: "warp_core".into()
+            },
+            Readiness::NoCargo
+        ]
     );
 }
 
@@ -762,7 +765,7 @@ fn a_hand_written_save_reads() {
     packs: [("base", "0.1.0")],
     start: "rim_awakening",
     seed: 4207,
-    generator: 1,
+    generator: 2,
     researched: ["automaton_cannon", "composite_plating"],
     data: {"kinetic": 4, "hull": 11.5, "logic": 2},
     materials: {"programmable_matter": 1},
@@ -792,6 +795,29 @@ fn a_hand_written_save_reads() {
     assert!(u.has_part("automaton_cannon") && u.has_material("composite"));
 }
 
+/// ADR-0024: a save of an older voyage roller is migrated (nothing it stores refers to a rolled voyage, so its next
+/// launches roll with this build's version, with a note); a save of a newer build is refused, never reset.
+#[test]
+fn old_rollers_are_migrated_and_newer_ones_refused() {
+    let c = content();
+    let mut old = Career::from_ron(r#"(start: "rim_awakening", seed: 4207, generator: 1)"#).unwrap();
+    assert_eq!(old.generator(), 1);
+    assert_eq!(old.voyage_seed(FIRST), 9_993_844_787_240_758_234, "seeds are the same");
+    let notes = old.reconcile(&c);
+    assert_eq!(notes.len(), 1, "{}", show(&notes));
+    assert!(note(&notes, "generator").message.contains("version 1"));
+    assert_eq!(old.generator(), GENERATOR);
+    assert!(old.reconcile(&c).is_empty());
+    let newer = format!(r#"(start: "rim_awakening", seed: 4207, generator: {})"#, GENERATOR + 1);
+    let p = Career::from_ron(&newer).unwrap_err();
+    assert_eq!(p.len(), 1);
+    assert_eq!(
+        (p[0].severity, p[0].field.as_deref()),
+        (Severity::Error, Some("generator"))
+    );
+    assert!(p[0].message.contains("newer build"), "{}", show(&p));
+}
+
 #[test]
 fn a_broken_save_is_an_error_with_its_place() {
     let p = Career::from_ron(r#"(start: "rim_awakening", seed: 1, generator: 1, credits: 5)"#)
@@ -814,7 +840,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
     packs: [("base", "0.1.0"), ("old_mod", "2.0.0")],
     start: "drone_dawn",
     seed: 9,
-    generator: 7,
+    generator: 0,
     researched: ["automaton_cannon", "warp_theory", "automaton_cannon"],
     data: {"kinetic": 4, "lasers": 2, "hull": NaN, "power": -3, "energy": 1e12, "thermal": 0, "shields": inf},
     materials: {"programmable_matter": 5000000, "unobtainium": 2, "steel": 0},
@@ -832,7 +858,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
         (Some(Kind::Start), Some("drone_dawn"))
     );
     assert!(start.message.contains("`rim_awakening`"), "{start}");
-    assert!(note(&notes, "generator").message.contains('7'));
+    assert!(note(&notes, "generator").message.contains("version 0"));
     assert_eq!(
         note(&notes, "researched[1]").id.as_deref(),
         Some("warp_theory")
@@ -1066,4 +1092,64 @@ fn an_evening(c: &Content) -> Career {
 #[test]
 fn an_evening_of_play() {
     an_evening(&content());
+}
+
+/// Research data that is not finite (a hand-edited or damaged save queried before `reconcile`) counts as none:
+/// it never pays a node (13 Oct 2026 review: NaN paid one node, infinity every node forever).
+#[test]
+fn research_data_that_is_not_finite_pays_nothing() {
+    let c = content();
+    for store in ["NaN", "inf", "-inf"] {
+        let text = format!(
+            r#"(start: "rim_awakening", seed: 1, generator: 2, data: {{"kinetic": {store}}})"#
+        );
+        let mut career = Career::from_ron(&text).unwrap();
+        match career.can_pay(&c, "automaton_cannon") {
+            Err(Refusal::CannotPay(short)) => assert!(
+                matches!(&short[..], [Shortfall::Data { have, .. }] if *have == 0.0),
+                "{store}: {short:?}"
+            ),
+            other => panic!("{store}: {other:?}"),
+        }
+        assert!(career.research(&c, "automaton_cannon").is_err());
+        assert!(career.researched().is_empty());
+    }
+}
+
+/// The hold is the cargo of the main piece (the sim's controlling piece): a fleet whose only cargo bay sits on a
+/// piece that falls off at spawn brings nothing home, so readiness warns.
+#[test]
+fn cargo_off_the_main_piece_is_no_cargo() {
+    let c = content();
+    let mut skiff = ship(&c, "rim_skiff");
+    // The skiff's bays, moved two columns right of its hull: a piece of their own.
+    let right = skiff.size.0 as i32;
+    let mut moved = 0;
+    for p in &mut skiff.parts {
+        if p.part == "cargo_bay" {
+            p.x = right + 1 + moved;
+            p.y = 0;
+            moved += 1;
+        }
+    }
+    assert_eq!(moved, 2);
+    skiff.size.0 += 4;
+    assert_eq!(c.ship_hold(&skiff), 0);
+    assert_eq!(c.ship_hold(&ship(&c, "rim_skiff")), 8);
+    let all = Unlocks::all(&c);
+    assert_eq!(voyage_ready(&c, &all, 2, &skiff, &[]), [Readiness::NoCargo]);
+}
+
+/// A save written by an editor that adds a byte order mark reads; one above the document size limit is refused
+/// before it is parsed.
+#[test]
+fn saves_take_the_blueprints_input_limits() {
+    let text = "\u{feff}(start: \"rim_awakening\", seed: 1, generator: 2)";
+    assert!(Career::from_ron(text).is_ok());
+    let huge = format!(
+        "(start: \"rim_awakening\", seed: 1, generator: 2, escorts: [{}])",
+        "\"x\",".repeat(data::limits::MAX_DOCUMENT_BYTES / 4 + 1)
+    );
+    let p = Career::from_ron(&huge).unwrap_err();
+    assert!(p[0].message.contains("bytes"), "{}", show(&p));
 }
