@@ -11,8 +11,6 @@ use data::{Blueprint, Content};
 
 /// The id the player's design flies under. Content ids are snake_case (validation), so a `:` never clashes.
 pub const PLAYER_DESIGN_ID: &str = "player:design";
-/// The content ship the first design copies.
-const STARTER_SHIP: &str = "halvex_runner";
 
 #[derive(Resource, Clone, Debug)]
 pub struct PlayerDesign {
@@ -38,8 +36,9 @@ impl PlayerDesign {
         Ok(design)
     }
 
-    /// A copy of the starter ship in the first content frame it fits, mirror on.
-    pub fn starter(content: &Content) -> Self {
+    /// A copy of the content ship `ship` in the first content frame it fits, mirror on; an empty design when the
+    /// content has no such ship. A new game's first design is its start's ship (`career::PlayerCareer::start_ship`).
+    pub fn starter(content: &Content, ship: &str) -> Self {
         let empty = || Blueprint {
             id: String::new(),
             name: "New design".into(),
@@ -53,7 +52,7 @@ impl PlayerDesign {
             behavior: None,
             source: Default::default(),
         };
-        let ship = content.ships.get(STARTER_SHIP).cloned().unwrap_or_else(empty);
+        let ship = content.ships.get(ship).cloned().unwrap_or_else(empty);
         let frames = content.frames.iter().map(|f| f.size).chain([ship.size]);
         let mut design = frames
             .filter_map(|frame| Self::open(content, &ship, frame).ok())
@@ -133,25 +132,29 @@ mod tests {
     #[test]
     fn starter_is_centred_in_the_frame_and_can_fly() {
         let content = data::base_content();
-        let d = PlayerDesign::starter(&content);
-        assert_eq!(d.blueprint().id, PLAYER_DESIGN_ID);
-        assert!(!content.ships.contains(PLAYER_DESIGN_ID));
-        assert_eq!(d.blueprint().size, d.frame());
-        assert_eq!(d.frame(), content.frames.iter().next().unwrap().size);
-        let b = content.ship_grid(d.blueprint()).unwrap().bounds().unwrap();
-        // The runner is 12 wide and symmetric: its axis is the frame's centre line.
-        assert_eq!(b.min_x + b.max_x, d.frame().0 as i32);
-        assert!(b.min_y >= 0 && b.max_y <= d.frame().1 as i32);
-        assert!(sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap().flight_ready());
-        // Exporting gives the content ship back (opening a design drops where it was loaded from).
-        let ship = content.ships.get(STARTER_SHIP).unwrap();
-        assert_eq!(d.export(), Blueprint { source: Default::default(), ..ship.clone() });
+        for ship in ["rim_skiff", "halvex_runner"] {
+            let d = PlayerDesign::starter(&content, ship);
+            assert_eq!(d.blueprint().id, PLAYER_DESIGN_ID);
+            assert!(!content.ships.contains(PLAYER_DESIGN_ID));
+            assert_eq!(d.blueprint().size, d.frame());
+            assert_eq!(d.frame(), content.frames.iter().next().unwrap().size);
+            let b = content.ship_grid(d.blueprint()).unwrap().bounds().unwrap();
+            // Both are symmetric: the axis is the frame's centre line.
+            assert_eq!(b.min_x + b.max_x, d.frame().0 as i32, "{ship}");
+            assert!(b.min_y >= 0 && b.max_y <= d.frame().1 as i32);
+            assert!(sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap().flight_ready());
+            // Exporting gives the content ship back (opening a design drops where it was loaded from).
+            let bp = content.ships.get(ship).unwrap();
+            assert_eq!(d.export(), Blueprint { source: Default::default(), ..bp.clone() });
+        }
+        // A ship the content lacks: an empty design.
+        assert!(PlayerDesign::starter(&content, "nowhere").blueprint().parts.is_empty());
     }
 
     #[test]
     fn edits_bump_the_revision_and_reach_the_blueprint() {
         let content = data::base_content();
-        let mut d = PlayerDesign::starter(&content);
+        let mut d = PlayerDesign::starter(&content, "halvex_runner");
         let (r0, n0) = (d.revision(), d.blueprint().parts.len());
         let out = d.edit(|dock| dock.paint((0, 0), "steel"));
         assert!(out.unwrap().changed);
@@ -173,7 +176,7 @@ mod tests {
         assert!(d.revision() > r2);
         // Replacing keeps the revision going up.
         let r3 = d.revision();
-        let next = PlayerDesign::starter(&content);
+        let next = PlayerDesign::starter(&content, "halvex_runner");
         d.replace(next);
         assert!(d.revision() > r3);
     }

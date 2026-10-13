@@ -15,6 +15,11 @@
 //! Everything is spawned once at start (hidden outside the drydock) and updated in place from the drydock's
 //! resources; texts and colours are written only when they change. UI words are chrome in code (like the flight
 //! HUD); part names, summaries and stat labels come from content.
+//!
+//! What the career has not unlocked (`career::Granted`) is shown, not hidden (GDR-0065): locked parts close the
+//! list dimmed, with a lock and `LOCKED · <research node>`, and can't be picked; locked armour pills are dimmed with
+//! a lock. Fresh parts (research unlocked them, the drydock hasn't shown them yet) carry a NEW tag until they are
+//! picked or selected once. The status line ends with the voyage-ready line.
 
 use std::fmt::Write as _;
 
@@ -23,21 +28,22 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
-use data::{Content, Part};
+use data::{Content, Part, Unlock};
 
 use crate::camera::CameraRig;
+use crate::career::{Granted, SeenPart, unlocked_by};
 use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillText, TextField, TextFieldText, Tone, UiBlock, ValueBar, label, number, prose, ring_node, set_color, set_text,
-    spawn_bar, spawn_brackets, spawn_pill, tracked,
+    Hot, Pill, PillLock, PillText, TextField, TextFieldText, Tone, UiBlock, ValueBar, label, number, prose, ring_node, set_color,
+    set_text, spawn_bar, spawn_brackets, spawn_pill, tracked,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
 use super::inspector::Inspector;
-use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, palette_parts};
+use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, palette_list};
 use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 use super::PlayerDesign;
@@ -63,6 +69,10 @@ pub(super) struct PaletteRow(usize);
 #[derive(Component)]
 pub(super) struct RowIcon(usize);
 
+/// A palette row's NEW tag (a fresh part: research unlocked it and the drydock hasn't shown it yet).
+#[derive(Component)]
+pub(super) struct RowNew(usize);
+
 #[derive(Component)]
 pub(super) struct SelIcon;
 
@@ -85,6 +95,7 @@ pub(super) enum PanelText {
     Name,
     Section,
     Status,
+    Voyage,
     Info,
     Zoom,
     SelName,
@@ -99,10 +110,13 @@ pub(super) enum PanelText {
     SelBonus(usize),
 }
 
-/// The palette list: the parts it shows (category or search), the first row shown and how many fit.
+/// The palette list: the parts it shows (category or search; the locked ones last), the first row shown and how
+/// many fit.
 #[derive(Resource, Default, Debug)]
 pub(super) struct Palette {
     parts: Vec<String>,
+    /// How many of `parts` (the last ones) are locked.
+    locked: usize,
     offset: usize,
     visible: usize,
     /// What the list was made from: category, search, material.
@@ -150,9 +164,11 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             root.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
                 .with_children(|tr| {
                     tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
+                    // Every armour material; a locked one is dimmed with a lock (GDR-0065).
                     for (k, m) in armor_materials(content).enumerate() {
                         let text = if k < 9 { format!("{} {}", m.name.to_uppercase(), k + 1) } else { m.name.to_uppercase() };
-                        spawn_pill(tr, fonts, &text, 9.0, 28.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Material(m.id.clone())));
+                        let lock = UiIcon::Glyph { glyph: Glyph::Lock, color: ui.dim };
+                        spawn_pill(tr, fonts, &text, 9.0, 28.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock));
                     }
                     tr.spawn((Node { width: px(1), height: px(22), margin: UiRect::horizontal(px(8)), ..default() }, BackgroundColor(c(Tone::Label, 0.25))));
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
@@ -234,10 +250,27 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                     UiIcon::Part { part: String::new(), material: None },
                                     Node { width: px(34), height: px(30), flex_shrink: 0.0, ..default() },
                                 ));
-                                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|t| {
-                                    t.spawn((PanelText::RowName(k), prose(fonts, "", 14.0, c(Tone::Number, 1.0))));
-                                    t.spawn((PanelText::RowSub(k), tracked(fonts, "", 8.5, c(Tone::Dim, 1.0), 0.2)));
-                                });
+                                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() })
+                                    .with_children(|t| {
+                                        t.spawn((PanelText::RowName(k), prose(fonts, "", 14.0, c(Tone::Number, 1.0))));
+                                        t.spawn((PanelText::RowSub(k), tracked(fonts, "", 8.5, c(Tone::Dim, 1.0), 0.2)));
+                                    });
+                                // The NEW tag (GDR-0065): a small gold-outlined pill.
+                                row.spawn((
+                                    RowNew(k),
+                                    Node {
+                                        display: Display::None,
+                                        height: px(18),
+                                        padding: UiRect::horizontal(px(8)),
+                                        align_items: AlignItems::Center,
+                                        border: UiRect::all(px(1.0)),
+                                        border_radius: BorderRadius::MAX,
+                                        flex_shrink: 0.0,
+                                        ..default()
+                                    },
+                                    BorderColor::all(c(Tone::Gold, 0.85)),
+                                ))
+                                .with_child(label(fonts, "NEW", 7.5, c(Tone::Gold, 1.0)));
                             });
                         }
                     });
@@ -367,7 +400,24 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     bb.spawn(Node { width: px(14), ..default() });
                     spawn_pill(bb, fonts, "MIRROR M", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Mirror));
                     spawn_pill(bb, fonts, "BEVEL SHIFT B", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Bevel));
-                    bb.spawn((PanelText::Status, label(fonts, "", 10.0, c(Tone::Teal, 1.0)), Node { flex_grow: 1.0, margin: UiRect::left(px(22)), ..default() }));
+                    // The status line and the voyage-ready line after it (the second wraps under the first when both
+                    // don't fit).
+                    bb.spawn(Node {
+                        flex_grow: 1.0,
+                        flex_shrink: 1.0,
+                        min_width: px(0),
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        align_items: AlignItems::Center,
+                        column_gap: px(16),
+                        row_gap: px(3),
+                        margin: UiRect::left(px(22)),
+                        ..default()
+                    })
+                    .with_children(|s| {
+                        s.spawn((PanelText::Status, label(fonts, "", 10.0, c(Tone::Teal, 1.0))));
+                        s.spawn((PanelText::Voyage, label(fonts, "", 10.0, c(Tone::Teal, 1.0))));
+                    });
                     spawn_pill(bb, fonts, "BEHAVIOR", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Behavior));
                     spawn_pill(bb, fonts, "BLUEPRINTS", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Blueprints));
                     spawn_pill(bb, fonts, "EXPORT", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Export));
@@ -400,18 +450,33 @@ pub(super) fn sync_search(mut ui: ResMut<DrydockUi>, mut field: Single<&mut Text
 }
 
 /// Active and disabled states of the action widgets, from the drydock's state (the mirror and bevel modes are
-/// the editor's; the inspector keeps its own pills).
-pub(super) fn sync_pills(ui: Res<DrydockUi>, design: Res<PlayerDesign>, status: Res<DrydockStatus>, mut pills: Query<(&ActionButton, &mut Pill)>) {
+/// the editor's; the inspector keeps its own pills, but locked armour is dimmed here too). Locked parts and
+/// materials are disabled: they send nothing.
+pub(super) fn sync_pills(
+    ui: Res<DrydockUi>,
+    design: Res<PlayerDesign>,
+    status: Res<DrydockStatus>,
+    granted: Res<Granted>,
+    mut pills: Query<(&ActionButton, &mut Pill)>,
+) {
+    let unlocks = &granted.unlocks;
     for (b, mut pill) in &mut pills {
         let (active, disabled) = match &b.0 {
             DrydockAction::Tool(t) => (ui.tool == *t, false),
             DrydockAction::Mirror => (design.dock().mirror, false),
             DrydockAction::Bevel => (design.dock().bevel, false),
-            DrydockAction::Material(m) => (ui.material == *m, false),
+            DrydockAction::Material(m) => (ui.material == *m, !unlocks.has_material(m)),
             DrydockAction::Overlay(o) => (ui.overlay(*o), false),
             DrydockAction::Category(cat) => (ui.search.is_empty() && ui.category == *cat, false),
-            DrydockAction::PickPart(p) => (ui.picked.as_deref() == Some(p.as_str()), false),
+            DrydockAction::PickPart(p) => (ui.picked.as_deref() == Some(p.as_str()), !p.is_empty() && !unlocks.has_part(p)),
             DrydockAction::TestFly => (false, status.grounded.is_some()),
+            DrydockAction::PartMaterial(m) => {
+                let disabled = !unlocks.has_material(m);
+                if pill.disabled != disabled {
+                    pill.disabled = disabled;
+                }
+                continue;
+            }
             _ => continue,
         };
         if pill.active != active || pill.disabled != disabled {
@@ -421,33 +486,34 @@ pub(super) fn sync_pills(ui: Res<DrydockUi>, design: Res<PlayerDesign>, status: 
     }
 }
 
-/// The part list: which parts (category or search), how many rows fit, the wheel over the list scrolls it.
+/// The part list: which parts (category or search, the locked ones last), how many rows fit, the wheel over the
+/// list scrolls it; the rows' icons (a lock for a locked part) and NEW tags.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn sync_palette(
     ui: Res<DrydockUi>,
     content: Res<GameContent>,
+    granted: Res<Granted>,
+    style: Res<Style>,
     mut pal: ResMut<Palette>,
     window: Single<&Window, With<PrimaryWindow>>,
     list: Single<(&ComputedNode, &UiGlobalTransform), With<PaletteList>>,
     scroll: Res<AccumulatedMouseScroll>,
-    mut rows: Query<(&PaletteRow, &mut Node, &mut ActionButton)>,
+    mut rows: Query<(&PaletteRow, &mut Node, &mut ActionButton), Without<RowNew>>,
     mut icons: Query<(&RowIcon, &mut UiIcon)>,
+    mut tags: Query<(&RowNew, &mut Node), Without<PaletteRow>>,
 ) {
     let content = &content.0;
-    let made_from = (ui.is_changed() || pal.made_from.is_none())
+    let made_from = (ui.is_changed() || granted.is_changed() || pal.made_from.is_none())
         .then(|| (ui.category.clone(), ui.search.to_lowercase(), ui.material.clone()))
-        .filter(|m| pal.made_from.as_ref() != Some(m));
+        .filter(|m| granted.is_changed() || pal.made_from.as_ref() != Some(m));
     if let Some(made_from) = made_from {
-        let parts: Vec<String> = if made_from.1.is_empty() {
-            palette_parts(content).filter(|p| p.category == ui.category).map(|p| p.id.clone()).collect()
-        } else {
-            palette_parts(content).filter(|p| p.name.to_lowercase().contains(&made_from.1)).map(|p| p.id.clone()).collect()
-        };
+        let (parts, locked) = palette_list(content, &granted.unlocks, &ui.category, &made_from.1);
         // A new list starts at the top; a new material only recolours it.
         if pal.made_from.as_ref().is_none_or(|m| m.0 != made_from.0 || m.1 != made_from.1) {
             pal.offset = 0;
         }
         pal.parts = parts;
+        pal.locked = locked;
         pal.made_from = Some(made_from);
     }
     let (node, tf) = *list;
@@ -469,7 +535,7 @@ pub(super) fn sync_palette(
         pal.offset = offset;
         pal.visible = visible;
     }
-    if !pal.is_changed() && !ui.is_changed() {
+    if !pal.is_changed() && !ui.is_changed() && !granted.is_changed() {
         return;
     }
     let shown = |k: usize| (k < pal.visible).then(|| pal.parts.get(pal.offset + k)).flatten();
@@ -479,6 +545,7 @@ pub(super) fn sync_palette(
         if n.display != display {
             n.display = display;
         }
+        // A locked row keeps its part id: `sync_pills` disables it, so it sends nothing.
         let want = DrydockAction::PickPart(part.cloned().unwrap_or_default());
         if action.0 != want {
             action.0 = want;
@@ -486,10 +553,34 @@ pub(super) fn sync_palette(
     }
     for (row, mut icon) in &mut icons {
         let Some(part) = shown(row.0) else { continue };
-        let want = part_icon(content, part, &ui.material);
+        let want = if granted.unlocks.has_part(part) {
+            part_icon(content, part, &ui.material)
+        } else {
+            UiIcon::Glyph { glyph: Glyph::Lock, color: style.ui.dim }
+        };
         if *icon != want {
             *icon = want;
         }
+    }
+    for (tag, mut n) in &mut tags {
+        let fresh = shown(tag.0).is_some_and(|p| granted.fresh.contains(p));
+        set_display(&mut n, fresh);
+    }
+}
+
+/// A fresh part shown in the SELECTED PART block (picked in the palette, or selected on the grid) is fresh no
+/// more: its NEW tag goes (and the career writes the save).
+pub(super) fn see_fresh(insp: Res<Inspector>, granted: Res<Granted>, mut out: MessageWriter<SeenPart>) {
+    if insp.is_changed() && granted.fresh.contains(&insp.part) {
+        out.write(SeenPart(insp.part.clone()));
+    }
+}
+
+/// What a locked palette row says under its name: `LOCKED · <the research node that unlocks it>`.
+fn locked_sub(content: &Content, part: &Part) -> String {
+    match unlocked_by(content, &Unlock::Part(part.id.clone())) {
+        Some(node) => format!("LOCKED  ·  {}", node.name.to_uppercase()),
+        None => "LOCKED".into(),
     }
 }
 
@@ -573,11 +664,20 @@ pub(super) fn sync_texts(
     insp: Res<Inspector>,
     pal: Res<Palette>,
     content: Res<GameContent>,
+    granted: Res<Granted>,
     style: Res<Style>,
     mut texts: Query<(&PanelText, &mut Text, &mut TextColor)>,
     mut done: Local<bool>,
 ) {
-    if *done && !design.is_changed() && !ui.is_changed() && !status.is_changed() && !stats.is_changed() && !insp.is_changed() && !pal.is_changed() {
+    if *done
+        && !design.is_changed()
+        && !ui.is_changed()
+        && !status.is_changed()
+        && !stats.is_changed()
+        && !insp.is_changed()
+        && !pal.is_changed()
+        && !granted.is_changed()
+    {
         return;
     }
     *done = true;
@@ -589,6 +689,9 @@ pub(super) fn sync_texts(
         let tone = match *t {
             PanelText::Breadcrumb => {
                 s.push_str(&format!("SHIPYARD  ›  DRYDOCK  ·  {}", super::blueprints::frame_name(content, design.frame())));
+                if granted.free {
+                    s.push_str("  ·  ALL UNLOCKED");
+                }
                 Tone::Label
             }
             PanelText::Name => {
@@ -601,12 +704,19 @@ pub(super) fn sync_texts(
                 } else {
                     "SEARCH".into()
                 };
-                s.push_str(&format!("{title}  ·  {}", pal.parts.len()));
+                s.push_str(&format!("{title}  ·  {}", pal.parts.len() - pal.locked));
+                if pal.locked > 0 {
+                    s.push_str(&format!("  ·  {} LOCKED", pal.locked));
+                }
                 Tone::Dim
             }
             PanelText::Status => {
                 s.push_str(&status.line);
                 status.tone
+            }
+            PanelText::Voyage => {
+                s.push_str(&status.voyage);
+                status.voyage_tone
             }
             PanelText::SelName => {
                 s.push_str(&insp.name);
@@ -621,16 +731,21 @@ pub(super) fn sync_texts(
                 Tone::Label
             }
             PanelText::RowName(k) => {
-                s.push_str(row_part(k).map_or("", |p| p.name.as_str()));
-                Tone::Number
+                let p = row_part(k);
+                s.push_str(p.map_or("", |p| p.name.as_str()));
+                if p.is_some_and(|p| !granted.unlocks.has_part(&p.id)) { Tone::Dim } else { Tone::Number }
             }
             PanelText::RowSub(k) => {
-                if let Some(p) = row_part(k) {
-                    s.push_str(&footprint(p));
-                    if let Some(stat) = key_stat(content, p, &ui.material) {
-                        s.push_str(" · ");
-                        s.push_str(&stat);
+                match row_part(k) {
+                    Some(p) if !granted.unlocks.has_part(&p.id) => s.push_str(&locked_sub(content, p)),
+                    Some(p) => {
+                        s.push_str(&footprint(p));
+                        if let Some(stat) = key_stat(content, p, &ui.material) {
+                            s.push_str(" · ");
+                            s.push_str(&stat);
+                        }
                     }
+                    None => {}
                 }
                 Tone::Dim
             }

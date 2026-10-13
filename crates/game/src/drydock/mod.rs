@@ -7,9 +7,14 @@
 //! * [`state`]: what the widgets show (`DrydockUi`, `DrydockStatus`, `DrydockStats`).
 //! * [`actions`]: `DrydockAction`, the one message buttons and keys send; the UI-state handler.
 //! * [`view`]: the design drawn with the flight tiles, the frame overlay, the camera, `DrydockCursor`.
-//! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`).
+//! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`); locked parts dimmed, NEW tags.
 //! * [`report`]: [`report::DrydockReport`], the design's `sim::report` per revision.
-//! * [`stats`]: the stats grid and the status line (whether the design can fly) from the report.
+//! * [`stats`]: the stats grid and the status line (whether the design can fly) from the report; the
+//!   voyage-ready line from the career.
+//!
+//! What the player may build with is the career's (`career::Granted`): the palette, the ARMOR pills and the frames
+//! offer the unlocked parts, materials and frames and show the rest locked (everything in free mode,
+//! `?unlock=all`). A design that uses locked parts still opens, shows and test-flies; it is only not voyage-ready.
 //! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
 //! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
 //! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
@@ -43,6 +48,7 @@ pub mod view;
 use bevy::prelude::*;
 
 use crate::camera::CameraSet;
+use crate::career::{Granted, PlayerCareer};
 use crate::fx::FxFlush;
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
@@ -67,9 +73,10 @@ pub struct DrydockPlugin;
 
 impl Plugin for DrydockPlugin {
     fn build(&self, app: &mut App) {
+        // The career (CareerPlugin comes first) names the ship a new game docks and what the palette offers.
         let content = &app.world().resource::<GameContent>().0;
-        let design = PlayerDesign::starter(content);
-        let ui = DrydockUi::new(content, &design);
+        let design = PlayerDesign::starter(content, app.world().resource::<PlayerCareer>().start_ship(content));
+        let ui = DrydockUi::new(content, &design, &app.world().resource::<Granted>().unlocks);
         app.insert_resource(design)
             .insert_resource(ui)
             .insert_resource(DockCamera::new(0.0))
@@ -97,7 +104,8 @@ impl Plugin for DrydockPlugin {
                 Update,
                 (
                     (actions::clicks, actions::shortcuts, panels::sync_search).in_set(DockSet::Input),
-                    (view::ui_scale, view::camera, actions::apply, report::update, stats::update).chain().in_set(DockSet::Apply),
+                    (view::ui_scale, view::camera, actions::apply, report::update, stats::update, stats::voyage).chain().in_set(DockSet::Apply),
+                    panels::see_fresh.after(inspector::update).in_set(DockSet::Apply),
                     (view::rebuild_ship, overlays::rebuild, panels::sync_palette, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
                         .chain()
                         .in_set(DockSet::Show),

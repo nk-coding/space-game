@@ -6,8 +6,9 @@
 //! world) and scaled by 1 / zoom, at a z above every world layer. So a part icon in the palette *is* a flight
 //! tile: the same tile colour, seams, icon and icon glow, composited in sRGB like the ships (no colour shift,
 //! which bevy_ui's own image nodes would give, because bevy_ui does not encode for sRGB compositing), and sharp
-//! at any UI size because the atlas tier follows the icons too ([`UiAtlasNeed`]). Glyphs Barlow lacks (arrows,
-//! the play triangle, the search lens, the menu dots, the bonus diamond) are small meshes of the same kind.
+//! at any UI size because the atlas tier follows the icons too ([`UiAtlasNeed`]). A whole design (FLEET's ships)
+//! is the drydock's view of it, fitted into the node. Glyphs Barlow lacks (arrows, the play triangle, the search
+//! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind.
 //!
 //! The world draws before bevy_ui, so UI nodes are drawn over icons: give the nodes behind an icon at most a
 //! faint background. Icons follow their node's visibility.
@@ -23,7 +24,7 @@ use crate::RenderToggles;
 use crate::atlas::{Atlas, UiAtlasNeed};
 use crate::camera::{CameraRig, CameraSet};
 use crate::meshbuf::MeshBuf;
-use crate::ship_model::design_visual;
+use crate::ship_model::{blueprint_visual, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, vcol};
@@ -36,6 +37,9 @@ const Z_UI_ICON: f32 = 600.0;
 pub enum UiIcon {
     /// A part as one flight tile (hull parts in the material's armour tone), fitted into the node.
     Part { part: String, material: Option<String> },
+    /// A whole design drawn with the flight tiles (hull edge, nav lights, no aura), fitted into the node: FLEET's
+    /// flagship, escorts and saved designs.
+    Ship(Box<Blueprint>),
     /// A vector glyph in a colour, fitted into the node.
     Glyph { glyph: Glyph, color: Color },
 }
@@ -62,6 +66,8 @@ pub enum Glyph {
     Target,
     /// Three small ships in formation (the fleet).
     Formation,
+    /// A padlock (locked parts, materials and frames).
+    Lock,
 }
 
 /// The mesh drawing one node's icon.
@@ -139,22 +145,22 @@ fn draw_icons(
             continue;
         }
         let side = size.min_element();
-        let key = (icon.clone(), side.round() as u32, toggles.glow_sprites);
-        if m.built.as_ref() != Some(&key) {
+        let (px_side, glow) = (side.round() as u32, toggles.glow_sprites);
+        // Compared in place: an icon (a whole ship) is cloned only when it is rebuilt.
+        if m.built.as_ref().is_none_or(|(i, s, g)| i != icon || *s != px_side || *g != glow) {
             let (mesh, dims) = match icon {
-                UiIcon::Part { part, material } => match part_tile(&content.0, &style, &atlas, part, material.as_deref(), toggles.glow_sprites) {
-                    Some(x) => x,
-                    None => (MeshBuf::placeholder(), Vec2::ONE),
-                },
-                UiIcon::Glyph { glyph, color } => (glyph_mesh(*glyph, *color, side, &atlas), Vec2::ONE),
-            };
+                UiIcon::Part { part, material } => part_tile(&content.0, &style, &atlas, part, material.as_deref(), glow),
+                UiIcon::Ship(bp) => ship_icon(&content.0, &style, &atlas, bp, glow),
+                UiIcon::Glyph { glyph, color } => Some((glyph_mesh(*glyph, *color, side, &atlas), Vec2::ONE)),
+            }
+            .unwrap_or_else(|| (MeshBuf::placeholder(), Vec2::ONE));
             let _ = meshes.insert(&m.mesh, mesh);
-            m.built = Some(key);
+            m.built = Some((icon.clone(), px_side, glow));
             m.dims = dims;
         }
-        // Parts: cells fitted into the node; glyphs are built at the node's size in pixels.
+        // Parts and ships: cells fitted into the node; glyphs are built at the node's size in pixels.
         let px = match icon {
-            UiIcon::Part { .. } => {
+            UiIcon::Part { .. } | UiIcon::Ship(_) => {
                 let k = (size.x / m.dims.x).min(size.y / m.dims.y);
                 px_per_cell = px_per_cell.max(k);
                 k
@@ -218,6 +224,18 @@ fn part_tile(
         aura: false,
     };
     Some((build_body(&v, atlas, style, glow, true), dims))
+}
+
+/// A whole design as the drydock draws it (`blueprint_visual`), centred on the origin in cells; and its extent.
+fn ship_icon(content: &data::Content, style: &Style, atlas: &Atlas, bp: &Blueprint, glow: bool) -> Option<(Mesh, Vec2)> {
+    let dv = design_visual(content, bp, style).ok()?;
+    let grid = content.ship_grid(bp).ok()?;
+    let mut v = blueprint_visual(&dv, &grid);
+    if v.parts.is_empty() {
+        return None;
+    }
+    v.pivot = (v.bounds_min + v.bounds_max) / 2.0;
+    Some((build_body(&v, atlas, style, glow, true), v.bounds_max - v.bounds_min))
 }
 
 /// A glyph `side` px across, centred on the origin, in pixels (y up). Strokes are 1.6 px wide, thicker on glyphs
@@ -308,6 +326,15 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
                 let tri = [c + Vec2::new(0.0, 0.15 * s), c + Vec2::new(-0.1 * s, -0.12 * s), c + Vec2::new(0.1 * s, -0.12 * s)];
                 m.strip(&tri, true, w, &white, col);
             }
+        }
+        Glyph::Lock => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            m.strip(&[p(-0.26, 0.04), p(0.26, 0.04), p(0.26, -0.34), p(-0.26, -0.34)], true, w, &white, col);
+            let mut shackle = vec![p(-0.16, 0.04)];
+            shackle.extend(arc(p(0.0, 0.16), 0.16 * s, std::f32::consts::PI, 0.0, 12));
+            shackle.push(p(0.16, 0.04));
+            m.strip(&shackle, false, w, &white, col);
+            m.polygon(&arc(p(0.0, -0.13), 0.05 * s, 0.0, std::f32::consts::TAU, 10)[..10], uv, col);
         }
     }
     m.into_mesh()

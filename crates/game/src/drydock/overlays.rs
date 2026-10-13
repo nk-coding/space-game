@@ -444,7 +444,7 @@ mod tests {
 
     fn runner() -> (data::Content, PlayerDesign, DesignReport) {
         let content = data::base_content();
-        let d = PlayerDesign::starter(&content);
+        let d = PlayerDesign::starter(&content, "halvex_runner");
         let r = sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap();
         (content, d, r)
     }
@@ -489,7 +489,7 @@ mod tests {
         // A 1×1 part at cell (3, 2) blocks a gun firing up from the top of cell (3, 6): the muzzle is at blueprint
         // (3.5, 6), the blocker's near side at y = 3, so 3 m away.
         let content = data::base_content();
-        let d = PlayerDesign::starter(&content);
+        let d = PlayerDesign::starter(&content, "halvex_runner");
         let mut shape = d.dock().shapes()[0];
         shape.footprint = data::Footprint::rect(1, 1);
         (shape.x, shape.y, shape.rot, shape.flip) = (3, 2, 0, false);
