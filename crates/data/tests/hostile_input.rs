@@ -323,7 +323,7 @@ fn hostile_blueprint_texts_give_clean_errors() {
         let mut text: Vec<char> = runner.chars().collect();
         for _ in 0..1 + next() % 3 {
             let at = (next() % (text.len() as u64 + 1)) as usize;
-            if next() % 2 == 0 && at < text.len() {
+            if next().is_multiple_of(2) && at < text.len() {
                 let end = (at + 1 + (next() % 8) as usize).min(text.len());
                 text.drain(at..end);
             } else {
