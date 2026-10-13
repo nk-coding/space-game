@@ -16,7 +16,8 @@
 //!   bubbles along the path are crossed in order, so overlapping bubbles stack. A shot starting inside a bubble
 //!   passes.
 //!   Ram damage (GDR-0045) at a contact point inside bubbles is absorbed the same way, with the kinetic share,
-//!   by every bubble covering the point except the rammer's own ([`Sim::ram_shields`]).
+//!   by every bubble covering the point that is not friendly to the rammer ([`Sim::ram_shields`]). Shots, plumes
+//!   and rams share one rule for which bubbles take damage ([`absorbs_from`], GDR-0067).
 //! * **Ram crush** (GDR-0047): what is left of the ram damage hits the touching part and carries inward past
 //!   the parts it destroys, along the same grid walk as a penetrating shot ([`Sim::ram_crush`]).
 //!
@@ -139,6 +140,26 @@ pub struct Bubble {
     pub(crate) ship_index: usize,
     /// The bubble's vessel owner (bubbles exist only on running vessels).
     pub(crate) team: Option<crate::vessel::Owner>,
+}
+
+/// Does bubble `bub` take damage of family index `fi` from a source on ship `by` of team `team`? One rule for
+/// shots, plumes and rams (GDR-0067): never the bubbles of the source's own ship nor of vessels friendly to it
+/// (no friendly fire, GDR-0048, so a wingman's bubble never shields an enemy from a friend's ram), and only a
+/// bubble with charge left that absorbs the family and whose emitter is still alive (it may have died, or left
+/// with a split-off vessel, since the bubbles were collected this tick). The geometry (a shot's path entering
+/// the bubble, a plume's or a ram's point inside it) is the caller's.
+pub(crate) fn absorbs_from(
+    bub: &Bubble,
+    ships: &[Ship],
+    by: ShipId,
+    team: Option<Owner>,
+    fi: usize,
+) -> bool {
+    bub.ship != by
+        && !friendly(team, bub.team)
+        && bub.left > 0.0
+        && bub.absorb[fi] > 0.0
+        && ships[bub.ship_index].parts[bub.part as usize].alive
 }
 
 impl StateHash for Projectile {
@@ -308,7 +329,7 @@ impl Sim {
         }
     }
 
-    /// Bubbles of non-friendly ships (not the shooter `owner`'s, not those of `team`'s vessels) the segment
+    /// Bubbles that take damage from the shooter `owner` of `team` ([`absorbs_from`]) that the segment
     /// `from + t·dir, t ∈ [0, len]` enters take their share of `damage`, in order along the path. Returns the
     /// distance where the shot was fully absorbed, if it was.
     #[allow(clippy::too_many_arguments)]
@@ -329,11 +350,7 @@ impl Sim {
         let entries = &mut self.shield_scratch;
         entries.clear();
         for (b, bub) in self.bubbles.iter().enumerate() {
-            if bub.ship == owner
-                || friendly(team, bub.team)
-                || bub.left <= 0.0
-                || bub.absorb[fi] <= 0.0
-            {
+            if !absorbs_from(bub, &self.ships, owner, team, fi) {
                 continue;
             }
             let oc = from - bub.centre;
@@ -407,21 +424,20 @@ impl Sim {
     }
 
     /// Ram damage at a contact `point` (GDR-0045): every bubble of this tick that covers the point takes its
-    /// kinetic share of what reaches it (in bubble order: ship, piece, emitter), except the bubbles of the
-    /// rammer `by` itself (as a shot passes its shooter's bubbles). Returns the damage left for the hull.
+    /// kinetic share of what reaches it (in bubble order: ship, piece, emitter), except the bubbles friendly to
+    /// the rammer `by` (its own ship's and its owner's other vessels', GDR-0067: as a shot passes them, so a
+    /// wingman's bubble never shields an enemy from the ram; [`absorbs_from`]). Returns the damage left for the
+    /// hull.
     pub(crate) fn ram_shields(&mut self, by: BodyKey, point: Vec2, mut damage: f32) -> f32 {
         let fi = family_index(WeaponFamily::Kinetic);
+        let team = self.piece_team(by);
         for b in 0..self.bubbles.len() {
             if damage <= 1e-6 {
                 return 0.0;
             }
             let bub = &self.bubbles[b];
-            if (bub.ship == by.ship && bub.piece == by.piece)
-                || bub.left <= 0.0
-                || bub.absorb[fi] <= 0.0
+            if !absorbs_from(bub, &self.ships, by.ship, team, fi)
                 || (point - bub.centre).length_squared() > bub.radius * bub.radius
-                // The emitter left with a split-off vessel after the bubbles were collected.
-                || !self.ships[bub.ship_index].parts[bub.part as usize].alive
             {
                 continue;
             }

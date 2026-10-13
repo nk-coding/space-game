@@ -525,9 +525,9 @@ mod tests {
         assert_eq!(dir.label, "DIRECTION");
         assert_eq!(dir.options.iter().map(|b| (b.text.as_str(), b.active)).collect::<Vec<_>>(), [("AUTO", false), ("COUNTER-CLOCKWISE", true), ("CLOCKWISE", false)]);
         assert_eq!(dir.options[2].action, set(at, 1, Value::Word("cw".into())));
-        // The rule's block: the second of six, every button on, the note.
+        // The rule's block: the second of four, every button on, the note.
         let Control::Buttons { label, buttons } = &i.controls[3] else { panic!("{:?}", i.controls[3]) };
-        assert_eq!(label, "RULE 2 OF 6");
+        assert_eq!(label, "RULE 2 OF 4");
         assert!(buttons.iter().all(|b| b.action.is_some()));
         assert_eq!(buttons[0].action, Some(edit(Edit::MoveRule { rule, to: 0 })));
         assert_eq!(i.controls[4], Control::Note { target: NoteTarget::Rule(rule), text: "dodge while the shields recharge".into() });
@@ -620,9 +620,9 @@ mod tests {
         assert!(matches!(k.controls.last(), Some(Control::Hint(h)) if h.contains("ITS ACTION")));
         assert!(inspect(&ed, &Selection::Vocabulary("warp".into()), &cx()).is_none());
         // Nothing selected: the behavior.
-        let b = behavior_inspection("Skirmisher", data::base_content().behaviors.get("skirmisher"), 6);
-        assert_eq!(b.kicker, "BEHAVIOR  ·  6 RULES");
-        assert!(b.summary.starts_with("Attack and strafe"));
+        let b = behavior_inspection("Skirmisher", data::base_content().behaviors.get("skirmisher"), 4);
+        assert_eq!(b.kicker, "BEHAVIOR  ·  4 RULES");
+        assert!(b.summary.starts_with("Attack nose first"));
     }
 
     #[test]
@@ -634,7 +634,7 @@ mod tests {
         assert_eq!(palette_hint(&ed, Some(&Selection::Node(NodeRef::Cond(r.conds[0]))), None), "ADD NODE  ·  TO RULE 3");
         assert_eq!(palette_hint(&ed, Some(&Selection::Node(NodeRef::Target)), None), "ADD NODE  ·  A SELECTOR SETS THE TARGET");
         let at = NodeRef::Cond(r.conds[0]);
-        assert_eq!(palette_hint(&ed, Some(&Selection::Node(at)), Some(at)), "REPLACE ENEMIES NEAR  ·  PICK A CONDITION");
+        assert_eq!(palette_hint(&ed, Some(&Selection::Node(at)), Some(at)), "REPLACE CLOSING IN  ·  PICK A CONDITION");
     }
 
     #[test]

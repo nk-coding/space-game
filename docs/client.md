@@ -463,7 +463,8 @@ dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); the
 pill; a dot grid behind (immediate-mode FX dots). The selected rule's row is lit faintly, the selected chip glows.
 Right the inspector (below), ADD NODE (its line says where a pick goes: `ADD NODE · TO RULE 3`, `REPLACE HULL ·
 PICK A CONDITION`) with its search and the palette (the content vocabulary: conditions violet, actions teal, Rhai
-gold, target selectors white). Bottom the DRYDOCK pill, undo / redo, the status line (a message from saving, opening or testing until the draft
+gold, target selectors white; nothing is listed in code, so the `escort` action and the `escort` template of
+13 Oct 2026, GDR-0065, show up in the palette and the BEHAVIORS list without client changes). Bottom the DRYDOCK pill, undo / redo, the status line (a message from saving, opening or testing until the draft
 changes; else text errors, rules without a slot, or how rules run; a refusal in coral after it for 3 s, like the
 drydock's info line), BEHAVIORS and SAVE (as in the drydock). Larger windows
 scale the screen like the drydock. The phone layout and touch come later.

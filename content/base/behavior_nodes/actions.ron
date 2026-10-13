@@ -64,4 +64,15 @@
         tags: ["move"],
         role: Action,
     ),
+    (
+        id: "escort",
+        name: "Escort",
+        summary: "Stay within the given distance of your leader: close in when farther, keep pace when near.",
+        description: "Needs no target: it follows the leader, the ship this one escorts (for wingmen the player's flagship). Without a leader it holds where it is. Guns still fire at will if there is a target. Put it last, below the rules that fight, so it runs between fights.",
+        tags: ["move", "escort"],
+        role: Action,
+        params: [
+            (id: "distance", name: "Distance", summary: "How far from the leader it may be: metres, or a share of your weapon reach.", type: Distance, default: "30m", min: 5, max: 5000),
+        ],
+    ),
 ]

@@ -224,9 +224,10 @@ impl Sim {
         self.plume_scratch = sc;
     }
 
-    /// One lane's damage and heat on the part it hit: shields of non-friendly ships covering the point first
-    /// (energy share; the heat goes with the damage), never the engine's own. A plume that does only heat loses
-    /// each covering bubble's energy share of it, without draining the bubble (heat is not damage).
+    /// One lane's damage and heat on the part it hit: the shields covering the point that take damage from the
+    /// engine's ship first ([`crate::weapons::absorbs_from`]: never its own or a friendly vessel's; energy share;
+    /// the heat goes with the damage). A plume that does only heat loses each covering bubble's energy share of
+    /// it, without draining the bubble (heat is not damage).
     fn burn(&mut self, b: &Burn) {
         let mut damage = b.damage;
         let mut heat = b.heat;
@@ -238,12 +239,8 @@ impl Sim {
                     break;
                 }
                 let bub = &self.bubbles[n];
-                if friendly(b.team, bub.team)
-                    || bub.ship == b.by
-                    || bub.left <= 0.0
-                    || bub.absorb[fi] <= 0.0
+                if !crate::weapons::absorbs_from(bub, &self.ships, b.by, b.team, fi)
                     || (b.point - bub.centre).length_squared() > bub.radius * bub.radius
-                    || !self.ships[bub.ship_index].parts[bub.part as usize].alive
                 {
                     continue;
                 }

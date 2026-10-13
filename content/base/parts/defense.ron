@@ -18,7 +18,7 @@
         hp: 1,
         power: (draw: 3, tier: High, min_level: 0.25),
         heat: (output: 0.8, limit: 3.2),
-        shield: (radius: 2.3, capacity: 6, regen: 1.5, absorb: {Energy: 1.0, Kinetic: 0.5, Missile: 1.0}),
+        shield: (radius: 2.3, capacity: 3, regen: 0.2, absorb: {Energy: 1.0, Kinetic: 0.5, Missile: 1.0}),
         salvage: (family: "shields", data: 3),
     ),
 ]

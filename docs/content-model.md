@@ -440,7 +440,8 @@ Text keys: the header fields as usual, plus `behavior_node.<id>.params.<param>.n
 
 Base vocabulary (v1): conditions `hull`, `shield`, `shield_down`, `heat`, `power`, `target_in_range`,
 `target_hull`, `target_on_me`, `under_attack`, `enemies_near`, `cycle`, `target_time`, and the Rhai condition
-`closing_in`; actions `approach`, `orbit`, `kite`, `face`, `flee`, `hold`; target selectors `nearest`,
+`closing_in`; actions `approach`, `orbit`, `kite`, `face`, `flee`, `hold`, `escort` (13 Oct 2026, GDR-0065: keep
+near the leader, the one action without a target); target selectors `nearest`,
 `weakest`, `threat`, `attacker`, `locked`, each with an aim point (`centre`, `engines`, `weapons`, `power`,
 `core`).
 
@@ -456,7 +457,7 @@ keyword), so there is no second representation to keep in sync and errors point 
     summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)",
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(58%)",
         "always -> approach(85%)",
     ],
 )
@@ -464,8 +465,9 @@ keyword), so there is no second representation to keep in sync and errors point 
 
 `target` is optional (default `nearest`); a rule may end in a `# note`. Rules are written in canonical form
 (the printer's output; a test checks the base pack). Base behaviors: `raider_basic` (the automatons' default,
-two rules for one automaton core; it replaced the hard-coded raider brain) and `skirmisher` (the ship-mind's
-default for unpiloted ships, six rules, uses the Rhai condition).
+two rules for one automaton core; it replaced the hard-coded raider brain), `skirmisher` (the ship-mind's
+default for unpiloted ships, four rules since GDR-0061, uses the Rhai condition) and `escort` (three rules: fight
+the leader's lock, keep near the leader between fights; GDR-0065).
 
 ### Salvage (added 13 Oct 2026)
 
