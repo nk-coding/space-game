@@ -19,7 +19,7 @@ pub enum Tool {
     Select,
 }
 
-/// The overlays (pills top right). Toggle state only until `sim::report` draws them.
+/// The overlays (pills top right), drawn over the design by `overlays.rs`; any combination at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Overlay {
     Heat,

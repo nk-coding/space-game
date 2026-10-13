@@ -10,6 +10,7 @@
 //! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`).
 //! * [`report`]: [`report::DrydockReport`], the design's `sim::report` per revision.
 //! * [`stats`]: the stats grid and the status line (whether the design can fly) from the report.
+//! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
 //!
 //! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
 //! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
@@ -18,6 +19,7 @@
 
 pub mod actions;
 pub mod design;
+pub mod overlays;
 pub mod panels;
 pub mod report;
 pub mod state;
@@ -71,7 +73,7 @@ impl Plugin for DrydockPlugin {
                     .before(UiStyleSet)
                     .run_if(in_state(AppMode::Drydock)),
             )
-            .add_systems(Startup, (view::setup, panels::spawn.after(crate::flight_hud::spawn_hud)))
+            .add_systems(Startup, (view::setup, overlays::setup.after(view::setup), panels::spawn.after(crate::flight_hud::spawn_hud)))
             .add_systems(PostStartup, (show, view::remember_start_zoom.run_if(in_state(AppMode::Drydock))))
             .add_systems(OnEnter(AppMode::Drydock), view::enter)
             .add_systems(OnExit(AppMode::Drydock), view::exit)
@@ -81,7 +83,7 @@ impl Plugin for DrydockPlugin {
                 (
                     (actions::clicks, actions::shortcuts, panels::sync_search).in_set(DockSet::Input),
                     (view::ui_scale, view::camera, actions::apply, report::update, stats::update).chain().in_set(DockSet::Apply),
-                    (view::rebuild_ship, panels::sync_palette, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
+                    (view::rebuild_ship, overlays::rebuild, panels::sync_palette, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
                         .chain()
                         .in_set(DockSet::Show),
                 ),
