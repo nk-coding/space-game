@@ -4,11 +4,12 @@
 //! * **PC** (GDR-0040): A/D rotate (a tap nudges the nose, a hold ramps up to the key turn rate, GDR-0055), W/S
 //!   thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a lock the ship aims its strongest
 //!   guns and A/D nudge the aim (springs back). Left-click a ship = lock, click empty space = unlock, hold the
-//!   left button on empty space (or the right button, or Space) = fire. Tab = next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
-//!   vessel list); clicking a friendly vessel switches to it. Both send `ShipCommand::Focus`; the sim moves the
-//!   focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and taps on the fleet bar
-//!   (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring) are theirs, never the
-//!   world's.
+//!   left button on empty space (or the right button, or Space) = fire. Tab = next target, Esc = unlock (not while
+//!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle. V / Shift+V = next / previous
+//!   vessel of the player (the sim's vessel list); clicking a friendly vessel switches to it. Both send
+//!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and
+//!   taps on the fleet bar (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring, RECALL,
+//!   the ABANDON VOYAGE? panel) are theirs, never the world's.
 //! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button bottom-right, tap a
 //!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
 //!   (or with `?touch=1`).
@@ -31,6 +32,7 @@ use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PilotFocus, is_friendly, player_vessels};
 use crate::sim_bridge::{SimWorld, piece_com, sv, v2};
 use crate::style::{Style, ui_color};
+use crate::voyage::VoyageRun;
 
 /// Hold the left button this long on empty space to fire (shorter = a click = unlock).
 const HOLD_TO_FIRE: f32 = 0.18;
@@ -179,6 +181,7 @@ fn keyboard(
     mut world: ResMut<SimWorld>,
     focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
+    run: Res<VoyageRun>,
 ) {
     // Held this frame, or pressed and released within it (a quick tap).
     let down = |k: KeyCode| keys.pressed(k) || keys.just_pressed(k);
@@ -193,7 +196,8 @@ fn keyboard(
     if keys.just_pressed(KeyCode::KeyX) {
         input.drift = !input.drift;
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    // The input runs before `voyage_keys` in the frame: an Esc that closes the panel keeps the lock.
+    if keys.just_pressed(KeyCode::Escape) && !run.asking {
         input.lock = None;
     }
     if keys.just_pressed(KeyCode::Tab) {
@@ -549,6 +553,7 @@ mod tests {
             .init_resource::<FleetBar>()
             .init_resource::<PilotFocus>()
             .init_resource::<CameraRig>()
+            .init_resource::<VoyageRun>()
             .init_resource::<Ticks>()
             .insert_resource(SimWorld::new(sim::Sim::new(1), data::Content::default()));
         add_input_systems(&mut app);

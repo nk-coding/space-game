@@ -22,7 +22,7 @@
 //!   (`sim::VoyagePlan::roll`) and the sim directs it (`Sim::start_voyage`); the flagship (the drydock's working
 //!   design) and the FLEET escorts (following the flagship's lock, like `?fleet=` wingmen, on their design's
 //!   behavior) enter at the plan's entry, the flagship the focus. No waves, no re-form, no wreck clean-up; Shift+R,
-//!   T does nothing (RECALL goes home; M twice abandons the voyage, `voyage.rs`).
+//!   T does nothing (RECALL goes home; M asks in a panel whether to abandon the voyage, `voyage.rs`).
 //!
 //! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step). Leaving
 //! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from another mode

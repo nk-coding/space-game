@@ -17,7 +17,9 @@
 //!   what it does; markers at the screen edge for the sites off screen (name and distance: raiders coral, wrecks
 //!   gold, the goal brighter, cleared ones dim); banners for sites waking and cleared and for the goal; the
 //!   warp-out's countdown; `SHIP LOST · RECALLED HOME` with its countdown (`voyage-hud-lost.png`; `VOYAGE
-//!   ABANDONED` after M twice). No home ring (M asks to abandon the voyage instead).
+//!   ABANDONED` after abandoning). No home ring: M opens the ABANDON VOYAGE? panel instead (GDR-0077), a root of
+//!   its own low under the ship (the flight goes on while it is open), that slides up from the bottom: what
+//!   stays behind, ABANDON VOYAGE (coral; Enter) and KEEP FLYING (Esc or M again).
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
@@ -38,7 +40,7 @@ use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Edge, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, number, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{self, Phase, VoyageRun};
 use crate::{RenderToggles, ship_view::PieceView};
 
@@ -97,6 +99,21 @@ struct RecallButton;
 /// The lost banner (shown while a lost voyage counts down).
 #[derive(Component)]
 struct LostBlock;
+
+/// The ABANDON VOYAGE? panel's root (GDR-0077; open while `VoyageRun::asking`).
+#[derive(Component)]
+struct AbandonRoot;
+
+/// The panel's buttons.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum AbandonButton {
+    Abandon,
+    KeepFlying,
+}
+
+/// The panel's line of what stays behind.
+#[derive(Component)]
+struct AbandonCargo;
 
 /// A site marker's label (name and distance), placed at the screen edge by `site_markers`.
 #[derive(Component)]
@@ -192,9 +209,10 @@ impl Plugin for FlightHudPlugin {
             labels_for: None,
             scratch: String::with_capacity(256),
         })
-        .add_systems(Startup, spawn_hud)
+        .add_systems(Startup, (spawn_hud, spawn_abandon_panel).chain())
         .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
         .add_systems(Update, (go_home, recall_click).after(UiInputSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), forget_ship)
         .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers).after(CameraSet).before(crate::fx::FxFlush));
@@ -331,6 +349,85 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                     c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2), TextLayout::justify(bevy::text::Justify::Center), Node { margin: UiRect::horizontal(px(20)), ..default() }));
                 });
         });
+}
+
+/// The ABANDON VOYAGE? panel (GDR-0077), centred low over the help line, so the ship (at the view's centre) stays in
+/// sight while the flight goes on. The whole panel is a [`HudButton`] (and [`Hot`]): a click on it never reaches
+/// the world.
+fn spawn_abandon_panel(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>) {
+    let ui = &style.ui;
+    commands
+        .spawn((
+            AbandonRoot,
+            FlightUi,
+            ScreenFx::closed(),
+            Visibility::Hidden,
+            GlobalZIndex(10),
+            Node { position_type: PositionType::Absolute, bottom: px(64), width: percent(100), justify_content: JustifyContent::Center, ..default() },
+        ))
+        .with_children(|root| {
+            root.spawn((
+                ScreenPart::new(Edge::Bottom, 0),
+                HudButton,
+                HudZone,
+                Hot::default(),
+                BackgroundColor(ui_color(clear.0, 0.94)),
+                BorderColor::all(ui_color(ui.coral, 0.45)),
+                Node {
+                    width: px(460),
+                    border: UiRect::all(px(1)),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    padding: UiRect::new(px(28), px(28), px(22), px(22)),
+                    row_gap: px(10),
+                    ..default()
+                },
+            ))
+            .with_children(|p| {
+                p.spawn(tracked(&fonts, "ABANDON VOYAGE?", 24.0, ui_color(ui.coral, 1.0), 0.3));
+                p.spawn((AbandonCargo, label(&fonts, "", 10.5, ui_color(ui.number, 1.0))));
+                p.spawn(prose(&fonts, "The voyage counts as lost. Your ships re-form at home.", 13.0, ui_color(ui.label, 1.0)));
+                p.spawn(label(&fonts, "THE FLIGHT GOES ON WHILE YOU DECIDE", 9.0, ui_color(ui.dim, 1.0)));
+                p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(12), margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
+                    let abandon = Pill { active: true, ..Pill::new(Tone::Coral) };
+                    spawn_pill(row, &fonts, "ABANDON VOYAGE", 11.0, 36.0, None, abandon, (AbandonButton::Abandon, Tip::key("ABANDON VOYAGE", "ENTER")));
+                    spawn_pill(row, &fonts, "KEEP FLYING", 11.0, 36.0, None, Pill::new(Tone::Teal), (AbandonButton::KeepFlying, Tip::key("KEEP FLYING", "ESC / M")));
+                });
+            });
+        });
+}
+
+/// The ABANDON VOYAGE? panel: open while M asked (`VoyageRun::asking`), with how much stays behind; its buttons
+/// do what Enter and Esc do (`voyage::voyage_keys`).
+fn abandon_panel(
+    mut clicks: MessageReader<UiClick>,
+    buttons: Query<&AbandonButton>,
+    mut run: ResMut<VoyageRun>,
+    world: Res<SimWorld>,
+    mut root: Single<&mut ScreenFx, With<AbandonRoot>>,
+    mut cargo: Single<&mut Text, With<AbandonCargo>>,
+) {
+    for c in clicks.read() {
+        match buttons.get(c.0) {
+            // A click on the closing panel does nothing.
+            Ok(AbandonButton::Abandon) if run.asking => run.abandon_now(),
+            Ok(AbandonButton::KeepFlying) => run.asking = false,
+            _ => {}
+        }
+    }
+    show_screen(&mut root, run.asking);
+    if run.asking {
+        let n = voyage::all_cargo(&world.sim, crate::scene::PLAYER);
+        let line = match n {
+            0 => "THE HAUL IS LOST  ·  THE HOLDS ARE EMPTY".to_string(),
+            1 => "THE HAUL IS LOST  ·  1 PART STAYS BEHIND".to_string(),
+            n => format!("THE HAUL IS LOST  ·  {n} PARTS STAY BEHIND"),
+        };
+        // Written only when it changes (a write re-lays the text out).
+        if cargo.0 != line {
+            cargo.0 = line;
+        }
+    }
 }
 
 /// The home ring: home, like M (not in a voyage, where it is hidden).
@@ -640,7 +737,7 @@ fn update_text(
                 ),
                 SceneKind::Voyage(_) if input.touch_ui => s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL"),
                 SceneKind::Voyage(_) => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK · SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · R RECALL · M M ABANDON · U TUNING · F3 DEBUG · H HIDE",
+                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK · SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · R RECALL · M ABANDON · U TUNING · F3 DEBUG · H HIDE",
                 ),
                 _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK  ·  M HOME"),
             },
