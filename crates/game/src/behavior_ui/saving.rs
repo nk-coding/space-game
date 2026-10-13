@@ -779,7 +779,7 @@ mod tests {
         let back = restore_draft(&w, &content, &lib).unwrap();
         assert_eq!((back.text.as_str(), back.errors.len(), back.dirty()), (d.text.as_str(), d.errors.len(), true));
         // The text has errors: the graph shows the source's rules until it is fixed.
-        assert_eq!(back.program().rules.len(), 6);
+        assert_eq!(back.program().rules.len(), 4);
         // Saved and unchanged: it comes back clean; a source that is gone leaves a new draft, unsaved.
         d.set_text("always -> orbit(50%)");
         save_draft(&mut d, &mut lib, &mut storage, &content, 2).unwrap();

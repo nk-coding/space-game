@@ -1022,8 +1022,8 @@ mod tests {
         let content = data::base_content();
         let mut d = BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), &content.behavior_nodes).unwrap();
         assert_eq!(status_line(&d, BehaviorView::Graph, 12), ("THE FIRST RULE THAT MATCHES DECIDES  ·  GUNS FIRE AT WILL".into(), Tone::Label));
-        assert_eq!(status_line(&d, BehaviorView::Text, 12), ("VALID  ·  6 RULES".into(), Tone::Teal));
-        assert_eq!(status_line(&d, BehaviorView::Graph, 4), ("2 RULES WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS".into(), Tone::Gold));
+        assert_eq!(status_line(&d, BehaviorView::Text, 12), ("VALID  ·  4 RULES".into(), Tone::Teal));
+        assert_eq!(status_line(&d, BehaviorView::Graph, 2), ("2 RULES WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS".into(), Tone::Gold));
         assert_eq!(status_line(&d, BehaviorView::Graph, 0).1, Tone::Coral);
         // An `always` rule above others (the skirmisher's fallback moved to the top).
         let mut never = d.clone();

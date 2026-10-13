@@ -49,6 +49,83 @@ fn falloff_is_flat_then_linear_and_full_while_braking() {
     assert_eq!(rated_falloff(35.0, 20.0), 0.0);
 }
 
+/// A thruster row pushing along +y with rated speed `rated` (for the falloff alone).
+fn row(rated: f32) -> sim::Thruster {
+    sim::Thruster {
+        slot: 0,
+        part: 0,
+        dir: Vec2::new(0.0, 1.0),
+        point: Vec2::ZERO,
+        arm: Vec2::ZERO,
+        torque_per_force: 0.0,
+        max_force: 100.0,
+        rated,
+        plume_length: 0.0,
+        plume_damage: 0.0,
+        plume_heat: 0.0,
+        gimbal: 0.0,
+        lat: Vec2::new(-1.0, 0.0),
+        torque_per_lateral: 0.0,
+        rcs: false,
+    }
+}
+
+/// GDR-0064: the whole-speed fade is continuous in the angle between the push and the motion. At the rating a
+/// row pushing with the motion has nothing left (GDR-0055), one pushing a hair less than square to it keeps all
+/// of it, and nothing jumps in between: no push across the motion is cut off by a sign test.
+#[test]
+fn the_fade_is_continuous_in_the_push_angle() {
+    let t = row(20.0);
+    // `deg`: angle between the push (+y) and the motion.
+    let at = |deg: f32, speed: f32| {
+        let a = deg.to_radians();
+        let v = Vec2::new(sim::math::sin(a), sim::math::cos(a)) * speed;
+        t.falloff(v, v.length())
+    };
+    assert_eq!(at(0.0, 20.0), 0.0, "straight with the motion at the rating");
+    assert!(close(at(0.0, 18.0), 0.5, 1e-5));
+    assert_eq!(at(45.0, 20.0), 0.0, "mostly with the motion: the whole speed counts");
+    assert!(at(89.0, 20.0) > 0.999, "a hair less than square: {}", at(89.0, 20.0));
+    assert!(at(89.0, 21.0) > 0.999, "also a little past the rating");
+    assert_eq!(at(91.0, 40.0), 1.0, "against the motion");
+    let mut last = at(0.0, 20.0);
+    for k in 1..=1800 {
+        let f = at(k as f32 * 0.1, 20.0);
+        assert!((f - last).abs() < 0.05, "a jump at {}°: {last} → {f}", k as f32 * 0.1);
+        assert!(f >= last - 1e-4, "never less thrust as the push turns away from the motion");
+        last = f;
+    }
+}
+
+/// GDR-0064: a ship at its top speed whose velocity is square to its locked nose still answers the stick: the
+/// forward push across the motion is not cut off (with the sign test of GDR-0055 it got nothing, and the ship
+/// flew on sideways). It turns the velocity towards the nose and stays within a few per cent of the top speed.
+#[test]
+fn a_locked_ship_at_top_speed_still_answers_the_stick_across_its_motion() {
+    let c = content();
+    let d = design(&c, "halvex_runner");
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(d, sim::Owner::PLAYER, Body { linvel: Vec2::new(22.0, 0.3), ..Default::default() });
+    let top = Kin::of(control(&w, s), w.ship(s).unwrap().parts()).top_speed;
+    w.command(
+        s,
+        ShipCommand::Pilot(PilotInput {
+            stick: Vec2::new(0.0, 1.0),
+            lock: Some(sim::Target::Point(Vec2::new(0.0, 5000.0))),
+            ..Default::default()
+        }),
+    );
+    let mut fastest = 0.0f32;
+    for _ in 0..90 {
+        w.step(&TickInputs::default());
+        fastest = fastest.max(control(&w, s).body.linvel.length());
+    }
+    let v = control(&w, s).body.linvel;
+    println!("locked at top speed across the motion: {v:?}, max |v| {fastest:.2} (top {top})");
+    assert!(v.y > 4.0, "pushes along the nose: {v:?}");
+    assert!(fastest < 1.04 * top, "{fastest} vs {top}");
+}
+
 #[test]
 fn raw_thrust_tops_out_at_the_rated_speed_and_coasting_keeps_it() {
     let c = content();

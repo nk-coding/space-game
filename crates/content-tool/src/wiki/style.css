@@ -108,6 +108,7 @@ svg.swatch-big { width: 120px; height: 120px; }
 td .badge, li .badge, th .badge, .palette .badge, .swatch .badge { vertical-align: 0.1em; font-size: 10px; margin-left: 0.5em; }
 .palette .badge, .swatch .badge { display: block; width: fit-content; margin: 4px auto 0; }
 .badge.locked { color: var(--coral); }
+.badge.goal { color: var(--gold); }
 .badge.cond, .badge.rhai { color: var(--violet); }
 .badge.act { color: var(--teal); }
 .badge.tgt { color: var(--gold); }

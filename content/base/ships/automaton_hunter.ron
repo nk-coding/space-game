@@ -1,0 +1,30 @@
+// Automaton hunter: a heavier raider that leads the packs deeper in the rim (the voyage Corran Reach). Two cannons
+// on forward prongs, the core buried in the middle. One automaton core powers exactly two cannons and one thruster
+// (6 MW) and runs three of its four control. PLACEHOLDER layout and numbers (docs/plans/slice-content.md 2.1, track
+// 7J draft of 13 Oct 2026; tuned in track 7K).
+(
+    id: "automaton_hunter",
+    name: "Automaton hunter",
+    summary: "A 5×4 rogue automaton with a cannon on each forward prong.",
+    description: "Hunters lead the packs deeper in the rim. The [[part:automaton_core|core]] sits deep in the plating: shoot the prongs to disarm one, or the core to keep both cannons for salvage.",
+    tags: ["enemy"],
+    faction: "automatons",
+    size: (5, 4),
+    parts: [
+        (part: "automaton_cannon", x: 1, y: 0),
+        (part: "automaton_cannon", x: 3, y: 0),
+        (part: "slope_1x1", x: 0, y: 1, flip: true, material: "automaton_plate"),
+        (part: "armor_block", x: 1, y: 1, material: "automaton_plate"),
+        (part: "armor_block", x: 2, y: 1, material: "automaton_plate"),
+        (part: "armor_block", x: 3, y: 1, material: "automaton_plate"),
+        (part: "slope_1x1", x: 4, y: 1, material: "automaton_plate"),
+        (part: "slope_1x1", x: 0, y: 2, rot: 2, material: "automaton_plate"),
+        (part: "armor_block", x: 1, y: 2, material: "automaton_plate"),
+        (part: "automaton_core", x: 2, y: 2),
+        (part: "armor_block", x: 3, y: 2, material: "automaton_plate"),
+        (part: "slope_1x1", x: 4, y: 2, rot: 2, flip: true, material: "automaton_plate"),
+        (part: "slope_1x1", x: 1, y: 3, rot: 2, material: "automaton_plate"),
+        (part: "thruster", x: 2, y: 3),
+        (part: "slope_1x1", x: 3, y: 3, rot: 2, flip: true, material: "automaton_plate"),
+    ],
+)

@@ -27,9 +27,9 @@ use std::path::Path;
 use data::geometry::hull_loops;
 use data::stats::{SHIP_STATS, format_number, with_unit};
 use data::{
-    Behavior, BehaviorNode, Better, Blueprint, Content, Delivery, Entry, Family, Kind, Material,
-    NodeRole, ParamType, Part, PlacedShape, ResearchKind, ResearchNode, Selector, Start, StatLine,
-    Unlock,
+    Behavior, BehaviorNode, Better, Blueprint, Content, Delivery, Encounter, Entry, Family, Kind,
+    Material, NodeRole, ParamType, Part, PlacedShape, ResearchKind, ResearchNode, Selector, Start,
+    StatLine, Unlock, Voyage,
 };
 use sim::DesignReport;
 
@@ -45,7 +45,7 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages.
-const KINDS: [(Kind, &str); 13] = [
+const KINDS: [(Kind, &str); 15] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -55,6 +55,8 @@ const KINDS: [(Kind, &str); 13] = [
     (Kind::Research, "Research"),
     (Kind::Family, "Families"),
     (Kind::Start, "Starts"),
+    (Kind::Voyage, "Voyages"),
+    (Kind::Encounter, "Encounters"),
     (Kind::Behavior, "Behaviors"),
     (Kind::BehaviorNode, "Behavior nodes"),
     (Kind::Stat, "Stats"),
@@ -149,6 +151,12 @@ pub fn generate(c: &Content) -> Site {
     }
     for e in &c.starts {
         entry(Kind::Start, &e.id, &e.name, w.start_page(e));
+    }
+    for e in &c.voyages {
+        entry(Kind::Voyage, &e.id, &e.name, w.voyage_page(e));
+    }
+    for e in &c.encounters {
+        entry(Kind::Encounter, &e.id, &e.name, w.encounter_page(e));
     }
     for p in c.wiki.values().filter(|p| p.kind == Kind::Page) {
         let title = c.name_of(Kind::Page, &p.id).unwrap_or(&p.id);
@@ -545,6 +553,21 @@ impl<'a> Wiki<'a> {
             p,
             material,
             CHIP_BOX / p.size.0.max(p.size.1).max(1) as f32,
+            "chip",
+        )
+    }
+
+    /// A ship scaled to fit a table row: its longer side, glow margin included, is twice a part chip.
+    fn ship_chip(&self, s: &Blueprint) -> String {
+        let side = self
+            .c
+            .ship_grid(s)
+            .ok()
+            .and_then(|g| g.bounds())
+            .map_or(1, |b| b.width().max(b.height()).max(1));
+        self.ship_svg(
+            s,
+            2.0 * CHIP_BOX / (side as f32 + 2.0 * MARGIN_SHIP),
             "chip",
         )
     }

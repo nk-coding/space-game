@@ -12,7 +12,7 @@
 //! * **Library**: [`BehaviorLibrary::new`] compiles the vocabulary and every content behavior;
 //!   [`BehaviorLibrary::add_text`] adds a player's program. Hand it to the sim with `Sim::set_behaviors`.
 //! * **Commands**: `ShipCommand::Behavior(Some(id))` (overrides the helm), `Behavior(None)`,
-//!   `ShipCommand::Leader(Some(ship))` (whose lock the `locked` selector follows).
+//!   `ShipCommand::Leader(Some(ship))` (whose lock the `locked` selector follows, and whom `escort` keeps near).
 //! * **Cadence**: a ship thinks every [`tuning::THINK_PERIOD`] ticks (10 Hz), staggered by ship id
 //!   (`(tick + id) % period == 0`), and on the first tick after it gets a behavior. Between thinks the chosen
 //!   maneuver is flown every tick (target position, lead and fire-at-will are per tick).
@@ -135,6 +135,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("face", Action, None, &[]),
         node("flee", Action, None, &[]),
         node("hold", Action, None, &[]),
+        node("escort", Action, None, DIST),
         node("nearest", Target, None, AIM),
         node("weakest", Target, None, AIM),
         node("threat", Target, None, AIM),

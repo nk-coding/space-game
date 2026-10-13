@@ -16,7 +16,8 @@ use std::process::ExitCode;
 
 use data::geometry::hull_loops;
 use data::{
-    Content, Entry, Kind, Material, Pack, Part, Problem, ResearchNode, Severity, Unlock, text_key,
+    Content, Encounter, Entry, Kind, Material, Pack, Part, Problem, ResearchNode, Severity, Start,
+    Unlock, Voyage, text_key,
 };
 use serde_json::{Value, json};
 
@@ -27,7 +28,7 @@ const USAGE: &str = "usage:
   content-tool export-json <out.json | -> [pack_dir...]
   content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, frame,
                                              ship, behavior_node, behavior, family, research, start,
-                                             page
+                                             voyage, encounter, page
   content-tool wiki <out_dir> [pack_dir...]  static HTML wiki (docs/wiki.md); out_dir empty, new or an
                                              earlier wiki
 
@@ -166,7 +167,7 @@ fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
 fn validate(args: &[String]) -> Result<(), String> {
     let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} icons, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
@@ -179,6 +180,8 @@ fn validate(args: &[String]) -> Result<(), String> {
         content.families.len(),
         content.research.len(),
         content.starts.len(),
+        content.voyages.len(),
+        content.encounters.len(),
         content.icons.len(),
         content.wiki.len()
     );
@@ -221,6 +224,8 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Family => rows(c.families.as_slice()),
         Kind::Research => rows(c.research.as_slice()),
         Kind::Start => rows(c.starts.as_slice()),
+        Kind::Voyage => rows(c.voyages.as_slice()),
+        Kind::Encounter => rows(c.encounters.as_slice()),
         Kind::Page => c
             .wiki
             .values()
@@ -333,6 +338,44 @@ fn salvaged_from<'a>(c: &'a Content, family: &str) -> (Vec<&'a Part>, Vec<&'a Ma
         .filter(|m| m.salvage.as_ref().is_some_and(|s| s.family == family))
         .collect();
     (parts, materials)
+}
+
+// Voyage lookups (export-json and the wiki), each in load order.
+
+/// The voyages that open after voyage `id`: they name it in `opens_after`.
+fn opens<'a>(c: &'a Content, id: &str) -> Vec<&'a Voyage> {
+    c.voyages
+        .iter()
+        .filter(|v| v.opens_after.iter().any(|a| a == id))
+        .collect()
+}
+
+/// The starts that open voyage `id` (list it in `voyages`).
+fn starts_opening<'a>(c: &'a Content, id: &str) -> Vec<&'a Start> {
+    c.starts
+        .iter()
+        .filter(|s| s.voyages.iter().any(|v| v == id))
+        .collect()
+}
+
+/// The voyages with sites of encounter `id`, with how many such sites each places.
+fn voyages_using<'a>(c: &'a Content, id: &str) -> Vec<(&'a Voyage, u32)> {
+    c.voyages
+        .iter()
+        .filter_map(|v| {
+            let sites = v.sites.iter().filter(|s| s.encounter == id);
+            let n = sites.fold(0, |n: u32, s| n.saturating_add(s.count));
+            (n > 0).then_some((v, n))
+        })
+        .collect()
+}
+
+/// The encounters ship `id` appears in, as a fighting ship or as a wreck.
+fn encounters_with<'a>(c: &'a Content, id: &str) -> Vec<&'a Encounter> {
+    c.encounters
+        .iter()
+        .filter(|e| e.ships.iter().any(|s| s.ship == id) || e.wrecks.iter().any(|w| w.ship == id))
+        .collect()
 }
 
 fn ids<T: Entry>(entries: &[&T]) -> Vec<String> {
@@ -453,6 +496,31 @@ fn export(c: &Content) -> Value {
         })
         .collect();
     let starts: Vec<Value> = c.starts.iter().map(|e| entry_json(c, e)).collect();
+    // Voyages list what opens them and what they open; encounters the voyages that place them.
+    let voyages: Vec<Value> = c
+        .voyages
+        .iter()
+        .map(|e| {
+            let mut v = entry_json(c, e);
+            v["site_count"] = json!(e.site_count());
+            v["opens"] = json!(ids(&opens(c, &e.id)));
+            v["opened_by_starts"] = json!(ids(&starts_opening(c, &e.id)));
+            v
+        })
+        .collect();
+    let encounters: Vec<Value> = c
+        .encounters
+        .iter()
+        .map(|e| {
+            let mut v = entry_json(c, e);
+            let voyages: Vec<&str> = voyages_using(c, &e.id)
+                .into_iter()
+                .map(|(x, _)| x.id.as_str())
+                .collect();
+            v["used_by_voyages"] = json!(voyages);
+            v
+        })
+        .collect();
     let ships: Vec<Value> = c.ships.iter().map(|s| ship_json(c, s)).collect();
     let behavior_nodes: Vec<Value> = c
         .behavior_nodes
@@ -555,6 +623,8 @@ fn export(c: &Content) -> Value {
         "families": families,
         "research": research,
         "starts": starts,
+        "voyages": voyages,
+        "encounters": encounters,
         "icons": icons,
         "pages": pages,
         "texts": c.texts(),
@@ -616,6 +686,7 @@ fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
     v["control_load"] = json!(control_load);
     v["control_capacity"] = json!(control_capacity);
     v["effective_behavior"] = json!(c.ship_behavior(s).map(|b| &b.id));
+    v["in_encounters"] = json!(ids(&encounters_with(c, &s.id)));
     v["placements"] = json!(placements);
     v["totals"] = json!(totals);
     v["bounds"] = json!(grid.bounds());
@@ -772,5 +843,71 @@ mod tests {
             v["texts"]["research.cruiser_drydock.name"],
             json!("Cruiser drydock")
         );
+    }
+
+    /// Voyages with what opens them and what they open, encounters with the voyages that place them, and per
+    /// ship the encounters it appears in (fighting or as a wreck).
+    #[test]
+    fn export_holds_voyages_and_encounters() {
+        let base = data::fs::load_pack_dir(&pack_dirs(&[])[0]).unwrap();
+        let c = Content::load(&[base]).unwrap();
+        let v = export(&c);
+        let find = |kind: &str, id: &str| -> Value {
+            let entries = v[kind].as_array().unwrap_or_else(|| panic!("no {kind}"));
+            entries.iter().find(|e| e["id"] == id).unwrap().clone()
+        };
+        let first = find("voyages", "yard_approach");
+        assert_eq!(first["band"], json!("rim"));
+        assert_eq!(first["site_count"], json!(4));
+        assert_eq!(
+            first["sites"][2],
+            json!({"encounter": "raider_pack", "count": 1, "goal": true})
+        );
+        assert_eq!(first["opens"], json!(["halvex_drift"]));
+        assert_eq!(first["opened_by_starts"], json!(["rim_awakening"]));
+        assert_eq!(
+            first["text_keys"]["cleared"],
+            json!("voyage.yard_approach.cleared")
+        );
+        assert_eq!(first["links"], json!(["voyage:halvex_drift"]));
+        let last = find("voyages", "wardens_gate");
+        assert_eq!(last["opens_after"], json!(["corran_reach"]));
+        assert_eq!(
+            (&last["opens"], &last["opened_by_starts"]),
+            (&json!([]), &json!([]))
+        );
+        let in_load_order: Vec<&str> = c.voyages.iter().map(|x| x.id.as_str()).collect();
+        assert_eq!(
+            find("encounters", "raider_pack")["used_by_voyages"],
+            json!(in_load_order)
+        );
+        assert_eq!(
+            find("encounters", "hunter_den")["used_by_voyages"],
+            json!(["corran_reach"])
+        );
+        let field = find("encounters", "derelict_field");
+        assert_eq!(field["wake_radius"], json!(200.0));
+        assert_eq!(
+            field["wrecks"][0],
+            json!({"ship": "sample_early", "count": [1, 1], "damage": 0.5})
+        );
+        assert_eq!(
+            find("ships", "sample_early")["in_encounters"],
+            json!(["derelict_field"])
+        );
+        assert_eq!(
+            find("ships", "automaton_warden")["in_encounters"],
+            json!(["the_warden"])
+        );
+        assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
+        // The raider is everywhere: fighting in every encounter, lying as a wreck in two of them.
+        assert_eq!(
+            find("ships", "automaton_raider")["in_encounters"]
+                .as_array()
+                .unwrap()
+                .len(),
+            c.encounters.len()
+        );
+        assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
     }
 }

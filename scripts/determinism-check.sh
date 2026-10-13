@@ -6,7 +6,8 @@
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
 # Scenarios of sim's `determinism` example (sim::scenario): core (default), flight, load (--ships N in the example),
-# behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost ship's cargo).
+# behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost ship's cargo), voyage (a voyage directed by
+# sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the recall check).
 #
 # Hash stream format (what the example prints): one "<tick> <hash>" line per tick; lines starting with '#'
 # are comments (header, summary) and are shown but not compared. Any producer that prints this format can

@@ -1,8 +1,8 @@
 //! Prints the per-tick state hashes of the deterministic scenario, one `tick hash` line per tick.
 //! Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh` runs both and compares.
 //!
-//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage] [--ships N]` (`--ships` sets the
-//! load test's ship count, default 20).
+//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage|voyage] [--ships N]`
+//! (`--ships` sets the load test's ship count, default 20).
 
 fn main() {
     let mut seed: u64 = 42;
@@ -21,7 +21,7 @@ fn main() {
         }
     }
     let mut kind = sim::scenario::ScenarioKind::from_name(&scenario).unwrap_or_else(|| {
-        panic!("unknown scenario {scenario} (known: core, flight, load, behavior, salvage)")
+        panic!("unknown scenario {scenario} (known: core, flight, load, behavior, salvage, voyage)")
     });
     if let sim::scenario::ScenarioKind::Load(_) = kind {
         kind = sim::scenario::ScenarioKind::Load(ships);
@@ -36,7 +36,7 @@ fn main() {
         all.u64(h);
     }
     println!(
-        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} burns={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={} collected={} collected_units={} collected_cargo={} collected_fragments={} fragments={}",
+        "# final={:016x} parts_destroyed={} splits={} pieces_spawned={} pieces_destroyed={} overheated_part_ticks={} firing_ticks={} shots={} hits={} shield_hits={} ricochets={} script_evals={} impacts={} rams={} burns={} split_vessels={} vessels_lost={} dormant={} woken={} focus_changes={} collected={} collected_units={} collected_cargo={} collected_fragments={} fragments={} sites_woken={} sites_cleared={} recall_ticks={}",
         all.finish(),
         stats.parts_destroyed,
         stats.splits,
@@ -61,6 +61,9 @@ fn main() {
         stats.collected_units,
         stats.collected_cargo,
         stats.collected_fragments,
-        stats.fragments
+        stats.fragments,
+        stats.sites_woken,
+        stats.sites_cleared,
+        stats.recall_ticks
     );
 }

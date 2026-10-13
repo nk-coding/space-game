@@ -42,13 +42,19 @@ pub mod tuning {
     /// rating. Flat first, so the acceleration stays constant for most of the way and the approach to the top
     /// speed is short.
     pub const RATED_KNEE: f32 = 0.8;
+    /// The whole-speed fade is continuous in the push angle (GDR-0064, lead default): a row pushing with the
+    /// motion fades by the piece's whole speed, but by no more than this many times the speed along its own
+    /// axis. Pushes within about 76° of the motion (cos = 1/4) fade exactly by the whole speed (GDR-0055); from
+    /// there the fade eases off to none for a push square to the motion, so a push across the motion is never
+    /// cut off by a sign test. Such a push can take a ship past its rating by at most √(1 + 1/4²) − 1 ≈ 3%.
+    pub const FADE_ALONG: f32 = 4.0;
 }
 
 /// Share of a thruster's force left at `speed` m/s, for rated speed `rated` (GDR-0041): 1 up to `RATED_KNEE ×
 /// rated`, then linear to 0 at `rated` and beyond. [`Thruster::falloff`] applies it with the piece's whole speed
-/// to a thruster that pushes with the motion (GDR-0055); braking and sideways thrusters keep full thrust. No
-/// drag: a coasting ship keeps its speed; only its own thrust stops growing. Only `+ − × ÷` and comparisons
-/// (deterministic).
+/// to a thruster that pushes with the motion (GDR-0055, continuous in the push angle since GDR-0064); braking
+/// and sideways thrusters keep full thrust. No drag: a coasting ship keeps its speed; only its own thrust stops
+/// growing. Only `+ − × ÷` and comparisons (deterministic).
 pub fn rated_falloff(speed: f32, rated: f32) -> f32 {
     let knee = tuning::RATED_KNEE * rated;
     if speed <= knee {
@@ -229,14 +235,17 @@ pub struct Thruster {
 }
 
 impl Thruster {
-    /// Share of the row's force left at piece-frame velocity `v_local` of length `speed` (GDR-0055): a row that
-    /// pushes with the motion (`v_local · dir > 0`) fades by the whole speed ([`rated_falloff`]), so a ship
-    /// moving diagonally cannot beat the rating of the slowest thruster pushing that way; braking (against the
-    /// motion) and sideways rows keep full thrust. The caller takes `speed` once per piece (one square root).
+    /// Share of the row's force left at piece-frame velocity `v_local` of length `speed` (GDR-0055, GDR-0064): a
+    /// row that pushes with the motion (`v_local · dir > 0`) fades by the whole speed ([`rated_falloff`]), so a
+    /// ship moving diagonally cannot beat the rating of the slowest thruster pushing that way, but by no more
+    /// than [`tuning::FADE_ALONG`] times the speed along its own axis, so the fade eases off continuously as the
+    /// push turns square to the motion; braking (against the motion) and sideways rows keep full thrust. The
+    /// caller takes `speed` once per piece (one square root).
     #[inline]
     pub fn falloff(&self, v_local: Vec2, speed: f32) -> f32 {
-        if v_local.dot(self.dir) > 0.0 {
-            rated_falloff(speed, self.rated)
+        let along = v_local.dot(self.dir);
+        if along > 0.0 {
+            rated_falloff(speed.min(tuning::FADE_ALONG * along), self.rated)
         } else {
             1.0
         }
@@ -622,6 +631,9 @@ pub struct Ship {
     pub(crate) cargo: crate::salvage::Cargo,
     /// Spawned as a wreck (`Sim::spawn_wreck`): its logic cores never form a vessel.
     pub(crate) burned_out: bool,
+    /// The intact hit points its hull share (the `hull` condition) is measured against: the whole design's for
+    /// a spawned ship, the parts of its own piece's for a vessel split off another (GDR-0064).
+    pub(crate) hull_base: f32,
 }
 
 impl Ship {
@@ -683,7 +695,9 @@ impl Ship {
             parked: None,
             cargo: crate::salvage::Cargo::default(),
             burned_out: false,
+            hull_base: 0.0,
         };
+        ship.hull_base = ship.design.hp_total;
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
             ship.refresh_exposure(p);
@@ -1795,6 +1809,7 @@ impl StateHash for Ship {
             None => h.u8(0),
         }
         h.bool(self.burned_out);
+        h.f32(self.hull_base);
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {

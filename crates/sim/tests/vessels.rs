@@ -106,6 +106,31 @@ fn a_split_leaves_two_vessels_running_the_behavior_within_their_own_slots() {
     assert_eq!(fleet.iter().map(|v| v.ship).collect::<Vec<_>>(), vec![s, t]);
 }
 
+/// GDR-0064: a split-off vessel measures its hull against its own piece (it fled at once when it counted
+/// against the whole design), while the vessel that kept the controlling piece still counts against the whole
+/// design (it did lose half of itself). `hull` is read from the debug view: the value the failing rule measured.
+#[test]
+fn a_split_off_vessel_measures_its_hull_against_its_own_piece() {
+    let c = content();
+    let mut w = sim::Sim::new(1);
+    with_behaviors(&mut w);
+    let probe = w.behaviors_mut().add_text("probe", "when hull < 1% -> flee\nalways -> hold").unwrap();
+    let s = w.spawn_ship(design(&c, "halvex_runner"), PLAYER, Body::default());
+    w.command(s, ShipCommand::Behavior(Some(probe)));
+    cut(&mut w, s, &RUNNER_CENTRE);
+    let t = w.ships().last().unwrap().id();
+    assert_ne!(t, s);
+    step(&mut w, 4);
+    let hull = |id: ShipId| match w.ship(id).unwrap().behavior().unwrap().rules()[0] {
+        RuleStatus::Failed { why: sim::Why::False { value: Some(v) }, .. } => v,
+        other => panic!("{id:?}: {other:?}"),
+    };
+    let (kept, split) = (hull(s), hull(t));
+    println!("hull share after the split: kept {kept:.3}, split off {split:.3}");
+    assert!(split > 0.95, "the split-off half is intact: {split}");
+    assert!(kept < 0.6, "the kept half lost the other one: {kept}");
+}
+
 #[test]
 fn a_raider_shot_in_half_can_be_two_raiders() {
     // Enemies follow the same rules: a raider design with two cores in two halves (left and right column,
@@ -644,7 +669,7 @@ fn a_shielded_ram_drains_the_bubble_first() {
         "{hull_on} vs {ram_on}"
     );
     assert!((raider_on - ram_on).abs() < 1e-3 && (raider_off - ram_off).abs() < 1e-3);
-    let cap = 6.0;
+    let cap = content().parts.get("shield_emitter").unwrap().shield.as_ref().unwrap().capacity;
     assert_eq!(charge_off, cap, "no bubble, nothing drained");
     assert!((cap - charge_on - ram_on * 0.5).abs() < 1e-3, "{charge_on}");
     assert!(
@@ -653,6 +678,88 @@ fn a_shielded_ram_drains_the_bubble_first() {
             .any(|e| matches!(e, SimEvent::ShieldHit { absorbed, .. } if *absorbed > 0.0)),
         "{events:?}"
     );
+}
+
+/// GDR-0067: rams pass friendly bubbles, as shots and plumes do. A raider rams an unshielded block head-on while
+/// a shielded wingman of the raider's owner hovers beside it, clear of both hulls, its bubble (enlarged for the
+/// test) covering the contact point. The block takes the whole ram: the wingman's bubble takes nothing of the
+/// damage the raider deals (before, it took its kinetic share and shielded the enemy); it still takes its share
+/// of the damage dealt to the raider, its friend.
+#[test]
+fn a_ram_passes_the_bubbles_of_the_rammers_friends() {
+    let mut c = content();
+    let mut emitter = c.parts.get("shield_emitter").unwrap().clone();
+    emitter.shield.as_mut().unwrap().radius = 8.0;
+    c.parts.upsert(emitter);
+    let armor = |x, y| ("armor_block", x, y, 0, false, Some("composite"));
+    let block = custom(
+        &c,
+        &[
+            armor(0, 0),
+            armor(1, 0),
+            armor(2, 0),
+            armor(0, 1),
+            armor(1, 1),
+            armor(2, 1),
+            ("fission_reactor", 0, 2, 0, false, None),
+            ("logic_core", 1, 2, 0, false, None),
+            armor(2, 2),
+        ],
+    );
+    let wingman = custom(
+        &c,
+        &[
+            armor(0, 0),
+            ("shield_emitter", 1, 0, 0, false, None),
+            armor(2, 0),
+            ("fission_reactor", 0, 1, 0, false, None),
+            ("logic_core", 1, 1, 0, false, None),
+            armor(2, 1),
+        ],
+    );
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(block, PLAYER, Body::default());
+    let r = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        Owner(1),
+        Body {
+            pos: Vec2::new(0.0, 12.0),
+            angle: PI,
+            linvel: Vec2::new(0.0, -20.0),
+            angvel: 0.0,
+        },
+    );
+    let wing = w.spawn_ship(wingman, Owner(1), Body::at(Vec2::new(6.5, 1.5), 0.0));
+    let shields = TickInputs {
+        controls: vec![(wing, controls(0, 0.0, false, true))],
+        ..Default::default()
+    };
+    let mut ram = None;
+    let mut events = Vec::new();
+    for _ in 0..40 {
+        w.step(&shields);
+        if let Some(c) = impacts(&w).into_iter().find(|c| c.damage > 0.0) {
+            ram = Some(c);
+            events = w.events().to_vec();
+            break;
+        }
+    }
+    let c = ram.expect("a ram");
+    assert_eq!(
+        [c.a.ship, c.b.ship].into_iter().filter(|&x| x == s || x == r).count(),
+        2,
+        "the raider rams the block: {c:?}"
+    );
+    let wing_hits: Vec<(ShipId, f32)> = events
+        .iter()
+        .filter_map(|e| match e {
+            SimEvent::ShieldHit { by, ship, absorbed, .. } if *ship == wing => Some((*by, *absorbed)),
+            _ => None,
+        })
+        .collect();
+    assert!(wing_hits.iter().all(|&(by, _)| by != r), "the wingman's bubble shielded the enemy: {wing_hits:?}");
+    assert!(wing_hits.iter().any(|&(by, _)| by == s), "it still shields its friend: {wing_hits:?}");
+    assert!((hp_lost(&w, s) - c.damage).abs() < 1e-3, "the block takes the whole ram: {} vs {}", hp_lost(&w, s), c.damage);
 }
 
 /// An idle engine that draws no power (content may give it a control cost without a draw; validation only
