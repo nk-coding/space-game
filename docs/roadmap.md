@@ -104,10 +104,10 @@ behaviors saved on their own and picked by designs, TEST IN RANGE by watching or
 
 | Track | Goal | Status |
 |---|---|---|
-| 6A `data::behavior_edit` | Pure editing model of a rule program: rules, conditions, parameters, target line, slots, undo, text round trip | wave A, in progress |
-| 6B Plumbing | Player behaviors in the storage layer, designs naming their behavior, share codes carrying it, the sim library, TEST IN RANGE modes (watch / fly alongside), the live active rule | wave A, in progress |
-| 6C Screen foundation | `AppMode::Behavior`, the mockup's layout, read-only graph view, text view with live errors, palette and inspector shells, BEHAVIOR button in the drydock | wave A, in progress |
-| 6D Wiring | Graph editing and the inspector through the model, saving, test buttons, live rule highlight | wave B |
+| 6A `data::behavior_edit` | Pure editing model of a rule program: rules, conditions, parameters, target line, slots, undo, text round trip | done 13 Oct (`behavior-format.md` "Editing model") |
+| 6B Plumbing | Player behaviors in the storage layer, designs naming their behavior, share codes carrying it, the sim library, TEST IN RANGE modes (watch / fly alongside), the live active rule | done 13 Oct (`drydock.md` "Behaviors"; share codes `SGD2`) |
+| 6C Screen foundation | `AppMode::Behavior`, the mockup's layout, read-only graph view, text view with live errors, palette and inspector shells, BEHAVIOR button in the drydock | done 13 Oct (`client.md` "Behavior screen") |
+| 6D Wiring | Graph editing and the inspector through the model, saving, test buttons, live rule highlight | wave B, in progress |
 
 ## Phase 4: measurement
 
