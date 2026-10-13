@@ -11,4 +11,4 @@ How the drydock decides what a design can do. The numbers live in the part pages
   through sides open to space. Overheated parts shut down.
 - **Adjacency bonuses.** [[part:capacitor|Capacitors]] make lasers beside them fire faster; venting radiators
   beside a reactor raise its output.
-- **Guns and engines.** Guns need a clear line of fire ahead; engines need open cells directly behind them.
+- **Guns and engines.** Guns need a clear line of fire ahead. Engines may sit anywhere, but their exhaust burns whatever is in the plume behind them, your own parts included.

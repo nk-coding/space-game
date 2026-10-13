@@ -1,9 +1,10 @@
-//! `content-tool`: validate content packs, export the resolved content as JSON, list entries.
+//! `content-tool`: validate content packs, export the resolved content as JSON, list entries, generate the wiki.
 //!
 //! ```text
 //! content-tool validate [pack_dir...]
 //! content-tool export-json <out.json | -> [pack_dir...]
 //! content-tool list <kind> [pack_dir...]
+//! content-tool wiki <out_dir> [pack_dir...]
 //! ```
 //!
 //! Pack directories are loaded in the order given (later packs override earlier ones by id). Without any,
@@ -17,11 +18,15 @@ use data::geometry::hull_loops;
 use data::{Content, Entry, Kind, Pack, Problem, Severity, text_key};
 use serde_json::{Value, json};
 
+mod wiki;
+
 const USAGE: &str = "usage:
   content-tool validate [pack_dir...]
   content-tool export-json <out.json | -> [pack_dir...]
   content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, frame,
                                              ship, behavior_node, behavior, page
+  content-tool wiki <out_dir> [pack_dir...]  static HTML wiki (docs/wiki.md); out_dir empty, new or an
+                                             earlier wiki
 
 Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
@@ -34,6 +39,7 @@ fn main() -> ExitCode {
         Some("validate") => validate(&args[1..]),
         Some("export-json") => export_json(&args[1..]),
         Some("list") => list(&args[1..]),
+        Some("wiki") => generate_wiki(&args[1..]),
         Some("-h" | "--help" | "help") => {
             println!("{USAGE}");
             Ok(())
@@ -224,6 +230,23 @@ fn list(args: &[String]) -> Result<(), String> {
     for (id, name, src) in rows {
         println!("{id:w$}  {name:n$}  {src}");
     }
+    Ok(())
+}
+
+fn generate_wiki(args: &[String]) -> Result<(), String> {
+    let out = PathBuf::from(args.first().ok_or_else(|| USAGE.to_string())?);
+    let (c, content_warnings) = load_content(&pack_dirs(&args[1..]))?;
+    let site = wiki::generate(&c);
+    for w in &site.warnings {
+        eprintln!("warning: wiki: {w}");
+    }
+    wiki::write(&site, &out)?;
+    let pages = site.files.keys().filter(|p| p.ends_with(".html")).count();
+    println!(
+        "wrote {pages} pages to {}; {} warning(s)",
+        out.display(),
+        content_warnings + site.warnings.len()
+    );
     Ok(())
 }
 

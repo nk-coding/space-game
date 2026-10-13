@@ -558,10 +558,13 @@ clean grid and report nothing until the placements are fixed. Header errors do n
 
 ## The wiki
 
-A future generator reads either the `data` crate directly (Rust) or the JSON export:
+`content-tool wiki <out_dir> [pack_dir...]` generates the wiki (added 13 Oct 2026; `docs/wiki.md`, ADR-0032): a
+static HTML site with a page per entry, stats labelled from `stats.ron`, the pack's icons, ships drawn from their
+blueprints and the prose of `wiki/`. It reads the `data` crate directly; other tools can use the JSON export:
 
 ```
 cargo run -p content-tool -- validate                 # all packs ok (icons included)?
+cargo run -p content-tool -- wiki /tmp/space-wiki      # the static wiki (docs/wiki.md)
 cargo run -p content-tool -- export-json content.json  # resolved content for any external tool
 cargo run -p content-tool -- list part
 ```

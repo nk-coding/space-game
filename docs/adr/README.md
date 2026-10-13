@@ -40,6 +40,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0029](0029-shield-bubbles-batched-procedural-mesh.md) | Shield bubbles are one batched world-space mesh with a procedural WESL material and max blending | Accepted (provisional, lead) | 2026-10-12 |
 | [0030](0030-drydock-architecture.md) | Drydock architecture: a pure editing model in `data`, a static design report in `sim`, player designs as content blueprints | Accepted (provisional, lead) | 2026-10-12 |
 | [0031](0031-player-storage-and-design-sharing.md) | A player storage layer of named, versioned RON documents; designs shared as files and share codes | Accepted (provisional, lead) | 2026-10-13 |
+| [0032](0032-wiki-generator.md) | Wiki generator: `content-tool wiki` writes a static HTML site straight from `data` | Proposed | 2026-10-13 |
 | [0033](0033-career-model-save-and-voyage-director.md) | The career: progression rules in `data::career`, salvage and the voyage director in `sim`, one career save | Accepted (provisional, lead) | 2026-10-13 |
 <!-- index:end -->
 
