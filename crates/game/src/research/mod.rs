@@ -52,7 +52,7 @@ use crate::ui_kit::{Tone, UiInputSet, UiPointer, UiStyleSet, ui_scale_for};
 use tree::{CardState, Tree};
 
 /// How much the veil over the station darkens it (the lab shows faintly behind the tree).
-const VEIL: f32 = 0.86;
+const VEIL: f32 = 0.92;
 /// The veil's layer: over the station and its ships, under the UI icons (z 600).
 const Z_VEIL: f32 = 405.0;
 

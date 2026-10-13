@@ -249,6 +249,12 @@ pub fn chips(career: &Career, node: &ResearchNode) -> Vec<Chip> {
     out
 }
 
+/// A node's cost as chips, whatever the stores hold (`ENERGY 18`, a material's `2`): a researched node's detail.
+pub fn cost_chips(node: &ResearchNode) -> Vec<Chip> {
+    let data = node.cost.data.iter().map(|(f, x)| Chip { material: false, text: format!("{} {}", family_label(f), amount(*x)), payable: true });
+    data.chain(node.cost.materials.values().map(|n| Chip { material: true, text: n.to_string(), payable: true })).collect()
+}
+
 /// A research kind's tag (GDR-0024).
 pub fn kind_words(kind: ResearchKind) -> &'static str {
     match kind {
@@ -409,6 +415,7 @@ mod tests {
         assert_eq!(state(&content, &c, "beam_laser"), CardState::Ready);
         assert_eq!(state(&content, &c, "cruiser_drydock"), CardState::Locked(vec!["composite_plating".into()]));
         assert_eq!(state(&content, &c, "mind_expansion_1"), CardState::Short(vec![Shortfall::Material { material: "programmable_matter".into(), have: 1, cost: 2 }]));
+        assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "2".into(), payable: true }]);
         let ready: Vec<&str> = ready(&content, &c).iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ready, ["beam_laser"]);
         let chips_of = |n: &str| chips(&c, content.research.get(n).unwrap());

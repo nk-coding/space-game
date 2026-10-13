@@ -29,7 +29,8 @@ const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
 const TREE_LEFT: f32 = 24.0;
 const COLUMNS_X: f32 = 168.0;
 const TREE_RIGHT: f32 = 878.0;
-/// The tree's area (the lanes scroll inside it).
+/// The tier heads, then the tree's area (the lanes scroll inside it).
+const TIER_Y: f32 = 84.0;
 const TREE_TOP: f32 = 104.0;
 const TREE_BOTTOM: f32 = 664.0;
 /// A card: its height, its widest, the least gap between columns; a lane row's pitch (least, most); the card's
@@ -42,6 +43,8 @@ const CARD_TOP: f32 = 8.0;
 /// The detail panel on the right.
 const PANEL_X: f32 = 912.0;
 const PANEL_W: f32 = 344.0;
+/// UNLOCK's top.
+const UNLOCK_Y: f32 = 614.0;
 /// Stat cells and bonus lines of the preview; cost chips of the detail.
 const STATS: usize = 8;
 const BONUSES: usize = 2;
@@ -232,57 +235,60 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
             root.spawn(Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                 .with_children(|centre| {
                     centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
-                        // Top left: the way back, where we are.
-                        stage.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) })).with_children(|tl| {
-                            tl.spawn((ring_node(40.0), ResearchButton(ResearchAction::Home))).with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
-                            tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
-                                col.spawn(label(fonts, "SHIPYARD  ›  RESEARCH", 10.0, c(Tone::Label, 1.0)));
-                                col.spawn(prose(fonts, "Research", 22.0, c(Tone::Number, 1.0)));
-                            });
-                        });
-                        // Top right: data of families without a lane, the materials research costs.
-                        stage
-                            .spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(24), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })
-                            .with_children(|tr| {
-                                tr.spawn((RText::AlsoInStore, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(16)), ..default() }));
-                                for (k, mat) in cost_materials(content).iter().enumerate() {
-                                    let name = content.materials.get(mat).map_or(mat.to_uppercase(), |m| m.name.to_uppercase());
-                                    tr.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
-                                    tr.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
-                                    tr.spawn((RText::Material(k), number(fonts, "", 18.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(6)), ..default() }));
-                                }
-                            });
-                        // Tier heads over the columns.
-                        for col in 0..tree.columns {
-                            stage.spawn((label(fonts, &format!("TIER {}", roman(col + 1)), 8.5, c(Tone::Dim, 1.0)), abs(Vec2::new(COLUMNS_X + col as f32 * m.column_pitch + 14.0, 84.0), None)));
-                        }
-
-                        // The lanes (scrolled when they don't fit).
-                        let area = stage
-                            .spawn((
-                                TreeArea,
-                                ScrollPosition::default(),
-                                Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
-                            ))
-                            .with_children(|area| {
-                                area.spawn(Node { width: percent(100), height: px(inner_h), flex_shrink: 0.0, ..default() }).with_children(|lanes| {
-                                    spawn_lanes(lanes, fonts, style, content, tree, &m, &placed);
+                        // Four roots (the top bar, the tree, the detail, the bottom bar), so each can slide in on its own.
+                        stage.spawn((UiBlock, abs(Vec2::ZERO, Some(Vec2::new(STAGE.x, 70.0))))).with_children(|top| {
+                            // Left: the way back, where we are.
+                            top.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }).with_children(|tl| {
+                                tl.spawn((ring_node(40.0), ResearchButton(ResearchAction::Home))).with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
+                                tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
+                                    col.spawn(label(fonts, "SHIPYARD  ›  RESEARCH", 10.0, c(Tone::Label, 1.0)));
+                                    col.spawn(prose(fonts, "Research", 22.0, c(Tone::Number, 1.0)));
                                 });
-                            })
-                            .id();
-                        spawn_scroll_cue(stage, fonts, style, area);
-                        // The divider between the tree and the detail.
-                        stage.spawn((abs(Vec2::new(PANEL_X - 20.0, 92.0), Some(Vec2::new(1.0, TREE_BOTTOM - 92.0))), BackgroundColor(c(Tone::Label, 0.12))));
+                            });
+                            // Right: data of families without a lane, the materials research costs.
+                            top.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(24), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })
+                                .with_children(|tr| {
+                                    tr.spawn((RText::AlsoInStore, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(16)), ..default() }));
+                                    for (k, mat) in cost_materials(content).iter().enumerate() {
+                                        let name = content.materials.get(mat).map_or(mat.to_uppercase(), |m| m.name.to_uppercase());
+                                        tr.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
+                                        tr.spawn(label(fonts, &name, 9.0, c(Tone::Label, 1.0)));
+                                        tr.spawn((RText::Material(k), number(fonts, "", 18.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::right(px(6)), ..default() }));
+                                    }
+                                });
+                        });
+
+                        // The tree: tier heads over the columns, the lanes (scrolled when they don't fit).
+                        stage.spawn(abs(Vec2::new(0.0, TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TIER_Y)))).with_children(|left| {
+                            for col in 0..tree.columns {
+                                left.spawn((label(fonts, &format!("TIER {}", roman(col + 1)), 8.5, c(Tone::Dim, 1.0)), abs(Vec2::new(COLUMNS_X + col as f32 * m.column_pitch + 14.0, 0.0), None)));
+                            }
+                            let area = left
+                                .spawn((
+                                    TreeArea,
+                                    ScrollPosition::default(),
+                                    Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP - TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
+                                ))
+                                .with_children(|area| {
+                                    area.spawn(Node { width: percent(100), height: px(inner_h), flex_shrink: 0.0, ..default() }).with_children(|lanes| {
+                                        spawn_lanes(lanes, fonts, style, content, tree, &m, &placed);
+                                    });
+                                })
+                                .id();
+                            spawn_scroll_cue(left, fonts, style, area);
+                        });
 
                         spawn_detail(stage, fonts, style);
 
                         // Bottom: the way home, the line, the drydock.
-                        stage.spawn(abs(Vec2::new(22.0, 674.0), None)).with_children(|b| {
-                            spawn_pill(b, fonts, "‹  HOME  ·  ESC", 9.5, 32.0, None, Pill::new(Tone::Teal), ResearchButton(ResearchAction::Home));
-                        });
-                        stage.spawn((RText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), abs(Vec2::new(176.0, 685.0), None)));
-                        stage.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(674), ..default() }).with_children(|b| {
-                            spawn_pill(b, fonts, "DRYDOCK  D", 9.5, 32.0, None, Pill::new(Tone::Teal), ResearchButton(ResearchAction::Drydock));
+                        stage.spawn((UiBlock, abs(Vec2::new(0.0, 674.0), Some(Vec2::new(STAGE.x, 32.0))))).with_children(|bottom| {
+                            bottom.spawn(abs(Vec2::new(22.0, 0.0), None)).with_children(|b| {
+                                spawn_pill(b, fonts, "‹  HOME", 9.5, 32.0, None, Pill::new(Tone::Teal), ResearchButton(ResearchAction::Home));
+                            });
+                            bottom.spawn((RText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), abs(Vec2::new(150.0, 11.0), None)));
+                            bottom.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(0), ..default() }).with_children(|b| {
+                                spawn_pill(b, fonts, "DRYDOCK", 9.5, 32.0, None, Pill::new(Tone::Teal), ResearchButton(ResearchAction::Drydock));
+                            });
                         });
                     });
                 });
@@ -376,84 +382,88 @@ fn spawn_lanes(lanes: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style
 fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
-    stage
-        .spawn((UiBlock, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..abs(Vec2::new(PANEL_X, 84.0), Some(Vec2::new(PANEL_W, 500.0))) }))
-        .with_children(|p| {
-            p.spawn((RText::Kind, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
-            p.spawn((RText::Name, prose(fonts, "", 24.0, c(Tone::Number, 1.0))));
-            p.spawn((RText::Summary, prose(fonts, "", 12.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(6)), ..default() }));
-            // The preview: the icon in brackets, the stat cells beside it, the bonuses under them.
-            p.spawn((RNode::Preview, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() })).with_children(|pv| {
-                pv.spawn((RText::PreviewHead, label(fonts, "", 7.5, c(Tone::Dim, 1.0))));
-                pv.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(18), ..default() }).with_children(|row| {
-                    row.spawn(Node { width: px(84), height: px(110), flex_shrink: 0.0, ..default() }).with_children(|b| {
-                        spawn_brackets(b, 10.0, 1.2, c(Tone::Label, 0.45));
-                        b.spawn((RIcon::Preview, UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Node { position_type: PositionType::Absolute, left: px(12), top: px(12), width: px(60), height: px(86), ..default() }));
-                    });
-                    row.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, row_gap: px(9), width: px(PANEL_W - 102.0), align_content: AlignContent::FlexStart, ..default() })
-                        .with_children(|grid| {
-                            for k in 0..STATS {
-                                grid.spawn((RNode::Stat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(118), ..default() })).with_children(|cell| {
-                                    cell.spawn((RText::StatLabel(k), tracked(fonts, "", 7.0, c(Tone::Dim, 1.0), 0.25)));
-                                    cell.spawn((RText::StatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
-                                });
-                            }
+    stage.spawn((UiBlock, abs(Vec2::new(PANEL_X, TIER_Y), Some(Vec2::new(PANEL_W, UNLOCK_Y + 44.0 - TIER_Y))))).with_children(|panel| {
+        // The divider between the tree and the detail.
+        panel.spawn((abs(Vec2::new(-20.0, 8.0), Some(Vec2::new(1.0, TREE_BOTTOM - TIER_Y - 8.0))), BackgroundColor(c(Tone::Label, 0.12))));
+        panel
+            .spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..abs(Vec2::ZERO, Some(Vec2::new(PANEL_W, 500.0))) })
+            .with_children(|p| {
+                p.spawn((RText::Kind, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
+                p.spawn((RText::Name, prose(fonts, "", 24.0, c(Tone::Number, 1.0))));
+                p.spawn((RText::Summary, prose(fonts, "", 12.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(6)), ..default() }));
+                // The preview: the icon in brackets, the stat cells beside it, the bonuses under them.
+                p.spawn((RNode::Preview, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() })).with_children(|pv| {
+                    pv.spawn((RText::PreviewHead, label(fonts, "", 7.5, c(Tone::Dim, 1.0))));
+                    pv.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(18), ..default() }).with_children(|row| {
+                        row.spawn(Node { width: px(84), height: px(110), flex_shrink: 0.0, ..default() }).with_children(|b| {
+                            spawn_brackets(b, 10.0, 1.2, c(Tone::Label, 0.45));
+                            b.spawn((RIcon::Preview, UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Node { position_type: PositionType::Absolute, left: px(12), top: px(12), width: px(60), height: px(86), ..default() }));
                         });
-                });
-                for k in 0..BONUSES {
-                    pv.spawn((RNode::Bonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() })).with_children(|l| {
-                        l.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(8), height: px(8), flex_shrink: 0.0, ..default() }));
-                        l.spawn((RText::Bonus(k), tracked(fonts, "", 7.5, c(Tone::Gold, 1.0), 0.25)));
+                        row.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, row_gap: px(9), width: px(PANEL_W - 102.0), align_content: AlignContent::FlexStart, ..default() })
+                            .with_children(|grid| {
+                                for k in 0..STATS {
+                                    grid.spawn((RNode::Stat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(118), ..default() })).with_children(|cell| {
+                                        cell.spawn((RText::StatLabel(k), tracked(fonts, "", 7.0, c(Tone::Dim, 1.0), 0.25)));
+                                        cell.spawn((RText::StatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
+                                    });
+                                }
+                            });
                     });
-                }
+                    for k in 0..BONUSES {
+                        pv.spawn((RNode::Bonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() })).with_children(|l| {
+                            l.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(8), height: px(8), flex_shrink: 0.0, ..default() }));
+                            l.spawn((RText::Bonus(k), tracked(fonts, "", 7.5, c(Tone::Gold, 1.0), 0.25)));
+                        });
+                    }
+                });
+                p.spawn((Node { height: px(1), margin: UiRect::vertical(px(8)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.12))));
+                let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
+                let head = |text: &str| (label(fonts, text, 8.0, c(Tone::Dim, 1.0)), Node { width: px(80), flex_shrink: 0.0, ..default() });
+                p.spawn(row(6.0)).with_children(|r| {
+                    r.spawn(head("COST"));
+                    for k in 0..COST_CHIPS {
+                        spawn_chip(r, fonts, style, RNode::CostChip(k), RText::CostChip(k), Some(RNode::CostDiamond(k)));
+                    }
+                    r.spawn((RText::InStore, tracked(fonts, "", 7.5, c(Tone::Dim, 1.0), 0.25), Node { margin: UiRect::left(px(6)), ..default() }));
+                });
+                p.spawn(Node { align_items: AlignItems::FlexStart, ..row(0.0) }).with_children(|r| {
+                    r.spawn(head("UNLOCKS"));
+                    r.spawn((RText::Gives, prose(fonts, "", 12.0, c(Tone::Number, 0.95)), Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }));
+                });
+                p.spawn((RNode::RequiresRow, Node { align_items: AlignItems::FlexStart, ..row(0.0) })).with_children(|r| {
+                    r.spawn(head("REQUIRES"));
+                    r.spawn((RText::Requires, prose(fonts, "", 12.0, c(Tone::Label, 1.0)), Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }));
+                });
             });
-            p.spawn((Node { height: px(1), margin: UiRect::vertical(px(8)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.12))));
-            let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
-            let head = |text: &str| (label(fonts, text, 8.0, c(Tone::Dim, 1.0)), Node { width: px(80), flex_shrink: 0.0, ..default() });
-            p.spawn(row(6.0)).with_children(|r| {
-                r.spawn(head("COST"));
-                for k in 0..COST_CHIPS {
-                    spawn_chip(r, fonts, style, RNode::CostChip(k), RText::CostChip(k), Some(RNode::CostDiamond(k)));
-                }
-                r.spawn((RText::InStore, tracked(fonts, "", 7.5, c(Tone::Dim, 1.0), 0.25), Node { margin: UiRect::left(px(6)), ..default() }));
-            });
-            p.spawn(Node { align_items: AlignItems::FlexStart, ..row(0.0) }).with_children(|r| {
-                r.spawn(head("UNLOCKS"));
-                r.spawn((RText::Gives, prose(fonts, "", 12.0, c(Tone::Number, 0.95)), Node { flex_shrink: 1.0, min_width: px(0), ..default() }));
-            });
-            p.spawn((RNode::RequiresRow, Node { align_items: AlignItems::FlexStart, ..row(0.0) })).with_children(|r| {
-                r.spawn(head("REQUIRES"));
-                r.spawn((RText::Requires, prose(fonts, "", 12.0, c(Tone::Label, 1.0)), Node { flex_shrink: 1.0, min_width: px(0), ..default() }));
-            });
-        });
-    stage.spawn((RText::Say, label(fonts, "", 8.5, c(Tone::Teal, 1.0)), abs(Vec2::new(PANEL_X, 592.0), Some(Vec2::new(PANEL_W, 14.0)))));
-    // UNLOCK: a primary pill (the kit styles it), its cost in words and the materials after a diamond.
-    stage.spawn((UiBlock, Node { flex_direction: FlexDirection::Column, ..abs(Vec2::new(PANEL_X, 614.0), Some(Vec2::new(PANEL_W, 44.0))) })).with_children(|b| {
-        b.spawn((
-            Pill { primary: true, ..Pill::new(Tone::Teal) },
-            Hot::default(),
-            ResearchButton(ResearchAction::Unlock),
-            UnlockButton,
-            Node {
-                height: px(44),
-                border: UiRect::all(px(1.2)),
-                border_radius: BorderRadius::MAX,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                column_gap: px(10),
-                ..default()
-            },
-            BorderColor::all(Color::NONE),
-            BackgroundColor(Color::NONE),
-        ))
-        .with_children(|p| {
-            let pill_text = |text: &str| {
-                (PillText, Text::new(text), TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::NONE), LetterSpacing::Px(3.0))
-            };
-            p.spawn((UnlockText::Words, pill_text("UNLOCK")));
-            p.spawn((RNode::UnlockMatter, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() })).with_children(|m| {
-                m.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
-                m.spawn((UnlockText::Matter, pill_text("")));
+        panel.spawn((RText::Say, label(fonts, "", 8.5, c(Tone::Teal, 1.0)), abs(Vec2::new(0.0, UNLOCK_Y - 22.0 - TIER_Y), Some(Vec2::new(PANEL_W, 14.0)))));
+        // UNLOCK: a primary pill (the kit styles it), its cost in words and the materials after a diamond.
+        panel.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Vec2::new(0.0, UNLOCK_Y - TIER_Y), Some(Vec2::new(PANEL_W, 44.0))) }).with_children(|b| {
+            b.spawn((
+                Pill { primary: true, ..Pill::new(Tone::Teal) },
+                Hot::default(),
+                ResearchButton(ResearchAction::Unlock),
+                UnlockButton,
+                Node {
+                    height: px(44),
+                    border: UiRect::all(px(1.2)),
+                    border_radius: BorderRadius::MAX,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: px(10),
+                    ..default()
+                },
+                BorderColor::all(Color::NONE),
+                BackgroundColor(Color::NONE),
+            ))
+            .with_children(|p| {
+                let pill_text = |text: &str| {
+                    (PillText, Text::new(text), TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::NONE), LetterSpacing::Px(3.0))
+                };
+                p.spawn((UnlockText::Words, pill_text("UNLOCK")));
+                p.spawn((RNode::UnlockMatter, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() })).with_children(|m| {
+                    m.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
+                    m.spawn((UnlockText::Matter, pill_text("")));
+                });
             });
         });
     });
@@ -581,7 +591,9 @@ pub(super) fn sync(
     let selected = view.selected.as_deref().and_then(|s| content.research.get(s));
     let sel_state = selected.map(|n| tree::state(content, c, &n.id));
     let chips_of: Vec<Vec<tree::Chip>> = (0..tree.cards.len()).map(|k| node_of(k).map_or(Vec::new(), |n| tree::chips(c, n))).collect();
-    let sel_chips = selected.map_or(Vec::new(), |n| tree::chips(c, n));
+    // A researched node shows what it cost, not what the stores hold now.
+    let done = matches!(sel_state, Some(CardState::Done));
+    let sel_chips = selected.map_or(Vec::new(), |n| if done { tree::cost_chips(n) } else { tree::chips(c, n) });
     let (head, icon, stats, bonuses) = selected.map_or((String::new(), UiIcon::Glyph { glyph: Glyph::Menu, color: ui.dim }, Vec::new(), Vec::new()), |n| preview(content, &style, n, granted.mind_capacity));
     let ready = tree::ready(content, c);
     let lane_families: Vec<&str> = tree.lanes.iter().map(|l| l.family.as_str()).collect();
@@ -630,7 +642,7 @@ pub(super) fn sync(
                 let tone = if chip.is_some_and(|ch| ch.payable) && !matches!(sel_state, Some(CardState::Done)) { Tone::Gold } else { Tone::Label };
                 (chip.map_or(String::new(), |ch| ch.text.clone()), tone)
             }
-            RText::InStore => (selected.map_or(String::new(), |n| in_store(content, c, n)), Tone::Dim),
+            RText::InStore => (selected.filter(|_| !done).map_or(String::new(), |n| in_store(content, c, n)), Tone::Dim),
             RText::Gives => (selected.map_or(String::new(), |n| tree::gives(content, n, granted.mind_capacity)), Tone::Number),
             RText::Requires => {
                 let words = selected.map_or(Vec::new(), |n| {
