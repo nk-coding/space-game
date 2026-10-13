@@ -33,7 +33,9 @@ use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Hot, Pill, TextField, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{
+    Hot, Pill, TextField, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill, spawn_scroll_cue, tracked,
+};
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use bevy::ui_render::prelude::MaterialNode;
@@ -42,7 +44,7 @@ use super::controls::{DesignReach, SliderDrag, spawn_inspection};
 use super::dashed::{DashedOutline, outline_color};
 use super::draft::BehaviorDraft;
 use super::edit::EditState;
-use super::graph::{Chip, GraphView, add_rule_label, slot_line_label, slots_pill};
+use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, never_reached, slot_line_label, slots_pill};
 use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
 use super::list::BehaviorList;
 use super::saving::ScreenNote;
@@ -262,7 +264,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // The divider and the right column: the inspector, ADD NODE with its search and the palette.
             root.spawn((Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
             root.spawn(Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) }).with_children(|rp| {
-                rp.spawn((InspectorBody, ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() }));
+                let body = rp.spawn((InspectorBody, ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() })).id();
                 rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
                 rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
                 rp.spawn((
@@ -288,22 +290,27 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     f.spawn((field_text(fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
                     f.spawn(label(fonts, "/", 10.0, kit.c(Tone::Dim, 1.0)));
                 });
-                rp.spawn((
-                    PaletteList,
-                    ScrollPosition::default(),
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::Wrap,
-                        align_content: AlignContent::FlexStart,
-                        column_gap: px(6),
-                        row_gap: px(7),
-                        flex_grow: 1.0,
-                        flex_basis: px(0),
-                        min_height: px(PALETTE_MIN),
-                        overflow: Overflow::scroll_y(),
-                        ..default()
-                    },
-                ));
+                let palette = rp
+                    .spawn((
+                        PaletteList,
+                        ScrollPosition::default(),
+                        Node {
+                            flex_direction: FlexDirection::Row,
+                            flex_wrap: FlexWrap::Wrap,
+                            align_content: AlignContent::FlexStart,
+                            column_gap: px(6),
+                            row_gap: px(7),
+                            flex_grow: 1.0,
+                            flex_basis: px(0),
+                            min_height: px(PALETTE_MIN),
+                            overflow: Overflow::scroll_y(),
+                            ..default()
+                        },
+                    ))
+                    .id();
+                // A cut inspector (the NOTE field) or palette says that the wheel shows more.
+                spawn_scroll_cue(rp, fonts, &style, body);
+                spawn_scroll_cue(rp, fonts, &style, palette);
             });
 
             // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it); the behavior list
@@ -491,8 +498,9 @@ fn spawn_trunk(p: &mut ChildSpawnerCommands, kit: &Kit, height: f32, line: (bool
     });
 }
 
-/// The slot line: dashed, with its label, above the first rule without a slot.
-fn spawn_slot_line(p: &mut ChildSpawnerCommands, kit: &Kit, slots: u32, span: bool) {
+/// A line above rules that don't run: dashed coral, with its label (the slot line above the first rule without a
+/// slot; the never-reached line under an `always` rule with rules below it).
+fn spawn_dead_line(p: &mut ChildSpawnerCommands, kit: &Kit, label: &str, span: bool) {
     let mut node = Node { height: px(SLOT_ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() };
     if span {
         node.grid_column = GridPlacement::span(3);
@@ -500,7 +508,7 @@ fn spawn_slot_line(p: &mut ChildSpawnerCommands, kit: &Kit, slots: u32, span: bo
     p.spawn(node).with_children(|s| {
         let coral = kit.c(Tone::Coral, 0.55);
         spawn_dashes(s, Some(26.0), coral);
-        s.spawn((tracked(kit.fonts, &slot_line_label(slots), 8.5, kit.c(Tone::Coral, 0.85), 0.3), Node { flex_shrink: 0.0, ..default() }));
+        s.spawn((tracked(kit.fonts, label, 8.5, kit.c(Tone::Coral, 0.85), 0.3), Node { flex_shrink: 0.0, ..default() }));
         spawn_dashes(s, None, coral);
     });
 }
@@ -542,10 +550,10 @@ pub(super) fn rebuild_graph(
                 r.spawn((tracked(kit.fonts, "DEFAULT", 8.0, kit.c(Tone::Dim, 1.0), 0.3), Node { margin: UiRect::left(px(12)), ..default() }));
             }
         });
-        let slot_line = g.slot_line();
+        let (slot_line, never_line) = (g.slot_line(), g.never_line());
         if slot_line == Some(0) {
             gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, padding: UiRect::left(px(ROOT_W + TRUNK_W)), ..default() })
-                .with_children(|s| spawn_slot_line(s, &kit, g.slots, false));
+                .with_children(|s| spawn_dead_line(s, &kit, &slot_line_label(g.slots), false));
         }
         // The rules: the root, the trunk and one row per rule, actions in one column.
         gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, ..default() }).with_children(|block| {
@@ -580,23 +588,27 @@ pub(super) fn rebuild_graph(
                 .with_children(|grid| {
                     let last = g.rules.len().saturating_sub(1);
                     for (i, row) in g.rules.iter().enumerate() {
-                        if slot_line == Some(i) && i > 0 {
-                            spawn_trunk(grid, &kit, SLOT_ROW_H, (true, true), None);
-                            spawn_slot_line(grid, &kit, g.slots, true);
+                        for (line, label) in [(never_line, NEVER_LINE_LABEL.to_string()), (slot_line, slot_line_label(g.slots))] {
+                            if line == Some(i) && i > 0 {
+                                spawn_trunk(grid, &kit, SLOT_ROW_H, (true, true), None);
+                                spawn_dead_line(grid, &kit, &label, true);
+                            }
                         }
-                        let k = if row.active { 1.0 } else { INACTIVE };
-                        spawn_trunk(grid, &kit, ROW_H, (i > 0, i < last), Some(row.active));
+                        // Dimmed: no slot, or never reached.
+                        let runs = row.active && row.reached;
+                        let k = if runs { 1.0 } else { INACTIVE };
+                        spawn_trunk(grid, &kit, ROW_H, (i > 0, i < last), Some(runs));
                         let cell = Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() };
                         grid.spawn(row_cell(row.id, Node { column_gap: px(8), ..cell.clone() })).with_children(|cc| {
                             if row.conds.is_empty() {
-                                spawn_always(cc, &kit, row.id, row.active);
+                                spawn_always(cc, &kit, row.id, runs);
                             }
                             for c in &row.conds {
-                                spawn_chip(cc, &kit, materials, c, row.active);
+                                spawn_chip(cc, &kit, materials, c, runs);
                             }
                             spawn_line(cc, Node { flex_grow: 1.0, min_width: px(26), height: px(LINE_W), margin: UiRect::horizontal(px(8)), ..default() }, kit.c(Tone::Label, 0.4 * k));
                         });
-                        grid.spawn(row_cell(row.id, cell.clone())).with_children(|ac| spawn_chip(ac, &kit, materials, &row.action, row.active));
+                        grid.spawn(row_cell(row.id, cell.clone())).with_children(|ac| spawn_chip(ac, &kit, materials, &row.action, runs));
                         grid.spawn(row_cell(row.id, Node { padding: UiRect::new(px(16), px(8), px(0), px(0)), overflow: Overflow::clip(), ..cell }))
                             .with_children(|nc| {
                                 if let Some(note) = &row.note {
@@ -770,6 +782,12 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
     if over > 0 {
         let s = if over == 1 { "" } else { "S" };
         return (format!("{over} RULE{s} WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS"), Tone::Gold);
+    }
+    let always: Vec<bool> = draft.program().rules.iter().map(|r| r.when.is_empty()).collect();
+    let never = never_reached(&always, slots).len();
+    if never > 0 {
+        let (s, are) = if never == 1 { ("", "IS") } else { ("S", "ARE") };
+        return (format!("{never} RULE{s} {are} NEVER REACHED  ·  AN ALWAYS RULE ABOVE MATCHES FIRST"), Tone::Gold);
     }
     match view {
         BehaviorView::Text => (format!("VALID  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }), Tone::Teal),
@@ -993,6 +1011,14 @@ mod tests {
         assert_eq!(status_line(&d, BehaviorView::Text, 12), ("VALID  ·  6 RULES".into(), Tone::Teal));
         assert_eq!(status_line(&d, BehaviorView::Graph, 4), ("2 RULES WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS".into(), Tone::Gold));
         assert_eq!(status_line(&d, BehaviorView::Graph, 0).1, Tone::Coral);
+        // An `always` rule above others (the skirmisher's fallback moved to the top).
+        let mut never = d.clone();
+        let fallback = never.editor().unwrap().rule_at(5).unwrap().id;
+        never.edit(|e| e.move_rule(fallback, 0)).unwrap().unwrap();
+        assert_eq!(
+            status_line(&never, BehaviorView::Graph, 12),
+            ("5 RULES ARE NEVER REACHED  ·  AN ALWAYS RULE ABOVE MATCHES FIRST".into(), Tone::Gold)
+        );
         d.errors = vec![TextError { line: 4, col: 6, message: "x".into() }];
         assert_eq!(status_line(&d, BehaviorView::Text, 12), ("1 ERROR  ·  FIRST ON LINE 4, COLUMN 6".into(), Tone::Coral));
         assert_eq!(status_line(&d, BehaviorView::Graph, 12).1, Tone::Gold);

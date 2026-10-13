@@ -24,6 +24,7 @@ use crate::sim_bridge::GameContent;
 use crate::style::Style;
 
 use super::draft::BehaviorDraft;
+use super::graph::never_reached;
 use super::{BehaviorUi, BehaviorView, EditorContext};
 
 /// The egui font family of the editor (Barlow, egui's own fonts as fallback for arrows and the like).
@@ -201,7 +202,7 @@ pub(super) fn editor(
     clear: Res<ClearColor>,
     mut clipboard: ResMut<Clipboard>,
     mut font_ready: Local<bool>,
-    mut rule_lines: Local<(String, Vec<u32>)>,
+    mut rule_lines: Local<(String, Vec<u32>, Vec<bool>)>,
     mut was_open: Local<bool>,
     mut seen: Local<Option<String>>,
 ) -> Result {
@@ -234,12 +235,16 @@ pub(super) fn editor(
     let nodes = &content.0.behavior_nodes;
     let ui_c = &style.ui;
 
-    // Which lines hold rules (to mark those without a rule slot), from the last valid text.
+    // Which lines hold rules and which rules are `always` (to mark those without a rule slot and those an `always`
+    // rule above never lets run), from the last valid text.
     if rule_lines.0 != draft.text {
-        rule_lines.1 = Program::parse_with_lines(&draft.text).map(|(_, m)| m.rules).unwrap_or_default();
+        (rule_lines.1, rule_lines.2) = Program::parse_with_lines(&draft.text)
+            .map(|(p, m)| (m.rules, p.rules.iter().map(|r| r.when.is_empty()).collect()))
+            .unwrap_or_default();
         rule_lines.0.clone_from(&draft.text);
     }
     let no_slot: Vec<u32> = rule_lines.1.iter().skip(context.slots as usize).copied().collect();
+    let never: Vec<u32> = rule_lines.1.get(never_reached(&rule_lines.2, context.slots)).map_or_else(Vec::new, <[u32]>::to_vec);
 
     let id = egui::Id::new(EDITOR_ID);
     forget_outside_history(ctx, id, &mut seen, &draft.text);
@@ -330,7 +335,9 @@ pub(super) fn editor(
                 let (msg, color) = if !msgs.is_empty() {
                     (msgs.join("   ·   "), coral)
                 } else if no_slot.contains(&line) {
-                    ("no rule slot: this rule does not run".to_string(), egui_color(ui_c.coral, 0.6))
+                    ("no rule slot: this rule does not run".to_string(), egui_color(ui_c.label, 1.0))
+                } else if never.contains(&line) {
+                    ("never reached: an always rule above matches first".to_string(), egui_color(ui_c.label, 1.0))
                 } else {
                     continue;
                 };

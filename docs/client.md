@@ -468,17 +468,20 @@ dot per rule, each rule as violet condition chips (content name, values dim, the
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
 rule's note dim after it; Rhai conditions dashed with a gold RHAI tag; `always` as a plain chip; the dashed coral
 slot line above the first rule without a slot (`6 RULE SLOTS · THE RULES BELOW DO NOT RUN`) and those rules
-dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); the dashed `+ RULE · N SLOTS LEFT`
+dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); likewise a never-reached line under
+an `always` rule that has rules with a slot below it (`ALWAYS MATCHES · THE RULES BELOW ARE NEVER REACHED`: the
+first match decides, and `always` always matches) and those rules dimmed (`graph::never_reached`, 13 Oct 2026); the dashed `+ RULE · N SLOTS LEFT`
 pill; a dot grid behind (immediate-mode FX dots). The selected rule's row is lit faintly, the selected chip glows.
 Right the inspector (below), ADD NODE (its line says where a pick goes: `ADD NODE · TO RULE 3`, `REPLACE HULL ·
 PICK A CONDITION`) with its search and the palette (the content vocabulary: conditions violet, actions teal, Rhai
 gold, target selectors white). Bottom the DRYDOCK pill, undo / redo, the status line (a message from saving, opening or testing until the draft
-changes; else text errors, rules without a slot, or how rules run; a refusal in coral after it for 3 s, like the
+changes; else text errors, rules without a slot, rules never reached, or how rules run; a refusal in coral after it for 3 s, like the
 drydock's info line), BEHAVIORS and SAVE (as in the drydock). Larger windows
 scale the screen like the drydock. The phone layout and touch come later.
 
 The inspector shows the selection with its kicker (`ACTION · MANEUVER`), its name in its role's colour and its
-summary, then its controls (a tall inspector scrolls with the wheel; the palette under it keeps about three rows).
+summary, then its controls (a tall inspector scrolls with the wheel; the palette under it keeps about three rows;
+while either has more below, a `MORE BELOW · WHEEL` cue fades its bottom edge).
 Screenshots: `docs/results/behavior-editing-condition.png` (a condition with `not`, its comparison and its
 threshold), `docs/results/behavior-editing-rule.png` (a rule added with `+ RULE` and a palette condition, its
 action selected).
@@ -529,7 +532,9 @@ action selected).
   behaviors (most recently saved first; rules, when saved or the first error; `THIS DESIGN`, `IN THE EDITOR`,
   `UNSAVED` tags) and the templates; OPEN, USE FOR THIS DESIGN, DUPLICATE, RENAME, DELETE (with a confirm) on the
   picked row, NEW BEHAVIOR. The TEXT view's editor (egui) would draw over the layer, so the screen shows the graph
-  while the list is open and goes back to the text when it closes. A save while it is open (Ctrl+S, SAVE) shows in
+  while the list is open and goes back to the view it had when it closes; only another behavior with errors,
+  opened from the list, shows the TEXT view (the same draft with errors stays in GRAPH: switching put the caret
+  into the text, and the next T was typed, 13 Oct 2026). A save while it is open (Ctrl+S, SAVE) shows in
   its rows; the wheel over it scrolls only its lists; leaving the screen hides it at once.
 - **Context** (`mod.rs`): `EditorContext { design_name, slots }`, set when the screen opens; `BehaviorUi { view,
   selected, test_mode, search }`, the UI state (`BehaviorView::{Graph, Text}`, `TestMode::{Watch, FlyAlongside}`,
@@ -581,7 +586,8 @@ action selected).
   the graph area's node, styled to the look: Barlow (added to egui as the `barlow` family, egui's fonts as fallback),
   no frame, the names coloured like the graph (`highlight`), dim line numbers in a gutter, each error in coral
   after its line (wrapped to the room there, or over the line's end on the backdrop's colour) with the column
-  underlined, `no rule slot` after rules beyond the slots. egui's shader linearises its colours but the main pass
+  underlined, `no rule slot` after rules beyond the slots and `never reached` after rules below an `always` rule
+  (both in the label grey). egui's shader linearises its colours but the main pass
   composites in sRGB, so `egui_color` pre-encodes them (they match bevy_ui's). Switching to TEXT puts the caret in.
   While the editor has the keyboard, the game's `Clipboard` offers the selection (Ctrl+C) and accepts pastes
   (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. egui keeps the
