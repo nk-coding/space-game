@@ -523,7 +523,7 @@ fn clearing_a_voyage_opens_the_next() {
 #[test]
 fn voyage_seeds_are_fixed() {
     // Values computed independently (FNV-1a 64 and SplitMix64 by their reference definitions); they are part of
-    // the save format (GENERATOR 1) and must never change.
+    // the save format (the same in GENERATOR 1 and 2) and must never change.
     let c = content();
     let mut career = new_game(&c);
     assert_eq!(career.voyage_seed(FIRST), 9_993_844_787_240_758_234);
@@ -721,7 +721,7 @@ fn a_hand_written_save_reads() {
     packs: [("base", "0.1.0")],
     start: "rim_awakening",
     seed: 4207,
-    generator: 1,
+    generator: 2,
     researched: ["automaton_cannon", "composite_plating"],
     data: {"kinetic": 4, "hull": 11.5, "logic": 2},
     materials: {"programmable_matter": 1},
@@ -751,6 +751,29 @@ fn a_hand_written_save_reads() {
     assert!(u.has_part("automaton_cannon") && u.has_material("composite"));
 }
 
+/// ADR-0024: a save of an older voyage roller is migrated (nothing it stores refers to a rolled voyage, so its next
+/// launches roll with this build's version, with a note); a save of a newer build is refused, never reset.
+#[test]
+fn old_rollers_are_migrated_and_newer_ones_refused() {
+    let c = content();
+    let mut old = Career::from_ron(r#"(start: "rim_awakening", seed: 4207, generator: 1)"#).unwrap();
+    assert_eq!(old.generator(), 1);
+    assert_eq!(old.voyage_seed(FIRST), 9_993_844_787_240_758_234, "seeds are the same");
+    let notes = old.reconcile(&c);
+    assert_eq!(notes.len(), 1, "{}", show(&notes));
+    assert!(note(&notes, "generator").message.contains("version 1"));
+    assert_eq!(old.generator(), GENERATOR);
+    assert!(old.reconcile(&c).is_empty());
+    let newer = format!(r#"(start: "rim_awakening", seed: 4207, generator: {})"#, GENERATOR + 1);
+    let p = Career::from_ron(&newer).unwrap_err();
+    assert_eq!(p.len(), 1);
+    assert_eq!(
+        (p[0].severity, p[0].field.as_deref()),
+        (Severity::Error, Some("generator"))
+    );
+    assert!(p[0].message.contains("newer build"), "{}", show(&p));
+}
+
 #[test]
 fn a_broken_save_is_an_error_with_its_place() {
     let p = Career::from_ron(r#"(start: "rim_awakening", seed: 1, generator: 1, credits: 5)"#)
@@ -773,7 +796,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
     packs: [("base", "0.1.0"), ("old_mod", "2.0.0")],
     start: "drone_dawn",
     seed: 9,
-    generator: 7,
+    generator: 0,
     researched: ["automaton_cannon", "warp_theory", "automaton_cannon"],
     data: {"kinetic": 4, "lasers": 2, "hull": NaN, "power": -3, "energy": 1e12, "thermal": 0, "shields": inf},
     materials: {"programmable_matter": 5000000, "unobtainium": 2, "steel": 0},
@@ -791,7 +814,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
         (Some(Kind::Start), Some("drone_dawn"))
     );
     assert!(start.message.contains("`rim_awakening`"), "{start}");
-    assert!(note(&notes, "generator").message.contains('7'));
+    assert!(note(&notes, "generator").message.contains("version 0"));
     assert_eq!(
         note(&notes, "researched[1]").id.as_deref(),
         Some("warp_theory")

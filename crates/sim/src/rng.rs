@@ -109,8 +109,9 @@ pub enum Stream {
     Ai = 3,
     /// Test scenarios and scripted hazards (determinism check). Never used by game systems.
     Scenario = 4,
-    /// Encounters: site placement and counts (the voyage director), and which parts of a wreck spawned as a
-    /// wreck are already destroyed (`Sim::spawn_wreck`).
+    /// Encounter rolls made while a voyage runs (none yet). The voyage plan is rolled before the sim on a
+    /// generator of its own (`VoyagePlan::roll`), and a wreck's missing parts come from its own seed
+    /// (`Sim::spawn_wreck`), so neither ever shares draws with this stream.
     Encounter = 5,
 }
 

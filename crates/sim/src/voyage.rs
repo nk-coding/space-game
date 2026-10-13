@@ -1,11 +1,11 @@
 //! The voyage director (GDR-0062, ADR-0033; `docs/sim.md` "Voyages"): one voyage is one small cluster (one `Sim`,
 //! ADR-0022) with seeded sites.
 //!
-//! * **Rolling** ([`VoyagePlan::roll`]): from the content's voyage and a seed, on a generator of
-//!   `Stream::Encounter` (seeded like the sim's own stream for that seed): where each site lies (inside the radius,
+//! * **Rolling** ([`VoyagePlan::roll`]): from the content's voyage and a seed, on a generator of its own (salted
+//!   with [`PLAN_STREAM`], so it never shares draws with the sim's streams for the same seed): where each site lies (inside the radius,
 //!   no two sites or a site and the entry closer than the spacing's min, each within its max of an earlier one or
 //!   the entry; the goal last, the farthest from the entry of a few good spots), how many ships and wrecks each
-//!   holds, where they lie around it, and the compiled designs. The fleet enters at the cluster's edge
+//!   holds, where they lie around it, each wreck's damage seed, and the compiled designs. The fleet enters at the cluster's edge
 //!   ([`VoyagePlan::entry`]).
 //! * **Lazy spawning**: [`Sim::start_voyage`] hands the plan to the sim; at the end of every step a site's ships
 //!   (holding where they spawned, `Maneuver::Hold`) and wrecks (`Sim::spawn_wreck`) spawn once a vessel of the
@@ -35,7 +35,7 @@ use crate::hash::{StateHash, StateHasher};
 use crate::ids::ShipId;
 use crate::maneuver::Maneuver;
 use crate::math::{Vec2, cos, sin, sqrt};
-use crate::rng::{Pcg32, RngStreams, Stream};
+use crate::rng::{Pcg32, splitmix64};
 use crate::ship::{Body, Ship};
 use crate::vessel::{Owner, VesselState, friendly};
 use crate::world::{ShipCommand, Sim};
@@ -78,6 +78,11 @@ const PLACE_TRIES: u32 = 64;
 /// Good spots compared for the goal (the farthest from the entry wins).
 const GOAL_CHOICES: u32 = 8;
 
+/// The salt and PCG sequence of the plan's generator: `Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)),
+/// PLAN_STREAM)`, derived like an RNG stream (`rng.rs`) with an id no stream has ("voyage" in ASCII). Part of the
+/// save format (`data::career::GENERATOR` 2): never change it.
+pub const PLAN_STREAM: u64 = 0x766f_7961_6765;
+
 /// One ship or wreck a site spawns.
 #[derive(Clone, Debug)]
 pub struct Spawn {
@@ -86,6 +91,9 @@ pub struct Spawn {
     pub body: Body,
     /// Wrecks: the share of its parts already gone (0 for ships).
     pub damage: f32,
+    /// Wrecks: the seed that picks which parts are gone (`Sim::spawn_wreck`; 0 for ships). Rolled with the plan,
+    /// so a wreck does not depend on when or in which order the sites spawn.
+    pub seed: u64,
 }
 
 /// One site of a rolled voyage.
@@ -121,8 +129,7 @@ impl VoyagePlan {
     /// designs. The same content, voyage and seed give the same plan on every platform. `Err` for content that
     /// does not validate (an unknown encounter or ship).
     pub fn roll(content: &Content, voyage: &data::Voyage, seed: u64) -> Result<VoyagePlan, String> {
-        let mut streams = RngStreams::new(seed);
-        let rng = streams.get(Stream::Encounter);
+        let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM);
         let radius = voyage.radius;
         let entry = Vec2::new(0.0, -radius);
 
@@ -182,17 +189,19 @@ impl VoyagePlan {
                 ships.iter().chain(&wrecks).map(|(d, _)| hull_radius(d)),
             );
             let mut bodies = bodies.into_iter();
-            let mut spawns = |list: Vec<(Arc<ShipDesign>, f32)>| -> Vec<Spawn> {
+            let mut spawns = |list: Vec<(Arc<ShipDesign>, f32)>, rng: Option<&mut Pcg32>| -> Vec<Spawn> {
+                let mut rng = rng;
                 list.into_iter()
                     .map(|(design, damage)| Spawn {
                         design,
                         body: bodies.next().unwrap(),
                         damage,
+                        seed: rng.as_deref_mut().map_or(0, |r| r.next_u64()),
                     })
                     .collect()
             };
-            let ships = spawns(ships);
-            let wrecks = spawns(wrecks);
+            let ships = spawns(ships, None);
+            let wrecks = spawns(wrecks, Some(&mut *rng));
             sites.push(SitePlan {
                 encounter: e.id.clone(),
                 goal,
@@ -427,6 +436,7 @@ impl StateHash for Spawn {
         h.str(&self.design.id);
         self.body.hash_state(h);
         h.f32(self.damage);
+        h.u64(self.seed);
     }
 }
 
@@ -651,7 +661,7 @@ impl Sim {
             site_of.insert(id, k as u32);
         }
         for w in &site.plan.wrecks {
-            let id = self.spawn_wreck(Arc::clone(&w.design), *enemy, w.body, w.damage);
+            let id = self.spawn_wreck(Arc::clone(&w.design), *enemy, w.body, w.damage, w.seed);
             site.wrecks.push(id);
             site_of.insert(id, k as u32);
         }

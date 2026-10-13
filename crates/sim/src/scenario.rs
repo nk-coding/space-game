@@ -585,7 +585,8 @@ fn salvage_scenario(content: &Content, seed: u64) -> Result<Scenario, String> {
             linvel: Vec2::new(-sin(a) * 0.5, cos(a) * 0.5),
             angvel: 0.05,
         };
-        sim.spawn_wreck(Arc::clone(d), scenario_owner(d), body, damage);
+        let seed = sim.rng(Stream::Scenario).next_u64();
+        sim.spawn_wreck(Arc::clone(d), scenario_owner(d), body, damage, seed);
     }
     let holds: Vec<&Arc<ShipDesign>> = designs
         .iter()

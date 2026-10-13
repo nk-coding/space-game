@@ -31,13 +31,24 @@ use crate::model::{Blueprint, Frame, ResearchNode, Unlock};
 use crate::problem::Problem;
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
-/// document header (ADR-0031). Raise it when the meaning of a field changes, and migrate older formats when
-/// reading; new fields with a default need no new format.
+/// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
+/// when reading: an older build refuses unknown fields, so only a new format lets its storage report the save as
+/// newer (to keep it aside) instead of damaged.
 pub const FORMAT: u32 = 1;
 
-/// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible). It covers
-/// [`Career::voyage_seed`] too: changing how voyage seeds are made needs a new version.
-pub const GENERATOR: u32 = 1;
+/// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible or be
+/// migrated). It covers [`Career::voyage_seed`] and the sim's `VoyagePlan::roll` (the draw order, the plan's own
+/// generator, the wreck seeds): changing either needs a new version.
+///
+/// * 1 (13 Oct 2026): the plan drew on a generator seeded like the sim's encounter stream, and wrecks rolled their
+///   missing parts on that stream when they spawned.
+/// * 2 (13 Oct 2026, review): the plan's generator is salted (`sim::voyage::PLAN_STREAM`) and each wreck carries a
+///   seed of its own in the plan.
+///
+/// An older save is migrated by [`Career::reconcile`]: nothing it stores refers to a rolled voyage (no mid-voyage
+/// saves, GDR-0062; a launch rolls anew), so it simply rolls its next launches with this version. A save from a
+/// newer build is refused by [`Career::from_ron`].
+pub const GENERATOR: u32 = 2;
 
 /// Most research data of one family a store holds (a sanity bound, placeholder): a hundred times the largest cost
 /// content may ask for ([`crate::validate::MAX_RESEARCH_DATA`]).
@@ -356,10 +367,24 @@ impl Career {
     /// be left out, unknown fields are errors. Only the syntax and the schema are checked; call
     /// [`Career::reconcile`] next. `Err` holds the parse error with its line and column (one problem, in a list
     /// like [`crate::parse_blueprint`]'s).
+    ///
+    /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
+    /// roll its voyages differently. The game keeps such a save aside and never writes over it.
     pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
-        ron_options()
+        let career: Career = ron_options()
             .from_str(text)
-            .map_err(|e| vec![parse_error(&e)])
+            .map_err(|e| vec![parse_error(&e)])?;
+        if career.generator > GENERATOR {
+            return Err(vec![
+                Problem::error(format!(
+                    "the save was written by a newer build (voyage roller version {}, this build knows up to \
+                     {GENERATOR}): keep it aside and open it with that build",
+                    career.generator
+                ))
+                .field("generator"),
+            ]);
+        }
+        Ok(career)
     }
 
     /// The career as RON: deterministic, four-space indent, ending in a newline (like
@@ -414,10 +439,20 @@ impl Career {
             notes.push(note.entry(Kind::Start, &old).field("start"));
         }
 
-        if !(1..=GENERATOR).contains(&self.generator) {
+        if self.generator == 0 {
             notes.push(
                 Problem::warning(format!(
-                    "unknown voyage roller version {}: voyages roll with version {GENERATOR}",
+                    "unknown voyage roller version 0: voyages roll with version {GENERATOR}"
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
+        } else if self.generator < GENERATOR {
+            // No stored fact refers to a rolled voyage, so the migration loses nothing (see `GENERATOR`).
+            notes.push(
+                Problem::warning(format!(
+                    "voyages were rolled with version {} of the roller: from now on they roll with version \
+                     {GENERATOR}",
                     self.generator
                 ))
                 .field("generator"),

@@ -22,7 +22,7 @@
 //!   centroid with its velocity: a point the sim moves every tick (no body, no collisions) until it is collected
 //!   or its `SalvageTuning::fragment_ticks` are over.
 //! * **Wrecks spawned as wrecks** ([`Sim::spawn_wreck`]): burned out (no vessel ever forms from their cores),
-//!   a share of their parts already gone (rolled on `Stream::Encounter`).
+//!   a share of their parts already gone (rolled from the wreck's own seed).
 //!
 //! Everything here is in the state hash. Cost: one bounding-circle test per salvage piece and loose item per
 //! collecting vessel with free hold every `interval` ticks; for those that pass, the convex colliders are compared
@@ -39,10 +39,14 @@ use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
 use crate::mass::to_piece;
 use crate::math::{Rot, Vec2, sqrt};
-use crate::rng::Stream;
+use crate::rng::{Pcg32, Stream, splitmix64};
 use crate::ship::{Body, Piece, Ship, inherited_velocity};
 use crate::vessel::{Owner, VesselState};
 use crate::world::Sim;
+
+/// The PCG sequence of a wreck's own generator ([`Sim::spawn_wreck`]: seeded with `splitmix64(seed)`). Part of
+/// the replay format, like the stream ids.
+const WRECK_SEQUENCE: u64 = Stream::Encounter as u64;
 
 /// Something a hold carries. Ordered (cargo lists and ties follow this order).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -568,20 +572,22 @@ impl Sim {
     }
 
     /// Spawns a ship as a wreck (a derelict): burned out, so no vessel ever forms from its logic cores, with
-    /// `damage` (0..1) of its parts already gone, chosen on `Stream::Encounter` and removed without
-    /// destruction (no `PartDestroyed`, no fragments); then breakage splits it into pieces as usual (`Split` /
-    /// `PieceChanged` / `PieceDestroyed` follow `ShipSpawned`). `owner` is kept for later salvage rights
-    /// (`Ship::owner`); the wreck counts for nobody (`Ship::team` is `None`). Used by the voyage director.
+    /// `damage` (0..1) of its parts already gone, chosen from `seed` alone (a generator of its own, so the same
+    /// seed gives the same wreck whenever and wherever it spawns; the voyage plan rolls one per wreck) and removed
+    /// without destruction (no `PartDestroyed`, no fragments); then breakage splits it into pieces as usual
+    /// (`Split` / `PieceChanged` / `PieceDestroyed` follow `ShipSpawned`); only the wreck's breakage is resolved.
+    /// `owner` is kept for later salvage rights (`Ship::owner`); the wreck counts for nobody (`Ship::team` is
+    /// `None`). NaN or infinite numbers in `body` count as 0. Used by the voyage director.
     pub fn spawn_wreck(
         &mut self,
         design: Arc<ShipDesign>,
         owner: Owner,
         body: Body,
         damage: f32,
+        seed: u64,
     ) -> ShipId {
-        let id = self.ids.ship();
-        let config = *self.config();
-        let mut ship = Ship::new(id, design, owner, body, &mut self.ids, &config);
+        let k = self.new_ship(design, owner, body);
+        let ship = &mut self.ships[k];
         ship.burned_out = true;
         ship.control = None;
         for p in &mut ship.pieces {
@@ -591,19 +597,19 @@ impl Sim {
         let n = ship.parts.len();
         // A NaN share casts to 0 parts.
         let count = ((damage.clamp(0.0, 1.0) * n as f32) as usize).min(n);
-        let k = self.add_ship(ship);
         // A partial Fisher–Yates shuffle picks `count` distinct parts.
         let mut order: Vec<u32> = (0..n as u32).collect();
-        let rng = self.rng(Stream::Encounter);
+        let mut rng = Pcg32::new(splitmix64(seed), WRECK_SEQUENCE);
         for i in 0..count {
             let j = i + rng.below((n - i) as u32) as usize;
             order.swap(i, j);
         }
         for &p in &order[..count] {
-            self.ships[k].remove_part(p as usize);
+            ship.remove_part(p as usize);
         }
-        self.resolve_breakage();
-        id
+        self.resolve_ship(k);
+        self.update_minds();
+        self.ships[k].id
     }
 
     /// Fragments for ship `k`'s parts that leave one (`PartSpec::fragment`) destroyed by damage since its last

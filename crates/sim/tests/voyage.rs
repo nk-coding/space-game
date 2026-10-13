@@ -552,3 +552,48 @@ fn a_shot_wakes_a_sleeping_site() {
         Some(sim::VesselState::Running)
     );
 }
+
+/// Wrecks are a pure function of the plan (13 Oct 2026 review): each carries its own damage seed, so the same plan
+/// gives the same wrecks whatever order the sites spawn in, and the plan never shares draws with the sim's
+/// encounter stream for the same seed.
+#[test]
+fn wrecks_do_not_depend_on_the_order_the_sites_spawn_in() {
+    let c = content();
+    let p = plan(&c, "halvex_drift", 9);
+    let seeds: Vec<u64> = p.sites.iter().flat_map(|s| s.wrecks.iter().map(|w| w.seed)).collect();
+    assert!(seeds.len() >= 2 && seeds.iter().all(|&s| s != 0));
+    assert!(p.sites.iter().all(|s| s.ships.iter().all(|x| x.seed == 0)));
+    // The first draws of the sim's encounter stream are not the plan's wreck seeds.
+    let mut sim = Sim::new(9);
+    let first = sim.rng(sim::Stream::Encounter).next_u64();
+    assert!(!seeds.contains(&first));
+
+    let wrecks_by_site = |order: &[usize]| -> Vec<Vec<Vec<bool>>> {
+        let (mut w, me) = voyage_world(&c, "halvex_drift", 9);
+        let n = w.voyage().unwrap().sites().len();
+        let mut out = vec![Vec::new(); n];
+        for &k in order {
+            let pos = w.voyage().unwrap().sites()[k].pos();
+            // Other sites within the spawn radius spawn too: record each site the step it spawned.
+            put(&mut w, me, pos + Vec2::new(0.0, -500.0));
+            step(&mut w);
+            for (j, s) in w.voyage().unwrap().sites().iter().enumerate() {
+                if out[j].is_empty() && s.state() != SiteState::Unspawned {
+                    out[j] = s
+                        .wrecks()
+                        .iter()
+                        .map(|&id| w.ship(id).unwrap().parts().iter().map(|p| p.alive).collect())
+                        .collect();
+                    out[j].push(Vec::new()); // marks "spawned" even without wrecks
+                }
+            }
+        }
+        out
+    };
+    let n = p.sites.len();
+    let forward: Vec<usize> = (0..n).collect();
+    let backward: Vec<usize> = (0..n).rev().collect();
+    let (a, b) = (wrecks_by_site(&forward), wrecks_by_site(&backward));
+    assert!(a.iter().all(|s| !s.is_empty()), "every site spawned");
+    assert_eq!(a, b);
+}

@@ -92,6 +92,7 @@ fn the_hold_is_the_alive_cargo_parts_of_the_controlling_piece() {
         Owner::PLAYER,
         Body::at(Vec2::new(-80.0, 0.0), 0.0),
         0.0,
+        0,
     );
     assert_eq!(w.ship(wreck).unwrap().cargo_capacity(), 0);
 }
@@ -116,6 +117,7 @@ fn collecting_takes_the_best_part_first_with_ties_by_part_index() {
         Owner(1),
         Body::at(Vec2::new(4.0, 0.0), 0.0),
         0.0,
+        0,
     );
     let got = run(&mut w, 60);
     let parts: Vec<u32> = got
@@ -162,6 +164,7 @@ fn a_full_hold_takes_nothing_and_the_best_that_fits_goes_first() {
         Owner(1),
         Body::at(Vec2::new(4.5, 0.0), 0.0),
         0.0,
+        0,
     );
     let got = run(&mut w, 120);
     let items: Vec<(String, u32)> = got.iter().map(|g| (g.2.part().to_string(), g.3)).collect();
@@ -188,7 +191,7 @@ fn only_running_vessels_of_collecting_owners_collect() {
         config.salvage.collects[1] = collects;
         let mut w = Sim::with_config(1, config);
         w.spawn_ship(collector(2), Owner(1), Body::default());
-        w.spawn_wreck(design(&c, "automaton_raider"), Owner(1), wreck_at, 0.0);
+        w.spawn_wreck(design(&c, "automaton_raider"), Owner(1), wreck_at, 0.0, 0);
         assert_eq!(!run(&mut w, 30).is_empty(), collects);
     }
     // A dormant vessel (no mind capacity left) takes nothing.
@@ -196,7 +199,7 @@ fn only_running_vessels_of_collecting_owners_collect() {
     config.mind_capacity[0] = 0;
     let mut w = Sim::with_config(1, config);
     let me = w.spawn_ship(collector(2), Owner::PLAYER, Body::default());
-    w.spawn_wreck(design(&c, "automaton_raider"), Owner(1), wreck_at, 0.0);
+    w.spawn_wreck(design(&c, "automaton_raider"), Owner(1), wreck_at, 0.0, 0);
     assert!(w.ship(me).unwrap().is_dormant());
     assert!(run(&mut w, 30).is_empty());
     // Out of reach (5 m from the hull) takes nothing either.
@@ -207,6 +210,7 @@ fn only_running_vessels_of_collecting_owners_collect() {
         Owner(1),
         Body::at(Vec2::new(9.0, 0.0), 0.0),
         0.0,
+        0,
     );
     assert!(run(&mut w, 30).is_empty());
 }
@@ -228,6 +232,7 @@ fn a_lost_ship_keeps_its_cargo_and_its_wreck_gives_fragments_and_cargo_first() {
         Owner(1),
         Body::at(Vec2::new(3.5, 0.0), 0.0),
         0.0,
+        0,
     );
     assert_eq!(run(&mut w, 20).len(), 2);
     let held = w.ship(a).unwrap().cargo().clone();
@@ -339,9 +344,10 @@ fn spawned_wrecks_are_burned_out_and_pre_broken() {
     let c = common::content();
     let mid = design(&c, "sample_mid");
     let n = mid.parts.len();
+    // The wreck's own seed decides, not the world's: the world seed is the same everywhere below.
     let spawn = |seed: u64, damage: f32| {
-        let mut w = Sim::new(seed);
-        let id = w.spawn_wreck(Arc::clone(&mid), Owner(1), Body::default(), damage);
+        let mut w = Sim::new(1);
+        let id = w.spawn_wreck(Arc::clone(&mid), Owner(1), Body::default(), damage, seed);
         (w, id)
     };
     let (w, id) = spawn(3, 0.4);
@@ -373,9 +379,41 @@ fn spawned_wrecks_are_burned_out_and_pre_broken() {
         "parts removed at spawn leave no fragments"
     );
     assert!(s.pieces().iter().all(|p| p.salvage() && !p.active));
-    // Rolled on the encounter stream: the same seed breaks the same parts.
+    // The same seed breaks the same parts, also after other wrecks spawned first (no shared stream), and the
+    // sim's encounter stream is left alone.
     assert_eq!(alive(&spawn(3, 0.4).0), alive(&w));
     assert_ne!(alive(&spawn(4, 0.4).0), alive(&w));
+    let mut later = Sim::new(1);
+    for s in [7, 8] {
+        later.spawn_wreck(Arc::clone(&mid), Owner(1), Body::default(), 0.4, s);
+    }
+    let again = later.spawn_wreck(Arc::clone(&mid), Owner(1), Body::default(), 0.4, 3);
+    let alive_again: Vec<bool> = later.ship(again).unwrap().parts().iter().map(|p| p.alive).collect();
+    assert_eq!(alive_again, alive(&w));
+    assert_eq!(
+        later.rng(sim::Stream::Encounter).clone(),
+        Sim::new(1).rng(sim::Stream::Encounter).clone()
+    );
+    // A NaN or infinite pose counts as 0 (13 Oct 2026 review), and pending damage on another ship stays pending.
+    let mut w2 = Sim::new(1);
+    let other = w2.spawn_ship(design(&c, "automaton_raider"), Owner(1), Body::at(Vec2::new(60.0, 0.0), 0.0));
+    w2.apply_damage(other, DamageTarget::Part(0), 1000.0);
+    let nan = Body {
+        pos: Vec2::new(f32::NAN, f32::INFINITY),
+        angle: f32::NAN,
+        linvel: Vec2::new(f32::INFINITY, 0.0),
+        angvel: f32::NAN,
+    };
+    let bad = w2.spawn_wreck(Arc::clone(&mid), Owner(1), nan, 0.4, 3);
+    let b = w2.ship(bad).unwrap().pieces()[0].body;
+    assert!(b.pos.is_finite() && b.angle.is_finite() && b.linvel.is_finite() && b.angvel.is_finite());
+    assert!(
+        !w2.events().iter().any(|e| matches!(e, SimEvent::PartDestroyed { ship, .. } if *ship == other)),
+        "the raider's damage resolves in the next step, not in the spawn"
+    );
+    w2.step(&TickInputs::default());
+    w2.state_hash();
+    assert!(w2.events().iter().any(|e| matches!(e, SimEvent::PartDestroyed { ship, .. } if *ship == other)));
     // Intact and fully broken wrecks.
     let (w, id) = spawn(3, 0.0);
     assert_eq!(w.ship(id).unwrap().pieces().len(), 1);
@@ -470,7 +508,7 @@ fn salvage_blocks_decide_what_is_collected_and_what_leaves_fragments() {
     );
     let spec = |i: usize| (wreck_design.parts[i].salvageable, wreck_design.parts[i].fragment);
     assert_eq!([spec(0), spec(1), spec(2)], [(false, false), (false, false), (true, false)]);
-    let wreck = w.spawn_wreck(wreck_design, Owner(1), Body::at(Vec2::new(4.0, 0.0), 0.0), 0.0);
+    let wreck = w.spawn_wreck(wreck_design, Owner(1), Body::at(Vec2::new(4.0, 0.0), 0.0), 0.0, 0);
     let got = run(&mut w, 60);
     assert_eq!(got.len(), 1, "{got:?}");
     assert_eq!(got[0].2, part("gyro"));
@@ -488,7 +526,7 @@ fn salvage_blocks_decide_what_is_collected_and_what_leaves_fragments() {
         ],
     );
     let mut w = Sim::new(1);
-    let s = w.spawn_wreck(d, Owner(1), Body::at(Vec2::new(40.0, 0.0), 0.0), 0.0);
+    let s = w.spawn_wreck(d, Owner(1), Body::at(Vec2::new(40.0, 0.0), 0.0), 0.0, 0);
     for p in 0..3 {
         w.apply_damage(s, DamageTarget::Part(p), 1000.0);
     }
@@ -531,7 +569,7 @@ fn collecting_needs_a_slow_pass() {
             ..Body::at(Vec2::new(x, 0.0), 0.0)
         };
         w.spawn_ship(collector(2), Owner::PLAYER, body(0.0, mine));
-        w.spawn_wreck(wreck(), Owner(1), body(3.5, theirs), 0.0);
+        w.spawn_wreck(wreck(), Owner(1), body(3.5, theirs), 0.0, 0);
         let got = run(&mut w, 1);
         assert_eq!(!got.is_empty(), taken, "{mine} vs {theirs} m/s: {got:?}");
     }

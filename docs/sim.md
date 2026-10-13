@@ -145,7 +145,8 @@ The rules (also in `src/math.rs`, enforced where possible):
 - Fixed step; no wall-clock anywhere. `Sim::time_seconds()` is display-only.
 - **RNG**: in-crate PCG32 (checked against the reference vector of pcg-random.org), so a dependency update can
   never change the numbers. One stream per system (`Stream::Damage`, `Weapons`, `Debris`, `Ai`, `Scenario`,
-  `Encounter`: wreck damage at spawn and the voyage director's rolls),
+  `Encounter`: reserved for encounter rolls during a voyage, unused so far; the voyage plan and wreck damage use
+  generators of their own, [Voyages](#rolling-a-plan) and [Salvage](#wrecks-spawned-as-wrecks)),
   seeded with `splitmix64(world_seed ^ splitmix64(stream_id))` and using `stream_id` as the PCG sequence.
   Stream ids are part of the save/replay format: append only, never renumber. (Behaviors use no
   randomness.)
@@ -1653,10 +1654,13 @@ smaller parts go first; a full hold takes nothing; only salvageable parts count 
 
 ### Wrecks spawned as wrecks
 
-`Sim::spawn_wreck(design, owner, body, damage)`: the ship spawns **burned out** (`Ship::is_burned_out`: no
+`Sim::spawn_wreck(design, owner, body, damage, seed)`: the ship spawns **burned out** (`Ship::is_burned_out`: no
 controlling piece, every piece salvage, and `form_vessels` skips it, so its cores never form a vessel and can be
-stripped intact), then `floor(damage × parts)` distinct parts (a partial Fisher–Yates shuffle on
-`Stream::Encounter`) are removed without destruction, and breakage splits it into pieces as usual. Events:
+stripped intact), then `floor(damage × parts)` distinct parts (a partial Fisher–Yates shuffle on a generator of its
+own, `Pcg32::new(splitmix64(seed), 5)`, so the same seed gives the same wreck whenever it spawns and no stream of the
+sim is drawn) are removed without destruction, and only the wreck's breakage is resolved (damage pending on other
+ships stays pending until the next step): it splits into pieces as usual. A NaN or infinite `body` counts as 0, as
+in `spawn_ship`. Events:
 `ShipSpawned`, then `Split` / `PieceChanged` / `PieceDestroyed`; no `PartDestroyed`, no `VesselFormed`, no fragments.
 A derelict's core shot later leaves a fragment like any other. `owner` is kept (`Ship::owner`) for salvage rights
 later; the wreck counts for nobody. Used by the salvage scenario and the voyage director ([Voyages](#voyages)).
@@ -1675,8 +1679,7 @@ later; the wreck counts for nobody. Used by the salvage scenario and the voyage 
 
 Per ship the burned-out flag and the cargo (units in use; per item its kind, its content ids as bytes, count, units
 and value bits); after the projectiles the loose items (the id counter, then per item id, item, units, value,
-position, previous position, velocity and expiry tick); the salvage settings with the config; `Stream::Encounter`
-with the other streams.
+position, previous position, velocity and expiry tick); the salvage settings with the config.
 
 ### Cost
 
@@ -1734,8 +1737,12 @@ career side (open voyages, voyage seeds, unloading the haul) in `docs/career.md`
 ### Rolling a plan
 
 `VoyagePlan::roll(&content, &voyage, seed) -> Result<VoyagePlan, String>` (the client passes the career's voyage
-seed, `Career::voyage_launched`). It draws on a generator of `Stream::Encounter` seeded from `seed` exactly as the
-sim's own stream would be, in this order:
+seed, `Career::voyage_launched`; compile the plan from the content the enemies fly with: the client's other owners'
+content when the player's tuning differs). It draws on a generator of its own,
+`Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM)` with `voyage::PLAN_STREAM` (`"voyage"` in
+ASCII, no stream's id), so it never repeats the draws of any of the sim's streams for the same seed (the voyage
+runner, the scenario and the tests seed the `Sim` with the voyage seed too). The draw order is the replay contract
+(`data::career::GENERATOR` 2, `docs/career.md` "Voyage roller versions"):
 
 1. **Sites**: the voyage's site entries, each repeated `count` times, keep the content's order in `plan.sites`. Each
    gets a spot uniform in the cluster's disc (radius `voyage.radius` about the world origin; `sqrt` and libm trig,
@@ -1743,10 +1750,14 @@ sim's own stream would be, in this order:
    **entry** at `(0, −radius)`) is at least `spacing.0` and at most `spacing.1` away. Every other site is placed
    first, in order; the goal last, as the farthest from the entry of the first 8 good spots. With no good spot in 64
    tries, the spot that misses the spacing least (none of the base voyages needs it for seeds 1–20, a test checks).
-2. **Counts**: per site, each ship and wreck entry of its encounter rolls its count in `(min, max)`, both included.
-3. **Layout** (*lead default*): ships, then wrecks, at spots uniform within 30 m of the site, their hull circles
-   (half the grid's diagonal) at least 5 m apart (the disc widens by 10 m after every 16 misses), each turned to a
-   random heading, at rest. Wrecks keep their entry's `damage` share.
+2. Then **per site, in plan order**, all of its draws before the next site's:
+   1. **Counts**: each ship entry of its encounter, then each wreck entry, rolls its count in `(min, max)`, both
+      included.
+   2. **Layout** (*lead default*): a spot for each ship, then each wreck, uniform within 30 m of the site, their hull
+      circles at least 5 m apart (the disc widens by 10 m after every 16 misses); then a heading for each, in the same
+      order; all at rest. Wrecks keep their entry's `damage` share.
+   3. **Wreck seeds**: one `u64` per wreck (`Spawn::seed`), from which `Sim::spawn_wreck` picks the parts already
+      gone, so a wreck does not depend on when or in which order the sites spawn.
 
 The plan holds the compiled designs (`Arc<ShipDesign>`, one per blueprint), every pose, the site's encounter id, goal
 flag and wake radius, and `plan.entry`: where the fleet enters, at `(0, −radius)` with the nose to the centre.
