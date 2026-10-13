@@ -1,5 +1,6 @@
-//! Game content for Space Game: schema, pack loader, validation, stat lines, shared blueprint geometry and the
-//! blueprint text format of drydock designs.
+//! Game content for Space Game: schema, pack loader, validation, stat lines, shared blueprint geometry, the
+//! blueprint text format of drydock designs, and the pure models of the drydock ([`edit`]), the behavior editor
+//! ([`behavior_edit`]) and the player's progression ([`career`]).
 //!
 //! No Bevy, no threads, no filesystem in the core: packs are built from in-memory `(path, contents)` pairs,
 //! so the same code runs natively, on wasm32 and later on Android. See `docs/content-model.md`.
@@ -17,6 +18,7 @@ pub mod art_keys;
 pub mod behavior;
 pub mod behavior_edit;
 pub mod blueprint;
+pub mod career;
 pub mod edit;
 pub mod geometry;
 pub mod kind;
@@ -34,6 +36,7 @@ pub mod fs;
 
 pub use behavior_edit::BehaviorEditor;
 pub use blueprint::{blueprint_to_ron, parse_blueprint};
+pub use career::Career;
 pub use edit::Drydock;
 pub use geometry::{
     Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
