@@ -388,33 +388,16 @@ impl BehaviorEditor {
     /// A node with its vocabulary entry and its parameters. `None` for a deleted rule or condition.
     pub fn node(&self, at: NodeRef) -> Option<NodeView<'_>> {
         let place = self.place(at).ok()?;
-        let (name, args, written, not, compare) = match place {
-            Place::Target => match &self.program.target {
-                Some(t) => (
-                    t.call.name.as_str(),
-                    t.call.args.as_slice(),
-                    true,
-                    false,
-                    None,
-                ),
-                None => (DEFAULT_TARGET, &[][..], false, false, None),
-            },
-            Place::Action(i) => {
-                let c = &self.program.rules[i].action;
-                (c.name.as_str(), c.args.as_slice(), true, false, None)
-            }
+        let call = self.call(place);
+        let (not, compare) = match place {
             Place::Cond(i, j) => {
                 let c = &self.program.rules[i].when[j];
-                (
-                    c.call.name.as_str(),
-                    c.call.args.as_slice(),
-                    true,
-                    c.not,
-                    c.cmp.as_ref(),
-                )
+                (c.not, c.cmp.as_ref())
             }
+            _ => (false, None),
         };
-        let node = self.nodes.get(name)?;
+        let written = !matches!(place, Place::Target) || self.program.target.is_some();
+        let node = self.nodes.get(&call.name)?;
         // Every parameter has a written value or a default in a legal program.
         let params = node
             .params
@@ -422,7 +405,7 @@ impl BehaviorEditor {
             .enumerate()
             .map(|(index, param)| {
                 let default = default_of(param);
-                let (value, written) = match args.get(index) {
+                let (value, written) = match call.args.get(index) {
                     Some(a) => (a.value.clone(), true),
                     None => (default.clone()?, false),
                 };
@@ -722,9 +705,10 @@ impl BehaviorEditor {
         self.commit_call(place, call)
     }
 
-    /// Resets parameter `index` of a node to its default. The last written value is removed, and with it the
-    /// written values before it that equal their defaults (the shortest text); a value with written values
-    /// after it gets its default written in its place. Refused for a required parameter (no default).
+    /// Resets parameter `index` of a node to its default: the default is written in its place, then the
+    /// trailing values that equal their defaults are dropped (the shortest text with the same meaning), so
+    /// resetting the last written value removes it. `Ok(false)` if the value was not written. Refused for a
+    /// required parameter (no default).
     pub fn reset_param(&mut self, at: NodeRef, index: usize) -> Result<bool, Refusal> {
         let place = self.place(at)?;
         let mut call = self.call(place);
