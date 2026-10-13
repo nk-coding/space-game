@@ -217,8 +217,9 @@ impl RadialGradient {
             }
             let end = (k..n).find(|&j| stops[j].0.is_some()).unwrap_or(n - 1);
             let (a, b) = (stops[k - 1].0.unwrap_or(0.0), stops[end].0.unwrap_or(1.0));
-            for j in k..end {
-                stops[j].0 = Some(a + (b - a) * (j - k + 1) as f32 / (end - k + 1) as f32);
+            let span = (end - k + 1) as f32;
+            for (i, stop) in stops[k..end].iter_mut().enumerate() {
+                stop.0 = Some(a + (b - a) * (i + 1) as f32 / span);
             }
             k = end;
         }
