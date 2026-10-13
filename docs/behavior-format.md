@@ -170,3 +170,92 @@ platform's maths library, which is not bit-identical everywhere; multiply instea
 2000 operations; a script that runs out, errors or returns something other than `true`/`false` counts as
 **false**, and the debug view shows why. Scripts are checked when the content loads (syntax, unknown variable
 names).
+
+## Editing model
+
+`data::behavior_edit::BehaviorEditor` (`crates/data/src/behavior_edit.rs`, added 13 Oct 2026) is the editing model
+of the BEHAVIOR screen (GDR-0057), the counterpart of the drydock's `data::edit::Drydock`: no Bevy, no threads, no
+filesystem, so it builds for wasm32. Both views edit through it: the graph view and the inspector call its
+operations, the text view replaces the program with `set_text`. Tests: `crates/data/tests/behavior_edit.rs`.
+
+### Program, ids and results
+
+- `BehaviorEditor::open(nodes, &program)` (e.g. a content behavior's `program()`, used as a template) or
+  `from_text(nodes, text)`. The editor copies the vocabulary (`Content.behavior_nodes`), so it owns its data.
+  `open` reads the program through its printed text, so its errors locate lines of `Program::to_text`.
+- **The program is always legal**: it passes `check_program` against the vocabulary, has 1 to 64 rules, at most 8
+  conditions per rule and at most 240 characters per line, and its canonical text gives it back (model → text →
+  model is the identity; the graph and the text view cannot disagree). An edit that would break that is refused
+  with a `Refusal` (`Display` gives the reason for the player) and changes nothing.
+- Rules and conditions have **stable ids** (`RuleId`, `CondId`); a node is a `NodeRef`: `Target`, `Action(rule)` or
+  `Cond(cond)`. An id names the same rule or condition across edits, undo and redo until it is deleted; undoing the
+  delete brings it back under the same id. Ids belong to the editor that handed them out. Rule positions
+  (`RuleView::index`, the priority) shift when rules are added, deleted or moved.
+- Edits that create something return its id; the others return `Ok(changed)`. Only changes bump `revision()` and
+  make an undo step.
+
+### Operations
+
+| Operation | What it does | Refused when |
+|---|---|---|
+| `add_rule(index, action)` | `always -> action` at a position (0 = top) | `BadIndex`, `TooManyRules`, `UnknownNode`, `WrongRole` |
+| `delete_rule(rule)` | | `LastRule` (a behavior keeps one rule) |
+| `duplicate_rule(rule)` | a copy (with its note) right below, new ids | `TooManyRules` |
+| `move_rule(rule, to)` | to a position; up = `index - 1`, down = `index + 1` | `BadIndex` |
+| `set_rule_note`, `set_target_note` | trimmed; empty clears it | `BadNote` (line breaks, control characters), `LineTooLong` |
+| `add_condition(rule, node)` | appended to the rule's conditions | `TooManyConditions`, `LineTooLong` |
+| `remove_condition`, `toggle_not` | a rule without conditions is `always -> ...` | `LineTooLong` (`not`) |
+| `set_compare(cond, op, threshold)` | `hull < 30%`: a number of the condition's quantity, at least 0 | `NotAValue` (a flag), `BadValue` |
+| `replace_node(at, node)` | another node of the same role (see below) | `WrongRole` |
+| `set_param(at, k, value)` | checked like content (`check_param_value`: type, unit, range; NaN refused) | `NoSuchParam`, `BadValue` |
+| `reset_param(at, k)` | back to the default (see below) | `NoDefault` (a required parameter) |
+| `clear_target()` | removes the `target` line: back to the implicit `nearest` | |
+
+Every operation also refuses stale ids (`NoSuchRule`, `NoSuchCondition`) and unknown node ids (`UnknownNode`).
+
+### What the editor writes
+
+- **New nodes leave optional values out**: the content default applies (and follows the content if it changes). A
+  value set in the inspector is written, even when it equals the default. Values are positional, so setting a later
+  value writes the earlier defaults out (`orbit` → `orbit(60%, cw)`). `reset_param` writes the default in place and
+  then drops trailing values that equal their defaults, so resetting the last written value removes it.
+- **Required parameters** (none in the base content) start at the first option of a choice, else at `min` (or 0) in
+  the parameter's unit.
+- **A new value condition** is compared with `<` and the example of its quantity: `hull < 30%`,
+  `enemies_near < 2`, `cycle < 5s`.
+- **Replacing a node** keeps the leading values that fit the new node's parameters (`orbit(80%, ccw)` → `kite(80%)`)
+  and drops the rest. A condition keeps its `not`; a value condition keeps its comparison if the threshold fits its
+  quantity, else gets the example threshold with the same comparator; a flag drops the comparison. The target line
+  keeps its note.
+- **The default target stays implicit**: there is no `target` line until the selector, its aim point or its note is
+  set (replacing `nearest` with `nearest` writes nothing).
+
+### Text view
+
+- `check_text(text)` parses and checks a text without changing anything: every syntax and vocabulary error with its
+  line and column (the live errors). `set_text(text)` replaces the program as one undo step, or is refused with the
+  same errors. `text()` is the canonical form.
+- Ids survive text edits where they can: the leading and trailing rules equal to the old ones keep theirs, rules
+  edited in place between them keep theirs by position, added rules get new ids; conditions likewise within a rule.
+  A line moved by cut and paste keeps the id of the position, not of the rule.
+
+### Rule slots
+
+`active_rules(slots)` says how many rules run with `slots` rule slots (GDR-0035; for a design,
+`Content::ship_rule_slots`): rules at positions below it are active, the rest are shown below the line, inactive. It
+never changes the program; moving a rule up is how the player keeps it.
+
+### Queries for the screen
+
+- `rules()`, `rule(id)`, `rule_at(index)`, `rule_of(cond)`; `RuleView::nodes()` lists a rule's nodes in reading
+  order (conditions, then the action).
+- `node(at)` gives a `NodeView`: the vocabulary entry (role, display name, summary, tags, value quantity), `is_rhai()`,
+  `not`, `compare`, `written` (false for the implicit target), and a `ParamView` per parameter: the value in effect,
+  whether it is written and whether it equals the default, `range()` for the value's unit (0–1000% for a share of
+  the weapon reach), and the `NodeParam` (name, type with its choices, `min`, `max`).
+- `palette(role)` lists the vocabulary of a role in content order, `palette_tags(role)` its tags (palette filters).
+
+### Undo
+
+Undo and redo keep the last 256 steps (`data::edit::UNDO_STEPS`, as in the drydock); `begin_stroke` /
+`end_stroke` make a slider drag one step. Every change, undo and redo bumps `revision()`.

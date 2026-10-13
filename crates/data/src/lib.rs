@@ -15,6 +15,7 @@
 
 pub mod art_keys;
 pub mod behavior;
+pub mod behavior_edit;
 pub mod blueprint;
 pub mod edit;
 pub mod geometry;
@@ -31,6 +32,7 @@ pub mod validate;
 #[cfg(feature = "fs")]
 pub mod fs;
 
+pub use behavior_edit::BehaviorEditor;
 pub use blueprint::{blueprint_to_ron, parse_blueprint};
 pub use edit::Drydock;
 pub use geometry::{
