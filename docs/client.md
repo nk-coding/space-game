@@ -333,7 +333,8 @@ build points, control, mass, hit points, power draw and heat, else the bonus it 
 wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
 FIREPOWER, CARGO, CONTROL, DEVICE LOAD, then a compact TOP SPEED, TURN 90°, MASS, BUILD POINTS block, all from
 `sim::report`) and SELECTED PART (the selected placed part with the report's numbers and its controls, else the
-picked part: icon, name, footprint and category, summary, stat lines and bonus lines); below the grid the hover
+picked part: icon, name, footprint and category, summary, stat lines and bonus lines; what is under the name
+scrolls with the wheel when it doesn't fit above the bottom bar, with a `MORE BELOW · WHEEL` cue); below the grid the hover
 cell, mirror and axis, why the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo,
 MIRROR, BEVEL, the status line, BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key), BLUEPRINTS,
 EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
@@ -406,7 +407,8 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   place as text spans of `field_text`; Left / Right / Home / End move the caret, with Shift they select, Backspace
   / Delete work at the caret, Ctrl+A selects all, Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste through
   `Clipboard::field`; a press on the field puts the caret at the end; the editing itself is the pure
-  `ui_kit::edit_line`, 13 Oct 2026); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
+  `ui_kit::edit_line`, 13 Oct 2026), a scroll cue (`ScrollCue`: a fade into the backdrop with `MORE BELOW ·
+  WHEEL` over a scrolled area's bottom edge while more of it lies below); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, or a glyph Barlow lacks: undo, redo, play,
@@ -415,7 +417,8 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   `build_body`: the flight tile itself, composited in sRGB like the ships, so its colours are exactly the
   flight tiles' (bevy_ui image nodes would sample the sRGB atlas without encoding for the sRGB compositing and
   look too dark); `atlas::UiAtlasNeed` raises the atlas tier to the icons' pixels per cell. bevy_ui draws after
-  the world, so nodes over an icon should have at most a faint background.
+  the world, so nodes over an icon should have at most a faint background. bevy_ui's clipping doesn't reach the
+  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again.
 
 ## Behavior screen
 

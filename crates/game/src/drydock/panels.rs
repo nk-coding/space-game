@@ -31,8 +31,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillText, TextField, Tone, UiBlock, ValueBar, field_text, label, number, prose, ring_node, set_color, set_text,
-    spawn_bar, spawn_brackets, spawn_pill, tracked, wheel_rows,
+    Hot, Pill, PillText, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose, ring_node, set_color,
+    set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -77,6 +77,10 @@ pub(super) struct SelStat(usize);
 
 #[derive(Component)]
 pub(super) struct SelBonus(usize);
+
+/// The selected part's lines and controls under its name: they scroll when they don't fit.
+#[derive(Component)]
+pub(super) struct SelScroll;
 
 /// Every text the drydock updates.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -283,9 +287,9 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 });
                         }
                     });
-                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(20)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(14)), ..default() }));
-                    rp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), ..default() }).with_children(|h| {
+                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(16)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
+                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(14)), flex_shrink: 0.0, ..default() }));
+                    rp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), flex_shrink: 0.0, ..default() }).with_children(|h| {
                         // The icon in a bracketed box (like the fleet bar's chips).
                         h.spawn(Node { width: px(60), height: px(60), flex_shrink: 0.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                             .with_children(|b| {
@@ -297,33 +301,46 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             t.spawn((PanelText::SelSub, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
                         });
                     });
-                    rp.spawn((PanelText::SelSummary, prose(fonts, "", 11.5, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(12)), ..default() }));
-                    rp.spawn(Node {
-                        display: Display::Grid,
-                        grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
-                        column_gap: px(12),
-                        row_gap: px(10),
-                        margin: UiRect::top(px(14)),
-                        ..default()
-                    })
-                    .with_children(|g| {
-                        for k in 0..SEL_STATS {
-                            g.spawn((SelStat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() })).with_children(|cell| {
-                                cell.spawn((PanelText::SelStatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
-                                cell.spawn((PanelText::SelStatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
+                    // The rest scrolls (the wheel) when a part has more lines and controls than the column has room
+                    // for; the cue says so.
+                    let body = rp
+                        .spawn((
+                            SelScroll,
+                            ScrollPosition::default(),
+                            Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
+                        ))
+                        .with_children(|sb| {
+                            sb.spawn((PanelText::SelSummary, prose(fonts, "", 11.5, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() }));
+                            sb.spawn(Node {
+                                display: Display::Grid,
+                                grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
+                                column_gap: px(12),
+                                row_gap: px(10),
+                                margin: UiRect::top(px(14)),
+                                flex_shrink: 0.0,
+                                ..default()
+                            })
+                            .with_children(|g| {
+                                for k in 0..SEL_STATS {
+                                    g.spawn((SelStat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() })).with_children(|cell| {
+                                        cell.spawn((PanelText::SelStatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
+                                        cell.spawn((PanelText::SelStatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
+                                    });
+                                }
                             });
-                        }
-                    });
-                    rp.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), ..default() }).with_children(|b| {
-                        for k in 0..SEL_BONUSES {
-                            b.spawn((SelBonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }))
-                                .with_children(|r| {
-                                    r.spawn(glyph(Glyph::Diamond, Tone::Gold, 9.0));
-                                    r.spawn((PanelText::SelBonus(k), tracked(fonts, "", 8.5, c(Tone::Gold, 1.0), 0.2)));
-                                });
-                        }
-                    });
-                    super::inspector::spawn_controls(rp, fonts, &style, content);
+                            sb.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() }).with_children(|b| {
+                                for k in 0..SEL_BONUSES {
+                                    b.spawn((SelBonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }))
+                                        .with_children(|r| {
+                                            r.spawn(glyph(Glyph::Diamond, Tone::Gold, 9.0));
+                                            r.spawn((PanelText::SelBonus(k), tracked(fonts, "", 8.5, c(Tone::Gold, 1.0), 0.2)));
+                                        });
+                                }
+                            });
+                            super::inspector::spawn_controls(sb, fonts, &style, content);
+                        })
+                        .id();
+                    spawn_scroll_cue(rp, fonts, &style, body);
                 });
 
             // Centre: the tools above the grid; the grid viewport; the info line and the zoom.
@@ -494,12 +511,40 @@ fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
     UiIcon::Part { part: part.to_string(), material: hull.then(|| material.to_string()) }
 }
 
-/// The selected part's icon, its stat and bonus rows (from [`Inspector`]), the stats grid's bars and cells.
+/// The wheel over the selected part's lines scrolls them; another kind of part (or a palette part instead of a
+/// placed one) starts at the top.
+pub(super) fn scroll_selected(
+    insp: Res<Inspector>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    wheel: Res<AccumulatedMouseScroll>,
+    area: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition), With<SelScroll>>,
+    mut shown: Local<(String, bool)>,
+) {
+    let (node, tf, mut pos) = area.into_inner();
+    let kind = (insp.part.clone(), insp.installed.is_some());
+    if insp.is_changed() && *shown != kind {
+        *shown = kind;
+        pos.0.y = 0.0;
+        return;
+    }
+    if wheel.delta.y == 0.0 || !window.physical_cursor_position().is_some_and(|c| node.contains_point(*tf, c)) {
+        return;
+    }
+    let max = ((node.content_size.y - node.size.y) * node.inverse_scale_factor).max(0.0);
+    let y = (pos.0.y - wheel_rows(&wheel) * WHEEL_LINE_PX).clamp(0.0, max);
+    if pos.0.y != y {
+        pos.0.y = y;
+    }
+}
+
+/// The selected part's icon, its summary (none for a placed part), its stat and bonus rows (from [`Inspector`]),
+/// the stats grid's bars and cells.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn sync_blocks(
     insp: Res<Inspector>,
     stats: Res<DrydockStats>,
     mut sel_icon: Single<&mut UiIcon, With<SelIcon>>,
+    mut texts: Query<(&PanelText, &mut Node), (Without<SelStat>, Without<SelBonus>, Without<StatCellNode>, Without<StatBar>)>,
     mut sel_stats: Query<(&SelStat, &mut Node), (Without<SelBonus>, Without<StatCellNode>)>,
     mut sel_bonuses: Query<(&SelBonus, &mut Node), (Without<SelStat>, Without<StatCellNode>)>,
     mut cells: Query<(&StatCellNode, &mut Node), (Without<SelStat>, Without<SelBonus>)>,
@@ -509,6 +554,11 @@ pub(super) fn sync_blocks(
         let want = UiIcon::Part { part: insp.part.clone(), material: insp.material.clone() };
         if **sel_icon != want {
             **sel_icon = want;
+        }
+        for (t, mut n) in &mut texts {
+            if *t == PanelText::SelSummary {
+                set_display(&mut n, !insp.summary.is_empty());
+            }
         }
         for (s, mut n) in &mut sel_stats {
             set_display(&mut n, s.0 < insp.stats.len());

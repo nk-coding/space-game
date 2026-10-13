@@ -19,7 +19,7 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use bevy::text::{LetterSpacing, TextBackgroundColor};
-use bevy::ui::{CalculatedClip, ComputedNode, ComputedStackIndex, UiGlobalTransform};
+use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
 use crate::clipboard::Clipboard;
@@ -165,7 +165,7 @@ impl Plugin for UiKitPlugin {
             .add_message::<UiClick>()
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
             .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
-            .add_systems(Update, style_widgets.in_set(UiStyleSet));
+            .add_systems(Update, (style_widgets, place_scroll_cues).in_set(UiStyleSet));
     }
 }
 
@@ -406,6 +406,67 @@ pub fn spawn_brackets(parent: &mut ChildSpawnerCommands, arm: f32, width: f32, c
             },
             BorderColor::all(color),
         ));
+    }
+}
+
+/// A scroll cue: over the bottom edge of a scrolled area (the entity: a node with a [`ScrollPosition`]) while more
+/// of its content lies below, a fade into the backdrop with `MORE BELOW · WHEEL` on it. The kit places it every
+/// frame ([`place_scroll_cues`]); it takes no clicks.
+#[derive(Component)]
+pub struct ScrollCue(pub Entity);
+
+/// The cue's height (logical px).
+const CUE_H: f32 = 30.0;
+
+/// Spawns the [`ScrollCue`] of `area` into `parent`, the area's own parent (it must have no padding or border:
+/// the cue is placed from the corners). Spawn it after the area, so it draws over it.
+pub fn spawn_scroll_cue(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, area: Entity) {
+    let back = style.background.outer();
+    let fade = LinearGradient::to_bottom(vec![ColorStop::percent(ui_color(back, 0.0), 0), ColorStop::percent(ui_color(back, 0.94), 75)]);
+    parent
+        .spawn((
+            ScrollCue(area),
+            Node {
+                display: Display::None,
+                position_type: PositionType::Absolute,
+                height: px(CUE_H),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::FlexEnd,
+                padding: UiRect::bottom(px(3)),
+                ..default()
+            },
+            BackgroundGradient::from(fade),
+        ))
+        .with_child(tracked(fonts, "MORE BELOW  ·  WHEEL", 8.0, ui_color(style.ui.label, 1.0), 0.3));
+}
+
+/// Shows each [`ScrollCue`] while its area has more below and puts it over the area's bottom edge (from last
+/// frame's layout).
+#[allow(clippy::type_complexity)]
+fn place_scroll_cues(
+    mut cues: Query<(&ScrollCue, &ChildOf, &mut Node)>,
+    areas: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility, &ScrollPosition), Without<ScrollCue>>,
+    parents: Query<(&ComputedNode, &UiGlobalTransform), Without<ScrollCue>>,
+) {
+    for (cue, parent, mut node) in &mut cues {
+        let (Ok((area, at, vis, scroll)), Ok((p, p_at))) = (areas.get(cue.0), parents.get(parent.parent())) else { continue };
+        let k = area.inverse_scale_factor;
+        let more = vis.get() && (area.content_size.y - area.size.y) * k - scroll.0.y > 1.0;
+        let display = if more { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
+        if !more {
+            continue;
+        }
+        // Corners in physical px, the offsets in logical px.
+        let (a, b) = (at.translation - area.size / 2.0, p_at.translation - p.size / 2.0);
+        let (left, top, width) = (px((a.x - b.x) * k), px((a.y + area.size.y - b.y) * k - CUE_H), px(area.size.x * k));
+        if node.left != left || node.top != top || node.width != width {
+            node.left = left;
+            node.top = top;
+            node.width = width;
+        }
     }
 }
 

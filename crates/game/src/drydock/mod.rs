@@ -98,7 +98,7 @@ impl Plugin for DrydockPlugin {
                 (
                     (actions::clicks, actions::shortcuts, panels::sync_search).in_set(DockSet::Input),
                     (view::ui_scale, view::camera, actions::apply, report::update, stats::update).chain().in_set(DockSet::Apply),
-                    (view::rebuild_ship, overlays::rebuild, panels::sync_palette, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
+                    (view::rebuild_ship, overlays::rebuild, panels::sync_palette, panels::scroll_selected, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
                         .chain()
                         .in_set(DockSet::Show),
                 ),
