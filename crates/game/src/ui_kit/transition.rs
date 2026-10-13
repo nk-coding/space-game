@@ -139,7 +139,7 @@ pub fn snap_screen(fx: &mut Mut<ScreenFx>, open: bool) {
 
 /// How much of the world still shows behind a dimming screen ([`ScreenFx::dimming`]; default for review: just
 /// barely, under the screen's own backdrop).
-pub const BEHIND: f32 = 0.15;
+pub const BEHIND: f32 = 0.1;
 
 /// How much the open covering screens hide the world (0: not at all, 1: fully).
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
