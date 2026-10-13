@@ -602,7 +602,7 @@ mod tests {
             d.paint((8, 1), "steel").unwrap();
             d.mirror = true;
         });
-        let ui = DrydockUi::new(&content, &design);
+        let ui = DrydockUi::new(&content, &design, &data::career::Unlocks::all(&content));
         let mut world = World::new();
         world.init_resource::<Messages<DrydockAction>>();
         world.init_resource::<Time<Real>>();
@@ -626,7 +626,7 @@ mod tests {
     #[test]
     fn the_selection_goes_with_another_design_or_frame() {
         let content = data::base_content();
-        let design = PlayerDesign::starter(&content);
+        let design = PlayerDesign::starter(&content, "halvex_runner");
         let reactor = design.dock().parts().iter().find(|p| p.part == "fusion_reactor").map(|p| (p.x, p.y)).unwrap();
         let mut world = World::new();
         world.init_resource::<Messages<DrydockAction>>();
@@ -634,7 +634,7 @@ mod tests {
         world.init_resource::<EditNote>();
         world.init_resource::<DrydockGesture>();
         world.init_resource::<Selection>();
-        world.insert_resource(DrydockUi::new(&content, &design));
+        world.insert_resource(DrydockUi::new(&content, &design, &data::career::Unlocks::all(&content)));
         world.insert_resource(design);
         world.insert_resource(GameContent(content.clone()));
         let apply = world.register_system(apply);
@@ -647,7 +647,7 @@ mod tests {
         world.run_system(apply).unwrap();
         assert_eq!(world.resource::<Selection>().cell, Some(reactor));
         // OPEN: another design.
-        world.resource_mut::<PlayerDesign>().replace(PlayerDesign::starter(&content));
+        world.resource_mut::<PlayerDesign>().replace(PlayerDesign::starter(&content, "halvex_runner"));
         world.run_system(apply).unwrap();
         assert_eq!((world.resource::<Selection>().cell, world.resource::<DrydockGesture>().gesture), (None, Gesture::Idle));
         // FRAME CRUISER, then its undo.
@@ -667,7 +667,7 @@ mod tests {
     fn leaving_ends_a_gesture_in_progress() {
         use bevy::ecs::system::RunSystemOnce;
         let content = data::base_content();
-        let mut design = PlayerDesign::starter(&content);
+        let mut design = PlayerDesign::starter(&content, "halvex_runner");
         design.edit(|d| {
             d.begin_stroke();
             d.paint((0, 0), "steel").unwrap();

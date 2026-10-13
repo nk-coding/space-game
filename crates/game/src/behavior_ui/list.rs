@@ -709,7 +709,7 @@ mod tests {
     fn leaving_the_screen_hides_the_list_layer() {
         let content = data::base_content();
         let mut world = World::new();
-        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(PlayerDesign::starter(&content, "halvex_runner"));
         world.insert_resource(GameContent(content));
         world.insert_resource(Storage::new(MemoryBackend::default()));
         world.init_resource::<PlayerBehaviors>();
@@ -730,7 +730,7 @@ mod tests {
     fn the_open_list_follows_a_save() {
         let content = data::base_content();
         let mut world = World::new();
-        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(PlayerDesign::starter(&content, "halvex_runner"));
         world.insert_resource(Storage::new(MemoryBackend::default()));
         world.init_resource::<PlayerBehaviors>();
         world.init_resource::<DesignSlot>();

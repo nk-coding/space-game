@@ -20,6 +20,7 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [GDR-0054](gd
 | One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::blueprint`, `Content.frames`, `Content::ship_totals`, `data::stats::SHIP_STATS` | `content-model.md` |
 | Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
 | The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
+| What the career unlocks: locked rows, NEW tags, the voyage-ready line | `crates/game/src/career.rs`, `drydock/{state,panels,stats}.rs`, `data::career` | [below](#locked-parts-new-and-voyage-ready), `career.md` |
 | Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
 | The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/drydock/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
 | The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/game/src/behavior_ui/`, `data::behavior_edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
@@ -28,7 +29,8 @@ Status (13 Oct 2026): waves 1 and 2 are merged. The drydock edits (paint, fill, 
 mirror, bevel, undo/redo, ghost and selection, the inspector with power overrides), shows the live stats, status
 line and overlays from `sim::report`, saves designs in the player storage layer (autosave of the working design,
 the BLUEPRINTS list with the content ships as templates, frames, renaming), and shares designs as `.ron` files and
-share codes. Enemy (locked) parts are hidden. Not built yet: the phone layout and touch input, upgrade materials
+share codes. Since track 7F (13 Oct 2026) it offers what the career has unlocked and shows the rest locked
+([Locked parts, NEW and voyage-ready](#locked-parts-new-and-voyage-ready)). Not built yet: the phone layout and touch input, upgrade materials
 and variants, thumbnails, a native file dialog, Android storage.
 
 ## Editing model
@@ -240,10 +242,47 @@ pills of a hull part (`set_material`), the power tier pills (CRITICAL to OFF) an
 no override, so going back leaves the blueprint clean), and rotate, flip and delete. Mirror mode changes the twin
 too. With nothing selected it shows the part picked in the palette (content numbers, as before).
 
-**Locked parts and materials** (content `locked`, `content-model.md`): the palette, its search, the ARMOR pills,
-the inspector's armor pills and the 1–9 keys skip them (`state::palette_parts`, `state::armor_materials`); the first
-category's first unlocked part is picked at start, and the starting armor is the design's if it is unlocked.
-Designs that use locked parts (the automaton raider) still open, show and fly; nothing unlocks yet.
+### Locked parts, NEW and voyage-ready
+
+Track 7F, 13 Oct 2026 ([GDR-0063](gdr/0063-salvage-and-research-v1.md), [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md),
+mockup `docs/plans/mockups/drydock-locked.png`). What the player may build with is the career's
+(`career::Granted::unlocks`, `docs/career.md`): the content's entries that are not `locked`, plus what research
+unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked or NEW. Screenshots:
+`docs/results/career-drydock*.png`.
+
+- **Locked parts are shown, not hidden** (GDR-0065 replaces GDR-0054's hiding for the career's drydock): the
+  palette lists a category's unlocked parts, then its locked ones, each in content order (`state::palette_list`;
+  a search the same over every category). A locked row is dimmed, has a lock in place of its icon and says
+  `LOCKED · <the research node that unlocks it>` (`career::unlocked_by`, the first node in content order). The
+  section line counts them: `WEAPONS · 1 · 2 LOCKED`. A locked row is a disabled pill: a click sends nothing, and
+  `actions::apply` refuses a locked `PickPart` anyway, so it is never picked or placed.
+- **What no research unlocks stays hidden** (default, track 7F: GDR-0065's "the career's drydock shows what research
+  gives"): a locked part or armour material no research node unlocks (in the base pack: reactive armour and the
+  automaton plate) is not shown at all, as before; free mode shows it. Four armour pills with locks also don't fit
+  the top bar at 1280 px.
+- **Locked materials and frames**: every armour material research can unlock has an ARMOR pill (the 1–9 keys count
+  every armour material, hidden ones too); a locked one is dimmed with a lock (`ui_kit::PillLock`) and refused, and
+  so are its pills in the inspector (`state::material_shown`). BLUEPRINTS' NEW and FRAME pills of a locked frame
+  (the cruiser and the capital) are dimmed with a lock.
+- **NEW**: a part research unlocked carries a gold NEW tag in the palette until it is picked there or a placed one
+  is selected (whatever the SELECTED PART block shows: `panels::see_fresh` sends `career::SeenPart`). The career
+  keeps what was seen in the save (`seen`, written at once), so a tag goes for good and a new game shows them again.
+  (Default, track 7F: the save rather than settings, because NEW belongs to one career.)
+- The first category's first unlocked part is picked at start, and the starting armour is the design's if it is
+  unlocked, else the first unlocked one.
+- **Designs that use locked parts** (the Halvex Runner template, an import, the automaton raider) still open, show
+  and test-fly (GDR-0062 plan 3.1 step 11); they are only not voyage-ready.
+- **The voyage-ready line** after the status line (`stats::voyage`, `career::voyage_line` from
+  `data::career::voyage_ready` with the design as the flagship and FLEET's escorts):
+
+| Fleet | Line | Tone |
+|---|---|---|
+| ready | `VOYAGE-READY · CORES 2 / 2` | teal |
+| ready, but no ship has cargo | `VOYAGE-READY · CORES 2 / 2 · NO CARGO · YOU CAN'T BRING SALVAGE HOME` | gold |
+| a locked part or material (first in placement order) | `NOT VOYAGE-READY · USES BEAM LASER · +2` (an escort's: `ESCORT 1 USES …`) | coral |
+| a frame the career hasn't unlocked | `NOT VOYAGE-READY · NEEDS THE CRUISER FRAME` | coral |
+| more cores than the mind runs | `NOT VOYAGE-READY · 3 CORES, YOUR MIND RUNS 2` | coral |
+| the design can't fly | `NOT VOYAGE-READY` (the status line says why) | coral |
 
 ## Client: stats and overlays
 
@@ -384,8 +423,10 @@ saved template copy moved to the cruiser frame).
   when the id it is saved under changes, when a test flight starts and when the desktop app closes (on the web, a
   change still waiting is written when the page goes away or is hidden: a reload, a closed tab); it comes
   back at the next start, before the first frame, so a plain sandbox start flies it too (if it can't fly, the
-  sandbox starts without the player's ship; T opens the drydock). The first start is a copy of the
-  starter ship (`PlayerDesign::starter`) named "Halvex Runner copy". Opening centres the parts in the frame
+  sandbox starts without the player's ship; T opens the drydock). The first start, and every new game
+  (`?newgame=1`, a new save slot), is a copy of the career's start ship (`PlayerDesign::starter` with
+  `PlayerCareer::start_ship`) named "Rim skiff copy"; a new game saves the last design's unsaved changes to
+  BLUEPRINTS first (if that fails, the last design stays). Opening centres the parts in the frame
   (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept. The
   document is untrusted (a damaged storage entry, a hand-edited file): a `saved_as` that is no design id is dropped
   (the design comes back unsaved; SAVE gives it a new id), and a document that doesn't read or open (a newer

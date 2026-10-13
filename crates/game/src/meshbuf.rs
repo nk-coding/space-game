@@ -13,6 +13,8 @@ pub struct MeshBuf {
     uv: Vec<[f32; 2]>,
     col: Vec<[f32; 4]>,
     idx: Vec<u32>,
+    /// The z of the vertices added from now on (0 unless set; only the depth test sees it, see `ship_view`).
+    z: f32,
 }
 
 impl MeshBuf {
@@ -20,9 +22,13 @@ impl MeshBuf {
         self.idx.is_empty()
     }
 
+    pub fn set_z(&mut self, z: f32) {
+        self.z = z;
+    }
+
     fn vert(&mut self, p: Vec2, uv: Vec2, c: [f32; 4]) -> u32 {
         let i = self.pos.len() as u32;
-        self.pos.push([p.x, p.y, 0.0]);
+        self.pos.push([p.x, p.y, self.z]);
         self.uv.push([uv.x, uv.y]);
         self.col.push(c);
         i

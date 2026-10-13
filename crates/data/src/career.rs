@@ -34,7 +34,7 @@ use crate::problem::Problem;
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
 /// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
 /// when reading: an older build refuses unknown fields, so only a new format lets its storage report the save as
-/// newer (to keep it aside) instead of damaged.
+/// newer instead of damaged.
 pub const FORMAT: u32 = 1;
 
 /// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible or be
@@ -88,6 +88,10 @@ pub struct Career {
     /// design.
     #[serde(default)]
     escorts: Vec<String>,
+    /// Parts research unlocked that the player has since placed or selected in the drydock. The others are
+    /// fresh ([`Career::fresh_parts`]): the drydock tags them NEW.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    seen: BTreeSet<String>,
     /// One record per voyage ever launched, by voyage id.
     #[serde(default)]
     voyages: BTreeMap<String, VoyageRecord>,
@@ -358,6 +362,7 @@ impl Career {
             data: BTreeMap::new(),
             materials: BTreeMap::new(),
             escorts: Vec::new(),
+            seen: BTreeSet::new(),
             voyages: BTreeMap::new(),
             underway: None,
             log: Log::default(),
@@ -387,7 +392,7 @@ impl Career {
             return Err(vec![
                 Problem::error(format!(
                     "the save was written by a newer build (voyage roller version {}, this build knows up to \
-                     {GENERATOR}): keep it aside and open it with that build",
+                     {GENERATOR}): it is kept as it is; open it with that build",
                     career.generator
                 ))
                 .field("generator"),
@@ -491,6 +496,8 @@ impl Career {
             }
         }
         self.researched = kept;
+        // What the drydock has shown is no fact worth a note: parts the content no longer has just go.
+        self.seen.retain(|id| content.parts.contains(id));
 
         clean_data(&mut self.data, content, "data", &mut notes);
         clean_materials(&mut self.materials, content, "materials", &mut notes);
@@ -615,6 +622,27 @@ impl Career {
     /// question.
     pub fn set_escorts(&mut self, escorts: Vec<String>) {
         self.escorts = escorts;
+    }
+
+    /// The fresh parts: `locked` parts a researched node unlocked that the player has not placed or selected in
+    /// the drydock since (its NEW tags), in id order.
+    pub fn fresh_parts(&self, content: &Content) -> BTreeSet<String> {
+        self.researched_unlocks(content)
+            .filter_map(|u| match u {
+                Unlock::Part(id) => Some(id),
+                _ => None,
+            })
+            .filter(|id| {
+                content.parts.get(id).is_some_and(|p| p.locked) && !self.seen.contains(*id)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// The player placed or selected `part` in the drydock: it is no longer fresh. True when it was (the game
+    /// writes the save then); any other part changes nothing.
+    pub fn mark_seen(&mut self, content: &Content, part: &str) -> bool {
+        self.fresh_parts(content).contains(part) && self.seen.insert(part.to_string())
     }
 
     /// The record of a voyage, if it was ever launched.

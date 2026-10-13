@@ -611,7 +611,7 @@ mod tests {
         let e = restore_working(&mut storage, &content).unwrap().err().unwrap();
         assert!(e.contains("newer version") && e.ends_with("kept as drydock/working-unread"), "{e}");
         // The starter's autosave writes the slot; the newer document is still there, unread.
-        let starter = PlayerDesign::starter(&content);
+        let starter = PlayerDesign::starter(&content, "halvex_runner");
         write_working(&mut storage, &starter, &DesignSlot::opened(None, &starter), 6).unwrap();
         assert!(matches!(storage.read::<WorkingDoc>(WORKING_ASIDE), Err(StorageError::Newer { format: 9, .. })));
         assert!(restore_working(&mut storage, &content).unwrap().is_ok());

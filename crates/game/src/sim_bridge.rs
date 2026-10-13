@@ -27,7 +27,7 @@ use crate::fx::Effects;
 use crate::mode::AppMode;
 use crate::shield::ShieldBubbles;
 use crate::ship_model::{DesignVisual, design_visual};
-use crate::ship_view::{PieceView, Z_FOCUS, spawn_piece_view, world_of};
+use crate::ship_view::{PieceView, Z_FOCUS, draw_layer, spawn_piece_view, world_of};
 use crate::style::Style;
 
 /// The simulation type the client runs. Change the backend here once the physics engine is chosen.
@@ -116,7 +116,6 @@ pub struct SimWorld {
     pub inputs: sim::TickInputs,
     /// Live piece views.
     pub views: BTreeMap<(ShipId, PieceId), Entity>,
-    next_z: u32,
     pub step_ms: Timings,
     pub hashlog: Option<HashLog>,
 }
@@ -132,7 +131,6 @@ impl SimWorld {
             visuals: BTreeMap::new(),
             inputs: sim::TickInputs::default(),
             views: BTreeMap::new(),
-            next_z: 0,
             step_ms: Timings::new(900),
             hashlog: None,
         }
@@ -204,13 +202,6 @@ impl SimWorld {
                 None
             }
         }
-    }
-
-    /// Draw order: every piece gets its own layer (z 10..89, round robin); the focused vessel draws above them
-    /// all at `ship_view::Z_FOCUS`, decided every frame in `sync_piece_views` (so a focus switch reorders at once).
-    fn next_layer(&mut self) -> f32 {
-        self.next_z = (self.next_z + 1) % 80;
-        10.0 + self.next_z as f32
     }
 }
 
@@ -482,7 +473,9 @@ fn weapon_color(world: &mut SimWorld, ship: ShipId, style: &Style) -> Color {
     design.and_then(|d| world.visual(&d, style)).map(|v| v.weapon_color).unwrap_or(Color::WHITE)
 }
 
-/// (Re)creates the view of one piece from the current sim state.
+/// (Re)creates the view of one piece from the current sim state, on the piece's own draw layer
+/// (`ship_view::draw_layer`: a rebuilt view keeps its place among other ships); the focused vessel draws above
+/// them all at `Z_FOCUS`, decided every frame in `sync_piece_views` (so a focus switch reorders at once).
 #[allow(clippy::too_many_arguments)]
 fn respawn_view(
     commands: &mut Commands,
@@ -495,14 +488,12 @@ fn respawn_view(
     ship: ShipId,
     piece: PieceId,
 ) {
-    let old_z = world.views.get(&(ship, piece)).copied();
-    if let Some(e) = old_z {
+    if let Some(e) = world.views.remove(&(ship, piece)) {
         commands.entity(e).despawn();
-        world.views.remove(&(ship, piece));
     }
     let Some(design) = world.sim.ship(ship).map(|s| s.design().clone()) else { return };
     let Some(dv) = world.visual(&design, style) else { return };
-    let layer = world.next_layer();
+    let layer = draw_layer(ship, piece);
     let Some(s) = world.sim.ship(ship) else { return };
     let Some(p) = s.piece(piece) else { return };
     let z = if player == Some(ship) && p.controlled { Z_FOCUS } else { layer };

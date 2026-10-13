@@ -73,7 +73,7 @@ The client follows [ADR-0020](adr/0020-style-2a-renderer.md); details in [`clien
 
 
 - ~~Rasterise the icons into a texture atlas at build time.~~ Superseded (ADR-0021, ADR-0028): icons are SVGs in `content/base/icons/`, rasterised in memory at runtime at the resolution the display needs, regenerated when zoom or DPI changes.
-- Each sim piece is one atlas-textured mesh: every tile is drawn as its outline in the seam colour with the fill inset by the seam width, icons on top (`ship_view.rs`).
+- Each sim piece is one atlas-textured mesh (a lit piece's tiles are a second, opaque one, so shield bubbles can sit between ships by depth): every tile is drawn as its outline in the seam colour with the fill inset by the seam width, icons on top (`ship_view.rs`).
 - The hull edge is built from the boundary edges of the main piece (`data::geometry`, `hull_edges`): straight sides covered by a neighbour are skipped; slope faces are always boundary. `drawHullGlow` in `concept/reference/concept-board-script.js` shows the original rule.
 - Glow: pre-blurred glow sprites by default. Full-screen bloom is a toggle (key `3`, `?bloom=1`) to compare; it is the expensive option on phones and WebGL2.
 - Plumes, trails, beams and sparks are pooled atlas sprites written into a few dynamic meshes every frame (`fx.rs`).

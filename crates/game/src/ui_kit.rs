@@ -1,7 +1,8 @@
 //! A small widget kit for bevy_ui screens in the reference look (style guide "UI", GDR-0008): wide-tracked
-//! uppercase labels, numbers, pill buttons (plain, active teal, active gold, the glowing primary, disabled),
-//! round ring buttons (plain, or glowing in an accent colour: [`RingAccent`]), thin value bars, corner brackets and
-//! a one-line text field. Written for the drydock (12 Oct 2026); any screen can use it.
+//! uppercase labels, numbers, pill buttons (plain, active teal, active gold, the glowing primary, disabled; a lock
+//! on locked choices: [`PillLock`]), round ring buttons (plain, or glowing in an accent colour: [`RingAccent`]),
+//! thin value bars, corner brackets and a one-line text field. Written for the drydock (12 Oct 2026); any screen
+//! can use it.
 //!
 //! * **Hit testing** is done here by hand from the laid-out node rectangles (bevy_picking is not compiled and
 //!   `Interaction` is deprecated in Bevy 0.20): every node with [`Hot`] gets its hover and press state each
@@ -164,7 +165,7 @@ impl Plugin for UiKitPlugin {
             .add_message::<UiClick>()
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
             .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
-            .add_systems(Update, style_widgets.in_set(UiStyleSet));
+            .add_systems(Update, (style_widgets, show_locks).in_set(UiStyleSet));
     }
 }
 
@@ -270,6 +271,11 @@ impl Pill {
 /// Text inside a [`Pill`] or a [`Ring`]: coloured with its state.
 #[derive(Component)]
 pub struct PillText;
+
+/// A pill for a choice that may be locked (an armour material, a frame): its lead icon (a lock) shows only while
+/// the pill is disabled.
+#[derive(Component)]
+pub struct PillLock;
 
 /// A round ring button (menus, undo / redo, zoom).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Default)]
@@ -492,6 +498,21 @@ fn type_into_fields(mut keys: MessageReader<KeyboardInput>, held: Res<ButtonInpu
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The lock of a [`PillLock`] pill shows while the pill is disabled.
+#[allow(clippy::type_complexity)]
+fn show_locks(pills: Query<(&Pill, &Children), (With<PillLock>, Changed<Pill>)>, mut icons: Query<&mut Node, With<UiIcon>>) {
+    for (pill, children) in &pills {
+        let d = if pill.disabled { Display::Flex } else { Display::None };
+        for child in children {
+            if let Ok(mut n) = icons.get_mut(*child)
+                && n.display != d
+            {
+                n.display = d;
             }
         }
     }

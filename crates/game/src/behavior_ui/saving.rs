@@ -582,7 +582,7 @@ mod tests {
     fn world(storage: Storage) -> World {
         let content = data::base_content();
         let mut world = World::new();
-        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(PlayerDesign::starter(&content, "halvex_runner"));
         world.insert_resource(GameContent(content));
         world.insert_resource(storage);
         world.init_resource::<Params>();

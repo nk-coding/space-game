@@ -6,20 +6,27 @@
 //! they are larger ([`UiAtlasNeed`]), × window scale factor, capped by the GPU's largest texture),
 //! rasterises a new atlas when that tier changes (regions and mip chain spread over frames within a time
 //! budget, the old texture stays in use meanwhile; a job for a tier the zoom has already outgrown is dropped
-//! for the new one) and switches the material to the new image a frame after adding it ([`rasterise_step`]).
-//! Region UVs are normalised and identical at every tier, so meshes never need rebuilding. Every atlas mesh
-//! draws with one [`AtlasMaterial`] (`atlas.wesl`: texture × vertex colour, sampled with a mip LOD bias so the
-//! icons stay as sharp as the geometry). [`AtlasStatus`] reports what happens (F3 overlay).
+//! for the new one), uploads it a band of rows at a time as the bands are finished ([`upload_bands`]) and
+//! switches the materials to it once all of it is on the GPU ([`rasterise_step`]). Region UVs are normalised
+//! and identical at every tier, so meshes never need rebuilding. Every atlas mesh draws with [`AtlasMaterial`]
+//! (`atlas.wesl`: texture × vertex colour, sampled with a mip LOD bias so the icons stay as sharp as the
+//! geometry): alpha-blended, or opaque with depth writes for the lit ship tiles ([`Atlas::opaque`]).
+//! [`AtlasStatus`] reports what happens (F3 overlay).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bevy::asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::platform::collections::HashMap;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
-use bevy::render::renderer::RenderDevice;
+use bevy::render::render_asset::RenderAssets;
+use bevy::render::render_resource::{
+    AsBindGroup, Extent3d, TexelCopyBufferLayout, TextureDimension, TextureFormat, TextureUsages,
+};
+use bevy::render::renderer::{RenderDevice, RenderQueue};
+use bevy::render::texture::GpuImage;
+use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
 use bevy::window::PrimaryWindow;
@@ -32,6 +39,9 @@ const FRAME_BUDGET_MS: f64 = 6.0;
 /// finishing sooner beats a smooth frame rate.
 const BLURRY_BUDGET_MS: f64 = 16.0;
 const BLURRY: f32 = 2.0;
+/// Most bytes of a new atlas uploaded per frame, per millisecond of its time budget (2.1 MB at 6 ms, 5.6 MB at
+/// 16 ms): the pull pass finishes rows faster than the time budget stops it.
+const UPLOAD_BYTES_PER_MS: f64 = 350_000.0;
 /// A new tier has to be wanted this long before the atlas is rebuilt (zooming through tiers costs nothing).
 const SETTLE_SECONDS: f32 = 0.25;
 
@@ -63,8 +73,11 @@ impl Region {
 
 #[derive(Resource)]
 pub struct Atlas {
-    /// Shared material for every atlas mesh (vertex colours tint the texture).
+    /// Shared material for every atlas mesh (vertex colours tint the texture), alpha-blended.
     pub material: Handle<AtlasMaterial>,
+    /// The same, drawn in the opaque pass with depth writes: the lit ship tiles, so that the shield bubbles of
+    /// lower ships are hidden under them (`ship_view`, `shield`).
+    pub opaque: Handle<AtlasMaterial>,
     regions: HashMap<String, Region>,
     tokens: art::Tokens,
     layout: Arc<art::Layout>,
@@ -95,13 +108,14 @@ pub fn parse_hex(s: &str) -> Option<Color> {
     Srgba::hex(s.trim()).ok().map(Color::from)
 }
 
-/// The material of every atlas mesh: the atlas × the vertex colour, alpha-blended, like Bevy's `ColorMaterial`
-/// but sampled with a mip LOD bias of −0.5 (`atlas.wesl` says why).
+/// The material of every atlas mesh: the atlas × the vertex colour, like Bevy's `ColorMaterial` but sampled with
+/// a mip LOD bias of −0.5 (`atlas.wesl` says why). Alpha-blended, or opaque (no blending, writes depth).
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct AtlasMaterial {
     #[texture(0)]
     #[sampler(1)]
     texture: Handle<Image>,
+    opaque: bool,
 }
 
 impl Material2d for AtlasMaterial {
@@ -110,7 +124,7 @@ impl Material2d for AtlasMaterial {
     }
 
     fn alpha_mode(&self) -> AlphaMode2d {
-        AlphaMode2d::Blend
+        if self.opaque { AlphaMode2d::Opaque } else { AlphaMode2d::Blend }
     }
 }
 
@@ -120,17 +134,67 @@ struct RasterJob {
     job: Option<Job>,
     /// Tier wanted and since when (real seconds).
     wanted: Option<(u32, f32)>,
-    /// A finished atlas, added as a new image one frame before the material switches to it (see
-    /// [`rasterise_step`]), and its numbers for [`AtlasStatus::last`].
-    ready: Option<(Handle<Image>, Rebuild)>,
 }
 
 struct Job {
     raster: art::Rasterizer,
-    /// Milliseconds spent so far, frames, and the longest single step.
+    /// The new tier's texture: created without data, filled a band at a time ([`upload_bands`]).
+    image: Handle<Image>,
+    /// Bands handed to the render world so far.
+    bands: usize,
+    done: bool,
+    /// Milliseconds spent so far, frames, the longest single step, the most bytes uploaded in one frame.
     spent: f64,
     frames: u32,
     longest: f64,
+    upload: usize,
+}
+
+impl Job {
+    fn new(layout: Arc<art::Layout>, tier: u32, images: &mut Assets<Image>, uploads: &Uploads) -> Self {
+        let raster = art::Rasterizer::new(layout, tier);
+        let (w, h) = raster.size();
+        let mut image = atlas_image(w, h, raster.levels(), None);
+        // The first band written to a mip level makes wgpu clear the level: for a render target that is a cheap
+        // clear pass instead of copies from a zero buffer.
+        image.texture_descriptor.usage |= TextureUsages::RENDER_ATTACHMENT;
+        let image = images.add(image);
+        uploads.start(Some(image.id()));
+        Self { raster, image, bands: 0, done: false, spent: 0.0, frames: 0, longest: 0.0, upload: 0 }
+    }
+}
+
+/// Rows of a mip level of the new atlas, on their way to the GPU.
+struct Band {
+    level: u32,
+    y0: u32,
+    width: u32,
+    rows: u32,
+    data: Vec<u8>,
+}
+
+/// The bands handed from [`rasterise_step`] to [`upload_bands`] (the render world); both worlds share it.
+#[derive(Resource, Clone, Default)]
+struct Uploads(Arc<Mutex<UploadQueue>>);
+
+#[derive(Default)]
+struct UploadQueue {
+    /// The texture the bands are for (the job's).
+    image: Option<AssetId<Image>>,
+    bands: Vec<Band>,
+    /// Bands written into it so far.
+    written: usize,
+}
+
+impl Uploads {
+    fn queue(&self) -> MutexGuard<'_, UploadQueue> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A new job's texture (the bands of an earlier one are dropped).
+    fn start(&self, image: Option<AssetId<Image>>) {
+        *self.queue() = UploadQueue { image, ..default() };
+    }
 }
 
 /// Logical pixels per ship cell the part icons in the UI need now (`ui_icons`; 0 when none are shown). The
@@ -171,7 +235,7 @@ impl Plugin for AtlasPlugin {
             raster.height,
             raster.levels
         );
-        let image = image_from(raster);
+        let image = atlas_image(raster.width, raster.height, raster.levels, Some(raster.data));
         let regions = layout
             .regions
             .iter()
@@ -191,14 +255,21 @@ impl Plugin for AtlasPlugin {
         app.add_plugins(Material2dPlugin::<AtlasMaterial>::default());
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
-        let material = world.resource_mut::<Assets<AtlasMaterial>>().add(AtlasMaterial { texture: image });
-        let atlas = Atlas { material, regions, tokens: art::tokens(), layout, tier };
+        let mut materials = world.resource_mut::<Assets<AtlasMaterial>>();
+        let material = materials.add(AtlasMaterial { texture: image.clone(), opaque: false });
+        let opaque = materials.add(AtlasMaterial { texture: image, opaque: true });
+        let atlas = Atlas { material, opaque, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
-        app.init_resource::<RasterJob>()
+        let uploads = Uploads::default();
+        app.insert_resource(uploads.clone())
+            .init_resource::<RasterJob>()
             .init_resource::<AtlasStatus>()
             .init_resource::<UiAtlasNeed>()
             .add_systems(Update, (choose_tier, rasterise_step).chain());
+        if let Some(render) = app.get_sub_app_mut(RenderApp) {
+            render.insert_resource(uploads).add_systems(Render, upload_bands.in_set(RenderSystems::PrepareResources));
+        }
     }
 }
 
@@ -227,6 +298,8 @@ fn choose_tier(
     atlas: Res<Atlas>,
     mut job: ResMut<RasterJob>,
     mut status: ResMut<AtlasStatus>,
+    mut images: ResMut<Assets<Image>>,
+    uploads: Res<Uploads>,
 ) {
     if status.max_tier == 0
         && let Some(device) = device
@@ -241,7 +314,7 @@ fn choose_tier(
     let want = art::tier_for(need).min(cap);
     let building = job.job.as_ref().map(|j| j.raster.tier());
     status.building = building;
-    let cur = building.or(job.ready.as_ref().map(|r| r.1.0)).unwrap_or(atlas.tier);
+    let cur = building.unwrap_or(atlas.tier);
     // Hysteresis: go up as soon as the screen needs more; go down only when half the tier is clearly enough.
     let target = if want > cur || (want < cur && need < cur as f32 * 0.5 * 0.75) { want } else { cur };
     let now = time.elapsed_secs();
@@ -256,13 +329,11 @@ fn choose_tier(
             let free = building.is_none_or(|b| b < target);
             if now - since >= SETTLE_SECONDS && free {
                 // Back to the tier on screen (a job for a lower one was running): just drop the job.
-                let same = target == atlas.tier && job.ready.is_none();
-                job.job = (!same).then(|| Job {
-                    raster: art::Rasterizer::new(atlas.layout.clone(), target),
-                    spent: 0.0,
-                    frames: 0,
-                    longest: 0.0,
-                });
+                let same = target == atlas.tier;
+                if same {
+                    uploads.start(None);
+                }
+                job.job = (!same).then(|| Job::new(atlas.layout.clone(), target, &mut images, &uploads));
                 job.wanted = None;
                 status.building = (!same).then_some(target);
             }
@@ -271,79 +342,106 @@ fn choose_tier(
     }
 }
 
-/// Renders regions and mip rows until the frame budget is used. A complete atlas becomes a new image; one frame
-/// later, when the render world has uploaded it, the material switches to it.
+/// Does steps of the job until the frame's time budget or its bytes ([`UPLOAD_BYTES_PER_MS`]) are used, and hands
+/// the finished rows to the render world ([`upload_bands`]). Once every band is in the new texture, the materials
+/// switch to it (written through `get_mut`, so Bevy re-prepares them) and the old image goes with its last handle.
+/// No frame uploads the whole atlas (84 MB at tier 512, which took one frame until 13 Oct 2026).
 ///
 /// Until 13 Oct 2026 the image was replaced in place and the material "touched" with `materials.get_mut(id)`.
 /// In Bevy 0.20 that is a no-op (`get_mut` returns an `AssetMut` guard that only marks the asset modified when
 /// it is written through), so the material's bind group kept the texture it was first prepared with: every
 /// atlas mesh sampled the start atlas (64 or 32 px/cell) for the whole session, stretched 2.5–5× at 160 px/m,
-/// while F3 showed the new tier. Now the material really changes (its texture handle). The new image is added
-/// one frame before the switch because Bevy does not order a material's preparation after its images' within
-/// `RenderSystems::PrepareAssets`: switching in the same frame could bind a texture that is not uploaded yet
-/// (Bevy then retries the material, and the atlas meshes would vanish for a frame). A new image per tier also
-/// avoids Bevy's in-place update for an unchanged texture size, which writes mip level 0 only.
+/// while F3 showed the new tier. Now the materials really change (their texture handle), to a new image per tier
+/// that is prepared on the GPU long before the switch (its bands come frames later).
 fn rasterise_step(
     mut job: ResMut<RasterJob>,
     mut atlas: ResMut<Atlas>,
     mut status: ResMut<AtlasStatus>,
-    mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
+    uploads: Res<Uploads>,
 ) {
-    if let Some((image, last)) = job.ready.take() {
-        // The material switches (written through `get_mut`, so Bevy re-prepares it); the old image goes with its
-        // last handle.
-        if let Some(mut m) = materials.get_mut(&atlas.material) {
-            m.texture = image;
-        }
-        atlas.tier = last.0;
-        status.last = Some(last);
-    }
     let Some(j) = job.job.as_mut() else { return };
-    let budget = if status.need > atlas.tier as f32 * BLURRY { BLURRY_BUDGET_MS } else { FRAME_BUDGET_MS };
-    let t0 = Instant::now();
-    let mut done = false;
-    while !done && t0.elapsed().as_secs_f64() * 1e3 < budget {
-        let t = Instant::now();
-        match j.raster.step() {
-            Ok(d) => done = d,
-            Err(e) => {
-                error!("atlas rasterisation failed: {e}");
-                job.job = None;
-                return;
+    if !j.done {
+        let budget = if status.need > atlas.tier as f32 * BLURRY { BLURRY_BUDGET_MS } else { FRAME_BUDGET_MS };
+        let most = (UPLOAD_BYTES_PER_MS * budget) as usize;
+        let t0 = Instant::now();
+        let (mut bands, mut bytes) = (Vec::<Band>::new(), 0);
+        while !j.done && bytes < most && t0.elapsed().as_secs_f64() * 1e3 < budget {
+            let t = Instant::now();
+            match j.raster.step() {
+                Ok(d) => j.done = d,
+                Err(e) => {
+                    error!("atlas rasterisation failed: {e}");
+                    uploads.start(None);
+                    job.job = None;
+                    return;
+                }
+            }
+            j.longest = j.longest.max(t.elapsed().as_secs_f64() * 1e3);
+            let Some((level, rows)) = j.raster.finished() else { continue };
+            let (data, width) = j.raster.rows(level, rows.clone());
+            bytes += data.len();
+            // Rows that follow the last band of the same level join it: one texture write.
+            match bands.last_mut() {
+                Some(b) if b.level == level && b.y0 + b.rows == rows.start => {
+                    b.data.extend_from_slice(data);
+                    b.rows = rows.end - b.y0;
+                }
+                _ => bands.push(Band { level, y0: rows.start, width, rows: rows.len() as u32, data: data.to_vec() }),
             }
         }
-        j.longest = j.longest.max(t.elapsed().as_secs_f64() * 1e3);
+        j.spent += t0.elapsed().as_secs_f64() * 1e3;
+        j.frames += 1;
+        j.upload = j.upload.max(bytes);
+        j.bands += bands.len();
+        uploads.queue().bands.extend(bands);
     }
-    j.spent += t0.elapsed().as_secs_f64() * 1e3;
-    j.frames += 1;
-    if !done {
+    if !j.done || uploads.queue().written < j.bands {
         return;
     }
-    let Job { raster, spent, frames, longest } = job.job.take().expect("job");
-    let tier = raster.tier();
-    let raster = match raster.finish() {
-        Ok(r) => r,
-        Err(e) => {
-            error!("atlas rasterisation failed: {e}");
-            return;
+    let Job { raster, image, spent, frames, longest, upload, .. } = job.job.take().expect("job");
+    for handle in [&atlas.material, &atlas.opaque] {
+        if let Some(mut m) = materials.get_mut(handle) {
+            m.texture = image.clone();
         }
-    };
-    let (w, h, levels) = (raster.width, raster.height, raster.levels);
-    job.ready = Some((images.add(image_from(raster)), (tier, spent, frames, longest)));
+    }
+    let tier = raster.tier();
+    let ((w, h), levels) = (raster.size(), raster.levels());
+    atlas.tier = tier;
+    status.last = Some((tier, spent, frames, longest));
     status.building = None;
-    info!("atlas: re-rasterised at {tier} px/cell ({w}x{h}, {levels} mips): {spent:.1} ms over {frames} frames, longest step {longest:.1} ms");
+    info!(
+        "atlas: re-rasterised at {tier} px/cell ({w}x{h}, {levels} mips): {spent:.1} ms over {frames} frames, longest step {longest:.1} ms, at most {:.1} MB uploaded per frame",
+        upload as f64 / 1e6
+    );
 }
 
-fn image_from(r: art::Raster) -> Image {
+/// Render world: writes the bands handed over since the last frame into the new atlas texture (they wait until
+/// its GPU texture exists, which is the frame after the job starts).
+fn upload_bands(uploads: Res<Uploads>, images: Res<RenderAssets<GpuImage>>, queue: Res<RenderQueue>) {
+    let mut q = uploads.queue();
+    let Some(gpu) = q.image.and_then(|id| images.get(id)) else { return };
+    let bands = std::mem::take(&mut q.bands);
+    for b in &bands {
+        let mut to = gpu.texture.as_image_copy();
+        to.mip_level = b.level;
+        to.origin.y = b.y0;
+        let layout = TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(b.width * 4), rows_per_image: Some(b.rows) };
+        queue.write_texture(to, &b.data, layout, Extent3d { width: b.width, height: b.rows, depth_or_array_layers: 1 });
+    }
+    q.written += bands.len();
+}
+
+/// An atlas texture with its mip levels (`data`: all of them, or `None` to fill it later).
+fn atlas_image(width: u32, height: u32, levels: u32, data: Option<Vec<u8>>) -> Image {
     let mut image = Image::new_uninit(
-        Extent3d { width: r.width, height: r.height, depth_or_array_layers: 1 },
+        Extent3d { width, height, depth_or_array_layers: 1 },
         TextureDimension::D2,
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     );
-    image.data = Some(r.data);
-    image.texture_descriptor.mip_level_count = r.levels;
+    image.data = data;
+    image.texture_descriptor.mip_level_count = levels;
     image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
         label: Some("atlas".into()),
         address_mode_u: ImageAddressMode::ClampToEdge,

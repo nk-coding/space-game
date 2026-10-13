@@ -7,15 +7,19 @@
 //!   density). A texture for a pixel density `tier` (pixels per cell) is the layout scaled by `tier`, so the
 //!   normalised UV of a region never changes between tiers: meshes keep their UVs when the texture is swapped.
 //!   Soft regions (icon glows, plumes, aura) are stored at half density (they are blurry anyway).
-//! * **Rasteriser** ([`Rasterizer`]): renders region by region, then builds an alpha-weighted mip chain and
-//!   bleeds colour into transparent texels, a band of rows at a time (`step`), so a client can spread all the
-//!   work over frames. Output: straight-alpha sRGB RGBA8, mip levels concatenated.
+//! * **Rasteriser** ([`Rasterizer`]): clears its buffer, renders the regions, then builds an alpha-weighted mip
+//!   chain and bleeds colour into transparent texels, every stage a band of rows at a time (`step`, about
+//!   [`STEP_TEXELS`] texels), so a client can spread all the work over frames and upload each band as soon as
+//!   it is final ([`Rasterizer::finished`]). Soft layers (icon glows, the plumes' blurred glow) look the same at
+//!   every tier: they are rendered once at [`SOFT_TIER`] (kept in the [`Layout`]) and resampled for the higher
+//!   tiers, so no step blurs a large region. Output: straight-alpha sRGB RGBA8, mip levels concatenated.
 //!
 //! No Bevy, no threads, no filesystem; builds for wasm32 and Android.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::sync::Arc;
+use std::ops::Range;
+use std::sync::{Arc, OnceLock};
 
 use resvg::{tiny_skia, usvg};
 
@@ -28,6 +32,9 @@ pub const UNITS_PER_CELL: f32 = 20.0;
 /// Pixel-density tiers (pixels per cell). Powers of two; the top tier keeps the atlas within 4096 pixels.
 pub const MIN_TIER: u32 = 32;
 pub const MAX_TIER: u32 = 512;
+/// Soft layers are rendered at this tier once and resampled for higher ones (blurred by 5 px or more here, so a
+/// bilinear upsample is indistinguishable from rendering them at the tier, which blurred by up to 41 px at 512).
+pub const SOFT_TIER: u32 = 128;
 /// Layout width in atlas units (the atlas is `LAYOUT_WIDTH × tier` pixels wide).
 const LAYOUT_WIDTH: f32 = 8.0;
 /// Gutter between regions, atlas units.
@@ -101,9 +108,25 @@ fn flatten(prefix: &str, v: &serde_json::Value, out: &mut BTreeMap<String, Strin
 
 #[derive(Clone, Debug)]
 enum Source {
-    /// An SVG document, rendered to fill the region.
-    Svg(String),
+    /// SVG documents with the same viewBox, rendered to fill the region, the crisp one over the soft one. The soft
+    /// layer is blurred (an icon's glow, a plume's glow); the crisp one is rendered at the tier a band of rows at
+    /// a time (whole when it uses a filter, which a band would cut off).
+    Svg { soft: Option<String>, crisp: Option<String> },
     Proc(Proc),
+}
+
+/// A soft layer rendered at [`SOFT_TIER`]: premultiplied RGBA8, `w × h` (the region's size at that tier).
+#[derive(Clone)]
+struct Soft {
+    w: u32,
+    h: u32,
+    rgba: Vec<u8>,
+}
+
+impl std::fmt::Debug for Soft {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Soft({} x {})", self.w, self.h)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -129,6 +152,8 @@ pub struct RegionDef {
     /// Anchor (nozzle, muzzle, centre) in cells from the region's top-left corner.
     pub origin: [f32; 2],
     source: Source,
+    /// The soft layer at [`SOFT_TIER`], rendered the first time a tier at or above it needs it.
+    soft: OnceLock<Result<Soft, String>>,
 }
 
 /// Where everything sits in the atlas, independent of the pixel density.
@@ -148,7 +173,7 @@ impl Layout {
         let t = tokens();
         let mut regs: Vec<(RegionDef, [f32; 2])> = Vec::new();
         let mut add = |name: String, size_u: [f32; 2], cells: [f32; 2], origin: [f32; 2], source: Source| {
-            regs.push((RegionDef { name, rect: [0.0; 4], cells, origin, source }, size_u));
+            regs.push((RegionDef { name, rect: [0.0; 4], cells, origin, source, soft: OnceLock::new() }, size_u));
         };
 
         for (key, icon) in &content.icons {
@@ -164,9 +189,10 @@ impl Layout {
                     &format!("<filter id=\"gl\" filterUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"{vw}\" height=\"{vh}\">"),
                 )
             });
-            add(format!("icon/{key}"), cells, cells, [0.0; 2], Source::Svg(crisp));
+            add(format!("icon/{key}"), cells, cells, [0.0; 2], Source::Svg { soft: None, crisp: Some(crisp) });
             if let Some(g) = glow {
-                add(format!("glow/{key}"), [cells[0] / 2.0, cells[1] / 2.0], cells, [0.0; 2], Source::Svg(g));
+                let half = [cells[0] / 2.0, cells[1] / 2.0];
+                add(format!("glow/{key}"), half, cells, [0.0; 2], Source::Svg { soft: Some(g), crisp: None });
             }
         }
 
@@ -203,13 +229,18 @@ impl Layout {
                 for (col, op, off) in stops.iter() {
                     let _ = write!(stop_xml, "<stop offset=\"{off}\" stop-color=\"{col}\" stop-opacity=\"{op}\"/>");
                 }
-                let svg = format!(
-                    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{vw}\" height=\"{vh}\" viewBox=\"{x0} {y0} {vw} {vh}\">\
-                     <defs><linearGradient id=\"p\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">{stop_xml}</linearGradient>\
-                     <filter id=\"b\" filterUnits=\"userSpaceOnUse\" x=\"{x0}\" y=\"{y0}\" width=\"{vw}\" height=\"{vh}\"><feGaussianBlur stdDeviation=\"{glow_sigma}\"/></filter></defs>\
-                     <polygon points=\"{a},0 {hw},0 0,{l}\" fill=\"{glow_col}\" opacity=\"{glow_op}\" filter=\"url(#b)\"/>\
-                     <polygon points=\"{a},0 {hw},0 0,{l}\" fill=\"url(#p)\"/></svg>",
-                    a = -hw
+                // The blurred glow (soft) and the gradient triangle over it (crisp), as two documents.
+                let open = format!(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{vw}\" height=\"{vh}\" viewBox=\"{x0} {y0} {vw} {vh}\">"
+                );
+                let points = format!("{a},0 {hw},0 0,{l}", a = -hw);
+                let soft = format!(
+                    "{open}<defs><filter id=\"b\" filterUnits=\"userSpaceOnUse\" x=\"{x0}\" y=\"{y0}\" width=\"{vw}\" height=\"{vh}\"><feGaussianBlur stdDeviation=\"{glow_sigma}\"/></filter></defs>\
+                     <polygon points=\"{points}\" fill=\"{glow_col}\" opacity=\"{glow_op}\" filter=\"url(#b)\"/></svg>"
+                );
+                let crisp = format!(
+                    "{open}<defs><linearGradient id=\"p\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">{stop_xml}</linearGradient></defs>\
+                     <polygon points=\"{points}\" fill=\"url(#p)\"/></svg>"
                 );
                 let cells = [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL];
                 add(
@@ -217,7 +248,7 @@ impl Layout {
                     [cells[0] / 2.0, cells[1] / 2.0],
                     cells,
                     [-x0 / UNITS_PER_CELL, -y0 / UNITS_PER_CELL],
-                    Source::Svg(svg),
+                    Source::Svg { soft: Some(soft), crisp: Some(crisp) },
                 );
             }
         }
@@ -236,7 +267,8 @@ impl Layout {
              <rect x=\"-2.5\" y=\"0\" width=\"5\" height=\"16\" rx=\"1\" fill=\"url(#g)\" stroke=\"{stroke}\" stroke-width=\".6\"/></svg>"
         );
         let cells = [bw / UNITS_PER_CELL, bh / UNITS_PER_CELL];
-        add("fx/barrel".into(), cells, cells, [-bx0 / UNITS_PER_CELL, -by0 / UNITS_PER_CELL], Source::Svg(svg));
+        let origin = [-bx0 / UNITS_PER_CELL, -by0 / UNITS_PER_CELL];
+        add("fx/barrel".into(), cells, cells, origin, Source::Svg { soft: None, crisp: Some(svg) });
 
         pack(regs)
     }
@@ -254,6 +286,27 @@ impl Layout {
     /// Atlas size in pixels at a tier.
     pub fn pixel_size(&self, tier: u32) -> (u32, u32) {
         ((self.size[0] * tier as f32).round() as u32, (self.size[1] * tier as f32).round() as u32)
+    }
+}
+
+impl RegionDef {
+    /// `[x, y, w, h]` in pixels at a tier.
+    fn pixels(&self, tier: u32) -> [u32; 4] {
+        let t = tier as f32;
+        let [x, y, w, h] = self.rect;
+        [(x * t).round() as u32, (y * t).round() as u32, (w * t).round().max(1.0) as u32, (h * t).round().max(1.0) as u32]
+    }
+
+    /// The soft layer at [`SOFT_TIER`], rendered the first time it is asked for (`None`: the region has none).
+    fn soft_layer(&self) -> Option<&Result<Soft, String>> {
+        let Source::Svg { soft: Some(svg), .. } = &self.source else { return None };
+        Some(self.soft.get_or_init(|| {
+            let tree = usvg::Tree::from_str(svg, &svg_options()).map_err(|e| e.to_string())?;
+            let [_, _, w, h] = self.pixels(SOFT_TIER);
+            let mut pm = tiny_skia::Pixmap::new(w, h).ok_or("empty region")?;
+            render_rows(&tree, &mut pm.as_mut(), w, h, 0);
+            Ok(Soft { w, h, rgba: pm.take() })
+        }))
     }
 }
 
@@ -358,36 +411,62 @@ pub struct Raster {
     pub failed: Vec<String>,
 }
 
-/// Renders a layout at one tier in small steps ([`Rasterizer::step`]): one region per step, then the mip chain
-/// a band of rows per step (downsampling level by level, then the colour pull, coarse to fine), so a client can
-/// spread all of it over frames. [`Rasterizer::finish`] only hands the result over.
+/// Renders a layout at one tier in small steps ([`Rasterizer::step`], each about [`STEP_TEXELS`] texels of work):
+/// zeroes its buffer a band at a time (no large zeroed allocation at once), renders every region a band of rows
+/// at a time, then the mip chain a band at a time (downsampling level by level, then the colour pull, coarse to
+/// fine). After its pull a band never changes again ([`Rasterizer::finished`]), so a client can spread all of it
+/// over frames and upload as it goes. [`Rasterizer::finish`] hands the whole result over.
 pub struct Rasterizer {
     layout: Arc<Layout>,
     tier: u32,
     width: u32,
     height: u32,
-    /// Every mip level, concatenated (allocated once).
+    /// Every mip level, concatenated; grows to its full size while [`Stage::Clear`] zeroes it.
     rgba: Vec<u8>,
+    /// The full size of `rgba` in bytes.
+    total: usize,
     /// `(offset in bytes, width, height)` per mip level.
     levels: Vec<(usize, usize, usize)>,
-    next: usize,
     stage: Stage,
+    /// The SVG layers of the region in progress, parsed at its first band.
+    parsed: Option<Parsed>,
+    /// One band's pixels, premultiplied (tiny-skia's format), reused.
+    band: Vec<u8>,
+    /// The rows the last step made final: `(mip level, rows)`.
+    finished: Option<(u32, Range<u32>)>,
     failed: Vec<String>,
+}
+
+/// The parsed layers of the region in progress.
+struct Parsed {
+    index: usize,
+    /// The soft layer, when it is rendered at the tier (below [`SOFT_TIER`]); from there up it is resampled.
+    soft: Option<usvg::Tree>,
+    crisp: Option<usvg::Tree>,
+    /// Rendered in one step: a blur can't be cut into bands (a soft layer rendered at the tier, or a crisp layer
+    /// that uses a filter, which no base icon does).
+    whole: bool,
 }
 
 /// Where a [`Rasterizer`] is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stage {
-    Regions,
+    /// Zeroing the buffer (`rgba.len()` bytes so far).
+    Clear,
+    /// Region `index`, from pixel row `row`.
+    Region { index: usize, row: u32 },
     /// Downsampling into `level` (1..), from output row `row`.
     Down { level: usize, row: usize },
-    /// Pulling colour into the nearly transparent texels of `level`, from row `row`.
+    /// Pulling colour into the nearly transparent texels of `level` (from the coarser level; the coarsest has
+    /// none), from row `row`. The rows are final after it.
     Pull { level: usize, row: usize },
     Done,
 }
 
-/// Texels written per mip step (about a millisecond natively).
-const STEP_TEXELS: usize = 1 << 16;
+/// Texels per step (a millisecond natively at most, for the busiest icon).
+pub const STEP_TEXELS: usize = 1 << 15;
+/// Bytes zeroed per step while clearing (zeroing is much cheaper per byte than the rest).
+const CLEAR_BYTES: usize = 1 << 21;
 /// Texels below this alpha take their colour from the coarser level (see [`Rasterizer::pull_rows`]).
 const SOLID: u8 = 24;
 
@@ -403,21 +482,65 @@ impl Rasterizer {
             levels.push((total, lw, lh));
             total += lw * lh * 4;
         }
-        Self { layout, tier, width, height, rgba: vec![0; total], levels, next: 0, stage: Stage::Regions, failed: Vec::new() }
+        Self {
+            layout,
+            tier,
+            width,
+            height,
+            rgba: Vec::with_capacity(total),
+            total,
+            levels,
+            stage: Stage::Clear,
+            parsed: None,
+            band: Vec::new(),
+            finished: None,
+            failed: Vec::new(),
+        }
     }
 
     pub fn tier(&self) -> u32 {
         self.tier
     }
 
-    /// Does the next piece of work: a region, or a band of mip rows. Returns `true` when everything is done.
+    /// Mip level 0 in pixels.
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    /// How many mip levels the atlas has.
+    pub fn levels(&self) -> u32 {
+        self.levels.len() as u32
+    }
+
+    /// The rows of a mip level the last [`Rasterizer::step`] made final, if any: they never change again. Every
+    /// row of every level is reported exactly once, coarsest level first.
+    pub fn finished(&self) -> Option<(u32, Range<u32>)> {
+        self.finished.clone()
+    }
+
+    /// Rows of mip `level` (straight-alpha sRGB RGBA8) and the level's width in pixels.
+    pub fn rows(&self, level: u32, rows: Range<u32>) -> (&[u8], u32) {
+        let (o, w, _) = self.levels[level as usize];
+        (&self.rgba[o + rows.start as usize * w * 4..o + rows.end as usize * w * 4], w as u32)
+    }
+
+    /// Does the next piece of work: a band of zeroes, of a region or of mip rows. Returns `true` when everything
+    /// is done.
     pub fn step(&mut self) -> Result<bool, String> {
+        self.finished = None;
         match self.stage {
-            Stage::Regions => {
-                self.region()?;
-                if self.next >= self.layout.regions.len() {
-                    self.stage = if self.levels.len() > 1 { Stage::Down { level: 1, row: 0 } } else { Stage::Done };
+            Stage::Clear => {
+                let end = (self.rgba.len() + CLEAR_BYTES).min(self.total);
+                self.rgba.resize(end, 0);
+                if end == self.total {
+                    self.stage = self.after_region(None);
                 }
+            }
+            Stage::Region { index, row } => {
+                self.stage = match self.region(index, row)? {
+                    Some(row) => Stage::Region { index, row },
+                    None => self.after_region(Some(index)),
+                };
             }
             Stage::Down { level, row } => {
                 let (_, w, h) = self.levels[level];
@@ -428,13 +551,16 @@ impl Rasterizer {
                 } else if level + 1 < self.levels.len() {
                     Stage::Down { level: level + 1, row: 0 }
                 } else {
-                    Stage::Pull { level: self.levels.len() - 2, row: 0 }
+                    Stage::Pull { level, row: 0 }
                 };
             }
             Stage::Pull { level, row } => {
                 let (_, w, h) = self.levels[level];
                 let end = (row + (STEP_TEXELS / w).max(1)).min(h);
-                self.pull_rows(level, row, end);
+                if level + 1 < self.levels.len() {
+                    self.pull_rows(level, row, end);
+                }
+                self.finished = Some((level as u32, row as u32..end as u32));
                 self.stage = if end < h {
                     Stage::Pull { level, row: end }
                 } else if level > 0 {
@@ -448,28 +574,79 @@ impl Rasterizer {
         Ok(self.stage == Stage::Done)
     }
 
-    /// Renders the next region into level 0. An SVG that does not parse leaves its region transparent and is
-    /// listed in [`Raster::failed`].
-    fn region(&mut self) -> Result<(), String> {
-        let Some(r) = self.layout.regions.get(self.next) else { return Ok(()) };
-        self.next += 1;
-        let t = self.tier as f32;
-        let (px, py) = ((r.rect[0] * t).round() as u32, (r.rect[1] * t).round() as u32);
-        let (pw, ph) = ((r.rect[2] * t).round().max(1.0) as u32, (r.rect[3] * t).round().max(1.0) as u32);
-        let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or("empty region")?;
-        match &r.source {
-            Source::Svg(svg) => match usvg::Tree::from_str(svg, &svg_options()) {
-                Ok(tree) => {
-                    let size = tree.size();
-                    let tf = tiny_skia::Transform::from_scale(pw as f32 / size.width(), ph as f32 / size.height());
-                    resvg::render(&tree, tf, &mut pm.as_mut());
-                }
-                Err(e) => self.failed.push(format!("{}: {e}", r.name)),
-            },
-            Source::Proc(p) => procedural(*p, &mut pm),
+    /// The stage after region `index` (`None`: the first region).
+    fn after_region(&self, index: Option<usize>) -> Stage {
+        let next = index.map_or(0, |i| i + 1);
+        if next < self.layout.regions.len() {
+            Stage::Region { index: next, row: 0 }
+        } else if self.levels.len() > 1 {
+            Stage::Down { level: 1, row: 0 }
+        } else {
+            Stage::Pull { level: 0, row: 0 }
         }
-        copy_region(&pm, &mut self.rgba, self.width, px, py);
-        Ok(())
+    }
+
+    /// Renders a band of region `index` from pixel row `row` into level 0 and returns the row after it (`None`:
+    /// the region is done). The first time a tier at or above [`SOFT_TIER`] needs a soft layer, rendering it at
+    /// that tier is the step. An SVG that does not parse leaves its layer transparent and is listed in
+    /// [`Raster::failed`].
+    fn region(&mut self, index: usize, row: u32) -> Result<Option<u32>, String> {
+        let layout = self.layout.clone();
+        let r = &layout.regions[index];
+        let resample = self.tier >= SOFT_TIER;
+        if resample && matches!(r.source, Source::Svg { soft: Some(_), .. }) && r.soft.get().is_none() {
+            let _ = r.soft_layer();
+            return Ok(Some(row));
+        }
+        if row == 0 {
+            self.parsed = Some(self.parse(index, r));
+        }
+        let parsed = self.parsed.as_ref().filter(|p| p.index == index).ok_or("region out of order")?;
+        let [px, py, pw, ph] = r.pixels(self.tier);
+        let rows = if parsed.whole { ph - row } else { (STEP_TEXELS as u32 / pw).clamp(1, ph - row) };
+        self.band.clear();
+        self.band.resize((pw * rows * 4) as usize, 0);
+        {
+            let mut pm = tiny_skia::PixmapMut::from_bytes(&mut self.band, pw, rows).ok_or("empty region")?;
+            match &r.source {
+                Source::Proc(p) => procedural(*p, &mut pm, row, ph),
+                Source::Svg { .. } => {
+                    if let Some(tree) = &parsed.soft {
+                        render_rows(tree, &mut pm, pw, ph, row);
+                    } else if resample && let Some(Ok(soft)) = r.soft_layer() {
+                        resample_rows(soft, &mut pm, pw, ph, row);
+                    }
+                    if let Some(tree) = &parsed.crisp {
+                        render_rows(tree, &mut pm, pw, ph, row);
+                    }
+                }
+            }
+        }
+        copy_region(&self.band, pw as usize, rows as usize, &mut self.rgba, self.width, px, py + row);
+        let next = row + rows;
+        Ok((next < ph).then_some(next))
+    }
+
+    /// Parses a region's SVG layers (at its first band).
+    fn parse(&mut self, index: usize, r: &RegionDef) -> Parsed {
+        let Source::Svg { soft, crisp } = &r.source else {
+            return Parsed { index, soft: None, crisp: None, whole: false };
+        };
+        let direct = self.tier < SOFT_TIER;
+        let mut parse = |svg: &str| match usvg::Tree::from_str(svg, &svg_options()) {
+            Ok(tree) => Some(tree),
+            Err(e) => {
+                self.failed.push(format!("{}: {e}", r.name));
+                None
+            }
+        };
+        let soft = if direct { soft.as_deref().and_then(&mut parse) } else { None };
+        let crisp = crisp.as_deref().and_then(&mut parse);
+        if !direct && let Some(Err(e)) = r.soft_layer() {
+            self.failed.push(format!("{}: {e}", r.name));
+        }
+        let whole = soft.is_some() || crisp.as_ref().is_some_and(|t| !t.filters().is_empty());
+        Parsed { index, soft, crisp, whole }
     }
 
     /// Rows `y0..y1` of mip `level`: each texel the alpha-weighted average of its four texels one level finer.
@@ -549,11 +726,47 @@ pub fn rasterise(layout: &Arc<Layout>, tier: u32) -> Result<Raster, String> {
     Rasterizer::new(layout.clone(), tier).finish()
 }
 
-/// Copies a premultiplied region into the straight-alpha atlas (colour fringes are fixed later by the
-/// pull pass of the mip steps).
-fn copy_region(pm: &tiny_skia::Pixmap, atlas: &mut [u8], atlas_w: u32, px: u32, py: u32) {
-    let (w, h) = (pm.width() as usize, pm.height() as usize);
-    let src = pm.data();
+/// Renders `tree` scaled to fill a `w × h` region into `pm`, which holds the region's rows from `y0` on. Over what
+/// is there already (source-over), as resvg always draws.
+fn render_rows(tree: &usvg::Tree, pm: &mut tiny_skia::PixmapMut, w: u32, h: u32, y0: u32) {
+    let size = tree.size();
+    let tf = tiny_skia::Transform::from_scale(w as f32 / size.width(), h as f32 / size.height())
+        .post_translate(0.0, -(y0 as f32));
+    resvg::render(tree, tf, pm);
+}
+
+/// The soft layer (rendered at [`SOFT_TIER`]) resampled bilinearly into `pm`, which holds rows from `y0` on of the
+/// region at `w × h` pixels. Pixel centres line up; at the same size it is an exact copy. Premultiplied in and out,
+/// so the result stays valid premultiplied colour.
+fn resample_rows(soft: &Soft, pm: &mut tiny_skia::PixmapMut, w: u32, h: u32, y0: u32) {
+    let (sw, sh) = (soft.w as usize, soft.h as usize);
+    // The two source texels around a destination texel's centre and the weight of the second (of 256).
+    let taps = |d: u32, dn: u32, sn: usize| {
+        let s = ((d as f32 + 0.5) * sn as f32 / dn as f32 - 0.5).clamp(0.0, (sn - 1) as f32);
+        let i = s as usize;
+        (i, (i + 1).min(sn - 1), ((s - i as f32) * 256.0).round() as u32)
+    };
+    let cols: Vec<(usize, usize, u32)> = (0..w).map(|x| taps(x, w, sw)).collect();
+    let rows = pm.height() as usize;
+    let out = pm.data_mut();
+    for y in 0..rows {
+        let (r0, r1, fy) = taps(y0 + y as u32, h, sh);
+        let top = &soft.rgba[r0 * sw * 4..(r0 + 1) * sw * 4];
+        let bottom = &soft.rgba[r1 * sw * 4..(r1 + 1) * sw * 4];
+        let line = &mut out[y * w as usize * 4..(y + 1) * w as usize * 4];
+        for (px, &(c0, c1, fx)) in line.as_chunks_mut::<4>().0.iter_mut().zip(&cols) {
+            for c in 0..4 {
+                let t = top[c0 * 4 + c] as u32 * (256 - fx) + top[c1 * 4 + c] as u32 * fx;
+                let b = bottom[c0 * 4 + c] as u32 * (256 - fx) + bottom[c1 * 4 + c] as u32 * fx;
+                px[c] = ((t * (256 - fy) + b * fy + (1 << 15)) >> 16) as u8;
+            }
+        }
+    }
+}
+
+/// Copies premultiplied pixels (`w × h`) into the straight-alpha atlas at `(px, py)` (colour fringes are fixed
+/// later by the pull pass of the mip steps).
+fn copy_region(src: &[u8], w: usize, h: usize, atlas: &mut [u8], atlas_w: u32, px: u32, py: u32) {
     for y in 0..h {
         let row = ((py as usize + y) * atlas_w as usize + px as usize) * 4;
         for x in 0..w {
@@ -574,13 +787,14 @@ fn to_u8(x: f32) -> u8 {
     (x.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-/// Procedural regions, written premultiplied (white × alpha) like tiny-skia output.
-fn procedural(p: Proc, pm: &mut tiny_skia::Pixmap) {
-    let (w, h) = (pm.width(), pm.height());
+/// Procedural regions, written premultiplied (white × alpha) like tiny-skia output: rows from `y0` on of a region
+/// `pm.width() × h` pixels large.
+fn procedural(p: Proc, pm: &mut tiny_skia::PixmapMut, y0: u32, h: u32) {
+    let (w, rows) = (pm.width(), pm.height());
     let data = pm.data_mut();
-    for y in 0..h {
+    for y in 0..rows {
         for x in 0..w {
-            let (u, v) = ((x as f32 + 0.5) / w as f32, (y as f32 + 0.5) / h as f32);
+            let (u, v) = ((x as f32 + 0.5) / w as f32, ((y0 + y) as f32 + 0.5) / h as f32);
             let a = match p {
                 Proc::White => 1.0,
                 Proc::DotSoft => {
@@ -662,6 +876,110 @@ mod tests {
                     assert!(alpha > 0, "icon {icon} is empty at tier {tier}");
                 }
             }
+        }
+    }
+
+    /// Every step does a bounded piece of work (a structural bound, not a timing): [`CLEAR_BYTES`] of zeroes, or
+    /// at most [`STEP_TEXELS`] texels (one row when a row is wider) of a region, a soft layer or a mip level. Every
+    /// row of every mip level is reported final exactly once, coarsest level first, with the bytes it ends with.
+    #[test]
+    fn steps_are_bounded_and_report_every_row_once() {
+        let layout = Arc::new(Layout::new(&data::base_content()));
+        let tier = 256;
+        let mut r = Rasterizer::new(layout.clone(), tier);
+        let mut reported: Vec<(u32, Range<u32>, Vec<u8>)> = Vec::new();
+        loop {
+            let (before, len) = (r.stage, r.rgba.len());
+            let done = r.step().unwrap();
+            match before {
+                Stage::Clear => assert!(r.rgba.len() - len <= CLEAR_BYTES),
+                Stage::Region { index, row } => {
+                    let reg = &layout.regions[index];
+                    let [_, _, w, h] = reg.pixels(tier);
+                    let end = match r.stage {
+                        Stage::Region { index: i, row } if i == index => row,
+                        _ => h,
+                    };
+                    // No rows: the step rendered the soft layer at SOFT_TIER.
+                    let [_, _, sw, sh] = reg.pixels(SOFT_TIER);
+                    let (texels, width) = if end == row { (sw * sh, sw) } else { ((end - row) * w, w) };
+                    assert!(texels as usize <= STEP_TEXELS.max(width as usize), "{} rows {row}..{end}", reg.name);
+                }
+                Stage::Down { .. } | Stage::Pull { .. } | Stage::Done => {}
+            }
+            if let Some((level, rows)) = r.finished() {
+                let (data, width) = r.rows(level, rows.clone());
+                assert!(data.len() / 4 <= STEP_TEXELS.max(width as usize));
+                reported.push((level, rows, data.to_vec()));
+            }
+            if done {
+                break;
+            }
+        }
+        assert!(reported.windows(2).all(|w| w[0].0 >= w[1].0), "coarsest level first");
+        let raster = r.finish().unwrap();
+        let mut offset = 0;
+        let (mut w, mut h) = (raster.width as usize, raster.height as usize);
+        for level in 0..raster.levels {
+            let mut next = 0;
+            for (_, rows, data) in reported.iter().filter(|b| b.0 == level) {
+                assert_eq!(rows.start as usize, next, "level {level}");
+                next = rows.end as usize;
+                let at = offset + rows.start as usize * w * 4;
+                assert!(raster.data[at..at + data.len()] == data[..], "level {level} rows {rows:?} changed");
+            }
+            assert_eq!(next, h, "level {level}");
+            offset += w * h * 4;
+            (w, h) = (w / 2, h / 2);
+        }
+        assert_eq!(offset, raster.data.len());
+    }
+
+    /// Regions rendered a band at a time, and soft layers resampled from [`SOFT_TIER`], look like each region
+    /// rendered whole at the tier (as until 13 Oct 2026): soft layers within a few levels of 255, the rest except a
+    /// few texels along curves (tiny-skia flattens a curve cut at a band edge a little differently).
+    #[test]
+    fn bands_and_resampled_soft_layers_match_a_whole_render() {
+        let layout = Arc::new(Layout::new(&data::base_content()));
+        let tier = 256;
+        let mut r = Rasterizer::new(layout.clone(), tier);
+        while !matches!(r.stage, Stage::Down { .. }) {
+            r.step().unwrap();
+        }
+        let premultiplied = |p: &[u8]| -> [u32; 4] {
+            let a = p[3] as u32;
+            [(p[0] as u32 * a + 127) / 255, (p[1] as u32 * a + 127) / 255, (p[2] as u32 * a + 127) / 255, a]
+        };
+        for reg in &layout.regions {
+            let [px, py, w, h] = reg.pixels(tier);
+            let mut pm = tiny_skia::Pixmap::new(w, h).unwrap();
+            match &reg.source {
+                Source::Proc(p) => procedural(*p, &mut pm.as_mut(), 0, h),
+                Source::Svg { soft, crisp } => {
+                    for svg in [soft, crisp].into_iter().flatten() {
+                        render_rows(&usvg::Tree::from_str(svg, &svg_options()).unwrap(), &mut pm.as_mut(), w, h, 0);
+                    }
+                }
+            }
+            let mut whole = vec![0; (w * h * 4) as usize];
+            copy_region(pm.data(), w as usize, h as usize, &mut whole, w, 0, 0);
+            let (mut max, mut sum, mut off) = (0u32, 0u64, 0usize);
+            for y in 0..h as usize {
+                for x in 0..w as usize {
+                    let i = ((py as usize + y) * r.width as usize + px as usize + x) * 4;
+                    let a = premultiplied(&r.rgba[i..i + 4]);
+                    let b = premultiplied(&whole[(y * w as usize + x) * 4..][..4]);
+                    for c in 0..4 {
+                        let d = a[c].abs_diff(b[c]);
+                        (max, sum, off) = (max.max(d), sum + d as u64, off + (d > 2) as usize);
+                    }
+                }
+            }
+            let n = (w * h * 4) as f64;
+            let soft_only = matches!(reg.source, Source::Svg { soft: Some(_), crisp: None });
+            assert!(!soft_only || max <= 4, "{}: max {max}", reg.name);
+            assert!(sum as f64 / n <= 0.5, "{}: mean {}", reg.name, sum as f64 / n);
+            assert!(off as f64 / n <= 0.01, "{}: {off} of {n} values off by more than 2", reg.name);
         }
     }
 
