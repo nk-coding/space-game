@@ -24,7 +24,7 @@
 use std::collections::BTreeSet;
 
 use bevy::prelude::*;
-use data::{Cell, Content, Dir, PlacedShape};
+use data::{Cell, Dir, PlacedShape};
 use sim::DesignReport;
 use sim::report::Issue;
 
@@ -442,7 +442,7 @@ mod tests {
         assert!(alpha.windows(2).all(|w| w[0] < w[1] || (w[0] - w[1]).abs() < 1e-6), "{alpha:?}");
     }
 
-    fn runner() -> (Content, PlayerDesign, DesignReport) {
+    fn runner() -> (data::Content, PlayerDesign, DesignReport) {
         let content = data::base_content();
         let d = PlayerDesign::starter(&content);
         let r = sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap();
