@@ -25,7 +25,7 @@ use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Pill, PillText, Tone, label, number, ring_node, set_text, spawn_pill};
+use crate::ui_kit::{Pill, Tone, label, number, ring_glyph, ring_node, set_text, spawn_pill};
 
 use super::PlayerDesign;
 use super::actions::{ActionButton, DrydockAction};
@@ -270,13 +270,11 @@ pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, st
                 h.spawn(label(fonts, "POWER PRIORITY", 8.0, c(Tone::Label)));
                 h.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(7), ..default() }).with_children(|w| {
                     w.spawn(label(fonts, "WEIGHT", 8.0, c(Tone::Label)));
-                    for (up, text) in [(false, "−"), (true, "+")] {
+                    for (up, sign) in [(false, Glyph::Minus), (true, Glyph::Plus)] {
                         if up {
                             w.spawn((WeightText, number(fonts, "", 12.0, c(Tone::Number)), Node { min_width: px(24), justify_content: JustifyContent::Center, ..default() }));
                         }
-                        w.spawn((ring_node(22.0), ActionButton(DrydockAction::PartWeight(up)))).with_children(|r| {
-                            r.spawn((PillText, number(fonts, text, 12.0, c(Tone::Number))));
-                        });
+                        w.spawn((ring_node(22.0), ActionButton(DrydockAction::PartWeight(up)))).with_child(ring_glyph(sign, 10.0));
                     }
                 });
             });

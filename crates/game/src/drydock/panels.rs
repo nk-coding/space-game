@@ -37,8 +37,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillLock, PillText, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose,
-    ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
+    Hot, Pill, PillLock, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose,
+    ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -395,13 +395,9 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     .with_children(|b| {
                         b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(super::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
-                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut))).with_children(|r| {
-                                r.spawn((PillText, number(fonts, "−", 15.0, c(Tone::Number, 1.0))));
-                            });
+                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
                             z.spawn((PanelText::Zoom, number(fonts, "", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), ..default() }));
-                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn))).with_children(|r| {
-                                r.spawn((PillText, number(fonts, "+", 15.0, c(Tone::Number, 1.0))));
-                            });
+                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
                         });
                     });
             });

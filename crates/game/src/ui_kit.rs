@@ -26,7 +26,7 @@ use bevy::window::PrimaryWindow;
 use crate::clipboard::Clipboard;
 use crate::flight_hud::HudFonts;
 use crate::style::{Style, UiPalette, ui_color};
-use crate::ui_icons::UiIcon;
+use crate::ui_icons::{Glyph, UiIcon};
 
 /// The palette's colours by role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -292,6 +292,16 @@ pub struct PillLock;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Default)]
 pub struct Ring {
     pub disabled: bool,
+}
+
+/// A vector glyph inside a [`Ring`] coloured with the ring's state, like a [`PillText`] (the zoom's and the
+/// steppers' plus and minus): spawn it with [`ring_glyph`].
+#[derive(Component)]
+pub struct RingGlyph;
+
+/// A [`RingGlyph`] `size` px across: centred in its ring by the ring's own layout, and drawn centred on its node.
+pub fn ring_glyph(glyph: Glyph, size: f32) -> impl Bundle {
+    (RingGlyph, UiIcon::Glyph { glyph, color: Color::NONE }, Node { width: px(size), height: px(size), flex_shrink: 0.0, ..default() })
 }
 
 /// Spawns a pill with a text in Barlow medium (the mockup's pills are semi-bold) and an optional icon before it,
@@ -792,6 +802,7 @@ fn style_widgets(
         Without<Pill>,
     >,
     mut texts: Query<&mut TextColor, With<PillText>>,
+    mut glyphs: Query<&mut UiIcon, With<RingGlyph>>,
     mut bars: Query<(Ref<ValueBar>, &mut BackgroundColor, &Children), (Without<Pill>, Without<Ring>, Without<BarFill>)>,
     mut fills: Query<(&mut Node, &mut BackgroundColor, Has<BarMark>), (Or<(With<BarFill>, With<BarMark>)>, Without<ValueBar>, Without<Pill>, Without<Ring>)>,
     mut fields: Query<(Ref<TextField>, Ref<Hot>, &mut BorderColor, &Children), (Without<Pill>, Without<Ring>)>,
@@ -852,15 +863,17 @@ fn style_widgets(
         if !ring.is_changed() && !hot.is_changed() {
             continue;
         }
-        let (b, f, t) = if ring.disabled {
-            (c(ui.dim, 0.3), Color::NONE, c(ui.dim, 0.75))
+        // The text colour as a palette colour and its opacity (glyphs are world meshes: no `ui_color`).
+        let (b, f, (ink, k)) = if ring.disabled {
+            (c(ui.dim, 0.3), Color::NONE, (ui.dim, 0.75))
         } else if hot.pressed {
-            (c(ui.teal, 0.8), c(ui.teal, 0.12), c(ui.number, 1.0))
+            (c(ui.teal, 0.8), c(ui.teal, 0.12), (ui.number, 1.0))
         } else if hot.hovered {
-            (c(ui.label, 0.8), c(ui.number, 0.04), c(ui.number, 1.0))
+            (c(ui.label, 0.8), c(ui.number, 0.04), (ui.number, 1.0))
         } else {
-            (c(ui.label, 0.4), Color::NONE, c(ui.number, 0.85))
+            (c(ui.label, 0.4), Color::NONE, (ui.number, 0.85))
         };
+        let t = c(ink, k);
         if border.top != b {
             *border = BorderColor::all(b);
         }
@@ -870,6 +883,12 @@ fn style_widgets(
         for child in children {
             if let Ok(mut tc) = texts.get_mut(*child) {
                 set_color(&mut tc, t);
+            }
+            if let Ok(mut icon) = glyphs.get_mut(*child)
+                && let UiIcon::Glyph { color, .. } = &mut *icon
+                && *color != ink.with_alpha(k)
+            {
+                *color = ink.with_alpha(k);
             }
         }
     }

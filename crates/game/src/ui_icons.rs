@@ -60,6 +60,11 @@ pub enum Glyph {
     Formation,
     /// A padlock (locked parts, materials and frames).
     Lock,
+    /// Plus and minus (zoom and stepper rings): drawn as bars centred on the node, so they sit exactly in the
+    /// middle of their ring (Barlow's `+` and `−` sit on the font's math axis inside a text line box, off the
+    /// box's centre and with side bearings).
+    Plus,
+    Minus,
 }
 
 /// The mesh drawing one node's icon.
@@ -244,6 +249,18 @@ fn ship_icon(content: &data::Content, style: &Style, atlas: &Atlas, bp: &Bluepri
     Some((build_body(&v, atlas, style, glow, true), v.bounds_max - v.bounds_min))
 }
 
+/// The bars of a plus (`plus`) or a minus `side` px across, centred on the origin (the node's centre): the
+/// horizontal bar, and for a plus the vertical bar's halves above and below it (no overlap, so no doubled alpha).
+fn sign_bars(plus: bool, side: f32) -> Vec<Rect> {
+    let (arm, t) = (0.32 * side, (side * 0.1).max(1.4) / 2.0);
+    let mut bars = vec![Rect::new(-arm, -t, arm, t)];
+    if plus {
+        bars.push(Rect::new(-t, -arm, t, -t));
+        bars.push(Rect::new(-t, t, t, arm));
+    }
+    bars
+}
+
 /// A glyph `side` px across, centred on the origin, in pixels (y up). Strokes are 1.6 px wide, thicker on glyphs
 /// above about 23 px.
 fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
@@ -298,6 +315,11 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
                 m.strip(&tri, true, w, &white, col);
             }
         }
+        Glyph::Plus | Glyph::Minus => {
+            for bar in sign_bars(glyph == Glyph::Plus, s) {
+                m.polygon(&[bar.min, Vec2::new(bar.max.x, bar.min.y), bar.max, Vec2::new(bar.min.x, bar.max.y)], uv, col);
+            }
+        }
         Glyph::Lock => {
             let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
             m.strip(&[p(-0.26, 0.04), p(0.26, 0.04), p(0.26, -0.34), p(-0.26, -0.34)], true, w, &white, col);
@@ -309,4 +331,29 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
         }
     }
     m.into_mesh()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plus and minus are centred on the node: their bars' bounds are symmetric around the origin, at any size.
+    #[test]
+    fn plus_and_minus_are_centred() {
+        for side in [8.0, 13.0, 14.0, 22.0] {
+            for plus in [true, false] {
+                let bars = sign_bars(plus, side);
+                let all = bars.iter().fold(bars[0], |a, b| a.union(*b));
+                assert!(all.center().length() < 1e-5, "{plus} {side}: {all:?}");
+                assert!((all.width() - 0.64 * side).abs() < 1e-4);
+                assert_eq!(all.height() > all.width() * 0.9, plus);
+                // The plus's bars don't overlap (the alpha would double where they cross).
+                for (i, a) in bars.iter().enumerate() {
+                    for b in &bars[i + 1..] {
+                        assert!(a.intersect(*b).is_empty() || a.intersect(*b).width() * a.intersect(*b).height() < 1e-6);
+                    }
+                }
+            }
+        }
+    }
 }
