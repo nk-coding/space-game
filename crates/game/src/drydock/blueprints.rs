@@ -179,6 +179,8 @@ pub(super) struct Saver {
     editing_title: bool,
     /// A text field had the keyboard last frame (so this frame's Esc was for it).
     field_had_keys: bool,
+    /// The design revision last kept for the page going away (`Storage::keep_on_leave`).
+    kept: Option<u64>,
 }
 
 /// The resources the library operations work on.
@@ -326,13 +328,19 @@ fn restore(world: &mut World) -> (DesignSlot, Shelf) {
     (DesignSlot::opened(None, &design), shelf)
 }
 
-/// Writes the working design a second after the last change.
+/// Writes the working design a second after the last change. Until then the web page keeps it to write if it goes
+/// away first (a reload within that second).
 fn autosave(time: Res<Time<Real>>, mut saver: ResMut<Saver>, mut lib: Lib, mut shelf: ResMut<Shelf>) {
     let now = time.elapsed_secs_f64();
-    saver.timer.note(lib.design.revision(), now);
+    let revision = lib.design.revision();
+    saver.timer.note(revision, now);
     // A save, an open or a delete changes the id the working design is saved under: written at once.
     if saver.timer.due(now) || lib.slot.is_changed() {
         write_working(&mut saver, &mut lib, &mut shelf);
+    } else if saver.timer.pending() && saver.kept != Some(revision) {
+        saver.kept = Some(revision);
+        let Lib { storage, design, slot, .. } = &mut lib;
+        storage.keep_on_leave(library::WORKING, || library::working_doc(design, slot));
     }
 }
 

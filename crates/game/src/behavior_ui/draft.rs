@@ -12,7 +12,7 @@ use data::behavior::{Program, TextError, check_program};
 use data::behavior_edit::BehaviorEditor;
 use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 
-use crate::drydock::behaviors::{PlayerBehaviors, errors_note, text_of};
+use crate::drydock::behaviors::{PlayerBehaviors, text_of};
 
 /// The name a new behavior gets ("New behavior", "New behavior 2", ... in the BEHAVIORS list).
 pub const NEW_NAME: &str = "New behavior";
@@ -167,7 +167,8 @@ impl BehaviorDraft {
 
     /// Why the graph and the inspector can't edit the program now: the text has errors (fix them in the TEXT view).
     pub fn locked(&self) -> Option<String> {
-        (!self.errors.is_empty()).then(|| format!("fix the text first: it has {}", errors_note(&self.errors)))
+        let n = self.errors.len();
+        (n > 0).then(|| format!("fix the text first ({n} error{} in the TEXT view)", if n == 1 { "" } else { "s" }))
     }
 
     /// Closes the editing model's open stroke (a slider drag), also while the text has errors: it changes no
@@ -323,7 +324,7 @@ mod tests {
         let typed = "target nearest\nwhen sheild_down -> flee\nalways -> approach(67%)\n";
         assert!(!d.set_text(typed));
         let (r0, program) = (d.revision(), d.program().clone());
-        assert!(d.locked().is_some_and(|why| why.starts_with("fix the text first: it has 1 error")));
+        assert_eq!(d.locked().as_deref(), Some("fix the text first (1 error in the TEXT view)"));
         let first = d.editor().unwrap().rule_at(0).unwrap().id;
         assert_eq!(d.edit(|e| e.delete_rule(first)), None);
         assert_eq!(d.edit(|e| e.undo()), None);

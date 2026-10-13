@@ -24,7 +24,7 @@ pub const MAX_NAME: usize = 40;
 /// The name a new design gets ("New design", "New design 2", ...); also the starter's when content has no ship.
 pub const NEW_NAME: &str = "New design";
 /// The working design's name in its namespace.
-const WORKING: &str = "working";
+pub const WORKING: &str = "working";
 /// Where a working design that doesn't read or open is kept before the autosave writes over it.
 pub const WORKING_ASIDE: &str = "working-unread";
 /// The summary new and imported designs get when they have none (content requires one; the drydock has no
@@ -316,9 +316,13 @@ pub fn save(storage: &mut Storage, content: &Content, design: &PlayerDesign, slo
 /// `id` is that id (empty before the first save): the header's own id is the one it was opened with (a template's
 /// content id, say), which saving and exports never use.
 pub fn write_working(storage: &mut Storage, design: &PlayerDesign, slot: &DesignSlot, now: u64) -> Result<(), StorageError> {
+    storage.write(WORKING, &working_doc(design, slot), now)
+}
+
+/// The working design as it is written ([`write_working`]).
+pub fn working_doc(design: &PlayerDesign, slot: &DesignSlot) -> WorkingDoc {
     let id = slot.id.clone().unwrap_or_default();
-    let doc = WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } };
-    storage.write(WORKING, &doc, now)
+    WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } }
 }
 
 /// The working design of the last session, opened in its frame, with its slot (unsaved changes stay unsaved) and a

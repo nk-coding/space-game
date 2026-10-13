@@ -73,6 +73,13 @@ pub trait Backend: Send + Sync + 'static {
     fn delete(&mut self, namespace: &str, name: &str) -> Result<(), StorageError>;
     /// Where the documents are, for messages and the docs ("browser storage of http://…", a directory).
     fn location(&self) -> String;
+    /// Whether this backend writes documents kept with [`Backend::keep_on_leave`] when the page goes away.
+    fn keeps_on_leave(&self) -> bool {
+        false
+    }
+    /// Keeps a document's text (made when it is needed) to write if the page goes away before the next write of
+    /// that document (web). Other backends keep nothing.
+    fn keep_on_leave(&mut self, _namespace: &str, _name: &str, _text: Box<dyn FnOnce() -> String>) {}
 }
 
 /// A kind of stored document: its namespace, its current format and its RON text.
@@ -151,8 +158,18 @@ impl Storage {
     /// Writes a document in the current format, stamped with the time `saved` (Unix seconds).
     pub fn write<D: Document>(&mut self, name: &str, doc: &D, saved: u64) -> Result<(), StorageError> {
         check_name(name)?;
-        let text = format!("{HEADER}{}, format {}, saved {saved}\n{}", D::NAMESPACE, D::FORMAT, doc.to_ron());
-        self.backend.write(D::NAMESPACE, name, &text)
+        self.backend.write(D::NAMESPACE, name, &stored_text(doc, saved))
+    }
+
+    /// Keeps the document `doc()` makes, to be written under `name` if the page goes away before its next write
+    /// (web: a reload or a closed tab runs no more frames, so a write waiting for the autosave's second would be
+    /// lost; the page's `pagehide` writes it). `doc` runs only where that is done; the text is made only then.
+    /// Desktop needs none (it writes a waiting autosave when the app closes).
+    pub fn keep_on_leave<D: Document + 'static>(&mut self, name: &str, doc: impl FnOnce() -> D) {
+        if self.backend.keeps_on_leave() && valid_name(name) {
+            let doc = doc();
+            self.backend.keep_on_leave(D::NAMESPACE, name, Box::new(move || stored_text(&doc, now_unix())));
+        }
     }
 
     /// Removes a document.
@@ -184,6 +201,11 @@ pub fn valid_name(name: &str) -> bool {
 
 fn check_name(name: &str) -> Result<(), StorageError> {
     if valid_name(name) { Ok(()) } else { Err(StorageError::BadName(name.into())) }
+}
+
+/// A document as stored: the header line, then its RON.
+fn stored_text<D: Document>(doc: &D, saved: u64) -> String {
+    format!("{HEADER}{}, format {}, saved {saved}\n{}", D::NAMESPACE, D::FORMAT, doc.to_ron())
 }
 
 /// The header line (without the marker) and the rest.
@@ -370,12 +392,48 @@ impl Backend for FileBackend {
 
 #[cfg(target_arch = "wasm32")]
 mod web {
+    use std::cell::{Cell, RefCell};
+    use std::collections::BTreeMap;
+
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
 
     use super::{Backend, StorageError};
 
     /// Every key starts with this, so other pages of the origin don't mix in.
     const PREFIX: &str = "space-game/";
+
+    thread_local! {
+        /// Documents to write if the page goes away before their next write: key → its text, made then.
+        static ON_LEAVE: RefCell<BTreeMap<String, Box<dyn FnOnce() -> String>>> = RefCell::new(BTreeMap::new());
+        static LISTENING: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Writes the kept documents when the page goes away (`pagehide`: a reload, a closed tab, another page) or is
+    /// hidden (a background tab gets no frames and may be discarded without `pagehide`).
+    fn listen() {
+        if LISTENING.replace(true) {
+            return;
+        }
+        let Some(window) = web_sys::window() else { return };
+        let on_leave = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
+            let hidden = web_sys::window().and_then(|w| w.document()).is_some_and(|d| d.hidden());
+            if e.type_() != "pagehide" && !hidden {
+                return;
+            }
+            let kept = ON_LEAVE.with_borrow_mut(std::mem::take);
+            if let Ok(s) = store() {
+                for (key, text) in kept {
+                    let _ = s.set_item(&key, &text());
+                }
+            }
+        });
+        for event in ["pagehide", "visibilitychange"] {
+            let _ = window.add_event_listener_with_callback(event, on_leave.as_ref().unchecked_ref());
+        }
+        // The listener lives as long as the page.
+        on_leave.forget();
+    }
 
     /// The browser's local storage (`localStorage`). It belongs to the origin (scheme, host and port: the
     /// copies served on :8080 and :8081 don't share it) and holds about 5 MB per origin.
@@ -424,7 +482,11 @@ mod web {
         }
 
         fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), StorageError> {
-            store()?.set_item(&key(namespace, name), text).map_err(js_error)
+            let key = key(namespace, name);
+            store()?.set_item(&key, text).map_err(js_error)?;
+            // Written: nothing is waiting for the page to go away.
+            ON_LEAVE.with_borrow_mut(|kept| kept.remove(&key));
+            Ok(())
         }
 
         fn delete(&mut self, namespace: &str, name: &str) -> Result<(), StorageError> {
@@ -434,6 +496,15 @@ mod web {
         fn location(&self) -> String {
             let origin = web_sys::window().and_then(|w| w.location().origin().ok()).unwrap_or_default();
             format!("the browser's local storage of {origin}")
+        }
+
+        fn keeps_on_leave(&self) -> bool {
+            true
+        }
+
+        fn keep_on_leave(&mut self, namespace: &str, name: &str, text: Box<dyn FnOnce() -> String>) {
+            listen();
+            ON_LEAVE.with_borrow_mut(|kept| kept.insert(key(namespace, name), text));
         }
     }
 }
@@ -535,6 +606,49 @@ mod tests {
         let broken = storage.read::<Note>("broken").unwrap_err();
         assert_eq!(broken, StorageError::Unreadable { key: "notes/broken".into(), why: "not a string".into() });
         assert!(matches!(storage.read::<Note>("unversioned"), Err(StorageError::Unreadable { .. })));
+    }
+
+    /// A backend that keeps documents for the page going away (as the web's does): (namespace, name, text).
+    #[derive(Default)]
+    struct Keeping(std::sync::Arc<std::sync::Mutex<Vec<(String, String, String)>>>);
+
+    impl Backend for Keeping {
+        fn list(&self, _: &str) -> Result<Vec<String>, StorageError> {
+            Ok(Vec::new())
+        }
+        fn read(&self, _: &str, _: &str) -> Result<Option<String>, StorageError> {
+            Ok(None)
+        }
+        fn write(&mut self, _: &str, _: &str, _: &str) -> Result<(), StorageError> {
+            Ok(())
+        }
+        fn delete(&mut self, _: &str, _: &str) -> Result<(), StorageError> {
+            Ok(())
+        }
+        fn location(&self) -> String {
+            "keeping".into()
+        }
+        fn keeps_on_leave(&self) -> bool {
+            true
+        }
+        fn keep_on_leave(&mut self, namespace: &str, name: &str, text: Box<dyn FnOnce() -> String>) {
+            self.0.lock().unwrap().push((namespace.into(), name.into(), text()));
+        }
+    }
+
+    /// A document kept for the page going away is the text a write would store; only backends that keep
+    /// anything make the document at all.
+    #[test]
+    fn documents_kept_for_leaving_are_stored_text() {
+        let keeping = Keeping::default();
+        let kept = keeping.0.clone();
+        let mut storage = Storage::new(keeping);
+        storage.keep_on_leave("a", || Note("later".into()));
+        Storage::new(MemoryBackend::default()).keep_on_leave("a", || -> Note { panic!("a memory backend keeps nothing") });
+        let kept = kept.lock().unwrap();
+        let (ns, name, text) = &kept[0];
+        assert_eq!((ns.as_str(), name.as_str()), ("notes", "a"));
+        assert!(text.starts_with("// space-game: notes, format 2, saved ") && text.ends_with("\n\"later\"\n"), "{text}");
     }
 
     #[test]

@@ -95,6 +95,8 @@ pub struct DraftSlot {
     noted: Option<Snapshot>,
     /// Write the working draft at once (a save, an open, a link).
     pub write_now: bool,
+    /// The change last kept for the page going away (`Storage::keep_on_leave`).
+    kept: Option<u64>,
 }
 
 /// A message for the status line, shown until the draft changes.
@@ -450,6 +452,11 @@ pub(super) fn autosave(time: Res<Time<Real>>, mut lib: Lib) {
     lib.slot.timer.note(changes, now);
     if lib.slot.timer.due(now) || std::mem::take(&mut lib.slot.write_now) {
         write_working(&mut lib);
+    } else if lib.slot.timer.pending() && lib.slot.kept != Some(changes) && lib.draft.editor().is_some() {
+        // Until it is written, the web page keeps it to write if it goes away first (a reload within the second).
+        lib.slot.kept = Some(changes);
+        let Lib { storage, draft, slot, .. } = &mut lib;
+        storage.keep_on_leave(WORKING, || working_of(draft, slot.flown.clone()));
     }
 }
 
