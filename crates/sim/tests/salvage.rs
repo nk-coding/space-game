@@ -1,11 +1,12 @@
 //! Salvage (GDR-0063): holds, collecting order, full holds, a lost ship's cargo, fragments, wrecks spawned as
-//! wrecks.
+//! wrecks, and the salvage determinism scenario.
 
 mod common;
 
 use std::sync::Arc;
 
 use common::{P, custom, design};
+use sim::scenario::{self, Scenario, ScenarioKind};
 use sim::{
     Body, DamageTarget, Item, Owner, Salvaged, ShipDesign, ShipId, Sim, SimConfig, SimEvent,
     TickInputs, Vec2,
@@ -387,4 +388,38 @@ fn spawned_wrecks_are_burned_out_and_pre_broken() {
     w.step(&TickInputs::default());
     assert_eq!(w.loose().len(), 1);
     assert_eq!(w.ships().len(), 1);
+}
+
+#[test]
+fn salvage_scenario_is_deterministic_and_collects() {
+    let (a, sa) = scenario::run_kind(ScenarioKind::Salvage, 42, 900);
+    let (b, sb) = scenario::run_kind(ScenarioKind::Salvage, 42, 900);
+    if let Some(t) = a.iter().zip(&b).position(|(x, y)| x != y) {
+        panic!("diverged at tick {}", t + 1);
+    }
+    assert_eq!(sa, sb);
+    assert!(
+        sa.collected > 10 && sa.collected_units >= sa.collected,
+        "{sa:?}"
+    );
+    assert!(
+        sa.collected_cargo > 0,
+        "a lost collector's wreck gave its cargo: {sa:?}"
+    );
+    assert!(sa.fragments > 0 && sa.collected_fragments > 0, "{sa:?}");
+    let (c, _) = scenario::run_kind(ScenarioKind::Salvage, 43, 900);
+    assert!(a.iter().zip(&c).all(|(x, y)| x != y));
+    // Stripping keeps the incremental caches right.
+    let content = common::content();
+    let mut sc = Scenario::with_kind(&content, 7, ScenarioKind::Salvage).unwrap();
+    for t in 0..600 {
+        sc.step();
+        if t % 30 == 0 {
+            for ship in sc.sim.ships() {
+                ship.verify_caches()
+                    .unwrap_or_else(|e| panic!("tick {t}, {:?}: {e}", ship.id()));
+            }
+        }
+    }
+    assert!(sc.stats.collected > 0);
 }
