@@ -400,7 +400,10 @@ game keeps the save".
 Track 7H of the first playable loop, 14 Oct 2026 (GDR-0062, GDR-0065, GDR-0068, ADR-0033; the sim's side is
 `docs/sim.md` "Voyages", the career's `docs/career.md` "Voyages"). Code: `voyage.rs` (launch, run, end),
 `scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `debrief.rs` (the debrief).
-Screenshots: `docs/results/voyage-*.png`.
+Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (the start: sites, cargo, RECALL),
+`voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png`,
+`voyage-abandoned.png` (the lost banner after M twice), `voyage-debrief.png`, `voyage-debrief-lost.png`,
+`voyage-summary.png` (home after DISMISS).
 
 - **Launch** (`voyage::StartVoyage { voyage }`; home's gate (V, or a click) sends it with `None` when the camera
   arrives, until the voyage map's SET COURSE exists): the fleet must be voyage-ready (`career::voyage_ready` against what the career grants: unlocked parts,
