@@ -36,17 +36,21 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
-| Zoom (3–160 px per metre) | wheel, + / − | pinch |
+| Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view: "Lock framing" under [Structure](#structure)) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started | T | – |
-| Home (the ring menu; the flight ends) | M | – |
+| Home (the ring menu; the flight ends) | M, or the ring top left | the ring top left |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
 | Render toggles | 1 debug shapes, 2 glow sprites, 3 bloom | – |
-| Hide HUD / pause / reset scene | H / P / Shift+R (left Shift) | – |
+| Hide HUD / pause (`PAUSED · P` shows) / reset scene | H / P / Shift+R (left Shift) | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
+
+The keys reach the sim tick of the frame they are pressed in, and a tap shorter than a tick (33 ms, even a press
+and release within one frame) still reaches one tick: the controls run before the frame's ticks and latch the
+keys and fire buttons until the next tick takes them (`controls::PlayerInput::for_tick`, 13 Oct 2026).
 Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHAVIOR screen's in
 [Behavior screen](#behavior-screen).
 
@@ -64,8 +68,8 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
-| `seed=N` | sim seed (default 42) |
-| `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600) |
+| `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
+| `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
 | `thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints them, `link` aside; `keyturn` is the A/D key turn rate, default 1.5 rad/s; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026) |
 | `mind=N` | the player's mind capacity in logic cores (default 24; a runner has 2): `?fleet=3&mind=4` leaves two runners dormant, for trying the fleet bar's swap |
 | `fleet=N` | N extra copies (at most 8; none in TEST IN RANGE) of the player's design fly with you under the behavior the design names (default its faction's, `skirmisher`), following your lock (`target locked`); switch with V or the fleet bar |
@@ -86,8 +90,8 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 ## Scenes (`scene.rs`)
 
 - **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of the
-  Halvex Runner, after that the autosaved working design). Waves of automaton raiders (their faction's behavior,
-  `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
+  Halvex Runner, after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
+  the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
   `WAVES ON` / `WAVES OFF (C)`, Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
@@ -147,11 +151,13 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 ## Structure
 
 ```
+RunFixedMainLoop      flight, before the ticks: fleet bar clicks → controls (keys, mouse, touch → PlayerInput, latched
+                      until the next tick)
 FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::step_sim  →  sim_bridge::apply_events
   (flight only)                                                   (Sim::step, timing,       (views: spawn / rebuild /
                                                                    hash log)                 despawn; effects from events)
-Update                ui_kit (hit testing, text fields) → flight: fleet bar input, controls (keys, mouse, touch →
-                      PlayerInput), camera input, HUD text, fleet bar, tuning panel (egui) | drydock: DockSet::Input →
+Update                ui_kit (hit testing, text fields) → flight: camera input, HUD text and the home ring, fleet bar,
+                      touch widgets, tuning panel (egui) | drydock: DockSet::Input →
                       Apply → Show → ui_kit styles | behavior: BehaviorSet::Input → Apply → Show → ui_kit styles;
                       the TEXT view's editor in egui's pass | home: clicks and keys → apply → the ship and the
                       camera → ui_kit styles
@@ -204,6 +210,14 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   smootherstep over 0.3 s (a short hop) to 0.5 s (150 m or more), time-based, so the same at any frame rate (a
   unit test checks 30 and 150 fps). Only in follow mode: a free camera stays put, a drag during the glide ends
   it, the zoom is untouched.
+- **Lock framing** (`camera.rs`, 13 Oct 2026, a default for review): at the default 18 px/m a 1600 × 900 window
+  shows about 89 × 50 m, so a raider locked at 58 m (inside the Runner's 60 m gun range) was off screen. While the
+  camera follows and a target is locked, it zooms out just enough to keep the target's centre 90 px inside the
+  view's edges (`LOCK_MARGIN`), at most to 35 % of the chosen zoom (`LOCK_MIN_SHARE`; beyond that the off-screen
+  marker shows the way), and eases back (time constant 0.1 s, like every zoom) when the lock ends. The player's
+  zoom stays the choice (`CameraRig::zoom_target`, what the drydock and home remember); a zoom by hand during a
+  lock starts from what is on screen and ends the framing until the lock ends. Not in a free camera, the load
+  test's frame or watch mode (nobody locks there).
 - **Draw order**: every piece view gets its own layer (z 10..89, round robin) when it is built; the focused
   vessel's piece draws at z 100, decided every frame from `PilotFocus` (`ship_view::sync_piece_views`), so a
   switch reorders at once (before, the z was fixed when the view was built: after a switch the old focus stayed
@@ -214,17 +228,24 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   draw call each with the atlas material, rewritten in place. Plumes come from `piece.thrusters[i]` ×
   `piece.output[i]` and `piece.cruise[i]` (see Plumes below; RCS nozzles: small puffs; engine gimbal from
   `piece.act.deflect`), beams from `Sim::beams()` re-attached to the gun at the render pose, tracers from
-  `Sim::projectiles()` interpolated, loose salvage fragments from `Sim::loose()` interpolated the same way (a
+  `Sim::projectiles()` interpolated (beams, tracers, muzzle flashes and pulses all take the design's weapon colour,
+  `ship_model::DesignVisual::weapon_color`), loose salvage fragments from `Sim::loose()` interpolated the same way (a
   small diamond of lines in the logic colour, `#ae8cec`, turning slowly in a soft breathing glow; atlas regions
   only, no new texture). `SimEvent::Collected` plays a teal flash where the item was and a pulse streak from there
   into the collecting vessel (`Effects::flash`, `Effects::pulse`); a piece emptied by stripping goes without the
   usual burst.
-- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, the hold (`CARGO 3 / 8`: cargo units
+- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): the home ring top left (what M does, for touch; its
+  clicks never reach the world: `HudButton`), hull %, hull map (one cell per part of the shown ship's design,
+  rebuilt when the ship or its compiled design changes: every new sim numbers its ships from 0, so the id alone
+  can't tell a test flight of an edited design from the last flight), the hold (`CARGO 3 / 8`: cargo units
   in use / the alive cargo parts of the controlling piece, `Ship::cargo` and `cargo_capacity`; empty for a ship
   without a hold), speed with the top speed of the
   best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
-  hull block and the touch stick on a phone), target panel, wave line, warnings, help; lock ring and off-screen
-  markers are world-space FX. Debug overlay and toggles: `hud.rs`.
+  hull block and the touch stick on a phone), target panel (in watch mode the watched ship's behavior target),
+  wave line, banners (`PAUSED · P` while paused), warnings, help; lock ring and off-screen markers are world-space
+  FX. A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
+  every HUD text and widget (`HudZone`: hull map, fleet bar, home ring, touch widgets). HUD colours are the
+  `ui.*` tokens. Debug overlay and toggles: `hud.rs`.
 - **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
   engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
   factor on 12 Oct 2026), max turn rate, key turn rate (A/D held, `keyturn=`, GDR-0055) and the mind capacity (`mind=`) apply live
@@ -269,8 +290,8 @@ menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), af
 - **Actions**: the working buttons and their keys send `HomeAction::{Drydock, Behavior, TestRange}`; `apply` sets
   the next mode (TEST RANGE sets `Scene::launch = Some(Launch::Range)`: `OnEnter(Flight)` builds the sandbox as at a
   plain start, not a test flight). A disabled ring carries no action, so it sends nothing. Coming back: the ring
-  button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`) and M in any
-  flight.
+  button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`), and in any
+  flight M or the ring top left of the HUD.
 - **Modes**: the screen and the ship's mesh are spawned once and hidden outside home, like the drydock's. Entering
   home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight find the
   camera as they left it.
@@ -625,7 +646,10 @@ the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md).
   when the sim projects it (`piece.active`, emitter alive, `work > 0`, charge > 0, not `shield_down`: the same
   test as `weapons::collect_bubbles`); it grows in over 0.35 s and fades out over 0.12 s. Hits closer than
   0.16 s and about 20° to an existing one strengthen it instead of adding a ripple (beams hit every tick); a fifth
-  hit replaces the oldest. States without a view are dropped each frame; Shift+R clears them.
+  hit replaces the oldest. A ripple's direction is taken at the pose the hit was resolved at (shots and plumes:
+  the tick's start pose, before physics; rams: its end pose). A piece that splits off and becomes a vessel
+  (`VesselFormed`) takes its bubbles' state to its new ship id. States without a view are dropped each frame;
+  Shift+R clears them.
 - **The shader** (`shield.wesl`, WESL, embedded with `embedded_asset!`): rim line with an energy-conserving width
   when it is thinner than a pixel (`fwidth`), glow, fresnel-like fill, two value-noise layers for the shimmer and
   veins, a time-hashed stutter below `low_share`, four hit terms (ripple ring, impact flash, light along the rim),
@@ -696,6 +720,8 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   `<g filter="url(#gl)" opacity="0.55">` group, which the `art` crate splits off) and set `icon: "<key>"` on the
   part. `data` embeds the pack, validation checks that the icon exists, and `art`'s test
   (`content_icons_rasterise_at_two_tiers`) checks that every content icon rasterises.
+- **A gun's barrel**: `barrel: (width, length, muzzle)` on the part in the content (`docs/content-model.md`); a gun
+  without one gets a small muzzle glow at its front edge (`ship_model::design_visual`).
 - **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line), call it from the event
   match in `sim_bridge::apply_events`, draw it in `fx::draw_effects`. Continuous visuals that follow sim state
   (like plumes) go in `fx::draw_ships_fx` and read the sim at the render pose.
