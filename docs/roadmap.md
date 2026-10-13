@@ -134,13 +134,28 @@ programmable-matter fragment.
 | 7I Voyage map | `AppMode::Map`, the chain of clusters, SET COURSE | 7C, 7D, 7F | done 13 Oct (star map; `client.md` \"Voyage map\") |
 | 7D2 Shipyard home | The home screen as the long U dock (GDR-0071) | 7D | done 13 Oct |
 | 7P Machine drawings | Machines drawn as components, engine nozzles past the hull (GDR-0069) | – | done 13 Oct |
-| 7J Slice content | Starter ship, locks, nine nodes, salvage values, four voyages, five encounters, the hunter and the Warden | 7A | in progress (with 7K) |
-| 7K Balance pass | Headless voyages over seeds against the evening budget; tune encounters and node costs | 7E, 7J | in progress (with 7J) |
-| 7L Play-test | Niklas plays an evening | all | wave 4 |
+| 7J Slice content | Starter ship, locks, nine nodes, salvage values, four voyages, five encounters, the hunter and the Warden | 7A | done 13 Oct (GDR-0073, GDR-0074) |
+| 7K Balance pass | Headless voyages over seeds against the evening budget; tune encounters and node costs | 7E, 7J | done 13 Oct (`results/slice-balance-2026-10-13.md`) |
+| 7L Play-test | Niklas plays an evening | all | next: Niklas plays an evening on 8080 |
 
 Alongside (13 Oct): six code reviews, a UI review, a security review of untrusted input and a dependency audit
 (reports in the lead's scratch space; fixes merged as they land), a docs audit (merged), the wiki generator and a
 fight-balance re-measure (GDR-0061, proposed).
+
+### State at the end of 13 Oct 2026 (night)
+
+Phase 7 is built end to end: home is the shipyard (GDR-0071), machines are drawn as components (GDR-0069), and the
+loop runs home → voyage map → voyage (salvage, recall, loss) → debrief → research → drydock. 638 tests pass;
+native vs wasm IDENTICAL (voyage, salvage, core, behavior). Port 8080 has the build. Niklas stopped for the day.
+
+Next session:
+- 7L: Niklas plays an evening; tune from his feel (GDR-0073 is the baseline).
+- Review the lead defaults of today: GDR-0066, GDR-0070, GDR-0072 (and the older GDR-0053, 0056, 0058, 0059, 0060).
+- Note for Niklas: making the cannon an upgrade (GDR-0074) also made `raider_basic` attack 3 s of every 9 (was 5),
+  so raiders hit less often; the Warden's gate with a Runner + escort went from about 40 % to 68 % clears (easier
+  than GDR-0073 meant). Judge in play.
+- Open: plume numbers, mind capacity beyond the slice, whether RCS pods also reach past the hull (GDR-0069 lead
+  reading), the needrestart exemption (CLAUDE.md, root).
 
 ## Phase 4: measurement
 
