@@ -185,6 +185,8 @@ impl SimConfig {
         fix(&mut p.ram_threshold, dp.ram_threshold);
         fix(&mut p.ram_damage, dp.ram_damage);
         fix(&mut self.salvage.reach, d.salvage.reach);
+        fix(&mut self.voyage.spawn_radius, d.voyage.spawn_radius);
+        fix(&mut self.voyage.recall_radius, d.voyage.recall_radius);
         self
     }
 
