@@ -37,7 +37,7 @@ pub enum BehaviorAction {
     Deselect,
     /// WATCH or FLY ALONGSIDE, the mode TEST IN RANGE starts in.
     TestMode(TestMode),
-    /// TEST IN RANGE (T) in [`BehaviorUi::test_mode`]: the range scenes start it.
+    /// TEST IN RANGE (T) in [`BehaviorUi::test_mode`] (`saving.rs` starts the test).
     TestInRange,
 
     // Editing (`edit.rs`), through the editing model.
@@ -104,6 +104,14 @@ pub(super) fn shortcuts(
     if pointer.typing || egui_typing || list.is_open() {
         return;
     }
+    // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
+    // one frame come in no order).
+    if !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
+        for mut f in &mut search {
+            f.focused = true;
+        }
+        return;
+    }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     for key in keys.get_just_pressed() {
         match (*key, ctrl) {
@@ -122,11 +130,6 @@ pub(super) fn shortcuts(
             }
             (KeyCode::KeyT, _) => {
                 out.write(BehaviorAction::TestInRange);
-            }
-            (KeyCode::Slash | KeyCode::NumpadDivide, _) => {
-                for mut f in &mut search {
-                    f.focused = true;
-                }
             }
             _ => {}
         }

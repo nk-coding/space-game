@@ -10,7 +10,8 @@
 //!    vessels; `vessel.rs`) runs if anything changed.
 //! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
 //!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
-//! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
+//! 5. Ship systems: per piece the control pass (idle parts), power, shield regeneration, the wrench (engines,
+//!    RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's authority.
 //! 6. Weapons (shields, projectiles, guns) and engine plumes, then breakage again; every
 //!    `SalvageTuning::interval` ticks collecting vessels take salvage (`salvage.rs`), and what they stripped
 //!    breaks up.
@@ -120,8 +121,8 @@ pub struct TickInputs {
 pub struct PartHit {
     pub ship: ShipId,
     pub piece: PieceId,
-    /// The part under the hit point (`None` only if the physics and the grid disagree).
-    pub part: Option<PartIdx>,
+    /// The part the ray enters.
+    pub part: PartIdx,
     pub hit: RayHit,
 }
 
@@ -143,6 +144,8 @@ pub struct Sim {
     /// Events before this index belong to the previous step.
     events_mark: usize,
     tick_hash: Option<u64>,
+    /// This tick's physics step has run (the impacts phase of `step`); false between steps.
+    stepped: bool,
     plans: Vec<flight::Plan>,
     /// Live projectiles, ascending id.
     pub(crate) projectiles: Vec<Projectile>,
@@ -174,7 +177,10 @@ impl Sim {
         Sim::with_config(seed, SimConfig::default())
     }
 
+    /// A world with `config` (NaN or infinite numbers in it count as their defaults,
+    /// `SimConfig::finite_or_default`).
     pub fn with_config(seed: u64, config: SimConfig) -> Sim {
+        let config = config.finite_or_default();
         Sim {
             tick: 0,
             seed,
@@ -187,6 +193,7 @@ impl Sim {
             events: Vec::new(),
             events_mark: 0,
             tick_hash: None,
+            stepped: false,
             plans: Vec::new(),
             projectiles: Vec::new(),
             beams: Vec::new(),
@@ -257,8 +264,9 @@ impl Sim {
     }
 
     /// Changes the config. Thrust, torque and speed scales, the physics tuning and the mind capacities apply to
-    /// every ship at once.
+    /// every ship at once. NaN or infinite numbers count as their defaults (`SimConfig::finite_or_default`).
     pub fn set_config(&mut self, config: SimConfig) {
+        let config = config.finite_or_default();
         self.config = config;
         self.physics.configure(config.physics);
         for s in &mut self.ships {
@@ -291,9 +299,10 @@ impl Sim {
     /// Spawns a ship for `owner`. `body` is the pose and velocity of the blueprint's main piece. Emits
     /// `ShipSpawned`, and `VesselFormed` if it has a logic core (a blueprint in several pieces with cores in
     /// more than one: each further cored piece becomes a vessel of its own). It may start dormant if its
-    /// owner's mind capacity is used up (`VesselDormant`).
+    /// owner's mind capacity is used up (`VesselDormant`). NaN or infinite numbers in `body` count as 0.
     pub fn spawn_ship(&mut self, design: Arc<ShipDesign>, owner: Owner, body: Body) -> ShipId {
         let id = self.ids.ship();
+        let body = body.finite_or_zero();
         let ship = Ship::new(id, design, owner, body, &mut self.ids, &self.config);
         let k = self.add_ship(ship);
         if self.ships[k].is_vessel() {
@@ -365,8 +374,10 @@ impl Sim {
         self.ships.binary_search_by_key(&id, |s| s.id()).ok()
     }
 
-    /// Sets a piece's pose and velocities in the sim and the physics (tools, tests, respawn).
+    /// Sets a piece's pose and velocities in the sim and the physics (tools, tests, respawn); NaN or infinite
+    /// numbers count as 0.
     pub fn teleport(&mut self, ship: ShipId, piece: PieceId, body: Body) {
+        let body = body.finite_or_zero();
         if let Some(p) = self.ship_mut(ship).and_then(|s| s.piece_mut(piece)) {
             p.body = body;
             p.prev_pos = body.pos;
@@ -375,11 +386,22 @@ impl Sim {
         }
     }
 
-    /// Hands a command to a ship now (same as putting it into the next tick's inputs).
+    /// Hands a command to a ship now (same as putting it into the next tick's inputs). A pilot input, maneuver
+    /// or goal with a NaN or infinite number in it is ignored (it would poison the flight computer and the
+    /// physics body).
     pub fn command(&mut self, ship: ShipId, cmd: ShipCommand) {
         let Some(k) = self.ship_index(ship) else {
             return;
         };
+        let finite = match &cmd {
+            ShipCommand::Pilot(p) => p.is_finite(),
+            ShipCommand::Maneuver { maneuver, .. } => maneuver.is_finite(),
+            ShipCommand::Goal { goal, .. } => goal.is_finite(),
+            _ => true,
+        };
+        if !finite {
+            return;
+        }
         let piloted = self.focus(self.ships[k].owner()) == Some(ship);
         match cmd {
             ShipCommand::Focus => return self.set_focus(ship),
@@ -411,7 +433,7 @@ impl Sim {
     }
 
     /// Spawns a projectile directly (tools, tests). It flies from the next step on and never hits `owner`, nor
-    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048).
+    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048). NaN or infinite numbers count as 0.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_projectile(
         &mut self,
@@ -423,6 +445,9 @@ impl Sim {
         pierce: u32,
         life: f32,
     ) -> crate::weapons::ProjectileId {
+        use crate::math::finite_or_zero;
+        let (pos, vel) = (pos.finite_or_zero(), vel.finite_or_zero());
+        let (damage, life) = (finite_or_zero(damage), finite_or_zero(life));
         let id = self.ids.projectile();
         let team = self.ship(owner).and_then(|s| s.team());
         self.projectiles.push(Projectile {
@@ -515,6 +540,8 @@ impl Sim {
             }
         }
         if lost {
+            // Salvage is never dormant (the mind pass looks at vessels only).
+            self.ships[k].dormant = false;
             let s = &self.ships[k];
             self.events.push(SimEvent::VesselLost {
                 ship: s.id(),
@@ -526,9 +553,12 @@ impl Sim {
         self.shed_cargo(k);
     }
 
-    /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting.
+    /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting: the pieces ghost each
+    /// other for `split_ghost_ticks` physics steps from the next one (this tick's, or the next tick's when this
+    /// tick has stepped already: a split from the impacts phase).
     fn sync_bodies(&mut self, k: usize, from: usize) {
-        let ghost_until = self.tick + self.config.split_ghost_ticks as u64;
+        let next_step = self.tick + self.stepped as u64;
+        let ghost_until = next_step + self.config.split_ghost_ticks as u64;
         for e in from..self.events.len() {
             let ship = &mut self.ships[k];
             let sid = ship.id();
@@ -588,7 +618,8 @@ impl Sim {
         }
     }
 
-    /// First part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter).
+    /// First alive part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter); the hit rule of
+    /// shots (`Sim::cast_part`: parts destroyed since the last breakage resolution are passed through).
     pub fn raycast(
         &self,
         origin: Vec2,
@@ -596,17 +627,14 @@ impl Sim {
         max_distance: f32,
         exclude: Option<ShipId>,
     ) -> Option<PartHit> {
-        let hit = self.physics.raycast(origin, dir, max_distance, exclude)?;
-        let ship = self.ship(hit.key.ship)?;
-        // Nudge the point into the solid so it lands inside the hit cell.
-        let piece = ship.piece(hit.key.piece)?;
-        let n_local = Rot::from_angle(piece.body.angle).apply_inverse(hit.normal);
-        let part = ship.part_at_local(hit.key.piece, hit.local_point - n_local * 1e-3);
+        let h = self.cast_part(origin, dir, max_distance, |key| {
+            exclude.is_some_and(|s| key.ship == s)
+        })?;
         Some(PartHit {
-            ship: hit.key.ship,
-            piece: hit.key.piece,
-            part,
-            hit,
+            ship: h.hit.key.ship,
+            piece: h.hit.key.piece,
+            part: h.part,
+            hit: h.hit,
         })
     }
 
@@ -692,6 +720,7 @@ impl Sim {
         }
         self.physics.step();
         self.drift_loose();
+        self.stepped = true;
 
         // Contacts → impacts (needs the velocities from before the step), read-back, ramming.
         mark(StepPhase::Impacts);
@@ -713,6 +742,7 @@ impl Sim {
         // The voyage director: sites spawn, wake and clear around the vessels as they are now.
         self.direct_voyage();
 
+        self.stepped = false;
         self.tick += 1;
         self.events_mark = self.events.len();
         if cfg!(debug_assertions) {
@@ -887,5 +917,35 @@ impl StateHash for Sim {
             v.hash_state(h);
         }
         self.physics.hash_state(h);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Split pieces ghost each other for `split_ghost_ticks` physics steps from the next one, also when the split
+    /// is resolved after this tick's step (a ram; 13 Oct 2026 review: those ghosted one step less).
+    #[test]
+    fn split_ghosts_last_the_configured_steps_from_the_next_physics_step() {
+        let content = data::base_content();
+        let raider = content.ships.get("automaton_raider").unwrap();
+        let d = Arc::new(ShipDesign::compile(&content, raider).unwrap());
+        for stepped in [false, true] {
+            let mut sim = Sim::new(1);
+            let s = sim.spawn_ship(d.clone(), Owner(1), Body::default());
+            sim.step(&TickInputs::default());
+            sim.stepped = stepped;
+            for cell in [(1, 0), (1, 1), (1, 2)] {
+                sim.apply_damage(s, DamageTarget::Cell(cell), 100.0);
+            }
+            sim.resolve_breakage();
+            let next = sim.tick + stepped as u64;
+            let pieces = sim.ship(s).unwrap().pieces();
+            assert_eq!(pieces.len(), 2);
+            for p in pieces {
+                assert_eq!(p.ghost_until, next + sim.config.split_ghost_ticks as u64);
+            }
+        }
     }
 }

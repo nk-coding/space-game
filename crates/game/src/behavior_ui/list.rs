@@ -11,7 +11,7 @@
 //! * **NEW BEHAVIOR**: a new draft with one rule (`always -> ` the vocabulary's first action), not saved until SAVE.
 //! * Opening, USE and NEW replace the draft on the screen; unsaved edits are saved first (`saving.rs`).
 
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
@@ -19,12 +19,14 @@ use data::Content;
 
 use crate::drydock::PlayerDesign;
 use crate::drydock::behaviors::{BehaviorEntry, PlayerBehaviors};
-use crate::drydock::library::{self, fresh_name};
+use crate::drydock::library::{self, MAX_NAME, fresh_name};
 use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, UiPointer, label, number, prose, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{
+    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, UiPointer, label, number, prose, set_color, set_text, spawn_pill, tracked, wheel_rows,
+};
 
 use super::draft::{BehaviorDraft, design_behavior};
 use super::saving::{Lib, opened_note};
@@ -34,9 +36,6 @@ use super::{BehaviorAction, BehaviorUi, BehaviorView};
 const LIST_ROWS: usize = 7;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
-const MAX_NAME: usize = 40;
-/// The name NEW gives (a fresh one: "New behavior 2", ...).
-const NEW_NAME: &str = "New behavior";
 
 /// What the action bar shows.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -375,11 +374,23 @@ pub(super) fn apply(
     for b in todo {
         press(b, &mut list, &mut ui, &mut lib, content, &mut rename);
     }
+    // A save while the list is open (Ctrl+S, SAVE in the bottom bar) shows in its rows at once.
+    if list.open && lib.behaviors.is_changed() {
+        list.refresh(&lib.behaviors, content);
+    }
 }
 
-/// Leaving the screen closes the list.
-pub(super) fn leave(mut list: ResMut<BehaviorList>, mut ui: ResMut<BehaviorUi>, mut lib: Lib, content: Res<GameContent>) {
+/// Leaving the screen closes the list and hides its layer at once ([`sync`] runs only on the screen; a layer left
+/// visible would block the pointer in the drydock and in flight).
+pub(super) fn leave(
+    mut list: ResMut<BehaviorList>,
+    mut ui: ResMut<BehaviorUi>,
+    mut lib: Lib,
+    content: Res<GameContent>,
+    mut root: Single<&mut Visibility, With<ListRoot>>,
+) {
     set_open(&mut list, false, &mut ui, &mut lib, &content.0);
+    **root = Visibility::Hidden;
 }
 
 fn rename_behavior(list: &mut BehaviorList, lib: &mut Lib, content: &Content, id: &str, name: &str) {
@@ -501,7 +512,7 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
         ListButton::KeepDelete => list.mode = Mode::Browse,
         ListButton::New => {
             let Some(mut next) = BehaviorDraft::empty(&content.behavior_nodes) else { return };
-            next.name = fresh_name(NEW_NAME, &lib.behaviors.names());
+            next.name = fresh_name(super::draft::NEW_NAME, &lib.behaviors.names());
             next.mark_clean();
             match lib.switch(content, next) {
                 Ok(kept) => {
@@ -531,12 +542,8 @@ pub(super) fn scroll(
             continue;
         }
         let len = if node.0 == 0 { list.mine.len() } else { list.templates.len() };
-        let steps = match wheel.unit {
-            MouseScrollUnit::Line => wheel.delta.y,
-            MouseScrollUnit::Pixel => wheel.delta.y / 40.0,
-        };
         let max = len.saturating_sub(LIST_ROWS) as f32;
-        let offset = (list.offset[node.0] as f32 - steps.signum() * steps.abs().max(1.0).round()).clamp(0.0, max) as usize;
+        let offset = (list.offset[node.0] as f32 - wheel_rows(&wheel)).clamp(0.0, max) as usize;
         if offset != list.offset[node.0] {
             list.offset[node.0] = offset;
         }
@@ -553,7 +560,7 @@ pub(super) fn sync(
     content: Res<GameContent>,
     style: Res<Style>,
     mut root: Single<&mut Visibility, With<ListRoot>>,
-    mut nodes: Query<(&mut Node, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>), Without<TextField>>,
+    mut nodes: Query<(&mut Node, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>), (Without<TextField>, Or<(With<BarNode>, With<RowNode>, With<EmptyHint>)>)>,
     mut pills: Query<(&ListButton, &mut Pill)>,
     mut texts: Query<(&ListText, &mut Text, &mut TextColor)>,
 ) {
@@ -690,7 +697,65 @@ fn plural(n: usize, word: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
     use super::*;
+    use crate::drydock::library::DesignSlot;
+    use crate::storage::{MemoryBackend, Storage};
+
+    /// Leaving the screen with the list open (the DRYDOCK pill under it, T) hides its layer: it would cover the
+    /// drydock and the flight and take their clicks.
+    #[test]
+    fn leaving_the_screen_hides_the_list_layer() {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(GameContent(content));
+        world.insert_resource(Storage::new(MemoryBackend::default()));
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<BehaviorDraft>();
+        world.init_resource::<super::super::saving::DraftSlot>();
+        world.init_resource::<super::super::saving::ScreenNote>();
+        world.init_resource::<BehaviorUi>();
+        world.insert_resource(BehaviorList { open: true, ..default() });
+        let root = world.spawn((ListRoot, Visibility::Inherited)).id();
+        world.run_system_once(leave).unwrap();
+        assert_eq!(world.get::<Visibility>(root), Some(&Visibility::Hidden));
+        assert!(!world.resource::<BehaviorList>().is_open());
+    }
+
+    /// A save while the list is open (Ctrl+S, SAVE) shows in the rows at once.
+    #[test]
+    fn the_open_list_follows_a_save() {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(Storage::new(MemoryBackend::default()));
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<BehaviorDraft>();
+        world.init_resource::<super::super::saving::DraftSlot>();
+        world.init_resource::<super::super::saving::ScreenNote>();
+        world.init_resource::<BehaviorUi>();
+        world.init_resource::<BehaviorList>();
+        world.init_resource::<Messages<BehaviorAction>>();
+        world.init_resource::<Messages<UiClick>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<UiPointer>();
+        world.spawn((RenameField, TextField::default()));
+        world.insert_resource(GameContent(content.clone()));
+        let apply = world.register_system(apply);
+        world.write_message(BehaviorAction::Behaviors);
+        world.run_system(apply).unwrap();
+        assert!(world.resource::<BehaviorList>().is_open() && world.resource::<BehaviorList>().mine.is_empty());
+        let copy = world.resource::<PlayerBehaviors>().copy_of(&content, "skirmisher").unwrap();
+        world.resource_scope(|world, mut storage: Mut<Storage>| {
+            world.resource_mut::<PlayerBehaviors>().save(&mut storage, &content, &copy, 1).unwrap();
+        });
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<BehaviorList>().mine.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["skirmisher_copy"]);
+    }
 
     #[test]
     fn row_tags_say_what_the_design_flies_and_what_is_open() {

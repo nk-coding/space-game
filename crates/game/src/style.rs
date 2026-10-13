@@ -171,3 +171,10 @@ pub fn ui_color(c: Color, opacity: f32) -> Color {
     let s = c.to_srgba();
     Color::LinearRgba(LinearRgba::new(s.red, s.green, s.blue, s.alpha * opacity))
 }
+
+/// `a` → `b` by `t` (clamped to 0..1) in sRGB, the colour space of the tiles and the UI; alpha too.
+pub fn mix(a: Color, b: Color, t: f32) -> Color {
+    let (a, b) = (a.to_srgba(), b.to_srgba());
+    let t = t.clamp(0.0, 1.0);
+    Color::srgba(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, a.alpha + (b.alpha - a.alpha) * t)
+}

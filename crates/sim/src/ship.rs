@@ -87,6 +87,16 @@ impl Body {
     pub fn to_world(&self, local: Vec2) -> Vec2 {
         self.pos + Rot::from_angle(self.angle).apply(local)
     }
+
+    /// The body with every NaN or infinite number set to 0 (bodies from outside: spawns, teleports).
+    pub fn finite_or_zero(self) -> Body {
+        Body {
+            pos: self.pos.finite_or_zero(),
+            angle: crate::math::finite_or_zero(self.angle),
+            linvel: self.linvel.finite_or_zero(),
+            angvel: crate::math::finite_or_zero(self.angvel),
+        }
+    }
 }
 
 /// The velocity a new piece inherits when a rigid body breaks: the velocity of its centre of mass as a
@@ -147,7 +157,7 @@ pub struct PartState {
     pub clear: bool,
     /// Share of its power demand served this tick: 1 = full, between = partial output, 0 = off or no power.
     /// A consumer that asks for nothing shows the level its tier and weight are served at (see
-    /// [`crate::power::allocate`]); reactors and passive parts show 1.
+    /// [`crate::power::allocate`]); reactors show 1 (0 while idle), passive parts 1.
     pub power: f32,
     /// How hard it worked this tick, 0..1 (throttle × power for engines). Drives heat and output.
     pub work: f32,
@@ -241,21 +251,6 @@ impl Thruster {
     }
 }
 
-/// Net force and torque of the engines among `thrusters` at the given throttles (by slot), ignoring power,
-/// heat, speed, gimbals and RCS nozzles.
-pub fn thruster_wrench(thrusters: &[Thruster], throttle: impl Fn(u32) -> f32) -> Wrench {
-    let mut w = Wrench::default();
-    for t in thrusters {
-        if t.slot == NO_SLOT {
-            continue;
-        }
-        let f = t.max_force * throttle(t.slot).clamp(0.0, 1.0);
-        w.force += t.dir * f;
-        w.torque += t.torque_per_force * f;
-    }
-    w
-}
-
 /// What a piece's actuators can do now, per direction (kN) and per turning sense (kN·m): only rows and torque
 /// sources that can produce (alive, not overheated, not idle, powered; [`producing`]), each at the power level
 /// it was served last (partial power scales the output). All zero while the piece is not active (dark, dormant,
@@ -279,7 +274,7 @@ pub struct ThrustAuthority {
     /// force), counter-clockwise and clockwise.
     pub couple_ccw: f32,
     pub couple_cw: f32,
-    /// Reachable top speed per thrust group (forward, backward, right, left; m/s, as `flight::AXES`): the
+    /// Reachable top speed per thrust group (forward +y, backward, right +x, left; m/s): the
     /// highest rated speed among the rows pushing that way, 0 if none (GDR-0041).
     pub speed: [f32; 4],
 }
@@ -290,6 +285,14 @@ pub struct ThrustAuthority {
 #[inline]
 pub fn producing(ps: &PartState) -> bool {
     ps.alive && !ps.overheated && !ps.idle && ps.power > 0.0
+}
+
+/// Can this gun fire now, power aside? A clear line of fire, and its part (`ps`) alive, not overheated and not
+/// idle (GDR-0044). Firepower, reach and the smart lock aim count only these guns (power is the brown-out's
+/// business: a gun of a starved tier still counts).
+#[inline]
+pub fn gun_works(g: &GunMount, ps: &PartState) -> bool {
+    g.clear && ps.alive && !ps.overheated && !ps.idle
 }
 
 /// Recomputes `piece.authority` from the actuators that can produce now (see [`ThrustAuthority`]). One pass
@@ -442,6 +445,10 @@ pub struct Piece {
     pub(crate) consumers: Vec<Consumer>,
     /// Parts that make heat without a power role (e.g. capacitors).
     pub(crate) heaters: Vec<PartIdx>,
+    /// The links heat conducts through: indices into `ShipDesign::links` with both ends in this piece, in that
+    /// order (links never cross pieces). The heat pass walks these and `parts`, so a vessel split off a big
+    /// blueprint costs what its own parts cost, not the whole blueprint.
+    pub(crate) heat_links: Vec<u32>,
     pub(crate) dirty: bool,
     /// The idle set must be recomputed (rebuilt piece, changed power setting).
     pub(crate) control_dirty: bool,
@@ -497,6 +504,7 @@ impl Piece {
             reactors: Vec::new(),
             consumers: Vec::new(),
             heaters: Vec::new(),
+            heat_links: Vec::new(),
             dirty: false,
             control_dirty: true,
         }
@@ -525,17 +533,14 @@ impl Piece {
         &self.consumers
     }
 
-    /// Net engine force and torque for the given per-slot throttles, ignoring power, heat and speed.
-    pub fn max_wrench(&self, throttle: &[f32]) -> Wrench {
-        thruster_wrench(&self.thrusters, |s| {
-            throttle.get(s as usize).copied().unwrap_or(0.0)
-        })
-    }
-
-    /// Damage per second of its clear guns at full power, with bonuses (the `threat` sensor's firepower and
-    /// the design report's).
-    pub fn firepower(&self) -> f32 {
-        self.guns.iter().filter(|g| g.clear).map(|g| g.dps).sum()
+    /// Damage per second of its working guns ([`gun_works`]) at full power, with bonuses (the `threat`
+    /// sensor's firepower and the design report's).
+    pub fn firepower(&self, parts: &[PartState]) -> f32 {
+        self.guns
+            .iter()
+            .filter(|g| gun_works(g, &parts[g.part as usize]))
+            .map(|g| g.dps)
+            .sum()
     }
 
     /// Centre of mass in world coordinates.
@@ -556,6 +561,8 @@ pub(crate) struct Scratch {
     /// Per thruster row: its force without the rated-speed falloff (RCS couples).
     pub full: Vec<f32>,
     pub tmax: Vec<f32>,
+    /// Per thruster row: the throttle of translation alone (the flight computer's planning view).
+    pub translate: Vec<f32>,
     pub activity: Vec<f32>,
     /// Per consumer row: demand this tick, and the level it got.
     pub want: Vec<f32>,
@@ -687,7 +694,15 @@ impl Ship {
         for &p in &all {
             ship.parts[p as usize].shield = ship.stats[p as usize].get(Stat::ShieldCapacity);
         }
-        let comps = ship.components(&all);
+        // Pieces in the blueprint's order (row-major by their first cell, as `data::ShipGrid::pieces`), so the
+        // main piece is the drydock's (`ShipGrid::main_piece`, the same rule and order) and piece ids follow it.
+        let mut comps = ship.components(&all);
+        let d = &ship.design;
+        comps.sort_by_key(|c| {
+            c.iter()
+                .map(|&p| (d.parts[p as usize].shape.y, d.parts[p as usize].shape.x))
+                .min()
+        });
         let main = ship.main_component(&comps);
         let origins: Vec<[f32; 2]> = comps.iter().map(|c| ship.com_bp(c)).collect();
         for (k, comp) in comps.into_iter().enumerate() {
@@ -796,8 +811,8 @@ impl Ship {
         self.leader
     }
 
-    /// Behavior rule slots now: the `rule_slots` of the working (alive, not overheated) logic cores of the
-    /// controlling piece; 0 while the ship is dark.
+    /// Behavior rule slots now: the `rule_slots` of the working logic cores of the controlling piece (GDR-0035:
+    /// alive, not overheated, powered; and not idle, [`producing`]); 0 while the ship is dark.
     pub fn rule_slots(&self) -> u32 {
         self.control.map_or(0, |c| self.rule_slots_of(c))
     }
@@ -813,10 +828,7 @@ impl Ship {
         }
         p.cores
             .iter()
-            .filter(|&&c| {
-                let ps = &self.parts[c as usize];
-                ps.alive && !ps.overheated
-            })
+            .filter(|&&c| producing(&self.parts[c as usize]))
             .map(|&c| self.design.parts[c as usize].rule_slots)
             .sum()
     }
@@ -830,33 +842,25 @@ impl Ship {
         self.pieces.binary_search_by_key(&id, |p| p.id).ok()
     }
 
-    /// The main piece: a piece with a logic core beats one without, then more parts, then the lower id.
+    /// The main piece (`data::geometry::main_of`): a piece with a logic core beats one without, then more parts,
+    /// then the lower id.
     pub fn main_piece(&self) -> Option<PieceId> {
-        let mut best: Option<&Piece> = None;
-        for p in &self.pieces {
-            best = match best {
-                None => Some(p),
-                Some(b)
-                    if (p.has_core && !b.has_core)
-                        || (p.has_core == b.has_core && p.parts.len() > b.parts.len()) =>
-                {
-                    Some(p)
-                }
-                b => b,
-            };
-        }
-        best.map(|p| p.id)
+        data::geometry::main_of(self.pieces.iter().map(|p| (p.has_core, p.parts.len())))
+            .map(|k| self.pieces[k].id)
     }
 
     pub fn controls(&self) -> &ShipControls {
         &self.controls
     }
 
-    /// Replaces the controls (the throttle list is resized to the engine count) and switches the helm to
-    /// `HelmMode::Raw` (no flight computer).
+    /// Replaces the controls (the throttle list is resized to the engine count; a NaN or infinite throttle
+    /// counts as 0) and switches the helm to `HelmMode::Raw` (no flight computer).
     pub fn set_controls(&mut self, c: &ShipControls) {
         self.helm = HelmMode::Raw;
-        self.controls.throttle.clone_from(&c.throttle);
+        self.controls.throttle.clear();
+        self.controls
+            .throttle
+            .extend(c.throttle.iter().map(|&t| crate::math::finite_or_zero(t)));
         self.controls
             .throttle
             .resize(self.design.engines.len(), 0.0);
@@ -954,20 +958,14 @@ impl Ship {
         comps
     }
 
-    /// Index of the main component: with a logic core first, then more parts, then the earlier one.
+    /// Index of the main component (`data::geometry::main_of`): with a logic core first, then more parts, then the
+    /// earlier one.
     pub(crate) fn main_component(&self, comps: &[Vec<PartIdx>]) -> usize {
         let has_core = |c: &Vec<PartIdx>| {
             c.iter()
                 .any(|&p| self.design.parts[p as usize].logic && self.parts[p as usize].alive)
         };
-        let mut best = 0;
-        for k in 1..comps.len() {
-            let (ck, cb) = (has_core(&comps[k]), has_core(&comps[best]));
-            if (ck && !cb) || (ck == cb && comps[k].len() > comps[best].len()) {
-                best = k;
-            }
-        }
-        best
+        data::geometry::main_of(comps.iter().map(|c| (has_core(c), c.len()))).unwrap_or(0)
     }
 
     /// Recounts the open sides of part `p` from the grid (no allocation). Exposure only changes when a
@@ -1057,6 +1055,7 @@ impl Ship {
             if fp.mass != piece.mass
                 || fp.colliders != piece.colliders
                 || fp.consumers != piece.consumers
+                || fp.heat_links != piece.heat_links
             {
                 return Err(format!(
                     "piece {:?}: caches differ from a rebuild",
@@ -1077,7 +1076,6 @@ impl Ship {
             &mut self.pieces[k],
             Piece::new(PieceId(u32::MAX), Vec::new(), [0.0; 2], Body::default()),
         );
-        piece.dirty = false;
         let pid = piece.id;
 
         // Core flag, hold and control load.
@@ -1130,6 +1128,15 @@ impl Ship {
 
         // Power lists (reactors, consumers in allocation order, heaters).
         self.rebuild_power_lists(&mut piece);
+
+        // Heat links: the design's links between alive parts of this piece, in the design's order.
+        piece.heat_links.clear();
+        for (i, l) in d.links.iter().enumerate() {
+            let (a, b) = (&self.parts[l.a as usize], &self.parts[l.b as usize]);
+            if a.alive && b.alive && a.piece == pid && b.piece == pid {
+                piece.heat_links.push(i as u32);
+            }
+        }
 
         // Torque sources (gyros, logic cores) and cores.
         piece.cores.clear();
@@ -1308,8 +1315,10 @@ impl Ship {
         self.pieces[k] = piece;
     }
 
-    /// One tick of the ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun
-    /// output. Reads this tick's actuator commands (`Piece::act`). No allocation once warmed up.
+    /// One tick of the ship systems: per piece the control pass (idle parts), power, shield regeneration, the
+    /// wrench (engines, RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's
+    /// authority for the next plan. Reads this tick's actuator commands (`Piece::act`). No allocation once
+    /// warmed up.
     pub fn update_systems(&mut self) {
         let Ship {
             design,
@@ -1392,18 +1401,15 @@ impl Ship {
             };
 
             // Wrench at the power each actuator actually got and the speed falloff of this tick. `level` is
-            // the power level of a working thruster (0 if it cannot work).
+            // the power level of a thruster that can produce (0 if it cannot: dead, overheated, idle or
+            // unpowered, [`producing`]; an idle mover that draws no power has no level of its own to zero).
             let fmax = &mut scratch.fmax;
             fmax.clear();
             let level = &mut scratch.level;
             level.clear();
             for t in &piece.thrusters {
                 let ps = &parts[t.part as usize];
-                level.push(if active && ps.alive && !ps.overheated {
-                    ps.power
-                } else {
-                    0.0
-                });
+                level.push(if active && producing(ps) { ps.power } else { 0.0 });
             }
             fmax.extend(piece.thrusters.iter().enumerate().map(|(i, t)| {
                 t.max_force * level[i] * piece.falloff.get(i).copied().unwrap_or(1.0)
@@ -1421,63 +1427,69 @@ impl Ship {
             tmax.clear();
             tmax.extend(piece.torque_sources.iter().map(|src| {
                 let ps = &parts[src.part as usize];
-                if active && ps.alive && !ps.overheated {
+                if active && producing(ps) {
                     src.max * ps.power
                 } else {
                     0.0
                 }
             }));
-            if piece.act.throttle.len() == piece.thrusters.len()
-                && piece.act.torque.len() == tmax.len()
-            {
-                piece.wrench = wrench_of(&piece.thrusters, fmax, full, tmax, &piece.act);
-                for (i, t) in piece.thrusters.iter().enumerate() {
-                    piece.output[i] = if t.max_force > 0.0 {
-                        (piece.act.throttle[i] * fmax[i] + piece.act.couple[i] * full[i])
-                            / t.max_force
-                    } else {
-                        0.0
-                    };
-                    piece.cruise[i] = piece.act.cruise.get(i).copied().unwrap_or(0.0) * level[i];
-                }
-            } else {
-                piece.wrench = Wrench::default();
-                piece.cruise.fill(0.0);
+            // `act` matches the tables: the flight computer sizes it every tick, rebuilds size it too.
+            piece.wrench = wrench_of(&piece.thrusters, fmax, full, tmax, &piece.act);
+            for (i, t) in piece.thrusters.iter().enumerate() {
+                piece.output[i] = if t.max_force > 0.0 {
+                    (piece.act.throttle[i] * fmax[i] + piece.act.couple[i] * full[i]) / t.max_force
+                } else {
+                    0.0
+                };
+                piece.cruise[i] = piece.act.cruise[i] * level[i];
             }
             for g in &mut piece.guns {
                 g.output = g.dps * parts[g.part as usize].work;
             }
         }
 
-        // Heat (ship-wide; links never cross pieces). Generation and conduction explicit, loss implicit.
+        // Heat. Generation and conduction explicit, loss implicit. Links never cross pieces, so the ship can
+        // walk its pieces' own parts and links (`Piece::heat_links`): a vessel split off a big blueprint then
+        // costs what it owns, not the whole blueprint. A ship that still holds most of its blueprint walks all
+        // parts and links in one pass instead (cheaper per part). Both give the same numbers: every part's sums
+        // run in the same order. Every energy is written before it is read, so the scratch needs no clearing.
         let e = &mut scratch.energy;
-        e.clear();
-        e.resize(parts.len(), 0.0);
-        for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
-            if ps.alive {
-                *e = ps.heat * k.cap + k.out * ps.work * DT;
-            }
+        if e.len() != parts.len() {
+            e.clear();
+            e.resize(parts.len(), 0.0);
         }
-        for l in &d.links {
-            let (a, b) = (l.a as usize, l.b as usize);
-            if !parts[a].alive || !parts[b].alive {
-                continue;
+        let owned: usize = pieces.iter().map(|p| p.parts.len()).sum();
+        if 2 * owned >= parts.len() {
+            for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
+                if ps.alive {
+                    *e = heat_energy(ps, k);
+                }
             }
-            let q =
-                tuning::HEAT_CONDUCTANCE * l.edges as f32 * (parts[a].heat - parts[b].heat) * DT;
-            e[a] -= q;
-            e[b] += q;
-        }
-        for ((ps, k), &e) in parts.iter_mut().zip(heat_k.iter()).zip(e.iter()) {
-            if !ps.alive {
-                continue;
+            for l in &d.links {
+                conduct(l, parts, e);
             }
-            let h = e / (k.cap + k.loss * DT);
-            ps.heat = if h > 0.0 { h } else { 0.0 };
-            if ps.heat > k.limit {
-                ps.overheated = true;
-            } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
-                ps.overheated = false;
+            for ((ps, k), &e) in parts.iter_mut().zip(heat_k.iter()).zip(e.iter()) {
+                if ps.alive {
+                    settle_heat(ps, k, e);
+                }
+            }
+        } else {
+            for piece in pieces.iter() {
+                for &p in &piece.parts {
+                    let ps = &parts[p as usize];
+                    if ps.alive {
+                        e[p as usize] = heat_energy(ps, &heat_k[p as usize]);
+                    }
+                }
+                for &l in &piece.heat_links {
+                    conduct(&d.links[l as usize], parts, e);
+                }
+                for &p in &piece.parts {
+                    let ps = &mut parts[p as usize];
+                    if ps.alive {
+                        settle_heat(ps, &heat_k[p as usize], e[p as usize]);
+                    }
+                }
             }
         }
 
@@ -1485,6 +1497,36 @@ impl Ship {
         for piece in pieces.iter_mut() {
             refresh_authority(piece, parts);
         }
+    }
+}
+
+/// Heat step, generation: a part's heat energy this tick before conduction and loss.
+#[inline]
+fn heat_energy(ps: &PartState, k: &HeatK) -> f32 {
+    ps.heat * k.cap + k.out * ps.work * DT
+}
+
+/// Heat step, conduction over one link between alive parts (explicit, from the heat before this tick's step).
+#[inline]
+fn conduct(l: &crate::design::Link, parts: &[PartState], e: &mut [f32]) {
+    let (a, b) = (l.a as usize, l.b as usize);
+    if !parts[a].alive || !parts[b].alive {
+        return;
+    }
+    let q = tuning::HEAT_CONDUCTANCE * l.edges as f32 * (parts[a].heat - parts[b].heat) * DT;
+    e[a] -= q;
+    e[b] += q;
+}
+
+/// Heat step, loss to space (implicit) and the overheat hysteresis, from the part's energy `e`.
+#[inline]
+fn settle_heat(ps: &mut PartState, k: &HeatK, e: f32) {
+    let h = e / (k.cap + k.loss * DT);
+    ps.heat = if h > 0.0 { h } else { 0.0 };
+    if ps.heat > k.limit {
+        ps.overheated = true;
+    } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
+        ps.overheated = false;
     }
 }
 

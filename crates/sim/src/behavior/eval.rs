@@ -480,18 +480,19 @@ fn power_share(s: &Ship) -> f32 {
     }
 }
 
-/// Damage per second of the controlling piece's clear guns.
+/// Damage per second of the controlling piece's working guns.
 fn firepower(s: &Ship) -> f32 {
     s.control_piece()
         .and_then(|c| s.piece(c))
-        .map_or(0.0, |p| p.firepower())
+        .map_or(0.0, |p| p.firepower(s.parts()))
 }
 
+/// Longest reach of the controlling piece's working guns (0 without).
 fn reach_of(s: &Ship) -> f32 {
     s.control_piece().and_then(|c| s.piece(c)).map_or(0.0, |p| {
         p.guns
             .iter()
-            .filter(|g| g.clear)
+            .filter(|g| crate::ship::gun_works(g, s.part(g.part)))
             .fold(0.0, |r, g| r.max(g.range))
     })
 }
@@ -627,7 +628,7 @@ impl Ctx<'_> {
         let Some(piece) = me.control_piece().and_then(|c| me.piece(c)) else {
             return;
         };
-        let kin = Kin::of(piece);
+        let kin = Kin::of(piece, me.parts());
         self.reach = if kin.reach > 0.0 {
             kin.reach
         } else {
@@ -929,7 +930,8 @@ impl Ctx<'_> {
             heat: self.heat(),
             power: self.power(),
             speed: kin.vel.length(),
-            reach: kin.reach,
+            // The reach `%` distances resolve against (the default without working guns).
+            reach: self.reach,
             x: kin.pos.x,
             y: kin.pos.y,
             vx: kin.vel.x,

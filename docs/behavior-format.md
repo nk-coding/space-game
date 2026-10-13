@@ -169,7 +169,7 @@ What a script can see:
 | `me`, `target` | read-only views of your ship and its target (`target.exists` is false without one; its numbers are then 0) |
 | `.hull` `.shield` `.heat` `.power` | shares 0..1, as the conditions of the same name |
 | `.x` `.y` `.vx` `.vy` `.speed` `.angle` | position (m), velocity (m/s), nose angle (rad, counter-clockwise, 0 = up) |
-| `.reach` | weapon reach (m) |
+| `.reach` | weapon reach (m): the range of the longest working gun; `me.reach` is the reach `%` distances use, 60 m on a ship without one (`target.reach` is then 0) |
 | `target.distance` `target.bearing` `target.closing` `target.aims_at_me` | distance (m), angle off your nose (rad, left positive), closing speed (m/s), whether it aims at you |
 | `me.enemies` | number of active enemy ships |
 | parameters | by id, as numbers in base units (metres, shares 0..1, seconds) |

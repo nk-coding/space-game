@@ -155,3 +155,15 @@ pub fn turn_90(design: Arc<ShipDesign>) -> (Option<f32>, f32, f32) {
     }
     (turn, alpha, overshoot)
 }
+
+/// Net force and torque of the engines among `thrusters` at the given throttles (by engine slot), from geometry
+/// alone: no power, heat, speed, gimbals or RCS nozzles.
+pub fn engine_wrench(thrusters: &[sim::Thruster], throttle: impl Fn(u32) -> f32) -> sim::Wrench {
+    let mut w = sim::Wrench::default();
+    for t in thrusters.iter().filter(|t| !t.rcs) {
+        let f = t.max_force * throttle(t.slot).clamp(0.0, 1.0);
+        w.force += t.dir * f;
+        w.torque += t.torque_per_force * f;
+    }
+    w
+}

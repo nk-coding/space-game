@@ -46,12 +46,11 @@ pub fn sv(v: Vec2) -> sim::Vec2 {
 pub struct Timings {
     samples: Vec<f32>,
     next: usize,
-    scratch: Vec<f32>,
 }
 
 impl Timings {
     pub fn new(window: usize) -> Self {
-        Self { samples: Vec::with_capacity(window), next: 0, scratch: Vec::with_capacity(window) }
+        Self { samples: Vec::with_capacity(window), next: 0 }
     }
     pub fn push(&mut self, ms: f32) {
         if self.samples.len() < self.samples.capacity() {
@@ -68,18 +67,18 @@ impl Timings {
     pub fn len(&self) -> usize {
         self.samples.len()
     }
-    /// `(mean, median, p95, max)`.
-    pub fn stats(&mut self) -> (f32, f32, f32, f32) {
+    /// `(mean, median, p95, max)`. Read-only, so readers of the timings (the HUD a few times a second) take
+    /// `SimWorld` shared, not exclusively.
+    pub fn stats(&self) -> (f32, f32, f32, f32) {
         if self.samples.is_empty() {
             return (0.0, 0.0, 0.0, 0.0);
         }
-        self.scratch.clear();
-        self.scratch.extend_from_slice(&self.samples);
-        self.scratch.sort_by(|a, b| a.total_cmp(b));
-        let n = self.scratch.len();
-        let mean = self.scratch.iter().sum::<f32>() / n as f32;
-        let p = |q: f32| self.scratch[((n as f32 - 1.0) * q).round() as usize];
-        (mean, p(0.5), p(0.95), self.scratch[n - 1])
+        let mut sorted = self.samples.clone();
+        sorted.sort_by(|a, b| a.total_cmp(b));
+        let n = sorted.len();
+        let mean = sorted.iter().sum::<f32>() / n as f32;
+        let p = |q: f32| sorted[((n as f32 - 1.0) * q).round() as usize];
+        (mean, p(0.5), p(0.95), sorted[n - 1])
     }
 }
 

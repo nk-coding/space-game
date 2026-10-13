@@ -40,6 +40,12 @@ impl Clipboard {
     }
 }
 
+/// A JavaScript value (an error, mostly) as text for the status line (web).
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn js_text(e: wasm_bindgen::JsValue) -> String {
+    e.as_string().unwrap_or_else(|| format!("{e:?}"))
+}
+
 pub struct ClipboardPlugin;
 
 impl Plugin for ClipboardPlugin {
@@ -82,9 +88,7 @@ mod platform {
         clip.pasted.extend(pasted);
     }
 
-    fn js(e: wasm_bindgen::JsValue) -> String {
-        e.as_string().unwrap_or_else(|| format!("{e:?}"))
-    }
+    use super::js_text as js;
 
     /// `execCommand("copy")` fires the `copy` event, whose listener supplies the text; the async clipboard API
     /// is the second try (secure contexts only).
