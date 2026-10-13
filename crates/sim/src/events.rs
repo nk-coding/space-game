@@ -172,8 +172,9 @@ pub enum SimEvent {
         units: u32,
         at: Vec2,
     },
-    /// A vessel's hold shrank below its load (a cargo part destroyed or split off): `count` of `item` are gone,
-    /// the lowest-value items first (`salvage.rs`; not spilled).
+    /// A vessel's hold shrank below its load (a cargo part destroyed or split off): `count` of `item` left the
+    /// hold, the lowest-value items first, and spilled as loose items at the lost hold (`salvage.rs`, GDR-0076;
+    /// `Sim::loose`, collected again like fragments).
     CargoLost { ship: ShipId, item: Item, count: u32 },
     /// A voyage site woke (`voyage.rs`): its ships fly their behavior from now on. `site` indexes
     /// `Voyage::sites`.

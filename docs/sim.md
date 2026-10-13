@@ -1607,9 +1607,12 @@ were set by the salvage agent for Niklas to review.
   rounded down); 0 for salvage. Base content: cargo bay 4, cargo hold 20; the Runner and the two sample ships carry
   8.
 - **A hold that shrinks** (a cargo part destroyed or split off): the lowest-value items go, one at a time (ties: the
-  last in item order first), until the load fits (`Sim::shed_cargo`, after each breakage of a vessel). They are gone,
-  not spilled (*lead default*): `SimEvent::CargoLost { ship, item, count }` per kind dropped, in the order they
-  went.
+  last in item order first), until the load fits (`Sim::shed_cargo`, after each breakage of a vessel), and **spill as
+  loose items** that can be collected again (GDR-0076, Niklas 14 Oct 2026; until then they vanished, a GDR-0066 lead
+  default): `SimEvent::CargoLost { ship, item, count }` per kind dropped, in the order they went, and one `Loose`
+  per item dropped (see [Fragments](#fragments)). The haul is what the holds carry when a voyage ends, so an item
+  dropped and scooped again counts once. A ship with free room may scoop a smaller item it just dropped right away
+  (the drop order can free more units than that item needs).
 - **A lost vessel's ship keeps its cargo**: its wreck carries it (no capacity check once the ship is no vessel), and
   a collector takes it before the wreck's parts. A vessel that splits off starts with an empty hold; the cargo stays
   with the ship that keeps the controlling piece.
@@ -1622,7 +1625,8 @@ only) with free units takes one item, in ship order, from salvage that moves at 
 to it (GDR-0063's "fly slowly over a wreck": the velocities of the two centres of mass, a fragment's own; checked
 before the distance, two subtractions per candidate):
 
-1. the nearest loose fragment within `reach` (5 m) of its hull (ties: the lower id); else
+1. the nearest loose item (a fragment or spilled cargo) that fits, within `reach` (5 m) of its hull (ties: the
+   lower id); else
 2. the salvage pieces within reach, nearest hull first (ties: ship, then piece order), the first one with something
    that fits: its ship's cargo if that ship is no vessel (a wreck's own cargo before its parts: the best item, ties
    the first in item order), else the piece's best part (highest value per unit, ties the lowest part index).
@@ -1658,6 +1662,13 @@ smaller parts go first; a full hold takes nothing; only salvageable parts count 
   collisions, moved after the physics step by `pos += vel × DT` (exact IEEE operations), gone after
   `fragment_ticks` (1800 = 60 s) if nobody collects it. Parts stripped by collectors and parts removed when a wreck
   spawns leave none.
+- **Spilled cargo** (GDR-0076): each item a shrinking hold drops becomes a `Loose` of that item (a whole part stays a
+  whole part, with its cargo units and value per unit), at the lost hold, the centroid of the first cargo part
+  destroyed in that breakage (`Ship::part_world`, the pose of the piece it was on; else, when the hold only split
+  off, the controlling piece's centre of mass), with the velocity of that point plus a push of
+  `spill_speed × [0.5, 1)` in a direction rolled on `Stream::Debris` (two draws per item, in drop order; the stream's
+  only use so far). Same lifetime and collecting rules as a fragment; the client draws every loose item the same
+  way for now.
 
 ### Wrecks spawned as wrecks
 
@@ -1679,7 +1690,8 @@ later; the wreck counts for nobody. Used by the salvage scenario and the voyage 
 | `interval` | 10 ticks | one item per collecting vessel per pass; 0 turns collecting off |
 | `reach` | 5 m | hull to hull |
 | `max_speed` | 4 m/s | relative speed of the salvage to the collector (centres of mass; a fragment's velocity) above which it is passed by (GDR-0063 "fly slowly"; 13 Oct 2026 review) |
-| `fragment_ticks` | 1800 (60 s) | how long an uncollected fragment drifts |
+| `fragment_ticks` | 1800 (60 s) | how long an uncollected fragment (or spilled item) drifts |
+| `spill_speed` | 1.5 m/s | spilled cargo's push away from the lost hold: half to all of this, a random direction (GDR-0076) |
 | `collects` | owner 0 only | owners whose running vessels collect (by `Owner.0`; owners beyond the table never) |
 
 ### State hash
@@ -1721,9 +1733,9 @@ per pass in the out-of-reach case.
 (20–50 % of its parts gone, drifting and turning a little), one collector per ship-mind blueprint with a hold 45 m out
 (Runner, sample early, sample mid) flying to the nearest salvage (`Approach` on the piece, `Hold` on a fragment) every
 30 ticks, two raiders under `raider_basic` whose cores are shot out at ticks 120 and 240 (fragments), the second
-collector's first cargo bay destroyed at 450 (its hold sheds), and the first collector stopped and then lost at 540
-(its wreck keeps its cargo), which the last collector, idle until then, strips: fragments, the wreck's cargo, then
-its parts. Plus random hits (4 % a tick) and a blast every 300 ticks.
+collector's first cargo bay destroyed at 450 (its hold sheds; the items spill), and the first collector stopped and
+then lost at 540 (its wreck keeps its cargo), which the last collector, idle until then, strips: fragments, the
+wreck's cargo, then its parts. Plus random hits (4 % a tick) and a blast every 300 ticks.
 
 13 Oct 2026, release builds, 1800 ticks, native x86_64 vs wasm32-wasip1 under Node 24: salvage, core, flight, load
 (20 ships) and behavior, seeds 42 and 7: **identical** (10 runs). Seed 42: salvage 16 items collected (19 units), 5
@@ -1740,6 +1752,12 @@ four streams differ from before from tick 1 (the salvage settings hash `max_spee
 wreck seeds on the scenario stream; the behaviors' part aim uses `Ship::part_world`). Seed 42: salvage 27 items (28
 units), 3 fragments of 8; core 18 items; behavior 11. Seed 7: salvage 29 items, 0 of 6 fragments; core 13; behavior
 19.
+
+**After spilled cargo (GDR-0076, 14 Oct 2026**; release builds, 1800 ticks, seed 1): salvage and voyage, native
+x86_64 vs wasm32-wasip1 under Node 24: **identical**. Every stream differs from before from tick 1 (`spill_speed` is
+hashed with the settings). Salvage: 19 loose items instead of 8 (the bay shot at 450 spills 11; its collector's hold
+stays full, so none is scooped again), the same 21 items collected, final hash `920a76757615f4e4` → `5e5f19c9f6a52559`.
+Voyage: no hold shrinks, every counter as before, `c4decb04b0dde2e8` → `e51add61e9e4465f`.
 
 ## Voyages
 

@@ -101,8 +101,11 @@ pub struct SalvageTuning {
     /// ... and that moves at most this fast relative to it (m/s, centre of mass to centre of mass; a fragment by
     /// its velocity): GDR-0063's "fly slowly over a wreck".
     pub max_speed: f32,
-    /// Ticks a loose fragment drifts before it is gone (1800 = 60 s).
+    /// Ticks a loose item (a fragment, or cargo a shrinking hold spilled) drifts before it is gone (1800 = 60 s).
     pub fragment_ticks: u32,
+    /// Cargo a shrinking hold spills (GDR-0076) leaves the lost hold with that point's velocity plus a push of
+    /// half to all of this, in a random direction (m/s; well below `max_speed`, so it can be scooped again).
+    pub spill_speed: f32,
     /// Owners whose running vessels collect, by `Owner.0`: the player (owner 0) only by default; owners
     /// beyond the table never collect.
     pub collects: [bool; MAX_OWNERS],
@@ -127,6 +130,7 @@ impl Default for SalvageTuning {
             reach: 5.0,
             max_speed: 4.0,
             fragment_ticks: 1800,
+            spill_speed: 1.5,
             collects,
         }
     }
@@ -262,6 +266,7 @@ impl StateHash for SimConfig {
         h.f32(s.reach);
         h.f32(s.max_speed);
         h.u32(s.fragment_ticks);
+        h.f32(s.spill_speed);
         for &c in &s.collects {
             h.bool(c);
         }
