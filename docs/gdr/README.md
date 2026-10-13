@@ -81,7 +81,8 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0070](0070-phase-7-wave-2-defaults.md) | Phase 7 wave 2 defaults: flight and AI numbers, voyage clearing details, the career save, the drydock gating | Accepted (provisional, lead) | 2026-10-13 |
 | [0071](0071-shipyard-home-long-u.md) | The home screen is the shipyard: a long U-shaped dock, the building area fills the U, the gate at the open side | Accepted | 2026-10-13 |
 | [0072](0072-shipyard-parts-voyage-flight-defaults.md) | Defaults of the shipyard home, the machine drawings and voyage flight | Accepted (provisional, lead) | 2026-10-13 |
-| [0073](0073-slice-tuning-v1.md) | Slice tuning v1: smaller packs, a gentler first voyage, research costs about halved | Proposed | 2026-10-13 |
+| [0073](0073-slice-tuning-v1.md) | Slice tuning v1: smaller packs, a gentler first voyage, research costs about halved | Accepted | 2026-10-13 |
+| [0074](0074-test-range-waves-emergency-recall-cannon.md) | Test-range waves follow the flown ship; recall also works when the fleet is disarmed; the cannon becomes an upgrade | Accepted | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
