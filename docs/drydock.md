@@ -186,10 +186,12 @@ saved template copy moved to the cruiser frame).
   words, at most 40 characters, starting with a letter), unique among saved designs and never a content ship's
   id (`_2`, `_3`, ...); renaming keeps it. A design with problems still saves; the status line says
   "SAVED AS WORK IN PROGRESS · n PROBLEMS: …" with the first one (`data::validate_ship`).
-- **The working design** (`drydock/working`, the same format, its `id` = the id it is saved under or empty) is
-  written about a second after the last change (`library::Autosave`, every change restarts the wait), at once
+- **The working design** (`drydock/working`: `(saved_as: "<id>" or None, unsaved: <bool>, design: (<the ship in
+  its frame>))`, so it comes back saved or not, with or without unsaved changes) is written about a second
+  after the last change (`library::Autosave`, every change restarts the wait), at once
   when the id it is saved under changes, when a test flight starts and when the desktop app closes; it comes
-  back at the next start (with its frame and whether it has unsaved changes). The first start is a copy of the
+  back at the next start, before the first frame, so a plain sandbox start flies it too (a design that can't
+  fly gives a sandbox without the player's ship, as before). The first start is a copy of the
   starter ship (`PlayerDesign::starter`) named "Halvex Runner copy". Opening centres the parts in the frame
   (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept.
 - **The name** top left: a click turns it into a text field; Enter or a click elsewhere renames the design

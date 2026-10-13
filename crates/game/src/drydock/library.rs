@@ -13,7 +13,7 @@
 use data::edit::OpenError;
 use data::{Blueprint, Content, Problem};
 
-use crate::storage::{Document, Storage, StorageError, valid_name};
+use crate::storage::{Document, Storage, StorageError};
 
 use super::PlayerDesign;
 
@@ -42,11 +42,14 @@ impl Document for DesignDoc {
     }
 }
 
-/// The working design: the blueprint in its frame, its `id` = the id it is saved under (empty before its first
-/// save).
-#[derive(Clone, Debug, PartialEq)]
+/// The working design: `(saved_as: "<id>" or None, unsaved: <bool>, design: (<the ship in its frame>))`, the
+/// id it is saved under, whether it changed since it was saved or opened, and the blueprint in frame
+/// coordinates (`size` = the frame).
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkingDoc {
     pub saved_as: Option<String>,
+    pub unsaved: bool,
     pub design: Blueprint,
 }
 
@@ -55,13 +58,13 @@ impl Document for WorkingDoc {
     const FORMAT: u32 = 1;
 
     fn to_ron(&self) -> String {
-        data::blueprint_to_ron(&Blueprint { id: self.saved_as.clone().unwrap_or_default(), ..self.design.clone() })
+        let saved_as = self.saved_as.as_ref().map_or("None".into(), |id| ron::to_string(id).unwrap_or_default());
+        let design = data::blueprint_to_ron(&self.design).trim_end().replace('\n', "\n    ");
+        format!("(\n    saved_as: {saved_as},\n    unsaved: {},\n    design: {design},\n)\n", self.unsaved)
     }
 
     fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
-        let design = data::parse_blueprint(text).map_err(|p| problems_text(&p))?;
-        let saved_as = Some(design.id.clone()).filter(|id| valid_name(id));
-        Ok(WorkingDoc { saved_as, design })
+        data::ron_options().from_str(text).map_err(|e| e.to_string())
     }
 }
 
@@ -295,9 +298,10 @@ pub fn save(storage: &mut Storage, content: &Content, design: &PlayerDesign, slo
     Ok(id)
 }
 
-/// Writes the working design (with the id it is saved under).
+/// Writes the working design (with the id it is saved under and whether it has unsaved changes).
 pub fn write_working(storage: &mut Storage, design: &PlayerDesign, slot: &DesignSlot, now: u64) -> Result<(), StorageError> {
-    let doc = WorkingDoc { saved_as: slot.id.clone(), design: design.blueprint().clone() };
+    let id = design.dock().header().id.clone();
+    let doc = WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } };
     storage.write(WORKING, &doc, now)
 }
 
@@ -309,15 +313,17 @@ pub fn restore_working(storage: &Storage, content: &Content) -> Option<Result<(P
         Ok(None) => return None,
         Err(e) => return Some(Err(e.to_string())),
     };
-    let header = Blueprint { id: doc.saved_as.clone().unwrap_or_else(|| slug(&doc.design.name)), ..doc.design };
-    let design = match PlayerDesign::open(content, &header, header.size) {
+    let design = match PlayerDesign::open(content, &doc.design, doc.design.size) {
         Ok(d) => d,
         Err(e) => return Some(Err(open_error_text(&e))),
     };
-    // The saved version, as the editor shows it, tells whether the working one has unsaved changes.
-    let clean = doc.saved_as.as_deref().and_then(|id| open_saved(storage, content, id).ok());
-    let slot = DesignSlot { id: doc.saved_as, clean: clean.map(|d| d.blueprint().clone()) };
-    Some(Ok((design, slot)))
+    // Unsaved changes stay unsaved: compared with the saved version (as the editor shows it), if there is one.
+    let clean = if doc.unsaved {
+        doc.saved_as.as_deref().and_then(|id| open_saved(storage, content, id).ok()).map(|d| d.blueprint().clone())
+    } else {
+        Some(design.blueprint().clone())
+    };
+    Some(Ok((design, DesignSlot { id: doc.saved_as, clean })))
 }
 
 /// Opens a saved design in the frame it was saved in.
@@ -387,7 +393,7 @@ pub fn rename(storage: &mut Storage, id: &str, name: &str, now: u64) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::MemoryBackend;
+    use crate::storage::{MemoryBackend, valid_name};
 
     fn mem() -> Storage {
         Storage::new(MemoryBackend::default())
@@ -520,17 +526,24 @@ mod tests {
         // An unsaved new design in the cruiser frame.
         let like = content.ships.get("halvex_runner").unwrap();
         let mut design = new_design(&content, (40, 40), like, &[]).unwrap();
+        let mut slot = DesignSlot::opened(None, &design);
         design.edit(|d| d.paint((3, 4), "steel")).unwrap();
         // Its header passes the content rules (id, summary), so only the ship itself can have problems.
         let header = |p: &Problem| matches!(p.field.as_deref(), Some("id" | "name" | "summary" | "faction"));
         assert!(!data::validate_ship(&content, &design.export()).iter().any(header));
-        let mut slot = DesignSlot::opened(None, &design);
         write_working(&mut storage, &design, &slot, 10).unwrap();
         let (back, back_slot) = restore_working(&storage, &content).unwrap().unwrap();
         assert_eq!(back.frame(), (40, 40));
         assert_eq!(back.export().parts, design.export().parts);
         assert_eq!(back.blueprint().name, "New design");
         assert_eq!(back_slot.id, None);
+        assert!(back_slot.dirty(&back));
+        // An untouched copy comes back untouched (it is not saved when another design replaces it).
+        let copy = open_template(&content, "sample_mid", &[]).unwrap();
+        write_working(&mut storage, &copy, &DesignSlot::opened(None, &copy), 15).unwrap();
+        let (back, back_slot) = restore_working(&storage, &content).unwrap().unwrap();
+        assert!(!back_slot.dirty(&back));
+        assert_eq!(back.export(), Blueprint { source: Default::default(), ..copy.export() });
         // Saved, then changed: it comes back saved, with the change unsaved.
         save(&mut storage, &content, &design, &mut slot, 20).unwrap();
         design.edit(|d| d.paint((5, 4), "steel")).unwrap();
@@ -542,7 +555,7 @@ mod tests {
         // A design that no longer opens (its part left the content) says why.
         let mut broken = design.blueprint().clone();
         broken.parts[0].part = "gone_part".into();
-        storage.write(WORKING, &WorkingDoc { saved_as: None, design: broken }, 40).unwrap();
+        storage.write(WORKING, &WorkingDoc { saved_as: None, unsaved: true, design: broken }, 40).unwrap();
         assert_eq!(restore_working(&storage, &content).unwrap().err().unwrap(), "unknown part \"gone_part\"");
     }
 

@@ -51,10 +51,12 @@ pub(super) struct BlueprintsPlugin;
 
 impl Plugin for BlueprintsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Shelf>()
-            .init_resource::<DesignSlot>()
+        // Before any system runs, so the first flight (a plain sandbox start) flies the restored design too.
+        let (slot, shelf) = restore(app.world_mut());
+        app.insert_resource(slot)
+            .insert_resource(shelf)
             .init_resource::<Saver>()
-            .add_systems(Startup, (restore, spawn_shelf.after(crate::flight_hud::spawn_hud)))
+            .add_systems(Startup, spawn_shelf.after(crate::flight_hud::spawn_hud))
             .add_systems(
                 Update,
                 (title, apply, autosave, announce).chain().in_set(DockSet::Apply).after(design::check_design),
@@ -263,28 +265,32 @@ pub(super) fn frame_name(content: &Content, frame: (u32, u32)) -> String {
 // ---------------------------------------------------------------------------------------------------------
 // Start, autosave, leaving
 
-/// At start: the working design of the last session, else a copy of the starter ship.
-fn restore(mut lib: Lib, content: Res<GameContent>, mut shelf: ResMut<Shelf>) {
-    if let Some(why) = &lib.storage.fallback {
+/// At start (the plugin's build, after `DrydockPlugin` put the starter design in): the working design of the
+/// last session, else a copy of the starter ship. Needs the `Storage` (`StoragePlugin` comes first).
+fn restore(world: &mut World) -> (DesignSlot, Shelf) {
+    let mut shelf = Shelf::default();
+    let storage = world.get_resource::<Storage>().expect("StoragePlugin is added before DrydockPlugin");
+    if let Some(why) = &storage.fallback {
         shelf.say(format!("designs are kept only until the game closes: {why}"), Tone::Gold);
     }
-    match library::restore_working(&lib.storage, &content.0) {
-        Some(Ok((design, slot))) => {
-            lib.design.replace(design);
-            *lib.slot = slot;
-            return;
+    let restored = library::restore_working(storage, &world.resource::<GameContent>().0);
+    let mut design = world.resource_mut::<PlayerDesign>();
+    match restored {
+        Some(Ok((next, slot))) => {
+            design.replace(next);
+            return (slot, shelf);
         }
         Some(Err(e)) => shelf.say(format!("the last design didn't come back: {e}"), Tone::Coral),
         None => {}
     }
     // The first start: the starter ship (`PlayerDesign::starter`) as "<name> copy", not saved yet.
-    let name = format!("{} copy", lib.design.blueprint().name);
+    let name = format!("{} copy", design.blueprint().name);
     let id = library::slug(&name);
-    lib.design.edit_header(|h| {
+    design.edit_header(|h| {
         h.name = name;
         h.id = id;
     });
-    *lib.slot = DesignSlot::opened(None, &lib.design);
+    (DesignSlot::opened(None, &design), shelf)
 }
 
 /// Writes the working design a second after the last change.
