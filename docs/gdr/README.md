@@ -64,6 +64,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0053](0053-drydock-v1-lead-defaults.md) | Drydock v1 defaults: frames, tools, mirror, keys and test flight | Accepted (provisional, lead); palette rule superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md) | 2026-10-13 |
 | [0054](0054-drydock-locked-parts-tools-saving-sharing.md) | Drydock: enemy parts locked until unlocked; fill and bevel confirmed; the working design autosaves; designs are stored and can be shared | Accepted | 2026-10-13 |
 | [0055](0055-slower-crisper-turning.md) | Turning is slower and crisper; RCS pods are the strong turners; top speed is capped by the whole speed | Accepted | 2026-10-13 |
+| [0056](0056-drydock-wave-2-defaults.md) | Drydock wave 2 defaults: editing gestures, stats wording, saving behaviour | Accepted (provisional, lead) | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
