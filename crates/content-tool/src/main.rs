@@ -21,7 +21,8 @@ const USAGE: &str = "usage:
   content-tool validate [pack_dir...]
   content-tool export-json <out.json | -> [pack_dir...]
   content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, frame,
-                                             ship, behavior_node, behavior, page
+                                             ship, behavior_node, behavior, family, research, start,
+                                             page
 
 Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
@@ -157,7 +158,7 @@ fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
 fn validate(args: &[String]) -> Result<(), String> {
     let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} icons, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
@@ -167,6 +168,9 @@ fn validate(args: &[String]) -> Result<(), String> {
         content.ships.len(),
         content.behavior_nodes.len(),
         content.behaviors.len(),
+        content.families.len(),
+        content.research.len(),
+        content.starts.len(),
         content.icons.len(),
         content.wiki.len()
     );
@@ -206,6 +210,9 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Ship => rows(c.ships.as_slice()),
         Kind::BehaviorNode => rows(c.behavior_nodes.as_slice()),
         Kind::Behavior => rows(c.behaviors.as_slice()),
+        Kind::Family => rows(c.families.as_slice()),
+        Kind::Research => rows(c.research.as_slice()),
+        Kind::Start => rows(c.starts.as_slice()),
         Kind::Page => c
             .wiki
             .values()

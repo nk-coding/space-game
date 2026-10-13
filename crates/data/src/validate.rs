@@ -12,7 +12,7 @@ use crate::stats::{BUILTIN_STATS, SHIP_STATS};
 use crate::text::parse_links;
 
 /// Validates merged content. Returns errors and warnings (warnings: ships in several pieces, blocked guns,
-/// unused icons).
+/// unused icons, research that unlocks what is already open).
 pub fn validate(c: &Content) -> Vec<Problem> {
     let mut v = Validator { c, out: Vec::new() };
     v.packs();
@@ -37,6 +37,14 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     v.entries(c.ships.as_slice(), |v, e| v.ship(e));
     v.entries(c.behavior_nodes.as_slice(), |v, e| v.behavior_node(e));
     v.entries(c.behaviors.as_slice(), |v, e| v.behavior(e));
+    v.entries(c.families.as_slice(), |v, e| {
+        if let Some(col) = &e.color {
+            v.key_in(e, "color", col, SYSTEM_COLORS, "system colour");
+        }
+    });
+    v.entries(c.research.as_slice(), |v, e| v.research(e));
+    v.research_cycles();
+    v.entries(c.starts.as_slice(), |v, e| v.start(e));
     v.locked();
     v.icons();
     v.wiki();
@@ -73,6 +81,12 @@ pub const MAX_GIMBAL: f32 = 45.0;
 pub const MAX_PLUME_LENGTH: f32 = 50.0;
 /// Longest allowed side of a drydock frame, in cells (placeholder: twice the capital frame).
 pub const MAX_FRAME_SIZE: u32 = 128;
+/// Largest research data amount in a salvage block or a research cost (a sanity bound, placeholder).
+pub const MAX_RESEARCH_DATA: f32 = 10_000.0;
+/// Largest material amount in a salvage block or a research cost (a sanity bound, placeholder).
+pub const MAX_MATERIAL_AMOUNT: u32 = 10_000;
+/// Largest mind capacity of a start or a research step (a sanity bound, placeholder).
+pub const MAX_MIND_CAPACITY: u32 = 100;
 
 pub(crate) fn is_snake_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -313,6 +327,59 @@ impl<'a> Validator<'a> {
                 true,
             );
         }
+        if let Some(s) = &m.salvage {
+            if m.armor.is_none() {
+                self.err(
+                    m,
+                    "salvage",
+                    "only armour materials are salvaged (per cell of hull); remove `salvage`",
+                );
+            }
+            self.family_ref(m, "salvage.family", &s.family);
+            self.research_data(m, "salvage.data", s.data, false);
+        }
+    }
+
+    fn family_ref<T: Entry>(&mut self, e: &T, field: &str, id: &str) {
+        if !self.c.families.contains(id) {
+            self.err(e, field, format!("unknown research family `{id}`"));
+        }
+    }
+
+    /// A research data amount: finite, not negative (above 0 if `strict`), at most [`MAX_RESEARCH_DATA`].
+    fn research_data<T: Entry>(&mut self, e: &T, field: &str, x: f32, strict: bool) {
+        self.number(e, field, x, 0.0, strict);
+        if x > MAX_RESEARCH_DATA {
+            self.err(e, field, format!("at most {MAX_RESEARCH_DATA}, got {x}"));
+        }
+    }
+
+    /// Material amounts: known materials, each 1 to [`MAX_MATERIAL_AMOUNT`].
+    fn material_amounts<T: Entry>(&mut self, e: &T, field: &str, amounts: &BTreeMap<String, u32>) {
+        for (id, &n) in amounts {
+            let f = format!("{field}.{id}");
+            if !self.c.materials.contains(id) {
+                self.err(e, &f, format!("unknown material `{id}`"));
+            }
+            if !(1..=MAX_MATERIAL_AMOUNT).contains(&n) {
+                self.err(
+                    e,
+                    &f,
+                    format!("an amount of 1 to {MAX_MATERIAL_AMOUNT}, got {n}"),
+                );
+            }
+        }
+    }
+
+    /// A mind capacity (of a start or a research step): 1 to [`MAX_MIND_CAPACITY`].
+    fn mind_capacity<T: Entry>(&mut self, e: &T, field: &str, n: u32) {
+        if !(1..=MAX_MIND_CAPACITY).contains(&n) {
+            self.err(
+                e,
+                field,
+                format!("a mind capacity of 1 to {MAX_MIND_CAPACITY} logic cores, got {n}"),
+            );
+        }
     }
 
     fn part(&mut self, p: &'a Part) {
@@ -362,6 +429,19 @@ impl<'a> Validator<'a> {
                 Some(x) => self.number(p, "hp", x, 0.0, true),
                 None => self.err(p, "hp", "non-hull parts need `hp`"),
             }
+        }
+        if let Some(s) = &p.salvage {
+            if p.hull {
+                self.err(
+                    p,
+                    "salvage",
+                    "hull parts are salvaged per cell by their material's `salvage`; remove `salvage`",
+                );
+            }
+            self.family_ref(p, "salvage.family", &s.family);
+            self.research_data(p, "salvage.data", s.data, false);
+            self.material_amounts(p, "salvage.materials", &s.materials);
+            self.material_amounts(p, "salvage.fragment", &s.fragment);
         }
         if let Some(x) = &p.power {
             self.number(p, "power.output", x.output, 0.0, false);
@@ -545,6 +625,183 @@ impl<'a> Validator<'a> {
                 first,
                 "locked",
                 "every armour material is locked: the drydock has nothing to build hull parts in",
+            );
+        }
+        if let Some(first) = c.frames.iter().next()
+            && c.frames.iter().all(|f| f.locked)
+        {
+            self.err(
+                first,
+                "locked",
+                "every frame is locked: a new game has no frame to build in",
+            );
+        }
+    }
+
+    fn research(&mut self, n: &'a ResearchNode) {
+        let c = self.c;
+        self.family_ref(n, "family", &n.family);
+        for (id, &x) in &n.cost.data {
+            let f = format!("cost.data.{id}");
+            if !c.families.contains(id) {
+                self.err(n, &f, format!("unknown research family `{id}`"));
+            }
+            self.research_data(n, &f, x, true);
+        }
+        self.material_amounts(n, "cost.materials", &n.cost.materials);
+        for (k, r) in n.requires.iter().enumerate() {
+            let f = format!("requires[{k}]");
+            if !c.research.contains(r) {
+                self.err(n, &f, format!("unknown research node `{r}`"));
+            } else if n.requires[..k].contains(r) {
+                self.err(n, &f, format!("`{r}` is listed twice"));
+            }
+        }
+        if n.unlocks.is_empty() {
+            self.warn(n, "unlocks", "the node unlocks nothing");
+        }
+        for (k, u) in n.unlocks.iter().enumerate() {
+            let f = format!("unlocks[{k}]");
+            let (kind, id, locked) = match u {
+                Unlock::MindCapacity(x) => {
+                    self.mind_capacity(n, &f, *x);
+                    continue;
+                }
+                Unlock::Part(id) => (Kind::Part, id, c.parts.get(id).map(|p| p.locked)),
+                Unlock::Material(id) => (
+                    Kind::Material,
+                    id,
+                    c.materials.get(id).map(|m| m.locked),
+                ),
+                Unlock::Frame(id) => (Kind::Frame, id, c.frames.get(id).map(|x| x.locked)),
+            };
+            match locked {
+                None => self.err(n, &f, format!("unknown {kind} `{id}`")),
+                Some(false) => self.warn(
+                    n,
+                    &f,
+                    format!(
+                        "{kind} `{id}` is not `locked`: a new game has it already, so unlocking it changes nothing"
+                    ),
+                ),
+                Some(true) => {}
+            }
+        }
+    }
+
+    /// `requires` must not loop: each cycle is reported once, at the requirement that closes it.
+    fn research_cycles(&mut self) {
+        let c = self.c;
+        let nodes = c.research.as_slice();
+        // 0: not visited, 1: on the current path, 2: done.
+        let mut state = vec![0u8; nodes.len()];
+        for root in 0..nodes.len() {
+            if state[root] != 0 {
+                continue;
+            }
+            state[root] = 1;
+            // Depth first without recursion (mods may chain many nodes): (node, next requirement to follow).
+            let mut path: Vec<(usize, usize)> = vec![(root, 0)];
+            while let Some(top) = path.last_mut() {
+                let (node, k) = *top;
+                let Some(r) = nodes[node].requires.get(k) else {
+                    state[node] = 2;
+                    path.pop();
+                    continue;
+                };
+                top.1 += 1;
+                let Some(j) = c.research.position(r) else {
+                    continue; // an unknown node: reported by `research`
+                };
+                match state[j] {
+                    0 => {
+                        state[j] = 1;
+                        path.push((j, 0));
+                    }
+                    1 => {
+                        let from = path.iter().position(|&(x, _)| x == j).unwrap();
+                        let cycle: Vec<&str> = path[from..]
+                            .iter()
+                            .map(|&(x, _)| nodes[x].id.as_str())
+                            .chain([nodes[j].id.as_str()])
+                            .collect();
+                        self.err(
+                            &nodes[node],
+                            format!("requires[{k}]"),
+                            format!(
+                                "`requires` forms a cycle ({}, each requires the next), so none of them can be researched",
+                                cycle.join(" → ")
+                            ),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// A start's ship must be one a new game can take on a voyage: built from what is not locked, fitting a frame
+    /// that is not locked, with no more logic cores than the start's mind capacity.
+    fn start(&mut self, s: &'a Start) {
+        let c = self.c;
+        self.mind_capacity(s, "mind_capacity", s.mind_capacity);
+        for (k, v) in s.voyages.iter().enumerate() {
+            let f = format!("voyages[{k}]");
+            if !is_snake_id(v) {
+                self.err(s, &f, format!("voyage id `{v}` must be snake_case"));
+            } else if s.voyages[..k].contains(v) {
+                self.err(s, &f, format!("`{v}` is listed twice"));
+            }
+        }
+        let Some(ship) = c.ships.get(&s.ship) else {
+            self.err(s, "ship", format!("unknown ship `{}`", s.ship));
+            return;
+        };
+        let mut locked = BTreeSet::new();
+        for pl in &ship.parts {
+            if c.parts.get(&pl.part).is_some_and(|p| p.locked) {
+                locked.insert(format!("part `{}`", pl.part));
+            }
+            if let Some(m) = c.placement_material(pl).filter(|m| m.locked) {
+                locked.insert(format!("material `{}`", m.id));
+            }
+        }
+        if !locked.is_empty() {
+            let list: Vec<String> = locked.into_iter().collect();
+            self.err(
+                s,
+                "ship",
+                format!(
+                    "ship `{}` uses what a new game doesn't have: {}",
+                    s.ship,
+                    list.join(", ")
+                ),
+            );
+        }
+        let (w, h) = ship.size;
+        if !c
+            .frames
+            .iter()
+            .any(|f| !f.locked && f.size.0 >= w && f.size.1 >= h)
+        {
+            self.err(
+                s,
+                "ship",
+                format!(
+                    "ship `{}` ({w}×{h}) fits no frame that is not locked",
+                    s.ship
+                ),
+            );
+        }
+        let cores = c.ship_totals(ship).logic_cores;
+        if cores > s.mind_capacity {
+            self.err(
+                s,
+                "mind_capacity",
+                format!(
+                    "ship `{}` has {cores} logic cores, more than the mind capacity {}",
+                    s.ship, s.mind_capacity
+                ),
             );
         }
     }

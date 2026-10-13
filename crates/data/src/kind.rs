@@ -17,12 +17,18 @@ pub enum Kind {
     BehaviorNode,
     /// A behavior program (priority list of rules).
     Behavior,
+    /// A research family: one tech tree, and the pool its research data goes to (GDR-0024).
+    Family,
+    /// A research node: what it costs, needs and unlocks.
+    Research,
+    /// How a new game begins.
+    Start,
     /// Free-standing wiki article (`wiki/page/<id>.md`); has no RON data.
     Page,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [
+    pub const ALL: [Kind; 13] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
@@ -32,6 +38,9 @@ impl Kind {
         Kind::Ship,
         Kind::BehaviorNode,
         Kind::Behavior,
+        Kind::Family,
+        Kind::Research,
+        Kind::Start,
         Kind::Page,
     ];
 
@@ -46,6 +55,9 @@ impl Kind {
             Kind::Ship => "ship",
             Kind::BehaviorNode => "behavior_node",
             Kind::Behavior => "behavior",
+            Kind::Family => "family",
+            Kind::Research => "research",
+            Kind::Start => "start",
             Kind::Page => "page",
         }
     }
@@ -62,6 +74,9 @@ impl Kind {
             Kind::Ship => Some("ships"),
             Kind::BehaviorNode => Some("behavior_nodes"),
             Kind::Behavior => Some("behaviors"),
+            Kind::Family => Some("families"),
+            Kind::Research => Some("research"),
+            Kind::Start => Some("starts"),
             Kind::Page => None,
         }
     }
