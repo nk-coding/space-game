@@ -94,7 +94,9 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 | 5D Client foundation | `Drydock` app state, static ship view with the flight tiles, the mockup's layout and widgets, test-fly round trip with an in-memory blueprint | done 13 Oct (`client.md` "Drydock", `results/drydock-*.png`) |
 | 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2, in progress (13 Oct) |
 | 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2, in progress (13 Oct) |
-| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2, in progress (13 Oct) |
+| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export, share codes (GDR-0054) | wave 2, in progress (13 Oct) |
+| 5H Turning feel (GDR-0055) | Keyboard rotation ~1.5 rad/s with a ramp; cores tiny, gyros modest, RCS strong (Runner 90° ≈ 1.5 s); differential thrust last resort; whole-speed fade | in progress (13 Oct) |
+| 5I Sharp icons | Part icons look pixelated at high zoom in Niklas's browser although the atlas tier (256 px/cell) is above the need (160): find and fix the sampling/upload bug | in progress (13 Oct) |
 
 ## Phase 4: measurement
 
