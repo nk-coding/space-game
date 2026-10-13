@@ -651,3 +651,89 @@ fn a_shrinking_full_hold_reports_what_it_drops() {
     assert_eq!(s.cargo().count(&part("gyro")), 2);
     assert_eq!(s.cargo().count(&part("radiator")), 2);
 }
+
+/// What a shrinking hold drops spills as loose items at the lost bay (GDR-0076): one per item, the same item with
+/// its units and value, pushed apart at half to all of `spill_speed`; another collector scoops them up again (they
+/// leave the hold once and come back once); the same run gives the same spill.
+#[test]
+fn a_shrinking_hold_spills_what_it_drops_and_it_can_be_collected_again() {
+    let spill = || {
+        let c = common::content();
+        let mut w = Sim::new(3);
+        let me = w.spawn_ship(collector(2), Owner::PLAYER, Body::default());
+        let wreck = custom(
+            &c,
+            &[
+                ("gyro", 0, 0, 0, false, None),
+                ("gyro", 1, 0, 0, false, None),
+                ("radiator", 2, 0, 0, false, None),
+                ("radiator", 0, 1, 0, false, None),
+                ("armor_block", 1, 1, 0, false, STEEL),
+                ("armor_block", 2, 1, 0, false, STEEL),
+                ("armor_block", 0, 2, 0, false, STEEL),
+                ("armor_block", 1, 2, 0, false, STEEL),
+                ("armor_block", 2, 2, 0, false, STEEL),
+            ],
+        );
+        w.spawn_wreck(wreck, Owner(1), Body::at(Vec2::new(4.0, 0.0), 0.0), 0.0, 0);
+        run(&mut w, 100);
+        assert_eq!(w.ship(me).unwrap().cargo().used(), 8, "full");
+        assert!(w.loose().is_empty());
+        let bay = common::find(w.ship(me).unwrap().design(), "cargo_bay", 1, 1);
+        let (bay_at, bay_vel) = w.ship(me).unwrap().part_world(bay).unwrap();
+        w.apply_damage(me, DamageTarget::Part(bay), 1000.0);
+        w.step(&TickInputs::default());
+        let lost: Vec<(Item, u32)> = w
+            .events()
+            .iter()
+            .filter_map(|e| match e {
+                SimEvent::CargoLost { item, count, .. } => Some((item.clone(), *count)),
+                _ => None,
+            })
+            .collect();
+        (w, me, lost, bay_at, bay_vel)
+    };
+    let (mut w, me, lost, bay_at, bay_vel) = spill();
+    let block = Item::Part {
+        part: "armor_block".into(),
+        material: STEEL.map(Into::into),
+    };
+    assert_eq!(lost, [(block.clone(), 4)]);
+    assert_eq!(w.ship(me).unwrap().cargo().count(&block), 0);
+
+    // Four loose blocks from the lost bay, each pushed its own way.
+    let loose = w.loose().to_vec();
+    assert_eq!(loose.len(), 4, "{loose:?}");
+    let speed = SimConfig::default().salvage.spill_speed;
+    for (n, l) in loose.iter().enumerate() {
+        assert_eq!((&l.item, l.units), (&block, 1));
+        assert!((l.prev_pos - bay_at).length() < 0.05, "{l:?} from {bay_at:?}");
+        let push = (l.vel - bay_vel).length();
+        assert!(push >= 0.5 * speed - 1e-4 && push < speed + 1e-4, "{push}");
+        assert!(loose[..n].iter().all(|o| (o.vel - l.vel).length() > 1e-3), "spread");
+    }
+    let (again, _, _, _, _) = spill();
+    assert_eq!(again.loose(), &loose[..], "the same run spills the same way");
+    assert_eq!(again.state_hash(), w.state_hash());
+
+    // A second collector in the first one's place scoops them before the wreck: each block once.
+    w.remove_ship(me);
+    let b = w.spawn_ship(collector(2), Owner::PLAYER, Body::default());
+    let got = run(&mut w, 40);
+    let mut scooped: Vec<_> = got
+        .iter()
+        .take(4)
+        .map(|g| {
+            assert_eq!((g.0, &g.2), (b, &block));
+            match g.1 {
+                Salvaged::Loose(id) => id,
+                ref other => panic!("{other:?}"),
+            }
+        })
+        .collect();
+    scooped.sort();
+    let ids: Vec<_> = loose.iter().map(|l| l.id).collect();
+    assert_eq!(scooped, ids);
+    assert!(w.loose().is_empty());
+    assert_eq!(w.ship(b).unwrap().cargo().count(&block), 4);
+}

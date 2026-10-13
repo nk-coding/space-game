@@ -7,29 +7,30 @@
 //!   (`PartSpec::cargo_units`), a fragment one.
 //! * **Cargo** ([`Cargo`], `Ship::cargo`): items and counts in item order, and the units in use. A vessel's hold
 //!   is the summed capacity of the alive cargo parts of its controlling piece (`Piece::cargo_capacity`); when it
-//!   drops below the load, the lowest-value items go. A lost vessel's ship keeps its cargo: its wreck carries
-//!   it.
+//!   drops below the load, the lowest-value items go and spill as loose items at the lost hold (GDR-0076). A lost
+//!   vessel's ship keeps its cargo: its wreck carries it.
 //! * **Value** (lead default): build points per cargo unit (hull parts with their material's factor); a
 //!   fragment is worth its part's build points. The sim does not read the career's research values.
 //! * **Collecting**: every `SalvageTuning::interval` ticks each running vessel of an owner that collects takes
 //!   one item that fits its free hold, from salvage within reach of its hull that moves no faster than
-//!   `SalvageTuning::max_speed` relative to it (fly slowly over a wreck, GDR-0063): the nearest loose fragment, else
-//!   from the nearest salvage piece (pieces in order of distance, the first one with something that fits): its
-//!   wreck's cargo first (the best item), then its best salvageable part (ties: the lowest part index). A stripped
-//!   part leaves through the destroy path without the destruction (`Ship::remove_part`: no `PartDestroyed`, no
-//!   fragment); the wreck may split as in any breakage. `SimEvent::Collected` tells the client.
+//!   `SalvageTuning::max_speed` relative to it (fly slowly over a wreck, GDR-0063): the nearest loose item (a
+//!   fragment or spilled cargo), else from the nearest salvage piece (pieces in order of distance, the first one with
+//!   something that fits): its wreck's cargo first (the best item), then its best salvageable part (ties: the
+//!   lowest part index). A stripped part leaves through the destroy path without the destruction
+//!   (`Ship::remove_part`: no `PartDestroyed`, no fragment); the wreck may split as in any breakage. `SimEvent::Collected` tells the client.
 //! * **Fragments** ([`Loose`]): a part whose salvage block names a fragment, destroyed by damage, leaves one at its
 //!   centroid with its velocity: a point the sim moves every tick (no body, no collisions) until it is collected
-//!   or its `SalvageTuning::fragment_ticks` are over.
+//!   or its `SalvageTuning::fragment_ticks` are over. Cargo a shrinking hold spills drifts the same way.
 //! * **Wrecks spawned as wrecks** ([`Sim::spawn_wreck`]): burned out (no vessel ever forms from their cores),
 //!   a share of their parts already gone (rolled from the wreck's own seed).
 //!
 //! Everything here is in the state hash. Cost: one bounding-circle test per salvage piece and loose item per
 //! collecting vessel with free hold every `interval` ticks; for those that pass, the convex colliders are compared
 //! pair by pair, skipping pairs whose bounding boxes are farther apart than the reach (or the best distance so
-//! far); fragments are moved with one add per tick. No allocation per tick once the buffers are warm.
+//! far); loose items are moved with one add per tick. No allocation per tick once the buffers are warm.
 
 use std::collections::BTreeMap;
+use std::f32::consts::TAU;
 use std::sync::Arc;
 
 use crate::DT;
@@ -163,9 +164,9 @@ impl Cargo {
     }
 
     /// Drops the lowest-value items (ties: the last in item order), one at a time, until the load fits
-    /// `capacity`. Returns what went, with counts, in the order it went.
-    pub(crate) fn shed(&mut self, capacity: u32) -> Vec<(Item, u32)> {
-        let mut gone: Vec<(Item, u32)> = Vec::new();
+    /// `capacity`. Returns what went (its stack: how many went, their units and value), in the order it went.
+    pub(crate) fn shed(&mut self, capacity: u32) -> Vec<(Item, Stack)> {
+        let mut gone: Vec<(Item, Stack)> = Vec::new();
         while self.used > capacity {
             let mut worst: Option<(&Item, f32)> = None;
             for (item, s) in &self.items {
@@ -175,10 +176,10 @@ impl Cargo {
             }
             let Some((item, _)) = worst else { break };
             let item = item.clone();
-            self.take(&item);
+            let Some((units, value)) = self.take(&item) else { break };
             match gone.iter_mut().find(|(i, _)| *i == item) {
-                Some((_, n)) => *n += 1,
-                None => gone.push((item, 1)),
+                Some((_, s)) => s.count += 1,
+                None => gone.push((item, Stack { count: 1, units, value })),
             }
         }
         gone
@@ -202,7 +203,8 @@ impl StateHash for Cargo {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LooseId(pub u32);
 
-/// An item drifting in space (a fragment): a point the sim moves every tick, no body, no collisions.
+/// An item drifting in space (a fragment, or cargo a shrinking hold spilled): a point the sim moves every tick, no
+/// body, no collisions.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Loose {
     pub id: LooseId,
@@ -563,7 +565,7 @@ fn pick(
 }
 
 impl Sim {
-    /// Loose items (fragments), ascending id. Render each at `prev_pos + (pos − prev_pos) × alpha`.
+    /// Loose items (fragments and spilled cargo), ascending id. Render each at `prev_pos + (pos − prev_pos) × alpha`.
     pub fn loose(&self) -> &[Loose] {
         &self.salvage.loose
     }
@@ -639,19 +641,56 @@ impl Sim {
         }
     }
 
-    /// Ship `k`'s hold after breakage: a vessel whose hold shrank below its load drops its lowest-value items
-    /// (`SimEvent::CargoLost` for each kind).
-    pub(crate) fn shed_cargo(&mut self, k: usize) {
-        let s = &mut self.ships[k];
-        if !s.is_vessel() {
+    /// Ship `k`'s hold after its breakage events `from..`: a vessel whose hold shrank below its load drops its
+    /// lowest-value items (`SimEvent::CargoLost` for each kind), and each one spills as a loose item (GDR-0076) at
+    /// the lost hold (the first cargo part destroyed in these events, else the controlling piece's centre of mass)
+    /// with the velocity of that point plus a push of `SalvageTuning::spill_speed` × [0.5, 1) in a direction
+    /// rolled on `Stream::Debris` (two draws per item).
+    pub(crate) fn shed_cargo(&mut self, k: usize, from: usize) {
+        let s = &self.ships[k];
+        let capacity = s.cargo_capacity();
+        if !s.is_vessel() || s.cargo.used <= capacity {
             return;
         }
-        let capacity = s.cargo_capacity();
-        if s.cargo.used > capacity {
-            let ship = s.id;
-            for (item, count) in s.cargo.shed(capacity) {
-                self.events.push(SimEvent::CargoLost { ship, item, count });
+        let Some(cp) = s.control.and_then(|c| s.piece(c)) else {
+            return;
+        };
+        let lost_hold = self.events[from..].iter().find_map(|e| match *e {
+            SimEvent::PartDestroyed { ship, part, .. }
+                if ship == s.id && s.design.parts[part as usize].cargo > 0.0 =>
+            {
+                s.part_world(part)
             }
+            _ => None,
+        });
+        let (at, vel) = lost_hold.unwrap_or((cp.com_world(), cp.body.linvel));
+        let ship = s.id;
+        let gone = self.ships[k].cargo.shed(capacity);
+        let t = self.config().salvage;
+        let expires = self.tick() + t.fragment_ticks as u64;
+        for (item, stack) in gone {
+            for _ in 0..stack.count {
+                let rng = self.rng(Stream::Debris);
+                let dir = Rot::from_angle(rng.range_f32(0.0, TAU)).apply(Vec2::X);
+                let push = dir * (t.spill_speed * rng.range_f32(0.5, 1.0));
+                let st = &mut self.salvage;
+                st.loose.push(Loose {
+                    id: LooseId(st.next_loose),
+                    item: item.clone(),
+                    units: stack.units,
+                    value: stack.value,
+                    pos: at,
+                    prev_pos: at,
+                    vel: vel + push,
+                    expires,
+                });
+                st.next_loose += 1;
+            }
+            self.events.push(SimEvent::CargoLost {
+                ship,
+                item,
+                count: stack.count,
+            });
         }
     }
 

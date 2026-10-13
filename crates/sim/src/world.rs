@@ -515,7 +515,7 @@ impl Sim {
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
     /// the physics. Destroyed parts whose salvage block names a fragment leave one; split-off pieces with a logic core
     /// become vessels of their own (new ships, after the existing ones); lost vessels and cores update the
-    /// minds (focus, dormant vessels); a vessel whose hold shrank drops cargo.
+    /// minds (focus, dormant vessels); a vessel whose hold shrank spills cargo as loose items.
     pub fn resolve_breakage(&mut self) {
         for k in 0..self.ships.len() {
             self.resolve_ship(k);
@@ -563,7 +563,7 @@ impl Sim {
             self.mind_dirty = true;
         }
         self.form_vessels(k);
-        self.shed_cargo(k);
+        self.shed_cargo(k, from);
     }
 
     /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting: the pieces ghost each
