@@ -1,5 +1,6 @@
 //! Built-in maneuvers: the layer between behaviors (`behavior/`) and the flight computer. Each maneuver turns
-//! into a [`FlightGoal`] every tick. Ranges are **placeholders**.
+//! into a [`FlightGoal`] every tick, never faster than the ship's top speed (GDR-0064). Ranges are
+//! **placeholders**.
 
 use crate::config::FlightTuning;
 use crate::flight::{AimMode, FlightGoal, HeadingGoal, Kin, Target, TargetState, resolve_target};
@@ -36,6 +37,9 @@ pub enum Maneuver {
     },
     /// Run straight away from the target at top speed.
     Flee { from: Target },
+    /// Stay within `distance` metres of the leader (the behavior action `escort`, GDR-0065): close in like an
+    /// approach while farther (`HeadingGoal::Auto`), keep pace with it while within.
+    Escort { leader: Target, distance: f32 },
 }
 
 impl Maneuver {
@@ -48,6 +52,7 @@ impl Maneuver {
             | Maneuver::Orbit { target, .. }
             | Maneuver::KeepRange { target, .. } => Some(target),
             Maneuver::Flee { from } => Some(from),
+            Maneuver::Escort { leader, .. } => Some(leader),
         }
     }
 
@@ -63,6 +68,7 @@ impl Maneuver {
                 target.is_finite() && range.is_finite()
             }
             Maneuver::Orbit { target, radius, .. } => target.is_finite() && radius.is_finite(),
+            Maneuver::Escort { leader, distance } => leader.is_finite() && distance.is_finite(),
         }
     }
 
@@ -74,12 +80,27 @@ impl Maneuver {
 
     /// This tick's goal with the target already resolved (`ts`; ignored by maneuvers without a target).
     /// Behaviors use it to fly relative to an aim point on the target ship (e.g. its engines).
+    ///
+    /// The velocity goal is capped at the ship's top speed (`Kin::top_speed`, GDR-0064): matching a faster
+    /// target, or an orbit around a moving one, asked for more, and a ship at its top speed then pushed a hair
+    /// "with" its motion, got no thrust from the whole-speed fade and flew straight on.
     pub fn goal_for(
         &self,
         kin: &Kin,
         ts: Option<TargetState>,
         tuning: &FlightTuning,
     ) -> FlightGoal {
+        let mut goal = self.uncapped(kin, ts, tuning);
+        if let Some(v) = goal.velocity {
+            let speed = v.length();
+            if speed > kin.top_speed && kin.top_speed > 0.0 {
+                goal.velocity = Some(v * (kin.top_speed / speed));
+            }
+        }
+        goal
+    }
+
+    fn uncapped(&self, kin: &Kin, ts: Option<TargetState>, tuning: &FlightTuning) -> FlightGoal {
         let brake = FlightGoal {
             heading: HeadingGoal::Auto,
             velocity: Some(Vec2::ZERO),
@@ -159,6 +180,13 @@ impl Maneuver {
                 }
                 None => brake,
             },
+            Maneuver::Escort { distance, .. } => match ts {
+                Some(ts) => FlightGoal {
+                    heading: HeadingGoal::Auto,
+                    velocity: Some(seek(kin, ts.pos, ts.vel, distance, tuning)),
+                },
+                None => brake,
+            },
         }
     }
 }
@@ -184,13 +212,10 @@ fn approach(
     }
 }
 
+/// Nose on the target (or its lead point), its bearing rate fed forward (GDR-0064).
 fn face(kin: &Kin, ts: &TargetState, aim: AimMode) -> HeadingGoal {
-    let to = kin.aim_point(ts, aim) - kin.pos;
-    if to.length_squared() > 1e-6 {
-        HeadingGoal::Angle(Kin::nose_heading(to))
-    } else {
-        HeadingGoal::Keep
-    }
+    kin.track(kin.aim_point(ts, aim), ts.vel, 0)
+        .unwrap_or(HeadingGoal::Keep)
 }
 
 /// Velocity that brings the ship to `standoff` metres from `at` (moving with `at_vel`) and stops it there.
@@ -242,6 +267,11 @@ impl StateHash for Maneuver {
             Maneuver::Flee { from } => {
                 h.u8(6);
                 from.hash_state(h);
+            }
+            Maneuver::Escort { leader, distance } => {
+                h.u8(7);
+                leader.hash_state(h);
+                h.f32(*distance);
             }
         }
     }

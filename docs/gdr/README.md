@@ -76,6 +76,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0065](0065-phase-7-screens-and-escort-action.md) | Phase 7 screens: debrief panel, research tree, star map, recall under the cargo, fleet formation, locked parts shown dimmed; an `escort` action | Accepted | 2026-10-13 |
 | [0066](0066-phase-7-wave-1-defaults.md) | Phase 7 wave 1 defaults: salvage values and fragments, cargo and collecting, the career model, the home screen | Accepted (provisional, lead) | 2026-10-13 |
 | [0067](0067-rams-pass-friendly-bubbles.md) | Rams pass friendly shield bubbles, like shots and plumes | Accepted | 2026-10-13 |
+| [0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md) | A voyage site clears when its enemies are destroyed or disarmed; only armed enemies block recall | Accepted | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

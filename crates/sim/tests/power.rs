@@ -293,8 +293,10 @@ fn partial_power_scales_thrust_and_shield_recharge() {
     let out = b.ship(sb).unwrap().pieces()[0].output[0];
     assert!(close(out, l, 1e-6), "the plume shows the partial output");
 
-    // Shield recharge: empty both bubbles with one 6-damage shot (their whole capacity), then let them
-    // recharge for a second.
+    // Shield recharge: empty both bubbles with one shot of their whole capacity, then let them recharge for a
+    // second.
+    let spec = c.parts.get("shield_emitter").unwrap().shield.as_ref().unwrap();
+    let (capacity, regen) = (spec.capacity, spec.regen);
     let mut recharge = Vec::new();
     for (w, s) in [(&mut a, sa), (&mut b, sb)] {
         let centre = w.bubbles()[0].centre;
@@ -303,7 +305,7 @@ fn partial_power_scales_thrust_and_shield_recharge() {
             WeaponFamily::Energy,
             centre + Vec2::new(0.0, 6.0),
             Vec2::new(0.0, -60.0),
-            6.0,
+            capacity,
             1,
             1.0,
         );
@@ -323,8 +325,8 @@ fn partial_power_scales_thrust_and_shield_recharge() {
         recharge.push(w.ship(s).unwrap().part(SHIELD).shield - before);
     }
     assert!(
-        close(recharge[0], 1.5, 1e-4),
-        "regen 1.5/s at full power: {recharge:?}"
+        close(recharge[0], regen, 1e-4),
+        "regen {regen}/s at full power: {recharge:?}"
     );
     assert!(close(recharge[1] / recharge[0], l, 1e-4), "{recharge:?}");
 }
