@@ -282,15 +282,19 @@ pub(super) fn frame_name(content: &Content, frame: (u32, u32)) -> String {
 /// last session, else a copy of the starter ship. Needs the `Storage` (`StoragePlugin` comes first).
 fn restore(world: &mut World) -> (DesignSlot, Shelf) {
     let mut shelf = Shelf::default();
-    let storage = world.get_resource::<Storage>().expect("StoragePlugin is added before DrydockPlugin");
+    let mut storage = world.remove_resource::<Storage>().expect("StoragePlugin is added before DrydockPlugin");
     if let Some(why) = &storage.fallback {
         shelf.say(format!("designs are kept only until the game closes: {why}"), Tone::Gold);
     }
-    let restored = library::restore_working(storage, &world.resource::<GameContent>().0);
+    let restored = library::restore_working(&mut storage, &world.resource::<GameContent>().0);
+    world.insert_resource(storage);
     let mut design = world.resource_mut::<PlayerDesign>();
     match restored {
-        Some(Ok((next, slot))) => {
+        Some(Ok((next, slot, note))) => {
             design.replace(next);
+            if let Some(note) = note {
+                shelf.say(format!("the last design came back, but {note}"), Tone::Gold);
+            }
             return (slot, shelf);
         }
         Some(Err(e)) => shelf.say(format!("the last design didn't come back: {e}"), Tone::Coral),
@@ -350,13 +354,17 @@ fn announce(design: Res<PlayerDesign>, mut status: ResMut<DrydockStatus>, mut sh
     }
 }
 
-/// Files dropped onto the window (desktop) are imported.
+/// Files dropped onto the window (desktop) are imported; one larger than any design is not read.
 #[cfg(not(target_arch = "wasm32"))]
 fn dropped_files(mut drops: MessageReader<bevy::window::FileDragAndDrop>, mut shelf: ResMut<Shelf>) {
     for d in drops.read() {
         if let bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } = d {
             let name = path_buf.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-            shelf.incoming.push((name, std::fs::read_to_string(path_buf).map_err(|e| e.to_string())));
+            let text = match std::fs::metadata(path_buf) {
+                Ok(m) if m.len() > share::MAX_TEXT as u64 => Err(share::ShareError::TooLarge.to_string()),
+                _ => std::fs::read_to_string(path_buf).map_err(|e| e.to_string()),
+            };
+            shelf.incoming.push((name, text));
         }
     }
 }

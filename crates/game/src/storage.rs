@@ -160,6 +160,18 @@ impl Storage {
         check_name(name)?;
         self.backend.delete(D::NAMESPACE, name)
     }
+
+    /// Copies a document's stored text as it is (header and all, unread) to `aside` in its namespace, so a
+    /// document this build can't read (a newer format, a damaged one) survives being written over. Nothing to copy
+    /// is fine.
+    pub fn set_aside<D: Document>(&mut self, name: &str, aside: &str) -> Result<(), StorageError> {
+        check_name(name)?;
+        check_name(aside)?;
+        match self.backend.read(D::NAMESPACE, name)? {
+            Some(text) => self.backend.write(D::NAMESPACE, aside, &text),
+            None => Ok(()),
+        }
+    }
 }
 
 /// Is this a valid namespace or document name?
@@ -523,5 +535,21 @@ mod tests {
         let broken = storage.read::<Note>("broken").unwrap_err();
         assert_eq!(broken, StorageError::Unreadable { key: "notes/broken".into(), why: "not a string".into() });
         assert!(matches!(storage.read::<Note>("unversioned"), Err(StorageError::Unreadable { .. })));
+    }
+
+    #[test]
+    fn a_document_set_aside_keeps_its_text_as_stored() {
+        let mut mem = MemoryBackend::default();
+        mem.write("notes", "new", "// space-game: notes, format 3, saved 5\n\"later\"\n").unwrap();
+        let mut storage = Storage::new(mem);
+        storage.set_aside::<Note>("new", "new-unread").unwrap();
+        // The copy is the same document: still from a newer build, unread.
+        assert!(matches!(storage.read::<Note>("new-unread"), Err(StorageError::Newer { format: 3, .. })));
+        storage.write("new", &Note("over".into()), 6).unwrap();
+        assert!(matches!(storage.read::<Note>("new-unread"), Err(StorageError::Newer { .. })));
+        // Nothing there: nothing to keep; names are checked.
+        storage.set_aside::<Note>("missing", "missing-unread").unwrap();
+        assert_eq!(storage.read::<Note>("missing-unread").unwrap(), None);
+        assert!(matches!(storage.set_aside::<Note>("new", "../x"), Err(StorageError::BadName(_))));
     }
 }
