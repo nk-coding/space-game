@@ -17,6 +17,7 @@ use crate::scene::Scene;
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
 
+use super::PlayerDesign;
 use super::state::{DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
 
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -147,6 +148,7 @@ pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut ui: ResMut<DrydockUi>,
     status: Res<DrydockStatus>,
+    design: Res<PlayerDesign>,
     mut scene: ResMut<Scene>,
     mut next: ResMut<NextState<AppMode>>,
 ) {
@@ -160,7 +162,9 @@ pub(super) fn apply(
                 ui.search.clear();
             }
             DrydockAction::PickPart(p) => ui.picked = Some(p.clone()),
-            DrydockAction::TestFly if status.grounded.is_none() => {
+            // Only on a status made for the design as it is now (one changed on the BEHAVIOR screen gets its status
+            // in the first drydock frame).
+            DrydockAction::TestFly if status.grounded.is_none() && status.revision == Some(design.revision()) => {
                 scene.launch = true;
                 next.set(AppMode::Flight);
             }

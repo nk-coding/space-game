@@ -67,11 +67,8 @@ pub struct DrydockPlugin;
 
 impl Plugin for DrydockPlugin {
     fn build(&self, app: &mut App) {
-        let content = &app.world().resource::<GameContent>().0;
-        let design = PlayerDesign::starter(content);
-        let ui = DrydockUi::new(content, &design);
+        let design = PlayerDesign::starter(&app.world().resource::<GameContent>().0);
         app.insert_resource(design)
-            .insert_resource(ui)
             .insert_resource(DockCamera::new(0.0))
             .init_resource::<DrydockStatus>()
             .init_resource::<DrydockStats>()
@@ -79,7 +76,11 @@ impl Plugin for DrydockPlugin {
             .init_resource::<DrydockCursor>()
             .init_resource::<panels::Palette>()
             .add_message::<DrydockAction>()
-            .add_plugins((behaviors::BehaviorsPlugin, blueprints::BlueprintsPlugin))
+            // `BlueprintsPlugin` puts the last session's working design in (in its build, at once).
+            .add_plugins((behaviors::BehaviorsPlugin, blueprints::BlueprintsPlugin));
+        // The UI state starts from the design the drydock opens with (its armour), so after the restore.
+        let ui = DrydockUi::new(&app.world().resource::<GameContent>().0, app.world().resource::<PlayerDesign>());
+        app.insert_resource(ui)
             .configure_sets(
                 Update,
                 (DockSet::Input, DockSet::Apply, DockSet::Show)
@@ -91,7 +92,7 @@ impl Plugin for DrydockPlugin {
             .add_systems(Startup, (view::setup, overlays::setup.after(view::setup), panels::spawn.after(crate::flight_hud::spawn_hud)))
             .add_systems(PostStartup, (show, view::remember_start_zoom.run_if(in_state(AppMode::Drydock))))
             .add_systems(OnEnter(AppMode::Drydock), view::enter)
-            .add_systems(OnExit(AppMode::Drydock), view::exit)
+            .add_systems(OnExit(AppMode::Drydock), (view::exit, tools::leave))
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(
                 Update,

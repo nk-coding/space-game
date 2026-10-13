@@ -70,6 +70,8 @@ pub struct DockCamera {
     /// The flight camera's zoom, restored when a test flight starts.
     flight_zoom: f32,
     drag_last: Option<Vec2>,
+    /// The frame the view was made for: another one (FRAME, its undo) fits the view again.
+    frame: (u32, u32),
 }
 
 /// The cell under the pointer (frame cells, `None` off the frame or over a panel), for the info line and the
@@ -91,7 +93,7 @@ pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, at
 
 impl DockCamera {
     pub(super) fn new(flight_zoom: f32) -> Self {
-        Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None }
+        Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None, frame: (0, 0) }
     }
 
     /// Fits the frame again (another design or frame was opened).
@@ -151,6 +153,10 @@ pub(super) fn camera(
     mut cursor_cell: ResMut<DrydockCursor>,
 ) {
     let (node, tf) = *viewport;
+    if cam.frame != design.frame() {
+        cam.frame = design.frame();
+        cam.reset_view();
+    }
     let scale = window.scale_factor();
     let size = node.size / scale;
     rig.viewport = window.size();

@@ -60,7 +60,14 @@ impl Plugin for BlueprintsPlugin {
             .add_systems(Startup, spawn_shelf.after(crate::flight_hud::spawn_hud))
             .add_systems(
                 Update,
-                (title, apply, autosave, announce).chain().in_set(DockSet::Apply).after(stats::update),
+                (
+                    // Before the editing tools and the report: a design opened, renamed or moved to another frame
+                    // this frame is what they, the report and the status see in the same frame.
+                    (title, apply).chain().after(super::actions::apply).before(super::tools::apply),
+                    // After the status of this revision is made, so a message is not overwritten.
+                    (autosave, announce).chain().after(stats::update),
+                )
+                    .in_set(DockSet::Apply),
             )
             .add_systems(Update, (scroll_lists, sync_shelf, sync_title).in_set(DockSet::Show))
             .add_systems(OnExit(crate::mode::AppMode::Drydock), leave)
@@ -186,7 +193,7 @@ impl Lib<'_> {
 
     /// Puts another design into the drydock. The one there is saved first when it has unsaved changes (its
     /// name is returned); if that fails, nothing changes.
-    fn switch(&mut self, content: &Content, mut next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
+    fn switch(&mut self, content: &Content, next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
         let kept = if self.slot.dirty(&self.design) {
             library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix())
                 .map_err(|e| format!("couldn't save {} first: {e}", self.design.blueprint().name))?;
@@ -194,11 +201,6 @@ impl Lib<'_> {
         } else {
             None
         };
-        let (mirror, bevel) = (self.design.dock().mirror, self.design.dock().bevel);
-        next.edit(|d| {
-            d.mirror = mirror;
-            d.bevel = bevel;
-        });
         self.design.replace(next);
         *self.slot = slot;
         self.cam.reset_view();
@@ -1018,9 +1020,9 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
                 return;
             }
             let size = lib.design.export().size;
+            // The camera fits the new frame by itself (`view::camera` follows the frame, undo included).
             match lib.design.edit(|d| d.set_frame(frame)) {
                 Ok(_) => {
-                    lib.cam.reset_view();
                     shelf.say(format!("moved to the {}", frame_name(content, frame)), Tone::Teal);
                 }
                 Err(_) => shelf.say(
