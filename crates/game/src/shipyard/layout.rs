@@ -249,6 +249,44 @@ pub fn fit(rect: Rect, viewport: Vec2) -> (Vec2, f32) {
     (rect.center(), zoom)
 }
 
+/// A box of fixed screen size hung on a world point (a label over the station): where it reaches from the point,
+/// in logical px, y down (`min` ≤ 0 ≤ `max` on each axis).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tag {
+    pub at: Vec2,
+    pub min: Vec2,
+    pub max: Vec2,
+}
+
+/// The view that shows all of `rect` and every tag at least `margin` logical px inside a `viewport`, centred on
+/// `rect`: the largest zoom at which nothing reaches past an edge. The world grows with the zoom while the tags keep
+/// their pixel size, so each edge of each tag gives one bound on the zoom; the window's aspect decides which bound
+/// wins (a wide window: the height, a tall one: the width). A tag that can't fit at any zoom (its pixels alone
+/// are wider than the room) is ignored rather than shrinking the station to nothing.
+pub fn fit_tagged(rect: Rect, tags: &[Tag], viewport: Vec2, margin: f32) -> (Vec2, f32) {
+    let c = rect.center();
+    let half = viewport / 2.0 - Vec2::splat(margin);
+    let mut zoom = (half.x * 2.0 / rect.width()).min(half.y * 2.0 / rect.height());
+    for t in tags {
+        // Screen offset of the anchor from the centre at zoom z: d · z (y down: −dy).
+        let d = Vec2::new(t.at.x - c.x, c.y - t.at.y);
+        for (dist, lo, hi, room) in [(d.x, t.min.x, t.max.x, half.x), (d.y, t.min.y, t.max.y, half.y)] {
+            // dist·z + hi ≤ room and dist·z + lo ≥ −room.
+            let bound = if dist > 1e-6 {
+                (room - hi) / dist
+            } else if dist < -1e-6 {
+                (room + lo) / -dist
+            } else {
+                f32::INFINITY
+            };
+            if bound > 0.0 {
+                zoom = zoom.min(bound);
+            }
+        }
+    }
+    (c, zoom.max(1e-3))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,6 +345,51 @@ mod tests {
                 assert!(*x > 0.0 && *x < l.area.max.x && p > l.area.max.x && p < l.tip_x);
             }
         }
+    }
+
+    /// Labels of fixed pixel size hung on the station fit too, with the margin, at every aspect the play-test named;
+    /// the station itself always does.
+    #[test]
+    fn the_overview_and_its_labels_fit_any_aspect() {
+        let l = Layout::new((24, 24));
+        let margin = 16.0;
+        for (w, h) in [(1280.0, 720.0), (1600.0, 900.0), (1440.0, 1080.0), (1280.0, 1024.0), (3440.0, 1305.0), (1080.0, 1350.0)] {
+            let viewport = Vec2::new(w, h);
+            // Every place's label: 260 px wide, 30 high, aligned like home's.
+            let tags: Vec<Tag> = Place::ALL
+                .iter()
+                .map(|p| {
+                    let (at, align) = l.label(*p);
+                    let (x0, x1) = match align {
+                        Align::Start => (0.0, 260.0),
+                        Align::Middle => (-130.0, 130.0),
+                        Align::End => (-260.0, 0.0),
+                    };
+                    Tag { at, min: Vec2::new(x0, 0.0), max: Vec2::new(x1, 30.0) }
+                })
+                .collect();
+            let (c, z) = fit_tagged(l.overview, &tags, viewport, margin);
+            let screen = |p: Vec2| viewport / 2.0 + Vec2::new(p.x - c.x, c.y - p.y) * z;
+            let inside = |a: Vec2| a.x >= margin - 1e-2 && a.y >= margin - 1e-2 && a.x <= w - margin + 1e-2 && a.y <= h - margin + 1e-2;
+            for corner in [l.overview.min, l.overview.max, Vec2::new(l.overview.min.x, l.overview.max.y), Vec2::new(l.overview.max.x, l.overview.min.y)] {
+                assert!(inside(screen(corner)), "{w}x{h}: corner {corner}");
+            }
+            for t in &tags {
+                let p = screen(t.at);
+                assert!(inside(p + t.min) && inside(p + t.max), "{w}x{h}: tag at {} reaches {:?}", t.at, (p + t.min, p + t.max));
+            }
+            // It is the largest such zoom: a little closer, something leaves.
+            let closer = |k: f32| {
+                let z = z * k;
+                let s = |p: Vec2| viewport / 2.0 + Vec2::new(p.x - c.x, c.y - p.y) * z;
+                let ok = |a: Vec2| a.x >= margin - 1e-2 && a.y >= margin - 1e-2 && a.x <= w - margin + 1e-2 && a.y <= h - margin + 1e-2;
+                ok(s(l.overview.min)) && ok(s(l.overview.max)) && tags.iter().all(|t| ok(s(t.at) + t.min) && ok(s(t.at) + t.max))
+            };
+            assert!(!closer(1.02), "{w}x{h}: not the closest fit");
+        }
+        // Without tags it is the plain fit inside the margin.
+        let (_, z) = fit_tagged(l.overview, &[], Vec2::new(1280.0, 720.0), 0.0);
+        assert!((z - 16.0).abs() < 1e-3);
     }
 
     /// The overview fits any window: the whole station shows, centred.

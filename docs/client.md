@@ -372,8 +372,12 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   the debrief covers the right side until dismissed, then its one-line summary sits top left under the design's
   name ([Voyages](#voyages)). The place names are UI chrome in code until content has places.
 - **The camera**: on the yard it shows the station's overview (from the near moorings to past the gate, 80 × 45 m
-  for the frigate frame), fitted to the window (16 px per metre at 1280 × 720, the sketch's 20 at 1600 × 900). The
-  UI scale is the drydock's (`ui_kit::ui_scale_for`), so the drydock's layout is the one the camera flies onto.
+  for the frigate frame) and every place's label, all at least 18 px inside the window (`MARGIN`) at any aspect
+  (`shipyard::layout::fit_tagged`, tested at 1280 × 720, 1600 × 900, 4:3, 5:4, 3440 × 1305 and 1080 × 1350; 13 Oct
+  2026, Niklas: things at the left and top were cut off at some aspects): the labels keep their pixel size while the
+  world scales, so each label edge bounds the zoom (`home::LabelTags` measures them from the laid-out labels). About
+  15 px per metre at 1280 × 720, 19 at 1600 × 900. The UI scale is the drydock's (`ui_kit::ui_scale_for`), so the
+  drydock's layout is the one the camera flies onto.
   Entering home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight
   find the camera as they left it.
 - **Modes**: the station and the screen are spawned once and shown only at home (the walls and cranes in the
@@ -536,8 +540,11 @@ picked part: icon, name, footprint and category, summary, stat lines and bonus l
 scrolls with the wheel when it doesn't fit above the bottom bar, with a `MORE BELOW · WHEEL` cue); below the grid the hover
 cell, mirror and axis, why the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo,
 MIRROR, BEVEL, the status line and the voyage-ready line after it (wrapping under it when both don't fit), BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key), BLUEPRINTS,
-EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
-screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or the BEHAVIOR screen is open). The phone layout comes later.
+EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; other windows scale the whole
+screen (`UiScale` = min(w / 1280, h / 720), 0.5 to 2, at home, in the drydock, on the BEHAVIOR screen and FLEET; flight
+keeps 1). So the layout always fits: a window narrower or lower than 1280 × 720 scales it down (until 13 Oct 2026 the
+scale stopped at 1 and a centred layout such as FLEET's lost its left and top edges), a wider aspect leaves room at
+the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every play-test size). The phone layout comes later.
 
 - **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::edit::Drydock`) and the blueprint built
   from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through

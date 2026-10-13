@@ -45,7 +45,7 @@ use crate::fx::{FxFlush, FxQueue, FxRegions};
 use crate::mode::AppMode;
 use crate::scene::{Launch, Scene};
 use crate::shipyard::fly::{Fly, View};
-use crate::shipyard::layout::{Align, Layout, Place, fit};
+use crate::shipyard::layout::{Align, Layout, Place, Tag, fit, fit_tagged};
 use crate::shipyard::{ShipyardSet, Yard};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
@@ -54,6 +54,10 @@ use crate::ui_kit::{Hot, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, 
 /// Label sizes (logical px at the 1280 × 720 layout; the UI scale grows them with the window).
 const TITLE: f32 = 11.0;
 const SUB: f32 = 8.5;
+/// The gap between a label's title and the line under it (logical px at the 1280 × 720 layout).
+const LABEL_GAP: f32 = 4.0;
+/// The least room between the station or its labels and the window's edges on the yard (logical px).
+const MARGIN: f32 = 18.0;
 /// The name plate's letters, in metres (they are painted on the station).
 const PLATE_LETTERS: f32 = 0.42;
 /// The hover brackets: arm and gap outside the place, line width (logical px).
@@ -194,6 +198,7 @@ impl Plugin for HomePlugin {
         app.add_message::<HomeAction>()
             .init_resource::<HomeCamera>()
             .init_resource::<Visit>()
+            .init_resource::<LabelTags>()
             .add_systems(Startup, spawn.after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, remember_start_zoom.run_if(in_state(AppMode::Home)))
             .add_systems(OnEnter(AppMode::Home), enter)
@@ -206,6 +211,7 @@ impl Plugin for HomePlugin {
                     fly,
                     apply,
                     (place_labels, sync_titles, sync_name, sync_notes).run_if(not(fleet::is_open)),
+                    measure_labels,
                     show,
                 )
                     .chain()
@@ -267,7 +273,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 root.spawn((Spot(place), Hot::default(), tip, Node { position_type: PositionType::Absolute, ..default() }));
             }
             let words = TextLayout::no_wrap();
-            root.spawn((PlaceLabel(place), Node { position_type: PositionType::Absolute, width: px(0), flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }))
+            root.spawn((PlaceLabel(place), Node { position_type: PositionType::Absolute, width: px(0), flex_direction: FlexDirection::Column, row_gap: px(LABEL_GAP), ..default() }))
                 .with_children(|l| {
                     l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words));
                     l.spawn((LabelSub(place), label(fonts, "", SUB, c(Tone::Label, 1.0)), words));
@@ -285,9 +291,52 @@ fn place_view(place: Place, layout: &Layout, window: &Window, dock: &DockCamera,
     View { centre, zoom }
 }
 
-fn overview(layout: &Layout, window: &Window) -> View {
-    let (centre, zoom) = fit(layout.overview, window.size());
+/// The yard's view: the station's overview and every place's label (their pixel size, [`LabelTags`]) at least
+/// [`MARGIN`] px inside the window, whatever its aspect (Niklas, 13 Oct 2026: things at the left and top were cut
+/// off at some aspects).
+fn overview(layout: &Layout, window: &Window, tags: &LabelTags) -> View {
+    let (centre, zoom) = fit_tagged(layout.overview, &tags.0, window.size(), MARGIN);
     View { centre, zoom }
+}
+
+/// Where each place's label reaches from its anchor, in logical px (measured from the laid-out labels).
+#[derive(Resource, Debug, Default, PartialEq)]
+struct LabelTags(Vec<Tag>);
+
+/// Measures the labels (their texts change with the career, their size with the UI scale): written only when a
+/// label's size changes by half a pixel or more.
+#[allow(clippy::type_complexity)]
+fn measure_labels(
+    window: Single<&Window, With<PrimaryWindow>>,
+    ui_scale: Res<UiScale>,
+    yard: Res<Yard>,
+    titles: Query<(&LabelTitle, &ComputedNode)>,
+    subs: Query<(&LabelSub, &ComputedNode, &Node)>,
+    mut tags: ResMut<LabelTags>,
+) {
+    let k = 1.0 / window.scale_factor();
+    let new: Vec<Tag> = titles
+        .iter()
+        .map(|(t, title)| {
+            let title = title.size * k;
+            let sub = subs.iter().find(|(s, ..)| s.0 == t.0).filter(|(_, _, n)| n.display != Display::None).map(|(_, c, _)| c.size * k);
+            let (w, h) = match sub {
+                Some(s) => (title.x.max(s.x), title.y + LABEL_GAP * ui_scale.0 + s.y),
+                None => (title.x, title.y),
+            };
+            let (at, align) = yard.layout.label(t.0);
+            let x = match align {
+                Align::Start => (0.0, w),
+                Align::Middle => (-w / 2.0, w / 2.0),
+                Align::End => (-w, 0.0),
+            };
+            Tag { at, min: Vec2::new(x.0, 0.0), max: Vec2::new(x.1, h) }
+        })
+        .collect();
+    let same = tags.0.len() == new.len() && tags.0.iter().zip(&new).all(|(a, b)| a.at == b.at && a.min.distance(b.min) < 0.5 && a.max.distance(b.max) < 0.5);
+    if !same {
+        tags.0 = new;
+    }
 }
 
 /// The rig shows `v` (the camera stands still between frames: zoom and its target agree).
@@ -309,6 +358,7 @@ fn enter(
     dock: Res<DockCamera>,
     viewport: Query<(&ComputedNode, &UiGlobalTransform), With<GridViewport>>,
     yard: Res<Yard>,
+    tags: Res<LabelTags>,
     mut rig: ResMut<CameraRig>,
     mut cam: ResMut<HomeCamera>,
     mut visit: ResMut<Visit>,
@@ -319,7 +369,7 @@ fn enter(
     // Home from a voyage (its debrief is open): from the gate.
     let exited = transitions.read().last().and_then(|t| t.exited);
     let from = if exited == Some(AppMode::Flight) && debrief.open { Some(Place::Voyages) } else { exited.and_then(place_of) };
-    let yard_view = overview(&yard.layout, &window);
+    let yard_view = overview(&yard.layout, &window, &tags);
     visit.phase = match from {
         Some(place) => {
             let start = place_view(place, &yard.layout, &window, &dock, viewport.single().ok());
@@ -418,6 +468,7 @@ fn fly(
     time: Res<Time<Real>>,
     window: Single<&Window, With<PrimaryWindow>>,
     fleet: Res<Fleet>,
+    tags: Res<LabelTags>,
     mut yard: ResMut<Yard>,
     mut rig: ResMut<CameraRig>,
     mut visit: ResMut<Visit>,
@@ -429,7 +480,7 @@ fn fly(
     let mut next = None;
     let mut clear = 0.0;
     let view = match &mut visit.phase {
-        Phase::Yard => overview(&yard.layout, &window),
+        Phase::Yard => overview(&yard.layout, &window, &tags),
         Phase::Flying { fly, to, from } => {
             let (view, done) = fly.step(time.delta_secs().min(0.1));
             let p = fly.progress();
@@ -457,11 +508,11 @@ fn fly(
             }
             if *place == Place::Fleet && !fleet.open {
                 // FLEET closed: back out to the yard.
-                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window)), to: None, from: Some(Place::Fleet) });
+                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)), to: None, from: Some(Place::Fleet) });
             }
             if *place == Place::Voyages && refused {
                 // The launch was refused (a note says why): back out to the yard.
-                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window)), to: None, from: Some(Place::Voyages) });
+                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)), to: None, from: Some(Place::Voyages) });
             }
             *view
         }

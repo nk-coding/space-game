@@ -645,13 +645,23 @@ fn place_scroll_cues(
     }
 }
 
-/// The screens (the drydock, the BEHAVIOR screen) are laid out for 1280 × 720 logical px; larger windows scale
-/// them up to this.
+/// The screens (the drydock, the BEHAVIOR screen, home, FLEET) are laid out for 1280 × 720 logical px; larger
+/// windows scale them up to this.
 const MAX_UI_SCALE: f32 = 2.0;
+/// Smaller windows scale them down to this (below it they no longer fit).
+const MIN_UI_SCALE: f32 = 0.5;
 
-/// The UI scale for a window: min(w / 1280, h / 720), 1 to [`MAX_UI_SCALE`].
+/// The UI scale for a window: min(w / 1280, h / 720), [`MIN_UI_SCALE`] to [`MAX_UI_SCALE`]. So the 1280 × 720
+/// layout always fits the window: a window narrower or lower than that scales it down (until 13 Oct 2026 the scale
+/// stopped at 1, and a centred layout such as FLEET's lost its left and top edges in a 1080 px wide or a 650 px
+/// high window); a wider aspect leaves room at the sides, a taller one below and above.
 pub fn ui_scale_for(window: &Window) -> f32 {
-    (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE)
+    ui_scale(window.size())
+}
+
+/// [`ui_scale_for`] for a window of `size` logical px.
+pub fn ui_scale(size: Vec2) -> f32 {
+    (size.x / 1280.0).min(size.y / 720.0).clamp(MIN_UI_SCALE, MAX_UI_SCALE)
 }
 
 /// Pixels of a touchpad's wheel that count as one line (one list row, 40 px of a scrolled area).
@@ -1194,8 +1204,24 @@ mod tests {
         let window = |w: f32, h: f32| Window { resolution: bevy::window::WindowResolution::new(w as u32, h as u32), ..default() };
         assert_eq!(ui_scale_for(&window(1280.0, 720.0)), 1.0);
         assert_eq!(ui_scale_for(&window(1920.0, 1080.0)), 1.5);
-        assert_eq!(ui_scale_for(&window(1000.0, 700.0)), 1.0);
         assert_eq!(ui_scale_for(&window(5120.0, 2880.0)), MAX_UI_SCALE);
+        assert_eq!(ui_scale_for(&window(400.0, 200.0)), MIN_UI_SCALE);
+    }
+
+    /// The 1280 × 720 layout fits every window the play-test named (Niklas, 13 Oct 2026: things at the left and
+    /// top were cut off at some aspects): scaled, it is never wider or higher than the window, it fills the window
+    /// in one direction, and a layout centred in the window (FLEET's stage) starts inside it.
+    #[test]
+    fn the_layout_fits_any_aspect() {
+        for (w, h) in [(1280.0, 720.0), (1600.0, 900.0), (1440.0, 1080.0), (1280.0, 1024.0), (3440.0, 1305.0), (1080.0, 1350.0), (1000.0, 700.0), (1280.0, 650.0), (2560.0, 1080.0)] {
+            let k = ui_scale(Vec2::new(w, h));
+            let layout = Vec2::new(1280.0, 720.0) * k;
+            assert!(layout.x <= w + 1e-3 && layout.y <= h + 1e-3, "{w}x{h}: {layout}");
+            assert!((layout.x - w).abs() < 1e-3 || (layout.y - h).abs() < 1e-3, "{w}x{h}: fills one direction");
+            // Centred: the left and top edges are inside the window.
+            let start = (Vec2::new(w, h) - layout) / 2.0;
+            assert!(start.x >= -1e-3 && start.y >= -1e-3, "{w}x{h}: {start}");
+        }
     }
 
     /// A key without text (arrows, Home, a modifier), pressed or let go.
