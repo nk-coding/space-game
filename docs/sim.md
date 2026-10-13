@@ -47,8 +47,8 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | Module | What it holds |
 |---|---|
 | `math` | `Vec2`, `Rot`, and the only allowed transcendental functions (`sin`, `cos`, `atan2`, `exp` via libm) |
-| `rng` | `Pcg32` (reference PCG32), `splitmix64`, `Stream` (one per system), `RngStreams` |
-| `hash` | `StateHasher` (FNV-1a 64 over 32-bit words), `StateHash` trait, `fnv1a64` |
+| `rng` | `Pcg32` (reference PCG32), `splitmix64` (from `data::hash`), `Stream` (one per system), `RngStreams` |
+| `hash` | `StateHasher` (FNV-1a 64 over 32-bit words, `str` for content ids), `StateHash` trait, `fnv1a64` (from `data::hash`, where both save-format hashes are defined once and pinned) |
 | `ids` | `ShipId`, `PieceId` (monotonic `u32`, never reused), `IdAlloc` |
 | `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`, mind capacity per owner, `SalvageTuning`, `VoyageTuning`) |
 | `control` | `ControlState`, the per-piece control capacity and idle pass (GDR-0044) |
@@ -67,7 +67,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
 | `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
-| `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`; `Sim::start_voyage`, `voyage`, `can_recall` and the director's pass (see [Voyages](#voyages)) |
+| `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
@@ -1732,6 +1732,14 @@ The default config lets the player collect, so the player's ships in the core, f
 collect too: their hash streams change from tick 1 (the salvage settings, the sixth RNG stream and the cargo are
 hashed) and so do their fights (seed 42, 1800 ticks: core 24 items collected, flight 10, load 19, behavior 12).
 
+**After the 13 Oct 2026 review fixes** (salvage blocks, the slow pass, wreck seeds, one strip per piece and pass,
+`CargoLost`, `Ship::part_world`; on `dev` with the GDR-0064 flight changes; release builds, 1800 ticks): voyage,
+salvage, core and behavior, seeds 42 and 7, native x86_64 vs wasm32-wasip1 under Node 24: **identical** (8 runs). All
+four streams differ from before from tick 1 (the salvage settings hash `max_speed`; the salvage scenario rolls its
+wreck seeds on the scenario stream; the behaviors' part aim uses `Ship::part_world`). Seed 42: salvage 27 items (28
+units), 3 fragments of 8; core 18 items; behavior 11. Seed 7: salvage 29 items, 0 of 6 fragments; core 13; behavior
+19.
+
 ## Voyages
 
 The voyage director (13 Oct 2026; GDR-0062, ADR-0033, track 7E of the first playable loop,
@@ -1854,6 +1862,11 @@ salvage 900 ticks seed 42: **identical**. Seed 42: 3 sites woken and cleared, 13
 of 1800 ticks; seed 7: 3 and 3, 19 items, 1313 ticks. Adding the hunter and the Warden to the content changed the
 other scenarios' streams once (they spawn every blueprint).
 
+After the 13 Oct 2026 review fixes (GDR-0068 clearing and recall, the salted plan and wreck seeds, the wake on
+shields and rams; release builds, 1800 ticks): voyage seeds 42 and 7 **identical** native vs wasm. Seed 42: 2 sites
+woken and 2 cleared, 6 items collected, recall allowed 1755 of 1800 ticks; seed 7: 4 woken, 3 cleared, 7 items, 1682
+ticks.
+
 ### The headless voyage runner
 
 `cargo run --release -p sim --example voyage -- --voyage <id> --design <ship> --seeds 1..20 [--behavior <id>]
@@ -1893,6 +1906,28 @@ Nobody clears a goal yet. What the runs show, for 7K:
   site awake (it is a running vessel) and, while within 200 m, blocks the recall. The pilot gives up after 3 minutes
   without progress.
 - `--behavior skirmisher` on `yard_approach` with the starter: 0 / 17 / 3, worse than the closing pilot.
+
+After the 13 Oct 2026 review fixes (GDR-0068: a site clears when its enemies are destroyed or disarmed, only armed
+awake enemies block the recall, the Warden's heart has a cannon; the pilot fights armed enemies only and gives up only
+when it is disarmed itself, `Ship::is_armed`), on `dev` with the GDR-0061/0064 balance and flight changes, 20 seeds,
+closing pilot, `rim_skiff` (load average 6–9 from other agents' builds):
+
+| Voyage | Goal cleared and home | Home without the goal | Lost | Out of time | Kills per run | Sites cleared | Awake enemies left (disarmed) | Haul items per run |
+|---|---|---|---|---|---|---|---|---|
+| yard_approach | 6 | 7 | 1 | 6 | 0.0 | 2.4 / 4 | 6.5 (5.6) | 4.2 |
+| halvex_drift | 0 | 10 | 4 | 6 | 0.0 | 1.2 / 5 | 5.6 (4.2) | 1.9 |
+| corran_reach | 0 | 10 | 6 | 4 | 0.45 | 1.3 / 5 | 6.0 (3.3) | 1.1 |
+| wardens_gate | 0 | 12 | 3 | 5 | 0.0 | 1.0 / 4 | 5.9 (4.1) | 0.2 |
+
+Step time median 0.008–0.010 ms, p95 0.011–0.016 ms. What changed, for 7K:
+
+- **The first goals fall** (`yard_approach`, 6 of 20): the starter shoots the raiders' nose cannons off long before
+  their cores, so sites now clear by disarming; kills almost vanish (the pilot leaves disarmed enemies alone), and
+  most awake enemies at the end are disarmed hulks that still fly (salvage-to-be, but their cores still run, so they
+  never become wrecks to strip).
+- **Out of time** (19 of 80): the pilot is still armed, the goal is not cleared, and one armed enemy keeps it from
+  recalling (it flees and is chased, or the fight never ends); before, it gave up when its guns overheated.
+- Disarmed sites leave no wrecks to strip (their cores still run), so the haul stays small.
 
 ## Driving the sim from the client
 
