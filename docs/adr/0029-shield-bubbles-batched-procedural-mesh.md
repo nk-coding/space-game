@@ -57,3 +57,15 @@ the focused vessel's bubbles at z 200 (above it), every other bubble at z 95 (ab
 focus at z 100). The focus flying over another ship's bubble no longer appears under it; two draw calls in all,
 whatever the number of bubbles. Two non-focus ships still show each other's bubbles over their hulls (one
 layer for all of them). See `docs/client.md` "Shield bubbles".
+
+Note (13 Oct 2026): the bubbles are **one** batched mesh again, drawn after every ship (z 200), and each bubble
+sits between the ship layers by depth instead of by draw order. A quad's vertex z is its piece's draw layer plus
+1/16 (the focus's: z 100 plus 1/16), and every lit piece's tiles are a second, opaque mesh (the opaque twin of the
+atlas material, Bevy's `Opaque2d` pass) that writes depth. The bubble pipeline tests depth without writing it, so a
+bubble is hidden under the tiles of every ship above its own and shows over every ship below: two non-focus ships
+no longer show each other's bubbles over their hulls. Draw layers are fixed for a ship's life
+(`ship_view::draw_layer`: `10 + ship id mod 80`, an eighth per piece). Cost: one bubble draw call instead of two,
+one more mesh entity and draw call per lit piece in the opaque pass. Left: a bubble can still show over a higher
+ship's blended parts beside its tiles (halo, glows) and over dark pieces, whose half-transparent tiles stay
+blended. Not chosen: a mesh per ship (a draw call and a mesh upload per shielded ship per frame) and a few bucket
+meshes at fixed z (ships in the same bucket keep the bug). See `docs/client.md` "Shield bubbles".
