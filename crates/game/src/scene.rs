@@ -16,6 +16,12 @@
 //! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
 //!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
 //! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
+//! * **voyage** (`voyage.rs` launches it: home's V, `?scene=voyage&voyage=<id>`): the sim gets the career's mind
+//!   capacity and is seeded with the voyage's seed; the plan is rolled from the content the enemies fly with
+//!   (`sim::VoyagePlan::roll`) and the sim directs it (`Sim::start_voyage`); the flagship (the drydock's working
+//!   design) and the FLEET escorts (following the flagship's lock, like `?fleet=` wingmen, on their design's
+//!   behavior) enter at the plan's entry, the flagship the focus. No waves, no re-form, no wreck clean-up; Shift+R,
+//!   T does nothing (RECALL goes home; M twice abandons the voyage, `voyage.rs`).
 //!
 //! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step). Leaving
 //! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from another mode
@@ -46,6 +52,8 @@ use crate::shield::ShieldBubbles;
 use crate::sim_bridge::{GameContent, HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
 use crate::test_range::{self, BehaviorTest, TestMode};
 use crate::tuning::Tuning;
+use crate::ui_kit::Tone;
+use crate::voyage::VoyageRun;
 
 /// The player's owner in the sim, and the raiders'.
 pub const PLAYER: Owner = Owner::PLAYER;
@@ -79,11 +87,13 @@ pub fn player_vessels(world: &SimWorld) -> Vec<ShipId> {
     world.sim.vessels(PLAYER).map(|v| v.ship).collect()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SceneKind {
     Sandbox,
     Showcase,
     Load(u32),
+    /// A voyage (content id), as `voyage::VoyageRun` launched it.
+    Voyage(String),
 }
 
 /// A flight another mode asked for; `OnEnter(AppMode::Flight)` builds it.
@@ -93,6 +103,8 @@ pub enum Launch {
     TestFlight,
     /// Home's TEST RANGE: the sandbox as at a plain start (a lost ship re-forms).
     Range,
+    /// A voyage `voyage::VoyageRun` holds (the scene's kind says which).
+    Voyage,
 }
 
 #[derive(Resource)]
@@ -119,6 +131,9 @@ pub struct Scene {
     rng: Rng,
     /// A short banner for the HUD and the sim time (s) until which it shows.
     pub banner: Option<(String, f64)>,
+    /// The line under the banner and the banner's colour (voyages' site banners; [`Scene::say`]).
+    pub banner_sub: String,
+    pub banner_tone: Tone,
     pub kills: u32,
     /// TEST IN RANGE: the behavior and how it flies (`test_range.rs`); kept by restarts, ended by leaving flight.
     test: Option<BehaviorTest>,
@@ -144,6 +159,8 @@ impl Scene {
             dark_since: BTreeMap::new(),
             rng: Rng::new(seed as u32 ^ 0x9E37_79B9),
             banner: None,
+            banner_sub: String::new(),
+            banner_tone: Tone::Teal,
             kills: 0,
             test: None,
             test_ship: None,
@@ -152,7 +169,7 @@ impl Scene {
 
     /// A fresh scene of the same kind and seed that keeps the settings that outlive a scene.
     fn restart(&self) -> Self {
-        let mut s = Scene::new(self.kind, self.seed);
+        let mut s = Scene::new(self.kind.clone(), self.seed);
         s.wingmen = self.wingmen;
         s.test_flight = self.test_flight;
         s.waves = self.waves;
@@ -181,6 +198,21 @@ impl Scene {
     /// The ship the camera follows and the HUD shows while nobody is piloted (watch).
     pub fn watched(&self) -> Option<ShipId> {
         self.test_ship.filter(|_| self.test_mode() == Some(TestMode::Watch))
+    }
+
+    /// The voyage this scene flies, if it is one.
+    pub fn voyage(&self) -> Option<&str> {
+        match &self.kind {
+            SceneKind::Voyage(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// A banner with a line under it, in a tone, until the sim time `until` (s).
+    pub fn say(&mut self, title: String, sub: String, tone: Tone, until: f64) {
+        self.banner = Some((title, until));
+        self.banner_sub = sub;
+        self.banner_tone = tone;
     }
 }
 
@@ -226,16 +258,17 @@ impl Plugin for ScenePlugin {
 
 /// What a new scene is built from.
 #[derive(SystemParam)]
-struct SceneInputs<'w> {
+pub(crate) struct SceneInputs<'w> {
     tuning: Res<'w, Tuning>,
     params: Res<'w, Params>,
     content: Res<'w, GameContent>,
     design: Res<'w, PlayerDesign>,
     behaviors: Res<'w, PlayerBehaviors>,
+    voyage: Res<'w, VoyageRun>,
 }
 
 /// The scene at start (in the drydock the world stays empty).
-fn setup(
+pub(crate) fn setup(
     mut world: ResMut<SimWorld>,
     mut scene: ResMut<Scene>,
     mut focus: ResMut<PilotFocus>,
@@ -258,7 +291,8 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
     let (tuning, params, base) = (&*inputs.tuning, &*inputs.params, &inputs.content.0);
     *scene = scene.restart();
     focus.0 = None;
-    match scene.kind {
+    match scene.kind.clone() {
+        SceneKind::Voyage(id) => build_voyage(scene, focus, inputs, rig, &id),
         SceneKind::Load(n) => {
             let sim = sim::scenario::load_test(n as usize, scene.seed);
             let mut world = SimWorld::new(sim, base.clone());
@@ -356,6 +390,77 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
     }
 }
 
+/// A voyage's world (see the module docs): the sim with the career's mind capacity and the voyage's seed, the
+/// plan rolled from the content the enemies fly with and started, the fleet at the entry. Without a launch (or
+/// content that can't roll it) the world stays empty and says why.
+fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, rig: &mut CameraRig, id: &str) -> SimWorld {
+    let (tuning, base) = (&*inputs.tuning, &inputs.content.0);
+    scene.waves = false;
+    rig.mode = CamMode::Follow;
+    rig.auto_mode = CamMode::Follow;
+    let Some(launched) = inputs.voyage.launched.as_ref().filter(|l| l.voyage == id) else {
+        error!("voyage {id}: not launched");
+        return empty_world(scene);
+    };
+    let mut content = tuning.scaled_content(base, true);
+    inputs.behaviors.add_to(&mut content);
+    let others = tuning.scaled_content(base, false);
+    let mut config = tuning.config();
+    config.mind_capacity[PLAYER.0 as usize] = launched.mind;
+    let mut sim = sim::Sim::with_config(launched.seed, config);
+    match BehaviorLibrary::new(&content) {
+        Ok(lib) => sim.set_behaviors(lib),
+        Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
+    }
+    // The sites' ships compile from the content every other owner flies with (`SimWorld::design` for ENEMY).
+    let plan = others.voyages.get(id).ok_or_else(|| format!("no voyage `{id}`")).and_then(|v| sim::VoyagePlan::roll(&others, v, launched.seed));
+    let mut world = SimWorld::new(sim, content).with_others(others);
+    let plan = match plan {
+        Ok(plan) => plan,
+        Err(e) => {
+            error!("voyage {id}: {e}");
+            scene.banner = Some((format!("THE VOYAGE DOESN'T ROLL: {e}").to_uppercase(), 6.0));
+            return world;
+        }
+    };
+    let entry = plan.entry;
+    world.sim.start_voyage(plan, PLAYER, ENEMY);
+    rig.pos = v2(entry.pos);
+    // The flagship, then the escorts in their slots behind it (turned with the entry), each flying the behavior
+    // its design names (a gone or broken one: its faction's, with a banner) and following the flagship's lock.
+    let ships = std::iter::once(inputs.design.blueprint()).chain(&launched.escorts);
+    let mut flagship = None;
+    let turn = Vec2::from_angle(entry.angle);
+    for (k, bp) in ships.enumerate() {
+        let fallback = behaviors::fallback(bp, &world.content, &inputs.behaviors);
+        if let Some((_, why)) = &fallback {
+            warn!("{why}");
+            scene.banner = Some((why.to_uppercase(), 4.0));
+        }
+        let bp = fallback.as_ref().map_or(bp, |(bp, _)| bp);
+        let Some(design) = world.design_from(bp, PLAYER) else { continue };
+        let at = match k {
+            0 => entry.pos,
+            k => entry.pos + sv(turn.rotate(v2(wing_slot(k as u32 - 1)))),
+        };
+        let id = world.sim.spawn_ship(design.clone(), PLAYER, Body::at(at, entry.angle));
+        let behavior = world.sim.behaviors().default_for(&design);
+        world.sim.command(id, ShipCommand::Behavior(behavior));
+        match flagship {
+            None => {
+                flagship = Some(id);
+                scene.player_design = Some(design);
+                world.sim.command(id, ShipCommand::Focus);
+            }
+            Some(lead) => world.sim.command(id, ShipCommand::Leader(Some(lead))),
+        }
+    }
+    focus.0 = flagship;
+    scene.last_focus = flagship;
+    info!("voyage {id}: seed {}, mind {}, {} escorts", launched.seed, launched.mind, launched.escorts.len());
+    world
+}
+
 /// "BACK TO THE DRYDOCK", or to the screen a behavior test was started from.
 fn exit_banner(to: AppMode) -> &'static str {
     match to {
@@ -406,9 +511,11 @@ fn launch(
     mut world: ResMut<SimWorld>,
 ) {
     let Some(launch) = scene.launch.take() else { return };
-    scene.kind = SceneKind::Sandbox;
+    if launch != Launch::Voyage {
+        scene.kind = SceneKind::Sandbox;
+    }
     scene.test_flight = launch == Launch::TestFlight;
-    scene.waves = true;
+    scene.waves = launch != Launch::Voyage;
     *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
     info!("{launch:?}: {} parts, revision {}", inputs.design.blueprint().parts.len(), inputs.design.revision());
 }
@@ -434,6 +541,9 @@ fn leave_flight(
     *scene = scene.restart();
     scene.test_flight = false;
     scene.test = None;
+    if scene.voyage().is_some() {
+        scene.kind = SceneKind::Sandbox;
+    }
     *world = empty_world(&scene);
 }
 
@@ -471,7 +581,7 @@ fn scene_tick(
     // The keys and fire buttons for this tick (held now or since the last tick); the latch starts over every
     // tick, whoever flies.
     let (axes, fire) = player_input.for_tick();
-    if scene.kind != SceneKind::Sandbox {
+    if !matches!(scene.kind, SceneKind::Sandbox | SceneKind::Voyage(_)) {
         return;
     }
     let world = &mut *world;
@@ -533,7 +643,12 @@ fn scene_tick(
             }
             _ => {}
         }
-    } else if scene.respawn_tick.is_none() && scene.last_focus.is_some() {
+    }
+    // A voyage has no re-form, waves or clean-up; losing every vessel ends it (`voyage.rs`).
+    if scene.voyage().is_some() {
+        return;
+    }
+    if focus.0.is_none() && scene.respawn_tick.is_none() && scene.last_focus.is_some() {
         // No vessel left: re-form in a moment, or back to the drydock (or the behavior test's screen) after a
         // test flight.
         scene.respawn_tick = Some(tick + 90);
@@ -659,6 +774,12 @@ fn reset(
         return;
     }
     request.0 = false;
+    if scene.voyage().is_some() {
+        // A voyage can't start over (its launch is on record): RECALL or lose it.
+        let now = world.sim.time_seconds();
+        scene.say("NO RESET IN A VOYAGE".into(), "RECALL  ·  R".into(), Tone::Coral, now + 2.0);
+        return;
+    }
     despawn_all_views(&mut commands, &mut world);
     fx.clear();
     shields.clear();

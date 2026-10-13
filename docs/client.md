@@ -38,13 +38,14 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
 | Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view: "Lock framing" under [Structure](#structure)) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
-| Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started | T | – |
-| Home (the shipyard; the flight ends) | M, or the ring top left | the ring top left |
+| Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
+| Home (the shipyard; the flight ends); in a voyage M asks, M again within 3 s abandons the voyage (lost) | M, or the ring top left (not in a voyage) | the ring top left |
+| Recall home from a voyage (when no armed awake enemy is within 200 m; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
 | Render toggles | 1 debug shapes, 2 glow sprites, 3 bloom | – |
-| Hide HUD / pause (`PAUSED · P` shows) / reset scene | H / P / Shift+R (left Shift) | – |
+| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R (left Shift) | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
 
@@ -52,7 +53,7 @@ The keys reach the sim tick of the frame they are pressed in, and a tap shorter 
 and release within one frame) still reaches one tick: the controls run before the frame's ticks and latch the
 keys and fire buttons until the next tick takes them (`controls::PlayerInput::for_tick`, 13 Oct 2026).
 Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHAVIOR screen's in
-[Behavior screen](#behavior-screen).
+[Behavior screen](#behavior-screen), a voyage's in [Voyages](#voyages).
 
 ## URL parameters
 
@@ -67,6 +68,7 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
+| `scene=voyage&voyage=<id>` | launch that voyage at once (without `voyage`: the one home's V would fly), for development: recorded in the career when it may launch, else a practice run that is never saved ([Voyages](#voyages)) |
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
@@ -125,6 +127,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the Runner breaks up after
   about half a minute (Shift+R starts over), and with the base numbers (regen 1.5/s against about 0.4 per
   hit) the bubbles rarely empty; collapses need concentrated fire.
+- **Voyage** (`?scene=voyage&voyage=<id>`, home's V): see [Voyages](#voyages).
 - **Load test**: see below.
 
 ## Load test and determinism in the browser
@@ -178,12 +181,15 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   only in it (`run_if(in_state(..))`), so input never crosses over. The switch happens in the state's enter / exit schedules: `OnExit(Flight)` empties the
   world (views, effects, bubbles, the lock go; the clock is unpaused), `OnEnter(Flight)` builds what another mode
   asked for (`Scene::launch`: `Launch::TestFlight` from the drydock or the BEHAVIOR screen, `Launch::Range` from
-  home), the drydock's and home's enter / exit set and restore the camera and the UI scale. Flight
+  home, `Launch::Voyage` from the gate), the drydock's and home's enter / exit set and restore the camera and the UI scale. Flight
   UI roots carry `mode::FlightUi` and are hidden when flight ends. A `SimWorld` always exists (an empty one
   outside flight and before Startup), because many flight systems read it. T in flight goes to `mode::FlightExit`
   (the drydock; a behavior test sets the screen it came from; reset whenever flight ends), M home.
 - **Career** (`career.rs`): the player's career save, loaded before the first frame (`CareerPlugin`, after the
   storage and before the drydock), and what it grants the screens. See [Career](#career).
+- **Voyages** (`voyage.rs`, `debrief.rs`): the `StartVoyage` message and the URL launch, the run (`VoyageRun`:
+  FixedUpdate after the events), its end through the career, and the debrief over home. `scene.rs` builds the
+  voyage's world (`SceneKind::Voyage`). See [Voyages](#voyages).
 - **TEST IN RANGE** (`test_range.rs`): the `StartTest` message (handled in every mode: from another mode it launches
   a flight, in flight it rebuilds the scene), `check` / `resolve` of the tested program, and `BehaviorWatch`
   (FixedUpdate, after the events: the tested ship's behavior state after each think). `scene.rs` builds the test
@@ -297,7 +303,9 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
 | BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock): the mind | B, or a click on the mind |
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
-| Research, voyages: inert until their screens exist (tracks 7G, 7H/7I) | R, V (nothing yet) |
+| Voyages: the camera flies to the gate, then the first open voyage whose goal is not cleared (else the first open one) launches, until the voyage map exists ([Voyages](#voyages)) | V, or a click on the gate |
+| Research: inert until its screen exists (track 7G) | R (nothing yet) |
+| Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
 | Debug overlay | F3 |
 
 - **The station** (`shipyard::layout`, a pure function of the frame; sizes are the sketch's at 20 px per cell,
@@ -339,7 +347,9 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   world point that sits at the same place on screen in both views stays put while the zoom changes geometrically, as
   a zoom around the cursor does; without a change of zoom it pans. On arrival the place sends `HomeAction` and its
   screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (research,
-  the gate, the dark buildings) neither highlight nor react.
+  the dark buildings) neither highlight nor react. **The gate** asks for a voyage on arrival
+  (`voyage::StartVoyage`, [Voyages](#voyages)); a refused launch (`voyage::LaunchRefused`, with a `CAN'T LAUNCH`
+  note) flies back out.
 - **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
   (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
   viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
@@ -347,18 +357,20 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   moves. In the drydock the walls and the parked cranes stay around the frame (dimmed by its veil outside the grid
   viewport); the yard, the floor (the drydock draws its own dots, at the same corners) and the drones are home's.
   **Going back** reverses it: home starts on the drydock's last view and flies out while the cranes return. The
-  other screens go back the same way from their place (the mind, the test range for any flight); when FLEET closes
+  other screens go back the same way from their place (the mind, the test range for any flight, the gate after a
+  voyage while its debrief is open); when FLEET closes
   the camera flies back out from the moorings.
 - **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
   placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
   FRIGATE 24 × 24  D` (gold, in the area), `BEHAVIOR  B` / `THE MIND` (violet), `TEST RANGE  T` / `NO RISK · NO
   HAUL` (coral), `FLEET  F` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
-  `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES` / `THE GATE · COMING SOON` (`DORMANT` while it
-  sleeps), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
+  `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES  V` / `THE GATE · SHIPYARD APPROACH` (teal: the
+  voyage V launches; `DORMANT` while no voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
-  save, `?save=`, `?unlock=all`, an escort whose design is gone ([Career](#career)). The place names are UI chrome
-  in code until content has places.
+  save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
+  the debrief covers the right side until dismissed, then its one-line summary sits top left under the design's
+  name ([Voyages](#voyages)). The place names are UI chrome in code until content has places.
 - **The camera**: on the yard it shows the station's overview (from the near moorings to past the gate, 80 × 45 m
   for the frigate frame), fitted to the window (16 px per metre at 1280 × 720, the sketch's 20 at 1600 × 900). The
   UI scale is the drydock's (`ui_kit::ui_scale_for`), so the drydock's layout is the one the camera flies onto.
@@ -392,7 +404,68 @@ game keeps the save".
   2`, `NO CARGO · YOU CAN'T BRING SALVAGE HOME` as a gold warning); `unlocked_by` names the research node that
   unlocks a locked part.
 - **Switches** (URL parameters): `?save=<slot>`, `?newgame=1`, `?unlock=all`. Test flights, the test range and TEST
-  IN RANGE never touch the save.
+  IN RANGE never touch the save; a voyage writes it at launch and at its end, a practice run never
+  ([Voyages](#voyages)).
+
+## Voyages
+
+Track 7H of the first playable loop, 14 Oct 2026 (GDR-0062, GDR-0065, GDR-0068, ADR-0033; the sim's side is
+`docs/sim.md` "Voyages", the career's `docs/career.md` "Voyages"). Code: `voyage.rs` (launch, run, end),
+`scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `debrief.rs` (the debrief).
+Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (the start: sites, cargo, RECALL),
+`voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png`,
+`voyage-abandoned.png` (the lost banner after M twice), `voyage-debrief.png`, `voyage-debrief-lost.png`,
+`voyage-summary.png` (home after DISMISS).
+
+- **Launch** (`voyage::StartVoyage { voyage }`; home's gate (V, or a click) sends it with `None` when the camera
+  arrives, until the voyage map's SET COURSE exists): the fleet must be voyage-ready (`career::voyage_ready` against what the career grants: unlocked parts,
+  materials and frame, cores within the mind) and every ship flight-ready (the design report); a refusal is a coral
+  note on home (`CAN'T LAUNCH`). The career records the launch (`Career::voyage_launched`: the seed, `underway`)
+  and the save is written at once, so closing or reloading mid-voyage loses the voyage (GDR-0062).
+  `?scene=voyage&voyage=<id>` launches at once for development; what the career refuses (a voyage not open yet, a
+  fleet not ready by the career's own unlocks, so also anything `?unlock=all` alone allows) flies as a **practice
+  run**: rolled from the seed the next launch would get, `PRACTICE, NOT SAVED` in the subtitle, never written.
+- **The world** (`scene::build_voyage`): `SimConfig::mind_capacity` of the player is the career's mind capacity
+  (the tuning panel's other values apply as in the sandbox), the sim is seeded with the voyage's seed, the plan is
+  rolled from the content the enemies fly with (`VoyagePlan::roll(others, voyage, seed)`, the tuning's damage scale
+  is the player's only) and started (`Sim::start_voyage(plan, PLAYER, ENEMY)`). The flagship (the drydock's working
+  design) enters at the plan's entry as the focus; the FLEET escorts take `?fleet=` wingman slots behind it (turned
+  with the entry), fly the behavior their design names and follow the flagship (`Leader`). No raider waves (C does
+  nothing), no re-form, no wreck clean-up; Shift+R and T do nothing, M asks whether to abandon the voyage.
+- **The HUD** (after `docs/plans/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
+  the subtitle `SITES 1 / 4 · 2:05` (sites cleared, and wreck-only sites once they spawned, of all; the sim time);
+  under the hull the cargo block: `SALVAGE`, the shown ship's `5 / 8` in gold with one pip per cargo unit (20 at
+  most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (R) and
+  what it does: `WARP HOME 3 S · KEEPS THE HAUL` (teal) while `Sim::can_recall(PLAYER)` allows it, else dimmed with
+  `ARMED ENEMIES NEAR · NO RECALL`. Sites off screen get a marker at the screen edge (the enemy markers' code: an
+  arrow kept clear of the HUD) with the encounter's name and the distance from the focus: raiders coral, wrecks
+  only gold, the goal brighter (`· GOAL`, a glow), cleared ones dim (`· CLEARED`); a sleeping site's ships get no
+  enemy marker of their own. Banners (with a line under them): `RAIDER PAIR · AWAKE` (coral), `SITE CLEARED ·
+  RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
+  · R` (gold). The home ring top left is hidden. The help line names R RECALL.
+- **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
+  RECALL · ARMED ENEMIES WITHIN 200 M`). The warp-out can't be broken off (`WARPING HOME · 2`); losing every vessel
+  during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones
+  too, `voyage::fleet_haul`; sim items become `data::career::HaulItem`s one to one), the career unloads it
+  (`VoyageEnd::Recalled { haul, cleared: goal cleared, ticks }`), the save is written, home opens with the debrief.
+- **Lost**: when the player has no vessel left, `SHIP LOST` / `RECALLED HOME` / `THE HAUL STAYS IN THE WRECK · 5
+  PARTS LOST · YOUR SHIPS RE-FORM AT HOME` with a 3 s countdown (`voyage-hud-lost.png`), the cargo block says
+  `LEFT IN THE WRECK`; then `VoyageEnd::Lost { ticks }`, the save, home. **Abandoning**: M shows `ABANDON THE
+  VOYAGE? · M AGAIN · THE HAUL IS LOST`; M again within 3 s goes the same way (`VOYAGE ABANDONED`, every hold's
+  items lost), as closing the game would: the way out when a dark ship is stuck near an armed enemy. Leaving flight
+  any other way while a recorded voyage runs ends it as lost too (a guard; nothing in the game does it).
+- **Counts** for the debrief: kills are the enemy's `VesselLost` events (a split-off half counts on its own), ships
+  lost the player's.
+- **The debrief** (`debrief.rs`, after `home-b.png`): after a voyage, a panel over home's right side (420 px, on a
+  veil, above home's layout and independent of it; hidden while FLEET is open) until DISMISS, Esc or Enter: `VOYAGE
+  HOME · HAUL UNLOADED` (or `SHIP LOST · RECALLED HOME`, `PRACTICE RUN · NOT SAVED`), the voyage's name, chips for
+  the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
+  `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
+  data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
+  now; `✓ HALVEX DRIFT IS NOW OPEN` for voyages it opened; the voyage's `cleared` words at the first clear. Then a
+  one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
+  PARTS → KINETIC WEAPONS +18 · …`). A game loaded with a `last_haul` starts with that line (kills and ships lost are
+  not saved).
 
 ## FLEET
 

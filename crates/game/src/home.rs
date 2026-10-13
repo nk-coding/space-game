@@ -15,8 +15,9 @@
 //!   (`shipyard::fly`, 0.6 s, zooming around the point that keeps its place on screen) and then opens its screen:
 //!   the building area is the drydock (D; the camera lands exactly on the drydock's own view of the frame,
 //!   `DockCamera::opening_view`, so only its panels appear), the mind the BEHAVIOR screen (B), the tower and lane the
-//!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home). Research (R) and the
-//!   gate (V) are inert until their screens exist (tracks 7G, 7H/7I); the fabricator and the salvage bay are dark.
+//!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the gate a voyage (V:
+//!   the first open one, `voyage::StartVoyage`, until the voyage map exists; a refused launch flies back out with a
+//!   note). Research (R) is inert until its screen exists (track 7G); the fabricator and the salvage bay are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
 //!   place (corner brackets, a brighter title).
 //! * **Coming back** from a screen the camera starts on its place (the drydock's last view, the mind, the test
@@ -74,6 +75,8 @@ pub enum HomeAction {
     TestRange,
     /// The moorings: the fleet layer over home (`fleet.rs` opens it).
     Fleet,
+    /// The gate: launch a voyage (`voyage.rs`).
+    Voyages,
 }
 
 /// A place's key, if it has one (shown after its title while it works).
@@ -89,14 +92,15 @@ pub fn key_of(place: Place) -> Option<(KeyCode, &'static str)> {
     }
 }
 
-/// What a place opens; `None`: not yet (research until track 7G, voyages until 7H/7I, the dark buildings).
+/// What a place opens; `None`: not yet (research until track 7G, the dark buildings).
 pub fn action_of(place: Place) -> Option<HomeAction> {
     match place {
         Place::Drydock => Some(HomeAction::Drydock),
         Place::Behavior => Some(HomeAction::Behavior),
         Place::TestRange => Some(HomeAction::TestRange),
         Place::Fleet => Some(HomeAction::Fleet),
-        Place::Research | Place::Voyages | Place::Fabricator | Place::SalvageBay => None,
+        Place::Voyages => Some(HomeAction::Voyages),
+        Place::Research | Place::Fabricator | Place::SalvageBay => None,
     }
 }
 
@@ -297,6 +301,7 @@ fn put_rig(rig: &mut CameraRig, v: View, viewport: Vec2) {
 #[allow(clippy::too_many_arguments)]
 fn enter(
     mut transitions: MessageReader<StateTransitionEvent<AppMode>>,
+    debrief: Res<crate::debrief::Debrief>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
     viewport: Query<(&ComputedNode, &UiGlobalTransform), With<GridViewport>>,
@@ -308,7 +313,9 @@ fn enter(
     cam.flight_zoom = rig.zoom_target;
     rig.mode = CamMode::Free;
     rig.auto_mode = CamMode::Free;
-    let from = transitions.read().last().and_then(|t| t.exited).and_then(place_of);
+    // Home from a voyage (its debrief is open): from the gate.
+    let exited = transitions.read().last().and_then(|t| t.exited);
+    let from = if exited == Some(AppMode::Flight) && debrief.open { Some(Place::Voyages) } else { exited.and_then(place_of) };
     let yard_view = overview(&yard.layout, &window);
     visit.phase = match from {
         Some(place) => {
@@ -376,7 +383,7 @@ fn clicks(
     }
 }
 
-/// D, B, T, F (R and V wait for their screens): not while a text field has the keyboard, and not with Ctrl or Cmd
+/// D, B, T, F, V (R waits for its screen): not while a text field has the keyboard, and not with Ctrl or Cmd
 /// held (Ctrl+D is the browser's bookmark key), as the drydock's shortcuts.
 #[allow(clippy::too_many_arguments)]
 fn keys(
@@ -411,9 +418,11 @@ fn fly(
     mut yard: ResMut<Yard>,
     mut rig: ResMut<CameraRig>,
     mut visit: ResMut<Visit>,
+    mut refused: MessageReader<crate::voyage::LaunchRefused>,
     mut out: MessageWriter<HomeAction>,
 ) {
     let size = window.size();
+    let refused = refused.read().count() > 0;
     let mut next = None;
     let mut clear = 0.0;
     let view = match &mut visit.phase {
@@ -447,6 +456,10 @@ fn fly(
                 // FLEET closed: back out to the yard.
                 next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window)), to: None, from: Some(Place::Fleet) });
             }
+            if *place == Place::Voyages && refused {
+                // The launch was refused (a note says why): back out to the yard.
+                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window)), to: None, from: Some(Place::Voyages) });
+            }
             *view
         }
     };
@@ -460,7 +473,12 @@ fn fly(
 }
 
 /// Where the places lead.
-fn apply(mut actions: MessageReader<HomeAction>, mut scene: ResMut<Scene>, mut next: ResMut<NextState<AppMode>>) {
+fn apply(
+    mut actions: MessageReader<HomeAction>,
+    mut scene: ResMut<Scene>,
+    mut next: ResMut<NextState<AppMode>>,
+    mut voyage: MessageWriter<crate::voyage::StartVoyage>,
+) {
     for a in actions.read() {
         match a {
             HomeAction::Drydock => next.set(AppMode::Drydock),
@@ -471,6 +489,10 @@ fn apply(mut actions: MessageReader<HomeAction>, mut scene: ResMut<Scene>, mut n
             }
             // A layer over home, not a mode: `fleet::open` reads the same message.
             HomeAction::Fleet => {}
+            // The first open voyage, until the voyage map's SET COURSE exists.
+            HomeAction::Voyages => {
+                voyage.write(crate::voyage::StartVoyage { voyage: None });
+            }
         }
     }
 }
@@ -566,6 +588,7 @@ fn sync_titles(
     design: Res<PlayerDesign>,
     escorts: Res<EscortDesigns>,
     granted: Res<Granted>,
+    career: Res<PlayerCareer>,
     content: Res<GameContent>,
     style: Res<Style>,
     spots: Query<(&Spot, Ref<Hot>)>,
@@ -573,7 +596,7 @@ fn sync_titles(
     mut subs: Query<(&LabelSub, &mut Text, &mut TextColor, &mut Node), Without<LabelTitle>>,
 ) {
     let hover = spots.iter().any(|(_, h)| h.is_changed());
-    if !(hover || yard.is_changed() || design.is_changed() || escorts.is_changed() || granted.is_changed()) {
+    if !(hover || yard.is_changed() || design.is_changed() || escorts.is_changed() || granted.is_changed() || career.is_changed()) {
         return;
     }
     let ui = &style.ui;
@@ -607,7 +630,13 @@ fn sync_titles(
                 (format!("MOORINGS  ·  CORES {cores} / {}", granted.mind_capacity), if cores > granted.mind_capacity { Tone::Coral } else { Tone::Violet })
             }
             Place::Research => ("COMING SOON".into(), Tone::Dim),
-            Place::Voyages => ((if yard.lights.gate { "THE GATE  ·  COMING SOON" } else { "DORMANT" }).into(), Tone::Dim),
+            Place::Voyages => {
+                let open = crate::voyage::default_voyage(career.career(), &content.0);
+                match open.and_then(|v| content.0.voyages.get(v)) {
+                    Some(v) => (format!("THE GATE  ·  {}", v.name.to_uppercase()), Tone::Teal),
+                    None => ("DORMANT".into(), Tone::Dim),
+                }
+            }
             Place::Fabricator | Place::SalvageBay => ("LATER".into(), Tone::Dim),
         };
         set_text(&mut text, &words);
@@ -692,6 +721,7 @@ mod tests {
             .insert_state(AppMode::Home)
             .insert_resource(Scene::new(SceneKind::Sandbox, 1))
             .add_message::<HomeAction>()
+            .add_message::<crate::voyage::StartVoyage>()
             .add_systems(Update, apply);
         app
     }
@@ -713,10 +743,16 @@ mod tests {
             assert_eq!(*app.world().resource::<State<AppMode>>().get(), mode);
             assert_eq!(app.world().resource::<Scene>().launch, None);
         }
+        // The gate asks `voyage.rs` for the first open voyage (it launches or says why not).
+        let mut app = self::app();
+        app.world_mut().write_message(HomeAction::Voyages);
+        app.update();
+        let asked = app.world_mut().resource_mut::<Messages<crate::voyage::StartVoyage>>().drain().collect::<Vec<_>>();
+        assert_eq!(asked, [crate::voyage::StartVoyage { voyage: None }]);
     }
 
-    /// D, B, T and F lead to the drydock, the BEHAVIOR screen, the test range and FLEET; R and V are research and the
-    /// gate, inert until their screens exist; every key is one place's, every action one place's.
+    /// D, B, T, F and V lead to the drydock, the BEHAVIOR screen, the test range, FLEET and a voyage; R (research)
+    /// is inert until its screen exists; every key is one place's, every action one place's.
     #[test]
     fn keys_and_places_map_to_screens() {
         let by_key = |k: KeyCode| Place::ALL.into_iter().find(|p| key_of(*p).is_some_and(|(key, _)| key == k));
@@ -725,8 +761,9 @@ mod tests {
         assert_eq!(screen(KeyCode::KeyB), Some(HomeAction::Behavior));
         assert_eq!(screen(KeyCode::KeyT), Some(HomeAction::TestRange));
         assert_eq!(screen(KeyCode::KeyF), Some(HomeAction::Fleet));
+        assert_eq!(screen(KeyCode::KeyV), Some(HomeAction::Voyages));
         assert_eq!((by_key(KeyCode::KeyR), screen(KeyCode::KeyR)), (Some(Place::Research), None));
-        assert_eq!((by_key(KeyCode::KeyV), screen(KeyCode::KeyV)), (Some(Place::Voyages), None));
+        assert_eq!(by_key(KeyCode::KeyV), Some(Place::Voyages));
         for p in Place::ALL {
             if let Some((k, _)) = key_of(p) {
                 assert_eq!(by_key(k), Some(p), "{p:?}");
@@ -761,7 +798,9 @@ mod tests {
         // Inert places don't fly.
         let mut rest = Visit::default();
         go(Place::Research, &mut rest, &yard, &window, &rig, &dock, None);
-        go(Place::Voyages, &mut rest, &yard, &window, &rig, &dock, None);
         assert!(matches!(rest.phase, Phase::Yard));
+        // The gate flies (the voyage launches on arrival).
+        go(Place::Voyages, &mut rest, &yard, &window, &rig, &dock, None);
+        assert!(matches!(rest.phase, Phase::Flying { to: Some(Place::Voyages), .. }));
     }
 }

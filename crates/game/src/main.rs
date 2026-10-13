@@ -12,6 +12,8 @@
 //! - `scene`: sandbox (player + raider waves; home's TEST RANGE), test flight, showcase, load test; writes the
 //!   player's pilot input.
 //! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
+//! - `voyage`: launching a voyage (the career's seed and save), its run (recall, losing it) and its end;
+//!   `debrief`: the panel and the summary line over home after a voyage.
 //! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
 //! - `behavior_ui`: the BEHAVIOR screen (how the design thinks: graph and text views of its rules), opened from
 //!   the drydock.
@@ -34,6 +36,7 @@ mod camera;
 mod career;
 mod clipboard;
 mod controls;
+mod debrief;
 mod drydock;
 mod fleet;
 mod fleet_bar;
@@ -56,6 +59,7 @@ mod test_range;
 mod tuning;
 mod ui_icons;
 mod ui_kit;
+mod voyage;
 
 use bevy::camera::{CompositingSpace, Hdr};
 use bevy::prelude::*;
@@ -117,11 +121,20 @@ fn main() {
             atlas::AtlasPlugin,
             tuning::TuningPlugin,
             mode::ModePlugin,
-            (scene::ScenePlugin, test_range::TestRangePlugin),
+            (scene::ScenePlugin, test_range::TestRangePlugin, voyage::VoyagePlugin),
             sim_bridge::SimBridgePlugin,
             (storage::StoragePlugin, clipboard::ClipboardPlugin, career::CareerPlugin),
             // After the bridge (it reads the content the bridge loads), the storage and the career.
-            (drydock::DrydockPlugin, shipyard::ShipyardPlugin, behavior_ui::BehaviorPlugin, home::HomePlugin, fleet::FleetPlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
+            (
+                drydock::DrydockPlugin,
+                shipyard::ShipyardPlugin,
+                behavior_ui::BehaviorPlugin,
+                home::HomePlugin,
+                fleet::FleetPlugin,
+                debrief::DebriefPlugin,
+                ui_kit::UiKitPlugin,
+                ui_icons::UiIconsPlugin,
+            ),
             camera::CameraPlugin,
             controls::ControlsPlugin,
             fx::FxPlugin,
