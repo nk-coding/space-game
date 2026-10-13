@@ -637,3 +637,40 @@ fn reset(
     *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
     info!("scene reset ({:?})", scene.kind);
 }
+
+#[cfg(test)]
+mod tests {
+    use bevy::state::app::StatesPlugin;
+
+    use super::*;
+    use crate::test_range::{StartTest, TestProgram, TestRangePlugin};
+
+    /// The behavior screen's request: from another mode it launches a test flight; in flight it rebuilds the
+    /// scene; the test outlives restarts and ends with the flight.
+    #[test]
+    fn a_test_request_launches_or_rebuilds_the_flight() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, StatesPlugin))
+            .insert_state(AppMode::Drydock)
+            .insert_resource(Scene::new(SceneKind::Sandbox, 1))
+            .insert_resource(SimWorld::new(sim::Sim::new(1), data::Content::default()))
+            .init_resource::<FlightExit>()
+            .init_resource::<ResetRequest>()
+            .add_plugins(TestRangePlugin);
+        let test = BehaviorTest { mode: TestMode::Watch, program: TestProgram::Id("careful".into()) };
+        app.world_mut().write_message(StartTest { test: test.clone(), back: AppMode::Drydock });
+        app.update();
+        let scene = app.world().resource::<Scene>();
+        assert_eq!((scene.test_mode(), scene.launch, scene.test_flight, scene.waves), (Some(TestMode::Watch), true, true, true));
+        app.update();
+        assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Flight);
+        // In flight, a new request rebuilds the scene instead.
+        let alongside = BehaviorTest { mode: TestMode::Alongside, ..test };
+        app.world_mut().write_message(StartTest { test: alongside, back: AppMode::Drydock });
+        app.update();
+        assert!(app.world().resource::<ResetRequest>().0);
+        let scene = app.world().resource::<Scene>();
+        assert_eq!(scene.test_mode(), Some(TestMode::Alongside));
+        assert_eq!(scene.restart().test_mode(), Some(TestMode::Alongside));
+    }
+}
