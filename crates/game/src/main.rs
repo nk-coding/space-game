@@ -6,9 +6,10 @@
 //! - `atlas`, `style`, `meshbuf`: the baked texture atlas + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
 //! - `scene`: sandbox (player + raider waves), test flight, showcase, load test; writes the player's pilot input.
+//! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
 //! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
 //! - `ui_kit`, `ui_icons`: bevy_ui widgets with hand-made hit testing; vector icons in UI nodes.
-//! - `storage`, `clipboard`: the player's documents (designs now; saves, behaviors, settings later) and copy /
+//! - `storage`, `clipboard`: the player's documents (designs and behaviors now; saves, settings later) and copy /
 //!   paste of UI text, per platform.
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame.
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
@@ -38,6 +39,7 @@ mod ship_view;
 mod sim_bridge;
 mod storage;
 mod style;
+mod test_range;
 mod tuning;
 mod ui_icons;
 mod ui_kit;
@@ -103,7 +105,7 @@ fn main() {
             atlas::AtlasPlugin,
             tuning::TuningPlugin,
             mode::ModePlugin,
-            scene::ScenePlugin,
+            (scene::ScenePlugin, test_range::TestRangePlugin),
             sim_bridge::SimBridgePlugin,
             (storage::StoragePlugin, clipboard::ClipboardPlugin),
             // After the bridge (it reads the content the bridge loads) and the storage.

@@ -3,11 +3,16 @@
 //! * **sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at start a copy of the
 //!   Halvex Runner) as the focus; waves of automaton raiders under their content behavior (`raider_basic`), a
 //!   new wave a few seconds after the last raider goes dark (C turns the waves off and on); the player's other
-//!   vessels (`?fleet=N` more of the design, and pieces that split off with a logic core) fly their default
-//!   behavior (`skirmisher`); wrecks and salvage drift away and are cleaned up far from the player; when the
-//!   player has no vessel left, a new one re-forms.
+//!   vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
+//!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
+//!   far from the player; when the player has no vessel left, a new one re-forms.
 //! * **test flight**: the sandbox launched from the drydock (T). Losing every vessel returns to the drydock
 //!   after the same 3 s instead of re-forming; T returns at any time. The design itself is never touched.
+//! * **TEST IN RANGE** (`test_range.rs`; `?scene=watch|alongside&behavior=<id>`): a test flight that flies a
+//!   behavior: **watch** (the design unpiloted on it, the camera follows it, focus switches are dropped; losing it
+//!   ends the test) or **alongside** (the player flies the design, a second copy is a wingman on it). T and a lost
+//!   test return to where the test started (`mode::FlightExit`).
 //! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
 //!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
 //! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
@@ -32,11 +37,13 @@ use crate::backdrop::Rng;
 use crate::camera::{CamMode, CameraRig};
 use crate::controls::PlayerInput;
 use crate::drydock::PlayerDesign;
+use crate::drydock::behaviors::{self, PlayerBehaviors};
 use crate::fx::Effects;
-use crate::mode::AppMode;
+use crate::mode::{AppMode, FlightExit};
 use crate::params::Params;
 use crate::shield::ShieldBubbles;
 use crate::sim_bridge::{GameContent, HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
+use crate::test_range::{self, BehaviorTest, TestMode};
 use crate::tuning::Tuning;
 
 /// The player's owner in the sim, and the raiders'.
@@ -90,6 +97,10 @@ pub struct Scene {
     /// A short banner for the HUD and the sim time (s) until which it shows.
     pub banner: Option<(String, f64)>,
     pub kills: u32,
+    /// TEST IN RANGE: the behavior and how it flies (`test_range.rs`); kept by restarts, ended by leaving flight.
+    test: Option<BehaviorTest>,
+    /// The ship running the tested behavior (watch: the design; alongside: the wingman).
+    test_ship: Option<ShipId>,
 }
 
 impl Scene {
@@ -111,6 +122,8 @@ impl Scene {
             rng: Rng::new(seed as u32 ^ 0x9E37_79B9),
             banner: None,
             kills: 0,
+            test: None,
+            test_ship: None,
         }
     }
 
@@ -120,7 +133,31 @@ impl Scene {
         s.wingmen = self.wingmen;
         s.test_flight = self.test_flight;
         s.waves = self.waves;
+        s.test = self.test.clone();
         s
+    }
+
+    /// The next flight is TEST IN RANGE: a test flight in the sandbox with raider waves, flying `test`.
+    pub fn begin_test(&mut self, test: BehaviorTest) {
+        self.kind = SceneKind::Sandbox;
+        self.test_flight = true;
+        self.waves = true;
+        self.test = Some(test);
+    }
+
+    /// How the running test flies, if this is TEST IN RANGE.
+    pub fn test_mode(&self) -> Option<TestMode> {
+        self.test.as_ref().map(|t| t.mode)
+    }
+
+    /// The ship running the tested behavior.
+    pub fn test_ship(&self) -> Option<ShipId> {
+        self.test_ship
+    }
+
+    /// The ship the camera follows and the HUD shows while nobody is piloted (watch).
+    pub fn watched(&self) -> Option<ShipId> {
+        self.test_ship.filter(|_| self.test_mode() == Some(TestMode::Watch))
     }
 }
 
@@ -145,6 +182,9 @@ impl Plugin for ScenePlugin {
         };
         let mut scene = Scene::new(kind, seed);
         scene.wingmen = params.f32("fleet").map(|n| n.clamp(0.0, 8.0) as u32).unwrap_or(0);
+        if let Some(test) = BehaviorTest::from_params(&params) {
+            scene.begin_test(test);
+        }
         // A world exists from the start (the initial state's enter systems run before Startup builds the scene).
         app.insert_resource(empty_world(&scene))
             .insert_resource(scene)
@@ -168,6 +208,7 @@ struct SceneInputs<'w> {
     params: Res<'w, Params>,
     content: Res<'w, GameContent>,
     design: Res<'w, PlayerDesign>,
+    behaviors: Res<'w, PlayerBehaviors>,
 }
 
 /// The scene at start (in the drydock the world stays empty).
@@ -213,8 +254,11 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
             world
         }
         SceneKind::Sandbox | SceneKind::Showcase => {
-            // The tuning's damage scale is the player's only: other sides compile from their own content.
-            let content = tuning.scaled_content(base, true);
+            // The tuning's damage scale is the player's only: other sides compile from their own content. The
+            // player's saved behaviors join the player's content (after the content's, in id order), so the
+            // library has them and a design naming one compiles with it.
+            let mut content = tuning.scaled_content(base, true);
+            inputs.behaviors.add_to(&mut content);
             let others = tuning.scaled_content(base, false);
             let mut sim = sim::Sim::with_config(scene.seed, tuning.config());
             match BehaviorLibrary::new(&content) {
@@ -222,25 +266,35 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
                 Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
             }
             let mut world = SimWorld::new(sim, content).with_others(others);
-            let Some(runner) = world.design_from(inputs.design.blueprint(), PLAYER) else { return world };
+            // A behavior the design names that can't fly (errors, deleted): its faction's, with a banner.
+            let fallback = behaviors::fallback(inputs.design.blueprint(), &world.content, &inputs.behaviors);
+            let bp = fallback.as_ref().map_or(inputs.design.blueprint(), |(bp, _)| bp);
+            let Some(runner) = world.design_from(bp, PLAYER) else { return world };
+            if let Some((_, why)) = &fallback {
+                warn!("{why}");
+                scene.banner = Some((why.to_uppercase(), 4.0));
+            }
             scene.player_design = Some(runner.clone());
             // `Body` places the design's main piece, wherever the blueprint sits in its drydock frame.
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
-            let mut fleet = vec![me];
             if scene.kind == SceneKind::Sandbox {
-                for k in 0..scene.wingmen {
-                    let x = (k as f32 / 2.0).floor() + 1.0;
-                    let side = if k % 2 == 0 { -1.0 } else { 1.0 };
-                    let id = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::new(side * 22.0 * x, -12.0 * x), 0.0));
-                    fleet.push(id);
-                }
-                // Every vessel gets its default behaviour (`skirmisher`); the focus parks it while piloted.
+                // Every vessel flies the behavior its design names; the focus parks it while piloted. Wingmen
+                // follow the player's lock (`target locked`).
                 let behavior = world.sim.behaviors().default_for(&runner);
-                for id in fleet {
+                world.sim.command(me, ShipCommand::Behavior(behavior));
+                let wingmen = if scene.test.is_some() { 0 } else { scene.wingmen };
+                for k in 0..wingmen {
+                    let id = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(wing_slot(k), 0.0));
                     world.sim.command(id, ShipCommand::Behavior(behavior));
+                    world.sim.command(id, ShipCommand::Leader(Some(me)));
                 }
-                world.sim.command(me, ShipCommand::Focus);
-                focus.0 = world.sim.focus(PLAYER);
+                if scene.test_mode() != Some(TestMode::Watch) {
+                    world.sim.command(me, ShipCommand::Focus);
+                    focus.0 = world.sim.focus(PLAYER);
+                }
+                if let Some(test) = scene.test.clone() {
+                    start_test(scene, &mut world, &runner, me, &test);
+                }
             }
             rig.mode = CamMode::Follow;
             rig.auto_mode = CamMode::Follow;
@@ -277,6 +331,46 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
             world
         }
     }
+}
+
+/// "BACK TO THE DRYDOCK", or to the screen a behavior test was started from.
+fn exit_banner(to: AppMode) -> &'static str {
+    match to {
+        AppMode::Drydock => "BACK TO THE DRYDOCK",
+        _ => "BACK TO THE EDITOR",
+    }
+}
+
+/// Where wingman `k` starts: alternately left and right of the player, a step further back every two.
+fn wing_slot(k: u32) -> sim::Vec2 {
+    let x = (k as f32 / 2.0).floor() + 1.0;
+    let side = if k % 2 == 0 { -1.0 } else { 1.0 };
+    sim::Vec2::new(side * 22.0 * x, -12.0 * x)
+}
+
+/// TEST IN RANGE: `me` (the player's design, flying its own behavior) becomes the tested ship (watch: unpiloted)
+/// or gets a wingman that is (alongside). A behavior that can't fly leaves the design's own, with a banner.
+fn start_test(scene: &mut Scene, world: &mut SimWorld, runner: &Arc<ShipDesign>, me: ShipId, test: &BehaviorTest) {
+    let tested = match test_range::resolve(world, &test.program, runner) {
+        Ok(id) => Some(id),
+        Err(why) => {
+            warn!("test in range: {why}");
+            scene.banner = Some((format!("{why}; flies its own").to_uppercase(), 4.0));
+            world.sim.behaviors().default_for(runner)
+        }
+    };
+    let ship = match test.mode {
+        TestMode::Watch => me,
+        TestMode::Alongside => {
+            let wing = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(wing_slot(0), 0.0));
+            world.sim.command(wing, ShipCommand::Leader(Some(me)));
+            wing
+        }
+    };
+    world.sim.command(ship, ShipCommand::Behavior(tested));
+    scene.test_ship = Some(ship);
+    let name = tested.and_then(|id| world.sim.behaviors().get(id)).map_or("no behavior", |b| b.name.as_str());
+    info!("test in range: {:?}, {name}, ship {ship:?}", test.mode);
 }
 
 /// T in the drydock (or TEST-FLY): the sandbox with the player's design, raider waves on.
@@ -317,6 +411,7 @@ fn leave_flight(
     time.unpause();
     *scene = scene.restart();
     scene.test_flight = false;
+    scene.test = None;
     *world = empty_world(&scene);
 }
 
@@ -348,6 +443,7 @@ fn scene_tick(
     tuning: Res<Tuning>,
     mut player_input: ResMut<PlayerInput>,
     mut focus: ResMut<PilotFocus>,
+    exit: Res<FlightExit>,
     mut next_mode: ResMut<NextState<AppMode>>,
 ) {
     if scene.kind != SceneKind::Sandbox {
@@ -357,6 +453,16 @@ fn scene_tick(
     let scene = &mut *scene;
     let tick = world.sim.tick();
     let now = world.sim.time_seconds();
+
+    // Watch: nobody pilots. Focus switches (V, clicks, the fleet bar) are dropped; losing the tested ship ends
+    // the test like losing every vessel ends a test flight.
+    if let Some(watched) = scene.watched() {
+        world.inputs.commands.retain(|(_, c)| !matches!(c, ShipCommand::Focus));
+        if scene.respawn_tick.is_none() && !world.sim.ship(watched).is_some_and(|s| s.is_vessel()) {
+            scene.respawn_tick = Some(tick + 90);
+            scene.banner = Some((format!("SHIP LOST  ·  {}", exit_banner(exit.0)), now + 3.0));
+        }
+    }
 
     // The sim owns the focus (it moves on by itself when the focus is lost); the client mirrors it.
     let now_focus = world.sim.focus(PLAYER);
@@ -399,17 +505,18 @@ fn scene_tick(
             _ => {}
         }
     } else if scene.respawn_tick.is_none() && scene.last_focus.is_some() {
-        // No vessel left: re-form in a moment, or back to the drydock after a test flight.
+        // No vessel left: re-form in a moment, or back to the drydock (or the behavior test's screen) after a
+        // test flight.
         scene.respawn_tick = Some(tick + 90);
-        let banner = if scene.test_flight { "SHIP LOST  ·  BACK TO THE DRYDOCK" } else { "SHIP LOST" };
-        scene.banner = Some((banner.into(), now + 3.0));
+        let banner = if scene.test_flight { format!("SHIP LOST  ·  {}", exit_banner(exit.0)) } else { "SHIP LOST".into() };
+        scene.banner = Some((banner, now + 3.0));
     }
     if let Some(t) = scene.respawn_tick
         && tick >= t
     {
         scene.respawn_tick = None;
         if scene.test_flight {
-            next_mode.set(AppMode::Drydock);
+            next_mode.set(exit.0);
             return;
         }
         let wreck = scene.last_focus.take().filter(|id| world.sim.ship(*id).is_some_and(|s| !s.is_vessel()));
@@ -444,6 +551,7 @@ fn scene_tick(
         scene.wave_ships.clear();
         let centre = focus
             .0
+            .or(scene.watched())
             .and_then(|me| world.sim.ship(me))
             .and_then(|s| s.control_piece().and_then(|p| s.piece(p)))
             .map(|p| v2(p.com_world()))
@@ -470,6 +578,7 @@ fn scene_tick(
     if tick.is_multiple_of(30) {
         let centre = focus
             .0
+            .or(scene.watched())
             .and_then(|me| world.sim.ship(me))
             .and_then(|s| s.main_piece().and_then(|p| s.piece(p)))
             .map(|p| v2(p.com_world()))

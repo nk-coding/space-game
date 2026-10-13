@@ -1,5 +1,6 @@
 //! The world camera: 2D orthographic, 1 world unit = 1 m = 1 cell, never rotates. Modes: follow the focused
-//! vessel (sandbox), frame the whole fight (load test), or free (drag to pan). Zoom with the wheel or a pinch;
+//! vessel (sandbox; the watched ship of a behavior test while nobody pilots), frame the whole fight (load test),
+//! or free (drag to pan). Zoom with the wheel or a pinch;
 //! both position and zoom ease towards their targets (time-based, so framerate-independent).
 //!
 //! A focus switch glides over (GDR-0013): the follow point snaps to the new vessel and the camera eases from
@@ -19,7 +20,7 @@ use bevy_egui::input::egui_wants_any_pointer_input;
 
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
-use crate::scene::PilotFocus;
+use crate::scene::{PilotFocus, Scene};
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 
 pub const MIN_PX_PER_M: f32 = 3.0;
@@ -281,20 +282,22 @@ fn update_camera(
     fixed: Res<Time<Fixed>>,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
+    scene: Res<Scene>,
     mut rig: ResMut<CameraRig>,
     camera: Single<(&mut Transform, &mut Projection), With<MainCamera>>,
 ) {
     let dt = time.delta_secs().min(0.1);
     let alpha = fixed.overstep_fraction().clamp(0.0, 1.0);
 
-    // The focused vessel (controlling piece, else the main piece).
-    rig.focus = focus.0.and_then(|id| world.sim.ship(id)).and_then(|s| {
+    // The focused vessel, else the watched one of a behavior test (controlling piece, else the main piece).
+    let followed = focus.0.or(scene.watched());
+    rig.focus = followed.and_then(|id| world.sim.ship(id)).and_then(|s| {
         let pid = s.control_piece().or_else(|| s.main_piece())?;
         s.piece(pid).map(|p| piece_com(p, alpha))
     });
     // A new focus: glide over from where the camera is.
-    if focus.0 != rig.followed {
-        rig.followed = focus.0;
+    if followed != rig.followed {
+        rig.followed = followed;
         if let (CamMode::Follow, Some(f)) = (rig.mode, rig.focus) {
             rig.start_glide(f);
         }
