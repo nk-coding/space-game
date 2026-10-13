@@ -12,7 +12,27 @@ Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-
   - composite `#142a2e` (teal-grey)
   - reactive `#211d2c` (violet-grey)
   - enemy armour `#221f2a`
-- **Machine tiles** are one flat colour (`#0f1c25`) with their glowing icon placed directly on the tile. Never put a dark inner square behind an icon.
+- ~~**Machine tiles** are one flat colour (`#0f1c25`) with their glowing icon placed directly on the tile.~~
+  Superseded on the ship on 13 Oct 2026 by [GDR-0069](gdr/0069-machines-drawn-as-components.md) (Niklas): see
+  **Machines** below. The dark tile with its icon stays for the part tiles in the UI (the drydock's palette and
+  inspector); never put a dark inner square behind an icon.
+- **Machines** (GDR-0069, 13 Oct 2026; sketch: [`plans/mockups/ship-part-looks.png`](plans/mockups/ship-part-looks.png),
+  options C and D) are drawn as housings: the machine's own flat vector shape (`content/base/icons/<key>.ship.svg`)
+  on a cell in the hull's armour tone, with seams like every tile.
+  - **The cell's tone**: the armour tone that most of the hull touching the machine has (counted per touching cell
+    side; a tie goes to the tone the design uses most); a machine with no hull next to it takes the design's most
+    used tone (by hull area; a tie goes to the first tone in name order); a design without hull, steel.
+  - **Housings** are dark blue-grey (`#1a2a36`, raised parts `#24384a`; the automatons' `#2a2431` / `#3a3242`),
+    outlined and detailed in the system colour; flat fills, no bevels. Glow only where the energy is: a reactor's
+    core, an emitter's centre (a nozzle's mouth is a crisp hot rim: its glow is the plume). A glow is a soft layer under the drawing that shows through a
+    window in the housing, with a crisp hot core on top.
+  - **Engines** (thrusters, torch drives) reach past the hull at the stern: the nozzle bell sticks out 0.35 cells
+    (thruster) and 0.45 cells (torch drive), placeholders, over the hull edge, and the plume starts at its mouth.
+    Nothing else does: radiators keep their fins inside the cell, guns keep today's barrels. Drawn protrusions never
+    collide; collisions stay on the grid.
+  - Every machine follows rotation and mirroring; the drydock, its ghost, flight and the home screen show the same
+    drawings. Pictures: [`results/parts-drydock-after.png`](results/parts-drydock-after.png),
+    [`results/parts-flight-after.png`](results/parts-flight-after.png) (before: `parts-*-before.png`).
 - **Icons** use the system colours:
   - power `#e2b15c`
   - weapons `#5cc6d6`
@@ -73,7 +93,7 @@ The client follows [ADR-0020](adr/0020-style-2a-renderer.md); details in [`clien
 
 
 - ~~Rasterise the icons into a texture atlas at build time.~~ Superseded (ADR-0021, ADR-0028): icons are SVGs in `content/base/icons/`, rasterised in memory at runtime at the resolution the display needs, regenerated when zoom or DPI changes.
-- Each sim piece is one atlas-textured mesh (a lit piece's tiles are a second, opaque one, so shield bubbles can sit between ships by depth): every tile is drawn as its outline in the seam colour with the fill inset by the seam width, icons on top (`ship_view.rs`).
+- Each sim piece is one atlas-textured mesh (a lit piece's tiles are a second, opaque one, so shield bubbles can sit between ships by depth): every tile is drawn as its outline in the seam colour with the fill inset by the seam width, then the hull edge, then the machines' drawings (GDR-0069; an engine's bell over the hull edge) (`ship_view.rs`).
 - The hull edge is built from the boundary edges of the main piece (`data::geometry`, `hull_edges`): straight sides covered by a neighbour are skipped; slope faces are always boundary. `drawHullGlow` in `concept/reference/concept-board-script.js` shows the original rule.
 - Glow: pre-blurred glow sprites by default. Full-screen bloom is a toggle (key `3`, `?bloom=1`) to compare; it is the expensive option on phones and WebGL2.
 - Plumes, trails, beams and sparks are pooled atlas sprites written into a few dynamic meshes every frame (`fx.rs`).
