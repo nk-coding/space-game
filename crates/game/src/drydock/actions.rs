@@ -162,7 +162,7 @@ pub(super) fn apply(
                 scene.launch = true;
                 next.set(AppMode::Flight);
             }
-            // Editing (tools.rs), zoom (the camera), the rest has no handler yet.
+            // Editing (tools.rs), zoom (the camera), save / export / blueprints (blueprints.rs); the menu has no handler yet.
             _ => {}
         }
     }

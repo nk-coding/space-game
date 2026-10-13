@@ -93,6 +93,12 @@ impl DockCamera {
     pub(super) fn new(flight_zoom: f32) -> Self {
         Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None }
     }
+
+    /// Fits the frame again (another design or frame was opened).
+    pub(super) fn reset_view(&mut self) {
+        self.fit = 0.0;
+        self.view = None;
+    }
 }
 
 /// Opening the drydock: remember the flight zoom; the camera stops following. The view is set once the

@@ -7,7 +7,9 @@
 //   wait <ms> | down <key> | up <key> | press <key> | type <text>
 //   move <x> <y> | mousedown <x> <y> [left|right|middle] | mouseup [left|right|middle] | click <x> <y>
 //   wheel <dy> | tap <x> <y> | touchdrag <x0> <y0> <x1> <y1> <holdMs> (one finger, CDP touch events)
-//   shot <file.png> | eval <js>
+//   shot <file.png> | eval <js> | reload (the page again, same storage)
+//   upload <file> (the next file chooser gets this file) | clip <text> (put text on the clipboard) | readclip
+// Downloads are saved into <out-dir> under their suggested names ("[download] <path>" is printed).
 // Keys use Playwright names (KeyW, Space, Tab, Digit1, F3, ShiftLeft...).
 // Console lines are printed; `--quiet-console` drops lines that don't look like errors or hash lines.
 import { createRequire } from 'node:module';
@@ -28,8 +30,14 @@ if (!url || !outDir) {
 fs.mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const ctx = await browser.newContext({ viewport: { width: +w, height: +h }, hasTouch: true });
+const ctx = await browser.newContext({ viewport: { width: +w, height: +h }, hasTouch: true, acceptDownloads: true });
+await ctx.grantPermissions(['clipboard-read', 'clipboard-write']).catch(e => console.log(`[clipboard] ${e.message}`));
 const page = await ctx.newPage();
+page.on('download', async d => {
+  const to = path.join(outDir, d.suggestedFilename());
+  await d.saveAs(to);
+  console.log(`[download] ${to}`);
+});
 page.on('console', m => {
   const t = m.text();
   if (quiet && !/error|panic|warn|^\d+ [0-9a-f]{16}$|^#|LOADTEST/i.test(t)) return;
@@ -68,6 +76,10 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
     }
     case 'shot': await page.screenshot({ path: path.join(outDir, a[0]) }); console.log(`[shot] ${path.join(outDir, a[0])}`); break;
     case 'eval': console.log(await page.evaluate(a.join(' '))); break;
+    case 'reload': await page.reload({ waitUntil: 'load', timeout: 120000 }); break;
+    case 'upload': page.once('filechooser', fc => fc.setFiles(a[0])); break;
+    case 'clip': await page.evaluate(t => navigator.clipboard.writeText(t), a.join(' ')); break;
+    case 'readclip': console.log(`[clipboard] ${await page.evaluate(() => navigator.clipboard.readText())}`); break;
     default: console.log(`unknown step: ${raw}`);
   }
 }

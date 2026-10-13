@@ -14,6 +14,8 @@
 //! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
 //! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
 //! * [`inspector`]: the SELECTED PART block (a placed part with the report's numbers, or the palette part).
+//! * [`library`], [`share`], [`blueprints`]: saving and the autosave, the BLUEPRINTS and EXPORT screens, share
+//!   codes and files, the editable name.
 //!
 //! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
 //! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
@@ -21,12 +23,15 @@
 //! part) and [`DrydockCursor`] (the cell under the pointer). Nothing here needs to change for that.
 
 pub mod actions;
+pub mod blueprints;
 pub mod design;
 pub mod ghost;
 pub mod inspector;
+pub mod library;
 pub mod overlays;
 pub mod panels;
 pub mod report;
+pub mod share;
 pub mod state;
 pub mod stats;
 pub mod tools;
@@ -71,6 +76,7 @@ impl Plugin for DrydockPlugin {
             .init_resource::<DrydockCursor>()
             .init_resource::<panels::Palette>()
             .add_message::<DrydockAction>()
+            .add_plugins(blueprints::BlueprintsPlugin)
             .configure_sets(
                 Update,
                 (DockSet::Input, DockSet::Apply, DockSet::Show)

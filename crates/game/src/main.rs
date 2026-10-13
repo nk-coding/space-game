@@ -8,6 +8,8 @@
 //! - `scene`: sandbox (player + raider waves), test flight, showcase, load test; writes the player's pilot input.
 //! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
 //! - `ui_kit`, `ui_icons`: bevy_ui widgets with hand-made hit testing; vector icons in UI nodes.
+//! - `storage`, `clipboard`: the player's documents (designs now; saves, behaviors, settings later) and copy /
+//!   paste of UI text, per platform.
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame.
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
 //! - `shield`: shield bubbles (one batched mesh, procedural shader `shield.wesl`).
@@ -19,6 +21,7 @@
 mod atlas;
 mod backdrop;
 mod camera;
+mod clipboard;
 mod controls;
 mod drydock;
 mod fleet_bar;
@@ -33,6 +36,7 @@ mod shield;
 mod ship_model;
 mod ship_view;
 mod sim_bridge;
+mod storage;
 mod style;
 mod tuning;
 mod ui_icons;
@@ -101,7 +105,8 @@ fn main() {
             mode::ModePlugin,
             scene::ScenePlugin,
             sim_bridge::SimBridgePlugin,
-            // After the bridge (it reads the content the bridge loads).
+            (storage::StoragePlugin, clipboard::ClipboardPlugin),
+            // After the bridge (it reads the content the bridge loads) and the storage.
             (drydock::DrydockPlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
             camera::CameraPlugin,
             controls::ControlsPlugin,
