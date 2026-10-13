@@ -54,3 +54,8 @@ The not-voyage-ready wording appears in FLEET (`USES BEAM LASER`); the drydock's
    Recommended: **A** for the career drydock (the plan's proposal): the row names the node and its cost and
    opens it, which turns a missing part into a goal. It changes GDR-0054's "hidden" for the career, so it needs a
    record; the free drydock (`?unlock=all`) shows everything anyway.
+
+## Decided later (13 Oct 2026)
+
+- `ship-part-looks.html` / `.png`: machine looks A–D; Niklas chose C (housings) with D's nozzles for engines (GDR-0069).
+- `shipyard-long-u.html` / `.png`: the home screen as a long U-shaped dock, round 3 (GDR-0071). Rounds 1 and 2 were not kept.
