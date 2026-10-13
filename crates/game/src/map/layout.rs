@@ -116,7 +116,8 @@ impl Geometry {
         (route.0.map_or(self.home, |k| self.nodes[k]), self.nodes[route.1])
     }
 
-    /// Where a route's time label sits: beside its middle, on the right of the line (or above a level one).
+    /// Where a route's time label starts (it runs to the right from there): beside the line's middle, on its right
+    /// (above a level one).
     pub fn route_label(&self, route: (Option<usize>, usize)) -> Vec2 {
         let (a, b) = self.ends(route);
         let d = (b - a).normalize_or_zero();
@@ -124,7 +125,7 @@ impl Geometry {
         if n.x < -1e-3 || (n.x.abs() <= 1e-3 && n.y > 0.0) {
             n = -n;
         }
-        (a + b) / 2.0 + n * 26.0
+        (a + b) / 2.0 + n * 14.0
     }
 }
 
@@ -426,7 +427,7 @@ mod tests {
         // A route's time label sits beside it, never on it.
         let r = g.routes[1];
         let (a, z) = g.ends(r);
-        assert!((g.route_label(r) - (a + z) / 2.0).length() > 20.0);
+        assert!((g.route_label(r) - (a + z) / 2.0).length() > 10.0 && g.route_label(r).x > (a.x + z.x) / 2.0);
     }
 
     /// A new game: the first voyage open, the rest locked; clearing it opens the next and shows its best time;

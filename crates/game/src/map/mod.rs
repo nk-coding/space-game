@@ -129,7 +129,6 @@ enum MapText {
     ShipSub(usize),
     NoEscort,
     Check(usize),
-    Mark(usize),
 }
 
 /// Nodes shown, hidden or recoloured with the data.
@@ -142,6 +141,8 @@ enum MapNode {
     SiteDot(usize),
     Ship(usize),
     NoEscort,
+    /// A check's mark: a filled dot when it passes, a ring when it doesn't.
+    Mark(usize),
 }
 
 #[derive(Component)]
@@ -260,8 +261,7 @@ fn spawn(
                 // The chain's times.
                 for (k, &route) in geo.routes.iter().enumerate() {
                     let at = geo.route_label(route);
-                    m.spawn((MapNode::Route(k), Node { position_type: PositionType::Absolute, left: px(at.x), top: px(at.y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() }))
-                        .with_child((MapText::Route(k), label(fonts, "", 8.0, c(Tone::Teal, 0.85)), words));
+                    m.spawn((MapNode::Route(k), MapText::Route(k), label(fonts, "", 8.0, c(Tone::Teal, 0.85)), words, abs(at.x, at.y - 5.0)));
                 }
                 // The shipyard's label, left of it.
                 let h = geo.home;
@@ -371,7 +371,7 @@ fn spawn(
                         p.spawn(row(0.0)).with_children(|line| {
                             for k in [2 * r, 2 * r + 1] {
                                 line.spawn(Node { width: percent(50), ..row(7.0) }).with_children(|cell| {
-                                    cell.spawn((MapText::Mark(k), label(fonts, "", 9.0, c(Tone::Teal, 1.0))));
+                                    cell.spawn((MapNode::Mark(k), BackgroundColor(Color::NONE), BorderColor::all(Color::NONE), Node { border: UiRect::all(px(1.2)), ..dot(6.0) }));
                                     cell.spawn((MapText::Check(k), tracked(fonts, "", 8.0, c(Tone::Label, 1.0), 0.18)));
                                 });
                             }
@@ -591,7 +591,7 @@ fn sync_panel(
     } else {
         match state {
             VoyageState::Cleared { best } => (
-                format!("CLEARED{}  ·  EACH LAUNCH ROLLS NEW SITES", best.map(|t| format!("  ·  BEST {}", crate::voyage::clock(t))).unwrap_or_default()),
+                format!("CLEARED{}  ·  NEW SITES EACH TIME", best.map(|t| format!("  ·  BEST {}", crate::voyage::clock(t))).unwrap_or_default()),
                 Tone::Teal,
             ),
             _ => ("THE GATE IS OPEN".into(), Tone::Teal),
@@ -614,7 +614,6 @@ fn sync_panel(
             MapText::NoEscort => (format!("NO ESCORT  ·  YOUR MIND RUNS {}", plural(mind, "CORE")), Tone::Dim),
             MapText::ReadyHead if checks.iter().all(layout::Check::ok) => ("VOYAGE-READY".into(), Tone::Teal),
             MapText::ReadyHead => ("NOT VOYAGE-READY".into(), Tone::Coral),
-            MapText::Mark(j) => (if checks[j].ok() { "✓" } else { "×" }.into(), checks[j].tone),
             MapText::Check(j) => (checks[j].words.clone(), if checks[j].ok() { Tone::Label } else { Tone::Coral }),
             MapText::Status => status.clone(),
             _ => continue,
@@ -658,6 +657,21 @@ fn sync_panel(
                 true
             }
             MapNode::Ship(j) => j < ships.len(),
+            MapNode::Mark(j) => {
+                let tone = ui_color(checks[j].tone.color(ui), 1.0);
+                let fill = if checks[j].ok() { tone } else { Color::NONE };
+                if let Some(mut bg) = bg
+                    && bg.0 != fill
+                {
+                    bg.0 = fill;
+                }
+                if let Some(mut b) = border
+                    && *b != BorderColor::all(tone)
+                {
+                    *b = BorderColor::all(tone);
+                }
+                true
+            }
             MapNode::NoEscort => escorts.is_empty(),
             MapNode::Route(_) | MapNode::Dots(_) => continue,
         };
