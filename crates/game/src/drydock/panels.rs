@@ -37,8 +37,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillLock, PillText, TextField, TextFieldText, Tone, UiBlock, ValueBar, label, number, prose, ring_node, set_color,
-    set_text, spawn_bar, spawn_brackets, spawn_pill, tracked, wheel_rows,
+    Hot, Pill, PillLock, PillText, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose,
+    ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -87,6 +87,10 @@ pub(super) struct SelStat(usize);
 
 #[derive(Component)]
 pub(super) struct SelBonus(usize);
+
+/// The selected part's lines and controls under its name: they scroll when they don't fit.
+#[derive(Component)]
+pub(super) struct SelScroll;
 
 /// Every text the drydock updates.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,13 +172,13 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     for (k, m) in armor_materials(content).enumerate() {
                         let text = if k < 9 { format!("{} {}", m.name.to_uppercase(), k + 1) } else { m.name.to_uppercase() };
                         let lock = UiIcon::Glyph { glyph: Glyph::Lock, color: ui.dim };
-                        spawn_pill(tr, fonts, &text, 8.5, 28.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock));
+                        spawn_pill(tr, fonts, &text, 10.0, 30.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock));
                     }
                     tr.spawn((Node { width: px(1), height: px(22), margin: UiRect::horizontal(px(6)), ..default() }, BackgroundColor(c(Tone::Label, 0.25))));
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for o in Overlay::ALL {
                         let accent = if o == Overlay::Bonus { Tone::Gold } else { Tone::Teal };
-                        spawn_pill(tr, fonts, overlay_name(o), 9.0, 28.0, None, pill(accent), ActionButton(DrydockAction::Overlay(o)));
+                        spawn_pill(tr, fonts, overlay_name(o), 10.0, 30.0, None, pill(accent), ActionButton(DrydockAction::Overlay(o)));
                     }
                 });
 
@@ -200,7 +204,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     ))
                     .with_children(|f| {
                         f.spawn(glyph(Glyph::Search, Tone::Label, 14.0));
-                        f.spawn((TextFieldText, prose(fonts, "", 12.5, c(Tone::Dim, 1.0)), Node { flex_grow: 1.0, ..default() }));
+                        f.spawn((field_text(fonts, 12.5), Node { flex_grow: 1.0, ..default() }));
                         f.spawn(label(fonts, "/", 11.0, c(Tone::Dim, 1.0)));
                     });
                     lp.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), flex_shrink: 0.0, ..default() })
@@ -316,47 +320,60 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 });
                         }
                     });
-                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(20)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(14)), ..default() }));
-                    rp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), ..default() }).with_children(|h| {
+                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(14)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
+                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
+                    rp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), flex_shrink: 0.0, ..default() }).with_children(|h| {
                         // The icon in a bracketed box (like the fleet bar's chips).
-                        h.spawn(Node { width: px(60), height: px(60), flex_shrink: 0.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
+                        h.spawn(Node { width: px(54), height: px(54), flex_shrink: 0.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                             .with_children(|b| {
                                 spawn_brackets(b, 9.0, 1.2, c(Tone::Label, 0.45));
-                                b.spawn((SelIcon, UiIcon::Part { part: String::new(), material: None }, Node { width: px(44), height: px(44), ..default() }));
+                                b.spawn((SelIcon, UiIcon::Part { part: String::new(), material: None }, Node { width: px(40), height: px(40), ..default() }));
                             });
                         h.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|t| {
                             t.spawn((PanelText::SelName, prose(fonts, "", 18.0, c(Tone::Number, 1.0))));
                             t.spawn((PanelText::SelSub, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
                         });
                     });
-                    rp.spawn((PanelText::SelSummary, prose(fonts, "", 11.5, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(12)), ..default() }));
-                    rp.spawn(Node {
-                        display: Display::Grid,
-                        grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
-                        column_gap: px(12),
-                        row_gap: px(10),
-                        margin: UiRect::top(px(14)),
-                        ..default()
-                    })
-                    .with_children(|g| {
-                        for k in 0..SEL_STATS {
-                            g.spawn((SelStat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() })).with_children(|cell| {
-                                cell.spawn((PanelText::SelStatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
-                                cell.spawn((PanelText::SelStatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
+                    // The rest scrolls (the wheel) when a part has more lines and controls than the column has room
+                    // for; the cue says so.
+                    let body = rp
+                        .spawn((
+                            SelScroll,
+                            ScrollPosition::default(),
+                            Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
+                        ))
+                        .with_children(|sb| {
+                            sb.spawn((PanelText::SelSummary, prose(fonts, "", 11.5, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() }));
+                            sb.spawn(Node {
+                                display: Display::Grid,
+                                grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
+                                column_gap: px(12),
+                                row_gap: px(8),
+                                margin: UiRect::top(px(14)),
+                                flex_shrink: 0.0,
+                                ..default()
+                            })
+                            .with_children(|g| {
+                                for k in 0..SEL_STATS {
+                                    g.spawn((SelStat(k), Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() })).with_children(|cell| {
+                                        cell.spawn((PanelText::SelStatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
+                                        cell.spawn((PanelText::SelStatValue(k), number(fonts, "", 14.0, c(Tone::Number, 1.0))));
+                                    });
+                                }
                             });
-                        }
-                    });
-                    rp.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), ..default() }).with_children(|b| {
-                        for k in 0..SEL_BONUSES {
-                            b.spawn((SelBonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }))
-                                .with_children(|r| {
-                                    r.spawn(glyph(Glyph::Diamond, Tone::Gold, 9.0));
-                                    r.spawn((PanelText::SelBonus(k), tracked(fonts, "", 8.5, c(Tone::Gold, 1.0), 0.2)));
-                                });
-                        }
-                    });
-                    super::inspector::spawn_controls(rp, fonts, &style, content);
+                            sb.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() }).with_children(|b| {
+                                for k in 0..SEL_BONUSES {
+                                    b.spawn((SelBonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }))
+                                        .with_children(|r| {
+                                            r.spawn(glyph(Glyph::Diamond, Tone::Gold, 9.0));
+                                            r.spawn((PanelText::SelBonus(k), tracked(fonts, "", 8.5, c(Tone::Gold, 1.0), 0.2)));
+                                        });
+                                }
+                            });
+                            super::inspector::spawn_controls(sb, fonts, &style, content);
+                        })
+                        .id();
+                    spawn_scroll_cue(rp, fonts, &style, body);
                 });
 
             // Centre: the tools above the grid; the grid viewport; the info line and the zoom.
@@ -370,7 +387,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             ("SELECT V", DrydockAction::Tool(Tool::Select)),
                             ("ROTATE Q E", DrydockAction::RotateCw),
                         ] {
-                            spawn_pill(tb, fonts, text, 9.5, 30.0, None, pill(Tone::Teal), ActionButton(action));
+                            spawn_pill(tb, fonts, text, 10.0, 30.0, None, pill(Tone::Teal), ActionButton(action));
                         }
                     });
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
@@ -590,12 +607,40 @@ fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
     UiIcon::Part { part: part.to_string(), material: hull.then(|| material.to_string()) }
 }
 
-/// The selected part's icon, its stat and bonus rows (from [`Inspector`]), the stats grid's bars and cells.
+/// The wheel over the selected part's lines scrolls them; another kind of part (or a palette part instead of a
+/// placed one) starts at the top.
+pub(super) fn scroll_selected(
+    insp: Res<Inspector>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    wheel: Res<AccumulatedMouseScroll>,
+    area: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition), With<SelScroll>>,
+    mut shown: Local<(String, bool)>,
+) {
+    let (node, tf, mut pos) = area.into_inner();
+    let kind = (insp.part.clone(), insp.installed.is_some());
+    if insp.is_changed() && *shown != kind {
+        *shown = kind;
+        pos.0.y = 0.0;
+        return;
+    }
+    if wheel.delta.y == 0.0 || !window.physical_cursor_position().is_some_and(|c| node.contains_point(*tf, c)) {
+        return;
+    }
+    let max = ((node.content_size.y - node.size.y) * node.inverse_scale_factor).max(0.0);
+    let y = (pos.0.y - wheel_rows(&wheel) * WHEEL_LINE_PX).clamp(0.0, max);
+    if pos.0.y != y {
+        pos.0.y = y;
+    }
+}
+
+/// The selected part's icon, its summary (none for a placed part), its stat and bonus rows (from [`Inspector`]),
+/// the stats grid's bars and cells.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn sync_blocks(
     insp: Res<Inspector>,
     stats: Res<DrydockStats>,
     mut sel_icon: Single<&mut UiIcon, With<SelIcon>>,
+    mut texts: Query<(&PanelText, &mut Node), (Without<SelStat>, Without<SelBonus>, Without<StatCellNode>, Without<StatBar>)>,
     mut sel_stats: Query<(&SelStat, &mut Node), (Without<SelBonus>, Without<StatCellNode>)>,
     mut sel_bonuses: Query<(&SelBonus, &mut Node), (Without<SelStat>, Without<StatCellNode>)>,
     mut cells: Query<(&StatCellNode, &mut Node), (Without<SelStat>, Without<SelBonus>)>,
@@ -605,6 +650,11 @@ pub(super) fn sync_blocks(
         let want = UiIcon::Part { part: insp.part.clone(), material: insp.material.clone() };
         if **sel_icon != want {
             **sel_icon = want;
+        }
+        for (t, mut n) in &mut texts {
+            if *t == PanelText::SelSummary {
+                set_display(&mut n, !insp.summary.is_empty());
+            }
         }
         for (s, mut n) in &mut sel_stats {
             set_display(&mut n, s.0 < insp.stats.len());
@@ -744,7 +794,7 @@ pub(super) fn sync_texts(
                     }
                     None => {}
                 }
-                Tone::Dim
+                sub_tone(row_part(k).is_some_and(|p| ui.picked.as_deref() == Some(p.id.as_str())))
             }
             PanelText::StatLabel(k) => {
                 s.push_str(stats.cells.get(k).map_or("", |c| c.label.as_str()));

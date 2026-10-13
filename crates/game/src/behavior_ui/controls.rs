@@ -17,7 +17,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::drydock::report::DrydockReport;
 use crate::ui_kit::{
-    Hot, Pill, PillText, Ring, TextField, TextFieldText, Tone, ValueBar, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
+    Hot, Pill, PillText, Ring, TextField, Tone, ValueBar, field_text, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
@@ -107,7 +107,7 @@ pub(super) fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Insp
             }
             Control::Note { target, text } => spawn_note(p, kit, *target, text),
             Control::Hint(h) => {
-                p.spawn((tracked(kit.fonts, h, 7.5, kit.c(Tone::Dim, 1.0), 0.25), Node { margin: UiRect::top(px(9)), ..default() }));
+                p.spawn((tracked(kit.fonts, h, 8.5, kit.c(Tone::Label, 1.0), 0.2), Node { margin: UiRect::top(px(10)), ..default() }));
             }
         }
     }
@@ -259,7 +259,7 @@ fn spawn_switch(p: &mut ChildSpawnerCommands, kit: &Kit, s: &SwitchRow) {
     .with_children(|r| {
         r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|l| {
             l.spawn(tracked(kit.fonts, &s.label, 8.5, kit.c(if s.on { Tone::Violet } else { Tone::Label }, 1.0), 0.3));
-            l.spawn(tracked(kit.fonts, &s.hint, 7.0, kit.c(Tone::Dim, 1.0), 0.25));
+            l.spawn(tracked(kit.fonts, &s.hint, 8.0, kit.c(Tone::Label, 1.0), 0.2));
         });
         let (edge, fill, dot) = if s.on {
             (kit.c(Tone::Teal, 0.9), kit.c(Tone::Teal, 0.22), kit.c(Tone::Teal, 1.0))
@@ -305,7 +305,7 @@ fn spawn_note(p: &mut ChildSpawnerCommands, kit: &Kit, target: NoteTarget, text:
             BorderColor::all(kit.c(Tone::Label, 0.3)),
         ))
         .with_children(|f| {
-            f.spawn((TextFieldText, prose(kit.fonts, "", 12.0, kit.c(Tone::Dim, 1.0)), Node { flex_grow: 1.0, ..default() }));
+            f.spawn((field_text(kit.fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
         });
     });
 }

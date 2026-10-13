@@ -3,8 +3,10 @@
 //!
 //! One mesh (atlas material, vertex colours), a child of the design's mesh so it shows and hides with it, above
 //! the tiles and below the frame's veil and hover cell. It is rebuilt only when the report is recomputed or an
-//! overlay is toggled, never per frame; widths are in cells, so it zooms with the ship. Report positions are
-//! blueprint frame = frame cells (y down); the world has blueprint `(x, y)` at `(x, −y)` (`view.rs`).
+//! overlay is toggled, and while ARCS is on also when the view moves (its lines are clipped to the grid
+//! viewport: they run far past the frame and would cross the UI); widths are in cells, so it zooms with the ship.
+//! Report positions are blueprint frame = frame cells (y down); the world has blueprint `(x, y)` at `(x, −y)`
+//! (`view.rs`).
 //!
 //! * **Heat**: each part of the main piece tinted by its steady heat at full use over its limit, teal (cool) →
 //!   gold (at the limit) → coral (at [`RUNS_HOT_MAX`]); parts over their limit outlined (gold while they only
@@ -16,7 +18,7 @@
 //! * **Shields**: each bubble (centre, radius after bonuses) as a faint disc with a soft rim in the shield colour.
 //! * **Arcs**: each gun's line of fire to its range (clear: dashed, weapons cyan; blocked: coral up to the first
 //!   blocker, a cross there, blockers outlined); each engine's plume lanes to their reach (propulsion teal; a lane
-//!   that burns an own part: coral, the part outlined).
+//!   that burns an own part: coral, the part outlined). The lines end at the grid viewport's edge.
 //! * **Issue marks**, always (overlays on or off): a small triangle in the top-right corner of every part an issue
 //!   names: coral for blocked guns, parts a plume burns, parts that fall off and parts overheating past
 //!   [`RUNS_HOT_MAX`]; gold for parts that only run hot (over their limit, up to it).
@@ -29,6 +31,7 @@ use sim::DesignReport;
 use sim::report::Issue;
 
 use crate::atlas::{Atlas, Region};
+use crate::camera::CameraRig;
 use crate::meshbuf::{MeshBuf, ensure_ccw, inset_convex};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, mix, vcol};
@@ -38,17 +41,18 @@ use super::PlayerDesign;
 use super::report::DrydockReport;
 use super::state::{DrydockUi, Overlay};
 use super::stats::{RUNS_HOT_MAX, yaw_pull};
-use super::view::DockShip;
+use super::view::{DockCamera, DockShip};
 
 /// Above the design's tiles (relative to its mesh), below the frame's veil and hover cell (FX layer at z 400).
 const Z_OVERLAY: f32 = 30.0;
 /// Lines of fire run to their range (45–75 m, far past a frigate frame); outside the frame they fade to this.
 const FADED: f32 = 0.3;
 
-/// The overlay mesh and the overlay pills it was built for.
+/// The overlay mesh, the overlay pills it was built for and (with ARCS) the part of the world the grid viewport
+/// showed.
 #[derive(Component)]
 pub(super) struct DockOverlay {
-    built: Option<u8>,
+    built: Option<(u8, Option<Rect>)>,
 }
 
 pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<Atlas>, ship: Single<Entity, With<DockShip>>) {
@@ -60,7 +64,8 @@ pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, at
     ));
 }
 
-/// Rebuilds the overlay mesh when the report is recomputed or the overlay pills change.
+/// Rebuilds the overlay mesh when the report is recomputed or the overlay pills change, and with ARCS when the
+/// view moves (in `PostUpdate`, after the camera: the clip follows the view of this frame).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild(
     report: Res<DrydockReport>,
@@ -69,15 +74,20 @@ pub(super) fn rebuild(
     content: Res<GameContent>,
     atlas: Res<Atlas>,
     style: Res<Style>,
+    rig: Res<CameraRig>,
+    cam: Res<DockCamera>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut overlay: Single<(&mut DockOverlay, &Mesh2d)>,
 ) {
     let bits = Overlay::ALL.iter().enumerate().filter(|(_, o)| ui.overlay(**o)).fold(0u8, |b, (k, _)| b | 1 << k);
+    // What of the world the grid viewport shows.
+    let view = Rect::from_corners(rig.screen_to_world(cam.viewport.min), rig.screen_to_world(cam.viewport.max));
+    let key = (bits, ui.overlay(Overlay::Arcs).then_some(view));
     let (dock, mesh) = &mut *overlay;
-    if (!report.is_changed() && dock.built == Some(bits)) || report.revision != Some(design.revision()) {
+    if (!report.is_changed() && dock.built == Some(key)) || report.revision != Some(design.revision()) {
         return;
     }
-    dock.built = Some(bits);
+    dock.built = Some(key);
     let shapes = design.dock().shapes();
     let mut m = MeshBuf::default();
     if let Some(r) = report.get()
@@ -93,7 +103,7 @@ pub(super) fn rebuild(
         let pen = Pen::new(&atlas, &style);
         let on = |o: Overlay| ui.overlay(o);
         let (w, h) = design.frame();
-        draw(&mut m, &pen, r, shapes, &masses, Rect::new(0.0, -(h as f32), w as f32, 0.0), on);
+        draw(&mut m, &pen, r, shapes, &masses, Rect::new(0.0, -(h as f32), w as f32, 0.0), view, on);
     }
     let new = if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() };
     let _ = meshes.insert(&mesh.0, new);
@@ -143,22 +153,38 @@ impl Pen {
         m.quad_uv([a + n, b + n, b - n, a - n], [self.white; 4], vcol(c, 1.0));
     }
 
-    /// Dashes `(dash, gap)` from `a` to `b`, starting with a dash; dashes outside `keep` fade to a third.
-    fn dashed(&self, m: &mut MeshBuf, (a, b): (Vec2, Vec2), (dash, gap): (f32, f32), keep: Rect, hw: f32, c: Color) {
+    /// Dashes `(dash, gap)` from `a` to `b`, starting with a dash, cut at the edge of `view`; dashes outside `keep`
+    /// fade to a third.
+    #[allow(clippy::too_many_arguments)]
+    fn dashed(&self, m: &mut MeshBuf, (a, b): (Vec2, Vec2), (dash, gap): (f32, f32), keep: Rect, view: Rect, hw: f32, c: Color) {
         let len = a.distance(b);
         let d = (b - a) / len.max(1e-6);
-        let mut s = 0.0;
-        while s < len {
-            let (p, q) = (a + d * s, a + d * (s + dash).min(len));
-            let fade = if keep.contains((p + q) / 2.0) { 1.0 } else { FADED };
-            self.seg(m, p, q, hw, c.with_alpha(c.alpha() * fade));
+        let Some((t0, t1)) = clip_segment(a, b, view) else { return };
+        // Only the dashes in view (a long line far out of view costs nothing).
+        let mut s = ((t0 * len / (dash + gap)).floor() * (dash + gap)).max(0.0);
+        while s < t1 * len {
+            let (p, q) = (a + d * s.max(t0 * len), a + d * (s + dash).min(len).min(t1 * len));
+            if q.distance_squared(a) > p.distance_squared(a) {
+                let mid = a + d * (s + dash.min(len - s) / 2.0);
+                let fade = if keep.contains(mid) { 1.0 } else { FADED };
+                self.seg(m, p, q, hw, c.with_alpha(c.alpha() * fade));
+            }
             s += dash + gap;
         }
     }
 
-    /// A soft strip (the halo region across it) from `a` to `b`.
-    fn soft(&self, m: &mut MeshBuf, a: Vec2, b: Vec2, hw: f32, c: Color) {
-        m.strip(&[a, b], false, hw, &self.halo, vcol(c, 1.0));
+    /// A straight segment cut at the edge of `view`.
+    fn seg_in(&self, m: &mut MeshBuf, a: Vec2, b: Vec2, view: Rect, hw: f32, c: Color) {
+        if let Some((t0, t1)) = clip_segment(a, b, view) {
+            self.seg(m, a.lerp(b, t0), a.lerp(b, t1), hw, c);
+        }
+    }
+
+    /// A soft strip (the halo region across it) from `a` to `b`, cut at the edge of `view`.
+    fn soft(&self, m: &mut MeshBuf, a: Vec2, b: Vec2, view: Rect, hw: f32, c: Color) {
+        if let Some((t0, t1)) = clip_segment(a, b, view) {
+            m.strip(&[a.lerp(b, t0), a.lerp(b, t1)], false, hw, &self.halo, vcol(c, 1.0));
+        }
     }
 
     /// A cross of half size `s` at `p`.
@@ -180,6 +206,25 @@ impl Pen {
     fn polyline(&self, m: &mut MeshBuf, pts: &[Vec2], hw: f32, c: Color) {
         m.strip(pts, false, hw, &self.white_region, vcol(c, 1.0));
     }
+}
+
+/// The part of the segment `a → b` inside `r`, as shares of the way from `a` (Liang–Barsky); `None` when none of
+/// it is.
+fn clip_segment(a: Vec2, b: Vec2, r: Rect) -> Option<(f32, f32)> {
+    let d = b - a;
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for (p, q) in [(-d.x, a.x - r.min.x), (d.x, r.max.x - a.x), (-d.y, a.y - r.min.y), (d.y, r.max.y - a.y)] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else if p < 0.0 {
+            t0 = t0.max(q / p);
+        } else {
+            t1 = t1.min(q / p);
+        }
+    }
+    (t0 < t1).then_some((t0, t1))
 }
 
 /// Blueprint frame (y down) to world (y up).
@@ -276,8 +321,10 @@ fn first_block(shapes: &[PlacedShape], muzzle: Vec2, dir: Vec2, blockers: &[sim:
         .min_by(f32::total_cmp)
 }
 
-/// Everything the overlays `on` show, plus the issue marks, bottom to top. `frame` is the frame in world space.
-fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], masses: &[f32], frame: Rect, on: impl Fn(Overlay) -> bool) {
+/// Everything the overlays `on` show, plus the issue marks, bottom to top. `frame` is the frame in world space,
+/// `view` what the grid viewport shows of the world (the lines end at its edge).
+#[allow(clippy::too_many_arguments)]
+fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], masses: &[f32], frame: Rect, view: Rect, on: impl Fn(Overlay) -> bool) {
     let ui = &pen.ui;
     let main_part = |i: usize| r.main == Some(r.parts[i].piece);
 
@@ -311,13 +358,15 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
                 let (o, d) = (world(l.origin), dir_world(l.dir));
                 let end = o + d * l.reach;
                 let c = if l.burns.is_some() { ui.coral } else { pen.propulsion };
-                pen.soft(m, o, end, 0.3, c.with_alpha(0.3));
+                pen.soft(m, o, end, view, 0.3, c.with_alpha(0.3));
                 if l.burns.is_some() {
-                    pen.seg(m, o, end, 0.03, c.with_alpha(0.9));
-                    pen.cross(m, end, 0.16, 0.035, c);
+                    pen.seg_in(m, o, end, view, 0.03, c.with_alpha(0.9));
+                    if view.contains(end) {
+                        pen.cross(m, end, 0.16, 0.035, c);
+                    }
                 } else {
-                    pen.dashed(m, (o, end), (0.3, 0.22), frame, 0.022, c.with_alpha(0.75));
-                    pen.seg(m, end - d.perp() * 0.22, end + d.perp() * 0.22, 0.022, c.with_alpha(0.75));
+                    pen.dashed(m, (o, end), (0.3, 0.22), frame, view, 0.022, c.with_alpha(0.75));
+                    pen.seg_in(m, end - d.perp() * 0.22, end + d.perp() * 0.22, view, 0.022, c.with_alpha(0.75));
                 }
             }
         }
@@ -325,9 +374,9 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
             let (o, d) = (world(g.muzzle), dir_world(g.facing));
             if g.clear {
                 let end = o + d * g.range;
-                pen.dashed(m, (o, end), (0.45, 0.3), frame, 0.03, pen.weapons.with_alpha(0.85));
+                pen.dashed(m, (o, end), (0.45, 0.3), frame, view, 0.03, pen.weapons.with_alpha(0.85));
                 let tick = if frame.contains(end) { 0.85 } else { 0.85 * FADED };
-                pen.seg(m, end - d.perp() * 0.3, end + d.perp() * 0.3, 0.03, pen.weapons.with_alpha(tick));
+                pen.seg_in(m, end - d.perp() * 0.3, end + d.perp() * 0.3, view, 0.03, pen.weapons.with_alpha(tick));
             } else {
                 let t = first_block(shapes, o, d, &g.blockers).unwrap_or(0.0);
                 pen.seg(m, o, o + d * t.max(0.15), 0.035, ui.coral.with_alpha(0.95));
@@ -365,7 +414,9 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
         if f.thrust[0] > 0.0 {
             let x = c.x + f.yaw / f.thrust[0];
             let (bottom, top) = (Vec2::new(x, c.y - 2.2), Vec2::new(x, c.y + 2.4));
-            pen.dashed(m, (bottom, top), (0.22, 0.16), frame, 0.025, ui.teal.with_alpha(0.8));
+            // Short and on the ship: not cut (the mesh is rebuilt for a moving view only while ARCS is on).
+            let anywhere = Rect::new(f32::MIN, f32::MIN, f32::MAX, f32::MAX);
+            pen.dashed(m, (bottom, top), (0.22, 0.16), frame, anywhere, 0.025, ui.teal.with_alpha(0.8));
             pen.fill(m, &[top + Vec2::new(0.0, 0.3), top + Vec2::new(-0.16, 0.0), top + Vec2::new(0.16, 0.0)], ui.teal.with_alpha(0.9));
         }
         if let Some((pull, held)) = yaw_pull(r)
@@ -476,6 +527,22 @@ mod tests {
             assert!(shapes[b.source as usize].cells().contains(&a));
             assert!(shapes[b.target as usize].cells().contains(&c));
         }
+    }
+
+    #[test]
+    fn lines_are_cut_at_the_view() {
+        let view = Rect::new(0.0, 0.0, 10.0, 10.0);
+        // From inside out through the top: cut where it leaves.
+        let (t0, t1) = clip_segment(Vec2::new(5.0, 5.0), Vec2::new(5.0, 25.0), view).unwrap();
+        assert!((t0 - 0.0).abs() < 1e-6 && (t1 - 0.25).abs() < 1e-6, "{t0} {t1}");
+        // Across the whole view, diagonal.
+        let (t0, t1) = clip_segment(Vec2::new(-10.0, -10.0), Vec2::new(20.0, 20.0), view).unwrap();
+        assert!((t0 - 1.0 / 3.0).abs() < 1e-6 && (t1 - 2.0 / 3.0).abs() < 1e-6, "{t0} {t1}");
+        // Beside it, or parallel outside: nothing.
+        assert_eq!(clip_segment(Vec2::new(12.0, 0.0), Vec2::new(12.0, 30.0), view), None);
+        assert_eq!(clip_segment(Vec2::new(-5.0, 2.0), Vec2::new(-1.0, 8.0), view), None);
+        // Wholly inside: all of it.
+        assert_eq!(clip_segment(Vec2::new(1.0, 1.0), Vec2::new(2.0, 3.0), view), Some((0.0, 1.0)));
     }
 
     #[test]

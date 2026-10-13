@@ -34,8 +34,8 @@ use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillLock, TextField, TextFieldText, Tone, UiBlock, UiClick, label, name_in_place, number, prose, set_color, set_text,
-    spawn_pill, tracked, wheel_rows,
+    Hot, Pill, PillLock, TextField, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose, set_color,
+    set_text, spawn_pill, sub_tone, tracked, wheel_rows,
 };
 
 use super::actions::DrydockAction;
@@ -51,6 +51,8 @@ use super::{DockSet, PlayerDesign, stats};
 const LIST_ROWS: usize = 6;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
+/// The width of the heads before the NEW, FRAME and IMPORT rows (their pills line up).
+const HEAD_W: f32 = 176.0;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -462,7 +464,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
                 BorderColor::all(edge),
             ))
             .with_children(|f| {
-                f.spawn((TextFieldText, prose(fonts, "", 16.0, name)));
+                f.spawn(field_text(fonts, 16.0));
             });
             t.spawn((TitleNote, label(fonts, "", 8.5, dim)));
         });
@@ -495,17 +497,31 @@ fn title(
 }
 
 /// "UNSAVED" while the design differs from its saved (or opened) version.
-fn sync_title(design: Res<PlayerDesign>, slot: Res<DesignSlot>, mut note: Single<&mut Text, With<TitleNote>>, mut done: Local<bool>) {
+fn sync_title(
+    design: Res<PlayerDesign>,
+    slot: Res<DesignSlot>,
+    style: Res<Style>,
+    note: Single<(&mut Text, &mut TextColor), With<TitleNote>>,
+    mut done: Local<bool>,
+) {
     if *done && !design.is_changed() && !slot.is_changed() {
         return;
     }
     *done = true;
-    let text = match (slot.id.is_some(), slot.dirty(&design)) {
-        (_, true) => "UNSAVED",
-        (true, false) => "SAVED",
-        (false, false) => "",
-    };
-    set_text(&mut note, text);
+    let (text, tone) = title_tag(slot.id.is_some(), slot.dirty(&design));
+    let (mut t, mut color) = note.into_inner();
+    set_text(&mut t, text);
+    set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
+}
+
+/// The saved state after the design's name, in the BEHAVIOR screen's tones (`behavior_ui::saving::header_tag`):
+/// UNSAVED gold, SAVED grey, nothing for a design never saved and unchanged.
+fn title_tag(saved_before: bool, dirty: bool) -> (&'static str, Tone) {
+    match (saved_before, dirty) {
+        (_, true) => ("UNSAVED", Tone::Gold),
+        (true, false) => ("SAVED", Tone::Label),
+        (false, false) => ("", Tone::Dim),
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -665,7 +681,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                                 BorderColor::all(c(Tone::Label, 0.3)),
                             ))
                             .with_children(|f| {
-                                f.spawn((TextFieldText, prose(fonts, "", 13.0, c(Tone::Number, 1.0))));
+                                f.spawn(field_text(fonts, 13.0));
                             });
                             b.spawn(label(fonts, "ENTER RENAMES  ·  ESC CANCELS", 8.5, c(Tone::Dim, 1.0)));
                         });
@@ -676,15 +692,17 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                         });
                     });
                     page.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    // NEW in a frame; the frame of the design in the drydock. Locked frames are dimmed with a lock.
+                    // NEW in a frame; the frame of the design in the drydock: two rows with their own heads (on one
+                    // line the two sets of frame pills looked alike).
                     let lock = || Some(UiIcon::Glyph { glyph: Glyph::Lock, color: ui.dim });
                     page.spawn(row(8.0)).with_children(|r| {
-                        r.spawn(head("NEW", 80.0));
+                        r.spawn(head("NEW EMPTY DESIGN", HEAD_W));
                         for (name, size) in &frames {
                             spawn_pill(r, fonts, name, 9.5, 30.0, lock(), pill, (ShelfButton::New(*size), PillLock));
                         }
-                        r.spawn(Node { width: px(40), ..default() });
-                        r.spawn(head("FRAME", 70.0));
+                    });
+                    page.spawn(row(8.0)).with_children(|r| {
+                        r.spawn(head("FRAME OF THIS DESIGN", HEAD_W));
                         for (name, size) in &frames {
                             let text = format!("{name} {}×{}", size.0, size.1);
                             spawn_pill(r, fonts, &text, 9.5, 30.0, lock(), pill, (ShelfButton::Frame(*size), PillLock));
@@ -692,7 +710,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                     });
                     // IMPORT: a file, or paste a code.
                     page.spawn(row(8.0)).with_children(|r| {
-                        r.spawn(head("IMPORT", 80.0));
+                        r.spawn(head("IMPORT", HEAD_W));
                         spawn_pill(r, fonts, ".RON FILE", 9.5, 30.0, None, pill, ShelfButton::ImportFile);
                         r.spawn((
                             PasteBox,
@@ -1022,7 +1040,7 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
                 && let Some(e) = shelf.entry(id)
             {
                 rename.value = e.name.clone();
-                rename.focused = true;
+                rename.focus();
                 shelf.mode = Mode::Rename(id.clone());
             }
         }
@@ -1258,7 +1276,7 @@ fn sync_shelf(
                     if let Some(t) = e.saved {
                         s.push_str(&format!("  ·  {}", library::ago(shelf.now, t)));
                     }
-                    Tone::Dim
+                    sub_tone(picked(0, k))
                 }
                 None => Tone::Dim,
             },
@@ -1268,7 +1286,7 @@ fn sync_shelf(
                     let (w, h) = library::parts_size(content, b);
                     s.push_str(&format!("{w}×{h}  ·  {} PARTS  ·  {faction}", b.parts.len()));
                 }
-                Tone::Dim
+                sub_tone(picked(1, k))
             }
             ShelfText::RowTag(list, k) => {
                 if list == 0 && shelf.designs.get(shelf.offset[0] + k).is_some_and(|e| Some(e.id.as_str()) == working) {
@@ -1380,6 +1398,15 @@ mod tests {
         let storage = world.resource::<Storage>();
         assert!(storage.list("designs").unwrap().is_empty() && storage.list("behaviors").unwrap().is_empty());
         assert_eq!(world.resource::<PlayerDesign>().blueprint().name, "Halvex Runner");
+    }
+
+    /// The saved state after the name reads like the BEHAVIOR screen's: UNSAVED gold, SAVED grey.
+    #[test]
+    fn the_title_tag_matches_the_behavior_screen() {
+        assert_eq!(title_tag(true, true), ("UNSAVED", Tone::Gold));
+        assert_eq!(title_tag(false, true), ("UNSAVED", Tone::Gold));
+        assert_eq!(title_tag(true, false), ("SAVED", Tone::Label));
+        assert_eq!(title_tag(false, false).0, "");
     }
 
     /// Delete, a tool key or T while BLUEPRINTS covers the design does nothing to it; Ctrl+S still saves.

@@ -11,12 +11,13 @@
 //! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind.
 //!
 //! The world draws before bevy_ui, so UI nodes are drawn over icons: give the nodes behind an icon at most a
-//! faint background. Icons follow their node's visibility.
+//! faint background. Icons follow their node's visibility, and hide when a scrolled parent clips them (an icon
+//! is a world mesh: bevy_ui's clipping does not reach it).
 
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiSystems};
+use bevy::ui::{CalculatedClip, ComputedNode, UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 use data::{Blueprint, Placement};
 
@@ -101,7 +102,7 @@ impl Plugin for UiIconsPlugin {
 fn draw_icons(
     mut commands: Commands,
     mut state: ResMut<IconMeshes>,
-    nodes: Query<(Entity, &UiIcon, &ComputedNode, &UiGlobalTransform, &InheritedVisibility)>,
+    nodes: Query<(Entity, &UiIcon, &ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&CalculatedClip>)>,
     mut placed: Query<(&mut Transform, &mut Visibility), With<UiIconMesh>>,
     mut removed: RemovedComponents<UiIcon>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -120,7 +121,7 @@ fn draw_icons(
     }
     let scale = window.scale_factor();
     let mut px_per_cell = 0.0f32;
-    for (node_e, icon, node, tf, vis) in &nodes {
+    for (node_e, icon, node, tf, vis, clip) in &nodes {
         let m = state.0.entry(node_e).or_insert_with(|| {
             let mesh = meshes.add(MeshBuf::placeholder());
             let entity = commands
@@ -136,7 +137,12 @@ fn draw_icons(
         });
         let Ok((mut t, mut v)) = placed.get_mut(m.entity) else { continue };
         let size = node.size / scale;
-        let show = vis.get() && size.cmpgt(Vec2::splat(1.0)).all();
+        // Shown only whole: an icon a scrolled parent cuts would draw over its neighbours.
+        let inside = |c: &CalculatedClip| {
+            let half = node.size / 2.0 - 1.0;
+            [tf.translation - half, tf.translation + half].iter().all(|p| c.contains_point(*p))
+        };
+        let show = vis.get() && size.cmpgt(Vec2::splat(1.0)).all() && clip.is_none_or(inside);
         let want = if show { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {
             *v = want;

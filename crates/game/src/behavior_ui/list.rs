@@ -25,7 +25,8 @@ use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, UiPointer, label, number, prose, set_color, set_text, spawn_pill, tracked, wheel_rows,
+    Hot, Pill, TextField, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, sub_tone, tracked,
+    wheel_rows,
 };
 
 use super::draft::{BehaviorDraft, design_behavior};
@@ -65,6 +66,8 @@ pub struct BehaviorList {
     now: u64,
     /// The view the screen had when the list opened (the TEXT view's editor would draw over the list).
     view: BehaviorView,
+    /// The draft's generation then: another draft opened from the list shows its errors in the TEXT view.
+    generation: u64,
 }
 
 impl BehaviorList {
@@ -249,7 +252,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         BorderColor::all(c(Tone::Label, 0.3)),
                     ))
                     .with_children(|f| {
-                        f.spawn((TextFieldText, prose(fonts, "", 13.0, c(Tone::Number, 1.0))));
+                        f.spawn(field_text(fonts, 13.0));
                     });
                     b.spawn(label(fonts, "ENTER RENAMES  ·  ESC CANCELS", 8.5, c(Tone::Dim, 1.0)));
                 });
@@ -313,14 +316,21 @@ fn set_open(list: &mut BehaviorList, open: bool, ui: &mut BehaviorUi, lib: &mut 
         list.refresh(&lib.behaviors, content);
         list.pick.clone_from(&lib.draft.source);
         list.view = ui.view;
+        list.generation = lib.draft.generation();
         if ui.view == BehaviorView::Text {
             lib.draft.tidy_text();
             ui.view = BehaviorView::Graph;
         }
     } else {
-        // A draft with errors shows them in the TEXT view.
-        ui.view = if lib.draft.errors.is_empty() { list.view } else { BehaviorView::Text };
+        ui.view = closed_view(list.view, list.generation != lib.draft.generation(), !lib.draft.errors.is_empty());
     }
+}
+
+/// The view after the list closes: the one it opened from; but another draft opened from the list with errors
+/// shows them in the TEXT view. (The same draft with errors stays in the GRAPH it was looked at in: switching would
+/// put the caret in the text, and the next T would be typed.)
+fn closed_view(opened_from: BehaviorView, other_draft: bool, errors: bool) -> BehaviorView {
+    if other_draft && errors { BehaviorView::Text } else { opened_from }
 }
 
 /// BEHAVIORS, the list's buttons and keys.
@@ -478,7 +488,7 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
                 && let Some(p) = lib.behaviors.get(&id)
             {
                 rename.value.clone_from(&p.behavior.name);
-                rename.focused = true;
+                rename.focus();
                 list.mode = Mode::Rename(id);
             }
         }
@@ -653,7 +663,7 @@ pub(super) fn sync(
                             if let Some(t) = e.saved {
                                 s.push_str(&format!("  ·  {}", library::ago(list.now, t)));
                             }
-                            Tone::Dim
+                            sub_tone(pick.is_some() && list.row(0, k) == pick)
                         }
                     }
                 }
@@ -666,7 +676,7 @@ pub(super) fn sync(
                         s.push_str(&format!("  ·  {}", tag.to_uppercase()));
                     }
                 }
-                Tone::Dim
+                sub_tone(pick.is_some() && list.row(1, k) == pick)
             }
             ListText::RowTag(l, k) => {
                 if let Some(id) = list.row(l, k) {
@@ -755,6 +765,18 @@ mod tests {
         });
         world.run_system(apply).unwrap();
         assert_eq!(world.resource::<BehaviorList>().mine.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["skirmisher_copy"]);
+    }
+
+    /// Closing the list goes back to the view it opened from; only another draft with errors (opened from the list)
+    /// switches to the TEXT view. (GRAPH with a broken text → BEHAVIORS → Esc used to land in TEXT with the caret
+    /// in, and the next T typed a `t`.)
+    #[test]
+    fn closing_the_list_keeps_the_view() {
+        use BehaviorView::{Graph, Text};
+        assert_eq!(closed_view(Graph, false, true), Graph);
+        assert_eq!(closed_view(Text, false, false), Text);
+        assert_eq!(closed_view(Graph, true, false), Graph);
+        assert_eq!(closed_view(Graph, true, true), Text);
     }
 
     #[test]

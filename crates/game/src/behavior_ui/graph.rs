@@ -25,7 +25,8 @@ pub struct Chip {
     pub rhai: bool,
 }
 
-/// One rule: its conditions (none for `always`), its action, its note and whether it has a rule slot.
+/// One rule: its conditions (none for `always`), its action, its note, whether it has a rule slot and whether it
+/// can ever run (not below an `always` rule).
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuleRow {
     pub id: RuleId,
@@ -33,6 +34,7 @@ pub struct RuleRow {
     pub action: Chip,
     pub note: Option<String>,
     pub active: bool,
+    pub reached: bool,
 }
 
 /// The whole graph.
@@ -58,6 +60,8 @@ impl GraphView {
             }
         };
         let active = ed.active_rules(slots);
+        let always: Vec<bool> = program.rules.iter().map(|r| r.when.is_empty()).collect();
+        let never = never_reached(&always, slots);
         let rules = ed
             .rules()
             .map(|r| RuleRow {
@@ -66,6 +70,7 @@ impl GraphView {
                 action: chip(&r.rule.action, NodeRef::Action(r.id), NodeRole::Action, nodes),
                 note: r.rule.note.clone(),
                 active: r.index < active,
+                reached: !never.contains(&r.index),
             })
             .collect();
         Self { target, default_target, rules, slots }
@@ -75,6 +80,21 @@ impl GraphView {
     pub fn slot_line(&self) -> Option<usize> {
         let slots = self.slots as usize;
         (self.rules.len() > slots).then_some(slots)
+    }
+
+    /// Where the never-reached line goes: the index of the first rule with a slot below an `always` rule.
+    pub fn never_line(&self) -> Option<usize> {
+        self.rules.iter().position(|r| !r.reached)
+    }
+}
+
+/// The rules that have a slot but never run, by index: those below the first `always` rule (`always[i]`: rule `i`
+/// has no conditions). It matches every time, and the first rule that matches decides.
+pub fn never_reached(always: &[bool], slots: u32) -> std::ops::Range<usize> {
+    let with_slot = always.len().min(slots as usize);
+    match always[..with_slot].iter().position(|a| *a) {
+        Some(i) => i + 1..with_slot,
+        None => with_slot..with_slot,
     }
 }
 
@@ -123,6 +143,9 @@ pub fn slot_line_label(slots: u32) -> String {
         n => format!("{n} RULE SLOTS  ·  THE RULES BELOW DO NOT RUN"),
     }
 }
+
+/// The label on the never-reached line, under an `always` rule with rules below it.
+pub const NEVER_LINE_LABEL: &str = "ALWAYS MATCHES  ·  THE RULES BELOW ARE NEVER REACHED";
 
 #[cfg(test)]
 mod tests {
@@ -214,6 +237,26 @@ mod tests {
         assert_eq!(none.slot_line(), Some(0));
         // Exactly full: no line.
         assert_eq!(GraphView::of(&ed, 4).slot_line(), None);
+    }
+
+    #[test]
+    fn rules_below_an_always_rule_are_never_reached() {
+        let content = data::base_content();
+        // The skirmisher ends on its `always` fallback: every rule can run.
+        let g = GraphView::of(&skirmisher(&content), 12);
+        assert!(g.rules.iter().all(|r| r.reached));
+        assert_eq!(g.never_line(), None);
+        // `always -> approach` above two rules (what + RULE or a drag makes): those two never run.
+        let ed = editor(&content, "when hull < 30% -> flee\nalways -> approach\nwhen shield_down -> face\nalways -> hold");
+        let g = GraphView::of(&ed, 6);
+        assert_eq!(g.rules.iter().map(|r| r.reached).collect::<Vec<_>>(), [true, true, false, false]);
+        assert_eq!(g.never_line(), Some(2));
+        // Rules without a slot are the slot line's: only those with a slot are marked.
+        let g = GraphView::of(&ed, 3);
+        assert_eq!(g.rules.iter().map(|r| (r.active, r.reached)).collect::<Vec<_>>(), [(true, true), (true, true), (true, false), (false, true)]);
+        assert_eq!(never_reached(&[false, true, false], 1), 1..1);
+        assert_eq!(never_reached(&[true, false, false], 0), 0..0);
+        assert_eq!(never_reached(&[true, false, false], 12), 1..3);
     }
 
     #[test]

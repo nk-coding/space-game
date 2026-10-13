@@ -3,16 +3,19 @@
 //!
 //! * `offer`: the text Ctrl+C copies this frame (a selected read-only text, such as a share code);
 //! * `accept`: a paste target has the focus, so Ctrl+V delivers text to [`Clipboard::take_pasted`];
-//! * `copy`: copy this text now (a COPY button); the outcome arrives in `copied`.
+//! * `copy`: copy this text now (a COPY button); the outcome arrives in `copied`;
+//! * `field`: a one-line text field (`ui_kit::TextField`) has the keyboard. It comes first: Ctrl+C copies its
+//!   selection, Ctrl+X cuts it ([`Clipboard::take_cut`]), Ctrl+V pastes into it. `ui_kit` sets it every frame.
 //!
 //! Platforms:
 //! * **Web**: winit cancels the default action of every key on the canvas, so the browser would never copy or
 //!   paste. While something is offered or accepted, a capturing `keydown` listener on the window keeps Ctrl+C /
-//!   Ctrl+V (Cmd on macOS) away from the canvas; the browser then fires `copy` / `paste` events, whose
-//!   listeners hand the offered text over or take the pasted one. COPY uses `document.execCommand("copy")`,
+//!   Ctrl+V (and Ctrl+X while a field's selection is offered; Cmd on macOS) away from the canvas; the browser
+//!   then fires `copy` / `cut` / `paste` events, whose listeners hand the offered text over (a cut is counted
+//!   for the field) or take the pasted one. COPY uses `document.execCommand("copy")`,
 //!   which triggers the same `copy` listener, with `navigator.clipboard` as a second try. Neither needs a
 //!   secure context (the dev build is served over plain http), only the user's click or key.
-//! * **Desktop**: `arboard` (Ctrl+C, Ctrl+V and COPY read and write the system clipboard directly).
+//! * **Desktop**: `arboard` (Ctrl+C, Ctrl+X, Ctrl+V and COPY read and write the system clipboard directly).
 //! * **Android**: nothing yet (the copy button reports it; pasting comes with the phone UI).
 
 use bevy::prelude::*;
@@ -30,13 +33,31 @@ pub struct Clipboard {
     pub copy: Option<String>,
     /// The outcome of the last `copy`: `Err` says why it failed.
     pub copied: Option<Result<(), String>>,
+    /// A text field has the keyboard, with this selection (empty: nothing selected). It takes the place of `offer`
+    /// and `accept`.
+    pub field: Option<String>,
     pasted: Vec<String>,
+    cut: bool,
 }
 
 impl Clipboard {
     /// The texts pasted since the last call.
     pub fn take_pasted(&mut self) -> Vec<String> {
         std::mem::take(&mut self.pasted)
+    }
+
+    /// Whether the field's selection was cut (Ctrl+X copied it) since the last call: the field removes it.
+    pub fn take_cut(&mut self) -> bool {
+        std::mem::take(&mut self.cut)
+    }
+
+    /// What Ctrl+C copies, whether Ctrl+V pastes and whether Ctrl+X cuts: the focused field's, else the screen's.
+    #[cfg(not(target_os = "android"))]
+    fn targets(&self) -> (Option<String>, bool, bool) {
+        match &self.field {
+            Some(sel) => ((!sel.is_empty()).then(|| sel.clone()), true, !sel.is_empty()),
+            None => (self.offer.clone(), self.accept, false),
+        }
     }
 }
 
@@ -68,6 +89,9 @@ mod platform {
         static INSTALLED: Cell<bool> = const { Cell::new(false) };
         static OFFER: RefCell<Option<String>> = const { RefCell::new(None) };
         static ACCEPT: Cell<bool> = const { Cell::new(false) };
+        /// Ctrl+X cuts the offer (a field's selection); the cuts made since the last frame.
+        static CUT: Cell<bool> = const { Cell::new(false) };
+        static CUTS: Cell<u32> = const { Cell::new(0) };
         static PASTED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
@@ -82,10 +106,15 @@ mod platform {
         if let Some(text) = clip.copy.take() {
             clip.copied = Some(copy(&text));
         }
-        OFFER.set(clip.offer.clone());
-        ACCEPT.set(clip.accept);
+        let (offer, accept, cut) = clip.targets();
+        OFFER.set(offer);
+        ACCEPT.set(accept);
+        CUT.set(cut);
         let pasted = PASTED.with_borrow_mut(std::mem::take);
         clip.pasted.extend(pasted);
+        if CUTS.replace(0) > 0 {
+            clip.cut = true;
+        }
     }
 
     use super::js_text as js;
@@ -111,14 +140,15 @@ mod platform {
     fn install() -> Result<(), String> {
         let window = web_sys::window().ok_or("no window")?;
         let document = window.document().ok_or("no document")?;
-        // Keep Ctrl/Cmd + C and V from the canvas (winit cancels them) while there is something to copy or a
-        // place to paste, so the browser runs its copy and paste commands.
+        // Keep Ctrl/Cmd + C, X and V from the canvas (winit cancels them) while there is something to copy or cut
+        // or a place to paste, so the browser runs its copy, cut and paste commands.
         let keys = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
             if !(e.ctrl_key() || e.meta_key()) {
                 return;
             }
             let wanted = match e.key().as_str() {
                 "c" | "C" => OFFER.with_borrow(Option::is_some),
+                "x" | "X" => CUT.get(),
                 "v" | "V" => ACCEPT.get(),
                 _ => false,
             };
@@ -131,19 +161,32 @@ mod platform {
         window
             .add_event_listener_with_callback_and_add_event_listener_options("keydown", keys.as_ref().unchecked_ref(), &capture)
             .map_err(js)?;
-        // Without a selection the browser only copies or pastes when `beforecopy` / `beforepaste` are cancelled.
+        // Without a selection the browser only copies, cuts or pastes when `beforecopy` / `beforecut` /
+        // `beforepaste` are cancelled.
         let enable = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
-            let wanted = if e.type_() == "beforecopy" { OFFER.with_borrow(Option::is_some) } else { ACCEPT.get() };
+            let wanted = match e.type_().as_str() {
+                "beforecopy" => OFFER.with_borrow(Option::is_some),
+                "beforecut" => CUT.get(),
+                _ => ACCEPT.get(),
+            };
             if wanted {
                 e.prevent_default();
             }
         });
+        // `copy` and `cut` (a field's selection): the offered text goes to the clipboard; a cut is counted.
         let on_copy = Closure::<dyn FnMut(web_sys::ClipboardEvent)>::new(|e: web_sys::ClipboardEvent| {
+            let cut = e.type_() == "cut";
+            if cut && !CUT.get() {
+                return;
+            }
             OFFER.with_borrow(|offer| {
                 if let (Some(text), Some(data)) = (offer, e.clipboard_data())
                     && data.set_data("text/plain", text).is_ok()
                 {
                     e.prevent_default();
+                    if cut {
+                        CUTS.set(CUTS.get() + 1);
+                    }
                 }
             });
         });
@@ -156,7 +199,14 @@ mod platform {
                 e.prevent_default();
             }
         });
-        for (event, f) in [("beforecopy", enable.as_ref()), ("beforepaste", enable.as_ref()), ("copy", on_copy.as_ref()), ("paste", on_paste.as_ref())] {
+        for (event, f) in [
+            ("beforecopy", enable.as_ref()),
+            ("beforecut", enable.as_ref()),
+            ("beforepaste", enable.as_ref()),
+            ("copy", on_copy.as_ref()),
+            ("cut", on_copy.as_ref()),
+            ("paste", on_paste.as_ref()),
+        ] {
             document.add_event_listener_with_callback(event, f.unchecked_ref()).map_err(js)?;
         }
         // The listeners live as long as the page.
@@ -188,16 +238,19 @@ mod platform {
 
     use super::Clipboard;
 
-    /// Ctrl+C copies the offer, Ctrl+V pastes into the focused target, a requested copy is written.
+    /// Ctrl+C copies the offer, Ctrl+X cuts a field's selection, Ctrl+V pastes into the focused target, a
+    /// requested copy is written.
     pub fn sync(keys: Res<ButtonInput<KeyCode>>, mut clip: ResMut<Clipboard>, mut board: Local<Option<arboard::Clipboard>>) {
         let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
+        let (offer, accept, cuttable) = clip.targets();
+        let cut = ctrl && keys.just_pressed(KeyCode::KeyX) && cuttable;
         let mut copy = clip.copy.take().map(|t| (t, true));
-        if ctrl && keys.just_pressed(KeyCode::KeyC)
-            && let Some(offer) = &clip.offer
+        if ctrl && (keys.just_pressed(KeyCode::KeyC) || cut)
+            && let Some(offer) = offer
         {
-            copy = Some((offer.clone(), false));
+            copy = Some((offer, false));
         }
-        let paste = ctrl && keys.just_pressed(KeyCode::KeyV) && clip.accept;
+        let paste = ctrl && keys.just_pressed(KeyCode::KeyV) && accept;
         if copy.is_none() && !paste {
             return;
         }
@@ -215,6 +268,9 @@ mod platform {
         let Some(b) = board.as_mut() else { return };
         if let Some((text, asked)) = copy {
             let done = b.set_text(text).map_err(|e| e.to_string());
+            if cut && done.is_ok() {
+                clip.cut = true;
+            }
             if asked {
                 clip.copied = Some(done);
             }

@@ -364,7 +364,8 @@ changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom
   to the first blocker, a cross there, the blockers outlined); every engine's plume lanes to their reach (a soft
   propulsion-teal lane, dashed centre line and end tick; a lane that burns an own part: coral, a cross where it
   hits, the part outlined). Ranges reach far beyond a frigate frame (45–75 m): outside the frame the lines fade
-  to 30 % (and run under the veil outside the grid viewport).
+  to 30 %, and they end at the grid viewport's edge (before 13 Oct 2026 they ran on under the veil, through the
+  pills and the status line).
 
 **Issue marks** (always, overlays on or off): a small triangle in the top-right corner of the bounding box of
 every part an issue names: coral for blocked guns, parts a plume burns, parts that fall off and parts

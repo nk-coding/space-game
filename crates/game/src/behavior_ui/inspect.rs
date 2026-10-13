@@ -19,6 +19,7 @@ use crate::ui_kit::Tone;
 
 use super::actions::BehaviorAction;
 use super::edit::Edit;
+use super::graph::never_reached;
 use super::values::{Kind, Scale, reach_hint, switch_unit};
 
 /// What the inspector shows.
@@ -316,9 +317,15 @@ fn rule_inspection(ed: &BehaviorEditor, rule: RuleId, cx: &Context) -> Option<In
     let view = ed.rule(rule)?;
     let mut controls = vec![Control::Hint("A CONDITION PICKED IN ADD NODE IS ADDED TO THIS RULE; AN ACTION REPLACES ITS ACTION".into())];
     rule_block(&mut controls, ed, rule, cx);
-    let active = view.index < ed.active_rules(cx.slots);
+    let state = if view.index >= ed.active_rules(cx.slots) {
+        "NO RULE SLOT: DOES NOT RUN"
+    } else if never_reached_in(ed, cx).contains(&view.index) {
+        "NEVER REACHED: AN ALWAYS RULE ABOVE MATCHES FIRST"
+    } else {
+        "RUNS IN ITS TURN"
+    };
     Some(Inspection {
-        kicker: format!("RULE  ·  {}", if active { "RUNS IN ITS TURN" } else { "NO RULE SLOT: DOES NOT RUN" }),
+        kicker: format!("RULE  ·  {state}"),
         name: format!("Rule {}", view.index + 1),
         role: None,
         rhai: false,
@@ -328,12 +335,24 @@ fn rule_inspection(ed: &BehaviorEditor, rule: RuleId, cx: &Context) -> Option<In
     })
 }
 
+/// The rules of the program that have a slot but sit below an `always` rule (`graph::never_reached`).
+fn never_reached_in(ed: &BehaviorEditor, cx: &Context) -> std::ops::Range<usize> {
+    let always: Vec<bool> = ed.program().rules.iter().map(|r| r.when.is_empty()).collect();
+    never_reached(&always, cx.slots)
+}
+
 /// A rule's block: its place, UP / DOWN / DUPLICATE / DELETE (the last rule cannot go: the hint says why), its
 /// note.
 fn rule_block(out: &mut Vec<Control>, ed: &BehaviorEditor, rule: RuleId, cx: &Context) {
     let Some(view) = ed.rule(rule) else { return };
     let (i, n) = (view.index, ed.rules().len());
-    let slot = if i < ed.active_rules(cx.slots) { "" } else { "  ·  NO SLOT" };
+    let slot = if i >= ed.active_rules(cx.slots) {
+        "  ·  NO SLOT"
+    } else if never_reached_in(ed, cx).contains(&i) {
+        "  ·  NEVER REACHED"
+    } else {
+        ""
+    };
     let mv = |to: usize| Some(edit(Edit::MoveRule { rule, to }));
     out.push(Control::Buttons {
         label: format!("RULE {} OF {n}{slot}", i + 1),
@@ -600,6 +619,14 @@ mod tests {
         let Control::Buttons { label, buttons } = &i.controls[1] else { panic!() };
         assert_eq!(label, "RULE 2 OF 2  ·  NO SLOT");
         assert_eq!((buttons[0].action.is_some(), buttons[1].action.is_some()), (true, false));
+        // Below an `always` rule: never reached.
+        let mut shadowed = ed.clone();
+        shadowed.move_rule(r, 0).unwrap();
+        let below = shadowed.rule_at(1).unwrap().id;
+        let i = inspect(&shadowed, &Selection::Rule(below), &cx()).unwrap();
+        assert_eq!(i.kicker, "RULE  ·  NEVER REACHED: AN ALWAYS RULE ABOVE MATCHES FIRST");
+        let Control::Buttons { label, .. } = &i.controls[1] else { panic!() };
+        assert_eq!(label, "RULE 2 OF 2  ·  NEVER REACHED");
         // Gone: nothing.
         let mut gone = ed.clone();
         gone.delete_rule(r).unwrap();
