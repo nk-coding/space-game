@@ -777,7 +777,7 @@ fn reset(
     if scene.voyage().is_some() {
         // A voyage can't start over (its launch is on record): RECALL or lose it.
         let now = world.sim.time_seconds();
-        scene.say("NO RESET IN A VOYAGE".into(), "RECALL  ·  R".into(), Tone::Coral, now + 2.0);
+        scene.say("NO RESET IN A VOYAGE".into(), "RECALL HOME INSTEAD".into(), Tone::Coral, now + 2.0);
         return;
     }
     despawn_all_views(&mut commands, &mut world);

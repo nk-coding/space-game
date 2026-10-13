@@ -292,7 +292,7 @@ fn node_inspection(ed: &BehaviorEditor, at: NodeRef, cx: &Context) -> Option<Ins
                 ],
             });
             if armed {
-                controls.push(Control::Hint("PICK A CONDITION IN ADD NODE TO PUT IN ITS PLACE  ·  ESC CANCELS".into()));
+                controls.push(Control::Hint("PICK A CONDITION IN ADD NODE TO PUT IN ITS PLACE".into()));
             }
             rule_block(&mut controls, ed, ed.rule_of(cond)?, cx);
         }

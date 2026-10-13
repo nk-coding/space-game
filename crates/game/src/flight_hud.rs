@@ -552,7 +552,7 @@ fn update_text(
             }
             HudText::Banner => {
                 if virtual_time.is_paused() {
-                    s.push_str("PAUSED  ·  P");
+                    s.push_str("PAUSED");
                 } else if let Phase::Warping { home_at } = run.phase {
                     let _ = write!(s, "WARPING HOME  ·  {}", voyage::seconds_left(home_at, tick));
                 } else if let Some((b, until)) = &scene.banner

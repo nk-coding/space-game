@@ -611,7 +611,7 @@ fn sync(
                 }
                 None => ("PICK A DESIGN BELOW".into(), Tone::Dim),
             },
-            FleetText::ListHead if fleet.designs.is_empty() => ("YOUR DESIGNS  ·  NONE SAVED YET  ·  SAVE ONE IN THE DRYDOCK (CTRL S)".into(), Tone::Dim),
+            FleetText::ListHead if fleet.designs.is_empty() => ("YOUR DESIGNS  ·  NONE SAVED YET  ·  SAVE ONE IN THE DRYDOCK".into(), Tone::Dim),
             FleetText::ListHead => {
                 let mut s = format!("YOUR DESIGNS  ·  PICK ONE FOR ESCORT {}", picked + 1);
                 if fleet.designs.len() > CARDS {
@@ -633,7 +633,7 @@ fn sync(
             },
             FleetText::Status => match &fleet.say {
                 Some((s, tone)) => (s.clone(), *tone),
-                None => (format!("CLICK A DESIGN TO FLY IT AS ESCORT {}  ·  ESC CLOSES", picked + 1), Tone::Label),
+                None => (format!("CLICK A DESIGN TO FLY IT AS ESCORT {}", picked + 1), Tone::Label),
             },
         };
         set_text(&mut text, &s);

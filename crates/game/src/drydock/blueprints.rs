@@ -646,7 +646,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                                 ))
                                 .with_children(|l| {
                                     if list == 0 {
-                                        l.spawn((EmptyHint, label(fonts, "NOTHING SAVED YET  ·  SAVE KEEPS THE DESIGN IN THE DRYDOCK (CTRL S)", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::new(px(12), px(0), px(14), px(0)), ..default() }));
+                                        l.spawn((EmptyHint, label(fonts, "NOTHING SAVED YET  ·  SAVE KEEPS THE DESIGN IN THE DRYDOCK", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::new(px(12), px(0), px(14), px(0)), ..default() }));
                                     }
                                     for k in 0..LIST_ROWS {
                                         spawn_row(l, fonts, &c, list, k);
@@ -683,7 +683,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                             .with_children(|f| {
                                 f.spawn(field_text(fonts, 13.0));
                             });
-                            b.spawn(label(fonts, "ENTER RENAMES  ·  ESC CANCELS", 8.5, c(Tone::Dim, 1.0)));
+                            b.spawn(label(fonts, "TYPE A NEW NAME", 8.5, c(Tone::Dim, 1.0)));
                         });
                         bar.spawn((BarNode(2), Node { display: Display::None, ..row(10.0) })).with_children(|b| {
                             b.spawn((ShelfText::DeleteQuestion, label(fonts, "", 9.5, c(Tone::Coral, 1.0)), Node { margin: UiRect::right(px(8)), ..default() }));

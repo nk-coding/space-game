@@ -369,7 +369,7 @@ pub fn site_banner(content: &Content, voyage: &sim::Voyage, event: &SimEvent) ->
     Some(match (cleared, goal) {
         (false, _) => (format!("{name}  ·  AWAKE"), format!("SITES {done} / {all}  ·  THEY ARE COMING"), Tone::Coral),
         (true, false) => (format!("SITE CLEARED  ·  {name}"), format!("SITES {done} / {all}  ·  THE WRECKS ARE YOURS"), Tone::Teal),
-        (true, true) => (format!("GOAL CLEARED  ·  {name}"), format!("SITES {done} / {all}  ·  RECALL WHEN CLEAR  ·  R"), Tone::Gold),
+        (true, true) => (format!("GOAL CLEARED  ·  {name}"), format!("SITES {done} / {all}  ·  RECALL WHEN CLEAR"), Tone::Gold),
     })
 }
 

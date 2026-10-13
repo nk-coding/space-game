@@ -210,7 +210,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         ))
                         .with_children(|l| {
                             if list == 0 {
-                                let hint = "NOTHING SAVED YET  ·  SAVE KEEPS THE BEHAVIOR ON THE SCREEN (CTRL S)";
+                                let hint = "NOTHING SAVED YET  ·  SAVE KEEPS THE BEHAVIOR ON THE SCREEN";
                                 l.spawn((EmptyHint, label(fonts, hint, 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::new(px(12), px(0), px(14), px(0)), ..default() }));
                             }
                             for k in 0..LIST_ROWS {
@@ -254,7 +254,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     .with_children(|f| {
                         f.spawn(field_text(fonts, 13.0));
                     });
-                    b.spawn(label(fonts, "ENTER RENAMES  ·  ESC CANCELS", 8.5, c(Tone::Dim, 1.0)));
+                    b.spawn(label(fonts, "TYPE A NEW NAME", 8.5, c(Tone::Dim, 1.0)));
                 });
                 bar.spawn((BarNode(2), Node { display: Display::None, ..row(10.0) })).with_children(|b| {
                     b.spawn((ListText::DeleteQuestion, label(fonts, "", 9.5, c(Tone::Coral, 1.0)), Node { margin: UiRect::right(px(8)), ..default() }));
