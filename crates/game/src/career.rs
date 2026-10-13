@@ -28,7 +28,7 @@ use crate::drydock::library::{DesignDoc, problems_text};
 use crate::mode::AppMode;
 use crate::params::Params;
 use crate::sim_bridge::GameContent;
-use crate::storage::{Document, Storage, StorageError, now_unix, valid_name};
+use crate::storage::{Document, Storage, now_unix, valid_name};
 use crate::ui_kit::Tone;
 
 /// The save's name when `?save=` doesn't give another.
@@ -127,13 +127,12 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         Ok(Some(s)) => Some(s.doc.0),
         Ok(None) => None,
         Err(e) => {
-            let why = match &e {
-                StorageError::Newer { .. } => e.to_string(),
-                _ => format!("{key} doesn't read: {e}"),
-            };
+            // "saves/career doesn't read: line 1:35: …", "saves/career is from a newer version of the game (…)".
+            let why = e.to_string();
+            warn!("career: the save is kept as it is: {why}");
             notes.push(Note::new(
                 "THE SAVE IS KEPT AS IT IS",
-                format!("{why}. This game is a new one and is not saved; ?newgame=1 starts over in its place."),
+                format!("{}. This game is a new one and is not saved; ?newgame=1 starts over in its place.", shortened(&why, 90)),
                 Tone::Coral,
             ));
             kept = Some(why);
@@ -143,9 +142,12 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
     let (career, new_game) = match loaded {
         Some(mut career) => {
             let changed = career.reconcile(content);
+            for p in &changed {
+                warn!("career: {key}: {p}");
+            }
             if let Some(first) = changed.first() {
                 let more = if changed.len() > 1 { format!(" (and {} more)", changed.len() - 1) } else { String::new() };
-                notes.push(Note::new("THE SAVE MEETS CHANGED CONTENT", format!("{}{more}", first.message), Tone::Gold));
+                notes.push(Note::new("THE SAVE MEETS CHANGED CONTENT", format!("{}{more}", shortened(&first.message, 110)), Tone::Gold));
             }
             (career, false)
         }
@@ -164,6 +166,14 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
     }
     out
+}
+
+/// At most `n` characters of `s`, an ellipsis when cut (notes stay a few lines; the console has them whole).
+fn shortened(s: &str, n: usize) -> String {
+    match s.char_indices().nth(n) {
+        Some((at, _)) => format!("{}…", s[..at].trim_end()),
+        None => s.to_string(),
+    }
 }
 
 /// A new game from the content's first start. Content without a start gets a career that unlocks only what the

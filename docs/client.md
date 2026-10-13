@@ -264,7 +264,7 @@ menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), af
   (white, top), BEHAVIOR (violet, top left), TEST RANGE (coral, bottom right), FLEET (gold, bottom left; under it
   `CORES 2 / 2`: the fleet's logic cores against the mind capacity, coral when over), and RESEARCH (top right) and
   VOYAGES (the big one at the bottom, the mockup's LAUNCH VOYAGE) as disabled rings with `COMING SOON` until their
-  tracks (7G, 7I) give them an action. Bottom left the career's notes (a head and a line each, at most four): a new
+  tracks (7G, 7I) give them an action. Bottom left the career's notes (a head and a line each; the two most serious, coral before gold, and how many more the console has): a new
   game and its start's summary, a save kept as it is, content that changed under the save, `?save=`, `?unlock=all`,
   an escort whose design is gone ([Career](#career)). The mockup's galaxy map, fabricator and storage wait for their
   phases; RESEARCHING (top right) and HAUL UNLOADED come with research. The place name is UI chrome in code until
@@ -364,7 +364,7 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 | BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box. While a screen covers the design the other keys do nothing (Ctrl+S still saves; the bottom bar's buttons work) |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
-frame's content name; `· ALL UNLOCKED` with `?unlock=all`) and the design's name (a click renames it; "UNSAVED"
+frame's content name) and the design's name (a click renames it; "UNSAVED"
 or "SAVED" after it); the ARMOR pills (every content material with an `armor` block; one the career hasn't
 unlocked is dimmed with a lock and does nothing, one no research unlocks is left out) and the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS, ARCS:
 any combination, drawn over the design); left the search, the category pills (content categories), the section

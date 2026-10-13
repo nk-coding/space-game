@@ -161,8 +161,8 @@ enum NoteText {
     Body(usize),
 }
 
-/// Notes shown at most (the first ones).
-const NOTES: usize = 4;
+/// Notes shown at most (the most serious first; the console has them all): two fit under FLEET on the 1280 × 720 layout.
+const NOTES: usize = 2;
 
 /// The node the dotted ring is drawn through (its size is the ring's).
 #[derive(Component)]
@@ -253,7 +253,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 position_type: PositionType::Absolute,
                 left: px(28),
                 bottom: px(22),
-                width: px(360),
+                width: px(300),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(5),
                 ..default()
@@ -261,7 +261,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             .with_children(|notes| {
                 for k in 0..NOTES {
                     notes.spawn((NoteText::Head(k), label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::top(px(if k == 0 { 0.0 } else { 6.0 })), ..default() }));
-                    notes.spawn((NoteText::Body(k), prose(fonts, "", 12.0, c(Tone::Label, 1.0))));
+                    notes.spawn((NoteText::Body(k), prose(fonts, "", 11.0, c(Tone::Label, 1.0))));
                 }
             });
             // The stage, centred in the window: the ring, its buttons and the dock.
@@ -427,19 +427,35 @@ fn sync_cores(
     set_color(color, ui_color(tone.color(&style.ui), 1.0));
 }
 
-/// The career's notes bottom left (the first [`NOTES`]).
+/// The career's notes bottom left: the [`NOTES`] most serious (coral, then gold, then the rest, each in order), and
+/// how many more the console has.
 fn sync_notes(career: Res<PlayerCareer>, style: Res<Style>, mut texts: Query<(&NoteText, &mut Text, &mut TextColor, &mut Node)>) {
     if !career.is_changed() {
         return;
     }
+    let rank = |t: Tone| match t {
+        Tone::Coral => 0,
+        Tone::Gold => 1,
+        _ => 2,
+    };
+    let mut shown: Vec<_> = career.notes.iter().collect();
+    shown.sort_by_key(|n| rank(n.tone));
+    let more = shown.len().saturating_sub(NOTES);
+    shown.truncate(NOTES);
     for (t, mut text, mut color, mut node) in &mut texts {
         let (k, (s, tone)) = match *t {
-            NoteText::Head(k) => (k, career.notes.get(k).map_or((String::new(), Tone::Dim), |n| (n.head.clone(), n.tone))),
-            NoteText::Body(k) => (k, (career.notes.get(k).map_or(String::new(), |n| n.body.clone()), Tone::Label)),
+            NoteText::Head(k) => (k, shown.get(k).map_or((String::new(), Tone::Dim), |n| (n.head.clone(), n.tone))),
+            NoteText::Body(k) => {
+                let mut body = shown.get(k).map_or(String::new(), |n| n.body.clone());
+                if more > 0 && k + 1 == shown.len() {
+                    body.push_str(&format!(" (+{more} more in the console)"));
+                }
+                (k, (body, Tone::Label))
+            }
         };
         set_text(&mut text, &s);
         set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
-        let display = if k < career.notes.len() { Display::Flex } else { Display::None };
+        let display = if k < shown.len() { Display::Flex } else { Display::None };
         if node.display != display {
             node.display = display;
         }

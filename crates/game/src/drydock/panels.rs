@@ -163,14 +163,14 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // Top right: armour materials and overlays.
             root.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
                 .with_children(|tr| {
-                    tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
+                    tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(2)), ..default() }));
                     // Every armour material; a locked one is dimmed with a lock (GDR-0065).
                     for (k, m) in armor_materials(content).enumerate() {
                         let text = if k < 9 { format!("{} {}", m.name.to_uppercase(), k + 1) } else { m.name.to_uppercase() };
                         let lock = UiIcon::Glyph { glyph: Glyph::Lock, color: ui.dim };
-                        spawn_pill(tr, fonts, &text, 9.0, 28.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock));
+                        spawn_pill(tr, fonts, &text, 8.5, 28.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock));
                     }
-                    tr.spawn((Node { width: px(1), height: px(22), margin: UiRect::horizontal(px(8)), ..default() }, BackgroundColor(c(Tone::Label, 0.25))));
+                    tr.spawn((Node { width: px(1), height: px(22), margin: UiRect::horizontal(px(6)), ..default() }, BackgroundColor(c(Tone::Label, 0.25))));
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for o in Overlay::ALL {
                         let accent = if o == Overlay::Bonus { Tone::Gold } else { Tone::Teal };
@@ -689,9 +689,6 @@ pub(super) fn sync_texts(
         let tone = match *t {
             PanelText::Breadcrumb => {
                 s.push_str(&format!("SHIPYARD  ›  DRYDOCK  ·  {}", super::blueprints::frame_name(content, design.frame())));
-                if granted.free {
-                    s.push_str("  ·  ALL UNLOCKED");
-                }
                 Tone::Label
             }
             PanelText::Name => {
