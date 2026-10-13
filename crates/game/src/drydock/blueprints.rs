@@ -220,9 +220,7 @@ impl Lib<'_> {
                 if problems.is_empty() {
                     (format!("saved  ·  {name}"), Tone::Teal)
                 } else {
-                    let n = problems.len();
-                    let s = if n == 1 { "" } else { "s" };
-                    (format!("saved as work in progress  ·  {n} problem{s}: {}", library::problems_text(&problems[..1])), Tone::Gold)
+                    (format!("saved as work in progress  ·  {}", problems_note(&problems)), Tone::Gold)
                 }
             }
             Err(e) => (format!("not saved: {e}"), Tone::Coral),
@@ -242,7 +240,7 @@ impl Lib<'_> {
         let id = library::save(&mut self.storage, content, &opened, &mut slot, now_unix()).map_err(|e| e.to_string())?;
         let problems = data::validate_ship(content, &Blueprint { id: id.clone(), ..opened.export() });
         if !problems.is_empty() {
-            notes.push(format!("{} problem(s): {}", problems.len(), library::problems_text(&problems[..1])));
+            notes.push(problems_note(&problems));
         }
         let kept = self.switch(content, opened, slot)?;
         let mut msg = format!("imported {}", self.design.blueprint().name);
@@ -252,6 +250,12 @@ impl Lib<'_> {
         }
         Ok(msg)
     }
+}
+
+/// "1 problem: …" or "3 problems: …" with the first one.
+fn problems_note(problems: &[data::Problem]) -> String {
+    let s = if problems.len() == 1 { "" } else { "s" };
+    format!("{} problem{s}: {}", problems.len(), library::problems_text(&problems[..1.min(problems.len())]))
 }
 
 /// The frame's content name for the breadcrumb ("FRIGATE FRAME"), or its size when no content frame has it.
