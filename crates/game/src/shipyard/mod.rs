@@ -19,7 +19,8 @@
 //! until they have screens.
 //!
 //! **In the drydock** the walls and the parked cranes stay around the frame (the drydock's veil dims them outside
-//! its grid viewport); the floor, the yard and the drones are home's alone. Elsewhere none of it shows.
+//! its grid viewport); the floor, the yard and the drones are home's alone. **On the research screen** the whole
+//! yard stays as at home, under the screen's veil (the camera rests on the lab). Elsewhere none of it shows.
 
 pub mod draw;
 pub mod fly;
@@ -146,10 +147,10 @@ impl Plugin for ShipyardPlugin {
             .add_systems(Startup, setup)
             .add_systems(
                 Update,
-                (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home)), animate)
+                (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Research))), animate)
                     .chain()
                     .in_set(ShipyardSet)
-                    .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock))),
+                    .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock)).or_eager(in_state(AppMode::Research))),
             )
             .add_systems(Update, show.after(ShipyardSet));
     }
@@ -389,8 +390,8 @@ fn animate(
     }
 }
 
-/// Which parts show: everything at home (none while FLEET covers it), the walls and the parked rigging in the
-/// drydock, nothing elsewhere.
+/// Which parts show: everything at home (none while FLEET covers it) and behind the research screen, the walls and
+/// the parked rigging in the drydock, nothing elsewhere.
 #[allow(clippy::type_complexity)]
 fn show(
     mode: Res<State<AppMode>>,
@@ -403,7 +404,7 @@ fn show(
     )>,
     escorts: Res<EscortDesigns>,
 ) {
-    let home = *mode.get() == AppMode::Home && !fleet.open;
+    let home = (*mode.get() == AppMode::Home && !fleet.open) || *mode.get() == AppMode::Research;
     let dock = *mode.get() == AppMode::Drydock;
     let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
     let put = |v: &mut Visibility, want: Visibility| {
