@@ -3,7 +3,8 @@
 //! * **sandbox** (home's TEST RANGE, `?scene=sandbox`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of
 //!   the Halvex Runner, then the autosaved working design) as the focus; waves of raiders (the first content ship
 //!   tagged `enemy`: the automaton raider) under their content behavior (`raider_basic`), a new wave a few seconds
-//!   after the last raider goes dark (C turns the waves off and on); the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//!   after the last raider goes dark (C turns the waves off and on), each wave as big as the flown design calls for
+//!   ([`wave_size`], GDR-0074) unless the tuning panel sets it by hand; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
 //!   far from the player; when the player has no vessel left, a new one re-forms.
@@ -75,6 +76,28 @@ fn raider_design(world: &mut SimWorld) -> Option<Arc<ShipDesign>> {
         return None;
     };
     world.design(&id, ENEMY)
+}
+
+/// Raiders per sandbox wave when the tuning does not set it by hand (GDR-0074, PLACEHOLDER rule): the flown
+/// design's build points over a raider's, times [`WAVE_SHARE`], rounded, at least 1 and at most [`WAVE_CAP`].
+/// With the content of 14 Oct 2026 (a raider is 15.8 build points) the starter `rim_skiff` (59) meets 2 raiders
+/// and the Halvex Runner (132.5) 4: waves a pilot wins about nine times in ten
+/// (`docs/results/slice-balance-2026-10-13.md`, "GDR-0074").
+pub fn wave_size(design_bp: f32, raider_bp: f32) -> u32 {
+    if !(design_bp > 0.0 && raider_bp > 0.0) {
+        return 1;
+    }
+    (design_bp / raider_bp * WAVE_SHARE).round().clamp(1.0, WAVE_CAP as f32) as u32
+}
+
+/// One raider per this share of a raider's build points in the flown design ([`wave_size`]).
+pub const WAVE_SHARE: f32 = 0.5;
+/// The biggest wave [`wave_size`] makes.
+pub const WAVE_CAP: u32 = 8;
+
+/// A compiled design's build points (as placed: hull parts with their material's factor).
+fn build_points(design: &ShipDesign) -> f32 {
+    design.parts.iter().map(|p| p.build_points).sum()
 }
 
 /// Is this ship a vessel of the player?
@@ -361,7 +384,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
                 // Attacking raiders (as many as the tuning's raiders per wave) start where their behavior fights
                 // from (about 45-50 m), so hits come at once.
                 let attack = params.flag("fire").unwrap_or(false);
-                let (n, dist) = if attack { (tuning.raiders_per_wave.max(1), 46.0) } else { (3, 16.0) };
+                let (n, dist) = if attack { (tuning.raiders_per_wave.unwrap_or(3).max(1), 46.0) } else { (3, 16.0) };
                 if let Some(raider) = raider_design(&mut world) {
                     for k in 0..n {
                         let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
@@ -700,8 +723,10 @@ fn scene_tick(
             .and_then(|s| s.control_piece().and_then(|p| s.piece(p)))
             .map(|p| v2(p.com_world()))
             .unwrap_or(Vec2::ZERO);
-        let n = tuning.raiders_per_wave.max(1);
-        if let Some(raider) = raider_design(world) {
+        let raider = raider_design(world);
+        let flown = scene.player_design.as_deref().map_or(0.0, build_points);
+        let n = tuning.raiders_per_wave.unwrap_or_else(|| wave_size(flown, raider.as_deref().map_or(0.0, build_points))).max(1);
+        if let Some(raider) = raider {
             let base = scene.rng.range(0.0, std::f32::consts::TAU);
             for k in 0..n {
                 let a = base + (k as f32 - (n as f32 - 1.0) / 2.0) * 0.32;
@@ -794,6 +819,22 @@ mod tests {
 
     use super::*;
     use crate::test_range::{StartTest, TestProgram, TestRangePlugin};
+
+    /// GDR-0074: a wave follows the flown design's build points against a raider's, at least 1, at most the cap.
+    #[test]
+    fn waves_follow_the_flown_design() {
+        assert_eq!(wave_size(59.0, 15.8), 2);
+        assert_eq!(wave_size(132.5, 15.8), 4);
+        assert_eq!(wave_size(1.0, 15.8), 1, "at least one raider");
+        assert_eq!(wave_size(0.0, 15.8), 1);
+        assert_eq!(wave_size(50.0, 0.0), 1, "no raider design to measure");
+        assert_eq!(wave_size(10_000.0, 15.8), WAVE_CAP);
+        // The content's designs, compiled: the starter meets 2 raiders, the Halvex Runner 4.
+        let c = data::base_content();
+        let bp = |id: &str| build_points(&ShipDesign::compile(&c, c.ships.get(id).unwrap()).unwrap());
+        let raider = bp("automaton_raider");
+        assert_eq!((wave_size(bp("rim_skiff"), raider), wave_size(bp("halvex_runner"), raider)), (2, 4));
+    }
 
     /// The behavior screen's request: from another mode it launches a test flight; in flight it rebuilds the
     /// scene; the test outlives restarts and ends with the flight.

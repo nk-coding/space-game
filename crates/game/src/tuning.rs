@@ -5,15 +5,16 @@
 //!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate, key
 //!   turn rate (A/D held, GDR-0055), the player's mind capacity (logic cores running at once; fewer than the
 //!   fleet has puts the newest vessels to sleep, GDR-0044).
-//! * Next wave: raiders per wave.
+//! * Next wave: raiders per wave. By default a wave follows the flown design (`scene::wave_size`, GDR-0074);
+//!   unticking "follow the flown ship" (or `?raiders=N`) sets the size by hand.
 //! * Immediate: drift default.
 //! * **Reset**: weapon range and damage scales change the content the designs are compiled from, so they
 //!   apply with "Apply & reset" (the scene restarts). The range scale applies to every side, the damage scale
 //!   to the player's ships only (the raiders keep their content damage).
 //!
 //! Every value can also come from the URL
-//! (`?thrust=4&torque=2&speed=1.5&turn=6&keyturn=1.5&mind=24&range=1.5&damage=1&raiders=3&drift=1`), and the
-//! panel shows that query string ready to copy.
+//! (`?thrust=4&torque=2&speed=1.5&turn=6&keyturn=1.5&mind=24&range=1.5&damage=1&raiders=3&drift=1`; `raiders` only
+//! when set by hand), and the panel shows that query string ready to copy.
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
@@ -39,7 +40,8 @@ pub struct Tuning {
     pub mind_capacity: u32,
     pub range_scale: f32,
     pub damage_scale: f32,
-    pub raiders_per_wave: u32,
+    /// Raiders per wave set by hand; `None`: each wave follows the flown design (`scene::wave_size`, GDR-0074).
+    pub raiders_per_wave: Option<u32>,
     pub drift: bool,
     /// The weapon scales the running scene was built with.
     pub applied: (f32, f32),
@@ -61,7 +63,7 @@ impl Tuning {
             mind_capacity: p.f32("mind").map(|m| m.max(0.0) as u32).unwrap_or(d.mind_capacity(Owner::PLAYER)),
             range_scale: range,
             damage_scale: damage,
-            raiders_per_wave: p.f32("raiders").map(|r| r as u32).unwrap_or(3),
+            raiders_per_wave: p.f32("raiders").map(|r| r.max(1.0) as u32),
             drift: p.flag("drift").unwrap_or(false),
             applied: (range, damage),
             open: p.flag("tuning").unwrap_or(false),
@@ -98,8 +100,12 @@ impl Tuning {
 
     /// The values as a copyable line and as a URL query.
     pub fn text(&self) -> String {
+        let (raiders, query) = match self.raiders_per_wave {
+            Some(n) => (n.to_string(), format!("&raiders={n}")),
+            None => ("ship".to_string(), String::new()),
+        };
         format!(
-            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} key_turn_rate={:.2} mind_capacity={} weapon_range_scale={:.2} player_weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&keyturn={:.2}&mind={}&range={:.2}&damage={:.2}&raiders={}&drift={}",
+            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} key_turn_rate={:.2} mind_capacity={} weapon_range_scale={:.2} player_weapon_damage_scale={:.2} raiders_per_wave={raiders} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&keyturn={:.2}&mind={}&range={:.2}&damage={:.2}{query}&drift={}",
             self.thrust,
             self.torque,
             self.speed,
@@ -108,7 +114,6 @@ impl Tuning {
             self.mind_capacity,
             self.range_scale,
             self.damage_scale,
-            self.raiders_per_wave,
             self.drift,
             self.thrust,
             self.torque,
@@ -118,7 +123,6 @@ impl Tuning {
             self.mind_capacity,
             self.range_scale,
             self.damage_scale,
-            self.raiders_per_wave,
             self.drift as u8,
         )
     }
@@ -188,7 +192,13 @@ fn panel(
             ui.checkbox(&mut t.drift, "drift (released stick coasts)");
             ui.separator();
             ui.label(egui::RichText::new("Next wave").strong());
-            ui.add(egui::Slider::new(&mut t.raiders_per_wave, 1..=12).text("raiders per wave"));
+            let mut follow = t.raiders_per_wave.is_none();
+            if ui.checkbox(&mut follow, "follow the flown ship (GDR-0074)").changed() {
+                t.raiders_per_wave = if follow { None } else { Some(3) };
+            }
+            if let Some(n) = t.raiders_per_wave.as_mut() {
+                ui.add(egui::Slider::new(n, 1..=12).text("raiders per wave"));
+            }
             ui.separator();
             ui.label(egui::RichText::new("On reset").strong());
             ui.add(egui::Slider::new(&mut t.range_scale, 0.25..=4.0).logarithmic(true).text("weapon range"));
