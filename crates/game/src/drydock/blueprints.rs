@@ -1118,7 +1118,10 @@ fn sync_shelf(
     content: Res<GameContent>,
     style: Res<Style>,
     mut root: Single<&mut Visibility, With<ShelfRoot>>,
-    mut nodes: Query<(&mut Node, Option<&PageNode>, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>), Without<TextField>>,
+    mut nodes: Query<
+        (&mut Node, Option<&PageNode>, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>),
+        (Without<TextField>, Or<(With<PageNode>, With<BarNode>, With<RowNode>, With<EmptyHint>)>),
+    >,
     mut pills: Query<(&ShelfButton, &mut Pill)>,
     mut boxes: Query<(&mut BorderColor, &mut BackgroundColor, Has<CodeBox>, &Hot), Or<(With<CodeBox>, With<PasteBox>)>>,
     mut texts: Query<(&ShelfText, &mut Text, &mut TextColor)>,

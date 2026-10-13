@@ -565,7 +565,7 @@ pub(super) fn sync(
     content: Res<GameContent>,
     style: Res<Style>,
     mut root: Single<&mut Visibility, With<ListRoot>>,
-    mut nodes: Query<(&mut Node, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>), Without<TextField>>,
+    mut nodes: Query<(&mut Node, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>), (Without<TextField>, Or<(With<BarNode>, With<RowNode>, With<EmptyHint>)>)>,
     mut pills: Query<(&ListButton, &mut Pill)>,
     mut texts: Query<(&ListText, &mut Text, &mut TextColor)>,
 ) {
