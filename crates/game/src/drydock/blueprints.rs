@@ -847,12 +847,20 @@ fn apply(
             todo.push(b.clone());
         }
     }
+    // Touched only when files came (a write marks the shelf changed, and its texts are made again then).
     #[cfg(target_arch = "wasm32")]
-    shelf.incoming.extend(share::take_picked());
-    for (file, text) in std::mem::take(&mut shelf.incoming) {
-        match text {
-            Ok(text) => import(&mut shelf, &mut lib, content, &text, &format!("{file}: ")),
-            Err(e) => shelf.say(format!("{file} doesn't read: {e}"), Tone::Coral),
+    {
+        let picked = share::take_picked();
+        if !picked.is_empty() {
+            shelf.incoming.extend(picked);
+        }
+    }
+    if !shelf.incoming.is_empty() {
+        for (file, text) in std::mem::take(&mut shelf.incoming) {
+            match text {
+                Ok(text) => import(&mut shelf, &mut lib, content, &text, &format!("{file}: ")),
+                Err(e) => shelf.say(format!("{file} doesn't read: {e}"), Tone::Coral),
+            }
         }
     }
     if let Some(done) = clip.copied.take() {
@@ -1373,6 +1381,24 @@ mod tests {
         world.run_system_once(super::super::actions::shortcuts).unwrap();
         let sent = world.resource::<Messages<DrydockAction>>().len();
         assert!(sent >= 3, "{sent}");
+    }
+
+    /// A frame without input leaves the shelf untouched, so its texts are not made again every frame.
+    #[test]
+    fn an_idle_frame_leaves_the_shelf_unchanged() {
+        let mut world = world();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<Messages<UiClick>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world.spawn((RenameField, TextField::default()));
+        world.resource_mut::<Shelf>().page = Some(Page::Blueprints);
+        let apply = world.register_system(apply);
+        let changed = world.register_system(|shelf: Res<Shelf>| shelf.is_changed());
+        world.run_system(apply).unwrap();
+        world.run_system(changed).unwrap();
+        world.run_system(apply).unwrap();
+        assert!(!world.run_system(changed).unwrap());
     }
 
     /// `/` and T in one (slow) frame: the search field takes the keyboard, no test flight starts.

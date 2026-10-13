@@ -45,6 +45,8 @@ const FIT_MARGIN: f32 = 0.6;
 const ZOOM_RANGE: (f32, f32) = (0.5, 8.0);
 /// The UI scale follows the window: 1 at 1280 × 720 logical, up to this at larger windows.
 const MAX_UI_SCALE: f32 = 2.0;
+/// The frame's dots are at least this many screen pixels apart.
+const MIN_DOT_GAP: f32 = 6.0;
 
 /// The design's mesh.
 #[derive(Component)]
@@ -221,7 +223,11 @@ pub(super) fn camera(
 
     let in_view = |c: &Vec2| !pointer.blocked && cam.viewport.contains(*c);
     let cell = cursor.filter(in_view).map(|c| rig.screen_to_world(c)).map(|w| (w.x.floor() as i32, (-w.y).floor() as i32));
-    cursor_cell.cell = cell.filter(|c| c.0 >= 0 && c.1 >= 0 && c.0 < design.frame().0 as i32 && c.1 < design.frame().1 as i32);
+    let cell = cell.filter(|c| c.0 >= 0 && c.1 >= 0 && c.0 < design.frame().0 as i32 && c.1 < design.frame().1 as i32);
+    // Written only when it changes: the ghost works its view out again then.
+    if cursor_cell.cell != cell {
+        cursor_cell.cell = cell;
+    }
 }
 
 /// Rebuilds the design's mesh when its revision (or the glow setting) changes.
@@ -254,7 +260,15 @@ pub(super) fn rebuild_ship(
     let _ = meshes.insert(&mesh.0, new);
 }
 
-
+/// Corners between two dots of the frame's grid at `zoom` px per cell: 1, or the smallest power of two that keeps
+/// them [`MIN_DOT_GAP`] pixels apart.
+fn dot_stride(zoom: f32) -> i32 {
+    let mut stride = 1;
+    while (stride as f32) * zoom < MIN_DOT_GAP && stride < 1 << 16 {
+        stride *= 2;
+    }
+    stride
+}
 
 /// The frame's dots, brackets and mirror axis, and the hover cell (screen-pixel sizes, so redrawn each frame),
 /// inside the grid viewport.
@@ -290,13 +304,17 @@ pub(super) fn draw_frame(
             queue.push(FxSprite { rect: r.white.uv, pos: q.center(), angle: 0.0, size: q.size(), anchor: Vec2::ZERO, color: veil, z: Z_OVER });
         }
     }
-    // Dots at every cell corner in view, a little larger where the cells are large.
+    // Dots at the cell corners in view, a little larger where the cells are large. Where cells are smaller than
+    // `MIN_DOT_GAP` pixels (a large frame zoomed out) only every 2nd, 4th, ... corner gets one, so the dots stay a
+    // grid, not a carpet, and their number stays below about (viewport / gap)² whatever the frame.
     let dot = (1.6 + rig.zoom * 0.04).min(3.0) * px;
     let dot_c = style.dotted_ring.with_alpha(0.85);
-    let (x0, x1) = ((view.min.x.ceil() as i32).max(0), (view.max.x.floor() as i32).min(w));
-    let (y0, y1) = (((-view.max.y).ceil() as i32).max(0), ((-view.min.y).floor() as i32).min(h));
-    for y in y0..=y1 {
-        for x in x0..=x1 {
+    let stride = dot_stride(rig.zoom);
+    let first = |a: f32| ((a.ceil() as i32).max(0) + stride - 1) / stride * stride;
+    let (x0, x1) = (first(view.min.x), (view.max.x.floor() as i32).min(w));
+    let (y0, y1) = (first(-view.max.y), ((-view.min.y).floor() as i32).min(h));
+    for y in (y0..=y1).step_by(stride as usize) {
+        for x in (x0..=x1).step_by(stride as usize) {
             queue.dot(&r.hard, Vec2::new(x as f32, -y as f32), dot, dot_c, Z_UNDER);
         }
     }
@@ -332,5 +350,23 @@ pub(super) fn draw_frame(
         for k in 0..4 {
             queue.line(&r.white, corners[k], corners[(k + 1) % 4], 1.5 * px, teal, Z_OVER);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The frame's dots stay apart: one per corner where cells are large, every 2nd, 4th, ... where they are small.
+    #[test]
+    fn dots_keep_their_distance() {
+        assert_eq!(dot_stride(30.0), 1);
+        assert_eq!(dot_stride(MIN_DOT_GAP), 1);
+        assert_eq!(dot_stride(5.0), 2);
+        assert_eq!(dot_stride(1.0), 8);
+        // A 1024 × 1024 frame fitted into a 900 px viewport: under 1 px per cell, every 8th corner, 129² dots.
+        let zoom = 900.0 / 1025.2;
+        assert_eq!(dot_stride(zoom), 8);
+        assert!(dot_stride(0.0) >= 1 << 16);
     }
 }
