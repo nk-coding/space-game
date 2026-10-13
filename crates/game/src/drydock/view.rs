@@ -13,6 +13,8 @@
 //!   frame in the grid viewport between the side panels (`CameraRig::view_offset`), wheel zoom around the
 //!   cursor, pan with Space + drag or the middle button, zoom buttons and + / −. 100 % = the frame fits the
 //!   viewport. The pointer over a panel reaches neither the grid nor the camera.
+//! * **From and to home** (GDR-0071): home's building area is this frame, at the same place in the world; home flies
+//!   its camera onto [`DockCamera::opening_view`] before the drydock appears and back out from it after.
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
@@ -92,7 +94,7 @@ pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, at
 }
 
 impl DockCamera {
-    pub(super) fn new(flight_zoom: f32) -> Self {
+    pub(crate) fn new(flight_zoom: f32) -> Self {
         Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None, frame: (0, 0) }
     }
 
@@ -101,6 +103,30 @@ impl DockCamera {
         self.fit = 0.0;
         self.view = None;
     }
+
+    /// The view the drydock opens with for `frame`, and so, once it has closed, the one it closed with: the world
+    /// point at the window's centre and px per metre. Home flies its camera there before the drydock appears and
+    /// starts from there when the drydock closes (`home.rs`), so the hand-over is seamless. `None` until the grid
+    /// viewport is laid out (it is, hidden, from the first frames on).
+    pub fn opening_view(&self, window: &Window, viewport: (&ComputedNode, &UiGlobalTransform), frame: (u32, u32)) -> Option<(Vec2, f32)> {
+        let (node, tf) = viewport;
+        let scale = window.scale_factor();
+        let size = node.size / scale;
+        if size.min_element() < 8.0 {
+            return None;
+        }
+        let offset = tf.translation / scale - window.size() / 2.0;
+        let f = Vec2::new(frame.0 as f32, frame.1 as f32);
+        // As `camera` opens it: the last view of this frame, else the whole frame.
+        let (pos, share) = self.view.filter(|_| self.frame == frame).unwrap_or((Vec2::new(f.x / 2.0, -f.y / 2.0), 1.0));
+        let zoom = fit_zoom(size, f) * share;
+        Some((pos + Vec2::new(-offset.x, offset.y) / zoom, zoom))
+    }
+}
+
+/// px per metre at 100 %: the frame and [`FIT_MARGIN`] cells around it fill a grid viewport of `size` logical px.
+fn fit_zoom(size: Vec2, frame: Vec2) -> f32 {
+    (size.x / (frame.x + 2.0 * FIT_MARGIN)).min(size.y / (frame.y + 2.0 * FIT_MARGIN))
 }
 
 /// Opening the drydock: remember the flight zoom; the camera stops following. The view is set once the
@@ -168,7 +194,7 @@ pub(super) fn camera(
     rig.view_offset = centre - rig.viewport / 2.0;
     cam.viewport = Rect::from_center_size(centre, size);
     let frame = Vec2::new(design.frame().0 as f32, design.frame().1 as f32);
-    let fit = (size.x / (frame.x + 2.0 * FIT_MARGIN)).min(size.y / (frame.y + 2.0 * FIT_MARGIN));
+    let fit = fit_zoom(size, frame);
     let frame_centre = Vec2::new(frame.x / 2.0, -frame.y / 2.0);
     if cam.fit <= 0.0 {
         // First frame of a visit: the last view, else the whole frame.

@@ -1,18 +1,20 @@
-//! The app mode: at home ([`AppMode::Home`]: the shipyard's ring menu around the docked ship, `home.rs`, where the
-//! game starts), flying ([`AppMode::Flight`]: the sandbox, which home calls the TEST RANGE, the showcase, the load
-//! test), building ([`AppMode::Drydock`]: the ship editor, `drydock/`) or writing how a design thinks
-//! ([`AppMode::Behavior`]: the BEHAVIOR screen, `behavior_ui/`). `?scene=` picks the start ([`AppMode::at_start`]).
+//! The app mode: at home ([`AppMode::Home`]: the shipyard, `home.rs` and `shipyard/`, where the game starts),
+//! flying ([`AppMode::Flight`]: the sandbox, which home calls the TEST RANGE, the showcase, the load test),
+//! building ([`AppMode::Drydock`]: the ship editor, `drydock/`) or writing how a design thinks ([`AppMode::Behavior`]:
+//! the BEHAVIOR screen, `behavior_ui/`). `?scene=` picks the start ([`AppMode::at_start`]).
 //!
 //! **T** switches between flight and the editors: in flight it opens the drydock (the design is untouched), or the
 //! screen a behavior test was started from ([`FlightExit`], `test_range.rs`); in the drydock it launches a test
 //! flight (`drydock::actions`, the TEST-FLY button does the same). Losing every vessel in a test flight returns
 //! there too (`scene.rs`). **M** in flight goes home (so does the HUD's ring top left, `flight_hud.rs`); the ring
-//! button top left of the drydock and the BEHAVIOR screen does the same there.
+//! button top left of the drydock and the BEHAVIOR screen does the same there. Home's camera flies onto a place
+//! before its screen opens and back out when the screen goes home (`home.rs`); the drydock and home share the frame
+//! (`shipyard`).
 //!
 //! Systems of one mode run only in it (`run_if(in_state(..))`), so no input of one mode reaches another. The
 //! switch itself happens in the state's enter / exit schedules (`scene.rs`: the flight world; `drydock` and
-//! `home`: their camera and UI scale; `behavior_ui`: the draft and the window fit), so the first frame of a mode
-//! is already consistent. A [`SimWorld`](crate::sim_bridge::SimWorld) always exists: outside flight it is an empty
+//! `home`: their camera and UI scale, home's camera starting on the place of the screen it came from;
+//! `behavior_ui`: the draft and the window fit), so the first frame of a mode is already consistent. A [`SimWorld`](crate::sim_bridge::SimWorld) always exists: outside flight it is an empty
 //! one, because many flight systems read it.
 
 use bevy::prelude::*;
