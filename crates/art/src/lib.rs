@@ -1,12 +1,13 @@
 //! Vector art, rasterised at runtime (rule: no fixed raster graphics).
 //!
-//! * **Sources**: the icons are content (`content/base/icons/<key>.svg`, `data::Content::icon_svg`; mods
-//!   override them by key); the style tokens (`art/tokens.json`) are embedded at build time ([`tokens`]). FX
+//! * **Sources**: the icons and the machines' ship drawings are content (`content/base/icons/<key>.svg` and
+//!   `<key>.ship.svg`, `data::Content::icon_svg` / `ship_svg`; mods override them by key); the style tokens (`art/tokens.json`) are embedded at build time ([`tokens`]). FX
 //!   textures (glow dots, halo profile, aura, plumes, barrel) are defined here as SVG or as functions of `(u, v)`.
 //! * **Layout** ([`Layout`]): every region has a fixed rectangle in *atlas units* (1 unit = 1 ship cell at full
 //!   density). A texture for a pixel density `tier` (pixels per cell) is the layout scaled by `tier`, so the
 //!   normalised UV of a region never changes between tiers: meshes keep their UVs when the texture is swapped.
-//!   Soft regions (icon glows, plumes, aura) are stored at half density (they are blurry anyway).
+//!   Soft regions (glows, plumes, aura) are stored at half density (they are blurry anyway), the part icons at
+//!   [`ICON_DENSITY`] (only the UI draws them, small; ships show the drawings, GDR-0069).
 //! * **Rasteriser** ([`Rasterizer`]): clears its buffer, renders the regions, then builds an alpha-weighted mip
 //!   chain and bleeds colour into transparent texels, every stage a band of rows at a time (`step`, about
 //!   [`STEP_TEXELS`] texels), so a client can spread all the work over frames and upload each band as soon as
@@ -35,6 +36,9 @@ pub const MAX_TIER: u32 = 512;
 /// Soft layers are rendered at this tier once and resampled for higher ones (blurred by 5 px or more here, so a
 /// bilinear upsample is indistinguishable from rendering them at the tier, which blurred by up to 41 px at 512).
 pub const SOFT_TIER: u32 = 128;
+/// Density of the part icons in the atlas (texels per cell = `ICON_DENSITY × tier`): they are drawn in the UI only,
+/// so a client asks for `1 / ICON_DENSITY` times the pixels per cell its icons need.
+pub const ICON_DENSITY: f32 = 0.5;
 /// Layout width in atlas units (the atlas is `LAYOUT_WIDTH × tier` pixels wide).
 const LAYOUT_WIDTH: f32 = 8.0;
 /// Gutter between regions, atlas units.
@@ -176,12 +180,12 @@ impl Layout {
             regs.push((RegionDef { name, rect: [0.0; 4], cells, origin, source, soft: OnceLock::new() }, size_u));
         };
 
-        for (key, icon) in &content.icons {
-            let src = icon.svg.as_str();
-            let Some([_, _, vw, vh]) = data::svg::view_box(src) else { continue };
+        // A drawing and its glow layer (`<g filter="url(#gl)">` groups, rendered soft at half density).
+        let mut drawing = |name: String, glow_name: String, src: &str, density: f32| {
+            let Some([_, _, vw, vh]) = data::svg::view_box(src) else { return };
             let cells = [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL];
             let (crisp, glow) = split_glow(src);
-            // The glow is clipped to the tile anyway: limit the blur's filter region to the viewBox (the sources
+            // The glow is clipped to the region anyway: limit the blur's filter region to the viewBox (the sources
             // use 220 % of the bounding box, ~5x the pixels).
             let glow = glow.map(|g| {
                 g.replace(
@@ -189,11 +193,23 @@ impl Layout {
                     &format!("<filter id=\"gl\" filterUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"{vw}\" height=\"{vh}\">"),
                 )
             });
-            add(format!("icon/{key}"), cells, cells, [0.0; 2], Source::Svg { soft: None, crisp: Some(crisp) });
+            let size = [cells[0] * density, cells[1] * density];
+            add(name, size, cells, [0.0; 2], Source::Svg { soft: None, crisp: Some(crisp) });
             if let Some(g) = glow {
-                let half = [cells[0] / 2.0, cells[1] / 2.0];
-                add(format!("glow/{key}"), half, cells, [0.0; 2], Source::Svg { soft: Some(g), crisp: None });
+                let half = [size[0] / 2.0, size[1] / 2.0];
+                add(glow_name, half, cells, [0.0; 2], Source::Svg { soft: Some(g), crisp: None });
             }
+        };
+        // Machines on ships (GDR-0069), at full density: the world zooms in on them.
+        for (key, art) in &content.ship_art {
+            drawing(format!("ship/{key}"), format!("ship-glow/{key}"), &art.svg, 1.0);
+        }
+        // Part icons: only the part tiles in the UI draw them (the palette, the inspector), never larger than
+        // about 40 px per cell, so they are stored at [`ICON_DENSITY`]. Material and category icons are for the
+        // wiki: the game never draws them.
+        let part_icons: std::collections::BTreeSet<&str> = content.parts.iter().filter_map(|p| p.icon.as_deref()).collect();
+        for (key, icon) in content.icons.iter().filter(|(k, _)| part_icons.contains(k.as_str())) {
+            drawing(format!("icon/{key}"), format!("glow/{key}"), &icon.svg, ICON_DENSITY);
         }
 
         add("fx/white".into(), [0.125; 2], [0.125; 2], [0.0; 2], Source::Proc(Proc::White));
@@ -297,6 +313,14 @@ impl RegionDef {
         [(x * t).round() as u32, (y * t).round() as u32, (w * t).round().max(1.0) as u32, (h * t).round().max(1.0) as u32]
     }
 
+    /// Whether a soft layer is rendered at `tier` itself rather than resampled from [`SOFT_TIER`]: below that tier,
+    /// and for regions small enough to blur in one step even at the tier (the part icons' glows, which are at
+    /// [`ICON_DENSITY`] and so only a few pixels across at [`SOFT_TIER`], too few to resample from).
+    fn soft_direct(&self, tier: u32) -> bool {
+        let [_, _, w, h] = self.pixels(tier);
+        tier < SOFT_TIER || (w * h) as usize <= STEP_TEXELS
+    }
+
     /// The soft layer at [`SOFT_TIER`], rendered the first time it is asked for (`None`: the region has none).
     fn soft_layer(&self) -> Option<&Result<Soft, String>> {
         let Source::Svg { soft: Some(svg), .. } = &self.source else { return None };
@@ -314,10 +338,13 @@ fn snap(x: f32) -> f32 {
     (x / GUTTER).ceil() * GUTTER
 }
 
-/// Shelf packing in atlas units: tallest first, rows of `LAYOUT_WIDTH`. Positions are multiples of the gutter,
-/// the height is rounded up so every mip level has an integer size at the smallest tier. A region wider or
-/// taller than a row is scaled down (keeping its aspect) to fit one.
+/// Skyline packing in atlas units: tallest first, each region at the lowest spot of the skyline it fits (the
+/// leftmost of equals) within rows of `LAYOUT_WIDTH`. Positions are multiples of the gutter, the height is rounded
+/// up so every mip level has an integer size at the smallest tier. A region wider or taller than a row is scaled
+/// down (keeping its aspect) to fit one. (Shelves until 13 Oct 2026: they left a third of the atlas empty beside
+/// the tall regions, and the machines' ship drawings did not fit 4096 px at the top tier with them.)
 fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
+    const EPS: f32 = 1e-4;
     let most = LAYOUT_WIDTH - 2.0 * GUTTER;
     for (_, [w, h]) in &mut regs {
         let k = (most / w.max(*h)).min(1.0);
@@ -327,19 +354,39 @@ fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
     order.sort_by(|&a, &b| {
         regs[b].1[1].total_cmp(&regs[a].1[1]).then(regs[b].1[0].total_cmp(&regs[a].1[0])).then(regs[a].0.name.cmp(&regs[b].0.name))
     });
-    let (mut x, mut y, mut shelf) = (GUTTER, GUTTER, 0.0f32);
+    // The skyline: steps `[x, y]` by ascending x, each up to the next one (the last to the layout's width); a
+    // region goes at a step's x, as high as the steps under its width (gutter included) reach.
+    let mut sky: Vec<[f32; 2]> = vec![[GUTTER, GUTTER]];
+    let mut bottom = 0.0f32;
     for &i in &order {
         let [w, h] = regs[i].1;
-        if x + w + GUTTER > LAYOUT_WIDTH {
-            x = GUTTER;
-            y = snap(y + shelf + GUTTER);
-            shelf = 0.0;
+        let span = snap(w + GUTTER);
+        let mut best: Option<[f32; 2]> = None;
+        for (k, &[x, _]) in sky.iter().enumerate() {
+            if x + w + GUTTER > LAYOUT_WIDTH + EPS {
+                break;
+            }
+            let y = sky[k..].iter().take_while(|s| s[0] < x + span - EPS).fold(0.0f32, |m, s| m.max(s[1]));
+            if best.is_none_or(|b| y < b[1] - EPS) {
+                best = Some([x, y]);
+            }
         }
+        // The first step starts at the gutter and every region fits a row.
+        let [x, y] = best.expect("a region fits a row");
         regs[i].0.rect = [x, y, w, h];
-        x = snap(x + w + GUTTER);
-        shelf = shelf.max(h);
+        bottom = bottom.max(y + h);
+        let end = x + span;
+        let resume = sky.iter().take_while(|s| s[0] < end + EPS).last().map_or(GUTTER, |s| s[1]);
+        let mut next: Vec<[f32; 2]> = sky.iter().copied().filter(|s| s[0] < x - EPS).collect();
+        next.push([x, snap(y + h + GUTTER)]);
+        if end < LAYOUT_WIDTH - EPS {
+            next.push([end, resume]);
+            next.extend(sky.iter().copied().filter(|s| s[0] > end + EPS));
+        }
+        next.dedup_by(|b, a| (a[1] - b[1]).abs() < EPS);
+        sky = next;
     }
-    let height = ((y + shelf + GUTTER) * 2.0).ceil() / 2.0; // multiple of 0.5 unit: integral mips down to 16 px
+    let height = ((bottom + GUTTER) * 2.0).ceil() / 2.0; // multiple of 0.5 unit: integral mips down to 16 px
     let regions: Vec<RegionDef> = regs.into_iter().map(|r| r.0).collect();
     let index = regions.iter().enumerate().map(|(i, r)| (r.name.clone(), i)).collect();
     Layout { regions, size: [LAYOUT_WIDTH, height], index }
@@ -440,7 +487,7 @@ pub struct Rasterizer {
 /// The parsed layers of the region in progress.
 struct Parsed {
     index: usize,
-    /// The soft layer, when it is rendered at the tier (below [`SOFT_TIER`]); from there up it is resampled.
+    /// The soft layer, when it is rendered at the tier ([`RegionDef::soft_direct`]); else it is resampled.
     soft: Option<usvg::Tree>,
     crisp: Option<usvg::Tree>,
     /// Rendered in one step: a blur can't be cut into bands (a soft layer rendered at the tier, or a crisp layer
@@ -593,7 +640,7 @@ impl Rasterizer {
     fn region(&mut self, index: usize, row: u32) -> Result<Option<u32>, String> {
         let layout = self.layout.clone();
         let r = &layout.regions[index];
-        let resample = self.tier >= SOFT_TIER;
+        let resample = !r.soft_direct(self.tier);
         if resample && matches!(r.source, Source::Svg { soft: Some(_), .. }) && r.soft.get().is_none() {
             let _ = r.soft_layer();
             return Ok(Some(row));
@@ -632,7 +679,7 @@ impl Rasterizer {
         let Source::Svg { soft, crisp } = &r.source else {
             return Parsed { index, soft: None, crisp: None, whole: false };
         };
-        let direct = self.tier < SOFT_TIER;
+        let direct = r.soft_direct(self.tier);
         let mut parse = |svg: &str| match usvg::Tree::from_str(svg, &svg_options()) {
             Ok(tree) => Some(tree),
             Err(e) => {
@@ -844,9 +891,11 @@ fn procedural(p: Proc, pm: &mut tiny_skia::PixmapMut, y0: u32, h: u32) {
 mod tests {
     use super::*;
 
-    /// Every icon key used by content has an SVG, and the whole atlas rasterises at two tiers.
+    /// Every icon key used by content has an SVG, and the whole atlas rasterises at two tiers: every part's icon
+    /// (at [`ICON_DENSITY`]) and every machine's ship drawing (GDR-0069, at full density, an engine's with its
+    /// overhang) are there and not empty. Icons only the wiki shows (materials) are not in the atlas.
     #[test]
-    fn content_icons_rasterise_at_two_tiers() {
+    fn content_icons_and_ship_drawings_rasterise_at_two_tiers() {
         let content = data::base_content();
         let mut missing = Vec::new();
         for part in content.parts.iter() {
@@ -858,23 +907,35 @@ mod tests {
         }
         assert!(missing.is_empty(), "icons without SVG: {missing:?}");
         let layout = Arc::new(Layout::new(&content));
+        let mut regions = Vec::new();
+        for part in content.parts.iter() {
+            let Some(icon) = &part.icon else { continue };
+            let reg = layout.get(&format!("icon/{icon}")).expect("icon region");
+            assert_eq!(reg.rect[2..], reg.cells.map(|c| c * ICON_DENSITY), "{icon}");
+            regions.push(reg);
+            if part.hull {
+                continue;
+            }
+            let ship = layout.get(&format!("ship/{icon}")).unwrap_or_else(|| panic!("ship drawing of {}", part.id));
+            assert_eq!(ship.rect[2..], ship.cells, "{icon}");
+            let over = ship.cells[1] - part.size.1 as f32;
+            assert_eq!(over > 0.0, part.engine.is_some(), "{}: only engines reach past the hull", part.id);
+            regions.push(ship);
+        }
+        assert!(layout.get("icon/armor-steel").is_none(), "material icons are for the wiki");
         for tier in [64, 256] {
             let r = rasterise(&layout, tier).expect("rasterises");
             assert_eq!((r.width, r.height), layout.pixel_size(tier));
             assert!(r.levels >= 3, "mips at tier {tier}");
-            for part in content.parts.iter() {
-                if let Some(icon) = &part.icon {
-                    let reg = layout.get(&format!("icon/{icon}")).expect("icon region");
-                    // the region is not empty
-                    let [x, y, w, h] = reg.rect.map(|v| (v * tier as f32).round() as u32);
-                    let mut alpha = 0u64;
-                    for yy in y..y + h {
-                        for xx in x..x + w {
-                            alpha += r.data[((yy * r.width + xx) * 4 + 3) as usize] as u64;
-                        }
+            for reg in &regions {
+                let [x, y, w, h] = reg.pixels(tier);
+                let mut alpha = 0u64;
+                for yy in y..y + h {
+                    for xx in x..x + w {
+                        alpha += r.data[((yy * r.width + xx) * 4 + 3) as usize] as u64;
                     }
-                    assert!(alpha > 0, "icon {icon} is empty at tier {tier}");
                 }
+                assert!(alpha > 0, "{} is empty at tier {tier}", reg.name);
             }
         }
     }
@@ -1001,20 +1062,20 @@ mod tests {
         assert_eq!(t.get("ship.machine_tile"), Some("#0f1c25"));
     }
 
-    /// Content (unvalidated) with these icons.
-    fn with_icons(icons: &[(&str, String)]) -> data::Content {
+    /// Content (unvalidated) with these SVGs as ship drawings (the atlas holds every drawing at full density).
+    fn with_drawings(icons: &[(&str, String)]) -> data::Content {
         let mut files = vec![(
             "pack.ron".to_string(),
             r#"(id: "m", name: "M", version: "1", schema_version: 1)"#.to_string(),
         )];
-        files.extend(icons.iter().map(|(k, svg)| (format!("icons/{k}.svg"), svg.clone())));
+        files.extend(icons.iter().map(|(k, svg)| (format!("icons/{k}.ship.svg"), svg.clone())));
         data::Content::merge(&[data::Pack::from_files(files).unwrap()])
     }
 
-    /// Icons that pass `check_svg` but used to stop the layout (review finding 3): another quote style, commas,
+    /// Drawings that pass `check_svg` but used to stop the layout (review finding 3): another quote style, commas,
     /// a viewBox wider than a layout row, non-ASCII text inside a glow group, `</defs>` in a trailing comment.
     #[test]
-    fn every_icon_that_checks_lays_out_and_rasterises() {
+    fn every_drawing_that_checks_lays_out_and_rasterises() {
         let glow = r##"<defs><filter id="gl" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="1"/></filter></defs>"##;
         let icons = [
             ("quotes", "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><rect width='5' height='5'/></svg>".to_string()),
@@ -1033,9 +1094,9 @@ mod tests {
         for (key, svg) in &icons {
             assert_eq!(data::svg::check_svg(svg), Ok(()), "{key}");
         }
-        let layout = Arc::new(Layout::new(&with_icons(&icons)));
+        let layout = Arc::new(Layout::new(&with_drawings(&icons)));
         for (key, svg) in &icons {
-            let r = layout.get(&format!("icon/{key}")).unwrap_or_else(|| panic!("{key}"));
+            let r = layout.get(&format!("ship/{key}")).unwrap_or_else(|| panic!("{key}"));
             let [_, _, vw, vh] = data::svg::view_box(svg).unwrap();
             assert_eq!(r.cells, [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL], "{key}");
             assert!(r.rect[2] <= LAYOUT_WIDTH - 2.0 * GUTTER && r.rect[3] <= LAYOUT_WIDTH - 2.0 * GUTTER, "{key}");
@@ -1052,10 +1113,10 @@ mod tests {
             ("prefix", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect inkscape:label="x" width="5" height="5"/></svg>"#.to_string()),
             ("fine", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="5" height="5"/></svg>"#.into()),
         ];
-        let layout = Arc::new(Layout::new(&with_icons(&icons)));
+        let layout = Arc::new(Layout::new(&with_drawings(&icons)));
         let r = rasterise(&layout, MIN_TIER).unwrap();
         assert_eq!(r.failed.len(), 1);
-        assert!(r.failed[0].starts_with("icon/prefix: "), "{:?}", r.failed);
+        assert!(r.failed[0].starts_with("ship/prefix: "), "{:?}", r.failed);
     }
 
     /// Icons that fail `check_svg` get no region instead of a panic (unvalidated content only).
@@ -1066,9 +1127,9 @@ mod tests {
             ("broken", "<svg".into()),
             ("not-svg", "é".repeat(100)),
         ];
-        let layout = Layout::new(&with_icons(&icons));
+        let layout = Layout::new(&with_drawings(&icons));
         for (key, _) in &icons {
-            assert!(layout.get(&format!("icon/{key}")).is_none(), "{key}");
+            assert!(layout.get(&format!("ship/{key}")).is_none(), "{key}");
         }
     }
 
