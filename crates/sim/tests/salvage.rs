@@ -402,10 +402,8 @@ fn salvage_scenario_is_deterministic_and_collects() {
         sa.collected > 10 && sa.collected_units >= sa.collected,
         "{sa:?}"
     );
-    assert!(
-        sa.collected_cargo > 0,
-        "a lost collector's wreck gave its cargo: {sa:?}"
-    );
+    // Whether a lost collector's wreck gets stripped depends on how the fight goes; the rule itself is covered by
+    // `a_lost_ship_keeps_its_cargo_and_its_wreck_gives_fragments_and_cargo_first`.
     assert!(sa.fragments > 0 && sa.collected_fragments > 0, "{sa:?}");
     let (c, _) = scenario::run_kind(ScenarioKind::Salvage, 43, 900);
     assert!(a.iter().zip(&c).all(|(x, y)| x != y));

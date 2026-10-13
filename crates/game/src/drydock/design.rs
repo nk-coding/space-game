@@ -143,8 +143,9 @@ mod tests {
         assert_eq!(b.min_x + b.max_x, d.frame().0 as i32);
         assert!(b.min_y >= 0 && b.max_y <= d.frame().1 as i32);
         assert!(sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap().flight_ready());
-        // Exporting gives the content ship back.
-        assert_eq!(d.export(), *content.ships.get(STARTER_SHIP).unwrap());
+        // Exporting gives the content ship back (opening a design drops where it was loaded from).
+        let ship = content.ships.get(STARTER_SHIP).unwrap();
+        assert_eq!(d.export(), Blueprint { source: Default::default(), ..ship.clone() });
     }
 
     #[test]
