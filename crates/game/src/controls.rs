@@ -7,7 +7,8 @@
 //!   left button on empty space (or the right button, or Space) = fire. Tab = next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
 //!   vessel list); clicking a friendly vessel switches to it. Both send `ShipCommand::Focus`; the sim moves the
 //!   focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and taps on the fleet bar
-//!   (`fleet_bar.rs`) are the bar's, never the world's.
+//!   (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring) are theirs, never the
+//!   world's.
 //! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button bottom-right, tap a
 //!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
 //!   (or with `?touch=1`).
@@ -25,6 +26,7 @@ use sim::{ShipCommand, ShipId, Target};
 
 use crate::camera::CameraRig;
 use crate::fleet_bar::FleetBar;
+use crate::flight_hud::{HudButtons, HudZone, on_hud_button};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PilotFocus, is_friendly, player_vessels};
 use crate::sim_bridge::{SimWorld, piece_com, sv, v2};
@@ -221,6 +223,7 @@ fn mouse(
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
     fleet: Res<FleetBar>,
+    hud: HudButtons,
     mut input: ResMut<PlayerInput>,
 ) {
     if focus.0.is_none() {
@@ -231,6 +234,7 @@ fn mouse(
     if buttons.just_pressed(MouseButton::Left)
         && let Some(c) = cursor
         && !fleet.blocks(c)
+        && !on_hud_button(&hud, c)
     {
         let alpha = fixed.overstep_fraction();
         let hit = pick(&world, focus.0, rig.screen_to_world(c), 1.0 / rig.zoom, alpha);
@@ -264,6 +268,7 @@ fn touch(
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
     fleet: Res<FleetBar>,
+    hud: HudButtons,
     mut input: ResMut<PlayerInput>,
 ) {
     let size = window.size();
@@ -273,7 +278,7 @@ fn touch(
     for t in touches.iter_just_pressed() {
         input.touch_ui = true;
         let p = t.position();
-        if fleet.blocks(p) {
+        if fleet.blocks(p) || on_hud_button(&hud, p) {
             continue;
         }
         if focus.0.is_some() && input.stick_touch.is_none() && p.distance(stick_c) < STICK_RADIUS * 1.7 {
@@ -393,6 +398,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<crate::
         .spawn((
             StickBase,
             FlightUi,
+            HudZone,
             Node {
                 position_type: PositionType::Absolute,
                 left: px(50),
@@ -429,6 +435,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<crate::
         .spawn((
             FireButton,
             FlightUi,
+            HudZone,
             Node {
 
                 position_type: PositionType::Absolute,

@@ -29,7 +29,7 @@ use sim::{ShipCommand, ShipId, VesselInfo, VesselState};
 use crate::RenderToggles;
 use crate::camera::CameraRig;
 use crate::controls::ControlsSet;
-use crate::flight_hud::HudFonts;
+use crate::flight_hud::{HudFonts, HudZone};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PLAYER, PilotFocus};
 use crate::sim_bridge::SimWorld;
@@ -149,6 +149,7 @@ fn spawn_bar(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         .with_children(|root| {
             root.spawn((
                 FleetBlock,
+                HudZone,
                 Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() },
             ))
             .with_children(|block| {
