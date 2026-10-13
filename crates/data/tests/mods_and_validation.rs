@@ -569,3 +569,45 @@ fn control_cost_defaults_base_numbers_and_validation() {
         show(&w)
     );
 }
+
+#[test]
+fn locked_parts_and_materials() {
+    let c = content();
+    // The automatons' parts and plate wait for salvage or research; the raider still uses them.
+    for id in ["automaton_core", "automaton_cannon"] {
+        assert!(c.parts.get(id).unwrap().locked, "{id}");
+    }
+    assert!(c.materials.get("automaton_plate").unwrap().locked);
+    assert!(!c.parts.get("armor_block").unwrap().locked);
+    assert!(!c.materials.get("steel").unwrap().locked);
+    let raider = c.ships.get("automaton_raider").unwrap();
+    assert!(raider.parts.iter().any(|p| c.parts.get(&p.part).unwrap().locked));
+    assert_eq!(c.unit_hull_part(data::Shape::Rect).unwrap().id, "armor_block");
+    assert_eq!(c.unit_hull_part(data::Shape::Slope).unwrap().id, "slope_1x1");
+
+    // The drydock's paint block and bevel slope stay available.
+    let e = errors_with(
+        "parts/hull.ron",
+        r#"(id: "armor_block", name: "Armor block", summary: "Plain plating.", tags: ["armor"], category: "hull",
+            size: (1, 1), build_points: 1, hull: true, locked: true)"#,
+    );
+    assert_error(&e, "armor_block", "locked", "paints and fills with");
+    let e = errors_with(
+        "parts/hull.ron",
+        r#"(id: "slope_1x1", name: "Slope 1×1", summary: "A slope.", tags: ["armor", "slope"], category: "hull",
+            size: (1, 1), shape: Slope, build_points: 0.5, hull: true, locked: true)"#,
+    );
+    assert_error(&e, "slope_1x1", "locked", "bevels with");
+    // At least one armour material stays available.
+    let lock = |id: &str| {
+        format!(
+            r#"(id: "{id}", name: "{id}", summary: "Locked.", locked: true,
+                armor: (tone: "{id}", mass_per_cell: 1, hp_per_cell: 1, build_point_factor: 1))"#
+        )
+    };
+    let all = format!("[{}, {}, {}]", lock("steel"), lock("composite"), lock("reactive"));
+    let e = errors_with("materials/armor.ron", &all);
+    assert_error(&e, "steel", "locked", "every armour material is locked");
+    let some = format!("[{}, {}]", lock("steel"), lock("composite"));
+    assert!(errors_with("materials/armor.ron", &some).is_empty());
+}

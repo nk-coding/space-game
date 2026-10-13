@@ -146,12 +146,7 @@ struct Catalog {
 
 impl Catalog {
     fn new(c: &Content) -> Catalog {
-        let unit = |shape: Shape| {
-            c.parts
-                .iter()
-                .find(|p| p.hull && p.size == (1, 1) && p.shape == shape)
-                .map(|p| p.id.clone())
-        };
+        let unit = |shape: Shape| c.unit_hull_part(shape).map(|p| p.id.clone());
         Catalog {
             parts: c
                 .parts

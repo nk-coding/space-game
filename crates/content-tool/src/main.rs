@@ -580,4 +580,19 @@ mod tests {
         assert_eq!(edge["rule_slots"], json!(0.0));
         assert!(edge.get("power_output").is_none() && edge.get("thrust").is_none());
     }
+
+    /// Parts and materials carry `locked` (what the player can't build yet), locked or not.
+    #[test]
+    fn export_marks_locked_parts_and_materials() {
+        let base = data::fs::load_pack_dir(&pack_dirs(&[])[0]).unwrap();
+        let v = export(&Content::load(&[base]).unwrap());
+        let locked = |kind: &str, id: &str| {
+            let entries = v[kind].as_array().unwrap();
+            entries.iter().find(|e| e["id"] == id).unwrap()["locked"].clone()
+        };
+        assert_eq!(locked("parts", "automaton_cannon"), json!(true));
+        assert_eq!(locked("parts", "pulse_laser"), json!(false));
+        assert_eq!(locked("materials", "automaton_plate"), json!(true));
+        assert_eq!(locked("materials", "steel"), json!(false));
+    }
 }

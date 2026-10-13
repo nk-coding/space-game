@@ -37,6 +37,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     v.entries(c.ships.as_slice(), |v, e| v.ship(e));
     v.entries(c.behavior_nodes.as_slice(), |v, e| v.behavior_node(e));
     v.entries(c.behaviors.as_slice(), |v, e| v.behavior(e));
+    v.locked();
     v.icons();
     v.wiki();
     v.out
@@ -517,6 +518,31 @@ impl<'a> Validator<'a> {
                     "must be at least 1 (or omitted for no limit)",
                 );
             }
+        }
+    }
+
+    /// Locked parts and materials are hidden in the drydock until unlocked, so the parts the drydock paints,
+    /// fills and bevels with must stay available, and so must at least one armour material.
+    fn locked(&mut self) {
+        let c = self.c;
+        for (shape, what) in [(Shape::Rect, "paints and fills with"), (Shape::Slope, "bevels with")] {
+            if let Some(p) = c.unit_hull_part(shape).filter(|p| p.locked) {
+                self.err(
+                    p,
+                    "locked",
+                    format!("the drydock {what} the first 1×1 hull part of this shape, so it can't be locked"),
+                );
+            }
+        }
+        let mut armor = c.materials.iter().filter(|m| m.armor.is_some());
+        if let Some(first) = armor.clone().next()
+            && armor.all(|m| m.locked)
+        {
+            self.err(
+                first,
+                "locked",
+                "every armour material is locked: the drydock has nothing to build hull parts in",
+            );
         }
     }
 

@@ -132,6 +132,12 @@ A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_p
 `build_points × build_point_factor`; slopes have half the area of their footprint. Fabrication resources
 (He-3, chitin, ...) will be materials without an `armor` block, which is why the kind is not called "armor".
 
+`locked` (optional, default `false`, added 13 Oct 2026), on materials and parts alike: not available to the
+player until unlocked (salvage, research). The drydock hides locked entries (palette, armor pills, the 1–9 keys);
+content ships that use them still load, open in the drydock and fly. The base pack locks the automaton core,
+the automaton cannon and Automaton plate (Niklas, 13 Oct 2026). Nothing unlocks yet; that comes with salvage and
+research.
+
 ### Parts (`parts/*.ron`)
 
 ```ron
@@ -157,6 +163,7 @@ A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_p
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
 | `hull` | `true`: takes an armor material per placement; then `mass`/`hp` must be absent |
 | `mass`, `hp` | required for non-hull parts |
+| `locked` | optional, default `false`: not available to the player until unlocked (salvage, research); the drydock hides it. Content ships may still use it (the raider flies its locked automaton parts) |
 
 Optional component blocks (a part has any combination):
 
@@ -515,7 +522,8 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   with `mass`/`hp`, non-hull parts without them, illegal slopes (not `w × 1`, or not hull), hull placements
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, frame sides outside 1–128 cells, wiki pages for missing entries, broken or malformed
-  links.
+  links, a locked paint block or bevel slope (the first 1×1 hull part of each shape in content order, which the
+  drydock paints, fills and bevels with: `Content::unit_hull_part`), every armor material locked.
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
   an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
   placement `power` override. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)

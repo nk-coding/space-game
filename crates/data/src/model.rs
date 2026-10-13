@@ -200,6 +200,10 @@ pub struct Material {
     pub icon: Option<String>,
     #[serde(default)]
     pub armor: Option<ArmorSpec>,
+    /// Not available to the player until unlocked (salvage, research): the drydock hides it. Content ships may
+    /// still use it.
+    #[serde(default)]
+    pub locked: bool,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
@@ -542,6 +546,10 @@ pub struct Part {
     pub rcs: Option<RcsSpec>,
     #[serde(default)]
     pub bonuses: Vec<Bonus>,
+    /// Not available to the player until unlocked (salvage, research): the drydock hides it. Content ships may
+    /// still use it.
+    #[serde(default)]
+    pub locked: bool,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
