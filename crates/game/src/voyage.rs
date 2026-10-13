@@ -344,10 +344,10 @@ pub fn encounter_name(content: &Content, encounter: &str) -> String {
 /// The RECALL pill and the line under it: its text, the line, and whether it can be pressed.
 pub fn recall_words(phase: Phase, can_recall: bool, tick: u64) -> (String, String, bool) {
     match phase {
-        Phase::Flying if can_recall => ("RECALL  R".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true),
-        Phase::Flying => ("RECALL  R".into(), "ARMED ENEMIES NEAR  ·  NO RECALL".into(), false),
+        Phase::Flying if can_recall => ("RECALL".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true),
+        Phase::Flying => ("RECALL".into(), "ARMED ENEMIES NEAR  ·  NO RECALL".into(), false),
         Phase::Warping { home_at } => ("WARPING".into(), format!("HOME IN {} S", seconds_left(home_at, tick)), false),
-        Phase::Lost { .. } | Phase::Ended => ("RECALL  R".into(), String::new(), false),
+        Phase::Lost { .. } | Phase::Ended => ("RECALL".into(), String::new(), false),
     }
 }
 
@@ -682,7 +682,7 @@ mod tests {
         assert_eq!(title(&content, "x"), "X");
         assert_eq!((clock(0), clock(30 * 425), clock(30 * 3600 + 29)), ("0:00".into(), "7:05".into(), "60:00".into()));
         assert_eq!(encounter_name(&content, "raider_pack"), "RAIDER PACK");
-        assert_eq!(recall_words(Phase::Flying, true, 0), ("RECALL  R".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true));
+        assert_eq!(recall_words(Phase::Flying, true, 0), ("RECALL".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true));
         assert!(!recall_words(Phase::Flying, false, 0).2);
         assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, 1), ("WARPING".into(), "HOME IN 3 S".into(), false));
         assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, 61).1, "HOME IN 1 S");

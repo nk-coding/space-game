@@ -2,15 +2,17 @@
 //! 1280 × 720 logical pixels and up (larger windows scale it: `view::ui_scale`):
 //!
 //! ```text
-//! (o) SHIPYARD › DRYDOCK · FRIGATE FRAME         ARMOR [STEEL 1][COMPOSITE 2].. | OVERLAY [HEAT][MASS][BONUS]..
+//! (o) SHIPYARD › DRYDOCK · FRIGATE FRAME         ARMOR [STEEL][COMPOSITE].. | OVERLAY [HEAT][MASS][BONUS]..
 //!     Halvex Runner
-//! [ Search parts      / ]   [PAINT B][FILL G][ERASE X][SELECT V][ROTATE Q E]   POWER  —   PEAK HEAT  —
+//! [ Search parts        ]   [PAINT][FILL][ERASE][SELECT][ROTATE]               POWER  —   PEAK HEAT  —
 //! [HULL][POWER][WEAPONS]..                                                     THRUST/MASS — YAW —   ...
 //! HULL · 4                              (the grid: view.rs)                    SELECTED PART
 //! [▣ Armor block   1×1 · ..]                                                   [▣] Armor block
 //! ...                                   CELL 5,2 · MIRROR ON · AXIS 12 ...  (−) 100 % (+)
-//! (↶)(↷) [MIRROR M][BEVEL SHIFT B]  FLIGHT-READY  [BEHAVIOR][BLUEPRINTS][EXPORT][SAVE CTRL S]  [▶ TEST-FLY T]
+//! (↶)(↷) [MIRROR][BEVEL]  FLIGHT-READY  [BEHAVIOR][BLUEPRINTS][EXPORT][SAVE]  [▶ TEST-FLY]
 //! ```
+//!
+//! Labels carry no key letters: a control's key is in its tooltip (`ui_kit::Tip`, Niklas 13 Oct 2026).
 //!
 //! Everything is spawned once at start (hidden outside the drydock) and updated in place from the drydock's
 //! resources; texts and colours are written only when they change. UI words are chrome in code (like the flight
@@ -38,7 +40,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Hot, Pill, PillLock, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose,
-    ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
+    ring_glyph, ring_node, set_color, Tip, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -47,6 +49,9 @@ use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_
 use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 use super::PlayerDesign;
+
+/// The keys of the first nine ARMOR pills (in their tooltips).
+const MATERIAL_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
 /// Palette rows in the pool (as many show as fit; the wheel scrolls).
 const ROWS: usize = 24;
@@ -155,7 +160,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // Top left: the ring menu, the breadcrumb and the design's name.
             root.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
                 .with_children(|tl| {
-                    tl.spawn((ring_node(40.0), ActionButton(DrydockAction::Menu))).with_children(|r| {
+                    tl.spawn((ring_node(40.0), ActionButton(DrydockAction::Menu), Tip::new("SHIPYARD"))).with_children(|r| {
                         r.spawn(glyph(Glyph::Menu, Tone::Violet, 22.0));
                     });
                     tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
@@ -170,9 +175,9 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(2)), ..default() }));
                     // Every armour material; a locked one is dimmed with a lock (GDR-0065).
                     for (k, m) in armor_materials(content).enumerate() {
-                        let text = if k < 9 { format!("{} {}", m.name.to_uppercase(), k + 1) } else { m.name.to_uppercase() };
                         let lock = UiIcon::Glyph { glyph: Glyph::Lock, color: ui.dim };
-                        spawn_pill(tr, fonts, &text, 10.0, 30.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock));
+                        let tip = MATERIAL_KEYS.get(k).map_or(Tip::new("ARMOR MATERIAL"), |key| Tip::key("ARMOR MATERIAL", key));
+                        spawn_pill(tr, fonts, &m.name.to_uppercase(), 10.0, 30.0, Some(lock), pill(Tone::Teal), (ActionButton(DrydockAction::Material(m.id.clone())), PillLock, tip));
                     }
                     tr.spawn((Node { width: px(1), height: px(22), margin: UiRect::horizontal(px(6)), ..default() }, BackgroundColor(c(Tone::Label, 0.25))));
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
@@ -189,6 +194,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         SearchField,
                         TextField { placeholder: "Search parts".into(), max_chars: 24, ..default() },
                         Hot::default(),
+                        Tip::key("SEARCH PARTS", "/"),
                         Node {
                             height: px(36),
                             flex_shrink: 0.0,
@@ -205,7 +211,6 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     .with_children(|f| {
                         f.spawn(glyph(Glyph::Search, Tone::Label, 14.0));
                         f.spawn((field_text(fonts, 12.5), Node { flex_grow: 1.0, ..default() }));
-                        f.spawn(label(fonts, "/", 11.0, c(Tone::Dim, 1.0)));
                     });
                     lp.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), flex_shrink: 0.0, ..default() })
                         .with_children(|cats| {
@@ -380,14 +385,14 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(290.0), Some(332.0), Some(76.0), Some(66.0)) }).with_children(|ga| {
                 ga.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::Center, column_gap: px(8), flex_shrink: 0.0, ..default() }))
                     .with_children(|tb| {
-                        for (text, action) in [
-                            ("PAINT B", DrydockAction::Tool(Tool::Paint)),
-                            ("FILL G", DrydockAction::Tool(Tool::Fill)),
-                            ("ERASE X", DrydockAction::Tool(Tool::Erase)),
-                            ("SELECT V", DrydockAction::Tool(Tool::Select)),
-                            ("ROTATE Q E", DrydockAction::RotateCw),
+                        for (text, key, action) in [
+                            ("PAINT", "B", DrydockAction::Tool(Tool::Paint)),
+                            ("FILL", "G", DrydockAction::Tool(Tool::Fill)),
+                            ("ERASE", "X", DrydockAction::Tool(Tool::Erase)),
+                            ("SELECT", "V", DrydockAction::Tool(Tool::Select)),
+                            ("ROTATE", "Q / E", DrydockAction::RotateCw),
                         ] {
-                            spawn_pill(tb, fonts, text, 10.0, 30.0, None, pill(Tone::Teal), ActionButton(action));
+                            spawn_pill(tb, fonts, text, 10.0, 30.0, None, pill(Tone::Teal), (ActionButton(action), Tip::key(text, key)));
                         }
                     });
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
@@ -395,9 +400,9 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     .with_children(|b| {
                         b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(super::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
-                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
+                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut), Tip::key("ZOOM OUT", "−"))).with_child(ring_glyph(Glyph::Minus, 13.0));
                             z.spawn((PanelText::Zoom, number(fonts, "", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), ..default() }));
-                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
+                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn), Tip::key("ZOOM IN", "+"))).with_child(ring_glyph(Glyph::Plus, 13.0));
                         });
                     });
             });
@@ -405,14 +410,14 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // Bottom: undo / redo, mirror and bevel, the status line, blueprints / export / save, the test flight.
             root.spawn((UiBlock, Node { height: px(42), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(22.0), Some(20.0), None, Some(14.0)) }))
                 .with_children(|bb| {
-                    for (g, action) in [(Glyph::Undo, DrydockAction::Undo), (Glyph::Redo, DrydockAction::Redo)] {
-                        bb.spawn((ring_node(38.0), ActionButton(action))).with_children(|r| {
+                    for (g, action, tip) in [(Glyph::Undo, DrydockAction::Undo, Tip::key("UNDO", "CTRL+Z")), (Glyph::Redo, DrydockAction::Redo, Tip::key("REDO", "CTRL+SHIFT+Z"))] {
+                        bb.spawn((ring_node(38.0), ActionButton(action), tip)).with_children(|r| {
                             r.spawn(glyph(g, Tone::Number, 20.0));
                         });
                     }
                     bb.spawn(Node { width: px(14), ..default() });
-                    spawn_pill(bb, fonts, "MIRROR M", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Mirror));
-                    spawn_pill(bb, fonts, "BEVEL SHIFT B", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Bevel));
+                    spawn_pill(bb, fonts, "MIRROR", 10.0, 32.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Mirror), Tip::key("MIRROR", "M")));
+                    spawn_pill(bb, fonts, "BEVEL", 10.0, 32.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Bevel), Tip::key("BEVEL", "SHIFT+B")));
                     // The status line and the voyage-ready line after it (the second wraps under the first when both
                     // don't fit).
                     bb.spawn(Node {
@@ -434,10 +439,10 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     spawn_pill(bb, fonts, "BEHAVIOR", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Behavior));
                     spawn_pill(bb, fonts, "BLUEPRINTS", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Blueprints));
                     spawn_pill(bb, fonts, "EXPORT", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Export));
-                    spawn_pill(bb, fonts, "SAVE CTRL S", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Save));
+                    spawn_pill(bb, fonts, "SAVE", 10.0, 32.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Save), Tip::key("SAVE", "CTRL+S")));
                     bb.spawn(Node { width: px(10), ..default() });
                     let play = UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
-                    spawn_pill(bb, fonts, "TEST-FLY T", 12.0, 40.0, Some(play), Pill { primary: true, ..pill(Tone::Teal) }, ActionButton(DrydockAction::TestFly));
+                    spawn_pill(bb, fonts, "TEST-FLY", 12.0, 40.0, Some(play), Pill { primary: true, ..pill(Tone::Teal) }, (ActionButton(DrydockAction::TestFly), Tip::key("TEST-FLY", "T")));
                 });
         });
 }

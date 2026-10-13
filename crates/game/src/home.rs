@@ -8,7 +8,7 @@
 //!  [mooring]==.      .========================.
 //!             [mind]=|  BUILDING AREA (ship) =|  > > > ( GATE )
 //!  [mooring]=='      '========================'      VOYAGES
-//! FLEET  F            [SALVAGE BAY] [tower]-o--o--o-   NOTES …
+//! FLEET               [SALVAGE BAY] [tower]-o--o--o-   NOTES …
 //! ```
 //!
 //! * **Places** (`shipyard::layout::Place`): a click or a tap on one, or its key, flies the camera onto it
@@ -32,7 +32,6 @@
 
 use bevy::prelude::*;
 use bevy::state::state::StateTransitionEvent;
-use bevy::text::LetterSpacing;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform};
 use bevy::window::PrimaryWindow;
 
@@ -50,7 +49,7 @@ use crate::shipyard::layout::{Align, Layout, Place, fit};
 use crate::shipyard::{ShipyardSet, Yard};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
+use crate::ui_kit::{Hot, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
 
 /// Label sizes (logical px at the 1280 × 720 layout; the UI scale grows them with the window).
 const TITLE: f32 = 11.0;
@@ -79,7 +78,7 @@ pub enum HomeAction {
     Voyages,
 }
 
-/// A place's key, if it has one (shown after its title while it works).
+/// A place's key, if it has one (its tooltip names it while it works).
 pub fn key_of(place: Place) -> Option<(KeyCode, &'static str)> {
     match place {
         Place::Drydock => Some((KeyCode::KeyD, "D")),
@@ -102,6 +101,18 @@ pub fn action_of(place: Place) -> Option<HomeAction> {
         Place::Voyages => Some(HomeAction::Voyages),
         Place::Research | Place::Fabricator | Place::SalvageBay => None,
     }
+}
+
+/// A working place's tooltip: what it opens and its key (labels carry no key letters, Niklas 13 Oct 2026).
+fn tip_of(place: Place) -> Option<Tip> {
+    let name = match action_of(place)? {
+        HomeAction::Drydock => "DRYDOCK",
+        HomeAction::Behavior => "BEHAVIOR",
+        HomeAction::TestRange => "TEST RANGE",
+        HomeAction::Fleet => "FLEET",
+        HomeAction::Voyages => "VOYAGES",
+    };
+    Some(key_of(place).map_or(Tip::new(name), |(_, key)| Tip::key(name, key)))
 }
 
 /// The place a screen belongs to: where the camera starts when that screen goes back home.
@@ -252,21 +263,13 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     });
     commands.spawn((LabelRoot, full, Visibility::Hidden)).with_children(|root| {
         for place in Place::ALL {
-            if action_of(place).is_some() {
-                root.spawn((Spot(place), Hot::default(), Node { position_type: PositionType::Absolute, ..default() }));
+            if let Some(tip) = tip_of(place) {
+                root.spawn((Spot(place), Hot::default(), tip, Node { position_type: PositionType::Absolute, ..default() }));
             }
             let words = TextLayout::no_wrap();
             root.spawn((PlaceLabel(place), Node { position_type: PositionType::Absolute, width: px(0), flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }))
                 .with_children(|l| {
-                    let mut title = l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words));
-                    if let (Some((_, key)), Some(_)) = (key_of(place), action_of(place)) {
-                        title.with_child((
-                            TextSpan::new(format!("  {key}")),
-                            TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(TITLE), ..default() },
-                            TextColor(c(Tone::Dim, 1.0)),
-                            LetterSpacing::Px(TITLE * 0.3),
-                        ));
-                    }
+                    l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words));
                     l.spawn((LabelSub(place), label(fonts, "", SUB, c(Tone::Label, 1.0)), words));
                 });
         }

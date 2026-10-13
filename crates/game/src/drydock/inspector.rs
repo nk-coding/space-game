@@ -25,7 +25,7 @@ use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Pill, Tone, label, number, ring_glyph, ring_node, set_text, spawn_pill};
+use crate::ui_kit::{Pill, Tip, Tone, label, number, ring_glyph, ring_node, set_text, spawn_pill};
 
 use super::PlayerDesign;
 use super::actions::{ActionButton, DrydockAction};
@@ -285,13 +285,13 @@ pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, st
         });
     });
     rp.spawn((ControlRow::Actions, row())).with_children(|a| {
-        for (g, action) in [(Glyph::Undo, DrydockAction::RotateCcw), (Glyph::Redo, DrydockAction::RotateCw)] {
-            a.spawn((ring_node(26.0), ActionButton(action))).with_children(|r| {
+        for (g, action, tip) in [(Glyph::Undo, DrydockAction::RotateCcw, Tip::key("ROTATE LEFT", "Q")), (Glyph::Redo, DrydockAction::RotateCw, Tip::key("ROTATE RIGHT", "E"))] {
+            a.spawn((ring_node(26.0), ActionButton(action), tip)).with_children(|r| {
                 r.spawn(glyph(g));
             });
         }
-        spawn_pill(a, fonts, "FLIP F", 8.5, 26.0, None, Pill::new(Tone::Teal), ActionButton(DrydockAction::Flip));
-        spawn_pill(a, fonts, "DELETE", 8.5, 26.0, None, Pill::new(Tone::Coral), ActionButton(DrydockAction::Delete));
+        spawn_pill(a, fonts, "FLIP", 8.5, 26.0, None, Pill::new(Tone::Teal), (ActionButton(DrydockAction::Flip), Tip::key("FLIP", "F")));
+        spawn_pill(a, fonts, "DELETE", 8.5, 26.0, None, Pill::new(Tone::Coral), (ActionButton(DrydockAction::Delete), Tip::key("DELETE", "DEL")));
     });
 }
 

@@ -25,7 +25,7 @@ use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, sub_tone, tracked,
+    Hot, Pill, TextField, Tip, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, sub_tone, tracked,
     wheel_rows,
 };
 
@@ -198,7 +198,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     col.spawn(label(fonts, "BEHAVIOR  ›  BEHAVIORS", 10.0, c(Tone::Label, 1.0)));
                     col.spawn(number(fonts, "Your behaviors and templates", 20.0, c(Tone::Number, 1.0)));
                 });
-                spawn_pill(h, fonts, "CLOSE ESC", 9.5, 30.0, None, pill, ListButton::Close);
+                spawn_pill(h, fonts, "CLOSE", 9.5, 30.0, None, pill, (ListButton::Close, Tip::key("CLOSE", "ESC")));
             });
             root.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(48), flex_grow: 1.0, min_height: px(0), ..default() }).with_children(|lists| {
                 for (list, width) in [(0, 600.0), (1, 432.0)] {

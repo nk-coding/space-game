@@ -40,7 +40,7 @@ use crate::storage::{Document, Storage};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, tracked,
+    Hot, Pill, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, tracked,
     wheel_rows,
 };
 
@@ -399,7 +399,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     stage
                         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) })
                         .with_children(|tl| {
-                            tl.spawn((ring_node(40.0), FleetButton::Close)).with_child((
+                            tl.spawn((ring_node(40.0), FleetButton::Close, Tip::key("SHIPYARD", "ESC"))).with_child((
                                 UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet },
                                 Node { width: px(22), height: px(22), ..default() },
                             ));
@@ -436,7 +436,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                     ));
                                 }
                             });
-                            spawn_pill(tr, fonts, "CLOSE ESC", 9.5, 30.0, None, Pill::new(Tone::Teal), FleetButton::Close);
+                            spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (FleetButton::Close, Tip::key("CLOSE", "ESC")));
                         });
 
                     // The flagship on the dock.

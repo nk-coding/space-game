@@ -99,7 +99,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
-  `WAVES ON` / `WAVES OFF (C)`, Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
+  `WAVES ON` / `WAVES OFF` (C turns them on, the help line says so), Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
   they are more than 320 m from the player or dark for 75 s (the player's vessels, dark or dormant, stay). When
   the focus loses its last logic core the sim moves the focus to another vessel of the player (a split-off half
   too); when the player has no vessel left, a new one re-forms after 3 s (its wreck, with whatever its hold
@@ -362,9 +362,9 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   the camera flies back out from the moorings.
 - **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
   placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
-  FRIGATE 24 × 24  D` (gold, in the area), `BEHAVIOR  B` / `THE MIND` (violet), `TEST RANGE  T` / `NO RISK · NO
-  HAUL` (coral), `FLEET  F` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
-  `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES  V` / `THE GATE · SHIPYARD APPROACH` (teal: the
+  FRIGATE 24 × 24` (gold, in the area), `BEHAVIOR` / `THE MIND` (violet), `TEST RANGE` / `NO RISK · NO
+  HAUL` (coral), `FLEET` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
+  `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES` / `THE GATE · SHIPYARD APPROACH` (teal: the
   voyage V launches; `DORMANT` while no voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
@@ -435,7 +435,7 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
 - **The HUD** (after `docs/plans/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
   the subtitle `SITES 1 / 4 · 2:05` (sites cleared, and wreck-only sites once they spawned, of all; the sim time);
   under the hull the cargo block: `SALVAGE`, the shown ship's `5 / 8` in gold with one pip per cargo unit (20 at
-  most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (R) and
+  most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (its tooltip names R) and
   what it does: `WARP HOME 3 S · KEEPS THE HAUL` (teal) while `Sim::can_recall(PLAYER)` allows it, else dimmed with
   `ARMED ENEMIES NEAR · NO RECALL`. Sites off screen get a marker at the screen edge (the enemy markers' code: an
   arrow kept clear of the HUD) with the encounter's name and the distance from the focus: raiders coral, wrecks
@@ -476,7 +476,7 @@ there). Screenshots:
 
 - **The layer**: top left the ring button (closes it), `SHIPYARD › FLEET` and "Fleet", and the rule in words
   (escorts fly the behavior their design names and follow the flagship's lock); top right `CORES 3 / 4` with one dot
-  per core of the mind (filled for the fleet's, coral past the capacity) and CLOSE ESC. In the middle the flagship
+  per core of the mind (filled for the fleet's, coral past the capacity) and CLOSE (Esc). In the middle the flagship
   (the drydock's working design) in a bracketed box, under it its name, cores and cargo and the fleet's voyage-ready
   line. Around it the escort slots (`MAX_ESCORTS` = 4 places: left and right, upper and lower): each filled slot
   shows its design, `ESCORT n`, name, cores and cargo, and REMOVE; one empty slot more while there is room says how
@@ -618,6 +618,19 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   WHEEL` over a scrolled area's bottom edge while more of it lies below); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
+- **Tooltips** (`ui_kit::Tip`, 13 Oct 2026; Niklas: labels carry no key letters, the tooltip names the key): a
+  `Tip { name, key }` on any `Hot` node (pills, rings, fields, and home's invisible click areas over the world's
+  places, so the shipyard's places get them too). Resting the mouse on it for 0.5 s (`TIP_DELAY`) shows one shared
+  plate (`show_tip`, in `UiStyleSet`): the name in label grey, the key in white (`B`, `CTRL+S`, `Q / E`, `ESC`),
+  12 px right of and 20 px below the pointer, flipped left or above it at the window's edges and kept 6 px inside the
+  window (`tip_position`, tested). It moves by its `UiTransform` (no layout), is laid out for one frame before it
+  shows, hides when the pointer leaves or presses (until it leaves the control), and never shows for touch. Every
+  control with a key has one (the drydock's tools, MIRROR, BEVEL, SAVE, TEST-FLY, undo / redo, the zoom rings, the
+  ARMOR pills `1`–`9`, the search `/`, FLIP, DELETE, the rotate rings; the BEHAVIOR screen's TEST IN RANGE, DRYDOCK,
+  SAVE, undo / redo, search; CLOSE on FLEET, BLUEPRINTS and BEHAVIORS; DISMISS; RECALL; the home rings; home's
+  places); the keys work as before. Screens added later give their controls a `Tip` instead of a key in the label.
+  Banners and help lines that tell what a key does (`PAUSED · P`, `ABANDON THE VOYAGE? · M AGAIN`, the flight help
+  line) stay: they are not controls.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, a whole design for FLEET, or a glyph Barlow
   lacks: undo, redo, play, search, menu, diamond, lock; home's grid, tree, orbit, arrow, target, formation) is drawn
   as a world-space mesh of the main camera placed over the node's rectangle every

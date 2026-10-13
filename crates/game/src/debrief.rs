@@ -36,7 +36,7 @@ use crate::flight_hud::HudFonts;
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Pill, Tone, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked};
+use crate::ui_kit::{Hot, Pill, Tip, Tone, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked};
 use crate::voyage::clock;
 
 /// Rows of parts shown (the rest are counted in one line).
@@ -476,7 +476,7 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
     // DISMISS at the bottom.
     p.spawn(Node { flex_grow: 1.0, ..default() });
     p.spawn(Node { justify_content: JustifyContent::FlexEnd, ..row(10.0) }).with_children(|r| {
-        spawn_pill(r, fonts, "DISMISS  ESC", 10.0, 36.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, DismissButton);
+        spawn_pill(r, fonts, "DISMISS", 10.0, 36.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, (DismissButton, Tip::key("DISMISS", "ESC / ENTER")));
     });
 }
 

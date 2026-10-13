@@ -6,7 +6,7 @@
 //!   hidden for a ship without a hold);
 //! * left: speed (m/s), the top speed and the drift state;
 //! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target);
-//! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost,
+//! * top centre: scene / wave line and whether raider waves come, centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
@@ -38,7 +38,7 @@ use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Pill, PillText, Tone, UiClick, UiInputSet, UiStyleSet, label, number, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Pill, PillText, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, number, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{self, Phase, VoyageRun};
 use crate::{RenderToggles, ship_view::PieceView};
 
@@ -229,7 +229,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
         .with_children(|root| {
             // Top left: the home ring (as on the drydock and the BEHAVIOR screen), then the hull.
             root.spawn(abs(Some(20.0), None, Some(18.0), None)).with_children(|c| {
-                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0))).with_children(|r| {
+                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0), Tip::key("SHIPYARD", "M"))).with_children(|r| {
                     r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(19), height: px(19), ..default() }));
                 });
             });
@@ -253,7 +253,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                         v.spawn((HudText::SalvageSub, label(&fonts, "", 10.0, dim)));
                         v.spawn(Node { height: px(16), ..default() });
                         v.spawn(Node { align_self: AlignSelf::FlexStart, ..default() }).with_children(|r| {
-                            spawn_pill(r, &fonts, "RECALL  R", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone));
+                            spawn_pill(r, &fonts, "RECALL", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone, Tip::key("RECALL", "R")));
                         });
                         v.spawn((HudText::RecallSub, label(&fonts, "", 9.5, teal)));
                     });
@@ -527,7 +527,7 @@ fn update_text(
                     SceneKind::Sandbox => {
                         // The player's vessels are in the fleet bar (`fleet_bar.rs`).
                         let _ = write!(s, "RAIDERS {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
-                        s.push_str(if scene.waves { "  ·  WAVES ON" } else { "  ·  WAVES OFF (C)" });
+                        s.push_str(if scene.waves { "  ·  WAVES ON" } else { "  ·  WAVES OFF" });
                     }
                     SceneKind::Load(_) => {
                         let active = world.sim.ships().iter().filter(|s| s.is_active()).count();
