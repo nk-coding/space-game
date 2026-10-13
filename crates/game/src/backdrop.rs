@@ -46,7 +46,11 @@ impl Plugin for BackdropPlugin {
         let clear = app.world().resource::<Style>().background.outer();
         app.insert_resource(ClearColor(clear))
             .add_systems(Startup, spawn_backdrop.after(crate::spawn_camera))
-            .add_systems(PostUpdate, (fit_backdrop, place_dust, follow_rings).after(CameraSet));
+            // After the camera moved, before the transforms are propagated (else they show last frame's place).
+            .add_systems(
+                PostUpdate,
+                (fit_backdrop, place_dust, follow_rings).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
+            );
     }
 }
 
