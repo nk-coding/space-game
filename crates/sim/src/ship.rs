@@ -552,6 +552,8 @@ pub(crate) struct Scratch {
     /// Per thruster row: its force without the rated-speed falloff (RCS couples).
     pub full: Vec<f32>,
     pub tmax: Vec<f32>,
+    /// Per thruster row: the throttle of translation alone (the flight computer's planning view).
+    pub translate: Vec<f32>,
     pub activity: Vec<f32>,
     /// Per consumer row: demand this tick, and the level it got.
     pub want: Vec<f32>,

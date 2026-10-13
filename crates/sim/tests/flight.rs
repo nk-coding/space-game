@@ -844,3 +844,34 @@ fn leading_hits_a_crossing_target() {
         "aiming at the target: {direct} hits, leading: {lead}"
     );
 }
+
+/// A lock turn while thrusting (finding of the 13 Oct review): the Runner with two RCS pods, locked on a point
+/// 90° to the left with W held. Full forward thrust takes the pods' nozzles that make its couples, so the turn
+/// must be planned with what translation leaves free (gyros and cores, then the last resort), or the nose
+/// overshoots the lock.
+#[test]
+fn a_lock_turn_while_thrusting_plans_with_what_the_thrust_leaves_free() {
+    let c = content();
+    let d = std::sync::Arc::new(sim::ShipDesign::compile(&c, &runner_with_pods(&c, 2)).unwrap());
+    let (mut w, s) = world_with(d);
+    let input = PilotInput {
+        lock: Some(Target::Point(Vec2::new(-5000.0, 0.0))),
+        axes: Some(sim::flight::PilotAxes { turn: 0.0, thrust: 1.0, strafe: 0.0 }),
+        ..Default::default()
+    };
+    let (mut reached, mut overshoot) = (None, 0.0f32);
+    for t in 1..=240 {
+        w.step(&TickInputs { commands: vec![(s, ShipCommand::Pilot(input))], ..Default::default() });
+        let tel = *w.ship(s).unwrap().telemetry();
+        let e = wrap_angle(tel.heading_target.unwrap() - piece(&w, s).body.angle);
+        if reached.is_none() && e.abs() < 1f32.to_radians() {
+            reached = Some(t as f32 / 30.0);
+        }
+        if reached.is_some() {
+            overshoot = overshoot.max(-e);
+        }
+    }
+    let reached = reached.expect("never reached the lock heading");
+    println!("runner + 2 pods, lock 90° left with W: {reached:.2} s, overshoot {:.2}°", overshoot.to_degrees());
+    assert!(overshoot < 2f32.to_radians(), "overshoot {}°", overshoot.to_degrees());
+}

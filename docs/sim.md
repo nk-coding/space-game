@@ -434,10 +434,16 @@ Every tick, for the controlling piece of every active ship:
 3. **Heading**: `HeadingGoal::Angle(nose angle)`, `Thrust(world dir)` (point the best thrust axis there),
    `Auto` (keep the heading if the ship can push along the needed acceleration with at least half its best
    axis, else turn the best axis that way: flip-and-burn for ships with engines only at the back) or `Keep`.
-   Turn rate `ω_des = sign(e) · min(ω_max, √(2 · margin · α · |e|), gain · |e|)` with `α` = (pure torque + RCS
-   couples, plus differential torque while the last resort is on) / inertia (`Kin::plan_alpha`), then
-   `τ = I · (ω_des − ω) / DT`. `Rate(r)` (keyboard) asks `ω_des = r`, but changes the turn rate only within
-   `margin · α` per second, so the first line serves it alone ([Keyboard rotation](#keyboard-rotation)).
+   Turn rate `ω_des = sign(e) · min(ω_max, √(2 · margin · α · |e|), gain · |e|)` with `α` = (pure torque + the
+   RCS couples that lasting translation leaves free, plus differential torque while the last resort is on) /
+   inertia, then `τ = I · (ω_des − ω) / DT`. "Lasting" translation is a thrust group pushing flat out (W held,
+   a full strafe): its nozzles cannot also turn the ship in a couple, so the turn is planned without them (the
+   torque of translation's own fill that turns that way counts instead); a dead-beat correction that a group
+   meets within the tick frees its nozzles again and is not counted (`alloc::lasting`, `flight::free_couples`;
+   13 Oct 2026 review fix: a Runner with two pods, locked 90° to the left with W held, overshot the lock by 2.1°,
+   now 0.45°). `Rate(r)` (keyboard) asks `ω_des = r`, but changes the turn rate only within `margin` × what the
+   first line gives this tick in that sense, and never opens the last resort
+   ([Keyboard rotation](#keyboard-rotation)).
 4. **Flip, then burn**: while the ship turns its thrust towards the needed direction (`Thrust`/`Auto`), the
    translation force fades in from 25° to 8° of heading error, so slow-turning ships do not chase their own
    velocity vector.
@@ -478,21 +484,26 @@ wrench and whether the last resort was on (`assist`).
 
 Decided by Niklas on 13 Oct 2026 ([GDR-0055](gdr/0055-slower-crisper-turning.md)): gimbals and differential thrust
 (off-axis engines) push the ship sideways, so they turn it only after gyros, cores and RCS couples have been at
-their limit for a few ticks. The numbers and details (6 ticks; differential thrust only while steering, never to
-stop a spin) are lead defaults ([GDR-0058](gdr/0058-turning-v2-defaults.md)). Code: `flight::TurnAssist`, `Piece::assist`, the end of `flight::execute`.
+their limit for a few ticks. The numbers and details (6 ticks; differential thrust only while steering to a
+heading, never for the keys, never to stop a spin) are lead defaults ([GDR-0058](gdr/0058-turning-v2-defaults.md)).
+Code: `flight::TurnAssist`, `Piece::assist`, the end of `flight::execute`.
 
 - **Gate** (`TurnAssist { ticks, on }`, per piece, hashed): every tick the first line reports the torque it could
   not give. `assist_after` (6) ticks in a row with torque missing turn the last resort **on**; it stays on while
-  torque is still missing or the ship is still turning (heading error above 3°, or a rate command above
-  0.05 rad/s), so a turn planned with it can brake with it; then it is off and the count starts over. Pieces the
-  flight computer does not fly (not controlling, dark, raw throttles, no goal) are reset.
+  torque is still missing or the ship is still turning (heading error above 3°), so a turn planned with it can
+  brake with it; then it is off and the count starts over. Pieces the flight computer does not fly (not
+  controlling, dark, raw throttles, no goal) are reset, and so is a piece under keyboard rotation (a `Rate`
+  goal): the keys close a gate that a lock, `Auto` or behavior turn left open, and never open it (13 Oct 2026
+  review fix: a lock turn's open gate raised the key rate of the sample mid to about 1.15 rad/s with
+  differential thrust).
 - **What it adds**: gimbals of firing engines whenever it is on (they also hold a heading against uneven thrust),
-  and differential thrust only while the flight computer steers to a heading or a rate: never to stop a spin
-  without one (`Keep`, a settled `Auto`), which kept a released Runner from pushing itself into a flip-and-burn
-  loop in testing.
-- **Planning**: `Kin::alpha` counts differential thrust only while the gate is on (planning with what works): a
-  turn starts on the first line's `α`, and once the gate opens the plan speeds up with the extra torque and keeps
-  it to the end of the turn. The design report's turn estimate runs the same gate in one dimension.
+  and differential thrust only while the flight computer steers to a heading: never to stop a spin without one
+  (`Keep`, a settled `Auto`), which kept a released Runner from pushing itself into a flip-and-burn loop in
+  testing.
+- **Planning**: the turn plan counts differential thrust only while the gate is on (planning with what works): a
+  turn starts on the first line's `α` (`Kin::alpha`), and once the gate opens the plan speeds up with the extra
+  torque and keeps it to the end of the turn. The design report's turn estimate runs the same gate in one
+  dimension.
 - In practice: the Halvex Runner's gyros saturate in the first 0.2 s of a big turn, so differential thrust from
   its side thrusters joins in for the rest of it (90° in 1.50 s; 2.21 rad/s² on the first line, up to
   2.8 rad/s² measured); keyboard rotation, small corrections and holding a heading never use it. A ship without
@@ -512,11 +523,16 @@ A/D turned the Runner at about 4.6 rad/s (a 0.1 s tap turned it
   `nudge_step` (GDR-0040), and the sim needs no extra hashed state for it.
 - **Rate**: `turn × min(key_turn_rate, √(margin · α · π))`: `FlightTuning::key_turn_rate` (1.5 rad/s), or slower
   if the ship could not stop from it within about a quarter turn.
-- **Never above what the ship can do**: a `Rate` goal changes the turn rate at most by `margin · α` per second
-  (the request is clamped to `margin · α · I`), so gyros, cores and RCS couples serve it alone and A/D never call
-  the last resort (no sideways push from the keys). The ramp's growth (1.5 rad/s² at full rate) stays below what
-  the Runner follows (0.7 × 2.21 = 1.55 rad/s²). A ship without gyros or RCS rotates slowly on the keys; its
-  lock and auto turns still get the last resort.
+- **Never above what the ship can do**: the rate is planned with the first line's `α` (`Kin::alpha`, never the
+  last resort), and a `Rate` goal changes the turn rate at most by `margin` × what the first line gives this
+  tick in that sense (the request is clamped to `margin · (pure torque + the RCS couples of that sense that
+  lasting translation leaves free)`), so gyros, cores and RCS couples serve it alone. A/D never call the last
+  resort (no sideways push from the keys): its gate is reset while a key turns the ship. Since the 13 Oct 2026
+  review fixes this also holds with W held on an RCS design (the thrust takes the couples' nozzles: the Runner
+  with two pods opened differential thrust on W+A), for one-sided couples (a pod pair that turns only one way)
+  and right after a lock or `Auto` turn left the gate open (tests in `tests/keyboard.rs`). The ramp's growth
+  (1.5 rad/s² at full rate) stays below what the Runner follows (0.7 × 2.21 = 1.55 rad/s²). A ship without gyros
+  or RCS rotates slowly on the keys; its lock and auto turns still get the last resort.
 - Halvex Runner (test `rotate_input_turns_the_ship`, `tests/keyboard.rs`): a 0.1 s tap turns the nose 0.8°;
   holding A: 0.17 s 1.3° (0.26 rad/s), 0.33 s 5° (0.52), 0.5 s 11° (0.77), 0.67 s 20° (1.03), 0.83 s 31° (1.29),
   1.0 s 45° (1.50, the cap), 1.5 s 88°; released at the cap it stops within 0.7 s, 26° further on (about 60° at
@@ -543,7 +559,10 @@ dark or dormant vessel does not fly at all. Code: `ship::refresh_authority`, the
   caps what the movers of a tier draw together, so the dead-beat request is met exactly whenever the power
   suffices, and in a brown-out the systems hand out what there is (scaling the request up by the last level
   would overshoot as soon as the demand drops).
-- Cost: one pass over each active piece's thruster rows and torque sources per tick; no allocation.
+- Cost: one pass over each active piece's thruster rows and torque sources per tick, plus, on pieces with RCS
+  couples, two `alloc::couples` calls (one per sense, each two `couple_fill` passes per group pair to size the
+  couple and two to fill it); while translation lasts (a group pushing flat out) the flight computer runs one
+  more translation fill and one `couples` call per sense. No allocation.
 - Test `a_runner_with_idle_actuators_turns_and_brakes_cleanly` (`tests/flight.rs`): a Halvex Runner that lost a
   logic core, one gyro set to the lowest power priority, so it idles together with a pulse laser (load 18,
   capacity 16): 90° in 1.97 s with 0.06° overshoot, and a stop from 21 m/s (flip and burn) in 4.5 s without
@@ -645,14 +664,16 @@ resort opens.
 | Halvex Runner | 106.5 t | 1176 t·m² | 2600 kN·m (2 gyros, 2 cores) | 2.21 rad/s² | **1.50 s** | 2.8 rad/s² | 1100 kN → 10.3 m/s² | 22 m/s | 2.53 s |
 | Sample early | 43 t | 214 t·m² | 100 kN·m (2 cores, no gyros) | 0.47 rad/s² | 1.60 s | 2.8 rad/s² | 400 kN → 9.3 m/s² | 20 m/s | 2.30 s |
 | Sample mid | 88 t | 1010 t·m² | 100 kN·m (2 cores, no gyros) | 0.10 rad/s² | 3.40 s | 0.6 rad/s² | 1100 kN → 12.5 m/s² | 22 m/s | 2.10 s |
-| Runner + 2 RCS pods (test design) | 108.5 t | 1261 t·m² | 2600 + 2600 couples | 4.12 rad/s² | **1.17 s** | 4.7 rad/s² | 1500 kN → 13.8 m/s² | 22 m/s | 2.27 s |
+| Runner + 2 RCS pods (test design) | 108.5 t | 1261 t·m² | 2600 + 2600 couples | 4.12 rad/s² | **1.20 s** | 4.7 rad/s² | 1500 kN → 13.8 m/s² | 22 m/s | 2.27 s |
 | Runner + 4 RCS pods (test design) | 110.5 t | 1374 t·m² | 2600 + 5600 couples | 5.97 rad/s² | **0.97 s** | 6.5 rad/s² | 1900 kN → 17.2 m/s² | 22 m/s | 2.10 s |
 
 (90° turn from rest to within 1°, holding position, overshoot under 2°; max α as measured in that turn,
 including the differential thrust of the last resort; 0 → 95% of the top speed with the stick along the nose.
 Tests `base_ships_meet_the_agility_target` and `rcs_pods_make_the_runner_turn_faster` in `tests/speed.rs`
 measure and print the measured columns with `--nocapture` (the pod test also the inertia); the first-line columns
-follow from content, torque / inertia.) The pod variants (`common::runner_with_pods`, not content) move
+follow from content, torque / inertia. The two-pod turn took 1.17 s until the 13 Oct 2026 review fix: the
+velocity hold's corrections against the last resort's sideways push saturate the pods' nozzles for a few ticks,
+and the turn is now planned without the couples those take.) The pod variants (`common::runner_with_pods`, not content) move
 the Runner's hull two columns right and hang one pod, or two side by side, beside each wing-tip radiator (row 3),
 front and back sides open, so the right pod's front nozzle and the left pod's back nozzle make a couple (and the
 other way round); their back nozzles also push forward (full thrust up to 11.2 m/s, 80% of the pods' 14 m/s rating, none from
@@ -1468,7 +1489,7 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
   Rapier integrates a constant torque over `S` substeps: `θ += ω·DT + (S+1)/(2S)·(τ/I)·DT²`, `ω += τ/I·DT`.
   Against the stepped agility turn (`tests/report.rs` `turn_estimate_matches_stepped_turns`), 13 Oct 2026:
   raider 0.567 s, runner 1.500 s, sample early 1.600 s, sample mid 3.400 s, all equal to the tick; Runner with 2
-  RCS pods 1.133 s against 1.167 s stepped (one tick), with 4 pods 0.967 s, equal (12 Oct: 0.400, 0.767, 0.900,
+  RCS pods 1.133 s against 1.200 s stepped (two ticks; 1.167 s before the planning counted lasting translation), with 4 pods 0.967 s, equal (12 Oct: 0.400, 0.767, 0.900,
   2.033 s, all equal; without the substep term the raider came out 17% slow). It ignores what the velocity hold
   and the gimbals add.
 - *Yaw balance*: `yaw` is the torque the forward thrust rows make at full thrust about the centre of mass
