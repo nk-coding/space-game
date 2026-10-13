@@ -964,7 +964,8 @@ fn removing_a_part_takes_its_twin_and_nothing_else() {
     let c = content();
     let mut dock = empty(&c, (10, 10));
     // A reactor left of the axis; an armour block covers its mirror cells (no twin of its kind).
-    dock.place(any(&c, "fusion_reactor", 1, 1, 0, false)).unwrap();
+    dock.place(any(&c, "fusion_reactor", 1, 1, 0, false))
+        .unwrap();
     dock.place(any(&c, "armor_block", 8, 1, 0, false)).unwrap();
     dock.mirror = true;
     let o = dock.remove_part(0).unwrap();
@@ -980,7 +981,8 @@ fn removing_a_part_takes_its_twin_and_nothing_else() {
     let mut dock = empty(&c, (10, 10));
     dock.mirror = true;
     dock.place(any(&c, "pulse_laser", 1, 0, 0, false)).unwrap();
-    dock.place(any(&c, "fusion_reactor", 4, 5, 0, false)).unwrap();
+    dock.place(any(&c, "fusion_reactor", 4, 5, 0, false))
+        .unwrap();
     assert_eq!(dock.parts().len(), 3);
     let twin = dock.part_at((8, 0)).unwrap();
     assert_eq!(dock.remove_part(twin).unwrap().twin, Twin::Applied);

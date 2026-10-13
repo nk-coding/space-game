@@ -325,6 +325,9 @@ pub fn working_doc(design: &PlayerDesign, slot: &DesignSlot) -> WorkingDoc {
     WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } }
 }
 
+/// A working design back from storage: the design, its slot, and a note when part of it was dropped.
+pub type Restored = (PlayerDesign, DesignSlot, Option<String>);
+
 /// The working design of the last session, opened in its frame, with its slot (unsaved changes stay unsaved) and a
 /// note when part of it was dropped. `None` on the first start.
 ///
@@ -332,7 +335,7 @@ pub fn working_doc(design: &PlayerDesign, slot: &DesignSlot) -> WorkingDoc {
 /// no valid design id is dropped (the design comes back unsaved, and SAVE gives it a new id). A document that
 /// doesn't read or open (a newer build's, a damaged one, a design whose parts this content lacks) is copied aside
 /// first ([`WORKING_ASIDE`]), so the autosave of the design that replaces it doesn't destroy it; the error says so.
-pub fn restore_working(storage: &mut Storage, content: &Content) -> Option<Result<(PlayerDesign, DesignSlot, Option<String>), String>> {
+pub fn restore_working(storage: &mut Storage, content: &Content) -> Option<Result<Restored, String>> {
     let opened = match storage.read::<WorkingDoc>(WORKING) {
         Ok(Some(s)) => PlayerDesign::open(content, &s.doc.design, s.doc.design.size).map(|d| (d, s.doc)).map_err(|e| open_error_text(&e)),
         Ok(None) => return None,
