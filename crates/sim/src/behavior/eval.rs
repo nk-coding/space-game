@@ -1,9 +1,9 @@
 //! Evaluation: the think pass (every [`tuning::THINK_PERIOD`] ticks per ship: pick the target, walk the
 //! rules, choose the maneuver) and the per-tick flight of the chosen maneuver with fire at will.
 //!
-//! Every think reads the same snapshot of the world (the state after the previous tick's breakage), writes
-//! its result to a per-ship scratch slot, and all results are applied afterwards, so ship order never
-//! matters. Nothing here allocates once warmed up, except inside Rhai conditions.
+//! Every think reads the same snapshot of the world (the state after this tick's inputs and their
+//! breakage), writes its result to a per-ship scratch slot, and all results are applied afterwards, so ship
+//! order never matters. Nothing here allocates once warmed up, except inside Rhai conditions.
 
 use std::sync::Arc;
 

@@ -1,7 +1,7 @@
 //! The seam between the deterministic `sim` crate and the Bevy client.
 //!
-//! * [`SimWorld`] owns the `Sim` (FreeFlight today; the bridge only uses the backend-independent API, so a
-//!   physics engine slots in by changing the type alias [`SimT`]).
+//! * [`SimWorld`] owns the `Sim` (the type alias [`SimT`]; Rapier2D runs inside the sim, no physics type reaches
+//!   the client).
 //! * `FixedUpdate` at [`sim::TICK_HZ`]: the scene fills [`SimWorld::inputs`] (`scene.rs`), [`step_sim`] steps once
 //!   (timed; optional per-tick hash log), then [`apply_events`] turns the tick's [`sim::SimEvent`]s into view
 //!   changes (spawn / rebuild / despawn piece views, keyed by `(ShipId, PieceId)`) and effects.

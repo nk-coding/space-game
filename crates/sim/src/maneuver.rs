@@ -1,4 +1,4 @@
-//! Built-in maneuvers: the layer between behaviors (`behavior.rs`) and the flight computer. Each maneuver turns
+//! Built-in maneuvers: the layer between behaviors (`behavior/`) and the flight computer. Each maneuver turns
 //! into a [`FlightGoal`] every tick. Ranges are **placeholders**.
 
 use crate::config::FlightTuning;
