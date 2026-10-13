@@ -358,7 +358,9 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   compile, which sets `grounded`; else `FLIGHT-READY` with the most important warning). Mapping, wording and
   tones: `docs/drydock.md` "Client: stats and overlays".
 - **Overlays** (`overlays.rs`): the five overlays and the issue marks, one world-space mesh over the design (a
-  child of its mesh), rebuilt when the report or the overlay pills change. Details in `docs/drydock.md`.
+  child of its mesh), rebuilt when the report or the overlay pills change, and while ARCS is on when the view
+  moves (in `PostUpdate` after the camera): the lines of fire and plume lanes (45–75 m) end at the grid
+  viewport's edge instead of running through the pills and the status line. Details in `docs/drydock.md`.
 - **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, the brush rotation, the picked part, the
   category, the search text; the mirror and bevel modes are the editor's, `PlayerDesign::dock().mirror` and
   `.bevel`), `DrydockStatus` (`grounded`, the status line and its tone), `DrydockStats` (the stats grid's cells:
