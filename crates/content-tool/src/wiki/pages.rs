@@ -98,6 +98,8 @@ impl Wiki<'_> {
             })
             .collect();
         sections.push(("Used by ships".to_string(), list_or_none(&ships)));
+        sections.extend(self.unlocked_by(&Unlock::Part(p.id.clone()), p.locked));
+        sections.push(("Salvage".to_string(), self.part_salvage(root, p)));
 
         let figure = if p.hull {
             let armor: Vec<String> = self
@@ -222,6 +224,50 @@ impl Wiki<'_> {
             })
             .collect();
         sections.push(("Used by ships".to_string(), list_or_none(&ships)));
+        sections.extend(self.unlocked_by(&Unlock::Material(m.id.clone()), m.locked));
+        if m.armor.is_some() {
+            sections.push(("Salvage".to_string(), self.material_salvage(root, m)));
+        }
+        // Parts whose salvage gives this material, intact or as the fragment a destroyed one leaves.
+        let mut rows = String::new();
+        for p in &self.c.parts {
+            let Some(s) = &p.salvage else { continue };
+            let mut from = Vec::new();
+            if let Some(n) = s.materials.get(&m.id) {
+                from.push(format!("{n} per intact part"));
+            }
+            if let Some(n) = s.fragment.get(&m.id) {
+                from.push(format!("{n} per fragment of a destroyed one"));
+            }
+            if !from.is_empty() {
+                writeln!(
+                    rows,
+                    "<tr><td class=\"pic\">{}</td><td class=\"name\">{}</td><td>{}</td></tr>",
+                    self.chip(p, None),
+                    self.a_badged(root, Kind::Part, &p.id),
+                    from.join(", ")
+                )
+                .unwrap();
+            }
+        }
+        if !rows.is_empty() {
+            sections.push((
+                "From salvage".to_string(),
+                format!("<table class=\"list\">\n{rows}</table>\n"),
+            ));
+        }
+        let costs: Vec<&ResearchNode> = self
+            .c
+            .research
+            .iter()
+            .filter(|n| n.cost.materials.contains_key(&m.id))
+            .collect();
+        if !costs.is_empty() {
+            sections.push((
+                "Research that costs it".to_string(),
+                self.research_table(root, &costs),
+            ));
+        }
         let figure = m.icon.as_ref().map(|k| draw::icon(k, 1, 1, "swatch-big"));
         self.entry(
             m,
@@ -295,10 +341,15 @@ impl Wiki<'_> {
             format!("{} × {} cells", fr.size.0, fr.size.1),
         )];
         let ships: Vec<&Blueprint> = self.c.ships.iter().filter(|s| fits(s, fr)).collect();
-        let sections = vec![("Ships that fit".to_string(), self.ship_cards(UP, &ships))];
+        let mut sections: Vec<(String, String)> = self
+            .unlocked_by(&Unlock::Frame(fr.id.clone()), fr.locked)
+            .into_iter()
+            .collect();
+        sections.push(("Ships that fit".to_string(), self.ship_cards(UP, &ships)));
         self.entry(
             fr,
             EntryParts {
+                badges: badges(fr.locked, &[]),
                 facts,
                 sections,
                 ..Default::default()
@@ -326,7 +377,19 @@ impl Wiki<'_> {
         facts.push(("Grid".into(), format!("{} × {} cells", s.size.0, s.size.1)));
         facts.push(("Parts".into(), s.parts.len().to_string()));
         if let Some(fr) = self.c.frames.iter().find(|f| fits(s, f)) {
-            facts.push(("Smallest frame".into(), self.a(root, Kind::Frame, &fr.id)));
+            facts.push((
+                "Smallest frame".into(),
+                self.a_badged(root, Kind::Frame, &fr.id),
+            ));
+        }
+        let starts = self
+            .c
+            .starts
+            .iter()
+            .filter(|st| st.ship == s.id)
+            .map(|st| (Kind::Start, st.id.clone()));
+        if let Some(l) = self.links(root, starts) {
+            facts.push(("Start ship of".into(), l));
         }
         if let Some(r) = &self.reports[k]
             && r.pieces.len() > 1
@@ -1153,6 +1216,77 @@ impl Wiki<'_> {
         s + "</table>\n"
     }
 
+    /// "Unlocked by" on a part, material or frame page: the nodes that unlock it. Left out for an entry a new
+    /// game has that no node names.
+    fn unlocked_by(&self, unlock: &Unlock, locked: bool) -> Option<(String, String)> {
+        let nodes = crate::unlocked_by(self.c, unlock);
+        if nodes.is_empty() && !locked {
+            return None;
+        }
+        let html = if nodes.is_empty() {
+            "<p class=\"none\">No research unlocks it yet.</p>\n".into()
+        } else {
+            self.research_table(UP, &nodes)
+        };
+        Some(("Unlocked by".into(), html))
+    }
+
+    /// "Salvage" on a part page: what it gives when the haul is dismantled at home (GDR-0063). Hull parts give
+    /// research data by their material, per cell of hull area.
+    fn part_salvage(&self, root: &str, p: &Part) -> String {
+        if p.hull {
+            let rows: Vec<String> = self
+                .c
+                .materials
+                .iter()
+                .filter_map(|m| {
+                    let s = m.salvage.as_ref()?;
+                    Some(format!(
+                        "<tr><th>{}</th><td>{}</td></tr>\n",
+                        self.a_badged(root, Kind::Material, &m.id),
+                        self.data_amount(root, &s.family, s.data * p.area())
+                    ))
+                })
+                .collect();
+            if rows.is_empty() {
+                return not_salvaged();
+            }
+            let area = p.area();
+            let cells = if area == 1.0 { "cell" } else { "cells" };
+            return format!(
+                "<p class=\"note\">By its material, per cell of hull area; this part is {} {cells}.</p>\n<table class=\"list\">\n{}</table>\n",
+                format_number(area, 2),
+                rows.concat()
+            );
+        }
+        let Some(s) = &p.salvage else {
+            return not_salvaged();
+        };
+        let mut intact = vec![self.data_amount(root, &s.family, s.data)];
+        intact.extend(self.material_items(root, &s.materials));
+        let fragment = self.material_items(root, &s.fragment);
+        format!(
+            "<table class=\"list\">\n<tr><th>Intact part</th><td>{}</td></tr>\n<tr><th>Destroyed part</th><td>{}</td></tr>\n</table>\n",
+            intact.join(", "),
+            if fragment.is_empty() {
+                "leaves nothing".to_string()
+            } else {
+                format!("leaves a fragment of {}", fragment.join(", "))
+            }
+        )
+    }
+
+    /// "Salvage" on an armour material's page: research data per cell of hull area.
+    fn material_salvage(&self, root: &str, m: &Material) -> String {
+        match &m.salvage {
+            Some(s) => format!(
+                "<table class=\"list\">\n<tr><th>Per cell of hull area</th><td>{}</td></tr>\n</table>\n<p class=\"note\">Hull parts made from it give this per cell of their area; slopes count half.</p>\n",
+                self.data_amount(root, &s.family, s.data)
+            ),
+            None => not_salvaged(),
+        }
+    }
+
     // -----------------------------------------------------------------------------------------------------
     // Lists and the index
 
@@ -1606,6 +1740,10 @@ fn logic_cores(n: u32) -> String {
     } else {
         format!("{n} logic cores")
     }
+}
+
+fn not_salvaged() -> String {
+    "<p class=\"none\">Not collected as salvage.</p>\n".into()
 }
 
 /// A card: link target, the ship drawn on it, title, summary (a content text).

@@ -363,6 +363,103 @@ fn locked_content_is_marked() {
     assert!(
         page(&site, "parts.html").contains("Automaton cannon</a> <span class=\"badge locked\"")
     );
+    // Frames too (GDR-0063): on their page and in the list.
+    assert!(page(&site, "frame/cruiser.html").contains("<h1>Cruiser <span class=\"badge locked\""));
+    assert!(!page(&site, "frame/frigate.html").contains("class=\"badge locked\""));
+    assert!(page(&site, "frames.html").contains("Capital</a> <span class=\"badge locked\""));
+}
+
+#[test]
+fn parts_materials_and_frames_show_salvage_and_unlocks() {
+    let site = generate(&base());
+    let has = |path: &str, needle: &str| {
+        assert!(page(&site, path).contains(needle), "{path} lacks {needle}")
+    };
+    let lacks = |path: &str, needle: &str| {
+        assert!(!page(&site, path).contains(needle), "{path} has {needle}")
+    };
+    let pm = "<a href=\"../material/programmable_matter.html\">Programmable matter</a>";
+    // A part's salvage block: data for its family and materials when intact, the fragment when destroyed.
+    let core = "part/automaton_core.html";
+    has(
+        core,
+        &format!(
+            "<tr><th>Intact part</th><td>4 <a href=\"../family/logic.html\">Logic and sensors</a> data, 1 {pm}</td></tr>"
+        ),
+    );
+    has(
+        core,
+        &format!("<tr><th>Destroyed part</th><td>leaves a fragment of 1 {pm}</td></tr>"),
+    );
+    has(
+        "part/pulse_laser.html",
+        "<td>3 <a href=\"../family/energy.html\">Energy weapons</a> data</td></tr>\n<tr><th>Destroyed part</th><td>leaves nothing</td>",
+    );
+    // Hull parts give data by their material, per cell of hull area (a 1×3 slope is 1.5 cells).
+    let slope = "part/slope_1x3.html";
+    has(slope, "this part is 1.5 cells.");
+    has(
+        slope,
+        "<tr><th><a href=\"../material/composite.html\">Composite</a> <span class=\"badge locked\"",
+    );
+    has(
+        slope,
+        "<td>2.25 <a href=\"../family/hull.html\">Hull and armour</a> data</td>",
+    );
+    // "Unlocked by": the nodes that unlock a locked part, material or frame, or a note that none does yet;
+    // entries a new game has show none.
+    has(
+        core,
+        "<h2>Unlocked by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/tamed_core.html\">",
+    );
+    has(
+        "part/automaton_cannon.html",
+        "href=\"../research/automaton_cannon.html\"",
+    );
+    has(
+        "part/beam_laser.html",
+        "href=\"../research/beam_laser.html\"",
+    );
+    lacks("part/pulse_laser.html", "<h2>Unlocked by</h2>");
+    has(
+        "material/composite.html",
+        "<h2>Unlocked by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/composite_plating.html\">",
+    );
+    has(
+        "material/reactive.html",
+        "<h2>Unlocked by</h2>\n<p class=\"none\">No research unlocks it yet.</p>",
+    );
+    lacks("material/steel.html", "<h2>Unlocked by</h2>");
+    has(
+        "frame/cruiser.html",
+        "<h2>Unlocked by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/cruiser_drydock.html\">",
+    );
+    has("frame/capital.html", "No research unlocks it yet.");
+    lacks("frame/frigate.html", "<h2>Unlocked by</h2>");
+    // An armour material's salvage per cell; programmable matter: the parts that give it and the research
+    // that costs it.
+    has(
+        "material/composite.html",
+        "<tr><th>Per cell of hull area</th><td>1.5 <a href=\"../family/hull.html\">Hull and armour</a> data</td></tr>",
+    );
+    let matter = "material/programmable_matter.html";
+    lacks(matter, "<h2>Salvage</h2>");
+    has(matter, "<h2>From salvage</h2>");
+    has(
+        matter,
+        "href=\"../part/logic_core.html\">Logic core</a></td><td>1 per intact part, 1 per fragment of a destroyed one</td>",
+    );
+    has(matter, "href=\"../part/automaton_core.html\"");
+    has(matter, "<h2>Research that costs it</h2>");
+    for node in ["tamed_core", "mind_expansion_1", "mind_expansion_2"] {
+        has(matter, &format!("href=\"../research/{node}.html\""));
+    }
+    lacks(matter, "href=\"../research/beam_laser.html\"");
+    // The start's ship names the start.
+    has(
+        "ship/rim_skiff.html",
+        "<dt>Start ship of</dt><dd><a href=\"../start/rim_awakening.html\">",
+    );
 }
 
 #[test]
