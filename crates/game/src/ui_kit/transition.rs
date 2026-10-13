@@ -413,7 +413,7 @@ mod tests {
         let mut world = World::new();
         let e = world.spawn((TextColor(Color::srgba(1.0, 0.5, 0.2, 0.8)), BackgroundColor(Color::srgb(0.1, 0.2, 0.3)))).id();
         let mut faded = HashMap::new();
-        let mut run = |world: &mut World, faded: &mut HashMap<Entity, Faded>, a: f32| {
+        let run = |world: &mut World, faded: &mut HashMap<Entity, Faded>, a: f32| {
             let mut q = world.query::<(&mut TextColor, &mut BackgroundColor)>();
             let (t, b) = q.get_mut(world, e).unwrap();
             fade(faded, e, a, Some(t), Some(b), None, None);
