@@ -44,6 +44,8 @@ pub struct Pack {
     pub families: Vec<Family>,
     pub research: Vec<ResearchNode>,
     pub starts: Vec<Start>,
+    pub voyages: Vec<Voyage>,
+    pub encounters: Vec<Encounter>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
     pub wiki: Vec<WikiPage>,
@@ -56,7 +58,7 @@ impl Pack {
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
     ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
-    ///   `starts` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    ///   `starts`, `voyages`, `encounters` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
     /// * Anything else that is not `.ron` or `.svg` is ignored (READMEs, `.gitkeep`); unknown `.ron` files and
@@ -119,6 +121,8 @@ impl Pack {
             families: Vec::new(),
             research: Vec::new(),
             starts: Vec::new(),
+            voyages: Vec::new(),
+            encounters: Vec::new(),
             icons: Vec::new(),
             wiki: Vec::new(),
         };
@@ -164,6 +168,10 @@ impl Pack {
                         parse_into(text, &src, &mut pack.research, &mut problems)
                     }
                     Some(Kind::Start) => parse_into(text, &src, &mut pack.starts, &mut problems),
+                    Some(Kind::Voyage) => parse_into(text, &src, &mut pack.voyages, &mut problems),
+                    Some(Kind::Encounter) => {
+                        parse_into(text, &src, &mut pack.encounters, &mut problems)
+                    }
                     Some(Kind::Page) | None => problems.push(
                         Problem::error(format!(
                             "unknown content file location; RON files belong in {}",
@@ -229,6 +237,8 @@ impl Pack {
         check_duplicates(&pack.families, &mut problems);
         check_duplicates(&pack.research, &mut problems);
         check_duplicates(&pack.starts, &mut problems);
+        check_duplicates(&pack.voyages, &mut problems);
+        check_duplicates(&pack.encounters, &mut problems);
         let mut seen: BTreeMap<(Kind, &str), &Source> = BTreeMap::new();
         for page in &pack.wiki {
             if let Some(first) = seen.insert((page.kind, &page.id), &page.source) {
@@ -350,6 +360,9 @@ pub struct Content {
     pub families: Table<Family>,
     pub research: Table<ResearchNode>,
     pub starts: Table<Start>,
+    /// Voyages in load order, which is also the voyage map's order.
+    pub voyages: Table<Voyage>,
+    pub encounters: Table<Encounter>,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
     /// Wiki prose keyed `"<kind>:<id>"` (e.g. `"part:fission_reactor"`). Empty in the game build.
@@ -410,6 +423,14 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.starts.upsert(e)));
+            p.voyages
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.voyages.upsert(e)));
+            p.encounters
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.encounters.upsert(e)));
             for i in &p.icons {
                 c.icons.insert(i.key.clone(), i.clone());
             }
@@ -447,6 +468,8 @@ impl Content {
             Kind::Family => self.families.contains(id),
             Kind::Research => self.research.contains(id),
             Kind::Start => self.starts.contains(id),
+            Kind::Voyage => self.voyages.contains(id),
+            Kind::Encounter => self.encounters.contains(id),
             Kind::Page => self.wiki.contains_key(&format!("page:{id}")),
         }
     }
@@ -466,6 +489,8 @@ impl Content {
             Kind::Family => self.families.get(id).map(|e| e.name.as_str()),
             Kind::Research => self.research.get(id).map(|e| e.name.as_str()),
             Kind::Start => self.starts.get(id).map(|e| e.name.as_str()),
+            Kind::Voyage => self.voyages.get(id).map(|e| e.name.as_str()),
+            Kind::Encounter => self.encounters.get(id).map(|e| e.name.as_str()),
             Kind::Page => self.wiki.get(&format!("page:{id}")).map(|p| {
                 p.markdown
                     .lines()

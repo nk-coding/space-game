@@ -148,6 +148,8 @@ pub struct SimConfig {
     /// cores (twelve Halvex Runners), AI owners 1000.
     pub mind_capacity: [u32; MAX_OWNERS],
     pub salvage: SalvageTuning,
+    /// The voyage director (`voyage.rs`): spawn and recall radii.
+    pub voyage: crate::voyage::VoyageTuning,
 }
 
 impl SimConfig {
@@ -206,6 +208,7 @@ impl Default for SimConfig {
             physics: PhysicsTuning::default(),
             mind_capacity: [24, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
             salvage: SalvageTuning::default(),
+            voyage: Default::default(),
         }
     }
 }
@@ -254,5 +257,6 @@ impl StateHash for SimConfig {
         for &c in &s.collects {
             h.bool(c);
         }
+        self.voyage.hash_state(h);
     }
 }

@@ -34,6 +34,8 @@ content/base/
   families.ron             research families (one tech tree each); order = display order
   research/*.ron           research nodes (research/rim.ron: the first playable loop's nodes)
   starts.ron               how a new game begins
+  voyages/rim.ron          voyages (the first playable loop's four rim clusters); order = voyage map order
+  encounters/*.ron         what waits at a voyage site (ships, wrecks)
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
@@ -45,13 +47,13 @@ File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
-  `research`, `starts`. File names are free; group however reads best.
+  `research`, `starts`, `voyages`, `encounters`. File names are free; group however reads best.
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
   `icons/` as `<key>.svg` with a kebab-case key; other files (READMEs) are ignored.
 - Files are read in sorted path order, entries in file order. That is the **load order**, which is also the
-  display order for stats, categories, frames, families and the drydock palette.
+  display order for stats, categories, frames, families, voyages and the drydock palette.
 - `wiki/` is for tools only. The game build never embeds it.
 
 ## Common header
@@ -360,7 +362,9 @@ Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raide
 `sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
 `sample_early` with a gyro pair in place of its two rear armour blocks and radiators on the shoulders in place of
 two slopes, so it turns 90° in about 0.67 s by the design report instead of 1.6 s and its reactors feed the gyros;
-early-game kit only; a lead placeholder).
+early-game kit only; a lead placeholder), and the voyages' enemies `automaton_hunter` (5×4, two cannons on forward
+prongs, one core) and `automaton_warden` (9×7, the boss of `wardens_gate`: a shielded heart and two armed fists,
+three cores, so it fights on in pieces), both from `docs/plans/slice-content.md` 2 (placeholders).
 
 **Blueprint text** (added 12 Oct 2026, for the drydock). Saved player designs and exported blueprints use exactly
 the format of the content ships, so an export can go into a pack's `ships/` folder as is:
@@ -565,10 +569,86 @@ names.
 |---|---|
 | `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, no more logic cores than `mind_capacity` |
 | `mind_capacity` | 1 to 100 (`data::validate::MAX_MIND_CAPACITY`, a sanity bound) |
-| `voyages` | optional. **Plain ids for now**: there is no voyage kind yet, so they are only checked for snake_case and duplicates; the check that they exist comes with the voyage kind (track 7E) |
+| `voyages` | optional: voyage ids, each known and listed once. Clearing a voyage opens those that name it in `opens_after` ([Voyages](#voyages-voyagesron-added-13-oct-2026)) |
 
 Base start (placeholder, GDR-0062): `rim_awakening`, ship `rim_skiff`, mind capacity 2 (the two mind expansions
 bring it to 4), voyage `yard_approach` open.
+
+### Voyages (`voyages/*.ron`, added 13 Oct 2026)
+
+A voyage is one small hand-made cluster with seeded sites (GDR-0062). Each launch rolls where its sites lie and what
+each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launches and clears (`docs/career.md`).
+
+```ron
+// voyages/rim.ron (one of four). PLACEHOLDER NUMBERS.
+(
+    id: "halvex_drift",
+    name: "Halvex Drift",
+    summary: "A raider-haunted drift of wrecks one warp out from the shipyard.",
+    band: "rim",                         // band of the galaxy (GDR-0026), a snake_case key
+    map: (0.44, 0.30),                   // place on the voyage map, 0 to 1 (x right, y down)
+    opens_after: ["yard_approach"],      // voyages whose goal must have been cleared once
+    radius: 900,                         // m: the sites lie inside; the fleet enters at the edge
+    spacing: (400, 700),                 // m between sites (see below)
+    minutes: (10, 15),                   // expected length, for the map ("≈ 15 MIN")
+    cleared: "The raiders' den is broken. Their hunters still hold the [[voyage:corran_reach]].",
+    sites: [
+        (encounter: "raider_pack", count: 2),
+        (encounter: "precursor_wrecks"),
+        (encounter: "core_graveyard"),
+        (encounter: "raider_den", goal: true),   // clearing it clears the voyage
+    ],
+)
+```
+
+| Field | Notes |
+|---|---|
+| `band` | snake_case key; text only until bands are content |
+| `map` | each coordinate 0 to 1 |
+| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning) |
+| `radius` | m, above 0 and at most 20000 (`data::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
+| `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |
+| `minutes` | `(min, max)`, `1 ≤ min ≤ max ≤ 600` |
+| `cleared` | optional text (a text key `voyage.<id>.cleared`): the debrief's line the first time the goal falls |
+| `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear) |
+
+Base voyages (placeholders, `docs/plans/slice-content.md` 3.3), in one file in chain order: `yard_approach` (open at
+the start; 600 m, raider pair ×2, derelict field, **raider pack**), `halvex_drift` (900 m, raider pack ×2, precursor
+wrecks, core graveyard, **raider den**), `corran_reach` (1000 m, hunter pack ×2, raider pack, precursor wrecks,
+**hunter den**), `wardens_gate` (900 m, raider pack ×2, core graveyard, **the Warden**).
+
+### Encounters (`encounters/*.ron`, added 13 Oct 2026)
+
+What waits at a voyage site. Its ships hold where they spawned until a player vessel comes within `wake_radius`,
+then fly their own or their faction's behavior; its wrecks spawn as salvage with a share of their parts already
+gone (`Sim::spawn_wreck`). Variants by count (a pair, a pack, a den) are entries of their own.
+
+```ron
+// encounters/automatons.ron (one of nine). PLACEHOLDER NUMBERS.
+(
+    id: "precursor_wrecks",
+    name: "Precursor wrecks",
+    summary: "Old hulls full of parts the shipyard has forgotten how to make.",
+    lore: "Their logs stop mid-sentence, all on the same day.",
+    tags: ["wrecks"],
+    ships: [(ship: "automaton_raider", count: (0, 2))],            // (min, max), both included, per launch
+    wrecks: [(ship: "sample_mid", count: (1, 2), damage: 0.4)],     // share of parts gone, per wreck
+    wake_radius: 200,                                                // m from the site
+)
+```
+
+| Field | Notes |
+|---|---|
+| `ships` | optional: a known ship with a logic core (one without would spawn as salvage) and `count` `(min, max)`, `min ≤ max ≤ 32` (`MAX_ENCOUNTER_COUNT`). A ship without a behavior (its own or its faction's) is a warning: it would only hold |
+| `wrecks` | optional: any known ship, `count` as above, `damage` 0 to below 1 (default 0) |
+| `wake_radius` | m, above 0 and at most 20000 |
+
+An encounter needs ships or wrecks. Base encounters (placeholders, `docs/plans/slice-content.md` 3.2): `raider_pair`
+(2 raiders), `raider_pack` (3), `raider_den` (4–5, wakes at 300 m), `hunter_pack` (2 hunters, 0–1 raider),
+`hunter_den` (2–3 hunters, 1–2 raiders), `derelict_field` (0–1 raider; a `sample_early` and 2–3 raider wrecks, half
+their parts gone), `precursor_wrecks` (0–2 raiders; 1–2 `sample_mid` wrecks), `core_graveyard` (1–2 raiders; 4–6
+raider wrecks, 30 % gone, so most of their cores are intact), `the_warden` (the `automaton_warden` and 2–4 raiders).
+Packs wake at 250 m, wreck sites at 200 m, dens and the Warden at 300 m.
 
 ## Coordinates and geometry
 
@@ -611,7 +691,7 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 - Fields that name another entry hold its id (`category: "power"`, `faction: "automatons"`,
   `material: "steel"`, `target: Part("capacitor")`); validation checks each target exists.
 - Any text field and wiki file may link: `[[kind:id]]` or `[[kind:id|label]]`, kind one of `stat category
-  faction material part frame ship behavior_node behavior family research start page`. The game renders links as plain names (`Content::render_plain`), the wiki
+  faction material part frame ship behavior_node behavior family research start voyage encounter page`. The game renders links as plain names (`Content::render_plain`), the wiki
   as hyperlinks. Broken links are errors.
 
 ## Text and localisation
@@ -672,11 +752,17 @@ clean grid and report nothing until the placements are fixed. Header errors do n
 - Career content (added 13 Oct 2026): unknown families, materials, nodes, ships and unlock targets; amounts out
   of range; `salvage` on a hull part or a material without `armor`; a node listed twice in `requires`; cycles in
   `requires`; a start whose ship uses locked parts or materials, fits no open frame or has more logic cores than
-  its mind capacity; malformed or repeated voyage ids. Details in [Salvage](#salvage-added-13-oct-2026),
+  its mind capacity; unknown or repeated voyages. Details in [Salvage](#salvage-added-13-oct-2026),
   [Research nodes](#research-nodes-added-13-oct-2026) and [Starts](#starts-startsron-added-13-oct-2026).
+- Voyages and encounters (added 13 Oct 2026): unknown encounters, ships and voyages; cycles in `opens_after`; no
+  goal, two goals, a goal with a count above 1 or whose encounter may roll no ships; a fighting ship without a
+  logic core; an encounter with neither ships nor wrecks; numbers out of range (`MAX_VOYAGE_RADIUS`,
+  `MAX_VOYAGE_SITES`, `MAX_ENCOUNTER_COUNT`, `MAX_VOYAGE_MINUTES`). Details in
+  [Voyages](#voyages-voyagesron-added-13-oct-2026) and [Encounters](#encounters-encountersron-added-13-oct-2026).
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
   an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
-  placement `power` override, a research node that unlocks an entry that is not `locked` or unlocks nothing. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
+  placement `power` override, a research node that unlocks an entry that is not `locked` or unlocks nothing, an
+  encounter ship without a behavior, a voyage that no start opens and that opens after nothing. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
 - Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
   `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
   the same weight range.
@@ -799,6 +885,8 @@ let t = content.ship_totals(ship);   // ShipTotals: sums over every placement (b
 content.icon_svg("pulse-laser");                         // Option<&str>: SVG text of icons/pulse-laser.svg
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
 content.families / content.research / content.starts;      // Table<Family>, Table<ResearchNode>, Table<Start>
+content.voyages / content.encounters;                      // Table<Voyage> (map order), Table<Encounter>
+voyage.goal(); voyage.site_count(); encounter.always_has_ships();
 part.salvage / material.salvage;                             // Option<SalvageSpec> / Option<HullSalvageSpec>
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
 content.ship_control(ship); part.control_cost();              // (load, capacity) of the intact ship; cost with default
