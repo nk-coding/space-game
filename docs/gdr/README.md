@@ -78,6 +78,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0067](0067-rams-pass-friendly-bubbles.md) | Rams pass friendly shield bubbles, like shots and plumes | Accepted | 2026-10-13 |
 | [0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md) | A voyage site clears when its enemies are destroyed or disarmed; only armed enemies block recall | Accepted | 2026-10-13 |
 | [0069](0069-machines-drawn-as-components.md) | Machines are drawn as their own components; engine nozzles reach past the hull | Accepted | 2026-10-13 |
+| [0070](0070-phase-7-wave-2-defaults.md) | Phase 7 wave 2 defaults: flight and AI numbers, voyage clearing details, the career save, the drydock gating | Accepted (provisional, lead) | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

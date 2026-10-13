@@ -128,7 +128,7 @@ programmable-matter fragment.
 | 7C `data::career` | The pure progression model: unlocks, mind capacity, payment, unloading, voyage seeds, voyage-ready | 7A | done 13 Oct (`docs/career.md`) |
 | 7D Home screen | `AppMode::Home` as the start, the ring menu with the docked ship, navigation, the drydock's and behavior screen's ring buttons, `?scene=home\|sandbox` | – | done 13 Oct (`client.md` "Home") |
 | 7E Voyage director | `sim::voyage`: rolling, lazy spawning, waking, clearing, recall check; `ScenarioKind::Voyage`; the headless voyage runner | 7A, 7B | done 13 Oct (`sim.md` \"Voyages\"; the runner: no voyage cleared yet, see 7K) |
-| 7F Save and gating | `saves/career`, new game, `?save= ?newgame= ?unlock=all`; the drydock from `Unlocks`; FLEET | 7C, 7D | in progress |
+| 7F Save and gating | `saves/career`, new game, `?save= ?newgame= ?unlock=all`; the drydock from `Unlocks`; FLEET | 7C, 7D | done 13 Oct (GDR-0070; `client.md` \"Career\", \"FLEET\") |
 | 7G Research screen | `AppMode::Research`, the debrief, unloading the haul | 7C, 7D, 7F | wave 2 |
 | 7H Voyage flight | `SceneKind::Voyage`, launch, the voyage HUD, recall, death → home, the save update | 7E, 7F | next |
 | 7I Voyage map | `AppMode::Map`, the chain of clusters, SET COURSE | 7C, 7D, 7F | wave 3 |
