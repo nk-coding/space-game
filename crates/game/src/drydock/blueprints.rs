@@ -46,8 +46,6 @@ const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
 /// The longest design name.
 const MAX_NAME: usize = 40;
-/// The summary new designs get (content requires one; the drydock has no field for it yet).
-const NEW_SUMMARY: &str = "A design from the drydock.";
 
 pub(super) struct BlueprintsPlugin;
 
@@ -153,17 +151,12 @@ pub(super) struct Saver {
 #[derive(SystemParam)]
 pub(super) struct Lib<'w> {
     storage: ResMut<'w, Storage>,
-    content: Res<'w, GameContent>,
     design: ResMut<'w, PlayerDesign>,
     slot: ResMut<'w, DesignSlot>,
     cam: ResMut<'w, DockCamera>,
 }
 
 impl Lib<'_> {
-    fn content(&self) -> &Content {
-        &self.content.0
-    }
-
     /// The names of the saved designs (for fresh names).
     fn names(&self, shelf: &Shelf) -> Vec<String> {
         shelf.designs.iter().map(|e| e.name.clone()).collect()
@@ -171,10 +164,9 @@ impl Lib<'_> {
 
     /// Puts another design into the drydock. The one there is saved first when it has unsaved changes (its
     /// name is returned); if that fails, nothing changes.
-    fn switch(&mut self, mut next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
+    fn switch(&mut self, content: &Content, mut next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
         let kept = if self.slot.dirty(&self.design) {
-            let content = self.content.0.clone();
-            library::save(&mut self.storage, &content, &self.design, &mut self.slot, now_unix())
+            library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix())
                 .map_err(|e| format!("couldn't save {} first: {e}", self.design.blueprint().name))?;
             Some(self.design.blueprint().name.clone())
         } else {
@@ -192,21 +184,20 @@ impl Lib<'_> {
     }
 
     /// The design as it is exported: trimmed, under its id (or a new one from its name).
-    fn export(&self) -> Blueprint {
+    fn export(&self, content: &Content) -> Blueprint {
         let id = self.slot.id.clone().unwrap_or_else(|| {
-            library::new_id(&self.storage, self.content(), &self.design.blueprint().name)
+            library::new_id(&self.storage, content, &self.design.blueprint().name)
                 .unwrap_or_else(|_| library::slug(&self.design.blueprint().name))
         });
         Blueprint { id, ..self.design.export() }
     }
 
     /// Saves the design in the drydock; the message says how it went.
-    fn save(&mut self) -> (String, Tone) {
-        let content = self.content.0.clone();
-        match library::save(&mut self.storage, &content, &self.design, &mut self.slot, now_unix()) {
+    fn save(&mut self, content: &Content) -> (String, Tone) {
+        match library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix()) {
             Ok(id) => {
                 let name = &self.design.blueprint().name;
-                let problems = data::validate_ship(&content, &Blueprint { id, ..self.design.export() });
+                let problems = data::validate_ship(content, &Blueprint { id, ..self.design.export() });
                 if problems.is_empty() {
                     (format!("saved  ·  {name}"), Tone::Teal)
                 } else {
@@ -220,22 +211,21 @@ impl Lib<'_> {
     }
 
     /// Imports a share code or blueprint text: saved under a new id and opened.
-    fn import(&mut self, text: &str) -> Result<String, String> {
+    fn import(&mut self, content: &Content, text: &str) -> Result<String, String> {
         let shared = share::read(text).map_err(|e| e.to_string())?;
         let faction = self.design.blueprint().faction.clone();
-        let content = self.content.0.clone();
-        let (mut bp, mut notes) = share::check(&content, shared, &faction).map_err(|e| e.to_string())?;
+        let (mut bp, mut notes) = share::check(content, shared, &faction).map_err(|e| e.to_string())?;
         if bp.summary.trim().is_empty() {
-            bp.summary = NEW_SUMMARY.into();
+            bp.summary = library::NEW_SUMMARY.into();
         }
-        let opened = library::open_in_first_frame(&content, &bp)?;
+        let opened = library::open_in_first_frame(content, &bp)?;
         let mut slot = DesignSlot::default();
-        let id = library::save(&mut self.storage, &content, &opened, &mut slot, now_unix()).map_err(|e| e.to_string())?;
-        let problems = data::validate_ship(&content, &Blueprint { id: id.clone(), ..opened.export() });
+        let id = library::save(&mut self.storage, content, &opened, &mut slot, now_unix()).map_err(|e| e.to_string())?;
+        let problems = data::validate_ship(content, &Blueprint { id: id.clone(), ..opened.export() });
         if !problems.is_empty() {
             notes.push(format!("{} problem(s): {}", problems.len(), library::problems_text(&problems[..1])));
         }
-        let kept = self.switch(opened, slot)?;
+        let kept = self.switch(content, opened, slot)?;
         let mut msg = format!("imported {}", self.design.blueprint().name);
         for n in kept.iter().map(|k| format!("{k} saved")).chain(notes) {
             msg.push_str("  ·  ");
@@ -257,11 +247,11 @@ pub(super) fn frame_name(content: &Content, frame: (u32, u32)) -> String {
 // Start, autosave, leaving
 
 /// At start: the working design of the last session, else a copy of the starter ship.
-fn restore(mut lib: Lib, mut shelf: ResMut<Shelf>) {
+fn restore(mut lib: Lib, content: Res<GameContent>, mut shelf: ResMut<Shelf>) {
     if let Some(why) = &lib.storage.fallback {
         shelf.say(format!("designs are kept only until the game closes: {why}"), Tone::Gold);
     }
-    match library::restore_working(&lib.storage, lib.content()) {
+    match library::restore_working(&lib.storage, &content.0) {
         Some(Ok((design, slot))) => {
             lib.design.replace(design);
             *lib.slot = slot;
@@ -512,7 +502,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
             UiBlock,
             GlobalZIndex(20),
             Visibility::Hidden,
-            BackgroundColor(ui_color(clear.0, 0.93)),
+            BackgroundColor(ui_color(clear.0, 0.985)),
             Node {
                 position_type: PositionType::Absolute,
                 left: px(0),
@@ -699,7 +689,7 @@ fn spawn_row(l: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f
 }
 
 /// Opens a page, or closes it when it is open.
-fn toggle(shelf: &mut Shelf, page: Page, lib: &Lib) {
+fn toggle(shelf: &mut Shelf, page: Page, lib: &Lib, content: &Content) {
     if shelf.page == Some(page) {
         shelf.page = None;
         return;
@@ -710,16 +700,16 @@ fn toggle(shelf: &mut Shelf, page: Page, lib: &Lib) {
     shelf.paste_armed = false;
     match page {
         Page::Blueprints => {
-            refresh(shelf, lib);
+            refresh(shelf, lib, content);
             shelf.pick = lib.slot.id.clone().map(Pick::Design);
         }
         Page::Export => {
-            let bp = lib.export();
-            let made_with: Vec<String> = lib.content().packs.iter().map(|p| format!("{} {}", p.id, p.version)).collect();
+            let bp = lib.export(content);
+            let made_with: Vec<String> = content.packs.iter().map(|p| format!("{} {}", p.id, p.version)).collect();
             shelf.export = Export {
                 file: format!("{}.ron", bp.id),
                 ron: data::blueprint_to_ron(&bp),
-                code: share::encode(lib.content(), &bp),
+                code: share::encode(content, &bp),
                 made_with: made_with.join(", ").to_uppercase(),
             };
         }
@@ -727,10 +717,10 @@ fn toggle(shelf: &mut Shelf, page: Page, lib: &Lib) {
 }
 
 /// Re-reads the saved designs.
-fn refresh(shelf: &mut Shelf, lib: &Lib) {
+fn refresh(shelf: &mut Shelf, lib: &Lib, content: &Content) {
     shelf.now = now_unix();
-    shelf.templates = lib.content().ships.iter().map(|s| s.id.clone()).collect();
-    match library::list_designs(&lib.storage, lib.content()) {
+    shelf.templates = content.ships.iter().map(|s| s.id.clone()).collect();
+    match library::list_designs(&lib.storage, content) {
         Ok(list) => shelf.designs = list,
         Err(e) => shelf.say(format!("can't list the designs: {e}"), Tone::Coral),
     }
@@ -756,7 +746,9 @@ fn apply(
     mut saver: ResMut<Saver>,
     mut shelf: ResMut<Shelf>,
     mut lib: Lib,
+    content: Res<GameContent>,
 ) {
+    let content = &content.0;
     // A rename ends when its field lets go of the keyboard: Esc cancels, anything else renames.
     if let Mode::Rename(id) = shelf.mode.clone()
         && !rename.focused
@@ -764,7 +756,7 @@ fn apply(
         shelf.mode = Mode::Browse;
         let name = rename.value.trim().to_string();
         if !keys.just_pressed(KeyCode::Escape) && !name.is_empty() {
-            rename_design(&mut shelf, &mut lib, &id, &name);
+            rename_design(&mut shelf, &mut lib, content, &id, &name);
         }
     }
     let field_keys = saver.field_had_keys;
@@ -774,14 +766,14 @@ fn apply(
     for a in actions.read() {
         match a {
             DrydockAction::Save => {
-                let (line, tone) = lib.save();
+                let (line, tone) = lib.save(content);
                 shelf.say(line, tone);
                 if shelf.page == Some(Page::Blueprints) {
-                    refresh(&mut shelf, &lib);
+                    refresh(&mut shelf, &lib, content);
                 }
             }
-            DrydockAction::Blueprints => toggle(&mut shelf, Page::Blueprints, &lib),
-            DrydockAction::Export => toggle(&mut shelf, Page::Export, &lib),
+            DrydockAction::Blueprints => toggle(&mut shelf, Page::Blueprints, &lib, content),
+            DrydockAction::Export => toggle(&mut shelf, Page::Export, &lib, content),
             _ => {}
         }
     }
@@ -796,7 +788,7 @@ fn apply(
     shelf.incoming.extend(share::take_picked());
     for (file, text) in std::mem::take(&mut shelf.incoming) {
         match text {
-            Ok(text) => import(&mut shelf, &mut lib, &text, &file),
+            Ok(text) => import(&mut shelf, &mut lib, content, &text, &format!("{file}: ")),
             Err(e) => shelf.say(format!("{file} doesn't read: {e}"), Tone::Coral),
         }
     }
@@ -834,30 +826,30 @@ fn apply(
         }
     }
     for b in todo {
-        press(b, &mut shelf, &mut lib, &mut rename, &mut clip);
+        press(b, &mut shelf, &mut lib, content, &mut rename, &mut clip);
     }
     for text in clip.take_pasted() {
         if shelf.page == Some(Page::Blueprints) && shelf.paste_armed {
             shelf.paste_armed = false;
-            import(&mut shelf, &mut lib, &text, "the pasted text");
+            import(&mut shelf, &mut lib, content, &text, "");
         }
     }
     clip.offer = (page == Page::Export && shelf.code_selected).then(|| shelf.export.code.clone());
     clip.accept = page == Page::Blueprints && shelf.paste_armed;
 }
 
-fn import(shelf: &mut Shelf, lib: &mut Lib, text: &str, from: &str) {
-    match lib.import(text) {
+fn import(shelf: &mut Shelf, lib: &mut Lib, content: &Content, text: &str, from: &str) {
+    match lib.import(content, text) {
         Ok(msg) => {
             shelf.say(msg, Tone::Teal);
-            refresh(shelf, lib);
+            refresh(shelf, lib, content);
             shelf.pick = lib.slot.id.clone().map(Pick::Design);
         }
-        Err(e) => shelf.say(format!("{from} didn't import: {e}"), Tone::Coral),
+        Err(e) => shelf.say(format!("{from}not imported: {e}"), Tone::Coral),
     }
 }
 
-fn rename_design(shelf: &mut Shelf, lib: &mut Lib, id: &str, name: &str) {
+fn rename_design(shelf: &mut Shelf, lib: &mut Lib, content: &Content, id: &str, name: &str) {
     if let Err(e) = library::rename(&mut lib.storage, id, name, now_unix()) {
         shelf.say(format!("not renamed: {e}"), Tone::Coral);
         return;
@@ -871,12 +863,11 @@ fn rename_design(shelf: &mut Shelf, lib: &mut Lib, id: &str, name: &str) {
         }
     }
     shelf.say(format!("renamed to {name}"), Tone::Teal);
-    refresh(shelf, lib);
+    refresh(shelf, lib, content);
 }
 
 /// One button of the screens.
-fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, rename: &mut TextField, clip: &mut Clipboard) {
-    let content = lib.content.0.clone();
+fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, rename: &mut TextField, clip: &mut Clipboard) {
     match b {
         ShelfButton::Close => shelf.page = None,
         ShelfButton::Row(list, k) => {
@@ -893,13 +884,13 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, rename: &mut TextFiel
                     shelf.say("it is in the drydock already", Tone::Label);
                     return;
                 }
-                Some(Pick::Design(id)) => library::open_saved(&lib.storage, &content, &id).map(|d| (DesignSlot::opened(Some(id), &d), d)),
+                Some(Pick::Design(id)) => library::open_saved(&lib.storage, content, &id).map(|d| (DesignSlot::opened(Some(id), &d), d)),
                 Some(Pick::Template(id)) => {
-                    library::open_template(&content, &id, &lib.names(shelf)).map(|d| (DesignSlot::opened(None, &d), d))
+                    library::open_template(content, &id, &lib.names(shelf)).map(|d| (DesignSlot::opened(None, &d), d))
                 }
                 None => return,
             };
-            match opened.and_then(|(slot, d)| lib.switch(d, slot)) {
+            match opened.and_then(|(slot, d)| lib.switch(content, d, slot)) {
                 Ok(kept) => {
                     let name = lib.design.blueprint().name.clone();
                     let kept = kept.map_or(String::new(), |k| format!("{k} saved  ·  "));
@@ -913,15 +904,15 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, rename: &mut TextFiel
             let names = lib.names(shelf);
             let now = now_unix();
             let made = match shelf.pick.clone() {
-                Some(Pick::Design(id)) => library::duplicate(&mut lib.storage, &content, &id, &names, now),
-                Some(Pick::Template(id)) => library::open_template(&content, &id, &names).and_then(|copy| {
-                    library::save(&mut lib.storage, &content, &copy, &mut DesignSlot::default(), now).map_err(|e| e.to_string())
+                Some(Pick::Design(id)) => library::duplicate(&mut lib.storage, content, &id, &names, now),
+                Some(Pick::Template(id)) => library::open_template(content, &id, &names).and_then(|copy| {
+                    library::save(&mut lib.storage, content, &copy, &mut DesignSlot::default(), now).map_err(|e| e.to_string())
                 }),
                 None => return,
             };
             match made {
                 Ok(id) => {
-                    refresh(shelf, lib);
+                    refresh(shelf, lib, content);
                     let name = shelf.entry(&id).map_or(id.clone(), |e| e.name.clone());
                     shelf.say(format!("saved a copy: {name}"), Tone::Teal);
                     shelf.offset[0] = 0;
@@ -954,22 +945,21 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, rename: &mut TextFiel
                         *lib.slot = DesignSlot::opened(None, &lib.design);
                     }
                     shelf.say(format!("deleted {name}"), Tone::Teal);
-                    refresh(shelf, lib);
+                    refresh(shelf, lib, content);
                 }
                 Err(e) => shelf.say(format!("not deleted: {e}"), Tone::Coral),
             }
         }
         ShelfButton::KeepDelete => shelf.mode = Mode::Browse,
         ShelfButton::New(frame) => {
-            let made = library::new_design(&content, frame, lib.design.blueprint(), &lib.names(shelf)).and_then(|mut d| {
-                d.edit_header(|h| h.summary = NEW_SUMMARY.into());
+            let made = library::new_design(content, frame, lib.design.blueprint(), &lib.names(shelf)).and_then(|d| {
                 let slot = DesignSlot::opened(None, &d);
-                lib.switch(d, slot)
+                lib.switch(content, d, slot)
             });
             match made {
                 Ok(kept) => {
                     let kept = kept.map_or(String::new(), |k| format!("{k} saved  ·  "));
-                    shelf.say(format!("{kept}new design in the {}", frame_name(&content, frame)), Tone::Teal);
+                    shelf.say(format!("{kept}new design in the {}", frame_name(content, frame)), Tone::Teal);
                     shelf.page = None;
                 }
                 Err(e) => shelf.say(format!("no new design: {e}"), Tone::Coral),
@@ -983,10 +973,10 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, rename: &mut TextFiel
             match lib.design.edit(|d| d.set_frame(frame)) {
                 Ok(_) => {
                     lib.cam.reset_view();
-                    shelf.say(format!("moved to the {}", frame_name(&content, frame)), Tone::Teal);
+                    shelf.say(format!("moved to the {}", frame_name(content, frame)), Tone::Teal);
                 }
                 Err(_) => shelf.say(
-                    format!("doesn't fit the {} ({}×{}): the design is {}×{}", frame_name(&content, frame), frame.0, frame.1, size.0, size.1),
+                    format!("doesn't fit the {} ({}×{}): the design is {}×{}", frame_name(content, frame), frame.0, frame.1, size.0, size.1),
                     Tone::Coral,
                 ),
             }
@@ -1176,7 +1166,8 @@ fn sync_shelf(
             ShelfText::RowSub(_, k) => {
                 if let Some(b) = shelf.templates.get(shelf.offset[1] + k).and_then(|id| content.ships.get(id)) {
                     let faction = content.factions.get(&b.faction).map_or(String::new(), |f| f.name.to_uppercase());
-                    s.push_str(&format!("{}×{}  ·  {} PARTS  ·  {faction}", b.size.0, b.size.1, b.parts.len()));
+                    let (w, h) = library::parts_size(content, b);
+                    s.push_str(&format!("{w}×{h}  ·  {} PARTS  ·  {faction}", b.parts.len()));
                 }
                 Tone::Dim
             }

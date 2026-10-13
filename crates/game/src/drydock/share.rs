@@ -60,7 +60,7 @@ impl fmt::Display for ShareError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ShareError::NotADesign => f.write_str("that is neither a share code nor a blueprint"),
-            ShareError::Newer(v) => write!(f, "the code is from a newer version of the game (share format {v}, this one reads {CODE_VERSION})"),
+            ShareError::Newer(v) => write!(f, "made by a newer version of the game (share format {v}; this one reads {CODE_VERSION})"),
             ShareError::Damaged => f.write_str("the code is damaged or incomplete"),
             ShareError::Unreadable(why) => write!(f, "the design doesn't read: {why}"),
             ShareError::Missing { what, packs } => write!(f, "it uses {} this game doesn't have{packs}", what.join(", ")),

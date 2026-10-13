@@ -21,6 +21,9 @@ use super::PlayerDesign;
 const MAX_SLUG: usize = 40;
 /// The working design's name in its namespace.
 const WORKING: &str = "working";
+/// The summary new and imported designs get when they have none (content requires one; the drydock has no
+/// field for it yet).
+pub const NEW_SUMMARY: &str = "A design from the drydock.";
 
 /// A saved design: the blueprint in its frame (see the module docs).
 #[derive(Clone, Debug, PartialEq)]
@@ -354,7 +357,7 @@ pub fn new_design(content: &Content, frame: (u32, u32), like: &Blueprint, names:
     let bp = Blueprint {
         id: slug(&name),
         name,
-        summary: String::new(),
+        summary: NEW_SUMMARY.into(),
         description: None,
         lore: None,
         tags: Vec::new(),
@@ -518,6 +521,9 @@ mod tests {
         let like = content.ships.get("halvex_runner").unwrap();
         let mut design = new_design(&content, (40, 40), like, &[]).unwrap();
         design.edit(|d| d.paint((3, 4), "steel")).unwrap();
+        // Its header passes the content rules (id, summary), so only the ship itself can have problems.
+        let header = |p: &Problem| matches!(p.field.as_deref(), Some("id" | "name" | "summary" | "faction"));
+        assert!(!data::validate_ship(&content, &design.export()).iter().any(header));
         let mut slot = DesignSlot::opened(None, &design);
         write_working(&mut storage, &design, &slot, 10).unwrap();
         let (back, back_slot) = restore_working(&storage, &content).unwrap().unwrap();
