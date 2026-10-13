@@ -180,10 +180,10 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 
 The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
 `docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 Oct 2026. This is the foundation:
-the mode, the static view of the player's design, the screen with its widgets and the test flight. Editing
-(`data::edit`), the live stats and issues (`sim::report`) and saving (the RON writer) plug in through the
-resources and the action message below; nothing is edited, computed or saved yet. Parts are unlimited in v1
-(no spare counts).
+the mode, the static view of the player's design, the screen with its widgets and the test flight; since wave 2
+also the live stats, status line and overlays from `sim::report`. Editing (`data::edit`) and saving (the RON
+writer) plug in through the resources and the action message below. Parts are unlimited in v1 (no spare
+counts).
 
 Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydock-*.png`.
 
@@ -201,11 +201,12 @@ Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydoc
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · 24×24 FRAME` and the
 design's name; the ARMOR pills (every content material with an `armor` block) and the OVERLAY pills (HEAT,
-MASS, BONUS in gold, SHIELDS, ARCS: toggle state only); left the search, the category pills (content
+MASS, BONUS in gold, SHIELDS, ARCS: any combination, drawn over the design); left the search, the category pills (content
 categories) and the part list (icon, name, footprint and one key stat from `Content::part_stats`: the first
 stat after build points, control, mass, hit points, power draw and heat, else the bonus it gives, else its hit
 points; the wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT,
-THRUST/MASS, YAW, FIREPOWER, CARGO, CONTROL, DEVICE LOAD, values `—` until `sim::report`) and SELECTED PART
+THRUST/MASS, YAW, FIREPOWER, CARGO, CONTROL, DEVICE LOAD, then a compact TOP SPEED, TURN 90°, MASS, BUILD
+POINTS block, all from `sim::report`) and SELECTED PART
 (the picked part: icon, name, footprint and category, summary, stat lines and bonus lines); below the grid the
 hover cell, mirror and axis, and the zoom; at the bottom undo / redo, MIRROR, BEVEL, the status line,
 BLUEPRINTS, EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
@@ -215,8 +216,13 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is op
   (`size` = the frame, the schema's "drydock frame"), at start a copy of `halvex_runner` centred in a 24 × 24
   frame (a placeholder until frames are content), under the id `player:design` (content ids are snake_case, so
   it never clashes). The player, the `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content
-  ships. `PlayerDesign::grounded` is the placeholder flight check (parts, a logic core on the main piece, the
-  design compiles); `check_design` turns it into `DrydockStatus` whenever `revision` changes.
+  ships.
+- **Stats and status** (`stats.rs`): whenever `report::DrydockReport` is recomputed, `stats::update` fills
+  `DrydockStats` and `DrydockStatus` from it (`CAN'T FLY` for blockers, an empty frame or a design that doesn't
+  compile, which sets `grounded`; else `FLIGHT-READY` with the most important warning). Mapping, wording and
+  tones: `docs/drydock.md` "Client: stats and overlays".
+- **Overlays** (`overlays.rs`): the five overlays and the issue marks, one world-space mesh over the design (a
+  child of its mesh), rebuilt when the report or the overlay pills change. Details in `docs/drydock.md`.
 - **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, mirror, bevel, the brush rotation, the
   picked part, the category, the search text), `DrydockStatus` (`grounded`, the status line and its tone),
   `DrydockStats` (the stats grid's cells: label, value, tone, optional bar). The widgets only show these.

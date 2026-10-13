@@ -147,3 +147,93 @@ indices shift) 3.2 µs (3.3 µs) and its undo 3.3 µs (3.4 µs), mirrored erase 
 rotate 0.16–0.27 µs (≤ 0.31 µs), auto-oriented slope 0.53 µs (0.59 µs). Filling an empty 64×64 frame (4096 blocks,
 one step) 0.49 ms (0.64 ms), undoing it 0.15 ms (0.19 ms), exporting 4096 parts 0.18 ms (0.23 ms). Run with
 `cargo test -p data --release --test edit -- --ignored --nocapture`.
+
+## Client: stats and overlays
+
+Written 13 Oct 2026 (wave 2, track 5F). Code: `crates/game/src/drydock/stats.rs` (the stats grid and the status
+line), `overlays.rs` (the overlays and issue marks); both read `report::DrydockReport` (the design's
+`sim::design_report`, recomputed once per design revision or tuning change) and never compute anything of their
+own. Tests: `cargo test -p game drydock` (the pure mappings: report → cells, report → status line and tone, the
+heat colour ramp, issue marks, bonus link cells, the first blocker of a line of fire). Screenshots (1280 × 720,
+195 %): `docs/results/drydock-stats-heat.png` (the Halvex Runner runs hot: the beams and shield emitters over
+their limit, gold marks), `drydock-stats-overlays.png` (all five overlays), `drydock-stats-grounded.png`
+(`?scene=drydock&thrust=0`: the tuning's thrust scale 0 grounds it, `CAN'T FLY · NO THRUST`, TEST-FLY disabled;
+bonus and shields).
+
+### Stats grid
+
+Labels, units and precision come from content (`stats.ron`: the `SHIP_STATS` ids, `cargo_capacity`, `mass`,
+`build_points`). Values are shortened to three significant digits, never with more decimals than the content's
+(`10.29` → `10.3`, `107.25 t` → `107 t`). The words (yaw, device load) are UI chrome in code.
+
+| Cell | From the report | Shown | Tone |
+|---|---|---|---|
+| POWER | `power.demand / power.supply` at full use | `50 / 54` (no unit, to fit), gold bar of the share | teal; coral and the bar over 100 % on a deficit |
+| PEAK HEAT | `heat.peak` | `109%`, bar of the share | teal up to 100 %, gold up to `RUNS_HOT_MAX` (120 %, GDR-0052), coral above |
+| THRUST/MASS | `flight.accel[0]` (forward) | `10.3` (no unit, to fit) | teal; coral without forward thrust |
+| YAW | `flight.yaw / thrust[0]` (the thrust line's offset from the centre of mass), `yaw_balanced` | `Balanced` (offset ≤ `BALANCED_ARM` = 0.05 m), `Pulls left` (counter-clockwise), `Pulls right`; `—` without forward thrust | teal balanced; gold if the gyros and gimbals hold the pull, coral if not |
+| FIREPOWER | `firepower` | `8.3/s` | white |
+| CARGO | `cargo` | `8 units` | white |
+| CONTROL | `control.load / capacity` | `18 / 32`, violet bar | violet; coral and over 100 % when parts idle |
+| DEVICE LOAD | `device.class` | `Light`, `Moderate`, `Heavy`, `Too heavy` | teal, teal, gold, coral |
+
+**TOP SPEED, TURN 90°, MASS and BUILD POINTS** sit in a compact block under the main grid: the same two
+columns, smaller type (8 px labels, 12.5 px values), no bars, units shown (`22 m/s`, `0.8 s`, `106 t`, `132 BP`;
+TURN `—` in coral when the design can't turn). Chosen over a hover detail because it is always visible, works
+on touch and costs about 40 px of the right panel. A bar over 100 % (power deficit, overheating, over the control
+capacity) fills its track and a white notch marks 100 % (`ui_kit::ValueBar`, share > 1).
+
+### Status line
+
+| Report | Line | Tone |
+|---|---|---|
+| `Err` (doesn't compile) | `CAN'T FLY · <WHY>` (the error) | coral |
+| no parts | `CAN'T FLY · EMPTY FRAME` | coral |
+| a blocker (first in the report's order) | `CAN'T FLY · NO LOGIC CORE` / `LOGIC CORES UNPOWERED` / `NO THRUST` | coral |
+| no warning | `FLIGHT-READY` | teal |
+| warnings | `FLIGHT-READY · <the most important> · +N` (N more) | the warning's |
+
+Every case with `CAN'T FLY` sets `DrydockStatus::grounded` (TEST-FLY disabled). Warnings, most important first
+(placeholder ranking: what breaks or harms the ship before what only makes it worse):
+
+1. `A PART FALLS OFF` / `N PARTS FALL OFF` (coral)
+2. `A PLUME BURNS THE SHIP` / `N PLUMES BURN THE SHIP` (coral)
+3. `OVERHEATS AT FULL LOAD` (coral: the peak is above `RUNS_HOT_MAX`)
+4. `POWER SHORT BY 4 MW` (gold)
+5. `OVER CONTROL CAPACITY` (gold)
+6. `GUN BLOCKED` / `N GUNS BLOCKED` (gold)
+7. `PULLS LEFT UNDER THRUST` / `RIGHT` (gold; the client's own, from the yaw balance, when not held)
+8. `RUNS HOT AT FULL LOAD` (gold: parts over their limit, the peak up to `RUNS_HOT_MAX`; the Halvex Runner)
+
+### Overlays
+
+The OVERLAY pills switch any combination. All of them are one world-space mesh (atlas material, vertex colours)
+over the design's tiles, a child of the design's mesh, rebuilt only when the report is recomputed or a pill
+changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom to top:
+
+- **HEAT**: every part of the main piece tinted by `heat_ratio` at full use: teal and faint when cool, gold at
+  its limit, coral from `RUNS_HOT_MAX`, more opaque the hotter (`overlays::heat_tint`); parts over their limit
+  outlined (gold while they only run hot, coral above).
+- **MASS**: every part of the main piece shaded white by its mass per cell (content mass in its material over
+  its area, from faint for the lightest to strongest for the densest); the centre of mass (a dark disc with the
+  quartered white symbol and a cross); the forward thrust line (dashed teal, with an arrow) through
+  `com.x + yaw / thrust`; when it misses the centre of mass, a curved arrow above it showing which way full
+  thrust turns the ship (gold if held, coral if not).
+- **BONUS**: one gold link per source and target pair across the side they share (the neighbouring cell pair
+  nearest the middle of the two parts), with a gold diamond on a dark backing on the side (the concept board's
+  links, the mockup's diamonds).
+- **SHIELDS**: every bubble (centre and radius after bonuses): a faint disc (4 %), a soft rim glow and a crisp
+  rim in the shield colour, the emitter's centre dotted.
+- **ARCS**: every gun's line of fire to its range (clear: dashed weapons cyan with an end tick; blocked: coral up
+  to the first blocker, a cross there, the blockers outlined); every engine's plume lanes to their reach (a soft
+  propulsion-teal lane, dashed centre line and end tick; a lane that burns an own part: coral, a cross where it
+  hits, the part outlined). Ranges reach far beyond a frigate frame (45–75 m): outside the frame the lines fade
+  to 30 % (and run under the veil outside the grid viewport).
+
+**Issue marks** (always, overlays on or off): a small triangle in the top-right corner of the bounding box of
+every part an issue names: coral for blocked guns, parts a plume burns, parts that fall off and parts
+overheating past `RUNS_HOT_MAX`; gold for parts that only run hot. Idle and power-short parts get no mark (the
+CONTROL and POWER cells say it).
+
+Placeholders: `stats::RUNS_HOT_MAX` (1.2, GDR-0052), `stats::BALANCED_ARM` (0.05 m), the warning ranking, the
+overlay opacities and sizes.

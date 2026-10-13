@@ -19,7 +19,7 @@ pub enum Tool {
     Select,
 }
 
-/// The overlays (pills top right). Toggle state only until `sim::report` draws them.
+/// The overlays (pills top right), drawn over the design by `overlays.rs`; any combination at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Overlay {
     Heat,
@@ -99,36 +99,13 @@ pub struct StatCell {
     pub label: String,
     pub value: String,
     pub tone: Tone,
-    /// A thin bar under the cell: the share filled and its colour.
+    /// A thin bar under the cell: the share filled (over 1: over a limit, a notch marks 100 %) and its colour.
     pub bar: Option<(f32, Tone)>,
 }
 
-/// The stats grid, two cells per row. Until `sim::report` fills it: the mockup's labels and "—".
-#[derive(Resource, Clone, Debug, PartialEq)]
+/// The stats grid (`stats.rs` fills it from the design report): the first `stats::MAIN_CELLS` cells are the
+/// main grid, two per row with bars, the rest the compact block under it.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct DrydockStats {
     pub cells: Vec<StatCell>,
-}
-
-impl Default for DrydockStats {
-    fn default() -> Self {
-        // UI chrome until the ship-level stat labels come from content (`stats.ron` on the data branch).
-        let cell = |label: &str, tone: Tone, bar: Option<Tone>| StatCell {
-            label: label.into(),
-            value: "—".into(),
-            tone,
-            bar: bar.map(|t| (0.0, t)),
-        };
-        Self {
-            cells: vec![
-                cell("POWER", Tone::Teal, Some(Tone::Gold)),
-                cell("PEAK HEAT", Tone::Coral, Some(Tone::Coral)),
-                cell("THRUST/MASS", Tone::Teal, None),
-                cell("YAW", Tone::Teal, None),
-                cell("FIREPOWER", Tone::Number, None),
-                cell("CARGO", Tone::Number, None),
-                cell("CONTROL", Tone::Violet, Some(Tone::Violet)),
-                cell("DEVICE LOAD", Tone::Teal, None),
-            ],
-        }
-    }
 }
