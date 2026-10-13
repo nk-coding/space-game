@@ -18,7 +18,7 @@
 
 use std::fmt::Write as _;
 
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::AccumulatedMouseScroll;
 
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -32,7 +32,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Hot, Pill, PillText, TextField, TextFieldText, Tone, UiBlock, ValueBar, label, number, prose, ring_node, set_color, set_text,
-    spawn_bar, spawn_brackets, spawn_pill, tracked,
+    spawn_bar, spawn_brackets, spawn_pill, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -389,7 +389,6 @@ fn overlay_name(o: Overlay) -> &'static str {
     }
 }
 
-
 /// The search field and [`DrydockUi::search`] stay equal: typing writes the resource, other systems may too.
 pub(super) fn sync_search(mut ui: ResMut<DrydockUi>, mut field: Single<&mut TextField, With<SearchField>>) {
     if field.is_changed() && field.value != ui.search {
@@ -459,11 +458,7 @@ pub(super) fn sync_palette(
         && let Some(c) = window.physical_cursor_position()
         && node.contains_point(*tf, c)
     {
-        let steps = match scroll.unit {
-            MouseScrollUnit::Line => scroll.delta.y,
-            MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
-        };
-        offset = (offset as f32 - steps.signum() * steps.abs().max(1.0).round()).clamp(0.0, max_offset as f32) as usize;
+        offset = (offset as f32 - wheel_rows(&scroll)).clamp(0.0, max_offset as f32) as usize;
     }
     if offset != pal.offset || visible != pal.visible {
         pal.offset = offset;

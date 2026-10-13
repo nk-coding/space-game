@@ -37,7 +37,7 @@ pub enum BehaviorAction {
     Deselect,
     /// WATCH or FLY ALONGSIDE, the mode TEST IN RANGE starts in.
     TestMode(TestMode),
-    /// TEST IN RANGE (T) in [`BehaviorUi::test_mode`]: the range scenes start it.
+    /// TEST IN RANGE (T) in [`BehaviorUi::test_mode`] (`saving.rs` starts the test).
     TestInRange,
 
     // Editing (`edit.rs`), through the editing model.

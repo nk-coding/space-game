@@ -27,10 +27,10 @@
 //!   rename, delete, new).
 //! * [`live`]: the live rule panel in the flight HUD while a test runs.
 //!
-//! **For handlers** (the range scenes): read `MessageReader<BehaviorAction>` in a system in
+//! **For handlers** (the ring menu, later ones): read `MessageReader<BehaviorAction>` in a system in
 //! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::edit`] (the graph and the text
 //! follow its `revision`), read [`BehaviorUi`] (the view, the selected node, the test mode) and
-//! [`EditorContext`] (the design's name and rule slots). Nothing in `screen.rs` needs to change for that.
+//! [`EditorContext`] (the design's name and rule slots).
 
 pub mod actions;
 pub mod controls;
@@ -104,9 +104,6 @@ pub struct EditorContext {
     pub design_name: String,
     pub slots: u32,
 }
-
-/// The layout's size: 1280 × 720 logical px; larger windows scale the screen (as the drydock does).
-const MAX_UI_SCALE: f32 = 2.0;
 
 pub struct BehaviorPlugin;
 
@@ -206,7 +203,7 @@ fn show(mode: Res<State<AppMode>>, mut root: Query<&mut Visibility, With<screen:
 /// The window: the UI scale (min(w / 1280, h / 720), 1 to 2) and the camera rig's viewport, which places the
 /// icons and the dot grid (world sprites under the UI) on screen.
 fn fit_window(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
-    let s = (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE);
+    let s = crate::ui_kit::ui_scale_for(&window);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

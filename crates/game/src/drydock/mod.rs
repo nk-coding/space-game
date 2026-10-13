@@ -1,7 +1,6 @@
 //! The drydock: the ship editor of the client (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
-//! `docs/concept/boards/ui-mockups/desktop-drydock.png`). This is the foundation: the mode, the static view of
-//! the player's design, the layout with its widgets, and the test flight; editing, the live stats, saving and
-//! sharing (wave 2, 13 Oct 2026) are the modules below.
+//! `docs/concept/boards/ui-mockups/desktop-drydock.png`): the mode, the view of the player's design, the screen
+//! with its widgets, editing, the live stats, saving and sharing, and the test flight, in the modules below.
 //!
 //! * [`design`]: [`PlayerDesign`], the blueprint every flight of the player flies.
 //! * [`state`]: what the widgets show (`DrydockUi`, `DrydockStatus`, `DrydockStats`).
@@ -19,10 +18,10 @@
 //! * [`behaviors`]: the player's behaviors on the storage layer ([`behaviors::PlayerBehaviors`]), the behavior a
 //!   design names, checks with the player's behaviors known.
 //!
-//! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
-//! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
-//! write [`DrydockStats`] and [`DrydockStatus`]; read [`DrydockUi`] (tool, material, rotation, picked
-//! part) and [`DrydockCursor`] (the cell under the pointer). Nothing here needs to change for that.
+//! **For handlers** (the ring menu, later ones): read `MessageReader<DrydockAction>` in a system in
+//! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the
+//! report, the status and the palette follow); read [`DrydockUi`] (tool, material, rotation, picked part) and
+//! [`DrydockCursor`] (the cell under the pointer).
 
 pub mod actions;
 pub mod behaviors;

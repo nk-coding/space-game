@@ -27,7 +27,7 @@ use crate::ship_model::{blueprint_visual, design_visual};
 use crate::ship_view::build_body;
 use crate::sim_bridge::GameContent;
 use crate::style::Style;
-use crate::ui_kit::UiPointer;
+use crate::ui_kit::{UiPointer, ui_scale_for};
 
 use super::actions::DrydockAction;
 use super::PlayerDesign;
@@ -43,8 +43,6 @@ const VEIL: f32 = 0.62;
 const FIT_MARGIN: f32 = 0.6;
 /// Zoom limits, as shares of the fit.
 const ZOOM_RANGE: (f32, f32) = (0.5, 8.0);
-/// The UI scale follows the window: 1 at 1280 × 720 logical, up to this at larger windows.
-const MAX_UI_SCALE: f32 = 2.0;
 /// The frame's dots are at least this many screen pixels apart.
 const MIN_DOT_GAP: f32 = 6.0;
 
@@ -133,7 +131,7 @@ pub(super) fn exit(mut rig: ResMut<CameraRig>, mut cam: ResMut<DockCamera>, mut 
 
 /// The UI scale: the layout is made for 1280 × 720 logical pixels and grows with larger windows.
 pub(super) fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>) {
-    let s = (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE);
+    let s = ui_scale_for(&window);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

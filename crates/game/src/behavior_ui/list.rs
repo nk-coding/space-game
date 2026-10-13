@@ -11,7 +11,7 @@
 //! * **NEW BEHAVIOR**: a new draft with one rule (`always -> ` the vocabulary's first action), not saved until SAVE.
 //! * Opening, USE and NEW replace the draft on the screen; unsaved edits are saved first (`saving.rs`).
 
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
@@ -19,12 +19,14 @@ use data::Content;
 
 use crate::drydock::PlayerDesign;
 use crate::drydock::behaviors::{BehaviorEntry, PlayerBehaviors};
-use crate::drydock::library::{self, fresh_name};
+use crate::drydock::library::{self, MAX_NAME, fresh_name};
 use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, UiPointer, label, number, prose, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{
+    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, UiPointer, label, number, prose, set_color, set_text, spawn_pill, tracked, wheel_rows,
+};
 
 use super::draft::{BehaviorDraft, design_behavior};
 use super::saving::{Lib, opened_note};
@@ -34,9 +36,6 @@ use super::{BehaviorAction, BehaviorUi, BehaviorView};
 const LIST_ROWS: usize = 7;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
-const MAX_NAME: usize = 40;
-/// The name NEW gives (a fresh one: "New behavior 2", ...).
-const NEW_NAME: &str = "New behavior";
 
 /// What the action bar shows.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -513,7 +512,7 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
         ListButton::KeepDelete => list.mode = Mode::Browse,
         ListButton::New => {
             let Some(mut next) = BehaviorDraft::empty(&content.behavior_nodes) else { return };
-            next.name = fresh_name(NEW_NAME, &lib.behaviors.names());
+            next.name = fresh_name(super::draft::NEW_NAME, &lib.behaviors.names());
             next.mark_clean();
             match lib.switch(content, next) {
                 Ok(kept) => {
@@ -543,12 +542,8 @@ pub(super) fn scroll(
             continue;
         }
         let len = if node.0 == 0 { list.mine.len() } else { list.templates.len() };
-        let steps = match wheel.unit {
-            MouseScrollUnit::Line => wheel.delta.y,
-            MouseScrollUnit::Pixel => wheel.delta.y / 40.0,
-        };
         let max = len.saturating_sub(LIST_ROWS) as f32;
-        let offset = (list.offset[node.0] as f32 - steps.signum() * steps.abs().max(1.0).round()).clamp(0.0, max) as usize;
+        let offset = (list.offset[node.0] as f32 - wheel_rows(&wheel)).clamp(0.0, max) as usize;
         if offset != list.offset[node.0] {
             list.offset[node.0] = offset;
         }

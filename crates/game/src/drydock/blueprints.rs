@@ -18,7 +18,7 @@
 //!   (`PlayerDesign::edit_header`), Esc keeps the old name.
 
 use bevy::ecs::system::SystemParam;
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::text::{Justify, LineBreak};
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -30,11 +30,14 @@ use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, label, number, prose, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{
+    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, label, name_in_place, number, prose, set_color, set_text, spawn_pill, tracked,
+    wheel_rows,
+};
 
 use super::actions::DrydockAction;
 use super::behaviors::{PlayerBehaviors, validate_design};
-use super::library::{self, Autosave, DesignSlot, Entry};
+use super::library::{self, Autosave, DesignSlot, Entry, MAX_NAME};
 use super::panels::PanelText;
 use super::share;
 use super::state::DrydockStatus;
@@ -45,8 +48,6 @@ use super::{DockSet, PlayerDesign, stats};
 const LIST_ROWS: usize = 6;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
-/// The longest design name.
-const MAX_NAME: usize = 40;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -321,11 +322,7 @@ fn restore(world: &mut World) -> (DesignSlot, Shelf) {
     }
     // The first start: the starter ship (`PlayerDesign::starter`) as "<name> copy", not saved yet.
     let name = format!("{} copy", design.blueprint().name);
-    let id = library::slug(&name);
-    design.edit_header(|h| {
-        h.name = name;
-        h.id = id;
-    });
+    design.edit_header(|h| h.name = name);
     (DesignSlot::opened(None, &design), shelf)
 }
 
@@ -450,27 +447,18 @@ fn title(
     mut design: ResMut<PlayerDesign>,
 ) {
     let (f, node) = &mut *field;
-    let mut show = |editing: bool, node: &mut Node| {
-        node.display = if editing { Display::Flex } else { Display::None };
+    let clicked = clicks.read().any(|c| c.0 == *button);
+    let (open, renamed) = name_in_place(&mut saver.editing_title, f, clicked, keys.just_pressed(KeyCode::Escape), &design.blueprint().name);
+    if let Some(new) = renamed {
+        design.edit_header(|h| h.name = new);
+    }
+    if let Some(open) = open {
+        node.display = if open { Display::Flex } else { Display::None };
         for (t, mut n) in &mut texts {
             if *t == PanelText::Name {
-                n.display = if editing { Display::None } else { Display::Flex };
+                n.display = if open { Display::None } else { Display::Flex };
             }
         }
-    };
-    if saver.editing_title && !f.focused {
-        saver.editing_title = false;
-        let new = f.value.trim().to_string();
-        if !keys.just_pressed(KeyCode::Escape) && !new.is_empty() && new != design.blueprint().name {
-            design.edit_header(|h| h.name = new);
-        }
-        show(false, node);
-    }
-    if clicks.read().any(|c| c.0 == *button) && !saver.editing_title {
-        saver.editing_title = true;
-        f.value = design.blueprint().name.clone();
-        f.focused = true;
-        show(true, node);
     }
 }
 
@@ -1097,12 +1085,8 @@ fn scroll_lists(
             continue;
         }
         let len = if list.0 == 0 { shelf.designs.len() } else { shelf.templates.len() };
-        let steps = match scroll.unit {
-            MouseScrollUnit::Line => scroll.delta.y,
-            MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
-        };
         let max = len.saturating_sub(LIST_ROWS) as f32;
-        let offset = (shelf.offset[list.0] as f32 - steps.signum() * steps.abs().max(1.0).round()).clamp(0.0, max) as usize;
+        let offset = (shelf.offset[list.0] as f32 - wheel_rows(&scroll)).clamp(0.0, max) as usize;
         if offset != shelf.offset[list.0] {
             shelf.offset[list.0] = offset;
         }

@@ -282,9 +282,7 @@ mod web {
         static PICKED: RefCell<Vec<(String, Result<String, String>)>> = const { RefCell::new(Vec::new()) };
     }
 
-    fn js(e: wasm_bindgen::JsValue) -> String {
-        e.as_string().unwrap_or_else(|| format!("{e:?}"))
-    }
+    use crate::clipboard::js_text as js;
 
     /// A download of `text` as `file_name` (a Blob behind a temporary link).
     pub fn download(file_name: &str, text: &str) -> Result<(), String> {

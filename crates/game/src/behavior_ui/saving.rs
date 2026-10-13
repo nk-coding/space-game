@@ -26,7 +26,7 @@ use sim::DesignReport;
 use crate::drydock::PlayerDesign;
 use crate::drydock::report::DrydockReport;
 use crate::drydock::behaviors::{NEW_SUMMARY, PlayerBehaviors, errors_note, set_program, set_text};
-use crate::drydock::library::{self, Autosave, DesignSlot};
+use crate::drydock::library::{self, Autosave, DesignSlot, MAX_NAME};
 use crate::flight_hud::HudFonts;
 use crate::mode::AppMode;
 use crate::params::Params;
@@ -34,14 +34,12 @@ use crate::sim_bridge::GameContent;
 use crate::storage::{Document, Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::test_range::{self, BehaviorTest, StartTest, TestProgram};
-use crate::ui_kit::{Hot, TextField, TextFieldText, Tone, UiClick, label, prose, set_color, set_text as set_ui_text};
+use crate::ui_kit::{Hot, TextField, TextFieldText, Tone, UiClick, label, name_in_place, prose, set_color, set_text as set_ui_text};
 
 use super::draft::{BehaviorDraft, Snapshot, design_behavior};
 use super::screen::ScreenText;
 use super::{BehaviorAction, BehaviorUi, BehaviorView, EditorContext};
 
-/// The longest behavior name.
-const MAX_NAME: usize = 40;
 /// The working draft's name in the `drydock` namespace (next to the working design, `drydock/working`).
 const WORKING: &str = "behavior";
 /// Where a working draft that doesn't read is kept before the next autosave writes over it.
@@ -427,7 +425,6 @@ pub(super) fn apply(
     }
 }
 
-/// The test TEST IN RANGE would fly, or why not.
 /// What TEST IN RANGE flies, or why not: the text has errors, the behavior can't fly (`test_range::check`), or the
 /// design can't (`report`: its design report, as the drydock's status line reads it).
 pub fn test_request(draft: &BehaviorDraft, behaviors: &PlayerBehaviors, content: &Content, report: &Result<DesignReport, String>) -> Result<TestProgram, String> {
@@ -530,21 +527,14 @@ pub(super) fn title(
 ) {
     let (button, mut button_node) = button.into_inner();
     let (mut f, mut node) = field.into_inner();
-    if *editing && !f.focused {
-        *editing = false;
-        let new = f.value.trim().to_string();
-        if !keys.just_pressed(KeyCode::Escape) && !new.is_empty() && new != draft.name {
-            draft.name = new;
-        }
-        node.display = Display::None;
-        button_node.display = Display::Flex;
+    let clicked = clicks.read().any(|c| c.0 == button);
+    let (open, renamed) = name_in_place(&mut editing, &mut f, clicked, keys.just_pressed(KeyCode::Escape), &draft.name);
+    if let Some(new) = renamed {
+        draft.name = new;
     }
-    if clicks.read().any(|c| c.0 == button) && !*editing {
-        *editing = true;
-        f.value.clone_from(&draft.name);
-        f.focused = true;
-        node.display = Display::Flex;
-        button_node.display = Display::None;
+    if let Some(open) = open {
+        node.display = if open { Display::Flex } else { Display::None };
+        button_node.display = if open { Display::None } else { Display::Flex };
     }
 }
 

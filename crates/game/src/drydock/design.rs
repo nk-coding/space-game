@@ -44,7 +44,7 @@ impl PlayerDesign {
     pub fn starter(content: &Content) -> Self {
         let empty = || Blueprint {
             id: String::new(),
-            name: "New design".into(),
+            name: super::library::NEW_NAME.into(),
             summary: String::new(),
             description: None,
             lore: None,

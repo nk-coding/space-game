@@ -19,6 +19,10 @@ use super::PlayerDesign;
 
 /// The longest id a slug makes (suffixes for uniqueness come on top).
 const MAX_SLUG: usize = 40;
+/// The longest design or behavior name (the name fields).
+pub const MAX_NAME: usize = 40;
+/// The name a new design gets ("New design", "New design 2", ...); also the starter's when content has no ship.
+pub const NEW_NAME: &str = "New design";
 /// The working design's name in its namespace.
 const WORKING: &str = "working";
 /// Where a working design that doesn't read or open is kept before the autosave writes over it.
@@ -308,9 +312,11 @@ pub fn save(storage: &mut Storage, content: &Content, design: &PlayerDesign, slo
     Ok(id)
 }
 
-/// Writes the working design (with the id it is saved under and whether it has unsaved changes).
+/// Writes the working design (with the id it is saved under and whether it has unsaved changes). Its blueprint's
+/// `id` is that id (empty before the first save): the header's own id is the one it was opened with (a template's
+/// content id, say), which saving and exports never use.
 pub fn write_working(storage: &mut Storage, design: &PlayerDesign, slot: &DesignSlot, now: u64) -> Result<(), StorageError> {
-    let id = design.dock().header().id.clone();
+    let id = slot.id.clone().unwrap_or_default();
     let doc = WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } };
     storage.write(WORKING, &doc, now)
 }
@@ -384,7 +390,7 @@ pub fn open_template(content: &Content, ship: &str, names: &[String]) -> Result<
 
 /// An empty design in a frame, with a fresh name and the faction of `like` (the player's).
 pub fn new_design(content: &Content, frame: (u32, u32), like: &Blueprint, names: &[String]) -> Result<PlayerDesign, String> {
-    let name = fresh_name("New design", names);
+    let name = fresh_name(NEW_NAME, names);
     let bp = Blueprint {
         id: slug(&name),
         name,
@@ -568,7 +574,8 @@ mod tests {
         write_working(&mut storage, &copy, &DesignSlot::opened(None, &copy), 15).unwrap();
         let (back, back_slot, _) = restore_working(&mut storage, &content).unwrap().unwrap();
         assert!(!back_slot.dirty(&back));
-        assert_eq!(back.export(), Blueprint { source: Default::default(), ..copy.export() });
+        // (Not saved yet: no id; the template's content id stays behind.)
+        assert_eq!(back.export(), Blueprint { id: String::new(), source: Default::default(), ..copy.export() });
         // Saved, then changed: it comes back saved, with the change unsaved.
         save(&mut storage, &content, &design, &mut slot, 20).unwrap();
         design.edit(|d| d.paint((5, 4), "steel")).unwrap();

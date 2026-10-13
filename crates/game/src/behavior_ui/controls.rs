@@ -24,11 +24,9 @@ use super::actions::{BehaviorAction, BehaviorButton};
 use super::draft::BehaviorDraft;
 use super::edit::{Edit, EditState, apply_edit};
 use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SliderSpec, SwitchRow};
-use super::screen::{Kit, role_color};
+use super::screen::{Kit, LINE_W, role_color};
 use crate::style::ui_color;
 
-/// Logical px.
-const LINE_W: f32 = 1.2;
 /// Space above each block of the inspector.
 const GAP: f32 = 12.0;
 const STEPPER: f32 = 22.0;

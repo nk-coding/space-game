@@ -2,8 +2,8 @@
 //! [`ActionButton`] sends its action, the keyboard shortcuts send the same ones. Handlers read the message and
 //! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part)
 //! and the test flight. Zoom is handled by the camera (`view.rs`), editing (undo / redo, mirror, bevel, rotate,
-//! the selected part) by `tools.rs`; saving, export, the blueprint list and the ring menu come with the RON
-//! writer and the menus.
+//! the selected part) by `tools.rs`, saving, export and the blueprint list by `blueprints.rs`, the BEHAVIOR button
+//! by `behavior_ui`; the ring menu has no handler yet.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
 //! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z

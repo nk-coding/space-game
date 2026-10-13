@@ -33,7 +33,7 @@ use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, WHEEL_LINE_PX, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use bevy::ui_render::prelude::MaterialNode;
@@ -57,13 +57,13 @@ const RIGHT_W: f32 = 296.0;
 /// The graph area ends this far from the right edge (the right column, its divider and a gap).
 const GRAPH_RIGHT: f32 = SIDE + RIGHT_W + 34.0;
 /// The graph's columns: the root, the trunk; its rows.
-const ROOT_W: f32 = 150.0;
+pub(super) const ROOT_W: f32 = 150.0;
 const TRUNK_W: f32 = 30.0;
 const ROW_H: f32 = 52.0;
 const SLOT_ROW_H: f32 = 30.0;
 const CHIP_H: f32 = 34.0;
 const CHIP_FONT: f32 = 14.5;
-const LINE_W: f32 = 1.2;
+pub(super) const LINE_W: f32 = 1.2;
 /// How much inactive rules (no rule slot) are dimmed.
 const INACTIVE: f32 = 0.4;
 /// A dash and the gap after it (logical px).
@@ -71,8 +71,6 @@ const DASH: f32 = 6.0;
 const DASH_GAP: f32 = 4.0;
 /// Dashes in a dashed line that fills its row (more than the widest graph area needs; the rest is clipped).
 const DASHES: usize = 160;
-/// Wheel steps in px.
-const WHEEL_LINE: f32 = 40.0;
 /// The palette keeps at least this height (about three rows of pills); a taller inspector scrolls.
 const PALETTE_MIN: f32 = 120.0;
 /// The dot grid behind the graph: spacing in logical px, FX layer (under ships and effects; the world is empty).
@@ -960,7 +958,7 @@ pub(super) fn scroll(
     }
     let Some(cursor) = window.physical_cursor_position() else { return };
     let dy = match wheel.unit {
-        MouseScrollUnit::Line => wheel.delta.y * WHEEL_LINE,
+        MouseScrollUnit::Line => wheel.delta.y * WHEEL_LINE_PX,
         MouseScrollUnit::Pixel => wheel.delta.y,
     };
     for (node, tf, mut pos, children, is_graph) in &mut areas {

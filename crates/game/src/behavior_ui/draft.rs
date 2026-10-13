@@ -14,6 +14,9 @@ use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 
 use crate::drydock::behaviors::{PlayerBehaviors, errors_note, text_of};
 
+/// The name a new behavior gets ("New behavior", "New behavior 2", ... in the BEHAVIORS list).
+pub const NEW_NAME: &str = "New behavior";
+
 /// The behavior on the BEHAVIOR screen.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct BehaviorDraft {
@@ -99,7 +102,7 @@ impl BehaviorDraft {
     pub fn empty(nodes: &Table<BehaviorNode>) -> Option<Self> {
         let action = nodes.iter().find(|n| n.role == NodeRole::Action)?;
         let editor = BehaviorEditor::from_text(nodes, &format!("always -> {}", action.id)).ok()?;
-        Some(Self::with_editor(None, "New behavior".into(), editor))
+        Some(Self::with_editor(None, NEW_NAME.into(), editor))
     }
 
     fn with_editor(source: Option<String>, name: String, editor: BehaviorEditor) -> Self {
