@@ -216,11 +216,11 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 ## Drydock
 
 The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
-`docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 Oct 2026. This is the foundation:
-the mode, the static view of the player's design, the screen with its widgets and the test flight; since wave 2
-also editing (`data::edit`), the live stats, status line and overlays from `sim::report`. Since 13 Oct it also saves
-(SAVE, the autosave), has the BLUEPRINTS and EXPORT screens, share codes and files (Storage and sharing below), and
-the BEHAVIOR button ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)). Parts are unlimited in v1 (no spare counts).
+`docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 and 13 Oct 2026: the mode, the view
+of the player's design, the screen with its widgets, editing (`data::edit`), the live stats, status line and
+overlays from `sim::report`, saving (SAVE, the autosave), the BLUEPRINTS and EXPORT screens, share codes and files
+(Storage and sharing below), the BEHAVIOR button and the test flight ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)).
+Parts are unlimited in v1 (no spare counts).
 
 Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydock-*.png`.
 
@@ -238,7 +238,7 @@ Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydoc
 | Test flight | T or TEST-FLY (disabled, with the reason in the status line, while the design can't fly) |
 | Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
 | Rename the design | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
-| BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box |
+| BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box. While a screen covers the design the other keys do nothing (Ctrl+S still saves; the bottom bar's buttons work) |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
 frame's content name) and the design's name (a click renames it; "UNSAVED" or "SAVED" after it); the ARMOR pills
@@ -256,13 +256,16 @@ EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windo
 screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or the BEHAVIOR screen is open). The phone layout comes later.
 
 - **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::edit::Drydock`) and the blueprint built
-  from it in frame coordinates (`size` = the frame), plus `revision`; every change goes through
-  `PlayerDesign::edit`, which bumps `revision`. The first design is a copy of `halvex_runner` centred in the first
-  content frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, under the id `player:design` (content ids
-  are snake_case, so it never clashes). The player, the `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content
-  ships.
+  from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through
+  `PlayerDesign::edit`, which bumps `revision`; `replace` (another design opened) bumps both (cells of the old
+  design, the selection, mean nothing in the new one). At start it is the last session's working design
+  (`library::restore_working`, in `BlueprintsPlugin`'s build), else the starter: a copy of `halvex_runner` centred
+  in the first content frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, named "Halvex Runner copy";
+  it flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, the
+  `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content ships.
 - **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or tuning
-  change. **Panels** (`panels.rs`): the screen's nodes, spawned once and updated in place from the resources (the
+  change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
+  5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels.rs`): the screen's nodes, spawned once and updated in place from the resources (the
   palette list and its key stat). **Behaviors** (`behaviors.rs`): `PlayerBehaviors`, the player's saved behaviors
   on the storage layer, the behavior a design names and its fallback with a banner ([drydock.md](drydock.md#behaviors-storage-designs-and-tests)).
 - **Stats and status** (`stats.rs`): whenever `report::DrydockReport` is recomputed, `stats::update` fills
@@ -295,7 +298,7 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   line of fire from `ShipGrid::line_of_fire_clear`, the hull edge around all parts, nav lights on the main piece,
   no aura) and `ship_view::build_body` into one mesh, replaced only when `revision` (or the glow toggle)
   changes. Blueprint `(x, y)` is world `(x, −y)`. The frame overlay is immediate-mode FX (dots at the cell
-  corners, brackets, the dashed mirror axis while mirroring, the hover cell) drawn inside the grid viewport; a
+  corners, at least 6 px apart: on small cells only every 2nd, 4th, ... corner, brackets, the dashed mirror axis while mirroring, the hover cell) drawn inside the grid viewport; a
   veil in the backdrop's darkest colour (62 %) dims the world outside it, so a ship zoomed under the side panels
   sinks into the background and the grid area reads lighter than the panels, as in the mockup.
 - **Camera**: the drydock drives the shared `CameraRig` (the atlas tier follows its zoom). `CameraRig::view_offset`
@@ -307,9 +310,11 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   namespace with a format version; the browser's local storage on the web, files in the user's data directory on
   desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the
   BLUEPRINTS and EXPORT screens (one floating layer over everything above the bottom bar: `ShelfRoot`, a `Hot`
-  veil so clicks reach nothing under it), share codes and `.ron` files, copy and paste (`Clipboard`). Status
-  messages go out through `DrydockStatus` once `stats::update` has made the status for the current revision
-  (`blueprints::announce`).
+  veil so clicks reach nothing under it; hidden at once when the drydock is left, with the clipboard's offer and
+  paste target let go), share codes and `.ron` files, copy and paste (`Clipboard`). The screens' handlers run
+  before the editing tools and the report, so a design opened, renamed or moved to another frame gets its report
+  and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
+  status for the current revision (`blueprints::announce`).
 - **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
   gold, the glowing primary, disabled, bare list rows), ring buttons, value bars, corner brackets and a one-line
   text field; hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
@@ -339,7 +344,7 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 `behavior-saving-*.png` (a template saved as the design's own copy; the BEHAVIORS list), `behavior-live-watch.png`
 (TEST IN RANGE, watch, with the live panel).
 
-| Keys (only while neither a text field nor the TEXT view has the keyboard, and the BEHAVIORS list is closed) | |
+| Keys (only while neither a text field nor the TEXT view has the keyboard, and the BEHAVIORS list is closed; Ctrl+S also with the list open) | |
 |---|---|
 | Back to the drydock (the design is untouched; the draft stays) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it) |
 | Test in range (the WATCH / FLY ALONGSIDE pills pick the mode) | T, or TEST IN RANGE; T in the test comes back |
@@ -411,9 +416,13 @@ action selected).
   `data::behavior_edit::BehaviorEditor` (`editor()`, `program()`), its text and the text's errors (line, column,
   message). `edit(|e| …)` runs an editing-model operation and prints a changed program canonically into the text;
   `set_text` checks a typed text: valid → the program changes (one undo step); invalid → the program stays,
-  `errors` fill. `revision()` goes up with every change (the graph and the inspector follow it). Leaving the TEXT
-  view tidies a valid text to canonical form. Opening the screen keeps the draft while it is still the same behavior
-  (typed text and the undo history survive a look at the drydock), else copies the new one.
+  `errors` fill. While the text has errors, `edit` refuses (`locked()`: "fix the text first"): the model holds
+  only the last valid program, and printing it would throw the typed lines away; the graph is read-only then.
+  `revision()` goes up with every change (the graph and the inspector follow it), `generation()` with every
+  `replace` (another draft: the selection and an armed REPLACE go). Leaving the TEXT view tidies a valid text to
+  canonical form. Opening the screen keeps the draft while the design still flies the behavior the draft was opened
+  for (also one opened from the BEHAVIORS list; typed text and the undo history survive a look at the drydock),
+  else opens the design's behavior (`DraftSlot`, below).
 - **Saving** (`saving.rs`; the rules in `docs/drydock.md` "On the BEHAVIOR screen"): the name field and the saved
   state, SAVE (`save_draft`: a template becomes the player's copy and, when the design flew the template, the
   design names it; a saved behavior is updated), the working draft (`drydock/behavior`, so unsaved edits survive
@@ -426,11 +435,13 @@ action selected).
   behaviors (most recently saved first; rules, when saved or the first error; `THIS DESIGN`, `IN THE EDITOR`,
   `UNSAVED` tags) and the templates; OPEN, USE FOR THIS DESIGN, DUPLICATE, RENAME, DELETE (with a confirm) on the
   picked row, NEW BEHAVIOR. The TEXT view's editor (egui) would draw over the layer, so the screen shows the graph
-  while the list is open and goes back to the text when it closes.
+  while the list is open and goes back to the text when it closes. A save while it is open (Ctrl+S, SAVE) shows in
+  its rows; the wheel over it scrolls only its lists; leaving the screen hides it at once.
 - **Context** (`mod.rs`): `EditorContext { design_name, slots }`, set when the screen opens; `BehaviorUi { view,
   selected, test_mode, search }`, the UI state (`BehaviorView::{Graph, Text}`, `TestMode::{Watch, FlyAlongside}`,
   `inspect::Selection::{Node(NodeRef), Rule(RuleId), Vocabulary(id)}`: the model's stable ids, so a selection keeps
-  naming the same node while rules move; a selection that an undo or a text edit removes goes).
+  naming the same node while rules move; a selection that an undo or a text edit removes goes, and another draft
+  (OPEN, USE, NEW, the design's behavior) clears it).
 - **Data for the widgets** (pure, tested): `graph::GraphView::of(editor, slots)` (chips with
   `data::behavior_edit::NodeRef::{Target, Action(RuleId), Cond(CondId)}`, rows with their `RuleId`, `slot_line()`),
   `slots_pill`, `add_rule_label`, `slot_line_label`; `inspect::inspect(editor, selection, Context { slots, reach,
@@ -456,13 +467,16 @@ action selected).
   (`approach` in the base content: a no-op above an `approach` fallback) above the last rule when that one is
   `always` (the fallback stays last), else at the bottom, and selects it. Refusals (`Refusal`'s `Display`) go to
   `EditState::note`. Sliders (`controls::Slider`) are dragged by `drag_sliders` inside one stroke
-  (`begin_stroke` / `end_stroke`); the inspector is not rebuilt while one is held (`SliderDrag`). Note fields
-  (`controls::NoteField`, `ui_kit` text fields) write the note when they let go of the keyboard. `DesignReach` (the
-  design's weapon reach, from `sim::design_report` with the tuning) is measured when the screen opens. Rule rows are
+  (`begin_stroke` / `end_stroke`); neither the inspector nor the graph is rebuilt while one is held (`SliderDrag`;
+  the graph follows when it is let go), and undo / redo wait until then. Note fields (`controls::NoteField`,
+  `ui_kit` text fields) write the note when they let go of the keyboard; a refused edit (`EditState::refuse`)
+  rebuilds the inspector, so a refused note's field shows the note again. `DesignReach` (the design's weapon reach,
+  from the drydock's `DrydockReport`) is measured when the screen opens. Rule rows are
   dragged by `reorder::drag_rows` (a press on a row that moves more than 8 px up or down; a teal FX line shows the
   drop place; letting go sends `MoveRule`).
 - **Screen** (`screen.rs`): the frame is spawned once (hidden outside the screen); the graph, the inspector and the
-  palette are rebuilt when what they show changes (program revision and slots; selection, name and source; search).
+  palette are rebuilt when what they show changes (program revision and slots; selection, name and source, a
+  refusal; search). The dashed outline materials are reused from one graph rebuild to the next.
   The graph is a flex row (root column, then a grid: trunk, conditions as max-content, actions as max-content,
   notes), so actions line up and shorter condition groups get longer connectors. Chips carry `ChipLook` and are
   coloured by `style_chips` from their state (idle, hovered, pressed, selected with a glow, dimmed without a slot).
@@ -476,14 +490,17 @@ action selected).
   underlined, `no rule slot` after rules beyond the slots. egui's shader linearises its colours but the main pass
   composites in sRGB, so `egui_color` pre-encodes them (they match bevy_ui's). Switching to TEXT puts the caret in.
   While the editor has the keyboard, the game's `Clipboard` offers the selection (Ctrl+C) and accepts pastes
-  (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. Headless tests
-  must hold modifiers across frames (`down ControlLeft; wait 300; press KeyC; …`): egui reads them once per frame.
+  (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. egui keeps the
+  editor's undo history under its id; it is cleared whenever the text changed outside the editor (a graph edit,
+  another draft, tidying), so Ctrl+Z never brings back another behavior's text. Headless tests must hold modifiers
+  across frames (`down ControlLeft; wait 300; press KeyC; …`): egui reads them once per frame.
 - **Live rule panel** (`live.rs`, in flight): while TEST IN RANGE runs, a compact panel right under the target
   panel: `BEHAVIOR · <NAME>`, which rule decides (or `NO RULE MATCHES · IT HOLDS`), every rule as one line of the
   graph's chip labels (`Shield down and Target on me  ›  Orbit 80% · ccw`), the deciding rule teal in a pill, rules
   without a slot dimmed, and under each rule above it why it doesn't match (the sim's `describe`: `hull < 25% is
-  false (hull is 96%)`). It follows `test_range::BehaviorWatch` (10 Hz): rows are spawned when the behavior changes,
-  only colours and why-lines change in between. Hidden outside tests and with the HUD (H).
+  false (hull is 96%)`). It follows `test_range::BehaviorWatch` (10 Hz): the rules' labels are made and the rows
+  spawned when the behavior changes, only colours and why-lines change in between. Hidden outside tests and with
+  the HUD (H).
 - **Dashed outlines** (`dashed.rs`, `dashed.wesl`): a `UiMaterial` (`DashedOutline { color }`) on the chip node
   itself draws a dashed stadium as wide as the node's border (physical px), dashes spaced to close evenly. Its colour
   is an sRGB colour as numbers (`ui_color`), returned unchanged.

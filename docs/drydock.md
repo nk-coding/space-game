@@ -206,8 +206,9 @@ nothing of the input device: the mouse drives it now; touch will drive the same 
 - **Erase** (X, or the right button): click or drag, one stroke.
 - **Select** (V): a click selects the part under the cursor, a click on an empty cell deselects. The selection is a
   cell (part indices change with every edit), exists only in the select tool and is cleared by another tool, by
-  picking a palette part (which also switches select and erase to paint), Esc, Delete, or when the part goes (an
-  undo). Dragging the selected part moves it on release by the dragged cells (`move_part`); while dragging, the
+  picking a palette part (which also switches select and erase to paint), Esc, Delete, when the part goes (an
+  undo), and when another design opens or the frame changes (FRAME, its undo: every part moves). Leaving the
+  drydock ends a gesture in progress (a stroke is closed; a fill or a move is dropped). Dragging the selected part moves it on release by the dragged cells (`move_part`); while dragging, the
   ghost shows where it and its twin would go, coral with the reason when they can't. Turns and flips that don't
   fit leave the part as it is and say why.
 - **Mirror and bevel** are the editor's flags (`dock().mirror`, `dock().bevel`), the one source for the pills and the
@@ -377,7 +378,11 @@ saved template copy moved to the cruiser frame).
   back at the next start, before the first frame, so a plain sandbox start flies it too (if it can't fly, the
   sandbox starts without the player's ship; T opens the drydock). The first start is a copy of the
   starter ship (`PlayerDesign::starter`) named "Halvex Runner copy". Opening centres the parts in the frame
-  (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept.
+  (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept. The
+  document is untrusted (a damaged storage entry, a hand-edited file): a `saved_as` that is no design id is dropped
+  (the design comes back unsaved; SAVE gives it a new id), and a document that doesn't read or open (a newer
+  build's format, parts this content lacks) is copied to `drydock/working-unread` before the starter's autosave
+  writes over it; the status line says so.
 - **The name** top left: a click turns it into a text field; Enter or a click elsewhere renames the design
   (`PlayerDesign::edit_header`, no undo step), Esc keeps the old name. "UNSAVED" or "SAVED" stands after it.
 - The breadcrumb names the frame from content ("DRYDOCK · FRIGATE FRAME"; a size for frames content lacks).
@@ -401,7 +406,10 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   code or blueprint text pasted into the paste box (click it, Ctrl+V). An import is saved under a new id and
   opened.
 - Opening, NEW and imports replace the design in the drydock; when it has unsaved changes it is **saved
-  first** (the status line names it), so no work is lost; if that save fails, nothing is replaced.
+  first** (the status line names it), so no work is lost; if that save fails, nothing is replaced (an import
+  writes nothing then, neither its design nor its behavior).
+- While BLUEPRINTS or EXPORT covers the design, its keys do nothing but Ctrl+S (save); the bottom bar's buttons
+  stay usable.
 
 ### Sharing: EXPORT, files and share codes
 
@@ -415,12 +423,15 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
 - **Share code** (share format 2 since 13 Oct 2026, GDR-0057): `SGD2:` + base64url (no padding) of the
   zlib-compressed payload, a RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))` with the content
   packs (id, version) the design was made with and, when the design names one of the player's behaviors, that
-  behavior in the content format (a content behavior goes by its id in the ship only). The Halvex Runner is 663
-  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1412. Format 1
-  codes (`SGD1:`, no behavior) still
-  import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
+  behavior in the content format (a content behavior goes by its id in the ship only). The Halvex Runner is 955
+  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1429. Format 1
+  codes (`SGD1:`, no behavior) still import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
   lower-case tag and `=` padding are ignored. The code shows in a box: click it (it turns teal) and press Ctrl+C,
   or COPY.
+- **Imports are bounded**: `share::read` takes at most 1 MB of text (a pasted code, RON text, a file: files are
+  checked before they are read), a code at most 64 KB of compressed payload, unpacking to at most 1 MB; larger input
+  is refused unread ("too large for a design"). The largest design, a 64 × 64 frame full of armour, is about
+  280 kB of RON and a code of about 15 000 characters. EXPORT writes only `<design id>.ron` (no path).
 - **Imports are checked** (`share::read`, `share::check`): a newer share format ("made by a newer version of the
   game (share format 9; this one reads 2)"), a damaged code, text that is no blueprint (with the RON error's line
   and column) and parts or materials the game doesn't have ("it uses part plasma_lance this game doesn't have
@@ -542,12 +553,18 @@ Written 13 Oct 2026 (GDR-0057; the screen itself: `docs/client.md` "Behavior scr
   is written to `drydock/behavior` about a second after the last change and when the screen closes:
   `(source: "<id>" or None, name: "…", unsaved: <bool>, flown: "<id>" or None, text: "…")`, the behavior it was
   opened from, its name and text (the last valid program is the source's until the text is fixed), whether it has
-  unsaved edits, and the behavior the design flew when it was opened. It comes back at the next visit after a reload.
+  unsaved edits, and the behavior the design flew when it was opened. It comes back at the next visit after a reload;
+  one that doesn't read (a newer build's) is copied to `drydock/behavior-unread` before it is written over, and the
+  status line says so.
   While the design still flies that behavior, opening the screen keeps the draft (also one picked in BEHAVIORS);
   when the design flies another one (another design opened in the drydock), the screen opens that one. Whenever a
   draft with unsaved edits would be replaced (that, OPEN, USE, NEW), it is **saved first** (a template's as a new
   copy, not linked) and the status line says so ("YOUR EDITS SAVED AS SKIRMISHER COPY · OPENED RAIDER PACK"), as the
-  drydock does with designs; if that save fails, nothing is replaced.
+  drydock does with designs; if that save fails, nothing is replaced (and the draft still counts as the behavior it
+  was opened for, so the next visit tries again).
+- **Graph and inspector edits wait while the typed text has errors** ("fix the text first"): the editing model holds
+  only the last valid program, and printing it would throw the typed lines away; the graph is read-only until the
+  text is fixed in the TEXT view.
 - **BEHAVIORS** (the list): your behaviors and the templates; **OPEN** edits one (the design keeps flying its own),
   **USE FOR THIS DESIGN** makes the design name it (a template by its content id) and opens it, **DUPLICATE** saves a
   copy with a fresh name, **RENAME** renames a saved one at once (the open draft follows; designs keep naming it by
