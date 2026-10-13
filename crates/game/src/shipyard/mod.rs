@@ -30,8 +30,9 @@ use bevy::prelude::*;
 use data::{Blueprint, Content, career::Career};
 
 use crate::RenderToggles;
-use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
+use crate::atlas::{Atlas, AtlasMaterial, set_alpha, set_aperture};
 use crate::drydock::panels::DrydockRoot;
+use crate::map::portal::Portal;
 use crate::ui_kit::{ScreenFx, WorldCover};
 use crate::career::{EscortDesigns, PlayerCareer};
 use crate::drydock::PlayerDesign;
@@ -155,9 +156,9 @@ impl Plugin for ShipyardPlugin {
                 (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Research))), animate)
                     .chain()
                     .in_set(ShipyardSet)
-                    .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock)).or_eager(in_state(AppMode::Research))),
+                    .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock)).or_eager(in_state(AppMode::Research)).or_eager(in_state(AppMode::Map))),
             )
-            .add_systems(Update, show.after(ShipyardSet));
+            .add_systems(Update, show.after(ShipyardSet).after(crate::map::portal::PortalSet));
     }
 }
 
@@ -415,6 +416,7 @@ fn show(
         Query<(&Moored, &mut Visibility)>,
     )>,
     escorts: Res<EscortDesigns>,
+    portal: Res<Portal>,
 ) {
     let mode = *mode.get();
     // The drydock has the room cleared (the BEHAVIOR screen opened from it finds it so).
@@ -424,6 +426,10 @@ fn show(
     let (core, outer) = station_alpha(mode, cover.0, yard.clear);
     set_alpha(&mut materials, &station.core, core);
     set_alpha(&mut materials, &station.outer, outer);
+    // The map's portal shows through the yard.
+    for m in [&station.core, &station.outer] {
+        set_aperture(&mut materials, m, portal.hole());
+    }
     // The drydock's own design covers the docked ship's place while its screen shows (the same picture).
     let dock_shows = drydock.single().is_ok_and(ScreenFx::visible);
     let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };

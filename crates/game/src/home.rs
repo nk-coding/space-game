@@ -16,12 +16,14 @@
 //!   the building area is the drydock (D; the camera lands exactly on the drydock's own view of the frame,
 //!   `DockCamera::opening_view`, so only its panels appear), the mind the BEHAVIOR screen (B), the tower and lane the
 //!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the lab RESEARCH (R,
-//!   `research/`), the gate the voyage map (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, flies there too).
-//!   The fabricator and the salvage bay are dark.
+//!   `research/`). The gate opens the voyage map at once (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
+//!   its portal takes the camera through the gate and back out (`map::portal`). The fabricator and the salvage bay
+//!   are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
 //!   place (corner brackets, a brighter title).
 //! * **Coming back** from a screen the camera starts on its place (the drydock's last view, the mind, the test
-//!   range, the lab; FLEET's moorings when it closes) and flies back out to the yard.
+//!   range, the lab; FLEET's moorings when it closes) and flies back out to the yard; from the map it is back out
+//!   already.
 //! * **Labels** are small UI text placed over the world (the sketch's), shown while the camera rests on the yard.
 //! * **Notes** bottom right: what the career has to say (a new game, a save kept as it is, content that changed,
 //!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
@@ -393,7 +395,8 @@ fn enter(
     rig.auto_mode = CamMode::Free;
     // Home from a voyage (its debrief is open): from the gate.
     let exited = transitions.read().last().and_then(|t| t.exited);
-    let from = if exited == Some(AppMode::Flight) && debrief.open { Some(Place::Voyages) } else { exited.and_then(place_of) };
+    // From the map the portal has brought the camera back out to the yard.
+    let from = if exited == Some(AppMode::Flight) && debrief.open { Some(Place::Voyages) } else { exited.filter(|m| *m != AppMode::Map).and_then(place_of) };
     let yard_view = overview(&yard.layout, &window, &tags);
     visit.phase = match from {
         Some(place) => {
@@ -440,7 +443,8 @@ fn go(place: Place, visit: &mut Visit, yard: &Yard, window: &Window, rig: &Camer
         return;
     }
     let from = View { centre: rig.pos, zoom: rig.zoom };
-    let to = place_view(place, &yard.layout, window, dock, viewport);
+    // The gate's flight goes nowhere: the map's portal takes the camera from here.
+    let to = if place == Place::Voyages { from } else { place_view(place, &yard.layout, window, dock, viewport) };
     visit.phase = Phase::Flying { fly: Fly::new(from, to), to: Some(place), from: None };
 }
 
@@ -894,9 +898,10 @@ mod tests {
         assert!(matches!(rest.phase, Phase::Yard));
         go(Place::Research, &mut rest, &yard, &window, &rig, &dock, None);
         assert!(matches!(rest.phase, Phase::Flying { to: Some(Place::Research), .. }));
-        // The gate flies (the voyage map opens on arrival).
+        // The gate's flight stays where it is and arrives at once (the voyage map's portal takes the camera).
         let mut gate = Visit::default();
         go(Place::Voyages, &mut gate, &yard, &window, &rig, &dock, None);
-        assert!(matches!(gate.phase, Phase::Flying { to: Some(Place::Voyages), .. }));
+        let Phase::Flying { mut fly, to: Some(Place::Voyages), .. } = gate.phase else { panic!("not flying: {:?}", gate.phase) };
+        assert_eq!(fly.step(0.0), (View { centre: rig.pos, zoom: rig.zoom }, true));
     }
 }

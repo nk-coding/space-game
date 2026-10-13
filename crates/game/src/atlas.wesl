@@ -19,6 +19,9 @@ import bevy_render::color_operations::linear_rgb_to_oklab;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var atlas_sampler: sampler;
 // A group's fade (`Atlas::group_material`): its alpha scales the colour's.
 @group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> tint: vec4<f32>;
+// A group's cut to a circle (`set_aperture`): centre and radius in framebuffer px, then the soft edge (positive:
+// the inside shows, negative: the outside, 0: no cut).
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var<uniform> aperture: vec4<f32>;
 
 const LOD_BIAS: f32 = -0.5;
 
@@ -28,6 +31,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     @if(VERTEX_COLORS)
     color = color * in.color;
     color.a = color.a * tint.a;
+    if aperture.w != 0.0 {
+        let inside = clamp((aperture.z - distance(in.position.xy, aperture.xy)) / abs(aperture.w), 0.0, 1.0);
+        color.a = color.a * select(inside, 1.0 - inside, aperture.w < 0.0);
+    }
     @if(TONEMAP_IN_SHADER)
     color = tonemapping::tone_mapping(color, view.color_grading);
     @if(SRGB_OUTPUT)
