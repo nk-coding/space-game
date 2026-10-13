@@ -2,8 +2,8 @@
 //!
 //! ```text
 //! piece root  Transform (= piece.render_pose(alpha) every frame, z = its draw layer), PieceView
-//! ├── body     Mesh2d, alpha-blended: aura, barrels, [seams, tiles,] icon glows, icons, hull halo + line, muzzle
-//! │            glows, nav lights
+//! ├── body     Mesh2d, alpha-blended: aura, barrels, [seams, tiles,] hull halo + line, machine glows, machines
+//! │            (ship drawings; icons on UI tiles), muzzle glows, nav lights
 //! └── tiles    Mesh2d, opaque (lit pieces only): seams and tiles, writing depth
 //! ```
 //!
@@ -52,9 +52,15 @@ pub struct PartVisual {
     /// Part index in the blueprint (`Blueprint::parts`, = sim `PartIdx`).
     pub index: u32,
     pub polygon: Vec<Vec2>,
+    /// The tile's colour: a hull part's armour tone; under a machine the hull's tone (GDR-0069,
+    /// `ship_model::HullTones`), on UI tiles the machine tile colour.
     pub fill: Color,
     pub debug_color: Color,
-    /// Atlas icon key (file stem in `art/icons`).
+    /// The machine's ship drawing (atlas `ship/<key>`, GDR-0069); drawn instead of the icon.
+    pub art: Option<String>,
+    /// How far the ship drawing reaches past the part's stern, in cells (engines' nozzle bells; 0 for the rest).
+    pub overhang: f32,
+    /// Icon key (`content/base/icons/<key>.svg`, atlas `icon/<key>`): drawn on UI tiles, where `art` is `None`.
     pub icon: Option<String>,
     /// Centre of the rotated footprint.
     pub center: Vec2,
@@ -304,7 +310,7 @@ enum Layers {
     Overlays,
 }
 
-/// The body in style 2a, bottom to top. `glow` adds the pre-blurred layers (icon glows, hull halo, soft muzzle
+/// The body in style 2a, bottom to top. `glow` adds the pre-blurred layers (machine glows, hull halo, soft muzzle
 /// glows); `lit` = an active piece (hull edge, full brightness). Dark pieces (salvage, unpowered) are dimmed
 /// and lose the hull glow. Also draws the drydock's ship and the part icons in its UI (`ui_icons`), so every
 /// tile looks the same everywhere.
@@ -360,42 +366,63 @@ fn body_mesh(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: bool, lit: bool
         return m.into_mesh();
     }
 
-    // 3. Icon glows (lit only), then the icons.
-    let icon_box = |p: &PartVisual| {
+    // 3. Hull edge: soft halo, then the crisp line (lit only). Under the machines, so an engine's nozzle bell that
+    //    reaches past the hull covers it.
+    if lit {
+        let halo = atlas.region("fx/halo");
+        let white_r = atlas.region("fx/white");
+        for (pts, closed) in &v.hull_loops {
+            let local: Vec<Vec2> = pts.iter().map(|&q| to_local(q)).collect();
+            if glow {
+                m.strip(&local, *closed, halo.cells.x / 2.0, &halo, vcol(v.glow, style.halo_opacity));
+            }
+            m.strip(&local, *closed, style.line_width / 2.0, &white_r, vcol(v.glow, style.line_opacity));
+        }
+    }
+
+    // 4. Machines: their glows (lit only), then the ship drawings (GDR-0069), rotated and mirrored with the part,
+    //    an engine's reaching `overhang` cells past its stern; a part without a drawing shows its icon (UI tiles).
+    let machines = || {
+        v.parts.iter().filter_map(|p| match (&p.art, &p.icon) {
+            (Some(key), _) => Some((p, "ship", key, p.overhang)),
+            (None, Some(key)) => Some((p, "icon", key, 0.0)),
+            _ => None,
+        })
+    };
+    let art_box = |p: &PartVisual, overhang: f32| {
         let c = to_local(p.center);
-        (c - p.dims / 2.0, c + p.dims / 2.0)
+        let (mut min, mut max) = (c - p.dims / 2.0, c + p.dims / 2.0);
+        let stern = dir_local(-p.facing);
+        if stern.x > 0.5 {
+            max.x += overhang;
+        } else if stern.x < -0.5 {
+            min.x -= overhang;
+        } else if stern.y > 0.5 {
+            max.y += overhang;
+        } else {
+            min.y -= overhang;
+        }
+        (min, max)
     };
     if glow && lit {
-        for p in &v.parts {
-            let Some(key) = &p.icon else { continue };
-            let Some(r) = atlas.get(&format!("glow/{key}")) else { continue };
-            let (min, max) = icon_box(p);
+        for (p, kind, key, overhang) in machines() {
+            let name = if kind == "ship" { format!("ship-glow/{key}") } else { format!("glow/{key}") };
+            let Some(r) = atlas.get(&name) else { continue };
+            let (min, max) = art_box(p, overhang);
             m.region_box(r, min, max, p.rot, p.flip, vcol(Color::WHITE, 1.0));
         }
     }
-    for p in &v.parts {
-        let Some(key) = &p.icon else { continue };
-        let Some(r) = atlas.get(&format!("icon/{key}")) else {
-            warn_once!("no atlas icon for `{key}`");
+    for (p, kind, key, overhang) in machines() {
+        let Some(r) = atlas.get(&format!("{kind}/{key}")) else {
+            warn_once!("no atlas region for `{kind}/{key}`");
             continue;
         };
-        let (min, max) = icon_box(p);
+        let (min, max) = art_box(p, overhang);
         m.region_box(r, min, max, p.rot, p.flip, vcol(Color::WHITE, icon_a));
     }
 
     if !lit {
         return m.into_mesh();
-    }
-
-    // 4. Hull edge: soft halo, then the crisp line.
-    let halo = atlas.region("fx/halo");
-    let white_r = atlas.region("fx/white");
-    for (pts, closed) in &v.hull_loops {
-        let local: Vec<Vec2> = pts.iter().map(|&q| to_local(q)).collect();
-        if glow {
-            m.strip(&local, *closed, halo.cells.x / 2.0, &halo, vcol(v.glow, style.halo_opacity));
-        }
-        m.strip(&local, *closed, style.line_width / 2.0, &white_r, vcol(v.glow, style.line_opacity));
     }
 
     // 5. Muzzle glows: barrel tips of clear guns; barrel-less guns at their front edge.

@@ -202,6 +202,18 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   line-of-fire flags, shield radii and hull edges (`Ship::piece_hull_edges`). Body mesh variants (style 2a lit /
   dark, without glow sprites lit / dark, debug shapes) are built lazily; `piece.active` picks lit or dark
   (salvage and unpowered pieces are dimmed and lose the hull glow).
+- **Machines** (GDR-0069, 13 Oct 2026): a machine is its ship drawing (`icons/<key>.ship.svg`, atlas
+  `ship/<key>` with its glow `ship-glow/<key>`) on a cell in the hull's tone, drawn by `ship_view::body_mesh`
+  in this order: tiles (seams, fills), hull halo and line, machine glows, machines, muzzle glows, nav lights. The
+  drawing fills the part's rotated footprint (`region_box` with `rot` and `flip`, as icons did) and, for an engine,
+  reaches its overhang past the stern (`PartVisual::overhang`, from the drawing's viewBox through
+  `data::svg::ship_overhang`), over the hull line; plumes start at the nozzle's mouth (`fx.rs`). The cell's tone
+  (`ship_model::HullTones`, the pure rule `hull_tone`, tested): the armour tone with the most hull cell sides
+  touching the machine (a tie goes to the tone the design uses more, then name order), else the design's most
+  used tone by hull area, else steel. Computed once per design (`design_visual`), so a piece that breaks off
+  keeps its tones; the drydock's ghost asks the design for the spot under the cursor. The same tiles show in
+  flight, the drydock and its ghost, the home screen's ship and FLEET's ship icons; only the UI's part tiles
+  (palette, inspector) keep the icon on the dark machine tile (`ui_icons::part_tile`).
 - **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `VesselFormed` with a
   parent moves a split-off piece's view to its new ship, `PieceDestroyed` / `ShipRemoved` despawn them;
   `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet` become effects; `ShieldHit` starts a ripple in the bubble (and
@@ -537,9 +549,11 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   lacks: undo, redo, play, search, menu, diamond, lock; home's grid, tree, orbit, arrow, target, formation) is drawn
   as a world-space mesh of the main camera placed over the node's rectangle every
   frame (screen → world through the rig, scale 1 / zoom, z 600). A part icon is a one-part blueprint through
-  `build_body`: the flight tile itself, composited in sRGB like the ships, so its colours are exactly the
-  flight tiles' (bevy_ui image nodes would sample the sRGB atlas without encoding for the sRGB compositing and
-  look too dark); `atlas::UiAtlasNeed` raises the atlas tier to the icons' pixels per cell. bevy_ui draws after
+  `build_body`: a flight tile (a machine: its icon on the machine tile colour, where ships show its drawing,
+  GDR-0069), composited in sRGB like the ships, so its colours are exactly the flight tiles' (bevy_ui image nodes
+  would sample the sRGB atlas without encoding for the sRGB compositing and look too dark); `atlas::UiAtlasNeed`
+  raises the atlas tier to the icons' pixels per cell (twice what a part icon shows: icons are stored at
+  `art::ICON_DENSITY`, 0.5). bevy_ui draws after
   the world, so nodes over an icon should have at most a faint background. bevy_ui's clipping doesn't reach the
   meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again.
 
@@ -827,7 +841,7 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 
 - **Which tier**: what the screen needs, `zoom × window scale factor` (px per cell; the UI's part icons' need,
   `UiAtlasNeed`, when larger), rounded up to a power of two
-  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 3840; logged once at start). Up at once, down
+  and capped by the GPU's largest 2D texture (tier 512 is 4096 × 4096 since the ship drawings, 13 Oct 2026; logged once at start). Up at once, down
   only when half the tier is clearly enough. A new tier must be wanted for 0.25 s first (zooming through tiers
   costs nothing).
 - **Rebuild** (`art::Rasterizer::step`, small steps since 13 Oct 2026): zero the buffer 2 MB at a time, render
@@ -836,14 +850,16 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   more than 2× (it looks blurry then). The old atlas stays on screen until the new one is complete. A job for a
   lower tier than the zoom now needs is dropped for the new one (and a job that would rebuild the tier already on
   screen is dropped too).
-  - **Soft layers** (the icon glows, the plumes' blurred glow; a plume is its blurred glow polygon under its crisp
+  - **Soft layers** (the machines' and icons' glows, the plumes' blurred glow; a plume is its blurred glow polygon under its crisp
     gradient triangle, two SVG documents) look the same at every tier and are blurred over 5 px or more at tier
     128, up to 41 px at 512. They are rendered once per session at `art::SOFT_TIER` (128; kept in the `Layout`, a
     step of its own, at most 31 K texels) and resampled bilinearly into every higher tier a band at a time; lower
     tiers render them directly (small). A blur can't be cut into bands, so before this one plume region was one
     step: 25 ms natively (median, p95 36 ms) and 70 ms in wasm at tier 512.
-  - **Crisp layers** (icons, the barrel, the plumes' triangle) render at the tier a band at a time; a crisp
-    layer that uses a filter (no base icon does) renders whole.
+    Soft layers small enough to blur in one step at the tier (at most `art::STEP_TEXELS`: the part icons' glows,
+    13 Oct 2026) are rendered at the tier instead: at half density they are too few texels at tier 128 to resample.
+  - **Crisp layers** (ship drawings, icons, the barrel, the plumes' triangle) render at the tier a band at a time;
+    a crisp layer that uses a filter (no base drawing does) renders whole.
   - **Measured** (`cargo run --release -p art --example profile -- 512 21`: steps spent as the game spends
     them, a new layout per run; the same example on the code before, 13 Oct 2026, load average 8.6–9.2): longest
     step 25.1 → 1.4 ms (median; p95 36.0 → 5.0 ms), work 231 → 130 ms natively; in wasm (the example built for
@@ -866,8 +882,8 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   switch waited a frame for that. A new image per tier also avoids Bevy's in-place update for an unchanged texture
   size, which writes mip level 0 only and would leave stale mips. Headless Chromium (SwiftShader, so the frame
   times say nothing; tier 512 at 160 px/m and device scale 2, so the blurry budget): 396 ms of work over 34 frames,
-  at most 5.6 MB uploaded per frame (before: 300–410 ms over 18–23 frames, then 84 MB in one frame). Memory: one atlas on the GPU (tier 32: 0.3 MB, 64: 1.3 MB, 128: 5.2 MB, 256: 21 MB, 512:
-  84 MB, mips included), two while a job runs; the job's own buffer is as large and goes when it is done.
+  at most 5.6 MB uploaded per frame (before: 300–410 ms over 18–23 frames, then 84 MB in one frame). Memory: one atlas on the GPU (tier 32: 0.3 MB, 64: 1.4 MB, 128: 5.6 MB, 256: 22 MB, 512:
+  89 MB, mips included; 84 MB before the ship drawings), two while a job runs; the job's own buffer is as large and goes when it is done.
 - **Sampling** (`AtlasMaterial`, `atlas.wesl`): every atlas mesh (ships, effects, backdrop, the drydock's view and
   its UI icons) draws with one material: atlas × vertex colour, alpha-blended, sRGB-encoded under `SRGB_OUTPUT`
   like Bevy's `ColorMaterial`, which it replaced on 13 Oct 2026 (the lit ship tiles use its opaque twin,
@@ -890,8 +906,16 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   between before and after the fix); icon edges ran over 3–5 px. Comparison:
   `docs/results/atlas-sharpness-flight-3440.png` (showcase, 3440 × 1305) and
   `docs/results/atlas-sharpness-drydock.png` (drydock at 160 px/m).
-- **Soft by design**: icon glows and plumes are stored at half density (they are blurred; above tier 128 their
-  blurred layers are resampled from it); at the highest zoom a plume's edge is about 1.5 px soft. Everything else (icons, barrel) is 1:1 with the tier; tiles, seams, hull lines
+- **What it holds** (13 Oct 2026, GDR-0069): the machines' ship drawings at full density (the world zooms in on
+  them), the part icons at `art::ICON_DENSITY` = 0.5 (only the UI's part tiles draw them, at most about 40 px per
+  cell; `UiAtlasNeed` asks for twice their pixels), no material or category icons (only the wiki shows those), the
+  FX textures. Regions are packed on a skyline (tallest first, each at the lowest spot it fits) into 8 × 8 units:
+  4096 × 4096 px at tier 512 (before: shelves, 8 × 7.5 units without the drawings; with them shelves needed 8 × 9,
+  4608 px, over the 4096 the top tier keeps to). A mod's drawings grow it; past the GPU's limit `max_tier` caps the
+  tier. Profile at tier 512 (`... --example profile -- 512 11`, load 8.4): longest step 1.6 ms median (p95 3.6),
+  work 149 ms (130 before).
+- **Soft by design**: glows and plumes are stored at half density (they are blurred; above tier 128 their
+  blurred layers are resampled from it); at the highest zoom a plume's edge is about 1.5 px soft. Everything else (drawings, barrel) is 1:1 with the tier; tiles, seams, hull lines
   and shield bubbles are geometry or shaders and stay sharp at any zoom.
 - **Checking blur**: F3 shows `atlas <tier> px/cell  need <px> (zoom x scale)  max <tier>  window <physical size>`
   and the last rebuild; the tier is the one the material samples (it changes with the switch). If the tier stays
@@ -906,8 +930,10 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 
 - **A new part icon**: add `content/base/icons/<key>.svg` (one file; its glow is the
   `<g filter="url(#gl)" opacity="0.55">` group, which the `art` crate splits off) and set `icon: "<key>"` on the
-  part. `data` embeds the pack, validation checks that the icon exists, and `art`'s test
-  (`content_icons_rasterise_at_two_tiers`) checks that every content icon rasterises.
+  part. A machine also needs its ship drawing, `content/base/icons/<key>.ship.svg` (`docs/content-model.md`
+  "Ship drawings": the footprint from `0 0`, nose up, an engine's nozzle past the stern; glows under the drawing,
+  so leave a window in the housing). `data` embeds the pack, validation checks both, and `art`'s test
+  (`content_icons_and_ship_drawings_rasterise_at_two_tiers`) checks that every one rasterises.
 - **A gun's barrel**: `barrel: (width, length, muzzle)` on the part in the content (`docs/content-model.md`); a gun
   without one gets a small muzzle glow at its front edge (`ship_model::design_visual`).
 - **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line), call it from the event

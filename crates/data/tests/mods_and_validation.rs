@@ -53,9 +53,12 @@ fn mod_overrides_a_part_in_place_and_adds_content() {
                  icon: "pulse-laser", size: (1, 1), build_points: 4, mass: 2, hp: 1, power: (draw: 5),
                  heat: (output: 2, limit: 3), weapon: (family: Energy, damage: 1.6, range: 50)),
                 (id: "twin_laser", name: "Twin laser", summary: "Two pulse lasers in one housing.", tags: ["laser"], category: "weapons",
-                 icon: "pulse-laser", size: (2, 1), build_points: 6, mass: 4, hp: 2, power: (draw: 8), weapon: (family: Energy, damage: 2, range: 50)),
+                 icon: "twin-laser", size: (2, 1), build_points: 6, mass: 4, hp: 2, power: (draw: 8), weapon: (family: Energy, damage: 2, range: 50)),
             ]"#,
         ),
+        // A machine's ship drawing fits its footprint (GDR-0069), so the 2×1 laser brings its own.
+        ("icons/twin-laser.svg", ICON),
+        ("icons/twin-laser.ship.svg", SHIP_2X1),
         (
             "ships/twin.ron",
             r#"(id: "twin_boat", name: "Twin boat", summary: "A test ship using [[part:twin_laser]].", faction: "ship_mind", size: (2, 2),
@@ -154,6 +157,7 @@ fn mods_add_and_override_icons() {
         ("pack.ron", MOD_MANIFEST),
         ("icons/pulse-laser.svg", ICON),
         ("icons/twin-laser.svg", ICON),
+        ("icons/twin-laser.ship.svg", SHIP_2X1),
         ("icons/README.md", "Icons of the test mod."),
         (
             "parts/twin.ron",
@@ -169,6 +173,51 @@ fn mods_add_and_override_icons() {
     assert_eq!(c.icon_svg("twin-laser"), Some(ICON));
     assert_ne!(c.icon_svg("thruster"), None);
     assert_eq!(c.icons.len(), base_only.icons.len() + 1);
+    assert_eq!(c.ship_svg("twin-laser"), Some(SHIP_2X1));
+    assert_eq!(c.ship_art.len(), base_only.ship_art.len() + 1);
+}
+
+/// A ship drawing (GDR-0069) for a 2×1 part.
+const SHIP_2X1: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect x="5" y="5" width="30" height="10" fill="#1a2a36"/></svg>"##;
+
+/// A ship drawing with this viewBox.
+fn ship_svg(view_box: &str) -> String {
+    format!(r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box}"><rect x="5" y="5" width="10" height="10" fill="#1a2a36"/></svg>"##)
+}
+
+#[test]
+fn ship_drawing_errors_and_warnings() {
+    let part = |extra: &str| format!("({PART_HEAD}, category: \"power\", mass: 1, hp: 1{extra})");
+    let load = |files: Vec<(&str, String)>| -> Vec<Problem> {
+        let mut all = vec![("pack.ron", MOD_MANIFEST.to_string()), ("icons/warp-core.svg", ICON.to_string())];
+        all.extend(files);
+        data::validate(&Content::merge(&[base(), pack(&all.iter().map(|(a, b)| (*a, b.as_str())).collect::<Vec<_>>())]))
+    };
+    // A machine with an icon needs the icon's ship drawing (one without an icon is a bare cell).
+    assert!(!load(vec![("parts/p.ron", part(""))]).iter().any(|p| p.is_error()));
+    let e = load(vec![("parts/p.ron", part(", icon: \"warp-core\""))]);
+    assert_error(&e, "p", "icon", "no loaded pack has icons/warp-core.ship.svg");
+    // The viewBox fits the footprint; only engines overhang.
+    for (vb, needle) in [("0 0 40 20", "viewBox must be `0 0 20 20`"), ("0 0 20 27", "only engines reach past the hull")] {
+        let e = load(vec![("parts/p.ron", part(", icon: \"warp-core\"")), ("icons/warp-core.ship.svg", ship_svg(vb))]);
+        assert_error(&e, "p", "icon", needle);
+    }
+    let engine = ", tags: [\"engine\"], engine: (thrust: 10, rated_speed: 10, plume: (length: 1, damage: 1, heat: 1))";
+    let e = load(vec![("parts/p.ron", part(&format!(", icon: \"warp-core\"{engine}"))), ("icons/warp-core.ship.svg", ship_svg("0 0 20 27"))]);
+    assert!(!e.iter().any(|p| p.id.as_deref() == Some("p") && p.is_error()), "{}", show(&e));
+    // Hull parts need none. A broken drawing is an error at its file; one no machine uses is a warning.
+    let e = load(vec![
+        ("icons/broken.ship.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\"><g></svg>".into()),
+        ("icons/spare.ship.svg", ship_svg("0 0 20 20")),
+    ]);
+    let broken = e.iter().find(|p| p.message.contains("ship drawing `broken`")).unwrap_or_else(|| panic!("{}", show(&e)));
+    assert!(broken.is_error(), "{broken}");
+    assert_eq!(broken.source.as_ref().unwrap().file, "icons/broken.ship.svg");
+    let spare = e.iter().find(|p| p.message.contains("ship drawing `spare`")).unwrap();
+    assert_eq!(spare.severity, Severity::Warning);
+    // Other dotted names are still not icons.
+    let err = Pack::from_files([("pack.ron", MOD_MANIFEST), ("icons/x.wing.svg", ICON)]).unwrap_err();
+    assert!(err[0].message.contains("icons/<key>.ship.svg"), "{}", err[0]);
 }
 
 #[test]

@@ -25,6 +25,29 @@ pub fn view_box(src: &str) -> Option<[f32; 4]> {
     scan(src).ok()
 }
 
+/// SVG user units per ship cell in all content art.
+pub const UNITS_PER_CELL: f32 = 20.0;
+
+/// The most a ship drawing may reach past its footprint at the stern, in cells (GDR-0069: engine nozzles).
+pub const MAX_OVERHANG_CELLS: f32 = 1.0;
+
+/// How far the ship drawing of a part with a `w × h` footprint reaches past its stern, in cells, from the
+/// drawing's viewBox: `0 0 (w × 20) (h × 20 + overhang)` (the part unrotated, facing up, the stern at +y; see
+/// `docs/content-model.md` "Ship drawings"). `Err` says why the viewBox does not fit the footprint.
+pub fn ship_overhang(view_box: [f32; 4], (w, h): (u32, u32)) -> Result<f32, String> {
+    let [x, y, vw, vh] = view_box;
+    let (fw, fh) = (w as f32 * UNITS_PER_CELL, h as f32 * UNITS_PER_CELL);
+    let over = (vh - fh) / UNITS_PER_CELL;
+    if x != 0.0 || y != 0.0 || (vw - fw).abs() > 1e-3 || over < -1e-3 || over > MAX_OVERHANG_CELLS + 1e-3 {
+        return Err(format!(
+            "the ship drawing's viewBox must be `0 0 {fw} {fh}` for a {w}×{h} footprint, at most {} units taller \
+             (an overhang at the stern); got `{x} {y} {vw} {vh}`",
+            MAX_OVERHANG_CELLS * UNITS_PER_CELL
+        ));
+    }
+    Ok(over.max(0.0))
+}
+
 /// [`check_svg`], returning the root viewBox.
 fn scan(src: &str) -> Result<[f32; 4], String> {
     let lower = src.to_ascii_lowercase();
@@ -207,7 +230,18 @@ fn tag_end(s: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_svg, view_box};
+    use super::{check_svg, ship_overhang, view_box};
+
+    /// A ship drawing covers its footprint from `0 0` and may reach past the stern by up to a cell.
+    #[test]
+    fn ship_drawings_fit_their_footprint() {
+        assert_eq!(ship_overhang([0.0, 0.0, 20.0, 20.0], (1, 1)), Ok(0.0));
+        assert!((ship_overhang([0.0, 0.0, 40.0, 49.0], (2, 2)).unwrap() - 0.45).abs() < 1e-6);
+        assert_eq!(ship_overhang([0.0, 0.0, 20.0, 40.0], (1, 2)), Ok(0.0));
+        for bad in [[1.0, 0.0, 20.0, 20.0], [0.0, -5.0, 20.0, 25.0], [0.0, 0.0, 40.0, 20.0], [0.0, 0.0, 20.0, 19.0], [0.0, 0.0, 20.0, 41.0]] {
+            assert!(ship_overhang(bad, (1, 1)).is_err(), "{bad:?}");
+        }
+    }
 
     const OK: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><filter id="g"><feGaussianBlur stdDeviation="1"/></filter></defs><!-- a > comment --><g filter="url(#g)" data-x="a>b"><rect x="1" y="1" width="2" height="2"></rect></g></svg>"#;
 

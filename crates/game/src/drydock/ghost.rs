@@ -20,7 +20,7 @@ use crate::atlas::Atlas;
 use crate::camera::CameraRig;
 use crate::flight_hud::HudFonts;
 use crate::fx::{FxQueue, FxRegions, FxSprite};
-use crate::ship_model::design_visual;
+use crate::ship_model::{HullTones, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
@@ -244,11 +244,23 @@ pub(super) fn rebuild(
         nav_lights: Vec::new(),
         aura: false,
     };
+    // A machine's cell takes the hull tone of the spot it would go to in the design (GDR-0069), not of its
+    // one-part blueprint.
+    let grid = content.ship_grid(design.blueprint()).ok();
+    let tones = grid.as_ref().map(|g| (g, HullTones::new(content, design.blueprint(), g)));
     for p in &view.tiles {
         let one = Blueprint { parts: vec![p.clone()], ..header(design.blueprint()) };
         if let Ok(dv) = design_visual(content, &one, &style) {
             v.glow = dv.glow;
-            v.parts.extend(dv.parts);
+            let mut parts = dv.parts;
+            if let Some((grid, tones)) = &tones
+                && content.parts.get(&p.part).is_some_and(|d| !d.hull)
+                && let Some(shape) = content.placed_shape(p)
+            {
+                let tone = style.armor_tone(tones.under(grid, &shape.cells()));
+                parts.iter_mut().for_each(|q| q.fill = tone);
+            }
+            v.parts.extend(parts);
         }
     }
     let mut body = build_body(&v, &atlas, &style, toggles.glow_sprites, true);
