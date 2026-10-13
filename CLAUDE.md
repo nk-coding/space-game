@@ -15,7 +15,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 | `docs/roadmap.md` | Current phase plan and status (kept up to date by the lead session). |
 | `docs/plans/` | Proposals for future phases (first playable loop, salvage and research, galaxy, Android, co-op and arena); not decisions. |
 | `docs/content-model.md` | How game content is organised so both the game and the future wiki use it. |
-| `docs/sim.md`, `docs/client.md`, `docs/behavior-format.md`, `docs/drydock.md` | How the simulation, the Bevy client, the behavior rule format and the drydock (ship editor) work. |
+| `docs/sim.md`, `docs/client.md`, `docs/behavior-format.md`, `docs/drydock.md`, `docs/career.md`, `docs/wiki.md` | How the simulation, the Bevy client, the behavior rule format, the drydock (ship editor), the career (progression and its save) and the content wiki work. |
 | `docs/results/` | Benchmark and spike results (the physics benchmark harness itself lives in the separate local repo `../space-game-physics-bench`). |
 | `docs/concept/` | The archived concept bundle: `boards/` (concept board HTML + screenshots, UI mockups PNG + source), `reference/` (`drydock-model.js` = drydock rules in plain JS, `concept-board-script.js`, `data-draft/*.ron`, Python generators), `CLAUDE.original.md`. Paths inside the old docs that say `reference/…` or `boards/…` now live under `docs/concept/`; `assets/…` now lives under `art/`. |
 | `art/` | Art sources outside the content: `ships/` (Halvex Runner SVG + `halvex-runner.layout.json`, automaton raider SVG: the original concept art), `tokens.json` (all colours/style constants), `overview.png`. Part icons live in the content pack: `content/base/icons/<key>.svg` (ADR-0028). |
@@ -24,11 +24,11 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Crates (planned architecture)
 
-- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, and the pure editing models `data::edit` (drydock) and `data::behavior_edit` (behavior editor). No Bevy. Used by sim, game and tools (wiki).
+- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, the pure editing models `data::edit` (drydock) and `data::behavior_edit` (behavior editor), and the progression model `data::career`. No Bevy. Used by sim, game and tools (wiki).
 - `sim`: engine-free simulation: ships, parts, physics (Rapier2D with `enhanced-determinism`, ADR-0014), heat, power, damage, weapons, flight computer, behaviors + Rhai. Fixed 30 Hz, deterministic. No Bevy, no graphics.
 - `game`: the Bevy client (web first, later desktop and Android). Rendering at 60 fps with interpolation, UI, input.
 - `art`: style tokens (embedded), effect textures and the runtime SVG rasteriser. No Bevy.
-- `content-tool`: CLI over `data` (validate, export-json, list).
+- `content-tool`: CLI over `data` (validate, export-json, list, and `wiki`: a static HTML wiki from the content).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
 - Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023), `arena` (headless fights, evolution, balance), a wiki generator built on `data`.
 
