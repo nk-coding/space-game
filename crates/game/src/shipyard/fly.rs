@@ -5,7 +5,8 @@
 //! same place on screen in both views stays put while the zoom changes geometrically, so flying into a building
 //! looks like zooming into it, not like a pan and a zoom fighting each other. When the views have (almost) the
 //! same zoom there is no such point and the camera pans. The progress follows a smootherstep of the time since
-//! the flight began, so the path is the same at any frame rate.
+//! the flight began, so the path is the same at any frame rate. A flight to the view it starts from has arrived
+//! once its wait is over.
 
 use bevy::math::Vec2;
 
@@ -20,7 +21,7 @@ pub struct View {
 }
 
 /// Zero speed and acceleration at both ends.
-fn smootherstep(t: f32) -> f32 {
+pub fn smootherstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
@@ -52,7 +53,7 @@ impl Fly {
     }
 
     /// The view at progress `s` (0 to 1, already eased).
-    fn at(&self, s: f32) -> View {
+    pub fn at(&self, s: f32) -> View {
         let zoom = self.from.zoom * (self.to.zoom / self.from.zoom).powf(s);
         let centre = match self.anchor {
             Some((w, d)) => w - d / zoom,
@@ -64,7 +65,7 @@ impl Fly {
     /// Advances by `dt` seconds: the view now, and whether the flight has arrived (it ends exactly on `to`).
     pub fn step(&mut self, dt: f32) -> (View, bool) {
         self.seconds += dt.max(0.0);
-        let t = self.seconds / SECONDS;
+        let t = if self.from == self.to && self.seconds >= 0.0 { 1.0 } else { self.seconds / SECONDS };
         // Within a hair of the end it has arrived (time sums of frame steps land a rounding error short).
         if t >= 1.0 - 1e-4 { (self.to, true) } else { (self.at(smootherstep(t)), false) }
     }

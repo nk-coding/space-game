@@ -1,7 +1,7 @@
 //! The voyage map ([`AppMode::Map`], track 7I; GDR-0065's star map, after `docs/plans/mockups/map-b.png`): where
-//! voyages are chosen. Home's gate (V, or a click) flies the camera to the gate and opens it; Esc or the ring button
-//! top left goes back to the shipyard (the camera flies out from the gate); SET COURSE launches the selected voyage
-//! (`voyage::StartVoyage`).
+//! voyages are chosen. Home's gate (V, or a click) opens it through the gate ([`portal`]: the camera dives into the
+//! gate and the map shows through it); Esc or the ring button top left goes back to the shipyard (the same way
+//! out); SET COURSE launches the selected voyage (`voyage::StartVoyage`).
 //!
 //! ```text
 //! (o) RIM · 4 VOYAGES · 1 CLEARED        RIM    :    OUTER  | DESTINATION · VOYAGE 2 OF 4
@@ -23,16 +23,17 @@
 //!   over the stage node through the camera rig like `ui_icons`, rebuilt only when the states, the selection or
 //!   the hover change. The panel's ships are `ui_icons::UiIcon::Ship`.
 //! * **Input**: a click or a tap on a voyage (its marker or its label) selects it; ←/→ (and ↑/↓) step through the
-//!   voyages; Enter or SET COURSE launches; Esc or the ring button goes home. SET COURSE is dimmed while the
+//!   voyages; Enter or SET COURSE launches; Esc or the ring button goes home (not while the portal is on its way out). SET COURSE is dimmed while the
 //!   selected voyage can't launch (`layout::course_blocker`: locked, another one underway, the fleet not ready); a
 //!   click then says why, as does a launch `voyage.rs` refuses.
 //! * **Entering** selects the first open voyage whose goal is not cleared (`voyage::default_voyage`): after a voyage
-//!   that opened the next one, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home flies to the gate).
+//!   that opened the next one, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home opens the gate, as V).
 //!
 //! UI words are chrome in code, like home's.
 
 pub mod draw;
 pub mod layout;
+pub mod portal;
 
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiSystems, UiTransform};
@@ -53,6 +54,8 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{LaunchRefused, StartVoyage, default_voyage, fleet_blocker};
+
+use portal::Portal;
 
 use draw::{LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look};
 use layout::{Geometry, PANEL_X, STAGE, VoyageState, chips, course_blocker, is_guardian, minutes, site_dots, site_rows, state_words};
@@ -157,10 +160,11 @@ impl Plugin for MapPlugin {
         app.insert_resource(MapGeometry(geometry))
             .init_resource::<VoyageMap>()
             .add_message::<OpenMap>()
+            .add_plugins(portal::plugin)
             .add_systems(Startup, spawn.after(crate::flight_hud::spawn_hud))
             .add_systems(OnEnter(AppMode::Map), enter)
             .add_systems(OnExit(AppMode::Map), |mut s: ResMut<UiScale>| s.0 = 1.0)
-            .add_systems(Update, (show.run_if(state_changed::<AppMode>), fade_mesh).chain())
+            .add_systems(Update, (show, fade_mesh).chain().after(portal::PortalSet))
             .add_systems(
                 Update,
                 (fit, input, refused, sync_map, sync_panel).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Map)),
@@ -188,10 +192,11 @@ fn enter(career: Res<PlayerCareer>, content: Res<GameContent>, mut map: ResMut<V
     map.say = None;
 }
 
-/// The map opens and closes with its transition (`ui_kit::ScreenFx`: the panel slides in from the right, the map
-/// fades in, the shipyard fades out under it); to flight (SET COURSE) it snaps shut.
-fn show(mode: Res<State<AppMode>>, mut transitions: MessageReader<StateTransitionEvent<AppMode>>, mut root: Single<&mut ScreenFx, With<MapRoot>>) {
-    let here = *mode.get() == AppMode::Map;
+/// The map opens and closes with its transition (`ui_kit::ScreenFx`: the panel slides in from the right, the map's
+/// words fade in, the shipyard fades out under it) once the portal is far enough in, and closes first on the way
+/// out; to flight (SET COURSE) it snaps shut.
+fn show(mode: Res<State<AppMode>>, portal: Res<Portal>, mut transitions: MessageReader<StateTransitionEvent<AppMode>>, mut root: Single<&mut ScreenFx, With<MapRoot>>) {
+    let here = *mode.get() == AppMode::Map && portal.screen_open();
     if !here && transitions.read().last().is_some_and(|t| t.entered == Some(AppMode::Flight)) {
         snap_screen(&mut root, false);
     } else {
@@ -199,18 +204,18 @@ fn show(mode: Res<State<AppMode>>, mut transitions: MessageReader<StateTransitio
     }
 }
 
-/// The map's drawing (a world mesh) shows and fades with the screen.
-fn fade_mesh(root: Single<&ScreenFx, With<MapRoot>>, fade: Res<MapFade>, mut materials: ResMut<Assets<AtlasMaterial>>, mut mesh: Single<&mut Visibility, With<MapMesh>>) {
-    set_alpha(&mut materials, &fade.0, root.alpha());
-    let want = if root.visible() { Visibility::Inherited } else { Visibility::Hidden };
+/// The map's drawing (a world mesh) shows and fades with the portal (and with the screen).
+fn fade_mesh(root: Single<&ScreenFx, With<MapRoot>>, portal: Res<Portal>, fade: Res<MapFade>, mut materials: ResMut<Assets<AtlasMaterial>>, mut mesh: Single<&mut Visibility, With<MapMesh>>) {
+    set_alpha(&mut materials, &fade.0, root.alpha().max(portal.map_alpha()));
+    let want = if root.visible() || portal.shows() { Visibility::Inherited } else { Visibility::Hidden };
     if **mesh != want {
         **mesh = want;
     }
 }
 
 /// Whether the map shows (open, opening or closing).
-fn shown(root: Single<&ScreenFx, With<MapRoot>>) -> bool {
-    root.visible()
+fn shown(root: Single<&ScreenFx, With<MapRoot>>, portal: Res<Portal>) -> bool {
+    root.visible() || portal.shows()
 }
 
 /// The map drawing's material (its alpha is the screen's).
@@ -450,9 +455,13 @@ fn input(
     pointer: Res<UiPointer>,
     fleet: FleetNow,
     mut map: ResMut<VoyageMap>,
-    mut next: ResMut<NextState<AppMode>>,
+    mut portal: ResMut<Portal>,
     mut start: MessageWriter<StartVoyage>,
 ) {
+    if !portal.is_open() {
+        clicks.clear();
+        return;
+    }
     let content = &fleet.content.0;
     let n = content.voyages.len();
     let at = map.selected.as_deref().and_then(|id| content.voyages.position(id));
@@ -466,7 +475,7 @@ fn input(
     let mut launch = false;
     for c in clicks.read() {
         match buttons.get(c.0) {
-            Ok(MapButton::Back) => next.set(AppMode::Home),
+            Ok(MapButton::Back) => portal.leave(),
             Ok(MapButton::Voyage(k)) => select(&mut map, *k),
             Ok(MapButton::SetCourse) => launch = true,
             Err(_) => {}
@@ -474,7 +483,7 @@ fn input(
     }
     if !pointer.typing && n > 0 {
         if keys.just_pressed(KeyCode::Escape) {
-            next.set(AppMode::Home);
+            portal.leave();
         }
         if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter]) {
             launch = true;

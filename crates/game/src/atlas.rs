@@ -114,6 +114,9 @@ pub fn parse_hex(s: &str) -> Option<Color> {
 /// `tint`'s alpha fades everything drawn with it: a group of meshes that fades as one (a screen's world-space
 /// elements, its UI icons, the shipyard while a screen covers it) shares a material of its own
 /// ([`Atlas::group_material`], [`set_alpha`]), so a fade writes one uniform per frame and no mesh.
+///
+/// `aperture` cuts a group to a circle on screen ([`set_aperture`], the portal into the voyage map, `map::portal`):
+/// the group draws only inside it, or only outside it.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct AtlasMaterial {
     #[texture(0)]
@@ -121,6 +124,10 @@ pub struct AtlasMaterial {
     texture: Handle<Image>,
     #[uniform(2)]
     tint: Vec4,
+    /// The circle in framebuffer px: centre x, y, radius, and its soft edge (positive: inside shows, negative:
+    /// outside shows, 0: no cut).
+    #[uniform(3)]
+    aperture: Vec4,
     opaque: bool,
 }
 
@@ -129,7 +136,28 @@ impl Atlas {
     /// group of meshes that fades as one ([`set_alpha`]).
     pub fn group_material(&self, materials: &mut Assets<AtlasMaterial>) -> Handle<AtlasMaterial> {
         let texture = materials.get(&self.material).map(|m| m.texture.clone()).unwrap_or_default();
-        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, opaque: false })
+        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, aperture: Vec4::ZERO, opaque: false })
+    }
+}
+
+/// A cut of a group to a circle on screen (framebuffer px, y down): the group shows only inside it, or only outside.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Aperture {
+    pub centre: Vec2,
+    pub radius: f32,
+    pub inside: bool,
+}
+
+/// The aperture's soft edge (framebuffer px).
+const APERTURE_EDGE: f32 = 2.0;
+
+/// Cuts a group material to an aperture, or not (`None`) (written only when it changes).
+pub fn set_aperture(materials: &mut Assets<AtlasMaterial>, material: &Handle<AtlasMaterial>, aperture: Option<Aperture>) {
+    let want = aperture.map_or(Vec4::ZERO, |a| a.centre.extend(a.radius).extend(if a.inside { APERTURE_EDGE } else { -APERTURE_EDGE }));
+    if materials.get(material).is_some_and(|m| m.aperture != want)
+        && let Some(mut m) = materials.get_mut(material)
+    {
+        m.aperture = want;
     }
 }
 
@@ -281,8 +309,8 @@ impl Plugin for AtlasPlugin {
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
         let mut materials = world.resource_mut::<Assets<AtlasMaterial>>();
-        let material = materials.add(AtlasMaterial { texture: image.clone(), tint: Vec4::ONE, opaque: false });
-        let opaque = materials.add(AtlasMaterial { texture: image, tint: Vec4::ONE, opaque: true });
+        let material = materials.add(AtlasMaterial { texture: image.clone(), tint: Vec4::ONE, aperture: Vec4::ZERO, opaque: false });
+        let opaque = materials.add(AtlasMaterial { texture: image, tint: Vec4::ONE, aperture: Vec4::ZERO, opaque: true });
         let atlas = Atlas { material, opaque, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
