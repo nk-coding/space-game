@@ -89,7 +89,6 @@ pub fn parse_behavior(text: &str) -> Result<Behavior, String> {
 
 /// The text form of a behavior, as the editor's TEXT view shows it: `target <selector>` (when it has a target
 /// line), then one line per rule.
-#[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
 pub fn text_of(b: &Behavior) -> String {
     let mut s = String::new();
     if let Some(t) = &b.target {
@@ -109,7 +108,6 @@ pub fn text_of(b: &Behavior) -> String {
 /// Sets a behavior's lines from the editor's text: the canonical print when it parses, else the lines as typed
 /// (blank lines dropped, a first `target` line into the target field), so a program with errors is kept as
 /// written and comes back the same.
-#[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
 pub fn set_text(b: &mut Behavior, text: &str) {
     if let Ok(p) = Program::parse(text) {
         return set_program(b, &p);
@@ -126,7 +124,6 @@ pub fn set_text(b: &mut Behavior, text: &str) {
 }
 
 /// Sets a behavior's lines from a program (the canonical form).
-#[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
 pub fn set_program(b: &mut Behavior, p: &Program) {
     (b.target, b.rules) = p.to_parts();
 }
@@ -190,7 +187,6 @@ impl PlayerBehavior {
 
 /// One row of a behavior list: a saved behavior, or a document that doesn't read (listed so it can be deleted).
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen lists them (GDR-0057 wave 2)"))]
 pub struct BehaviorEntry {
     pub id: String,
     pub name: String,
@@ -253,13 +249,11 @@ impl PlayerBehaviors {
     }
 
     /// A content behavior (a template) or a saved one, by id (they never share an id).
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn behavior<'a>(&'a self, content: &'a Content, id: &str) -> Option<&'a Behavior> {
         content.behaviors.get(id).or_else(|| self.by_id.get(id).map(|p| &p.behavior))
     }
 
     /// The saved behaviors, most recently saved first (then by name), with those that don't read.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn list(&self) -> Vec<BehaviorEntry> {
         let mut out: Vec<BehaviorEntry> = self
             .by_id
@@ -286,7 +280,6 @@ impl PlayerBehaviors {
     }
 
     /// The names of the saved behaviors (for fresh names).
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn names(&self) -> Vec<String> {
         self.by_id.values().map(|p| p.behavior.name.clone()).collect()
     }
@@ -302,7 +295,6 @@ impl PlayerBehaviors {
     }
 
     /// An unsaved copy of a content or saved behavior with a fresh name ("Skirmisher copy") and a new id.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn copy_of(&self, content: &Content, id: &str) -> Result<Behavior, String> {
         let from = self.behavior(content, id).ok_or_else(|| format!("no behavior {id}"))?;
         let name = fresh_name(&format!("{} copy", from.name), &self.names());
@@ -339,7 +331,6 @@ impl PlayerBehaviors {
     }
 
     /// Renames a saved behavior (its id stays, so designs keep naming it).
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn rename(&mut self, storage: &mut Storage, id: &str, name: &str, now: u64) -> Result<(), String> {
         let name = name.trim();
         if name.is_empty() {
@@ -355,14 +346,12 @@ impl PlayerBehaviors {
     }
 
     /// Saves a copy of a content or saved behavior under a new id and a fresh name; returns the new id.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn duplicate(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
         let copy = self.copy_of(content, id)?;
         self.save(storage, content, &copy, now)
     }
 
     /// Deletes a saved behavior (or a document that doesn't read). Designs naming it fly their faction's.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
     pub fn delete(&mut self, storage: &mut Storage, id: &str) -> Result<(), String> {
         storage.delete::<BehaviorDoc>(id).map_err(|e| e.to_string())?;
         self.by_id.remove(id);

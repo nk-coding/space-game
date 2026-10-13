@@ -31,10 +31,11 @@ use crate::sim_bridge::{SimSet, SimWorld};
 /// The id a program not saved yet flies under in a test (`:` never appears in content or storage ids).
 pub const TEST_BEHAVIOR: &str = "test:behavior";
 
-/// How TEST IN RANGE flies the behavior.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How TEST IN RANGE flies the behavior (the BEHAVIOR screen's WATCH and FLY ALONGSIDE).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum TestMode {
     /// The design flies unpiloted on the behavior; the camera follows it.
+    #[default]
     Watch,
     /// The player flies the design; a second copy joins as a wingman running the behavior.
     Alongside,
@@ -48,7 +49,6 @@ pub enum TestProgram {
     /// A content or saved player behavior, by id.
     Id(String),
     /// A program not saved yet (the editor's text form), with the name to show.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen sends it (GDR-0057 wave 2)"))]
     Text { name: String, text: String },
 }
 
@@ -82,7 +82,6 @@ pub struct StartTest {
 
 /// Can this program be tested? A content behavior, a saved one without errors, or text without errors (the
 /// first error and how many, if not). `content` is the game's (`GameContent`).
-#[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
 pub fn check(content: &Content, behaviors: &PlayerBehaviors, program: &TestProgram) -> Result<(), String> {
     match program {
         TestProgram::Design => Ok(()),
@@ -123,9 +122,11 @@ pub struct BehaviorWatch {
     pub ship: Option<ShipId>,
     /// It is a vessel running its behavior now (false: not yet, piloted, or lost).
     pub running: bool,
-    /// The behavior's id in the flight's library (a content or player behavior id, or [`TEST_BEHAVIOR`]) and name.
+    /// The behavior's id in the flight's library (a content or player behavior id, or [`TEST_BEHAVIOR`]), name and
+    /// rules (the live panel shows them).
     pub behavior: Option<String>,
     pub name: String,
+    pub program: Program,
     /// The rule that decides (0-based); `None`: no rule matches (the ship brakes and holds).
     pub active: Option<usize>,
     /// Every rule's status at the last think, in program order.
@@ -196,6 +197,7 @@ fn watch(scene: Res<Scene>, world: Res<SimWorld>, mut watch: ResMut<BehaviorWatc
     if w.behavior.as_deref() != Some(b.program().id.as_str()) {
         w.behavior = Some(b.program().id.clone());
         w.name = b.program().name.clone();
+        w.program = b.program().program.clone();
     }
     w.active = b.active_rule();
     w.rules.clear();
