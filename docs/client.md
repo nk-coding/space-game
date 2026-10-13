@@ -63,6 +63,7 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `scene=sandbox` | start in the sandbox (home's TEST RANGE) |
 | `scene=drydock` | start in the drydock |
 | `scene=behavior` | start on the BEHAVIOR screen (the design's behavior) |
+| `scene=research` | start on the research screen, over the lab ([Research](#research)) |
 | `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
 | `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat |
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
@@ -176,7 +177,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
                       UI layout and the camera)
 ```
 
-- **App mode** (`mode.rs`): `AppMode::{Home, Flight, Drydock, Behavior}`, a Bevy state; the game starts at home
+- **App mode** (`mode.rs`): `AppMode::{Home, Flight, Drydock, Behavior, Research}`, a Bevy state; the game starts at home
   ([Home](#home); `?scene=` picks another start, see URL parameters). Each mode's systems run
   only in it (`run_if(in_state(..))`), so input never crosses over. The switch happens in the state's enter / exit schedules: `OnExit(Flight)` empties the
   world (views, effects, bubbles, the lock go; the clock is unpaused), `OnEnter(Flight)` builds what another mode
@@ -306,6 +307,8 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
 | Voyages: the camera flies to the gate, then the first open voyage whose goal is not cleared (else the first open one) launches, until the voyage map exists ([Voyages](#voyages)) | V, or a click on the gate |
 | Research: inert until its screen exists (track 7G) | R (nothing yet) |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
+| Research: the lab ([Research](#research); Esc, `‹ HOME` or its ring button come back) | R, or a click on the lab |
+| Voyages: inert until its screen exists (tracks 7H/7I) | V (nothing yet) |
 | Debug overlay | F3 |
 
 - **The station** (`shipyard::layout`, a pure function of the frame; sizes are the sketch's at 20 px per cell,
@@ -350,6 +353,8 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   the dark buildings) neither highlight nor react. **The gate** asks for a voyage on arrival
   (`voyage::StartVoyage`, [Voyages](#voyages)); a refused launch (`voyage::LaunchRefused`, with a `CAN'T LAUNCH`
   note) flies back out.
+  screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (the gate,
+  the dark buildings) neither highlight nor react; the lab works dark or lit.
 - **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
   (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
   viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
@@ -359,6 +364,7 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   **Going back** reverses it: home starts on the drydock's last view and flies out while the cranes return. The
   other screens go back the same way from their place (the mind, the test range for any flight, the gate after a
   voyage while its debrief is open); when FLEET closes
+  other screens go back the same way from their place (the mind, the lab, the test range for any flight); when FLEET closes
   the camera flies back out from the moorings.
 - **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
   placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
@@ -366,6 +372,9 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   HAUL` (coral), `FLEET` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
   `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES` / `THE GATE · SHIPYARD APPROACH` (teal: the
   voyage V launches; `DORMANT` while no voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
+  `RESEARCH  R` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
+  while dark), `VOYAGES` / `THE GATE · COMING SOON` (`DORMANT` while it
+  sleeps), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
   save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
@@ -496,6 +505,66 @@ there). Screenshots:
 - **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
 - Not yet: the mockup's preview of a picked card before ENTER adds it (one click adds), the dotted formation ring
   and the lines to the flagship, the escort's behavior name.
+
+## Research
+
+The research building's screen (track 7G, 13 Oct 2026; [GDR-0063](gdr/0063-salvage-and-research-v1.md), the tree with
+lanes of [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md) after `docs/plans/mockups/research-b.png`),
+`research/`: research data from salvage becomes parts, materials, frames and mind capacity. Screenshots:
+`docs/results/research-1280.png`, `research-1600.png` (1280 × 720 and 1600 × 900), `research-unlocked.png` (after an
+UNLOCK), `research-drydock-new.png` (the part NEW in the drydock afterwards), `research-from-locked-row.png` (opened
+from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's camera on its way to the lab).
+
+| Keys | |
+|---|---|
+| Show a node's detail | click its card |
+| Research it | UNLOCK (enabled while the node can be paid now) |
+| Back to the shipyard (home flies out from the lab) | Esc, `‹ HOME`, or the ring button top left |
+| The drydock | D, or `DRYDOCK` |
+
+- **Getting there**: home's lab (R, or a click on it; it works dark or lit) flies the camera onto the lab, then the
+  screen opens over it: the station stays drawn (`shipyard::show`) under a veil in the backdrop's darkest colour
+  (92 %, a world-space FX quad at z 405, so the UI icons at z 600 stay above it), and the camera rests exactly
+  where home's flight ended. A LOCKED row of the drydock's palette or a locked armour pill
+  (`DrydockAction::Research(node)`, `drydock::actions::locked_research`) opens the screen on the node that unlocks
+  it (no camera flight from the drydock: the screen is just there). `?scene=research` starts here.
+- **The tree** (`research::tree`, pure and tested): one lane per research family that has nodes, in content order
+  (families without nodes show their data top right as `ALSO IN STORE`); a node's column is its requirement depth
+  (0 without requirements, else one past its deepest requirement, in any family); nodes of one lane that share a
+  column stack in rows. Connectors run from a requirement's right edge to the dependent's left edge, straight on one
+  row, with an elbow halfway across the gap between rows; solid teal once the requirement is researched, dashed
+  grey before. `Tree::new` is a function of the content alone, so the screen is built once at start;
+  `Tree::place` puts it on the 1280 × 720 layout (cards up to 210 × 40 px, columns 250 px apart, lane rows 66 to
+  96 px; more columns make narrower cards, more lanes than fit scroll with the wheel).
+- **Cards**: the unlock's icon (the part as a flight tile; the armour block in an unlocked material; the formation
+  for a frame; the mind's ring for mind capacity), the name, and a mark: a gold diamond while it can be paid
+  (**ready**, gold outline and glow), `DONE` once researched (teal outline), a lock instead of the icon while
+  its requirements are missing (**locked**, dim), nothing while the stores fall short (grey). Under the card its kind
+  (`NEW PART`, `SIZE CLASS`, `REFINEMENT`, ...) and its cost chips: `ENERGY 18` in gold when the store pays it,
+  `HULL 14 / 20` (held / cost) in grey when not, materials after a diamond. Data shows rounded down to a tenth, so a
+  store never looks like it pays a cost it doesn't. The selected card is lit; hover brightens a card.
+- **Top**: the ring button and `SHIPYARD › RESEARCH`; right, `ALSO IN STORE` for families without a lane and every
+  material a node costs (`◆ PROGRAMMABLE MATTER 2`). Each lane's head shows its family and the data in store.
+- **Detail** (right): kind and family, the node's name and summary, a preview of what it unlocks (a part: its
+  icon in brackets and its content stat lines and bonuses, as the drydock's palette part; a material: the armour
+  block in it; a frame: its grid; mind capacity: the mind before and after), COST (chips) against IN STORE, UNLOCKS
+  in words (`Beam laser in the drydock, unlimited`, `One more logic core in the mind (runs 3)`), REQUIRES with each
+  requirement done or not yet. Over UNLOCK one line: the last result or refusal, else the node's state
+  (`READY · UNLOCK PAYS AND UNLOCKS AT ONCE`, `NEEDS TAMED AUTOMATON CORE FIRST`, `NOT ENOUGH DATA · HULL 14 /
+  20`). UNLOCK names the data cost and shows the materials after a diamond; `RESEARCHED` once done.
+- **UNLOCK** (`research::apply`, the message `ResearchAction::{Select, Unlock, Home, Drydock}`): asks the model
+  (`Career::can_pay`) first; a refusal is said in coral and nothing is written. Else `Career::research` pays and
+  unlocks at once and the save is written (`PlayerCareer::update`); the line says `BEAM LASER · NOW IN THE DRYDOCK`
+  (or `MIND EXPANSION I · YOUR MIND RUNS 3 CORES`). A failed write keeps the unlock for this game and says why.
+  `Granted` follows in the next `PreUpdate`: the drydock offers the part with a NEW tag (the career's seen-set),
+  the lab lights up at home, home's label counts what is ready.
+- **Bottom**: `‹ HOME`, the ready line (`2 READY · BEAM LASER · MIND EXPANSION I`, or `NOTHING READY · SALVAGE
+  WRECKS FOR RESEARCH DATA`), `DRYDOCK`. The labels carry no key letters (Niklas, 13 Oct 2026: tooltips will name
+  the keys).
+- **Camera and scale**: entering keeps the flight zoom and leaving gives it back (home then starts on the lab and
+  flies out); the layout is 1280 × 720 logical px scaled with the window (`ui_kit::ui_scale_for`).
+- Not yet: the mockup's `SOURCE` line (where a part's salvage comes from: needs voyages and encounters to say it),
+  a camera flight from the drydock to the lab, arrow keys between cards.
 
 ## Drydock
 

@@ -2,10 +2,11 @@
 //! `docs/client.md` for controls, URL parameters and the structure.
 //!
 //! Module map:
-//! - `mode`: the app mode (home, flight, drydock or the BEHAVIOR screen) and what runs in which.
+//! - `mode`: the app mode (home, flight, drydock, the BEHAVIOR screen or research) and what runs in which.
 //! - `home`: the start screen over the shipyard (places, labels, the camera's flights to the drydock, behavior, test
 //!   range and fleet); `shipyard`: the station itself, a world scene built around the drydock frame; `fleet`: the
-//!   FLEET layer over home (escorts picked from saved designs, against the mind capacity).
+//!   FLEET layer over home (escorts picked from saved designs, against the mind capacity); `research`: the research
+//!   screen over the lab (the tree of research nodes, UNLOCK).
 //! - `career`: the player's career save (`saves/<slot>`), a new game, what the career unlocks for the drydock.
 //! - `atlas`, `style`, `meshbuf`: the texture atlas rasterised at runtime + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
@@ -47,6 +48,7 @@ mod hud;
 mod meshbuf;
 mod mode;
 mod params;
+mod research;
 mod scene;
 mod shield;
 mod ship_model;
@@ -132,6 +134,7 @@ fn main() {
                 home::HomePlugin,
                 fleet::FleetPlugin,
                 debrief::DebriefPlugin,
+                research::ResearchPlugin,
                 ui_kit::UiKitPlugin,
                 ui_icons::UiIconsPlugin,
             ),
