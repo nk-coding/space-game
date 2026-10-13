@@ -103,7 +103,7 @@ Niklas chose the behavior editor after the drydock: its own screen from the dryd
 behaviors saved on their own and picked by designs, TEST IN RANGE by watching or flying alongside.
 
 Status 13 Oct 2026: v1 done. 361 tests pass; the editor, saving, the BEHAVIORS list and both TEST IN RANGE modes
-work headless. Next: Niklas tries it; then his review of GDR-0053, 0056, 0058, 0059, 0060.
+work headless. Still open: Niklas tries it; then his review of GDR-0053, 0056, 0058, 0059, 0060.
 
 | Track | Goal | Status |
 |---|---|---|
@@ -111,6 +111,34 @@ work headless. Next: Niklas tries it; then his review of GDR-0053, 0056, 0058, 0
 | 6B Plumbing | Player behaviors in the storage layer, designs naming their behavior, share codes carrying it, the sim library, TEST IN RANGE modes (watch / fly alongside), the live active rule | done 13 Oct (`drydock.md` "Behaviors"; share codes `SGD2`) |
 | 6C Screen foundation | `AppMode::Behavior`, the mockup's layout, read-only graph view, text view with live errors, palette and inspector shells, BEHAVIOR button in the drydock | done 13 Oct (`client.md` "Behavior screen") |
 | 6D Wiring | Graph editing and the inspector through the model, saving, test buttons, live rule highlight | done 13 Oct (GDR-0060; `client.md` "Behavior screen") |
+
+## Phase 7: the first playable loop (started 13 Oct 2026, GDR-0062, GDR-0063, ADR-0033)
+
+Niklas chose the first playable loop as the next phase (plan: `plans/first-playable-loop.md`; the deeper plans
+`plans/salvage-research.md`, `plans/galaxy-voyages.md`, `plans/coop-arena.md` hold what waits). Decided 13 Oct: start
+at home with the early-game kit, unlocks only (unlimited once researched), fly over wrecks to salvage, the haul stays
+in a lost ship's wreck, auto-dismantle into research data, four small hand-made rim clusters, recall in 3 s when no
+awake enemy is near, closing mid-voyage loses that voyage, mind capacity 2 → 4, destroyed cores leave a
+programmable-matter fragment.
+
+| Track | Goal | Depends on | Status |
+|---|---|---|---|
+| 7A Content schema | Kinds `families`, `research`, `starts`, `voyages`, `encounters`; `salvage` block on parts and materials; `locked` on frames; loader, validation, `export-json` | – | wave 1 |
+| 7B Sim salvage | `Stream::Encounter`, wrecks spawned as wrecks, cargo, collecting, core fragments, `SimConfig::salvage`, hash; a cargo count in the sandbox HUD | – | wave 1 |
+| 7C `data::career` | The pure progression model: unlocks, mind capacity, payment, unloading, voyage seeds, voyage-ready | 7A | wave 2 |
+| 7D Home screen | `AppMode::Home` as the start, the ring menu with the docked ship, navigation, the drydock's and behavior screen's ring buttons, `?scene=home\|sandbox` | – | wave 1 |
+| 7E Voyage director | `sim::voyage`: rolling, lazy spawning, waking, clearing, recall check; `ScenarioKind::Voyage`; the headless voyage runner | 7A, 7B | wave 2 |
+| 7F Save and gating | `saves/career`, new game, `?save= ?newgame= ?unlock=all`; the drydock from `Unlocks`; FLEET | 7C, 7D | wave 2 |
+| 7G Research screen | `AppMode::Research`, the debrief, unloading the haul | 7C, 7D, 7F | wave 2 |
+| 7H Voyage flight | `SceneKind::Voyage`, launch, the voyage HUD, recall, death → home, the save update | 7E, 7F | wave 3 |
+| 7I Voyage map | `AppMode::Map`, the chain of clusters, SET COURSE | 7C, 7D, 7F | wave 3 |
+| 7J Slice content | Starter ship, locks, nine nodes, salvage values, four voyages, five encounters, the hunter and the Warden | 7A | wave 3 |
+| 7K Balance pass | Headless voyages over seeds against the evening budget; tune encounters and node costs | 7E, 7J | wave 4 |
+| 7L Play-test | Niklas plays an evening | all | wave 4 |
+
+Alongside (13 Oct): six code reviews, a UI review, a security review of untrusted input and a dependency audit
+(reports in the lead's scratch space; fixes merged as they land), a docs audit (merged), the wiki generator and a
+fight-balance re-measure (GDR-0061, proposed).
 
 ## Phase 4: measurement
 
