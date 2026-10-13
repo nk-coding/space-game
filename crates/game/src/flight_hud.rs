@@ -1,7 +1,7 @@
 //! The flight HUD in the reference look (`docs/concept/boards/ui-mockups/phone-flight-hud.png`): floating text,
 //! wide-tracked uppercase labels in Barlow, white numbers, no boxes.
 //!
-//! * top left: hull % and a tiny hull map of the player's ship;
+//! * top left: hull % and a tiny hull map of the player's ship (in a behavior test's watch mode: the watched one);
 //! * left: speed (m/s), the top speed and the drift state;
 //! * top right: target panel (name, hull %, distance);
 //! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost);
@@ -22,6 +22,7 @@ use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PilotFocus, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
+use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_kit::{label, number, set_text};
 use crate::{RenderToggles, ship_view::PieceView};
 
@@ -158,6 +159,7 @@ fn update_text(
     scene: Res<Scene>,
     focus: Res<PilotFocus>,
     input: Res<PlayerInput>,
+    watch: Res<BehaviorWatch>,
     toggles: Res<RenderToggles>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
@@ -175,7 +177,7 @@ fn update_text(
     }
     let HudState { scratch, labels, .. } = &mut *state;
     let alpha = fixed.overstep_fraction();
-    let player = focus.0.and_then(|id| world.sim.ship(id));
+    let player = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
     let control = player.and_then(|s| s.control_piece().and_then(|c| s.piece(c)));
 
     // Labels per part of the player's design.
@@ -233,8 +235,17 @@ fn update_text(
             }
             HudText::Title => match scene.kind {
                 SceneKind::Sandbox => {
-                    let name = if scene.test_flight { "TEST FLIGHT" } else { "SANDBOX" };
-                    let _ = write!(s, "{name}  ·  WAVE {}", scene.wave);
+                    let name = match scene.test_mode() {
+                        Some(TestMode::Watch) => "WATCH",
+                        Some(TestMode::Alongside) => "FLY ALONGSIDE",
+                        None if scene.test_flight => "TEST FLIGHT",
+                        None => "SANDBOX",
+                    };
+                    s.push_str(name);
+                    if scene.test_mode().is_some() && !watch.name.is_empty() {
+                        let _ = write!(s, "  ·  {}", watch.name.to_uppercase());
+                    }
+                    let _ = write!(s, "  ·  WAVE {}", scene.wave);
                 }
                 SceneKind::Showcase => s.push_str("SHOWCASE"),
                 SceneKind::Load(n) => {
@@ -270,6 +281,9 @@ fn update_text(
                 }
             }
             HudText::Help => match scene.kind {
+                SceneKind::Sandbox if scene.watched().is_some() => {
+                    s.push_str("NOBODY PILOTS · DRAG PAN · F FOLLOW / FREE · WHEEL ZOOM · C WAVES · F3 RULES · T BACK · H HIDE");
+                }
                 SceneKind::Sandbox if input.touch_ui => {
                     s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM");
                 }

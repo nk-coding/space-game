@@ -33,6 +33,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, label, number, prose, set_color, set_text, spawn_pill, tracked};
 
 use super::actions::DrydockAction;
+use super::behaviors::{PlayerBehaviors, validate_design};
 use super::library::{self, Autosave, DesignSlot, Entry};
 use super::panels::PanelText;
 use super::share;
@@ -108,14 +109,15 @@ struct Export {
 }
 
 impl Export {
-    /// The export of the design in the drydock.
+    /// The export of the design in the drydock (with the player behavior it names, if any).
     fn of(lib: &Lib, content: &Content) -> Self {
         let bp = lib.export(content);
+        let behavior = lib.behaviors.named_by(content, &bp);
         let made_with: Vec<String> = content.packs.iter().map(|p| format!("{} {}", p.id, p.version)).collect();
         Export {
             file: format!("{}.ron", bp.id),
-            ron: data::blueprint_to_ron(&bp),
-            code: share::encode(content, &bp),
+            ron: share::export_text(&bp, behavior),
+            code: share::encode(content, &bp, behavior),
             made_with: made_with.join(", ").to_uppercase(),
             revision: lib.design.revision(),
         }
@@ -173,6 +175,7 @@ pub(super) struct Lib<'w> {
     design: ResMut<'w, PlayerDesign>,
     slot: ResMut<'w, DesignSlot>,
     cam: ResMut<'w, DockCamera>,
+    behaviors: ResMut<'w, PlayerBehaviors>,
 }
 
 impl Lib<'_> {
@@ -216,7 +219,7 @@ impl Lib<'_> {
         match library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix()) {
             Ok(id) => {
                 let name = &self.design.blueprint().name;
-                let problems = data::validate_ship(content, &Blueprint { id, ..self.design.export() });
+                let problems = validate_design(content, &self.behaviors, &Blueprint { id, ..self.design.export() });
                 if problems.is_empty() {
                     (format!("saved  ·  {name}"), Tone::Teal)
                 } else {
@@ -227,18 +230,24 @@ impl Lib<'_> {
         }
     }
 
-    /// Imports a share code or blueprint text: saved under a new id and opened.
+    /// Imports a share code or blueprint text: saved under a new id and opened. A behavior it carries is saved
+    /// too (under a new id if its own is taken) and the design names it.
     fn import(&mut self, content: &Content, text: &str) -> Result<String, String> {
         let shared = share::read(text).map_err(|e| e.to_string())?;
         let faction = self.design.blueprint().faction.clone();
-        let (mut bp, mut notes) = share::check(content, shared, &faction).map_err(|e| e.to_string())?;
+        let (mut bp, carried, mut notes) = share::check(content, shared, &faction).map_err(|e| e.to_string())?;
         if bp.summary.trim().is_empty() {
             bp.summary = library::NEW_SUMMARY.into();
         }
-        let opened = library::open_in_first_frame(content, &bp)?;
+        let mut opened = library::open_in_first_frame(content, &bp)?;
+        if let Some(b) = carried {
+            let (id, note) = self.behaviors.import(&mut self.storage, content, b, now_unix())?;
+            opened.edit_header(|h| h.behavior = Some(id));
+            notes.push(note);
+        }
         let mut slot = DesignSlot::default();
         let id = library::save(&mut self.storage, content, &opened, &mut slot, now_unix()).map_err(|e| e.to_string())?;
-        let problems = data::validate_ship(content, &Blueprint { id: id.clone(), ..opened.export() });
+        let problems = validate_design(content, &self.behaviors, &Blueprint { id: id.clone(), ..opened.export() });
         if !problems.is_empty() {
             notes.push(problems_note(&problems));
         }

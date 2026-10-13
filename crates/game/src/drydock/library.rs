@@ -103,6 +103,11 @@ pub fn open_error_text(e: &OpenError) -> String {
 /// everything else a single `_`; it starts with a letter (`design_` is put before a digit) and is at most
 /// 40 characters. An empty result is `design`.
 pub fn slug(name: &str) -> String {
+    slug_or(name, "design")
+}
+
+/// [`slug`] with another word before a leading digit and for an empty result (`behavior` for behaviors).
+pub fn slug_or(name: &str, word: &str) -> String {
     let mut s = String::new();
     let mut gap = false;
     for c in name.chars().flat_map(char::to_lowercase) {
@@ -128,10 +133,10 @@ pub fn slug(name: &str) -> String {
         }
     }
     if s.starts_with(|c: char| c.is_ascii_digit()) {
-        s.insert_str(0, "design_");
+        s.insert_str(0, &format!("{word}_"));
     }
     if s.is_empty() {
-        s.push_str("design");
+        s.push_str(word);
     }
     s.truncate(MAX_SLUG);
     s.trim_end_matches('_').to_string()

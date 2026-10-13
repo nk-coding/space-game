@@ -1,7 +1,8 @@
 //! Debug overlay (`F3`; always on in the load test): fps, frame and sim step times (mean / median / p95 over
 //! a rolling window), entity and sim counts, the atlas tier against what the screen needs (window size and
-//! scale factor), render toggles, the focus ship's heading, turn rate and speed (for tuning turning, GDR-0055).
-//! Keys: `F3` the overlay (everywhere); in flight only: `1` debug shapes, `2` glow
+//! scale factor), render toggles, the focus ship's heading, turn rate and speed (for tuning turning, GDR-0055), the
+//! locked ship's active behavior rule and, in TEST IN RANGE, every rule of the tested behavior with why
+//! (`test_range::BehaviorWatch`). Keys: `F3` the overlay (everywhere); in flight only: `1` debug shapes, `2` glow
 //! sprites, `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene (`scene.rs`).
 //!
 //! In the load test the overlay also logs a one-line summary to the browser console after 60 s
@@ -23,6 +24,7 @@ use crate::mode::AppMode;
 use crate::scene::{PilotFocus, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, Timings, console_out};
 use crate::style::{Style, ui_color};
+use crate::test_range::BehaviorWatch;
 
 #[derive(Component)]
 struct DebugText;
@@ -123,6 +125,7 @@ fn update_debug(
     mode: Res<State<AppMode>>,
     input: Res<PlayerInput>,
     focus: Res<PilotFocus>,
+    watch: Res<BehaviorWatch>,
     mut world: ResMut<SimWorld>,
     atlas: Res<Atlas>,
     atlas_status: Res<AtlasStatus>,
@@ -229,6 +232,21 @@ fn update_debug(
                 let _ = write!(s, "\ntarget behavior: rule {}  ({})", i + 1, b.describe(i));
             }
             None => s.push_str("\ntarget behavior: no rule decides (brake)"),
+        }
+    }
+    // TEST IN RANGE: the tested ship's behavior, every rule and why (`>` marks the one that decides).
+    if watch.ship.is_some() {
+        let state = if !watch.running {
+            "not running (piloted or lost)".to_string()
+        } else if watch.active.is_none() {
+            "no rule decides (brake)".to_string()
+        } else {
+            format!("{} rule slots", watch.slots)
+        };
+        let _ = write!(s, "\ntested behavior: {}, {state}", watch.name);
+        for (i, why) in watch.why.iter().enumerate() {
+            let mark = if watch.active == Some(i) { '>' } else { ' ' };
+            let _ = write!(s, "\n {mark} {}  {why}", i + 1);
         }
     }
     if text.0 != *s {
