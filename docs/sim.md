@@ -802,14 +802,27 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   firepower × 2 if it aims at me), `attacker` (nearest enemy aiming at me), `locked` (the lock of
   `Ship::leader()`: its pilot lock or behavior target).
 - **`raider_basic`** (the automatons' default; it replaced the raider brain): with a cannon raider (75 m reach)
-  it approaches to 64 m (85%), and within 90 m (120%) orbits at 50 m (67%) for the last 4 s of every 9 s;
+  it approaches to 64 m (85%), and within 90 m (120%) orbits at 43.5 m (58%) for the last 4 s of every 9 s;
   its cannon fires at will within 70 m (93.3%). Until 12 Oct it stood off at 50 m (67%) and orbited at 45 m
-  (60%); see [Sandbox fights at the new speeds](#sandbox-fights-at-the-new-speeds).
+  (60%); from 12 to 13 Oct it orbited at 50 m (67%), exactly where the Halvex Runner's beams stop touching a
+  raider (GDR-0061); see [Sandbox fights at the new speeds](#sandbox-fights-at-the-new-speeds).
+- **`skirmisher`** (the ship-mind's default for unpiloted vessels): flee below 25% hull, orbit at 80% while its
+  shield is down and the target aims at it, face a fast attacker that is still out of reach, else approach to
+  67% and keep the nose on the target. Its two other orbit rules (`enemies_near(100m) >= 3 -> orbit(90%)` and a
+  4 s orbit every 10 s) were deleted on 13 Oct 2026 (GDR-0061): since GDR-0055 every switch back from an orbit
+  costs 1.5–3 s of turning, and a lone Runner fired in 12% of the time a raider was within its reach.
 
 ### Sandbox fights at the new speeds
 
-Measured 12 Oct 2026 (GDR-0042 content; not re-measured with the slower turning of GDR-0055, 13 Oct: the Runner
-now turns 90° in 1.5 s instead of 0.77 s, the raiders in 0.57 s instead of 0.40 s) with a throwaway harness (not in
+**13 Oct 2026, after the slower turning (GDR-0055):** re-measured with the headless balance harness (the separate
+local repo `../space-game-balance`, 200 seeds per setup): [`docs/results/balance-2026-10-13.md`](results/balance-2026-10-13.md).
+The content changed with it (GDR-0061): `raider_basic` orbits at 58% (was 67%, on the beams' edge), the
+`skirmisher` lost its two orbit rules, and shield emitters hold 3 and regenerate 0.2/s (were 6 and 1.5/s), so
+bubbles collapse under sustained fire. The sim fixes of GDR-0064 (feed-forward for the lock and `face`, goals
+capped at the top speed and the continuous speed fade, engine-less vessels aiming, split-off hull share) were
+measured in the same report's last section. The table below is the 12 Oct measurement, kept for the history.
+
+Measured 12 Oct 2026 (GDR-0042 content, before the slower turning of GDR-0055) with a throwaway harness (not in
 the repo): one Halvex Runner at rest and
 a sandbox wave of three raiders spawned 105–125 m away, 0.32 rad apart, coming in at 3 m/s, under
 `raider_basic`; seeds 1–12, at most 180 s. Two stand-ins for the player: **passive** (locks the nearest raider and

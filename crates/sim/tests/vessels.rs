@@ -644,7 +644,7 @@ fn a_shielded_ram_drains_the_bubble_first() {
         "{hull_on} vs {ram_on}"
     );
     assert!((raider_on - ram_on).abs() < 1e-3 && (raider_off - ram_off).abs() < 1e-3);
-    let cap = 6.0;
+    let cap = content().parts.get("shield_emitter").unwrap().shield.as_ref().unwrap().capacity;
     assert_eq!(charge_off, cap, "no bubble, nothing drained");
     assert!((cap - charge_on - ram_on * 0.5).abs() < 1e-3, "{charge_on}");
     assert!(

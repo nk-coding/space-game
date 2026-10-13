@@ -214,7 +214,7 @@ mod tests {
         let d = BehaviorDraft::from_behavior(b, &content.behavior_nodes).unwrap();
         assert_eq!(d.source.as_deref(), Some("skirmisher"));
         assert_eq!(d.name, "Skirmisher");
-        assert_eq!(d.program().rules.len(), 6);
+        assert_eq!(d.program().rules.len(), 4);
         assert_eq!(d.text, d.program().to_text());
         assert!(d.text.starts_with("target nearest\nwhen hull < 25% -> flee"));
         assert!(d.errors.is_empty());
@@ -317,13 +317,13 @@ mod tests {
         let r0 = d.revision();
         let first = d.editor().unwrap().rule_at(0).unwrap().id;
         assert_eq!(d.edit(|e| e.delete_rule(first)), Some(Ok(true)));
-        assert_eq!(d.program().rules.len(), 5);
+        assert_eq!(d.program().rules.len(), 3);
         assert_eq!(d.text, d.program().to_text());
         assert!(d.errors.is_empty());
         assert_eq!(d.revision(), r0 + 1);
         // Undo brings the rule back, again through the text.
         assert_eq!(d.edit(|e| e.undo()), Some(true));
-        assert_eq!(d.program().rules.len(), 6);
+        assert_eq!(d.program().rules.len(), 4);
         assert_eq!(d.revision(), r0 + 2);
         // Opening another draft keeps the revision going up.
         let next = BehaviorDraft::empty(nodes).unwrap();

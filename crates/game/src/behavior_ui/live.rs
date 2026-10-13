@@ -327,18 +327,18 @@ mod tests {
         let labels = rule_labels(&w.program, nodes);
         assert_eq!(labels[0], "Hull < 25%  ›  Flee");
         assert_eq!(labels[1], "Shield down and Target on me  ›  Orbit 80% · ccw");
-        assert_eq!(labels[5], "always  ›  Approach 67%");
-        // Rule 3 decides: the two above say why not, the ones below wait; the last has no slot.
+        assert_eq!(labels[3], "always  ›  Approach 67%");
+        // Rule 2 decides: the one above says why not, the one below waits; the last has no slot.
         let failed = RuleStatus::Failed { cond: 0, why: Why::False { value: Some(0.96) } };
-        w.active = Some(2);
-        w.rules = vec![failed, failed, RuleStatus::Active, RuleStatus::Skipped, RuleStatus::Skipped, RuleStatus::NoSlot];
-        w.why = vec!["`hull < 25%` is false (hull is 96%)".into(), "`shield_down` is false".into(), "active: orbit(90%)".into(), String::new(), String::new(), "inactive".into()];
+        w.active = Some(1);
+        w.rules = vec![failed, RuleStatus::Active, RuleStatus::Skipped, RuleStatus::NoSlot];
+        w.why = vec!["`hull < 25%` is false (hull is 96%)".into(), "active: orbit(80%, ccw)".into(), String::new(), "inactive".into()];
         let p = live_panel(&w, nodes).unwrap();
-        assert_eq!((p.title.as_str(), p.sub.as_str()), ("BEHAVIOR  ·  SKIRMISHER", "RULE 3 DECIDES"));
+        assert_eq!((p.title.as_str(), p.sub.as_str()), ("BEHAVIOR  ·  SKIRMISHER", "RULE 2 DECIDES"));
         let states: Vec<RowState> = p.rows.iter().map(|r| r.state).collect();
-        assert_eq!(states, [RowState::Failed, RowState::Failed, RowState::Active, RowState::Waiting, RowState::Waiting, RowState::NoSlot]);
+        assert_eq!(states, [RowState::Failed, RowState::Active, RowState::Waiting, RowState::NoSlot]);
         assert_eq!(p.rows[0].why.as_deref(), Some("hull < 25% is false (hull is 96%)"));
-        assert_eq!(p.rows[2].why, None);
+        assert_eq!(p.rows[1].why, None);
         // No rule matches: it holds. Not running yet: every rule waits. Outside a test: no panel.
         w.active = None;
         assert_eq!(live_panel(&w, nodes).unwrap().sub, "NO RULE MATCHES  ·  IT HOLDS");

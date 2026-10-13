@@ -27,7 +27,7 @@ switch off first. If no active rule matches, the ship stops and holds.
 target weakest(engines)
 when hull < 30% -> flee                                   # run when badly hurt
 when shield_down and target_on_me -> orbit(80%, ccw)      # dodge while the shields recharge
-when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)
+when target_in_range(120%) and cycle(9s) >= 5s -> orbit(58%)
 always -> approach(85%)
 ```
 
@@ -135,7 +135,7 @@ file says.
     tags: ["automaton", "attack"],
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)",
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(58%)",
         "always -> approach(85%)",
     ],
 )

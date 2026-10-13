@@ -333,10 +333,10 @@ mod tests {
     fn a_new_rule_goes_above_the_fallback() {
         let mut ed = skirmisher();
         let add = add_rule_edit(&ed).unwrap();
-        assert_eq!(add, Edit::AddRule { index: 5, action: "approach".into() });
+        assert_eq!(add, Edit::AddRule { index: 3, action: "approach".into() });
         let After::Select(Selection::Rule(r)) = apply_edit(&mut ed, &add).unwrap() else { panic!() };
-        assert_eq!(ed.rule(r).unwrap().index, 5);
-        assert_eq!(ed.program().rules[6].to_string(), "always -> approach(67%)");
+        assert_eq!(ed.rule(r).unwrap().index, 3);
+        assert_eq!(ed.program().rules[4].to_string(), "always -> approach(67%)");
         // Without a fallback at the end: at the bottom.
         let ed = editor("when hull < 30% -> flee");
         assert_eq!(add_rule_edit(&ed), Some(Edit::AddRule { index: 1, action: "approach".into() }));
