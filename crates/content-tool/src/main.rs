@@ -606,7 +606,7 @@ fn export(c: &Content) -> Value {
         .filter(|w| w.kind == Kind::Page)
         .map(|w| json!({ "id": w.id, "title": c.name_of(Kind::Page, &w.id), "markdown": w.markdown, "source": w.source }))
         .collect();
-    json!({
+    let mut out = json!({
         "format": "space-game-content",
         "format_version": EXPORT_FORMAT_VERSION,
         "schema_version": data::SCHEMA_VERSION,
@@ -628,7 +628,30 @@ fn export(c: &Content) -> Value {
         "icons": icons,
         "pages": pages,
         "texts": c.texts(),
-    })
+    });
+    shortest_f32(&mut out);
+    out
+}
+
+/// Content numbers are f32; serde widens them to f64, which shows the f32's binary noise (0.28 becomes
+/// 0.2800000011920929). Every number that is exactly an f32 is written as that f32's shortest text instead.
+fn shortest_f32(v: &mut Value) {
+    match v {
+        Value::Number(n) if n.is_f64() => {
+            if let Some(x) = n.as_f64()
+                && f64::from(x as f32) == x
+                && let Some(m) = format!("{}", x as f32)
+                    .parse::<f64>()
+                    .ok()
+                    .and_then(serde_json::Number::from_f64)
+            {
+                *n = m;
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(shortest_f32),
+        Value::Object(o) => o.values_mut().for_each(shortest_f32),
+        _ => {}
+    }
 }
 
 fn ship_json(c: &Content, s: &data::Blueprint) -> Value {
@@ -909,5 +932,11 @@ mod tests {
             c.encounters.len()
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
+        // f32 numbers export as written, without the noise of widening them to f64.
+        assert_eq!(first["map"], json!([0.28, 0.66]));
+        assert_eq!(
+            find("encounters", "precursor_wrecks")["wrecks"][0]["damage"],
+            json!(0.4)
+        );
     }
 }

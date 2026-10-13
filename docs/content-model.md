@@ -151,8 +151,9 @@ An armour material may carry a `salvage` block (what one cell of hull area in it
 
 `locked` (optional, default `false`, added 13 Oct 2026), on materials, parts and frames alike: not available to
 the player until unlocked (research: an unlock of a [research node](#research-nodes-added-13-oct-2026)
-clears it per player, GDR-0063). The drydock hides locked parts and materials (palette, armor pills, the 1–9
-keys); content ships that use them still load, open in the drydock and fly. The base pack locks the automatons'
+clears it per player, GDR-0063). The free drydock hides locked parts and materials (palette, armor pills, the 1–9
+keys); the career's drydock shows them dimmed until researched (GDR-0065); content ships that use them still load,
+open in the drydock and fly. The base pack locks the automatons'
 core, cannon and plate (GDR-0054) and the mid-game kit (GDR-0063): composite and reactive armour, the fusion
 reactor, the beam laser, the torch drive, and the cruiser and capital frames (Niklas, 13 Oct 2026). A new game
 has everything else (the early-game kit: steel, fission reactor,
@@ -186,7 +187,7 @@ what is locked; a development switch (`?unlock=all`) is planned.
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
 | `hull` | `true`: takes an armor material per placement; then `mass`/`hp` must be absent |
 | `mass`, `hp` | required for non-hull parts |
-| `locked` | optional, default `false`: not available to the player until unlocked (research); the drydock hides it. Content ships may still use it (the raider flies its locked automaton parts) |
+| `locked` | optional, default `false`: not in a new game until research unlocks it; the free drydock hides it, the career's shows it dimmed (GDR-0065). Content ships may still use it (the raider flies its locked automaton parts) |
 | `salvage` | optional, non-hull parts only: what the part gives when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A part without it is never collected |
 
 Optional component blocks (a part has any combination):
@@ -817,7 +818,8 @@ cargo run -p content-tool -- export-json content.json  # resolved content for an
 cargo run -p content-tool -- list part
 ```
 
-`export-json` (`format_version` 1) holds every kind in load order with all fields plus, per entry,
+`export-json` (`format_version` 1) holds every kind in load order with all fields (numbers that are content f32s
+written as their shortest text: `0.28`, not `0.2800000011920929`) plus, per entry,
 `text_keys`, `links` (targets mentioned in its texts) and `wiki` (markdown or null). Parts add `color_key`,
 `stat_lines` (identical to the drydock), `stat_lines_by_material` for hull parts, `geometry` (area, polygon,
 connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygon`, `center` and `piece`,
@@ -828,6 +830,8 @@ plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals` (including 
 Parts, materials and frames add `unlocked_by` (the research nodes that unlock them); parts and armour materials
 carry their `salvage` block. `families` (added 13 Oct 2026) add `salvaged_from_parts`, `salvaged_from_materials`
 (what feeds them) and `research` (their nodes); `research` nodes add `required_by`; `starts` hold their fields.
+`voyages` (added 13 Oct 2026) add `site_count` (sites in all), `opens` (the voyages that open after it) and
+`opened_by_starts`; `encounters` add `used_by_voyages`; ships add `in_encounters`.
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
 `default_of_factions` and `flown_by_ships`. Categories list their parts,

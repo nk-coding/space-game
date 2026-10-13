@@ -35,7 +35,7 @@
         name: "Automaton plate",
         summary: "Scavenged plating of the rogue automatons.",
         tags: ["automaton"],
-        locked: true, // hidden in the drydock until salvage or research unlocks it (Niklas, 13 Oct 2026)
+        locked: true, // not in a new game until research unlocks it (Niklas, 13 Oct 2026; GDR-0063)
         icon: "armor-enemy-armor",
         armor: (tone: "enemy", mass_per_cell: 2.2, hp_per_cell: 1.2, build_point_factor: 1.2),
         salvage: (family: "hull", data: 1),

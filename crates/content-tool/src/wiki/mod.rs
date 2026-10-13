@@ -903,4 +903,4 @@ struct EntryParts {
     sections: Vec<(String, String)>,
 }
 
-const LOCKED: &str = " <span class=\"badge locked\" title=\"Not available to the player until unlocked (salvage, research); the drydock hides it\">Locked</span>";
+const LOCKED: &str = " <span class=\"badge locked\" title=\"Not in a new game: research unlocks it\">Locked</span>";

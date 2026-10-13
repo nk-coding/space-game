@@ -376,7 +376,14 @@ impl Wiki<'_> {
         }
         facts.push(("Grid".into(), format!("{} × {} cells", s.size.0, s.size.1)));
         facts.push(("Parts".into(), s.parts.len().to_string()));
-        if let Some(fr) = self.c.frames.iter().find(|f| fits(s, f)) {
+        // The smallest by area (ties: load order), wherever a mod put it.
+        let smallest = self
+            .c
+            .frames
+            .iter()
+            .filter(|f| fits(s, f))
+            .min_by_key(|f| u64::from(f.size.0) * u64::from(f.size.1));
+        if let Some(fr) = smallest {
             facts.push((
                 "Smallest frame".into(),
                 self.a_badged(root, Kind::Frame, &fr.id),

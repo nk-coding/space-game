@@ -209,8 +209,8 @@ pub struct Material {
     /// What one cell of hull area in this material gives when salvaged (armour materials only).
     #[serde(default)]
     pub salvage: Option<HullSalvageSpec>,
-    /// Not available to the player until unlocked (salvage, research): the drydock hides it. Content ships may
-    /// still use it.
+    /// Not in a new game: research unlocks it per player (GDR-0063). The free drydock hides it; the career's
+    /// drydock shows it dimmed until it is researched (GDR-0065). Content ships may still use it.
     #[serde(default)]
     pub locked: bool,
     #[serde(skip_deserializing)]
@@ -606,8 +606,8 @@ pub struct Part {
     /// What the part gives when salvaged (non-hull parts; hull parts take it from their material per cell).
     #[serde(default)]
     pub salvage: Option<SalvageSpec>,
-    /// Not available to the player until unlocked (salvage, research): the drydock hides it. Content ships may
-    /// still use it.
+    /// Not in a new game: research unlocks it per player (GDR-0063). The free drydock hides it; the career's
+    /// drydock shows it dimmed until it is researched (GDR-0065). Content ships may still use it.
     #[serde(default)]
     pub locked: bool,
     #[serde(skip_deserializing)]
@@ -1103,7 +1103,7 @@ pub struct ResearchNode {
 entry!(ResearchNode, Kind::Research);
 
 /// `starts.ron` / `starts/*.ron`: how a new game begins. A new game has every part, material and frame that is
-/// not `locked`, plus what the start names here.
+/// not `locked` (a start names no unlocks of its own).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Start {
