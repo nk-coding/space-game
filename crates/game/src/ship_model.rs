@@ -11,7 +11,7 @@ use data::{Blueprint, Content, ShipGrid};
 use sim::{Piece, Ship, Stat};
 
 use crate::ship_view::{GunVisual, PartVisual, ShipVisual};
-use crate::style::Style;
+use crate::style::{Style, mix};
 
 /// Barrel and muzzle look per gun icon, taken from the reference renders
 /// (`art/ships/halvex-runner.svg`, `art/ships/automaton-raider.svg`): `(barrel (width, protrusion), muzzle radius)`
@@ -207,9 +207,4 @@ fn nav_lights(dv: &DesignVisual, grid: &ShipGrid, parts: &[u32]) -> Vec<(Vec2, C
         ],
         _ => Vec::new(),
     }
-}
-
-fn mix(a: Color, b: Color, t: f32) -> Color {
-    let (a, b) = (a.to_srgba(), b.to_srgba());
-    Color::srgb(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t)
 }

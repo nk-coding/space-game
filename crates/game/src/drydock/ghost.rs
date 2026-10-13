@@ -5,8 +5,8 @@
 //! selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
 //!
 //! [`update`] works the view out from the previews of `data::edit` (`preview_paint`, `preview_slope`,
-//! `preview_place`, `preview_move`: what the edit would do, planned by the same code as the edit) whenever its
-//! inputs change; the see-through tiles are one mesh (the flight tiles, `ship_view::build_body`, with a
+//! `preview_place`, `preview_move`: what the edit would do, planned by the same code as the edit) when its inputs
+//! change (the design, the tool and picked part, the cursor cell, the gesture); the see-through tiles are one mesh (the flight tiles, `ship_view::build_body`, with a
 //! translucent material), a child of the design's mesh so it shows only in the drydock, rebuilt only when the
 //! tiles change; outlines, brackets and the rectangle are immediate-mode FX lines, sized in screen pixels.
 
@@ -103,6 +103,9 @@ pub(super) fn update(
     g: Res<DrydockGesture>,
     mut view: ResMut<GhostView>,
 ) {
+    if !(design.is_changed() || ui.is_changed() || cursor.is_changed() || g.is_changed()) {
+        return;
+    }
     let content = &content.0;
     let dock = design.dock();
     let mut v = GhostView::default();
@@ -323,9 +326,9 @@ pub(super) fn draw(
 
 /// The coral text after the info line: why the edit under the cursor can't happen, else the last refusal.
 pub(super) fn sync_hint(view: Res<GhostView>, note: Res<EditNote>, time: Res<Time<Real>>, mut hint: Single<&mut TextSpan, With<HintText>>) {
+    const SEP: &str = "  ·  ";
     let text = view.reason.as_deref().or(note.current(time.elapsed_secs()));
-    let want = text.map_or(String::new(), |t| format!("  ·  {t}"));
-    if hint.0 != want {
-        hint.0 = want;
+    if hint.0.strip_prefix(SEP) != text {
+        hint.0 = text.map_or(String::new(), |t| format!("{SEP}{t}"));
     }
 }

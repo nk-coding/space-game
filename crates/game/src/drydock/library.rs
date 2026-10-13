@@ -13,14 +13,20 @@
 use data::edit::OpenError;
 use data::{Blueprint, Content, Problem};
 
-use crate::storage::{Document, Storage, StorageError};
+use crate::storage::{Document, Storage, StorageError, valid_name};
 
 use super::PlayerDesign;
 
 /// The longest id a slug makes (suffixes for uniqueness come on top).
 const MAX_SLUG: usize = 40;
+/// The longest design or behavior name (the name fields).
+pub const MAX_NAME: usize = 40;
+/// The name a new design gets ("New design", "New design 2", ...); also the starter's when content has no ship.
+pub const NEW_NAME: &str = "New design";
 /// The working design's name in its namespace.
-const WORKING: &str = "working";
+pub const WORKING: &str = "working";
+/// Where a working design that doesn't read or open is kept before the autosave writes over it.
+pub const WORKING_ASIDE: &str = "working-unread";
 /// The summary new and imported designs get when they have none (content requires one; the drydock has no
 /// field for it yet).
 pub const NEW_SUMMARY: &str = "A design from the drydock.";
@@ -256,14 +262,17 @@ pub fn list_designs(storage: &Storage, content: &Content) -> Result<Vec<Entry>, 
     Ok(out)
 }
 
-/// The bounding box of a blueprint's parts (unknown parts left out).
+/// The bounding box of a blueprint's parts (unknown parts left out). Any coordinates (a stored file is
+/// untrusted): the sums are taken in `i64`, a side beyond `u32` reads as `u32::MAX`.
 pub fn parts_size(content: &Content, bp: &Blueprint) -> (u32, u32) {
     let boxes = bp.parts.iter().filter_map(|p| content.placed_shape(p)).map(|s| {
         let (w, h) = s.dims();
-        (s.x, s.y, s.x + w as i32, s.y + h as i32)
+        let (x, y) = (i64::from(s.x), i64::from(s.y));
+        (x, y, x + i64::from(w), y + i64::from(h))
     });
     let b = boxes.reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)));
-    b.map_or((0, 0), |(x0, y0, x1, y1)| ((x1 - x0) as u32, (y1 - y0) as u32))
+    let side = |d: i64| u32::try_from(d).unwrap_or(u32::MAX);
+    b.map_or((0, 0), |(x0, y0, x1, y1)| (side(x1 - x0), side(y1 - y0)))
 }
 
 /// The id the working design is saved under and what it looked like then, to tell unsaved changes.
@@ -303,32 +312,56 @@ pub fn save(storage: &mut Storage, content: &Content, design: &PlayerDesign, slo
     Ok(id)
 }
 
-/// Writes the working design (with the id it is saved under and whether it has unsaved changes).
+/// Writes the working design (with the id it is saved under and whether it has unsaved changes). Its blueprint's
+/// `id` is that id (empty before the first save): the header's own id is the one it was opened with (a template's
+/// content id, say), which saving and exports never use.
 pub fn write_working(storage: &mut Storage, design: &PlayerDesign, slot: &DesignSlot, now: u64) -> Result<(), StorageError> {
-    let id = design.dock().header().id.clone();
-    let doc = WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } };
-    storage.write(WORKING, &doc, now)
+    storage.write(WORKING, &working_doc(design, slot), now)
 }
 
-/// The working design of the last session, opened in its frame, with its slot (unsaved changes stay unsaved).
-/// `None` on the first start.
-pub fn restore_working(storage: &Storage, content: &Content) -> Option<Result<(PlayerDesign, DesignSlot), String>> {
-    let doc = match storage.read::<WorkingDoc>(WORKING) {
-        Ok(Some(s)) => s.doc,
+/// The working design as it is written ([`write_working`]).
+pub fn working_doc(design: &PlayerDesign, slot: &DesignSlot) -> WorkingDoc {
+    let id = slot.id.clone().unwrap_or_default();
+    WorkingDoc { saved_as: slot.id.clone(), unsaved: slot.dirty(design), design: Blueprint { id, ..design.blueprint().clone() } }
+}
+
+/// A working design back from storage: the design, its slot, and a note when part of it was dropped.
+pub type Restored = (PlayerDesign, DesignSlot, Option<String>);
+
+/// The working design of the last session, opened in its frame, with its slot (unsaved changes stay unsaved) and a
+/// note when part of it was dropped. `None` on the first start.
+///
+/// The document is untrusted (a damaged browser storage entry, a hand-edited file): an id it is "saved as" that is
+/// no valid design id is dropped (the design comes back unsaved, and SAVE gives it a new id). A document that
+/// doesn't read or open (a newer build's, a damaged one, a design whose parts this content lacks) is copied aside
+/// first ([`WORKING_ASIDE`]), so the autosave of the design that replaces it doesn't destroy it; the error says so.
+pub fn restore_working(storage: &mut Storage, content: &Content) -> Option<Result<Restored, String>> {
+    let opened = match storage.read::<WorkingDoc>(WORKING) {
+        Ok(Some(s)) => PlayerDesign::open(content, &s.doc.design, s.doc.design.size).map(|d| (d, s.doc)).map_err(|e| open_error_text(&e)),
         Ok(None) => return None,
-        Err(e) => return Some(Err(e.to_string())),
+        Err(e) => Err(e.to_string()),
     };
-    let design = match PlayerDesign::open(content, &doc.design, doc.design.size) {
+    let (design, doc) = match opened {
         Ok(d) => d,
-        Err(e) => return Some(Err(open_error_text(&e))),
+        Err(why) => {
+            let kept = match storage.set_aside::<WorkingDoc>(WORKING, WORKING_ASIDE) {
+                Ok(()) => format!("it is kept as {}/{WORKING_ASIDE}", WorkingDoc::NAMESPACE),
+                Err(e) => format!("it could not be kept: {e}"),
+            };
+            return Some(Err(format!("{why}; {kept}")));
+        }
+    };
+    let (saved_as, note) = match doc.saved_as {
+        Some(id) if !valid_name(&id) || content.ships.contains(&id) => (None, Some(format!("its saved name {id:?} is no design id: it is unsaved now"))),
+        other => (other, None),
     };
     // Unsaved changes stay unsaved: compared with the saved version (as the editor shows it), if there is one.
-    let clean = if doc.unsaved {
-        doc.saved_as.as_deref().and_then(|id| open_saved(storage, content, id).ok()).map(|d| d.blueprint().clone())
-    } else {
-        Some(design.blueprint().clone())
+    let clean = match (&saved_as, doc.unsaved) {
+        (None, _) if note.is_some() => None,
+        (_, true) => saved_as.as_deref().and_then(|id| open_saved(storage, content, id).ok()).map(|d| d.blueprint().clone()),
+        (_, false) => Some(design.blueprint().clone()),
     };
-    Some(Ok((design, DesignSlot { id: doc.saved_as, clean })))
+    Some(Ok((design, DesignSlot { id: saved_as, clean }, note)))
 }
 
 /// Opens a saved design in the frame it was saved in.
@@ -364,7 +397,7 @@ pub fn open_template(content: &Content, ship: &str, names: &[String]) -> Result<
 
 /// An empty design in a frame, with a fresh name and the faction of `like` (the player's).
 pub fn new_design(content: &Content, frame: (u32, u32), like: &Blueprint, names: &[String]) -> Result<PlayerDesign, String> {
-    let name = fresh_name("New design", names);
+    let name = fresh_name(NEW_NAME, names);
     let bp = Blueprint {
         id: slug(&name),
         name,
@@ -398,7 +431,7 @@ pub fn rename(storage: &mut Storage, id: &str, name: &str, now: u64) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{MemoryBackend, valid_name};
+    use crate::storage::MemoryBackend;
 
     fn mem() -> Storage {
         Storage::new(MemoryBackend::default())
@@ -527,7 +560,7 @@ mod tests {
     fn the_working_design_comes_back_with_its_frame_and_slot() {
         let content = data::base_content();
         let mut storage = mem();
-        assert!(restore_working(&storage, &content).is_none());
+        assert!(restore_working(&mut storage, &content).is_none());
         // An unsaved new design in the cruiser frame.
         let like = content.ships.get("halvex_runner").unwrap();
         let mut design = new_design(&content, (40, 40), like, &[]).unwrap();
@@ -537,7 +570,7 @@ mod tests {
         let header = |p: &Problem| matches!(p.field.as_deref(), Some("id" | "name" | "summary" | "faction"));
         assert!(!data::validate_ship(&content, &design.export()).iter().any(header));
         write_working(&mut storage, &design, &slot, 10).unwrap();
-        let (back, back_slot) = restore_working(&storage, &content).unwrap().unwrap();
+        let (back, back_slot, _) = restore_working(&mut storage, &content).unwrap().unwrap();
         assert_eq!(back.frame(), (40, 40));
         assert_eq!(back.export().parts, design.export().parts);
         assert_eq!(back.blueprint().name, "New design");
@@ -546,22 +579,76 @@ mod tests {
         // An untouched copy comes back untouched (it is not saved when another design replaces it).
         let copy = open_template(&content, "sample_mid", &[]).unwrap();
         write_working(&mut storage, &copy, &DesignSlot::opened(None, &copy), 15).unwrap();
-        let (back, back_slot) = restore_working(&storage, &content).unwrap().unwrap();
+        let (back, back_slot, _) = restore_working(&mut storage, &content).unwrap().unwrap();
         assert!(!back_slot.dirty(&back));
-        assert_eq!(back.export(), Blueprint { source: Default::default(), ..copy.export() });
+        // (Not saved yet: no id; the template's content id stays behind.)
+        assert_eq!(back.export(), Blueprint { id: String::new(), source: Default::default(), ..copy.export() });
         // Saved, then changed: it comes back saved, with the change unsaved.
         save(&mut storage, &content, &design, &mut slot, 20).unwrap();
         design.edit(|d| d.paint((5, 4), "steel")).unwrap();
         write_working(&mut storage, &design, &slot, 30).unwrap();
-        let (back, back_slot) = restore_working(&storage, &content).unwrap().unwrap();
+        let (back, back_slot, _) = restore_working(&mut storage, &content).unwrap().unwrap();
         assert_eq!(back_slot.id.as_deref(), Some("new_design"));
         assert!(back_slot.dirty(&back));
         assert_eq!(back.export().id, "new_design");
-        // A design that no longer opens (its part left the content) says why.
+        // A design that no longer opens (its part left the content) says why, and is kept aside.
         let mut broken = design.blueprint().clone();
         broken.parts[0].part = "gone_part".into();
-        storage.write(WORKING, &WorkingDoc { saved_as: None, unsaved: true, design: broken }, 40).unwrap();
-        assert_eq!(restore_working(&storage, &content).unwrap().err().unwrap(), "unknown part \"gone_part\"");
+        let broken = WorkingDoc { saved_as: None, unsaved: true, design: broken };
+        storage.write(WORKING, &broken, 40).unwrap();
+        let e = restore_working(&mut storage, &content).unwrap().err().unwrap();
+        assert_eq!(e, "unknown part \"gone_part\"; it is kept as drydock/working-unread");
+        assert_eq!(storage.read::<WorkingDoc>(WORKING_ASIDE).unwrap().unwrap().doc.design.parts, broken.design.parts);
+    }
+
+    #[test]
+    fn a_working_design_from_a_newer_build_survives_the_autosave() {
+        let content = data::base_content();
+        let mut mem = MemoryBackend::default();
+        let newer = "// space-game: drydock, format 9, saved 5\n(whatever: 1)\n";
+        crate::storage::Backend::write(&mut mem, "drydock", WORKING, newer).unwrap();
+        let mut storage = Storage::new(mem);
+        let e = restore_working(&mut storage, &content).unwrap().err().unwrap();
+        assert!(e.contains("newer version") && e.ends_with("kept as drydock/working-unread"), "{e}");
+        // The starter's autosave writes the slot; the newer document is still there, unread.
+        let starter = PlayerDesign::starter(&content);
+        write_working(&mut storage, &starter, &DesignSlot::opened(None, &starter), 6).unwrap();
+        assert!(matches!(storage.read::<WorkingDoc>(WORKING_ASIDE), Err(StorageError::Newer { format: 9, .. })));
+        assert!(restore_working(&mut storage, &content).unwrap().is_ok());
+    }
+
+    #[test]
+    fn a_working_design_saved_under_no_valid_id_comes_back_unsaved() {
+        let content = data::base_content();
+        let mut storage = mem();
+        let design = open_template(&content, "halvex_runner", &[]).unwrap();
+        for bad in ["../../x", "Bad Id", "", "halvex_runner"] {
+            let doc = WorkingDoc { saved_as: Some(bad.into()), unsaved: false, design: design.blueprint().clone() };
+            storage.write(WORKING, &doc, 1).unwrap();
+            let (back, mut slot, note) = restore_working(&mut storage, &content).unwrap().unwrap();
+            assert_eq!(slot.id, None, "{bad}");
+            assert!(slot.dirty(&back) && note.is_some_and(|n| n.contains("no design id")), "{bad}");
+            // SAVE gives it a new id, so it is not stuck.
+            assert_eq!(save(&mut storage, &content, &back, &mut slot, 2).unwrap(), "halvex_runner_copy");
+            storage.delete::<DesignDoc>("halvex_runner_copy").unwrap();
+        }
+    }
+
+    #[test]
+    fn listing_survives_extreme_coordinates() {
+        let content = data::base_content();
+        let mut storage = mem();
+        // A hand-copied file with parts at the ends of the coordinate range.
+        let mut far = content.ships.get("halvex_runner").unwrap().clone();
+        far.parts[0].x = i32::MAX;
+        far.parts[1].x = i32::MIN;
+        far.parts[2].y = i32::MAX;
+        far.parts[3].y = i32::MIN;
+        assert_eq!(parts_size(&content, &far), (u32::MAX, u32::MAX));
+        far.parts.truncate(1);
+        assert_eq!(parts_size(&content, &far).0, content.placed_shape(&far.parts[0]).unwrap().dims().0);
+        storage.write("far", &DesignDoc(far), 1).unwrap();
+        assert_eq!(list_designs(&storage, &content).unwrap()[0].id, "far");
     }
 
     #[test]

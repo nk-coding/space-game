@@ -1,7 +1,6 @@
 //! The drydock: the ship editor of the client (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
-//! `docs/concept/boards/ui-mockups/desktop-drydock.png`). This is the foundation: the mode, the static view of
-//! the player's design, the layout with its widgets, and the test flight; editing, the live stats, saving and
-//! sharing (wave 2, 13 Oct 2026) are the modules below.
+//! `docs/concept/boards/ui-mockups/desktop-drydock.png`): the mode, the view of the player's design, the screen
+//! with its widgets, editing, the live stats, saving and sharing, and the test flight, in the modules below.
 //!
 //! * [`design`]: [`PlayerDesign`], the blueprint every flight of the player flies.
 //! * [`state`]: what the widgets show (`DrydockUi`, `DrydockStatus`, `DrydockStats`).
@@ -19,10 +18,10 @@
 //! * [`behaviors`]: the player's behaviors on the storage layer ([`behaviors::PlayerBehaviors`]), the behavior a
 //!   design names, checks with the player's behaviors known.
 //!
-//! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
-//! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
-//! write [`DrydockStats`] and [`DrydockStatus`]; read [`DrydockUi`] (tool, material, rotation, picked
-//! part) and [`DrydockCursor`] (the cell under the pointer). Nothing here needs to change for that.
+//! **For handlers** (the ring menu, later ones): read `MessageReader<DrydockAction>` in a system in
+//! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the
+//! report, the status and the palette follow); read [`DrydockUi`] (tool, material, rotation, picked part) and
+//! [`DrydockCursor`] (the cell under the pointer).
 
 pub mod actions;
 pub mod behaviors;
@@ -67,11 +66,8 @@ pub struct DrydockPlugin;
 
 impl Plugin for DrydockPlugin {
     fn build(&self, app: &mut App) {
-        let content = &app.world().resource::<GameContent>().0;
-        let design = PlayerDesign::starter(content);
-        let ui = DrydockUi::new(content, &design);
+        let design = PlayerDesign::starter(&app.world().resource::<GameContent>().0);
         app.insert_resource(design)
-            .insert_resource(ui)
             .insert_resource(DockCamera::new(0.0))
             .init_resource::<DrydockStatus>()
             .init_resource::<DrydockStats>()
@@ -79,7 +75,11 @@ impl Plugin for DrydockPlugin {
             .init_resource::<DrydockCursor>()
             .init_resource::<panels::Palette>()
             .add_message::<DrydockAction>()
-            .add_plugins((behaviors::BehaviorsPlugin, blueprints::BlueprintsPlugin))
+            // `BlueprintsPlugin` puts the last session's working design in (in its build, at once).
+            .add_plugins((behaviors::BehaviorsPlugin, blueprints::BlueprintsPlugin));
+        // The UI state starts from the design the drydock opens with (its armour), so after the restore.
+        let ui = DrydockUi::new(&app.world().resource::<GameContent>().0, app.world().resource::<PlayerDesign>());
+        app.insert_resource(ui)
             .configure_sets(
                 Update,
                 (DockSet::Input, DockSet::Apply, DockSet::Show)
@@ -91,7 +91,7 @@ impl Plugin for DrydockPlugin {
             .add_systems(Startup, (view::setup, overlays::setup.after(view::setup), panels::spawn.after(crate::flight_hud::spawn_hud)))
             .add_systems(PostStartup, (show, view::remember_start_zoom.run_if(in_state(AppMode::Drydock))))
             .add_systems(OnEnter(AppMode::Drydock), view::enter)
-            .add_systems(OnExit(AppMode::Drydock), view::exit)
+            .add_systems(OnExit(AppMode::Drydock), (view::exit, tools::leave))
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(
                 Update,

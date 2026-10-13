@@ -97,8 +97,10 @@ pub(super) fn update(
         return;
     }
     let content = &content.0;
+    // Only a report of this revision: another design's part numbers must not show on this one's parts.
+    let report = report.get().filter(|_| report.revision == Some(design.revision()));
     let want = match sel.part(&design) {
-        Some(i) => placed(content, &design, report.get(), i),
+        Some(i) => placed(content, &design, report, i),
         None => picked(content, &ui),
     };
     if *out != want {

@@ -87,14 +87,15 @@ pub fn rule_labels(program: &Program, nodes: &Table<BehaviorNode>) -> Vec<String
         .collect()
 }
 
-/// The panel for the running test; `None` outside tests.
-pub fn live_panel(watch: &BehaviorWatch, nodes: &Table<BehaviorNode>) -> Option<LivePanel> {
+/// The panel for the running test, with the rules' `labels` ([`rule_labels`] of its program); `None` outside tests.
+pub fn live_panel(watch: &BehaviorWatch, labels: &[String]) -> Option<LivePanel> {
     watch.mode?;
     if watch.program.rules.is_empty() {
         return None;
     }
-    let rows = rule_labels(&watch.program, nodes)
-        .into_iter()
+    let rows = labels
+        .iter()
+        .cloned()
         .enumerate()
         .map(|(i, label)| {
             let status = watch.rules.get(i).copied().filter(|_| watch.running).unwrap_or(RuleStatus::Skipped);
@@ -186,6 +187,7 @@ pub(super) fn update(
     mut labels: Query<(&RowLabel, &mut TextColor), (Without<RowWhy>, Without<LiveText>)>,
     mut whys: Query<(&RowWhy, &mut Text, &mut TextColor, &mut Node), (Without<RowLabel>, Without<LiveText>)>,
     mut built: Local<Option<(Option<String>, Vec<String>)>>,
+    mut rule_text: Local<(Program, Vec<String>)>,
     mut hud_was: Local<bool>,
 ) {
     let hud_changed = *hud_was != toggles.hud;
@@ -194,8 +196,12 @@ pub(super) fn update(
     if !watch.is_changed() && !hud_changed {
         return;
     }
+    // The rules' labels change only with the program (a think changes only the states).
+    if rule_text.0 != watch.program {
+        *rule_text = (watch.program.clone(), rule_labels(&watch.program, &content.0.behavior_nodes));
+    }
     // FlightUi roots are hidden when flight ends; this one shows itself again while it runs.
-    let panel = live_panel(&watch, &content.0.behavior_nodes);
+    let panel = live_panel(&watch, &rule_text.1);
     let want = if panel.is_some() && toggles.hud { Visibility::Inherited } else { Visibility::Hidden };
     let mut root = root.into_inner();
     if *root != want {
@@ -333,7 +339,7 @@ mod tests {
         w.active = Some(2);
         w.rules = vec![failed, failed, RuleStatus::Active, RuleStatus::Skipped, RuleStatus::Skipped, RuleStatus::NoSlot];
         w.why = vec!["`hull < 25%` is false (hull is 96%)".into(), "`shield_down` is false".into(), "active: orbit(90%)".into(), String::new(), String::new(), "inactive".into()];
-        let p = live_panel(&w, nodes).unwrap();
+        let p = live_panel(&w, &labels).unwrap();
         assert_eq!((p.title.as_str(), p.sub.as_str()), ("BEHAVIOR  ·  SKIRMISHER", "RULE 3 DECIDES"));
         let states: Vec<RowState> = p.rows.iter().map(|r| r.state).collect();
         assert_eq!(states, [RowState::Failed, RowState::Failed, RowState::Active, RowState::Waiting, RowState::Waiting, RowState::NoSlot]);
@@ -341,13 +347,13 @@ mod tests {
         assert_eq!(p.rows[2].why, None);
         // No rule matches: it holds. Not running yet: every rule waits. Outside a test: no panel.
         w.active = None;
-        assert_eq!(live_panel(&w, nodes).unwrap().sub, "NO RULE MATCHES  ·  IT HOLDS");
+        assert_eq!(live_panel(&w, &labels).unwrap().sub, "NO RULE MATCHES  ·  IT HOLDS");
         w.running = false;
         w.think = None;
-        let p = live_panel(&w, nodes).unwrap();
+        let p = live_panel(&w, &labels).unwrap();
         assert_eq!(p.sub, "STARTING");
         assert!(p.rows.iter().all(|r| r.state == RowState::Waiting && r.why.is_none()));
         w.mode = None;
-        assert!(live_panel(&w, nodes).is_none());
+        assert!(live_panel(&w, &labels).is_none());
     }
 }

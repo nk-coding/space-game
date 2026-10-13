@@ -27,10 +27,10 @@
 //!   rename, delete, new).
 //! * [`live`]: the live rule panel in the flight HUD while a test runs.
 //!
-//! **For handlers** (the range scenes): read `MessageReader<BehaviorAction>` in a system in
+//! **For handlers** (the ring menu, later ones): read `MessageReader<BehaviorAction>` in a system in
 //! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::edit`] (the graph and the text
 //! follow its `revision`), read [`BehaviorUi`] (the view, the selected node, the test mode) and
-//! [`EditorContext`] (the design's name and rule slots). Nothing in `screen.rs` needs to change for that.
+//! [`EditorContext`] (the design's name and rule slots).
 
 pub mod actions;
 pub mod controls;
@@ -53,6 +53,10 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::camera::{CameraRig, CameraSet};
+use crate::drydock::PlayerDesign;
+use crate::drydock::report::DrydockReport;
+use crate::sim_bridge::GameContent;
+use crate::tuning::Tuning;
 use crate::fx::FxFlush;
 use crate::mode::AppMode;
 use crate::ui_kit::{UiInputSet, UiStyleSet};
@@ -101,9 +105,6 @@ pub struct EditorContext {
     pub slots: u32,
 }
 
-/// The layout's size: 1280 × 720 logical px; larger windows scale the screen (as the drydock does).
-const MAX_UI_SCALE: f32 = 2.0;
-
 pub struct BehaviorPlugin;
 
 impl Plugin for BehaviorPlugin {
@@ -131,15 +132,31 @@ impl Plugin for BehaviorPlugin {
             )
             .add_systems(Startup, (screen::spawn, list::spawn, live::spawn).after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, show)
-            .add_systems(OnEnter(AppMode::Behavior), (saving::open, controls::measure_reach))
-            .add_systems(OnExit(AppMode::Behavior), (list::leave, saving::leave).chain())
+            // The design report (the drydock's, `drydock::report`) is brought up to date first: the reach and TEST IN
+            // RANGE read it.
+            .add_systems(OnEnter(AppMode::Behavior), (design_report, (saving::open, controls::measure_reach)).chain())
+            .add_systems(OnExit(AppMode::Behavior), (controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(
                 Update,
                 (
                     (actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes, reorder::drag_rows).in_set(BehaviorSet::Input),
-                    (fit_window, actions::apply, edit::apply, controls::drag_sliders, screen::scroll).chain().in_set(BehaviorSet::Apply),
+                    // One order: the UI state, then what replaces or saves the draft, then edits of the draft on the
+                    // screen (they see a replaced draft's new ids), then the autosave (it sees every edit of the frame,
+                    // so leaving the screen in the same frame keeps it).
+                    (
+                        fit_window,
+                        actions::apply,
+                        design_report,
+                        (saving::title, saving::apply, list::apply, list::scroll).chain(),
+                        edit::apply,
+                        controls::drag_sliders,
+                        screen::scroll,
+                        saving::autosave,
+                    )
+                        .chain()
+                        .in_set(BehaviorSet::Apply),
                     (
                         screen::show_view,
                         screen::rebuild_graph,
@@ -156,16 +173,7 @@ impl Plugin for BehaviorPlugin {
                         .in_set(BehaviorSet::Show),
                 ),
             )
-            .add_systems(
-                Update,
-                (
-                    (saving::title, saving::apply, list::apply, list::scroll, saving::autosave)
-                        .chain()
-                        .after(actions::apply)
-                        .in_set(BehaviorSet::Apply),
-                    (saving::sync_title, list::sync).in_set(BehaviorSet::Show),
-                ),
-            )
+            .add_systems(Update, (saving::sync_title, list::sync).in_set(BehaviorSet::Show))
             // The live rule panel in the flight HUD (TEST IN RANGE).
             .add_systems(Update, live::update.run_if(in_state(AppMode::Flight)))
             .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
@@ -173,6 +181,13 @@ impl Plugin for BehaviorPlugin {
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }
+}
+
+/// The drydock's design report (`drydock::report`), brought up to date on this screen too: the weapon reach and
+/// TEST IN RANGE read it. (A system of its own: the drydock's schedule orders its systems by `report::update`'s
+/// name, which must stay unique there.)
+fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, time: Res<Time<Real>>, out: ResMut<DrydockReport>) {
+    crate::drydock::report::update(design, content, tuning, time, out);
 }
 
 /// The screen is shown only in its mode.
@@ -188,7 +203,7 @@ fn show(mode: Res<State<AppMode>>, mut root: Query<&mut Visibility, With<screen:
 /// The window: the UI scale (min(w / 1280, h / 720), 1 to 2) and the camera rig's viewport, which places the
 /// icons and the dot grid (world sprites under the UI) on screen.
 fn fit_window(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
-    let s = (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE);
+    let s = crate::ui_kit::ui_scale_for(&window);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

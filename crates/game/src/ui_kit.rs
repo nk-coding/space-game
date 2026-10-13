@@ -15,6 +15,7 @@
 //! * Glyphs that Barlow lacks (arrows, the play triangle, the search lens) are vector icons (`ui_icons`).
 
 use bevy::input::ButtonState;
+use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use bevy::text::LetterSpacing;
@@ -403,6 +404,56 @@ pub fn spawn_brackets(parent: &mut ChildSpawnerCommands, arm: f32, width: f32, c
     }
 }
 
+/// The screens (the drydock, the BEHAVIOR screen) are laid out for 1280 × 720 logical px; larger windows scale
+/// them up to this.
+const MAX_UI_SCALE: f32 = 2.0;
+
+/// The UI scale for a window: min(w / 1280, h / 720), 1 to [`MAX_UI_SCALE`].
+pub fn ui_scale_for(window: &Window) -> f32 {
+    (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE)
+}
+
+/// Pixels of a touchpad's wheel that count as one line (one list row, 40 px of a scrolled area).
+pub const WHEEL_LINE_PX: f32 = 40.0;
+
+/// The wheel's turn this frame in list rows: whole rows, at least one per turn, signed (positive: up).
+pub fn wheel_rows(scroll: &AccumulatedMouseScroll) -> f32 {
+    let steps = match scroll.unit {
+        MouseScrollUnit::Line => scroll.delta.y,
+        MouseScrollUnit::Pixel => scroll.delta.y / WHEEL_LINE_PX,
+    };
+    steps.signum() * steps.abs().max(1.0).round()
+}
+
+/// A name edited in place (the drydock's design, the BEHAVIOR screen's behavior): a click on the name opens the
+/// field with it; when the field lets go of the keyboard, Esc keeps the old name, else a changed, non-empty one is
+/// the new name. Returns whether the field opened (`Some(true)`) or closed (`Some(false)`) this frame, and the new
+/// name. The field is written only when something happens (it is change-detected).
+pub fn name_in_place(
+    editing: &mut bool,
+    field: &mut impl std::ops::DerefMut<Target = TextField>,
+    clicked: bool,
+    escape: bool,
+    name: &str,
+) -> (Option<bool>, Option<String>) {
+    let mut out = (None, None);
+    if *editing && !field.focused {
+        *editing = false;
+        let new = field.value.trim();
+        if !escape && !new.is_empty() && new != name {
+            out.1 = Some(new.to_string());
+        }
+        out.0 = Some(false);
+    }
+    if clicked && !*editing {
+        *editing = true;
+        field.value = name.to_string();
+        field.focused = true;
+        out.0 = Some(true);
+    }
+    out
+}
+
 /// A one-line text field (search). The text lives in `value`; a press on the field focuses it, a press
 /// elsewhere or Esc / Enter releases it. The screen spawns the field node with a child [`TextFieldText`].
 #[derive(Component, Clone, Debug, Default)]
@@ -417,9 +468,11 @@ pub struct TextField {
 #[derive(Component)]
 pub struct TextFieldText;
 
-/// Typing into the focused field: printable characters, Backspace; Esc and Enter release it.
-fn type_into_fields(mut keys: MessageReader<KeyboardInput>, mut fields: Query<&mut TextField>) {
+/// Typing into the focused field: printable characters, Backspace; Esc and Enter release it. Characters typed with
+/// Ctrl or Cmd held are shortcuts (the web fills in their letter), not text.
+fn type_into_fields(mut keys: MessageReader<KeyboardInput>, held: Res<ButtonInput<KeyCode>>, mut fields: Query<&mut TextField>) {
     let mut field = fields.iter_mut().find(|f| f.focused);
+    let shortcut = held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     for k in keys.read() {
         let Some(f) = field.as_mut() else { continue };
         if k.state != ButtonState::Pressed {
@@ -430,6 +483,7 @@ fn type_into_fields(mut keys: MessageReader<KeyboardInput>, mut fields: Query<&m
                 f.value.pop();
             }
             Key::Escape | Key::Enter => f.focused = false,
+            _ if shortcut => {}
             _ => {
                 if let Some(t) = &k.text {
                     for c in t.chars().filter(|c| !c.is_control()) {
@@ -612,5 +666,67 @@ fn style_widgets(
             set_text(&mut text, &s);
             set_color(&mut color, col);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(code: KeyCode, text: &str) -> KeyboardInput {
+        KeyboardInput {
+            key_code: code,
+            logical_key: Key::Character(text.into()),
+            state: ButtonState::Pressed,
+            text: Some(text.into()),
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        }
+    }
+
+    #[test]
+    fn a_name_in_place_opens_renames_and_cancels() {
+        let mut editing = false;
+        let mut field = Box::new(TextField::default());
+        // A click opens the field with the name.
+        assert_eq!(name_in_place(&mut editing, &mut field, true, false, "Runner"), (Some(true), None));
+        assert!(editing && field.focused && field.value == "Runner");
+        // Typing, then the field lets go: renamed (trimmed); nothing while it has the keyboard.
+        field.value = "  Runner Mk II ".into();
+        assert_eq!(name_in_place(&mut editing, &mut field, false, false, "Runner"), (None, None));
+        field.focused = false;
+        assert_eq!(name_in_place(&mut editing, &mut field, false, false, "Runner"), (Some(false), Some("Runner Mk II".into())));
+        // Esc, an empty or the same name: closed, no new name.
+        for (value, escape) in [("Other", true), ("  ", false), ("Runner", false)] {
+            name_in_place(&mut editing, &mut field, true, false, "Runner");
+            field.value = value.into();
+            field.focused = false;
+            assert_eq!(name_in_place(&mut editing, &mut field, false, escape, "Runner"), (Some(false), None));
+        }
+    }
+
+    #[test]
+    fn the_ui_grows_with_the_window() {
+        let window = |w: f32, h: f32| Window { resolution: bevy::window::WindowResolution::new(w as u32, h as u32), ..default() };
+        assert_eq!(ui_scale_for(&window(1280.0, 720.0)), 1.0);
+        assert_eq!(ui_scale_for(&window(1920.0, 1080.0)), 1.5);
+        assert_eq!(ui_scale_for(&window(1000.0, 700.0)), 1.0);
+        assert_eq!(ui_scale_for(&window(5120.0, 2880.0)), MAX_UI_SCALE);
+    }
+
+    /// The web fills in the letter of Ctrl+S / Ctrl+Z; in a one-line field that is a shortcut, not text.
+    #[test]
+    fn fields_take_text_but_not_shortcut_letters() {
+        let mut world = World::new();
+        world.init_resource::<Messages<KeyboardInput>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        let field = world.spawn(TextField { focused: true, max_chars: 10, ..default() }).id();
+        let typing = world.register_system(type_into_fields);
+        world.write_message(key(KeyCode::KeyA, "a"));
+        world.run_system(typing).unwrap();
+        world.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ControlLeft);
+        world.write_message(key(KeyCode::KeyS, "s"));
+        world.run_system(typing).unwrap();
+        assert_eq!(world.get::<TextField>(field).unwrap().value, "a");
     }
 }

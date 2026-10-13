@@ -2,8 +2,8 @@
 //! [`ActionButton`] sends its action, the keyboard shortcuts send the same ones. Handlers read the message and
 //! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part),
 //! the test flight and the ring menu (home). Zoom is handled by the camera (`view.rs`), editing (undo / redo,
-//! mirror, bevel, rotate, the selected part) by `tools.rs`; saving, export and the blueprint list by
-//! `blueprints.rs`.
+//! mirror, bevel, rotate, the selected part) by `tools.rs`, saving, export and the blueprint list by
+//! `blueprints.rs`, the BEHAVIOR button by `behavior_ui`.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
 //! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
@@ -17,6 +17,8 @@ use crate::scene::{Launch, Scene};
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
 
+use super::PlayerDesign;
+use super::blueprints::Shelf;
 use super::state::{DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
 
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -74,23 +76,37 @@ pub(super) fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<(&Action
     }
 }
 
-/// The keyboard shortcuts.
+/// The keyboard shortcuts. While BLUEPRINTS or EXPORT covers the design only Ctrl+S acts (the pages handle Esc,
+/// Ctrl+C and Ctrl+V themselves): a key must not edit, select or fly a design nobody sees.
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     content: Res<GameContent>,
+    shelf: Res<Shelf>,
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<DrydockAction>,
 ) {
     if pointer.typing {
         return;
     }
+    let covered = shelf.is_open();
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     let mut send = |a: DrydockAction| {
         out.write(a);
     };
+    // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
+    // one frame come in no order).
+    if !covered && !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
+        for mut f in &mut search {
+            f.focused = true;
+        }
+        return;
+    }
     for key in keys.get_just_pressed() {
+        if covered && !(ctrl && *key == KeyCode::KeyS) {
+            continue;
+        }
         match (*key, ctrl, shift) {
             (KeyCode::KeyZ, true, false) => send(DrydockAction::Undo),
             (KeyCode::KeyZ, true, true) | (KeyCode::KeyY, true, _) => send(DrydockAction::Redo),
@@ -110,11 +126,6 @@ pub(super) fn shortcuts(
             (KeyCode::KeyT, ..) => send(DrydockAction::TestFly),
             (KeyCode::Equal | KeyCode::NumpadAdd, ..) => send(DrydockAction::ZoomIn),
             (KeyCode::Minus | KeyCode::NumpadSubtract, ..) => send(DrydockAction::ZoomOut),
-            (KeyCode::Slash | KeyCode::NumpadDivide, ..) => {
-                for mut f in &mut search {
-                    f.focused = true;
-                }
-            }
             (k, ..) => {
                 if let Some(n) = digit(k)
                     && let Some(m) = armor_materials(&content.0).nth(n)
@@ -147,6 +158,7 @@ pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut ui: ResMut<DrydockUi>,
     status: Res<DrydockStatus>,
+    design: Res<PlayerDesign>,
     mut scene: ResMut<Scene>,
     mut next: ResMut<NextState<AppMode>>,
 ) {
@@ -160,7 +172,9 @@ pub(super) fn apply(
                 ui.search.clear();
             }
             DrydockAction::PickPart(p) => ui.picked = Some(p.clone()),
-            DrydockAction::TestFly if status.grounded.is_none() => {
+            // Only on a status made for the design as it is now (one changed on the BEHAVIOR screen gets its status
+            // in the first drydock frame).
+            DrydockAction::TestFly if status.grounded.is_none() && status.revision == Some(design.revision()) => {
                 scene.launch = Some(Launch::TestFlight);
                 next.set(AppMode::Flight);
             }

@@ -10,7 +10,7 @@
 //!   the zlib-compressed payload: RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))`, the
 //!   content packs the design was made with (id, version), the exported ship and, when the ship names one of the
 //!   player's behaviors, that behavior (the content behavior format); content behaviors go by id only. zlib's
-//!   checksum catches damaged codes; the pack list explains missing content. About 900 characters for the Halvex
+//!   checksum catches damaged codes; the pack list explains missing content. About 950 characters for the Halvex
 //!   Runner. Format 1 (13 Oct 2026, no behavior) still imports.
 //! * **Import** ([`read`], [`check`]): a share code, or RON text (a `.ron` file, or pasted). A newer share format,
 //!   a damaged code, text that is no blueprint, and parts or materials this game doesn't have give a message
@@ -18,6 +18,11 @@
 //!   behavior the design doesn't carry is dropped. A carried behavior is handed back for the caller to save
 //!   (`PlayerBehaviors::import`) and link.
 //!   Web: a file input; desktop: drop a `.ron` file onto the window; everywhere: paste a code or RON text.
+//! * **Limits** (untrusted text): an import reads at most [`MAX_TEXT`] (1 MB) of text, a code carries at most
+//!   [`MAX_PACKED`] (64 KB) of compressed payload and unpacks to at most [`MAX_PAYLOAD`] (1 MB); the largest
+//!   design (a 64 × 64 frame full of armour: about 280 kB of RON, a code of about 15 000 characters) fits with
+//!   room to spare. Larger input is refused ([`ShareError::TooLarge`]) before it is decoded; a file before it is
+//!   read.
 
 use std::fmt;
 
@@ -32,8 +37,13 @@ use super::behaviors::{behavior_to_ron, parse_behavior};
 const TAG: &str = "SGD";
 /// The share format this build writes (it reads every format up to this one).
 pub const CODE_VERSION: u32 = 2;
-/// The largest payload a code may unpack to (a full 64 × 64 frame is about 250 kB of RON).
-const MAX_PAYLOAD: usize = 4 << 20;
+/// The longest text an import reads: a pasted code or blueprint text, a `.ron` file (the RON of a full 64 × 64
+/// frame is about 280 kB).
+pub const MAX_TEXT: usize = 1 << 20;
+/// The largest compressed payload a code may carry (its base64 decoded; a full 64 × 64 frame packs to about 11 kB).
+pub const MAX_PACKED: usize = 64 << 10;
+/// The largest payload a code may unpack to (zip bombs stop here).
+pub const MAX_PAYLOAD: usize = 1 << 20;
 /// The line that starts the behavior block of a `.ron` export.
 const BEHAVIOR_MARK: &str = "// behavior: ";
 
@@ -63,8 +73,10 @@ pub enum ShareError {
     NotADesign,
     /// A share code of a newer format.
     Newer(u32),
-    /// The code is damaged or incomplete (not base64url, not zlib, wrong checksum, too large).
+    /// The code is damaged or incomplete (not base64url, not zlib, wrong checksum).
     Damaged,
+    /// Longer than any design ([`MAX_TEXT`] of text, [`MAX_PACKED`] packed, [`MAX_PAYLOAD`] unpacked).
+    TooLarge,
     /// The design inside doesn't read.
     Unreadable(String),
     /// The design uses parts or materials this game doesn't have.
@@ -77,6 +89,7 @@ impl fmt::Display for ShareError {
             ShareError::NotADesign => f.write_str("that is neither a share code nor a blueprint"),
             ShareError::Newer(v) => write!(f, "made by a newer version of the game (share format {v}; this one reads {CODE_VERSION})"),
             ShareError::Damaged => f.write_str("the code is damaged or incomplete"),
+            ShareError::TooLarge => write!(f, "that is too large for a design (over {} kB)", MAX_TEXT >> 10),
             ShareError::Unreadable(why) => write!(f, "the design doesn't read: {why}"),
             ShareError::Missing { what, packs } => write!(f, "it uses {} this game doesn't have{packs}", what.join(", ")),
         }
@@ -125,8 +138,12 @@ fn behavior_block(text: &str) -> Option<String> {
     Some(body.join("\n"))
 }
 
-/// Reads a share code or blueprint RON text (whitespace around it, and inside a code, is ignored).
+/// Reads a share code or blueprint RON text (whitespace around it, and inside a code, is ignored). Text longer
+/// than [`MAX_TEXT`] is refused unread.
 pub fn read(text: &str) -> Result<Shared, ShareError> {
+    if text.len() > MAX_TEXT {
+        return Err(ShareError::TooLarge);
+    }
     let text = text.trim();
     if text.get(..TAG.len()).is_some_and(|t| t.eq_ignore_ascii_case(TAG)) {
         return decode(&text[TAG.len()..]);
@@ -153,8 +170,16 @@ fn decode(rest: &str) -> Result<Shared, ShareError> {
         return Err(ShareError::Damaged);
     }
     let data: String = data.chars().filter(|c| !c.is_whitespace()).collect();
-    let packed = URL_SAFE_NO_PAD.decode(data.trim_end_matches('=')).map_err(|_| ShareError::Damaged)?;
-    let bytes = miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(&packed, MAX_PAYLOAD).map_err(|_| ShareError::Damaged)?;
+    let data = data.trim_end_matches('=');
+    // Four base64 characters carry three bytes.
+    if data.len() / 4 * 3 > MAX_PACKED {
+        return Err(ShareError::TooLarge);
+    }
+    let packed = URL_SAFE_NO_PAD.decode(data).map_err(|_| ShareError::Damaged)?;
+    let bytes = miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(&packed, MAX_PAYLOAD).map_err(|e| match e.status {
+        miniz_oxide::inflate::TINFLStatus::HasMoreOutput => ShareError::TooLarge,
+        _ => ShareError::Damaged,
+    })?;
     let text = String::from_utf8(bytes).map_err(|_| ShareError::Damaged)?;
     let payload: Payload = data::ron_options().from_str(&text).map_err(|e| ShareError::Unreadable(e.to_string()))?;
     Ok(Shared { ship: payload.ship, packs: payload.packs, behavior: payload.behavior })
@@ -214,15 +239,25 @@ fn pack_note(content: &Content, packs: &[(String, String)]) -> String {
     if differ.is_empty() { String::new() } else { format!(" (made with {})", differ.join(", ")) }
 }
 
+/// An export's file name must be a design id and `.ron` (`<id>.ron`: no path, nothing outside `exports/`).
+fn export_name(file_name: &str) -> Result<&str, String> {
+    match file_name.strip_suffix(".ron") {
+        Some(id) if crate::storage::valid_name(id) => Ok(file_name),
+        _ => Err(format!("not a design file name: {file_name:?}")),
+    }
+}
+
 /// Exports go to a download on the web.
 #[cfg(target_arch = "wasm32")]
 pub fn write_export(file_name: &str, text: &str) -> Result<String, String> {
+    let file_name = export_name(file_name)?;
     web::download(file_name, text).map(|()| format!("downloaded {file_name}"))
 }
 
 /// Exports go to `<data dir>/exports/` on desktop.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_export(file_name: &str, text: &str) -> Result<String, String> {
+    let file_name = export_name(file_name)?;
     let dir = crate::storage::data_dir().ok_or("no user data directory on this platform")?.join("exports");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(file_name);
@@ -247,9 +282,7 @@ mod web {
         static PICKED: RefCell<Vec<(String, Result<String, String>)>> = const { RefCell::new(Vec::new()) };
     }
 
-    fn js(e: wasm_bindgen::JsValue) -> String {
-        e.as_string().unwrap_or_else(|| format!("{e:?}"))
-    }
+    use crate::clipboard::js_text as js;
 
     /// A download of `text` as `file_name` (a Blob behind a temporary link).
     pub fn download(file_name: &str, text: &str) -> Result<(), String> {
@@ -295,6 +328,10 @@ mod web {
             let Some(input) = e.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) else { return };
             let Some(file) = input.files().and_then(|f| f.get(0)) else { return };
             let name = file.name();
+            if file.size() > super::MAX_TEXT as f64 {
+                PICKED.with_borrow_mut(|p| p.push((name, Err(super::ShareError::TooLarge.to_string()))));
+                return;
+            }
             let Ok(reader) = web_sys::FileReader::new() else { return };
             let on_load = Closure::<dyn FnMut(web_sys::Event)>::once(move |e: web_sys::Event| {
                 let text = e
@@ -417,6 +454,38 @@ mod tests {
         assert!(matches!(read(&junk), Err(ShareError::Unreadable(_))));
         assert_eq!(read("hello"), Err(ShareError::NotADesign));
         assert_eq!(read(""), Err(ShareError::NotADesign));
+    }
+
+    #[test]
+    fn imports_are_bounded_and_the_largest_design_fits() {
+        let content = data::base_content();
+        // The largest design: a 64 × 64 frame full of armour blocks.
+        let block = content.ships.get("halvex_runner").unwrap().parts.iter().find(|p| p.part == "armor_block").unwrap().clone();
+        let parts = (0..64 * 64).map(|k| data::Placement { x: k % 64, y: k / 64, ..block.clone() }).collect();
+        let full = Blueprint { parts, size: (64, 64), ..runner(&content) };
+        let ron = data::blueprint_to_ron(&full);
+        let code = encode(&content, &full, None);
+        assert!(ron.len() < MAX_TEXT / 2 && code.len() / 4 * 3 < MAX_PACKED / 2, "{} bytes of RON, a code of {}", ron.len(), code.len());
+        assert_eq!(read(&code).unwrap().ship.parts.len(), 64 * 64);
+        assert_eq!(read(&ron).unwrap().ship.parts.len(), 64 * 64);
+        // Longer text is refused unread, a code with too much payload before it is decoded.
+        let long = format!("({})", " ".repeat(MAX_TEXT));
+        assert_eq!(read(&long), Err(ShareError::TooLarge));
+        assert!(ShareError::TooLarge.to_string().contains("too large"));
+        let packed = format!("SGD2:{}", "A".repeat(MAX_PACKED / 3 * 4 + 8));
+        assert_eq!(read(&packed), Err(ShareError::TooLarge));
+        // A small code that unpacks to more than any design (a zip bomb).
+        let bomb = miniz_oxide::deflate::compress_to_vec_zlib(&vec![b' '; MAX_PAYLOAD + 1], 10);
+        assert!(bomb.len() < 8 << 10);
+        assert_eq!(read(&format!("SGD2:{}", URL_SAFE_NO_PAD.encode(bomb))), Err(ShareError::TooLarge));
+    }
+
+    #[test]
+    fn export_file_names_stay_in_the_exports_folder() {
+        assert_eq!(export_name("halvex_runner_copy.ron"), Ok("halvex_runner_copy.ron"));
+        for bad in ["../x.ron", "/etc/x.ron", "a/b.ron", "Bad Id.ron", "x.txt", ".ron", "x"] {
+            assert!(export_name(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
