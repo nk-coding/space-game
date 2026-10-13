@@ -386,14 +386,14 @@ fn opens_after_must_not_loop_and_every_voyage_must_open_somehow() {
 fn base_voyages_form_the_slice_chain() {
     let c = content();
     let ids: Vec<&str> = c.voyages.iter().map(|v| v.id.as_str()).collect();
-    // Load order is file order (sorted paths).
+    // One file in chain order: the voyage map's order.
     assert_eq!(
         ids,
         [
-            "corran_reach",
+            "yard_approach",
             "halvex_drift",
-            "wardens_gate",
-            "yard_approach"
+            "corran_reach",
+            "wardens_gate"
         ]
     );
     // The start opens the first; each other opens after the one before it (GDR-0062).
