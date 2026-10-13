@@ -13,6 +13,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 | `docs/spike-plan.md` | The original first-work plan (physics benchmark → core sim → web/feel → load test → cross-device hash). |
 | `docs/style-guide.md` | Ship style 2a and the UI look, exact colours, rendering suggestions. |
 | `docs/roadmap.md` | Current phase plan and status (kept up to date by the lead session). |
+| `docs/plans/` | Proposals for future phases (first playable loop, salvage and research, galaxy, Android, co-op and arena); not decisions. |
 | `docs/content-model.md` | How game content is organised so both the game and the future wiki use it. |
 | `docs/sim.md`, `docs/client.md`, `docs/behavior-format.md`, `docs/drydock.md` | How the simulation, the Bevy client, the behavior rule format and the drydock (ship editor) work. |
 | `docs/results/` | Benchmark and spike results (the physics benchmark harness itself lives in the separate local repo `../space-game-physics-bench`). |
@@ -23,9 +24,11 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Crates (planned architecture)
 
-- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry. No Bevy. Used by sim, game and tools (wiki).
+- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, and the pure editing models `data::edit` (drydock) and `data::behavior_edit` (behavior editor). No Bevy. Used by sim, game and tools (wiki).
 - `sim`: engine-free simulation: ships, parts, physics (Rapier2D with `enhanced-determinism`, ADR-0014), heat, power, damage, weapons, flight computer, behaviors + Rhai. Fixed 30 Hz, deterministic. No Bevy, no graphics.
 - `game`: the Bevy client (web first, later desktop and Android). Rendering at 60 fps with interpolation, UI, input.
+- `art`: style tokens (embedded), effect textures and the runtime SVG rasteriser. No Bevy.
+- `content-tool`: CLI over `data` (validate, export-json, list).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
 - Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023), `arena` (headless fights, evolution, balance), a wiki generator built on `data`.
 
@@ -47,7 +50,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 ## Current priorities (decided by Niklas, 11 Oct 2026)
 
 - **Web first, for development.** The web build (wasm in the host browser) is how Niklas develops and looks at the game; it is **not an end-user platform** (clarified 11 Oct 2026). End users get Android and desktop. So: wasm size doesn't matter (don't optimise for it); browser performance matters only for comfortable development; native performance weighs most. Android comes later; phone measurements from the spike plan are deferred until then. Keep everything Android-compatible (no desktop-only APIs).
-- **Minimal content** at the start: a few materials, the ~16 drydock parts, a couple of ships. Build the systems, not the content.
+- **Minimal content** at the start: a few materials, the ~20 drydock parts, a couple of ships. Build the systems, not the content.
 - **Wiki-ready content:** a wiki will come later. All content must be organised so the same files feed the game and the wiki (stable ids, text in data, stat labels/units in data, optional long-form wiki prose next to the data). See `docs/content-model.md`.
 
 ## Development environment (the VM)
