@@ -24,6 +24,8 @@ const OPEN_R: f32 = 8.5;
 const SELECT_R: f32 = 19.0;
 /// How far a route stops short of the markers it joins.
 const ROUTE_GAP: f32 = 15.0;
+/// How far the panel's backing runs on past the stage (a much wider or taller window than the stage).
+const PANEL_RUN: f32 = 6000.0;
 /// Stars on the map.
 const STARS: usize = 150;
 
@@ -245,7 +247,7 @@ pub fn build(geo: &Geometry, look: &Look, style: &Style, white: &Region, soft: &
     // The panel's backing (over the band's far arcs, which show through faintly) and its edge; it runs on past the
     // stage for wider windows.
     let back = mix(style.background.outer(), ui.number, 0.02);
-    pen.rect(Vec2::new(PANEL_X, clip.min.y), Vec2::new(clip.max.x, clip.max.y), vcol(back, 0.62));
+    pen.rect(Vec2::new(PANEL_X, -PANEL_RUN), Vec2::new(STAGE.x + PANEL_RUN, STAGE.y + PANEL_RUN), vcol(back, 0.62));
     pen.line(Vec2::new(PANEL_X, 24.0), Vec2::new(PANEL_X, STAGE.y - 24.0), 0.5, vcol(ui.label, 0.22));
     pen.m.into_mesh()
 }

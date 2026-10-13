@@ -553,7 +553,8 @@ fn sync_panel(
     mut texts: Query<(&MapText, &mut Text, &mut TextColor)>,
     mut nodes: Query<(&MapNode, &mut Node, Option<&mut BackgroundColor>, Option<&mut BorderColor>, Option<&mut UiTransform>)>,
     mut icons: Query<(&ShipIcon, &mut UiIcon)>,
-    mut pill: Single<&mut Pill, With<MapButton>>,
+    mut glyphs: Query<(&ChildOf, &mut UiIcon), Without<ShipIcon>>,
+    pill: Single<(Entity, &mut Pill), With<MapButton>>,
 ) {
     let f = &fleet;
     if !(map.is_changed() || f.career.is_changed() || f.granted.is_changed() || f.design.is_changed() || f.escorts.is_changed()) {
@@ -690,9 +691,17 @@ fn sync_panel(
         }
     }
     let disabled = blocker.is_some();
+    let (pill_entity, mut pill) = pill.into_inner();
     if pill.disabled != disabled {
         pill.disabled = disabled;
         pill.primary = !disabled;
+    }
+    // SET COURSE's play glyph dims with it.
+    let play = UiIcon::Glyph { glyph: Glyph::Play, color: if disabled { ui.dim } else { ui.teal } };
+    for (parent, mut icon) in &mut glyphs {
+        if parent.parent() == pill_entity && *icon != play {
+            *icon = play.clone();
+        }
     }
 }
 
