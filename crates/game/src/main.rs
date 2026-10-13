@@ -17,7 +17,8 @@
 //!   paste of UI text, per platform.
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame.
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes).
-//! - `shield`: shield bubbles (one batched mesh, procedural shader `shield.wesl`).
+//! - `shield`: shield bubbles (one batched mesh, each quad at its ship's depth against the opaque ship tiles,
+//!   procedural shader `shield.wesl`).
 //! - `controls`, `camera`: keyboard / mouse / touch input, follow / frame / free camera.
 //! - `flight_hud`, `fleet_bar`, `hud`, `tuning`: flight HUD, fleet bar (the player's vessels), debug overlay and
 //!   toggles, live tuning panel (egui).

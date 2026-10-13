@@ -1,15 +1,20 @@
 //! Style 2a rendering of sim pieces. One entity hierarchy per live piece (one rigid body in the sim):
 //!
 //! ```text
-//! piece root  Transform (= piece.render_pose(alpha) every frame), PieceView
-//! └── body     Mesh2d: aura, barrels, seams, tiles, icon glows, icons, hull halo + line, muzzle glows, nav lights
+//! piece root  Transform (= piece.render_pose(alpha) every frame, z = its draw layer), PieceView
+//! ├── body     Mesh2d, alpha-blended: aura, barrels, [seams, tiles,] icon glows, icons, hull halo + line, muzzle
+//! │            glows, nav lights
+//! └── tiles    Mesh2d, opaque (lit pieces only): seams and tiles, writing depth
 //! ```
 //!
 //! Plumes, trails, beams, tracers and sparks are immediate-mode FX sprites (`fx.rs`); shield bubbles are one
 //! batched mesh for all ships (`shield.rs`), placed from the piece views. The body mesh has five
 //! variants (style 2a lit/dark, without pre-blurred glow lit/dark, debug shapes), built lazily on first use;
-//! toggles and power changes swap the handle. Local coordinates are the sim's piece frame
-//! (`blueprint (x, y) → (x − origin.x, origin.y − y)`), so the transform is the sim pose as is.
+//! toggles and power changes swap the handle. A lit piece's tiles (alpha 1) are a mesh of their own in the
+//! opaque pass, so they write depth: every shield bubble quad sits just above its own piece's layer
+//! ([`BUBBLE_DZ`]) and is hidden under the tiles of every piece above it, although all bubbles are one draw
+//! after every ship. Dark pieces (tiles at half alpha) keep their tiles in the body. Local coordinates are the
+//! sim's piece frame (`blueprint (x, y) → (x − origin.x, origin.y − y)`), so the transform is the sim pose as is.
 
 use bevy::prelude::*;
 use sim::{PieceId, ShipId};
@@ -90,9 +95,11 @@ pub struct PieceView {
     meshes: [Option<Handle<Mesh>>; 5],
     variant: usize,
     pub body: Entity,
+    /// The opaque tiles (spawned when the piece is first drawn lit).
+    tiles: Option<Entity>,
     /// Hull glow on (the piece is active).
     pub lit: bool,
-    /// The piece's own draw layer (z 10..89); the focused vessel draws at [`Z_FOCUS`] instead.
+    /// The piece's own draw layer ([`draw_layer`]); the focused vessel draws at [`Z_FOCUS`] instead.
     pub z: f32,
     pub enemy: bool,
     pub glow: Color,
@@ -107,8 +114,22 @@ pub struct PieceView {
 #[derive(Component)]
 pub struct PieceBody;
 
-/// The focused vessel's piece draws above every other ship (their layers are z 10..89).
+#[derive(Component)]
+pub struct PieceTiles;
+
+/// The focused vessel's piece draws above every other ship (their layers are z 10..90).
 pub const Z_FOCUS: f32 = 100.0;
+/// A shield bubble's depth above its own piece: under the next piece up (layers are 1/8 apart, `shield.rs`).
+pub const BUBBLE_DZ: f32 = 1.0 / 16.0;
+/// Aura and barrels lie this far below their piece's tiles in depth: under its own tiles, over every lower piece.
+const UNDER_DZ: f32 = -1.0 / 64.0;
+
+/// A piece's draw layer (z): its ship's layer, `10 + ship id mod 80`, plus an eighth per piece id mod 8. Fixed
+/// for the ship's whole life, so a view rebuilt when a part dies keeps its place among overlapping ships, and a
+/// split-off piece's layer follows from its ids (a piece that becomes a vessel takes its new ship's layer).
+pub fn draw_layer(ship: ShipId, piece: PieceId) -> f32 {
+    10.0 + (ship.0 % 80) as f32 + (piece.0 % 8) as f32 / 8.0
+}
 
 fn variant(toggles: &RenderToggles, lit: bool) -> usize {
     match (toggles.debug_shapes, toggles.glow_sprites, lit) {
@@ -120,14 +141,25 @@ fn variant(toggles: &RenderToggles, lit: bool) -> usize {
     }
 }
 
+/// The lit variants draw their tiles in the opaque tiles mesh.
+fn opaque_tiles(k: usize) -> bool {
+    k == 0 || k == 2
+}
+
 fn build_variant(v: &ShipVisual, k: usize, atlas: &Atlas, style: &Style) -> Mesh {
     match k {
-        0 => build_body(v, atlas, style, true, true),
-        1 => build_body(v, atlas, style, true, false),
-        2 => build_body(v, atlas, style, false, true),
-        3 => build_body(v, atlas, style, false, false),
+        0 => body_mesh(v, atlas, style, true, true, Layers::Overlays),
+        1 => body_mesh(v, atlas, style, true, false, Layers::All),
+        2 => body_mesh(v, atlas, style, false, true, Layers::Overlays),
+        3 => body_mesh(v, atlas, style, false, false, Layers::All),
         _ => build_debug(v, atlas),
     }
+}
+
+/// The opaque tiles of a lit piece, a child of its root.
+fn spawn_tiles(commands: &mut Commands, meshes: &mut Assets<Mesh>, v: &ShipVisual, atlas: &Atlas, style: &Style) -> Entity {
+    let mesh = meshes.add(body_mesh(v, atlas, style, false, true, Layers::Tiles));
+    commands.spawn((PieceTiles, Mesh2d(mesh), MeshMaterial2d(atlas.opaque.clone()), Transform::default())).id()
 }
 
 /// Spawns the view of one sim piece.
@@ -162,6 +194,8 @@ pub fn spawn_piece_view(
     let body = commands
         .spawn((PieceBody, Mesh2d(mesh), MeshMaterial2d(atlas.material.clone()), Transform::default()))
         .id();
+    let tiles = opaque_tiles(k).then(|| spawn_tiles(commands, meshes, &visual, atlas, style));
+    commands.entity(root).add_children(tiles.as_slice());
 
     let lc = visual.to_local((visual.bounds_min + visual.bounds_max) / 2.0);
     let radius = (visual.bounds_max - visual.bounds_min).length() / 2.0;
@@ -175,6 +209,7 @@ pub fn spawn_piece_view(
         meshes: mesh_slots,
         variant: k,
         body,
+        tiles,
         lit,
         z: layer,
         emit: Vec::new(),
@@ -184,9 +219,11 @@ pub fn spawn_piece_view(
     root
 }
 
-/// Every frame: pose from the sim (interpolated), lit/dark and toggle mesh swaps.
+/// Every frame: pose from the sim (interpolated), lit/dark and toggle mesh swaps (the opaque tiles show only
+/// with a lit variant).
 #[allow(clippy::too_many_arguments)]
 pub fn sync_piece_views(
+    mut commands: Commands,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
     fixed: Res<Time<Fixed>>,
@@ -194,11 +231,12 @@ pub fn sync_piece_views(
     atlas: Res<Atlas>,
     style: Res<Style>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut views: Query<(&mut PieceView, &mut Transform)>,
+    mut views: Query<(Entity, &mut PieceView, &mut Transform)>,
     mut bodies: Query<&mut Mesh2d, With<PieceBody>>,
+    mut tiles: Query<&mut Visibility, With<PieceTiles>>,
 ) {
     let alpha = fixed.overstep_fraction().clamp(0.0, 1.0);
-    for (mut view, mut tf) in &mut views {
+    for (root, mut view, mut tf) in &mut views {
         let Some(ship) = world.sim.ship(view.ship) else { continue };
         let Some(piece) = ship.piece(view.piece) else { continue };
         let (pos, angle) = piece.render_pose(alpha);
@@ -217,6 +255,19 @@ pub fn sync_piece_views(
                 && m.0 != h
             {
                 m.0 = h;
+            }
+            match view.tiles {
+                Some(e) => {
+                    if let Ok(mut vis) = tiles.get_mut(e) {
+                        vis.set_if_neq(if opaque_tiles(k) { Visibility::Inherited } else { Visibility::Hidden });
+                    }
+                }
+                None if opaque_tiles(k) => {
+                    let e = spawn_tiles(&mut commands, &mut meshes, &view.visual, &atlas, &style);
+                    commands.entity(root).add_child(e);
+                    view.tiles = Some(e);
+                }
+                None => {}
             }
             view.variant = k;
             view.lit = lit;
@@ -243,20 +294,38 @@ fn angle_up_to(d: Vec2) -> f32 {
     (-d.x).atan2(d.y)
 }
 
+/// Which layers of the body a mesh holds.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layers {
+    All,
+    /// Seams and tiles only (the opaque mesh of a lit piece).
+    Tiles,
+    /// Everything but the seams and tiles; what draws under them sits [`UNDER_DZ`] deeper.
+    Overlays,
+}
+
 /// The body in style 2a, bottom to top. `glow` adds the pre-blurred layers (icon glows, hull halo, soft muzzle
 /// glows); `lit` = an active piece (hull edge, full brightness). Dark pieces (salvage, unpowered) are dimmed
 /// and lose the hull glow. Also draws the drydock's ship and the part icons in its UI (`ui_icons`), so every
 /// tile looks the same everywhere.
 pub(crate) fn build_body(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: bool, lit: bool) -> Mesh {
+    body_mesh(v, atlas, style, glow, lit, Layers::All)
+}
+
+fn body_mesh(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: bool, lit: bool, layers: Layers) -> Mesh {
     let to_local = |p: Vec2| v.to_local(p);
     let dir_local = |d: Vec2| Vec2::new(d.x, -d.y);
     let white = atlas.region("fx/white").uv_center();
     let (tile_a, icon_a) = if lit { (1.0, 1.0) } else { (0.5, 0.4) };
     let mut m = MeshBuf::default();
+    let overlays = layers != Layers::Tiles;
+    if layers == Layers::Overlays {
+        m.set_z(UNDER_DZ);
+    }
 
     // 0. Aura behind lit pieces: centred on the bounding box, radius 0.85 x the larger side (drawAura in the
     //    concept board).
-    if glow && lit && v.aura {
+    if overlays && glow && lit && v.aura {
         let c = (to_local(v.bounds_min) + to_local(v.bounds_max)) / 2.0;
         let side = (v.bounds_max - v.bounds_min).max_element();
         let (r, a) = if v.enemy { (atlas.region("fx/aura_linear"), 0.12) } else { (atlas.region("fx/aura"), style.aura_opacity) };
@@ -266,7 +335,7 @@ pub(crate) fn build_body(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: boo
 
     // 1. Gun barrels, under the tiles.
     let barrel = atlas.region("fx/barrel");
-    for p in &v.parts {
+    for p in v.parts.iter().filter(|_| overlays) {
         let Some(g) = p.gun else { continue };
         let Some((width, protrude)) = g.barrel else { continue };
         if !g.clear {
@@ -279,12 +348,16 @@ pub(crate) fn build_body(v: &ShipVisual, atlas: &Atlas, style: &Style, glow: boo
     }
 
     // 2. Tiles: the outline in the seam colour, then the fill inset by the seam width.
-    for p in &v.parts {
+    m.set_z(0.0);
+    for p in v.parts.iter().filter(|_| layers != Layers::Overlays) {
         let mut poly: Vec<Vec2> = p.polygon.iter().map(|&q| to_local(q)).collect();
         ensure_ccw(&mut poly);
         m.polygon(&poly, white, vcol(style.seam, tile_a));
         let inner = inset_convex(&poly, style.seam_width);
         m.polygon(&inner, white, vcol(p.fill, tile_a));
+    }
+    if !overlays {
+        return m.into_mesh();
     }
 
     // 3. Icon glows (lit only), then the icons.
@@ -377,4 +450,29 @@ fn build_debug(v: &ShipVisual, atlas: &Atlas) -> Mesh {
         m.polygon(&inner, white, vcol(p.debug_color, 1.0));
     }
     m.into_mesh()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Draw layers are a function of the ids alone, so a view rebuilt after a part dies keeps its place (review
+    /// finding 3), and the depths line up: a bubble lies over its own piece's tiles and under every piece of a
+    /// higher layer, aura and barrels included; trails stay under every ship, the focus above every layer.
+    #[test]
+    fn draw_layers_are_stable_and_keep_bubbles_between_ships() {
+        let mut layers: Vec<f32> =
+            (0..80).flat_map(|s| (0..8).map(move |p| draw_layer(ShipId(s), PieceId(p)))).collect();
+        layers.sort_by(f32::total_cmp);
+        layers.dedup();
+        assert_eq!(layers.len(), 80 * 8, "80 ships x 8 pieces, all apart");
+        for w in layers.windows(2) {
+            let (below, above) = (w[0], w[1]);
+            assert!(below + BUBBLE_DZ < above + UNDER_DZ, "{below} {above}");
+        }
+        assert!(layers[0] + UNDER_DZ > crate::fx::Z_TRAILS);
+        assert!(layers[layers.len() - 1] + BUBBLE_DZ < Z_FOCUS);
+        // Ids wrap after 80 ships and 8 pieces: the layer never leaves its range.
+        assert_eq!(draw_layer(ShipId(85), PieceId(9)), draw_layer(ShipId(5), PieceId(1)));
+    }
 }
