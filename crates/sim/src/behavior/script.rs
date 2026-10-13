@@ -41,7 +41,8 @@ pub struct ShipView {
     pub heat: f32,
     pub power: f32,
     pub speed: f32,
-    /// Weapon reach (m): the range of the longest clear gun.
+    /// Weapon reach (m): the range of the longest working gun (clear, alive, not overheated, not idle). For
+    /// `me` the reach `%` distances resolve against: `tuning::DEFAULT_REACH` without working guns.
     pub reach: f32,
     pub x: f32,
     pub y: f32,

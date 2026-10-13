@@ -51,6 +51,21 @@ impl Maneuver {
         }
     }
 
+    /// No NaN or infinite number in it (commands are checked at the boundary, `Sim::command`).
+    pub(crate) fn is_finite(&self) -> bool {
+        match *self {
+            Maneuver::Brake => true,
+            Maneuver::Hold { at } => at.is_finite(),
+            Maneuver::FaceTarget { target, .. } | Maneuver::Flee { from: target } => {
+                target.is_finite()
+            }
+            Maneuver::Approach { target, range, .. } | Maneuver::KeepRange { target, range, .. } => {
+                target.is_finite() && range.is_finite()
+            }
+            Maneuver::Orbit { target, radius, .. } => target.is_finite() && radius.is_finite(),
+        }
+    }
+
     /// This tick's goal. An unresolvable target (destroyed ship) brakes.
     pub fn goal(&self, kin: &Kin, ships: &[Ship], tuning: &FlightTuning) -> FlightGoal {
         let ts = self.target().and_then(|t| resolve_target(ships, &t));
