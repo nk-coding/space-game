@@ -322,8 +322,8 @@ fn rebuild_escorts(
     }
 }
 
-/// Cranes slide to the mouth as the yard clears for the drydock (and back), carriages ride their cranes, hoist
-/// lines reach for the ship, clamps retract into the walls, drones circle the ship.
+/// Cranes slide to the mouth as the yard clears for the drydock (and back), carriages ride their cranes (up onto
+/// the arms when parked), hoist lines reach for the ship, clamps retract into the walls, drones circle the ship.
 #[allow(clippy::type_complexity)]
 fn animate(
     time: Res<Time<Real>>,
@@ -357,6 +357,9 @@ fn animate(
         let k = carriage.0 as f32;
         // Up and down the rail, slowly, around the sketch's places (30, 50, 70 % down the area).
         let y = -a.height() * (0.3 + 0.2 * k) + (t * 0.21 + k * 2.1).sin() * a.height() * 0.06;
+        // Parked, they ride up onto the arms (alternately, so neighbours don't overlap).
+        let park = if carriage.0 % 2 == 0 { a.max.y + layout::WALL / 2.0 } else { a.min.y - layout::WALL / 2.0 };
+        let y = y + (park - y) * c;
         set(&mut tf, Vec2::new(0.0, y), 0.0, Vec2::ONE);
         let from = Vec2::new(crane_x[carriage.0], y);
         let reach = (ship - from) * 0.35 * (1.0 - c);

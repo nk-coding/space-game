@@ -231,7 +231,7 @@ impl Layout {
             Place::Voyages => (self.gate - Vec2::Y * (GATE_RADIUS + 2.6), Align::Middle),
             Place::TestRange => (Vec2::new((self.lane.0.x + self.lane.1.x) / 2.0, self.range.centre.y - 1.6), Align::Middle),
             Place::Fleet => (Vec2::new(self.moorings[0].x - 1.5, self.bridges[1] - 7.0), Align::Start),
-            Place::Fabricator => (self.fabricator.centre + Vec2::Y * 3.5, Align::Middle),
+            Place::Fabricator => (self.fabricator.centre + Vec2::Y * 3.8, Align::Middle),
             Place::SalvageBay => (self.salvage.centre - Vec2::Y * 2.0, Align::Middle),
         }
     }

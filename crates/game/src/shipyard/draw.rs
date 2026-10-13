@@ -460,6 +460,8 @@ fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, lit: bool) {
     let ch = t * 0.45;
     let (x0, x1) = (c.x - d, c.x + d); // base inner face, tips
     let (back, y0, y1) = (x0 - t, c.y - hw - t, c.y + hw + t);
+    // The berth's floor (it hides the bridge's truss under the berth).
+    pen.rect(Rect::new(x0, c.y - hw, x1, c.y + hw), vcol(pal.floor, 1.0));
     let fill = vcol(pal.hull, 1.0);
     pen.poly(&[Vec2::new(back, y0 + ch), Vec2::new(back + ch, y0), Vec2::new(x0, y0), Vec2::new(x0, y1), Vec2::new(back + ch, y1), Vec2::new(back, y1 - ch)], fill);
     pen.poly(&[Vec2::new(x0, c.y + hw), Vec2::new(x1, c.y + hw), Vec2::new(x1, y1 - ch), Vec2::new(x1 - ch, y1), Vec2::new(x0, y1)], fill);

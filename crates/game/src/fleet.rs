@@ -16,9 +16,10 @@
 //! VOYAGE-READY · CORES 3 / 3
 //! ```
 //!
-//! Home's FLEET ring (F) opens it; the ring button top left, CLOSE and Esc close it. A click on a slot picks the
-//! slot, a click on a design puts it there (the empty slot adds one), REMOVE empties a slot. Shown slots: the
-//! escorts and one more while there is room ([`MAX_ESCORTS`]). UI words are chrome in code, like home's.
+//! Home's moorings (F, once the camera has flown there) open it; the ring button top left, CLOSE and Esc close it.
+//! A click on a slot picks the slot, a click on a design puts it there (the empty slot adds one), REMOVE empties a
+//! slot. Shown slots: the escorts and one more while there is room ([`MAX_ESCORTS`]). UI words are chrome in code,
+//! like home's.
 
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
@@ -209,7 +210,7 @@ pub fn is_open(fleet: Res<Fleet>) -> bool {
     fleet.open
 }
 
-/// Home's FLEET ring (F): open, with the saved designs read fresh.
+/// Home's moorings (F): open, with the saved designs read fresh.
 fn open(
     mut actions: MessageReader<HomeAction>,
     mut fleet: ResMut<Fleet>,

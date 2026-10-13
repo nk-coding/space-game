@@ -415,15 +415,13 @@ fn fly(
 ) {
     let size = window.size();
     let mut next = None;
+    let mut clear = 0.0;
     let view = match &mut visit.phase {
-        Phase::Yard => {
-            yard.clear = 0.0;
-            overview(&yard.layout, &window)
-        }
+        Phase::Yard => overview(&yard.layout, &window),
         Phase::Flying { fly, to, from } => {
             let (view, done) = fly.step(time.delta_secs().min(0.1));
             let p = fly.progress();
-            yard.clear = match (*to, *from) {
+            clear = match (*to, *from) {
                 (Some(Place::Drydock), _) => p,
                 (_, Some(Place::Drydock)) => 1.0 - p,
                 _ => 0.0,
@@ -442,6 +440,9 @@ fn fly(
             view
         }
         Phase::At(place, view) => {
+            if *place == Place::Drydock {
+                clear = 1.0;
+            }
             if *place == Place::Fleet && !fleet.open {
                 // FLEET closed: back out to the yard.
                 next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window)), to: None, from: Some(Place::Fleet) });
@@ -451,6 +452,9 @@ fn fly(
     };
     if let Some(n) = next {
         visit.phase = n;
+    }
+    if yard.clear != clear {
+        yard.clear = clear;
     }
     put_rig(&mut rig, view, size);
 }
@@ -564,10 +568,14 @@ fn sync_titles(
     granted: Res<Granted>,
     content: Res<GameContent>,
     style: Res<Style>,
-    spots: Query<(&Spot, &Hot)>,
+    spots: Query<(&Spot, Ref<Hot>)>,
     mut titles: Query<(&LabelTitle, &mut Text, &mut TextColor), Without<LabelSub>>,
     mut subs: Query<(&LabelSub, &mut Text, &mut TextColor, &mut Node), Without<LabelTitle>>,
 ) {
+    let hover = spots.iter().any(|(_, h)| h.is_changed());
+    if !(hover || yard.is_changed() || design.is_changed() || escorts.is_changed() || granted.is_changed()) {
+        return;
+    }
     let ui = &style.ui;
     let hovered = |p: Place| spots.iter().any(|(s, h)| s.0 == p && h.hovered);
     for (t, mut text, mut color) in &mut titles {
