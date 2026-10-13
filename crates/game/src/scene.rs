@@ -455,6 +455,9 @@ fn scene_tick(
     exit: Res<FlightExit>,
     mut next_mode: ResMut<NextState<AppMode>>,
 ) {
+    // The keys and fire buttons for this tick (held now or since the last tick); the latch starts over every
+    // tick, whoever flies.
+    let (axes, fire) = player_input.for_tick();
     if scene.kind != SceneKind::Sandbox {
         return;
     }
@@ -497,19 +500,19 @@ fn scene_tick(
                 };
                 input.lock = lock;
                 // The A/D nudge only acts under a lock; it springs back otherwise (one step per tick).
-                let turn = if lock.is_some() && !input.stick_mode { input.axes.x } else { 0.0 };
+                let turn = if lock.is_some() && !input.stick_mode { axes.x } else { 0.0 };
                 input.nudge = nudge_step(input.nudge, turn);
                 // Without a lock A/D rotate with a ramp (GDR-0055): a tap nudges the nose, a hold turns faster up
                 // to the key turn rate (one step per tick).
-                let key = if lock.is_none() && !input.stick_mode { input.axes.x } else { 0.0 };
+                let key = if lock.is_none() && !input.stick_mode { axes.x } else { 0.0 };
                 input.turn_ramp = turn_ramp_step(input.turn_ramp, key);
-                let axes = (!input.stick_mode).then_some(PilotAxes { turn: input.turn_ramp, thrust: input.axes.y, strafe: input.axes.z });
+                let keys = (!input.stick_mode).then_some(PilotAxes { turn: input.turn_ramp, thrust: axes.y, strafe: axes.z });
                 let pilot = PilotInput {
                     stick: sv(input.stick),
                     lock,
                     drift: input.drift,
-                    fire: input.fire,
-                    axes,
+                    fire,
+                    axes: keys,
                     aim_offset: input.nudge,
                     ..default()
                 };

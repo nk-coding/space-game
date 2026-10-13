@@ -19,6 +19,7 @@
 
 use std::fmt::Write as _;
 
+use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
@@ -113,13 +114,16 @@ impl Plugin for FleetBarPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FleetBar>()
             .add_systems(Startup, spawn_bar.after(crate::flight_hud::spawn_hud))
+            // Clicks with the other input, before the frame's sim ticks, so a focus switch reaches the next tick.
             .add_systems(
-                Update,
-                (fleet_input.run_if(not(egui_wants_any_pointer_input)), update_bar)
-                    .chain()
-                    .before(ControlsSet)
-                    .run_if(in_state(AppMode::Flight)),
-            );
+                RunFixedMainLoop,
+                fleet_input
+                    .run_if(not(egui_wants_any_pointer_input))
+                    .run_if(in_state(AppMode::Flight))
+                    .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop)
+                    .before(ControlsSet),
+            )
+            .add_systems(Update, update_bar.run_if(in_state(AppMode::Flight)));
     }
 }
 
