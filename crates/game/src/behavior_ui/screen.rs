@@ -16,13 +16,15 @@
 //! The frame (header, pills, columns) is spawned once at start, hidden outside the screen; the graph, the
 //! inspector and the palette are rebuilt from `graph` / `inspect` data when what they show changes (a new
 //! program revision, another selection, another search). Colours are written only when they change. UI words
-//! are chrome in code (like the drydock); node names, summaries and parameter names come from content.
+//! are chrome in code (like the drydock); node names, summaries and parameter names come from content. The
+//! inspector's controls are spawned by `controls.rs`.
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use data::NodeRole;
+use data::behavior_edit::RuleId;
 
 use crate::camera::CameraRig;
 use crate::flight_hud::HudFonts;
@@ -30,18 +32,17 @@ use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{
-    Hot, Pill, TextField, TextFieldText, Tone, ValueBar, glow, label, prose, ring_node, set_color, set_text, spawn_bar,
-    spawn_pill, tracked,
-};
+use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use bevy::ui_render::prelude::MaterialNode;
 
+use super::controls::{DesignReach, SliderDrag, spawn_inspection};
 use super::dashed::{DashedOutline, outline_color};
 use super::draft::BehaviorDraft;
-use super::graph::{Chip, GraphView, NodeRef, add_rule_label, slot_line_label, slots_pill};
-use super::inspect::{Inspection, Row, Selection, behavior_inspection, inspect, palette};
+use super::edit::EditState;
+use super::graph::{Chip, GraphView, add_rule_label, slot_line_label, slots_pill};
+use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
 use super::text_view::TextViewport;
 use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
 
@@ -105,9 +106,16 @@ pub(super) enum ScreenText {
     Name,
     Slots,
     Status,
+    /// The line above the palette: where a pick goes (`ADD NODE · TO RULE 3`).
+    AddNode,
 }
 
-/// The look of a chip (graph nodes, palette entries, `+ RULE`), coloured by [`style_chips`] from its state.
+/// The coral refusal after the status line (fades after a few seconds).
+#[derive(Component)]
+pub(super) struct NoteSpan;
+
+/// The look of a chip (graph nodes, `always`, palette entries, `+ RULE`), coloured by [`style_chips`] from its
+/// state.
 #[derive(Component, Clone, Debug)]
 pub(super) struct ChipLook {
     /// The role colour (a palette colour; `ui_color` is applied when styling).
@@ -118,18 +126,22 @@ pub(super) struct ChipLook {
     fill: bool,
     /// Dimmed when false (a rule without a slot).
     active: bool,
-    /// The program node it shows: glows while selected.
-    node: Option<NodeRef>,
+    /// What it shows (a node, or a rule for `always`): glows while that is selected.
+    select: Option<Selection>,
 }
 
+/// A cell of a rule's row: the row is lit while the rule (or one of its nodes) is selected.
+#[derive(Component, Clone, Copy, Debug)]
+pub(super) struct RowBand(RuleId);
+
 /// Fonts, colours and materials for spawning.
-struct Kit<'a> {
-    fonts: &'a HudFonts,
-    ui: UiPalette,
+pub(super) struct Kit<'a> {
+    pub(super) fonts: &'a HudFonts,
+    pub(super) ui: UiPalette,
 }
 
 impl Kit<'_> {
-    fn c(&self, tone: Tone, a: f32) -> Color {
+    pub(super) fn c(&self, tone: Tone, a: f32) -> Color {
         ui_color(tone.color(&self.ui), a)
     }
 }
@@ -146,7 +158,7 @@ fn abs(l: Option<f32>, r: Option<f32>, t: Option<f32>, b: Option<f32>) -> Node {
 }
 
 /// The colour of a role: conditions violet, actions teal, Rhai gold, target selectors white.
-fn role_color(ui: &UiPalette, role: NodeRole, rhai: bool) -> Color {
+pub(super) fn role_color(ui: &UiPalette, role: NodeRole, rhai: bool) -> Color {
     match role {
         _ if rhai => ui.gold,
         NodeRole::Condition => ui.violet,
@@ -239,7 +251,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             root.spawn(Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) }).with_children(|rp| {
                 rp.spawn((InspectorBody, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() }));
                 rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
-                rp.spawn((label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
+                rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
                 rp.spawn((
                     SearchField,
                     TextField { placeholder: "Search nodes".into(), max_chars: 24, ..default() },
@@ -281,11 +293,24 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 ));
             });
 
-            // Bottom: back to the drydock, the status line.
-            root.spawn(Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(22), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) })
+            // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it).
+            root.spawn(Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) })
                 .with_children(|bb| {
                     spawn_pill(bb, fonts, "‹  DRYDOCK  ESC", 10.0, 32.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Back));
-                    bb.spawn((ScreenText::Status, label(fonts, "", 10.0, kit.c(Tone::Label, 1.0)), Node { flex_grow: 1.0, ..default() }));
+                    bb.spawn(Node { width: px(8), ..default() });
+                    for (g, action) in [(Glyph::Undo, BehaviorAction::Undo), (Glyph::Redo, BehaviorAction::Redo)] {
+                        bb.spawn((ring_node(34.0), BehaviorButton(action))).with_children(|r| {
+                            r.spawn((UiIcon::Glyph { glyph: g, color: kit.ui.dim }, Node { width: px(18), height: px(18), ..default() }));
+                        });
+                    }
+                    bb.spawn((ScreenText::Status, label(fonts, "", 10.0, kit.c(Tone::Label, 1.0)), Node { flex_grow: 1.0, margin: UiRect::left(px(14)), ..default() }))
+                        .with_child((
+                            NoteSpan,
+                            TextSpan::new(""),
+                            TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(10.0), ..default() },
+                            TextColor(kit.c(Tone::Coral, 1.0)),
+                            bevy::text::LetterSpacing::Px(3.0),
+                        ));
                 });
         });
 }
@@ -325,7 +350,7 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, materials: &mut Assets<Da
     let k = if active { 1.0 } else { INACTIVE };
     let dashed = chip.rhai.then(|| materials.add(DashedOutline { color: outline_color(ui_color(color, 0.6 * k)) }));
     let mut e = p.spawn((
-        ChipLook { color, dashed: dashed.clone(), fill: true, active, node: Some(chip.node) },
+        ChipLook { color, dashed: dashed.clone(), fill: true, active, select: Some(Selection::Node(chip.node)) },
         Hot::default(),
         BehaviorButton(BehaviorAction::Select(chip.node)),
         Node {
@@ -361,10 +386,13 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, materials: &mut Assets<Da
     });
 }
 
-/// The `always` of a rule without conditions: a plain chip, not a node.
-fn spawn_always(p: &mut ChildSpawnerCommands, kit: &Kit, active: bool) {
+/// The `always` of a rule without conditions: a plain grey chip, not a node; a click selects the rule.
+fn spawn_always(p: &mut ChildSpawnerCommands, kit: &Kit, rule: RuleId, active: bool) {
     let k = if active { 1.0 } else { INACTIVE };
     p.spawn((
+        ChipLook { color: kit.ui.label, dashed: None, fill: false, active, select: Some(Selection::Rule(rule)) },
+        Hot::default(),
+        BehaviorButton(BehaviorAction::SelectRule(rule)),
         Node {
             height: px(CHIP_H),
             padding: UiRect::horizontal(px(16)),
@@ -374,9 +402,15 @@ fn spawn_always(p: &mut ChildSpawnerCommands, kit: &Kit, active: bool) {
             flex_shrink: 0.0,
             ..default()
         },
-        BorderColor::all(kit.c(Tone::Label, 0.4 * k)),
+        BorderColor::all(Color::NONE),
+        BackgroundColor(Color::NONE),
     ))
     .with_child(prose(kit.fonts, "always", CHIP_FONT, kit.c(Tone::Label, k)));
+}
+
+/// A cell of a rule's row: a click on its empty space selects the rule; lit while the rule is selected.
+fn row_cell(rule: RuleId, node: Node) -> impl Bundle {
+    (RowBand(rule), Hot::default(), BehaviorButton(BehaviorAction::SelectRule(rule)), node, BackgroundColor(Color::NONE))
 }
 
 /// The trunk cell of a rule: the vertical line (from the first rule's centre to the last one's), the dot and
@@ -421,7 +455,6 @@ pub(super) fn rebuild_graph(
     mut commands: Commands,
     draft: Res<BehaviorDraft>,
     context: Res<EditorContext>,
-    content: Res<GameContent>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     mut built: ResMut<GraphBuilt>,
@@ -429,11 +462,12 @@ pub(super) fn rebuild_graph(
     graph: Single<Entity, With<GraphContent>>,
 ) {
     let key = (draft.revision(), context.slots);
+    let Some(ed) = draft.editor() else { return };
     if built.0 == Some(key) {
         return;
     }
     built.0 = Some(key);
-    let g = GraphView::of(draft.program(), &content.0.behavior_nodes, context.slots);
+    let g = GraphView::of(ed, context.slots);
     let kit = Kit { fonts: &fonts, ui: style.ui };
     let materials = &mut *materials;
     commands.entity(*graph).despawn_children().with_children(|gc| {
@@ -493,19 +527,18 @@ pub(super) fn rebuild_graph(
                         }
                         let k = if row.active { 1.0 } else { INACTIVE };
                         spawn_trunk(grid, &kit, ROW_H, (i > 0, i < last), Some(row.active));
-                        grid.spawn(Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() })
-                            .with_children(|cc| {
-                                if row.conds.is_empty() {
-                                    spawn_always(cc, &kit, row.active);
-                                }
-                                for c in &row.conds {
-                                    spawn_chip(cc, &kit, materials, c, row.active);
-                                }
-                                spawn_line(cc, Node { flex_grow: 1.0, min_width: px(26), height: px(LINE_W), margin: UiRect::horizontal(px(8)), ..default() }, kit.c(Tone::Label, 0.4 * k));
-                            });
-                        grid.spawn(Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() })
-                            .with_children(|ac| spawn_chip(ac, &kit, materials, &row.action, row.active));
-                        grid.spawn(Node { height: px(ROW_H), align_items: AlignItems::Center, padding: UiRect::left(px(16)), overflow: Overflow::clip(), ..default() })
+                        let cell = Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() };
+                        grid.spawn(row_cell(row.id, Node { column_gap: px(8), ..cell.clone() })).with_children(|cc| {
+                            if row.conds.is_empty() {
+                                spawn_always(cc, &kit, row.id, row.active);
+                            }
+                            for c in &row.conds {
+                                spawn_chip(cc, &kit, materials, c, row.active);
+                            }
+                            spawn_line(cc, Node { flex_grow: 1.0, min_width: px(26), height: px(LINE_W), margin: UiRect::horizontal(px(8)), ..default() }, kit.c(Tone::Label, 0.4 * k));
+                        });
+                        grid.spawn(row_cell(row.id, cell.clone())).with_children(|ac| spawn_chip(ac, &kit, materials, &row.action, row.active));
+                        grid.spawn(row_cell(row.id, Node { padding: UiRect::new(px(16), px(8), px(0), px(0)), overflow: Overflow::clip(), ..cell }))
                             .with_children(|nc| {
                                 if let Some(note) = &row.note {
                                     nc.spawn(prose(kit.fonts, note, 12.0, kit.c(Tone::Dim, k)));
@@ -519,7 +552,7 @@ pub(super) fn rebuild_graph(
             .with_children(|r| {
                 let m = materials.add(DashedOutline { color: outline_color(kit.c(Tone::Label, 0.5)) });
                 r.spawn((
-                    ChipLook { color: kit.ui.label, dashed: Some(m.clone()), fill: false, active: true, node: None },
+                    ChipLook { color: kit.ui.label, dashed: Some(m.clone()), fill: false, active: true, select: None },
                     MaterialNode(m),
                     Hot::default(),
                     BehaviorButton(BehaviorAction::AddRule),
@@ -542,101 +575,45 @@ pub(super) fn rebuild_graph(
 // ---------------------------------------------------------------------------------------------------------
 // The right column
 
-/// A read-only choice: the options as small pills, the chosen one teal.
-fn spawn_options(p: &mut ChildSpawnerCommands, kit: &Kit, options: &[(String, bool)]) {
-    p.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(5), row_gap: px(5), ..default() }).with_children(|o| {
-        for (name, on) in options {
-            let (edge, fill, text) = if *on {
-                (kit.c(Tone::Teal, 0.85), kit.c(Tone::Teal, 0.1), kit.c(Tone::Number, 0.95))
-            } else {
-                (kit.c(Tone::Label, 0.3), Color::NONE, kit.c(Tone::Label, 1.0))
-            };
-            o.spawn((
-                Node { height: px(24), padding: UiRect::horizontal(px(11)), border: UiRect::all(px(LINE_W)), border_radius: BorderRadius::MAX, align_items: AlignItems::Center, ..default() },
-                BorderColor::all(edge),
-                BackgroundColor(fill),
-            ))
-            .with_child(tracked(kit.fonts, name, 8.0, text, 0.25));
-        }
-    });
+/// What the inspector was built from.
+#[derive(Clone, PartialEq)]
+pub(super) struct InspectorKey {
+    selected: Option<Selection>,
+    revision: u64,
+    cx: inspect::Context,
 }
 
-fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Inspection) {
-    let name_color = match i.role {
-        Some(role) => role_color(&kit.ui, role, i.rhai),
-        None => kit.ui.number,
-    };
-    p.spawn(tracked(kit.fonts, &i.kicker, 9.0, kit.c(Tone::Label, 1.0), 0.32));
-    p.spawn((prose(kit.fonts, &i.name, 27.0, ui_color(name_color, 1.0)), Node { margin: UiRect::top(px(6)), ..default() }));
-    if !i.summary.is_empty() {
-        p.spawn((prose(kit.fonts, &i.summary, 12.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(8)), ..default() }));
-    }
-    for row in &i.rows {
-        p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(16)), ..default() }).with_children(|r| match row {
-            Row::Value { label: name, value, range, share, default: is_default } => {
-                r.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() })
-                    .with_children(|h| {
-                        h.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, column_gap: px(8), ..default() }).with_children(|l| {
-                            l.spawn(tracked(kit.fonts, &format!("{name}  ·"), 9.0, kit.c(Tone::Label, 1.0), 0.3));
-                            l.spawn(tracked(kit.fonts, &value.to_uppercase(), 10.5, kit.c(Tone::Number, 1.0), 0.12));
-                            if *is_default {
-                                l.spawn(tracked(kit.fonts, "DEFAULT", 7.5, kit.c(Tone::Dim, 1.0), 0.3));
-                            }
-                        });
-                        h.spawn(tracked(kit.fonts, range, 7.5, kit.c(Tone::Dim, 1.0), 0.25));
-                    });
-                if let Some(share) = share {
-                    spawn_bar(r, ValueBar { share: *share, tone: Tone::Teal }, ());
-                }
-            }
-            Row::Choice { label: name, options, default: is_default } => {
-                r.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, column_gap: px(8), ..default() }).with_children(|l| {
-                    l.spawn(tracked(kit.fonts, name, 9.0, kit.c(Tone::Label, 1.0), 0.3));
-                    if *is_default {
-                        l.spawn(tracked(kit.fonts, "DEFAULT", 7.5, kit.c(Tone::Dim, 1.0), 0.3));
-                    }
-                });
-                spawn_options(r, kit, options);
-            }
-        });
-    }
-    if let Some(note) = &i.note {
-        p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(16)), ..default() }).with_children(|n| {
-            n.spawn(tracked(kit.fonts, "NOTE", 8.5, kit.c(Tone::Label, 1.0), 0.3));
-            n.spawn(prose(kit.fonts, note, 12.0, kit.c(Tone::Dim, 1.0)));
-        });
-    }
-    if let Some(script) = &i.script {
-        p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(16)), ..default() }).with_children(|n| {
-            n.spawn(tracked(kit.fonts, "RHAI SCRIPT", 8.5, kit.c(Tone::Gold, 1.0), 0.3));
-            n.spawn(prose(kit.fonts, script, 11.0, kit.c(Tone::Gold, 0.7)));
-        });
-    }
-}
-
-/// Rebuilds the inspector when the selection or the program changes.
+/// Rebuilds the inspector when the selection, the program, REPLACE or the slots change; not while a slider is
+/// held (it keeps its node and follows in place).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild_inspector(
     mut commands: Commands,
     ui: Res<BehaviorUi>,
     draft: Res<BehaviorDraft>,
+    context: Res<EditorContext>,
+    edit: Res<EditState>,
+    reach: Res<DesignReach>,
+    drag: Res<SliderDrag>,
     content: Res<GameContent>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     body: Single<Entity, With<InspectorBody>>,
-    mut built: Local<Option<(Option<Selection>, u64)>>,
+    mut built: Local<Option<InspectorKey>>,
 ) {
-    let key = (ui.selected.clone(), draft.revision());
+    let Some(ed) = draft.editor() else { return };
+    if drag.0.is_some() {
+        return;
+    }
+    let cx = inspect::Context { slots: context.slots, reach: reach.0, replacing: edit.replacing };
+    let key = InspectorKey { selected: ui.selected.clone(), revision: draft.revision(), cx };
     if built.as_ref() == Some(&key) {
         return;
     }
     *built = Some(key);
-    let content = &content.0;
-    let i = ui
-        .selected
-        .as_ref()
-        .and_then(|s| inspect(draft.program(), &content.behavior_nodes, s))
-        .unwrap_or_else(|| behavior_inspection(&draft.name, draft.source.as_deref().and_then(|id| content.behaviors.get(id)), draft.program()));
+    let i = ui.selected.as_ref().and_then(|s| inspect(ed, s, &cx)).unwrap_or_else(|| {
+        let source = draft.source.as_deref().and_then(|id| content.0.behaviors.get(id));
+        behavior_inspection(&draft.name, source, ed.rules().len())
+    });
     let kit = Kit { fonts: &fonts, ui: style.ui };
     commands.entity(*body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
 }
@@ -667,7 +644,7 @@ pub(super) fn rebuild_palette(
         for e in &entries {
             let color = role_color(&kit.ui, e.role, e.rhai);
             l.spawn((
-                ChipLook { color, dashed: None, fill: false, active: true, node: None },
+                ChipLook { color, dashed: None, fill: false, active: true, select: None },
                 Hot::default(),
                 BehaviorButton(BehaviorAction::AddNode(e.id.clone())),
                 Node { height: px(28), padding: UiRect::horizontal(px(13)), border: UiRect::all(px(LINE_W)), border_radius: BorderRadius::MAX, align_items: AlignItems::Center, ..default() },
@@ -729,10 +706,11 @@ pub(super) fn sync_texts(
     draft: Res<BehaviorDraft>,
     ui: Res<BehaviorUi>,
     context: Res<EditorContext>,
+    edit: Res<EditState>,
     style: Res<Style>,
     mut texts: Query<(&ScreenText, &mut Text, &mut TextColor)>,
 ) {
-    if !draft.is_changed() && !ui.is_changed() && !context.is_changed() {
+    if !draft.is_changed() && !ui.is_changed() && !context.is_changed() && !edit.is_changed() {
         return;
     }
     for (t, mut text, mut color) in &mut texts {
@@ -741,9 +719,21 @@ pub(super) fn sync_texts(
             ScreenText::Name => (draft.name.clone(), Tone::Number),
             ScreenText::Slots => (slots_pill(draft.program().rules.len(), context.slots), Tone::Violet),
             ScreenText::Status => status_line(&draft, ui.view, context.slots),
+            ScreenText::AddNode => match draft.editor() {
+                Some(ed) => (palette_hint(ed, ui.selected.as_ref(), edit.replacing), if edit.replacing.is_some() { Tone::Teal } else { Tone::Label }),
+                None => ("ADD NODE".into(), Tone::Label),
+            },
         };
         set_text(&mut text, &s);
         set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
+    }
+}
+
+/// The last refusal after the status line, while it is fresh.
+pub(super) fn sync_note(edit: Res<EditState>, time: Res<Time<Real>>, mut span: Single<&mut TextSpan, With<NoteSpan>>) {
+    let want = edit.current_note(time.elapsed_secs()).map_or(String::new(), |t| format!("  ·  {}", t.to_uppercase()));
+    if span.0 != want {
+        span.0 = want;
     }
 }
 
@@ -777,7 +767,7 @@ pub(super) fn style_chips(
         if !selection_changed && !look.is_changed() && !hot.is_changed() {
             continue;
         }
-        let selected = look.node.is_some_and(|n| ui.selected == Some(Selection::Node(n)));
+        let selected = look.select.is_some() && ui.selected == look.select;
         let k = if look.active { 1.0 } else { INACTIVE };
         let idle_fill = if look.fill { 0.05 } else { 0.0 };
         let (edge, fill, glow_alpha) = if selected {
@@ -815,6 +805,27 @@ pub(super) fn style_chips(
                 commands.entity(e).insert(glow(look.color, glow_alpha));
             }
             (None, false) => {}
+        }
+    }
+}
+
+/// A faint band behind the selected rule's row (the rule, or one of its nodes, is selected); fainter on hover.
+pub(super) fn style_rows(
+    ui: Res<BehaviorUi>,
+    draft: Res<BehaviorDraft>,
+    style: Res<Style>,
+    mut cells: Query<(&RowBand, Ref<Hot>, &mut BackgroundColor)>,
+) {
+    let selected = draft.editor().and_then(|ed| ui.selected.as_ref()?.rule(ed));
+    let all = ui.is_changed() || draft.is_changed();
+    for (band, hot, mut bg) in &mut cells {
+        if !all && !hot.is_changed() {
+            continue;
+        }
+        let a = if selected == Some(band.0) { 0.05 } else if hot.hovered { 0.025 } else { 0.0 };
+        let want = ui_color(style.ui.number, a);
+        if bg.0 != want {
+            bg.0 = want;
         }
     }
 }
