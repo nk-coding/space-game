@@ -156,6 +156,11 @@ pub(super) struct Shelf {
 }
 
 impl Shelf {
+    /// BLUEPRINTS or EXPORT covers the design.
+    pub(super) fn is_open(&self) -> bool {
+        self.page.is_some()
+    }
+
     fn say(&mut self, text: impl AsRef<str>, tone: Tone) {
         self.say = Some((text.as_ref().to_uppercase(), tone));
     }
@@ -194,17 +199,27 @@ impl Lib<'_> {
     /// Puts another design into the drydock. The one there is saved first when it has unsaved changes (its
     /// name is returned); if that fails, nothing changes.
     fn switch(&mut self, content: &Content, next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
-        let kept = if self.slot.dirty(&self.design) {
-            library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix())
-                .map_err(|e| format!("couldn't save {} first: {e}", self.design.blueprint().name))?;
-            Some(self.design.blueprint().name.clone())
-        } else {
-            None
-        };
+        let kept = self.keep_current(content)?;
+        self.put(next, slot);
+        Ok(kept)
+    }
+
+    /// Saves the design in the drydock when it has unsaved changes, before something replaces it; returns its name
+    /// when it was saved.
+    fn keep_current(&mut self, content: &Content) -> Result<Option<String>, String> {
+        if !self.slot.dirty(&self.design) {
+            return Ok(None);
+        }
+        library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix())
+            .map_err(|e| format!("couldn't save {} first: {e}", self.design.blueprint().name))?;
+        Ok(Some(self.design.blueprint().name.clone()))
+    }
+
+    /// Replaces the design in the drydock (after [`Lib::keep_current`]).
+    fn put(&mut self, next: PlayerDesign, slot: DesignSlot) {
         self.design.replace(next);
         *self.slot = slot;
         self.cam.reset_view();
-        Ok(kept)
     }
 
     /// The design as it is exported: trimmed, under its id (or a new one from its name).
@@ -233,7 +248,8 @@ impl Lib<'_> {
     }
 
     /// Imports a share code or blueprint text: saved under a new id and opened. A behavior it carries is saved
-    /// too (under a new id if its own is taken) and the design names it.
+    /// too (under a new id if its own is taken) and the design names it. The design in the drydock is saved first:
+    /// if that fails, nothing of the import is written (a retry would have made second copies).
     fn import(&mut self, content: &Content, text: &str) -> Result<String, String> {
         let shared = share::read(text).map_err(|e| e.to_string())?;
         let faction = self.design.blueprint().faction.clone();
@@ -242,6 +258,7 @@ impl Lib<'_> {
             bp.summary = library::NEW_SUMMARY.into();
         }
         let mut opened = library::open_in_first_frame(content, &bp)?;
+        let kept = self.keep_current(content)?;
         if let Some(b) = carried {
             let (id, note) = self.behaviors.import(&mut self.storage, content, b, now_unix())?;
             opened.edit_header(|h| h.behavior = Some(id));
@@ -253,7 +270,7 @@ impl Lib<'_> {
         if !problems.is_empty() {
             notes.push(problems_note(&problems));
         }
-        let kept = self.switch(content, opened, slot)?;
+        self.put(opened, slot);
         let mut msg = format!("imported {}", self.design.blueprint().name);
         for n in kept.iter().map(|k| format!("{k} saved")).chain(notes) {
             msg.push_str("  ·  ");
@@ -1287,6 +1304,75 @@ mod tests {
         world.init_resource::<Shelf>();
         world.init_resource::<Clipboard>();
         world
+    }
+
+    /// Storage that refuses to write one design (nearly full: the import fits, the design in the drydock not).
+    struct Refusing(MemoryBackend, &'static str);
+
+    impl crate::storage::Backend for Refusing {
+        fn list(&self, namespace: &str) -> Result<Vec<String>, crate::storage::StorageError> {
+            self.0.list(namespace)
+        }
+        fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, crate::storage::StorageError> {
+            self.0.read(namespace, name)
+        }
+        fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), crate::storage::StorageError> {
+            if name == self.1 {
+                return Err(crate::storage::StorageError::Full);
+            }
+            self.0.write(namespace, name, text)
+        }
+        fn delete(&mut self, namespace: &str, name: &str) -> Result<(), crate::storage::StorageError> {
+            self.0.delete(namespace, name)
+        }
+        fn location(&self) -> String {
+            "refusing".into()
+        }
+    }
+
+    /// An import whose save-first of the design in the drydock fails writes nothing (before, the imported design
+    /// and its behavior were saved anyway, and a retry made second copies).
+    #[test]
+    fn a_failed_import_writes_nothing() {
+        let mut world = world();
+        // The starter, unsaved and changed: it is saved before the import opens, as `halvex_runner_2`.
+        world.insert_resource(Storage::new(Refusing(MemoryBackend::default(), "halvex_runner_2")));
+        let content = data::base_content();
+        let mut careful = content.behaviors.get("skirmisher").unwrap().clone();
+        careful.id = "careful".into();
+        careful.name = "Careful".into();
+        careful.source = Default::default();
+        let ship = Blueprint { behavior: Some("careful".into()), source: Default::default(), ..content.ships.get("sample_mid").unwrap().clone() };
+        let code = share::encode(&content, &ship, Some(&careful));
+        let result = world.run_system_once(move |mut lib: Lib, content: Res<GameContent>| lib.import(&content.0, &code)).unwrap();
+        assert!(result.as_ref().is_err_and(|e| e.starts_with("couldn't save Halvex Runner first")), "{result:?}");
+        let storage = world.resource::<Storage>();
+        assert!(storage.list("designs").unwrap().is_empty() && storage.list("behaviors").unwrap().is_empty());
+        assert_eq!(world.resource::<PlayerDesign>().blueprint().name, "Halvex Runner");
+    }
+
+    /// Delete, a tool key or T while BLUEPRINTS covers the design does nothing to it; Ctrl+S still saves.
+    #[test]
+    fn keys_behind_the_screens_only_save() {
+        let mut world = world();
+        world.resource_mut::<Shelf>().page = Some(Page::Blueprints);
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<crate::ui_kit::UiPointer>();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        for k in [KeyCode::Delete, KeyCode::KeyT, KeyCode::KeyX, KeyCode::ControlLeft, KeyCode::KeyS] {
+            keys.press(k);
+        }
+        world.insert_resource(keys);
+        world.run_system_once(super::super::actions::shortcuts).unwrap();
+        let sent: Vec<DrydockAction> = world.resource::<Messages<DrydockAction>>().iter_current_update_messages().cloned().collect();
+        assert_eq!(sent, [DrydockAction::Save]);
+        // Without the screens the same keys act.
+        world.resource_mut::<Shelf>().page = None;
+        world.resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::ControlLeft);
+        world.resource_mut::<Messages<DrydockAction>>().clear();
+        world.run_system_once(super::super::actions::shortcuts).unwrap();
+        let sent = world.resource::<Messages<DrydockAction>>().len();
+        assert!(sent >= 3, "{sent}");
     }
 
     /// Leaving the drydock with BLUEPRINTS open (BEHAVIOR or TEST-FLY in the bottom bar, T) hides the layer and lets

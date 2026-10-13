@@ -18,6 +18,7 @@ use crate::sim_bridge::GameContent;
 use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
 
 use super::PlayerDesign;
+use super::blueprints::Shelf;
 use super::state::{DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
 
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -75,23 +76,29 @@ pub(super) fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<(&Action
     }
 }
 
-/// The keyboard shortcuts.
+/// The keyboard shortcuts. While BLUEPRINTS or EXPORT covers the design only Ctrl+S acts (the pages handle Esc,
+/// Ctrl+C and Ctrl+V themselves): a key must not edit, select or fly a design nobody sees.
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     content: Res<GameContent>,
+    shelf: Res<Shelf>,
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<DrydockAction>,
 ) {
     if pointer.typing {
         return;
     }
+    let covered = shelf.is_open();
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     let mut send = |a: DrydockAction| {
         out.write(a);
     };
     for key in keys.get_just_pressed() {
+        if covered && !(ctrl && *key == KeyCode::KeyS) {
+            continue;
+        }
         match (*key, ctrl, shift) {
             (KeyCode::KeyZ, true, false) => send(DrydockAction::Undo),
             (KeyCode::KeyZ, true, true) | (KeyCode::KeyY, true, _) => send(DrydockAction::Redo),
