@@ -9,8 +9,8 @@
 //! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
-//! * in the world: a dotted lock ring around the target, off-screen markers for enemies (kept clear of the HUD's
-//!   texts and widgets).
+//! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
+//!   clear of the HUD's texts and widgets).
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
@@ -625,12 +625,14 @@ fn lock_ring(
     }
 }
 
-/// Markers at the screen edge pointing at active enemies outside the view, kept clear of the HUD's texts and
-/// widgets (bevy_ui draws over the world: a marker there hid them or was hidden).
+/// Markers at the screen edge pointing at active enemies (of the focus; in watch mode of the watched ship) outside
+/// the view, kept clear of the HUD's texts and widgets (bevy_ui draws over the world: a marker there hid them or
+/// was hidden).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn offscreen_markers(
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
+    scene: Res<Scene>,
     input: Res<PlayerInput>,
     rig: Res<CameraRig>,
     regions: Option<Res<FxRegions>>,
@@ -641,7 +643,8 @@ fn offscreen_markers(
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(regions) = regions else { return };
-    let Some(me) = focus.0.and_then(|id| world.sim.ship(id)) else { return };
+    // The focus, else (watch) the watched ship.
+    let Some(me) = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id)) else { return };
     if !toggles.hud {
         return;
     }

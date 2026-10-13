@@ -243,7 +243,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
   hull block and the touch stick on a phone), target panel (in watch mode the watched ship's behavior target),
   wave line, banners (`PAUSED · P` while paused), warnings, help; lock ring and off-screen markers are world-space
-  FX. A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
+  FX (the markers in watch mode too). A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
   every HUD text and widget (`HudZone`: hull map, fleet bar, home ring, touch widgets). HUD colours are the
   `ui.*` tokens. Debug overlay and toggles: `hud.rs`.
 - **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
