@@ -3,7 +3,9 @@
 //!
 //! Module map:
 //! - `mode`: the app mode (home, flight, drydock or the BEHAVIOR screen) and what runs in which.
-//! - `home`: the start screen, the shipyard's ring menu around the docked ship (drydock, behavior, test range).
+//! - `home`: the start screen, the shipyard's ring menu around the docked ship (drydock, behavior, test range, fleet);
+//!   `fleet`: the FLEET layer over it (escorts picked from saved designs, against the mind capacity).
+//! - `career`: the player's career save (`saves/<slot>`), a new game, what the career unlocks for the drydock.
 //! - `atlas`, `style`, `meshbuf`: the texture atlas rasterised at runtime + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
 //! - `scene`: sandbox (player + raider waves; home's TEST RANGE), test flight, showcase, load test; writes the
@@ -31,6 +33,7 @@ mod career;
 mod clipboard;
 mod controls;
 mod drydock;
+mod fleet;
 mod fleet_bar;
 mod flight_hud;
 mod fx;
@@ -116,7 +119,7 @@ fn main() {
             sim_bridge::SimBridgePlugin,
             (storage::StoragePlugin, clipboard::ClipboardPlugin, career::CareerPlugin),
             // After the bridge (it reads the content the bridge loads), the storage and the career.
-            (drydock::DrydockPlugin, behavior_ui::BehaviorPlugin, home::HomePlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
+            (drydock::DrydockPlugin, behavior_ui::BehaviorPlugin, home::HomePlugin, fleet::FleetPlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
             camera::CameraPlugin,
             controls::ControlsPlugin,
             fx::FxPlugin,

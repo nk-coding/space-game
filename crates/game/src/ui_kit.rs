@@ -504,6 +504,7 @@ fn type_into_fields(mut keys: MessageReader<KeyboardInput>, held: Res<ButtonInpu
 }
 
 /// The lock of a [`PillLock`] pill shows while the pill is disabled.
+#[allow(clippy::type_complexity)]
 fn show_locks(pills: Query<(&Pill, &Children), (With<PillLock>, Changed<Pill>)>, mut icons: Query<&mut Node, With<UiIcon>>) {
     for (pill, children) in &pills {
         let d = if pill.disabled { Display::Flex } else { Display::None };

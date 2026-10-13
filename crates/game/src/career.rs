@@ -152,14 +152,16 @@ pub fn load(storage: &mut Storage, content: &Content, switches: Switches, seed: 
         // A stand-in for a kept save is no new game: the drydock keeps its design.
         None => (new_career(content, seed, &mut notes, &mut kept), kept.is_none()),
     };
+    if slot != DEFAULT_SLOT {
+        let body = format!("This game is {key}; the usual one, {}/{DEFAULT_SLOT}, is untouched.", CareerDoc::NAMESPACE);
+        notes.push(Note::new(format!("SAVE SLOT  ·  ?SAVE={}", slot.to_uppercase()), body, Tone::Gold));
+    }
     if free {
         notes.push(Note::new("ALL UNLOCKED  ·  ?UNLOCK=ALL", "Every part, material and frame is in the drydock; the save is untouched.", Tone::Gold));
     }
     let mut out = PlayerCareer { career, slot, kept, free, new_game, notes };
-    if new_game {
-        if let Err(e) = out.write(storage, now) {
-            out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
-        }
+    if new_game && let Err(e) = out.write(storage, now) {
+        out.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
     }
     out
 }
@@ -185,11 +187,6 @@ fn new_career(content: &Content, seed: u64, notes: &mut Vec<Note>, kept: &mut Op
 impl PlayerCareer {
     pub fn career(&self) -> &Career {
         &self.career
-    }
-
-    /// The save's name in `saves/`.
-    pub fn slot(&self) -> &str {
-        &self.slot
     }
 
     /// This run began a new game.
@@ -412,7 +409,7 @@ mod tests {
     fn the_url_picks_the_slot_and_the_switches() {
         assert_eq!(switches(""), Switches { slot: "career".into(), new_game: false, free: false });
         assert_eq!(switches("?save=test_2&newgame=1&unlock=all"), Switches { slot: "test_2".into(), new_game: true, free: true });
-        assert_eq!(switches("?newgame=0&unlock=some").new_game, false);
+        assert!(!switches("?newgame=0&unlock=some").new_game);
         let (s, note) = Switches::from_params(&Params::parse("?save=Bad%20Name"));
         assert_eq!(s.slot, DEFAULT_SLOT);
         assert!(note.unwrap().body.contains("Bad%20Name"));
