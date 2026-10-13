@@ -402,7 +402,11 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
 - **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
   gold, the glowing primary, disabled, bare list rows), ring buttons (plain, or glowing in an accent colour:
   `RingAccent`, home's ring), value bars, corner brackets and a one-line
-  text field; hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
+  text field (`TextField`, used for the names, the searches and the notes: a caret and a selection, both drawn in
+  place as text spans of `field_text`; Left / Right / Home / End move the caret, with Shift they select, Backspace
+  / Delete work at the caret, Ctrl+A selects all, Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste through
+  `Clipboard::field`; a press on the field puts the caret at the end; the editing itself is the pure
+  `ui_kit::edit_line`, 13 Oct 2026); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, or a glyph Barlow lacks: undo, redo, play,

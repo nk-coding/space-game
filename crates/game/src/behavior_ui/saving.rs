@@ -34,7 +34,7 @@ use crate::sim_bridge::GameContent;
 use crate::storage::{Document, Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::test_range::{self, BehaviorTest, StartTest, TestProgram};
-use crate::ui_kit::{Hot, TextField, TextFieldText, Tone, UiClick, label, name_in_place, prose, set_color, set_text as set_ui_text};
+use crate::ui_kit::{Hot, TextField, Tone, UiClick, field_text, label, name_in_place, prose, set_color, set_text as set_ui_text};
 
 use super::draft::{BehaviorDraft, Snapshot, design_behavior};
 use super::screen::ScreenText;
@@ -516,7 +516,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
             BorderColor::all(edge),
         ))
         .with_children(|f| {
-            f.spawn((TextFieldText, prose(fonts, "", 16.0, name)));
+            f.spawn(field_text(fonts, 16.0));
         });
         t.spawn((TitleNote, label(fonts, "", 8.5, dim)));
     });

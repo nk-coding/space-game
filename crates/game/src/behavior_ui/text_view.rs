@@ -348,8 +348,11 @@ pub(super) fn editor(
             }
         });
     });
-    // egui gets pasted text itself; the game's copy of it is not needed.
-    clipboard.take_pasted();
+    // egui gets pasted text itself; the game's copy of it is not needed (while the editor has the keyboard: else
+    // it is a text field's).
+    if clipboard.accept {
+        clipboard.take_pasted();
+    }
     if changed {
         *seen = Some(text.clone());
         draft.set_text(&text);

@@ -31,7 +31,7 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillText, TextField, TextFieldText, Tone, UiBlock, ValueBar, label, number, prose, ring_node, set_color, set_text,
+    Hot, Pill, PillText, TextField, Tone, UiBlock, ValueBar, field_text, label, number, prose, ring_node, set_color, set_text,
     spawn_bar, spawn_brackets, spawn_pill, tracked, wheel_rows,
 };
 
@@ -184,7 +184,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     ))
                     .with_children(|f| {
                         f.spawn(glyph(Glyph::Search, Tone::Label, 14.0));
-                        f.spawn((TextFieldText, prose(fonts, "", 12.5, c(Tone::Dim, 1.0)), Node { flex_grow: 1.0, ..default() }));
+                        f.spawn((field_text(fonts, 12.5), Node { flex_grow: 1.0, ..default() }));
                         f.spawn(label(fonts, "/", 11.0, c(Tone::Dim, 1.0)));
                     });
                     lp.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), flex_shrink: 0.0, ..default() })

@@ -108,7 +108,7 @@ pub(super) fn shortcuts(
     // one frame come in no order).
     if !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
         for mut f in &mut search {
-            f.focused = true;
+            f.focus();
         }
         return;
     }

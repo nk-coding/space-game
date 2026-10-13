@@ -31,7 +31,7 @@ use crate::sim_bridge::GameContent;
 use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, label, name_in_place, number, prose, set_color, set_text, spawn_pill, tracked,
+    Hot, Pill, TextField, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose, set_color, set_text, spawn_pill, tracked,
     wheel_rows,
 };
 
@@ -438,7 +438,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
                 BorderColor::all(edge),
             ))
             .with_children(|f| {
-                f.spawn((TextFieldText, prose(fonts, "", 16.0, name)));
+                f.spawn(field_text(fonts, 16.0));
             });
             t.spawn((TitleNote, label(fonts, "", 8.5, dim)));
         });
@@ -641,7 +641,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                                 BorderColor::all(c(Tone::Label, 0.3)),
                             ))
                             .with_children(|f| {
-                                f.spawn((TextFieldText, prose(fonts, "", 13.0, c(Tone::Number, 1.0))));
+                                f.spawn(field_text(fonts, 13.0));
                             });
                             b.spawn(label(fonts, "ENTER RENAMES  ·  ESC CANCELS", 8.5, c(Tone::Dim, 1.0)));
                         });
@@ -997,7 +997,7 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
                 && let Some(e) = shelf.entry(id)
             {
                 rename.value = e.name.clone();
-                rename.focused = true;
+                rename.focus();
                 shelf.mode = Mode::Rename(id.clone());
             }
         }

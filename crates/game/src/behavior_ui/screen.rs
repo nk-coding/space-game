@@ -33,7 +33,7 @@ use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, WHEEL_LINE_PX, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Hot, Pill, TextField, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use bevy::ui_render::prelude::MaterialNode;
@@ -285,7 +285,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 ))
                 .with_children(|f| {
                     f.spawn((UiIcon::Glyph { glyph: Glyph::Search, color: kit.ui.label }, Node { width: px(13), height: px(13), flex_shrink: 0.0, ..default() }));
-                    f.spawn((TextFieldText, prose(fonts, "", 12.0, kit.c(Tone::Dim, 1.0)), Node { flex_grow: 1.0, ..default() }));
+                    f.spawn((field_text(fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
                     f.spawn(label(fonts, "/", 10.0, kit.c(Tone::Dim, 1.0)));
                 });
                 rp.spawn((

@@ -18,10 +18,11 @@ use bevy::input::ButtonState;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
-use bevy::text::LetterSpacing;
+use bevy::text::{LetterSpacing, TextBackgroundColor};
 use bevy::ui::{CalculatedClip, ComputedNode, ComputedStackIndex, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
+use crate::clipboard::Clipboard;
 use crate::flight_hud::HudFonts;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::UiIcon;
@@ -210,7 +211,11 @@ fn hit_test(
         for (e, mut f) in &mut fields {
             let want = on == Some(e);
             if f.focused != want {
-                f.focused = want;
+                if want {
+                    f.focus();
+                } else {
+                    f.focused = false;
+                }
             }
         }
     }
@@ -448,52 +453,245 @@ pub fn name_in_place(
     if clicked && !*editing {
         *editing = true;
         field.value = name.to_string();
-        field.focused = true;
+        field.focus();
         out.0 = Some(true);
     }
     out
 }
 
-/// A one-line text field (search). The text lives in `value`; a press on the field focuses it, a press
-/// elsewhere or Esc / Enter releases it. The screen spawns the field node with a child [`TextFieldText`].
+/// A one-line text field (search, names, notes). The text lives in `value`, the caret and the selection in
+/// `caret`; a press on the field focuses it (the caret at the end), a press elsewhere or Esc / Enter releases it.
+/// The screen spawns the field node with a [`field_text`] child.
+///
+/// Keys while it has the keyboard ([`edit_line`]): typing, Backspace / Delete, Left / Right / Home / End (with
+/// Shift: select), Ctrl+A (all), Ctrl+C / Ctrl+X / Ctrl+V through the game's [`Clipboard`].
 #[derive(Component, Clone, Debug, Default)]
 pub struct TextField {
     pub value: String,
     pub placeholder: String,
     pub focused: bool,
     pub max_chars: usize,
+    pub caret: Caret,
 }
 
-/// The text node that shows a [`TextField`]'s value (or its placeholder) and the caret.
+impl TextField {
+    /// Takes the keyboard, the caret at the end.
+    pub fn focus(&mut self) {
+        self.focused = true;
+        self.caret = Caret::end(&self.value);
+    }
+}
+
+/// The caret of a [`TextField`] in characters, and the other end of the selection (`anchor == at`: nothing is
+/// selected).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Caret {
+    pub at: usize,
+    pub anchor: usize,
+}
+
+impl Caret {
+    /// At the end of `value`, nothing selected.
+    pub fn end(value: &str) -> Self {
+        let n = value.chars().count();
+        Self { at: n, anchor: n }
+    }
+
+    /// The selection as a character range (empty: none).
+    pub fn range(self) -> std::ops::Range<usize> {
+        self.at.min(self.anchor)..self.at.max(self.anchor)
+    }
+
+    fn put(&mut self, at: usize, select: bool) {
+        self.at = at;
+        if !select {
+            self.anchor = at;
+        }
+    }
+}
+
+/// One key for a one-line field, the modifiers already read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldKey<'a> {
+    /// Typed or pasted text: it replaces the selection (control characters are dropped, the rest up to the
+    /// field's length).
+    Insert(&'a str),
+    Backspace,
+    Delete,
+    /// The arrows, Home and End; `select` (Shift) moves only the caret and so grows or shrinks the selection.
+    Left { select: bool },
+    Right { select: bool },
+    Home { select: bool },
+    End { select: bool },
+    SelectAll,
+    /// Ctrl+X (the clipboard took the selection): the selection goes.
+    Cut,
+}
+
+/// A character index of `s` as a byte offset.
+fn byte_at(s: &str, chars: usize) -> usize {
+    s.char_indices().nth(chars).map_or(s.len(), |(b, _)| b)
+}
+
+/// The selected text of a field (empty: nothing selected).
+pub fn selected_text(value: &str, caret: Caret) -> &str {
+    let r = caret.range();
+    &value[byte_at(value, r.start)..byte_at(value, r.end)]
+}
+
+/// One key applied to a field's text and caret (`max_chars`: the longest text the field takes).
+pub fn edit_line(value: &mut String, caret: &mut Caret, key: FieldKey, max_chars: usize) {
+    let len = value.chars().count();
+    caret.at = caret.at.min(len);
+    caret.anchor = caret.anchor.min(len);
+    let sel = caret.range();
+    // Replaces the selection (or the range `r`) with `text` and puts the caret after it.
+    let replace = |value: &mut String, caret: &mut Caret, r: std::ops::Range<usize>, text: &str| {
+        let (a, b) = (byte_at(value, r.start), byte_at(value, r.end));
+        value.replace_range(a..b, text);
+        caret.put(r.start + text.chars().count(), false);
+    };
+    match key {
+        FieldKey::Insert(text) => {
+            let room = max_chars.saturating_sub(len - sel.len());
+            let text: String = text.chars().filter(|c| !c.is_control()).take(room).collect();
+            if !text.is_empty() {
+                replace(value, caret, sel, &text);
+            }
+        }
+        FieldKey::Backspace if sel.is_empty() && sel.start > 0 => replace(value, caret, sel.start - 1..sel.start, ""),
+        FieldKey::Delete if sel.is_empty() && sel.end < len => replace(value, caret, sel.start..sel.end + 1, ""),
+        FieldKey::Backspace | FieldKey::Delete | FieldKey::Cut => {
+            if !sel.is_empty() {
+                replace(value, caret, sel, "");
+            }
+        }
+        // Without Shift an arrow first collapses a selection to its side.
+        FieldKey::Left { select: false } if !sel.is_empty() => caret.put(sel.start, false),
+        FieldKey::Right { select: false } if !sel.is_empty() => caret.put(sel.end, false),
+        FieldKey::Left { select } => caret.put(caret.at.saturating_sub(1), select),
+        FieldKey::Right { select } => caret.put((caret.at + 1).min(len), select),
+        FieldKey::Home { select } => caret.put(0, select),
+        FieldKey::End { select } => caret.put(len, select),
+        FieldKey::SelectAll => *caret = Caret { at: len, anchor: 0 },
+    }
+}
+
+/// How a field reads, in the order of its text spans: the text before the selection, the caret when it is at the
+/// selection's start, the selection, the caret when it is at the end (or nothing is selected), the rest.
+/// Unfocused: the whole value first, no caret.
+fn field_parts(value: &str, caret: Caret, focused: bool) -> [&str; 5] {
+    if !focused {
+        return [value, "", "", "", ""];
+    }
+    let r = caret.range();
+    let (a, b) = (byte_at(value, r.start), byte_at(value, r.end));
+    let before = !r.is_empty() && caret.at == r.start;
+    let bar = |on: bool| if on { CARET } else { "" };
+    [&value[..a], bar(before), &value[a..b], bar(!before), &value[b..]]
+}
+
+/// The caret: a bar glyph in its own span, so it blinks by colour and the text beside it never moves.
+const CARET: &str = "|";
+
+/// The text node that shows a [`TextField`]'s value (or its placeholder), the selection and the caret.
 #[derive(Component)]
 pub struct TextFieldText;
 
-/// Typing into the focused field: printable characters, Backspace; Esc and Enter release it. Characters typed with
-/// Ctrl or Cmd held are shortcuts (the web fills in their letter), not text.
-fn type_into_fields(mut keys: MessageReader<KeyboardInput>, held: Res<ButtonInput<KeyCode>>, mut fields: Query<&mut TextField>) {
+/// The text spans after a [`TextFieldText`]'s own text, in [`field_parts`] order.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+struct FieldSpan(u8);
+
+/// The text node of a [`TextField`] (spawn it as the field's child): Barlow regular at `size`, coloured by the kit.
+pub fn field_text(fonts: &HudFonts, size: f32) -> impl Bundle + use<> {
+    let span = |k: u8| {
+        (
+            FieldSpan(k),
+            TextSpan::new(""),
+            TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(size), ..default() },
+            TextColor(Color::NONE),
+            LetterSpacing::Px(size * 0.02),
+            TextBackgroundColor(Color::NONE),
+        )
+    };
+    (TextFieldText, prose(fonts, "", size, Color::NONE), children![span(1), span(2), span(3), span(4)])
+}
+
+/// The Ctrl and Cmd keys (shortcuts), and Shift (selecting).
+const CTRL_KEYS: [KeyCode; 4] = [KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight];
+const SHIFT_KEYS: [KeyCode; 2] = [KeyCode::ShiftLeft, KeyCode::ShiftRight];
+
+/// Typing into the focused field ([`edit_line`]); Esc and Enter release it. The modifiers are followed through
+/// the frame's key messages in order, so a Ctrl+A pressed and let go within one frame is still a shortcut (the web
+/// fills in the letter of a Ctrl key: it is never typed). Pasted text and a cut come from the [`Clipboard`], which
+/// gets the field's selection to copy.
+fn type_into_fields(
+    mut keys: MessageReader<KeyboardInput>,
+    held: Res<ButtonInput<KeyCode>>,
+    mut fields: Query<&mut TextField>,
+    mut clip: ResMut<Clipboard>,
+) {
     let mut field = fields.iter_mut().find(|f| f.focused);
-    let shortcut = held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
+    // The modifiers held when the frame's first key came.
+    let mut down: Vec<KeyCode> = CTRL_KEYS
+        .iter()
+        .chain(&SHIFT_KEYS)
+        .copied()
+        .filter(|&k| !held.just_pressed(k) && (held.pressed(k) || held.just_released(k)))
+        .collect();
     for k in keys.read() {
+        if CTRL_KEYS.contains(&k.key_code) || SHIFT_KEYS.contains(&k.key_code) {
+            down.retain(|&d| d != k.key_code);
+            if k.state == ButtonState::Pressed {
+                down.push(k.key_code);
+            }
+            continue;
+        }
         let Some(f) = field.as_mut() else { continue };
         if k.state != ButtonState::Pressed {
             continue;
         }
-        match &k.logical_key {
-            Key::Backspace => {
-                f.value.pop();
+        let ctrl = down.iter().any(|d| CTRL_KEYS.contains(d));
+        let select = down.iter().any(|d| SHIFT_KEYS.contains(d));
+        let key = match &k.logical_key {
+            Key::Escape | Key::Enter => {
+                f.focused = false;
+                continue;
             }
-            Key::Escape | Key::Enter => f.focused = false,
-            _ if shortcut => {}
-            _ => {
-                if let Some(t) = &k.text {
-                    for c in t.chars().filter(|c| !c.is_control()) {
-                        if f.value.chars().count() < f.max_chars {
-                            f.value.push(c);
-                        }
-                    }
-                }
-            }
-        }
+            Key::Backspace => FieldKey::Backspace,
+            Key::Delete => FieldKey::Delete,
+            Key::ArrowLeft => FieldKey::Left { select },
+            Key::ArrowRight => FieldKey::Right { select },
+            Key::Home => FieldKey::Home { select },
+            Key::End => FieldKey::End { select },
+            // Ctrl+C, Ctrl+X and Ctrl+V are the clipboard's (below); other Ctrl keys are the screens' shortcuts.
+            _ if ctrl => match k.key_code {
+                KeyCode::KeyA => FieldKey::SelectAll,
+                _ => continue,
+            },
+            _ => match &k.text {
+                Some(t) => FieldKey::Insert(t),
+                None => continue,
+            },
+        };
+        let f = &mut **f;
+        edit_line(&mut f.value, &mut f.caret, key, f.max_chars);
+    }
+    let Some(mut f) = field.filter(|f| f.focused) else {
+        clip.field = None;
+        return;
+    };
+    let f = &mut *f;
+    if clip.take_cut() {
+        edit_line(&mut f.value, &mut f.caret, FieldKey::Cut, f.max_chars);
+    }
+    for text in clip.take_pasted() {
+        // One line: line breaks become spaces.
+        edit_line(&mut f.value, &mut f.caret, FieldKey::Insert(&text.lines().collect::<Vec<_>>().join(" ")), f.max_chars);
+    }
+    let selection = selected_text(&f.value, f.caret);
+    if clip.field.as_deref() != Some(selection) {
+        clip.field = Some(selection.to_string());
     }
 }
 
@@ -514,7 +712,8 @@ fn style_widgets(
     mut bars: Query<(Ref<ValueBar>, &mut BackgroundColor, &Children), (Without<Pill>, Without<Ring>, Without<BarFill>)>,
     mut fills: Query<(&mut Node, &mut BackgroundColor, Has<BarMark>), (Or<(With<BarFill>, With<BarMark>)>, Without<ValueBar>, Without<Pill>, Without<Ring>)>,
     mut fields: Query<(Ref<TextField>, Ref<Hot>, &mut BorderColor, &Children), (Without<Pill>, Without<Ring>)>,
-    mut field_texts: Query<(&mut Text, &mut TextColor), (With<TextFieldText>, Without<PillText>)>,
+    mut field_texts: Query<(&mut Text, &mut TextColor, &Children), (With<TextFieldText>, Without<PillText>, Without<FieldSpan>)>,
+    mut field_spans: Query<(&FieldSpan, &mut TextSpan, &mut TextColor, &mut TextBackgroundColor), (Without<TextFieldText>, Without<PillText>)>,
     mut commands: Commands,
     mut blink: Local<bool>,
 ) {
@@ -635,7 +834,8 @@ fn style_widgets(
             }
         }
     }
-    // The caret blinks at 1 Hz; placeholders are dim. Texts are rewritten only when a field or the caret changes.
+    // The caret (teal, like the TEXT view's) blinks at 1 Hz; the selection is lit teal; placeholders are dim.
+    // Texts are rewritten only when a field changes, colours when the caret blinks.
     let caret = time.elapsed_secs().fract() < 0.55;
     let blinked = caret != *blink;
     *blink = caret;
@@ -656,15 +856,30 @@ fn style_widgets(
         if !field.is_changed() && !(field.focused && blinked) {
             continue;
         }
+        let placeholder = field.value.is_empty() && !field.focused;
+        let parts = if placeholder { [field.placeholder.as_str(), "", "", "", ""] } else { field_parts(&field.value, field.caret, field.focused) };
+        let ink = if placeholder { c(ui.dim, 1.0) } else { c(ui.number, 0.95) };
         for child in children {
-            let Ok((mut text, mut color)) = field_texts.get_mut(*child) else { continue };
-            let (s, col) = match (field.value.is_empty(), field.focused) {
-                (true, false) => (field.placeholder.clone(), c(ui.dim, 1.0)),
-                (_, true) => (format!("{}{}", field.value, if caret { "|" } else { " " }), c(ui.number, 0.95)),
-                (false, false) => (field.value.clone(), c(ui.number, 0.95)),
-            };
-            set_text(&mut text, &s);
-            set_color(&mut color, col);
+            let Ok((mut text, mut color, spans)) = field_texts.get_mut(*child) else { continue };
+            set_text(&mut text, parts[0]);
+            set_color(&mut color, ink);
+            for span in spans {
+                let Ok((k, mut s, mut color, mut back)) = field_spans.get_mut(*span) else { continue };
+                let part = parts[usize::from(k.0)];
+                if s.0 != part {
+                    s.0.clear();
+                    s.0.push_str(part);
+                }
+                let (col, bg) = match k.0 {
+                    1 | 3 => (c(ui.teal, if caret { 1.0 } else { 0.0 }), Color::NONE),
+                    2 => (c(ui.number, 1.0), c(ui.teal, 0.3)),
+                    _ => (ink, Color::NONE),
+                };
+                set_color(&mut color, col);
+                if back.0 != bg {
+                    back.0 = bg;
+                }
+            }
         }
     }
 }
@@ -714,19 +929,128 @@ mod tests {
         assert_eq!(ui_scale_for(&window(5120.0, 2880.0)), MAX_UI_SCALE);
     }
 
-    /// The web fills in the letter of Ctrl+S / Ctrl+Z; in a one-line field that is a shortcut, not text.
+    /// A key without text (arrows, Home, a modifier), pressed or let go.
+    fn named(code: KeyCode, logical: Key, pressed: bool) -> KeyboardInput {
+        let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
+        KeyboardInput { key_code: code, logical_key: logical, state, text: None, repeat: false, window: Entity::PLACEHOLDER }
+    }
+
+    /// Runs `keys` through [`edit_line`] from `value` with the caret at its end.
+    fn typed(value: &str, keys: &[FieldKey]) -> (String, Caret) {
+        let mut v = value.to_string();
+        let mut caret = Caret::end(value);
+        for k in keys {
+            edit_line(&mut v, &mut caret, *k, 12);
+        }
+        (v, caret)
+    }
+
     #[test]
-    fn fields_take_text_but_not_shortcut_letters() {
+    fn the_caret_moves_and_edits_where_it_is() {
+        use FieldKey::*;
+        // Home, then typing: in front.
+        assert_eq!(typed("Runner", &[Home { select: false }, Insert("My ")]).0, "My Runner");
+        // Left twice, Backspace and Delete at the caret.
+        let (v, c) = typed("Runner", &[Left { select: false }, Left { select: false }, Backspace, Delete]);
+        assert_eq!((v.as_str(), c.at), ("Runr", 3));
+        // The caret stays inside the text.
+        let (v, c) = typed("ab", &[Right { select: false }, Home { select: false }, Left { select: false }, Backspace]);
+        assert_eq!((v.as_str(), c), ("ab", Caret { at: 0, anchor: 0 }));
+        assert_eq!(typed("ab", &[End { select: false }, Delete]).0, "ab");
+        // Characters, not bytes.
+        assert_eq!(typed("Über", &[Home { select: false }, Right { select: false }, Backspace, Insert("Ü")]).0, "Über");
+    }
+
+    #[test]
+    fn a_selection_is_replaced_cut_or_collapsed() {
+        use FieldKey::*;
+        // Ctrl+A, then typing replaces everything (the review's "Halvex Runner copyaMy Frigate").
+        assert_eq!(typed("Halvex Runner", &[SelectAll, Insert("My Frigate")]).0, "My Frigate");
+        // Shift+Left selects back from the caret; Backspace removes the selection only.
+        let (v, c) = typed("Runner Mk", &[Left { select: true }, Left { select: true }, Backspace]);
+        assert_eq!((v.as_str(), c.at), ("Runner ", 7));
+        // Shift+Home selects to the start; the selected text is what Ctrl+C copies.
+        let (v, c) = typed("Runner Mk", &[Left { select: false }, Left { select: false }, Home { select: true }]);
+        assert_eq!((selected_text(&v, c), c.range()), ("Runner ", 0..7));
+        // Without Shift an arrow collapses the selection to its side.
+        let (_, c) = typed("abcd", &[SelectAll, Left { select: false }]);
+        assert_eq!(c, Caret { at: 0, anchor: 0 });
+        let (_, c) = typed("abcd", &[Home { select: false }, End { select: true }, Right { select: false }]);
+        assert_eq!(c, Caret { at: 4, anchor: 4 });
+        // Ctrl+X: the selection goes (the clipboard has it); without one nothing happens.
+        assert_eq!(typed("abcd", &[Left { select: true }, Cut]).0, "abc");
+        assert_eq!(typed("abcd", &[Cut]).0, "abcd");
+        // A paste replaces the selection, without control characters, up to the field's length (12).
+        assert_eq!(typed("abcd", &[SelectAll, Insert("x\ty")]).0, "xy");
+        assert_eq!(typed("abcdefghij", &[Home { select: false }, Insert("123456")]).0, "12abcdefghij");
+        assert_eq!(typed("abcdefghijkl", &[Left { select: true }, Insert("XYZ")]).0, "abcdefghijkX");
+    }
+
+    #[test]
+    fn a_field_reads_with_its_caret_and_selection_in_place() {
+        let at = |at: usize, anchor: usize| Caret { at, anchor };
+        assert_eq!(field_parts("Runner", at(2, 2), true), ["Ru", "", "", CARET, "nner"]);
+        // The caret sits at its end of the selection.
+        assert_eq!(field_parts("Runner", at(4, 1), true), ["R", "", "unn", CARET, "er"]);
+        assert_eq!(field_parts("Runner", at(1, 4), true), ["R", CARET, "unn", "", "er"]);
+        assert_eq!(field_parts("Runner", at(1, 4), false), ["Runner", "", "", "", ""]);
+    }
+
+    fn typing_world() -> (World, Entity, bevy::ecs::system::SystemId) {
         let mut world = World::new();
         world.init_resource::<Messages<KeyboardInput>>();
         world.init_resource::<ButtonInput<KeyCode>>();
-        let field = world.spawn(TextField { focused: true, max_chars: 10, ..default() }).id();
+        world.init_resource::<Clipboard>();
+        let field = world.spawn(TextField { focused: true, max_chars: 20, ..default() }).id();
         let typing = world.register_system(type_into_fields);
+        (world, field, typing)
+    }
+
+    /// The web fills in the letter of Ctrl+S / Ctrl+Z; in a one-line field that is a shortcut, not text.
+    #[test]
+    fn fields_take_text_but_not_shortcut_letters() {
+        let (mut world, field, typing) = typing_world();
         world.write_message(key(KeyCode::KeyA, "a"));
         world.run_system(typing).unwrap();
         world.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ControlLeft);
+        world.write_message(named(KeyCode::ControlLeft, Key::Control, true));
         world.write_message(key(KeyCode::KeyS, "s"));
         world.run_system(typing).unwrap();
+        // Still held in the next frame.
+        world.resource_mut::<ButtonInput<KeyCode>>().clear();
+        world.write_message(key(KeyCode::KeyZ, "z"));
+        world.run_system(typing).unwrap();
         assert_eq!(world.get::<TextField>(field).unwrap().value, "a");
+    }
+
+    /// Ctrl+A pressed and let go within one frame (a quick press, or a headless test) selects all: the modifier is
+    /// followed through the frame's keys, not read once after them. The clipboard learns the selection.
+    #[test]
+    fn a_quick_ctrl_a_selects_all() {
+        let (mut world, field, typing) = typing_world();
+        world.get_mut::<TextField>(field).unwrap().value = "Halvex Runner copy".into();
+        {
+            let mut held = world.resource_mut::<ButtonInput<KeyCode>>();
+            held.press(KeyCode::ControlLeft);
+            held.release(KeyCode::ControlLeft);
+        }
+        world.write_message(named(KeyCode::ControlLeft, Key::Control, true));
+        world.write_message(key(KeyCode::KeyA, "a"));
+        world.write_message(named(KeyCode::ControlLeft, Key::Control, false));
+        world.run_system(typing).unwrap();
+        assert_eq!(world.get::<TextField>(field).unwrap().value, "Halvex Runner copy");
+        assert_eq!(world.resource::<Clipboard>().field.as_deref(), Some("Halvex Runner copy"));
+        world.resource_mut::<ButtonInput<KeyCode>>().clear();
+        world.write_message(key(KeyCode::KeyM, "M"));
+        world.write_message(named(KeyCode::Home, Key::Home, true));
+        world.write_message(key(KeyCode::KeyA, "a"));
+        world.run_system(typing).unwrap();
+        assert_eq!(world.get::<TextField>(field).unwrap().value, "aM");
+        assert_eq!(world.resource::<Clipboard>().field.as_deref(), Some(""));
+        // Esc lets go: the clipboard no longer serves the field.
+        world.write_message(named(KeyCode::Escape, Key::Escape, true));
+        world.run_system(typing).unwrap();
+        assert!(!world.get::<TextField>(field).unwrap().focused);
+        assert_eq!(world.resource::<Clipboard>().field, None);
     }
 }

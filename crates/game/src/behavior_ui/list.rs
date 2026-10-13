@@ -25,7 +25,7 @@ use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, UiPointer, label, number, prose, set_color, set_text, spawn_pill, tracked, wheel_rows,
+    Hot, Pill, TextField, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, tracked, wheel_rows,
 };
 
 use super::draft::{BehaviorDraft, design_behavior};
@@ -249,7 +249,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         BorderColor::all(c(Tone::Label, 0.3)),
                     ))
                     .with_children(|f| {
-                        f.spawn((TextFieldText, prose(fonts, "", 13.0, c(Tone::Number, 1.0))));
+                        f.spawn(field_text(fonts, 13.0));
                     });
                     b.spawn(label(fonts, "ENTER RENAMES  ·  ESC CANCELS", 8.5, c(Tone::Dim, 1.0)));
                 });
@@ -478,7 +478,7 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
                 && let Some(p) = lib.behaviors.get(&id)
             {
                 rename.value.clone_from(&p.behavior.name);
-                rename.focused = true;
+                rename.focus();
                 list.mode = Mode::Rename(id);
             }
         }

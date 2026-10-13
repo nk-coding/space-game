@@ -17,7 +17,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::drydock::report::DrydockReport;
 use crate::ui_kit::{
-    Hot, Pill, PillText, Ring, TextField, TextFieldText, Tone, ValueBar, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
+    Hot, Pill, PillText, Ring, TextField, Tone, ValueBar, field_text, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
@@ -305,7 +305,7 @@ fn spawn_note(p: &mut ChildSpawnerCommands, kit: &Kit, target: NoteTarget, text:
             BorderColor::all(kit.c(Tone::Label, 0.3)),
         ))
         .with_children(|f| {
-            f.spawn((TextFieldText, prose(kit.fonts, "", 12.0, kit.c(Tone::Dim, 1.0)), Node { flex_grow: 1.0, ..default() }));
+            f.spawn((field_text(kit.fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
         });
     });
 }
