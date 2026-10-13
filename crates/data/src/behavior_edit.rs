@@ -326,7 +326,7 @@ impl BehaviorEditor {
         nodes: &Table<BehaviorNode>,
         text: &str,
     ) -> Result<BehaviorEditor, Vec<TextError>> {
-        let program = check_text(nodes, text)?;
+        let program = crate::behavior::check_text(text, nodes)?;
         let mut ed = BehaviorEditor {
             nodes: nodes.clone(),
             program: Program::default(),
@@ -455,7 +455,7 @@ impl BehaviorEditor {
     /// Parses and checks a text against the vocabulary without changing anything (the text view's live
     /// errors). Every error has its line and column.
     pub fn check_text(&self, text: &str) -> Result<Program, Vec<TextError>> {
-        check_text(&self.nodes, text)
+        crate::behavior::check_text(text, &self.nodes)
     }
 
     // ---- edits ----
@@ -1033,17 +1033,6 @@ impl BehaviorEditor {
                 .iter()
                 .zip(&self.program.rules)
                 .all(|(ids, r)| ids.conds.len() == r.when.len())
-    }
-}
-
-/// Parses a text and checks it against the vocabulary; errors carry text lines and columns.
-fn check_text(nodes: &Table<BehaviorNode>, text: &str) -> Result<Program, Vec<TextError>> {
-    let (program, lines) = Program::parse_with_lines(text)?;
-    let errors = check_program(&program, nodes);
-    if errors.is_empty() {
-        Ok(program)
-    } else {
-        Err(errors.into_iter().map(|e| lines.to_text_error(e)).collect())
     }
 }
 

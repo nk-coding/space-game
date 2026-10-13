@@ -22,7 +22,7 @@ use data::Content;
 use data::behavior::Program;
 use sim::{BehaviorId, RuleStatus, ShipDesign, ShipId};
 
-use crate::drydock::behaviors::{PlayerBehaviors, check_text, errors_note};
+use crate::drydock::behaviors::{PlayerBehaviors, errors_note};
 use crate::mode::{AppMode, FlightExit};
 use crate::params::Params;
 use crate::scene::{ResetRequest, Scene};
@@ -92,7 +92,9 @@ pub fn check(content: &Content, behaviors: &PlayerBehaviors, program: &TestProgr
             Some(p) => Err(format!("{} has {}", p.behavior.name, errors_note(&p.errors))),
             None => Err(format!("there is no behavior {id}")),
         },
-        TestProgram::Text { text, .. } => check_text(text, content).map(|_| ()).map_err(|e| errors_note(&e)),
+        TestProgram::Text { text, .. } => {
+            data::behavior::check_text(text, &content.behavior_nodes).map(|_| ()).map_err(|e| errors_note(&e))
+        }
     }
 }
 

@@ -1020,6 +1020,14 @@ pub fn check_param_value(v: &Value, p: &NodeParam) -> Result<Amount, String> {
 // ---------------------------------------------------------------------------------------------------------
 // Checking against the vocabulary
 
+/// Parses a behavior text and checks it against the vocabulary: the program, or every syntax and vocabulary
+/// error with its text line and column (what a text view shows as live errors).
+pub fn check_text(text: &str, nodes: &Table<BehaviorNode>) -> Result<Program, Vec<TextError>> {
+    let (program, lines) = Program::parse_with_lines(text)?;
+    let errors = check_program(&program, nodes);
+    if errors.is_empty() { Ok(program) } else { Err(errors.into_iter().map(|e| lines.to_text_error(e)).collect()) }
+}
+
 /// Checks a parsed program against the behavior nodes: every name exists and has the right role, value
 /// conditions are compared (and flag conditions are not), arguments fit their parameters, required ones are
 /// present, numbers are in range. Returns every problem found.

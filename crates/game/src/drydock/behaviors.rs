@@ -156,14 +156,6 @@ pub fn check(b: &Behavior, content: &Content) -> Vec<TextError> {
     errors.into_iter().map(to_text).collect()
 }
 
-/// Parses and checks the editor's text (live errors, a test of a program not saved yet).
-#[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
-pub fn check_text(text: &str, content: &Content) -> Result<Program, Vec<TextError>> {
-    let (program, map) = Program::parse_with_lines(text)?;
-    let errors = check_program(&program, &content.behavior_nodes);
-    if errors.is_empty() { Ok(program) } else { Err(errors.into_iter().map(|e| map.to_text_error(e)).collect()) }
-}
-
 /// "1 error: line 2, column 6: …" or "3 errors: …" with the first one.
 pub fn errors_note(errors: &[TextError]) -> String {
     match errors {
@@ -592,7 +584,7 @@ mod tests {
         assert!(p.errors[0].message.contains("shield_down"), "{}", p.errors[0]);
         assert_eq!(p.errors[1].line, 4);
         // The same errors as the text check, which the editor runs live.
-        assert_eq!(check_text(text, &content).unwrap_err(), p.errors);
+        assert_eq!(data::behavior::check_text(text, &content.behavior_nodes).unwrap_err(), p.errors);
         // It still loads (as its lines) and is listed with the first error; flights skip it.
         let back = PlayerBehaviors::load(&storage, &content).unwrap();
         assert_eq!(text_of(&back.get(&id).unwrap().behavior), text);

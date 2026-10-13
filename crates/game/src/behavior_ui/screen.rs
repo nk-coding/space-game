@@ -428,12 +428,12 @@ pub(super) fn rebuild_graph(
     mut materials: ResMut<Assets<DashedOutline>>,
     graph: Single<Entity, With<GraphContent>>,
 ) {
-    let key = (draft.revision, context.slots);
+    let key = (draft.revision(), context.slots);
     if built.0 == Some(key) {
         return;
     }
     built.0 = Some(key);
-    let g = GraphView::of(&draft.program, &content.0.behavior_nodes, context.slots);
+    let g = GraphView::of(draft.program(), &content.0.behavior_nodes, context.slots);
     let kit = Kit { fonts: &fonts, ui: style.ui };
     let materials = &mut *materials;
     commands.entity(*graph).despawn_children().with_children(|gc| {
@@ -626,7 +626,7 @@ pub(super) fn rebuild_inspector(
     body: Single<Entity, With<InspectorBody>>,
     mut built: Local<Option<(Option<Selection>, u64)>>,
 ) {
-    let key = (ui.selected.clone(), draft.revision);
+    let key = (ui.selected.clone(), draft.revision());
     if built.as_ref() == Some(&key) {
         return;
     }
@@ -635,8 +635,8 @@ pub(super) fn rebuild_inspector(
     let i = ui
         .selected
         .as_ref()
-        .and_then(|s| inspect(&draft.program, &content.behavior_nodes, s))
-        .unwrap_or_else(|| behavior_inspection(&draft.name, draft.source.as_deref().and_then(|id| content.behaviors.get(id)), &draft.program));
+        .and_then(|s| inspect(draft.program(), &content.behavior_nodes, s))
+        .unwrap_or_else(|| behavior_inspection(&draft.name, draft.source.as_deref().and_then(|id| content.behaviors.get(id)), draft.program()));
     let kit = Kit { fonts: &fonts, ui: style.ui };
     commands.entity(*body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
 }
@@ -709,7 +709,7 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
             BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES"), Tone::Gold),
         };
     }
-    let rules = draft.program.rules.len();
+    let rules = draft.program().rules.len();
     if slots == 0 && rules > 0 {
         return ("NO LOGIC CORE  ·  THIS DESIGN CANNOT RUN RULES".into(), Tone::Coral);
     }
@@ -739,7 +739,7 @@ pub(super) fn sync_texts(
         let (s, tone) = match t {
             ScreenText::Breadcrumb => (format!("BEHAVIOR  ·  {}", context.design_name.to_uppercase()), Tone::Label),
             ScreenText::Name => (draft.name.clone(), Tone::Number),
-            ScreenText::Slots => (slots_pill(draft.program.rules.len(), context.slots), Tone::Violet),
+            ScreenText::Slots => (slots_pill(draft.program().rules.len(), context.slots), Tone::Violet),
             ScreenText::Status => status_line(&draft, ui.view, context.slots),
         };
         set_text(&mut text, &s);
@@ -894,7 +894,7 @@ mod tests {
     #[test]
     fn the_status_line_says_what_matters_most() {
         let content = data::base_content();
-        let mut d = BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap());
+        let mut d = BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), &content.behavior_nodes).unwrap();
         assert_eq!(status_line(&d, BehaviorView::Graph, 12), ("THE FIRST RULE THAT MATCHES DECIDES  ·  GUNS FIRE AT WILL".into(), Tone::Label));
         assert_eq!(status_line(&d, BehaviorView::Text, 12), ("VALID  ·  6 RULES".into(), Tone::Teal));
         assert_eq!(status_line(&d, BehaviorView::Graph, 4), ("2 RULES WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS".into(), Tone::Gold));

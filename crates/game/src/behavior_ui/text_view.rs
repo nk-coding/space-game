@@ -331,7 +331,7 @@ pub(super) fn editor(
     // egui gets pasted text itself; the game's copy of it is not needed.
     clipboard.take_pasted();
     if changed {
-        draft.set_text(&text, nodes);
+        draft.set_text(&text);
     }
     Ok(())
 }

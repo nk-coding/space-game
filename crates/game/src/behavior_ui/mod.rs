@@ -16,7 +16,7 @@
 //! * [`dashed`]: the dashed pill outline (Rhai nodes, `+ RULE`), a UI material.
 //!
 //! **For handlers** (the editing model, the range scenes): read `MessageReader<BehaviorAction>` in a system in
-//! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::set_program`] (the graph and the text
+//! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::edit`] (the graph and the text
 //! follow its `revision`), read [`BehaviorUi`] (the view, the selected node, the test mode) and
 //! [`EditorContext`] (the design's name and rule slots). Nothing in `screen.rs` needs to change for that.
 
@@ -157,11 +157,13 @@ fn open(
     let bp = design.blueprint();
     *context = EditorContext { design_name: bp.name.clone(), slots: content.ship_rule_slots(bp) };
     let wanted = BehaviorDraft::source_for(content, bp, params.text("behavior"));
-    if draft.source.is_none() || draft.source.as_deref() != wanted.map(|b| b.id.as_str()) {
-        let next = wanted.map_or_else(BehaviorDraft::empty, BehaviorDraft::from_behavior);
+    if draft.editor().is_none() || draft.source.as_deref() != wanted.map(|b| b.id.as_str()) {
+        let nodes = &content.behavior_nodes;
+        let next = wanted.and_then(|b| BehaviorDraft::from_behavior(b, nodes)).or_else(|| BehaviorDraft::empty(nodes));
         // The revision keeps going up, so the graph rebuilds.
-        let revision = draft.revision + 1;
-        *draft = BehaviorDraft { revision, ..next };
+        if let Some(next) = next {
+            draft.replace(next);
+        }
     }
     ui.selected = None;
 }
