@@ -27,6 +27,7 @@ mod atlas;
 mod backdrop;
 mod behavior_ui;
 mod camera;
+mod career;
 mod clipboard;
 mod controls;
 mod drydock;
@@ -113,8 +114,8 @@ fn main() {
             mode::ModePlugin,
             (scene::ScenePlugin, test_range::TestRangePlugin),
             sim_bridge::SimBridgePlugin,
-            (storage::StoragePlugin, clipboard::ClipboardPlugin),
-            // After the bridge (it reads the content the bridge loads) and the storage.
+            (storage::StoragePlugin, clipboard::ClipboardPlugin, career::CareerPlugin),
+            // After the bridge (it reads the content the bridge loads), the storage and the career.
             (drydock::DrydockPlugin, behavior_ui::BehaviorPlugin, home::HomePlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
             camera::CameraPlugin,
             controls::ControlsPlugin,
