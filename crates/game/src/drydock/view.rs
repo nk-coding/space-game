@@ -30,7 +30,6 @@ use crate::style::Style;
 use crate::ui_kit::UiPointer;
 
 use super::actions::DrydockAction;
-use super::state::DrydockUi;
 use super::PlayerDesign;
 
 /// The design's mesh sits where flight pieces do (above the frame's dots, below the hover cell).
@@ -250,7 +249,6 @@ pub(super) fn rebuild_ship(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_frame(
     design: Res<PlayerDesign>,
-    ui: Res<DrydockUi>,
     cursor: Res<DrydockCursor>,
     rig: Res<CameraRig>,
     cam: Res<DockCamera>,
@@ -302,7 +300,7 @@ pub(super) fn draw_frame(
     }
     // The mirror axis: dashes down the frame's centre line.
     let x = w as f32 / 2.0;
-    if ui.mirror && x >= view.min.x && x <= view.max.x {
+    if design.dock().mirror && x >= view.min.x && x <= view.max.x {
         let (dash, gap) = (6.0 * px, 5.0 * px);
         let axis_c = ui_c.label.with_alpha(0.45);
         let (top, bottom) = ((-view.max.y).max(0.0), (-view.min.y).min(h as f32));

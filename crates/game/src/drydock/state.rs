@@ -2,7 +2,7 @@
 //! status line ([`DrydockStatus`]) and the stats grid ([`DrydockStats`]). The widgets only display these and
 //! send [`DrydockAction`](super::DrydockAction)s; they never decide anything.
 
-use data::Content;
+use data::{Content, Material, Part};
 use bevy::prelude::*;
 
 use crate::ui_kit::Tone;
@@ -44,9 +44,8 @@ pub struct DrydockUi {
     /// The armour material hull parts are placed in (content id; the ARMOR pills).
     pub material: String,
     overlays: u8,
-    pub mirror: bool,
-    pub bevel: bool,
-    /// Quarter turns clockwise of the part being placed (Q / E).
+    /// Quarter turns clockwise of the part being placed (Q / E). The mirror and bevel modes are the editor's
+    /// (`PlayerDesign::dock().mirror`, `.bevel`).
     pub rot: u8,
     /// The part picked in the palette (content id).
     pub picked: Option<String>,
@@ -57,19 +56,21 @@ pub struct DrydockUi {
 }
 
 impl DrydockUi {
-    /// Starts on the first category with its first part picked, mirror on, and the armour the design's hull is
-    /// made of (else the first armour material).
+    /// Starts on the first category with its first part picked and the armour the design's hull is made of (else
+    /// the first armour material), both among what the player has (not locked).
     pub fn new(content: &Content, design: &PlayerDesign) -> Self {
         let category = content.categories.iter().next().map(|c| c.id.clone()).unwrap_or_default();
-        let picked = content.parts.iter().find(|p| p.category == category).map(|p| p.id.clone());
+        let picked = palette_parts(content).find(|p| p.category == category).map(|p| p.id.clone());
         let material = design
             .blueprint()
             .parts
             .iter()
-            .find_map(|p| p.material.clone())
-            .or_else(|| content.materials.iter().find(|m| m.armor.is_some()).map(|m| m.id.clone()))
+            .filter_map(|p| p.material.as_deref())
+            .find(|&m| armor_materials(content).any(|a| a.id == m))
+            .map(str::to_string)
+            .or_else(|| armor_materials(content).next().map(|m| m.id.clone()))
             .unwrap_or_default();
-        Self { tool: Tool::Paint, material, overlays: 0, mirror: true, bevel: false, rot: 0, picked, category, search: String::new() }
+        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, picked, category, search: String::new() }
     }
 
     pub fn overlay(&self, o: Overlay) -> bool {
@@ -79,6 +80,17 @@ impl DrydockUi {
     pub fn toggle_overlay(&mut self, o: Overlay) {
         self.overlays ^= o.bit();
     }
+}
+
+/// The parts the player can build with, in content order: locked parts (content `locked`) wait for salvage or
+/// research.
+pub fn palette_parts(content: &Content) -> impl Iterator<Item = &Part> + Clone {
+    content.parts.iter().filter(|p| !p.locked)
+}
+
+/// The armour materials the player can build hull parts in, in content order (the ARMOR pills, keys 1–9).
+pub fn armor_materials(content: &Content) -> impl Iterator<Item = &Material> + Clone {
+    content.materials.iter().filter(|m| m.armor.is_some() && !m.locked)
 }
 
 /// The status line under the grid and whether the design can fly.

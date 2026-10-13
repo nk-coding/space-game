@@ -1,22 +1,23 @@
 //! What the drydock's buttons and keys mean. Both send one message, [`DrydockAction`]: a click on a node with an
 //! [`ActionButton`] sends its action, the keyboard shortcuts send the same ones. Handlers read the message and
-//! never touch widget code; this module handles the UI state (tool, brush rotation, mirror, bevel, material,
-//! overlays, category, picked part) and the test flight. Zoom is handled by the camera (`view.rs`); editing,
-//! undo / redo, saving, export, the blueprint list and the ring menu come with the editing model, the RON
+//! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part)
+//! and the test flight. Zoom is handled by the camera (`view.rs`), editing (undo / redo, mirror, bevel, rotate,
+//! the selected part) by `tools.rs`; saving, export, the blueprint list and the ring menu come with the RON
 //! writer and the menus.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
-//! rotate, M mirror, 1–9 armour material, Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight,
-//! + / − zoom, / search.
+//! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
+//! undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom, / search.
 
 use bevy::prelude::*;
+use data::PowerTier;
 
 use crate::mode::AppMode;
 use crate::scene::Scene;
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
 
-use super::state::{DrydockStatus, DrydockUi, Overlay, Tool};
+use super::state::{DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
 
 #[derive(Message, Clone, Debug, PartialEq)]
 pub enum DrydockAction {
@@ -42,6 +43,14 @@ pub enum DrydockAction {
     PickPart(String),
     ZoomIn,
     ZoomOut,
+    /// The selected part: flip it (F), delete it (Delete / Backspace), deselect (Esc).
+    Flip,
+    Delete,
+    Deselect,
+    /// The selected part's armour material, power tier and power weight (up or down a step): the inspector.
+    PartMaterial(String),
+    PartTier(PowerTier),
+    PartWeight(bool),
 }
 
 /// A widget that sends an action when clicked (pills, rings, palette rows).
@@ -93,6 +102,9 @@ pub(super) fn shortcuts(
             (KeyCode::KeyQ, ..) => send(DrydockAction::RotateCcw),
             (KeyCode::KeyE, ..) => send(DrydockAction::RotateCw),
             (KeyCode::KeyM, ..) => send(DrydockAction::Mirror),
+            (KeyCode::KeyF, ..) => send(DrydockAction::Flip),
+            (KeyCode::Delete | KeyCode::Backspace, ..) => send(DrydockAction::Delete),
+            (KeyCode::Escape, ..) => send(DrydockAction::Deselect),
             (KeyCode::KeyT, ..) => send(DrydockAction::TestFly),
             (KeyCode::Equal | KeyCode::NumpadAdd, ..) => send(DrydockAction::ZoomIn),
             (KeyCode::Minus | KeyCode::NumpadSubtract, ..) => send(DrydockAction::ZoomOut),
@@ -103,7 +115,7 @@ pub(super) fn shortcuts(
             }
             (k, ..) => {
                 if let Some(n) = digit(k)
-                    && let Some(m) = content.0.materials.iter().filter(|m| m.armor.is_some()).nth(n)
+                    && let Some(m) = armor_materials(&content.0).nth(n)
                 {
                     send(DrydockAction::Material(m.id.clone()));
                 }
@@ -139,10 +151,6 @@ pub(super) fn apply(
     for a in actions.read() {
         match a {
             DrydockAction::Tool(t) => ui.tool = *t,
-            DrydockAction::RotateCcw => ui.rot = (ui.rot + 3) % 4,
-            DrydockAction::RotateCw => ui.rot = (ui.rot + 1) % 4,
-            DrydockAction::Mirror => ui.mirror = !ui.mirror,
-            DrydockAction::Bevel => ui.bevel = !ui.bevel,
             DrydockAction::Material(m) => ui.material.clone_from(m),
             DrydockAction::Overlay(o) => ui.toggle_overlay(*o),
             DrydockAction::Category(c) => {
@@ -156,14 +164,8 @@ pub(super) fn apply(
                     next.set(AppMode::Flight);
                 }
             }
-            DrydockAction::Undo
-            | DrydockAction::Redo
-            | DrydockAction::Save
-            | DrydockAction::Export
-            | DrydockAction::Blueprints
-            | DrydockAction::Menu
-            | DrydockAction::ZoomIn
-            | DrydockAction::ZoomOut => {}
+            // Editing (tools.rs), zoom (the camera), the rest has no handler yet.
+            _ => {}
         }
     }
 }
