@@ -227,7 +227,7 @@ fn update_debug(
         } else {
             format!("{} rule slots", watch.slots)
         };
-        let _ = write!(s, "\ntested behavior: {}  ·  {state}", watch.name);
+        let _ = write!(s, "\ntested behavior: {}, {state}", watch.name);
         for (i, why) in watch.why.iter().enumerate() {
             let mark = if watch.active == Some(i) { '>' } else { ' ' };
             let _ = write!(s, "\n {mark} {}  {why}", i + 1);

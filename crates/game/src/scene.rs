@@ -344,7 +344,7 @@ fn exit_banner(to: AppMode) -> &'static str {
 /// Where wingman `k` starts: alternately left and right of the player, a step further back every two.
 fn wing_slot(k: u32) -> sim::Vec2 {
     let x = (k as f32 / 2.0).floor() + 1.0;
-    let side = if k % 2 == 0 { -1.0 } else { 1.0 };
+    let side = if k.is_multiple_of(2) { -1.0 } else { 1.0 };
     sim::Vec2::new(side * 22.0 * x, -12.0 * x)
 }
 

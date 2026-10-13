@@ -408,7 +408,8 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   zlib-compressed payload, a RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))` with the content
   packs (id, version) the design was made with and, when the design names one of the player's behaviors, that
   behavior in the content format (a content behavior goes by its id in the ship only). The Halvex Runner is 663
-  characters; with a six-rule behavior of the player about 1000. Format 1 codes (`SGD1:`, no behavior) still
+  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1412. Format 1
+  codes (`SGD1:`, no behavior) still
   import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
   lower-case tag and `=` padding are ignored. The code shows in a box: click it (it turns teal) and press Ctrl+C,
   or COPY.
@@ -433,8 +434,10 @@ Written 13 Oct 2026 for the behavior editor ([GDR-0057](gdr/0057-behavior-editor
 their own, a design names one, TEST IN RANGE watches it or flies alongside it). The plumbing under the BEHAVIOR
 screen: `crates/game/src/drydock/behaviors.rs` (behaviors on the storage layer, the checks, flights),
 `drydock/share.rs` (they travel with designs, [above](#sharing-export-files-and-share-codes)), `test_range.rs` and
-`scene.rs` (TEST IN RANGE). Tests: `cargo test -p game -- behaviors share test_range`. Screenshots (1280 × 720):
-`docs/results/behavior-test-watch.png`, `behavior-test-alongside.png`.
+`scene.rs` (TEST IN RANGE). Tests: `cargo test -p game -- behaviors share test_range`. Screenshots (1280 × 720,
+F3 on): `docs/results/behavior-test-watch.png` (`?scene=watch&behavior=careful`: a saved copy of the skirmisher
+that flees below 50% hull, every rule with why), `behavior-test-alongside.png` (`?scene=alongside`: the working
+design names `careful`; the wingman on the right runs it, the player's ship sits unpiloted at the centre).
 
 ### Saved behaviors
 
@@ -530,3 +533,8 @@ screen: `crates/game/src/drydock/behaviors.rs` (behaviors on the storage layer, 
   `NoTarget`, `Failed { cond, why }`), `why` (one line per rule, `BehaviorState::describe`: "`hull < 50%` is false
   (hull is 96%)"), `slots` (working rule slots), `target`, `think` (its tick). Empty outside a test. The F3
   overlay lists the rules with `>` at the one that decides.
+- Checked 13 Oct 2026 in headless Chromium (dev build, `scripts/web-drive.mjs`; the player's behavior and working
+  design put into the browser's storage with `eval`, then `reload`): watch and fly alongside with a content
+  behavior (`raider_basic`) and with a saved one (`careful`, by id and named by the design), a URL naming a behavior
+  that isn't saved (flies the design's own, `skirmisher`, with a banner), V ignored while watching, T back to the
+  drydock. No panics or page errors.
