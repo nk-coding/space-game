@@ -46,6 +46,11 @@ impl Fly {
         Self { from, to, anchor, seconds: 0.0 }
     }
 
+    /// Waits `seconds` on `from` before it moves (a screen closing over the place first).
+    pub fn after(self, seconds: f32) -> Self {
+        Self { seconds: -seconds.max(0.0), ..self }
+    }
+
     /// The view at progress `s` (0 to 1, already eased).
     fn at(&self, s: f32) -> View {
         let zoom = self.from.zoom * (self.to.zoom / self.from.zoom).powf(s);
@@ -66,7 +71,7 @@ impl Fly {
 
     /// How far along it is (0 to 1, eased): for things that move with the camera.
     pub fn progress(&self) -> f32 {
-        smootherstep(self.seconds / SECONDS)
+        smootherstep(self.seconds.max(0.0) / SECONDS)
     }
 }
 
@@ -124,6 +129,24 @@ mod tests {
             assert!(v.zoom >= last && v.zoom / last < 1.25);
             last = v.zoom;
         }
+    }
+
+    /// A flight that waits stays on its start, then flies the same path, arriving later by the wait.
+    #[test]
+    fn a_flight_can_wait_first() {
+        let to = View { centre: Vec2::new(8.0, -2.0), zoom: 45.0 };
+        let mut fly = Fly::new(overview(), to).after(0.3);
+        for _ in 0..17 {
+            let (v, done) = fly.step(1.0 / 60.0);
+            assert!(v == overview() && !done && fly.progress() == 0.0);
+        }
+        let (mut arrived, mut frames) = (false, 17);
+        while !arrived {
+            arrived = fly.step(1.0 / 60.0).1;
+            frames += 1;
+        }
+        // 0.3 s waiting, then the 0.6 s flight.
+        assert!((53..=55).contains(&frames), "{frames}");
     }
 
     /// Without a change of zoom the camera pans; going back reverses the path.

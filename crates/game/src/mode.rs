@@ -105,9 +105,13 @@ fn leave_by_key(
     }
 }
 
-fn hide_flight_ui(mut roots: Query<&mut Visibility, With<FlightUi>>) {
-    for mut v in &mut roots {
+fn hide_flight_ui(mut roots: Query<(&mut Visibility, Option<&mut crate::ui_kit::ScreenFx>), With<FlightUi>>) {
+    for (mut v, fx) in &mut roots {
         *v = Visibility::Hidden;
+        // The HUD's transition snaps shut: the UI scale and the world change at once here.
+        if let Some(mut fx) = fx {
+            crate::ui_kit::snap_screen(&mut fx, false);
+        }
     }
 }
 

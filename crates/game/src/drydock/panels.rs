@@ -40,7 +40,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Hot, Pill, PillLock, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose,
-    ring_glyph, ring_node, set_color, Tip, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
+    ring_glyph, ring_node, set_color, Tip, ScreenFx, ScreenPart, Edge, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -63,7 +63,7 @@ const SEL_BONUSES: usize = 3;
 
 /// The drydock's UI root (shown only in the drydock).
 #[derive(Component)]
-pub(super) struct DrydockRoot;
+pub struct DrydockRoot;
 
 #[derive(Component)]
 pub(super) struct PaletteList;
@@ -153,12 +153,14 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
     commands
         .spawn((
             DrydockRoot,
+            // Opens and closes with a transition (`view::open_close`): the panels slide in from their edges.
+            ScreenFx::closed(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
             Visibility::Hidden,
         ))
         .with_children(|root| {
             // Top left: the ring menu, the breadcrumb and the design's name.
-            root.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
                 .with_children(|tl| {
                     tl.spawn((ring_node(40.0), ActionButton(DrydockAction::Menu), Tip::new("SHIPYARD"))).with_children(|r| {
                         r.spawn(glyph(Glyph::Menu, Tone::Violet, 22.0));
@@ -170,7 +172,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 });
 
             // Top right: armour materials and overlays.
-            root.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
                 .with_children(|tr| {
                     tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(2)), ..default() }));
                     // Every armour material; a locked one is dimmed with a lock (GDR-0065).
@@ -188,7 +190,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 });
 
             // Left: search, categories, the part list.
-            root.spawn((UiBlock, Node { width: px(248), flex_direction: FlexDirection::Column, row_gap: px(12), ..abs(Some(20.0), None, Some(74.0), Some(70.0)) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Left, 1), Node { width: px(248), flex_direction: FlexDirection::Column, row_gap: px(12), ..abs(Some(20.0), None, Some(74.0), Some(70.0)) }))
                 .with_children(|lp| {
                     lp.spawn((
                         SearchField,
@@ -286,7 +288,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 });
 
             // Right: the stats grid and the selected part.
-            root.spawn((UiBlock, Node { width: px(292), flex_direction: FlexDirection::Column, ..abs(None, Some(20.0), Some(78.0), Some(70.0)) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), Node { width: px(292), flex_direction: FlexDirection::Column, ..abs(None, Some(20.0), Some(78.0), Some(70.0)) }))
                 .with_children(|rp| {
                     rp.spawn(Node {
                         display: Display::Grid,
@@ -383,7 +385,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
 
             // Centre: the tools above the grid; the grid viewport; the info line and the zoom.
             root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(290.0), Some(332.0), Some(76.0), Some(66.0)) }).with_children(|ga| {
-                ga.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::Center, column_gap: px(8), flex_shrink: 0.0, ..default() }))
+                // The tools and the info line move, the grid viewport never (the camera centres on it).
+                ga.spawn((UiBlock, ScreenPart::new(Edge::Top, 2), Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::Center, column_gap: px(8), flex_shrink: 0.0, ..default() }))
                     .with_children(|tb| {
                         for (text, key, action) in [
                             ("PAINT", "B", DrydockAction::Tool(Tool::Paint)),
@@ -396,7 +399,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         }
                     });
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
-                ga.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(30), flex_shrink: 0.0, ..default() })
+                ga.spawn((ScreenPart::new(Edge::Bottom, 2), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(30), flex_shrink: 0.0, ..default() }))
                     .with_children(|b| {
                         b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(super::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
@@ -408,7 +411,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             });
 
             // Bottom: undo / redo, mirror and bevel, the status line, blueprints / export / save, the test flight.
-            root.spawn((UiBlock, Node { height: px(42), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(22.0), Some(20.0), None, Some(14.0)) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 3), Node { height: px(42), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(22.0), Some(20.0), None, Some(14.0)) }))
                 .with_children(|bb| {
                     for (g, action, tip) in [(Glyph::Undo, DrydockAction::Undo, Tip::key("UNDO", "CTRL+Z")), (Glyph::Redo, DrydockAction::Redo, Tip::key("REDO", "CTRL+SHIFT+Z"))] {
                         bb.spawn((ring_node(38.0), ActionButton(action), tip)).with_children(|r| {

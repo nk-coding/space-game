@@ -358,14 +358,17 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
 - **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
   (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
   viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
-  frame inside the arms) and the clamps retract under the walls; then the drydock's panels appear and nothing else
-  moves. In the drydock the walls and the parked cranes stay around the frame (dimmed by its veil outside the grid
-  viewport); the yard, the floor (the drydock draws its own dots, at the same corners) and the drones are home's.
-  **Going back** reverses it: home starts on the drydock's last view and flies out while the cranes return. The
-  other screens go back the same way from their place (the mind, the test range for any flight, the gate after a
-  voyage while its debrief is open); when FLEET closes
-  other screens go back the same way from their place (the mind, the lab, the test range for any flight); when FLEET closes
-  the camera flies back out from the moorings.
+  frame inside the arms) and the clamps retract under the walls, and the yard around the U, the floor and the drones
+  fade out with the flight (`shipyard::station_alpha`); then the drydock's panels slide in from their edges and its
+  world fades in ([Screen transitions](#screen-transitions)). In the drydock the walls and the parked cranes stay
+  around the frame (dimmed by its veil outside the grid viewport); the yard, the floor (the drydock draws its own
+  dots, at the same corners) and the drones are home's. **Going back** reverses it: the drydock's panels slide out
+  and its world fades, home's camera waits on the drydock's last view for that (`EXIT_SECONDS`, `Fly::after`) and then
+  flies out while the cranes return and the yard fades back in. The other screens go back the same way from their
+  place (the mind, the lab, the test range for any flight, the gate after a voyage while its debrief is open); when
+  FLEET closes the camera flies back out from the moorings once it has closed. Home's words and labels fade out
+  when the camera leaves the yard and fade in when it rests there again; the labels follow the camera meanwhile
+  (moved by their transforms), the invisible click areas come and go at once.
 - **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
   placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
   FRIGATE 24 × 24` (gold, in the area), `BEHAVIOR` / `THE MIND` (violet), `TEST RANGE` / `NO RISK · NO
@@ -390,7 +393,7 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   Entering home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight
   find the camera as they left it.
 - **Modes**: the station and the screen are spawned once and shown only at home (the walls and cranes in the
-  drydock too), and step aside while FLEET is open (it stays a layer for now; the moorings view can take its place
+  drydock too), and fade out while FLEET opens (a covering screen, [Screen transitions](#screen-transitions)) (it stays a layer for now; the moorings view can take its place
   later). Coming back: the ring button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`,
   `BehaviorAction::Menu`), and in any flight M or the ring top left of the HUD.
 
@@ -505,6 +508,44 @@ there). Screenshots:
 - **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
 - Not yet: the mockup's preview of a picked card before ENTER adds it (one click adds), the dotted formation ring
   and the lines to the flagship, the escort's behavior name.
+
+## Screen transitions
+
+Niklas, 13 Oct 2026: "the stuff on the left and right should slide in … the whole transition should feel really
+smooth, nothing should be hidden abruptly". `ui_kit::transition` (re-exported from `ui_kit`) is the one helper every
+screen uses; new screens adopt it the same way:
+
+1. Put `ScreenFx::closed()` on the screen's UI root (`.covering()` when the screen hides the world behind it: the
+   shipyard fades out under it, `WorldCover`), spawned `Visibility::Hidden`; from then on the kit owns the root's
+   visibility.
+2. Put `ScreenPart::new(edge, order)` on each panel or bar: `Edge::Left/Right/Top/Bottom` slides it in from beyond
+   that window edge, `Edge::Fade` fades it in place (use it for anything other code positions from its rectangle:
+   the drydock's grid viewport, the BEHAVIOR screen's graph area). `order` 0–3 staggers them. Everything not inside
+   a part fades with the root. A root may be a part itself (the debrief panel slides in from the right).
+3. Open and close it with `show_screen(&mut fx, open)` (e.g. from the mode in a system on `state_changed`);
+   `snap_screen` jumps without a transition where the UI scale or the world change at once (to and from flight).
+4. World-space elements read `ScreenFx::alpha()` (FX colours × alpha, or a group material: `Atlas::group_material`
+   and `atlas::set_alpha`) and draw while `ScreenFx::visible()`, so they fade out after the mode has been left.
+
+How: the root's progress runs to 1 in `ENTER_SECONDS` (0.53 s: each part slides 0.38 s, eased out, 0.05 s after the
+order before) and back to 0 in `EXIT_SECONDS` (0.32 s, the last part in going first); defaults for review. A part
+moves by its `UiTransform` from fully past its edge (no layout); colours of texts, backgrounds, borders and glows
+are written × alpha while it runs and given back exactly when it ends (a colour a screen writes meanwhile becomes
+the faded one, per colour); UI icons follow their node's place and draw with their part's own atlas material whose
+alpha is the part's (`IconMaterials`); `AtlasMaterial` has a `tint` uniform for this (alpha only). Nothing is
+written once a transition has ended. Tested: the timing at 30–144 fps, the stagger, the slide distances, the colour
+hand-back. There is no reduced-motion setting in the game yet; when one comes, `snap_screen` is the switch.
+
+Who uses it: the drydock (top bars from the top, the palette from the left, stats and inspector from the right, the
+tools from the top and the info line and bottom bar from the bottom; the frame's dots, brackets, veil, the pointer's
+mark, the ghost and the overlays fade; the design fades too unless it comes from or goes home, where the docked ship
+is the same picture; going to the BEHAVIOR screen the camera stays on the drydock's view, `DockCamera::parked`, so
+the design fades in place), the BEHAVIOR screen (covering; its dot grid fades), the research screen (its four roots;
+its veil fades), FLEET (covering), the debrief, home's words and labels, and the flight HUD (slides in when flight
+starts; H hides it the same way; leaving flight snaps it shut). The station fades as a whole under covering screens
+(`shipyard::station_alpha`, two group materials: the U with its rigging and the docked ship, and what is home's
+alone). Not faded yet: the BEHAVIOR screen's dashed outlines (a UI material), the BLUEPRINTS / BEHAVIORS layers
+(hidden at once when their screen is left), the TEXT view's egui editor, and the flight world itself (a scene cut).
 
 ## Research
 
@@ -717,7 +758,9 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   raises the atlas tier to the icons' pixels per cell (twice what a part icon shows: icons are stored at
   `art::ICON_DENSITY`, 0.5). bevy_ui draws after
   the world, so nodes over an icon should have at most a faint background. bevy_ui's clipping doesn't reach the
-  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again.
+  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again. An icon follows
+  its node when a screen transition slides it, and fades with its screen part (the part's atlas material,
+  `ui_kit::IconMaterials`; [Screen transitions](#screen-transitions)).
 
 ## Behavior screen
 

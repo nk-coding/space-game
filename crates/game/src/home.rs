@@ -32,7 +32,7 @@
 
 use bevy::prelude::*;
 use bevy::state::state::StateTransitionEvent;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 
 use crate::camera::{CamMode, CameraRig, CameraSet};
@@ -50,7 +50,7 @@ use crate::shipyard::layout::{Align, Layout, Place, Tag, fit, fit_tagged};
 use crate::shipyard::{ShipyardSet, Yard};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Tip, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
+use crate::ui_kit::{EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
 
 /// Label sizes (logical px at the 1280 × 720 layout; the UI scale grows them with the window).
 const TITLE: f32 = 11.0;
@@ -156,9 +156,13 @@ struct Visit {
 #[derive(Component)]
 struct HomeRoot;
 
-/// The labels and the click areas over the world (shown while the camera rests on the yard).
+/// The labels over the world (shown while the camera rests on the yard).
 #[derive(Component)]
 struct LabelRoot;
+
+/// The click areas over the places (while the camera rests on the yard).
+#[derive(Component)]
+struct SpotRoot;
 
 #[derive(Component)]
 struct DesignName;
@@ -249,7 +253,9 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
     let full = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
-    commands.spawn((HomeRoot, full.clone(), Visibility::Hidden)).with_children(|root| {
+    // Home's words and the labels fade in when the camera comes to rest on the yard, and out when it leaves
+    // (`ui_kit::ScreenFx`).
+    commands.spawn((HomeRoot, ScreenFx::closed(), full.clone(), Visibility::Hidden)).with_children(|root| {
         // Top left: where we are and the docked design's name.
         root.spawn(Node { position_type: PositionType::Absolute, left: px(28), top: px(22), flex_direction: FlexDirection::Column, row_gap: px(6), ..default() })
             .with_children(|tl| {
@@ -273,19 +279,29 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             }
         });
     });
-    commands.spawn((LabelRoot, full, Visibility::Hidden)).with_children(|root| {
+    // The click areas are invisible: they come and go at once (only while the camera rests on the yard).
+    commands.spawn((SpotRoot, full.clone(), Visibility::Hidden)).with_children(|root| {
         for place in Place::ALL {
             if let Some(tip) = tip_of(place) {
                 root.spawn((Spot(place), Hot::default(), tip, Node { position_type: PositionType::Absolute, ..default() }));
             }
+        }
+    });
+    commands.spawn((LabelRoot, ScreenFx::closed(), full, Visibility::Hidden)).with_children(|root| {
+        for place in Place::ALL {
             let words = TextLayout::no_wrap();
-            root.spawn((PlaceLabel(place), Node { position_type: PositionType::Absolute, width: px(0), flex_direction: FlexDirection::Column, row_gap: px(LABEL_GAP), ..default() }))
+            // Placed by their transforms (they follow the camera's flights while they fade).
+            let at = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(0), flex_direction: FlexDirection::Column, row_gap: px(LABEL_GAP), ..default() };
+            root.spawn((PlaceLabel(place), at))
                 .with_children(|l| {
                     l.spawn((LabelTitle(place), label(fonts, "", TITLE, c(Tone::Dim, 1.0)), words));
                     l.spawn((LabelSub(place), label(fonts, "", SUB, c(Tone::Label, 1.0)), words));
                 });
         }
-        root.spawn((PlateAnchor, Node { position_type: PositionType::Absolute, width: px(0), height: px(0), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }))
+        root.spawn((
+            PlateAnchor,
+            Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(0), height: px(0), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+        ))
             .with_child((PlateName, label(fonts, "YARD 7  ·  RIM", 8.0, c(Tone::Gold, 0.9)), TextLayout::no_wrap(), UiTransform::from_rotation(Rot2::degrees(-90.0))));
     });
 }
@@ -380,7 +396,9 @@ fn enter(
         Some(place) => {
             let start = place_view(place, &yard.layout, &window, &dock, viewport.single().ok());
             put_rig(&mut rig, start, window.size());
-            Phase::Flying { fly: Fly::new(start, yard_view), to: None, from: Some(place) }
+            // A screen closes over its place first (its transition, `ui_kit::ScreenFx`); flight's HUD snaps shut.
+            let wait = if exited == Some(AppMode::Flight) { 0.0 } else { EXIT_SECONDS };
+            Phase::Flying { fly: Fly::new(start, yard_view).after(wait), to: None, from: Some(place) }
         }
         None => {
             put_rig(&mut rig, yard_view, window.size());
@@ -514,7 +532,7 @@ fn fly(
             }
             if *place == Place::Fleet && !fleet.open {
                 // FLEET closed: back out to the yard.
-                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)), to: None, from: Some(Place::Fleet) });
+                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)).after(EXIT_SECONDS), to: None, from: Some(Place::Fleet) });
             }
             if *place == Place::Voyages && refused {
                 // The launch was refused (a note says why): back out to the yard.
@@ -564,58 +582,45 @@ fn show(
     mode: Res<State<AppMode>>,
     fleet: Res<Fleet>,
     visit: Res<Visit>,
-    mut roots: ParamSet<(Query<&mut Visibility, With<HomeRoot>>, Query<&mut Visibility, With<LabelRoot>>)>,
+    mut screens: Query<&mut ScreenFx, Or<(With<HomeRoot>, With<LabelRoot>)>>,
+    mut spots: Single<&mut Visibility, With<SpotRoot>>,
 ) {
     let home = *mode.get() == AppMode::Home && !fleet.open;
     let resting = home && matches!(visit.phase, Phase::Yard);
-    let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in &mut roots.p0() {
-        if *v != vis(resting) {
-            *v = vis(resting);
-        }
+    for mut fx in &mut screens {
+        show_screen(&mut fx, resting);
     }
-    for mut v in &mut roots.p1() {
-        if *v != vis(resting) {
-            *v = vis(resting);
-        }
+    let want = if resting { Visibility::Inherited } else { Visibility::Hidden };
+    if **spots != want {
+        **spots = want;
     }
 }
 
-/// Labels, the name plate and the click areas follow the camera (UI px = logical px / the UI scale).
+/// Labels and the name plate follow the camera, during its flights too, by their transforms (no layout); the click
+/// areas (sized) and the plate's letters only while it rests on the yard (UI px = logical px / the UI scale).
 #[allow(clippy::type_complexity)]
 fn place_labels(
     yard: Res<Yard>,
     rig: Res<CameraRig>,
     ui_scale: Res<UiScale>,
     visit: Res<Visit>,
-    mut nodes: ParamSet<(
-        Query<(&PlaceLabel, &mut Node)>,
-        Query<(&Spot, &mut Node)>,
-        Query<&mut Node, With<PlateAnchor>>,
-    )>,
+    mut labels: Query<(&PlaceLabel, &mut Node, &mut UiTransform), Without<PlateAnchor>>,
+    mut anchor: Single<&mut UiTransform, (With<PlateAnchor>, Without<PlaceLabel>)>,
+    mut spots: Query<(&Spot, &mut Node), Without<PlaceLabel>>,
     mut plate: Single<&mut TextFont, With<PlateName>>,
 ) {
-    if !matches!(visit.phase, Phase::Yard) {
-        return;
-    }
     let k = ui_scale.0.max(1e-3);
     let at = |w: Vec2| rig.world_to_screen(w) / k;
-    let set = |node: &mut Node, left: Val, top: Val, size: Option<Vec2>| {
-        if node.left != left || node.top != top {
-            node.left = left;
-            node.top = top;
-        }
-        if let Some(s) = size
-            && (node.width != px(s.x) || node.height != px(s.y))
-        {
-            node.width = px(s.x);
-            node.height = px(s.y);
+    let l = &yard.layout;
+    let put = |tf: &mut UiTransform, p: Vec2, scale: f32| {
+        let (t, s) = (Val2::px(p.x, p.y), Vec2::splat(scale));
+        if tf.translation != t || tf.scale != s {
+            tf.translation = t;
+            tf.scale = s;
         }
     };
-    let l = &yard.layout;
-    for (label, mut node) in &mut nodes.p0() {
+    for (label, mut node, mut tf) in &mut labels {
         let (anchor, align) = l.label(label.0);
-        let p = at(anchor);
         let items = match align {
             Align::Start => AlignItems::FlexStart,
             Align::Middle => AlignItems::Center,
@@ -624,20 +629,37 @@ fn place_labels(
         if node.align_items != items {
             node.align_items = items;
         }
-        set(&mut node, px(p.x), px(p.y), None);
+        put(&mut tf, at(anchor), 1.0);
     }
-    for (spot, mut node) in &mut nodes.p1() {
+    // The plate's letters are painted on the station: their size follows the zoom (by the transform's scale while
+    // the camera flies, by the font once it rests).
+    let letters = (PLATE_LETTERS * rig.zoom / k).max(4.0);
+    let resting = matches!(visit.phase, Phase::Yard);
+    if resting && plate.font_size != FontSize::Px(letters) {
+        plate.font_size = FontSize::Px(letters);
+    }
+    let set_px = match plate.font_size {
+        FontSize::Px(p) => p.max(1e-3),
+        _ => letters,
+    };
+    put(&mut anchor, at(l.name_plate().center()), letters / set_px);
+    if !resting {
+        return;
+    }
+    let set = |node: &mut Node, left: Val, top: Val, size: Vec2| {
+        if node.left != left || node.top != top {
+            node.left = left;
+            node.top = top;
+        }
+        if node.width != px(size.x) || node.height != px(size.y) {
+            node.width = px(size.x);
+            node.height = px(size.y);
+        }
+    };
+    for (spot, mut node) in &mut spots {
         let r = l.hit(spot.0);
         let (a, b) = (at(Vec2::new(r.min.x, r.max.y)), at(Vec2::new(r.max.x, r.min.y)));
-        set(&mut node, px(a.x), px(a.y), Some(b - a));
-    }
-    for mut node in &mut nodes.p2() {
-        let p = at(l.name_plate().center());
-        set(&mut node, px(p.x), px(p.y), None);
-    }
-    let size = FontSize::Px((PLATE_LETTERS * rig.zoom / k).max(4.0));
-    if plate.font_size != size {
-        plate.font_size = size;
+        set(&mut node, px(a.x), px(a.y), b - a);
     }
 }
 
@@ -755,6 +777,7 @@ fn sync_notes(career: Res<PlayerCareer>, style: Res<Style>, mut texts: Query<(&N
 /// Corner brackets around the hovered place, in screen pixels.
 fn draw_hover(
     spots: Query<(&Spot, &Hot, &InheritedVisibility)>,
+    visit: Res<Visit>,
     yard: Res<Yard>,
     rig: Res<CameraRig>,
     style: Res<Style>,
@@ -762,6 +785,9 @@ fn draw_hover(
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(r) = regions else { return };
+    if !matches!(visit.phase, Phase::Yard) {
+        return;
+    }
     let Some((spot, ..)) = spots.iter().find(|(_, h, v)| h.hovered && v.get()) else { return };
     let px = 1.0 / rig.zoom;
     let (arm, gap, width) = (BRACKET.0 * px, BRACKET.1 * px, BRACKET.2 * px);

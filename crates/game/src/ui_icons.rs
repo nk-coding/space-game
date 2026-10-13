@@ -11,6 +11,9 @@
 //! where ships show its drawing on a hull-toned cell (GDR-0069). Glyphs Barlow lacks (arrows, the play triangle, the search
 //! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind.
 //!
+//! An icon follows its node's laid-out place (a sliding screen part moves it) and, while its screen's transition
+//! runs, fades with its part ([`IconMaterials`]: the part's own atlas material).
+//!
 //! The world draws before bevy_ui, so UI nodes are drawn over icons: give the nodes behind an icon at most a
 //! faint background. Icons follow their node's visibility, and hide when a scrolled parent clips them (an icon
 //! is a world mesh: bevy_ui's clipping does not reach it).
@@ -23,13 +26,14 @@ use bevy::window::PrimaryWindow;
 use data::{Blueprint, Placement};
 
 use crate::RenderToggles;
-use crate::atlas::{Atlas, UiAtlasNeed};
+use crate::atlas::{Atlas, AtlasMaterial, UiAtlasNeed};
 use crate::camera::{CameraRig, CameraSet};
 use crate::meshbuf::MeshBuf;
 use crate::ship_model::{blueprint_visual, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, vcol};
+use crate::ui_kit::IconMaterials;
 
 /// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane.
 const Z_UI_ICON: f32 = 600.0;
@@ -109,11 +113,14 @@ fn draw_icons(
     content: Res<GameContent>,
     toggles: Res<RenderToggles>,
     mut need: ResMut<UiAtlasNeed>,
+    mut faded: ResMut<IconMaterials>,
+    mut mats: Query<&mut MeshMaterial2d<AtlasMaterial>, With<UiIconMesh>>,
 ) {
     for node in removed.read() {
         if let Some(m) = state.0.remove(&node) {
             commands.entity(m.entity).despawn();
         }
+        faded.0.remove(&node);
     }
     let scale = window.scale_factor();
     let mut px_per_cell = 0.0f32;
@@ -132,6 +139,13 @@ fn draw_icons(
             IconMesh { entity, mesh, built: None, dims: Vec2::ONE }
         });
         let Ok((mut t, mut v)) = placed.get_mut(m.entity) else { continue };
+        // A screen's transition fades the icon with its part (`ui_kit::ScreenPart`'s material).
+        if let Ok(mut mat) = mats.get_mut(m.entity) {
+            let want = faded.0.get(&node_e).unwrap_or(&atlas.material);
+            if mat.0 != *want {
+                mat.0 = want.clone();
+            }
+        }
         let size = node.size / scale;
         // Shown only whole: an icon a scrolled parent cuts would draw over its neighbours.
         let inside = |c: &CalculatedClip| {

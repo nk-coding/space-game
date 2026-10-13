@@ -16,7 +16,7 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillText, Tone, UiBlock, UiClick, WHEEL_LINE_PX, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
+    Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, UiBlock, show_screen, UiClick, WHEEL_LINE_PX, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
     spawn_scroll_cue, tracked, wheel_rows,
 };
 
@@ -230,16 +230,23 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
     let placed = tree.place(&m);
     let inner_h = placed.lanes.last().map_or(0.0, |l| l.0 + l.1);
     commands
-        .spawn((ResearchRoot, CardStates::default(), Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() }, Visibility::Hidden))
+        .spawn((
+            ResearchRoot,
+            CardStates::default(),
+            // Opens and closes with a transition (`ui_kit::ScreenFx`): the four roots slide in from their edges.
+            ScreenFx::closed(),
+            Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
+            Visibility::Hidden,
+        ))
         .with_children(|root| {
             root.spawn(Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                 .with_children(|centre| {
                     centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
                         // Four roots (the top bar, the tree, the detail, the bottom bar), so each can slide in on its own.
-                        stage.spawn((UiBlock, abs(Vec2::ZERO, Some(Vec2::new(STAGE.x, 70.0))))).with_children(|top| {
+                        stage.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), abs(Vec2::ZERO, Some(Vec2::new(STAGE.x, 70.0))))).with_children(|top| {
                             // Left: the way back, where we are.
                             top.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }).with_children(|tl| {
-                                tl.spawn((ring_node(40.0), ResearchButton(ResearchAction::Home))).with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
+                                tl.spawn((ring_node(40.0), ResearchButton(ResearchAction::Home), Tip::key("SHIPYARD", "ESC"))).with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
                                 tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
                                     col.spawn(label(fonts, "SHIPYARD  ›  RESEARCH", 10.0, c(Tone::Label, 1.0)));
                                     col.spawn(prose(fonts, "Research", 22.0, c(Tone::Number, 1.0)));
@@ -259,7 +266,7 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                         });
 
                         // The tree: tier heads over the columns, the lanes (scrolled when they don't fit).
-                        stage.spawn(abs(Vec2::new(0.0, TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TIER_Y)))).with_children(|left| {
+                        stage.spawn((ScreenPart::new(Edge::Left, 1), abs(Vec2::new(0.0, TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TIER_Y))))).with_children(|left| {
                             for col in 0..tree.columns {
                                 left.spawn((label(fonts, &format!("TIER {}", roman(col + 1)), 8.5, c(Tone::Dim, 1.0)), abs(Vec2::new(COLUMNS_X + col as f32 * m.column_pitch + 14.0, 0.0), None)));
                             }
@@ -281,13 +288,13 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                         spawn_detail(stage, fonts, style);
 
                         // Bottom: the way home, the line, the drydock.
-                        stage.spawn((UiBlock, abs(Vec2::new(0.0, 674.0), Some(Vec2::new(STAGE.x, 32.0))))).with_children(|bottom| {
+                        stage.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 2), abs(Vec2::new(0.0, 674.0), Some(Vec2::new(STAGE.x, 32.0))))).with_children(|bottom| {
                             bottom.spawn(abs(Vec2::new(22.0, 0.0), None)).with_children(|b| {
-                                spawn_pill(b, fonts, "‹  HOME", 9.5, 32.0, None, Pill::new(Tone::Teal), ResearchButton(ResearchAction::Home));
+                                spawn_pill(b, fonts, "‹  HOME", 9.5, 32.0, None, Pill::new(Tone::Teal), (ResearchButton(ResearchAction::Home), Tip::key("SHIPYARD", "ESC")));
                             });
                             bottom.spawn((RText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), abs(Vec2::new(150.0, 11.0), None)));
                             bottom.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(0), ..default() }).with_children(|b| {
-                                spawn_pill(b, fonts, "DRYDOCK", 9.5, 32.0, None, Pill::new(Tone::Teal), ResearchButton(ResearchAction::Drydock));
+                                spawn_pill(b, fonts, "DRYDOCK", 9.5, 32.0, None, Pill::new(Tone::Teal), (ResearchButton(ResearchAction::Drydock), Tip::key("DRYDOCK", "D")));
                             });
                         });
                     });
@@ -382,7 +389,7 @@ fn spawn_lanes(lanes: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style
 fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
-    stage.spawn((UiBlock, abs(Vec2::new(PANEL_X, TIER_Y), Some(Vec2::new(PANEL_W, UNLOCK_Y + 44.0 - TIER_Y))))).with_children(|panel| {
+    stage.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), abs(Vec2::new(PANEL_X, TIER_Y), Some(Vec2::new(PANEL_W, UNLOCK_Y + 44.0 - TIER_Y))))).with_children(|panel| {
         // The divider between the tree and the detail.
         panel.spawn((abs(Vec2::new(-20.0, 8.0), Some(Vec2::new(1.0, TREE_BOTTOM - TIER_Y - 8.0))), BackgroundColor(c(Tone::Label, 0.12))));
         panel
@@ -469,12 +476,9 @@ fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Styl
     });
 }
 
-/// The screen shows only on the research screen.
-pub fn show(mode: Res<State<AppMode>>, mut root: Single<&mut Visibility, With<ResearchRoot>>) {
-    let want = if *mode.get() == AppMode::Research { Visibility::Inherited } else { Visibility::Hidden };
-    if **root != want {
-        **root = want;
-    }
+/// The screen shows only on the research screen, opening and closing with its transition (`ui_kit::ScreenFx`).
+pub fn show(mode: Res<State<AppMode>>, mut root: Single<&mut ScreenFx, With<ResearchRoot>>) {
+    show_screen(&mut root, *mode.get() == AppMode::Research);
 }
 
 /// Clicks on the screen's buttons (a disabled pill sends nothing).

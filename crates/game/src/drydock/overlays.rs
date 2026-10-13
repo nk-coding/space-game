@@ -55,11 +55,12 @@ pub(super) struct DockOverlay {
     built: Option<(u8, Option<Rect>)>,
 }
 
-pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<Atlas>, ship: Single<Entity, With<DockShip>>) {
+pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, fade: Res<super::view::DockFade>, ship: Single<Entity, With<DockShip>>) {
     commands.entity(*ship).with_child((
         DockOverlay { built: None },
         Mesh2d(meshes.add(MeshBuf::placeholder())),
-        MeshMaterial2d(atlas.material.clone()),
+        // Fades with the screen (`view::DockFade`).
+        MeshMaterial2d(fade.world.clone()),
         Transform::from_xyz(0.0, 0.0, Z_OVERLAY),
     ));
 }

@@ -98,10 +98,13 @@ impl Plugin for DrydockPlugin {
                     .run_if(in_state(AppMode::Drydock)),
             )
             .add_systems(Startup, (view::setup, overlays::setup.after(view::setup), panels::spawn.after(crate::flight_hud::spawn_hud)))
-            .add_systems(PostStartup, (show, view::remember_start_zoom.run_if(in_state(AppMode::Drydock))))
+            .add_systems(PostStartup, view::remember_start_zoom.run_if(in_state(AppMode::Drydock)))
             .add_systems(OnEnter(AppMode::Drydock), view::enter)
             .add_systems(OnExit(AppMode::Drydock), (view::exit, tools::leave))
-            .add_systems(Update, show.run_if(state_changed::<AppMode>))
+            .add_systems(OnExit(AppMode::Behavior), view::unpark)
+            // The screen's transition (`ui_kit::ScreenFx`) and its world elements' fade, in every mode (it closes
+            // after the drydock is left).
+            .add_systems(Update, (view::open_close, view::fade_world).chain())
             .add_systems(
                 Update,
                 (
@@ -113,9 +116,9 @@ impl Plugin for DrydockPlugin {
                         .in_set(DockSet::Show),
                 ),
             )
-            .add_systems(PostUpdate, view::draw_frame.run_if(in_state(AppMode::Drydock)).after(CameraSet).before(FxFlush))
+            .add_systems(PostUpdate, view::draw_frame.run_if(view::shown).after(CameraSet).before(FxFlush))
             // After the camera: ARCS is cut at the edge of the view of this frame.
-            .add_systems(PostUpdate, overlays::rebuild.run_if(in_state(AppMode::Drydock)).after(CameraSet));
+            .add_systems(PostUpdate, overlays::rebuild.run_if(view::shown).after(CameraSet));
         editing(app);
     }
 }
@@ -137,19 +140,5 @@ fn editing(app: &mut App) {
                 (inspector::sync_controls, tools::sync_rings).in_set(DockSet::Show),
             ),
         )
-        .add_systems(PostUpdate, ghost::draw.run_if(in_state(AppMode::Drydock)).after(view::draw_frame).before(FxFlush));
-}
-
-/// The drydock's screen and design are shown only in the drydock.
-fn show(
-    mode: Res<State<AppMode>>,
-    mut root: Query<&mut Visibility, (With<panels::DrydockRoot>, Without<view::DockShip>)>,
-    mut ship: Query<&mut Visibility, (With<view::DockShip>, Without<panels::DrydockRoot>)>,
-) {
-    let want = if *mode.get() == AppMode::Drydock { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in root.iter_mut().chain(ship.iter_mut()) {
-        if *v != want {
-            *v = want;
-        }
-    }
+        .add_systems(PostUpdate, ghost::draw.run_if(view::shown).after(view::draw_frame).before(FxFlush));
 }

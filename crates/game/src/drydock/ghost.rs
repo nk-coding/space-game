@@ -96,14 +96,15 @@ pub fn hover_mark(tool: Tool, gesture: Gesture, cell: Option<Cell>, part_at: imp
 pub(super) fn setup(
     mut commands: Commands,
     ship: Single<Entity, With<DockShip>>,
-    atlas: Res<Atlas>,
+    fade: Res<super::view::DockFade>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let ghost = commands
         .spawn((
             GhostMesh { built: None },
             Mesh2d(meshes.add(crate::meshbuf::MeshBuf::placeholder())),
-            MeshMaterial2d(atlas.material.clone()),
+            // Fades with the screen (`view::DockFade`).
+            MeshMaterial2d(fade.world.clone()),
             Transform::from_xyz(0.0, 0.0, Z_GHOST),
         ))
         .id();
@@ -325,15 +326,18 @@ pub(super) fn draw(
     sel: Res<Selection>,
     rig: Res<CameraRig>,
     style: Res<Style>,
+    fade: Res<super::view::DockFade>,
     regions: Option<Res<FxRegions>>,
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(r) = regions else { return };
     let px = 1.0 / rig.zoom;
+    // Everything here fades with the screen.
+    let fa = fade.alpha;
     let ui = &style.ui;
     let world = |p: Vec2| Vec2::new(p.x, -p.y);
     for (poly, tone) in &view.outlines {
-        let c = tone.color(ui).with_alpha(if *tone == Tone::Label { 0.6 } else { 0.95 });
+        let c = tone.color(ui).with_alpha((if *tone == Tone::Label { 0.6 } else { 0.95 }) * fa);
         for k in 0..poly.len() {
             queue.line(&r.white, world(poly[k]), world(poly[(k + 1) % poly.len()]), 1.6 * px, c, Z_LINES);
         }
@@ -342,20 +346,20 @@ pub(super) fn draw(
     match &view.hover {
         Some(HoverMark::Cell((cx, cy))) => {
             let c = Vec2::new(*cx as f32 + 0.5, *cy as f32 + 0.5);
-            queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui.teal.with_alpha(0.1), z: Z_LINES });
+            queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui.teal.with_alpha(0.1 * fa), z: Z_LINES });
             let corners = [c + Vec2::new(-0.5, -0.5), c + Vec2::new(0.5, -0.5), c + Vec2::new(0.5, 0.5), c + Vec2::new(-0.5, 0.5)];
             for k in 0..4 {
-                queue.line(&r.white, world(corners[k]), world(corners[(k + 1) % 4]), 1.5 * px, ui.teal.with_alpha(0.8), Z_LINES);
+                queue.line(&r.white, world(corners[k]), world(corners[(k + 1) % 4]), 1.5 * px, ui.teal.with_alpha(0.8 * fa), Z_LINES);
             }
         }
         Some(HoverMark::Part { cells, outline, tone }) => {
             let col = tone.color(ui);
             for (x, y) in cells {
                 let c = Vec2::new(*x as f32 + 0.5, *y as f32 + 0.5);
-                queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: col.with_alpha(0.1), z: Z_LINES });
+                queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: col.with_alpha(0.1 * fa), z: Z_LINES });
             }
             for k in 0..outline.len() {
-                queue.line(&r.white, world(outline[k]), world(outline[(k + 1) % outline.len()]), 1.6 * px, col.with_alpha(0.9), Z_LINES);
+                queue.line(&r.white, world(outline[k]), world(outline[(k + 1) % outline.len()]), 1.6 * px, col.with_alpha(0.9 * fa), Z_LINES);
             }
         }
         None => {}
@@ -363,10 +367,10 @@ pub(super) fn draw(
     for &((x0, y0), (x1, y1)) in &view.rects {
         let (a, b) = (Vec2::new(x0 as f32, y0 as f32), Vec2::new(x1 as f32 + 1.0, y1 as f32 + 1.0));
         let centre = world((a + b) / 2.0);
-        queue.push(FxSprite { rect: r.white.uv, pos: centre, angle: 0.0, size: b - a, anchor: Vec2::ZERO, color: ui.teal.with_alpha(0.12), z: Z_LINES });
+        queue.push(FxSprite { rect: r.white.uv, pos: centre, angle: 0.0, size: b - a, anchor: Vec2::ZERO, color: ui.teal.with_alpha(0.12 * fa), z: Z_LINES });
         let corners = [a, Vec2::new(b.x, a.y), b, Vec2::new(a.x, b.y)];
         for k in 0..4 {
-            queue.line(&r.white, world(corners[k]), world(corners[(k + 1) % 4]), 1.6 * px, ui.teal.with_alpha(0.9), Z_LINES);
+            queue.line(&r.white, world(corners[k]), world(corners[(k + 1) % 4]), 1.6 * px, ui.teal.with_alpha(0.9 * fa), Z_LINES);
         }
     }
     // Corner brackets just outside the selected part's footprint.
@@ -377,7 +381,7 @@ pub(super) fn draw(
         let off = 4.0 * px;
         let (a, b) = (Vec2::new(s.x as f32, s.y as f32) - off, Vec2::new((s.x + w as i32) as f32, (s.y + h as i32) as f32) + off);
         let arm = (10.0 * px).min((b - a).min_element() * 0.4);
-        let c = ui.teal.with_alpha(0.95);
+        let c = ui.teal.with_alpha(0.95 * fa);
         for (corner, sx, sy) in [(a, 1.0, 1.0), (Vec2::new(b.x, a.y), -1.0, 1.0), (b, -1.0, -1.0), (Vec2::new(a.x, b.y), 1.0, -1.0)] {
             queue.line(&r.white, world(corner), world(corner + Vec2::new(sx * arm, 0.0)), 2.0 * px, c, Z_LINES);
             queue.line(&r.white, world(corner), world(corner + Vec2::new(0.0, sy * arm)), 2.0 * px, c, Z_LINES);

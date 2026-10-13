@@ -36,7 +36,7 @@ use crate::flight_hud::HudFonts;
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
-use crate::ui_kit::{Hot, Pill, Tip, Tone, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked};
+use crate::ui_kit::{Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked};
 use crate::voyage::clock;
 
 /// Rows of parts shown (the rest are counted in one line).
@@ -274,6 +274,9 @@ impl Plugin for DebriefPlugin {
 fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>) {
     commands.spawn((
         PanelRoot,
+        // Slides in from the right and fades in (`ui_kit::ScreenFx`); out the same way when dismissed.
+        ScreenFx::closed(),
+        ScreenPart::new(Edge::Right, 0),
         UiBlock,
         // Hot, so a click on the panel reaches nothing under it.
         Hot::default(),
@@ -297,6 +300,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
     ));
     commands.spawn((
         SummaryText,
+        ScreenFx::closed(),
         Visibility::Hidden,
         tracked(&fonts, "", 10.5, ui_color(style.ui.label, 1.0), 0.18),
         // Top left under the shipyard's name (home's notes are bottom right).
@@ -330,19 +334,13 @@ fn show(
     mode: Res<State<AppMode>>,
     fleet: Res<Fleet>,
     debrief: Res<Debrief>,
-    mut panel: Single<&mut Visibility, (With<PanelRoot>, Without<SummaryText>)>,
-    mut summary: Single<&mut Visibility, (With<SummaryText>, Without<PanelRoot>)>,
+    mut panel: Single<&mut ScreenFx, (With<PanelRoot>, Without<SummaryText>)>,
+    mut summary: Single<&mut ScreenFx, (With<SummaryText>, Without<PanelRoot>)>,
 ) {
     let home = *mode.get() == AppMode::Home && !fleet::is_open(fleet);
     let has = debrief.data.is_some();
-    let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
-    let (p, s) = (vis(home && has && debrief.open), vis(home && has && !debrief.open));
-    if **panel != p {
-        **panel = p;
-    }
-    if **summary != s {
-        **summary = s;
-    }
+    show_screen(&mut panel, home && has && debrief.open);
+    show_screen(&mut summary, home && has && !debrief.open);
 }
 
 /// Rebuilds the panel and the summary when the debrief changes.

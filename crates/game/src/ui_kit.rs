@@ -14,6 +14,9 @@
 //!   state, the kit turns state + pointer into colours ([`UiStyleSet`]), writing only what changed.
 //! * Colours go through [`ui_color`] (the world composites in sRGB, bevy_ui does not encode for it).
 //! * Glyphs that Barlow lacks (arrows, the play triangle, the search lens) are vector icons (`ui_icons`).
+//! * [`Tip`]: a control's tooltip (its name and key; labels carry no key letters).
+//! * [`ScreenFx`] / [`ScreenPart`] (`transition`): a screen's enter / exit transition, its panels sliding in from
+//!   their edges while they fade in; every screen opened from the shipyard uses it.
 
 use bevy::input::ButtonState;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
@@ -22,6 +25,12 @@ use bevy::prelude::*;
 use bevy::text::{LetterSpacing, TextBackgroundColor};
 use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
+
+mod transition;
+
+pub use transition::{
+    EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
+};
 
 use crate::clipboard::Clipboard;
 use crate::flight_hud::HudFonts;
@@ -175,6 +184,7 @@ impl Plugin for UiKitPlugin {
             .add_systems(Startup, spawn_tip.after(crate::flight_hud::spawn_hud))
             .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
             .add_systems(Update, (style_widgets, show_locks, place_scroll_cues, show_tip).in_set(UiStyleSet));
+        transition::plugin(app);
     }
 }
 
