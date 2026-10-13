@@ -1,0 +1,161 @@
+/* The wiki's look: the game's UI (docs/style-guide.md): dark backdrop, Barlow, uppercase tracked labels in grey,
+   white numbers with a slight glow, teal links, no boxed panels. Colours are the variables above. */
+* { box-sizing: border-box; }
+html { background: var(--bg) fixed; min-height: 100%; }
+body {
+  margin: 0; font-family: var(--font), system-ui, sans-serif; font-size: 16px; line-height: 1.55;
+  color: color-mix(in srgb, var(--number) 80%, transparent);
+}
+a { color: var(--teal); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+code, pre, .rule {
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+code {
+  font-size: 0.86em; color: var(--number); padding: 0.05em 0.35em; border-radius: 4px;
+  background: color-mix(in srgb, var(--tile) 75%, transparent);
+}
+pre { background: color-mix(in srgb, var(--tile) 75%, transparent); padding: 0.8em 1em; border-radius: 6px; overflow-x: auto; }
+pre code { background: none; padding: 0; font-size: 14px; }
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+header.top {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5em 2.2em; padding: 18px 32px;
+  border-bottom: 1px dotted var(--ring);
+}
+.brand { font-weight: 500; color: var(--number); letter-spacing: 0.06em; }
+header nav { display: flex; flex-wrap: wrap; gap: 0.4em 1.5em; }
+header nav a, h2, dt, th, .crumbs, .kind .t, .badge, details.data summary {
+  text-transform: uppercase; letter-spacing: 0.22em; font-size: 12px; font-weight: 500;
+}
+header nav a { color: var(--label); }
+header nav a.here, header nav a:hover { color: var(--teal); text-decoration: none; }
+
+main { max-width: 1180px; margin: 0 auto; padding: 22px 32px 48px; }
+.crumbs { color: var(--dim); margin-bottom: 6px; }
+.crumbs a { color: var(--label); }
+h1 {
+  font-weight: 500; font-size: 34px; line-height: 1.2; color: var(--number); margin: 0.2em 0 0.35em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--teal) 22%, transparent);
+}
+h2 { color: var(--label); margin: 2.2em 0 0.9em; padding-bottom: 0.5em; border-bottom: 1px dotted var(--ring); }
+h2 a { color: var(--label); }
+h2 a:hover { color: var(--teal); }
+.summary { font-size: 19px; color: var(--number); }
+.lead { color: var(--label); margin-top: -0.3em; }
+blockquote { margin: 1em 0; padding-left: 1em; border-left: 2px solid var(--violet); color: var(--label); }
+blockquote.lore { font-style: italic; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { border: 1px solid var(--ring); color: var(--label); border-radius: 999px; padding: 0 0.8em; font-size: 13px; }
+.prose { max-width: 72ch; }
+.prose h2, .prose h3, .prose h4 {
+  text-transform: none; letter-spacing: 0.01em; font-size: 21px; color: var(--number); border: 0; margin: 1.6em 0 0.4em;
+}
+.prose h3, .prose h4 { font-size: 18px; }
+.none { color: var(--dim); }
+.note { color: var(--dim); font-size: 13px; }
+
+/* Entry pages: the main column and the infobox. */
+.entry { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 44px; align-items: start; }
+.infobox { padding-top: 12px; }
+.infobox figure { margin: 0 0 18px; display: flex; justify-content: center; }
+figure.hero {
+  margin: 4px 0 0; padding: 18px 12px; display: flex; justify-content: center;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 9%, transparent), transparent);
+}
+.facts, details.data dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; margin: 0 0 22px; }
+dt { color: var(--label); padding-top: 3px; }
+dd { margin: 0; color: var(--number); }
+.materials { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 20px; }
+.swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; color: var(--label); }
+
+/* Tables: no boxes, dotted rules like the HUD's rings. */
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  text-align: left; vertical-align: middle; padding: 7px 14px 7px 0;
+  border-bottom: 1px dotted color-mix(in srgb, var(--ring) 70%, transparent);
+}
+th { color: var(--label); }
+table.stats th { font-size: 11.5px; letter-spacing: 0.16em; }
+table.stats th a { color: var(--label); }
+table.stats th a:hover { color: var(--teal); }
+table.stats td, td.num { color: var(--number); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.stats td { text-align: right; text-shadow: 0 0 8px color-mix(in srgb, var(--number) 35%, transparent); padding-right: 0; }
+table.by-material td { text-align: right; }
+table.by-material th:not(:first-child) { text-align: right; }
+td.pic { width: 1%; padding-right: 16px; }
+td.name { white-space: nowrap; font-weight: 500; }
+table.list td.pic { width: 88px; }
+table.list td.pic:has(code) { width: 180px; }
+table.list td.name { width: 230px; }
+td.num, th.num { text-align: right; }
+table.params td { vertical-align: top; }
+table.params ul { margin: 0.4em 0 0; padding-left: 1.2em; }
+svg.chip { display: block; }
+svg.chip-icon { display: block; width: 28px; height: 28px; }
+svg.part, svg.ship { max-width: 100%; height: auto; }
+svg.swatch-big { width: 120px; height: 120px; }
+
+.dot {
+  display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; margin-right: 0.6em; vertical-align: 0.02em;
+  background: var(--c); box-shadow: 0 0 8px var(--c);
+}
+.dot.tone { border-radius: 2px; box-shadow: 0 0 0 1px var(--label); }
+.badge {
+  display: inline-block; vertical-align: 0.35em; font-size: 11px; letter-spacing: 0.18em; padding: 0.1em 0.9em;
+  border-radius: 999px; border: 1px solid currentColor; margin-left: 0.7em; text-shadow: none; line-height: 1.6;
+}
+td .badge, li .badge, th .badge, .palette .badge, .swatch .badge { vertical-align: 0.1em; font-size: 10px; margin-left: 0.5em; }
+.palette .badge, .swatch .badge { display: block; width: fit-content; margin: 4px auto 0; }
+.badge.locked { color: var(--coral); }
+.badge.cond, .badge.rhai { color: var(--violet); }
+.badge.act { color: var(--teal); }
+.badge.tgt { color: var(--gold); }
+code.cond, a.cond, span.cond { color: var(--violet); }
+code.act, a.act, span.act { color: var(--teal); }
+code.tgt, a.tgt, span.tgt { color: var(--gold); }
+
+/* Behavior rules, one per line as in the editor's text view. */
+.rules ol { padding-left: 2.2em; margin: 0; }
+.rules li::marker { color: var(--dim); font-size: 13px; }
+.rule { font-size: 14.5px; margin: 0; padding: 7px 0; border-bottom: 1px dotted color-mix(in srgb, var(--ring) 60%, transparent); }
+.rule .kw { color: var(--label); }
+.rule.target { padding-left: 2.2em; }
+
+/* Cards and the index. */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px 22px; }
+.card { display: flex; flex-direction: column; gap: 4px; padding: 14px 0; color: inherit; border-top: 1px dotted var(--ring); }
+.card:hover { text-decoration: none; }
+.card:hover .title { color: var(--teal); }
+.card svg.thumb { align-self: center; height: 104px; width: auto; max-width: 100%; margin-bottom: 8px; }
+.card .title { color: var(--number); font-weight: 500; }
+.card .sub { color: var(--label); font-size: 14px; }
+.kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 22px; margin: 26px 0 8px; }
+.kind { display: flex; flex-direction: column; padding: 10px 0; border-top: 1px dotted var(--ring); }
+.kind:hover { text-decoration: none; }
+.kind .n { font-size: 30px; line-height: 1.2; color: var(--number); text-shadow: 0 0 14px color-mix(in srgb, var(--teal) 35%, transparent); }
+.kind .t { color: var(--label); }
+.kind:hover .t { color: var(--teal); }
+.palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 8px 12px; }
+/* Palette entries: the tiles sit on one line (the row fits a 2-cell part), names and badges below. */
+.palette a {
+  display: grid; grid-template-rows: 80px auto; justify-items: center; align-items: end; gap: 6px; padding: 6px 2px;
+  font-size: 13px; color: var(--label); text-align: center;
+}
+.palette a > span { align-self: start; }
+.palette a:hover { color: var(--teal); text-decoration: none; }
+
+details.data { margin-top: 3em; font-size: 14px; }
+details.data summary { cursor: pointer; color: var(--dim); }
+details.data dl { margin-top: 12px; }
+details.data dd code { margin-right: 0.3em; }
+
+footer code { background: none; color: var(--label); padding: 0; }
+footer { max-width: 1180px; margin: 0 auto; padding: 22px 32px 40px; color: var(--dim); font-size: 13px; border-top: 1px dotted var(--ring); }
+
+@media (max-width: 860px) {
+  .entry { grid-template-columns: 1fr; gap: 12px; }
+  main { padding: 16px; }
+  header.top { padding: 14px 16px; }
+  footer { padding: 18px 16px 32px; }
+}
