@@ -214,6 +214,18 @@ pub struct Material {
 }
 entry!(Material, Kind::Material);
 
+/// A gun's barrel as drawn (style 2a: a short metal barrel through the nose, a muzzle glow at its tip while the
+/// line of fire is clear), in cells.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BarrelArt {
+    pub width: f32,
+    /// How far it reaches beyond the part's front edge.
+    pub length: f32,
+    /// The radius of the muzzle glow at its tip.
+    pub muzzle: f32,
+}
+
 /// What a salvaged part gives when the haul is dismantled at home (GDR-0063). The career turns a haul into
 /// research data and materials with it; the sim never reads it. A part without it is never collected.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -542,6 +554,9 @@ pub struct Part {
     /// System colour key overriding the category's colour (e.g. "enemy" for automaton parts).
     #[serde(default)]
     pub color: Option<String>,
+    /// How a gun's barrel looks (guns whose art has one). Only the client reads it.
+    #[serde(default)]
+    pub barrel: Option<BarrelArt>,
     /// Footprint `(w, h)` in cells before rotation.
     pub size: (u32, u32),
     #[serde(default)]

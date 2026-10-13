@@ -426,6 +426,14 @@ impl<'a> Validator<'a> {
         if let Some(col) = &p.color {
             self.key_in(p, "color", col, SYSTEM_COLORS, "system colour");
         }
+        if let Some(b) = &p.barrel {
+            if p.weapon.is_none() {
+                self.err(p, "barrel", "only guns (parts with `weapon`) have a barrel");
+            }
+            self.number(p, "barrel.width", b.width, 0.0, true);
+            self.number(p, "barrel.length", b.length, 0.0, false);
+            self.number(p, "barrel.muzzle", b.muzzle, 0.0, true);
+        }
         let (w, h) = p.size;
         if w == 0 || h == 0 {
             self.err(p, "size", "footprint must be at least 1×1");

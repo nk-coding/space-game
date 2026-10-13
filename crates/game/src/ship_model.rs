@@ -2,7 +2,7 @@
 //! content), what one live piece looks like ([`piece_visual`], from the `sim` state of that piece) and what a
 //! whole blueprint looks like at rest ([`blueprint_visual`], the drydock: every part, from the ship grid alone).
 //!
-//! Visual interpretation only (icon, tile tone, barrel sizes per gun art, nav lights). Shape and topology come
+//! Visual interpretation only (icon, tile tone, barrels from the part's content, nav lights). Shape and topology come
 //! from `data::geometry` and the sim: polygons, the piece's alive parts and frame origin, hull edges, line of
 //! fire, shield radius.
 
@@ -13,16 +13,8 @@ use sim::{Piece, Ship, Stat};
 use crate::ship_view::{GunVisual, PartVisual, ShipVisual};
 use crate::style::Style;
 
-/// Barrel and muzzle look per gun icon, taken from the reference renders
-/// (`art/ships/halvex-runner.svg`, `art/ships/automaton-raider.svg`): `(barrel (width, protrusion), muzzle radius)`
-/// in cells. Guns without an entry get no barrel and a small muzzle glow at their front edge.
-fn gun_art(icon: Option<&str>) -> (Option<(f32, f32)>, f32) {
-    match icon {
-        Some("beam-laser") => (Some((0.25, 0.7)), 0.15),
-        Some("automaton-cannon") => (Some((0.2, 0.6)), 0.15),
-        _ => (None, 0.12),
-    }
-}
+/// The muzzle glow of a gun without a barrel (its content has no `barrel`), at its front edge, in cells.
+const BARE_MUZZLE: f32 = 0.12;
 
 /// The look of every part of one blueprint (blueprint frame), computed once per design.
 #[derive(Clone, Debug)]
@@ -67,7 +59,10 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
             (style.machine_tile, mix(style.machine_tile, sys, 0.55), def.icon.clone())
         };
         let gun = def.weapon.as_ref().map(|_| {
-            let (barrel, muzzle_radius) = gun_art(def.icon.as_deref());
+            let (barrel, muzzle_radius) = match def.barrel {
+                Some(b) => (Some((b.width, b.length)), b.muzzle),
+                None => (None, BARE_MUZZLE),
+            };
             let color = style.system_color(color_key.unwrap_or("weapons"));
             weapon_color = color;
             GunVisual { clear: true, barrel, muzzle_radius, color }
