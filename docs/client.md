@@ -306,22 +306,30 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is op
 
 How the design on the drydock's grid thinks (Behavior editor v1, [GDR-0057](gdr/0057-behavior-editor-v1.md); the
 look follows `docs/concept/boards/ui-mockups/phone-behavior-editor.png`, laid out for the desktop), `behavior_ui/`,
-written 13 Oct 2026. This is the foundation: the mode, the screen, the graph and text views and the read-only
-inspector. Editing in the graph (the editing model `data::behavior_edit`), saving behaviors (the player storage)
-and TEST IN RANGE (the range scenes) plug in through the resources and the action message below. Until they do,
-the TEXT view's edits stay on the screen: flights still fly the content behavior.
+written 13 Oct 2026: the mode, the screen, the graph and text views, the inspector and the palette. Both views edit
+through the editing model `data::behavior_edit` (`docs/behavior-format.md` "Editing model"): every graph edit is
+legal (or refused with a reason) and one undo step, and the text view follows. Saving behaviors (the player
+storage) and TEST IN RANGE (the range scenes) plug in through the resources and the action message below. Until
+they do, the edits stay on the screen: flights still fly the content behavior.
 
 Open it with the drydock's BEHAVIOR button (bottom bar), or `?scene=behavior` (`&behavior=raider_basic` opens a
 content behavior instead of the design's). Screenshots: `docs/results/behavior-screen-*.png`.
 
-| Keys (only while neither the search field nor the TEXT view has the keyboard) | |
+| Keys (only while no text field nor the TEXT view has the keyboard) | |
 |---|---|
-| Back to the drydock (the design is untouched) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text) |
+| Back to the drydock (the design is untouched) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it) |
 | Test in range (the WATCH / FLY ALONGSIDE pills pick the mode) | T, or TEST IN RANGE (no handler yet: the range scenes come with the plumbing) |
 | Search the palette | / (Esc or Enter leaves the field) |
 | Scroll the graph or the palette | wheel |
-| Select a node / nothing | click it / click the graph's empty space |
-| TEXT view | type; Ctrl+C / Ctrl+V copy and paste (through `clipboard.rs` on the web); Ctrl+Z is egui's undo |
+| Select a node / a rule / nothing | click it / click its `always` chip or its row's empty space / click the graph's empty space |
+| Add a rule | `+ RULE` |
+| Add a condition to the selected rule; replace its action; set the target | click a condition / an action / a target selector in ADD NODE |
+| Replace the selected condition | REPLACE in the inspector, then a condition in ADD NODE |
+| Remove the selected condition / delete the selected rule / back to the default target | Delete or Backspace (or REMOVE / DELETE / USE THE DEFAULT TARGET) |
+| Move a rule | drag its row (a chip or the row) up or down; or UP / DOWN in the inspector |
+| Undo / redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y, or the two ring buttons after DRYDOCK (dim when there is nothing) |
+| A note | click the NOTE field, type, Enter (or click elsewhere) |
+| TEXT view | type; Ctrl+C / Ctrl+V copy and paste (through `clipboard.rs` on the web); Ctrl+Z is egui's undo while the text has the keyboard |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `BEHAVIOR · HALVEX RUNNER` (the design's name) and
 the behavior's name, the `6 / 12 RULE SLOTS` pill (rules / the design's slots, `Content::ship_rule_slots`, from its
@@ -331,37 +339,84 @@ dot per rule, each rule as violet condition chips (content name, values dim, the
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
 rule's note dim after it; Rhai conditions dashed with a gold RHAI tag; `always` as a plain chip; the dashed coral
 slot line above the first rule without a slot (`6 RULE SLOTS · THE RULES BELOW DO NOT RUN`) and those rules
-dimmed; the dashed `+ RULE · N SLOTS LEFT` pill; a dot grid behind (immediate-mode FX dots). Right the inspector
-(the selected node: `ACTION · MANEUVER`, its name in its role's colour, its summary, its values as read-only rows:
-a number with its range and a bar where the range is known, choices as pills with the chosen one teal, `DEFAULT`
-when the rule leaves it out; `WHEN TRUE / NOT TRUE`, `COMPARE` and `THAN` for conditions; the rule's note; a Rhai
-condition's script; with nothing selected, the behavior's name and content summary), ADD NODE with its search
-and the palette (the content vocabulary: conditions violet, actions teal, Rhai gold, target selectors white).
-Bottom the DRYDOCK pill and the status line (text errors, rules without a slot, else how rules run). Larger windows
+dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); the dashed `+ RULE · N SLOTS LEFT`
+pill; a dot grid behind (immediate-mode FX dots). The selected rule's row is lit faintly, the selected chip glows.
+Right the inspector (below), ADD NODE (its line says where a pick goes: `ADD NODE · TO RULE 3`, `REPLACE HULL ·
+PICK A CONDITION`) with its search and the palette (the content vocabulary: conditions violet, actions teal, Rhai
+gold, target selectors white). Bottom the DRYDOCK pill, undo / redo and the status line (text errors, rules without
+a slot, else how rules run; a refusal in coral after it for 3 s, like the drydock's info line). Larger windows
 scale the screen like the drydock. The phone layout and touch come later.
 
-- **Draft** (`draft.rs`): `BehaviorDraft { source, name, program, text, errors, revision }`, the behavior being
-  edited: a copy of a content behavior (`BehaviorDraft::source_for`: `?behavior=`, else the design's `behavior`,
-  else its faction's default), its text, its last valid `data::behavior::Program` and the text's errors (line,
-  column, message). `set_text` parses and checks a text (`check_text`: `Program::parse_with_lines` +
-  `check_program`): valid → the program (and `revision`) changes; invalid → the program stays, `errors` fill.
-  `set_program` (graph edits) prints the canonical text; leaving the TEXT view tidies a valid text to canonical
-  form. Opening the screen keeps the draft while it is still the same behavior (typed text survives a look at the
-  drydock), else copies the new one.
+The inspector shows the selection with its kicker (`ACTION · MANEUVER`), its name in its role's colour and its
+summary, then its controls (a tall inspector scrolls with the wheel; the palette under it keeps about three rows).
+Screenshots: `docs/results/behavior-editing-condition.png` (a condition with `not`, its comparison and its
+threshold), `docs/results/behavior-editing-rule.png` (a rule added with `+ RULE` and a palette condition, its
+action selected).
+
+- **Numbers** (`RANGE · 67%  ≈ 100 M`): a −/+ ring on each side of a slider. Steps are round numbers that grow
+  with the value and land on multiples (5 m below 50 m, 10 m below 200 m, 50 m below 1000 m; 5 % of the weapon
+  reach below 200 %; 5 % for percentages; ½ s below 10 s; whole counts); the slider runs over the node's content
+  range (`min`–`max`; 0–1000 % for a share of the reach), soft-logarithmic for distances and times, linear for
+  percentages and counts, and snaps to the step; a drag is one undo step. Distances switch between metres and a
+  share of the weapon reach (`M` / `% REACH`): with the design's reach (its longest clear gun on the main piece, with
+  the tuning's range) the distance stays the same, else the number stays. `DEFAULT` marks a value the rule leaves
+  out; RESET writes the default back (and drops it when it is the last value). A threshold's slider runs 0–100 %
+  for percentages, 0 to the node's own period for times (`cycle(9s) >= 5s`), 0–20 for counts.
+- **Choices** as pills, the chosen one teal (a click picks one), with RESET when written.
+- **A condition**: a `NOT` switch (teal when on), for a value condition the `COMPARE` pills (`<`, `<=`, `>`, `>=`) and
+  `THAN`, its values, REPLACE (armed: the next palette condition takes its place, the rest of the rule stays) and
+  REMOVE; then its rule's block.
+- **An action**: its values and its rule's block (a palette action replaces it).
+- **A rule's block** (also for a selected rule, with the rule as text): `RULE 2 OF 6` (`· NO SLOT` below the slot
+  line), UP, DOWN, DUPLICATE (a copy right below) and DELETE (off for the last rule, with the reason), and the
+  NOTE field.
+- **The target line**: the selector pills, `AIM AT` (centre, engines, weapons, power, core), USE THE DEFAULT TARGET
+  when the program has a target line, and the target line's note.
+- **A Rhai condition**: its script in gold. **A palette node** with nothing to add it to: its defaults, read-only,
+  and how to add it. **Nothing**: the behavior's name and content summary.
+
+- **Draft** (`draft.rs`): `BehaviorDraft`, the behavior being edited: a copy of a content behavior
+  (`BehaviorDraft::source_for`: `?behavior=`, else the design's `behavior`, else its faction's default) held in a
+  `data::behavior_edit::BehaviorEditor` (`editor()`, `program()`), its text and the text's errors (line, column,
+  message). `edit(|e| …)` runs an editing-model operation and prints a changed program canonically into the text;
+  `set_text` checks a typed text: valid → the program changes (one undo step); invalid → the program stays,
+  `errors` fill. `revision()` goes up with every change (the graph and the inspector follow it). Leaving the TEXT
+  view tidies a valid text to canonical form. Opening the screen keeps the draft while it is still the same behavior
+  (typed text and the undo history survive a look at the drydock), else copies the new one.
 - **Context** (`mod.rs`): `EditorContext { design_name, slots }`, set when the screen opens; `BehaviorUi { view,
   selected, test_mode, search }`, the UI state (`BehaviorView::{Graph, Text}`, `TestMode::{Watch, FlyAlongside}`,
-  `inspect::Selection::{Node(NodeRef), Vocabulary(id)}`).
-- **Data for the widgets** (pure, tested): `graph::GraphView::of(program, nodes, slots)` (chips with
-  `graph::NodeRef::{Target, Cond { rule, cond }, Action { rule }}`, rows, `slot_line()`), `slots_pill`,
-  `add_rule_label`, `slot_line_label`; `inspect::inspect` / `behavior_inspection` (the inspector's rows) and
-  `inspect::palette(nodes, search)`; `screen::status_line`; `text_view::highlight` (a line's coloured pieces).
+  `inspect::Selection::{Node(NodeRef), Rule(RuleId), Vocabulary(id)}`: the model's stable ids, so a selection keeps
+  naming the same node while rules move; a selection that an undo or a text edit removes goes).
+- **Data for the widgets** (pure, tested): `graph::GraphView::of(editor, slots)` (chips with
+  `data::behavior_edit::NodeRef::{Target, Action(RuleId), Cond(CondId)}`, rows with their `RuleId`, `slot_line()`),
+  `slots_pill`, `add_rule_label`, `slot_line_label`; `inspect::inspect(editor, selection, Context { slots, reach,
+  replacing })` / `behavior_inspection` (the inspector's controls, each carrying the action it sends),
+  `inspect::palette_hint`, `inspect::palette(nodes, search)`; `values` (`Kind`, `Scale`: ranges, steps, the
+  slider's scale, `switch_unit`, `reach_hint`); `edit::palette_click`, `edit::add_rule_edit`, `edit::delete_edit`,
+  `edit::apply_edit`; `reorder::drop_index`; `screen::status_line`; `text_view::highlight` (a line's coloured pieces).
 - **Actions** (`actions.rs`): every button (`BehaviorButton(BehaviorAction)`) and key sends one message,
-  `BehaviorAction::{Back, Menu, View, Select, Deselect, TestMode, TestInRange, AddRule, AddNode}`. Handled here: Back
-  (`NextState(Drydock)`), View, Select / Deselect, TestMode, and AddNode (until the editing model adds nodes, a
-  palette click shows the node in the inspector). Not handled yet: TestInRange (the range scenes: read
-  `BehaviorUi::test_mode`), AddRule (the editing model), Menu. New handlers read the message in a system in
-  `BehaviorSet::Apply` (`Input → Apply → Show`, behavior screen only) and change the program through
-  `BehaviorDraft::set_program`; the graph and the text follow `revision`.
+  `BehaviorAction::{Back, Menu, View, Select, Deselect, TestMode, TestInRange}` and the editing group `{AddRule,
+  AddNode, SelectRule, Edit(edit::Edit), Replace, Delete, Undo, Redo}`. Handled here: Back (`NextState(Drydock)`),
+  View, Select / Deselect, TestMode; `edit::apply` handles the editing group. Not handled yet: TestInRange (the range
+  scenes: read `BehaviorUi::test_mode`), Menu. New handlers read the message in a system in `BehaviorSet::Apply`
+  (`Input → Apply → Show`, behavior screen only) and change the program through `BehaviorDraft::edit`; the graph
+  and the text follow `revision`. Disabled pills and rings send nothing.
+- **Editing** (`edit.rs`, `controls.rs`, `reorder.rs`): `edit::Edit` is one editing-model operation
+  (`SetParam`, `ResetParam`, `SetCompare`, `ToggleNot`, `AddCondition`, `RemoveCondition`, `ReplaceNode`,
+  `AddRule`, `MoveRule`, `DuplicateRule`, `DeleteRule`, `SetRuleNote`, `SetTargetNote`, `ClearTarget`);
+  `apply_edit` runs it and says what the selection becomes (a new condition or rule is selected; a removed
+  condition selects its rule). A palette click (`palette_click`): with a rule or one of its nodes selected, a
+  condition is added to that rule (or, with REPLACE armed on a condition, takes its place), an action replaces the
+  rule's action, a target selector sets the target line; with the target selected only selectors apply; with nothing
+  selected the inspector shows the node. `+ RULE` (`add_rule_edit`) adds `always ->` the palette's first action
+  (`approach` in the base content: a no-op above an `approach` fallback) above the last rule when that one is
+  `always` (the fallback stays last), else at the bottom, and selects it. Refusals (`Refusal`'s `Display`) go to
+  `EditState::note`. Sliders (`controls::Slider`) are dragged by `drag_sliders` inside one stroke
+  (`begin_stroke` / `end_stroke`); the inspector is not rebuilt while one is held (`SliderDrag`). Note fields
+  (`controls::NoteField`, `ui_kit` text fields) write the note when they let go of the keyboard. `DesignReach` (the
+  design's weapon reach, from `sim::design_report` with the tuning) is measured when the screen opens. Rule rows are
+  dragged by `reorder::drag_rows` (a press on a row that moves more than 8 px up or down; a teal FX line shows the
+  drop place; letting go sends `MoveRule`).
 - **Screen** (`screen.rs`): the frame is spawned once (hidden outside the screen); the graph, the inspector and the
   palette are rebuilt when what they show changes (program revision and slots; selection; search). The graph is a
   flex row (root column, then a grid: trunk, conditions as max-content, actions as max-content, notes), so actions

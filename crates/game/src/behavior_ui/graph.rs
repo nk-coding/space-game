@@ -1,19 +1,12 @@
-//! What the graph view shows, as plain data: a program becomes the target chip and one row per rule (violet
-//! condition chips → a teal action chip), each chip with its content name, its values as written in the text
-//! and the comparison of a value condition; rules without a rule slot are inactive. The screen
-//! (`screen.rs`) turns this into nodes; the tests below pin the mapping.
+//! What the graph view shows, as plain data: the editing model's program becomes the target chip and one row per
+//! rule (violet condition chips → a teal action chip), each chip with its content name, its values as written in
+//! the text and the comparison of a value condition; rules without a rule slot are inactive. Chips and rows carry
+//! the model's stable ids ([`NodeRef`], [`RuleId`]), so a selection keeps naming the same node while rules move.
+//! The screen (`screen.rs`) turns this into nodes; the tests below pin the mapping.
 
-use data::behavior::{Call, Cond, Program};
+use data::behavior::{Call, Cond};
+use data::behavior_edit::{BehaviorEditor, DEFAULT_TARGET, NodeRef, RuleId};
 use data::{BehaviorNode, NodeRole, Table};
-
-/// A node of the program: the target selector, a condition of a rule or a rule's action. Rule and condition
-/// indices are those of [`Program::rules`] and [`data::behavior::Rule::when`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum NodeRef {
-    Target,
-    Cond { rule: usize, cond: usize },
-    Action { rule: usize },
-}
 
 /// One chip of the graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -35,6 +28,7 @@ pub struct Chip {
 /// One rule: its conditions (none for `always`), its action, its note and whether it has a rule slot.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuleRow {
+    pub id: RuleId,
     pub conds: Vec<Chip>,
     pub action: Chip,
     pub note: Option<String>,
@@ -52,11 +46,10 @@ pub struct GraphView {
     pub slots: u32,
 }
 
-/// The selector a program without a `target` line uses (`docs/behavior-format.md`).
-pub const DEFAULT_TARGET: &str = "nearest";
-
 impl GraphView {
-    pub fn of(program: &Program, nodes: &Table<BehaviorNode>, slots: u32) -> Self {
+    pub fn of(ed: &BehaviorEditor, slots: u32) -> Self {
+        let nodes = ed.nodes();
+        let program = ed.program();
         let (target, default_target) = match &program.target {
             Some(t) => (chip(&t.call, NodeRef::Target, NodeRole::Target, nodes), false),
             None => {
@@ -64,15 +57,15 @@ impl GraphView {
                 (chip(&call, NodeRef::Target, NodeRole::Target, nodes), true)
             }
         };
-        let rules = program
-            .rules
-            .iter()
-            .enumerate()
-            .map(|(rule, r)| RuleRow {
-                conds: r.when.iter().enumerate().map(|(cond, c)| cond_chip(c, NodeRef::Cond { rule, cond }, nodes)).collect(),
-                action: chip(&r.action, NodeRef::Action { rule }, NodeRole::Action, nodes),
-                note: r.note.clone(),
-                active: (rule as u64) < u64::from(slots),
+        let active = ed.active_rules(slots);
+        let rules = ed
+            .rules()
+            .map(|r| RuleRow {
+                id: r.id,
+                conds: r.rule.when.iter().zip(r.conds).map(|(c, id)| cond_chip(c, NodeRef::Cond(*id), nodes)).collect(),
+                action: chip(&r.rule.action, NodeRef::Action(r.id), NodeRole::Action, nodes),
+                note: r.rule.note.clone(),
+                active: r.index < active,
             })
             .collect();
         Self { target, default_target, rules, slots }
@@ -135,14 +128,19 @@ pub fn slot_line_label(slots: u32) -> String {
 mod tests {
     use super::*;
 
-    fn skirmisher(content: &data::Content) -> Program {
-        content.behaviors.get("skirmisher").unwrap().program().unwrap()
+    fn editor(content: &data::Content, text: &str) -> BehaviorEditor {
+        BehaviorEditor::from_text(&content.behavior_nodes, text).unwrap()
+    }
+
+    fn skirmisher(content: &data::Content) -> BehaviorEditor {
+        BehaviorEditor::open(&content.behavior_nodes, &content.behaviors.get("skirmisher").unwrap().program().unwrap()).unwrap()
     }
 
     #[test]
     fn rules_become_condition_chips_and_an_action() {
         let content = data::base_content();
-        let g = GraphView::of(&skirmisher(&content), &content.behavior_nodes, 12);
+        let ed = skirmisher(&content);
+        let g = GraphView::of(&ed, 12);
         assert_eq!(g.target.name, "Nearest");
         assert!(!g.default_target);
         assert_eq!(g.rules.len(), 6);
@@ -151,13 +149,15 @@ mod tests {
 
         // `when hull < 25% -> flee # too hurt to fight on`
         let r0 = &g.rules[0];
+        let v0 = ed.rule_at(0).unwrap();
+        assert_eq!(r0.id, v0.id);
         assert_eq!(r0.conds.len(), 1);
         let hull = &r0.conds[0];
         assert_eq!((hull.name.as_str(), hull.args.as_str(), hull.compare.as_str()), ("Hull", "", "< 25%"));
-        assert_eq!(hull.node, NodeRef::Cond { rule: 0, cond: 0 });
+        assert_eq!(hull.node, NodeRef::Cond(v0.conds[0]));
         assert_eq!(hull.role, NodeRole::Condition);
         assert_eq!(r0.action.name, "Flee");
-        assert_eq!(r0.action.node, NodeRef::Action { rule: 0 });
+        assert_eq!(r0.action.node, NodeRef::Action(v0.id));
         assert_eq!(r0.note.as_deref(), Some("too hurt to fight on"));
 
         // `when shield_down and target_on_me -> orbit(80%, ccw)`: two flags, the action's values dim.
@@ -182,33 +182,47 @@ mod tests {
         // `always -> approach(67%)`: no conditions.
         assert!(g.rules[5].conds.is_empty());
         assert_eq!((g.rules[5].action.name.as_str(), g.rules[5].action.args.as_str()), ("Approach", "67%"));
-        assert_eq!(g.rules[5].action.node, NodeRef::Action { rule: 5 });
+    }
+
+    #[test]
+    fn ids_follow_the_rules_when_they_move() {
+        let content = data::base_content();
+        let mut ed = skirmisher(&content);
+        let before = GraphView::of(&ed, 12);
+        let moved = before.rules[4].id;
+        ed.move_rule(moved, 0).unwrap();
+        let after = GraphView::of(&ed, 12);
+        // The same rule and its chips, now on top; the others shifted down with their ids.
+        assert_eq!(after.rules[0].id, moved);
+        assert_eq!(after.rules[0].conds[0].node, before.rules[4].conds[0].node);
+        assert_eq!(after.rules[1].id, before.rules[0].id);
+        assert_eq!(after.rules[5].action.node, before.rules[5].action.node);
     }
 
     #[test]
     fn rules_below_the_slots_are_inactive() {
         let content = data::base_content();
-        let g = GraphView::of(&skirmisher(&content), &content.behavior_nodes, 2);
+        let ed = skirmisher(&content);
+        let g = GraphView::of(&ed, 2);
         let active: Vec<bool> = g.rules.iter().map(|r| r.active).collect();
         assert_eq!(active, [true, true, false, false, false, false]);
         assert_eq!(g.slot_line(), Some(2));
         // No core: nothing runs, the line is above the first rule.
-        let none = GraphView::of(&skirmisher(&content), &content.behavior_nodes, 0);
+        let none = GraphView::of(&ed, 0);
         assert!(none.rules.iter().all(|r| !r.active));
         assert_eq!(none.slot_line(), Some(0));
         // Exactly full: no line.
-        assert_eq!(GraphView::of(&skirmisher(&content), &content.behavior_nodes, 6).slot_line(), None);
+        assert_eq!(GraphView::of(&ed, 6).slot_line(), None);
     }
 
     #[test]
     fn a_missing_target_line_shows_the_default() {
         let content = data::base_content();
-        let p = Program::parse("when hull < 30% -> flee").unwrap();
-        let g = GraphView::of(&p, &content.behavior_nodes, 6);
+        let g = GraphView::of(&editor(&content, "when hull < 30% -> flee"), 6);
         assert!(g.default_target);
         assert_eq!(g.target.name, "Nearest");
-        let p = Program::parse("target weakest(engines)\nalways -> hold").unwrap();
-        let g = GraphView::of(&p, &content.behavior_nodes, 6);
+        assert_eq!(g.target.node, NodeRef::Target);
+        let g = GraphView::of(&editor(&content, "target weakest(engines)\nalways -> hold"), 6);
         assert_eq!((g.target.name.as_str(), g.target.args.as_str()), ("Weakest", "engines"));
         assert!(!g.default_target);
     }

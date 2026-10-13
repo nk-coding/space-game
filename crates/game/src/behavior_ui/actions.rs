@@ -1,20 +1,22 @@
 //! What the behavior screen's buttons and keys mean. Both send one message, [`BehaviorAction`]: a click on a
 //! node with a [`BehaviorButton`] sends its action, the keys send the same ones. Handlers read the message and
 //! never touch widget code; this module handles the UI state (view, selection, test mode) and the way back.
-//! The editing model handles `AddRule` and `AddNode`, the range scenes `TestInRange`; the ring menu has no
-//! handler yet (as in the drydock).
+//! Editing (`edit.rs`) handles the editing group (`AddRule`, `AddNode`, `Edit`, `Undo`, ...), the range scenes
+//! `TestInRange`; the ring menu has no handler yet (as in the drydock).
 //!
-//! Keys (only while no text field or the text view has the keyboard): Esc back to the drydock, T test in
-//! range, / search the palette.
+//! Keys (only while no text field or the text view has the keyboard): Esc cancels REPLACE, else back to the
+//! drydock; T test in range; / search the palette; Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo; Delete or
+//! Backspace removes the selected condition, rule or target line.
 
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
+use data::behavior_edit::{NodeRef, RuleId};
 
 use crate::drydock::actions::DrydockAction;
 use crate::mode::AppMode;
-use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
+use crate::ui_kit::{Pill, Ring, TextField, UiClick, UiPointer};
 
-use super::graph::NodeRef;
+use super::edit::{Edit, EditState};
 use super::inspect::Selection;
 use super::screen::SearchField;
 use super::{BehaviorDraft, BehaviorUi, BehaviorView, TestMode};
@@ -35,21 +37,40 @@ pub enum BehaviorAction {
     TestMode(TestMode),
     /// TEST IN RANGE (T) in [`BehaviorUi::test_mode`]: the range scenes start it.
     TestInRange,
-    /// `+ RULE`: the editing model adds a rule.
+
+    // Editing (`edit.rs`), through the editing model.
+    /// `+ RULE`: `always ->` the palette's first action, above a trailing `always` rule.
     AddRule,
-    /// A palette entry (content id): the editing model adds the node. Until it does, the inspector shows it.
+    /// A palette entry (content id): added to the selected rule, or replacing (see `edit::palette_click`); with
+    /// nothing to add it to, the inspector shows it.
     AddNode(String),
+    /// A rule's row or its `always` chip: the inspector shows the rule.
+    SelectRule(RuleId),
+    /// An inspector control's edit.
+    Edit(Edit),
+    /// Arms REPLACE on the selected condition (the next palette condition takes its place), or disarms it.
+    Replace,
+    /// Delete / Backspace: removes the selected condition, deletes the selected rule, clears the target line.
+    Delete,
+    Undo,
+    Redo,
 }
 
 /// A widget that sends an action when clicked.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct BehaviorButton(pub BehaviorAction);
 
-/// Clicks on action widgets (disabled pills send nothing).
-pub(super) fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<(&BehaviorButton, Option<&Pill>)>, mut out: MessageWriter<BehaviorAction>) {
+/// Clicks on action widgets (disabled pills and rings send nothing).
+#[allow(clippy::type_complexity)]
+pub(super) fn clicks(
+    mut clicks: MessageReader<UiClick>,
+    buttons: Query<(&BehaviorButton, Option<&Pill>, Option<&Ring>)>,
+    mut out: MessageWriter<BehaviorAction>,
+) {
     for c in clicks.read() {
-        if let Ok((b, pill)) = buttons.get(c.0)
+        if let Ok((b, pill, ring)) = buttons.get(c.0)
             && !pill.is_some_and(|p| p.disabled)
+            && !ring.is_some_and(|r| r.disabled)
         {
             out.write(b.0.clone());
         }
@@ -60,6 +81,7 @@ pub(super) fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<(&Behavi
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
+    edit: Res<EditState>,
     mut contexts: EguiContexts,
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<BehaviorAction>,
@@ -69,15 +91,27 @@ pub(super) fn shortcuts(
     if pointer.typing || egui_typing {
         return;
     }
+    let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     for key in keys.get_just_pressed() {
-        match key {
-            KeyCode::Escape => {
-                out.write(BehaviorAction::Back);
+        match (*key, ctrl) {
+            (KeyCode::KeyZ, true) => {
+                out.write(if shift { BehaviorAction::Redo } else { BehaviorAction::Undo });
             }
-            KeyCode::KeyT => {
+            (KeyCode::KeyY, true) => {
+                out.write(BehaviorAction::Redo);
+            }
+            (_, true) => {}
+            (KeyCode::Escape, _) => {
+                out.write(if edit.replacing.is_some() { BehaviorAction::Replace } else { BehaviorAction::Back });
+            }
+            (KeyCode::Delete | KeyCode::Backspace, _) => {
+                out.write(BehaviorAction::Delete);
+            }
+            (KeyCode::KeyT, _) => {
                 out.write(BehaviorAction::TestInRange);
             }
-            KeyCode::Slash | KeyCode::NumpadDivide => {
+            (KeyCode::Slash | KeyCode::NumpadDivide, _) => {
                 for mut f in &mut search {
                     f.focused = true;
                 }
@@ -106,9 +140,17 @@ pub(super) fn apply(
             BehaviorAction::Select(n) => ui.selected = Some(Selection::Node(*n)),
             BehaviorAction::Deselect => ui.selected = None,
             BehaviorAction::TestMode(m) => ui.test_mode = *m,
-            BehaviorAction::AddNode(id) => ui.selected = Some(Selection::Vocabulary(id.clone())),
-            // The editing model (AddRule), the range scenes (TestInRange); the menu has no handler yet.
-            BehaviorAction::Menu | BehaviorAction::TestInRange | BehaviorAction::AddRule => {}
+            // The range scenes (TestInRange); the menu has no handler yet.
+            BehaviorAction::Menu | BehaviorAction::TestInRange => {}
+            // Editing: `edit::apply`.
+            BehaviorAction::AddRule
+            | BehaviorAction::AddNode(_)
+            | BehaviorAction::SelectRule(_)
+            | BehaviorAction::Edit(_)
+            | BehaviorAction::Replace
+            | BehaviorAction::Delete
+            | BehaviorAction::Undo
+            | BehaviorAction::Redo => {}
         }
     }
 }

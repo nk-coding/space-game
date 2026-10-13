@@ -3,30 +3,39 @@
 //! with the drydock's BEHAVIOR button ([`AppMode::Behavior`]); Esc or the DRYDOCK pill go back, the design
 //! untouched. `?scene=behavior` starts here; `?behavior=<id>` opens a content behavior instead of the design's.
 //!
-//! This is the foundation: the mode, the screen and its widgets, the graph and text views of the behavior and
-//! the read-only inspector. Editing in the graph (the editing model) and TEST IN RANGE (the range scenes) plug
-//! in through the resources and the action message below.
+//! The mode, the screen and its widgets, the graph and text views of the behavior, the inspector and the
+//! palette; editing in the graph view goes through the editing model (`data::behavior_edit`). TEST IN RANGE (the
+//! range scenes) plugs in through the resources and the action message below.
 //!
-//! * [`draft`]: [`BehaviorDraft`], the behavior being edited: its text, the last valid program, the errors.
-//! * [`graph`]: the graph view as data (program → chips and rows, the slot line, labels); [`graph::NodeRef`].
-//! * [`inspect`]: the inspector (the selected node's role, name and parameters) and the ADD NODE palette as data.
+//! * [`draft`]: [`BehaviorDraft`], the behavior being edited: the editing model, the text, the errors.
+//! * [`graph`]: the graph view as data (the program → chips and rows with the model's stable ids, the slot line,
+//!   labels).
+//! * [`inspect`]: the inspector (the selected node's or rule's controls) and the ADD NODE palette as data.
+//! * [`values`]: the inspector's numbers: kinds, ranges, steps, slider scales, metres ↔ % of the weapon reach.
+//! * [`edit`]: editing: [`edit::Edit`], what palette clicks, `+ RULE` and Delete do, the handler, undo / redo.
 //! * [`actions`]: [`BehaviorAction`], the one message the screen's buttons and keys send; the UI-state handler.
 //! * [`screen`]: the screen's nodes (`ui_kit` widgets), rebuilt from the data above when it changes.
+//! * [`controls`]: the inspector's controls as nodes; slider drags and note fields.
+//! * [`reorder`]: dragging a rule's row to another place in the list.
 //! * [`text_view`]: the TEXT view (an egui text editor in the look) with live errors.
 //! * [`dashed`]: the dashed pill outline (Rhai nodes, `+ RULE`), a UI material.
 //!
-//! **For handlers** (the editing model, the range scenes): read `MessageReader<BehaviorAction>` in a system in
+//! **For handlers** (the range scenes): read `MessageReader<BehaviorAction>` in a system in
 //! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::edit`] (the graph and the text
 //! follow its `revision`), read [`BehaviorUi`] (the view, the selected node, the test mode) and
 //! [`EditorContext`] (the design's name and rule slots). Nothing in `screen.rs` needs to change for that.
 
 pub mod actions;
+pub mod controls;
 pub mod dashed;
 pub mod draft;
+pub mod edit;
 pub mod graph;
 pub mod inspect;
+pub mod reorder;
 pub mod screen;
 pub mod text_view;
+pub mod values;
 
 use bevy::prelude::*;
 use bevy::ui::UiScale;
@@ -104,6 +113,10 @@ impl Plugin for BehaviorPlugin {
             .init_resource::<BehaviorUi>()
             .init_resource::<EditorContext>()
             .init_resource::<screen::GraphBuilt>()
+            .init_resource::<edit::EditState>()
+            .init_resource::<controls::SliderDrag>()
+            .init_resource::<controls::DesignReach>()
+            .init_resource::<reorder::RowDrag>()
             .add_message::<BehaviorAction>()
             .configure_sets(
                 Update,
@@ -115,29 +128,32 @@ impl Plugin for BehaviorPlugin {
             )
             .add_systems(Startup, screen::spawn.after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, show)
-            .add_systems(OnEnter(AppMode::Behavior), open)
+            .add_systems(OnEnter(AppMode::Behavior), (open, controls::measure_reach))
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(
                 Update,
                 (
-                    (actions::clicks, actions::shortcuts, screen::sync_search).in_set(BehaviorSet::Input),
-                    (fit_window, actions::apply, screen::scroll).chain().in_set(BehaviorSet::Apply),
+                    (actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes, reorder::drag_rows).in_set(BehaviorSet::Input),
+                    (fit_window, actions::apply, edit::apply, controls::drag_sliders, screen::scroll).chain().in_set(BehaviorSet::Apply),
                     (
                         screen::show_view,
                         screen::rebuild_graph,
                         screen::rebuild_inspector,
                         screen::rebuild_palette,
                         screen::sync_texts,
+                        screen::sync_note,
                         screen::sync_pills,
+                        edit::sync_rings,
                         screen::style_chips,
+                        screen::style_rows,
                     )
                         .chain()
                         .in_set(BehaviorSet::Show),
                 ),
             )
             .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
-            .add_systems(PostUpdate, screen::draw_dots.run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
+            .add_systems(PostUpdate, (screen::draw_dots, reorder::draw_drop_line).run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }
