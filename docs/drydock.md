@@ -8,8 +8,11 @@ Parts are unlimited in v1.
 ## Where the pieces live
 
 Decisions: [GDR-0051](gdr/0051-drydock-v1.md) (scope), [GDR-0052](gdr/0052-drydock-stats-full-use.md) (stats at full
-use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [ADR-0030](adr/0030-drydock-architecture.md)
-(architecture).
+use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [GDR-0054](gdr/0054-drydock-locked-parts-tools-saving-sharing.md)
+(locked parts, saving, sharing), [GDR-0056](gdr/0056-drydock-wave-2-defaults.md) (wave 2 defaults),
+[ADR-0030](adr/0030-drydock-architecture.md) (architecture), [ADR-0031](adr/0031-player-storage-and-design-sharing.md)
+(storage and sharing); behaviors: [GDR-0057](gdr/0057-behavior-editor-v1.md),
+[GDR-0059](gdr/0059-behavior-editor-wave-a-defaults.md), [GDR-0060](gdr/0060-behavior-editor-wave-b-defaults.md).
 
 | Piece | Where | Doc |
 |---|---|---|
@@ -19,6 +22,7 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [ADR-0030](ad
 | The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
 | Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
 | The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/drydock/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
+| The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/game/src/behavior_ui/`, `data::behavior_edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
 
 Status (13 Oct 2026): waves 1 and 2 are merged. The drydock edits (paint, fill, erase, select, rotate, flip,
 mirror, bevel, undo/redo, ghost and selection, the inspector with power overrides), shows the live stats, status
@@ -263,7 +267,7 @@ Labels, units and precision come from content (`stats.ron`: the `SHIP_STATS` ids
 | DEVICE LOAD | `device.class` | `Light`, `Moderate`, `Heavy`, `Too heavy` | teal, teal, gold, coral |
 
 **TOP SPEED, TURN 90°, MASS and BUILD POINTS** sit in a compact block under the main grid: the same two
-columns, smaller type (8 px labels, 12.5 px values), no bars, units shown (`22 m/s`, `0.8 s`, `106 t`, `132 BP`;
+columns, smaller type (8 px labels, 12.5 px values), no bars, units shown (`22 m/s`, `1.5 s`, `106 t`, `132 BP`;
 TURN `—` in coral when the design can't turn). Chosen over a hover detail because it is always visible, works
 on touch and costs about 40 px of the right panel. A bar over 100 % (power deficit, overheating, over the control
 capacity) fills its track and a white notch marks 100 % (`ui_kit::ValueBar`, share > 1).
