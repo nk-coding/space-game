@@ -141,7 +141,9 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// Every content icon, its glow layer and the FX textures, packed into shelves.
+    /// Every content icon, its glow layer and the FX textures, packed into shelves. An icon that fails
+    /// `data::svg::check_svg` (impossible in validated content) gets no region; one too big for the layout
+    /// width is stored at a lower density.
     pub fn new(content: &data::Content) -> Layout {
         let t = tokens();
         let mut regs: Vec<(RegionDef, [f32; 2])> = Vec::new();
@@ -151,7 +153,7 @@ impl Layout {
 
         for (key, icon) in &content.icons {
             let src = icon.svg.as_str();
-            let (vw, vh) = view_box_size(src).unwrap_or_else(|| panic!("icon {key}: no viewBox"));
+            let Some([_, _, vw, vh]) = data::svg::view_box(src) else { continue };
             let cells = [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL];
             let (crisp, glow) = split_glow(src);
             // The glow is clipped to the tile anyway: limit the blur's filter region to the viewBox (the sources
@@ -261,8 +263,14 @@ fn snap(x: f32) -> f32 {
 }
 
 /// Shelf packing in atlas units: tallest first, rows of `LAYOUT_WIDTH`. Positions are multiples of the gutter,
-/// the height is rounded up so every mip level has an integer size at the smallest tier.
+/// the height is rounded up so every mip level has an integer size at the smallest tier. A region wider or
+/// taller than a row is scaled down (keeping its aspect) to fit one.
 fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
+    let most = LAYOUT_WIDTH - 2.0 * GUTTER;
+    for (_, [w, h]) in &mut regs {
+        let k = (most / w.max(*h)).min(1.0);
+        (*w, *h) = (*w * k, *h * k);
+    }
     let mut order: Vec<usize> = (0..regs.len()).collect();
     order.sort_by(|&a, &b| {
         regs[b].1[1].total_cmp(&regs[a].1[1]).then(regs[b].1[0].total_cmp(&regs[a].1[0])).then(regs[a].0.name.cmp(&regs[b].0.name))
@@ -270,7 +278,6 @@ fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
     let (mut x, mut y, mut shelf) = (GUTTER, GUTTER, 0.0f32);
     for &i in &order {
         let [w, h] = regs[i].1;
-        assert!(w + 2.0 * GUTTER <= LAYOUT_WIDTH, "region {} too wide", regs[i].0.name);
         if x + w + GUTTER > LAYOUT_WIDTH {
             x = GUTTER;
             y = snap(y + shelf + GUTTER);
@@ -286,18 +293,12 @@ fn pack(mut regs: Vec<(RegionDef, [f32; 2])>) -> Layout {
     Layout { regions, size: [LAYOUT_WIDTH, height], index }
 }
 
-fn view_box_size(svg: &str) -> Option<(f32, f32)> {
-    let start = svg.find("viewBox=\"")? + "viewBox=\"".len();
-    let end = start + svg[start..].find('"')?;
-    let nums: Vec<f32> = svg[start..end].split_whitespace().filter_map(|n| n.parse().ok()).collect();
-    (nums.len() == 4).then(|| (nums[2], nums[3]))
-}
-
 /// Splits an icon SVG into (crisp glyph, glow-only) documents. The glow is every `<g filter="url(#gl)" ...>`
 /// element (with its opacity) after `</defs>`.
 fn split_glow(src: &str) -> (String, Option<String>) {
     let defs_end = src.find("</defs>").map(|i| i + "</defs>".len()).unwrap_or_else(|| src.find('>').map_or(0, |i| i + 1));
-    let svg_end = src.rfind("</svg>").unwrap_or(src.len());
+    // A `</defs>` in a comment after the root must not cut the body backwards.
+    let svg_end = src.rfind("</svg>").filter(|&e| e >= defs_end).unwrap_or(src.len());
     let head = &src[..defs_end];
     let body = &src[defs_end..svg_end];
     let mut crisp = String::new();
@@ -313,12 +314,15 @@ fn split_glow(src: &str) -> (String, Option<String>) {
     (format!("{head}{crisp}</svg>"), (!glow.is_empty()).then(|| format!("{head}{glow}</svg>")))
 }
 
+/// The length in bytes of the `<g ...>` element `s` starts with, up to its matching `</g>` (all of `s` if it is
+/// never closed). Steps through bytes, so any UTF-8 text inside is fine; every returned length ends after an
+/// ASCII `>` or at the end of `s`, a char boundary.
 fn balanced_g_len(s: &str) -> usize {
     let bytes = s.as_bytes();
     let mut depth = 0i32;
     let mut i = 0;
     while i < bytes.len() {
-        if s[i..].starts_with("</g>") {
+        if bytes[i..].starts_with(b"</g>") {
             depth -= 1;
             i += 4;
             if depth == 0 {
@@ -326,8 +330,10 @@ fn balanced_g_len(s: &str) -> usize {
             }
             continue;
         }
-        if s[i..].starts_with("<g") && matches!(bytes.get(i + 2), Some(b' ') | Some(b'>')) {
-            let close = s[i..].find('>').map_or(bytes.len() - 1, |c| c + i);
+        if bytes[i..].starts_with(b"<g") && matches!(bytes.get(i + 2), Some(b' ' | b'>')) {
+            let Some(close) = bytes[i..].iter().position(|&b| b == b'>').map(|c| c + i) else {
+                return s.len();
+            };
             if bytes[close - 1] != b'/' {
                 depth += 1;
             }
@@ -349,6 +355,8 @@ pub struct Raster {
     pub height: u32,
     pub levels: u32,
     pub data: Vec<u8>,
+    /// Regions whose SVG did not parse (`name: why`); they are left transparent, the rest of the atlas is fine.
+    pub failed: Vec<String>,
 }
 
 /// Renders a layout at one tier in small steps ([`Rasterizer::step`]): one region per step, then the mip chain
@@ -365,6 +373,7 @@ pub struct Rasterizer {
     levels: Vec<(usize, usize, usize)>,
     next: usize,
     stage: Stage,
+    failed: Vec<String>,
 }
 
 /// Where a [`Rasterizer`] is.
@@ -395,7 +404,7 @@ impl Rasterizer {
             levels.push((total, lw, lh));
             total += lw * lh * 4;
         }
-        Self { layout, tier, width, height, rgba: vec![0; total], levels, next: 0, stage: Stage::Regions }
+        Self { layout, tier, width, height, rgba: vec![0; total], levels, next: 0, stage: Stage::Regions, failed: Vec::new() }
     }
 
     pub fn tier(&self) -> u32 {
@@ -440,7 +449,8 @@ impl Rasterizer {
         Ok(self.stage == Stage::Done)
     }
 
-    /// Renders the next region into level 0.
+    /// Renders the next region into level 0. An SVG that does not parse leaves its region transparent and is
+    /// listed in [`Raster::failed`].
     fn region(&mut self) -> Result<(), String> {
         let Some(r) = self.layout.regions.get(self.next) else { return Ok(()) };
         self.next += 1;
@@ -449,12 +459,14 @@ impl Rasterizer {
         let (pw, ph) = ((r.rect[2] * t).round().max(1.0) as u32, (r.rect[3] * t).round().max(1.0) as u32);
         let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or("empty region")?;
         match &r.source {
-            Source::Svg(svg) => {
-                let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).map_err(|e| format!("{}: {e}", r.name))?;
-                let size = tree.size();
-                let tf = tiny_skia::Transform::from_scale(pw as f32 / size.width(), ph as f32 / size.height());
-                resvg::render(&tree, tf, &mut pm.as_mut());
-            }
+            Source::Svg(svg) => match usvg::Tree::from_str(svg, &svg_options()) {
+                Ok(tree) => {
+                    let size = tree.size();
+                    let tf = tiny_skia::Transform::from_scale(pw as f32 / size.width(), ph as f32 / size.height());
+                    resvg::render(&tree, tf, &mut pm.as_mut());
+                }
+                Err(e) => self.failed.push(format!("{}: {e}", r.name)),
+            },
             Source::Proc(p) => procedural(*p, &mut pm),
         }
         copy_region(&pm, &mut self.rgba, self.width, px, py);
@@ -516,7 +528,20 @@ impl Rasterizer {
     /// The finished atlas (runs whatever work is left first).
     pub fn finish(mut self) -> Result<Raster, String> {
         self.run()?;
-        Ok(Raster { tier: self.tier, width: self.width, height: self.height, levels: self.levels.len() as u32, data: self.rgba })
+        Ok(Raster { tier: self.tier, width: self.width, height: self.height, levels: self.levels.len() as u32, data: self.rgba, failed: self.failed })
+    }
+}
+
+/// usvg's options for content SVG: images (`<image>`, `<feImage>`) resolve to nothing. usvg's default resolver
+/// reads any path it is given from the disk (the art must never touch files; a mod's `/dev/zero` would never end)
+/// and decodes `data:` URLs (raster images are not allowed). `data::svg::check_svg` refuses such icons anyway.
+fn svg_options() -> usvg::Options<'static> {
+    usvg::Options {
+        image_href_resolver: usvg::ImageHrefResolver {
+            resolve_data: Box::new(|_, _, _| None),
+            resolve_string: Box::new(|_, _| None),
+        },
+        ..usvg::Options::default()
     }
 }
 
@@ -657,5 +682,104 @@ mod tests {
     fn tokens_parse() {
         let t = tokens();
         assert_eq!(t.get("ship.machine_tile"), Some("#0f1c25"));
+    }
+
+    /// Content (unvalidated) with these icons.
+    fn with_icons(icons: &[(&str, String)]) -> data::Content {
+        let mut files = vec![(
+            "pack.ron".to_string(),
+            r#"(id: "m", name: "M", version: "1", schema_version: 1)"#.to_string(),
+        )];
+        files.extend(icons.iter().map(|(k, svg)| (format!("icons/{k}.svg"), svg.clone())));
+        data::Content::merge(&[data::Pack::from_files(files).unwrap()])
+    }
+
+    /// Icons that pass `check_svg` but used to stop the layout (review finding 3): another quote style, commas,
+    /// a viewBox wider than a layout row, non-ASCII text inside a glow group, `</defs>` in a trailing comment.
+    #[test]
+    fn every_icon_that_checks_lays_out_and_rasterises() {
+        let glow = r##"<defs><filter id="gl" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="1"/></filter></defs>"##;
+        let icons = [
+            ("quotes", "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><rect width='5' height='5'/></svg>".to_string()),
+            ("commas", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0,0,20,20"><rect width="5" height="5"/></svg>"#.into()),
+            ("wide", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 20"><rect width="400" height="5"/></svg>"#.into()),
+            ("tall", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10000"><rect width="5" height="5"/></svg>"#.into()),
+            ("tiny", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 0.001 0.001"><rect width="1" height="1"/></svg>"#.into()),
+            (
+                "umlaut",
+                format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">{glow}<g filter="url(#gl)" data-label="Ebene ä — ✓"><!-- ü --><g><rect width="5" height="5"/></g>ö</g><rect width="2" height="2"/></svg>"##
+                ),
+            ),
+            ("unclosed-glow", format!(r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">{glow}<g filter="url(#gl)">é</g></svg><!-- </defs> é -->"##)),
+        ];
+        for (key, svg) in &icons {
+            assert_eq!(data::svg::check_svg(svg), Ok(()), "{key}");
+        }
+        let layout = Arc::new(Layout::new(&with_icons(&icons)));
+        for (key, svg) in &icons {
+            let r = layout.get(&format!("icon/{key}")).unwrap_or_else(|| panic!("{key}"));
+            let [_, _, vw, vh] = data::svg::view_box(svg).unwrap();
+            assert_eq!(r.cells, [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL], "{key}");
+            assert!(r.rect[2] <= LAYOUT_WIDTH - 2.0 * GUTTER && r.rect[3] <= LAYOUT_WIDTH - 2.0 * GUTTER, "{key}");
+        }
+        let r = rasterise(&layout, MIN_TIER).unwrap();
+        assert_eq!(r.failed, Vec::<String>::new());
+    }
+
+    /// An icon the XML parser refuses although `check_svg` passes it (an undeclared namespace prefix) stays blank;
+    /// the rest of the atlas is fine.
+    #[test]
+    fn a_region_that_does_not_parse_stays_blank() {
+        let icons = [
+            ("prefix", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect inkscape:label="x" width="5" height="5"/></svg>"#.to_string()),
+            ("fine", r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="5" height="5"/></svg>"#.into()),
+        ];
+        let layout = Arc::new(Layout::new(&with_icons(&icons)));
+        let r = rasterise(&layout, MIN_TIER).unwrap();
+        assert_eq!(r.failed.len(), 1);
+        assert!(r.failed[0].starts_with("icon/prefix: "), "{:?}", r.failed);
+    }
+
+    /// Icons that fail `check_svg` get no region instead of a panic (unvalidated content only).
+    #[test]
+    fn unusable_icons_are_left_out() {
+        let icons = [
+            ("no-view-box", r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="5" height="5"/></svg>"#.to_string()),
+            ("broken", "<svg".into()),
+            ("not-svg", "é".repeat(100)),
+        ];
+        let layout = Layout::new(&with_icons(&icons));
+        for (key, _) in &icons {
+            assert!(layout.get(&format!("icon/{key}")).is_none(), "{key}");
+        }
+    }
+
+    /// usvg never reads a file or decodes an embedded image for the art (review finding 6).
+    #[test]
+    fn svg_images_resolve_to_nothing() {
+        let dir = std::env::temp_dir().join(format!("art-resolver-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("inner.svg");
+        std::fs::write(&file, r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>"#).unwrap();
+        // The same 4 × 4 black square, base64.
+        let embedded = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0JyBoZWlnaHQ9JzQnPjxyZWN0IHdpZHRoPSc0JyBoZWlnaHQ9JzQnLz48L3N2Zz4=";
+        for href in [file.to_string_lossy().into_owned(), embedded.to_string()] {
+            for element in [
+                format!(r#"<image href="{href}" width="4" height="4"/>"#),
+                format!(r#"<filter id="f"><feImage href="{href}"/></filter><rect width="4" height="4" filter="url(#f)"/>"#),
+            ] {
+                let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4">{element}</svg>"#);
+                let loaded = |options: &usvg::Options| {
+                    let tree = usvg::Tree::from_str(&svg, options).unwrap();
+                    let mut pm = tiny_skia::Pixmap::new(4, 4).unwrap();
+                    resvg::render(&tree, tiny_skia::Transform::identity(), &mut pm.as_mut());
+                    pm.pixels().iter().any(|p| p.alpha() > 0)
+                };
+                assert!(loaded(&usvg::Options::default()), "usvg's default loads {element}");
+                assert!(!loaded(&svg_options()), "{element}");
+            }
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

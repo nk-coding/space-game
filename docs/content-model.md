@@ -602,9 +602,17 @@ resolution it needs; the wiki can show the SVG as is or composite it on a tile).
 - `Content::icon_svg(key)` returns the SVG text from the last loaded pack that has the key; `Content::icons`
   lists them all (`Icon { key, svg, source }`). Mods add or replace icons by key.
 - Every icon must be usable SVG (`data::svg::check_svg`, a cheap structural check without an XML library):
-  well-formed tags, a root `<svg>` in the SVG namespace with a `viewBox`, and no `<image>`, `<text>`,
-  `<script>` or `<foreignObject>` (no raster graphics; the runtime rasteriser has no fonts; the wiki shows the
-  files in a browser).
+  well-formed tags and quoted attributes, a root `<svg>` in the SVG namespace with a `viewBox` (four numbers
+  separated by spaces or commas, either quote style; width and height above 0 and at most 10000 units,
+  `data::svg::MAX_VIEW_BOX`), and no `<image>`, `<feImage>`, `<text>`, `<script>` or `<foreignObject>` (in any
+  case, with or without a namespace prefix: no raster graphics; the runtime rasteriser has no fonts; the wiki shows
+  the files in a browser). Also refused (13 Oct 2026, untrusted-input review): event handler attributes (`on...`),
+  references outside the file (an `href` or `url(...)` that does not start with `#`, `@import`) and declarations
+  other than a plain `<!DOCTYPE ...>` (no entities).
+- The rasteriser (`art`) reads the viewBox with the same code (`data::svg::view_box`), so every icon that validates
+  lays out; one wider or taller than a row of the atlas layout is stored at a lower density. It never loads images
+  or files (its usvg image resolver returns nothing). An icon the XML parser still refuses (an undeclared
+  namespace prefix, say) stays blank and is named in `art::Raster::failed`; the rest of the atlas is fine.
 - Glyphs are drawn on a 20 × 20 `viewBox` (one cell) in their system colour, with their soft glow as a
   blurred group; see `docs/style-guide.md`.
 
