@@ -1,8 +1,9 @@
 //! Atlas rasterisation as the game spends it (`crates/game/src/atlas.rs`): `Rasterizer::step` until the frame
 //! budget of 6 ms is used, then the next frame, for a whole job at one tier (default 512), `runs` times (default
-//! 9). Prints the job start (`Rasterizer::new`), the longest step, the longest frame and the frames, as median and
-//! p95 over the runs: `cargo run --release -p art --example profile -- 512 [runs]`. The VM is noisy: note
-//! `uptime` next to the numbers.
+//! 9), each with a new layout (as the first job of a session: no soft layer rendered yet). Prints the job start
+//! (`Rasterizer::new`), the longest step, the longest frame and the frames, as median and p95 over the runs:
+//! `cargo run --release -p art --example profile -- 512 [runs]`. The VM is noisy: note `uptime` next to the
+//! numbers.
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -13,10 +14,11 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let tier: u32 = args.next().map(|t| t.parse().expect("tier")).unwrap_or(512);
     let runs: usize = args.next().map(|t| t.parse().expect("runs")).unwrap_or(9);
-    let layout = Arc::new(art::Layout::new(&data::base_content()));
+    let content = data::base_content();
     let ms = |t: Instant| t.elapsed().as_secs_f64() * 1e3;
     let (mut start, mut step, mut frame, mut frames, mut total) = (vec![], vec![], vec![], vec![], vec![]);
     for _ in 0..runs {
+        let layout = Arc::new(art::Layout::new(&content));
         let t = Instant::now();
         let mut r = art::Rasterizer::new(layout.clone(), tier);
         start.push(ms(t));
