@@ -69,6 +69,8 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0058](0058-turning-v2-defaults.md) | Turning v2 defaults: the numbers, RCS couples and when engines help turning | Accepted (provisional, lead) | 2026-10-13 |
 | [0059](0059-behavior-editor-wave-a-defaults.md) | Behavior editor wave A defaults: editing rules, storage and tests, the screen | Accepted (provisional, lead) | 2026-10-13 |
 | [0060](0060-behavior-editor-wave-b-defaults.md) | Behavior editor wave B defaults: editing gestures, saving and linking, the live panel | Accepted (provisional, lead) | 2026-10-13 |
+| [0062](0062-first-playable-loop.md) | The first playable loop: start at home, short hand-made rim voyages, mind capacity 2 → 4 | Accepted | 2026-10-13 |
+| [0063](0063-salvage-and-research-v1.md) | Salvage and research v1: fly over wrecks, the haul is dismantled at home into research data, unlocks are unlimited | Accepted | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
@@ -83,7 +85,7 @@ Not decided yet, so no record. Write one when Niklas decides.
 
 - **Fight length** at the new speeds: `raider_basic` stand-off and orbit (85% / 67% of its reach) are on a knife edge around the beam range; the `skirmisher` wingmen win only 3–5 of 12 waves (`docs/sim.md` design question 4 and "Sandbox fights at the new speeds", measured before the slower turning of GDR-0055). Speed, acceleration and turning are decided ([GDR-0041](0041-engine-rated-speed.md), [GDR-0042](0042-agility-target.md), [GDR-0055](0055-slower-crisper-turning.md)).
 - **Feel of "fly that way"** for forward-only ships: let the nose swing past the stick ("drift turn", current behaviour, recommended) or keep the nose on the stick (`docs/sim.md` design question 3).
-- **Mind capacity numbers** (start value, growth, the exclusive resource) and N parts per core type ([GDR-0013](0013-vessels-and-piloting.md), [GDR-0038](0038-logic-cores-control-parts.md), [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md)); lead placeholders until then.
+- **Mind capacity numbers** beyond the slice (the slice: start 2, research to 4, [GDR-0062](0062-first-playable-loop.md); the exclusive resource) and N parts per core type ([GDR-0013](0013-vessels-and-piloting.md), [GDR-0038](0038-logic-cores-control-parts.md), [GDR-0044](0044-control-cost-priority-idle-dormant-newest.md)); lead placeholders until then.
 - **Engine plume** numbers and the v1 defaults ([GDR-0049](0049-engine-plume-v1.md): damage and heat scale with output, blocked plumes keep thrust, enemy bubbles absorb plumes) (`docs/sim.md` design question 16). No push and the faint reach are decided ([GDR-0055](0055-slower-crisper-turning.md)).
 - **Other research sources** besides salvage and scans ([GDR-0025](0025-research-from-salvage.md)).
 - **Tree size per family** that stays fun instead of tedious ([GDR-0024](0024-tech-trees-no-mk-levels.md)).
