@@ -172,6 +172,12 @@ pub enum SimEvent {
         units: u32,
         at: Vec2,
     },
+    /// A voyage site woke (`voyage.rs`): its ships fly their behavior from now on. `site` indexes
+    /// `Voyage::sites`.
+    SiteWoke { site: u32 },
+    /// A voyage site was cleared: none of its ships is a running vessel any more. `goal`: it was the voyage's
+    /// goal, so the voyage is cleared too.
+    SiteCleared { site: u32, goal: bool },
     /// A shot (or a plume) entered a shield bubble, which took `absorbed` of its damage.
     ShieldHit {
         by: ShipId,

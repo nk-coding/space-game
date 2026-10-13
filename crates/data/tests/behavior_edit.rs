@@ -511,9 +511,9 @@ fn inspector_and_palette_queries() {
     let c = content();
     let ed = template(&c, "skirmisher");
     let rules: Vec<_> = ed.rules().collect();
-    assert_eq!(rules.len(), 6);
+    assert_eq!(rules.len(), 4);
 
-    let closing = ed.node(NodeRef::Cond(rules[4].conds[0])).unwrap();
+    let closing = ed.node(NodeRef::Cond(rules[2].conds[0])).unwrap();
     assert_eq!(closing.node.id, "closing_in");
     assert_eq!(closing.node.name, "Closing in");
     assert_eq!(closing.node.role, NodeRole::Condition);
@@ -525,7 +525,7 @@ fn inspector_and_palette_queries() {
     assert!(time.written && !time.is_default);
     assert_eq!(time.range(), (Some(0.0), Some(60.0)));
 
-    let in_range = ed.node(NodeRef::Cond(rules[4].conds[1])).unwrap();
+    let in_range = ed.node(NodeRef::Cond(rules[2].conds[1])).unwrap();
     assert!(in_range.not && !in_range.is_rhai());
     assert_eq!(in_range.params[0].value, pct(100.0));
     assert!(in_range.params[0].is_default, "100% is the default");
@@ -544,7 +544,7 @@ fn inspector_and_palette_queries() {
     assert_eq!(orbit.node.role, NodeRole::Action);
     assert_eq!(orbit.params[1].value, word("ccw"));
     assert!(matches!(&orbit.params[1].param.ty, ParamType::Choice(o) if o.len() == 3));
-    let face = ed.node(NodeRef::Action(rules[4].id)).unwrap();
+    let face = ed.node(NodeRef::Action(rules[2].id)).unwrap();
     assert!(face.params.is_empty());
 
     assert_eq!(
@@ -556,8 +556,8 @@ fn inspector_and_palette_queries() {
         ]
     );
     assert_eq!(
-        rules[5].nodes().collect::<Vec<_>>(),
-        vec![NodeRef::Action(rules[5].id)]
+        rules[3].nodes().collect::<Vec<_>>(),
+        vec![NodeRef::Action(rules[3].id)]
     );
 
     for role in [NodeRole::Condition, NodeRole::Action, NodeRole::Target] {
@@ -590,14 +590,14 @@ fn rule_slots_mark_the_lowest_rules_inactive() {
     let before = ed.program().clone();
     let runner = c.ship_rule_slots(c.ships.get("halvex_runner").unwrap());
     let raider = c.ship_rule_slots(c.ships.get("automaton_raider").unwrap());
-    assert_eq!(ed.active_rules(runner), 6);
+    assert_eq!(ed.active_rules(runner), 4);
     assert_eq!(ed.active_rules(raider), raider as usize);
     assert_eq!(ed.active_rules(0), 0);
-    assert_eq!(ed.active_rules(u32::MAX), 6);
+    assert_eq!(ed.active_rules(u32::MAX), 4);
     assert_eq!(ed.program(), &before, "asking changes nothing");
     assert_eq!(ed.revision(), 0);
     // Priority is survival order: the rule moved to the top is active with two slots.
-    let last = ids(&ed)[5];
+    let last = ids(&ed)[3];
     ed.move_rule(last, 0).unwrap();
     let active: Vec<RuleId> = ed.rules().take(ed.active_rules(2)).map(|r| r.id).collect();
     assert_eq!(active[0], last);
@@ -723,7 +723,7 @@ fn the_text_view_replaces_the_program_and_keeps_ids() {
     let text = ed.text();
     let lines: Vec<&str> = text
         .lines()
-        .filter(|l| !l.contains("enemies_near"))
+        .filter(|l| !l.contains("closing_in"))
         .collect();
     let sloppy = lines.join("\n").replace("when", "If").replace("->", "→");
     ed.set_text(&sloppy).unwrap();

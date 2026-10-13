@@ -31,6 +31,7 @@
         tags: ["laser"],
         category: "weapons",
         icon: "beam-laser",
+        barrel: (width: 0.25, length: 0.7, muzzle: 0.15), // as in art/ships/halvex-runner.svg
         size: (1, 2),
         build_points: 7,
         control_cost: 2, // big machine: lead placeholder (12 Oct 2026)

@@ -1,10 +1,10 @@
 # The wiki
 
 A static website generated from the content packs: every part, material, category, ship, frame, faction,
-behavior, behavior node, stat, research family, research node, start and free article gets a page, cross-linked
-both ways. Written 13 Oct 2026 (ADR-0032, Proposed); the career kinds (families, research, starts, salvage
-blocks, locked frames) were added the same day. Code: `crates/content-tool/src/wiki/`. It is a developer and
-modder wiki for now: locked content is shown and marked.
+behavior, behavior node, stat, research family, research node, start, voyage, encounter and free article gets a
+page, cross-linked both ways. Written 13 Oct 2026 (ADR-0032, Proposed); the career kinds (families, research,
+starts, salvage blocks, locked frames) and then voyages and encounters were added the same day. Code:
+`crates/content-tool/src/wiki/`. It is a developer and modder wiki for now: locked content is shown and marked.
 
 ![Index](results/wiki-index.png)
 
@@ -32,14 +32,16 @@ python3 -m http.server 8090 --bind 0.0.0.0 -d /tmp/space-wiki              # the
 | Page | Contents |
 |---|---|
 | `index.html` | Pack description, counts per kind, ship cards, the part palette (category order), articles, the loaded packs. |
-| `parts.html` … `pages.html` | One list per kind, named like the kind's pack directory (`behavior_nodes.html`; free articles are `pages.html`). Parts are grouped by category, research nodes by family, behavior nodes by role, stats into part and ship stats; starts are cards with their ship. |
+| `parts.html` … `pages.html` | One list per kind, named like the kind's pack directory (`behavior_nodes.html`; free articles are `pages.html`). Parts are grouped by category, research nodes by family, behavior nodes by role, stats into part and ship stats; starts are cards with their ship; voyages are in load order with band, sites and expected length; encounters are a table of ships, wrecks and wake radius. |
 | `part/<id>.html` | The part on its style-2a tile (hull parts in every armor material), category, size, power tier, weapon family and delivery, shield absorption, icon key; stat lines as the drydock shows them (hull parts: a table per armor material); adjacency bonuses it grants (with the parts they reach) and gets; ships that use it; "Unlocked by" (the research nodes that unlock it); "Salvage": research data and materials an intact part gives and the fragment a destroyed one leaves (hull parts: per armour material, by hull area). |
 | `material/<id>.html` | Swatch, armor tone, per-cell stats, the hull parts made from it with their stats in it, ships that use it; "Unlocked by"; armour materials: salvage per cell of hull area; materials that salvage gives or research costs (programmable matter): the parts that give it and the research that costs it. |
-| `ship/<id>.html` | The layout drawn from the blueprint, faction, effective behavior, grid, smallest frame it fits, the starts that begin with it; the drydock's numbers from the sim's design report (full power, full use, `SimConfig::default()`); its parts with counts and materials. |
+| `ship/<id>.html` | The layout drawn from the blueprint, faction, effective behavior, grid, smallest frame it fits, the starts that begin with it; the drydock's numbers from the sim's design report (full power, full use, `SimConfig::default()`); its parts with counts and materials; "In encounters": where it waits on voyages, fighting or as a wreck, with counts. |
 | `category/`, `faction/`, `frame/` | Colour or glow, parts of the category, ships of the faction (and its default behavior), ships whose grid fits the frame (and, for a locked frame, "Unlocked by"). |
 | `family/<id>.html` | Research family: colour, its research nodes (kind, summary, unlocks, cost), nodes of other trees that cost its data, and the parts and armour materials whose salvage gives its data (per part, per cell of hull). |
 | `research/<id>.html` | Research node: family, kind (`NewPart` … `Alien`, as words), cost (data per family and materials, linked); what it unlocks (parts, materials and frames with their pictures, mind capacity as text); the nodes it requires and the nodes that require it. |
-| `start/<id>.html` | How a new game begins: the ship drawn like on its ship page (and linked), the mind capacity with the research that adds to it, the open voyages as plain ids (the voyage kind does not exist yet, so they have no pages), and the parts, materials and frames a new game has (everything not locked). |
+| `start/<id>.html` | How a new game begins: the ship drawn like on its ship page (and linked), the mind capacity with the research that adds to it, the open voyages (linked, with band, sites and length), and the parts, materials and frames a new game has (everything not locked). |
+| `voyage/<id>.html` | Band, place on the voyage map, radius, site spacing and expected length (metres and minutes), the number of sites, the goal and the starts that open it; the sites as a table (encounter, its ships and wrecks, how many such sites, the goal marked); the `cleared` line as the debrief shows it; "Opens after" (the voyages whose goal must be cleared first) and "Opens" (the voyages that name it). |
+| `encounter/<id>.html` | Wake radius and the total ships and wrecks; its ships and its wrecks, drawn small and linked, with their `(min, max)` counts (wrecks with the share of parts already gone); the voyages that place it, with how many sites and whether it is their goal. |
 | `behavior/<id>.html` | The rules as in the editor's text view, every node linked in its role's colour; the nodes it uses; factions using it as default; ships flying it. |
 | `behavior_node/<id>.html` | Role, value type, how it is written, the parameters (type, default, range, choices), the Rhai script; behaviors that use it. |
 | `stat/<id>.html` | Unit, precision, which way is better; every part, material, bonus and ship with that stat and its value. |
@@ -72,8 +74,8 @@ content/base/wiki/page/drydock_rules.md     # a free article; its first "# " lin
 ```
 
 `wiki/<kind>/<id>.md` works for every kind (`stat`, `category`, `faction`, `material`, `part`, `frame`, `ship`,
-`behavior_node`, `behavior`, `family`, `research`, `start`); validation rejects prose for entries that do not
-exist. Mods add or replace prose by path like any other file.
+`behavior_node`, `behavior`, `family`, `research`, `start`, `voyage`, `encounter`); validation rejects prose for
+entries that do not exist. Mods add or replace prose by path like any other file.
 
 The Markdown is a small subset, rendered by the tool itself:
 
@@ -90,17 +92,18 @@ The Markdown is a small subset, rendered by the tool itself:
 `cargo test -p content-tool` (`crates/content-tool/src/wiki/tests.rs` and the unit tests next to the code):
 the base pack's wiki builds without warnings; every content item has a page and nothing else is written;
 every `href`, `url(...)` and `#fragment` resolves to a generated file and element; two runs are byte-identical;
-cross-links exist both ways (also for families, research nodes, starts, salvage and unlocks); locked parts,
-materials and frames are marked; drawings use the pack's icons and the faction's glow, no `<img>` or `<script>`
-anywhere; a test mod with `<`, `&`, `>` and quotes in every kind of text (a family, a research node and a start
+cross-links exist both ways (also for families, research nodes, starts, salvage and unlocks, and for voyages,
+encounters, the start that opens a voyage and the ships an encounter holds); locked parts, materials and frames are
+marked; drawings use the pack's icons and the faction's glow, no `<img>` or `<script>` anywhere; a test mod with
+`<`, `&`, `>` and quotes in every kind of text (a family, a research node, a start, two voyages and an encounter
 included, and a relabelled stat) is escaped everywhere and shows the mod's stat label; `write` replaces an earlier
 wiki and refuses other directories; plus the Markdown subset and the icon id prefixing.
 
 ## Not yet
 
 Search (it would need JavaScript), a tag index, translated wikis (wiki prose is English only, ADR-0018), the
-drydock's yaw and device-load words on ship pages, pictures of behavior graphs and of research trees, and voyage
-pages (they come with the voyage kind; starts show voyage ids as plain text until then).
+drydock's yaw and device-load words on ship pages, and pictures of behavior graphs, research trees and the voyage
+map (voyage pages give the map place as numbers).
 
 ![A part page](results/wiki-part.png)
 

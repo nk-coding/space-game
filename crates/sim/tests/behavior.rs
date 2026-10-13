@@ -404,13 +404,15 @@ fn target_selectors_priorities_and_stickiness() {
     assert!(ad.parts[state(&w, me).aim_part().unwrap() as usize].logic);
 }
 
-/// A cross of four pulse lasers (front, right, rear, left) around a reactor, a logic core behind it.
+/// A cross of four pulse lasers (front, right, rear, left) around a reactor, a logic core behind it, and a
+/// thruster beside the core (without an engine it would turn its guns onto the target, GDR-0064).
 fn gun_cross() -> Vec<P<'static>> {
     vec![
         ("pulse_laser", 1, 0, 0, false, None),
         ("pulse_laser", 0, 1, 3, false, None),
         ("fission_reactor", 1, 1, 0, false, None),
         ("pulse_laser", 2, 1, 1, false, None),
+        ("thruster", 0, 2, 0, false, None),
         ("logic_core", 1, 2, 0, false, None),
         ("pulse_laser", 1, 3, 2, false, None),
     ]
@@ -575,6 +577,95 @@ fn rhai_conditions_run_sandboxed_within_budget() {
     run(&mut w, 6);
     assert_eq!(state(&w, me).active_rule(), Some(4));
     assert_eq!(state(&w, me).rules()[4], RuleStatus::Active);
+}
+
+/// GDR-0064: a vessel with no working engine (here: none at all) turns its guns onto its target with what it has
+/// (a gyro, its core). Before, the approach from afar flew with `HeadingGoal::Auto`, which with nothing to push
+/// kept the heading: an engine-less vessel never aimed.
+#[test]
+fn an_engine_less_vessel_turns_its_guns_onto_its_target() {
+    let c = content();
+    let turret = custom(
+        &c,
+        &[
+            ("pulse_laser", 1, 0, 0, false, None),
+            ("fission_reactor", 0, 1, 0, false, None),
+            ("logic_core", 1, 1, 0, false, None),
+            ("gyro", 2, 1, 0, false, None),
+        ],
+    );
+    let mut w = world_with_lib(lib());
+    let me = w.spawn_ship(turret, sim::Owner::PLAYER, Body::default());
+    // Far beyond its approach range (67% of 60 m), square to its nose.
+    let foe = w.spawn_ship(design(&c, "automaton_raider"), sim::Owner(1), Body::at(Vec2::new(80.0, 0.0), 0.0));
+    let skirmisher = w.behaviors().id("skirmisher");
+    w.command(me, ShipCommand::Behavior(skirmisher));
+    run(&mut w, 150);
+    assert_eq!(state(&w, me).target(), Some(foe));
+    let ship = w.ship(me).unwrap();
+    let p = ship.piece(ship.control_piece().unwrap()).unwrap();
+    let f = w.ship(foe).unwrap();
+    let to = f.piece(f.control_piece().unwrap()).unwrap().com_world() - p.com_world();
+    let err = sim::physics::wrap_angle(sim::flight::Kin::nose_heading(to) - p.body.angle);
+    assert!(err.abs() < 2f32.to_radians(), "nose {}° off the target", err.to_degrees());
+}
+
+/// GDR-0065: the `escort` template keeps a vessel within 30 m of its leader while the leader has nothing locked
+/// (its last rule, `always -> escort(30m)`), and fights what the leader locks.
+#[test]
+fn an_escort_keeps_near_its_leader_and_fights_its_lock() {
+    let c = content();
+    let mut w = world_with_lib(lib());
+    let runner = design(&c, "halvex_runner");
+    let leader = w.spawn_ship(runner.clone(), sim::Owner::PLAYER, Body::default());
+    let escort = w.spawn_ship(runner, sim::Owner::PLAYER, Body::at(Vec2::new(-22.0, -12.0), 0.0));
+    let template = w.behaviors().id("escort");
+    assert!(template.is_some(), "the content has the escort template");
+    w.command(escort, ShipCommand::Behavior(template));
+    w.command(escort, ShipCommand::Leader(Some(leader)));
+    let centre = |w: &Sim, s: ShipId| {
+        let ship = w.ship(s).unwrap();
+        ship.piece(ship.control_piece().unwrap()).unwrap().com_world()
+    };
+    // The leader flies off to the right at 60% of its top speed, nothing locked: the escort follows.
+    let go = PilotInput { stick: Vec2::new(0.6, 0.0), ..Default::default() };
+    w.command(leader, ShipCommand::Pilot(go));
+    let mut worst = 0.0f32;
+    for t in 0..900 {
+        w.step(&TickInputs::default());
+        if t >= 600 {
+            worst = worst.max((centre(&w, escort) - centre(&w, leader)).length());
+        }
+    }
+    let st = state(&w, escort);
+    assert_eq!(st.active_rule(), Some(2), "{:?}", st.rules());
+    assert!(matches!(st.maneuver(), Maneuver::Escort { leader: Target::Ship(l), .. } if l == leader));
+    println!("escort while the leader flies at 13 m/s: farthest {worst:.1} m over the last 10 s");
+    assert!(centre(&w, leader).x > 200.0, "the leader went somewhere");
+    assert!(worst < 33.0, "the escort keeps within 30 m (and a little): {worst}");
+    // The leader stops: so does the escort, near it.
+    w.command(leader, ShipCommand::Pilot(PilotInput::default()));
+    run(&mut w, 450);
+    let ship = w.ship(escort).unwrap();
+    let v = ship.piece(ship.control_piece().unwrap()).unwrap().body.linvel.length();
+    let d = (centre(&w, escort) - centre(&w, leader)).length();
+    println!("the leader stopped: escort at {d:.1} m, {v:.2} m/s");
+    assert!(v < 0.5 && d < 33.0, "stopped near the leader: {v} m/s, {d} m");
+    // The leader locks a raider: the escort attacks it.
+    let raider = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        sim::Owner(1),
+        Body::at(centre(&w, leader) + Vec2::new(0.0, 150.0), 0.0),
+    );
+    w.command(leader, ShipCommand::Pilot(PilotInput { lock: Some(Target::Ship(raider)), ..Default::default() }));
+    run(&mut w, 6);
+    let st = state(&w, escort);
+    assert_eq!((st.target(), st.active_rule()), (Some(raider), Some(1)), "{:?}", st.rules());
+    // Without a leader the escort rule holds where it is.
+    w.command(leader, ShipCommand::Pilot(PilotInput::default()));
+    w.command(escort, ShipCommand::Leader(None));
+    run(&mut w, 6);
+    assert_eq!(state(&w, escort).maneuver(), Maneuver::Brake);
 }
 
 #[test]

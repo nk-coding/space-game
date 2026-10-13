@@ -500,6 +500,67 @@ fn voyages_launch_when_open_and_end_once() {
     );
 }
 
+/// Clearing a voyage's goal on a voyage that comes home opens the voyages after it (in content order); losing it,
+/// or coming home without the goal, opens nothing.
+#[test]
+fn clearing_a_voyage_opens_the_next() {
+    let c = content();
+    let mut career = new_game(&c);
+    let end = |career: &mut Career, id: &str, end: VoyageEnd| {
+        career.voyage_launched(&c, id).unwrap();
+        career.voyage_ended(&c, id, end).unwrap();
+    };
+    let home = |cleared| VoyageEnd::Recalled {
+        haul: Haul::default(),
+        cleared,
+        ticks: 9000,
+    };
+    end(&mut career, FIRST, VoyageEnd::Lost { ticks: 10 });
+    end(&mut career, FIRST, home(false));
+    assert_eq!(career.open_voyages(&c), [FIRST]);
+    end(&mut career, FIRST, home(true));
+    assert_eq!(career.open_voyages(&c), [FIRST, "halvex_drift"]);
+    assert!(career.is_open(&c, "halvex_drift") && !career.is_open(&c, "corran_reach"));
+    end(&mut career, "halvex_drift", home(true));
+    end(&mut career, "corran_reach", home(true));
+    assert_eq!(
+        career.open_voyages(&c),
+        [FIRST, "halvex_drift", "corran_reach", "wardens_gate"]
+    );
+
+    // A voyage after two opens when both are cleared; one after none only through a start.
+    let modded = Content::load(&[
+        data::base_pack().unwrap(),
+        Pack::from_files([
+            (
+                "pack.ron",
+                r#"(id: "test_mod", name: "T", version: "1", schema_version: 1, depends: ["base"])"#,
+            ),
+            (
+                "voyages/more.ron",
+                r#"[(id: "both", name: "Both", summary: "S.", band: "rim", map: (0.5, 0.5),
+                     opens_after: ["yard_approach", "halvex_drift"], radius: 800, spacing: (300, 600), minutes: (5, 9),
+                     sites: [(encounter: "raider_den", goal: true)]),
+                    (id: "elsewhere", name: "Elsewhere", summary: "S.", band: "rim", map: (0.5, 0.5),
+                     radius: 800, spacing: (300, 600), minutes: (5, 9),
+                     sites: [(encounter: "raider_den", goal: true)])]"#,
+            ),
+        ])
+        .unwrap(),
+    ])
+    .unwrap();
+    let mut career = new_game(&modded);
+    let end = |career: &mut Career, id: &str| {
+        career.voyage_launched(&modded, id).unwrap();
+        career.voyage_ended(&modded, id, home(true)).unwrap();
+    };
+    end(&mut career, FIRST);
+    assert!(!career.is_open(&modded, "both"));
+    end(&mut career, "halvex_drift");
+    assert!(career.is_open(&modded, "both"));
+    assert!(!career.is_open(&modded, "elsewhere"));
+}
+
 #[test]
 fn voyage_seeds_are_fixed() {
     // Values computed independently (FNV-1a 64 and SplitMix64 by their reference definitions); they are part of

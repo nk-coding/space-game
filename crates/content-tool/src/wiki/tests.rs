@@ -125,6 +125,12 @@ fn every_content_item_has_a_page() {
     want.extend(c.families.iter().map(|e| item_path(Kind::Family, &e.id)));
     want.extend(c.research.iter().map(|e| item_path(Kind::Research, &e.id)));
     want.extend(c.starts.iter().map(|e| item_path(Kind::Start, &e.id)));
+    want.extend(c.voyages.iter().map(|e| item_path(Kind::Voyage, &e.id)));
+    want.extend(
+        c.encounters
+            .iter()
+            .map(|e| item_path(Kind::Encounter, &e.id)),
+    );
     // Every kind with entries has a list page and an index count (pages come from `wiki/page/`).
     for kind in Kind::ALL {
         assert!(
@@ -170,6 +176,8 @@ fn output_is_byte_identical_on_two_runs() {
         "family/logic.html",
         "research/mind_expansion_1.html",
         "start/rim_awakening.html",
+        "voyage/yard_approach.html",
+        "encounter/the_warden.html",
     ] {
         assert!(a.files.contains_key(path), "no {path}");
     }
@@ -315,7 +323,7 @@ fn career_pages_link_both_ways() {
         "href=\"../research/tamed_core.html\"",
     );
     // A start: its ship drawn like a ship page and linked, the mind capacity with the research that adds to
-    // it, the open voyages as plain text (no voyage pages yet), and what a new game has.
+    // it, the open voyages (linked), and what a new game has.
     let start = "start/rim_awakening.html";
     has(start, "<figure class=\"hero\"");
     has(start, "<svg class=\"ship\"");
@@ -327,8 +335,11 @@ fn career_pages_link_both_ways() {
     has(start, "<dt>Mind capacity</dt><dd>2 logic cores</dd>");
     has(start, "href=\"../research/mind_expansion_2.html\"");
     has(start, "(<strong>4</strong> in all)");
-    has(start, "<li><code>yard_approach</code></li>");
-    lacks(start, "yard_approach.html");
+    has(
+        start,
+        "<h2>Open voyages</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../voyage/yard_approach.html\">Shipyard approach</a>",
+    );
+    lacks(start, "halvex_drift.html");
     has(start, "href=\"../part/pulse_laser.html\"");
     lacks(start, "href=\"../part/beam_laser.html\"");
     // List pages: research grouped by family, families with counts, starts as cards.
@@ -340,6 +351,166 @@ fn career_pages_link_both_ways() {
     has(
         "starts.html",
         "<a class=\"card\" href=\"start/rim_awakening.html\">",
+    );
+}
+
+#[test]
+fn voyage_pages_link_both_ways() {
+    let c = base();
+    let site = generate(&c);
+    let has = |path: &str, needle: &str| {
+        assert!(page(&site, path).contains(needle), "{path} lacks {needle}")
+    };
+    let lacks = |path: &str, needle: &str| {
+        assert!(!page(&site, path).contains(needle), "{path} has {needle}")
+    };
+    let goal = "<span class=\"badge goal\"";
+    // A voyage: its numbers with units, its sites (encounters with what they hold and how many, the goal
+    // marked), the start that opens it, the cleared line with its links, and the voyages it opens.
+    let first = "voyage/yard_approach.html";
+    has(first, "<dt>Band</dt><dd>rim</dd>");
+    has(first, ">0.28, 0.66</span></dd>");
+    has(first, "<dt>Radius</dt><dd>600 m</dd>");
+    has(first, "<dt>Site spacing</dt><dd>400–700 m</dd>");
+    has(first, "<dt>Expected length</dt><dd>6–8 min</dd>");
+    has(first, "<dt>Sites</dt><dd>4</dd>");
+    has(
+        first,
+        "<dt>Goal</dt><dd><a href=\"../encounter/raider_pack.html\">Raider pack</a></dd>",
+    );
+    has(
+        first,
+        "<dt>Open at the start of</dt><dd><a href=\"../start/rim_awakening.html\">",
+    );
+    has(
+        first,
+        "<tr><td class=\"name\"><a href=\"../encounter/raider_pair.html\">Raider pair</a></td><td><a href=\"../ship/automaton_raider.html\">Automaton raider</a>&nbsp;×2</td><td>—</td><td class=\"num\">×2</td></tr>",
+    );
+    has(
+        first,
+        "<a href=\"../ship/sample_early.html\">Sample early</a>&nbsp;×1, 50% of parts gone",
+    );
+    has(
+        first,
+        &format!("href=\"../encounter/raider_pack.html\">Raider pack</a> {goal}"),
+    );
+    lacks(
+        first,
+        &format!("href=\"../encounter/raider_pair.html\">Raider pair</a> {goal}"),
+    );
+    has(
+        first,
+        "<blockquote><p>The lanes around the shipyard are quiet again. Further out, the <a href=\"../voyage/halvex_drift.html\">Halvex Drift</a> is waiting.</p></blockquote>",
+    );
+    has(
+        first,
+        "<h2>Opens after</h2>\n<p class=\"none\">None: it is open at the start.</p>",
+    );
+    has(
+        first,
+        "<h2>Opens</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../voyage/halvex_drift.html\">",
+    );
+    // The next voyage names it back (and the cleared line counts as a mention); the last opens nothing.
+    has(
+        "voyage/halvex_drift.html",
+        "<h2>Opens after</h2>\n<p class=\"note\">It opens once the goal of each of these has been cleared.</p>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../voyage/yard_approach.html\">",
+    );
+    has(
+        "voyage/halvex_drift.html",
+        "<h2>Mentioned on</h2>\n<p><a href=\"../voyage/yard_approach.html\">",
+    );
+    lacks("voyage/halvex_drift.html", "Open at the start of");
+    has(
+        "voyage/wardens_gate.html",
+        "<h2>Opens</h2>\n<p class=\"none\">None.</p>",
+    );
+    // An encounter: wake radius, its ships and wrecks drawn and linked with their counts, the wrecks' damage,
+    // and the voyages that place it (how many sites, the goal marked).
+    let warden = "encounter/the_warden.html";
+    has(warden, "<dt>Wake radius</dt><dd>300 m</dd>");
+    has(warden, "<dt>Ships</dt><dd>3–5</dd>");
+    lacks(warden, "<dt>Wrecks</dt>");
+    has(warden, "aria-label=\"Automaton warden\"");
+    has(
+        warden,
+        "href=\"../ship/automaton_raider.html\">Automaton raider</a></td><td>",
+    );
+    has(warden, "<td class=\"num\">×2–4</td>");
+    has(warden, "within 300 m of the site");
+    has(warden, "<h2>Wrecks</h2>\n<p class=\"none\">None.</p>");
+    has(
+        warden,
+        &format!(
+            "<tr><td class=\"name\"><a href=\"../voyage/wardens_gate.html\">The Warden&#39;s gate</a> {goal}"
+        ),
+    );
+    has(warden, "<td class=\"num\">1 site</td>");
+    has(warden, "the shielded heart holds");
+    let graveyard = "encounter/core_graveyard.html";
+    has(graveyard, "<dt>Wrecks</dt><dd>4–6</dd>");
+    has(
+        graveyard,
+        "<td>30% of parts gone</td><td class=\"num\">×4–6</td>",
+    );
+    has(
+        "encounter/raider_pair.html",
+        "<tr><td class=\"name\"><a href=\"../voyage/yard_approach.html\">Shipyard approach</a></td><td>",
+    );
+    has(
+        "encounter/raider_pair.html",
+        "<td class=\"num\">2 sites</td>",
+    );
+    for v in &c.voyages {
+        has(
+            "encounter/raider_pack.html",
+            &format!("href=\"../voyage/{}.html\"", v.id),
+        );
+    }
+    // A ship names the encounters it waits in, fighting or as a wreck; the encounters name it back.
+    has(
+        "ship/automaton_warden.html",
+        "<h2>In encounters</h2>\n<ul>\n<li><a href=\"../encounter/the_warden.html\">The Warden</a>: ×1 fighting</li>",
+    );
+    has(
+        "ship/automaton_raider.html",
+        "<a href=\"../encounter/derelict_field.html\">Derelict field</a>: ×0–1 fighting; ×2–3 wrecked, 50% of parts gone",
+    );
+    has(
+        "ship/sample_mid.html",
+        "<a href=\"../encounter/precursor_wrecks.html\">Precursor wrecks</a>: ×1–2 wrecked, 40% of parts gone",
+    );
+    has(
+        "encounter/precursor_wrecks.html",
+        "href=\"../ship/sample_mid.html\"",
+    );
+    lacks("ship/rim_skiff.html", "In encounters");
+    // List pages: voyages in load order with band, sites and length; encounters as a table.
+    let list = page(&site, "voyages.html");
+    let at: Vec<usize> = c
+        .voyages
+        .iter()
+        .map(|v| {
+            list.find(&format!("href=\"voyage/{}.html\"", v.id))
+                .unwrap_or_else(|| panic!("voyages.html lacks {}", v.id))
+        })
+        .collect();
+    assert!(at.windows(2).all(|w| w[0] < w[1]), "voyages out of order");
+    has("voyages.html", "<span class=\"note\">rim band</span>");
+    has(
+        "voyages.html",
+        "<td class=\"num\">4 sites</td><td class=\"num\">6–8 min</td>",
+    );
+    has(
+        "encounters.html",
+        "<th>Ships</th><th>Wrecks</th><th class=\"num\">Wake radius</th>",
+    );
+    has(
+        "encounters.html",
+        "<a href=\"ship/automaton_hunter.html\">Automaton hunter</a>&nbsp;×2–3<br><a href=\"ship/automaton_raider.html\">Automaton raider</a>&nbsp;×1–2</td><td>—</td><td class=\"num\">300 m</td>",
+    );
+    has(
+        "encounters.html",
+        "<a href=\"ship/automaton_raider.html\">Automaton raider</a>&nbsp;×4–6, 30% of parts gone",
     );
 }
 
@@ -532,6 +703,22 @@ fn tricky_content() -> Content {
                  voyages: ["first_hop", "second_hop"])]"#,
         ),
         ("wiki/research/tricky_node.md", "Research prose <marquee> & [[family:tricky_family]].\n"),
+        (
+            "encounters/e.ron",
+            r#"[(id: "tricky_encounter", name: "Encounter <e> & \"x\"", summary: "Waits <here>.",
+                 lore: "Old <wreck> & [[ship:tricky_ship]].", ships: [(ship: "automaton_raider", count: (1, 2))],
+                 wrecks: [(ship: "tricky_ship", count: (0, 1), damage: 0.25)], wake_radius: 150)]"#,
+        ),
+        (
+            "voyages/v.ron",
+            r#"[(id: "first_hop", name: "Hop <1>", summary: "First & <hop>.", band: "rim", map: (0.1, 0.2), radius: 500,
+                 spacing: (300, 600), minutes: (5, 5), cleared: "Cleared <done> & on to [[voyage:second_hop|the <next>]].",
+                 sites: [(encounter: "tricky_encounter", goal: true), (encounter: "raider_pack", count: 2)]),
+                (id: "second_hop", name: "Hop <2>", summary: "Second <hop>.", band: "outer", map: (0.3, 0.4),
+                 opens_after: ["first_hop"], radius: 500, spacing: (300, 600), minutes: (5, 9),
+                 sites: [(encounter: "tricky_encounter", goal: true)])]"#,
+        ),
+        ("wiki/encounter/tricky_encounter.md", "Encounter prose <blink> & [[voyage:first_hop]].\n"),
     ])
     .unwrap();
     Content::load(&[base, m]).unwrap()
@@ -565,6 +752,15 @@ fn html_is_escaped() {
             "<s>",
             "<go>",
             "<marquee>",
+            "<e>",
+            "<here>",
+            "<wreck>",
+            "<1>",
+            "<2>",
+            "<hop>",
+            "<done>",
+            "<next>",
+            "<blink>",
         ] {
             assert!(!text.contains(raw), "{path} contains raw `{raw}`");
         }
@@ -592,8 +788,8 @@ fn html_is_escaped() {
     );
     assert!(page(&site, "index.html").contains("Tricky &lt;mod&gt; <code>tricky</code> 1 &amp; 2"));
     assert!(page(&site, "ships.html").contains("aria-label=\"Ship &lt;&amp;&gt;\""));
-    // The career kinds of a mod: escaped, linked, with plain voyage ids and the mod's family in a base family's
-    // page (the node costs logic data too).
+    // The career kinds of a mod: escaped, linked, and the mod's family in a base family's page (the node costs
+    // logic data too).
     let node = page(&site, "research/tricky_node.html");
     assert!(node.contains("<h1>Node &lt;n&gt; &amp; &quot;q&quot;</h1>"));
     assert!(node.contains(
@@ -608,10 +804,40 @@ fn html_is_escaped() {
     );
     let start = page(&site, "start/tricky_start.html");
     assert!(start.contains("<h1>Start &lt;s&gt;</h1>"));
-    assert!(start.contains("<li><code>first_hop</code></li>\n<li><code>second_hop</code></li>"));
+    assert!(start.contains("href=\"../voyage/first_hop.html\">Hop &lt;1&gt;</a>"));
+    assert!(start.contains("href=\"../voyage/second_hop.html\">Hop &lt;2&gt;</a>"));
     assert!(
         page(&site, "starts.html").contains("<span class=\"sub\">Begin &amp; &lt;go&gt;.</span>")
     );
+    // A mod's voyages and encounters: names, summaries, the cleared line with a labelled link, lore, prose.
+    let name = "Encounter &lt;e&gt; &amp; &quot;x&quot;";
+    let hop = page(&site, "voyage/first_hop.html");
+    assert!(hop.contains("<h1>Hop &lt;1&gt;</h1>"));
+    assert!(hop.contains(
+        "Cleared &lt;done&gt; &amp; on to <a href=\"../voyage/second_hop.html\">the &lt;next&gt;</a>."
+    ));
+    assert!(hop.contains(&format!(
+        "href=\"../encounter/tricky_encounter.html\">{name}</a> <span class=\"badge goal\""
+    )));
+    assert!(page(&site, "voyage/second_hop.html").contains(
+        "<a href=\"../voyage/first_hop.html\">Hop &lt;1&gt;</a><br><span class=\"note\">rim band</span></td><td>First &amp; &lt;hop&gt;.</td>"
+    ));
+    let enc = page(&site, "encounter/tricky_encounter.html");
+    assert!(enc.contains(&format!("<h1>{name}</h1>")));
+    assert!(enc.contains(
+        "Old &lt;wreck&gt; &amp; <a href=\"../ship/tricky_ship.html\">Ship &lt;&amp;&gt;</a>."
+    ));
+    assert!(enc.contains(
+        "Encounter prose &lt;blink&gt; &amp; <a href=\"../voyage/first_hop.html\">Hop &lt;1&gt;</a>."
+    ));
+    assert!(enc.contains("<td>25% of parts gone</td><td class=\"num\">×0–1</td>"));
+    assert!(enc.contains("<dt>Wake radius</dt><dd>150 m</dd>"));
+    assert!(enc.contains("href=\"../voyage/second_hop.html\""));
+    assert!(page(&site, "ship/tricky_ship.html").contains(&format!(
+        "<a href=\"../encounter/tricky_encounter.html\">{name}</a>: ×0–1 wrecked, 25% of parts gone"
+    )));
+    assert!(page(&site, "encounters.html").contains("<td>Waits &lt;here&gt;.</td>"));
+    assert!(page(&site, "voyages.html").contains("<td class=\"num\">5 min</td>"));
 }
 
 #[test]

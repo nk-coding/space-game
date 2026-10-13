@@ -314,6 +314,13 @@ fn part_errors() {
         r#"(id: "p", name: "P", summary: "S.", category: "hull", size: (2, 1), shape: Slope, build_points: 1, mass: 1, hp: 1)"#,
     );
     assert_error(&e, "p", "shape", "hull");
+    // A barrel is a gun's art: only on guns, with a positive width and muzzle.
+    let e = errors_with(
+        "parts/p.ron",
+        &format!("({PART_HEAD}, category: \"power\", mass: 1, hp: 1, barrel: (width: 0, length: 0.5, muzzle: 0.1))"),
+    );
+    assert_error(&e, "p", "barrel", "only guns");
+    assert_error(&e, "p", "barrel.width", "> 0");
     let e = errors_with(
         "parts/p.ron",
         &format!(

@@ -22,6 +22,11 @@
 //!   nearest salvage (pieces and loose fragments) and collecting it, two raiders under their content behavior
 //!   whose cores are shot out (fragments), a cargo part of one collector destroyed (its hold sheds) and one
 //!   collector lost with its cargo (its wreck keeps it; the others strip it), plus random hits.
+//! * [`ScenarioKind::Voyage`]: the voyage director (`voyage.rs`): the content's first voyage rolled from the seed
+//!   and started, one player ship per ship-mind blueprint with a hold entering at its edge. Each flies random
+//!   pilot input locked on the nearest awake enemy within reach of a fight, else to the nearest salvage, else to a
+//!   site not yet cleared, so sites spawn, sleep, wake and clear; the cores of an awake enemy are shot out every
+//!   few seconds (fragments, wrecks to strip), plus random hits.
 //!
 //! Owners: ship-mind ships belong to [`Owner::PLAYER`], every other faction's to `Owner(1)`
 //! ([`scenario_owner`]). Splits leave vessels of their own (GDR-0013), so ship counts grow during a run.
@@ -64,6 +69,8 @@ pub enum ScenarioKind {
     Behavior,
     /// Salvage: wrecks spawned as wrecks, collecting, fragments, cargo kept by a lost ship.
     Salvage,
+    /// A voyage: sites spawning, sleeping, waking and clearing, salvage, the recall check.
+    Voyage,
 }
 
 impl ScenarioKind {
@@ -74,6 +81,7 @@ impl ScenarioKind {
             "load" => Some(ScenarioKind::Load(20)),
             "behavior" => Some(ScenarioKind::Behavior),
             "salvage" => Some(ScenarioKind::Salvage),
+            "voyage" => Some(ScenarioKind::Voyage),
             _ => None,
         }
     }
@@ -85,6 +93,7 @@ impl ScenarioKind {
             ScenarioKind::Flight => 0.08,
             ScenarioKind::Behavior => 0.06,
             ScenarioKind::Salvage => 0.04,
+            ScenarioKind::Voyage => 0.03,
             ScenarioKind::Load(_) => 0.0,
         }
     }
@@ -94,7 +103,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 75,
             ScenarioKind::Flight | ScenarioKind::Behavior => 150,
-            ScenarioKind::Salvage => 300,
+            ScenarioKind::Salvage | ScenarioKind::Voyage => 300,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -104,7 +113,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 20,
             ScenarioKind::Flight | ScenarioKind::Behavior => 45,
-            ScenarioKind::Salvage => SALVAGE_RETARGET,
+            ScenarioKind::Salvage | ScenarioKind::Voyage => SALVAGE_RETARGET,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -148,6 +157,10 @@ pub struct ScenarioStats {
     pub collected_cargo: u32,
     pub collected_fragments: u32,
     pub fragments: u32,
+    /// Voyage: sites woken and cleared (`SiteWoke`, `SiteCleared`), and ticks the player could recall.
+    pub sites_woken: u32,
+    pub sites_cleared: u32,
+    pub recall_ticks: u32,
 }
 
 pub struct Scenario {
@@ -155,7 +168,7 @@ pub struct Scenario {
     pub stats: ScenarioStats,
     pub kind: ScenarioKind,
     inputs: TickInputs,
-    /// Salvage: the collecting ships, in spawn order.
+    /// Salvage and voyage: the player's ships the script flies, in spawn order.
     collectors: Vec<crate::ShipId>,
 }
 
@@ -178,6 +191,9 @@ impl Scenario {
         }
         if kind == ScenarioKind::Salvage {
             return salvage_scenario(content, seed);
+        }
+        if kind == ScenarioKind::Voyage {
+            return voyage_scenario(content, seed);
         }
         let mut config = crate::SimConfig::default();
         if kind == ScenarioKind::Behavior {
@@ -278,6 +294,8 @@ impl Scenario {
                     self.stats.collected_cargo += matches!(from, Salvaged::Cargo { .. }) as u32;
                     self.stats.collected_fragments += matches!(item, Item::Fragment { .. }) as u32;
                 }
+                SimEvent::SiteWoke { .. } => self.stats.sites_woken += 1,
+                SimEvent::SiteCleared { .. } => self.stats.sites_cleared += 1,
                 _ => {}
             }
         }
@@ -299,6 +317,9 @@ impl Scenario {
             }
         }
         self.stats.script_evals = self.sim.script_evaluations();
+        if self.kind == ScenarioKind::Voyage && self.sim.can_recall(Owner::PLAYER) {
+            self.stats.recall_ticks += 1;
+        }
         self.sim.state_hash()
     }
 
@@ -319,6 +340,9 @@ impl Scenario {
         }
         if kind == ScenarioKind::Salvage {
             self.salvage_run(tick);
+        }
+        if kind == ScenarioKind::Voyage {
+            self.voyage_run(tick);
         }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
@@ -397,8 +421,9 @@ impl Scenario {
                     };
                     self.inputs.commands.push((id, ShipCommand::Pilot(input)));
                 }
-                // The collectors fly to salvage (`salvage_run`), the raiders their behavior.
-                ScenarioKind::Salvage => {}
+                // The collectors fly to salvage (`salvage_run`) or through the voyage (`voyage_run`), enemies
+                // their behavior.
+                ScenarioKind::Salvage | ScenarioKind::Voyage => {}
             }
         }
 
@@ -694,6 +719,148 @@ fn salvage_target(
         }
     }
     Some(best.map_or(Maneuver::Brake, |(_, _, m)| m))
+}
+
+/// Voyage scenario script: every this many ticks the cores of the first awake enemy vessel are shot out.
+const VOYAGE_KILL_EVERY: u64 = 150;
+/// Voyage scenario script: a player ship fights the nearest awake enemy within this many metres.
+const VOYAGE_FIGHT_RANGE: f32 = 300.0;
+
+/// What a player ship of the voyage scenario does next.
+enum Order {
+    /// Fight this enemy, which lies this way (world).
+    Fight(crate::ShipId, Vec2),
+    /// Fly a maneuver (to salvage or to a site).
+    Fly(crate::maneuver::Maneuver),
+}
+
+/// The voyage scenario: the content's first voyage (load order) rolled from the seed and started for the player
+/// against `Owner(1)`, one ship per ship-mind blueprint with a hold in a row at the entry, the first the focus.
+fn voyage_scenario(content: &Content, seed: u64) -> Result<Scenario, String> {
+    let voyage = content
+        .voyages
+        .iter()
+        .next()
+        .ok_or("the voyage scenario needs a voyage")?;
+    let plan = crate::voyage::VoyagePlan::roll(content, voyage, seed)?;
+    let entry = plan.entry;
+    let mut sim = Sim::new(seed);
+    sim.set_behaviors(library(content)?);
+    sim.start_voyage(plan, Owner::PLAYER, Owner(1));
+    let holds: Vec<Arc<ShipDesign>> = content
+        .ships
+        .iter()
+        .map(|b| ShipDesign::compile(content, b).map(Arc::new))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|d| scenario_owner(d) == Owner::PLAYER && d.parts.iter().any(|p| p.cargo > 0.0))
+        .collect();
+    let mut collectors = Vec::new();
+    for (k, d) in holds.iter().enumerate() {
+        let x = (k as f32 - (holds.len() as f32 - 1.0) / 2.0) * 25.0;
+        let body = Body::at(entry.pos + Vec2::new(x, 0.0), entry.angle);
+        collectors.push(sim.spawn_ship(Arc::clone(d), Owner::PLAYER, body));
+    }
+    if let Some(&first) = collectors.first() {
+        sim.command(first, ShipCommand::Focus);
+    }
+    Ok(Scenario {
+        sim,
+        stats: ScenarioStats::default(),
+        kind: ScenarioKind::Voyage,
+        inputs: TickInputs::default(),
+        collectors,
+    })
+}
+
+impl Scenario {
+    /// The voyage scenario's script for this tick: the scripted kills, then each player ship fights, salvages or
+    /// flies on (re-decided every `SALVAGE_RETARGET` ticks, staggered).
+    fn voyage_run(&mut self, tick: u64) {
+        let Some(v) = self.sim.voyage() else {
+            return;
+        };
+        let awake = |s: &Ship| {
+            s.team() == Some(v.enemy())
+                && s.vessel_state() == Some(crate::VesselState::Running)
+                && v.site_of(s.id())
+                    .is_none_or(|k| v.sites()[k].state() != crate::SiteState::Asleep)
+        };
+        if tick > 0
+            && tick.is_multiple_of(VOYAGE_KILL_EVERY)
+            && let Some(enemy) = self.sim.ships().iter().find(|s| awake(s))
+        {
+            self.inputs.damage.extend(destroy_parts(enemy, |p| p.logic));
+        }
+        // Decide from the world as it is (fights: the foe and the way to it), then roll the pilot input.
+        let mut decided: Vec<(crate::ShipId, Order)> = Vec::new();
+        for (n, &c) in self.collectors.iter().enumerate() {
+            if !(tick + n as u64 * 7).is_multiple_of(SALVAGE_RETARGET) {
+                continue;
+            }
+            let Some(ship) = self.sim.ship(c) else {
+                continue;
+            };
+            let Some(at) = ship
+                .control_piece()
+                .and_then(|p| ship.piece(p))
+                .map(|p| p.com_world())
+            else {
+                continue;
+            };
+            let foe = self
+                .sim
+                .ships()
+                .iter()
+                .filter(|s| awake(s))
+                .filter_map(|s| {
+                    let p = s.piece(s.control_piece()?)?.com_world();
+                    Some(((p - at).length(), s.id(), p - at))
+                })
+                .filter(|&(d, _, _)| d <= VOYAGE_FIGHT_RANGE)
+                .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            let room = ship.cargo_capacity() > ship.cargo().used();
+            let salvage = salvage_target(&self.sim, c, None)
+                .filter(|&m| room && m != crate::maneuver::Maneuver::Brake);
+            // Else each ship to a site of its own among those not cleared yet.
+            let open: Vec<&crate::Site> = v
+                .sites()
+                .iter()
+                .filter(|s| s.state() != crate::SiteState::Cleared)
+                .collect();
+            let fly = match open.get(n % open.len().max(1)) {
+                Some(s) => crate::maneuver::Maneuver::Hold { at: s.pos() },
+                None => crate::maneuver::Maneuver::Brake,
+            };
+            let plan = match (foe, salvage) {
+                (Some((_, foe, way)), _) => Order::Fight(foe, way),
+                (None, Some(m)) => Order::Fly(m),
+                (None, None) => Order::Fly(fly),
+            };
+            decided.push((c, plan));
+        }
+        for (c, plan) in decided {
+            let cmd = match plan {
+                Order::Fight(foe, way) => {
+                    let rng = self.sim.rng(Stream::Scenario);
+                    let a = crate::math::atan2(way.y, way.x) + rng.range_f32(-0.8, 0.8);
+                    ShipCommand::Pilot(PilotInput {
+                        stick: Vec2::new(cos(a), sin(a)) * rng.range_f32(0.3, 1.0),
+                        lock: Some(Target::Ship(foe)),
+                        drift: rng.chance(0.2),
+                        fire: true,
+                        aim: crate::flight::AimMode::Auto,
+                        ..Default::default()
+                    })
+                }
+                Order::Fly(maneuver) => ShipCommand::Maneuver {
+                    maneuver,
+                    fire: false,
+                },
+            };
+            self.inputs.commands.push((c, cmd));
+        }
+    }
 }
 
 /// Player programs of the behavior scenario (text form, as typed in the editor).

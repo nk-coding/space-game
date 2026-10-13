@@ -108,8 +108,7 @@ fn main() {
     );
     app.add_plugins(EguiPlugin::default());
     app.insert_state(mode::AppMode::at_start(&params));
-    app.insert_resource(ClearColor(Color::srgb_u8(0x01, 0x04, 0x09)))
-        .insert_resource(RenderToggles::from_params(&params))
+    app.insert_resource(RenderToggles::from_params(&params))
         .insert_resource(params)
         .add_plugins((
             atlas::AtlasPlugin,

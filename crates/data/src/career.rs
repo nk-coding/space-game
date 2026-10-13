@@ -458,7 +458,7 @@ impl Career {
         clean_materials(&mut self.materials, content, "materials", &mut notes);
 
         self.voyages.retain(|id, _| {
-            let known = voyage_known(content, id);
+            let known = content.voyages.contains(id);
             if !known {
                 notes.push(
                     Problem::warning(format!(
@@ -492,7 +492,7 @@ impl Career {
         }
 
         if let Some(last) = &mut self.last_haul {
-            if voyage_known(content, &last.voyage) {
+            if content.voyages.contains(&last.voyage) {
                 clean_data(
                     &mut last.report.data,
                     content,
@@ -641,15 +641,21 @@ impl Career {
         })
     }
 
-    /// The voyages the player may launch, in order: the start's list. The voyage kind (track 7E) adds here every
-    /// voyage whose `opens_after` voyages are all cleared ([`VoyageRecord::cleared`]), and the private
-    /// `voyage_known` (which [`Career::reconcile`] asks) checks its table.
+    /// The voyages the player may launch, in content order (the voyage map's): those the start lists, and every
+    /// voyage with `opens_after` whose voyages have all been cleared ([`VoyageRecord::cleared`]). A voyage with no
+    /// `opens_after` opens only through a start.
     pub fn open_voyages<'c>(&self, content: &'c Content) -> Vec<&'c str> {
+        let start = content.starts.get(&self.start);
+        let cleared = |id: &String| self.voyages.get(id).is_some_and(|r| r.cleared);
         content
-            .starts
-            .get(&self.start)
-            .map(|s| s.voyages.iter().map(String::as_str).collect())
-            .unwrap_or_default()
+            .voyages
+            .iter()
+            .filter(|v| {
+                start.is_some_and(|s| s.voyages.contains(&v.id))
+                    || (!v.opens_after.is_empty() && v.opens_after.iter().all(cleared))
+            })
+            .map(|v| v.id.as_str())
+            .collect()
     }
 
     /// Is `voyage` one of [`Career::open_voyages`]?
@@ -955,15 +961,6 @@ pub fn voyage_ready(
         out.push(Readiness::NoCargo);
     }
     out
-}
-
-/// Does the content know this voyage? Until the voyage kind exists (track 7E, which checks its table here), the
-/// only voyages the content names are the starts' lists.
-fn voyage_known(content: &Content, voyage: &str) -> bool {
-    content
-        .starts
-        .iter()
-        .any(|s| s.voyages.iter().any(|v| v == voyage))
 }
 
 fn packs_of(content: &Content) -> Vec<(String, String)> {

@@ -172,7 +172,8 @@ impl Ship {
 
     /// Moves piece `j` (not the controlling piece) out of this ship into a new ship `id` that controls it:
     /// the vessel model's split (GDR-0013). Part states, settings, controls, helm and leader are copied (the
-    /// cargo stays with the ship that keeps the controlling piece);
+    /// cargo stays with the ship that keeps the controlling piece); its hull share counts against the intact
+    /// hit points of the parts it takes (GDR-0064);
     /// each ship keeps only its own parts alive and in its grid (pieces never link to each other, so no
     /// exposure, bonus or clearance changes). Behavior, claim and age are the caller's.
     pub(crate) fn detach(&mut self, j: usize, id: ShipId) -> Ship {
@@ -206,12 +207,15 @@ impl Ship {
             parked: None,
             cargo: crate::salvage::Cargo::default(),
             burned_out: false,
+            hull_base: 0.0,
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {
                 continue;
             }
             if self.parts[i].piece == pid {
+                // Its hull share counts against the intact parts of its own piece (GDR-0064).
+                t.hull_base += self.design.parts[i].hp;
                 self.parts[i].alive = false;
                 self.grid.remove(i);
             } else {
