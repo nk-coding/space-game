@@ -3,12 +3,17 @@
 //! (`alloc.rs`) → per-actuator commands of the ship's controlling piece.
 //!
 //! * **Heading**: time-optimal-ish turn rate `ω_des = sign(e)·min(ω_max, √(2·margin·α·|e|), gain·|e|)` with
-//!   `α` the piece's planning angular acceleration (pure torque + differential thrust), then
-//!   `τ = I·(ω_des − ω)/DT`. Big ships plan with their small `α` and do not overshoot; small ones snap.
+//!   `α` the piece's planning angular acceleration (pure torque + RCS couples, plus differential thrust while
+//!   the last resort is on), then `τ = I·(ω_des − ω)/DT`. Big ships plan with their small `α` and do not
+//!   overshoot; small ones snap.
+//! * **Last resort** (GDR-0055): gimbals and differential thrust push the ship sideways, so they help only
+//!   after gyros, cores and RCS couples have been at their limit for `FlightTuning::assist_after` ticks
+//!   ([`TurnAssist`]).
 //! * **Velocity**: dead-beat `F = m·(v_des − v)/DT` in the piece frame, clamped by what the thrusters can do
-//!   at this tick's velocity (each row's rated-speed falloff, `ship::rated_falloff`), so it never overshoots.
-//! * **Top speed** (GDR-0041): each thrust group stops pushing at the rated speed of its fastest thrusters, so
-//!   the reachable velocities form a box in the piece frame (`Kin::speeds`, `Kin::top_along`). No drag.
+//!   at this tick's velocity (each row's rated-speed falloff, `Thruster::falloff`), so it never overshoots.
+//! * **Top speed** (GDR-0041, GDR-0055): a thruster pushing with the motion stops pushing once the piece's whole
+//!   speed reaches its rating, so a ship is never faster than its fastest thrusters, and diagonally no faster
+//!   than the slowest group still pushing that way (`Kin::speeds`, `Kin::top_along`). No drag.
 //! * **Cruise flame**: the share of each engine group's top speed that the velocity goal asks along the
 //!   engine's push direction (`Actuation::cruise`), so engines held at a speed do not look dead.
 //! * The plan runs on the state at the end of the last tick, so every ship sees the same world (order-free).
@@ -16,7 +21,7 @@
 use core::f32::consts::{FRAC_PI_2, PI};
 
 use crate::DT;
-use crate::alloc::{allocate, group_of};
+use crate::alloc::{allocate, assist, group_of, wrench_of};
 use crate::config::{FlightTuning, SimConfig};
 use crate::design::NO_SLOT;
 use crate::hash::{StateHash, StateHasher};
@@ -79,7 +84,9 @@ pub struct PilotInput {
 /// Ship-relative pilot axes (PC keyboard), each -1..1.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PilotAxes {
-    /// A/D: +1 turns counter-clockwise (left), -1 clockwise. Under a lock it drives the aim nudge instead.
+    /// A/D: +1 turns counter-clockwise (left) at the key turn rate, -1 clockwise, between = that share of it.
+    /// The client ramps a held key up with [`turn_ramp_step`]. Under a lock the A/D keys drive the aim nudge
+    /// instead and this is ignored.
     pub turn: f32,
     /// W/S: +1 thrusts forward along the nose, -1 backward.
     pub thrust: f32,
@@ -106,6 +113,32 @@ pub fn nudge_step(nudge: f32, turn: f32) -> f32 {
     }
 }
 
+/// Keyboard rotation ramp (GDR-0055): a fresh A/D press starts at this share of the key turn rate
+/// (`FlightTuning::key_turn_rate`) and grows by `KEY_TURN_GROWTH` per second while held, so a tap nudges the nose
+/// a little and holding turns faster up to the full rate (0.2 → 1 in 0.8 s). The growth stays below what the
+/// Halvex Runner's gyros and cores can follow (1.5 rad/s² of its 2.2), so a held key never calls the last
+/// resort (differential thrust) on it. Placeholders for feel.
+pub const KEY_TURN_START: f32 = 0.2;
+pub const KEY_TURN_GROWTH: f32 = 1.0;
+
+/// One tick of the keyboard rotation ramp: `key` is the A/D axis (-1..1), `level` the last tick's result, which
+/// the client sends as `PilotAxes::turn`. A press (or a change of direction) starts at ±[`KEY_TURN_START`], a held
+/// key grows by [`KEY_TURN_GROWTH`]·DT per tick up to `|key|`, a release drops to 0. Deterministic (no
+/// transcendentals); the client calls it once per sim tick, like [`nudge_step`].
+pub fn turn_ramp_step(level: f32, key: f32) -> f32 {
+    let key = key.clamp(-1.0, 1.0);
+    if key.abs() < 0.05 {
+        return 0.0;
+    }
+    let grown = if level * key > 0.0 {
+        level.abs() + KEY_TURN_GROWTH * DT
+    } else {
+        KEY_TURN_START
+    };
+    let m = grown.min(key.abs());
+    if key > 0.0 { m } else { -m }
+}
+
 /// How the flight computer turns the ship.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HeadingGoal {
@@ -118,7 +151,8 @@ pub enum HeadingGoal {
     /// Keep the heading if the ship can push along the needed acceleration from here, else turn the best
     /// thrust axis that way (flip-and-burn for ships with engines only at the back).
     Auto,
-    /// Turn at this rate (rad/s, counter-clockwise; capped at the max turn rate). Keyboard rotate.
+    /// Turn at this rate (rad/s, counter-clockwise; capped at the max turn rate). Keyboard rotate (up to
+    /// `FlightTuning::key_turn_rate`).
     Rate(f32),
 }
 
@@ -160,14 +194,51 @@ pub struct FlightTelemetry {
     pub torque: f32,
     /// What the allocation should produce at full power.
     pub expected: Wrench,
+    /// The last resort (gimbals, differential thrust) was on this tick ([`TurnAssist`]).
+    pub assist: bool,
 }
 
 /// `HeadingGoal::Auto` stops turning once the velocity error is below this (m/s).
 const AUTO_SETTLED: f32 = 0.05;
-/// Differential thrust (which pushes the ship) is used for turning only above this heading error (rad); below
-/// it (holding a heading, stopping a spin), gyros, cores and gimbals do the work. Every active piece has a
-/// core, and cores have reaction torque, so there is always some.
-pub(crate) const TURN_WITH_THRUST: f32 = 0.05;
+/// A heading error above this (rad), or a commanded turn rate above this (rad/s), is a turn: once on, the last
+/// resort stays on until the turn is done ([`TurnAssist`]).
+pub(crate) const TURNING: f32 = 0.05;
+
+/// Last-resort turning (GDR-0055): gimbals and differential thrust push the ship sideways, so the flight
+/// computer opens them only after the first line (gyros, cores, RCS couples) has been unable to give the torque
+/// it asks for `FlightTuning::assist_after` ticks in a row. Once on, the last resort stays on while the first
+/// line is still at its limit or the ship is still turning ([`TURNING`]), so the end of a turn planned with it
+/// can use it too; then it is off again. Differential thrust itself helps only while the flight computer steers
+/// to a heading or a rate, never to stop a spin without one. While it is on, the turn planning counts the
+/// differential thrust in (`Kin::alpha`). Kept per piece (`Piece::assist`), part of the state hash.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TurnAssist {
+    /// Ticks in a row the first line has been at its limit (up to `assist_after`).
+    pub ticks: u32,
+    pub on: bool,
+}
+
+impl TurnAssist {
+    /// The state after a tick in which the first line was at its limit or not (`saturated`) while the ship was
+    /// turning or not.
+    pub fn step(self, saturated: bool, turning: bool, after: u32) -> TurnAssist {
+        if self.on {
+            if saturated || turning {
+                self
+            } else {
+                TurnAssist::default()
+            }
+        } else if saturated {
+            let ticks = (self.ticks + 1).min(after);
+            TurnAssist {
+                ticks,
+                on: ticks >= after,
+            }
+        } else {
+            TurnAssist::default()
+        }
+    }
+}
 /// Translation thrust fades in as the heading error drops from 25° (cos = ALIGN_NONE) to 8° (ALIGN_FULL)
 /// while the ship turns its thrust towards the needed direction.
 const ALIGN_NONE: f32 = 0.906_307_8;
@@ -203,7 +274,8 @@ pub struct Kin {
     pub accel: f32,
     /// Top speed along the best group (m/s): the stick's full length, `Flee`, the cap of every maneuver.
     pub top_speed: f32,
-    /// Planning angular acceleration (rad/s²), from the torque sources and thrusters that can produce now.
+    /// Planning angular acceleration (rad/s²), from the torque sources and thrusters that can produce now: pure
+    /// torque and RCS couples, plus differential thrust while the last resort is on ([`Kin::plan_alpha`]).
     pub alpha: f32,
     /// Longest reach of the piece's clear guns (m; 0 = no guns).
     pub reach: f32,
@@ -226,12 +298,6 @@ impl Kin {
         let mass = p.mass.mass.max(1e-6);
         let inertia = p.mass.inertia.max(1e-6);
         let accel = caps[best] / mass;
-        let diff = a.torque_ccw.min(a.torque_cw);
-        let diff = if diff > 0.0 {
-            diff
-        } else {
-            0.5 * a.torque_ccw.max(a.torque_cw)
-        };
         let rot = Rot::from_angle(p.body.angle);
         let (mut reach, mut best_dps, mut best_proj_dps) = (0.0f32, -1.0f32, -1.0f32);
         let (mut projectile_speed, mut projectile_main) = (None, false);
@@ -265,11 +331,26 @@ impl Kin {
             best,
             accel,
             top_speed: a.speed[best],
-            alpha: (a.torque_pure + diff) / inertia,
+            alpha: Kin::plan_alpha(a, inertia, p.assist.on),
             reach,
             projectile_speed,
             projectile_main,
         }
+    }
+
+    /// The angular acceleration turns are planned with (rad/s²): pure torque and RCS couples, plus differential
+    /// thrust while the last resort is on (`assist`). A source that turns both ways counts with its weaker
+    /// sense; one that turns only one way with half of it.
+    pub fn plan_alpha(a: &crate::ship::ThrustAuthority, inertia: f32, assist: bool) -> f32 {
+        let both = |ccw: f32, cw: f32| {
+            let m = ccw.min(cw);
+            if m > 0.0 { m } else { 0.5 * ccw.max(cw) }
+        };
+        let mut torque = a.torque_pure + both(a.couple_ccw, a.couple_cw);
+        if assist {
+            torque += both(a.torque_ccw, a.torque_cw);
+        }
+        torque / inertia.max(1e-6)
     }
 
     /// The point to aim the nose at for a target, by aim mode (see [`AimMode`]).
@@ -318,29 +399,36 @@ impl Kin {
         if c.is_finite() { c } else { 0.0 }
     }
 
-    /// Top speed reachable along body-frame unit vector `u` (m/s). Each group stops pushing at its own top
-    /// speed, so the reachable velocities form a box; this is the farthest point of the box along `u`. Groups
-    /// without thrusters are left out (that part of `u` cannot be pushed at all, as before).
+    /// The fastest velocity goal along body-frame unit vector `u` (m/s) that the ship reaches from rest
+    /// (GDR-0055). A thrust group pushing with the motion stops once the whole speed reaches its top speed, and
+    /// the flight computer pushes each group flat out until its share of the goal is there: the group that
+    /// finishes last caps the speed at its own top speed (so diagonally the slowest group pushing that way
+    /// sets the cap), and the group that finishes first must get there before the whole speed passes its top
+    /// speed (so a small sideways share does not cut the top speed of the main axis). Groups without thrusters
+    /// are left out (that part of `u` cannot be pushed at all).
     pub fn top_along(&self, u: Vec2) -> f32 {
-        let sx = if u.x >= 0.0 {
-            self.speeds[2]
-        } else {
-            self.speeds[3]
-        };
-        let sy = if u.y >= 0.0 {
-            self.speeds[0]
-        } else {
-            self.speeds[1]
-        };
-        let (ax, ay) = (u.x.abs(), u.y.abs());
-        let mut s = f32::INFINITY;
-        if ax > 1e-6 && sx > 0.0 {
-            s = s.min(sx / ax);
+        let gx = if u.x >= 0.0 { 2 } else { 3 };
+        let gy = if u.y >= 0.0 { 0 } else { 1 };
+        // (share of u, top speed, thrust) of the two groups that push along u.
+        let x = (u.x.abs(), self.speeds[gx], self.caps[gx]);
+        let y = (u.y.abs(), self.speeds[gy], self.caps[gy]);
+        let pushes = |g: (f32, f32, f32)| g.0 > 1e-6 && g.1 > 0.0 && g.2 > 0.0;
+        match (pushes(x), pushes(y)) {
+            (false, false) => 0.0,
+            (true, false) => x.1 / x.0,
+            (false, true) => y.1 / y.0,
+            (true, true) => {
+                // Time to finish ∝ share / thrust. When the first is done, the last has share × its thrust /
+                // the first's thrust of the goal speed along its own axis.
+                let (first, last) = if x.0 * y.2 <= y.0 * x.2 {
+                    (x, y)
+                } else {
+                    (y, x)
+                };
+                let r = last.2 / first.2;
+                last.1.min(first.1 / (first.0 * sqrt(1.0 + r * r)))
+            }
         }
-        if ay > 1e-6 && sy > 0.0 {
-            s = s.min(sy / ay);
-        }
-        if s.is_finite() { s } else { 0.0 }
     }
 
     /// Deceleration the ship can plan on for stopping: the axis opposite its best one if strong enough,
@@ -708,8 +796,9 @@ fn keyboard_goal(
     let heading = match locked {
         Some(h) => h,
         None if turn != 0.0 => {
-            // A comfortable turn rate this ship can also stop from within about a quarter turn.
-            let rate = tuning.max_turn_rate.min(sqrt(tuning.turn_margin * kin.alpha * PI));
+            // The key turn rate (GDR-0055; the client ramps `turn` up while A/D are held), or slower if the ship
+            // could not stop from it within about a quarter turn.
+            let rate = tuning.key_turn_rate.min(sqrt(tuning.turn_margin * kin.alpha * PI));
             HeadingGoal::Rate(turn * rate)
         }
         // Nothing pressed and not drifting: brake as with a released stick (flip-and-burn if needed).
@@ -748,16 +837,19 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         piece.falloff.clear();
         piece.falloff.resize(rows, 1.0);
         if Some(piece.id) != control || !piece.active {
+            piece.assist = TurnAssist::default();
             continue;
         }
-        // Rated-speed falloff of every row at this tick's velocity, for the allocation below and for the
-        // systems (raw throttles too): the same numbers both times.
+        // Rated-speed falloff of every row at this tick's velocity (by the whole speed: one square root per
+        // piece), for the allocation below and for the systems (raw throttles too): the same numbers both times.
         let kin = Kin::of(piece);
         let v_local = kin.rot.apply_inverse(kin.vel);
+        let speed = v_local.length();
         for (f, t) in piece.falloff.iter_mut().zip(&piece.thrusters) {
-            *f = t.falloff(v_local);
+            *f = t.falloff(v_local, speed);
         }
         if plan.raw {
+            piece.assist = TurnAssist::default();
             for (i, t) in piece.thrusters.iter().enumerate() {
                 if t.slot != NO_SLOT {
                     piece.act.throttle[i] = controls
@@ -785,6 +877,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             }
         }
         let Some(goal) = plan.goal else {
+            piece.assist = TurnAssist::default();
             continue;
         };
         let tuning = &cfg.flight;
@@ -821,9 +914,9 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         let (omega_des, turning) = match goal.heading {
             HeadingGoal::Rate(r) => {
                 let r = r.clamp(-tuning.max_turn_rate, tuning.max_turn_rate);
-                (r, r.abs() > TURN_WITH_THRUST)
+                (r, r.abs() > TURNING)
             }
-            _ => (turn_rate(error, kin.alpha, tuning), error.abs() > TURN_WITH_THRUST),
+            _ => (turn_rate(error, kin.alpha, tuning), error.abs() > TURNING),
         };
         // Turning the thrust towards where it is needed: burn only once roughly aligned (flip, then burn), so
         // slow-turning ships do not chase their own velocity vector.
@@ -834,20 +927,33 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             _ => force,
         };
         let torque = kin.inertia * (omega_des - kin.omega) * (1.0 / DT);
+        // Keyboard rotation (GDR-0055) changes the turn rate only as fast as the planning `α` comfortably allows
+        // (the turn margin of it), so gyros, cores and RCS couples serve it alone and A/D never call the last
+        // resort: no sideways push from the keys.
+        let torque = match goal.heading {
+            HeadingGoal::Rate(_) => {
+                let cap = tuning.turn_margin * kin.alpha * kin.inertia;
+                torque.clamp(-cap, cap)
+            }
+            _ => torque,
+        };
 
-        // Availability now, after the speed falloff: only actuators that can produce (not idle, powered, not
-        // overheated, alive: `ship::producing`). Partial power is not scaled in here: it caps what the piece's
-        // movers draw together, so the dead-beat request is exact whenever the power suffices, and the systems
-        // settle the rest (planning, `Kin`, uses the power levels).
-        let fmax = &mut scratch.fmax;
-        fmax.clear();
-        fmax.extend(piece.thrusters.iter().zip(&piece.falloff).map(|(t, &f)| {
+        // Availability now, after the speed falloff (`fmax`; `full` without it, for RCS couples): only actuators
+        // that can produce (not idle, powered, not overheated, alive: `ship::producing`). Partial power is not
+        // scaled in here: it caps what the piece's movers draw together, so the dead-beat request is exact
+        // whenever the power suffices, and the systems settle the rest (planning, `Kin`, uses the power levels).
+        let full = &mut scratch.full;
+        full.clear();
+        full.extend(piece.thrusters.iter().map(|t| {
             if producing(&parts[t.part as usize]) {
-                t.max_force * f
+                t.max_force
             } else {
                 0.0
             }
         }));
+        let fmax = &mut scratch.fmax;
+        fmax.clear();
+        fmax.extend(full.iter().zip(&piece.falloff).map(|(&f, &k)| f * k));
         let tmax = &mut scratch.tmax;
         tmax.clear();
         tmax.extend(piece.torque_sources.iter().map(|s| {
@@ -857,16 +963,35 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
                 0.0
             }
         }));
-        let expected = allocate(
+        let missing = allocate(
             &piece.thrusters,
             &piece.alloc,
             fmax,
+            full,
             tmax,
             force,
             torque,
-            turning,
             &mut piece.act,
         );
+        // The last resort (GDR-0055): only once the first line has been at its limit for a few ticks, and
+        // differential thrust only while steering to a heading or a rate (to its end, so a turn planned with it
+        // can brake with it), never to stop a spin without a heading (`Keep`, a settled `Auto`).
+        piece.assist = piece
+            .assist
+            .step(missing != 0.0, turning, tuning.assist_after);
+        if piece.assist.on && missing != 0.0 {
+            let steering = target.is_some() || matches!(goal.heading, HeadingGoal::Rate(_));
+            assist(
+                &piece.thrusters,
+                &piece.alloc,
+                fmax,
+                full,
+                missing,
+                steering,
+                &mut piece.act,
+            );
+        }
+        let expected = wrench_of(&piece.thrusters, fmax, full, tmax, &piece.act);
         // Cruise flame (GDR-0041): how much of its group's top speed the velocity goal asks along each
         // engine's push direction. Holding the stick at any speed shows it (full stick at the top speed: 1);
         // braking (goal 0) and coasting (no goal) show none.
@@ -886,6 +1011,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             force,
             torque,
             expected,
+            assist: piece.assist.on,
         };
     }
 }

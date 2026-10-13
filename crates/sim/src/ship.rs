@@ -37,24 +37,26 @@ pub mod tuning {
     /// Reactor heat at zero load as a fraction of full-load heat (drydock: 1/3); rises linearly to 1.
     /// A reactor with no demand at all makes no heat.
     pub const REACTOR_IDLE_HEAT: f32 = 1.0 / 3.0;
-    /// Rated-speed falloff (GDR-0041): a thruster keeps full thrust until the piece's velocity along its push
-    /// direction reaches this share of its rated speed, then fades linearly to none at the rating. Flat first,
-    /// so the acceleration stays constant for most of the way and the approach to the top speed is short.
+    /// Rated-speed falloff (GDR-0041, GDR-0055): a thruster pushing with the piece's motion keeps full thrust
+    /// until the piece's whole speed reaches this share of its rated speed, then fades linearly to none at the
+    /// rating. Flat first, so the acceleration stays constant for most of the way and the approach to the top
+    /// speed is short.
     pub const RATED_KNEE: f32 = 0.8;
 }
 
-/// Share of a thruster's force left when the piece moves at `along` m/s along the thruster's push direction,
-/// for rated speed `rated` (GDR-0041): 1 up to `RATED_KNEE × rated` (so always while braking, `along < 0`, or
-/// pushing sideways, `along = 0`), then linear to 0 at `rated` and beyond. No drag: a coasting ship keeps its
-/// speed; only its own thrust stops growing. Only `+ − × ÷` and comparisons (deterministic).
-pub fn rated_falloff(along: f32, rated: f32) -> f32 {
+/// Share of a thruster's force left at `speed` m/s, for rated speed `rated` (GDR-0041): 1 up to `RATED_KNEE ×
+/// rated`, then linear to 0 at `rated` and beyond. [`Thruster::falloff`] applies it with the piece's whole speed
+/// to a thruster that pushes with the motion (GDR-0055); braking and sideways thrusters keep full thrust. No
+/// drag: a coasting ship keeps its speed; only its own thrust stops growing. Only `+ − × ÷` and comparisons
+/// (deterministic).
+pub fn rated_falloff(speed: f32, rated: f32) -> f32 {
     let knee = tuning::RATED_KNEE * rated;
-    if along <= knee {
+    if speed <= knee {
         1.0
-    } else if along >= rated {
+    } else if speed >= rated {
         0.0
     } else {
-        (rated - along) / (rated - knee)
+        (rated - speed) / (rated - knee)
     }
 }
 
@@ -195,8 +197,8 @@ pub struct Thruster {
     pub torque_per_force: f32,
     /// Full-throttle thrust with bonuses (kN), before power, heat and speed.
     pub max_force: f32,
-    /// Rated speed with bonuses and `SimConfig::speed_scale` (m/s): the thrust fades out as the piece's
-    /// velocity along `dir` approaches it ([`rated_falloff`]).
+    /// Rated speed with bonuses and `SimConfig::speed_scale` (m/s): while the row pushes with the piece's
+    /// motion, its thrust fades out as the piece's whole speed approaches it ([`Thruster::falloff`]).
     pub rated: f32,
     /// Engines: how far the exhaust plume reaches behind the engine (m, with bonuses; 0 for RCS nozzles). The
     /// plume leaves through the back side, against `dir`, one lane per back cell (`ShipDesign::plume_lanes`),
@@ -217,10 +219,17 @@ pub struct Thruster {
 }
 
 impl Thruster {
-    /// Share of the row's force left at piece-frame velocity `v_local` ([`rated_falloff`]).
+    /// Share of the row's force left at piece-frame velocity `v_local` of length `speed` (GDR-0055): a row that
+    /// pushes with the motion (`v_local · dir > 0`) fades by the whole speed ([`rated_falloff`]), so a ship
+    /// moving diagonally cannot beat the rating of the slowest thruster pushing that way; braking (against the
+    /// motion) and sideways rows keep full thrust. The caller takes `speed` once per piece (one square root).
     #[inline]
-    pub fn falloff(&self, v_local: Vec2) -> f32 {
-        rated_falloff(v_local.dot(self.dir), self.rated)
+    pub fn falloff(&self, v_local: Vec2, speed: f32) -> f32 {
+        if v_local.dot(self.dir) > 0.0 {
+            rated_falloff(speed, self.rated)
+        } else {
+            1.0
+        }
     }
 
     /// An engine whose plume can burn: it reaches past the engine and does damage or heat.
@@ -259,12 +268,17 @@ pub struct ThrustAuthority {
     /// Along +x.
     pub right: f32,
     pub left: f32,
-    /// Sum of positive torques (counter-clockwise).
+    /// Differential thrust (the last resort, GDR-0055), counter-clockwise: the sum of the rows' positive
+    /// torques, less what the RCS couples of that sense already take.
     pub torque_ccw: f32,
-    /// Sum of negative torques, as a positive number.
+    /// The same clockwise, as a positive number.
     pub torque_cw: f32,
     /// Pure torque of gyros and logic cores (either sense), with the global torque scale.
     pub torque_pure: f32,
+    /// Torque of the RCS couples (`alloc::couples`: nozzles of opposite groups at equal force, so no net
+    /// force), counter-clockwise and clockwise.
+    pub couple_ccw: f32,
+    pub couple_cw: f32,
     /// Reachable top speed per thrust group (forward, backward, right, left; m/s, as `flight::AXES`): the
     /// highest rated speed among the rows pushing that way, 0 if none (GDR-0041).
     pub speed: [f32; 4],
@@ -311,6 +325,21 @@ pub(crate) fn refresh_authority(piece: &mut Piece, parts: &[PartState]) {
             if producing(ps) {
                 auth.torque_pure += src.max * ps.power;
             }
+        }
+        if (auth.forward > 0.0 && auth.backward > 0.0) || (auth.right > 0.0 && auth.left > 0.0) {
+            let th = &piece.thrusters;
+            let room = |i: usize| {
+                let ps = &parts[th[i].part as usize];
+                if producing(ps) {
+                    th[i].max_force * ps.power
+                } else {
+                    0.0
+                }
+            };
+            auth.couple_ccw = crate::alloc::couples(th, &piece.alloc, true, &room, None);
+            auth.couple_cw = crate::alloc::couples(th, &piece.alloc, false, &room, None);
+            auth.torque_ccw = (auth.torque_ccw - auth.couple_ccw).max(0.0);
+            auth.torque_cw = (auth.torque_cw - auth.couple_cw).max(0.0);
         }
     }
     piece.authority = auth;
@@ -375,6 +404,9 @@ pub struct Piece {
     /// Gyros and logic cores with reaction torque.
     pub torque_sources: Vec<TorqueSource>,
     pub authority: ThrustAuthority,
+    /// Last-resort turning (GDR-0055): whether gimbals and differential thrust may help, and how many ticks in a
+    /// row the first line has been at its limit. Kept by the flight computer.
+    pub assist: crate::flight::TurnAssist,
     pub guns: Vec<GunMount>,
     /// This tick's actuator commands (written by the flight computer or from raw controls).
     pub act: Actuation,
@@ -445,6 +477,7 @@ impl Piece {
             thrusters: Vec::new(),
             torque_sources: Vec::new(),
             authority: ThrustAuthority::default(),
+            assist: crate::flight::TurnAssist::default(),
             guns: Vec::new(),
             act: Actuation::default(),
             falloff: Vec::new(),
@@ -516,6 +549,8 @@ pub(crate) struct Scratch {
     pub affected: Vec<PartIdx>,
     pub colliders: ColliderScratch,
     pub fmax: Vec<f32>,
+    /// Per thruster row: its force without the rated-speed falloff (RCS couples).
+    pub full: Vec<f32>,
     pub tmax: Vec<f32>,
     pub activity: Vec<f32>,
     /// Per consumer row: demand this tick, and the level it got.
@@ -1293,7 +1328,7 @@ impl Ship {
             piece.active = active;
 
             // What the movers were told to do (engines and RCS pods: summed throttle times the rated-speed
-            // falloff, so a thruster held at its rating idles; gyros: |use|).
+            // falloff, so a thruster held at its rating idles, plus RCS couples; gyros: |use|).
             for c in &piece.consumers {
                 activity[c.part as usize] = 0.0;
             }
@@ -1301,7 +1336,8 @@ impl Ship {
                 for (i, t) in piece.thrusters.iter().enumerate() {
                     let throttle = piece.act.throttle.get(i).copied().unwrap_or(0.0);
                     let falloff = piece.falloff.get(i).copied().unwrap_or(1.0);
-                    activity[t.part as usize] += throttle * falloff;
+                    let couple = piece.act.couple.get(i).copied().unwrap_or(0.0);
+                    activity[t.part as usize] += throttle * falloff + couple;
                 }
                 for (j, src) in piece.torque_sources.iter().enumerate() {
                     let u = piece.act.torque.get(j).copied().unwrap_or(0.0).abs();
@@ -1357,6 +1393,15 @@ impl Ship {
             fmax.extend(piece.thrusters.iter().enumerate().map(|(i, t)| {
                 t.max_force * level[i] * piece.falloff.get(i).copied().unwrap_or(1.0)
             }));
+            let full = &mut scratch.full;
+            full.clear();
+            full.extend(
+                piece
+                    .thrusters
+                    .iter()
+                    .zip(level.iter())
+                    .map(|(t, &l)| t.max_force * l),
+            );
             let tmax = &mut scratch.tmax;
             tmax.clear();
             tmax.extend(piece.torque_sources.iter().map(|src| {
@@ -1370,10 +1415,11 @@ impl Ship {
             if piece.act.throttle.len() == piece.thrusters.len()
                 && piece.act.torque.len() == tmax.len()
             {
-                piece.wrench = wrench_of(&piece.thrusters, fmax, tmax, &piece.act);
+                piece.wrench = wrench_of(&piece.thrusters, fmax, full, tmax, &piece.act);
                 for (i, t) in piece.thrusters.iter().enumerate() {
                     piece.output[i] = if t.max_force > 0.0 {
-                        piece.act.throttle[i] * fmax[i] / t.max_force
+                        (piece.act.throttle[i] * fmax[i] + piece.act.couple[i] * full[i])
+                            / t.max_force
                     } else {
                         0.0
                     };
@@ -1644,7 +1690,10 @@ impl StateHash for Piece {
         for i in 0..self.act.throttle.len() {
             h.f32(self.act.throttle[i]);
             h.f32(self.act.deflect[i]);
+            h.f32(self.act.couple[i]);
         }
+        h.u32(self.assist.ticks);
+        h.bool(self.assist.on);
         for &t in &self.act.torque {
             h.f32(t);
         }

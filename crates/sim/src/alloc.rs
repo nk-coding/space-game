@@ -8,16 +8,26 @@
 //! * **Torque sources** ([`TorqueSource`]): gyros and logic-core reaction torque: pure torque up to `max`,
 //!   signed by `use ∈ [−1, 1]`.
 //!
-//! Algorithm (fixed passes, no iteration to convergence, so it is cheap and deterministic):
+//! Algorithm (fixed passes, no iteration to convergence, so it is cheap and deterministic). The first line
+//! ([`allocate`]) adds no force nobody asked for:
 //!
 //! 1. **Translation**: per axis group, the requested force (clamped to the group's capacity). Within a group,
 //!    filling thrusters in order of torque-per-force gives the least and the most torque that force can make;
 //!    a common blend `λ` of the two fills hits the torque closest to the request. This is free: it costs no
 //!    translation. A symmetric ship asked for pure translation gets exactly symmetric throttles.
 //! 2. **Pure torque** (gyros, cores) covers what is left, shared evenly.
-//! 3. **Gimbals** of firing engines cover what is still left (adds a small lateral force).
-//! 4. **Differential thrust**: thrusters whose torque has the needed sign are throttled up (strongest lever first).
-//!    Rotation has priority over translation here: it adds unrequested force.
+//! 3. **RCS couples** (GDR-0055): RCS nozzles of opposite groups (forward and backward, right and left) whose
+//!    torques have the needed sign fire with equal force, so their forces cancel and only the torque is left.
+//!    A couple adds no net force, so it cannot push the ship past any rated speed: it uses the nozzles' full
+//!    force, not the faded one (`Actuation::couple`).
+//!
+//! The last resort ([`assist`]) adds force nobody asked for; the flight computer opens it only after the first
+//! line has been at its limit for a few ticks (GDR-0055, `FlightTuning::assist_after`):
+//!
+//! 4. **Gimbals** of firing engines (a small lateral force).
+//! 5. **Differential thrust**, only while steering to a heading or a rate (not to stop a spin without one):
+//!    thrusters whose torque has the needed sign are throttled up (strongest lever first). Rotation has priority
+//!    over translation here.
 
 use crate::math::Vec2;
 use crate::ship::{Thruster, Wrench};
@@ -83,12 +93,15 @@ impl AllocTable {
 /// Actuator commands for one piece.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Actuation {
-    /// Throttle per thruster row.
+    /// Throttle per thruster row, 0..1 of its force after the rated-speed falloff.
     pub throttle: Vec<f32>,
     /// Gimbal deflection per thruster row, −1..1 of its lateral capacity.
     pub deflect: Vec<f32>,
     /// Use per torque source, −1..1 of its max torque.
     pub torque: Vec<f32>,
+    /// Share of each RCS row's full force (not faded) fired in a couple (step 3), 0..1. The row's force is
+    /// `throttle × faded force + couple × full force`, never more than its full force.
+    pub couple: Vec<f32>,
     /// Cruise-flame level per thruster row, 0..1, set by the flight computer from the velocity goal (a look
     /// only; see `Piece::cruise`). Not an actuator command: it moves nothing.
     pub cruise: Vec<f32>,
@@ -100,6 +113,8 @@ impl Actuation {
         self.throttle.resize(rows, 0.0);
         self.deflect.clear();
         self.deflect.resize(rows, 0.0);
+        self.couple.clear();
+        self.couple.resize(rows, 0.0);
         self.cruise.clear();
         self.cruise.resize(rows, 0.0);
         self.torque.clear();
@@ -107,18 +122,25 @@ impl Actuation {
     }
 }
 
-/// Force (piece frame) and torque of an actuation, given the available force of each row (`fmax`) and the
-/// available torque of each source (`tmax`).
-pub fn wrench_of(th: &[Thruster], fmax: &[f32], sources_max: &[f32], a: &Actuation) -> Wrench {
+/// Force (piece frame) and torque of an actuation, given the available force of each row after the rated-speed
+/// falloff (`fmax`) and without it (`full`, for RCS couples), and the available torque of each source.
+pub fn wrench_of(
+    th: &[Thruster],
+    fmax: &[f32],
+    full: &[f32],
+    sources_max: &[f32],
+    a: &Actuation,
+) -> Wrench {
     let mut w = Wrench::default();
     for (i, t) in th.iter().enumerate() {
-        let f = a.throttle[i] * fmax[i];
+        let pushed = a.throttle[i] * fmax[i];
+        let f = pushed + a.couple[i] * full[i];
         if f == 0.0 {
             continue;
         }
         w.force += t.dir * f;
         w.torque += t.torque_per_force * f;
-        let lat = a.deflect[i] * f * t.gimbal;
+        let lat = a.deflect[i] * pushed * t.gimbal;
         if lat != 0.0 {
             w.force += t.lat * lat;
             w.torque += t.torque_per_lateral * lat;
@@ -128,6 +150,11 @@ pub fn wrench_of(th: &[Thruster], fmax: &[f32], sources_max: &[f32], a: &Actuati
         w.torque += a.torque[j] * m;
     }
     w
+}
+
+/// Missing torque (kN·m) up to this much counts as met, for a request of `torque`.
+pub(crate) fn tolerance(torque: f32) -> f32 {
+    1e-6 * (1.0 + torque.abs())
 }
 
 /// Greedy fill of `need` kN over `order`; returns the torque made. Adds `weight × throttle` to `out` if given.
@@ -157,22 +184,94 @@ fn greedy<I: Iterator<Item = u32>>(
     torque
 }
 
-/// Allocates `force` (piece frame, kN) and `torque` (kN·m) over the actuators. `fmax[i]`: available force of
-/// row `i` now, after the rated-speed falloff (0 for rows that cannot push this tick, and at the rating);
-/// `tmax[j]`: available torque of source `j`.
-/// `differential`: may add unrequested thrust to turn (step 4); the flight computer allows it only for real
-/// turns, not for holding a heading. Writes `out` (resized by the caller) and returns the expected wrench.
+/// Strongest-lever-first fill of up to `need` kN over the RCS rows of group `g` that turn the `ccw` way, each
+/// up to `room(row)` kN. Returns the force taken and the torque made (a magnitude). Adds `weight × take /
+/// full[row]` to `out` if given.
+fn couple_fill(
+    th: &[Thruster],
+    table: &AllocTable,
+    g: usize,
+    ccw: bool,
+    room: &impl Fn(usize) -> f32,
+    mut need: f32,
+    mut out: Option<(&mut [f32], f32, &[f32])>,
+) -> (f32, f32) {
+    let rows = &table.groups[g];
+    let n = rows.len();
+    let (mut force, mut torque) = (0.0f32, 0.0f32);
+    for k in 0..n {
+        // Rows ascend by torque per force: the strongest clockwise levers come first, the strongest
+        // counter-clockwise ones last.
+        let i = rows[if ccw { n - 1 - k } else { k }] as usize;
+        let lever = if ccw {
+            th[i].torque_per_force
+        } else {
+            -th[i].torque_per_force
+        };
+        if lever <= 0.0 || need <= 0.0 {
+            break;
+        }
+        if !th[i].rcs {
+            continue;
+        }
+        let r = room(i);
+        if r <= 0.0 {
+            continue;
+        }
+        let take = if r < need { r } else { need };
+        need -= take;
+        force += take;
+        torque += take * lever;
+        if let Some((o, w, full)) = out.as_mut() {
+            o[i] += *w * (take / full[i]);
+        }
+    }
+    (force, torque)
+}
+
+/// The torque (a magnitude, kN·m) the RCS couples can make turning the `ccw` way when each row has `room(row)`
+/// kN to spare: per pair of opposite groups (forward and backward, right and left) equal force from both,
+/// strongest levers first, so the forces cancel. With `apply = Some((k, couple, full))` it also adds the share
+/// `k` of that to `couple` (per row, a share of `full`).
+pub fn couples(
+    th: &[Thruster],
+    table: &AllocTable,
+    ccw: bool,
+    room: &impl Fn(usize) -> f32,
+    mut apply: Option<(f32, &mut [f32], &[f32])>,
+) -> f32 {
+    let mut torque = 0.0f32;
+    for (a, b) in [(0, 1), (2, 3)] {
+        let (fa, _) = couple_fill(th, table, a, ccw, room, f32::INFINITY, None);
+        let (fb, _) = couple_fill(th, table, b, ccw, room, f32::INFINITY, None);
+        let f = fa.min(fb);
+        if f <= 0.0 {
+            continue;
+        }
+        for g in [a, b] {
+            let out = apply.as_mut().map(|t| (&mut *t.1, t.0, t.2));
+            torque += couple_fill(th, table, g, ccw, room, f, out).1;
+        }
+    }
+    torque
+}
+
+/// The first line (steps 1–3): allocates `force` (piece frame, kN) and `torque` (kN·m) over translation, pure
+/// torque and RCS couples. `fmax[i]`: available force of row `i` now, after the rated-speed falloff (0 for rows
+/// that cannot push this tick, and at the rating); `full[i]`: the same without the falloff (RCS couples);
+/// `tmax[j]`: available torque of source `j`. Writes `out` (resized by the caller) and returns the torque still
+/// missing (0 when met): what only the last resort ([`assist`]) could add.
 #[allow(clippy::too_many_arguments)]
 pub fn allocate(
     th: &[Thruster],
     table: &AllocTable,
     fmax: &[f32],
+    full: &[f32],
     tmax: &[f32],
     force: Vec2,
     torque: f32,
-    differential: bool,
     out: &mut Actuation,
-) -> Wrench {
+) -> f32 {
     // 1. Translation per group, with the free torque choice.
     let want = [force.y, -force.y, force.x, -force.x];
     let mut fg = [0.0f32; GROUPS];
@@ -218,12 +317,15 @@ pub fn allocate(
             );
         }
     }
+    for t in &mut out.throttle {
+        *t = t.clamp(0.0, 1.0);
+    }
     let mut made = 0.0f32;
     for (i, t) in th.iter().enumerate() {
         made += out.throttle[i] * fmax[i] * t.torque_per_force;
     }
     let mut rest = torque - made;
-    let tol = 1e-6 * (1.0 + torque.abs());
+    let tol = tolerance(torque);
 
     // 2. Pure torque sources, shared evenly.
     if rest.abs() > tol {
@@ -239,7 +341,39 @@ pub fn allocate(
         }
     }
 
-    // 3. Gimbals of firing engines.
+    // 3. RCS couples, all scaled down alike when they could do more than needed (the forces still cancel).
+    if rest.abs() > tol {
+        let Actuation {
+            throttle, couple, ..
+        } = out;
+        let room = |i: usize| full[i] - throttle[i] * fmax[i];
+        let ccw = rest > 0.0;
+        let cap = couples(th, table, ccw, &room, None);
+        if cap > 0.0 {
+            let k = (rest.abs() / cap).min(1.0);
+            couples(th, table, ccw, &room, Some((k, couple, full)));
+            rest -= if ccw { k * cap } else { -k * cap };
+        }
+    }
+    if rest.abs() > tol { rest } else { 0.0 }
+}
+
+/// The last resort (steps 4 and 5) for the torque `rest` that the first line ([`allocate`]) left missing:
+/// gimbals of the firing engines, then, if `differential` (the flight computer allows it only while it steers
+/// to a heading or a rate, never to stop a spin without one), differential thrust. Both add force nobody asked
+/// for. Adds to `out` and returns the torque still missing.
+pub fn assist(
+    th: &[Thruster],
+    table: &AllocTable,
+    fmax: &[f32],
+    full: &[f32],
+    mut rest: f32,
+    differential: bool,
+    out: &mut Actuation,
+) -> f32 {
+    let tol = tolerance(rest);
+
+    // 4. Gimbals of firing engines.
     if rest.abs() > tol {
         let mut cap = 0.0f32;
         for (i, t) in th.iter().enumerate() {
@@ -260,18 +394,24 @@ pub fn allocate(
         }
     }
 
-    // 4. Differential thrust: rotation over translation.
+    // 5. Differential thrust: rotation over translation. A row never pushes more than its faded force, nor more
+    // than its full force together with what a couple already takes.
+    let room = |i: usize, out: &Actuation| {
+        let pushed = out.throttle[i] * fmax[i];
+        ((1.0 - out.throttle[i]) * fmax[i]).min(full[i] - pushed - out.couple[i] * full[i])
+    };
     if !differential {
-        // nothing
+        // Stopping a spin without a heading: no unrequested push.
     } else if rest > tol {
         for &i in &table.pos {
-            let (f, k) = (fmax[i as usize], th[i as usize].torque_per_force);
-            let room = (1.0 - out.throttle[i as usize]) * f * k;
-            if room <= 0.0 {
+            let i = i as usize;
+            let k = th[i].torque_per_force;
+            let r = room(i, out) * k;
+            if r <= 0.0 {
                 continue;
             }
-            let take = if room < rest { room } else { rest };
-            out.throttle[i as usize] += take / (f * k);
+            let take = if r < rest { r } else { rest };
+            out.throttle[i] += take / (fmax[i] * k);
             rest -= take;
             if rest <= tol {
                 break;
@@ -279,13 +419,14 @@ pub fn allocate(
         }
     } else if rest < -tol {
         for &i in &table.neg {
-            let (f, k) = (fmax[i as usize], th[i as usize].torque_per_force);
-            let room = (1.0 - out.throttle[i as usize]) * f * -k;
-            if room <= 0.0 {
+            let i = i as usize;
+            let k = -th[i].torque_per_force;
+            let r = room(i, out) * k;
+            if r <= 0.0 {
                 continue;
             }
-            let take = if room < -rest { room } else { -rest };
-            out.throttle[i as usize] += take / (f * -k);
+            let take = if r < -rest { r } else { -rest };
+            out.throttle[i] += take / (fmax[i] * k);
             rest += take;
             if rest >= -tol {
                 break;
@@ -295,5 +436,5 @@ pub fn allocate(
     for t in &mut out.throttle {
         *t = t.clamp(0.0, 1.0);
     }
-    wrench_of(th, fmax, tmax, out)
+    rest
 }

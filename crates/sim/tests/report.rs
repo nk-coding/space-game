@@ -162,15 +162,24 @@ fn steady_heat_matches_a_long_stepped_run() {
     );
 }
 
-/// The 90° turn estimate against the stepped agility turn of `tests/speed.rs`.
+/// The 90° turn estimate against the stepped agility turn of `tests/speed.rs`, for the base ships and the
+/// Halvex Runner with RCS pods (GDR-0055: couples, and differential thrust only as the last resort).
 #[test]
 fn turn_estimate_matches_stepped_turns() {
     let c = content();
     println!("| Ship | Report 90° | Stepped 90° | Error |");
-    for id in BASE_SHIPS {
-        let r = base_report(&c, id);
+    let mut designs: Vec<(String, data::Blueprint)> = BASE_SHIPS
+        .iter()
+        .map(|id| (id.to_string(), c.ships.get(id).unwrap().clone()))
+        .collect();
+    for pods in [2, 4] {
+        designs.push((format!("runner + {pods} RCS pods"), runner_with_pods(&c, pods)));
+    }
+    for (id, bp) in designs {
+        let r = design_report(&c, &bp, &SimConfig::default()).unwrap();
         let est = r.flight.turn_90.unwrap();
-        let (stepped, _, _) = turn_90(design(&c, id));
+        let d = std::sync::Arc::new(sim::ShipDesign::compile(&c, &bp).unwrap());
+        let (stepped, _, _) = turn_90(d);
         let stepped = stepped.unwrap();
         println!(
             "| {id} | {est:.3} s | {stepped:.3} s | {:+.1}% |",

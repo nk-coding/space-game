@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use sim::flight::{PilotAxes, nudge_step};
+use sim::flight::{KEY_TURN_START, PilotAxes, nudge_step, turn_ramp_step};
 use sim::{Body, DamageTarget, PilotInput, ShipCommand, Target, TickInputs, Vec2};
 
 fn steer(w: &mut sim::Sim, s: sim::ShipId, input: PilotInput, ticks: usize) {
@@ -51,21 +51,70 @@ fn rcs_ship(c: &data::Content) -> std::sync::Arc<sim::ShipDesign> {
 }
 
 #[test]
+fn the_turn_ramp_starts_small_and_grows_to_the_full_rate() {
+    let mut level = turn_ramp_step(0.0, 1.0);
+    assert_eq!(level, KEY_TURN_START, "a fresh press starts small");
+    let mut ticks = 1;
+    while level < 1.0 {
+        level = turn_ramp_step(level, 1.0);
+        ticks += 1;
+    }
+    assert!((22..=26).contains(&ticks), "full rate after {ticks} ticks");
+    assert_eq!(turn_ramp_step(level, 1.0), 1.0, "never above the key");
+    assert_eq!(turn_ramp_step(level, -1.0), -KEY_TURN_START, "the other key starts over");
+    assert_eq!(turn_ramp_step(level, 0.0), 0.0, "released");
+    assert_eq!(turn_ramp_step(0.5, 0.3), 0.3, "a half-pressed (analog) key caps it");
+}
+
+/// Holds A (`turn` = +1) or D (-1) for `ticks` ticks the way the client does (the ramp once per tick), then
+/// releases it for `after` ticks. Returns the heading change and the fastest turn rate while held, and checks
+/// that the last resort (differential thrust) never helps a keyboard turn of the Runner.
+fn key_turn(w: &mut sim::Sim, s: sim::ShipId, turn: f32, ticks: usize, after: usize) -> (f32, f32) {
+    let start = body(w, s).angle;
+    let (mut level, mut fastest) = (0.0, 0.0f32);
+    for t in 0..ticks + after {
+        level = turn_ramp_step(level, if t < ticks { turn } else { 0.0 });
+        steer(w, s, axes(level, 0.0, 0.0), 1);
+        fastest = fastest.max(body(w, s).angvel.abs());
+        assert!(!w.ship(s).unwrap().telemetry().assist, "tick {t}: differential thrust");
+    }
+    (wrap(body(w, s).angle - start), fastest)
+}
+
+#[test]
 fn rotate_input_turns_the_ship() {
     let c = content();
+    let cap = sim::SimConfig::default().flight.key_turn_rate;
+    // A tap (0.1 s) nudges the nose a little.
     let (mut w, s) = world_with(design(&c, "halvex_runner"));
-    steer(&mut w, s, axes(1.0, 0.0, 0.0), 12);
-    let left = body(&w, s).angle;
-    assert!(left > 0.3 && left < 2.5, "A turns counter-clockwise: {left}");
-    assert!(body(&w, s).angvel > 1.0, "and keeps turning");
+    let (tap, _) = key_turn(&mut w, s, 1.0, 3, 30);
+    println!("runner, A tapped for 0.1 s: {:.2}°", tap.to_degrees());
+    assert!(tap > 0.5f32.to_radians() && tap < 5f32.to_radians(), "a tap: {}°", tap.to_degrees());
+    // Held for 1.5 s: it ramps up to the key turn rate and no faster.
+    let (mut w, s) = world_with(design(&c, "halvex_runner"));
+    let mut log = String::new();
+    let (mut level, start) = (0.0, body(&w, s).angle);
+    for t in 1..=45 {
+        level = turn_ramp_step(level, 1.0);
+        steer(&mut w, s, axes(level, 0.0, 0.0), 1);
+        let b = body(&w, s);
+        if t % 5 == 0 {
+            log += &format!(" {:.2}s {:.1}° {:.2} rad/s |", t as f32 / 30.0, wrap(b.angle - start).to_degrees(), b.angvel);
+        }
+        assert!(b.angvel <= cap + 1e-3, "{t}: {} rad/s", b.angvel);
+        assert!(!w.ship(s).unwrap().telemetry().assist, "{t}: differential thrust");
+    }
+    println!("runner, A held:{log}");
+    assert!(body(&w, s).angvel > 0.98 * cap, "held: {}", body(&w, s).angvel);
     // Released: stops turning (and holds roughly where it is).
     steer(&mut w, s, axes(0.0, 0.0, 0.0), 150);
     let held = body(&w, s);
     assert!(held.angvel.abs() < 0.02, "stops turning: {}", held.angvel);
+    // D turns clockwise; a 1 s hold turns about 45°.
     let (mut w, s) = world_with(design(&c, "halvex_runner"));
-    steer(&mut w, s, axes(-1.0, 0.0, 0.0), 12);
-    let right = body(&w, s).angle;
-    assert!(right < -0.3 && right > -2.5, "D turns clockwise: {right}");
+    let (right, fastest) = key_turn(&mut w, s, -1.0, 30, 0);
+    println!("runner, D held for 1 s: {:.1}°, up to {fastest:.2} rad/s", right.to_degrees());
+    assert!(right < -0.6 && right > -1.5, "D turns clockwise: {right}");
 }
 
 #[test]
@@ -161,16 +210,23 @@ fn the_nudge_springs_back() {
         tick(&mut w, 0.0, &mut nudge);
     }
     let aimed = body(&w, me).angle;
+    // The nose follows the nudge (GDR-0055 turning is slower; the nudge must stay usable). While the nudge grows
+    // (1.2 rad/s) the nose trails it by up to about 0.3 rad, then catches up.
+    let mut lag = 0.0f32;
     for _ in 0..240 {
         tick(&mut w, 1.0, &mut nudge);
+        lag = lag.max((nudge - wrap(body(&w, me).angle - aimed)).abs());
     }
     let nudged = body(&w, me).angle;
+    println!("runner, lock nudge held 8 s: {:.3} rad (nudge {nudge:.3}), largest lag {lag:.3} rad", wrap(nudged - aimed));
     assert!(wrap(nudged - aimed) > 0.3, "A nudges the aim left: {}", wrap(nudged - aimed));
+    assert!(lag < 0.35, "the nose lags the nudge by up to {lag} rad");
+    assert!((nudge - wrap(nudged - aimed)).abs() < 0.05, "and catches up: {nudged} vs {nudge}");
     for _ in 0..450 {
         tick(&mut w, 0.0, &mut nudge);
     }
-    // Back on the target. (The turns' differential thrust nudged the runner a few metres, which it cannot brake
-    // under a lock with engines only at the back, so compare with the bearing now.)
+    // Back on the target. (A turn's differential thrust, when the last resort helps, can push the runner a few
+    // metres, which it cannot brake under a lock with engines only at the back, so compare with the bearing now.)
     let back = body(&w, me).angle;
     let to = {
         let t = w.ship(target).unwrap();

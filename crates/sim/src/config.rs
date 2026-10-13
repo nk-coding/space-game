@@ -23,6 +23,12 @@ pub struct FlightTuning {
     /// `HeadingGoal::Auto` keeps the current heading if the ship can push along the needed direction with at
     /// least this fraction of its best axis; otherwise it turns its best axis that way.
     pub keep_heading_fraction: f32,
+    /// Keyboard rotation (A/D held to the end of its ramp, GDR-0055) turns at this rate (rad/s), or slower if
+    /// the ship could not stop from it within about a quarter turn.
+    pub key_turn_rate: f32,
+    /// The last resort (gimbals, differential thrust) helps turning only after the first line (pure torque,
+    /// RCS couples) has been at its limit for this many ticks in a row (GDR-0055).
+    pub assist_after: u32,
 }
 
 impl Default for FlightTuning {
@@ -35,6 +41,8 @@ impl Default for FlightTuning {
             position_gain: 1.2,
             stick_deadzone: 0.05,
             keep_heading_fraction: 0.5,
+            key_turn_rate: 1.5,
+            assist_after: 6,
         }
     }
 }
@@ -142,9 +150,11 @@ impl StateHash for SimConfig {
             f.position_gain,
             f.stick_deadzone,
             f.keep_heading_fraction,
+            f.key_turn_rate,
         ] {
             h.f32(v);
         }
+        h.u32(f.assist_after);
         let p = &self.physics;
         h.u32(p.substeps);
         for v in [

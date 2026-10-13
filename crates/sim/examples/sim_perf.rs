@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use data::{Blueprint, Placement};
-use sim::alloc::{Actuation, AllocTable, allocate};
+use sim::alloc::{Actuation, AllocTable, allocate, assist};
 use sim::{
     Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, StepPhase, Target,
     TickInputs, Vec2,
@@ -435,16 +435,17 @@ fn main() {
     for k in 0..n {
         act.resize(fmax.len(), tmax.len());
         let f = Vec2::new((k % 7) as f32 * 30.0 - 90.0, (k % 5) as f32 * 200.0 - 100.0);
-        std::hint::black_box(allocate(
+        let missing = allocate(
             &p.thrusters,
             &table,
+            &fmax,
             &fmax,
             &tmax,
             f,
             (k % 3) as f32 * 5e4 - 5e4,
-            true,
             &mut act,
-        ));
+        );
+        std::hint::black_box(assist(&p.thrusters, &table, &fmax, &fmax, missing, true, &mut act));
     }
     println!(
         "allocate ({} rows, {} torque sources): {:.2} µs per call",
