@@ -7,19 +7,21 @@
 //! rasterises a new atlas when that tier changes (regions and mip chain spread over frames within a time
 //! budget, the old texture stays in use meanwhile; a job for a tier the zoom has already outgrown is dropped
 //! for the new one) and switches the material to the new image a frame after adding it ([`rasterise_step`]).
-//! Region UVs are normalised and identical at every tier, so meshes never need rebuilding. [`AtlasStatus`]
-//! reports what happens (F3 overlay).
+//! Region UVs are normalised and identical at every tier, so meshes never need rebuilding. Every atlas mesh
+//! draws with one [`AtlasMaterial`] (`atlas.wesl`: texture × vertex colour, sampled with a mip LOD bias so the
+//! icons stay as sharp as the geometry). [`AtlasStatus`] reports what happens (F3 overlay).
 
 use std::sync::Arc;
 
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::platform::collections::HashMap;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
 use bevy::render::renderer::RenderDevice;
-use bevy::sprite_render::AlphaMode2d;
+use bevy::shader::ShaderRef;
+use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
 use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraRig;
@@ -61,9 +63,8 @@ impl Region {
 
 #[derive(Resource)]
 pub struct Atlas {
-    pub image: Handle<Image>,
     /// Shared material for every atlas mesh (vertex colours tint the texture).
-    pub material: Handle<ColorMaterial>,
+    pub material: Handle<AtlasMaterial>,
     regions: HashMap<String, Region>,
     tokens: art::Tokens,
     layout: Arc<art::Layout>,
@@ -92,6 +93,25 @@ impl Atlas {
 
 pub fn parse_hex(s: &str) -> Option<Color> {
     Srgba::hex(s.trim()).ok().map(Color::from)
+}
+
+/// The material of every atlas mesh: the atlas × the vertex colour, alpha-blended, like Bevy's `ColorMaterial`
+/// but sampled with a mip LOD bias of −0.5 (`atlas.wesl` says why).
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+pub struct AtlasMaterial {
+    #[texture(0)]
+    #[sampler(1)]
+    texture: Handle<Image>,
+}
+
+impl Material2d for AtlasMaterial {
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Path(AssetPath::from_path_buf(embedded_path!("atlas.wesl")).with_source("embedded"))
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
 }
 
 /// A re-rasterisation in progress.
@@ -164,15 +184,12 @@ impl Plugin for AtlasPlugin {
                 )
             })
             .collect();
+        embedded_asset!(app, "atlas.wesl");
+        app.add_plugins(Material2dPlugin::<AtlasMaterial>::default());
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
-        let material = world.resource_mut::<Assets<ColorMaterial>>().add(ColorMaterial {
-            color: Color::WHITE,
-            alpha_mode: AlphaMode2d::Blend,
-            texture: Some(image.clone()),
-            ..default()
-        });
-        let atlas = Atlas { image, material, regions, tokens: art::tokens(), layout, tier };
+        let material = world.resource_mut::<Assets<AtlasMaterial>>().add(AtlasMaterial { texture: image });
+        let atlas = Atlas { material, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
         app.init_resource::<RasterJob>()
@@ -268,17 +285,13 @@ fn rasterise_step(
     mut atlas: ResMut<Atlas>,
     mut status: ResMut<AtlasStatus>,
     mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
 ) {
     if let Some((image, last)) = job.ready.take() {
-        // Every material that samples the atlas (one today) switches; the old image is freed with its handles.
-        let old = std::mem::replace(&mut atlas.image, image.clone());
-        let ids: Vec<AssetId<ColorMaterial>> =
-            materials.iter().filter(|(_, m)| m.texture.as_ref() == Some(&old)).map(|(id, _)| id).collect();
-        for id in ids {
-            if let Some(mut m) = materials.get_mut(id) {
-                m.texture = Some(image.clone());
-            }
+        // The material switches (written through `get_mut`, so Bevy re-prepares it); the old image goes with its
+        // last handle.
+        if let Some(mut m) = materials.get_mut(&atlas.material) {
+            m.texture = image;
         }
         atlas.tier = last.0;
         status.last = Some(last);
