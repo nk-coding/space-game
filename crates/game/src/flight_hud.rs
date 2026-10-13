@@ -327,7 +327,8 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
             root.spawn((ScreenPart::new(Edge::Bottom, 1), Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }))
                 .with_children(|c| {
                     c.spawn((HudText::Warnings, label(&fonts, "", 14.0, coral)));
-                    c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2)));
+                    // Centred and kept off the window's edges when it wraps (a narrow window).
+                    c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2), TextLayout::justify(bevy::text::Justify::Center), Node { margin: UiRect::horizontal(px(20)), ..default() }));
                 });
         });
 }
