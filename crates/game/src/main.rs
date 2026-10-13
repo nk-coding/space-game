@@ -12,6 +12,7 @@
 //! - `scene`: sandbox (player + raider waves; home's TEST RANGE), test flight, showcase, load test; writes the
 //!   player's pilot input.
 //! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
+//! - `map`: the voyage map (a star map of the voyages, their states from the career, SET COURSE).
 //! - `voyage`: launching a voyage (the career's seed and save), its run (recall, losing it) and its end;
 //!   `debrief`: the panel and the summary line over home after a voyage.
 //! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
@@ -44,6 +45,7 @@ mod flight_hud;
 mod fx;
 mod home;
 mod hud;
+mod map;
 mod meshbuf;
 mod mode;
 mod params;
@@ -131,6 +133,7 @@ fn main() {
                 behavior_ui::BehaviorPlugin,
                 home::HomePlugin,
                 fleet::FleetPlugin,
+                map::MapPlugin,
                 debrief::DebriefPlugin,
                 ui_kit::UiKitPlugin,
                 ui_icons::UiIconsPlugin,

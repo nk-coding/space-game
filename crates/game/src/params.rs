@@ -3,7 +3,7 @@
 //! measurements (start in a given mode without pressing keys).
 //!
 //! `scene` picks where the game starts (`mode::AppMode::at_start`): `home` (the default), `sandbox` (the TEST
-//! RANGE), `showcase`, `watch`, `alongside`, `drydock`, `behavior`. Without a `scene`, the parameters that only
+//! RANGE), `showcase`, `watch`, `alongside`, `drydock`, `behavior`, `map` (the voyage map). Without a `scene`, the parameters that only
 //! mean something in flight ([`FLIGHT_ONLY`]) start the sandbox, as before the game started at home.
 
 use bevy::platform::collections::HashMap;

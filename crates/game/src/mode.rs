@@ -1,7 +1,8 @@
 //! The app mode: at home ([`AppMode::Home`]: the shipyard, `home.rs` and `shipyard/`, where the game starts),
 //! flying ([`AppMode::Flight`]: the sandbox, which home calls the TEST RANGE, the showcase, the load test),
 //! building ([`AppMode::Drydock`]: the ship editor, `drydock/`) or writing how a design thinks ([`AppMode::Behavior`]:
-//! the BEHAVIOR screen, `behavior_ui/`). `?scene=` picks the start ([`AppMode::at_start`]).
+//! the BEHAVIOR screen, `behavior_ui/`) or choosing a voyage ([`AppMode::Map`]: the voyage map, `map/`, opened at
+//! home's gate). `?scene=` picks the start ([`AppMode::at_start`]).
 //!
 //! **T** switches between flight and the editors: in flight it opens the drydock (the design is untouched), or the
 //! screen a behavior test was started from ([`FlightExit`], `test_range.rs`); in the drydock it launches a test
@@ -28,11 +29,12 @@ pub enum AppMode {
     Flight,
     Drydock,
     Behavior,
+    Map,
 }
 
 impl AppMode {
     /// The mode the app starts in: home (`?scene=home`, and the default), the drydock (`?scene=drydock`), the
-    /// BEHAVIOR screen (`?scene=behavior`), or flight for the flight scenes (`?scene=sandbox|showcase|watch|
+    /// BEHAVIOR screen (`?scene=behavior`), the voyage map (`?scene=map`), or flight for the flight scenes (`?scene=sandbox|showcase|watch|
     /// alongside|voyage`) and for parameters that only mean something in flight ([`Params::wants_flight`]: `?load=`,
     /// `?fleet=`, `?hashlog=` ...). An unknown scene starts at home.
     pub fn at_start(params: &Params) -> Self {
@@ -40,6 +42,7 @@ impl AppMode {
             Some("home") => AppMode::Home,
             Some("drydock") => AppMode::Drydock,
             Some("behavior") => AppMode::Behavior,
+            Some("map") => AppMode::Map,
             Some("sandbox" | "showcase" | "watch" | "alongside" | "voyage") => AppMode::Flight,
             None if params.wants_flight() => AppMode::Flight,
             None => AppMode::Home,
@@ -129,5 +132,6 @@ mod tests {
         }
         assert_eq!(start("?scene=drydock&zoom=40"), AppMode::Drydock);
         assert_eq!(start("?scene=behavior&behavior=raider_basic"), AppMode::Behavior);
+        assert_eq!(start("?scene=map&save=other"), AppMode::Map);
     }
 }
