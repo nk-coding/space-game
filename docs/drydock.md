@@ -166,6 +166,9 @@ repaint 0.30 µs, mirrored move 0.33 µs, mirrored place 0.20 µs, mirrored rota
 
 Wave 2, 13 Oct 2026: editing in the client (`crates/game/src/drydock/tools.rs`, `ghost.rs`, `inspector.rs`). Every
 edit goes through `PlayerDesign::edit` and the editing model above; the client keeps no rules of its own.
+Screenshots (headless, 1280 × 720): `docs/results/drydock-editing-ghost.png` (a wing painted with mirror and bevel,
+the ghost of a turned beam laser and its twin), `-refused.png` (a refused ghost and its reason), `-select.png` (a
+selected beam laser on the HIGH tier in the inspector).
 
 | Input (only while the search field does not have the keyboard) | |
 |---|---|
