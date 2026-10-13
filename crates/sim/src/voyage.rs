@@ -422,14 +422,9 @@ impl Voyage {
     }
 }
 
-fn hash_str(h: &mut StateHasher, s: &str) {
-    h.u32(s.len() as u32);
-    h.write_bytes(s.as_bytes());
-}
-
 impl StateHash for Spawn {
     fn hash_state(&self, h: &mut StateHasher) {
-        hash_str(h, &self.design.id);
+        h.str(&self.design.id);
         self.body.hash_state(h);
         h.f32(self.damage);
     }
@@ -438,7 +433,7 @@ impl StateHash for Spawn {
 impl StateHash for Site {
     fn hash_state(&self, h: &mut StateHasher) {
         let p = &self.plan;
-        hash_str(h, &p.encounter);
+        h.str(&p.encounter);
         h.bool(p.goal);
         h.vec2(p.pos);
         h.f32(p.wake_radius);
@@ -460,7 +455,7 @@ impl StateHash for Site {
 
 impl StateHash for Voyage {
     fn hash_state(&self, h: &mut StateHasher) {
-        hash_str(h, &self.voyage);
+        h.str(&self.voyage);
         h.u64(self.seed);
         h.f32(self.radius);
         self.entry.hash_state(h);

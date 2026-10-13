@@ -24,6 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::hash::{fnv1a64, splitmix64};
 use crate::kind::Kind;
 use crate::load::{Content, parse_error, ron_options};
 use crate::model::{Blueprint, Frame, ResearchNode, Unlock};
@@ -1029,39 +1030,4 @@ fn clean_materials(
         }
         *x > 0
     });
-}
-
-/// 64-bit FNV-1a: a fixed, platform-independent hash (Rust's `DefaultHasher` may change between releases).
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| {
-        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
-/// SplitMix64 finaliser (Steele, Lea, Flood 2014), as the sim's RNG streams use it.
-fn splitmix64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    x ^ (x >> 31)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The reference values of the FNV specification's test suite (and the offset basis for no bytes).
-    #[test]
-    fn fnv1a64_matches_the_reference() {
-        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
-        assert_eq!(fnv1a64(b"foobar"), 0x8594_4171_f739_67e8);
-    }
-
-    /// The reference outputs of SplitMix64 seeded with 0 (`next()` adds the increment first).
-    #[test]
-    fn splitmix64_matches_the_reference() {
-        assert_eq!(splitmix64(0), 0xe220_a839_7b1d_cdaf);
-        assert_eq!(splitmix64(0x9E37_79B9_7F4A_7C15), 0x6e78_9e6a_a1b9_65f4);
-    }
 }

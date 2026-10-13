@@ -21,6 +21,7 @@ pub mod blueprint;
 pub mod career;
 pub mod edit;
 pub mod geometry;
+pub mod hash;
 pub mod kind;
 pub mod limits;
 pub mod load;

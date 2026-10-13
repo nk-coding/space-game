@@ -63,28 +63,23 @@ impl Item {
     }
 }
 
-fn hash_str(h: &mut StateHasher, s: &str) {
-    h.u32(s.len() as u32);
-    h.write_bytes(s.as_bytes());
-}
-
 impl StateHash for Item {
     fn hash_state(&self, h: &mut StateHasher) {
         match self {
             Item::Part { part, material } => {
                 h.u8(0);
-                hash_str(h, part);
+                h.str(part);
                 match material {
                     Some(m) => {
                         h.u8(1);
-                        hash_str(h, m);
+                        h.str(m);
                     }
                     None => h.u8(0),
                 }
             }
             Item::Fragment { part } => {
                 h.u8(1);
-                hash_str(h, part);
+                h.str(part);
             }
         }
     }
