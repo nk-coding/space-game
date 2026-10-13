@@ -156,11 +156,11 @@ impl Shelf {
     }
 }
 
-/// The autosave timer and whether the working design was written.
+/// The autosave timer and the keyboard state the screens need between frames.
 #[derive(Resource, Default)]
 pub(super) struct Saver {
     timer: Autosave,
-    /// The name being edited top left (`Some` while the field is open).
+    /// The name top left is being edited (its field is open).
     editing_title: bool,
     /// A text field had the keyboard last frame (so this frame's Esc was for it).
     field_had_keys: bool,
@@ -361,7 +361,7 @@ pub(super) struct TitleButton;
 #[derive(Component)]
 pub(super) struct TitleField;
 
-/// "UNSAVED" after the name.
+/// "UNSAVED" or "SAVED" after the name.
 #[derive(Component)]
 pub(super) struct TitleNote;
 
