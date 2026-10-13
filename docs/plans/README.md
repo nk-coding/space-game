@@ -9,4 +9,4 @@ not a decision: decisions live in `docs/adr/` and `docs/gdr/`; the roadmap says 
 | [salvage-research.md](salvage-research.md) | Salvage, research, materials, fabrication, bonded matter | The slice takes its minimal piece; the rest waits |
 | [galaxy-voyages.md](galaxy-voyages.md) | The procedural galaxy, clusters, voyages, guardians, home ring, story | The slice uses hand-made clusters; the rest waits |
 | [coop-arena.md](coop-arena.md) | Co-op (host-authoritative, inputs vs snapshots) and the arena | Waits; its headless arena overlaps with the slice's voyage runner |
-| android.md | The Android build and the phone UI | Being written |
+| [android.md](android.md) | The Android build and the phone UI | A later phase; the dependency fixes for an Android build (R1, R2) are in |
