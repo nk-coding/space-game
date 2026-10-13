@@ -19,7 +19,7 @@
         power: (output: 6),
         heat: (output: 1, limit: 4),
         logic: (rule_slots: 2, control_capacity: 4), // control capacity: lead placeholder (12 Oct 2026)
-        gyro: (torque: 600),
+        gyro: (torque: 300), // 13 Oct 2026 (GDR-0055): the raider turns 90° in ~0.57 s, still the snappiest
     ),
     (
         id: "automaton_cannon",

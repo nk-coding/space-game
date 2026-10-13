@@ -45,8 +45,8 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
 | `power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
-| `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate`, `wrench_of` |
-| `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry` |
+| `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line), `couples` (RCS couples), `assist` (last resort), `wrench_of` |
+| `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
 | `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
@@ -133,7 +133,8 @@ The rules (also in `src/math.rs`, enforced where possible):
   counters, and per ship the controls (including the per-gun fire mask), control piece, helm and behavior state,
   every part's flags, hp, heat, piece, power share and work, and per piece its parts, flags, ghost timer, frame
   origin, mass properties, body, power balance, consumer power settings (part, tier, weight, in allocation
-  order), wrench, collider vertices, gun output and actuator commands; then Rapier's own state per body in key
+  order), wrench, collider vertices, gun output, actuator commands (throttle, gimbal, RCS couple, torque) and
+  the last-resort turning state (`Piece::assist`); then Rapier's own state per body in key
   order (translation, rotation as cos/sin, linear and angular velocity, sleeping and ghost flags). Floats by
   exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug builds, on
   demand in release.
@@ -297,7 +298,8 @@ Per piece and tick:
 
 - **Supply** = output of alive, non-overheated reactors (with bonuses); 0 for a dark piece.
 - **Demand** of each consumer = `draw × activity`. Activity: engines = throttle × rated-speed falloff; RCS pods =
-  sum of their nozzles' throttle × falloff (capped at 1), so a thruster held at its rating idles; gyros =
+  sum of their nozzles' throttle × falloff plus their couple share (capped at 1), so a thruster held at its
+  rating idles; gyros =
   |torque used| / max; guns = the trigger and the per-gun fire mask
   (`ShipControls::gun_fires`) and a clear line of fire, so a gun that holds draws nothing; shields =
   `shields`; logic and other = 1. Overheated parts ask for nothing.
@@ -315,9 +317,9 @@ Per piece and tick:
 - **Partial output** scales what a part does, through `work = activity × level`: gun damage per second (beams)
   and fire rate (pulse and projectile cooldowns run at `work`), shield recharge (`regen × work`; the bubble is
   up while its emitter gets any power, so a shield below its minimum drops its bubble but keeps its charge),
-  thrust of engines and RCS nozzles (`max_force × level × falloff`, also the plume `Piece::output`), gyro and core torque
-  (`max × level`). Heat scales with `work` as before. A logic core's reaction torque is free (its own draw
-  covers it).
+  thrust of engines and RCS nozzles (`max_force × level × (throttle × falloff + couple)`, also the plume
+  `Piece::output`), gyro and core torque (`max × level`). Heat scales with `work` as before. A logic core's
+  reaction torque is free (its own draw covers it).
 
 **Settings.** Every consumer has a tier and a weight (`PowerSetting`); the minimum level belongs to the part type.
 
@@ -383,15 +385,19 @@ RCS rated speed (others are reported in `ShipDesign::warnings`).
   a little side force with the torque.
 - **RCS pods**: one nozzle (thruster row) per straight side whose neighbouring cell is empty or belongs to
   another piece, at the side's centre, pushing away from that side, `rcs_thrust` each. Nozzles appear and
-  vanish as neighbours are shot away or pieces split.
-- **Gyros** and **logic / automaton cores** (`gyro` block): pure torque up to `torque` in either direction.
-- **Rated speed** (engines and RCS nozzles, GDR-0041): each row's thrust fades with the piece's velocity along its
-  push direction, see [Top speed and the cruise flame](#top-speed-and-the-cruise-flame).
+  vanish as neighbours are shot away or pieces split. Two nozzles of opposite sides whose torques turn the same
+  way (the front nozzle of a pod right of the centre of mass and the back nozzle of one left of it, say) fire
+  together as a **couple**: equal force, so they turn the ship without pushing it (GDR-0055). A pod far from
+  the centre of mass with its front and back sides open is the strongest turner per part.
+- **Gyros** and **logic / automaton cores** (`gyro` block): pure torque up to `torque` in either direction (a
+  logic core's is tiny since GDR-0055: it keeps a ship controllable, nothing more).
+- **Rated speed** (engines and RCS nozzles, GDR-0041, GDR-0055): a row pushing with the motion fades with the
+  piece's whole speed, see [Top speed and the cruise flame](#top-speed-and-the-cruise-flame).
 - `Piece::thrusters` (`Thruster`: slot (engines only), part, unit `dir`, `point`, `arm`, `torque_per_force`,
   `max_force`, `rated`, `plume_length`, `plume_damage`, `plume_heat` (engines only), `gimbal`, `lat`,
   `torque_per_lateral`, `rcs`), `Piece::torque_sources`, and `Piece::authority` (thrust per direction,
-  differential torque, pure torque, top speed per direction, of the actuators that can produce now, see
-  [Planning with what works](#planning-with-what-works)) are the flight computer's view.
+  differential torque, pure torque, RCS couple torque, top speed per direction, of the actuators that can
+  produce now, see [Planning with what works](#planning-with-what-works)) are the flight computer's view.
 - `SimConfig::thrust_scale` / `torque_scale` / `speed_scale` multiply all thrust / pure torque / rated speeds (1 =
   content values) for feel tests.
 
@@ -415,17 +421,22 @@ Every tick, for the controlling piece of every active ship:
 3. **Heading**: `HeadingGoal::Angle(nose angle)`, `Thrust(world dir)` (point the best thrust axis there),
    `Auto` (keep the heading if the ship can push along the needed acceleration with at least half its best
    axis, else turn the best axis that way: flip-and-burn for ships with engines only at the back) or `Keep`.
-   Turn rate `ω_des = sign(e) · min(ω_max, √(2 · margin · α · |e|), gain · |e|)` with `α` = (pure torque +
-   differential torque) / inertia, then `τ = I · (ω_des − ω) / DT`.
+   Turn rate `ω_des = sign(e) · min(ω_max, √(2 · margin · α · |e|), gain · |e|)` with `α` = (pure torque + RCS
+   couples, plus differential torque while the last resort is on) / inertia (`Kin::plan_alpha`), then
+   `τ = I · (ω_des − ω) / DT`. `Rate(r)` (keyboard) asks `ω_des = r`, but changes the turn rate only within
+   `margin · α` per second, so the first line serves it alone ([Keyboard rotation](#keyboard-rotation)).
 4. **Flip, then burn**: while the ship turns its thrust towards the needed direction (`Thrust`/`Auto`), the
    translation force fades in from 25° to 8° of heading error, so slow-turning ships do not chase their own
    velocity vector.
 5. **Allocation** (`alloc.rs`), fixed passes, no iteration, over the actuators that can produce this tick
-   ([Planning with what works](#planning-with-what-works)): per axis group the requested force, with the free
-   choice of torque inside the group (blend of the least-torque and most-torque fills; a symmetric ship asked
-   for pure translation gets exactly symmetric throttles); then pure torque (gyros, cores, shared evenly);
-   then gimbals of firing engines; then **differential thrust**, which adds unrequested force, only for real
-   turns (heading error > 3°), never for holding a heading.
+   ([Planning with what works](#planning-with-what-works)). The **first line** (`alloc::allocate`) adds no
+   force nobody asked for: per axis group the requested force, with the free choice of torque inside the group
+   (blend of the least-torque and most-torque fills; a symmetric ship asked for pure translation gets exactly
+   symmetric throttles); then pure torque (gyros, cores, shared evenly); then **RCS couples** (`alloc::couples`:
+   per pair of opposite groups, forward/backward and right/left, equal force from the RCS rows whose torque
+   turns the needed way, strongest levers first, all scaled alike when they could do more than needed). It
+   returns the torque still missing. The **last resort** (`alloc::assist`): gimbals of firing engines, then
+   **differential thrust**; both add unrequested force (see [The last resort](#the-last-resort)).
 
 Pilot input (concept: touch controls):
 
@@ -440,10 +451,62 @@ Pilot input (concept: touch controls):
   `PilotInput.aim` under [Aiming](#aiming-and-leading)); the stick strafes with whatever thrusters push that
   way (RCS), the full stick being the top speed reachable along the stick from this heading
   (`Kin::top_along`); released = brake. A ship with engines only at the back cannot brake or strafe while locked.
-- **Keyboard** (GDR-0040): a full W, S, Q or E is the top speed of the thrusters pushing that way.
+- **Keyboard** (GDR-0040): a full W, S, Q or E is the top speed of the thrusters pushing that way; W with Q or E
+  asks for both (with the whole-speed fade the side push stops once the speed passes the side thrusters'
+  rating). A/D: [Keyboard rotation](#keyboard-rotation).
 
-`Ship::telemetry()` shows the top speed (best axis), goal, heading target, requested force/torque and the expected
-wrench.
+`Ship::telemetry()` shows the top speed (best axis), goal, heading target, requested force/torque, the expected
+wrench and whether the last resort was on (`assist`).
+
+### The last resort
+
+Decided by Niklas on 13 Oct 2026 ([GDR-0055](gdr/0055-slower-crisper-turning.md)): gimbals and differential thrust
+(off-axis engines) push the ship sideways, so they turn it only after gyros, cores and RCS couples have been at
+their limit for a few ticks. Code: `flight::TurnAssist`, `Piece::assist`, the end of `flight::execute`.
+
+- **Gate** (`TurnAssist { ticks, on }`, per piece, hashed): every tick the first line reports the torque it could
+  not give. `assist_after` (6) ticks in a row with torque missing turn the last resort **on**; it stays on while
+  torque is still missing or the ship is still turning (heading error above 3°, or a rate command above
+  0.05 rad/s), so a turn planned with it can brake with it; then it is off and the count starts over. Pieces the
+  flight computer does not fly (not controlling, dark, raw throttles, no goal) are reset.
+- **What it adds**: gimbals of firing engines whenever it is on (they also hold a heading against uneven thrust),
+  and differential thrust only while the flight computer steers to a heading or a rate: never to stop a spin
+  without one (`Keep`, a settled `Auto`), which kept a released Runner from pushing itself into a flip-and-burn
+  loop in testing.
+- **Planning**: `Kin::alpha` counts differential thrust only while the gate is on (planning with what works): a
+  turn starts on the first line's `α`, and once the gate opens the plan speeds up with the extra torque and keeps
+  it to the end of the turn. The design report's turn estimate runs the same gate in one dimension.
+- In practice: the Halvex Runner's gyros saturate in the first 0.2 s of a big turn, so differential thrust from
+  its side thrusters joins in for the rest of it (90° in 1.50 s; 2.21 rad/s² on the first line, up to
+  2.8 rad/s² measured); keyboard rotation, small corrections and holding a heading never use it. A ship without
+  gyros or RCS (the sample ships) turns mostly on the last resort.
+
+### Keyboard rotation
+
+Decided by Niklas on 13 Oct 2026 (GDR-0055): A/D turned the Runner at about 4.6 rad/s (a 0.1 s tap turned it
+~26°), too fast for fine aim. Now:
+
+- **Ramp** (client side, deterministic input like the lock's nudge): the client integrates
+  `flight::turn_ramp_step(level, key)` once per sim tick and sends the result as `PilotAxes::turn`. A press starts
+  at `KEY_TURN_START` (0.2) of the key turn rate and grows by `KEY_TURN_GROWTH` (1.0) per second to 1 (0.8 s); a
+  release drops to 0; the other key starts over. An analog input (a future gamepad stick) can send its deflection
+  directly. Kept in the client because the input already carries a rate share (`turn × rate`), as with
+  `nudge_step` (GDR-0040), and the sim needs no extra hashed state for it.
+- **Rate**: `turn × min(key_turn_rate, √(margin · α · π))`: `FlightTuning::key_turn_rate` (1.5 rad/s), or slower
+  if the ship could not stop from it within about a quarter turn.
+- **Never above what the ship can do**: a `Rate` goal changes the turn rate at most by `margin · α` per second
+  (the request is clamped to `margin · α · I`), so gyros, cores and RCS couples serve it alone and A/D never call
+  the last resort (no sideways push from the keys). The ramp's growth (1.5 rad/s² at full rate) stays below what
+  the Runner follows (0.7 × 2.21 = 1.55 rad/s²). A ship without gyros or RCS rotates slowly on the keys; its
+  lock and auto turns still get the last resort.
+- Halvex Runner (test `rotate_input_turns_the_ship`, `tests/keyboard.rs`): a 0.1 s tap turns the nose 0.8°;
+  holding A: 0.17 s 1.3° (0.26 rad/s), 0.33 s 5° (0.52), 0.5 s 11° (0.77), 0.67 s 20° (1.03), 0.83 s 31° (1.29),
+  1.0 s 45° (1.50, the cap), 1.5 s 88°; released at the cap it stops within 0.7 s, 26° further on (about 60° at
+  the old 4.6 rad/s). The browser (headless, F3 overlay readout) agrees: a tap 0.8°, holding 1.50 rad/s, last resort
+  off, 0.00 rad/s after release.
+- **Lock**: A/D drive the aim nudge (`nudge_step`, GDR-0040) as before, from the raw key. Holding A, the
+  Runner's nose trails the growing nudge (1.2 rad/s) by up to 0.29 rad, then sits on it (test
+  `the_nudge_springs_back`); with a nudge growth of 0.8 rad/s it would trail by 0.14 rad.
 
 ### Planning with what works
 
@@ -465,39 +528,54 @@ dark or dormant vessel does not fly at all. Code: `ship::refresh_authority`, the
 - Cost: one pass over each active piece's thruster rows and torque sources per tick; no allocation.
 - Test `a_runner_with_idle_actuators_turns_and_brakes_cleanly` (`tests/flight.rs`): a Halvex Runner that lost a
   logic core, one gyro set to the lowest power priority, so it idles together with a pulse laser (load 18,
-  capacity 16): 90° in 1.07 s with 0.44° overshoot, and a stop from 21 m/s (flip and burn) in 3.3 s without
-  flying backwards. Planned with the idle gyro, as before, the same stop flew backwards at up to 5.7 m/s and was
-  still spinning at 2.3 rad/s.
+  capacity 16): 90° in 1.97 s with 0.06° overshoot, and a stop from 21 m/s (flip and burn) in 4.5 s without
+  flying backwards (13 Oct 2026 content; 1.07 s and 3.3 s with the turning of 12 Oct). Planned with the idle
+  gyro, as it was before 12 Oct, the same stop flew backwards at up to 5.7 m/s and was still spinning at 2.3 rad/s.
 
 ### Top speed and the cruise flame
 
 Decided by Niklas on 12 Oct 2026 ([GDR-0041](gdr/0041-engine-rated-speed.md)); it replaces the soft top speed
-`k·√a`. Code: `ship::rated_falloff`, `Thruster::falloff`, `ThrustAuthority::speed`, `Kin::speeds`,
-`Kin::top_along`, the cruise lines at the end of `flight::execute`.
+`k·√a`. The fade by the whole speed: Niklas, 13 Oct 2026 ([GDR-0055](gdr/0055-slower-crisper-turning.md)). Code:
+`ship::rated_falloff`, `Thruster::falloff`, `ThrustAuthority::speed`, `Kin::speeds`, `Kin::top_along`, the
+cruise lines at the end of `flight::execute`.
 
 - **Rated speed**: every engine (`engine.rated_speed`) and RCS pod (`rcs.rated_speed`, each nozzle) has one, with
   bonuses (stats `rated_speed`, `rcs_rated_speed`) and `SimConfig::speed_scale`. Base content (placeholders):
   thruster 20 m/s, torch drive 22 m/s, RCS pod 14 m/s.
-- **Falloff** (`rated_falloff(along, rated)`): `along` = the piece's linear velocity (centre of mass) projected on
-  the row's push direction; rotation-induced velocity is ignored (cheap, and a turning ship's points move
-  sideways to the thrust anyway). Full thrust up to `RATED_KNEE` = 80% of the rating, then linear to 0 at the
-  rating and beyond. Braking (`along < 0`) and sideways (`along = 0`) keep full thrust. Flat first, so the
-  acceleration stays constant for 80% of the way and the last 20% takes about a quarter of the time; a falloff
-  that is linear over the whole range would make reaching the top slow (sluggish again).
+- **Falloff** (`Thruster::falloff(v_local, speed)`): a row that pushes **with the motion** (the piece's linear
+  velocity at the centre of mass has a positive component along its push direction) fades by the piece's
+  **whole speed** `|v|` (`rated_falloff(speed, rated)`), not only by the speed along its axis (GDR-0055; until
+  13 Oct 2026 by the speed along its axis). Braking (against the motion) and sideways (velocity across it) keep
+  full thrust. Full thrust up to `RATED_KNEE` = 80% of the rating, then linear to 0 at the rating and beyond. Flat
+  first, so the acceleration stays constant for 80% of the way and the last 20% takes about a quarter of the
+  time. Rotation-induced velocity is ignored (cheap, and a turning ship's points move sideways to the thrust
+  anyway). Cost: one square root per flown piece per tick (`|v_local|`, shared by its rows).
 - **Where it applies**: the flight computer computes each row's falloff once per tick from the velocity at the
   start of the tick (`Piece::falloff`, also for raw throttles), allocates over `max_force × falloff`, and the
   systems use the same numbers for the wrench (`max_force × power × falloff`) and for the power demand
   (`throttle × falloff`). So dead-beat control stays exact: the ship approaches the rating and never passes it,
   and holding a speed costs no thrust, power or heat. Gimbal side force and differential thrust scale with the
-  same falloff.
+  same falloff. **RCS couples** do not: their forces cancel, so they cannot push the ship past any rating, and
+  they fire at the nozzles' full force (`Actuation::couple`), so RCS pods turn a ship at any speed.
 - **No drag**: a coasting ship keeps its speed (test `raw_thrust_tops_out_at_the_rated_speed_and_coasting_keeps_it`).
 - **Top speed per direction** (`ThrustAuthority::speed`, `Kin::speeds`): per thrust group (forward, backward,
   right, left) the highest rating among its rows that can push now
-  ([Planning with what works](#planning-with-what-works)). The groups push independently, so the reachable
-  velocities form a box in the piece frame; `Kin::top_along(u)` is the farthest point of the box along `u`
-  (groups without thrusters are left out). A diagonal can therefore be faster than either axis: a ship with
-  22 m/s forward and 14 m/s RCS sideways reaches 26 m/s flying crabwise. "Fly that way" turns the best axis onto
-  the stick and flies at its rating; a locked ship strafing diagonally gets the box. See the design questions.
+  ([Planning with what works](#planning-with-what-works)). With the whole-speed fade no ship gets faster than
+  its fastest thrusters, and diagonally no faster than the slowest group still pushing that way: the old box (a
+  ship with 22 m/s forward and 14 m/s RCS sideways reached 26 m/s crabwise) is gone.
+- **`Kin::top_along(u)`** (the locked touch stick's full length): the fastest velocity goal along `u` the flight
+  computer reaches from rest. It pushes each group flat out until its share of the goal is there; the group that
+  finishes last caps the speed at its own top speed, and the group that finishes first must get there before
+  the whole speed passes its top speed (`speed_first / (share_first · √(1 + (thrust_last / thrust_first)²))`), so
+  a small sideways share does not cut the main axis's top speed (the slowest group would otherwise cap any stick
+  that is not exactly along an axis). Groups without thrusters are left out. Tests
+  `top_speed_per_direction_comes_from_the_thrusters_pushing_that_way` and
+  `a_diagonal_is_no_faster_than_the_slowest_thrusters_pushing_that_way` (`tests/speed.rs`): an RCS box (pods
+  14 m/s, thruster 20 m/s) locked with the stick at (0.6, 0.8) flies that diagonal at 14.0 m/s (the box allowed
+  23 m/s); with W and E held in drift it ends at 20 m/s (the thruster) with 7.9 m/s sideways.
+- "Fly that way" turns the best axis onto the stick and flies at its rating (unchanged). The keyboard's W with Q
+  or E asks for both axes' top speeds; the side push stops once the whole speed passes the side thrusters'
+  rating.
 - **Cruise flame**: whenever the goal has a velocity, every engine row gets `Actuation::cruise` = (goal velocity
   in the piece frame · engine direction) / its group's top speed, clamped to 0..1; the systems publish
   `Piece::cruise` = that × the engine's power level (0 if idle, dead, overheated, unpowered or the piece is dark). Full
@@ -519,35 +597,52 @@ Decided by Niklas on 12 Oct 2026 ([GDR-0041](gdr/0041-engine-rated-speed.md)); i
 | `position_gain` | 1.2 /s | linear zone of position → velocity |
 | `stick_deadzone` | 0.05 | shorter sticks count as released |
 | `keep_heading_fraction` | 0.5 | `Auto` keeps the heading if this share of the best axis pushes the right way |
+| `key_turn_rate` | 1.5 rad/s (13 Oct 2026, GDR-0055) | keyboard rotation at the end of the ramp (or slower if the ship could not stop from it within about a quarter turn); tuning panel "key turn rate" |
+| `assist_after` | 6 ticks (13 Oct 2026, GDR-0055) | ticks in a row the first line must miss torque before the last resort (gimbals, differential thrust) helps |
 
 `SimConfig::thrust_scale`, `torque_scale` and `speed_scale` (default 1) scale the content's thrust, torque and
-rated speeds for feel tests; `split_ghost_ticks` (10) is the collision grace after a split.
+rated speeds for feel tests; `split_ghost_ticks` (10) is the collision grace after a split. Client-side input
+constants (placeholders, `flight.rs`): the keyboard ramp `KEY_TURN_START` 0.2 and `KEY_TURN_GROWTH` 1.0 /s
+(GDR-0055), the lock nudge `NUDGE_MAX` 0.6 rad, `NUDGE_RATE` 1.2 rad/s, `NUDGE_RETURN` 5 /s (GDR-0040).
 
 Why the turn defaults changed (GDR-0042): with 3 rad/s and a gain of 8 /s no ship could turn 90° faster than
 0.78 s however much torque it had (it reaches the cap, then spends ~0.4 s in the linear zone), so the small raider
 could not be snappier than the Runner. 6 rad/s and 12 /s let the raider turn in 0.4 s; 12 /s still settles without
 overshoot (each tick closes 40% of the remaining error).
 
-### Turning and speed of the base ships (content of 12 Oct 2026, GDR-0042, scales 1)
+### Turning and speed of the base ships (content of 13 Oct 2026, GDR-0055, scales 1)
 
-Target "Agile" (Niklas, 12 Oct 2026): Halvex Runner 90° in about 0.8 s, 0 → top speed in about 2.5 s, top speed
-about 22 m/s; small ships snappier. Placeholder content: thruster 200 kN / 20 m/s, torch drive 700 kN / 22 m/s,
-RCS nozzle 60 kN / 14 m/s, gyro 5000 kN·m, logic core 500 kN·m, automaton core 600 kN·m (about 16× the concept
-thrust and torque).
+Targets: Halvex Runner 90° in about 1.5 s (Niklas, 13 Oct 2026, GDR-0055; it was 0.8 s, GDR-0042), 0 → top speed
+in about 2.5 s and a top speed of about 22 m/s (GDR-0042, unchanged); small ships snappier; RCS pods make a
+visible difference. Placeholder content: thruster 200 kN / 20 m/s, torch drive 700 kN / 22 m/s (unchanged), RCS
+nozzle **200 kN** / 14 m/s (60 kN until 13 Oct), gyro **1250 kN·m** (5000), logic core **50 kN·m** (500: tiny, it
+keeps a ship controllable), automaton core **300 kN·m** (600; the raider's only turner, so it stays clearly the
+snappiest). First-line `α` = (pure torque + RCS couples) / inertia, what turns are planned with until the last
+resort opens.
 
-| Ship | Mass | Inertia | Pure torque | 90° turn | Max α (measured) | Thrust → accel | Top speed | 0 → 95% top |
-|---|---|---|---|---|---|---|---|---|
-| Automaton raider | 15.8 t | 17 t·m² | 600 kN·m (core) | **0.40 s** | **35.5 rad/s²** | 200 kN → 12.7 m/s² | 20 m/s | 1.70 s |
-| Halvex Runner | 106.5 t | 1176 t·m² | 11000 kN·m (2 cores, 2 gyros) | **0.77 s** | **9.9 rad/s²** | 1100 kN → 10.3 m/s² | 22 m/s | 2.53 s |
-| Sample early | 43 t | 214 t·m² | 1000 kN·m | 0.90 s | 7.0 rad/s² | 400 kN → 9.3 m/s² | 20 m/s | 2.30 s |
-| Sample mid | 88 t | 1010 t·m² | 1000 kN·m (no gyros) | 2.03 s | 1.5 rad/s² | 1100 kN → 12.5 m/s² | 22 m/s | 2.10 s |
+| Ship | Mass | Inertia | First line | First-line α | 90° turn | Max α (measured) | Thrust → accel | Top speed | 0 → 95% top |
+|---|---|---|---|---|---|---|---|---|---|
+| Automaton raider | 15.8 t | 17 t·m² | 300 kN·m (core) | 17.8 rad/s² | **0.57 s** | 17.8 rad/s² | 200 kN → 12.7 m/s² | 20 m/s | 1.70 s |
+| Halvex Runner | 106.5 t | 1176 t·m² | 2600 kN·m (2 gyros, 2 cores) | 2.21 rad/s² | **1.50 s** | 2.8 rad/s² | 1100 kN → 10.3 m/s² | 22 m/s | 2.53 s |
+| Sample early | 43 t | 214 t·m² | 100 kN·m (2 cores, no gyros) | 0.47 rad/s² | 1.60 s | 2.8 rad/s² | 400 kN → 9.3 m/s² | 20 m/s | 2.30 s |
+| Sample mid | 88 t | 1010 t·m² | 100 kN·m (2 cores, no gyros) | 0.10 rad/s² | 3.40 s | 0.6 rad/s² | 1100 kN → 12.5 m/s² | 22 m/s | 2.10 s |
+| Runner + 2 RCS pods (test design) | 108.5 t | 1261 t·m² | 2600 + 2600 couples | 4.12 rad/s² | **1.17 s** | 4.7 rad/s² | 1500 kN → 13.8 m/s² | 22 m/s | 2.27 s |
+| Runner + 4 RCS pods (test design) | 110.5 t | 1374 t·m² | 2600 + 5600 couples | 5.97 rad/s² | **0.97 s** | 6.5 rad/s² | 1900 kN → 17.2 m/s² | 22 m/s | 2.10 s |
 
-(90° turn from rest to within 1°, holding position, overshoot under 2°; max α as measured in that turn, including
-differential thrust; 0 → 95% of the top speed with the stick along the nose. Test
-`base_ships_meet_the_agility_target` in `tests/speed.rs` measures and prints this table with `--nocapture`.) The
-Runner crosses the ~70 m default view in about 3.2 s. Until 11 Oct the Runner took 3.27 s per 90° at 0.65 m/s²
-and 9.7 m/s, the raider 1.47 s at 0.76 m/s² and 10.5 m/s. Keyboard rotation (`HeadingGoal::Rate`) now runs at
-about 4.6 rad/s on the Runner and 6 rad/s (the cap) on the raider.
+(90° turn from rest to within 1°, holding position, overshoot under 2°; max α as measured in that turn,
+including the differential thrust of the last resort; 0 → 95% of the top speed with the stick along the nose.
+Tests `base_ships_meet_the_agility_target` and `rcs_pods_make_the_runner_turn_faster` in `tests/speed.rs`
+measure and print these rows with `--nocapture`.) The pod variants (`common::runner_with_pods`, not content) move
+the Runner's hull two columns right and hang one pod, or two side by side, beside each wing-tip radiator (row 3),
+front and back sides open, so the right pod's front nozzle and the left pod's back nozzle make a couple (and the
+other way round); their front nozzles also add to the forward thrust below 11 m/s. The sample ships have no gyros:
+their cores keep them controllable and their side thrusters turn them as the last resort (after 6 ticks), which
+is why they turn as fast as the Runner (early) or slowly (mid) with a tiny first line. The Runner crosses the
+~70 m default view in about 3.2 s. 12 Oct 2026 (GDR-0042): raider 0.40 s, Runner 0.77 s, sample early 0.90 s, sample
+mid 2.03 s; until 11 Oct the Runner took 3.27 s per 90° at 0.65 m/s² and 9.7 m/s. Keyboard rotation (with the ramp,
+[Keyboard rotation](#keyboard-rotation)): up to 1.5 rad/s on the Runner and the raider, 1.0 rad/s on the sample
+early and 0.47 rad/s on the sample mid (what their first line can stop within a quarter turn); it was about
+4.6 rad/s on the Runner and 6 rad/s on the raider.
 
 ### Maneuvers (`maneuver.rs`)
 
@@ -629,7 +724,9 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
 
 ### Sandbox fights at the new speeds
 
-Measured 12 Oct 2026 (GDR-0042 content) with a throwaway harness (not in the repo): one Halvex Runner at rest and
+Measured 12 Oct 2026 (GDR-0042 content; not re-measured with the slower turning of GDR-0055, 13 Oct: the Runner
+now turns 90° in 1.5 s instead of 0.77 s, the raiders in 0.57 s instead of 0.40 s) with a throwaway harness (not in
+the repo): one Halvex Runner at rest and
 a sandbox wave of three raiders spawned 105–125 m away, 0.32 rad apart, coming in at 3 m/s, under
 `raider_basic`; seeds 1–12, at most 180 s. Two stand-ins for the player: **passive** (locks the nearest raider and
 fires, never moves) and **closing** (the same, plus the stick along the nose towards the target while it is
@@ -1302,7 +1399,7 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 | `mass`, `centre_of_mass`, `inertia`, `hp`, `cargo`, `rule_slots` | main piece |
 | `power` | supply (working reactors after bonuses), demand at full use, served, deficit, the consumer rows in allocation order with what each asks and gets |
 | `heat` | peak `heat / limit` and its part, the parts above their limit (they would shut down) |
-| `flight` | thrust and acceleration per direction (forward, backward, right, left), top speed per direction (GDR-0041), pure and differential torque, the planning `α`, the 90° turn time, the yaw balance |
+| `flight` | thrust and acceleration per direction (forward, backward, right, left), top speed per direction (GDR-0041), pure and differential torque, the planning `α` (first line), the 90° turn time, the yaw balance |
 | `guns`, `firepower` | per gun: muzzle, facing, clear, blockers, range, dps, rate, family, delivery; Σ dps of the main piece's clear guns |
 | `engines` | per engine: facing, thrust, its plume lanes (origin, exhaust direction, length, the own part it burns and how far it reaches) |
 | `shields` | per emitter: centre and bubble radius after bonuses |
@@ -1332,25 +1429,33 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 - Only the *main piece* is analysed (mass, power, heat, flight, control); other pieces fall off at spawn and
   report no heat and no power.
 - *Turn time*: the flight computer's heading loop in one dimension, tick by tick, from rest to 90° within 1°
-  (the agility test's criterion): each tick it asks `τ = I · (turn_rate(e, α_plan) − ω) / DT`, gets at most the
-  pure torque plus the differential thrust of that sense while the error is above 3° (`TURN_WITH_THRUST`), and
-  moves as Rapier integrates a constant torque over `S` substeps: `θ += ω·DT + (S+1)/(2S)·(τ/I)·DT²`,
-  `ω += τ/I·DT`. Against the stepped agility turn (`tests/speed.rs`), base ships, 12 Oct 2026: raider 0.400 s,
-  runner 0.767 s, sample early 0.900 s, sample mid 2.033 s, **all equal to the tick** (without the substep term
-  the raider came out 0.467 s, 17% slow). It ignores what the velocity hold and the gimbals add.
+  (the agility test's criterion): each tick it asks `τ = I · (turn_rate(e, α_plan) − ω) / DT` with
+  `Kin::plan_alpha`, gets at most the first line (pure torque plus the RCS couples of that sense,
+  `ThrustAuthority::couple_ccw/cw`), runs the sim's last-resort gate (`TurnAssist`, `assist_after` ticks with
+  torque missing) and, while it is on, adds the differential thrust of that sense and plans with it, and moves as
+  Rapier integrates a constant torque over `S` substeps: `θ += ω·DT + (S+1)/(2S)·(τ/I)·DT²`, `ω += τ/I·DT`.
+  Against the stepped agility turn (`tests/report.rs` `turn_estimate_matches_stepped_turns`), 13 Oct 2026:
+  raider 0.567 s, runner 1.500 s, sample early 1.600 s, sample mid 3.400 s, all equal to the tick; Runner with 2
+  RCS pods 1.133 s against 1.167 s stepped (one tick), with 4 pods 0.967 s, equal (12 Oct: 0.400, 0.767, 0.900,
+  2.033 s, all equal; without the substep term the raider came out 17% slow). It ignores what the velocity hold
+  and the gimbals add.
 - *Yaw balance*: `yaw` is the torque the forward thrust rows make at full thrust about the centre of mass
-  (counter-clockwise positive); `yaw_hold` is what the flight computer can hold against it while flying straight
-  (pure torque plus the forward engines' gimbals; differential thrust is only used for real turns);
-  `yaw_balanced = |yaw| ≤ yaw_hold`.
+  (counter-clockwise positive); `yaw_hold` is what the flight computer can hold against it while flying straight:
+  pure torque, the RCS couples that full forward thrust leaves free (right and left nozzles; the forward ones are
+  busy pushing) and the forward engines' gimbals (the last resort, after a few ticks; differential thrust is
+  only used while steering); `yaw_balanced = |yaw| ≤ yaw_hold`.
+- The report's public fields did not change with GDR-0055: `torque_pure` is gyros and cores only, the RCS
+  couples show in `alpha` (now the first line's: pure torque and couples, what a fresh ship plans with) and
+  `turn_90`; `torque_ccw/cw` are the differential thrust beyond the couples.
 
-**Base ships** (content of 12 Oct 2026, default config):
+**Base ships** (content of 13 Oct 2026, default config; only the turn changed since 12 Oct):
 
 | Ship | Power supply / demand | Peak heat (full use) | Thrust → accel | Top speed | 90° turn | Firepower | Control | Device load (est / measured) |
 |---|---|---|---|---|---|---|---|---|
-| Automaton raider | 6 / 4 | 42% | 200 kN → 12.7 m/s² | 20 m/s | 0.40 s | 1.2 dps | 2 / 4 | 0.58 / 0.63 µs |
-| Halvex Runner | 54 / 50 | **109%** (shield emitter; both beams and both emitters over) | 1100 kN → 10.3 m/s² | 22 m/s | 0.77 s | 8.3 dps | 18 / 32 | 1.21 / 1.15 µs |
-| Sample early | 24 / 20 | 82% | 400 kN → 9.3 m/s² | 20 m/s | 0.90 s | 2.3 dps | 8 / 32 | 0.82 / 0.84 µs |
-| Sample mid | 58 / 44 | 78% | 1100 kN → 12.5 m/s² | 22 m/s | 2.03 s | 8.3 dps | 16 / 32 | 1.07 / 1.11 µs |
+| Automaton raider | 6 / 4 | 42% | 200 kN → 12.7 m/s² | 20 m/s | 0.57 s | 1.2 dps | 2 / 4 | 0.58 / 0.63 µs |
+| Halvex Runner | 54 / 50 | **109%** (shield emitter; both beams and both emitters over) | 1100 kN → 10.3 m/s² | 22 m/s | 1.50 s | 8.3 dps | 18 / 32 | 1.21 / 1.15 µs |
+| Sample early | 24 / 20 | 82% | 400 kN → 9.3 m/s² | 20 m/s | 1.60 s | 2.3 dps | 8 / 32 | 0.82 / 0.84 µs |
+| Sample mid | 58 / 44 | 78% | 1100 kN → 12.5 m/s² | 22 m/s | 3.40 s | 8.3 dps | 16 / 32 | 1.07 / 1.11 µs |
 
 The Runner overheats at full use: with both gyros, both beams and the shields running at once the emitters beside
 the fusion reactor settle at 109% of their limit (consistent with [Heat](#heat-dynamic-lumped-per-part): "flat
@@ -1508,7 +1613,7 @@ Open:
 
 1. **Linear speed feels slow.** **Answered by Niklas on 12 Oct 2026**: top speed from each engine's rated speed
    (GDR-0041) and the agility target "Agile" (GDR-0042), reached with content numbers; see
-   [Turning and speed of the base ships](#turning-and-speed-of-the-base-ships-content-of-12-oct-2026-gdr-0042-scales-1).
+   [Turning and speed of the base ships](#turning-and-speed-of-the-base-ships-content-of-13-oct-2026-gdr-0055-scales-1).
 2. **Braking and strafing under lock.** A ship with engines only at the back cannot brake or strafe while its
    nose is locked on a target. Options: (a) **accept it; RCS pods are the answer** (a design choice in the
    drydock) (recommended); (b) let the flight computer break the lock briefly to flip and brake.
@@ -1525,26 +1630,21 @@ Open:
 
 Rated speed (GDR-0041, 12 Oct 2026):
 
-14. **Diagonal top speed.** The falloff works on the velocity along each thruster's push direction, so the
-    reachable velocities form a box in the ship's frame and a ship moving diagonally to its axes can exceed each
-    rating (22 m/s forward + 14 m/s sideways RCS → 26 m/s crabwise). "Fly that way" never does it; a locked
-    strafe can. (a) **Accept it** (cheap, predictable per thruster; recommended while no base ship has side
-    thrusters); (b) fade a thruster by the ship's whole speed whenever it moves with the thruster's push (caps
-    the speed at the rating of the slowest thruster pushing that way; costs a square root per piece).
-15. **Differential thrust at speed.** Turning with off-axis engines adds unrequested thrust; with the new thrust
-    it pushes a locked Runner a few metres per hard turn, which it cannot brake (engines only at the back). (a)
-    **Accept** (recommended: the gyros do most of the turning); (b) use differential thrust only when gyros and
-    cores are saturated for longer than a few ticks.
+14. **Diagonal top speed.** **Answered by Niklas on 13 Oct 2026** (GDR-0055): (b), a thruster pushing with the
+    motion fades by the ship's whole speed. Done 13 Oct 2026, see
+    [Top speed and the cruise flame](#top-speed-and-the-cruise-flame).
+15. **Differential thrust at speed.** **Answered by Niklas on 13 Oct 2026** (GDR-0055): (b), differential thrust
+    (and gimbals) only as the last resort, after gyros, cores and RCS have been at their limit for a few ticks.
+    Done 13 Oct 2026, see [The last resort](#the-last-resort).
 
 Engine plumes ([GDR-0049](gdr/0049-engine-plume-v1.md), lead defaults of 12 Oct 2026 for Niklas to review):
 
 16. **Plume numbers.** Thruster 3 m, 1 damage/s, 1.5 heat/s; torch drive 6 m, 3 damage/s, 4 heat/s: a torch drive
     held on a raider for a second wrecks a part or two, a buried thruster burns through an armour block in 1.4 s.
     Tune in content.
-17. **Does a plume push?** It transfers no momentum now (cheap; a plume is a short-range burner, not a tractor).
-    (a) **keep** (recommended); (b) push the part it hits with a share of the engine's thrust.
-18. **Drawn flame vs reach.** The client draws a flame of 0.4–2 m; the sim's reach is 3–6 m. (a) **draw the reach
-    faintly** when something is in it (recommended); (b) draw every plume at its full reach.
+17. **Does a plume push?** **Answered by Niklas on 13 Oct 2026** (GDR-0055): (a), no push, as built.
+18. **Drawn flame vs reach.** **Answered by Niklas on 13 Oct 2026** (GDR-0055): (a), the full reach drawn faintly
+    only while the plume burns something, as built.
 
 Behaviors (asked 11 Oct 2026; **answered by Niklas on 12 Oct**, GDR-0034 to GDR-0037 accepted):
 

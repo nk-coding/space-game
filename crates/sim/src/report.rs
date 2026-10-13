@@ -37,7 +37,7 @@ use data::{Blueprint, Content, Delivery, Dir, Effect, PowerTier, WeaponFamily};
 use crate::DT;
 use crate::config::SimConfig;
 use crate::design::{ConsumerKind, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat};
-use crate::flight::{Kin, TURN_WITH_THRUST, turn_rate};
+use crate::flight::{Kin, TURNING, TurnAssist, turn_rate};
 use crate::ids::{IdAlloc, ShipId};
 use crate::ship::{
     Body, HeatK, PartState, Ship, applied_bonuses, gun_blockers, power_pass, producing,
@@ -219,10 +219,12 @@ pub struct FlightReport {
     pub best: usize,
     /// Pure torque of gyros and logic cores (kN·m, either sense).
     pub torque_pure: f32,
-    /// Differential thrust torque, counter-clockwise and clockwise (kN·m).
+    /// Differential thrust torque, counter-clockwise and clockwise (kN·m): the last resort (GDR-0055), beyond
+    /// what the RCS couples take.
     pub torque_ccw: f32,
     pub torque_cw: f32,
-    /// The angular acceleration the flight computer plans turns with (rad/s², `Kin::alpha`).
+    /// The angular acceleration the flight computer plans turns with before the last resort joins in (rad/s²,
+    /// `Kin::alpha` of a fresh ship): pure torque and RCS couples.
     pub alpha: f32,
     /// Estimated time for a 90° turn from rest, settled within 1° (s); `None` if it cannot turn (or takes
     /// more than 30 s).
@@ -230,8 +232,9 @@ pub struct FlightReport {
     /// Yaw balance: the torque full forward thrust makes about the centre of mass (kN·m, counter-clockwise
     /// positive; 0 = it flies straight).
     pub yaw: f32,
-    /// What the flight computer can hold against it while flying straight: pure torque plus the forward
-    /// engines' gimbals (kN·m).
+    /// What the flight computer can hold against it while flying straight (kN·m): pure torque, the RCS couples
+    /// that full forward thrust leaves free, and the forward engines' gimbals (the last resort, after a few
+    /// ticks).
     pub yaw_hold: f32,
     /// `|yaw| ≤ yaw_hold`: full forward thrust does not turn the ship.
     pub yaw_balanced: bool,
@@ -698,7 +701,18 @@ fn flight_report(
         yaw += t.torque_per_force * f;
         gimbal += f * t.gimbal * t.torque_per_lateral.abs();
     }
-    let yaw_hold = a.torque_pure + gimbal;
+    // The RCS couples against the yaw, with the forward rows busy pushing.
+    let th = &piece.thrusters;
+    let room = |i: usize| {
+        let ps = &parts[th[i].part as usize];
+        if crate::alloc::group_of(th[i].dir) == 0 || !producing(ps) {
+            0.0
+        } else {
+            th[i].max_force * ps.power
+        }
+    };
+    let couple = crate::alloc::couples(th, &piece.alloc, yaw < 0.0, &room, None);
+    let yaw_hold = a.torque_pure + couple + gimbal;
     FlightReport {
         thrust: kin.caps,
         accel,
@@ -708,7 +722,7 @@ fn flight_report(
         torque_ccw: a.torque_ccw,
         torque_cw: a.torque_cw,
         alpha: kin.alpha,
-        turn_90: turn_time(kin.inertia, a, kin.alpha, config),
+        turn_90: turn_time(kin.inertia, a, config),
         yaw,
         yaw_hold,
         yaw_balanced: yaw.abs() <= yaw_hold,
@@ -717,38 +731,34 @@ fn flight_report(
 
 /// Estimated time (s) of a 90° counter-clockwise turn from rest, settled within `TURN_SETTLE`: the flight
 /// computer's heading loop integrated in one dimension, tick by tick. Each tick it asks
-/// `τ = I · (turn_rate(e, α_plan) − ω) / DT` (the sim's [`turn_rate`] and planning `α`), gets at most the pure
-/// torque plus, while the error is above `TURN_WITH_THRUST`, the differential thrust of that sense
-/// (`torque_ccw` / `torque_cw`), and moves the way Rapier integrates a constant torque over `S` substeps:
-/// `θ += ω·DT + (S + 1)/(2S) · (τ/I)·DT²`, then `ω += τ/I · DT`. Ignores what the velocity hold and the gimbals
-/// add or take; `tests/report.rs` compares it with stepped turns.
-fn turn_time(
-    inertia: f32,
-    a: &crate::ThrustAuthority,
-    alpha: f32,
-    config: &SimConfig,
-) -> Option<f32> {
-    if alpha <= 0.0 || a.torque_pure + a.torque_ccw <= 0.0 {
+/// `τ = I · (turn_rate(e, α_plan) − ω) / DT` (the sim's [`turn_rate`] and [`Kin::plan_alpha`]) and gets at most
+/// the first line (pure torque and the RCS couples of that sense); the last resort ([`TurnAssist`]: the
+/// differential thrust `torque_ccw` / `torque_cw`) joins in and counts in the plan only after the first line
+/// has been at its limit for `assist_after` ticks, as in the sim. It moves the way Rapier integrates a constant
+/// torque over `S` substeps: `θ += ω·DT + (S + 1)/(2S) · (τ/I)·DT²`, then `ω += τ/I · DT`. Ignores what the
+/// velocity hold and the gimbals add or take; `tests/report.rs` compares it with stepped turns.
+fn turn_time(inertia: f32, a: &crate::ThrustAuthority, config: &SimConfig) -> Option<f32> {
+    let first = [a.torque_pure + a.couple_ccw, a.torque_pure + a.couple_cw];
+    if Kin::plan_alpha(a, inertia, false) <= 0.0 || first[0] <= 0.0 {
         return None;
     }
     let ft = &config.flight;
     let sub = config.physics.substeps.max(1) as f32;
     let lag = (sub + 1.0) / (2.0 * sub);
     let target = core::f32::consts::FRAC_PI_2;
-    let (mut angle, mut omega) = (0.0f32, 0.0f32);
+    let (mut angle, mut omega, mut gate) = (0.0f32, 0.0f32, TurnAssist::default());
     for tick in 1..=tuning::TURN_MAX_TICKS {
         let e = target - angle;
+        let alpha = Kin::plan_alpha(a, inertia, gate.on);
         let want = inertia * (turn_rate(e, alpha, ft) - omega) * (1.0 / DT);
-        let diff = if e.abs() > TURN_WITH_THRUST {
-            if want > 0.0 {
-                a.torque_ccw
-            } else {
-                a.torque_cw
-            }
+        let (first, diff) = if want > 0.0 {
+            (first[0], a.torque_ccw)
         } else {
-            0.0
+            (first[1], a.torque_cw)
         };
-        let cap = a.torque_pure + diff;
+        let saturated = want.abs() - first > crate::alloc::tolerance(want);
+        gate = gate.step(saturated, e.abs() > TURNING, ft.assist_after);
+        let cap = if gate.on { first + diff } else { first };
         let dw = want.clamp(-cap, cap) / inertia * DT;
         angle += (omega + lag * dw) * DT;
         omega += dw;

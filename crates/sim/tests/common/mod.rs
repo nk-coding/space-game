@@ -51,6 +51,36 @@ pub fn custom(c: &Content, parts: &[P]) -> Arc<ShipDesign> {
     Arc::new(ShipDesign::compile(c, &blueprint(parts)).unwrap())
 }
 
+/// The Halvex Runner with `pods` RCS pods (0, 2 or 4) on outriggers beside its wing-tip radiators: the hull
+/// moves two columns right, one pod (or two side by side) sits left of the left radiator and right of the right
+/// one, row 3. Each pod has its front and back sides open, so the two sides make turning pairs (couples). A
+/// test design for GDR-0055 (RCS pods are the strong turners), not content.
+pub fn runner_with_pods(c: &Content, pods: usize) -> Blueprint {
+    let mut bp = c.ships.get("halvex_runner").unwrap().clone();
+    for p in &mut bp.parts {
+        p.x += 2;
+    }
+    bp.size.0 += 4;
+    let cells: &[i32] = match pods {
+        0 => &[],
+        2 => &[1, 14],
+        4 => &[0, 1, 14, 15],
+        _ => panic!("0, 2 or 4 pods"),
+    };
+    for &x in cells {
+        bp.parts.push(Placement {
+            part: "rcs_pod".into(),
+            x,
+            y: 3,
+            rot: 0,
+            flip: false,
+            material: None,
+            power: None,
+        });
+    }
+    bp
+}
+
 /// Index of the placement of `part` at `(x, y)`.
 pub fn find(d: &ShipDesign, part: &str, x: i32, y: i32) -> PartIdx {
     d.parts

@@ -5,7 +5,7 @@ mod common;
 use core::f32::consts::{FRAC_PI_2, PI};
 
 use common::*;
-use sim::alloc::{Actuation, AllocTable, allocate};
+use sim::alloc::{Actuation, AllocTable, allocate, assist, wrench_of};
 use sim::flight::Kin;
 use sim::physics::wrap_angle;
 use sim::{
@@ -109,7 +109,7 @@ fn a_runner_with_idle_actuators_turns_and_brakes_cleanly() {
 
     let (turn, overshoot) = quarter_turn(&mut w, s);
     println!("runner, one core and one gyro idle: 90° in {turn:.2} s, overshoot {overshoot:.2}°");
-    assert!(turn < 2.0 && overshoot < 2.0, "90° in {turn} s, overshoot {overshoot}°");
+    assert!(turn < 2.5 && overshoot < 2.0, "90° in {turn} s, overshoot {overshoot}°");
 
     // Up to speed along the nose (world −x after the turn), then release the stick: flip and burn.
     let nose = Vec2::new(-1.0, 0.0);
@@ -277,7 +277,7 @@ fn allocator_gives_zero_torque_for_symmetric_translation() {
     let mut act = Actuation::default();
     act.resize(fmax.len(), tmax.len());
     let table = AllocTable::build(&p.thrusters);
-    let w0 = allocate(
+    let w0 = alloc_all(
         &p.thrusters,
         &table,
         &fmax,
@@ -328,6 +328,26 @@ fn row(x: f32, y: f32, dir: Vec2, force: f32, gimbal: f32) -> sim::Thruster {
     }
 }
 
+/// The first line, then the last resort if `last_resort` (as the flight computer does once it is on), with no
+/// rated-speed falloff (`full` = `fmax`); returns the wrench.
+#[allow(clippy::too_many_arguments)]
+fn alloc_all(
+    th: &[sim::Thruster],
+    table: &AllocTable,
+    fmax: &[f32],
+    tmax: &[f32],
+    force: Vec2,
+    torque: f32,
+    last_resort: bool,
+    act: &mut Actuation,
+) -> sim::Wrench {
+    let missing = allocate(th, table, fmax, fmax, tmax, force, torque, act);
+    if last_resort {
+        assist(th, table, fmax, fmax, missing, true, act);
+    }
+    wrench_of(th, fmax, fmax, tmax, act)
+}
+
 #[test]
 fn allocator_prefers_pure_torque_then_gimbal_then_differential_thrust() {
     let fwd = Vec2::new(0.0, 1.0);
@@ -342,20 +362,20 @@ fn allocator_prefers_pure_torque_then_gimbal_then_differential_thrust() {
 
     // Pure torque covers a small request: no thrust at all.
     act.resize(2, 1);
-    let w = allocate(&th, &table, &fmax, &[5.0], Vec2::ZERO, 3.0, true, &mut act);
+    let w = alloc_all(&th, &table, &fmax, &[5.0], Vec2::ZERO, 3.0, true, &mut act);
     assert_eq!(act.throttle, vec![0.0, 0.0]);
     assert!((w.torque - 3.0).abs() < 1e-5 && (act.torque[0] - 0.6).abs() < 1e-6);
 
     // No pure torque, thrusting forward: the blend of the two fills makes the torque for free.
     act.resize(2, 0);
-    let w = allocate(
+    let w = alloc_all(
         &th,
         &table,
         &fmax,
         &[],
         Vec2::new(0.0, 10.0),
         8.0,
-        true,
+        false,
         &mut act,
     );
     assert!(
@@ -363,18 +383,14 @@ fn allocator_prefers_pure_torque_then_gimbal_then_differential_thrust() {
         "{w:?}"
     );
 
-    // At full thrust the blend has no room left: the gimbal adds torque (and a little side force).
+    // At full thrust the blend has no room left: the first line reports the torque it is missing, and the
+    // last resort's gimbal adds it (and a little side force).
     act.resize(2, 0);
-    let w = allocate(
-        &th,
-        &table,
-        &fmax,
-        &[],
-        Vec2::new(0.0, 20.0),
-        1.0,
-        true,
-        &mut act,
-    );
+    let missing = allocate(&th, &table, &fmax, &fmax, &[], Vec2::new(0.0, 20.0), 1.0, &mut act);
+    assert!((missing - 1.0).abs() < 1e-4, "missing {missing}");
+    assert_eq!(act.deflect, vec![0.0, 0.0]);
+    assist(&th, &table, &fmax, &fmax, missing, false, &mut act);
+    let w = wrench_of(&th, &fmax, &fmax, &[], &act);
     assert!(
         act.deflect[1] != 0.0 && (w.torque - 1.0).abs() < 1e-4,
         "{w:?} {act:?}"
@@ -382,12 +398,55 @@ fn allocator_prefers_pure_torque_then_gimbal_then_differential_thrust() {
 
     // Nothing requested but torque, no pure torque: differential thrust turns the ship (adds force) ...
     act.resize(2, 0);
-    let w = allocate(&th, &table, &fmax, &[], Vec2::ZERO, -15.0, true, &mut act);
+    let w = alloc_all(&th, &table, &fmax, &[], Vec2::ZERO, -15.0, true, &mut act);
     assert!((w.torque + 15.0).abs() < 1e-4 && w.force.y > 0.0, "{w:?}");
-    // ... unless differential thrust is not allowed (holding a heading).
+    // ... but only as the last resort, and only for a real turn (not to hold a heading).
     act.resize(2, 0);
-    let w = allocate(&th, &table, &fmax, &[], Vec2::ZERO, -15.0, false, &mut act);
+    let w = alloc_all(&th, &table, &fmax, &[], Vec2::ZERO, -15.0, false, &mut act);
     assert_eq!(w.torque, 0.0);
+    act.resize(2, 0);
+    let missing = allocate(&th, &table, &fmax, &fmax, &[], Vec2::ZERO, -15.0, &mut act);
+    assist(&th, &table, &fmax, &fmax, missing, false, &mut act);
+    assert_eq!(wrench_of(&th, &fmax, &fmax, &[], &act).torque, 0.0);
+}
+
+#[test]
+fn rcs_couples_turn_without_pushing_and_ignore_the_rated_speed() {
+    let (fwd, back) = (Vec2::new(0.0, 1.0), Vec2::new(0.0, -1.0));
+    let rcs = |x: f32, dir: Vec2| sim::Thruster {
+        slot: sim::design::NO_SLOT,
+        rcs: true,
+        gimbal: 0.0,
+        ..row(x, 0.0, dir, 10.0, 0.0)
+    };
+    // Two pods 3 m either side of the centre, each with a forward and a backward nozzle, and an engine.
+    let th = vec![
+        rcs(3.0, fwd),
+        rcs(3.0, back),
+        rcs(-3.0, fwd),
+        rcs(-3.0, back),
+        row(2.0, -3.0, fwd, 10.0, 0.0),
+    ];
+    let table = AllocTable::build(&th);
+    let fmax = [10.0; 5];
+    let mut act = Actuation::default();
+    act.resize(5, 1);
+    // The gyro gives 5, a couple of the right pod's forward and the left pod's backward nozzle the rest; the
+    // forces cancel, the engine stays off.
+    let w = alloc_all(&th, &table, &fmax, &[5.0], Vec2::ZERO, 50.0, false, &mut act);
+    assert!((w.torque - 50.0).abs() < 1e-4 && w.force.length() < 1e-4, "{w:?}");
+    assert!(act.couple[0] > 0.0 && act.couple[3] == act.couple[0] && act.throttle[4] == 0.0, "{act:?}");
+    // Beyond the gyro and both couples (5 + 2 × 3 × 10 = 65) the first line reports what is missing.
+    act.resize(5, 1);
+    let missing = allocate(&th, &table, &fmax, &fmax, &[5.0], Vec2::ZERO, 80.0, &mut act);
+    assert!((missing - 15.0).abs() < 1e-4, "missing {missing}");
+    // At its rated speed the forward nozzle cannot push, but a couple adds no net force, so it still fires at
+    // full force.
+    let faded = [0.0, 10.0, 0.0, 10.0, 0.0];
+    act.resize(5, 1);
+    let missing = allocate(&th, &table, &faded, &fmax, &[5.0], Vec2::ZERO, 50.0, &mut act);
+    let w = wrench_of(&th, &faded, &fmax, &[5.0], &act);
+    assert!(missing == 0.0 && (w.torque - 50.0).abs() < 1e-4 && w.force.length() < 1e-4, "{w:?}");
 }
 
 /// A 3×3 box: core in the middle, reactor beside it, RCS pods at the four corners, an engine at the back.

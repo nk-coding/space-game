@@ -1,15 +1,16 @@
-// Propulsion. PLACEHOLDER NUMBERS, all for feel only: thrust, torque and rated speeds were set on 12 Oct 2026 for
-// the agility target "Agile" (GDR-0042: Halvex Runner 90° in ~0.8 s, 0 → ~22 m/s in ~2.5 s; small ships
-// snappier), about 16× the concept-board thrust; gimbal values are invented.
+// Propulsion. PLACEHOLDER NUMBERS, all for feel only: engine thrust and rated speeds were set on 12 Oct 2026 for
+// the agility target "Agile" (GDR-0042: 0 → ~22 m/s in ~2.5 s), about 16× the concept-board thrust; the gyro
+// torque and the RCS thrust on 13 Oct 2026 for slower, crisper turning (GDR-0055: Halvex Runner 90° in ~1.5 s,
+// gyros moderate, RCS pods the strong turners); gimbal values are invented.
 // Engines push towards the part's forward side and may sit anywhere (GDR-0039); `gimbal` swings their thrust a
-// few degrees to either side. `rated_speed` (GDR-0041): the thrust fades out as the ship's speed along the push
-// direction approaches it, so the fastest engines pushing a way set the top speed that way. `plume` (GDR-0039,
-// GDR-0049): the exhaust reaches `length` m behind the engine and burns the first part in its path (the ship's
-// own, enemies and wrecks; never other vessels of the same owner) with `damage` and `heat` per second at full
-// thrust, scaled by the thrust it gives. PLACEHOLDER plume numbers (lead, 12 Oct 2026): a torch drive held on a
-// raider for about a second wrecks a part or two; an engine buried in the hull burns through an armour block in
+// few degrees to either side. `rated_speed` (GDR-0041, GDR-0055): while it pushes with the ship's motion, the
+// thrust fades out as the ship's whole speed approaches it, so the fastest engines set the top speed. `plume`
+// (GDR-0039, GDR-0049): the exhaust reaches `length` m behind the engine and burns the first part in its path (the
+// ship's own, enemies and wrecks; never other vessels of the same owner) with `damage` and `heat` per second at
+// full thrust, scaled by the thrust it gives. PLACEHOLDER plume numbers (lead, 12 Oct 2026): a torch drive held on
+// a raider for about a second wrecks a part or two; an engine buried in the hull burns through an armour block in
 // a second or two. Gyros turn the ship without thrust; RCS pods fire a nozzle out of every side that is open to
-// space (they have no plume).
+// space (they have no plume), and two nozzles of opposite sides firing together turn the ship without pushing it.
 // Power tier: everything that moves the ship is `Normal` (the default), so thrust and turning brown out together.
 [
     (
@@ -57,7 +58,7 @@
         hp: 1,
         power: (draw: 3),
         heat: (output: 1, limit: 4),
-        gyro: (torque: 5000),
+        gyro: (torque: 1250),
     ),
     (
         id: "rcs_pod",
@@ -73,6 +74,6 @@
         hp: 1,
         power: (draw: 1),
         heat: (output: 0.4, limit: 3),
-        rcs: (thrust: 60, rated_speed: 14),
+        rcs: (thrust: 200, rated_speed: 14),
     ),
 ]

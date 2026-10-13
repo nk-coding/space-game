@@ -19,11 +19,13 @@ Port 8080 is Niklas's copy, served by the lead session from `/home/devbox/worksp
 ## Controls
 
 PC keyboard controls are ship-relative ([GDR-0040](gdr/0040-keyboard-flight-and-smart-lock-aim.md)); touch keeps
-the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)).
+the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)). The A/D rotation ramp is integrated by the scene once
+per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nudge_step`) and sent as
+`PilotAxes::turn`; see `docs/sim.md` "Keyboard rotation".
 
 | | PC | Touch (landscape) |
 |---|---|---|
-| Fly | A/D rotate, W/S thrust along the nose, Q/E strafe (arrows: rotate + thrust). The flight computer cancels sideways drift and brakes when the keys are released | virtual stick bottom left: "fly that way", push = speed |
+| Fly | A/D rotate (GDR-0055: a tap nudges the nose a little, holding ramps up to the key turn rate, 1.5 rad/s, in 0.8 s; never faster than the ship's gyros, cores and RCS can stop), W/S thrust along the nose, Q/E strafe (arrows: rotate + thrust). The flight computer cancels sideways drift and brakes when the keys are released | virtual stick bottom left: "fly that way", push = speed |
 | Drift toggle (pure momentum: no drift cancelling, no braking) | X | tuning panel |
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
@@ -37,7 +39,7 @@ the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)).
 | Drydock (back to the ship editor; the design is untouched) | T | – |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
-| Debug overlay (fps, frame and sim times, the locked ship's active behavior rule) | F3 | – |
+| Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule) | F3 | – |
 | Render toggles | 1 debug shapes, 2 glow sprites, 3 bloom | – |
 | Hide HUD / pause / reset scene | H / P / Shift+R | – |
 
@@ -172,9 +174,9 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   markers are world-space FX. Debug overlay and toggles: `hud.rs`.
 - **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
   engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
-  factor on 12 Oct 2026) and max turn rate apply live (`Sim::set_config`); raiders per wave apply to the next wave;
-  drift at once; weapon range and damage scale rewrite the content the designs compile from, so they apply with
-  "Apply & reset".
+  factor on 12 Oct 2026), max turn rate and key turn rate (A/D held, `keyturn=`, GDR-0055) apply live
+  (`Sim::set_config`); raiders per wave apply to the next wave; drift at once; weapon range and damage scale
+  rewrite the content the designs compile from, so they apply with "Apply & reset".
 
 ## Drydock
 

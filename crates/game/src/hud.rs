@@ -1,6 +1,7 @@
 //! Debug overlay (`F3`; always on in the load test): fps, frame and sim step times (mean / median / p95 over
 //! a rolling window), entity and sim counts, the atlas tier against what the screen needs (window size and
-//! scale factor), render toggles. Keys: `F3` the overlay (everywhere); in flight only: `1` debug shapes, `2` glow
+//! scale factor), render toggles, the focus ship's heading, turn rate and speed (for tuning turning, GDR-0055).
+//! Keys: `F3` the overlay (everywhere); in flight only: `1` debug shapes, `2` glow
 //! sprites, `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene (`scene.rs`).
 //!
 //! In the load test the overlay also logs a one-line summary to the browser console after 60 s
@@ -19,7 +20,7 @@ use crate::atlas::{Atlas, AtlasStatus};
 use crate::camera::{CameraRig, MainCamera};
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
-use crate::scene::{Scene, SceneKind};
+use crate::scene::{PilotFocus, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, Timings, console_out};
 use crate::style::{Style, ui_color};
 
@@ -121,6 +122,7 @@ fn update_debug(
     scene: Res<Scene>,
     mode: Res<State<AppMode>>,
     input: Res<PlayerInput>,
+    focus: Res<PilotFocus>,
     mut world: ResMut<SimWorld>,
     atlas: Res<Atlas>,
     atlas_status: Res<AtlasStatus>,
@@ -202,6 +204,20 @@ fn update_debug(
     }
     if let Some((t, ms, frames, longest)) = a.last {
         let _ = write!(s, "  last {t}: {ms:.0} ms / {frames} frames, longest step {longest:.0} ms");
+    }
+    // The focus: heading, turn rate and speed, and whether the last resort (differential thrust) helps turning
+    // (for tuning turning in the browser, GDR-0055).
+    if let Some(ship) = focus.0.and_then(|id| world.sim.ship(id))
+        && let Some(p) = ship.control_piece().and_then(|c| ship.piece(c))
+    {
+        let _ = write!(
+            s,
+            "\nfocus: heading {:+.1} deg  turn {:+.2} rad/s  speed {:.1} m/s  last resort {}",
+            sim::physics::wrap_angle(p.body.angle).to_degrees(),
+            p.body.angvel,
+            p.body.linvel.length(),
+            on(ship.telemetry().assist),
+        );
     }
     // The locked ship's behavior: which rule decides (for tuning behaviors in the browser).
     if let Some(id) = input.locked_ship()
