@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
-# Optimised web build into crates/game/dist, then report sizes. Serve it with `scripts/web-serve-dist.sh`.
-# The web build is the development platform (not shipped to players), so it is tuned for speed: cargo profile
-# `release` (opt-level 3) + wasm-opt -O3 (`WASM_PROFILE=<profile>` picks another cargo profile).
+# Web build into crates/game/dist, then report sizes. Serve it with `scripts/web-serve-dist.sh`.
+# The web build is the development platform (not shipped to players). By default it is the everyday build (ADR-0034):
+# cargo profile `web-dev` (opt-level 3, no LTO, 16 codegen units, incremental) and no wasm-opt, about a minute
+# after a change in `game`. `--full` is the optimised build for performance checks: profile `release` (thin LTO,
+# one codegen unit) + wasm-opt -O3, about five minutes (`WASM_PROFILE=<profile>` picks another cargo profile for it).
+# Other arguments go to trunk.
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
 cd "$(dirname "$0")/../crates/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
-trunk build --release --cargo-profile "${WASM_PROFILE:-release}" "$@"
+if [[ "${1:-}" == "--full" ]]; then
+  shift
+  trunk build --release --cargo-profile "${WASM_PROFILE:-release}" "$@"
+else
+  # Without --release trunk runs no wasm-opt (index.html's data-wasm-opt applies to release builds only).
+  trunk build --cargo-profile web-dev "$@"
+fi
 wasm=$(ls dist/*.wasm | head -1)
 js=$(ls dist/*.js | head -1)
 raw=$(stat -c %s "$wasm")

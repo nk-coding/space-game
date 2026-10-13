@@ -42,6 +42,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0031](0031-player-storage-and-design-sharing.md) | A player storage layer of named, versioned RON documents; designs shared as files and share codes | Accepted (provisional, lead) | 2026-10-13 |
 | [0032](0032-wiki-generator.md) | Wiki generator: `content-tool wiki` writes a static HTML site straight from `data` | Proposed | 2026-10-13 |
 | [0033](0033-career-model-save-and-voyage-director.md) | The career: progression rules in `data::career`, salvage and the voyage director in `sim`, one career save | Accepted (provisional, lead) | 2026-10-13 |
+| [0034](0034-fast-everyday-web-builds-and-shared-compile-cache.md) | Everyday web builds without LTO and wasm-opt (`--full` for performance); sccache shared by every cargo build on the VM | Accepted | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
