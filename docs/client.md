@@ -40,7 +40,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
 | Home (the shipyard; the flight ends); in a voyage M asks, M again within 3 s abandons the voyage (lost) | M, or the ring top left (not in a voyage) | the ring top left |
-| Recall home from a voyage (when no armed awake enemy is within 200 m; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
+| Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
@@ -77,7 +77,7 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
-| `thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints them, `link` aside; `keyturn` is the A/D key turn rate, default 1.5 rad/s; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026) |
+| `thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints them, `link` aside; `keyturn` is the A/D key turn rate, default 1.5 rad/s; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026). `raiders=N` sets every wave's size by hand; without it waves follow the flown design (GDR-0074) |
 | `mind=N` | the player's mind capacity in logic cores (default 24; a runner has 2): `?fleet=3&mind=4` leaves two runners dormant, for trying the fleet bar's swap |
 | `fleet=N` | N extra copies (at most 8; none in TEST IN RANGE) of the player's design fly with you under the behavior the design names (default its faction's, `skirmisher`), following your lock (`target locked`); switch with V or the fleet bar |
 | `tuning=1` | open the tuning panel at start |
@@ -99,7 +99,11 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 - **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start and a new game
   a copy of the career's start ship, the Rim skiff; after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
   the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
-  raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
+  raider vessel goes dark (a raider shot in half can be two raiders). **A wave follows the flown design** (GDR-0074, `scene::wave_size`, a placeholder rule):
+  the design's build points over a raider's, halved and rounded, at least 1 and at most 8 (`WAVE_SHARE`,
+  `WAVE_CAP`): the starter `rim_skiff` (59 build points against a raider's 15.8) meets 2, the Halvex Runner (132.5)
+  4, each a wave a pilot stand-in wins about nine times in ten (`docs/results/slice-balance-2026-10-13.md`); the
+  tuning panel's "follow the flown ship" box (or `raiders=N`) sets the size by hand. C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
   `WAVES ON` / `WAVES OFF` (C turns them on, the help line says so), Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
   they are more than 320 m from the player or dark for 75 s (the player's vessels, dark or dormant, stay). When
@@ -125,7 +129,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 - Every sandbox flight flies the **player's saved behaviors**: they join the player's content, so the library has
   them and a design naming one flies it (`drydock::behaviors`).
 - **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
-  raiders per wave, `raiders=N`) start 46 m out and attack the design, which holds still and doesn't fire back:
+  raiders per wave set by hand, `raiders=N`, else 3) start 46 m out and attack the design, which holds still and doesn't fire back:
   its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the Runner breaks up after
   about half a minute (Shift+R starts over), and with the base numbers (regen 1.5/s against about 0.4 per
   hit) the bubbles rarely empty; collapses need concentrated fire.
@@ -282,7 +286,8 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
   engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
   factor on 12 Oct 2026), max turn rate, key turn rate (A/D held, `keyturn=`, GDR-0055) and the mind capacity (`mind=`) apply live
-  (`Sim::set_config`); raiders per wave apply to the next wave; drift at once; weapon range and damage scale
+  (`Sim::set_config`); raiders per wave (follow the flown ship, the default, or a number by hand) apply to the
+  next wave; drift at once; weapon range and damage scale
   rewrite the content the designs compile from, so they apply with "Apply & reset".
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
@@ -450,14 +455,15 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   under the hull the cargo block: `SALVAGE`, the shown ship's `5 / 8` in gold with one pip per cargo unit (20 at
   most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (its tooltip names R) and
   what it does: `WARP HOME 3 S · KEEPS THE HAUL` (teal) while `Sim::can_recall(PLAYER)` allows it, else dimmed with
-  `ARMED ENEMIES NEAR · NO RECALL`. Sites off screen get a marker at the screen edge (the enemy markers' code: an
+  `ARMED ENEMIES NEAR · NO RECALL`; when no vessel of the fleet has a working gun (`Sim::fleet_disarmed`, GDR-0074)
+  the recall is always allowed and the line says `EMERGENCY RECALL · NO WORKING GUN · WARP HOME 3 S`. Sites off screen get a marker at the screen edge (the enemy markers' code: an
   arrow kept clear of the HUD) with the encounter's name and the distance from the focus: raiders coral, wrecks
   only gold, the goal brighter (`· GOAL`, a glow), cleared ones dim (`· CLEARED`); a sleeping site's ships get no
   enemy marker of their own. Banners (with a line under them): `RAIDER PAIR · AWAKE` (coral), `SITE CLEARED ·
   RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
   · R` (gold). The home ring top left is hidden. The help line names R RECALL.
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
-  RECALL · ARMED ENEMIES WITHIN 200 M`). The warp-out can't be broken off (`WARPING HOME · 2`); losing every vessel
+  RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`); losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones
   too, `voyage::fleet_haul`; sim items become `data::career::HaulItem`s one to one), the career unloads it
   (`VoyageEnd::Recalled { haul, cleared: goal cleared, ticks }`), the save is written, home opens with the debrief.

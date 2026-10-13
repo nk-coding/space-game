@@ -67,7 +67,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
 | `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
-| `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
+| `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `fleet_disarmed`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
@@ -909,8 +909,9 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   its own fights. Not the default of any design yet (the BEHAVIOR screen lists it as a template); measured as
   sandbox wingmen in `docs/results/balance-2026-10-13.md`.
 - **`raider_basic`** (the automatons' default; it replaced the raider brain): with a cannon raider (75 m reach)
-  it approaches to 64 m (85%), and within 90 m (120%) orbits at 43.5 m (58%) for the last 4 s of every 9 s;
-  its cannon fires at will within 70 m (93.3%). Until 12 Oct it stood off at 50 m (67%) and orbited at 45 m
+  it approaches to 64 m (85%), and within 90 m (120%) orbits at 43.5 m (58%) for the last 6 s of every 9 s (the
+  last 4 s until 14 Oct 2026: the cannon's shot grew to a full hit point, GDR-0074); its cannon fires at will within
+  70 m (93.3%). Until 12 Oct it stood off at 50 m (67%) and orbited at 45 m
   (60%); from 12 to 13 Oct it orbited at 50 m (67%), exactly where the Halvex Runner's beams stop touching a
   raider (GDR-0061); see [Sandbox fights at the new speeds](#sandbox-fights-at-the-new-speeds).
 - **`skirmisher`** (the ship-mind's default for unpiloted vessels): flee below 25% hull, orbit at 80% while its
@@ -1812,10 +1813,13 @@ recall, the voyage scenario and the voyage runner use these two, so they cannot 
 Sites are indexed in plan order (`site` in the events). Owners: everything is keyed on the `player` and `enemy`
 owners, so co-op can add player owners later (the spawn and wake tests would take every player owner's vessels).
 
-**Recall** (`Sim::can_recall(owner)`, GDR-0062, GDR-0068): `owner` has at least one vessel, and no armed awake enemy
-(`Sim::armed_enemy`) is within `VoyageTuning::recall_radius` (200 m, centre of mass to centre of mass) of any of
-`owner`'s vessels: a disarmed enemy, a sleeper and a dark or dormant enemy never block it. It works without a voyage
-too (sandbox waves count as awake). The 3 s warp-out is the client's.
+**Recall** (`Sim::can_recall(owner)`, GDR-0062, GDR-0068, GDR-0074): `owner` has at least one vessel, and either no
+armed awake enemy (`Sim::armed_enemy`) is within `VoyageTuning::recall_radius` (200 m, centre of mass to centre of
+mass) of any of `owner`'s vessels (a disarmed enemy, a sleeper and a dark or dormant enemy never block it), or none of
+`owner`'s vessels (running, dark or dormant) has a working gun (`Sim::fleet_disarmed(owner)`, `Ship::is_armed`): the
+**emergency recall**, the same warp, so a disarmed ship is never kept from home by a raider of its own top speed. One
+armed escort makes the fleet armed again. It works without a voyage too (sandbox waves count as awake). The 3 s
+warp-out is the client's.
 
 Queries: `Sim::voyage() -> Option<&Voyage>`: `id`, `seed`, `radius`, `entry`, `player`, `enemy`, `sites()`,
 `site_of(ship)` (a site's ship, split-off vessel or wreck), `goal_cleared()`; per `Site`: `encounter`, `goal`, `pos`,
@@ -1827,7 +1831,7 @@ ids; some may be gone or salvage by now), `plan()`.
 | Field | Default | What |
 |---|---|---|
 | `spawn_radius` | 600 m | a site spawns when a player vessel comes this close (the plan's lazy spawning) |
-| `recall_radius` | 200 m | no armed awake enemy vessel this close to recall (GDR-0062, GDR-0068) |
+| `recall_radius` | 200 m | no armed awake enemy vessel this close to recall (GDR-0062, GDR-0068), unless the fleet is disarmed (GDR-0074) |
 
 The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) are constants in `voyage.rs`.
 
@@ -1955,6 +1959,20 @@ the content change (load average 6–9):
 | wardens_gate | 0% → 3% | 0% → 20% | 3% → **42%** | 3.1 → 8.9 / 4.1 → 11.3 |
 
 Scripted times 2.5–3.5 min per voyage (median); step time median 0.007–0.009 ms, p95 0.013–0.016 ms.
+
+**GDR-0074** (14 Oct 2026, report section "GDR-0074" in the same file). The emergency recall (a fleet without a
+working gun may always recall) ends the runs a disarmed starter used to spend chased until the 30 minutes ran out:
+the starter's *out of time* went from 8–19 of 60 per voyage to 0, the Runner's from 1–4 to 0–2 (escort setups keep
+3: an armed escort makes the fleet armed). The automaton cannon (rate 1.5 → 1.2, projectile 90 → 150 m/s, the same 1.2 damage per second, so a shot is
+1 hit point instead of 0.8 and takes a gun off in one hit) and `raider_basic` (attacks 3 s of every 9 instead of 5)
+changed together. Goal cleared and home of 60 (seeds 1–60), emergency recall in both columns:
+
+| Voyage | `rim_skiff` | `skiff_cannon` (two cannons for the lasers) | Halvex Runner | Runner + `rim_skiff` |
+|---|---|---|---|---|
+| yard_approach | 37 → 37 | 5 → **41** | 36 → 38 | 53 → 57 |
+| halvex_drift | 22 → 19 | 9 → 32 | 40 → 46 | 47 → 48 |
+| corran_reach | 9 → 10 | 5 → 21 | 27 → 40 | 39 → 43 |
+| wardens_gate | 2 → 2 | 1 → 11 | 12 → 17 | 24 → 41 |
 
 ## Driving the sim from the client
 
