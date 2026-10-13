@@ -157,7 +157,7 @@ pub struct PartState {
     pub clear: bool,
     /// Share of its power demand served this tick: 1 = full, between = partial output, 0 = off or no power.
     /// A consumer that asks for nothing shows the level its tier and weight are served at (see
-    /// [`crate::power::allocate`]); reactors and passive parts show 1.
+    /// [`crate::power::allocate`]); reactors show 1 (0 while idle), passive parts 1.
     pub power: f32,
     /// How hard it worked this tick, 0..1 (throttle × power for engines). Drives heat and output.
     pub work: f32,
@@ -1285,8 +1285,10 @@ impl Ship {
         self.pieces[k] = piece;
     }
 
-    /// One tick of the ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun
-    /// output. Reads this tick's actuator commands (`Piece::act`). No allocation once warmed up.
+    /// One tick of the ship systems: per piece the control pass (idle parts), power, shield regeneration, the
+    /// wrench (engines, RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's
+    /// authority for the next plan. Reads this tick's actuator commands (`Piece::act`). No allocation once
+    /// warmed up.
     pub fn update_systems(&mut self) {
         let Ship {
             design,

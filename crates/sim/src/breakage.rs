@@ -23,7 +23,8 @@ pub enum DamageOutcome {
     Ignored,
     /// The part survived with this many hit points.
     Damaged { hp_left: f32 },
-    /// The part was destroyed; `excess` is the damage beyond its hit points (for penetration later).
+    /// The part was destroyed; `excess` is the damage beyond its hit points (it carries on in penetrating shots
+    /// and ram crush).
     Destroyed { excess: f32 },
 }
 

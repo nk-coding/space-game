@@ -415,7 +415,8 @@ impl DesignReport {
 
 /// The design report of a blueprint (see the module docs). Pass the same (tuning-scaled) content and
 /// `SimConfig` the game flies with. Pure and deterministic; works on any in-memory blueprint (overlaps and the
-/// frame are not checked). `Err` only for unknown parts or materials.
+/// frame are not checked). `Err` for unknown parts or materials and for power
+/// weights or minimum levels out of range (`ShipDesign::compile`).
 pub fn design_report(
     content: &Content,
     blueprint: &Blueprint,

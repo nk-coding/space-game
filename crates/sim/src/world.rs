@@ -10,7 +10,8 @@
 //!    vessels; `vessel.rs`) runs if anything changed.
 //! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
 //!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
-//! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
+//! 5. Ship systems: per piece the control pass (idle parts), power, shield regeneration, the wrench (engines,
+//!    RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's authority.
 //! 6. Weapons (shields, projectiles, guns) and engine plumes, then breakage again.
 //! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT`, contacts become
 //!    `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back

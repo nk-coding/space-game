@@ -48,10 +48,10 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun mounts and their blockers, engine mounts with their plume lanes and paths), shared by `Arc` |
 | `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
 | `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
-| `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
+| `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `gun_works`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
 | `power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
-| `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line), `couples` (RCS couples), `assist` (last resort), `wrench_of` |
+| `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
 | `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
@@ -274,7 +274,8 @@ links. So "static lists filtered by alive" is always the current topology, and n
   nozzles only count parts of the same piece).
 - `pieces`: one per connected group = one rigid body. Each caches mass properties, colliders, its bounding
   radius, cores, power lists, the thruster table (engines + RCS nozzles), torque sources, allocation table, gun
-  mounts and its plume reach, rebuilt only when it loses a part; its authority is refreshed every tick.
+  mounts and its plume reach, rebuilt when it loses a part and when `Sim::set_config` changes a scale; its
+  authority is refreshed every tick.
 - Per-part caches (exposure, bonus-adjusted stats, heat constants) are updated only around a destroyed part
   (its linked neighbours, and their neighbours for bonuses). `Ship::verify_caches` checks this equals a full
   recompute (tested over 900 scenario ticks).
@@ -316,7 +317,8 @@ Tiers and weights with partial output (GDR-0014, decided by Niklas; implemented 
 
 Per piece and tick:
 
-- **Supply** = output of alive, non-overheated, non-idle reactors (with bonuses); 0 for a dark piece.
+- **Supply** = output of alive, non-overheated, non-idle reactors (with bonuses). `Piece::power.supply` shows
+  it on a dark, dormant or salvage piece too, but such a piece hands out nothing (the allocation gets 0).
 - **Demand** of each consumer = `draw × activity`. Activity: engines = throttle × rated-speed falloff; RCS pods =
   sum of their nozzles' throttle × falloff plus their couple share (capped at 1), so a thruster held at its
   rating idles; gyros =
@@ -1382,7 +1384,8 @@ GDR-0047).
 ## Damage and breakage
 
 - `Sim::apply_damage(ship, DamageTarget::Part(i) | Cell((x, y)), amount)` → `Ignored`, `Damaged { hp_left }`
-  or `Destroyed { excess }` (excess for penetration later). A destroyed part leaves the grid at once.
+  or `Destroyed { excess }` (the excess carries on in penetrating shots and ram crush). A destroyed part leaves
+  the grid at once; its collider stays until breakage is resolved (shots pass through it, see [Ray casts](#ray-casts)).
 - Damage comes from scripted commands, weapons, engine plumes ([Engine plumes](#engine-plumes)) and rams
   ([Collisions](#collisions-impacts-and-ramming-v1)).
 - `Sim::resolve_breakage()` (steps 3, 7 and 9 of every tick) processes each damaged piece once: drop dead parts,
@@ -1453,7 +1456,8 @@ report.flight_ready();                                            // no blocker 
 ```
 
 `design_report(content, blueprint, config) -> Result<DesignReport, String>` works on any in-memory blueprint
-(overlaps and the frame are not checked; `Err` only for unknown parts or materials). It builds the ship exactly
+(overlaps and the frame are not checked; `Err` for unknown parts or materials and for a power weight (the part's or
+its placement override) outside `(0, MAX_POWER_WEIGHT]` or a minimum level outside 0..1). It builds the ship exactly
 as `Sim::spawn_ship` does (`ShipDesign::compile`, then `Ship::new`: exposure, stats after bonuses, pieces, mass,
 colliders, consumer rows, thruster and RCS tables, gun mounts) and runs the sim's own code on the main piece:
 the control pass (`control::update`, the GDR-0044 idle order), the authority (`refresh_authority`, `Kin::of`)
@@ -1542,7 +1546,8 @@ the fusion reactor settle at 109% of their limit (consistent with [Heat](#heat-d
 out with the gyros working all the time the shield emitters overheat"). In combat it does not get there.
 
 **Device load** (GDR-0006). The estimate is a cost model per step phase, fitted with `sim_perf --calibrate`
-(10 copies of each design flying apart under pilot input with every gun firing, median step ÷ 10, split with
+(10 copies of each design 150 m apart flying in parallel along +y under pilot input with every gun firing,
+median step ÷ 10, split with
 `Sim::step_profiled`; native release on the dev VM, 12 Oct 2026, three runs agreeing within 3%):
 
 ```
