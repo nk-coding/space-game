@@ -57,6 +57,7 @@ pub mod salvage;
 pub mod scenario;
 pub mod ship;
 pub mod vessel;
+pub mod voyage;
 pub mod weapons;
 pub mod world;
 
@@ -86,6 +87,7 @@ pub use ship::{
     Wrench, inherited_velocity, producing, rated_falloff, thruster_wrench,
 };
 pub use vessel::{MAX_OWNERS, Owner, VesselInfo, VesselState, friendly};
+pub use voyage::{Site, SitePlan, SiteState, Spawn, Voyage, VoyagePlan, VoyageTuning};
 pub use weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
 pub use world::{DamageCommand, PartHit, ShipCommand, Sim, StepPhase, TickInputs};
 

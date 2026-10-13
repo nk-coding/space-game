@@ -19,7 +19,8 @@
 //!    (previous pose kept for interpolation); impacts above the ramming threshold crush inward from the
 //!    touching parts (none between vessels of one owner; shield bubbles covering the point absorb first), and
 //!    breakage is resolved once more.
-//! 8. `tick += 1`; debug builds store the state hash.
+//! 8. The voyage director, if a voyage is underway (`voyage.rs`): sites spawn, wake and clear.
+//! 9. `tick += 1`; debug builds store the state hash.
 
 use std::sync::Arc;
 
@@ -38,6 +39,7 @@ use crate::rng::{Pcg32, RngStreams, Stream};
 use crate::salvage::SalvageState;
 use crate::ship::{Body, Piece, Ship, ShipControls};
 use crate::vessel::{self, MindRow, Owner};
+use crate::voyage::Voyage;
 use crate::weapons::{BeamTrace, Bubble, Projectile};
 
 /// The phases of one [`Sim::step`], in order, for profiling tools ([`Sim::step_profiled`]).
@@ -162,6 +164,8 @@ pub struct Sim {
     pub(crate) mind_scratch: Vec<MindRow>,
     /// Loose fragments and the collect pass's buffer (`salvage.rs`).
     pub(crate) salvage: SalvageState,
+    /// The voyage underway, if any (`voyage.rs`).
+    pub(crate) voyage: Option<Box<Voyage>>,
 }
 
 impl Sim {
@@ -196,6 +200,7 @@ impl Sim {
             mind_dirty: false,
             mind_scratch: Vec::new(),
             salvage: SalvageState::default(),
+            voyage: None,
         }
     }
 
@@ -705,6 +710,8 @@ impl Sim {
             }
         }
         self.ram();
+        // The voyage director: sites spawn, wake and clear around the vessels as they are now.
+        self.direct_voyage();
 
         self.tick += 1;
         self.events_mark = self.events.len();
@@ -876,6 +883,9 @@ impl StateHash for Sim {
             p.hash_state(h);
         }
         self.salvage.hash_state(h);
+        if let Some(v) = &self.voyage {
+            v.hash_state(h);
+        }
         self.physics.hash_state(h);
     }
 }
