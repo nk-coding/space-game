@@ -30,6 +30,9 @@ rule is gone); shots pass through the shooter's own vessels; the flight computer
 can produce. See [Engine plumes](#engine-plumes), [Weapons](#weapons) and
 [Planning with what works](#planning-with-what-works).
 
+**Salvage v1 on 13 Oct 2026** (GDR-0063, track 7B): cargo per ship, collecting by flying over wrecks, core fragments
+and wrecks spawned as wrecks. See [Salvage](#salvage).
+
 No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm32-unknown-unknown` and
 `wasm32-wasip1`. Dependencies: `data` (content), `libm` (pinned `=0.2.16`, `arch` feature off), `rhai`
 (pinned `=1.26.1`, sandboxed; see [Rhai conditions](#rhai-conditions)) and `rapier2d` (pinned `=0.36.1`,
@@ -43,7 +46,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `rng` | `Pcg32` (reference PCG32), `splitmix64`, `Stream` (one per system), `RngStreams` |
 | `hash` | `StateHasher` (FNV-1a 64 over 32-bit words), `StateHash` trait, `fnv1a64` |
 | `ids` | `ShipId`, `PieceId` (monotonic `u32`, never reused), `IdAlloc` |
-| `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`, mind capacity per owner) |
+| `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`, mind capacity per owner, `SalvageTuning`) |
 | `control` | `ControlState`, the per-piece control capacity and idle pass (GDR-0044) |
 | `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun mounts and their blockers, engine mounts with their plume lanes and paths), shared by `Arc` |
 | `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
@@ -58,11 +61,12 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
-| `breakage` | `Ship::apply_damage`, `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
+| `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
+| `salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
-| `scenario` | the deterministic `core`, `flight`, `load` and `behavior` scenarios |
+| `scenario` | the deterministic `core`, `flight`, `load`, `behavior` and `salvage` scenarios |
 
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
 numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` measures its device-load model),
@@ -107,9 +111,11 @@ numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` m
    can push and turn, for the next plan).
 7. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
    (beams and pulses hit at once, projectiles spawn, recoil adds to the wrench), then every firing engine's plume
-   burns the first part in its path ([Engine plumes](#engine-plumes)); breakage is resolved again.
+   burns the first part in its path ([Engine plumes](#engine-plumes)); breakage is resolved again. Every
+   `SalvageTuning::interval` ticks collecting vessels take salvage, and what they stripped breaks up
+   ([Salvage](#salvage)).
 8. **Physics**: expired ghosts are cleared, this tick's wrenches replace the last ones (force rotated to world,
-   at the centre of mass), Rapier steps `DT` (4 substeps).
+   at the centre of mass), Rapier steps `DT` (4 substeps); loose fragments drift.
 9. **Impacts**: contacts of the step become `SimEvent::Impact` (closing speed from the velocities before the
    step), bodies are read back (the previous pose is kept for interpolation), impacts above the ramming
    threshold crush inward from the touching part on both sides (after shields; none within one owner), and
@@ -126,7 +132,8 @@ The rules (also in `src/math.rs`, enforced where possible):
 
 - Fixed step; no wall-clock anywhere. `Sim::time_seconds()` is display-only.
 - **RNG**: in-crate PCG32 (checked against the reference vector of pcg-random.org), so a dependency update can
-  never change the numbers. One stream per system (`Stream::Damage`, `Weapons`, `Debris`, `Ai`, `Scenario`),
+  never change the numbers. One stream per system (`Stream::Damage`, `Weapons`, `Debris`, `Ai`, `Scenario`,
+  `Encounter`: wreck damage at spawn and, later, the voyage director's sites),
   seeded with `splitmix64(world_seed ^ splitmix64(stream_id))` and using `stream_id` as the PCG sequence.
   Stream ids are part of the save/replay format: append only, never renumber. (Behaviors use no
   randomness.)
@@ -143,7 +150,8 @@ The rules (also in `src/math.rs`, enforced where possible):
   share, work and shield charge, and per piece its parts, flags, control load, ghost timer, frame
   origin, mass properties, body, power balance, consumer power settings (part, tier, weight, in allocation
   order), wrench, collider vertices, gun output, actuator commands (throttle, gimbal, RCS couple, torque) and
-  the last-resort turning state (`Piece::assist`); then every projectile; then Rapier's own state per body in key
+  the last-resort turning state (`Piece::assist`), and per ship the burned-out flag and the cargo; then every projectile; then
+  the loose salvage items; then Rapier's own state per body in key
   order (translation, rotation as cos/sin, linear and angular velocity, sleeping and ghost flags). Floats by
   exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug builds, on
   demand in release.
@@ -157,7 +165,7 @@ How it is checked:
 - `cargo test -p sim` (`tests/determinism.rs`): same seed → identical hash sequence (core 600 ticks, flight 900
   ticks); different seeds → different hashes and different runs; a cloned world continues identically; a 1e-6
   change in one part's hp changes the hash; incrementally maintained caches equal a full recompute.
-- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|load|behavior]` builds the `determinism`
+- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage]` builds the `determinism`
   example natively and for `wasm32-wasip1`, runs the wasm under Node's built-in WASI (`scripts/wasi-run.mjs`)
   and compares the per-tick hashes, printing the first divergent tick (exit 1). `--compare A.txt B.txt` compares
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
@@ -232,6 +240,8 @@ Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every bluep
   Rhai evaluations, 74 impacts (11 rams). Since the vessel model (12 Oct) the leader is the player's focus and
   the player's mind capacity is 8 cores, so some ship-mind vessels start dormant; counters in
   [Vessels](#determinism-and-scenarios).
+- `salvage`: wrecks spawned as wrecks, collectors, core fragments, a shrinking hold and a lost ship's cargo; see
+  [Salvage](#determinism-and-scenarios-1).
 
 For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
@@ -1356,6 +1366,145 @@ GDR-0047).
 - Chain reactions: `Ship::chain_reaction(part)` is the hook (does nothing yet); the plan is an `explosion`
   block in content.
 
+## Salvage
+
+Salvage v1 (13 Oct 2026; GDR-0063, track 7B of the first playable loop, `docs/plans/first-playable-loop.md` 3.4 and
+5.5). Code: `src/salvage.rs`. Every number is a **placeholder** (`SimConfig::salvage`); rules marked *lead default*
+were set by the salvage agent for Niklas to review.
+
+### Items and cargo
+
+- **Items** (`Item`): `Part { part, material }`, a whole part by content id (hull parts carry their armour
+  material), and `Fragment { part }`, what a destroyed part with a logic block leaves (the content id of that part).
+  Ordered: cargo lists and ties follow this order.
+- **Cargo units** (code rule): a part takes its footprint cells, `size.0 × size.1` (a slope its whole footprint;
+  `PartSpec::cargo_units`): a beam laser 2, a fusion reactor 4; a fragment 1.
+- **Value** (*lead default*; the sim must not depend on the career's research values): build points per cargo unit,
+  hull parts with their material's `build_point_factor` (`PartSpec::build_points`); a fragment is worth its part's
+  build points. The content's `salvage` block (track 7A) will say what an item is worth in research data and
+  programmable matter; the sim does not read it.
+- **The hold** (`Ship::cargo()`, `Cargo`): per item the count, the units each takes and its value per unit
+  (`Stack`), in item order (a `BTreeMap`), and `used()`. `Ship::cargo_capacity()`: the summed `cargo.capacity` of
+  the alive cargo parts of the controlling piece (`Piece::cargo_capacity`, summed in part order on piece rebuilds,
+  rounded down); 0 for salvage. Base content: cargo bay 4, cargo hold 20; the Runner and the two sample ships carry
+  8.
+- **A hold that shrinks** (a cargo part destroyed or split off): the lowest-value items go, one at a time (ties: the
+  last in item order first), until the load fits (`Sim::shed_cargo`, after each breakage of a vessel). They are gone,
+  not spilled (*lead default*).
+- **A lost vessel's ship keeps its cargo**: its wreck carries it (no capacity check once the ship is no vessel), and
+  a collector takes it before the wreck's parts. A vessel that splits off starts with an empty hold; the cargo stays
+  with the ship that keeps the controlling piece.
+
+### Collecting
+
+Every `interval` ticks (10, so at most 3 items a second per vessel), right after the weapons phase's breakage, each
+running vessel (`VesselState::Running`: not dormant, not dark) of an owner that collects (`collects`: the player
+only) with free units takes one item, in ship order:
+
+1. the nearest loose fragment within `reach` (5 m) of its hull (ties: the lower id); else
+2. the salvage pieces within reach, nearest hull first (ties: ship, then piece order), the first one with something
+   that fits: its ship's cargo if that ship is no vessel (a wreck's own cargo before its parts: the best item, ties
+   the first in item order), else the piece's best part (highest value per unit, ties the lowest part index).
+
+Salvage pieces are every piece that is no controlling piece: wrecks, split-off debris (the collector's own too) and
+the cored pieces of a burned-out derelict. Only what fits counts: with 2 units free a 4-unit fusion reactor waits and
+smaller parts go first; a full hold takes nothing.
+
+- **A stripped part** leaves through the destroy path without the destruction (`Ship::remove_part`, which
+  `apply_damage` shares): dead, out of the grid, its neighbours' exposure and bonuses refreshed, its piece re-checked;
+  no `PartDestroyed`, no chain reaction, no fragment. Breakage then runs as for any destroyed part (`PieceChanged`,
+  `Split`, `PieceDestroyed`): the wreck may break up further.
+- `SimEvent::Collected { ship, from, item, units, at }`: `from` is `Salvaged::Part { ship, piece, part }`,
+  `Cargo { ship }` or `Loose(id)`; `at` where the item was (world). It comes before the breakage events of the pass.
+- **Reach**, hull to hull: a broad test on bounding circles about the frame origins (`Piece::radius`), then the exact
+  distance between the two pieces' convex colliders in the collector's frame (corner to edge; 0 when a corner lies
+  inside the other); a fragment by its distance to the collector's colliders.
+- The pass runs before the physics step, so Rapier takes the stripped pieces' new mass properties in the same tick
+  (as for weapon damage).
+
+### Fragments
+
+- A part with a logic block (logic cores, automaton cores) **destroyed by damage** leaves a fragment (GDR-0063:
+  programmable matter to scoop): a `Loose` item (`id`, `item`, `units` 1, `value`, `pos`, `prev_pos`, `vel`,
+  `expires`) at the part's centroid with the velocity of that point of its piece (`v + ω × r`), made in
+  `Sim::resolve_breakage` before the piece is rebuilt. Which parts leave fragments is "a logic block" for now;
+  the content's `salvage` block may say more later.
+- **The cheapest representation**: a point in `Sim::loose()` (ascending `LooseId`, monotonic), no Rapier body, no
+  collisions, moved after the physics step by `pos += vel × DT` (exact IEEE operations), gone after
+  `fragment_ticks` (1800 = 60 s) if nobody collects it. Parts stripped by collectors and parts removed when a wreck
+  spawns leave none.
+
+### Wrecks spawned as wrecks
+
+`Sim::spawn_wreck(design, owner, body, damage)`: the ship spawns **burned out** (`Ship::is_burned_out`: no
+controlling piece, every piece salvage, and `form_vessels` skips it, so its cores never form a vessel and can be
+stripped intact), then `floor(damage × parts)` distinct parts (a partial Fisher–Yates shuffle on
+`Stream::Encounter`) are removed without destruction, and breakage splits it into pieces as usual. Events:
+`ShipSpawned`, then `Split` / `PieceChanged` / `PieceDestroyed`; no `PartDestroyed`, no `VesselFormed`, no fragments.
+A derelict's core shot later leaves a fragment like any other. `owner` is kept (`Ship::owner`) for salvage rights
+later; the wreck counts for nobody. Used by the salvage scenario now and the voyage director (track 7E) next.
+
+### Settings (`SimConfig::salvage`: `SalvageTuning`, placeholders, lead 13 Oct 2026)
+
+| Field | Default | What |
+|---|---|---|
+| `interval` | 10 ticks | one item per collecting vessel per pass; 0 turns collecting off |
+| `reach` | 5 m | hull to hull |
+| `fragment_ticks` | 1800 (60 s) | how long an uncollected fragment drifts |
+| `collects` | owner 0 only | owners whose running vessels collect (by `Owner.0`; owners beyond the table never) |
+
+### State hash
+
+Per ship the burned-out flag and the cargo (units in use; per item its kind, its content ids as bytes, count, units
+and value bits); after the projectiles the loose items (the id counter, then per item id, item, units, value,
+position, previous position, velocity and expiry tick); the salvage settings with the config; `Stream::Encounter`
+with the other streams.
+
+### Cost
+
+Every `interval` ticks, per running collecting vessel with free units: one bounding-circle test per loose item and
+salvage piece in the world; for those that pass, the two pieces' colliders pair by pair, skipping pairs whose
+bounding boxes are farther apart than the reach (or the best distance so far), then one sort of the few pieces in
+reach (a reused buffer). A full hold, a vessel without a hold and every other owner cost one check. Every tick:
+fragments move (one add each; usually none) and three empty checks per ship in breakage. No allocation once warm,
+except the item strings of what is collected (at most once per vessel per pass).
+
+Measured 13 Oct 2026 (native release, VM load average 9.4–10 from other agents' builds, 7 interleaved runs of each
+build, medians of the runs' medians and p95, ms):
+
+| What | Before (`dev` 4f4d68b) | With salvage |
+|---|---|---|
+| `sim_perf` raw throttles, 20 × 2000 parts (no collectors), step median / p95 | 0.370 / 0.567 | 0.375 / 0.504 |
+| `sim_perf` pilot + lock, step median / p95 | 0.394 / 0.542 | 0.322 / 0.508 |
+| `sim_perf` combat, step median / p95 | 0.608 / 2.486 | 0.631 / 2.002 |
+| `state_hash`, 20 × 2000 parts, mean | 0.329 | 0.324 |
+| load test, 20 ships (10 Runners collect), step median / p95 | 0.019 / 0.044 | 0.017 / 0.040 |
+
+All within the VM's noise. The collect pass alone (a throwaway timing, not in the repo: 20 Runners, 12 of them
+running, each beside a `sample_mid` wreck with 30 % of its parts gone, 600 ticks): the weapons phase on collect ticks
+took 0.0055 ms (median) against 0.0017 ms on the others with every wreck just out of reach; with the wrecks in reach
+(77 parts stripped while the holds filled) the collect ticks' p95 was 0.10–0.14 ms, most of it the rebuild of the
+stripped pieces (as for a destroyed part). Comparing every collider pair in full (the first version) cost 0.34 ms
+per pass in the out-of-reach case.
+
+### Determinism and scenarios
+
+`ScenarioKind::Salvage` (`--scenario salvage`): a wreck of every blueprint spawned as a wreck in a ring 30 m out
+(20–50 % of its parts gone, drifting and turning a little), one collector per ship-mind blueprint with a hold 45 m out
+(Runner, sample early, sample mid) flying to the nearest salvage (`Approach` on the piece, `Hold` on a fragment) every
+30 ticks, two raiders under `raider_basic` whose cores are shot out at ticks 120 and 240 (fragments), the second
+collector's first cargo bay destroyed at 450 (its hold sheds), and the first collector stopped and then lost at 540
+(its wreck keeps its cargo), which the last collector, idle until then, strips: fragments, the wreck's cargo, then
+its parts. Plus random hits (4 % a tick) and a blast every 300 ticks.
+
+13 Oct 2026, release builds, 1800 ticks, native x86_64 vs wasm32-wasip1 under Node 24: salvage, core, flight, load
+(20 ships) and behavior, seeds 42 and 7: **identical** (10 runs). Seed 42: salvage 16 items collected (19 units), 5
+from a wreck's cargo, 2 fragments of 6 spawned; seed 7: 22 items (24 units), 1 fragment.
+
+The default config lets the player collect, so the player's ships in the core, flight, load and behavior scenarios
+collect too: their hash streams change from tick 1 (the salvage settings, the sixth RNG stream and the cargo are
+hashed) and so do their fights (seed 42, 1800 ticks: core 24 items collected, flight 10, load 19, behavior 12).
+
 ## Driving the sim from the client
 
 ```rust
@@ -1397,6 +1546,9 @@ for ship in world.ships() { for piece in ship.pieces() {
   and a piece that becomes a vessel of its own keeps its `PieceId` under the new ship (`VesselFormed.from`).
 - Vessels: `world.focus(owner)`, `world.vessels(owner)` (fleet bar), `ShipCommand::Focus` / `Wake`; see
   [Vessels](#vessels).
+- Salvage: `ship.cargo()` and `ship.cargo_capacity()` (the HUD's `CARGO n / m`), `world.loose()` (draw fragments at
+  `prev_pos → pos` like projectiles), `SimEvent::Collected` (an effect from `at` into the collector; a piece it
+  emptied goes without a burst); see [Salvage](#salvage).
 - Drydock: `sim::design_report(&content, &blueprint, &config)` after every edit, with the content and config the
   game flies with; see [Design report (drydock)](#design-report-drydock).
 
