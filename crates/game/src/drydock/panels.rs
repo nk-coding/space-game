@@ -2,7 +2,7 @@
 //! 1280 × 720 logical pixels and up (larger windows scale it: `view::ui_scale`):
 //!
 //! ```text
-//! (o) SHIPYARD › DRYDOCK · 24×24 FRAME          ARMOR [STEEL 1][COMPOSITE 2].. | OVERLAY [HEAT][MASS][BONUS]..
+//! (o) SHIPYARD › DRYDOCK · FRIGATE FRAME         ARMOR [STEEL 1][COMPOSITE 2].. | OVERLAY [HEAT][MASS][BONUS]..
 //!     Halvex Runner
 //! [ Search parts      / ]   [PAINT B][FILL G][ERASE X][SELECT V][ROTATE Q E]   POWER  —   PEAK HEAT  —
 //! [HULL][POWER][WEAPONS]..                                                     THRUST/MASS — YAW —   ...
@@ -141,7 +141,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     });
                     tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
                         col.spawn((PanelText::Breadcrumb, label(fonts, "", 10.0, c(Tone::Label, 1.0))));
-                        col.spawn((PanelText::Name, number(fonts, "", 20.0, c(Tone::Number, 1.0))));
+                        super::blueprints::spawn_title(col, fonts, c(Tone::Number, 1.0), c(Tone::Dim, 1.0), c(Tone::Label, 0.3));
                     });
                 });
 
@@ -582,7 +582,7 @@ pub(super) fn sync_texts(
         s.clear();
         let tone = match *t {
             PanelText::Breadcrumb => {
-                s.push_str(&format!("SHIPYARD  ›  DRYDOCK  ·  {}×{} FRAME", design.frame().0, design.frame().1));
+                s.push_str(&format!("SHIPYARD  ›  DRYDOCK  ·  {}", super::blueprints::frame_name(content, design.frame())));
                 Tone::Label
             }
             PanelText::Name => {

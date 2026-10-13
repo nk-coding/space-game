@@ -9,6 +9,8 @@
 //! * [`view`]: the design drawn with the flight tiles, the frame overlay, the camera, `DrydockCursor`.
 //! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`).
 //! * [`report`]: [`report::DrydockReport`], the design's `sim::report` per revision.
+//! * [`library`], [`share`], [`blueprints`]: saving and the autosave, the BLUEPRINTS and EXPORT screens, share
+//!   codes and files, the editable name.
 //!
 //! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
 //! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
@@ -16,9 +18,12 @@
 //! part) and [`DrydockCursor`] (the cell under the pointer). Nothing here needs to change for that.
 
 pub mod actions;
+pub mod blueprints;
 pub mod design;
+pub mod library;
 pub mod panels;
 pub mod report;
+pub mod share;
 pub mod state;
 pub mod view;
 
@@ -61,6 +66,7 @@ impl Plugin for DrydockPlugin {
             .init_resource::<DrydockCursor>()
             .init_resource::<panels::Palette>()
             .add_message::<DrydockAction>()
+            .add_plugins(blueprints::BlueprintsPlugin)
             .configure_sets(
                 Update,
                 (DockSet::Input, DockSet::Apply, DockSet::Show)
