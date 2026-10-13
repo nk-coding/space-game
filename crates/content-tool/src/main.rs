@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use data::geometry::hull_loops;
-use data::{Content, Entry, Kind, Pack, Problem, Severity, Unlock, text_key};
+use data::{
+    Content, Entry, Kind, Material, Pack, Part, Problem, ResearchNode, Severity, Unlock, text_key,
+};
 use serde_json::{Value, json};
 
 mod wiki;
@@ -295,13 +297,46 @@ fn entry_json<T: Entry + serde::Serialize>(c: &Content, e: &T) -> Value {
     v
 }
 
-/// The research nodes (ids, load order) that unlock what `unlock` names.
-fn unlocked_by(c: &Content, unlock: &Unlock) -> Vec<String> {
+// Career lookups (export-json and the wiki), each in load order.
+
+/// The research nodes that unlock what `unlock` names.
+fn unlocked_by<'a>(c: &'a Content, unlock: &Unlock) -> Vec<&'a ResearchNode> {
     c.research
         .iter()
         .filter(|n| n.unlocks.contains(unlock))
-        .map(|n| n.id.clone())
         .collect()
+}
+
+/// The research nodes that need node `id` first.
+fn required_by<'a>(c: &'a Content, id: &str) -> Vec<&'a ResearchNode> {
+    c.research
+        .iter()
+        .filter(|n| n.requires.iter().any(|r| r == id))
+        .collect()
+}
+
+/// The research nodes in a family's tree.
+fn family_research<'a>(c: &'a Content, family: &str) -> Vec<&'a ResearchNode> {
+    c.research.iter().filter(|n| n.family == family).collect()
+}
+
+/// What feeds a family: the parts and the armour materials whose salvage gives its data.
+fn salvaged_from<'a>(c: &'a Content, family: &str) -> (Vec<&'a Part>, Vec<&'a Material>) {
+    let parts = c
+        .parts
+        .iter()
+        .filter(|p| p.salvage.as_ref().is_some_and(|s| s.family == family))
+        .collect();
+    let materials = c
+        .materials
+        .iter()
+        .filter(|m| m.salvage.as_ref().is_some_and(|s| s.family == family))
+        .collect();
+    (parts, materials)
+}
+
+fn ids<T: Entry>(entries: &[&T]) -> Vec<String> {
+    entries.iter().map(|e| e.id().to_string()).collect()
 }
 
 fn export(c: &Content) -> Value {
@@ -342,7 +377,7 @@ fn export(c: &Content) -> Value {
         .map(|e| {
             let mut v = entry_json(c, e);
             v["stat_lines"] = json!(c.material_stats(e));
-            v["unlocked_by"] = json!(unlocked_by(c, &Unlock::Material(e.id.clone())));
+            v["unlocked_by"] = json!(ids(&unlocked_by(c, &Unlock::Material(e.id.clone()))));
             v
         })
         .collect();
@@ -382,7 +417,7 @@ fn export(c: &Content) -> Value {
                 .map(|s| s.id.as_str())
                 .collect();
             v["used_by_ships"] = json!(used_by);
-            v["unlocked_by"] = json!(unlocked_by(c, &Unlock::Part(p.id.clone())));
+            v["unlocked_by"] = json!(ids(&unlocked_by(c, &Unlock::Part(p.id.clone()))));
             v
         })
         .collect();
@@ -391,7 +426,7 @@ fn export(c: &Content) -> Value {
         .iter()
         .map(|e| {
             let mut v = entry_json(c, e);
-            v["unlocked_by"] = json!(unlocked_by(c, &Unlock::Frame(e.id.clone())));
+            v["unlocked_by"] = json!(ids(&unlocked_by(c, &Unlock::Frame(e.id.clone()))));
             v
         })
         .collect();
@@ -401,27 +436,10 @@ fn export(c: &Content) -> Value {
         .iter()
         .map(|e| {
             let mut v = entry_json(c, e);
-            let parts: Vec<&str> = c
-                .parts
-                .iter()
-                .filter(|p| p.salvage.as_ref().is_some_and(|s| s.family == e.id))
-                .map(|p| p.id.as_str())
-                .collect();
-            let materials: Vec<&str> = c
-                .materials
-                .iter()
-                .filter(|m| m.salvage.as_ref().is_some_and(|s| s.family == e.id))
-                .map(|m| m.id.as_str())
-                .collect();
-            let research: Vec<&str> = c
-                .research
-                .iter()
-                .filter(|n| n.family == e.id)
-                .map(|n| n.id.as_str())
-                .collect();
-            v["salvaged_from_parts"] = json!(parts);
-            v["salvaged_from_materials"] = json!(materials);
-            v["research"] = json!(research);
+            let (parts, materials) = salvaged_from(c, &e.id);
+            v["salvaged_from_parts"] = json!(ids(&parts));
+            v["salvaged_from_materials"] = json!(ids(&materials));
+            v["research"] = json!(ids(&family_research(c, &e.id)));
             v
         })
         .collect();
@@ -430,13 +448,7 @@ fn export(c: &Content) -> Value {
         .iter()
         .map(|n| {
             let mut v = entry_json(c, n);
-            let required_by: Vec<&str> = c
-                .research
-                .iter()
-                .filter(|m| m.requires.contains(&n.id))
-                .map(|m| m.id.as_str())
-                .collect();
-            v["required_by"] = json!(required_by);
+            v["required_by"] = json!(ids(&required_by(c, &n.id)));
             v
         })
         .collect();

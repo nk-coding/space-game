@@ -122,6 +122,20 @@ fn every_content_item_has_a_page() {
             .map(|e| item_path(Kind::BehaviorNode, &e.id)),
     );
     want.extend(c.behaviors.iter().map(|e| item_path(Kind::Behavior, &e.id)));
+    want.extend(c.families.iter().map(|e| item_path(Kind::Family, &e.id)));
+    want.extend(c.research.iter().map(|e| item_path(Kind::Research, &e.id)));
+    want.extend(c.starts.iter().map(|e| item_path(Kind::Start, &e.id)));
+    // Every kind with entries has a list page and an index count (pages come from `wiki/page/`).
+    for kind in Kind::ALL {
+        assert!(
+            KINDS.iter().any(|(k, _)| *k == kind),
+            "kind {kind} has no list page"
+        );
+        assert!(
+            page(&site, "index.html").contains(&format!("href=\"{}\"", list_path(kind))),
+            "index lacks {kind}"
+        );
+    }
     want.extend(
         c.wiki
             .values()
@@ -152,6 +166,13 @@ fn output_is_byte_identical_on_two_runs() {
     let a = generate(&base());
     let b = generate(&base());
     assert!(a.files == b.files, "two runs differ");
+    for path in [
+        "family/logic.html",
+        "research/mind_expansion_1.html",
+        "start/rim_awakening.html",
+    ] {
+        assert!(a.files.contains_key(path), "no {path}");
+    }
 }
 
 #[test]
@@ -220,6 +241,109 @@ fn pages_link_both_ways() {
 }
 
 #[test]
+fn career_pages_link_both_ways() {
+    let site = generate(&base());
+    let has = |path: &str, needle: &str| {
+        assert!(page(&site, path).contains(needle), "{path} lacks {needle}")
+    };
+    let lacks = |path: &str, needle: &str| {
+        assert!(!page(&site, path).contains(needle), "{path} has {needle}")
+    };
+    // A family lists its nodes and what feeds it (parts and armour materials by their salvage); the nodes, parts
+    // and materials link back.
+    for node in ["tamed_core", "mind_expansion_1", "mind_expansion_2"] {
+        has(
+            "family/logic.html",
+            &format!("href=\"../research/{node}.html\""),
+        );
+        has(
+            &format!("research/{node}.html"),
+            "href=\"../family/logic.html\"",
+        );
+    }
+    has("family/logic.html", "href=\"../part/logic_core.html\"");
+    has(
+        "family/logic.html",
+        "href=\"../part/automaton_core.html\">Automaton core</a> <span class=\"badge locked\"",
+    );
+    has("family/hull.html", "href=\"../material/steel.html\"");
+    has(
+        "family/hull.html",
+        "href=\"../research/cruiser_drydock.html\"",
+    );
+    has(
+        "family/shields.html",
+        "<h2>Research</h2>\n<p class=\"none\">",
+    );
+    // A node: family, kind, cost in data and materials, what it needs, what needs it, what it unlocks.
+    let node = "research/mind_expansion_1.html";
+    has(node, "<dt>Kind</dt><dd><span title=");
+    has(node, ">Refinement</span>");
+    has(
+        node,
+        "10 <a href=\"../family/logic.html\">Logic and sensors</a> data<br>2 <a href=\"../material/programmable_matter.html\">",
+    );
+    has(
+        node,
+        "<h2>Requires</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/tamed_core.html\">",
+    );
+    has(
+        node,
+        "<h2>Required by</h2>\n<table class=\"list\">\n<tr><td class=\"name\"><a href=\"../research/mind_expansion_2.html\">",
+    );
+    has(node, "Mind capacity +1");
+    has(node, "The ship-mind runs 1 more logic core at once.");
+    has(
+        "research/tamed_core.html",
+        "<h2>Requires</h2>\n<p class=\"none\">",
+    );
+    has(
+        "research/tamed_core.html",
+        "href=\"../part/automaton_core.html\">Automaton core</a> <span class=\"badge locked\"",
+    );
+    has(
+        "research/composite_plating.html",
+        "href=\"../material/composite.html\"",
+    );
+    has(
+        "research/cruiser_drydock.html",
+        "href=\"../frame/cruiser.html\">Cruiser</a> <span class=\"badge locked\"",
+    );
+    // A node's texts link to entries, and those list it as mentioning them.
+    has(
+        "part/automaton_core.html",
+        "href=\"../research/tamed_core.html\"",
+    );
+    // A start: its ship drawn like a ship page and linked, the mind capacity with the research that adds to
+    // it, the open voyages as plain text (no voyage pages yet), and what a new game has.
+    let start = "start/rim_awakening.html";
+    has(start, "<figure class=\"hero\"");
+    has(start, "<svg class=\"ship\"");
+    has(start, "aria-label=\"Rim skiff\"");
+    has(
+        start,
+        "<dt>Ship</dt><dd><a href=\"../ship/rim_skiff.html\">",
+    );
+    has(start, "<dt>Mind capacity</dt><dd>2 logic cores</dd>");
+    has(start, "href=\"../research/mind_expansion_2.html\"");
+    has(start, "(<strong>4</strong> in all)");
+    has(start, "<li><code>yard_approach</code></li>");
+    lacks(start, "yard_approach.html");
+    has(start, "href=\"../part/pulse_laser.html\"");
+    lacks(start, "href=\"../part/beam_laser.html\"");
+    // List pages: research grouped by family, families with counts, starts as cards.
+    has("research.html", "href=\"family/logic.html\"");
+    has("research.html", "href=\"research/cruiser_drydock.html\"");
+    lacks("research.html", "href=\"family/shields.html\"");
+    has("families.html", "href=\"family/utility.html\"");
+    has("families.html", "3 research nodes");
+    has(
+        "starts.html",
+        "<a class=\"card\" href=\"start/rim_awakening.html\">",
+    );
+}
+
+#[test]
 fn locked_content_is_marked() {
     let site = generate(&base());
     for path in [
@@ -284,7 +408,8 @@ fn tricky_content() -> Content {
             "parts/p.ron",
             r#"(id: "tricky_part", name: "<Tricky & \"Part\">", summary: "Uses <b>bold</b> & [[part:radiator|<i>rad</i>]].",
                 description: "`<code>` and **<strong>**", lore: "'quoted' <lore>", tags: ["odd"],
-                category: "power", size: (1, 1), build_points: 1, mass: 4, hp: 1, power: (output: 1))"#,
+                category: "power", size: (1, 1), build_points: 1, mass: 4, hp: 1, power: (output: 1),
+                salvage: (family: "tricky_family", data: 2, materials: {"programmable_matter": 1}))"#,
         ),
         (
             "ships/s.ron",
@@ -294,6 +419,22 @@ fn tricky_content() -> Content {
         ),
         ("wiki/page/tricky_page.md", "# Title <script>alert(1)</script>\n\nText & <b>x</b>, see [[ship:tricky_ship]].\n"),
         ("wiki/part/tricky_part.md", "Prose with <div> & [[stat:mass]].\n"),
+        (
+            "families.ron",
+            r#"[(id: "tricky_family", name: "Family <f>", summary: "Fed by <odd> & [[part:tricky_part]].", color: "power")]"#,
+        ),
+        (
+            "research/r.ron",
+            r#"[(id: "tricky_node", name: "Node <n> & \"q\"", summary: "Costs <much>.", family: "tricky_family",
+                 kind: Variant, cost: (data: {"tricky_family": 1.5, "logic": 2}, materials: {"programmable_matter": 3}),
+                 requires: ["tamed_core"], unlocks: [Part("automaton_cannon"), MindCapacity(2)])]"#,
+        ),
+        (
+            "starts.ron",
+            r#"[(id: "tricky_start", name: "Start <s>", summary: "Begin & <go>.", ship: "tricky_ship", mind_capacity: 1,
+                 voyages: ["first_hop", "second_hop"])]"#,
+        ),
+        ("wiki/research/tricky_node.md", "Research prose <marquee> & [[family:tricky_family]].\n"),
     ])
     .unwrap();
     Content::load(&[base, m]).unwrap()
@@ -320,6 +461,13 @@ fn html_is_escaped() {
             "<mod>",
             "<&>",
             "kg<",
+            "<f>",
+            "<odd>",
+            "<n>",
+            "<much>",
+            "<s>",
+            "<go>",
+            "<marquee>",
         ] {
             assert!(!text.contains(raw), "{path} contains raw `{raw}`");
         }
@@ -347,6 +495,26 @@ fn html_is_escaped() {
     );
     assert!(page(&site, "index.html").contains("Tricky &lt;mod&gt; <code>tricky</code> 1 &amp; 2"));
     assert!(page(&site, "ships.html").contains("aria-label=\"Ship &lt;&amp;&gt;\""));
+    // The career kinds of a mod: escaped, linked, with plain voyage ids and the mod's family in a base family's
+    // page (the node costs logic data too).
+    let node = page(&site, "research/tricky_node.html");
+    assert!(node.contains("<h1>Node &lt;n&gt; &amp; &quot;q&quot;</h1>"));
+    assert!(node.contains(
+        "Research prose &lt;marquee&gt; &amp; <a href=\"../family/tricky_family.html\">Family &lt;f&gt;</a>."
+    ));
+    assert!(node.contains("<td class=\"name\">Mind capacity +2</td>"));
+    assert!(page(&site, "family/logic.html").contains("<h2>Also pays for</h2>"));
+    assert!(
+        page(&site, "family/tricky_family.html").contains(
+            "href=\"../part/tricky_part.html\">&lt;Tricky &amp; &quot;Part&quot;&gt;</a>"
+        )
+    );
+    let start = page(&site, "start/tricky_start.html");
+    assert!(start.contains("<h1>Start &lt;s&gt;</h1>"));
+    assert!(start.contains("<li><code>first_hop</code></li>\n<li><code>second_hop</code></li>"));
+    assert!(
+        page(&site, "starts.html").contains("<span class=\"sub\">Begin &amp; &lt;go&gt;.</span>")
+    );
 }
 
 #[test]

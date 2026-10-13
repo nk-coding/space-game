@@ -27,8 +27,9 @@ use std::path::Path;
 use data::geometry::hull_loops;
 use data::stats::{SHIP_STATS, format_number, with_unit};
 use data::{
-    Behavior, BehaviorNode, Better, Blueprint, Content, Delivery, Entry, Kind, Material, NodeRole,
-    ParamType, Part, PlacedShape, Selector, StatLine,
+    Behavior, BehaviorNode, Better, Blueprint, Content, Delivery, Entry, Family, Kind, Material,
+    NodeRole, ParamType, Part, PlacedShape, ResearchKind, ResearchNode, Selector, Start, StatLine,
+    Unlock,
 };
 use sim::DesignReport;
 
@@ -44,13 +45,16 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages.
-const KINDS: [(Kind, &str); 10] = [
+const KINDS: [(Kind, &str); 13] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
     (Kind::Ship, "Ships"),
     (Kind::Frame, "Frames"),
     (Kind::Faction, "Factions"),
+    (Kind::Research, "Research"),
+    (Kind::Family, "Families"),
+    (Kind::Start, "Starts"),
     (Kind::Behavior, "Behaviors"),
     (Kind::BehaviorNode, "Behavior nodes"),
     (Kind::Stat, "Stats"),
@@ -136,6 +140,15 @@ pub fn generate(c: &Content) -> Site {
     }
     for e in &c.behaviors {
         entry(Kind::Behavior, &e.id, &e.name, w.behavior_page(e));
+    }
+    for e in &c.families {
+        entry(Kind::Family, &e.id, &e.name, w.family_page(e));
+    }
+    for e in &c.research {
+        entry(Kind::Research, &e.id, &e.name, w.research_page(e));
+    }
+    for e in &c.starts {
+        entry(Kind::Start, &e.id, &e.name, w.start_page(e));
     }
     for p in c.wiki.values().filter(|p| p.kind == Kind::Page) {
         let title = c.name_of(Kind::Page, &p.id).unwrap_or(&p.id);
@@ -423,7 +436,8 @@ impl<'a> Wiki<'a> {
         self.link(root, kind.key(), id, None)
     }
 
-    /// An anchor plus the "Locked" badge for parts and materials the player has not unlocked (GDR-0054).
+    /// An anchor plus the "Locked" badge for parts, materials and frames a new game does not have (GDR-0054,
+    /// GDR-0063).
     fn a_badged(&self, root: &str, kind: Kind, id: &str) -> String {
         format!(
             "{}{}",
@@ -436,6 +450,7 @@ impl<'a> Wiki<'a> {
         match kind {
             Kind::Part => self.c.parts.get(id).is_some_and(|p| p.locked),
             Kind::Material => self.c.materials.get(id).is_some_and(|m| m.locked),
+            Kind::Frame => self.c.frames.get(id).is_some_and(|f| f.locked),
             _ => false,
         }
     }
