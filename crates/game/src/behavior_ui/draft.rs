@@ -8,7 +8,7 @@
 //! looked like when it was opened or last saved ([`BehaviorDraft::dirty`]), so the screen can say UNSAVED.
 
 use bevy::prelude::*;
-use data::behavior::{Program, TextError};
+use data::behavior::{Program, TextError, check_program};
 use data::behavior_edit::BehaviorEditor;
 use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 
@@ -43,6 +43,15 @@ pub struct Snapshot {
     pub body: String,
 }
 
+/// The lines of a behavior that check on their own (the target line too, if it does), opened in the editor: what
+/// the graph shows while the behavior's text has errors. `None` if no rule checks.
+fn checked_part(b: &Behavior, nodes: &Table<BehaviorNode>) -> Option<BehaviorEditor> {
+    let checks = |target: Option<&str>, rules: &[String]| Program::from_parts(target, rules).ok().filter(|p| check_program(p, nodes).is_empty());
+    let rules: Vec<String> = b.rules.iter().filter(|r| checks(None, std::slice::from_ref(*r)).is_some()).cloned().collect();
+    let target = b.target.as_deref().filter(|t| checks(Some(t), &rules).is_some());
+    BehaviorEditor::open(nodes, &checks(target, &rules)?).ok()
+}
+
 /// The behavior a design flies when nobody pilots it, for the editor: the one it names (a content template or one
 /// of the player's saved behaviors, also one with errors, so it can be fixed), else its faction's default. A
 /// name that is gone gives the faction's default, as flights do.
@@ -55,13 +64,17 @@ pub fn design_behavior<'a>(content: &'a Content, behaviors: &'a PlayerBehaviors,
 
 impl BehaviorDraft {
     /// A copy of a behavior (a content template or a saved one). Rules that don't check against the vocabulary
-    /// (a saved behavior with errors) open as their text with the errors, the program a minimal one until the
-    /// text is fixed. `None` only when the vocabulary has no action.
+    /// (a saved behavior with errors) open as their text with the errors; the program (what the graph shows) is
+    /// then the lines that check on their own until the text is fixed. `None` only when the vocabulary has no
+    /// action.
     pub fn from_behavior(b: &Behavior, nodes: &Table<BehaviorNode>) -> Option<Self> {
         let mut d = match b.program().ok().and_then(|p| BehaviorEditor::open(nodes, &p).ok()) {
             Some(editor) => Self::with_editor(Some(b.id.clone()), b.name.clone(), editor),
             None => {
-                let mut d = Self::empty(nodes)?;
+                let mut d = match checked_part(b, nodes) {
+                    Some(editor) => Self::with_editor(None, String::new(), editor),
+                    None => Self::empty(nodes)?,
+                };
                 d.source = Some(b.id.clone());
                 d.name.clone_from(&b.name);
                 d.set_text(&text_of(b));
@@ -247,6 +260,8 @@ mod tests {
         assert_eq!(d.source.as_deref(), Some(broken.as_str()));
         assert_eq!(d.text, text_of(b));
         assert_eq!((d.errors.len(), d.errors[0].line, d.errors[0].col), (1, 2, 6));
+        // The graph shows the lines that check: the target and the other rule.
+        assert_eq!(d.program().to_text(), format!("target nearest\n{}\n", b.rules[1]));
         assert!(!d.dirty());
         let fixed = d.text.replace("sheild", "shield");
         d.set_text(&fixed);
