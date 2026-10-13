@@ -367,7 +367,9 @@ fn draw_ships_fx(
                 let (w, h) = ship.grid().shape(th.part as usize).dims();
                 let ext = if dir.x.abs() > 0.5 { w } else { h } as f32;
                 let large = w.min(h) >= 2;
-                let nozzle = v2(th.point) - dir * (ext / 2.0 - 0.05);
+                // From the nozzle's mouth: the stern edge, or past it where the engine's drawing reaches (GDR-0069).
+                let overhang = view.visual.parts.iter().find(|p| p.index == th.part as u32).map_or(0.0, |p| p.overhang);
+                let nozzle = v2(th.point) - dir * (ext / 2.0 + overhang - 0.05);
                 let (idle, full) = if large { (0.75, 2.05) } else { (0.4, 1.15) };
                 let shorten = 1.0 - calm * (1.0 - style.plume.cruise_length);
                 let len = (idle + (full - idle) * level) * shorten * flicker;

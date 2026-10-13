@@ -3,11 +3,12 @@
 //!
 //! How (12 Oct 2026): icons are world-space meshes of the main camera, built by the same code as the ships
 //! (`ship_view::build_body`, the shared atlas material), placed over the node through the camera rig (screen →
-//! world) and scaled by 1 / zoom, at a z above every world layer. So a part icon in the palette *is* a flight
-//! tile: the same tile colour, seams, icon and icon glow, composited in sRGB like the ships (no colour shift,
+//! world) and scaled by 1 / zoom, at a z above every world layer. So a part icon in the palette is drawn like a
+//! flight tile: the same seams and glow, composited in sRGB like the ships (no colour shift,
 //! which bevy_ui's own image nodes would give, because bevy_ui does not encode for sRGB compositing), and sharp
 //! at any UI size because the atlas tier follows the icons too ([`UiAtlasNeed`]). A whole design (FLEET's ships)
-//! is the drydock's view of it, fitted into the node. Glyphs Barlow lacks (arrows, the play triangle, the search
+//! is the drydock's view of it, fitted into the node. A machine's tile shows its icon on the machine tile colour,
+//! where ships show its drawing on a hull-toned cell (GDR-0069). Glyphs Barlow lacks (arrows, the play triangle, the search
 //! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind.
 //!
 //! The world draws before bevy_ui, so UI nodes are drawn over icons: give the nodes behind an icon at most a
@@ -36,7 +37,8 @@ const Z_UI_ICON: f32 = 600.0;
 /// What a UI node shows.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub enum UiIcon {
-    /// A part as one flight tile (hull parts in the material's armour tone), fitted into the node.
+    /// A part as one tile (hull parts in the material's armour tone, machines as their icon on the machine tile
+    /// colour), fitted into the node.
     Part { part: String, material: Option<String> },
     /// A whole design drawn with the flight tiles (hull edge, nav lights, no aura), fitted into the node: FLEET's
     /// flagship, escorts and saved designs.
@@ -164,11 +166,13 @@ fn draw_icons(
             m.built = Some((icon.clone(), px_side, glow));
             m.dims = dims;
         }
-        // Parts and ships: cells fitted into the node; glyphs are built at the node's size in pixels.
+        // Parts and ships: cells fitted into the node; glyphs are built at the node's size in pixels. Part icons are
+        // stored at `art::ICON_DENSITY` in the atlas, so they need that many more pixels per cell from it.
         let px = match icon {
             UiIcon::Part { .. } | UiIcon::Ship(_) => {
                 let k = (size.x / m.dims.x).min(size.y / m.dims.y);
-                px_per_cell = px_per_cell.max(k);
+                let density = if matches!(icon, UiIcon::Part { .. }) { art::ICON_DENSITY } else { 1.0 };
+                px_per_cell = px_per_cell.max(k / density);
                 k
             }
             UiIcon::Glyph { .. } => 1.0,
@@ -185,8 +189,9 @@ fn draw_icons(
     }
 }
 
-/// One part as a single flight tile, centred on the origin in cells; and its footprint. No hull edge, aura,
-/// barrel or muzzle: an icon, not a ship.
+/// One part as a single tile, centred on the origin in cells; and its footprint. No hull edge, aura, barrel or
+/// muzzle: an icon, not a ship. A machine shows its icon on the machine tile colour (on ships it is its drawing on
+/// a hull-toned cell, GDR-0069).
 fn part_tile(
     content: &data::Content,
     style: &Style,
@@ -220,6 +225,9 @@ fn part_tile(
     let dv = design_visual(content, &bp, style).ok()?;
     let mut p = dv.parts.into_iter().next()?;
     p.gun = None;
+    if !def.hull {
+        (p.fill, p.art, p.overhang) = (style.machine_tile, None, 0.0);
+    }
     let dims = Vec2::new(def.size.0 as f32, def.size.1 as f32);
     let v = ShipVisual {
         parts: vec![p],
