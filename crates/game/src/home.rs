@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! THE SHIPYARD · RIM          RESEARCH  [lab]      FABRICATOR
-//! Rim skiff copy               COMING SOON  [dark]
+//! Rim skiff copy               1 READY  [lab]
 //!  [mooring]==.      .========================.
 //!             [mind]=|  BUILDING AREA (ship) =|  > > > ( GATE )
 //!  [mooring]=='      '========================'      VOYAGES
@@ -15,12 +15,13 @@
 //!   (`shipyard::fly`, 0.6 s, zooming around the point that keeps its place on screen) and then opens its screen:
 //!   the building area is the drydock (D; the camera lands exactly on the drydock's own view of the frame,
 //!   `DockCamera::opening_view`, so only its panels appear), the mind the BEHAVIOR screen (B), the tower and lane the
-//!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the gate the voyage map
-//!   (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, flies there too). Research (R) is inert until its screen exists (track 7G); the fabricator and the salvage bay are dark.
+//!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the lab RESEARCH (R,
+//!   `research/`), the gate the voyage map (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, flies there too).
+//!   The fabricator and the salvage bay are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
 //!   place (corner brackets, a brighter title).
 //! * **Coming back** from a screen the camera starts on its place (the drydock's last view, the mind, the test
-//!   range; FLEET's moorings when it closes) and flies back out to the yard.
+//!   range, the lab; FLEET's moorings when it closes) and flies back out to the yard.
 //! * **Labels** are small UI text placed over the world (the sketch's), shown while the camera rests on the yard.
 //! * **Notes** bottom right: what the career has to say (a new game, a save kept as it is, content that changed,
 //!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
@@ -43,6 +44,7 @@ use crate::fleet::{self, Fleet};
 use crate::flight_hud::HudFonts;
 use crate::fx::{FxFlush, FxQueue, FxRegions};
 use crate::mode::AppMode;
+use crate::research;
 use crate::scene::{Launch, Scene};
 use crate::shipyard::fly::{Fly, View};
 use crate::shipyard::layout::{Align, Layout, Place, fit};
@@ -76,6 +78,8 @@ pub enum HomeAction {
     Fleet,
     /// The gate: the voyage map (`map/`).
     Voyages,
+    /// The lab: the research screen.
+    Research,
 }
 
 /// A place's key, if it has one (shown after its title while it works).
@@ -91,7 +95,7 @@ pub fn key_of(place: Place) -> Option<(KeyCode, &'static str)> {
     }
 }
 
-/// What a place opens; `None`: not yet (research until track 7G, the dark buildings).
+/// What a place opens; `None`: not yet (the dark buildings).
 pub fn action_of(place: Place) -> Option<HomeAction> {
     match place {
         Place::Drydock => Some(HomeAction::Drydock),
@@ -99,7 +103,8 @@ pub fn action_of(place: Place) -> Option<HomeAction> {
         Place::TestRange => Some(HomeAction::TestRange),
         Place::Fleet => Some(HomeAction::Fleet),
         Place::Voyages => Some(HomeAction::Voyages),
-        Place::Research | Place::Fabricator | Place::SalvageBay => None,
+        Place::Research => Some(HomeAction::Research),
+        Place::Fabricator | Place::SalvageBay => None,
     }
 }
 
@@ -109,6 +114,7 @@ fn place_of(mode: AppMode) -> Option<Place> {
         AppMode::Drydock => Some(Place::Drydock),
         AppMode::Behavior => Some(Place::Behavior),
         AppMode::Flight => Some(Place::TestRange),
+        AppMode::Research => Some(Place::Research),
         AppMode::Map => Some(Place::Voyages),
         AppMode::Home => None,
     }
@@ -383,8 +389,8 @@ fn clicks(
     }
 }
 
-/// D, B, T, F, V (R waits for its screen): not while a text field has the keyboard, and not with Ctrl or Cmd
-/// held (Ctrl+D is the browser's bookmark key), as the drydock's shortcuts. The debrief's VOYAGE MAP acts as V.
+/// D, B, T, F, R, V: not while a text field has the keyboard, and not with Ctrl or Cmd held (Ctrl+D is the browser's
+/// bookmark key), as the drydock's shortcuts. The debrief's VOYAGE MAP acts as V.
 #[allow(clippy::too_many_arguments)]
 fn keys(
     keys: Res<ButtonInput<KeyCode>>,
@@ -480,6 +486,7 @@ fn apply(
         match a {
             HomeAction::Drydock => next.set(AppMode::Drydock),
             HomeAction::Behavior => next.set(AppMode::Behavior),
+            HomeAction::Research => next.set(AppMode::Research),
             HomeAction::TestRange => {
                 scene.launch = Some(Launch::Range);
                 next.set(AppMode::Flight);
@@ -574,8 +581,8 @@ fn place_labels(
     }
 }
 
-/// Titles and the lines under them: the frame's name in the building area's, FLEET's cores, the lit and dark
-/// buildings; a hovered place's title brightens.
+/// Titles and the lines under them: the frame's name in the building area's, FLEET's cores, what research can
+/// pay for now, the lit and dark buildings; a hovered place's title brightens.
 #[allow(clippy::too_many_arguments)]
 fn sync_titles(
     yard: Res<Yard>,
@@ -623,7 +630,11 @@ fn sync_titles(
                 let cores = fleet_cores(&content.0, design.blueprint(), &escorts.0);
                 (format!("MOORINGS  ·  CORES {cores} / {}", granted.mind_capacity), if cores > granted.mind_capacity { Tone::Coral } else { Tone::Violet })
             }
-            Place::Research => ("COMING SOON".into(), Tone::Dim),
+            Place::Research => match research::tree::ready(&content.0, career.career()).len() {
+                0 if yard.lights.research => ("NOTHING READY".into(), Tone::Label),
+                0 => ("NO DATA YET".into(), Tone::Dim),
+                n => (format!("{n} READY"), Tone::Gold),
+            },
             Place::Voyages => {
                 let open = crate::voyage::default_voyage(career.career(), &content.0);
                 match open.and_then(|v| content.0.voyages.get(v)) {
@@ -729,7 +740,12 @@ mod tests {
         assert_eq!(app.world().resource::<Scene>().launch, Some(Launch::Range));
         app.update();
         assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Flight);
-        for (action, mode) in [(HomeAction::Drydock, AppMode::Drydock), (HomeAction::Behavior, AppMode::Behavior), (HomeAction::Voyages, AppMode::Map)] {
+        for (action, mode) in [
+            (HomeAction::Drydock, AppMode::Drydock),
+            (HomeAction::Behavior, AppMode::Behavior),
+            (HomeAction::Research, AppMode::Research),
+            (HomeAction::Voyages, AppMode::Map),
+        ] {
             let mut app = self::app();
             app.world_mut().write_message(action);
             app.update();
@@ -739,8 +755,8 @@ mod tests {
         }
     }
 
-    /// D, B, T, F and V lead to the drydock, the BEHAVIOR screen, the test range, FLEET and the voyage map; R (research)
-    /// is inert until its screen exists; every key is one place's, every action one place's.
+    /// D, B, T, F, R and V lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research and the voyage
+    /// map; every key is one place's, every action one place's.
     #[test]
     fn keys_and_places_map_to_screens() {
         let by_key = |k: KeyCode| Place::ALL.into_iter().find(|p| key_of(*p).is_some_and(|(key, _)| key == k));
@@ -750,8 +766,8 @@ mod tests {
         assert_eq!(screen(KeyCode::KeyT), Some(HomeAction::TestRange));
         assert_eq!(screen(KeyCode::KeyF), Some(HomeAction::Fleet));
         assert_eq!(screen(KeyCode::KeyV), Some(HomeAction::Voyages));
-        assert_eq!((by_key(KeyCode::KeyR), screen(KeyCode::KeyR)), (Some(Place::Research), None));
         assert_eq!(by_key(KeyCode::KeyV), Some(Place::Voyages));
+        assert_eq!((by_key(KeyCode::KeyR), screen(KeyCode::KeyR)), (Some(Place::Research), Some(HomeAction::Research)));
         for p in Place::ALL {
             if let Some((k, _)) = key_of(p) {
                 assert_eq!(by_key(k), Some(p), "{p:?}");
@@ -763,13 +779,19 @@ mod tests {
         }
         assert_eq!((key_of(Place::Fabricator), action_of(Place::SalvageBay)), (None, None));
         // Every screen goes back home onto its place.
-        for (mode, place) in [(AppMode::Drydock, Place::Drydock), (AppMode::Behavior, Place::Behavior), (AppMode::Flight, Place::TestRange), (AppMode::Map, Place::Voyages)] {
+        for (mode, place) in [
+            (AppMode::Drydock, Place::Drydock),
+            (AppMode::Behavior, Place::Behavior),
+            (AppMode::Flight, Place::TestRange),
+            (AppMode::Research, Place::Research),
+            (AppMode::Map, Place::Voyages),
+        ] {
             assert_eq!(place_of(mode), Some(place));
         }
     }
 
     /// A working place starts a flight there (its screen opens when the camera arrives); another one during the
-    /// flight changes nothing; the inert places don't fly.
+    /// flight changes nothing; the inert places don't fly, the lab does.
     #[test]
     fn a_key_flies_there_then_opens_the_screen() {
         let mut visit = Visit::default();
@@ -785,10 +807,13 @@ mod tests {
         assert!(matches!(visit.phase, Phase::Flying { to: Some(Place::Drydock), .. }));
         // Inert places don't fly.
         let mut rest = Visit::default();
-        go(Place::Research, &mut rest, &yard, &window, &rig, &dock, None);
+        go(Place::Fabricator, &mut rest, &yard, &window, &rig, &dock, None);
         assert!(matches!(rest.phase, Phase::Yard));
+        go(Place::Research, &mut rest, &yard, &window, &rig, &dock, None);
+        assert!(matches!(rest.phase, Phase::Flying { to: Some(Place::Research), .. }));
         // The gate flies (the voyage map opens on arrival).
-        go(Place::Voyages, &mut rest, &yard, &window, &rig, &dock, None);
-        assert!(matches!(rest.phase, Phase::Flying { to: Some(Place::Voyages), .. }));
+        let mut gate = Visit::default();
+        go(Place::Voyages, &mut gate, &yard, &window, &rig, &dock, None);
+        assert!(matches!(gate.phase, Phase::Flying { to: Some(Place::Voyages), .. }));
     }
 }
