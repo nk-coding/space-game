@@ -173,12 +173,12 @@ Labels, units and precision come from content (`stats.ron`: the `SHIP_STATS` ids
 | THRUST/MASS | `flight.accel[0]` (forward) | `10.3` (no unit, to fit) | teal; coral without forward thrust |
 | YAW | `flight.yaw / thrust[0]` (the thrust line's offset from the centre of mass), `yaw_balanced` | `Balanced` (offset ≤ `BALANCED_ARM` = 0.05 m), `Pulls left` (counter-clockwise), `Pulls right`; `—` without forward thrust | teal balanced; gold if the gyros and gimbals hold the pull, coral if not |
 | FIREPOWER | `firepower` | `8.3/s` | white |
-| CARGO | `cargo` | `4 units` | white |
+| CARGO | `cargo` | `8 units` | white |
 | CONTROL | `control.load / capacity` | `18 / 32`, violet bar | violet; coral and over 100 % when parts idle |
 | DEVICE LOAD | `device.class` | `Light`, `Moderate`, `Heavy`, `Too heavy` | teal, teal, gold, coral |
 
 **TOP SPEED, TURN 90°, MASS and BUILD POINTS** sit in a compact block under the main grid: the same two
-columns, smaller type (8 px labels, 12.5 px values), no bars, units shown (`22 m/s`, `0.8 s`, `107 t`, `150 BP`;
+columns, smaller type (8 px labels, 12.5 px values), no bars, units shown (`22 m/s`, `0.8 s`, `106 t`, `132 BP`;
 TURN `—` in coral when the design can't turn). Chosen over a hover detail because it is always visible, works
 on touch and costs about 40 px of the right panel. A bar over 100 % (power deficit, overheating, over the control
 capacity) fills its track and a white notch marks 100 % (`ui_kit::ValueBar`, share > 1).
@@ -215,10 +215,10 @@ changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom
   its limit, coral from `RUNS_HOT_MAX`, more opaque the hotter (`overlays::heat_tint`); parts over their limit
   outlined (gold while they only run hot, coral above).
 - **MASS**: every part of the main piece shaded white by its mass per cell (content mass in its material over
-  its area, from faint for the lightest to strongest for the densest); the centre of mass (a dark disc with the quartered white symbol and a
-  cross); the forward thrust line (dashed teal, with an arrow) through `com.x + yaw / thrust`; when it misses
-  the centre of mass, a curved arrow above it showing which way full thrust turns the ship (gold if held, coral
-  if not).
+  its area, from faint for the lightest to strongest for the densest); the centre of mass (a dark disc with the
+  quartered white symbol and a cross); the forward thrust line (dashed teal, with an arrow) through
+  `com.x + yaw / thrust`; when it misses the centre of mass, a curved arrow above it showing which way full
+  thrust turns the ship (gold if held, coral if not).
 - **BONUS**: one gold link per source and target pair across the side they share (the neighbouring cell pair
   nearest the middle of the two parts), with a gold diamond on a dark backing on the side (the concept board's
   links, the mockup's diamonds).
@@ -227,7 +227,8 @@ changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom
 - **ARCS**: every gun's line of fire to its range (clear: dashed weapons cyan with an end tick; blocked: coral up
   to the first blocker, a cross there, the blockers outlined); every engine's plume lanes to their reach (a soft
   propulsion-teal lane, dashed centre line and end tick; a lane that burns an own part: coral, a cross where it
-  hits, the part outlined). Ranges reach far beyond a frigate frame (45–75 m): the lines run under the veil.
+  hits, the part outlined). Ranges reach far beyond a frigate frame (45–75 m): outside the frame the lines fade
+  to 30 % (and run under the veil outside the grid viewport).
 
 **Issue marks** (always, overlays on or off): a small triangle in the top-right corner of the bounding box of
 every part an issue names: coral for blocked guns, parts a plume burns, parts that fall off and parts
