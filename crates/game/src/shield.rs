@@ -2,15 +2,16 @@
 //! brightens towards a soft-glowing rim, a slow shimmer, a ripple from every hit, flicker when low, and a
 //! shatter when the bubble collapses. Drawn procedurally by `shield.wesl` (no textures).
 //!
-//! Batching (ADR-0029): every bubble of every ship is a quad in a world-space mesh with **one** material: two
-//! meshes in all, one per layer, so all bubbles are two draw calls. The focused vessel's bubbles draw above it
-//! ([`Z_FOCUS_BUBBLES`]), every other bubble on one layer above every other ship and below the focus
-//! ([`Z_BUBBLES`]): the focus flying over another ship's bubble stays on top of it. The meshes are rewritten in
-//! place every frame (like `fx.rs`); each quad carries its bubble's state in vertex attributes (offset from the
+//! Batching (ADR-0029): every bubble of every ship is a quad in **one** world-space mesh with one material, so
+//! all bubbles are one draw call, after every ship ([`Z_BUBBLES`]). Each quad's vertices carry the depth of its
+//! piece's draw layer plus `ship_view::BUBBLE_DZ` (the focused vessel's: `Z_FOCUS` plus it), and the lit ship
+//! tiles write depth (an opaque mesh, `ship_view`): a bubble is hidden under the tiles of every ship above its
+//! own and shows over every ship below, as if it were drawn between the layers. The mesh is rewritten in place
+//! every frame (like `fx.rs`); each quad carries its bubble's state in vertex attributes (offset from the
 //! centre, radius, seed, charge, presence, shatter progress, up to [`MAX_HITS`] hits). The material only holds
 //! the style tokens and never changes; the shader animates from `globals.time`. The bubbles blend with `max`
-//! (colour and alpha), so overlapping bubbles of one ship never add up to bright lenses, and drawing order inside
-//! a layer does not matter.
+//! (colour and alpha), so overlapping bubbles never add up to bright lenses, and the order of the quads does not
+//! matter.
 //!
 //! State lives here, keyed by `(ShipId, emitter part)`, so a piece view rebuilt in the middle of a ripple or a
 //! shatter (a part destroyed by the same shot) keeps playing it. Hits arrive from `sim_bridge::apply_events`.
@@ -32,17 +33,13 @@ use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dKey, Material2dPipe
 use sim::{PartIdx, ShipId, Stat};
 
 use crate::RenderToggles;
-use crate::scene::PilotFocus;
-use crate::ship_view::PieceView;
+use crate::ship_view::{BUBBLE_DZ, PieceView};
 use crate::sim_bridge::SimWorld;
 use crate::style::{ShieldStyle, Style};
 
-/// Every bubble but the focus's: above every other ship (z 10..89), below the focus (`ship_view::Z_FOCUS`).
-const Z_BUBBLES: f32 = 95.0;
-/// The focused vessel's bubbles: above it, below weapons and sparks (`fx::Z_WEAPONS`).
-const Z_FOCUS_BUBBLES: f32 = 200.0;
-/// The layers: others, focus.
-const LAYERS: usize = 2;
+/// The bubble mesh draws after every ship (the focus is at `ship_view::Z_FOCUS`), below weapons and sparks
+/// (`fx::Z_WEAPONS`); its quads' depths are their pieces' layers.
+const Z_BUBBLES: f32 = 200.0;
 /// Hits a bubble shows at once; a new hit replaces the oldest.
 pub const MAX_HITS: usize = 4;
 /// A hit this close (seconds, angle) to a younger one only strengthens it: a beam hits every tick.
@@ -199,9 +196,9 @@ impl Bubble {
 pub struct ShieldBubbles {
     bubbles: BTreeMap<(ShipId, PartIdx), Bubble>,
     frame: u32,
-    /// Per layer: the mesh holds nothing (skip rewriting it while it stays empty).
-    empty: [bool; LAYERS],
-    scratch: [Scratch; LAYERS],
+    /// The mesh holds nothing (skip rewriting it while it stays empty).
+    empty: bool,
+    scratch: Scratch,
 }
 
 impl ShieldBubbles {
@@ -257,13 +254,14 @@ impl Scratch {
         self.idx.clear();
     }
 
-    /// One quad of half-size `half` around `centre`; every corner carries the bubble's data.
-    fn quad(&mut self, centre: Vec2, half: f32, bubble: [f32; 4], state: [f32; 4], hits: [[f32; 4]; MAX_HITS]) {
+    /// One quad of half-size `half` around `centre` (its z relative to the mesh: the depth it is tested at); every
+    /// corner carries the bubble's data.
+    fn quad(&mut self, centre: Vec3, half: f32, bubble: [f32; 4], state: [f32; 4], hits: [[f32; 4]; MAX_HITS]) {
         let base = self.pos.len() as u32;
         for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
             let off = Vec2::new(sx, sy) * half;
-            let p = centre + off;
-            self.pos.push([p.x, p.y, 0.0]);
+            let p = centre + off.extend(0.0);
+            self.pos.push(p.to_array());
             self.bubble.push([off.x, off.y, bubble[2], bubble[3]]);
             self.state.push(state);
             for (k, h) in hits.iter().enumerate() {
@@ -275,7 +273,7 @@ impl Scratch {
 
     /// A mesh must keep its layout: an empty frame is one degenerate triangle.
     fn degenerate(&mut self) {
-        self.quad(Vec2::ZERO, 0.0, [0.0; 4], [0.0; 4], [[0.0, 0.0, 1.0, 0.0]; MAX_HITS]);
+        self.quad(Vec3::ZERO, 0.0, [0.0; 4], [0.0; 4], [[0.0, 0.0, 1.0, 0.0]; MAX_HITS]);
         self.idx.truncate(3);
     }
 
@@ -314,9 +312,9 @@ fn put4(mesh: &mut Mesh, attr: MeshVertexAttribute, data: &[[f32; 4]]) {
 // ---------------------------------------------------------------------------------------------------------
 // Plugin and systems
 
-/// The bubble meshes: others, focus.
+/// The bubble mesh.
 #[derive(Resource)]
-struct BubbleMeshes([Handle<Mesh>; LAYERS]);
+struct BubbleMesh(Handle<Mesh>);
 
 pub struct ShieldPlugin;
 
@@ -343,35 +341,26 @@ fn setup(
     mut bubbles: ResMut<ShieldBubbles>,
 ) {
     let material = materials.add(BubbleMaterial::new(&style.shield));
-    let handles = [Z_BUBBLES, Z_FOCUS_BUBBLES].map(|z| {
-        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
-        let mut empty = Scratch::default();
-        empty.degenerate();
-        empty.write(&mut mesh);
-        let mesh = meshes.add(mesh);
-        commands.spawn((
-            Mesh2d(mesh.clone()),
-            MeshMaterial2d(material.clone()),
-            Transform::from_xyz(0.0, 0.0, z),
-            NoFrustumCulling,
-        ));
-        mesh
-    });
-    bubbles.empty = [true; LAYERS];
-    commands.insert_resource(BubbleMeshes(handles));
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut empty = Scratch::default();
+    empty.degenerate();
+    empty.write(&mut mesh);
+    let mesh = meshes.add(mesh);
+    commands.spawn((Mesh2d(mesh.clone()), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, Z_BUBBLES), NoFrustumCulling));
+    bubbles.empty = true;
+    commands.insert_resource(BubbleMesh(mesh));
 }
 
 /// Every frame: follows each emitter's state in the sim, ages the animations and writes the bubble mesh.
 #[allow(clippy::too_many_arguments)]
 fn draw_bubbles(
     world: Res<SimWorld>,
-    focus: Res<PilotFocus>,
     time: Res<Time>,
     toggles: Res<RenderToggles>,
     style: Res<Style>,
     views: Query<(&PieceView, &Transform)>,
     mut bubbles: ResMut<ShieldBubbles>,
-    mesh: Res<BubbleMeshes>,
+    mesh: Res<BubbleMesh>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let dt = time.delta_secs().min(0.1);
@@ -379,13 +368,11 @@ fn draw_bubbles(
     let state = &mut *bubbles;
     state.frame = state.frame.wrapping_add(1);
     let frame = state.frame;
-    state.scratch.iter_mut().for_each(Scratch::clear);
+    state.scratch.clear();
 
     for (view, tf) in &views {
         let Some(ship) = world.sim.ship(view.ship) else { continue };
         let Some(piece) = ship.piece(view.piece) else { continue };
-        // The same test as the piece's draw layer (`ship_view::sync_piece_views`).
-        let layer = usize::from(focus.0 == Some(view.ship) && piece.controlled);
         let rot = Mat2::from_angle(tf.rotation.to_euler(EulerRot::ZYX).0);
         for p in &view.visual.parts {
             let Some(radius) = p.shield_radius.filter(|r| *r > 0.0) else { continue };
@@ -421,7 +408,9 @@ fn draw_bubbles(
             let r = if shatter > 0.0 { radius } else { radius * (0.85 + 0.15 * rise) };
             let reach = if shatter > 0.0 { r * SHATTER_REACH } else { 0.0 };
             let half = r + reach + 4.0 * s.glow_width + 0.1;
-            let centre = tf.transform_point(view.visual.to_local(p.center).extend(0.0)).truncate();
+            // z: the piece's draw layer (`sync_piece_views` posed it; `Z_FOCUS` for the focus) plus BUBBLE_DZ, in
+            // the mesh's frame: depth-tested against the opaque tiles of every ship.
+            let centre = tf.transform_point(view.visual.to_local(p.center).extend(0.0)) + Vec3::Z * (BUBBLE_DZ - Z_BUBBLES);
             let mut hits = [[0.0, 0.0, 1.0, 0.0]; MAX_HITS];
             for (k, h) in b.hits.iter().enumerate() {
                 if let Some(h) = h {
@@ -429,23 +418,20 @@ fn draw_bubbles(
                     hits[k] = [d.x, d.y, (h.age / s.hit_seconds).min(1.0), h.power];
                 }
             }
-            state.scratch[layer].quad(centre, half, [0.0, 0.0, r, b.seed], [b.charge, b.presence, shatter, 0.0], hits);
+            state.scratch.quad(centre, half, [0.0, 0.0, r, b.seed], [b.charge, b.presence, shatter, 0.0], hits);
         }
     }
     state.bubbles.retain(|_, b| b.seen == frame);
 
-    for (k, handle) in mesh.0.iter().enumerate() {
-        let sc = &mut state.scratch[k];
-        let empty = sc.idx.is_empty();
-        if empty && state.empty[k] {
-            continue;
-        }
-        if empty {
-            sc.degenerate();
-        }
-        state.empty[k] = empty;
-        if let Some(mut m) = meshes.get_mut(handle) {
-            sc.write(&mut m);
-        }
+    let empty = state.scratch.idx.is_empty();
+    if empty && state.empty {
+        return;
+    }
+    if empty {
+        state.scratch.degenerate();
+    }
+    state.empty = empty;
+    if let Some(mut m) = meshes.get_mut(&mesh.0) {
+        state.scratch.write(&mut m);
     }
 }

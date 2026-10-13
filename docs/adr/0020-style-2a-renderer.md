@@ -44,3 +44,10 @@ lists "glow on everything, bloom as a default" under Avoid.
 bias, `crates/game/src/atlas.wesl`) instead of `ColorMaterial`, and every new tier is a new image that the
 material is switched to one frame later. Until then the material kept sampling the start atlas (64 px/cell) for
 the whole session, which made icons look pixelated at high zoom (`docs/client.md` "Atlas").
+
+Note (13 Oct 2026): a lit piece is drawn as **two** meshes: its seams and tiles (alpha 1) in the opaque pass with
+an opaque twin of `AtlasMaterial`, writing depth, and everything else in the blended body mesh as before; dark
+pieces keep one blended mesh. The depth lets every shield bubble sit between the ship layers
+([ADR-0029](0029-shield-bubbles-batched-procedural-mesh.md) note of the same day). A new atlas tier is uploaded a
+band of rows at a time as the rasteriser finishes them, instead of in one frame (`docs/client.md` "The atlas at
+high zoom").

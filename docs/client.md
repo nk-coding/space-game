@@ -10,7 +10,7 @@ must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026.
 | Dev build with live reload | `scripts/web-serve.sh` → http://10.77.9.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
 | Optimised build into `crates/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
-| Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); per region and mip step: `... --example profile -- <tier>` |
+| Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); the longest step and frame of a job as the game spends it: `... --example profile -- <tier> [runs]` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
 | One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?load=5'] [--wait MS] [--size WxH] [--out FILE]` |
 | Native load test table | `scripts/load-test-native.sh [--ships 1,5,20] [--ticks 1800] [--seed 42]` |
@@ -218,10 +218,15 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   zoom stays the choice (`CameraRig::zoom_target`, what the drydock and home remember); a zoom by hand during a
   lock starts from what is on screen and ends the framing until the lock ends. Not in a free camera, the load
   test's frame or watch mode (nobody locks there).
-- **Draw order**: every piece view gets its own layer (z 10..89, round robin) when it is built; the focused
-  vessel's piece draws at z 100, decided every frame from `PilotFocus` (`ship_view::sync_piece_views`), so a
-  switch reorders at once (before, the z was fixed when the view was built: after a switch the old focus stayed
-  on top until its view was rebuilt).
+- **Draw order**: every piece view draws on its own layer, `ship_view::draw_layer`: its ship's layer
+  (`10 + ship id mod 80`) plus an eighth per piece id mod 8, so z 10..90, fixed for the ship's whole life
+  (13 Oct 2026; before, every rebuild took the next layer of a round robin, so a ship that lost a part could pop
+  under or over its neighbours). A rebuilt view keeps its layer; a split-off piece's layer follows from its ids;
+  a piece that becomes a vessel of its own takes its new ship's layer (in the tick it splits off). Ship ids wrap
+  after 80 ships. The focused vessel's piece draws at z 100, decided every frame from `PilotFocus`
+  (`ship_view::sync_piece_views`), so a switch reorders at once. A lit piece's tiles are a separate opaque mesh
+  that writes depth (see Shield bubbles); aura and barrels sit 1/64 below the tiles in depth, so they stay under
+  their own tiles and over every lower piece.
 - **Shield bubbles** (`shield.rs`, `shield.wesl`): see below.
 - **Effects** (`fx.rs`): immediate mode. Systems push `FxSprite`s into `FxQueue` every frame; `flush` writes them
   as quads into three dynamic meshes (under the ships; weapons and sparks above them; HUD markers on top), one
@@ -643,18 +648,28 @@ falloff), and `piece.cruise[i]`, the calm cruise level: how much of its top spee
 The look is [GDR-0043](gdr/0043-shields-as-energy-bubbles.md) (values: `ship.shield_bubble` in `art/tokens.json`);
 the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md). Written 12 Oct 2026.
 
-- **Two meshes, one material, two draw calls for every bubble.** `draw_bubbles` walks the piece views every
+- **One mesh, one material, one draw call for every bubble.** `draw_bubbles` walks the piece views every
   frame and writes one quad per visible bubble (centre at the render pose, half-size = radius + 4 glow widths,
-  more while shattering) into a world-space mesh, in place, like the FX meshes: the focused vessel's bubbles at
-  z 200 (above it, below the weapon effects), every other bubble at z 95 (above every other ship, below the
-  focus). So the focus flying over another ship's bubble stays on top of it (12 Oct 2026; before, all bubbles
-  were one mesh above every ship). Two non-focus ships still show the other's bubble over their hull: per-ship
-  layers would need a mesh per ship (ADR-0029's rejected option) or depth writes from the ship meshes. Each quad carries its bubble's state as vertex attributes: offset from the centre, radius,
-  seed; charge, presence, shatter progress; four hits (direction in world space, age, strength). The material
-  (`BubbleMaterial`) holds only the style tokens and is never changed, so there are no per-frame material
-  updates; the shimmer and flicker run on `globals.time` (virtual time: they pause with P).
-  Why: per-bubble materials (the old rings) cost a draw call and a bind-group update per bubble per frame;
-  WebGL2 has no storage buffers, and a uniform array would still change the material every frame.
+  more while shattering) into a world-space mesh, in place, like the FX meshes. Each quad carries its bubble's
+  state as vertex attributes: offset from the centre, radius, seed; charge, presence, shatter progress; four
+  hits (direction in world space, age, strength). The material (`BubbleMaterial`) holds only the style tokens
+  and is never changed, so there are no per-frame material updates; the shimmer and flicker run on
+  `globals.time` (virtual time: they pause with P). Why: per-bubble materials (the old rings) cost a draw call
+  and a bind-group update per bubble per frame; WebGL2 has no storage buffers, and a uniform array would still
+  change the material every frame.
+- **Between the ship layers, by depth** (13 Oct 2026). The mesh draws after every ship (z 200, below the weapon
+  effects), but each quad's vertex z puts it at its own piece's draw layer + 1/16 (`ship_view::BUBBLE_DZ`; the
+  focus: z 100 + 1/16), and the lit ship tiles write depth: they are a second mesh per lit piece with the opaque
+  twin of the atlas material (`Atlas::opaque`, Bevy's `Opaque2d` pass, drawn before every transparent mesh). The
+  bubble pipeline tests depth (`GreaterEqual`, as every 2D mesh) without writing it, so a bubble is hidden under
+  the tiles of every ship above its own and shows over every ship below, the focus's over all of them. Bevy sorts
+  transparent 2D meshes per entity by z only, so no quad order inside one mesh could do this. History: until
+  12 Oct all bubbles were one mesh above every ship; then two meshes (the focus's at z 200, every other bubble at
+  z 95), which left two non-focus ships showing each other's bubbles over their hulls. What stays: a bubble can
+  still show over the transparent parts of a higher ship that lie beside its tiles (hull halo, muzzle glows,
+  aura) and over dark pieces (salvage and unpowered pieces keep their half-transparent tiles in one blended mesh);
+  with max blending only where the bubble is brighter. Cost: one more mesh entity and draw per lit piece (opaque
+  pass), one bubble draw instead of two. Screenshots: `docs/results/shield-order-*.png`.
 - **Max blending** (colour and alpha, factors One/One): overlapping bubbles of a ship show the brighter of the two
   instead of a bright lens, and quad order does not matter. A bubble only adds light: its faint fill vanishes over
   hull tiles (keeps the ship readable), the rim and the hits still show. The shader outputs `colour × intensity`,
@@ -684,24 +699,48 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   and capped by the GPU's largest 2D texture (tier 512 is 4096 × 3840; logged once at start). Up at once, down
   only when half the tier is clearly enough. A new tier must be wanted for 0.25 s first (zooming through tiers
   costs nothing).
-- **Rebuild**: regions one by one, then the mip chain a band of rows at a time (`art::Rasterizer::step`), within
-  6 ms of work per frame, 16 ms while the atlas on screen is stretched more than 2× (it looks blurry then). The old
-  atlas stays on screen until the new one is complete. A job for a lower tier than the zoom now needs is dropped
-  for the new one (and a job that would rebuild the tier already on screen is dropped too). Native release
-  timings (12 Oct 2026): tier 256 ≈ 0.13 s of work, tier 512 ≈ 0.45 s (regions 0.42 s, mips 0.15 s in 400 steps
-  of at most a few ms); the browser takes a few times longer. Before, the mip chain was built in one frame
-  (178 ms at tier 256 in the browser).
-- **Switch** (`atlas::rasterise_step`): a finished atlas is added as a *new* image; the next frame the material's
-  texture handle is set to it (written through `get_mut`, so Bevy re-prepares the material and rebuilds its bind
-  group) and the old image goes with its last handle. One frame later because Bevy 0.20 does not order a
-  material's preparation after its images' (both run unordered in `RenderSystems::PrepareAssets`): switching in
-  the same frame could look up a texture that is not uploaded yet (Bevy would retry the material, and every
-  atlas mesh would vanish for a frame). A new image per tier also avoids Bevy's in-place update for an unchanged
-  texture size, which writes mip level 0 only and would leave stale mips. Memory: one atlas on the GPU (tier 32:
-  0.3 MB, 64: 1.3 MB, 128: 5.2 MB, 256: 21 MB, 512: 84 MB, mips included), two for the switch frame.
+- **Rebuild** (`art::Rasterizer::step`, small steps since 13 Oct 2026): zero the buffer 2 MB at a time, render
+  every region a band of rows at a time (at most 32 K texels per step), then the mip chain (downsampling, then
+  the colour pull) a band at a time; within 6 ms of work per frame, 16 ms while the atlas on screen is stretched
+  more than 2× (it looks blurry then). The old atlas stays on screen until the new one is complete. A job for a
+  lower tier than the zoom now needs is dropped for the new one (and a job that would rebuild the tier already on
+  screen is dropped too).
+  - **Soft layers** (the icon glows, the plumes' blurred glow; a plume is its blurred glow polygon under its crisp
+    gradient triangle, two SVG documents) look the same at every tier and are blurred over 5 px or more at tier
+    128, up to 41 px at 512. They are rendered once per session at `art::SOFT_TIER` (128; kept in the `Layout`, a
+    step of its own, at most 31 K texels) and resampled bilinearly into every higher tier a band at a time; lower
+    tiers render them directly (small). A blur can't be cut into bands, so before this one plume region was one
+    step: 25 ms natively (median, p95 36 ms) and 70 ms in wasm at tier 512.
+  - **Crisp layers** (icons, the barrel, the plumes' triangle) render at the tier a band at a time; a crisp
+    layer that uses a filter (no base icon does) renders whole.
+  - **Measured** (`cargo run --release -p art --example profile -- 512 21`: steps spent as the game spends
+    them, a new layout per run; the same example on the code before, 13 Oct 2026, load average 8.6–9.2): longest
+    step 25.1 → 1.4 ms (median; p95 36.0 → 5.0 ms), work 231 → 130 ms natively; in wasm (the example built for
+    `wasm32-wasip1`, run under Node with `scripts/wasi-run.mjs`) 70.1 → 4.2 ms (p95 105.9 → 6.8 ms), work 549 →
+    201 ms, and the job's start (84 MB of zeroes allocated at once) 3.1 → 0 ms. The busiest steps now are the
+    plumes' soft layers at tier 128 (once per session) and the fusion reactor's icon bands.
+  - **Same look**: tiers up to 64 are byte-identical; soft layers above 128 are within 2–3 levels of 255 of
+    rendering them at the tier (mean 0.1–0.3); crisp icons differ on about 0.2 % of values, along curves
+    (tiny-skia flattens a curve cut at a band edge slightly differently: sub-pixel). `art`'s test
+    `bands_and_resampled_soft_layers_match_a_whole_render` checks this, `steps_are_bounded_and_report_every_row_once`
+    the work per step.
+- **Upload and switch** (`atlas::rasterise_step`, `upload_bands`, 13 Oct 2026): a job creates the new tier's
+  texture without data (also a render target, so wgpu clears each mip level with a pass before its first band).
+  Every band the pull pass finishes is final (`Rasterizer::finished`): the step hands it to the render world (a
+  queue both worlds share), at most 350 KB per millisecond of the frame's budget (2.1 MB per frame, 5.6 MB while
+  blurry), and `upload_bands` writes it with `RenderQueue::write_texture`. Once every band is written, the
+  materials' texture handle is set to the new image (written through `get_mut`, so Bevy re-prepares them and
+  rebuilds their bind groups) and the old image goes with its last handle. Before, the finished atlas was added
+  as an image with all its data, so the render world uploaded all of it in one frame (84 MB at tier 512) and the
+  switch waited a frame for that. A new image per tier also avoids Bevy's in-place update for an unchanged texture
+  size, which writes mip level 0 only and would leave stale mips. Headless Chromium (SwiftShader, so the frame
+  times say nothing; tier 512 at 160 px/m and device scale 2, so the blurry budget): 396 ms of work over 34 frames,
+  at most 5.6 MB uploaded per frame (before: 300–410 ms over 18–23 frames, then 84 MB in one frame). Memory: one atlas on the GPU (tier 32: 0.3 MB, 64: 1.3 MB, 128: 5.2 MB, 256: 21 MB, 512:
+  84 MB, mips included), two while a job runs; the job's own buffer is as large and goes when it is done.
 - **Sampling** (`AtlasMaterial`, `atlas.wesl`): every atlas mesh (ships, effects, backdrop, the drydock's view and
   its UI icons) draws with one material: atlas × vertex colour, alpha-blended, sRGB-encoded under `SRGB_OUTPUT`
-  like Bevy's `ColorMaterial`, which it replaced on 13 Oct 2026. The sampler is linear / linear / linear
+  like Bevy's `ColorMaterial`, which it replaced on 13 Oct 2026 (the lit ship tiles use its opaque twin,
+  `Atlas::opaque`, with the same texture: see Shield bubbles). The sampler is linear / linear / linear
   (trilinear), clamp to edge. The shader samples with a mip LOD bias of −0.5 (`textureSampleBias`; WebGPU
   samplers have no bias): the tier is the next power of two above what the screen needs, so the GPU's level of
   detail lies between 0 and 1 at the tier's own zooms, and plain trilinear sampling blended in up to all of the
@@ -720,8 +759,8 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   between before and after the fix); icon edges ran over 3–5 px. Comparison:
   `docs/results/atlas-sharpness-flight-3440.png` (showcase, 3440 × 1305) and
   `docs/results/atlas-sharpness-drydock.png` (drydock at 160 px/m).
-- **Soft by design**: icon glows and plumes are stored at half density (they are blurred); at the highest zoom a
-  plume's edge is about 1.5 px soft. Everything else (icons, barrel) is 1:1 with the tier; tiles, seams, hull lines
+- **Soft by design**: icon glows and plumes are stored at half density (they are blurred; above tier 128 their
+  blurred layers are resampled from it); at the highest zoom a plume's edge is about 1.5 px soft. Everything else (icons, barrel) is 1:1 with the tier; tiles, seams, hull lines
   and shield bubbles are geometry or shaders and stay sharp at any zoom.
 - **Checking blur**: F3 shows `atlas <tier> px/cell  need <px> (zoom x scale)  max <tier>  window <physical size>`
   and the last rebuild; the tier is the one the material samples (it changes with the switch). If the tier stays
@@ -743,8 +782,9 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 - **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line), call it from the event
   match in `sim_bridge::apply_events`, draw it in `fx::draw_effects`. Continuous visuals that follow sim state
   (like plumes) go in `fx::draw_ships_fx` and read the sim at the render pose.
-- **A new FX texture**: add it to `Layout::new` in `crates/art` (as SVG or a `Proc` function of `(u, v)` with a
-  size in atlas units), look it up once in `fx::FxRegions`.
+- **A new FX texture**: add it to `Layout::new` in `crates/art` (as SVG: a blurred `soft` document under a `crisp`
+  one, either optional, so no step blurs a large region; or a `Proc` function of `(u, v)`; with a size in atlas
+  units), look it up once in `fx::FxRegions`.
 - **HUD text**: add a `HudText` variant in `flight_hud.rs` and fill it in `update_text` (8 Hz, re-laid out only
   when the text changes). UI colours go through `style::ui_color` (the world composites in sRGB space and
   bevy_ui does not encode for it).
