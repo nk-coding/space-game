@@ -1282,7 +1282,13 @@ piece of one ship (`exclude`, the shooter). Rays are solid: one that starts insi
 only for bodies whose bounding box the ray crosses).
 Bodies created or moved between steps (splits at the start of a tick, teleports) go into the BVH at once, so
 guns see them in the same tick. Equal distances resolve in the BVH's traversal order (deterministic).
-`Sim::raycast` maps the hit to a part (`part_at_local` just inside the surface).
+Shots, plumes and `Sim::raycast` map the hit to a part with one rule (`Sim::cast_part`): the alive part under the
+hit point (`part_at_local` just inside the surface). A part destroyed earlier in the tick keeps its collider until
+breakage is resolved (rebuilding a compound per hit would cost a piece rebuild each), so a ray that lands on its
+cells walks on through the piece's grid along the ray to the next alive part of that piece and enters it at its
+cell's boundary (normal `−dir`); if the walk leaves the piece first, the ray is cast again from there, at most
+`weapons::tuning::MAX_RECASTS` (4) times. Until the 13 Oct 2026 review fix such a ray ended on the stale collider
+without damage, so a second shot at a block in the tick that destroyed it was lost.
 
 ### Collisions, impacts and ramming (v1)
 
@@ -1311,7 +1317,8 @@ damage = max(0, impulse − ram_threshold) × ram_damage        to each side (GD
 Each side's damage goes through that side's shield bubbles first (GDR-0045), then hits the touching part
 (`part_a`, `part_b`); what exceeds a part's hit points **crushes inward** to the next part along the contact
 normal, and so on until it is used up or the walk leaves the hull (GDR-0047, `Sim::ram_crush`; the grid walk of
-penetrating shots, without their block limit).
+penetrating shots, without their block limit). A touching part that an earlier contact of the same tick destroyed
+passes the whole damage inward from its cells (until the 13 Oct 2026 review fix that ram was dropped).
 
 The impulse already carries mass and speed: head-on, `impulse ≈ (1 + e) · μ · v` with the reduced mass
 `μ = m_a·m_b / (m_a + m_b)` and the closing speed `v`. Both sides take the same damage (the same impulse acts on

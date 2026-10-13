@@ -758,7 +758,7 @@ fn raycast_finds_the_part_under_the_hit() {
         "{}",
         hit.hit.distance
     );
-    let part = hit.part.expect("part");
+    let part = hit.part;
     assert_eq!(d.parts[part as usize].shape.x, 0);
     assert!(
         w.raycast(Vec2::ZERO, Vec2::new(1.0, 0.0), 100.0, Some(s))

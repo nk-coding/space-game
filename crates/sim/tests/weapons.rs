@@ -537,3 +537,32 @@ fn a_projectile_keeps_the_owner_it_was_fired_with() {
     }
     assert_eq!(enemy_hits, 1);
 }
+
+/// Two hits on one block in the same tick (13 Oct 2026 review): the first destroys it, but its collider stays
+/// until breakage is resolved after the weapons phase. The second shot must go on to the part behind it, not
+/// end on the stale collider without damage.
+#[test]
+fn a_second_hit_in_the_same_tick_reaches_the_part_behind() {
+    let c = content();
+    // Two projectiles in one tick (both fly before the guns).
+    let (mut w, s, t, d) = range(&c, "pulse_laser");
+    for _ in 0..2 {
+        w.spawn_projectile(s, WeaponFamily::Kinetic, Vec2::new(0.0, 12.0), Vec2::new(0.0, 300.0), 1.5, 1, 1.0);
+    }
+    w.step(&TickInputs::default());
+    assert_eq!(hp(&w, t, &d, 2, 3), 0.0, "the first projectile destroys the near block");
+    assert_eq!(hp(&w, t, &d, 2, 2), 0.0, "the second one destroys the block behind it");
+    assert_eq!(hp(&w, t, &d, 2, 1), 1.0, "and stops there (penetration 1)");
+    // A projectile, then a pulse of a gun in the same tick.
+    let (mut w, s, t, d) = range(&c, "pulse_laser");
+    for _ in 0..10 {
+        w.step(&inputs(s, controls(0, 0.0, false, true))); // the gun reloads to ready
+    }
+    w.spawn_projectile(s, WeaponFamily::Kinetic, Vec2::new(0.0, 12.0), Vec2::new(0.0, 300.0), 1.5, 1, 1.0);
+    w.step(&fire(s));
+    let per_pulse = w.ship(s).unwrap().pieces()[0].guns[0].shot_damage;
+    assert_eq!(hp(&w, t, &d, 2, 3), 0.0);
+    assert!((hp(&w, t, &d, 2, 2) - (1.0 - per_pulse)).abs() < 1e-5, "the pulse hits the block behind");
+    let hits = w.events().iter().filter(|e| matches!(e, SimEvent::Hit { .. })).count();
+    assert_eq!(hits, 2);
+}

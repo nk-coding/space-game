@@ -115,8 +115,8 @@ pub struct TickInputs {
 pub struct PartHit {
     pub ship: ShipId,
     pub piece: PieceId,
-    /// The part under the hit point (`None` only if the physics and the grid disagree).
-    pub part: Option<PartIdx>,
+    /// The part the ray enters.
+    pub part: PartIdx,
     pub hit: RayHit,
 }
 
@@ -566,7 +566,8 @@ impl Sim {
         }
     }
 
-    /// First part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter).
+    /// First alive part hit by a ray (unit `dir`), ignoring ship `exclude` (e.g. the shooter); the hit rule of
+    /// shots (`Sim::cast_part`: parts destroyed since the last breakage resolution are passed through).
     pub fn raycast(
         &self,
         origin: Vec2,
@@ -574,17 +575,14 @@ impl Sim {
         max_distance: f32,
         exclude: Option<ShipId>,
     ) -> Option<PartHit> {
-        let hit = self.physics.raycast(origin, dir, max_distance, exclude)?;
-        let ship = self.ship(hit.key.ship)?;
-        // Nudge the point into the solid so it lands inside the hit cell.
-        let piece = ship.piece(hit.key.piece)?;
-        let n_local = Rot::from_angle(piece.body.angle).apply_inverse(hit.normal);
-        let part = ship.part_at_local(hit.key.piece, hit.local_point - n_local * 1e-3);
+        let h = self.cast_part(origin, dir, max_distance, |key| {
+            exclude.is_some_and(|s| key.ship == s)
+        })?;
         Some(PartHit {
-            ship: hit.key.ship,
-            piece: hit.key.piece,
-            part,
-            hit,
+            ship: h.hit.key.ship,
+            piece: h.hit.key.piece,
+            part: h.part,
+            hit: h.hit,
         })
     }
 
