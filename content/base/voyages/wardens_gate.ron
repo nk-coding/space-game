@@ -1,0 +1,20 @@
+// The last voyage of the first playable loop (GDR-0062): beating the Warden ends the slice. Radius and spacing in
+// metres, `map` a place on the voyage map (0 to 1), `minutes` the expected length. PLACEHOLDER NUMBERS
+// (docs/plans/slice-content.md 3.3, track 7J draft of 13 Oct 2026; tuned in track 7K).
+(
+    id: "wardens_gate",
+    name: "The Warden's gate",
+    summary: "The gate to the outer reach, and the old guardian that still keeps it.",
+    band: "rim",
+    map: (0.80, 0.34),
+    opens_after: ["corran_reach"],
+    radius: 900,
+    spacing: (400, 700),
+    minutes: (10, 20),
+    cleared: "The Warden goes dark. The gate behind it stays cold: whatever opened it once is gone.",
+    sites: [
+        (encounter: "raider_pack", count: 2),
+        (encounter: "core_graveyard"),
+        (encounter: "the_warden", goal: true),
+    ],
+)

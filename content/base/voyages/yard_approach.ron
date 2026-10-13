@@ -1,0 +1,19 @@
+// The first voyage of the first playable loop (GDR-0062), open at the start (`starts.ron`). Radius and spacing in
+// metres, `map` a place on the voyage map (0 to 1), `minutes` the expected length. PLACEHOLDER NUMBERS
+// (docs/plans/slice-content.md 3.3, track 7J draft of 13 Oct 2026; tuned in track 7K).
+(
+    id: "yard_approach",
+    name: "Shipyard approach",
+    summary: "The quiet lanes outside the shipyard, where a few raiders pick over old wrecks.",
+    band: "rim",
+    map: (0.28, 0.66),
+    radius: 600,
+    spacing: (400, 700),
+    minutes: (6, 8),
+    cleared: "The lanes around the shipyard are quiet again. Further out, the [[voyage:halvex_drift]] is waiting.",
+    sites: [
+        (encounter: "raider_pair", count: 2),
+        (encounter: "derelict_field"),
+        (encounter: "raider_pack", goal: true),
+    ],
+)

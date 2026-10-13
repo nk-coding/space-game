@@ -1,0 +1,21 @@
+// The third voyage of the first playable loop (GDR-0062). Radius and spacing in metres, `map` a place on the voyage
+// map (0 to 1), `minutes` the expected length. PLACEHOLDER NUMBERS (docs/plans/slice-content.md 3.3, track 7J draft
+// of 13 Oct 2026; tuned in track 7K).
+(
+    id: "corran_reach",
+    name: "Corran Reach",
+    summary: "A long reach of broken hulls where heavier automatons hunt in packs.",
+    band: "rim",
+    map: (0.62, 0.52),
+    opens_after: ["halvex_drift"],
+    radius: 1000,
+    spacing: (400, 700),
+    minutes: (12, 15),
+    cleared: "The hunters are scattered. Beyond the Reach, something old still keeps the gate.",
+    sites: [
+        (encounter: "hunter_pack", count: 2),
+        (encounter: "raider_pack"),
+        (encounter: "precursor_wrecks"),
+        (encounter: "hunter_den", goal: true),
+    ],
+)

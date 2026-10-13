@@ -1,6 +1,6 @@
 // How a new game begins. A new game has every part, material and frame that is not `locked`, plus what a start
 // names here. PLACEHOLDER NUMBERS (GDR-0062: mind capacity 2, research adds up to 4 in the first playable loop).
-// `voyages` are plain ids until the voyage kind exists; only their format is checked for now.
+// `voyages`: the voyages open at the start (`voyages/*.ron`); clearing one opens those that name it in `opens_after`.
 [
     (
         id: "rim_awakening",
