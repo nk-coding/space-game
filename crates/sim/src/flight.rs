@@ -7,6 +7,8 @@
 //!   leaves free, plus differential thrust while the last resort is on), then `τ = I·(ω_des − ω)/DT`. Big ships
 //!   plan with their small `α` and do not overshoot; small ones snap. A lock or `face` on a moving target adds
 //!   the target's bearing rate (feed-forward, GDR-0064), so the nose leads a crossing target.
+//! * **Turret**: a vessel under a behavior with no working engine turns its strongest guns onto its target
+//!   (GDR-0064).
 //! * **Last resort** (GDR-0055): gimbals and differential thrust push the ship sideways, so they help only
 //!   after gyros, cores and RCS couples have been at their limit for `FlightTuning::assist_after` ticks
 //!   ([`TurnAssist`]); never for keyboard rotation (GDR-0058).
@@ -632,7 +634,16 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
     let tuning = &cfg.flight;
     let kin = Kin::of(piece, &ship.parts);
     if let Some(b) = &ship.behavior {
-        let (goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
+        let (mut goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
+        // A vessel without a working engine fights on as a turret (GDR-0064): whatever its rule flies, it turns
+        // its strongest working guns onto its target with what it has (gyros, cores, RCS); RCS pods still follow
+        // the velocity goal. Before, `HeadingGoal::Auto` with nothing to push kept the heading: it never aimed.
+        if let Fire::AtWill(ts) = fire
+            && !has_engine(piece, &ship.parts)
+            && let Some(aim) = smart_aim(ship, piece, &kin, &ts)
+        {
+            goal.heading = aim;
+        }
         return Plan {
             goal: Some(goal),
             fire,
@@ -661,6 +672,14 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             raw: false,
         },
     }
+}
+
+/// Does the piece have an engine (not an RCS nozzle) that can push now ([`producing`])?
+fn has_engine(piece: &Piece, parts: &[PartState]) -> bool {
+    piece
+        .thrusters
+        .iter()
+        .any(|t| !t.rcs && producing(&parts[t.part as usize]))
 }
 
 /// The heading that brings the strongest working guns to bear on a target (GDR-0040): guns are grouped by the

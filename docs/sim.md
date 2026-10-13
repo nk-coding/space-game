@@ -835,6 +835,13 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   right; the first rule whose conditions hold and whose action has what it needs wins.
 - **Fly** (every tick, in `flight::plan`): the stored maneuver's goal relative to the aim point's current
   position and velocity (`aim_state`). No matching rule: `Maneuver::Brake`.
+- **Turret** (GDR-0064, lead): a vessel with no working engine (none left, or all idle, unpowered or overheated;
+  RCS nozzles do not count) turns its strongest working guns onto its target whatever its rule flies, with what
+  it has (gyros, cores, RCS couples): the lock's smart aim, with the feed-forward. RCS pods still follow the
+  maneuver's velocity goal. Before, an approach from afar, an orbit or a flee flew with `HeadingGoal::Auto`,
+  which with nothing to push kept the heading: a Runner whose tail was shot off drifted on with its guns
+  pointing anywhere (`docs/results/balance-2026-10-13.md`, sim issue 2). Without a target, or without working
+  guns, the maneuver's heading stays. Test `an_engine_less_vessel_turns_its_guns_onto_its_target`.
 - **Fire at will, per gun** (Niklas, 12 Oct 2026; GDR-0034): the plan carries the aim point's state
   (`Fire::AtWill`); when the flight computer runs, `guns_at_will` checks every clear gun of the controlling
   piece on its own: it fires when the target is within 0.933 × **its** reach from its muzzle and the aim point

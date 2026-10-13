@@ -404,13 +404,15 @@ fn target_selectors_priorities_and_stickiness() {
     assert!(ad.parts[state(&w, me).aim_part().unwrap() as usize].logic);
 }
 
-/// A cross of four pulse lasers (front, right, rear, left) around a reactor, a logic core behind it.
+/// A cross of four pulse lasers (front, right, rear, left) around a reactor, a logic core behind it, and a
+/// thruster beside the core (without an engine it would turn its guns onto the target, GDR-0064).
 fn gun_cross() -> Vec<P<'static>> {
     vec![
         ("pulse_laser", 1, 0, 0, false, None),
         ("pulse_laser", 0, 1, 3, false, None),
         ("fission_reactor", 1, 1, 0, false, None),
         ("pulse_laser", 2, 1, 1, false, None),
+        ("thruster", 0, 2, 0, false, None),
         ("logic_core", 1, 2, 0, false, None),
         ("pulse_laser", 1, 3, 2, false, None),
     ]
@@ -575,6 +577,37 @@ fn rhai_conditions_run_sandboxed_within_budget() {
     run(&mut w, 6);
     assert_eq!(state(&w, me).active_rule(), Some(4));
     assert_eq!(state(&w, me).rules()[4], RuleStatus::Active);
+}
+
+/// GDR-0064: a vessel with no working engine (here: none at all) turns its guns onto its target with what it has
+/// (a gyro, its core). Before, the approach from afar flew with `HeadingGoal::Auto`, which with nothing to push
+/// kept the heading: an engine-less vessel never aimed.
+#[test]
+fn an_engine_less_vessel_turns_its_guns_onto_its_target() {
+    let c = content();
+    let turret = custom(
+        &c,
+        &[
+            ("pulse_laser", 1, 0, 0, false, None),
+            ("fission_reactor", 0, 1, 0, false, None),
+            ("logic_core", 1, 1, 0, false, None),
+            ("gyro", 2, 1, 0, false, None),
+        ],
+    );
+    let mut w = world_with_lib(lib());
+    let me = w.spawn_ship(turret, sim::Owner::PLAYER, Body::default());
+    // Far beyond its approach range (67% of 60 m), square to its nose.
+    let foe = w.spawn_ship(design(&c, "automaton_raider"), sim::Owner(1), Body::at(Vec2::new(80.0, 0.0), 0.0));
+    let skirmisher = w.behaviors().id("skirmisher");
+    w.command(me, ShipCommand::Behavior(skirmisher));
+    run(&mut w, 150);
+    assert_eq!(state(&w, me).target(), Some(foe));
+    let ship = w.ship(me).unwrap();
+    let p = ship.piece(ship.control_piece().unwrap()).unwrap();
+    let f = w.ship(foe).unwrap();
+    let to = f.piece(f.control_piece().unwrap()).unwrap().com_world() - p.com_world();
+    let err = sim::physics::wrap_angle(sim::flight::Kin::nose_heading(to) - p.body.angle);
+    assert!(err.abs() < 2f32.to_radians(), "nose {}° off the target", err.to_degrees());
 }
 
 #[test]
