@@ -61,13 +61,6 @@ impl Timings {
             self.next = (self.next + 1) % self.samples.len();
         }
     }
-    pub fn clear(&mut self) {
-        self.samples.clear();
-        self.next = 0;
-    }
-    pub fn len(&self) -> usize {
-        self.samples.len()
-    }
     /// `(mean, median, p95, max)`.
     pub fn stats(&mut self) -> (f32, f32, f32, f32) {
         if self.samples.is_empty() {
@@ -127,8 +120,6 @@ pub struct SimWorld {
     next_z: u32,
     pub step_ms: Timings,
     pub hashlog: Option<HashLog>,
-    /// Freeze the sim (used by the hash log when it is done, and by tools).
-    pub frozen: bool,
 }
 
 impl SimWorld {
@@ -145,7 +136,6 @@ impl SimWorld {
             next_z: 0,
             step_ms: Timings::new(900),
             hashlog: None,
-            frozen: false,
         }
     }
 
@@ -252,9 +242,6 @@ impl Plugin for SimBridgePlugin {
 }
 
 fn step_sim(mut world: ResMut<SimWorld>) {
-    if world.frozen {
-        return;
-    }
     let world = &mut *world;
     let t0 = Instant::now();
     world.sim.step(&world.inputs);
