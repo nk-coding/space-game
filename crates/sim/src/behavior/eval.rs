@@ -419,9 +419,11 @@ fn centre(s: &Ship) -> Option<TargetState> {
     })
 }
 
-/// Hit points left on the controlling piece as a share of the intact ship.
+/// Hit points left on the controlling piece as a share of the intact ship: the whole design, or for a vessel
+/// split off another the intact parts it took along (GDR-0064; it counted against the whole design and fled at
+/// once).
 pub(crate) fn hull_share(s: &Ship) -> f32 {
-    let total = s.design().hp_total;
+    let total = s.hull_base;
     let Some(p) = s.control_piece().and_then(|c| s.piece(c)) else {
         return 0.0;
     };

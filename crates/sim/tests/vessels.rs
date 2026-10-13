@@ -106,6 +106,31 @@ fn a_split_leaves_two_vessels_running_the_behavior_within_their_own_slots() {
     assert_eq!(fleet.iter().map(|v| v.ship).collect::<Vec<_>>(), vec![s, t]);
 }
 
+/// GDR-0064: a split-off vessel measures its hull against its own piece (it fled at once when it counted
+/// against the whole design), while the vessel that kept the controlling piece still counts against the whole
+/// design (it did lose half of itself). `hull` is read from the debug view: the value the failing rule measured.
+#[test]
+fn a_split_off_vessel_measures_its_hull_against_its_own_piece() {
+    let c = content();
+    let mut w = sim::Sim::new(1);
+    with_behaviors(&mut w);
+    let probe = w.behaviors_mut().add_text("probe", "when hull < 1% -> flee\nalways -> hold").unwrap();
+    let s = w.spawn_ship(design(&c, "halvex_runner"), PLAYER, Body::default());
+    w.command(s, ShipCommand::Behavior(Some(probe)));
+    cut(&mut w, s, &RUNNER_CENTRE);
+    let t = w.ships().last().unwrap().id();
+    assert_ne!(t, s);
+    step(&mut w, 4);
+    let hull = |id: ShipId| match w.ship(id).unwrap().behavior().unwrap().rules()[0] {
+        RuleStatus::Failed { why: sim::Why::False { value: Some(v) }, .. } => v,
+        other => panic!("{id:?}: {other:?}"),
+    };
+    let (kept, split) = (hull(s), hull(t));
+    println!("hull share after the split: kept {kept:.3}, split off {split:.3}");
+    assert!(split > 0.95, "the split-off half is intact: {split}");
+    assert!(kept < 0.6, "the kept half lost the other one: {kept}");
+}
+
 #[test]
 fn a_raider_shot_in_half_can_be_two_raiders() {
     // Enemies follow the same rules: a raider design with two cores in two halves (left and right column,

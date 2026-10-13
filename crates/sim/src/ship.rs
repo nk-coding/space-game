@@ -631,6 +631,9 @@ pub struct Ship {
     pub(crate) cargo: crate::salvage::Cargo,
     /// Spawned as a wreck (`Sim::spawn_wreck`): its logic cores never form a vessel.
     pub(crate) burned_out: bool,
+    /// The intact hit points its hull share (the `hull` condition) is measured against: the whole design's for
+    /// a spawned ship, the parts of its own piece's for a vessel split off another (GDR-0064).
+    pub(crate) hull_base: f32,
 }
 
 impl Ship {
@@ -692,7 +695,9 @@ impl Ship {
             parked: None,
             cargo: crate::salvage::Cargo::default(),
             burned_out: false,
+            hull_base: 0.0,
         };
+        ship.hull_base = ship.design.hp_total;
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
             ship.refresh_exposure(p);
@@ -1804,6 +1809,7 @@ impl StateHash for Ship {
             None => h.u8(0),
         }
         h.bool(self.burned_out);
+        h.f32(self.hull_base);
         self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {

@@ -154,7 +154,8 @@ The rules (also in `src/math.rs`, enforced where possible):
   share, work and shield charge, and per piece its parts, flags, control load, ghost timer, frame
   origin, mass properties, body, power balance, consumer power settings (part, tier, weight, in allocation
   order), wrench, collider vertices, gun output, actuator commands (throttle, gimbal, RCS couple, torque) and
-  the last-resort turning state (`Piece::assist`), and per ship the burned-out flag and the cargo; then every projectile; then
+  the last-resort turning state (`Piece::assist`), and per ship the burned-out flag, the hull base (GDR-0064) and
+  the cargo; then every projectile; then
   the loose salvage items; then Rapier's own state per body in key
   order (translation, rotation as cos/sin, linear and angular velocity, sleeping and ghost flags). Floats by
   exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug builds, on
@@ -853,7 +854,8 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
 - **Slots**: `Ship::rule_slots()` = `rule_slots_of(control piece)`: the sum of `rule_slots` of the piece's
   working logic cores (GDR-0035: alive, not overheated, powered, and not idle: `ship::producing`; a woken
   vessel's cores count from its first power pass), 0 while the piece is dark. Rules beyond are `NoSlot`.
-- **Conditions** (built-in): `hull` (Σ hp on the controlling piece / intact hp), `shield` (charge / capacity of
+- **Conditions** (built-in): `hull` (Σ hp on the controlling piece / intact hp: of the whole design, or for a
+  vessel split off another of the parts it took along, see [Vessels and splits](#vessels-and-splits)), `shield` (charge / capacity of
   working emitters; no emitters → `NoValue`), `shield_down`, `heat` (hottest part / its limit), `power`
   (served / demand), `target_in_range(d)`, `target_hull`, `target_on_me` (its behavior target, or its pilot
   lock, is me), `under_attack`, `enemies_near(r)`, `cycle(p)` and `target_time` (integer ticks since the
@@ -1024,6 +1026,13 @@ vessel agent for Niklas to review.
   behavior gets its content default (`skirmisher` for ship-mind ships), and never the pilot's input (its helm is
   `Maneuver::Brake`). A piece split off an unpiloted ship without a behavior keeps the parent's helm (tests and
   scenarios that fly maneuvers or raw throttles).
+- **Hull share** (GDR-0064, lead): a split-off vessel measures its `hull` against the intact hit points of the
+  parts it took along (`Ship::hull_base`, summed at the split), the vessel that kept the controlling piece against
+  the whole design as before (it did lose the rest). Until 13 Oct 2026 both counted against the whole design, so
+  a split-off half of a Runner read about 40% and a cored chunk under 25%: the skirmisher's flee rule sent it away
+  at once (75–96% of its time, `docs/results/balance-2026-10-13.md`, sim issue 6). Test
+  `a_split_off_vessel_measures_its_hull_against_its_own_piece` (a Runner cut down the middle: the kept half reads
+  40%, the split-off half 100%).
 - A blueprint built in several pieces with cores in more than one: at spawn every further cored piece becomes
   a vessel of its own the same way.
 - A shot never hits its own ship (all its pieces) nor any other vessel of its owner (GDR-0048), so a split-off
