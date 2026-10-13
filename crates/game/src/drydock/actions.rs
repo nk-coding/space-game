@@ -1,9 +1,9 @@
 //! What the drydock's buttons and keys mean. Both send one message, [`DrydockAction`]: a click on a node with an
 //! [`ActionButton`] sends its action, the keyboard shortcuts send the same ones. Handlers read the message and
-//! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part)
-//! and the test flight. Zoom is handled by the camera (`view.rs`), editing (undo / redo, mirror, bevel, rotate,
-//! the selected part) by `tools.rs`; saving, export, the blueprint list and the ring menu come with the RON
-//! writer and the menus.
+//! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part),
+//! the test flight and the ring menu (home). Zoom is handled by the camera (`view.rs`), editing (undo / redo,
+//! mirror, bevel, rotate, the selected part) by `tools.rs`; saving, export and the blueprint list by
+//! `blueprints.rs`.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
 //! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use data::PowerTier;
 
 use crate::mode::AppMode;
-use crate::scene::Scene;
+use crate::scene::{Launch, Scene};
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
 
@@ -34,7 +34,7 @@ pub enum DrydockAction {
     TestFly,
     /// BEHAVIOR: open the BEHAVIOR screen for the design (`behavior_ui` handles it).
     Behavior,
-    /// The ring button top left (the shipyard's ring menu).
+    /// The ring button top left: home (the shipyard's ring menu).
     Menu,
     /// Armour material for hull parts (content id).
     Material(String),
@@ -142,7 +142,7 @@ fn digit(k: KeyCode) -> Option<usize> {
     KEYS.iter().position(|&d| d == k)
 }
 
-/// The UI-state actions, and the test flight (only a design that can fly takes off).
+/// The UI-state actions, the test flight (only a design that can fly takes off) and the way home.
 pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut ui: ResMut<DrydockUi>,
@@ -161,11 +161,12 @@ pub(super) fn apply(
             }
             DrydockAction::PickPart(p) => ui.picked = Some(p.clone()),
             DrydockAction::TestFly if status.grounded.is_none() => {
-                scene.launch = true;
+                scene.launch = Some(Launch::TestFlight);
                 next.set(AppMode::Flight);
             }
+            DrydockAction::Menu => next.set(AppMode::Home),
             // Editing (tools.rs), zoom (the camera), save / export / blueprints (blueprints.rs), the BEHAVIOR screen
-            // (`behavior_ui`); the menu has no handler yet.
+            // (`behavior_ui`).
             _ => {}
         }
     }

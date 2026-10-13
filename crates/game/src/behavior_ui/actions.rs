@@ -1,8 +1,8 @@
 //! What the behavior screen's buttons and keys mean. Both send one message, [`BehaviorAction`]: a click on a
 //! node with a [`BehaviorButton`] sends its action, the keys send the same ones. Handlers read the message and
-//! never touch widget code; this module handles the UI state (view, selection, test mode) and the way back.
-//! Editing (`edit.rs`) handles the editing group (`AddRule`, `AddNode`, `Edit`, `Undo`, ...), `saving.rs` SAVE and
-//! `TestInRange`, `list.rs` the BEHAVIORS list; the ring menu has no handler yet (as in the drydock).
+//! never touch widget code; this module handles the UI state (view, selection, test mode), the way back and the
+//! ring menu (home). Editing (`edit.rs`) handles the editing group (`AddRule`, `AddNode`, `Edit`, `Undo`, ...),
+//! `saving.rs` SAVE and `TestInRange`, `list.rs` the BEHAVIORS list.
 //!
 //! Keys (only while no text field or the text view has the keyboard, and the BEHAVIORS list is closed): Esc
 //! cancels REPLACE, else back to the drydock; T test in range; / search the palette; Ctrl+Z undo, Ctrl+Shift+Z or
@@ -27,7 +27,7 @@ use super::{BehaviorDraft, BehaviorUi, BehaviorView, TestMode};
 pub enum BehaviorAction {
     /// Back to the drydock (Esc, the DRYDOCK pill); the design is untouched.
     Back,
-    /// The ring button top left (the ring menu).
+    /// The ring button top left: home (the ring menu).
     Menu,
     /// GRAPH or TEXT.
     View(BehaviorView),
@@ -133,7 +133,7 @@ pub(super) fn shortcuts(
     }
 }
 
-/// The UI-state actions and the way back.
+/// The UI-state actions, the way back and the way home.
 pub(super) fn apply(
     mut actions: MessageReader<BehaviorAction>,
     mut ui: ResMut<BehaviorUi>,
@@ -143,6 +143,7 @@ pub(super) fn apply(
     for a in actions.read() {
         match a {
             BehaviorAction::Back => next.set(AppMode::Drydock),
+            BehaviorAction::Menu => next.set(AppMode::Home),
             BehaviorAction::View(v) => {
                 if ui.view == BehaviorView::Text && *v != BehaviorView::Text {
                     draft.tidy_text();
@@ -152,10 +153,8 @@ pub(super) fn apply(
             BehaviorAction::Select(n) => ui.selected = Some(Selection::Node(*n)),
             BehaviorAction::Deselect => ui.selected = None,
             BehaviorAction::TestMode(m) => ui.test_mode = *m,
-            // `edit::apply` (editing), `saving.rs` (Save, TestInRange), `list.rs` (Behaviors); the menu has no
-            // handler yet.
-            BehaviorAction::Menu
-            | BehaviorAction::TestInRange
+            // `edit::apply` (editing), `saving.rs` (Save, TestInRange), `list.rs` (Behaviors).
+            BehaviorAction::TestInRange
             | BehaviorAction::Save
             | BehaviorAction::Behaviors
             | BehaviorAction::AddRule

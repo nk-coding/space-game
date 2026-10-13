@@ -239,7 +239,7 @@ fn update_text(
                         Some(TestMode::Watch) => "WATCH",
                         Some(TestMode::Alongside) => "FLY ALONGSIDE",
                         None if scene.test_flight => "TEST FLIGHT",
-                        None => "SANDBOX",
+                        None => "TEST RANGE",
                     };
                     s.push_str(name);
                     if scene.test_mode().is_some() && !watch.name.is_empty() {
@@ -282,15 +282,15 @@ fn update_text(
             }
             HudText::Help => match scene.kind {
                 SceneKind::Sandbox if scene.watched().is_some() => {
-                    s.push_str("NOBODY PILOTS · DRAG PAN · F FOLLOW / FREE · WHEEL ZOOM · C WAVES · F3 RULES · T BACK · H HIDE");
+                    s.push_str("NOBODY PILOTS · DRAG PAN · F FOLLOW / FREE · WHEEL ZOOM · C WAVES · F3 RULES · T BACK · M HOME · H HIDE");
                 }
                 SceneKind::Sandbox if input.touch_ui => {
                     s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM");
                 }
                 SceneKind::Sandbox => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · U TUNING · F3 DEBUG · H HIDE",
+                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · M HOME · U TUNING · F3 DEBUG · H HIDE",
                 ),
-                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK"),
+                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK  ·  M HOME"),
             },
         }
         set_text(&mut text, scratch);

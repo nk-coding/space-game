@@ -1,6 +1,6 @@
-//! Scenes: what is in the world and who flies it. Chosen by URL parameters:
+//! Scenes: what is in the world and who flies it. Chosen by URL parameters, or by the screen that starts a flight:
 //!
-//! * **sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of
+//! * **sandbox** (home's TEST RANGE, `?scene=sandbox`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of
 //!   the Halvex Runner, then the autosaved working design) as the focus; waves of automaton raiders under their
 //!   content behavior (`raider_basic`), a new wave a few seconds after the last raider goes dark (C turns the
 //!   waves off and on); the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
@@ -18,8 +18,9 @@
 //! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //!
 //! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step). Leaving
-//! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from the drydock or the
-//! BEHAVIOR screen (`OnEnter`) builds the test flight or the behavior test.
+//! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from another mode
+//! (`OnEnter`) builds what that mode asked for ([`Scene::launch`]): the test flight or the behavior test, or the
+//! sandbox from home.
 //!
 //! Owners, vessels and the focus live in the sim (`sim::vessel`): the player is [`PLAYER`], the raiders
 //! [`ENEMY`]; [`PilotFocus`] mirrors `Sim::focus(PLAYER)`, and focus switches are `ShipCommand::Focus`.
@@ -72,6 +73,15 @@ pub enum SceneKind {
     Load(u32),
 }
 
+/// A flight another mode asked for; `OnEnter(AppMode::Flight)` builds it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Launch {
+    /// The drydock's test flight (T, TEST-FLY) or TEST IN RANGE: losing every vessel goes back.
+    TestFlight,
+    /// Home's TEST RANGE: the sandbox as at a plain start (a lost ship re-forms).
+    Range,
+}
+
 #[derive(Resource)]
 pub struct Scene {
     pub kind: SceneKind,
@@ -80,8 +90,8 @@ pub struct Scene {
     pub test_flight: bool,
     /// Raider waves come (sandbox; C toggles). Off: the raiders are gone and no wave starts.
     pub waves: bool,
-    /// The drydock asked for a test flight; `OnEnter(AppMode::Flight)` builds it.
-    pub launch: bool,
+    /// Another mode asked for a flight; `OnEnter(AppMode::Flight)` builds it.
+    pub launch: Option<Launch>,
     /// The player's design as compiled for this scene (the player, the wingmen and re-forms fly it).
     player_design: Option<Arc<ShipDesign>>,
     /// The last vessel the player flew (where a new one re-forms; its wreck is removed then).
@@ -104,13 +114,13 @@ pub struct Scene {
 }
 
 impl Scene {
-    fn new(kind: SceneKind, seed: u64) -> Self {
+    pub(crate) fn new(kind: SceneKind, seed: u64) -> Self {
         Self {
             kind,
             seed,
             test_flight: false,
             waves: true,
-            launch: false,
+            launch: None,
             player_design: None,
             last_focus: None,
             wingmen: 0,
@@ -197,7 +207,7 @@ impl Plugin for ScenePlugin {
                 (reset, toggle_waves.run_if(not(egui_wants_any_keyboard_input))).run_if(in_state(AppMode::Flight)),
             )
             .add_systems(OnExit(AppMode::Flight), leave_flight)
-            .add_systems(OnEnter(AppMode::Flight), launch_test_flight);
+            .add_systems(OnEnter(AppMode::Flight), launch);
     }
 }
 
@@ -373,22 +383,21 @@ fn start_test(scene: &mut Scene, world: &mut SimWorld, runner: &Arc<ShipDesign>,
     info!("test in range: {:?}, {name}, ship {ship:?}", test.mode);
 }
 
-/// T in the drydock (or TEST-FLY): the sandbox with the player's design, raider waves on.
-fn launch_test_flight(
+/// A flight another mode asked for: the sandbox with the player's design, raider waves on; a test flight (T or
+/// TEST-FLY in the drydock, TEST IN RANGE) or home's TEST RANGE.
+fn launch(
     mut scene: ResMut<Scene>,
     mut focus: ResMut<PilotFocus>,
     inputs: SceneInputs,
     mut rig: ResMut<CameraRig>,
     mut world: ResMut<SimWorld>,
 ) {
-    if !std::mem::take(&mut scene.launch) {
-        return;
-    }
+    let Some(launch) = scene.launch.take() else { return };
     scene.kind = SceneKind::Sandbox;
-    scene.test_flight = true;
+    scene.test_flight = launch == Launch::TestFlight;
     scene.waves = true;
     *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
-    info!("test flight: {} parts, revision {}", inputs.design.blueprint().parts.len(), inputs.design.revision());
+    info!("{launch:?}: {} parts, revision {}", inputs.design.blueprint().parts.len(), inputs.design.revision());
 }
 
 /// Leaving flight (T, or a lost test flight): the world empties, views and effects go, the clock runs again.
@@ -665,7 +674,7 @@ mod tests {
         app.world_mut().write_message(StartTest { test: test.clone(), back: AppMode::Drydock });
         app.update();
         let scene = app.world().resource::<Scene>();
-        assert_eq!((scene.test_mode(), scene.launch, scene.test_flight, scene.waves), (Some(TestMode::Watch), true, true, true));
+        assert_eq!((scene.test_mode(), scene.launch, scene.test_flight, scene.waves), (Some(TestMode::Watch), Some(Launch::TestFlight), true, true));
         app.update();
         assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Flight);
         // In flight, a new request rebuilds the scene instead.
