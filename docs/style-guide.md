@@ -1,6 +1,6 @@
 # Style guide: ship style 2a and the UI look
 
-Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/chosen-2a.png`, `boards/ui-mockups/*.png`, `assets/overview.png`. Exact values: `assets/tokens.json`.
+Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-2a.md)). Pictures: [`concept/boards/ship-style/chosen-2a.png`](concept/boards/ship-style/chosen-2a.png), `concept/boards/ui-mockups/*.png`, [`../art/overview.png`](../art/overview.png). Exact values: [`../art/tokens.json`](../art/tokens.json); the client embeds them through the `art` crate (typed view: `crates/game/src/style.rs`).
 
 ## Ships
 
@@ -67,11 +67,15 @@ Decided 10 Oct 2026 after two rounds of options. Pictures: `boards/ship-style/ch
   word (`PILOT`, `AUTO`, `DARK`, `DORMANT`). Above the chips: `MIND 8 / 24` with a thin violet bar.
 - Landscape only, on phone and desktop. See the mockups for the drydock (paint blocks, drag big machines), flight HUD, behavior editor (rule rows: violet conditions → teal actions) and galaxy map (dotted route, voyage panel with supplies and autopilot toggles).
 
-## Rendering in Bevy (suggestion, to be measured in the spike)
+## Rendering in Bevy
+
+The client follows [ADR-0020](adr/0020-style-2a-renderer.md); details in [`client.md`](client.md).
+
 
 - ~~Rasterise the icons into a texture atlas at build time.~~ Superseded (ADR-0021, ADR-0028): icons are SVGs in `content/base/icons/`, rasterised in memory at runtime at the resolution the display needs, regenerated when zoom or DPI changes.
-- Draw tiles as coloured quads or sprites, with the seam baked into the tile texture or drawn as a second, slightly smaller quad. Draw icons on top.
-- Build the hull edge as a line mesh from the boundary edges of the main piece. Skip straight sides covered by a neighbour; slope faces are always boundary. `drawHullGlow` in `reference/concept-board-script.js` shows the edge rule.
-- Glow: try additive sprites or a pre-blurred line texture first. Full-screen bloom is the expensive option on phones and WebGL2, and the spike measures both.
+- Each sim piece is one atlas-textured mesh: every tile is drawn as its outline in the seam colour with the fill inset by the seam width, icons on top (`ship_view.rs`).
+- The hull edge is built from the boundary edges of the main piece (`data::geometry`, `hull_edges`): straight sides covered by a neighbour are skipped; slope faces are always boundary. `drawHullGlow` in `concept/reference/concept-board-script.js` shows the original rule.
+- Glow: pre-blurred glow sprites by default. Full-screen bloom is a toggle (key `3`, `?bloom=1`) to compare; it is the expensive option on phones and WebGL2.
+- Plumes, trails, beams and sparks are pooled atlas sprites written into a few dynamic meshes every frame (`fx.rs`).
 - Shield bubbles are a procedural shader (no textures), all bubbles in one mesh and one draw call, blended with `max` (ADR-0029).
 - Keep every visual on the client: the `sim` crate knows nothing about colours or icons.
