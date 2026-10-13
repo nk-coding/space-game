@@ -39,8 +39,9 @@ const FRAME_BUDGET_MS: f64 = 6.0;
 /// finishing sooner beats a smooth frame rate.
 const BLURRY_BUDGET_MS: f64 = 16.0;
 const BLURRY: f32 = 2.0;
-/// Most bytes of a new atlas uploaded per frame (the pull pass finishes rows faster than the time budget stops it).
-const UPLOAD_BYTES: usize = 2 << 20;
+/// Most bytes of a new atlas uploaded per frame, per millisecond of its time budget (2.1 MB at 6 ms, 5.6 MB at
+/// 16 ms): the pull pass finishes rows faster than the time budget stops it.
+const UPLOAD_BYTES_PER_MS: f64 = 350_000.0;
 /// A new tier has to be wanted this long before the atlas is rebuilt (zooming through tiers costs nothing).
 const SETTLE_SECONDS: f32 = 0.25;
 
@@ -341,7 +342,7 @@ fn choose_tier(
     }
 }
 
-/// Does steps of the job until the frame's time budget or [`UPLOAD_BYTES`] of finished rows are used, and hands
+/// Does steps of the job until the frame's time budget or its bytes ([`UPLOAD_BYTES_PER_MS`]) are used, and hands
 /// the finished rows to the render world ([`upload_bands`]). Once every band is in the new texture, the materials
 /// switch to it (written through `get_mut`, so Bevy re-prepares them) and the old image goes with its last handle.
 /// No frame uploads the whole atlas (84 MB at tier 512, which took one frame until 13 Oct 2026).
@@ -362,9 +363,10 @@ fn rasterise_step(
     let Some(j) = job.job.as_mut() else { return };
     if !j.done {
         let budget = if status.need > atlas.tier as f32 * BLURRY { BLURRY_BUDGET_MS } else { FRAME_BUDGET_MS };
+        let most = (UPLOAD_BYTES_PER_MS * budget) as usize;
         let t0 = Instant::now();
         let (mut bands, mut bytes) = (Vec::<Band>::new(), 0);
-        while !j.done && bytes < UPLOAD_BYTES && t0.elapsed().as_secs_f64() * 1e3 < budget {
+        while !j.done && bytes < most && t0.elapsed().as_secs_f64() * 1e3 < budget {
             let t = Instant::now();
             match j.raster.step() {
                 Ok(d) => j.done = d,
