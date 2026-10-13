@@ -23,7 +23,7 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
-use data::{Content, Part, StatLine};
+use data::{Content, Part};
 
 use crate::camera::CameraRig;
 use crate::flight_hud::HudFonts;
@@ -36,7 +36,8 @@ use crate::ui_kit::{
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
-use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool};
+use super::inspector::Inspector;
+use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, palette_parts};
 use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 use super::PlayerDesign;
@@ -149,7 +150,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             root.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
                 .with_children(|tr| {
                     tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
-                    for (k, m) in content.materials.iter().filter(|m| m.armor.is_some()).enumerate() {
+                    for (k, m) in armor_materials(content).enumerate() {
                         let text = if k < 9 { format!("{} {}", m.name.to_uppercase(), k + 1) } else { m.name.to_uppercase() };
                         spawn_pill(tr, fonts, &text, 9.0, 28.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Material(m.id.clone())));
                     }
@@ -301,8 +302,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         display: Display::Grid,
                         grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
                         column_gap: px(12),
-                        row_gap: px(12),
-                        margin: UiRect::top(px(16)),
+                        row_gap: px(10),
+                        margin: UiRect::top(px(14)),
                         ..default()
                     })
                     .with_children(|g| {
@@ -313,7 +314,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             });
                         }
                     });
-                    rp.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(16)), ..default() }).with_children(|b| {
+                    rp.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), ..default() }).with_children(|b| {
                         for k in 0..SEL_BONUSES {
                             b.spawn((SelBonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }))
                                 .with_children(|r| {
@@ -322,6 +323,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 });
                         }
                     });
+                    super::inspector::spawn_controls(rp, fonts, &style, content);
                 });
 
             // Centre: the tools above the grid; the grid viewport; the info line and the zoom.
@@ -341,7 +343,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
                 ga.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(30), flex_shrink: 0.0, ..default() })
                     .with_children(|b| {
-                        b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0))));
+                        b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(super::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
                             z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut))).with_children(|r| {
                                 r.spawn((PillText, number(fonts, "−", 15.0, c(Tone::Number, 1.0))));
@@ -396,19 +398,20 @@ pub(super) fn sync_search(mut ui: ResMut<DrydockUi>, mut field: Single<&mut Text
     }
 }
 
-/// Active and disabled states of every action widget, from the drydock's state.
-pub(super) fn sync_pills(ui: Res<DrydockUi>, status: Res<DrydockStatus>, mut pills: Query<(&ActionButton, &mut Pill)>) {
+/// Active and disabled states of the action widgets, from the drydock's state (the mirror and bevel modes are
+/// the editor's; the inspector keeps its own pills).
+pub(super) fn sync_pills(ui: Res<DrydockUi>, design: Res<PlayerDesign>, status: Res<DrydockStatus>, mut pills: Query<(&ActionButton, &mut Pill)>) {
     for (b, mut pill) in &mut pills {
         let (active, disabled) = match &b.0 {
             DrydockAction::Tool(t) => (ui.tool == *t, false),
-            DrydockAction::Mirror => (ui.mirror, false),
-            DrydockAction::Bevel => (ui.bevel, false),
+            DrydockAction::Mirror => (design.dock().mirror, false),
+            DrydockAction::Bevel => (design.dock().bevel, false),
             DrydockAction::Material(m) => (ui.material == *m, false),
             DrydockAction::Overlay(o) => (ui.overlay(*o), false),
             DrydockAction::Category(cat) => (ui.search.is_empty() && ui.category == *cat, false),
             DrydockAction::PickPart(p) => (ui.picked.as_deref() == Some(p.as_str()), false),
             DrydockAction::TestFly => (false, status.grounded.is_some()),
-            _ => (false, false),
+            _ => continue,
         };
         if pill.active != active || pill.disabled != disabled {
             pill.active = active;
@@ -435,9 +438,9 @@ pub(super) fn sync_palette(
         .filter(|m| pal.made_from.as_ref() != Some(m));
     if let Some(made_from) = made_from {
         let parts: Vec<String> = if made_from.1.is_empty() {
-            content.parts.iter().filter(|p| p.category == ui.category).map(|p| p.id.clone()).collect()
+            palette_parts(content).filter(|p| p.category == ui.category).map(|p| p.id.clone()).collect()
         } else {
-            content.parts.iter().filter(|p| p.name.to_lowercase().contains(&made_from.1)).map(|p| p.id.clone()).collect()
+            palette_parts(content).filter(|p| p.name.to_lowercase().contains(&made_from.1)).map(|p| p.id.clone()).collect()
         };
         // A new list starts at the top; a new material only recolours it.
         if pal.made_from.as_ref().is_none_or(|m| m.0 != made_from.0 || m.1 != made_from.1) {
@@ -495,35 +498,27 @@ fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
     UiIcon::Part { part: part.to_string(), material: hull.then(|| material.to_string()) }
 }
 
-/// The selected part's icon, its stat and bonus rows, the stats grid's bars and cells.
+/// The selected part's icon, its stat and bonus rows (from [`Inspector`]), the stats grid's bars and cells.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn sync_blocks(
-    ui: Res<DrydockUi>,
+    insp: Res<Inspector>,
     stats: Res<DrydockStats>,
-    content: Res<GameContent>,
     mut sel_icon: Single<&mut UiIcon, With<SelIcon>>,
     mut sel_stats: Query<(&SelStat, &mut Node), (Without<SelBonus>, Without<StatCellNode>)>,
     mut sel_bonuses: Query<(&SelBonus, &mut Node), (Without<SelStat>, Without<StatCellNode>)>,
     mut cells: Query<(&StatCellNode, &mut Node), (Without<SelStat>, Without<SelBonus>)>,
     mut bars: Query<(&StatBar, &mut ValueBar, &mut Node), (Without<SelStat>, Without<SelBonus>, Without<StatCellNode>)>,
 ) {
-    if ui.is_changed() {
-        let content = &content.0;
-        let want = match &ui.picked {
-            Some(p) => part_icon(content, p, &ui.material),
-            None => UiIcon::Part { part: String::new(), material: None },
-        };
+    if insp.is_changed() {
+        let want = UiIcon::Part { part: insp.part.clone(), material: insp.material.clone() };
         if **sel_icon != want {
             **sel_icon = want;
         }
-        let lines = picked_lines(content, &ui);
-        let plain = lines.iter().filter(|l| l.bonus.is_none()).count();
-        let bonus = lines.len() - plain;
         for (s, mut n) in &mut sel_stats {
-            set_display(&mut n, s.0 < plain);
+            set_display(&mut n, s.0 < insp.stats.len());
         }
         for (b, mut n) in &mut sel_bonuses {
-            set_display(&mut n, b.0 < bonus);
+            set_display(&mut n, b.0 < insp.bonuses.len());
         }
     }
     if stats.is_changed() {
@@ -550,12 +545,6 @@ fn set_display(n: &mut Node, show: bool) {
     }
 }
 
-/// The picked part's stat lines (hull parts in the chosen armour).
-fn picked_lines(content: &Content, ui: &DrydockUi) -> Vec<StatLine> {
-    let Some(part) = ui.picked.as_deref().and_then(|p| content.parts.get(p)) else { return Vec::new() };
-    content.part_stats(part, content.materials.get(&ui.material).filter(|_| part.hull))
-}
-
 /// The one stat a palette row shows: the part's first own stat after the common ones (build points, control,
 /// mass, hit points, power draw, heat), else the bonus it gives, else its hit points.
 fn key_stat(content: &Content, part: &Part, material: &str) -> Option<String> {
@@ -580,20 +569,18 @@ pub(super) fn sync_texts(
     ui: Res<DrydockUi>,
     status: Res<DrydockStatus>,
     stats: Res<DrydockStats>,
+    insp: Res<Inspector>,
     pal: Res<Palette>,
     content: Res<GameContent>,
     style: Res<Style>,
     mut texts: Query<(&PanelText, &mut Text, &mut TextColor)>,
     mut done: Local<bool>,
 ) {
-    if *done && !design.is_changed() && !ui.is_changed() && !status.is_changed() && !stats.is_changed() && !pal.is_changed() {
+    if *done && !design.is_changed() && !ui.is_changed() && !status.is_changed() && !stats.is_changed() && !insp.is_changed() && !pal.is_changed() {
         return;
     }
     *done = true;
     let content = &content.0;
-    let picked = ui.picked.as_deref().and_then(|p| content.parts.get(p));
-    let lines = picked_lines(content, &ui);
-    let (plain, bonus): (Vec<&StatLine>, Vec<&StatLine>) = lines.iter().partition(|l| l.bonus.is_none());
     let row_part = |k: usize| (k < pal.visible).then(|| pal.parts.get(pal.offset + k)).flatten().and_then(|p| content.parts.get(p));
     let mut s = String::new();
     for (t, mut text, mut color) in &mut texts {
@@ -621,25 +608,15 @@ pub(super) fn sync_texts(
                 status.tone
             }
             PanelText::SelName => {
-                s.push_str(picked.map_or("Nothing picked", |p| p.name.as_str()));
-                if picked.is_some() { Tone::Number } else { Tone::Dim }
+                s.push_str(&insp.name);
+                insp.name_tone
             }
             PanelText::SelSub => {
-                if let Some(p) = picked {
-                    let cat = content.categories.get(&p.category).map_or(String::new(), |c| c.name.to_uppercase());
-                    s.push_str(&format!("{}  ·  {cat}", footprint(p)));
-                    if p.hull
-                        && let Some(m) = content.materials.get(&ui.material)
-                    {
-                        s.push_str(&format!("  ·  {}", m.name.to_uppercase()));
-                    }
-                } else {
-                    s.push_str("PICK A PART IN THE LIST");
-                }
-                Tone::Dim
+                s.push_str(&insp.sub);
+                insp.sub_tone
             }
             PanelText::SelSummary => {
-                s.push_str(picked.map_or("", |p| p.summary.as_str()));
+                s.push_str(&insp.summary);
                 Tone::Label
             }
             PanelText::RowName(k) => {
@@ -666,22 +643,16 @@ pub(super) fn sync_texts(
                 cell.map_or(Tone::Number, |c| c.tone)
             }
             PanelText::SelStatLabel(k) => {
-                s.push_str(&plain.get(k).map_or(String::new(), |l| l.label.to_uppercase()));
+                s.push_str(insp.stats.get(k).map_or("", |l| l.label.as_str()));
                 Tone::Label
             }
             PanelText::SelStatValue(k) => {
-                s.push_str(plain.get(k).map_or("", |l| l.text.as_str()));
-                Tone::Number
+                let line = insp.stats.get(k);
+                s.push_str(line.map_or("", |l| l.value.as_str()));
+                line.map_or(Tone::Number, |l| l.tone)
             }
             PanelText::SelBonus(k) => {
-                if let Some(l) = bonus.get(k)
-                    && let Some(b) = &l.bonus
-                {
-                    s.push_str(&format!("{} {} TO ADJACENT {}", l.text, l.label.to_uppercase(), b.target_label.to_uppercase()));
-                    if let Some(n) = b.max_stacks {
-                        s.push_str(&format!("  ·  MAX {n}"));
-                    }
-                }
+                s.push_str(insp.bonuses.get(k).map_or("", |b| b.as_str()));
                 Tone::Gold
             }
             PanelText::Info | PanelText::Zoom => continue,
@@ -691,13 +662,14 @@ pub(super) fn sync_texts(
     }
 }
 
-/// The info line (hover cell, mirror, axis) and the zoom, every frame.
+/// The info line (hover cell, mirror, axis, and the pan help unless the coral hint after it needs the room) and
+/// the zoom, every frame.
 pub(super) fn sync_live(
     design: Res<PlayerDesign>,
-    ui: Res<DrydockUi>,
     cursor: Res<DrydockCursor>,
     rig: Res<CameraRig>,
     cam: Res<DockCamera>,
+    hint: Single<&TextSpan, With<super::ghost::HintText>>,
     mut texts: Query<(&PanelText, &mut Text)>,
     mut s: Local<String>,
 ) {
@@ -709,8 +681,11 @@ pub(super) fn sync_live(
                     Some((x, y)) => write!(s, "CELL {x},{y}"),
                     None => write!(s, "CELL —"),
                 };
-                let mirror = if ui.mirror { "ON" } else { "OFF" };
-                let _ = write!(s, "  ·  MIRROR {mirror}  ·  AXIS {}  ·  SPACE + DRAG TO PAN", design.frame().0 as f32 / 2.0);
+                let mirror = if design.dock().mirror { "ON" } else { "OFF" };
+                let _ = write!(s, "  ·  MIRROR {mirror}  ·  AXIS {}", design.frame().0 as f32 / 2.0);
+                if hint.0.is_empty() {
+                    s.push_str("  ·  SPACE + DRAG TO PAN");
+                }
             }
             PanelText::Zoom => {
                 if cam.fit > 0.0 {

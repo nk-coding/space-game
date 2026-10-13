@@ -80,7 +80,7 @@ editor (`dock.mirror`, `dock.bevel`).
   - On a slope of the same part: another material repaints it; the same material **turns** it to the next
     orientation in turning order that fits, centred on the clicked cell (so a 1×1 slope turns in place, and
     clicking again and again cycles through all of them).
-  - `slope_preview(part, cell, material)` gives the resulting placement for the ghost.
+  - `preview_slope(part, cell, material)` gives the resulting placement for the ghost (see Previews).
 - **Paint** `paint(cell, material)` (armour): an empty cell gets the 1×1 armour block; a hull part (block or slope)
   under the cursor takes the material; other parts refuse. The armour block is the first hull part with a 1×1
   rect footprint in content order (`armor_block`), the bevel slope the first hull part with a 1×1 slope footprint
@@ -128,6 +128,17 @@ Every edit applies to its mirror image too:
 
 Mirrored edits keep a symmetric design symmetric (tested on the Halvex Runner, through undo and redo too).
 
+### Previews
+
+The ghost under the cursor asks what an edit would do without doing it: `preview_place(placement)`,
+`preview_slope(part, cell, material)`, `preview_paint(cell, material)` and `preview_move(part, dx, dy)` return a
+`Preview { placement, twin, mirrored }` (the placement the edit puts down or leaves, the `Twin` outcome the edit
+would report, and the twin's placement when it applies) or the edit's `Refusal`. The edits are planned by the same
+code (`place`, `paint`, the part tools and slope turns carry out their plan), so a preview always matches the edit;
+`previews_match_the_edits` checks it on every cell of the Halvex Runner's frame. A twin that would overlap the
+primary edit's new part is refused with `Overlaps(k)`, `k` the index that part has after the edit (for a new
+part `parts().len()`).
+
 ### Undo, strokes and revision
 
 - Every edit that changes the design records its primitive changes (insert, remove, set, frame) as one undo step;
@@ -146,7 +157,78 @@ building): median (p95) repaint 0.17 µs (1.2 µs), mirrored repaint 0.26 µs (0
 indices shift) 3.2 µs (3.3 µs) and its undo 3.3 µs (3.4 µs), mirrored erase 5.4 µs (5.7 µs), mirrored move / place /
 rotate 0.16–0.27 µs (≤ 0.31 µs), auto-oriented slope 0.53 µs (0.59 µs). Filling an empty 64×64 frame (4096 blocks,
 one step) 0.49 ms (0.64 ms), undoing it 0.15 ms (0.19 ms), exporting 4096 parts 0.18 ms (0.23 ms). Run with
-`cargo test -p data --release --test edit -- --ignored --nocapture`.
+`cargo test -p data --release --test edit -- --ignored --nocapture`. After the edits moved to plan-then-apply
+(previews, 13 Oct 2026; load average 11–13 with other agents building) the same runs gave repaint 0.24 µs, mirrored
+repaint 0.30 µs, mirrored move 0.33 µs, mirrored place 0.20 µs, mirrored rotate 0.30 µs, auto-oriented slope
+0.58 µs, the 64×64 fill 0.41 ms: the same within the noise.
+
+## Client: editing
+
+Wave 2, 13 Oct 2026: editing in the client (`crates/game/src/drydock/tools.rs`, `ghost.rs`, `inspector.rs`). Every
+edit goes through `PlayerDesign::edit` and the editing model above; the client keeps no rules of its own.
+Screenshots (headless, 1280 × 720): `docs/results/drydock-editing-ghost.png` (a wing painted with mirror and bevel,
+the ghost of a turned beam laser and its twin), `-refused.png` (a refused ghost and its reason), `-select.png` (a
+selected beam laser on the HIGH tier in the inspector).
+
+| Input (only while the search field does not have the keyboard) | |
+|---|---|
+| Left button on the grid | the current tool |
+| Right button on the grid | erase (click or drag, one stroke), whatever the tool |
+| Space + left drag, middle drag | pan (never edits) |
+| B / G / X / V | paint / fill / erase / select |
+| Q / E | turn the selected part (select tool), else the part to place (the brush rotation) |
+| F | flip the selected part |
+| Delete / Backspace | delete the selected part (and its mirror twin) |
+| Esc | deselect (in the search field it only leaves the field) |
+| M / Shift+B | mirror / bevel mode |
+| Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | undo / redo; also the two ring buttons, dimmed when there is nothing to undo or redo |
+
+**Gestures** (`tools::Gesture`, pure and tested): a press, drags and a release on frame cells become edits. It knows
+nothing of the input device: the mouse drives it now; touch will drive the same gestures with the phone layout.
+
+- **Paint** (B), by the picked part (`tools::Brush`): the 1×1 hull block **paints**: a drag paints every cell of
+  the straight line between the cells it reached (no gaps on fast drags) and the whole drag is one stroke, one
+  undo step. A **slope** goes down with `place_slope` on each click (oriented to the hull; clicking it again turns
+  or repaints it). **Any other part** is placed once per click, its footprint in the brush rotation centred on
+  the cell (rounded towards the top-left, like a slope); dragging does not place more.
+- **Fill** (G): drag a rectangle; it shows (with its mirror image) while dragging and fills on release; a click fills
+  one cell.
+- **Erase** (X, or the right button): click or drag, one stroke.
+- **Select** (V): a click selects the part under the cursor, a click on an empty cell deselects. The selection is a
+  cell (part indices change with every edit), exists only in the select tool and is cleared by another tool, by
+  picking a palette part (which also switches select and erase to paint), Esc, Delete, or when the part goes (an
+  undo). Dragging the selected part moves it on release by the dragged cells (`move_part`); while dragging, the
+  ghost shows where it and its twin would go, coral with the reason when they can't. Turns and flips that don't
+  fit leave the part as it is and say why.
+- **Mirror and bevel** are the editor's flags (`dock().mirror`, `dock().bevel`), the one source for the pills and the
+  info line; `PlayerDesign::replace` keeps them when another design opens.
+
+**Ghost** (`ghost.rs`): under the cursor the edit's `Preview` (`preview_paint`, `preview_slope`, `preview_place`,
+`preview_move`): the parts it would put down as flight tiles at 55 % opacity (one mesh, a child of the design's
+mesh, rebuilt only when the tiles change), outlined teal; a refused edit shows the part (or the cell) outlined coral.
+The mirror twin is drawn too; a skipped twin is a coral outline. Erase outlines what it would take (and the twin)
+in coral, select outlines the hovered part. The selected part has teal corner brackets. Why the edit under the
+cursor can't happen goes after the info line in coral (`OUTSIDE THE FRAME`, `OVERLAPS FUSION REACTOR`,
+`MIRROR SKIPPED · OVERLAPS ARMOR BLOCK`, ...; part names from content); without one, the last refusal stays there
+for 3 s, and the pan help gives way to it.
+
+**Inspector** (`inspector.rs`, the right column's SELECTED PART): with a placed part selected, its icon, name and
+`2×2 · CELL 5,2 · INSTALLED` (`IDLE` when it is over the control capacity, `FALLS OFF` when it is not on the main
+piece, both coral), its peak heat at full use as `T / limit` (teal up to the limit, gold up to 120 %, coral above:
+GDR-0052) and its power level at full use (`100 %`, a partial level in gold, `OFF`, `IDLE`), then its stat lines from
+`Content::part_stats` with the values after bonuses from `DesignReport::parts` (boosted values in gold; damage per
+second and shots per second include the fire-rate multiplier, as the sim's guns do; build points, control cost and
+minimum power stay with the palette part), and one gold line per bonus it receives or gives, grouped by stat,
+amount and part (`◆ +15% FIRE RATE FROM CAPACITOR`, `◆ +2 MW POWER OUTPUT TO FISSION REACTOR ×2`). Below: the armor
+pills of a hull part (`set_material`), the power tier pills (CRITICAL to OFF) and weight stepper (steps of 0.5 from
+0.5 to 10, UI placeholders) of a part that draws power (`set_power`; a tier or weight equal to the part's default is
+no override, so going back leaves the blueprint clean), and rotate, flip and delete. Mirror mode changes the twin
+too. With nothing selected it shows the part picked in the palette (content numbers, as before).
+
+**Locked parts and materials** (content `locked`, `content-model.md`): the palette, its search, the ARMOR pills,
+the inspector's armor pills and the 1–9 keys skip them (`state::palette_parts`, `state::armor_materials`); the first
+category's first unlocked part is picked at start, and the starting armor is the design's if it is unlocked.
+Designs that use locked parts (the automaton raider) still open, show and fly; nothing unlocks yet.
 
 ## Client: stats and overlays
 

@@ -63,9 +63,12 @@ impl PlayerDesign {
         design
     }
 
-    /// Replaces this design with another one (opened, loaded or a new one); the revision keeps going up.
+    /// Replaces this design with another one (opened, loaded or a new one); the revision keeps going up and the
+    /// mirror and bevel modes stay as they are (they are the drydock's, not the design's).
     pub fn replace(&mut self, mut next: PlayerDesign) {
         next.revision = self.revision + 1;
+        next.dock.mirror = self.dock.mirror;
+        next.dock.bevel = self.dock.bevel;
         *self = next;
     }
 

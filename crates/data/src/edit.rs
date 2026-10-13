@@ -102,6 +102,18 @@ pub struct Outcome {
     pub twin: Twin,
 }
 
+/// What an edit would do, without doing it (the ghost under the cursor). The edit itself is planned by the same
+/// code, so a preview and the edit agree.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Preview {
+    /// The placement the edit puts down or leaves: the new part, or the edited part as it would be.
+    pub placement: Placement,
+    /// What would happen to the mirror image, as [`Outcome::twin`] would say.
+    pub twin: Twin,
+    /// The mirror image's placement after the edit, when `twin` is [`Twin::Applied`].
+    pub mirrored: Option<Placement>,
+}
+
 /// Why a blueprint cannot be opened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpenError {
@@ -146,12 +158,7 @@ struct Catalog {
 
 impl Catalog {
     fn new(c: &Content) -> Catalog {
-        let unit = |shape: Shape| {
-            c.parts
-                .iter()
-                .find(|p| p.hull && p.size == (1, 1) && p.shape == shape)
-                .map(|p| p.id.clone())
-        };
+        let unit = |shape: Shape| c.unit_hull_part(shape).map(|p| p.id.clone());
         Catalog {
             parts: c
                 .parts
@@ -227,11 +234,19 @@ impl Change {
 }
 
 /// What painting one cell does.
+#[derive(Clone)]
 enum PaintAction {
     /// The cell already has a hull part of this material.
     Nothing(usize),
     Recolor(usize),
     Insert(Placement),
+}
+
+/// What [`Drydock::paint`] does: the cell, its mirror cell, and what that means for the twin.
+struct PaintPlan {
+    first: PaintAction,
+    second: Option<PaintAction>,
+    twin: Twin,
 }
 
 /// What [`Drydock::place_slope`] does.
@@ -448,74 +463,75 @@ impl Drydock {
         (self.frame.0 - 1 - x, y)
     }
 
-    /// What [`Drydock::place_slope`] would leave at this cell: the new, repainted or turned slope (for the
-    /// ghost under the cursor).
-    pub fn slope_preview(
+    /// What [`Drydock::place`] would do: the placement (an empty power override dropped) and its mirror image.
+    pub fn preview_place(&self, p: &Placement) -> Result<Preview, Refusal> {
+        let p = Placement {
+            power: nonempty(p.power),
+            ..p.clone()
+        };
+        let s = self.validate(&p)?;
+        self.fits(&s, &[])?;
+        Ok(self.new_part_preview(p, &s))
+    }
+
+    /// What [`Drydock::place_slope`] would do at this cell: the new, repainted or turned slope, and its mirror
+    /// image.
+    pub fn preview_slope(
         &self,
         part: &str,
         cell: Cell,
         material: &str,
-    ) -> Result<Placement, Refusal> {
-        Ok(match self.slope_plan(part, cell, material)? {
-            SlopePlan::New(p) => p,
-            SlopePlan::Recolor(k) => Placement {
-                material: Some(material.to_string()),
-                ..self.parts[k].clone()
-            },
-            SlopePlan::Turn(k, s) => with_pose(&self.parts[k], &s),
+    ) -> Result<Preview, Refusal> {
+        match self.slope_plan(part, cell, material)? {
+            SlopePlan::New(p) => {
+                let s = self.shape_of(&p);
+                Ok(self.new_part_preview(p, &s))
+            }
+            SlopePlan::Recolor(k) => Ok(self.recolor_plan(k, material)?.0),
+            SlopePlan::Turn(k, s) => Ok(self.turn_plan(k, s)?.0),
+        }
+    }
+
+    /// What [`Drydock::paint`] would do at this cell: the block, bevel slope or repainted hull part left there,
+    /// and at the mirror cell.
+    pub fn preview_paint(&self, cell: Cell, material: &str) -> Result<Preview, Refusal> {
+        let plan = self.paint_plan(cell, material)?;
+        Ok(Preview {
+            placement: self.painted(&plan.first, material),
+            mirrored: plan.second.as_ref().map(|a| self.painted(a, material)),
+            twin: plan.twin,
         })
+    }
+
+    /// What [`Drydock::move_part`] would do: the part at its new place, and its twin's.
+    pub fn preview_move(&self, i: usize, dx: i32, dy: i32) -> Result<Preview, Refusal> {
+        Ok(self.part_plan(i, move_by(dx, dy))?.0)
     }
 
     /// Places any part (appended to the parts). A hull part needs an armour material, other parts none; a
     /// power override only goes on parts that draw power (an empty override is dropped). Mirror mode also
     /// places the mirror image, unless it is the same shape (a symmetric part centred on the axis).
     pub fn place(&mut self, p: Placement) -> Result<Outcome, Refusal> {
-        let p = Placement {
-            power: nonempty(p.power),
-            ..p
-        };
-        let s = self.validate(&p)?;
-        self.fits(&s, &[])?;
-        let mut log = Vec::new();
+        let plan = self.preview_place(&p)?;
         let index = self.parts.len();
-        let twin = if self.mirror {
-            let m = mirrored(&s, self.frame.0);
+        let mut log = Vec::new();
+        self.exec(
+            Change::Insert {
+                index,
+                placement: plan.placement,
+            },
+            &mut log,
+        );
+        if let Some(placement) = plan.mirrored {
             self.exec(
                 Change::Insert {
-                    index,
-                    placement: p.clone(),
+                    index: index + 1,
+                    placement,
                 },
                 &mut log,
             );
-            if same_shape(&m, &s) {
-                Twin::Itself
-            } else {
-                match self.fits(&m, &[]) {
-                    Ok(()) => {
-                        let placement = with_pose(&p, &m);
-                        self.exec(
-                            Change::Insert {
-                                index: index + 1,
-                                placement,
-                            },
-                            &mut log,
-                        );
-                        Twin::Applied
-                    }
-                    Err(r) => Twin::Skipped(r),
-                }
-            }
-        } else {
-            self.exec(
-                Change::Insert {
-                    index,
-                    placement: p,
-                },
-                &mut log,
-            );
-            Twin::Off
-        };
-        Ok(self.finish(log, Some(index), twin))
+        }
+        Ok(self.finish(log, Some(index), plan.twin))
     }
 
     /// The slope tool. On an empty cell it places the slope oriented to the hull (see `docs/drydock.md`). On a
@@ -531,10 +547,8 @@ impl Drydock {
             SlopePlan::New(p) => self.place(p),
             SlopePlan::Recolor(k) => self.set_material(k, material),
             SlopePlan::Turn(k, s) => {
-                let m = mirrored(&s, self.frame.0);
-                self.edit_part(k, |old, _, twin| {
-                    Ok(with_pose(old, if twin { &m } else { &s }))
-                })
+                let plan = self.turn_plan(k, s)?;
+                Ok(self.apply_part_plan(k, plan))
             }
         }
     }
@@ -544,60 +558,13 @@ impl Drydock {
     /// parts. Mirror mode paints the mirror cell too, decided on the design as it was before this call, so a
     /// symmetric design stays symmetric.
     pub fn paint(&mut self, cell: Cell, material: &str) -> Result<Outcome, Refusal> {
-        self.armor(material)?;
-        let first = self.paint_action(cell, material)?;
-        let mirror_cell = self.mirror_cell(cell);
-        let second = match self.mirror {
-            false => None,
-            true if mirror_cell == cell => None,
-            true => Some(self.paint_action(mirror_cell, material)),
-        };
+        let plan = self.paint_plan(cell, material)?;
         let mut log = Vec::new();
-        let (part, first_part) = match first {
-            PaintAction::Nothing(k) => (k, Some(k)),
-            PaintAction::Recolor(k) => {
-                self.recolor(k, material, &mut log);
-                (k, Some(k))
-            }
-            PaintAction::Insert(p) => {
-                let index = self.parts.len();
-                self.exec(
-                    Change::Insert {
-                        index,
-                        placement: p,
-                    },
-                    &mut log,
-                );
-                (index, None)
-            }
-        };
-        let twin = match (self.mirror, second) {
-            (false, _) => Twin::Off,
-            (true, None) => Twin::Itself,
-            (true, Some(Err(r))) => Twin::Skipped(r),
-            (true, Some(Ok(PaintAction::Nothing(j) | PaintAction::Recolor(j))))
-                if Some(j) == first_part =>
-            {
-                Twin::Itself
-            }
-            (true, Some(Ok(PaintAction::Nothing(_)))) => Twin::Applied,
-            (true, Some(Ok(PaintAction::Recolor(j)))) => {
-                self.recolor(j, material, &mut log);
-                Twin::Applied
-            }
-            (true, Some(Ok(PaintAction::Insert(p)))) => {
-                let index = self.parts.len();
-                self.exec(
-                    Change::Insert {
-                        index,
-                        placement: p,
-                    },
-                    &mut log,
-                );
-                Twin::Applied
-            }
-        };
-        Ok(self.finish(log, Some(part), twin))
+        let part = self.do_paint(plan.first, material, &mut log);
+        if let Some(second) = plan.second {
+            self.do_paint(second, material, &mut log);
+        }
+        Ok(self.finish(log, Some(part), plan.twin))
     }
 
     /// The fill tool: every empty cell of the rectangle spanned by two corner cells (clipped to the frame) gets
@@ -654,13 +621,8 @@ impl Drydock {
     /// Moves a part by `(dx, dy)` cells if it still fits (its own old cells do not count). The mirror twin
     /// moves by `(−dx, dy)`.
     pub fn move_part(&mut self, i: usize, dx: i32, dy: i32) -> Result<Outcome, Refusal> {
-        self.edit_part(i, |old, _, twin| {
-            Ok(Placement {
-                x: old.x + if twin { -dx } else { dx },
-                y: old.y + dy,
-                ..old.clone()
-            })
-        })
+        let plan = self.part_plan(i, move_by(dx, dy))?;
+        Ok(self.apply_part_plan(i, plan))
     }
 
     /// Turns a part a quarter turn if it still fits. It turns about a fixed point of the part: its centre when
@@ -668,29 +630,22 @@ impl Drydock {
     /// the centre moves as little as possible, and turning back restores the placement exactly). The mirror
     /// twin turns the other way.
     pub fn rotate(&mut self, i: usize, clockwise: bool) -> Result<Outcome, Refusal> {
-        self.edit_part(i, |old, s, twin| {
+        let plan = self.part_plan(i, |old, s, twin| {
             Ok(with_pose(old, &turned(s, clockwise != twin)))
-        })
+        })?;
+        Ok(self.apply_part_plan(i, plan))
     }
 
     /// Mirrors a part left-right in place (same cells). The mirror twin flips too.
     pub fn flip(&mut self, i: usize) -> Result<Outcome, Refusal> {
-        self.edit_part(i, |old, s, _| Ok(with_pose(old, &flipped(s))))
+        let plan = self.part_plan(i, |old, s, _| Ok(with_pose(old, &flipped(s))))?;
+        Ok(self.apply_part_plan(i, plan))
     }
 
     /// Sets a hull part's armour material (and its mirror twin's).
     pub fn set_material(&mut self, i: usize, material: &str) -> Result<Outcome, Refusal> {
-        self.armor(material)?;
-        let part = self.parts.get(i).ok_or(Refusal::NoSuchPart(i))?;
-        if !self.catalog.parts[&part.part].hull {
-            return Err(Refusal::NotHull);
-        }
-        self.edit_part(i, |old, _, _| {
-            Ok(Placement {
-                material: Some(material.to_string()),
-                ..old.clone()
-            })
-        })
+        let plan = self.recolor_plan(i, material)?;
+        Ok(self.apply_part_plan(i, plan))
     }
 
     /// Sets or clears a part's power override (and its mirror twin's). Only parts that draw power take one; an
@@ -705,12 +660,13 @@ impl Drydock {
         if let Some(o) = &power {
             power_ok(&self.catalog.parts[&part.part], o)?;
         }
-        self.edit_part(i, |old, _, _| {
+        let plan = self.part_plan(i, |old, _, _| {
             Ok(Placement {
                 power,
                 ..old.clone()
             })
-        })
+        })?;
+        Ok(self.apply_part_plan(i, plan))
     }
 
     /// Opens a stroke: every edit until [`Drydock::end_stroke`] becomes one undo step (a paint or erase drag).
@@ -767,44 +723,158 @@ impl Drydock {
 
     // ---- edits, internals ----
 
-    /// Replaces part `i` by `make(placement, shape, false)` if it fits, and in mirror mode its twin by
-    /// `make(twin placement, twin shape, true)`.
-    fn edit_part(
-        &mut self,
+    /// Plans replacing part `i` by `make(placement, shape, false)` if it fits (its own old cells do not count),
+    /// and in mirror mode its twin `j` by `make(twin placement, twin shape, true)` if that fits beside the new
+    /// part `i`. Returns the plan and `j` when the twin edit applies.
+    fn part_plan(
+        &self,
         i: usize,
         make: impl Fn(&Placement, &PlacedShape, bool) -> Result<Placement, Refusal>,
-    ) -> Result<Outcome, Refusal> {
-        let old = self.parts.get(i).ok_or(Refusal::NoSuchPart(i))?.clone();
-        let new = make(&old, &self.shapes[i], false)?;
+    ) -> Result<(Preview, Option<usize>), Refusal> {
+        let old = self.parts.get(i).ok_or(Refusal::NoSuchPart(i))?;
+        let new = make(old, &self.shapes[i], false)?;
         if new.rot > 3 {
             return Err(Refusal::BadRotation);
         }
-        self.fits(&self.shape_of(&new), &[i])?;
-        let twin_of = self.mirror.then(|| self.twin(i));
-        let mut log = Vec::new();
-        if new != old {
-            self.exec(Change::Set { index: i, old, new }, &mut log);
-        }
-        let twin = match twin_of {
-            None => Twin::Off,
-            Some(None) => Twin::Skipped(Refusal::NoTwin),
-            Some(Some(j)) if j == i => Twin::Itself,
+        let s = self.shape_of(&new);
+        self.fits(&s, &[i])?;
+        let (twin, image) = match self.mirror.then(|| self.twin(i)) {
+            None => (Twin::Off, None),
+            Some(None) => (Twin::Skipped(Refusal::NoTwin), None),
+            Some(Some(j)) if j == i => (Twin::Itself, None),
             Some(Some(j)) => {
-                let old = self.parts[j].clone();
-                let new = make(&old, &self.shapes[j], true)
-                    .and_then(|n| self.fits(&self.shape_of(&n), &[j]).map(|()| n));
+                let new = make(&self.parts[j], &self.shapes[j], true).and_then(|n| {
+                    self.fits_beside(&self.shape_of(&n), &[j, i], Some((&s, i)))
+                        .map(|()| n)
+                });
                 match new {
-                    Ok(new) => {
-                        if new != old {
-                            self.exec(Change::Set { index: j, old, new }, &mut log);
-                        }
-                        Twin::Applied
-                    }
-                    Err(r) => Twin::Skipped(r),
+                    Ok(n) => (Twin::Applied, Some((j, n))),
+                    Err(r) => (Twin::Skipped(r), None),
                 }
             }
         };
-        Ok(self.finish(log, Some(i), twin))
+        let (j, mirrored) = image.unzip();
+        let plan = Preview {
+            placement: new,
+            twin,
+            mirrored,
+        };
+        Ok((plan, j))
+    }
+
+    /// Carries out a [`Drydock::part_plan`] of part `i`.
+    fn apply_part_plan(&mut self, i: usize, (plan, j): (Preview, Option<usize>)) -> Outcome {
+        let mut log = Vec::new();
+        for (k, new) in std::iter::once((i, plan.placement)).chain(j.zip(plan.mirrored)) {
+            let old = self.parts[k].clone();
+            if new != old {
+                self.exec(Change::Set { index: k, old, new }, &mut log);
+            }
+        }
+        self.finish(log, Some(i), plan.twin)
+    }
+
+    /// The plan of [`Drydock::set_material`].
+    fn recolor_plan(&self, i: usize, material: &str) -> Result<(Preview, Option<usize>), Refusal> {
+        self.armor(material)?;
+        let part = self.parts.get(i).ok_or(Refusal::NoSuchPart(i))?;
+        if !self.catalog.parts[&part.part].hull {
+            return Err(Refusal::NotHull);
+        }
+        self.part_plan(i, |old, _, _| {
+            Ok(Placement {
+                material: Some(material.to_string()),
+                ..old.clone()
+            })
+        })
+    }
+
+    /// The plan of turning slope `k` to the shape `s` (its twin to the mirror image).
+    fn turn_plan(&self, k: usize, s: PlacedShape) -> Result<(Preview, Option<usize>), Refusal> {
+        let m = mirrored(&s, self.frame.0);
+        self.part_plan(k, |old, _, twin| {
+            Ok(with_pose(old, if twin { &m } else { &s }))
+        })
+    }
+
+    /// The preview of putting down a new part `p` with the shape `s` that fits: in mirror mode also its mirror
+    /// image, unless that is the same shape, if it fits beside `p` (which gets the index `parts.len()`).
+    fn new_part_preview(&self, p: Placement, s: &PlacedShape) -> Preview {
+        let (twin, image) = if !self.mirror {
+            (Twin::Off, None)
+        } else {
+            let m = mirrored(s, self.frame.0);
+            if same_shape(&m, s) {
+                (Twin::Itself, None)
+            } else {
+                match self.fits_beside(&m, &[], Some((s, self.parts.len()))) {
+                    Ok(()) => (Twin::Applied, Some(with_pose(&p, &m))),
+                    Err(r) => (Twin::Skipped(r), None),
+                }
+            }
+        };
+        Preview {
+            placement: p,
+            twin,
+            mirrored: image,
+        }
+    }
+
+    /// The plan of [`Drydock::paint`]: both cells are decided on the design as it is.
+    fn paint_plan(&self, cell: Cell, material: &str) -> Result<PaintPlan, Refusal> {
+        self.armor(material)?;
+        let first = self.paint_action(cell, material)?;
+        let first_part = match first {
+            PaintAction::Nothing(k) | PaintAction::Recolor(k) => Some(k),
+            PaintAction::Insert(_) => None,
+        };
+        let mirror_cell = self.mirror_cell(cell);
+        let (second, twin) = if !self.mirror {
+            (None, Twin::Off)
+        } else if mirror_cell == cell {
+            (None, Twin::Itself)
+        } else {
+            match self.paint_action(mirror_cell, material) {
+                Err(r) => (None, Twin::Skipped(r)),
+                Ok(PaintAction::Nothing(j) | PaintAction::Recolor(j)) if Some(j) == first_part => {
+                    (None, Twin::Itself)
+                }
+                Ok(a) => (Some(a), Twin::Applied),
+            }
+        };
+        Ok(PaintPlan {
+            first,
+            second,
+            twin,
+        })
+    }
+
+    /// Paints one cell as planned; returns the index of the part in it.
+    fn do_paint(&mut self, a: PaintAction, material: &str, log: &mut Vec<Change>) -> usize {
+        match a {
+            PaintAction::Nothing(k) => k,
+            PaintAction::Recolor(k) => {
+                self.recolor(k, material, log);
+                k
+            }
+            PaintAction::Insert(placement) => {
+                let index = self.parts.len();
+                self.exec(Change::Insert { index, placement }, log);
+                index
+            }
+        }
+    }
+
+    /// What a planned paint leaves in its cell.
+    fn painted(&self, a: &PaintAction, material: &str) -> Placement {
+        match a {
+            PaintAction::Nothing(k) => self.parts[*k].clone(),
+            PaintAction::Recolor(k) => Placement {
+                material: Some(material.to_string()),
+                ..self.parts[*k].clone()
+            },
+            PaintAction::Insert(p) => p.clone(),
+        }
     }
 
     fn recolor(&mut self, k: usize, material: &str, log: &mut Vec<Change>) {
@@ -1020,11 +1090,28 @@ impl Drydock {
 
     /// Inside the frame and on free cells (parts in `ignore` do not count).
     fn fits(&self, s: &PlacedShape, ignore: &[usize]) -> Result<(), Refusal> {
+        self.fits_beside(s, ignore, None)
+    }
+
+    /// [`Drydock::fits`], and clear of `other`: the shape part `k` is about to have (the first edit of a pair,
+    /// for its mirror image). The first overlap in the shape's cell order is named.
+    fn fits_beside(
+        &self,
+        s: &PlacedShape,
+        ignore: &[usize],
+        other: Option<(&PlacedShape, usize)>,
+    ) -> Result<(), Refusal> {
         let (w, h) = s.dims();
         if s.x < 0 || s.y < 0 || s.x + w as i32 > self.frame.0 || s.y + h as i32 > self.frame.1 {
             return Err(Refusal::Outside);
         }
+        let other = other.map(|(o, k)| (o.cells(), k));
         for c in s.cells() {
+            if let Some((cells, k)) = &other
+                && cells.contains(&c)
+            {
+                return Err(Refusal::Overlaps(*k));
+            }
             if let Some(k) = self.part_at(c)
                 && !ignore.contains(&k)
             {
@@ -1229,6 +1316,20 @@ fn unit_placement(part: &str, (x, y): Cell, rot: u8, material: &str) -> Placemen
         flip: false,
         material: Some(material.to_string()),
         power: None,
+    }
+}
+
+/// The edit of [`Drydock::move_part`]: the twin moves the other way in x.
+fn move_by(
+    dx: i32,
+    dy: i32,
+) -> impl Fn(&Placement, &PlacedShape, bool) -> Result<Placement, Refusal> {
+    move |old, _, twin| {
+        Ok(Placement {
+            x: old.x + if twin { -dx } else { dx },
+            y: old.y + dy,
+            ..old.clone()
+        })
     }
 }
 

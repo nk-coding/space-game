@@ -427,6 +427,14 @@ impl Content {
         })
     }
 
+    /// The first hull part with a 1×1 footprint of this shape, in content order: the drydock paints and fills
+    /// with the `Rect` one (the armour block) and bevels with the `Slope` one (`data::edit`).
+    pub fn unit_hull_part(&self, shape: Shape) -> Option<&Part> {
+        self.parts
+            .iter()
+            .find(|p| p.hull && p.size == (1, 1) && p.shape == shape)
+    }
+
     /// The geometry of a placement, `None` if the part id is unknown.
     pub fn placed_shape(&self, p: &Placement) -> Option<crate::geometry::PlacedShape> {
         let part = self.parts.get(&p.part)?;

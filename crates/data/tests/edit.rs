@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use data::edit::{Drydock, OpenError, Refusal, Twin, UNDO_STEPS};
+use data::edit::{Drydock, OpenError, Outcome, Preview, Refusal, Twin, UNDO_STEPS};
 use data::{Blueprint, Content, Dir, Placement, PowerOverride, PowerTier, Shape};
 
 fn content() -> Content {
@@ -466,8 +466,9 @@ fn slopes_orient_to_the_hull() {
     let mut dock = empty(&c, (12, 12));
     dock.fill((0, 6), (11, 6), "composite").unwrap();
     let preview = dock
-        .slope_preview("slope_1x3", (9, 5), "composite")
-        .unwrap();
+        .preview_slope("slope_1x3", (9, 5), "composite")
+        .unwrap()
+        .placement;
     let i = dock
         .place_slope("slope_1x3", (9, 5), "composite")
         .unwrap()
@@ -940,6 +941,65 @@ fn twins_are_skipped_when_they_cannot_follow() {
         .unwrap();
     assert_eq!(o.twin, Twin::Itself);
     assert_eq!(dock.parts().len(), 1);
+}
+
+/// The preview of an edit (the ghost) is what the edit does: the same refusal, the same twin outcome, the edited
+/// part as previewed and the twin where the preview put it.
+fn agree(
+    before: &Drydock,
+    preview: Result<Preview, Refusal>,
+    edit: impl FnOnce(&mut Drydock) -> Result<Outcome, Refusal>,
+) {
+    let mut after = before.clone();
+    match (preview, edit(&mut after)) {
+        (Ok(p), Ok(o)) => {
+            assert_eq!(p.twin, o.twin, "{p:?}");
+            assert_eq!(after.parts()[o.part.unwrap()], p.placement);
+            match &p.mirrored {
+                Some(m) => assert!(
+                    p.twin == Twin::Applied && after.parts().contains(m),
+                    "{p:?}"
+                ),
+                None => assert_ne!(p.twin, Twin::Applied, "{p:?}"),
+            }
+        }
+        (Err(a), Err(b)) => assert_eq!(a, b),
+        (p, o) => panic!("preview {p:?}, edit {o:?}"),
+    }
+}
+
+#[test]
+fn previews_match_the_edits() {
+    let c = content();
+    for (mirror, bevel) in [(true, true), (true, false), (false, false)] {
+        let mut dock = Drydock::open(&c, &runner(&c), (24, 24)).unwrap();
+        dock.mirror = mirror;
+        dock.bevel = bevel;
+        let (w, h) = dock.frame();
+        for y in -1..=h as i32 {
+            for x in -1..=w as i32 {
+                for m in ["steel", "composite"] {
+                    agree(&dock, dock.preview_paint((x, y), m), |d| d.paint((x, y), m));
+                }
+                for slope in ["slope_1x1", "slope_1x2"] {
+                    agree(&dock, dock.preview_slope(slope, (x, y), "steel"), |d| {
+                        d.place_slope(slope, (x, y), "steel")
+                    });
+                }
+                for (part, rot) in [("fusion_reactor", 0), ("beam_laser", 1), ("slope_1x3", 3)] {
+                    let p = any(&c, part, x, y, rot, false);
+                    agree(&dock, dock.preview_place(&p), |d| d.place(p.clone()));
+                }
+            }
+        }
+        for i in 0..dock.parts().len() {
+            for (dx, dy) in [(-2, 0), (1, 0), (0, -1), (1, 1), (0, 3), (-5, 2)] {
+                agree(&dock, dock.preview_move(i, dx, dy), |d| {
+                    d.move_part(i, dx, dy)
+                });
+            }
+        }
+    }
 }
 
 /// Times on a 64×64 frame full of blocks. Run with

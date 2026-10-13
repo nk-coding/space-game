@@ -8,6 +8,7 @@
         summary: "The feral mind and power plant of a rogue automaton.",
         description: "A precursor drone core gone wild. Salvaged cores are the first source of programmable matter for new [[part:logic_core|logic cores]].",
         tags: ["automaton", "core"],
+        locked: true, // hidden in the drydock until salvage or research unlocks it (Niklas, 13 Oct 2026)
         category: "logic",
         icon: "automaton-core",
         color: "enemy",
@@ -25,6 +26,7 @@
         name: "Automaton cannon",
         summary: "A crude kinetic gun that rogue automatons build into their noses.",
         tags: ["automaton"],
+        locked: true,
         category: "weapons",
         icon: "automaton-cannon",
         color: "enemy",

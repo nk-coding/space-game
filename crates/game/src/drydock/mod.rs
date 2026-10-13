@@ -11,19 +11,25 @@
 //! * [`report`]: [`report::DrydockReport`], the design's `sim::report` per revision.
 //! * [`stats`]: the stats grid and the status line (whether the design can fly) from the report.
 //! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
+//! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
+//! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
+//! * [`inspector`]: the SELECTED PART block (a placed part with the report's numbers, or the palette part).
 //!
 //! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
 //! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
-//! write [`DrydockStats`] and [`DrydockStatus`]; read [`DrydockUi`] (tool, material, mirror, rotation, picked
+//! write [`DrydockStats`] and [`DrydockStatus`]; read [`DrydockUi`] (tool, material, rotation, picked
 //! part) and [`DrydockCursor`] (the cell under the pointer). Nothing here needs to change for that.
 
 pub mod actions;
 pub mod design;
+pub mod ghost;
+pub mod inspector;
 pub mod overlays;
 pub mod panels;
 pub mod report;
 pub mod state;
 pub mod stats;
+pub mod tools;
 pub mod view;
 
 use bevy::prelude::*;
@@ -89,7 +95,28 @@ impl Plugin for DrydockPlugin {
                 ),
             )
             .add_systems(PostUpdate, view::draw_frame.run_if(in_state(AppMode::Drydock)).after(CameraSet).before(FxFlush));
+        editing(app);
     }
+}
+
+/// Editing on the grid, the ghost and the inspector (`tools`, `ghost`, `inspector`).
+fn editing(app: &mut App) {
+    app.init_resource::<tools::Selection>()
+        .init_resource::<tools::DrydockGesture>()
+        .init_resource::<tools::EditNote>()
+        .init_resource::<ghost::GhostView>()
+        .init_resource::<inspector::Inspector>()
+        .add_systems(Startup, ghost::setup.after(view::setup))
+        .add_systems(
+            Update,
+            (
+                (tools::apply, tools::pointer).chain().after(actions::apply).before(report::update).in_set(DockSet::Apply),
+                inspector::update.after(report::update).in_set(DockSet::Apply),
+                (ghost::update, ghost::rebuild, ghost::sync_hint).chain().before(panels::sync_live).in_set(DockSet::Show),
+                (inspector::sync_controls, tools::sync_rings).in_set(DockSet::Show),
+            ),
+        )
+        .add_systems(PostUpdate, ghost::draw.run_if(in_state(AppMode::Drydock)).after(view::draw_frame).before(FxFlush));
 }
 
 /// The drydock's screen and design are shown only in the drydock.
