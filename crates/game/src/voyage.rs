@@ -41,16 +41,16 @@ pub const HOME_TICKS: u64 = 3 * sim::TICK_HZ as u64;
 /// How long (s) the second M has to come to abandon a voyage.
 pub const ABANDON_SECONDS: f64 = 3.0;
 
-/// Launch a voyage (home's gate, V, until the voyage map exists): `None` is the first open voyage whose goal is not
-/// cleared yet, else the first open one. From home only; refusals become a note on home.
+/// Launch a voyage (the voyage map's SET COURSE): `None` is the first open voyage whose goal is not cleared yet, else
+/// the first open one. Outside flight only; a refusal becomes a note on home and a [`LaunchRefused`].
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct StartVoyage {
     pub voyage: Option<String>,
 }
 
-/// A [`StartVoyage`] was refused (the note on home says why): home's camera flies back from the gate.
+/// A [`StartVoyage`] was refused, and why (the voyage map shows it).
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
-pub struct LaunchRefused;
+pub struct LaunchRefused(pub String);
 
 /// What a launch decided: the voyage, the seed it rolls from, the mind and the escorts it flies with.
 #[derive(Clone, Debug, PartialEq)]
@@ -170,7 +170,7 @@ impl LaunchInputs<'_> {
     }
 }
 
-/// The voyage the V key flies: the first open one whose goal is not cleared, else the first open one.
+/// The voyage the map selects when it opens: the first open one whose goal is not cleared, else the first open one.
 pub fn default_voyage<'c>(career: &Career, content: &'c Content) -> Option<&'c str> {
     let open = career.open_voyages(content);
     open.iter().find(|v| !career.voyage(v).is_some_and(|r| r.cleared)).or(open.first()).copied()
@@ -239,7 +239,7 @@ fn url_launch(params: Res<Params>, mut inputs: LaunchInputs, mut next: ResMut<Ne
     }
 }
 
-/// A [`StartVoyage`] (from home): launch, or say why not.
+/// A [`StartVoyage`] (from the voyage map): launch, or say why not.
 fn start(
     mut requests: MessageReader<StartVoyage>,
     mut inputs: LaunchInputs,
@@ -255,8 +255,8 @@ fn start(
         Err(why) => {
             info!("voyage: not launched: {why}");
             inputs.career.notes.retain(|n| n.head != "CAN'T LAUNCH");
-            inputs.career.notes.insert(0, Note::new("CAN'T LAUNCH", why, Tone::Coral));
-            refused.write(LaunchRefused);
+            inputs.career.notes.insert(0, Note::new("CAN'T LAUNCH", why.clone(), Tone::Coral));
+            refused.write(LaunchRefused(why));
         }
     }
 }

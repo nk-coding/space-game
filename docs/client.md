@@ -64,12 +64,13 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `scene=drydock` | start in the drydock |
 | `scene=behavior` | start on the BEHAVIOR screen (the design's behavior) |
 | `scene=research` | start on the research screen, over the lab ([Research](#research)) |
+| `scene=map` | start on the voyage map ([Voyage map](#voyage-map)) |
 | `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
 | `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat |
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
-| `scene=voyage&voyage=<id>` | launch that voyage at once (without `voyage`: the one home's V would fly), for development: recorded in the career when it may launch, else a practice run that is never saved ([Voyages](#voyages)) |
+| `scene=voyage&voyage=<id>` | launch that voyage at once (without `voyage`: the one the voyage map selects when it opens), for development: recorded in the career when it may launch, else a practice run that is never saved ([Voyages](#voyages)) |
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
@@ -188,6 +189,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   (the drydock; a behavior test sets the screen it came from; reset whenever flight ends), M home.
 - **Career** (`career.rs`): the player's career save, loaded before the first frame (`CareerPlugin`, after the
   storage and before the drydock), and what it grants the screens. See [Career](#career).
+- **Voyage map** (`map/`): `AppMode::Map`, the star map of the voyages and SET COURSE. See [Voyage map](#voyage-map).
 - **Voyages** (`voyage.rs`, `debrief.rs`): the `StartVoyage` message and the URL launch, the run (`VoyageRun`:
   FixedUpdate after the events), its end through the career, and the debrief over home. `scene.rs` builds the
   voyage's world (`SceneKind::Voyage`). See [Voyages](#voyages).
@@ -304,7 +306,7 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
 | BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock): the mind | B, or a click on the mind |
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
-| Voyages: the camera flies to the gate, then the first open voyage whose goal is not cleared (else the first open one) launches, until the voyage map exists ([Voyages](#voyages)) | V, or a click on the gate |
+| Voyages: the camera flies to the gate, then the voyage map opens ([Voyage map](#voyage-map)); coming back the camera flies out from the gate | V, or a click on the gate |
 | Research: inert until its screen exists (track 7G) | R (nothing yet) |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
 | Research: the lab ([Research](#research); Esc, `‹ HOME` or its ring button come back) | R, or a click on the lab |
@@ -349,12 +351,9 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   (a smootherstep of the time since it began, so the same at any frame rate) around the flight's zoom anchor: the one
   world point that sits at the same place on screen in both views stays put while the zoom changes geometrically, as
   a zoom around the cursor does; without a change of zoom it pans. On arrival the place sends `HomeAction` and its
-  screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (research,
-  the dark buildings) neither highlight nor react. **The gate** asks for a voyage on arrival
-  (`voyage::StartVoyage`, [Voyages](#voyages)); a refused launch (`voyage::LaunchRefused`, with a `CAN'T LAUNCH`
-  note) flies back out.
-  screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (the gate,
-  the dark buildings) neither highlight nor react; the lab works dark or lit.
+  screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (the dark
+  buildings) neither highlight nor react; the lab works dark or lit. **The gate** opens the voyage map on arrival
+  ([Voyage map](#voyage-map)); the debrief's VOYAGE MAP (`map::OpenMap`) flies there as V does.
 - **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
   (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
   viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
@@ -370,11 +369,9 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
   FRIGATE 24 × 24  D` (gold, in the area), `BEHAVIOR  B` / `THE MIND` (violet), `TEST RANGE  T` / `NO RISK · NO
   HAUL` (coral), `FLEET  F` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
-  `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES  V` / `THE GATE · SHIPYARD APPROACH` (teal: the
-  voyage V launches; `DORMANT` while no voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   `RESEARCH  R` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
-  while dark), `VOYAGES` / `THE GATE · COMING SOON` (`DORMANT` while it
-  sleeps), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
+  while dark), `VOYAGES  V` / `THE GATE · HALVEX DRIFT` (teal: the voyage the map will select; `DORMANT` while no
+  voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
   save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
@@ -426,10 +423,10 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
 `voyage-abandoned.png` (the lost banner after M twice), `voyage-debrief.png`, `voyage-debrief-lost.png`,
 `voyage-summary.png` (home after DISMISS).
 
-- **Launch** (`voyage::StartVoyage { voyage }`; home's gate (V, or a click) sends it with `None` when the camera
-  arrives, until the voyage map's SET COURSE exists): the fleet must be voyage-ready (`career::voyage_ready` against what the career grants: unlocked parts,
+- **Launch** (`voyage::StartVoyage { voyage }`, sent by the voyage map's SET COURSE with the selected voyage; `None`
+  is the first open voyage whose goal is not cleared): the fleet must be voyage-ready (`career::voyage_ready` against what the career grants: unlocked parts,
   materials and frame, cores within the mind) and every ship flight-ready (the design report); a refusal is a coral
-  note on home (`CAN'T LAUNCH`). The career records the launch (`Career::voyage_launched`: the seed, `underway`)
+  note on home (`CAN'T LAUNCH`) and a `voyage::LaunchRefused(why)` the map shows. The career records the launch (`Career::voyage_launched`: the seed, `underway`)
   and the save is written at once, so closing or reloading mid-voyage loses the voyage (GDR-0062).
   `?scene=voyage&voyage=<id>` launches at once for development; what the career refuses (a voyage not open yet, a
   fleet not ready by the career's own unlocks, so also anything `?unlock=all` alone allows) flies as a **practice
@@ -475,6 +472,61 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
   PARTS → KINETIC WEAPONS +18 · …`). A game loaded with a `last_haul` starts with that line (kills and ships lost are
   not saved).
+
+## Voyage map
+
+Where voyages are chosen (track 7I, 14 Oct 2026; GDR-0065's star map with the chain inside the rim band, after
+`docs/plans/mockups/map-b.png`; GDR-0071: the gate is where you fly for voyages), `map/`: `AppMode::Map`. Home's gate
+(V, or a click) flies the camera to the gate, then the map opens; Esc or the ring button top left goes back to the
+shipyard (the camera flies out from the gate); `?scene=map` starts here. Screenshots: `docs/results/map-1280.png` (a
+new game), `map-1600.png` (the first voyage cleared, Halvex Drift selected), `map-1600-locked.png` (a locked voyage
+selected, SET COURSE dimmed), `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400).
+
+| Keys | |
+|---|---|
+| Select a voyage | a click or a tap on its marker or its label; ← → (↑ ↓) step through them |
+| Launch the selected voyage | Enter, or SET COURSE |
+| Back to the shipyard | Esc, or the ring button top left |
+
+- **Layout** (`map::layout`, pure; placeholders): a stage of 1280 × 720 logical px, scaled to the largest size that
+  fits the window whole (1 at 1280 × 720, 1.25 at 1600 × 900, any aspect: centred, nothing cut off; 0.3 to 2). The
+  map fills the stage left of the panel (904 px); content's `map` coordinates (0 to 1) land in its rect
+  `(28, 64)–(876, 650)`. The shipyard sits at `(0.12, 0.86)` (bottom left; content has no place for home yet). The
+  chain follows `opens_after`: a voyage that opens after others is joined to each of them, one a start opens to the
+  shipyard. **The band**: the galaxy's centre lies off the stage to the right (`(1500, 400)`), so the band edges are
+  arcs; the rim band's outer edge (the galaxy's edge) lies 34 px outside the place farthest from the centre, its
+  inner edge (the gate to the next band) 34 px inside the nearest, the next band's edge as far again in at 0.6 of
+  the depth. The band names come from the voyages' `band` key and the order rim, outer, middle, inner, core.
+- **States** (from the career): **open** (a teal ring with a glow, `OPEN`), **cleared** (a filled teal dot,
+  `CLEARED · BEST 7:42`: the quickest voyage that cleared the goal and came home; it may launch again), **locked**
+  (a dim dotted ring, `LOCKED`), and a **guardian** at the chain's end (a voyage whose goal encounter is tagged
+  `boss`: a coral diamond, `LOCKED · GUARDIAN`). Under an open or cleared voyage's name a dot per site (coral
+  enemies, gold wrecks, a diamond for the goal); routes to open voyages are dotted teal with a soft glow and their
+  time beside them (`≈ 10–15 MIN`), routes to locked ones dashed and dim. The selection is a dotted ring; hover a
+  faint ring and a brighter name. The legend bottom left; top left `RIM · 4 VOYAGES · 1 CLEARED` and "Voyages".
+- **The panel** (the selected voyage): `DESTINATION · VOYAGE 2 OF 4`, the name, chips (the band; the factions of its
+  ships, coral; `WRECKS` gold when any site holds wrecks; `GUARDIAN`), the summary, `SITES · 5` with a row per site
+  entry (`Raider pack ×2`, right `3 SHIPS` / `WRECKS` / `GOAL · 4–5 SHIPS` / `GUARDIAN`, under it what it gives: the
+  three best non-hull parts of its wrecks by salvage value, or the ships waiting there), `≈ 10–15 MIN · RECALL WHEN
+  CLEAR`; then FLEET with `CORES 2 / 2`, the flagship (the drydock's working design) and the escorts drawn as ships
+  (`ui_icons::UiIcon::Ship`) with their cores and cargo, or `NO ESCORT · YOUR MIND RUNS 2 CORES`; the voyage-ready
+  checklist (`VOYAGE-READY` or `NOT VOYAGE-READY`, four lines with a filled dot when they pass: `FLIGHT-READY`,
+  `ONLY UNLOCKED PARTS` or the first locked part, `CORES n / m`, `CARGO 8` or `NO CARGO` as a gold warning;
+  `data::career::voyage_ready` and the design report); the status line; SET COURSE.
+- **SET COURSE** (`map::layout::course_blocker`): dimmed while the selected voyage can't launch, the status line says
+  why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST`, `NOT VOYAGE-READY · <the fleet's
+  first blocker>`, `voyage::fleet_blocker`); a click then repeats it. Else it sends `voyage::StartVoyage { voyage:
+  Some(id) }`; a launch `voyage.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
+  don't allow flies as a practice run (`PRACTICE RUN, NOT SAVED · …` in gold). Entering the map selects the first
+  open voyage whose goal is not cleared (after a first clear: the voyage it opened).
+- **Drawing** (`map::draw`): the star map is one atlas mesh in stage px (z 550: over the world, under the UI icons),
+  placed over the stage node through the camera rig as `ui_icons` places icons, so it scales with the stage; rebuilt
+  only when the states, the selection, the hover or the glow setting change (a few thousand vertices). Bottom to top:
+  a faint tint inside the gate, the band edges as dotted arcs, seeded star dust with a few faint constellation lines,
+  the chain, the markers, the legend's symbols, the panel's backing (it runs on past the stage, so wide and tall
+  windows are covered). Everything else is `ui_kit` text and nodes, hit-tested by hand, so touch works.
+- **The debrief** after a voyage that opened another adds VOYAGE MAP beside DISMISS: it dismisses the panel and home
+  flies to the gate (`map::OpenMap`).
 
 ## FLEET
 
