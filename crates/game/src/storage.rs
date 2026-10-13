@@ -1,7 +1,8 @@
 //! The player's storage: named text documents (RON) in namespaces, each with a format version, behind one small
 //! trait so the game's other crates stay free of I/O (`sim` and `data` never touch it). Written 13 Oct 2026 for
-//! the drydock's designs (`designs/<id>`, the working design `drydock/working`); save games (`saves/`), behaviors
-//! (`behaviors/`) and settings (`settings/`) go here later (ADR-0024: saves are versioned, with migrations).
+//! the drydock's designs (`designs/<id>`, the working design `drydock/working`) and the player's behaviors
+//! (`behaviors/<id>`, `drydock/behaviors.rs`); save games (`saves/`) and settings (`settings/`) go here later
+//! (ADR-0024: saves are versioned, with migrations).
 //!
 //! * A **key** is `namespace/name`; both parts are `a-z`, `0-9`, `_` and `-`, starting with a letter or digit, at
 //!   most 64 characters (safe as file names and storage keys on every platform).
