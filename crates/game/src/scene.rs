@@ -25,7 +25,7 @@ use std::sync::Arc;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
-use sim::flight::{PilotAxes, nudge_step};
+use sim::flight::{PilotAxes, nudge_step, turn_ramp_step};
 use sim::{Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipDesign, ShipId, Target};
 
 use crate::backdrop::Rng;
@@ -384,7 +384,11 @@ fn scene_tick(
                 // The A/D nudge only acts under a lock; it springs back otherwise (one step per tick).
                 let turn = if lock.is_some() && !input.stick_mode { input.axes.x } else { 0.0 };
                 input.nudge = nudge_step(input.nudge, turn);
-                let axes = (!input.stick_mode).then_some(PilotAxes { turn: input.axes.x, thrust: input.axes.y, strafe: input.axes.z });
+                // Without a lock A/D rotate with a ramp (GDR-0055): a tap nudges the nose, a hold turns faster up
+                // to the key turn rate (one step per tick).
+                let key = if lock.is_none() && !input.stick_mode { input.axes.x } else { 0.0 };
+                input.turn_ramp = turn_ramp_step(input.turn_ramp, key);
+                let axes = (!input.stick_mode).then_some(PilotAxes { turn: input.turn_ramp, thrust: input.axes.y, strafe: input.axes.z });
                 let pilot = PilotInput {
                     stick: sv(input.stick),
                     lock,

@@ -2,9 +2,9 @@
 //! values are placeholders until Niklas picks them, then they move into content / `SimConfig` defaults.
 //!
 //! * Live (applied to the running sim with `Sim::set_config`): thrust scale, torque scale (separately or
-//!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate, the
-//!   player's mind capacity (logic cores running at once; fewer than the fleet has puts the newest vessels to
-//!   sleep, GDR-0044).
+//!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate, key
+//!   turn rate (A/D held, GDR-0055), the player's mind capacity (logic cores running at once; fewer than the
+//!   fleet has puts the newest vessels to sleep, GDR-0044).
 //! * Next wave: raiders per wave.
 //! * Immediate: drift default.
 //! * **Reset**: weapon range and damage scales change the content the designs are compiled from, so they
@@ -12,8 +12,8 @@
 //!   to the player's ships only (the raiders keep their content damage).
 //!
 //! Every value can also come from the URL
-//! (`?thrust=4&torque=2&speed=1.5&turn=6&mind=24&range=1.5&damage=1&raiders=3&drift=1`), and the panel shows that
-//! query string ready to copy.
+//! (`?thrust=4&torque=2&speed=1.5&turn=6&keyturn=1.5&mind=24&range=1.5&damage=1&raiders=3&drift=1`), and the
+//! panel shows that query string ready to copy.
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
@@ -33,6 +33,8 @@ pub struct Tuning {
     pub link: bool,
     pub speed: f32,
     pub max_turn_rate: f32,
+    /// A/D held to the end of the ramp (`FlightTuning::key_turn_rate`, rad/s).
+    pub key_turn_rate: f32,
     /// The player's mind capacity (`SimConfig::mind_capacity`).
     pub mind_capacity: u32,
     pub range_scale: f32,
@@ -55,6 +57,7 @@ impl Tuning {
             link: p.flag("link").unwrap_or(false),
             speed: p.f32("speed").unwrap_or(d.speed_scale),
             max_turn_rate: p.f32("turn").unwrap_or(d.flight.max_turn_rate),
+            key_turn_rate: p.f32("keyturn").unwrap_or(d.flight.key_turn_rate),
             mind_capacity: p.f32("mind").map(|m| m.max(0.0) as u32).unwrap_or(d.mind_capacity(Owner::PLAYER)),
             range_scale: range,
             damage_scale: damage,
@@ -72,6 +75,7 @@ impl Tuning {
         c.torque_scale = self.torque;
         c.speed_scale = self.speed;
         c.flight.max_turn_rate = self.max_turn_rate;
+        c.flight.key_turn_rate = self.key_turn_rate;
         c.mind_capacity[Owner::PLAYER.0 as usize] = self.mind_capacity;
         c
     }
@@ -95,11 +99,12 @@ impl Tuning {
     /// The values as a copyable line and as a URL query.
     pub fn text(&self) -> String {
         format!(
-            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} mind_capacity={} weapon_range_scale={:.2} player_weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&mind={}&range={:.2}&damage={:.2}&raiders={}&drift={}",
+            "thrust_scale={:.2} torque_scale={:.2} speed_scale={:.2} max_turn_rate={:.2} key_turn_rate={:.2} mind_capacity={} weapon_range_scale={:.2} player_weapon_damage_scale={:.2} raiders_per_wave={} drift={}\n?thrust={:.2}&torque={:.2}&speed={:.2}&turn={:.2}&keyturn={:.2}&mind={}&range={:.2}&damage={:.2}&raiders={}&drift={}",
             self.thrust,
             self.torque,
             self.speed,
             self.max_turn_rate,
+            self.key_turn_rate,
             self.mind_capacity,
             self.range_scale,
             self.damage_scale,
@@ -109,6 +114,7 @@ impl Tuning {
             self.torque,
             self.speed,
             self.max_turn_rate,
+            self.key_turn_rate,
             self.mind_capacity,
             self.range_scale,
             self.damage_scale,
@@ -177,6 +183,7 @@ fn panel(
             }
             ui.add(egui::Slider::new(&mut t.speed, 0.25..=4.0).logarithmic(true).text("speed scale (rated speeds)"));
             ui.add(egui::Slider::new(&mut t.max_turn_rate, 0.5..=12.0).text("max turn rate"));
+            ui.add(egui::Slider::new(&mut t.key_turn_rate, 0.25..=6.0).text("key turn rate (A/D)"));
             ui.add(egui::Slider::new(&mut t.mind_capacity, 1..=48).text("mind capacity (cores)"));
             ui.checkbox(&mut t.drift, "drift (released stick coasts)");
             ui.separator();

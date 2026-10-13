@@ -1,10 +1,10 @@
 //! Player input → [`PlayerInput`] (stick, lock, fire, drift), turned into a `sim::PilotInput` each tick by the
 //! scene.
 //!
-//! * **PC** (GDR-0040): A/D rotate, W/S thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a
-//!   lock the ship aims its strongest guns and A/D nudge the aim (springs back). Left-click a ship = lock, click
-//!   empty space = unlock, hold the left button on empty space (or the right button, or Space) = fire. Tab =
-//!   next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
+//! * **PC** (GDR-0040): A/D rotate (a tap nudges the nose, a hold ramps up to the key turn rate, GDR-0055), W/S
+//!   thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a lock the ship aims its strongest
+//!   guns and A/D nudge the aim (springs back). Left-click a ship = lock, click empty space = unlock, hold the
+//!   left button on empty space (or the right button, or Space) = fire. Tab = next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
 //!   vessel list); clicking a friendly vessel switches to it. Both send `ShipCommand::Focus`; the sim moves the
 //!   focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and taps on the fleet bar
 //!   (`fleet_bar.rs`) are the bar's, never the world's.
@@ -40,6 +40,9 @@ pub struct PlayerInput {
     pub stick_mode: bool,
     /// The A/D aim nudge under a lock (integrated once per sim tick with `sim::flight::nudge_step`).
     pub nudge: f32,
+    /// The A/D rotation ramp without a lock, sent as `PilotAxes::turn` (integrated once per sim tick with
+    /// `sim::flight::turn_ramp_step`, GDR-0055).
+    pub turn_ramp: f32,
     pub fire: bool,
     pub lock: Option<Target>,
     pub drift: bool,
