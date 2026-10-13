@@ -156,13 +156,13 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     tr.spawn((label(fonts, "ARMOR", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for (k, m) in armor_materials(content).enumerate() {
                         let text = if k < 9 { format!("{} {}", m.name.to_uppercase(), k + 1) } else { m.name.to_uppercase() };
-                        spawn_pill(tr, fonts, &text, 9.0, 28.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Material(m.id.clone())));
+                        spawn_pill(tr, fonts, &text, 10.0, 30.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Material(m.id.clone())));
                     }
                     tr.spawn((Node { width: px(1), height: px(22), margin: UiRect::horizontal(px(8)), ..default() }, BackgroundColor(c(Tone::Label, 0.25))));
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for o in Overlay::ALL {
                         let accent = if o == Overlay::Bonus { Tone::Gold } else { Tone::Teal };
-                        spawn_pill(tr, fonts, overlay_name(o), 9.0, 28.0, None, pill(accent), ActionButton(DrydockAction::Overlay(o)));
+                        spawn_pill(tr, fonts, overlay_name(o), 10.0, 30.0, None, pill(accent), ActionButton(DrydockAction::Overlay(o)));
                     }
                 });
 
@@ -287,14 +287,14 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 });
                         }
                     });
-                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(16)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(14)), flex_shrink: 0.0, ..default() }));
+                    rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(14)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
+                    rp.spawn((label(fonts, "SELECTED PART", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
                     rp.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), flex_shrink: 0.0, ..default() }).with_children(|h| {
                         // The icon in a bracketed box (like the fleet bar's chips).
-                        h.spawn(Node { width: px(60), height: px(60), flex_shrink: 0.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
+                        h.spawn(Node { width: px(54), height: px(54), flex_shrink: 0.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
                             .with_children(|b| {
                                 spawn_brackets(b, 9.0, 1.2, c(Tone::Label, 0.45));
-                                b.spawn((SelIcon, UiIcon::Part { part: String::new(), material: None }, Node { width: px(44), height: px(44), ..default() }));
+                                b.spawn((SelIcon, UiIcon::Part { part: String::new(), material: None }, Node { width: px(40), height: px(40), ..default() }));
                             });
                         h.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|t| {
                             t.spawn((PanelText::SelName, prose(fonts, "", 18.0, c(Tone::Number, 1.0))));
@@ -315,7 +315,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 display: Display::Grid,
                                 grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
                                 column_gap: px(12),
-                                row_gap: px(10),
+                                row_gap: px(8),
                                 margin: UiRect::top(px(14)),
                                 flex_shrink: 0.0,
                                 ..default()
@@ -354,7 +354,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             ("SELECT V", DrydockAction::Tool(Tool::Select)),
                             ("ROTATE Q E", DrydockAction::RotateCw),
                         ] {
-                            spawn_pill(tb, fonts, text, 9.5, 30.0, None, pill(Tone::Teal), ActionButton(action));
+                            spawn_pill(tb, fonts, text, 10.0, 30.0, None, pill(Tone::Teal), ActionButton(action));
                         }
                     });
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));

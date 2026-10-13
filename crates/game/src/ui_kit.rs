@@ -293,8 +293,8 @@ pub struct Ring {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct RingAccent(pub Tone);
 
-/// Spawns a pill with a text (and an icon before it) and returns it; `extra` goes on the pill (an action, a
-/// marker).
+/// Spawns a pill with a text in Barlow medium (the mockup's pills are semi-bold) and an optional icon before it,
+/// and returns it; `extra` goes on the pill (an action, a marker).
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_pill(
     parent: &mut ChildSpawnerCommands,
@@ -333,7 +333,7 @@ pub fn spawn_pill(
             p.spawn((
                 PillText,
                 Text::new(text),
-                TextFont { font: fonts.regular.clone().into(), font_size: FontSize::Px(size), ..default() },
+                TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(size), ..default() },
                 TextColor(Color::NONE),
                 LetterSpacing::Px(spacing),
             ));
@@ -422,13 +422,13 @@ pub fn spawn_brackets(parent: &mut ChildSpawnerCommands, arm: f32, width: f32, c
 pub struct ScrollCue(pub Entity);
 
 /// The cue's height (logical px).
-const CUE_H: f32 = 30.0;
+const CUE_H: f32 = 24.0;
 
 /// Spawns the [`ScrollCue`] of `area` into `parent`, the area's own parent (it must have no padding or border:
 /// the cue is placed from the corners). Spawn it after the area, so it draws over it.
 pub fn spawn_scroll_cue(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, area: Entity) {
     let back = style.background.outer();
-    let fade = LinearGradient::to_bottom(vec![ColorStop::percent(ui_color(back, 0.0), 0), ColorStop::percent(ui_color(back, 0.94), 75)]);
+    let fade = LinearGradient::to_bottom(vec![ColorStop::percent(ui_color(back, 0.0), 0), ColorStop::percent(ui_color(back, 0.88), 80)]);
     parent
         .spawn((
             ScrollCue(area),
@@ -438,7 +438,7 @@ pub fn spawn_scroll_cue(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, sty
                 height: px(CUE_H),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::FlexEnd,
-                padding: UiRect::bottom(px(3)),
+                padding: UiRect::bottom(px(1)),
                 ..default()
             },
             BackgroundGradient::from(fade),

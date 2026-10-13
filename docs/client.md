@@ -402,7 +402,7 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   before the editing tools and the report, so a design opened, renamed or moved to another frame gets its report
   and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
   status for the current revision (`blueprints::announce`).
-- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
+- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (Barlow medium, as the mockup's semi-bold pills; plain, active teal, active
   gold, the glowing primary, disabled, bare list rows), ring buttons (plain, or glowing in an accent colour:
   `RingAccent`, home's ring), value bars, corner brackets and a one-line
   text field (`TextField`, used for the names, the searches and the notes: a caret and a selection, both drawn in
@@ -502,7 +502,7 @@ action selected).
   REMOVE; then its rule's block.
 - **An action**: its values and its rule's block (a palette action replaces it).
 - **A rule's block** (also for a selected rule, with the rule as text): `RULE 2 OF 6` (`· NO SLOT` below the slot
-  line), UP, DOWN, DUPLICATE (a copy right below) and DELETE (off for the last rule, with the reason), and the
+  line, `· NEVER REACHED` below an `always` rule, also in the kicker), UP, DOWN, DUPLICATE (a copy right below) and DELETE (off for the last rule, with the reason), and the
   NOTE field.
 - **The target line**: the selector pills, `AIM AT` (centre, engines, weapons, power, core), USE THE DEFAULT TARGET
   when the program has a target line, and the target line's note.
