@@ -460,7 +460,7 @@ default for unpiloted ships, six rules, uses the Rhai condition).
 What a salvaged part gives when the haul is dismantled at home (GDR-0063): research data for one
 [family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The block is pure data: the
 sim collects parts and fragments into cargo by its own rules and never reads it; the career model turns a haul into
-data and materials with it. A part without the block is never collected.
+data and materials with it (`docs/career.md` "Unloading a haul"). A part without the block is never collected.
 
 ```ron
 // parts/automatons.ron
@@ -505,7 +505,7 @@ Base families (lead placeholders, 13 Oct 2026): `hull` (no colour), `power`, `en
 ### Research nodes (added 13 Oct 2026)
 
 `research/*.ron`. A node is paid at once in research data and materials and unlocks immediately (GDR-0063); which
-nodes a player has researched lives in the save, never in content.
+nodes a player has researched lives in the save, never in content (`docs/career.md`).
 
 ```ron
 (
@@ -788,4 +788,11 @@ program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>
 data::behavior::check_text(text, &content.behavior_nodes);    // Result<Program, Vec<TextError>>: parse + check, by text line
 // Editing models: data::edit::Drydock (docs/drydock.md), data::behavior_edit::BehaviorEditor (docs/behavior-format.md)
+// The career (docs/career.md): the save's facts and the progression rules
+let mut career = data::Career::new(&content, "rim_awakening", seed)?; // or Career::from_ron(text)? + .reconcile(&content)
+career.unlocks(&content); career.mind_capacity(&content); career.open_voyages(&content);  // derived, never stored
+career.can_pay(&content, "tamed_core"); career.research(&content, "tamed_core")?;        // Refusal says why not
+let seed = career.voyage_launched(&content, "yard_approach")?;                             // the sim rolls the voyage from it
+career.voyage_ended(&content, "yard_approach", VoyageEnd::Recalled { haul, cleared, ticks })?; // unloads the haul
+data::career::unload(&content, &haul); data::career::voyage_ready(&content, &unlocks, capacity, &flagship, &escorts);
 ```
