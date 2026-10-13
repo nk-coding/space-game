@@ -122,7 +122,7 @@ struct RasterJob {
     wanted: Option<(u32, f32)>,
     /// A finished atlas, added as a new image one frame before the material switches to it (see
     /// [`rasterise_step`]), and its numbers for [`AtlasStatus::last`].
-    ready: Option<(Handle<Image>, (u32, f64, u32, f64))>,
+    ready: Option<(Handle<Image>, Rebuild)>,
 }
 
 struct Job {
@@ -138,6 +138,9 @@ struct Job {
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct UiAtlasNeed(pub f32);
 
+/// A finished rebuild: tier, milliseconds of work, frames, longest single step (ms).
+pub type Rebuild = (u32, f64, u32, f64);
+
 /// What the atlas does, for the debug overlay (F3).
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct AtlasStatus {
@@ -147,8 +150,8 @@ pub struct AtlasStatus {
     pub max_tier: u32,
     /// The tier being rasterised, if any.
     pub building: Option<u32>,
-    /// The last rebuild: tier, milliseconds of work, frames, longest single step (ms).
-    pub last: Option<(u32, f64, u32, f64)>,
+    /// The last rebuild (now on screen).
+    pub last: Option<Rebuild>,
 }
 
 pub struct AtlasPlugin;
