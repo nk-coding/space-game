@@ -31,14 +31,14 @@ pub enum AppMode {
 impl AppMode {
     /// The mode the app starts in: home (`?scene=home`, and the default), the drydock (`?scene=drydock`), the
     /// BEHAVIOR screen (`?scene=behavior`), or flight for the flight scenes (`?scene=sandbox|showcase|watch|
-    /// alongside`) and for parameters that only mean something in flight ([`Params::wants_flight`]: `?load=`,
+    /// alongside|voyage`) and for parameters that only mean something in flight ([`Params::wants_flight`]: `?load=`,
     /// `?fleet=`, `?hashlog=` ...). An unknown scene starts at home.
     pub fn at_start(params: &Params) -> Self {
         match params.text("scene") {
             Some("home") => AppMode::Home,
             Some("drydock") => AppMode::Drydock,
             Some("behavior") => AppMode::Behavior,
-            Some("sandbox" | "showcase" | "watch" | "alongside") => AppMode::Flight,
+            Some("sandbox" | "showcase" | "watch" | "alongside" | "voyage") => AppMode::Flight,
             None if params.wants_flight() => AppMode::Flight,
             None => AppMode::Home,
             Some(other) => {
@@ -81,8 +81,16 @@ impl Plugin for ModePlugin {
 }
 
 /// T in flight: back to the drydock, or to where a behavior test started; M: home (the scene is torn down in
-/// `OnExit(Flight)`).
-fn leave_by_key(keys: Res<ButtonInput<KeyCode>>, exit: Res<FlightExit>, mut next: ResMut<NextState<AppMode>>) {
+/// `OnExit(Flight)`). Neither in a voyage: only RECALL (or losing it) goes home.
+fn leave_by_key(
+    keys: Res<ButtonInput<KeyCode>>,
+    exit: Res<FlightExit>,
+    scene: Res<crate::scene::Scene>,
+    mut next: ResMut<NextState<AppMode>>,
+) {
+    if scene.voyage().is_some() {
+        return;
+    }
     if keys.just_pressed(KeyCode::KeyT) {
         next.set(exit.0);
     } else if keys.just_pressed(KeyCode::KeyM) {
@@ -111,7 +119,7 @@ mod tests {
         assert_eq!(start("?scene=home&zoom=60"), AppMode::Home);
         assert_eq!(start("?debug=1&hud=0&stats=1"), AppMode::Home);
         assert_eq!(start("?scene=nowhere"), AppMode::Home);
-        for q in ["?scene=sandbox", "?scene=showcase&fire=1", "?scene=watch&behavior=raider_basic", "?scene=alongside"] {
+        for q in ["?scene=sandbox", "?scene=showcase&fire=1", "?scene=watch&behavior=raider_basic", "?scene=alongside", "?scene=voyage&voyage=yard_approach"] {
             assert_eq!(start(q), AppMode::Flight, "{q}");
         }
         for q in ["?load=20", "?hashlog=1&hashticks=600", "?fleet=3&mind=4", "?zoom=70", "?seed=7", "?tuning=1"] {

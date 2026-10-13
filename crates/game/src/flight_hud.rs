@@ -11,6 +11,13 @@
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
 //!   clear of the HUD's texts and widgets).
+//! * **voyages** (GDR-0065, `docs/plans/mockups/voyage-hud-b.png`): the title is the voyage and its band, the
+//!   subtitle `SITES 2 / 5 · 7:05`; under the hull the cargo block (`SALVAGE`, `5 / 8` with one pip per cargo unit,
+//!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
+//!   what it does; markers at the screen edge for the sites off screen (name and distance: raiders coral, wrecks
+//!   gold, the goal brighter, cleared ones dim); banners for sites waking and cleared and for the goal; the
+//!   warp-out's countdown; `SHIP LOST · RECALLED HOME` with its countdown (`voyage-hud-lost.png`). No home ring
+//!   (M does nothing in a voyage).
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
@@ -31,7 +38,8 @@ use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{UiClick, UiInputSet, label, number, ring_node, set_text, tracked};
+use crate::ui_kit::{Pill, PillText, Tone, UiClick, UiInputSet, UiStyleSet, label, number, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::voyage::{self, Phase, VoyageRun};
 use crate::{RenderToggles, ship_view::PieceView};
 
 pub(crate) static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
@@ -55,9 +63,51 @@ enum HudText {
     Title,
     Subtitle,
     Banner,
+    BannerSub,
     Warnings,
     Help,
+    /// Voyages: the cargo block's number and the hold's name (or what became of the cargo).
+    SalvageValue,
+    SalvageSub,
+    /// Voyages: what RECALL does now.
+    RecallSub,
+    /// Voyages: the lost banner (`voyage-hud-lost.png`).
+    LostTitle,
+    LostSub,
+    LostNote,
+    LostCount,
+    LostHome,
 }
+
+/// The voyage's cargo block and RECALL (shown in voyages).
+#[derive(Component)]
+struct VoyageBlock;
+
+/// One cargo unit's pip under the salvage number.
+#[derive(Component)]
+struct CargoPip(u32);
+
+/// Pips shown at most (a bigger hold shows its share).
+const PIPS: u32 = 20;
+
+/// The RECALL pill.
+#[derive(Component)]
+struct RecallButton;
+
+/// The lost banner (shown while a lost voyage counts down).
+#[derive(Component)]
+struct LostBlock;
+
+/// A site marker's label (name and distance), placed at the screen edge by `site_markers`.
+#[derive(Component)]
+struct SiteLabel(usize);
+
+/// A line of a site marker's label: 0 the name, 1 the distance.
+#[derive(Component)]
+struct SiteLabelText(usize, u8);
+
+/// Site labels in the pool.
+const SITE_LABELS: usize = 12;
 
 #[derive(Component)]
 struct HudRoot;
@@ -144,9 +194,10 @@ impl Plugin for FlightHudPlugin {
         })
         .add_systems(Startup, spawn_hud)
         .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
-        .add_systems(Update, go_home.after(UiInputSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(Update, (go_home, recall_click).after(UiInputSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), forget_ship)
-        .add_systems(PostUpdate, (lock_ring, offscreen_markers).after(CameraSet).before(crate::fx::FxFlush));
+        .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers).after(CameraSet).before(crate::fx::FxFlush));
     }
 }
 
@@ -161,6 +212,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
     let white = ui_color(ui.number, 1.0);
     let coral = ui_color(ui.coral, 1.0);
     let teal = ui_color(ui.teal, 1.0);
+    let gold = ui_color(ui.gold, 1.0);
     let dim = ui_color(ui.dim, 1.0);
     let abs = |l: Option<f32>, r: Option<f32>, t: Option<f32>, b: Option<f32>| Node {
         position_type: PositionType::Absolute,
@@ -189,6 +241,22 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                         row.spawn((HullMap, HudZone, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
                     });
                 c.spawn((HudText::Cargo, label(&fonts, "", 12.0, grey)));
+                // Voyages: the cargo block, RECALL right under it (GDR-0065).
+                c.spawn((VoyageBlock, Visibility::Hidden, Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(2)), ..default() }))
+                    .with_children(|v| {
+                        v.spawn((HudText::SalvageValue, number(&fonts, "", 28.0, gold)));
+                        v.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), ..default() }).with_children(|row| {
+                            for k in 0..PIPS {
+                                row.spawn((CargoPip(k), Node { width: px(11), height: px(3), ..default() }, BackgroundColor(Color::NONE)));
+                            }
+                        });
+                        v.spawn((HudText::SalvageSub, label(&fonts, "", 10.0, dim)));
+                        v.spawn(Node { height: px(16), ..default() });
+                        v.spawn(Node { align_self: AlignSelf::FlexStart, ..default() }).with_children(|r| {
+                            spawn_pill(r, &fonts, "RECALL  R", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone));
+                        });
+                        v.spawn((HudText::RecallSub, label(&fonts, "", 9.5, teal)));
+                    });
             });
             // Left: speed, ending at mid-height (on a 390 px phone it sits between the hull block and the stick).
             root.spawn(Node { bottom: percent(50), ..abs(Some(28.0), None, None, None) }).with_children(|c| {
@@ -209,11 +277,46 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                     c.spawn((HudText::Title, label(&fonts, "", 16.0, white)));
                     c.spawn((HudText::Subtitle, label(&fonts, "", 11.0, grey)));
                 });
-            // Centre: banner.
-            root.spawn(Node { position_type: PositionType::Absolute, top: percent(28), width: percent(100), justify_content: JustifyContent::Center, ..default() })
+            // Centre: banner, and the line under it (voyages).
+            root.spawn(Node { position_type: PositionType::Absolute, top: percent(25), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), ..default() })
                 .with_children(|c| {
                     c.spawn((HudText::Banner, label(&fonts, "", 22.0, teal)));
+                    c.spawn((HudText::BannerSub, label(&fonts, "", 11.0, grey)));
                 });
+            // Voyages: the lost banner and its countdown.
+            root.spawn((
+                LostBlock,
+                Visibility::Hidden,
+                Node { position_type: PositionType::Absolute, top: percent(62), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(12), ..default() },
+            ))
+            .with_children(|c| {
+                c.spawn((HudText::LostTitle, tracked(&fonts, "", 40.0, coral, 0.3)));
+                c.spawn((HudText::LostSub, label(&fonts, "", 16.0, white)));
+                c.spawn((HudText::LostNote, label(&fonts, "", 10.5, grey)));
+                c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), margin: UiRect::top(px(10)), ..default() })
+                    .with_children(|row| {
+                        row.spawn((
+                            Node { width: px(56), height: px(56), border: UiRect::all(px(2)), border_radius: BorderRadius::MAX, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+                            BorderColor::all(ui_color(ui.teal, 0.8)),
+                        ))
+                        .with_children(|ring| {
+                            ring.spawn((HudText::LostCount, number(&fonts, "", 22.0, white)));
+                        });
+                        row.spawn((HudText::LostHome, label(&fonts, "", 11.0, teal)));
+                    });
+            });
+            // Voyages: the labels of the site markers at the screen edge (placed every frame).
+            for k in 0..SITE_LABELS {
+                root.spawn((
+                    SiteLabel(k),
+                    Visibility::Hidden,
+                    Node { position_type: PositionType::Absolute, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(3), ..default() },
+                ))
+                .with_children(|l| {
+                    l.spawn((SiteLabelText(k, 0), label(&fonts, "", 10.5, gold)));
+                    l.spawn((SiteLabelText(k, 1), label(&fonts, "", 9.0, dim)));
+                });
+            }
             // Bottom centre: warnings, then help.
             root.spawn(Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() })
                 .with_children(|c| {
@@ -223,10 +326,73 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
         });
 }
 
-/// The home ring: home, like M.
-fn go_home(mut clicks: MessageReader<UiClick>, ring: Query<(), With<HomeRing>>, mut next: ResMut<NextState<AppMode>>) {
-    if clicks.read().any(|c| ring.contains(c.0)) {
+/// The home ring: home, like M (not in a voyage, where it is hidden).
+fn go_home(mut clicks: MessageReader<UiClick>, ring: Query<(), With<HomeRing>>, scene: Res<Scene>, mut next: ResMut<NextState<AppMode>>) {
+    if clicks.read().any(|c| ring.contains(c.0)) && scene.voyage().is_none() {
         next.set(AppMode::Home);
+    }
+}
+
+/// The RECALL pill: like R.
+fn recall_click(mut clicks: MessageReader<UiClick>, pill: Query<&Pill, With<RecallButton>>, mut run: ResMut<VoyageRun>) {
+    if clicks.read().any(|c| pill.get(c.0).is_ok_and(|p| !p.disabled)) {
+        run.recall = true;
+    }
+}
+
+/// The voyage's widgets every frame: the cargo block and RECALL (shown in voyages; the pill enabled while the sim
+/// allows the recall, its text with the phase), the pips, the lost banner, the home ring (hidden in voyages).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn voyage_widgets(
+    scene: Res<Scene>,
+    run: Res<VoyageRun>,
+    world: Res<SimWorld>,
+    focus: Res<PilotFocus>,
+    style: Res<Style>,
+    mut blocks: Query<(&mut Visibility, Has<VoyageBlock>, Has<LostBlock>), (Or<(With<VoyageBlock>, With<LostBlock>, With<HomeRing>)>, Without<CargoPip>)>,
+    mut pips: Query<(&CargoPip, &mut Visibility, &mut BackgroundColor), Without<VoyageBlock>>,
+    mut pill: Query<(Entity, &mut Pill), With<RecallButton>>,
+    mut pill_text: Query<(&ChildOf, &mut Text), With<PillText>>,
+) {
+    let voyage = scene.voyage().is_some();
+    let lost = matches!(run.phase, Phase::Lost { .. });
+    for (mut v, block, lost_block) in &mut blocks {
+        let want = if lost_block { lost } else if block { voyage } else { !voyage };
+        let want = if want { Visibility::Inherited } else { Visibility::Hidden };
+        if *v != want {
+            *v = want;
+        }
+    }
+    if !voyage {
+        return;
+    }
+    let (text, _, enabled) = voyage::recall_words(run.phase, run.can_recall, world.sim.tick());
+    let warping = matches!(run.phase, Phase::Warping { .. });
+    for (e, mut p) in &mut pill {
+        if p.disabled == enabled || p.active != warping {
+            p.disabled = !enabled;
+            p.active = warping;
+        }
+        for (parent, mut t) in &mut pill_text {
+            if parent.parent() == e {
+                set_text(&mut t, &text);
+            }
+        }
+    }
+    // One pip per cargo unit of the shown ship's hold, filled for those in use.
+    let ship = focus.0.and_then(|id| world.sim.ship(id));
+    let (used, cap) = ship.map_or((0, 0), |s| (s.cargo().used(), s.cargo_capacity()));
+    let (shown, filled) = if cap > PIPS { (PIPS, (used * PIPS).div_ceil(cap.max(1))) } else { (cap, used) };
+    let ui = style.ui;
+    for (pip, mut v, mut bg) in &mut pips {
+        let want = if pip.0 < shown { Visibility::Inherited } else { Visibility::Hidden };
+        if *v != want {
+            *v = want;
+        }
+        let c = if pip.0 < filled { ui_color(ui.gold, 0.95) } else { ui_color(ui.dim, 0.6) };
+        if bg.0 != c {
+            bg.0 = c;
+        }
     }
 }
 
@@ -243,7 +409,9 @@ fn update_text(
     toggles: Res<RenderToggles>,
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
-    mut texts: Query<(&HudText, &mut Text)>,
+    run: Res<VoyageRun>,
+    style: Res<Style>,
+    mut texts: Query<(&HudText, &mut Text, &mut TextColor)>,
     mut root: Query<&mut Visibility, With<HudRoot>>,
 ) {
     for mut v in &mut root {
@@ -286,7 +454,12 @@ fn update_text(
         }
     }
 
-    for (kind, mut text) in &mut texts {
+    let ui = style.ui;
+    let tick = world.sim.tick();
+    let voyage = world.sim.voyage().filter(|_| scene.voyage().is_some());
+    let lost = matches!(run.phase, Phase::Lost { .. });
+    let warping = matches!(run.phase, Phase::Warping { .. });
+    for (kind, mut text, mut color) in &mut texts {
         let s = &mut *scratch;
         s.clear();
         match kind {
@@ -296,6 +469,7 @@ fn update_text(
                 }
                 None => s.push('–'),
             },
+            HudText::Cargo if voyage.is_some() => s.push_str("SALVAGE"),
             HudText::Cargo => {
                 // Salvage in the hold (GDR-0063): cargo units in use / the hold of the controlling piece.
                 if let Some(ship) = player {
@@ -327,7 +501,7 @@ fn update_text(
                 let from = control.map(|p| piece_com(p, alpha)).or(rig.focus);
                 target_text(*kind, s, &world, target, !watching, from);
             }
-            HudText::Title => match scene.kind {
+            HudText::Title => match &scene.kind {
                 SceneKind::Sandbox => {
                     let name = match scene.test_mode() {
                         Some(TestMode::Watch) => "WATCH",
@@ -345,6 +519,7 @@ fn update_text(
                 SceneKind::Load(n) => {
                     let _ = write!(s, "LOAD TEST  ·  {n} SHIPS");
                 }
+                SceneKind::Voyage(id) => s.push_str(&voyage::title(&world.content, id)),
             },
             HudText::Subtitle => {
                 let alive = world.sim.vessels(crate::scene::ENEMY).filter(|v| v.state == sim::VesselState::Running).count();
@@ -360,15 +535,87 @@ fn update_text(
                         let _ = write!(s, "ACTIVE {}  ·  PIECES {}  ·  SHOTS IN FLIGHT {}", active, pieces, world.sim.projectiles().len());
                     }
                     SceneKind::Showcase => s.push_str("DRAG TO PAN  ·  WHEEL TO ZOOM"),
+                    SceneKind::Voyage(_) => {
+                        if let Some(v) = voyage {
+                            let (done, all) = voyage::sites_done(v);
+                            let _ = write!(s, "SITES {done} / {all}  ·  {}", voyage::clock(tick));
+                        }
+                        if run.launched.as_ref().is_some_and(|l| l.practice.is_some()) {
+                            s.push_str("  ·  PRACTICE, NOT SAVED");
+                        }
+                    }
                 }
             }
             HudText::Banner => {
                 if virtual_time.is_paused() {
                     s.push_str("PAUSED  ·  P");
+                } else if let Phase::Warping { home_at } = run.phase {
+                    let _ = write!(s, "WARPING HOME  ·  {}", voyage::seconds_left(home_at, tick));
                 } else if let Some((b, until)) = &scene.banner
                     && world.sim.time_seconds() < *until
+                    && !lost
                 {
                     s.push_str(b);
+                }
+                let tone = if warping { Tone::Teal } else { scene.banner_tone };
+                set_color(&mut color, ui_color(tone.color(&ui), 1.0));
+            }
+            HudText::BannerSub => {
+                if warping {
+                    s.push_str("THE HAUL COMES WITH YOU");
+                } else if !virtual_time.is_paused()
+                    && let Some((_, until)) = &scene.banner
+                    && world.sim.time_seconds() < *until
+                    && !lost
+                {
+                    s.push_str(&scene.banner_sub);
+                }
+            }
+            HudText::SalvageValue => {
+                if let Some(ship) = player {
+                    let _ = write!(s, "{} / {}", ship.cargo().used(), ship.cargo_capacity());
+                } else if lost {
+                    s.push('–');
+                }
+                set_color(&mut color, ui_color(ui.gold, if lost { 0.5 } else { 1.0 }));
+            }
+            HudText::SalvageSub => {
+                if lost {
+                    s.push_str("LEFT IN THE WRECK");
+                    set_color(&mut color, ui_color(ui.coral, 1.0));
+                } else {
+                    match player {
+                        Some(ship) if ship.cargo_capacity() > 0 => s.push_str(&hold_name(&world.content, ship)),
+                        Some(_) => s.push_str("NO HOLD"),
+                        None => {}
+                    }
+                    set_color(&mut color, ui_color(ui.dim, 1.0));
+                }
+            }
+            HudText::RecallSub => {
+                let (_, line, enabled) = voyage::recall_words(run.phase, run.can_recall, tick);
+                s.push_str(&line);
+                let tone = if enabled || warping { Tone::Teal } else { Tone::Dim };
+                set_color(&mut color, ui_color(tone.color(&ui), 1.0));
+            }
+            HudText::LostTitle => s.push_str("SHIP LOST"),
+            HudText::LostSub => s.push_str("RECALLED HOME"),
+            HudText::LostNote => {
+                if let Phase::Lost { left, .. } = run.phase {
+                    if left > 0 {
+                        let _ = write!(s, "THE HAUL STAYS IN THE WRECK  ·  {left} {} LOST  ·  ", if left == 1 { "PART" } else { "PARTS" });
+                    }
+                    s.push_str("YOUR SHIPS RE-FORM AT HOME");
+                }
+            }
+            HudText::LostCount | HudText::LostHome => {
+                if let Phase::Lost { home_at, .. } = run.phase {
+                    let n = voyage::seconds_left(home_at, tick);
+                    if *kind == HudText::LostCount {
+                        let _ = write!(s, "{n}");
+                    } else {
+                        let _ = write!(s, "HOME IN {n} S");
+                    }
                 }
             }
             HudText::Warnings => {
@@ -386,11 +633,26 @@ fn update_text(
                 SceneKind::Sandbox => s.push_str(
                     "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · M HOME · U TUNING · F3 DEBUG · H HIDE",
                 ),
+                SceneKind::Voyage(_) if input.touch_ui => s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL"),
+                SceneKind::Voyage(_) => s.push_str(
+                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK · SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · R RECALL · U TUNING · F3 DEBUG · H HIDE",
+                ),
                 _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK  ·  M HOME"),
             },
         }
         set_text(&mut text, scratch);
     }
+}
+
+/// The hold's name under the salvage number: the biggest alive cargo part of the controlling piece (`CARGO HOLD`).
+fn hold_name(content: &data::Content, ship: &sim::Ship) -> String {
+    let control = ship.control_piece();
+    let alive = |i: usize| {
+        let st = ship.part(i as u32);
+        st.alive && Some(st.piece) == control
+    };
+    let best = ship.design().parts.iter().enumerate().filter(|(i, p)| p.cargo > 0.0 && alive(*i)).max_by(|a, b| a.1.cargo.total_cmp(&b.1.cargo).then(b.0.cmp(&a.0)));
+    best.map_or_else(|| "CARGO".into(), |(_, p)| content.parts.get(&p.id).map_or(p.id.to_uppercase(), |d| d.name.to_uppercase()))
 }
 
 /// Hull integrity: hit points of the controlling piece over the full design.
@@ -656,8 +918,10 @@ fn offscreen_markers(
     let half = rig.half_extent();
     let centre = rig.view_center();
     let edge = rig.viewport / 2.0 - Vec2::splat(MARKER_INSET);
+    let voyage = world.sim.voyage();
     for s in world.sim.ships() {
-        if !s.is_active() || sim::friendly(team, s.team()) {
+        // A sleeping site's ships are the site's marker (`site_markers`).
+        if !s.is_active() || sim::friendly(team, s.team()) || voyage.is_some_and(|v| v.asleep(s.id())) {
             continue;
         }
         let Some(p) = s.control_piece().and_then(|c| s.piece(c)) else { continue };
@@ -677,6 +941,106 @@ fn offscreen_markers(
         queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.dot(&regions.soft, pos, 18.0 * px, c.with_alpha(0.25), Z_HUD - 0.1);
+    }
+}
+
+/// How a site marker looks: its colour and alpha (raiders coral, wrecks only gold, cleared dim; the goal brighter),
+/// and the label's first line (`RAIDER PACK · GOAL`, `... · CLEARED`).
+fn site_look(content: &data::Content, site: &sim::Site, ui: &crate::style::UiPalette) -> (Color, f32, String) {
+    let mut name = voyage::encounter_name(content, site.encounter());
+    if site.goal() {
+        name.push_str("  ·  GOAL");
+    }
+    if site.state() == sim::SiteState::Cleared {
+        name.push_str("  ·  CLEARED");
+        return (ui.dim, 0.8, name);
+    }
+    let color = if site.plan().ships.is_empty() { ui.gold } else { ui.coral };
+    (color, if site.goal() { 1.0 } else { 0.75 }, name)
+}
+
+/// Voyages: a marker at the screen edge for every site whose centre is off screen (like the enemy markers, kept
+/// clear of the HUD), with its name and distance beside it.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn site_markers(
+    world: Res<SimWorld>,
+    focus: Res<PilotFocus>,
+    scene: Res<Scene>,
+    rig: Res<CameraRig>,
+    regions: Option<Res<FxRegions>>,
+    style: Res<Style>,
+    toggles: Res<RenderToggles>,
+    fixed: Res<Time<Fixed>>,
+    zones: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), Or<(With<HudText>, With<HudZone>)>>,
+    mut labels: Query<(&SiteLabel, &mut Node, &ComputedNode, &mut Visibility)>,
+    mut texts: Query<(&SiteLabelText, &mut Text, &mut TextColor)>,
+    mut rects: Local<Vec<Rect>>,
+    mut queue: ResMut<FxQueue>,
+) {
+    let voyage = world.sim.voyage().filter(|_| scene.voyage().is_some() && toggles.hud);
+    let mut spots: [Option<(Vec2, Vec2)>; SITE_LABELS] = [None; SITE_LABELS];
+    if let (Some(v), Some(regions)) = (voyage, regions) {
+        rects.clear();
+        let visible = zones.iter().filter(|z| z.2.get());
+        rects.extend(visible.filter_map(|(node, tf, _)| logical_rect(node, tf)).map(|r| r.inflate(MARKER_CLEARANCE)));
+        let ui = style.ui;
+        let alpha = fixed.overstep_fraction();
+        let from = focus.0.and_then(|id| world.sim.ship(id)).and_then(|s| s.control_piece().and_then(|c| s.piece(c))).map_or(rig.pos, |p| piece_com(p, alpha));
+        let (px, half, centre) = (1.0 / rig.zoom, rig.half_extent(), rig.view_center());
+        let edge = rig.viewport / 2.0 - Vec2::splat(MARKER_INSET + 14.0);
+        for (k, site) in v.sites().iter().enumerate().take(SITE_LABELS) {
+            let at = v2(site.pos());
+            let d = at - rig.pos;
+            if d.x.abs() < half.x && d.y.abs() < half.y {
+                continue;
+            }
+            let ray = rig.world_to_screen(at) - centre;
+            let spot = marker_spot(centre, ray, edge, &rects);
+            let (c, a, name) = site_look(&world.content, site, &ui);
+            let dir = Vec2::new(ray.x, -ray.y).normalize_or_zero();
+            let side = Vec2::new(-dir.y, dir.x);
+            let pos = rig.screen_to_world(spot);
+            let c = c.with_alpha(a);
+            let size = if site.goal() { 1.25 } else { 1.0 };
+            let tip = pos + dir * 9.0 * size * px;
+            queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * size * px, 2.0 * px, c, Z_HUD);
+            queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * size * px, 2.0 * px, c, Z_HUD);
+            if site.goal() {
+                queue.dot(&regions.soft, pos, 26.0 * px, c.with_alpha(0.3), Z_HUD - 0.1);
+            }
+            let dist = at.distance(from);
+            for (t, mut text, mut color) in &mut texts {
+                if t.0 != k {
+                    continue;
+                }
+                if t.1 == 0 {
+                    set_text(&mut text, &name);
+                    set_color(&mut color, ui_color(c, a));
+                } else if dist >= 1000.0 {
+                    set_text(&mut text, &format!("{:.1} KM", dist / 1000.0));
+                } else {
+                    set_text(&mut text, &format!("{dist:.0} M"));
+                }
+            }
+            spots[k] = Some((spot, ray.normalize_or_zero()));
+        }
+    }
+    // Each label beside its arrow, towards the view's centre, kept inside the view.
+    for (label, mut node, computed, mut vis) in &mut labels {
+        let want = if spots[label.0].is_some() { Visibility::Inherited } else { Visibility::Hidden };
+        if *vis != want {
+            *vis = want;
+        }
+        let Some((spot, ray)) = spots[label.0] else { continue };
+        let size = computed.size * computed.inverse_scale_factor;
+        let c = spot - ray * (26.0 + size.length() * 0.35);
+        let max = (rig.viewport - size - Vec2::splat(6.0)).max(Vec2::splat(6.0));
+        let at = (c - size / 2.0).clamp(Vec2::splat(6.0), max);
+        let (left, top) = (Val::Px(at.x.round()), Val::Px(at.y.round()));
+        if node.left != left || node.top != top {
+            node.left = left;
+            node.top = top;
+        }
     }
 }
 

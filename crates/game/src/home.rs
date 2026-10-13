@@ -208,7 +208,17 @@ impl Plugin for HomePlugin {
                     .before(UiStyleSet)
                     .run_if(in_state(AppMode::Home)),
             )
-            .add_systems(PostUpdate, draw_dots.run_if(in_state(AppMode::Home)).run_if(not(fleet::is_open)).after(CameraSet).before(FxFlush));
+            .add_systems(PostUpdate, draw_dots.run_if(in_state(AppMode::Home)).run_if(not(fleet::is_open)).after(CameraSet).before(FxFlush))
+            // Until the voyage map (7I): V launches the first open voyage.
+            .add_systems(Update, voyage_key.after(UiInputSet).run_if(in_state(AppMode::Home)).run_if(not(fleet::is_open)));
+    }
+}
+
+/// V: launch the first open voyage (`voyage::StartVoyage`; until the voyage map's SET COURSE exists).
+fn voyage_key(keys: Res<ButtonInput<KeyCode>>, pointer: Res<UiPointer>, mut out: MessageWriter<crate::voyage::StartVoyage>) {
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
+    if keys.just_pressed(KeyCode::KeyV) && !pointer.typing && !ctrl {
+        out.write(crate::voyage::StartVoyage { voyage: None });
     }
 }
 
