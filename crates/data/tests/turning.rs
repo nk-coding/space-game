@@ -41,12 +41,12 @@ fn turning_stat_lines() {
     };
     let gyro = lines("gyro");
     assert!(
-        gyro.contains(&("torque".into(), "5000 kN·m".into())),
+        gyro.contains(&("torque".into(), "1250 kN·m".into())),
         "{gyro:?}"
     );
     let rcs = lines("rcs_pod");
     assert!(
-        rcs.contains(&("rcs_thrust".into(), "60 kN".into()))
+        rcs.contains(&("rcs_thrust".into(), "200 kN".into()))
             && rcs.contains(&("rcs_rated_speed".into(), "14 m/s".into())),
         "{rcs:?}"
     );
