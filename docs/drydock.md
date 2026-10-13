@@ -223,8 +223,11 @@ nothing of the input device: the mouse drives it now; touch will drive the same 
 **Ghost** (`ghost.rs`): under the cursor the edit's `Preview` (`preview_paint`, `preview_slope`, `preview_place`,
 `preview_move`): the parts it would put down as flight tiles at 55 % opacity (one mesh, a child of the design's
 mesh, rebuilt only when the tiles change), outlined teal; a refused edit shows the part (or the cell) outlined coral.
-The mirror twin is drawn too; a skipped twin is a coral outline. Erase outlines what it would take (and the twin)
-in coral, select outlines the hovered part. The selected part has teal corner brackets. Why the edit under the
+The mirror twin is drawn too; a skipped twin is a coral outline. The pointer's mark (`ghost::hover_mark`, 13 Oct
+2026, Niklas): the cell under it (a faint teal fill and outline), but in SELECT and ERASE (and a right-button erase
+stroke) over a part the part's whole footprint instead, filled and outlined once (teal to select, coral to erase:
+what a click takes), whichever of its cells is hovered; erase outlines the mirror twin in coral too. The selected
+part has teal corner brackets. Why the edit under the
 cursor can't happen goes after the info line in coral (`OUTSIDE THE FRAME`, `OVERLAPS FUSION REACTOR`,
 `MIRROR SKIPPED · OVERLAPS ARMOR BLOCK`, ...; part names from content); without one, the last refusal stays there
 for 3 s, and the pan help gives way to it.

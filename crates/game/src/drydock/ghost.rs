@@ -1,8 +1,8 @@
 //! What the pointer would do, drawn in world space over the design: the ghost of the edit under the cursor (the
 //! picked part with the flight tile look, see-through, outlined teal when it can go there and coral when it
 //! can't, its mirror twin too while mirroring), the fill rectangle while dragging, the part a move would put
-//! elsewhere, the part erase would take, the hovered part in the select tool and corner brackets around the
-//! selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
+//! elsewhere, the pointer's mark ([`hover_mark`]: the cell, or in SELECT and ERASE the whole part under it) and
+//! corner brackets around the selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
 //!
 //! [`update`] works the view out from the previews of `data::edit` (`preview_paint`, `preview_slope`,
 //! `preview_place`, `preview_move`: what the edit would do, planned by the same code as the edit) when its inputs
@@ -60,6 +60,35 @@ pub struct GhostView {
     pub rects: Vec<(Cell, Cell)>,
     /// Why the edit under the cursor can't happen (or loses its mirror image).
     pub reason: Option<String>,
+    /// What marks the pointer: the cell, or the whole part under it ([`hover_mark`]).
+    pub hover: Option<HoverMark>,
+}
+
+/// What marks the cell under the pointer.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HoverMark {
+    /// The cell (frame coordinates).
+    Cell(Cell),
+    /// The whole part covering it: its cells (filled) and its outline (one line around the footprint), in the
+    /// tool's tone (teal to select, coral to erase).
+    Part { cells: Vec<Cell>, outline: Vec<Vec2>, tone: Tone },
+}
+
+/// The pointer's mark for the tool and gesture at `cell`. SELECT and ERASE act on whole parts, so over a part they
+/// mark its whole footprint (one outline, Niklas 13 Oct 2026: a big block's hovered 1×1 cell needs no mark of its
+/// own); over an empty cell, and in the other tools, the cell. `part_at` gives the cells and the outline of the part
+/// covering a cell.
+pub fn hover_mark(tool: Tool, gesture: Gesture, cell: Option<Cell>, part_at: impl Fn(Cell) -> Option<(Vec<Cell>, Vec<Vec2>)>) -> Option<HoverMark> {
+    let cell = cell?;
+    let tone = match (tool, gesture) {
+        (_, Gesture::Stroke { erase: true, .. }) | (Tool::Erase, Gesture::Idle) => Some(Tone::Coral),
+        (Tool::Select, Gesture::Idle) => Some(Tone::Teal),
+        _ => None,
+    };
+    Some(match tone.and_then(|t| part_at(cell).map(|p| (t, p))) {
+        Some((tone, (cells, outline))) => HoverMark::Part { cells, outline, tone },
+        None => HoverMark::Cell(cell),
+    })
 }
 
 /// The ghost's mesh, a child of the design's mesh (so it is shown only in the drydock), on the shared atlas
@@ -128,14 +157,12 @@ pub(super) fn update(
             }
         }
         (Tool::Erase, Gesture::Idle) | (_, Gesture::Stroke { erase: true, .. }) => {
-            if let Some(cell) = cursor.cell {
-                let mut cells = vec![cell];
-                if dock.mirror {
-                    cells.push(dock.mirror_cell(cell));
-                }
-                for k in cells.into_iter().filter_map(|c| dock.part_at(c)) {
-                    v.outlines.push((outline(content, &dock.parts()[k]), Tone::Coral));
-                }
+            // The part under the cursor is the hover mark; its mirror twin (another part) is outlined too.
+            if let Some(cell) = cursor.cell
+                && dock.mirror
+                && let Some(k) = dock.part_at(dock.mirror_cell(cell)).filter(|k| Some(*k) != dock.part_at(cell))
+            {
+                v.outlines.push((outline(content, &dock.parts()[k]), Tone::Coral));
             }
         }
         (Tool::Paint, Gesture::Idle | Gesture::Stroke { erase: false, .. }) => {
@@ -151,13 +178,13 @@ pub(super) fn update(
                 }
             }
         }
-        (Tool::Select, Gesture::Idle) => {
-            if let Some(k) = cursor.cell.and_then(|c| dock.part_at(c)) {
-                v.outlines.push((outline(content, &dock.parts()[k]), Tone::Label));
-            }
-        }
         _ => {}
     }
+    v.hover = hover_mark(ui.tool, g.gesture, cursor.cell, |c| {
+        let p = &dock.parts()[dock.part_at(c)?];
+        let cells = content.placed_shape(p)?.cells();
+        Some((cells, outline(content, p)))
+    });
     if *view != v {
         *view = v;
     }
@@ -311,6 +338,28 @@ pub(super) fn draw(
             queue.line(&r.white, world(poly[k]), world(poly[(k + 1) % poly.len()]), 1.6 * px, c, Z_LINES);
         }
     }
+    // The pointer's mark: the cell, or the whole part under it (filled, one outline).
+    match &view.hover {
+        Some(HoverMark::Cell((cx, cy))) => {
+            let c = Vec2::new(*cx as f32 + 0.5, *cy as f32 + 0.5);
+            queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui.teal.with_alpha(0.1), z: Z_LINES });
+            let corners = [c + Vec2::new(-0.5, -0.5), c + Vec2::new(0.5, -0.5), c + Vec2::new(0.5, 0.5), c + Vec2::new(-0.5, 0.5)];
+            for k in 0..4 {
+                queue.line(&r.white, world(corners[k]), world(corners[(k + 1) % 4]), 1.5 * px, ui.teal.with_alpha(0.8), Z_LINES);
+            }
+        }
+        Some(HoverMark::Part { cells, outline, tone }) => {
+            let col = tone.color(ui);
+            for (x, y) in cells {
+                let c = Vec2::new(*x as f32 + 0.5, *y as f32 + 0.5);
+                queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: col.with_alpha(0.1), z: Z_LINES });
+            }
+            for k in 0..outline.len() {
+                queue.line(&r.white, world(outline[k]), world(outline[(k + 1) % outline.len()]), 1.6 * px, col.with_alpha(0.9), Z_LINES);
+            }
+        }
+        None => {}
+    }
     for &((x0, y0), (x1, y1)) in &view.rects {
         let (a, b) = (Vec2::new(x0 as f32, y0 as f32), Vec2::new(x1 as f32 + 1.0, y1 as f32 + 1.0));
         let centre = world((a + b) / 2.0);
@@ -342,5 +391,40 @@ pub(super) fn sync_hint(view: Res<GhostView>, note: Res<EditNote>, time: Res<Tim
     let text = view.reason.as_deref().or(note.current(time.elapsed_secs()));
     if hint.0.strip_prefix(SEP) != text {
         hint.0 = text.map_or(String::new(), |t| format!("{SEP}{t}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A 2×2 block at (3, 4)..(4, 5): its cells and its outline.
+    fn block(c: Cell) -> Option<(Vec<Cell>, Vec<Vec2>)> {
+        ((3..=4).contains(&c.0) && (4..=5).contains(&c.1)).then(|| {
+            (vec![(3, 4), (4, 4), (3, 5), (4, 5)], vec![Vec2::new(3.0, 4.0), Vec2::new(5.0, 4.0), Vec2::new(5.0, 6.0), Vec2::new(3.0, 6.0)])
+        })
+    }
+
+    /// SELECT and ERASE mark the whole part under any of its cells (one outline), the empty cell itself; the other
+    /// tools always mark the cell; off the frame nothing.
+    #[test]
+    fn select_and_erase_mark_the_whole_part() {
+        let (cells, outline) = block((4, 5)).unwrap();
+        for at in [(3, 4), (4, 5), (4, 4)] {
+            assert_eq!(hover_mark(Tool::Select, Gesture::Idle, Some(at), block), Some(HoverMark::Part { cells: cells.clone(), outline: outline.clone(), tone: Tone::Teal }));
+            assert_eq!(hover_mark(Tool::Erase, Gesture::Idle, Some(at), block), Some(HoverMark::Part { cells: cells.clone(), outline: outline.clone(), tone: Tone::Coral }));
+            // A right-button erase stroke in any tool takes whole parts too.
+            let stroke = Gesture::Stroke { erase: true, last: at };
+            assert!(matches!(hover_mark(Tool::Paint, stroke, Some(at), block), Some(HoverMark::Part { tone: Tone::Coral, .. })));
+            for tool in [Tool::Paint, Tool::Fill] {
+                assert_eq!(hover_mark(tool, Gesture::Idle, Some(at), block), Some(HoverMark::Cell(at)));
+            }
+        }
+        // An empty cell keeps its own mark; moving a part marks the cell (the move's ghost shows the part).
+        for tool in [Tool::Select, Tool::Erase, Tool::Paint] {
+            assert_eq!(hover_mark(tool, Gesture::Idle, Some((0, 0)), block), Some(HoverMark::Cell((0, 0))));
+        }
+        assert_eq!(hover_mark(Tool::Select, Gesture::Move { from: (3, 4), to: (4, 4) }, Some((4, 4)), block), Some(HoverMark::Cell((4, 4))));
+        assert_eq!(hover_mark(Tool::Select, Gesture::Idle, None, block), None);
     }
 }

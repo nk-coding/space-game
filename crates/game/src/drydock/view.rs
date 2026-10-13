@@ -302,12 +302,11 @@ fn dot_stride(zoom: f32) -> i32 {
     stride
 }
 
-/// The frame's dots, brackets and mirror axis, and the hover cell (screen-pixel sizes, so redrawn each frame),
-/// inside the grid viewport.
+/// The frame's dots, brackets and mirror axis (screen-pixel sizes, so redrawn each frame), inside the grid viewport;
+/// the pointer's mark is the ghost's (`ghost::hover_mark`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_frame(
     design: Res<PlayerDesign>,
-    cursor: Res<DrydockCursor>,
     rig: Res<CameraRig>,
     cam: Res<DockCamera>,
     style: Res<Style>,
@@ -371,16 +370,6 @@ pub(super) fn draw_frame(
             let end = (y + dash).min(bottom);
             queue.line(&r.white, Vec2::new(x, -y), Vec2::new(x, -end), 1.2 * px, axis_c, Z_UNDER);
             y = end + gap;
-        }
-    }
-    // The cell under the pointer.
-    if let Some((cx, cy)) = cursor.cell {
-        let c = Vec2::new(cx as f32 + 0.5, -(cy as f32) - 0.5);
-        queue.push(FxSprite { rect: r.white.uv, pos: c, angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui_c.teal.with_alpha(0.1), z: Z_OVER });
-        let teal = ui_c.teal.with_alpha(0.8);
-        let corners = [c + Vec2::new(-0.5, 0.5), c + Vec2::new(0.5, 0.5), c + Vec2::new(0.5, -0.5), c + Vec2::new(-0.5, -0.5)];
-        for k in 0..4 {
-            queue.line(&r.white, corners[k], corners[(k + 1) % 4], 1.5 * px, teal, Z_OVER);
         }
     }
 }
