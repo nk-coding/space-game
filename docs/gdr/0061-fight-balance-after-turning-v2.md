@@ -1,8 +1,8 @@
 # GDR-0061: Fight balance after turning v2: raiders orbit inside the beams, the skirmisher keeps its nose on the target, shields can collapse
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
-- Decided by: balance agent (proposal, for the lead and Niklas)
+- Decided by: Niklas (interactively, 13 Oct 2026; proposed by the balance agent)
 - Related: [GDR-0016](0016-combat-pace-and-aiming.md), [GDR-0018](0018-weapon-families.md), [GDR-0021](0021-shields.md), [GDR-0034](0034-behavior-first-match-fire-at-will.md), [GDR-0041](0041-engine-rated-speed.md), [GDR-0043](0043-shields-as-energy-bubbles.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0058](0058-turning-v2-defaults.md), `docs/results/balance-2026-10-13.md`, `docs/sim.md` "Sandbox fights at the new speeds"
 
 ## Context
