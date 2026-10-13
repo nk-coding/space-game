@@ -16,8 +16,8 @@
 //!   the building area is the drydock (D; the camera lands exactly on the drydock's own view of the frame,
 //!   `DockCamera::opening_view`, so only its panels appear), the mind the BEHAVIOR screen (B), the tower and lane the
 //!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the lab RESEARCH (R,
-//!   `research/`), the gate a voyage (V: the first open one, `voyage::StartVoyage`, until the voyage map exists; a
-//!   refused launch flies back out with a note). The fabricator and the salvage bay are dark.
+//!   `research/`), the gate the voyage map (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, flies there too).
+//!   The fabricator and the salvage bay are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
 //!   place (corner brackets, a brighter title).
 //! * **Coming back** from a screen the camera starts on its place (the drydock's last view, the mind, the test
@@ -79,7 +79,7 @@ pub enum HomeAction {
     TestRange,
     /// The moorings: the fleet layer over home (`fleet.rs` opens it).
     Fleet,
-    /// The gate: launch a voyage (`voyage.rs`).
+    /// The gate: the voyage map (`map/`).
     Voyages,
     /// The lab: the research screen.
     Research,
@@ -131,6 +131,7 @@ fn place_of(mode: AppMode) -> Option<Place> {
         AppMode::Behavior => Some(Place::Behavior),
         AppMode::Flight => Some(Place::TestRange),
         AppMode::Research => Some(Place::Research),
+        AppMode::Map => Some(Place::Voyages),
         AppMode::Home => None,
     }
 }
@@ -317,7 +318,9 @@ fn place_view(place: Place, layout: &Layout, window: &Window, dock: &DockCamera,
 /// [`MARGIN`] px inside the window, whatever its aspect (Niklas, 13 Oct 2026: things at the left and top were cut
 /// off at some aspects).
 fn overview(layout: &Layout, window: &Window, tags: &LabelTags) -> View {
-    let (centre, zoom) = fit_tagged(layout.overview, &tags.0, window.size(), MARGIN);
+    // Every place whole too (research's dishes reach above the sketch's overview).
+    let all = Place::ALL.iter().fold(layout.overview, |r, p| r.union(layout.hit(*p)));
+    let (centre, zoom) = fit_tagged(all, &tags.0, window.size(), MARGIN);
     View { centre, zoom }
 }
 
@@ -460,8 +463,8 @@ fn clicks(
     }
 }
 
-/// D, B, T, F, R, V: not while a text field has the keyboard, and not with Ctrl or Cmd
-/// held (Ctrl+D is the browser's bookmark key), as the drydock's shortcuts.
+/// D, B, T, F, R, V: not while a text field has the keyboard, and not with Ctrl or Cmd held (Ctrl+D is the browser's
+/// bookmark key), as the drydock's shortcuts. The debrief's VOYAGE MAP acts as V.
 #[allow(clippy::too_many_arguments)]
 fn keys(
     keys: Res<ButtonInput<KeyCode>>,
@@ -472,7 +475,11 @@ fn keys(
     yard: Res<Yard>,
     rig: Res<CameraRig>,
     mut visit: ResMut<Visit>,
+    mut open_map: MessageReader<crate::map::OpenMap>,
 ) {
+    if open_map.read().count() > 0 {
+        go(Place::Voyages, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
+    }
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     if pointer.typing || ctrl {
         return;
@@ -496,11 +503,9 @@ fn fly(
     mut yard: ResMut<Yard>,
     mut rig: ResMut<CameraRig>,
     mut visit: ResMut<Visit>,
-    mut refused: MessageReader<crate::voyage::LaunchRefused>,
     mut out: MessageWriter<HomeAction>,
 ) {
     let size = window.size();
-    let refused = refused.read().count() > 0;
     let mut next = None;
     let mut clear = 0.0;
     let view = match &mut visit.phase {
@@ -534,10 +539,6 @@ fn fly(
                 // FLEET closed: back out to the yard.
                 next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)).after(EXIT_SECONDS), to: None, from: Some(Place::Fleet) });
             }
-            if *place == Place::Voyages && refused {
-                // The launch was refused (a note says why): back out to the yard.
-                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)), to: None, from: Some(Place::Voyages) });
-            }
             *view
         }
     };
@@ -555,7 +556,6 @@ fn apply(
     mut actions: MessageReader<HomeAction>,
     mut scene: ResMut<Scene>,
     mut next: ResMut<NextState<AppMode>>,
-    mut voyage: MessageWriter<crate::voyage::StartVoyage>,
 ) {
     for a in actions.read() {
         match a {
@@ -568,10 +568,7 @@ fn apply(
             }
             // A layer over home, not a mode: `fleet::open` reads the same message.
             HomeAction::Fleet => {}
-            // The first open voyage, until the voyage map's SET COURSE exists.
-            HomeAction::Voyages => {
-                voyage.write(crate::voyage::StartVoyage { voyage: None });
-            }
+            HomeAction::Voyages => next.set(AppMode::Map),
         }
     }
 }
@@ -812,12 +809,12 @@ mod tests {
             .insert_state(AppMode::Home)
             .insert_resource(Scene::new(SceneKind::Sandbox, 1))
             .add_message::<HomeAction>()
-            .add_message::<crate::voyage::StartVoyage>()
             .add_systems(Update, apply);
         app
     }
 
-    /// TEST RANGE asks for the plain sandbox (not a test flight) and flies; DRYDOCK and BEHAVIOR open their screens.
+    /// TEST RANGE asks for the plain sandbox (not a test flight) and flies; DRYDOCK, BEHAVIOR and the gate (the voyage map)
+    /// open their screens.
     #[test]
     fn the_places_lead_to_their_modes() {
         let mut app = app();
@@ -826,7 +823,12 @@ mod tests {
         assert_eq!(app.world().resource::<Scene>().launch, Some(Launch::Range));
         app.update();
         assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Flight);
-        for (action, mode) in [(HomeAction::Drydock, AppMode::Drydock), (HomeAction::Behavior, AppMode::Behavior), (HomeAction::Research, AppMode::Research)] {
+        for (action, mode) in [
+            (HomeAction::Drydock, AppMode::Drydock),
+            (HomeAction::Behavior, AppMode::Behavior),
+            (HomeAction::Research, AppMode::Research),
+            (HomeAction::Voyages, AppMode::Map),
+        ] {
             let mut app = self::app();
             app.world_mut().write_message(action);
             app.update();
@@ -834,16 +836,10 @@ mod tests {
             assert_eq!(*app.world().resource::<State<AppMode>>().get(), mode);
             assert_eq!(app.world().resource::<Scene>().launch, None);
         }
-        // The gate asks `voyage.rs` for the first open voyage (it launches or says why not).
-        let mut app = self::app();
-        app.world_mut().write_message(HomeAction::Voyages);
-        app.update();
-        let asked = app.world_mut().resource_mut::<Messages<crate::voyage::StartVoyage>>().drain().collect::<Vec<_>>();
-        assert_eq!(asked, [crate::voyage::StartVoyage { voyage: None }]);
     }
 
-    /// D, B, T, F, R and V lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research and a voyage;
-    /// every key is one place's, every action one place's.
+    /// D, B, T, F, R and V lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research and the voyage
+    /// map; every key is one place's, every action one place's.
     #[test]
     fn keys_and_places_map_to_screens() {
         let by_key = |k: KeyCode| Place::ALL.into_iter().find(|p| key_of(*p).is_some_and(|(key, _)| key == k));
@@ -866,7 +862,13 @@ mod tests {
         }
         assert_eq!((key_of(Place::Fabricator), action_of(Place::SalvageBay)), (None, None));
         // Every screen goes back home onto its place.
-        for (mode, place) in [(AppMode::Drydock, Place::Drydock), (AppMode::Behavior, Place::Behavior), (AppMode::Flight, Place::TestRange), (AppMode::Research, Place::Research)] {
+        for (mode, place) in [
+            (AppMode::Drydock, Place::Drydock),
+            (AppMode::Behavior, Place::Behavior),
+            (AppMode::Flight, Place::TestRange),
+            (AppMode::Research, Place::Research),
+            (AppMode::Map, Place::Voyages),
+        ] {
             assert_eq!(place_of(mode), Some(place));
         }
     }
@@ -892,5 +894,9 @@ mod tests {
         assert!(matches!(rest.phase, Phase::Yard));
         go(Place::Research, &mut rest, &yard, &window, &rig, &dock, None);
         assert!(matches!(rest.phase, Phase::Flying { to: Some(Place::Research), .. }));
+        // The gate flies (the voyage map opens on arrival).
+        let mut gate = Visit::default();
+        go(Place::Voyages, &mut gate, &yard, &window, &rig, &dock, None);
+        assert!(matches!(gate.phase, Phase::Flying { to: Some(Place::Voyages), .. }));
     }
 }

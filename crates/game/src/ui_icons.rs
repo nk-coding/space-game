@@ -69,6 +69,8 @@ pub enum Glyph {
     /// box's centre and with side bearings).
     Plus,
     Minus,
+    /// A tick (Barlow has no ✓).
+    Check,
 }
 
 /// The mesh drawing one node's icon.
@@ -333,6 +335,10 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
             for bar in sign_bars(glyph == Glyph::Plus, s) {
                 m.polygon(&[bar.min, Vec2::new(bar.max.x, bar.min.y), bar.max, Vec2::new(bar.min.x, bar.max.y)], uv, col);
             }
+        }
+        Glyph::Check => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            m.strip(&[p(-0.3, 0.02), p(-0.09, -0.2), p(0.32, 0.24)], false, (s * 0.06).max(0.8), &white, col);
         }
         Glyph::Lock => {
             let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
