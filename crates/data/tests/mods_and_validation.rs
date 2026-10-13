@@ -624,6 +624,9 @@ fn locked_parts_and_materials() {
     );
     let e = errors_with("materials/armor.ron", &all);
     assert_error(&e, "steel", "locked", "every armour material is locked");
-    let some = format!("[{}, {}]", lock("steel"), lock("composite"));
+    // The base pack locks composite and reactive already (the early-game kit, GDR-0063): steel is what is left.
+    let e = errors_with("materials/armor.ron", &format!("[{}]", lock("steel")));
+    assert_error(&e, "steel", "locked", "every armour material is locked");
+    let some = format!("[{}, {}]", lock("composite"), lock("reactive"));
     assert!(errors_with("materials/armor.ron", &some).is_empty());
 }

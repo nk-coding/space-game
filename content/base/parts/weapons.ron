@@ -26,6 +26,7 @@
         id: "beam_laser",
         name: "Beam laser",
         summary: "A continuous beam: strong, hungry and hot.",
+        locked: true, // mid-game: a new game starts without it, research unlocks it (Niklas, 13 Oct 2026, GDR-0063)
         description: "Needs a clear line of fire. [[part:capacitor|Capacitors]] beside it make it fire faster.",
         tags: ["laser"],
         category: "weapons",

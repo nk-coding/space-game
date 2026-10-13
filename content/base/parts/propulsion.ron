@@ -35,6 +35,7 @@
         id: "torch_drive",
         name: "Torch drive",
         summary: "A big drive: hot, heavy and very fast.",
+        locked: true, // mid-game: a new game starts without it, research unlocks it (Niklas, 13 Oct 2026, GDR-0063)
         tags: ["engine"],
         category: "propulsion",
         icon: "torch-drive",
