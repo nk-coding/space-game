@@ -82,7 +82,7 @@ pub struct VoyageRun {
     pub phase: Phase,
     /// R or the RECALL pill asked for the recall; the next tick takes it.
     pub recall: bool,
-    /// M asked to abandon the voyage at this sim time (s); a second M within [`ABANDON_SECONDS`] does it.
+    /// M asked to abandon the voyage at this wall-clock time (s); a second M within [`ABANDON_SECONDS`] does it.
     pub abandon_asked: Option<f64>,
     /// M twice: the next tick abandons the voyage (it is lost).
     pub abandon: bool,
@@ -252,7 +252,13 @@ fn start(mut requests: MessageReader<StartVoyage>, mut inputs: LaunchInputs, mut
 
 /// R asks for the recall (the RECALL pill does the same, `flight_hud.rs`). M asks whether to abandon the voyage;
 /// M again within 3 s abandons it (it counts as lost, like closing the game: the way out of a stalemate).
-fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>, mut scene: ResMut<Scene>, world: Res<SimWorld>) {
+fn voyage_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    real: Res<Time<Real>>,
+    mut run: ResMut<VoyageRun>,
+    mut scene: ResMut<Scene>,
+    world: Res<SimWorld>,
+) {
     if run.launched.is_none() || scene.voyage().is_none() || !matches!(run.phase, Phase::Flying | Phase::Warping { .. }) {
         return;
     }
@@ -261,11 +267,12 @@ fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>, mut 
         run.recall = true;
     }
     if keys.just_pressed(KeyCode::KeyM) {
-        let now = world.sim.time_seconds();
+        // The window is wall-clock time (what the player feels, also while the sim lags); the banner sim time.
+        let (wall, now) = (real.elapsed_secs_f64(), world.sim.time_seconds());
         match run.abandon_asked {
-            Some(at) if now - at <= ABANDON_SECONDS => run.abandon = true,
+            Some(at) if wall - at <= ABANDON_SECONDS => run.abandon = true,
             _ => {
-                run.abandon_asked = Some(now);
+                run.abandon_asked = Some(wall);
                 scene.say("ABANDON THE VOYAGE?".into(), "M AGAIN  ·  THE HAUL IS LOST".into(), Tone::Coral, now + ABANDON_SECONDS);
             }
         }
