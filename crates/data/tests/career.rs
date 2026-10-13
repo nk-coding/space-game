@@ -643,6 +643,10 @@ fn the_save_round_trips_through_ron() {
     let back = Career::from_ron(&text).unwrap();
     assert_eq!(back, career);
     assert_eq!(back.to_ron(), text, "writing is deterministic");
+    assert!(
+        text.starts_with("(\n    packs: [\n") && text.ends_with("\n)\n"),
+        "{text}"
+    );
     assert_eq!(back.escorts(), ["drone_wing", "drone_wing"]);
     assert_eq!(back.underway(), Some(FIRST));
 }

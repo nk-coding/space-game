@@ -361,15 +361,17 @@ impl Career {
             .map_err(|e| vec![parse_error(&e)])
     }
 
-    /// The career as RON: deterministic, four-space indent, reads back with [`Career::from_ron`] to an equal
-    /// career.
+    /// The career as RON: deterministic, four-space indent, ending in a newline (like
+    /// [`crate::blueprint_to_ron`]); reads back with [`Career::from_ron`] to an equal career.
     pub fn to_ron(&self) -> String {
         let pretty = ron::ser::PrettyConfig::new()
             .indentor("    ")
             .new_line("\n");
-        ron_options()
+        let mut text = ron_options()
             .to_string_pretty(self, pretty)
-            .expect("a career is plain data and always serializes")
+            .expect("a career is plain data and always serializes");
+        text.push('\n');
+        text
     }
 
     /// Brings a loaded career in line with the current content (it may have changed since the save was
