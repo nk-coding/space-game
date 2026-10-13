@@ -97,6 +97,18 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 | 5H Turning feel (GDR-0055) | Keyboard rotation ~1.5 rad/s with a ramp; cores tiny, gyros modest, RCS strong (Runner 90° ≈ 1.5 s); differential thrust last resort; whole-speed fade | in progress (13 Oct) |
 | 5I Sharp icons | Part icons look pixelated at high zoom in Niklas's browser although the atlas tier (256 px/cell) is above the need (160): find and fix the sampling/upload bug | done 13 Oct: the material never switched to a new tier (Bevy 0.20 `get_mut` only marks on write), so icons sampled the 64 px/cell start atlas all session; fixed, plus a −0.5 LOD bias (`client.md` "Atlas", `results/atlas-sharpness-*.png`) |
 
+## Phase 6: Behavior editor (started 13 Oct 2026, GDR-0057)
+
+Niklas chose the behavior editor after the drydock: its own screen from the drydock, graph and text views,
+behaviors saved on their own and picked by designs, TEST IN RANGE by watching or flying alongside.
+
+| Track | Goal | Status |
+|---|---|---|
+| 6A `data::behavior_edit` | Pure editing model of a rule program: rules, conditions, parameters, target line, slots, undo, text round trip | wave A, in progress |
+| 6B Plumbing | Player behaviors in the storage layer, designs naming their behavior, share codes carrying it, the sim library, TEST IN RANGE modes (watch / fly alongside), the live active rule | wave A, in progress |
+| 6C Screen foundation | `AppMode::Behavior`, the mockup's layout, read-only graph view, text view with live errors, palette and inspector shells, BEHAVIOR button in the drydock | wave A, in progress |
+| 6D Wiring | Graph editing and the inspector through the model, saving, test buttons, live rule highlight | wave B |
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
