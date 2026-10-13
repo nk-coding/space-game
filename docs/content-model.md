@@ -39,6 +39,7 @@ content/base/
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
+  icons/<key>.ship.svg     a machine as drawn on a ship (its housing, GDR-0069; see Ship drawings)
   wiki/<kind>/<id>.md      optional long-form prose, e.g. wiki/part/fission_reactor.md
   wiki/page/<id>.md        free-standing wiki articles (first "# " line = title)
 ```
@@ -51,7 +52,7 @@ File rules:
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
-  `icons/` as `<key>.svg` with a kebab-case key; other files (READMEs) are ignored.
+  `icons/` as `<key>.svg` or `<key>.ship.svg` with a kebab-case key; other files (READMEs) are ignored.
 - Files are read in sorted path order, entries in file order. That is the **load order**, which is also the
   display order for stats, categories, frames, families, voyages and the drydock palette.
 - `wiki/` is for tools only. The game build never embeds it.
@@ -749,7 +750,8 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   format, empty name/summary, dangling references (category, faction, material, part, bonus targets, tags,
   stats), stat ids the code needs but `stats.ron` lacks, unknown colour/tone/glow keys, malformed icon keys,
   icon keys (parts, materials, categories) with no `icons/<key>.svg` in any loaded pack, `.svg` files outside
-  `icons/`, icons that are not usable SVG (see [Icons](#icons)), non-finite or out-of-range numbers, hull parts
+  `icons/`, icons that are not usable SVG (see [Icons](#icons)), machines without their ship drawing and drawings
+  with a wrong `viewBox` ([Ship drawings](#ship-drawings-added-13-oct-2026-gdr-0069)), non-finite or out-of-range numbers, hull parts
   with `mass`/`hp`, non-hull parts without them, illegal slopes (not `w × 1`, or not hull), hull placements
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, frame sides outside 1–128 cells, wiki pages for missing entries, broken or malformed
@@ -873,6 +875,30 @@ resolution it needs; the wiki can show the SVG as is or composite it on a tile).
   namespace prefix, say) stays blank and is named in `art::Raster::failed`; the rest of the atlas is fine.
 - Glyphs are drawn on a 20 × 20 `viewBox` (one cell) in their system colour, with their soft glow as a
   blurred group; see `docs/style-guide.md`.
+
+### Ship drawings (added 13 Oct 2026, GDR-0069)
+
+On a ship a machine is drawn as its housing, not as its icon. Every machine (a part without `hull: true`) has a
+second SVG next to its icon: `icons/<icon key>.ship.svg` (the thruster: `icons/thruster.ship.svg`). The icon stays
+for the drydock's palette and inspector and for the wiki.
+
+- Found by the part's `icon` key, so a part needs no new field and parts sharing an icon share the drawing.
+  `Content::ship_svg(key)` returns it (last loaded pack wins, like icons); `Content::ship_art` lists them all.
+- **Geometry**: the part unrotated, nose (its facing) up, 20 units per cell. The `viewBox` is `0 0 W H` with `W` =
+  the footprint's width × 20 and `H` its height × 20 plus an optional **overhang** at the stern (+y), at most one
+  cell: what reaches past the hull behind the part. Only engines (parts with `engine`) may overhang (GDR-0069:
+  the nozzle bell). An engine's viewBox ends just past the nozzle's mouth: the game starts the plume there. Base,
+  placeholders: the thruster's bell reaches 0.35 cells past the stern, the torch drive's 0.45 (viewBoxes 0.375 and
+  0.5 cells past). Keep the sizes in steps of 1.25 units (1/16 cell): they map to whole texels at every atlas tier.
+  The game rotates and mirrors the drawing with the part; the overhang never collides.
+- **Look**: a housing in `#1a2a36` / `#24384a` with system-colour details (style guide "Machines"). The cell under
+  it is drawn by the game in the hull's armour tone, so the drawing has no background. Glows are
+  `<g filter="url(#gl)">` groups as in icons; the game draws them as a soft layer *under* the drawing, so a glowing
+  centre needs a window in its housing (an `evenodd` ring) to show.
+- **Validation** (errors): a machine without an icon or without its ship drawing; a drawing that fails
+  `check_svg`; a `viewBox` that does not start at `0 0`, is not as wide as the footprint, is shorter than it or
+  overhangs by more than a cell; an overhang on a part without `engine`. A drawing no part uses is a warning.
+- The `.ship.svg` suffix is reserved: any other dotted name under `icons/` is a load error, as before.
 
 ## API quick reference (`data` crate)
 

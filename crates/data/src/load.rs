@@ -48,6 +48,8 @@ pub struct Pack {
     pub encounters: Vec<Encounter>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
+    /// `icons/<key>.ship.svg`, sorted by key: machines as drawn on a ship (GDR-0069).
+    pub ship_art: Vec<Icon>,
     pub wiki: Vec<WikiPage>,
 }
 
@@ -60,6 +62,7 @@ impl Pack {
     ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
     ///   `starts`, `voyages`, `encounters` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
+    /// * `icons/<key>.ship.svg`: the ship drawing of the machines whose icon is `key` (GDR-0069).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
     /// * Anything else that is not `.ron` or `.svg` is ignored (READMEs, `.gitkeep`); unknown `.ron` files and
     ///   `.svg` files outside `icons/` are errors.
@@ -124,6 +127,7 @@ impl Pack {
             voyages: Vec::new(),
             encounters: Vec::new(),
             icons: Vec::new(),
+            ship_art: Vec::new(),
             wiki: Vec::new(),
         };
 
@@ -181,19 +185,29 @@ impl Pack {
                     ),
                 }
             } else if path.ends_with(".svg") {
-                let key = path
+                let stem = path
                     .strip_prefix("icons/")
-                    .and_then(|f| f.strip_suffix(".svg"))
-                    .filter(|k| crate::art_keys::is_icon_key(k));
-                match key {
-                    Some(key) => pack.icons.push(Icon {
-                        key: key.to_string(),
-                        svg: text.to_string(),
-                        source: src,
-                    }),
+                    .and_then(|f| f.strip_suffix(".svg"));
+                let (stem, ship) = match stem.and_then(|s| s.strip_suffix(".ship")) {
+                    Some(key) => (Some(key), true),
+                    None => (stem, false),
+                };
+                match stem.filter(|k| crate::art_keys::is_icon_key(k)) {
+                    Some(key) => {
+                        let icon = Icon {
+                            key: key.to_string(),
+                            svg: text.to_string(),
+                            source: src,
+                        };
+                        if ship {
+                            pack.ship_art.push(icon);
+                        } else {
+                            pack.icons.push(icon);
+                        }
+                    }
                     None => problems.push(
                         Problem::error(
-                            "SVG files must be icons/<key>.svg with a kebab-case key (lowercase letters, digits and -)",
+                            "SVG files must be icons/<key>.svg or icons/<key>.ship.svg with a kebab-case key (lowercase letters, digits and -)",
                         )
                         .at(&src),
                     ),
@@ -365,6 +379,8 @@ pub struct Content {
     pub encounters: Table<Encounter>,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
+    /// Ship drawings of machines by icon key (`icons/<key>.ship.svg`, GDR-0069); later packs replace them like icons.
+    pub ship_art: BTreeMap<String, Icon>,
     /// Wiki prose keyed `"<kind>:<id>"` (e.g. `"part:fission_reactor"`). Empty in the game build.
     pub wiki: BTreeMap<String, WikiPage>,
 }
@@ -433,6 +449,9 @@ impl Content {
                 .for_each(|e| drop(c.encounters.upsert(e)));
             for i in &p.icons {
                 c.icons.insert(i.key.clone(), i.clone());
+            }
+            for i in &p.ship_art {
+                c.ship_art.insert(i.key.clone(), i.clone());
             }
             for w in &p.wiki {
                 c.wiki
@@ -510,6 +529,12 @@ impl Content {
     /// `icons/<key>.svg`. The client rasterises it at the resolution it needs; the wiki shows it as is.
     pub fn icon_svg(&self, key: &str) -> Option<&str> {
         self.icons.get(key).map(|i| i.svg.as_str())
+    }
+
+    /// The ship drawing of the machines whose icon is `key` (GDR-0069): `icons/<key>.ship.svg` from the last
+    /// loaded pack that has it. The client draws it on the ship instead of the icon.
+    pub fn ship_svg(&self, key: &str) -> Option<&str> {
+        self.ship_art.get(key).map(|i| i.svg.as_str())
     }
 
     /// The system colour key for a part's icon: the part's own `color`, else its category's.

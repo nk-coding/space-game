@@ -15,7 +15,7 @@ use crate::text::parse_links;
 /// Validates merged content. Returns errors and warnings (warnings: a ship in several pieces, a gun without a clear
 /// line of fire, an RCS part with no side open to space, a radiator that cannot vent, an empty placement power
 /// override, a control load above the cores' capacity, a `control_cost` on a part without a power role, a core
-/// with no control capacity, an icon nothing uses, research that unlocks what is already open, an encounter ship
+/// with no control capacity, an icon or ship drawing nothing uses, research that unlocks what is already open, an encounter ship
 /// without a behavior, a voyage nothing can open, a start ship without a hold).
 pub fn validate(c: &Content) -> Vec<Problem> {
     let mut v = Validator { c, out: Vec::new() };
@@ -290,6 +290,35 @@ impl<'a> Validator<'a> {
         }
     }
 
+    /// A machine's ship drawing (GDR-0069): a machine with an icon has `icons/<icon>.ship.svg`, and its viewBox fits
+    /// the footprint; only engines reach past the hull. (A machine without an icon is drawn as a bare cell.)
+    fn ship_drawing(&mut self, p: &'a Part) {
+        let Some(key) = &p.icon else { return };
+        if !is_icon_key(key) {
+            return; // reported by `icon`
+        }
+        let Some(svg) = self.c.ship_svg(key) else {
+            self.err(
+                p,
+                "icon",
+                format!("machine without a ship drawing: no loaded pack has icons/{key}.ship.svg (GDR-0069)"),
+            );
+            return;
+        };
+        let Some(vb) = crate::svg::view_box(svg) else { return }; // reported by `icons`
+        match crate::svg::ship_overhang(vb, p.size) {
+            Err(msg) => self.err(p, "icon", format!("icons/{key}.ship.svg: {msg}")),
+            Ok(over) if over > 0.0 && p.engine.is_none() => self.err(
+                p,
+                "icon",
+                format!(
+                    "icons/{key}.ship.svg reaches {over} cells past the stern, but only engines reach past the hull (GDR-0069)"
+                ),
+            ),
+            Ok(_) => {}
+        }
+    }
+
     /// Every icon is a usable SVG; icons nothing refers to are probably left over.
     fn icons(&mut self) {
         let c = self.c;
@@ -312,6 +341,23 @@ impl<'a> Validator<'a> {
                         icon.key
                     ))
                     .at(&icon.source),
+                );
+            }
+        }
+        let machines: BTreeSet<&str> =
+            c.parts.iter().filter(|p| !p.hull).filter_map(|p| p.icon.as_deref()).collect();
+        for art in c.ship_art.values() {
+            if let Err(msg) = crate::svg::check_svg(&art.svg) {
+                self.out
+                    .push(Problem::error(format!("ship drawing `{}`: {msg}", art.key)).at(&art.source));
+            }
+            if !machines.contains(art.key.as_str()) {
+                self.out.push(
+                    Problem::warning(format!(
+                        "ship drawing `{}` is not used: no machine has the icon `{}`",
+                        art.key, art.key
+                    ))
+                    .at(&art.source),
                 );
             }
         }
@@ -457,6 +503,9 @@ impl<'a> Validator<'a> {
         }
         if let Some(icon) = &p.icon {
             self.icon(p, "icon", icon);
+        }
+        if !p.hull {
+            self.ship_drawing(p);
         }
         if let Some(col) = &p.color {
             self.key_in(p, "color", col, SYSTEM_COLORS, "system colour");
