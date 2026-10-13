@@ -44,6 +44,8 @@ use super::{BehaviorAction, BehaviorUi, BehaviorView, EditorContext};
 const MAX_NAME: usize = 40;
 /// The working draft's name in the `drydock` namespace (next to the working design, `drydock/working`).
 const WORKING: &str = "behavior";
+/// Where a working draft that doesn't read is kept before the next autosave writes over it.
+const WORKING_ASIDE: &str = "behavior-unread";
 
 // ---------------------------------------------------------------------------------------------------------
 // State
@@ -336,6 +338,9 @@ pub(super) fn open(mut lib: Lib, content: Res<GameContent>, params: Res<Params>,
     // Messages from the last visit are old news.
     lib.note.line = None;
     let first = lib.draft.editor().is_none();
+    // A working draft that doesn't read is kept aside before the new draft's autosave writes over it; the message is
+    // said last, once the draft it is shown with is on the screen.
+    let mut lost = None;
     if first {
         match lib.storage.read::<WorkingBehavior>(WORKING) {
             Ok(Some(w)) => {
@@ -345,25 +350,39 @@ pub(super) fn open(mut lib: Lib, content: Res<GameContent>, params: Res<Params>,
                 }
             }
             Ok(None) => {}
-            Err(e) => lib.say(format!("the last behavior draft didn't come back: {e}"), Tone::Coral),
+            Err(e) => {
+                let kept = match lib.storage.set_aside::<WorkingBehavior>(WORKING, WORKING_ASIDE) {
+                    Ok(()) => format!("it is kept as {}/{WORKING_ASIDE}", WorkingBehavior::NAMESPACE),
+                    Err(e) => format!("it could not be kept: {e}"),
+                };
+                lost = Some(format!("the last behavior draft didn't come back: {e}; {kept}"));
+            }
         }
     }
     let flown = lib.flown(content);
     let wanted = if first { params.text("behavior") } else { None };
     if lib.draft.editor().is_none() || lib.slot.flown != flown || wanted.is_some() {
         let next = BehaviorDraft::source_for(content, &lib.behaviors, lib.design.blueprint(), wanted).cloned();
+        let mut switched = true;
         if lib.draft.editor().is_none() || lib.draft.source != next.as_ref().map(|b| b.id.clone()) {
             let nodes = &content.behavior_nodes;
             if let Some(d) = next.and_then(|b| BehaviorDraft::from_behavior(&b, nodes)).or_else(|| BehaviorDraft::empty(nodes)) {
                 match lib.switch(content, d) {
                     Ok(Some(kept)) => lib.say(format!("your edits saved as {kept}"), Tone::Teal),
                     Ok(None) => {}
-                    Err(e) => lib.say(e, Tone::Coral),
+                    Err(e) => {
+                        // Nothing was replaced: the draft still belongs to the behavior it was opened for, so the
+                        // next visit tries again.
+                        lib.say(e, Tone::Coral);
+                        switched = false;
+                    }
                 }
             }
         }
-        lib.slot.flown = flown;
-        lib.slot.write_now = true;
+        if switched {
+            lib.slot.flown = flown;
+            lib.slot.write_now = true;
+        }
     }
     // A design naming a behavior that is gone flies its faction's (as flights do).
     if let Some(id) = named.as_deref()
@@ -371,6 +390,9 @@ pub(super) fn open(mut lib: Lib, content: Res<GameContent>, params: Res<Params>,
     {
         let flies = lib.flown(content).map_or("no behavior".into(), |f| lib.name_of(content, &f));
         lib.say(format!("behavior {id} is gone: {design_name} flies {flies}"), Tone::Gold);
+    }
+    if let Some(lost) = lost {
+        lib.say(lost, Tone::Coral);
     }
     if !lib.draft.errors.is_empty() {
         ui.view = BehaviorView::Text;
@@ -581,6 +603,64 @@ mod tests {
         world.init_resource::<BehaviorUi>();
         world.init_resource::<Time<Real>>();
         world
+    }
+
+    /// Storage that reads but can't write (a full disk, the browser's quota).
+    #[derive(Default)]
+    struct FullBackend(MemoryBackend);
+
+    impl crate::storage::Backend for FullBackend {
+        fn list(&self, namespace: &str) -> Result<Vec<String>, crate::storage::StorageError> {
+            self.0.list(namespace)
+        }
+        fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, crate::storage::StorageError> {
+            self.0.read(namespace, name)
+        }
+        fn write(&mut self, _: &str, _: &str, _: &str) -> Result<(), crate::storage::StorageError> {
+            Err(crate::storage::StorageError::Full)
+        }
+        fn delete(&mut self, namespace: &str, name: &str) -> Result<(), crate::storage::StorageError> {
+            self.0.delete(namespace, name)
+        }
+        fn location(&self) -> String {
+            "full".into()
+        }
+    }
+
+    /// A working draft that doesn't read (a newer build's) is said after the draft that replaces it is on the
+    /// screen (said before, it was keyed to the empty draft and never showed), and kept aside before the autosave.
+    #[test]
+    fn an_unreadable_working_draft_is_said_and_kept() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut mem = MemoryBackend::default();
+        crate::storage::Backend::write(&mut mem, "drydock", WORKING, "// space-game: drydock, format 9\n(later: 1)\n").unwrap();
+        let mut world = world(Storage::new(mem));
+        world.run_system_once(open).unwrap();
+        let (line, tone) = world.resource::<ScreenNote>().show(world.resource::<BehaviorDraft>()).unwrap();
+        assert!(line.starts_with("THE LAST BEHAVIOR DRAFT DIDN'T COME BACK") && line.ends_with("KEPT AS DRYDOCK/BEHAVIOR-UNREAD"), "{line}");
+        assert_eq!(tone, Tone::Coral);
+        world.run_system_once(autosave).unwrap();
+        let storage = world.resource::<Storage>();
+        assert!(storage.read::<WorkingBehavior>(WORKING).unwrap().is_some());
+        assert!(matches!(storage.read::<WorkingBehavior>(WORKING_ASIDE), Err(crate::storage::StorageError::Newer { format: 9, .. })));
+    }
+
+    /// When the design flies another behavior but the unsaved draft can't be saved first, nothing is replaced and
+    /// the draft still counts as the old behavior's, so the next visit tries again.
+    #[test]
+    fn a_failed_switch_keeps_the_draft_where_it_was() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = world(Storage::new(FullBackend::default()));
+        world.run_system_once(open).unwrap();
+        assert_eq!(world.resource::<DraftSlot>().flown.as_deref(), Some("skirmisher"));
+        assert!(world.resource_mut::<BehaviorDraft>().set_text("always -> orbit(50%)"));
+        world.resource_mut::<PlayerDesign>().edit_header(|h| h.behavior = Some("raider_basic".into()));
+        world.run_system_once(open).unwrap();
+        assert_eq!(world.resource::<DraftSlot>().flown.as_deref(), Some("skirmisher"));
+        let draft = world.resource::<BehaviorDraft>();
+        assert_eq!((draft.source.as_deref(), draft.dirty()), (Some("skirmisher"), true));
+        let (line, _) = world.resource::<ScreenNote>().show(draft).unwrap();
+        assert!(line.starts_with("COULDN'T SAVE"), "{line}");
     }
 
     /// An edit in the frame the screen is left (a note committed by the same tap as the DRYDOCK pill) is written
