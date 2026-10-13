@@ -363,6 +363,9 @@ fn apply_events(
                 if let Some(e) = world.views.remove(&(old, piece)) {
                     commands.entity(e).despawn();
                 }
+                if let Some(p) = world.sim.ship(ship).and_then(|s| s.piece(piece)) {
+                    shields.moved(old, ship, &p.parts);
+                }
                 respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, piece);
             }
             Act::Split(ship, ids, count) => {
