@@ -19,6 +19,7 @@ use bevy_egui::{EguiContexts, egui};
 use data::behavior::{KEYWORDS, Program};
 use data::{BehaviorNode, NodeRole, Table};
 
+use crate::clipboard::Clipboard;
 use crate::sim_bridge::GameContent;
 use crate::style::Style;
 
@@ -32,8 +33,9 @@ const TEXT_SIZE: f32 = 16.0;
 const ERROR_SIZE: f32 = 12.5;
 /// Width of the line number gutter at UI scale 1.
 const GUTTER: f32 = 44.0;
-/// Error messages wrap at this width (UI scale 1).
+/// Error messages wrap at this width (UI scale 1), or narrower after a long line, down to the minimum.
 const MESSAGE_WIDTH: f32 = 420.0;
+const MIN_MESSAGE_WIDTH: f32 = 200.0;
 
 /// The node the editor covers (the graph area's rectangle).
 #[derive(Component)]
@@ -180,6 +182,7 @@ pub(super) fn editor(
     window: Single<&Window, With<PrimaryWindow>>,
     viewport: Single<(&ComputedNode, &UiGlobalTransform), With<TextViewport>>,
     clear: Res<ClearColor>,
+    mut clipboard: ResMut<Clipboard>,
     mut font_ready: Local<bool>,
     mut rule_lines: Local<(String, Vec<u32>)>,
     mut was_open: Local<bool>,
@@ -193,6 +196,9 @@ pub(super) fn editor(
     }
     let opened = view.view == BehaviorView::Text && !*was_open;
     *was_open = view.view == BehaviorView::Text;
+    // Copy and paste go through the game's clipboard (`clipboard.rs`) while the editor has the keyboard.
+    clipboard.offer = None;
+    clipboard.accept = false;
     if view.view != BehaviorView::Text {
         return Ok(());
     }
@@ -257,6 +263,15 @@ pub(super) fn editor(
             if opened {
                 out.response.request_focus();
             }
+            // While it has the keyboard: Ctrl+C copies the selection, Ctrl+V pastes (egui inserts the text; the web
+            // build needs the game's clipboard to let the keys through to the browser).
+            if out.response.has_focus() {
+                clipboard.accept = true;
+                clipboard.offer = out.cursor_range.filter(|r| !r.is_empty()).map(|r| {
+                    let range = r.as_sorted_char_range();
+                    text.chars().skip(range.start.0).take(range.end.0 - range.start.0).collect()
+                });
+            }
 
             // The gutter, the errors after their lines, the rules without a slot.
             let painter = ui.painter();
@@ -285,8 +300,8 @@ pub(super) fn editor(
                     painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(1.5 * k, coral));
                 }
             }
-            // The messages after their lines; one that does not fit moves left over the line's end, on the
-            // backdrop's colour so it stays readable.
+            // The messages after their lines, wrapped to the room there; with too little room one moves left
+            // over the line's end, on the backdrop's colour so it stays readable.
             let visible = ui.clip_rect();
             let veil = egui_color(clear.0, 0.92);
             for (n, r) in ends.iter().enumerate() {
@@ -299,15 +314,22 @@ pub(super) fn editor(
                 } else {
                     continue;
                 };
-                let galley = painter.layout(msg, small.clone(), color, MESSAGE_WIDTH * k);
+                let after = r.right() + 28.0 * k;
+                let room = visible.right() - 8.0 * k - after;
+                let wrap = if room >= MIN_MESSAGE_WIDTH * k { room.min(MESSAGE_WIDTH * k) } else { MESSAGE_WIDTH * k };
+                let galley = painter.layout(msg, small.clone(), color, wrap);
                 let size = galley.size();
-                let x = (r.right() + 28.0 * k).min(visible.right() - size.x - 8.0 * k).max(r.left());
+                let x = after.min(visible.right() - size.x - 8.0 * k).max(r.left());
                 let at = egui::pos2(x, r.center().y - galley.rows.first().map_or(size.y, |row| row.rect().height()) / 2.0);
-                painter.rect_filled(egui::Rect::from_min_size(at, size).expand(4.0 * k), 4.0 * k, veil);
+                if x < after {
+                    painter.rect_filled(egui::Rect::from_min_size(at, size).expand(4.0 * k), 4.0 * k, veil);
+                }
                 painter.galley(at, galley, color);
             }
         });
     });
+    // egui gets pasted text itself; the game's copy of it is not needed.
+    clipboard.take_pasted();
     if changed {
         draft.set_text(&text, nodes);
     }

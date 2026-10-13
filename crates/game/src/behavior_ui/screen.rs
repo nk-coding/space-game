@@ -223,7 +223,12 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 Hot::default(),
                 BehaviorButton(BehaviorAction::Deselect),
                 ScrollPosition::default(),
-                Node { overflow: Overflow::scroll_y(), flex_direction: FlexDirection::Column, ..abs(Some(SIDE), Some(GRAPH_RIGHT), Some(TOP), Some(BOTTOM)) },
+                // Long rules are clipped at the right edge, not drawn over the inspector.
+                Node {
+                    overflow: Overflow { x: OverflowAxis::Clip, y: OverflowAxis::Scroll },
+                    flex_direction: FlexDirection::Column,
+                    ..abs(Some(SIDE), Some(GRAPH_RIGHT), Some(TOP), Some(BOTTOM))
+                },
             ))
             .with_children(|g| {
                 g.spawn((GraphContent, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, padding: UiRect::vertical(px(6)), ..default() }));
@@ -292,12 +297,15 @@ fn spawn_line(p: &mut ChildSpawnerCommands, node: Node, color: Color) {
     p.spawn((node, BackgroundColor(color)));
 }
 
-/// A dashed horizontal line filling the parent's width (`flex_grow`) or `width`.
+/// A dashed horizontal line: `width` long, or (`None`) filling what the parent row leaves (it adds nothing to
+/// the row's own size).
 fn spawn_dashes(p: &mut ChildSpawnerCommands, width: Option<f32>, color: Color) {
     p.spawn(Node {
         width: width.map_or(Val::Auto, px),
         flex_grow: if width.is_none() { 1.0 } else { 0.0 },
-        flex_shrink: if width.is_none() { 1.0 } else { 0.0 },
+        flex_shrink: 0.0,
+        flex_basis: if width.is_none() { px(0) } else { Val::Auto },
+        min_width: px(0),
         height: px(LINE_W),
         flex_direction: FlexDirection::Row,
         column_gap: px(4),
@@ -402,7 +410,7 @@ fn spawn_slot_line(p: &mut ChildSpawnerCommands, kit: &Kit, slots: u32, span: bo
     p.spawn(node).with_children(|s| {
         let coral = kit.c(Tone::Coral, 0.55);
         spawn_dashes(s, Some(26.0), coral);
-        s.spawn(tracked(kit.fonts, &slot_line_label(slots), 8.5, kit.c(Tone::Coral, 0.85), 0.3));
+        s.spawn((tracked(kit.fonts, &slot_line_label(slots), 8.5, kit.c(Tone::Coral, 0.85), 0.3), Node { flex_shrink: 0.0, ..default() }));
         spawn_dashes(s, None, coral);
     });
 }
@@ -833,8 +841,8 @@ pub(super) fn draw_dots(
     let area = Rect::from_center_size(tf.translation / scale, node.size / scale);
     let step = DOT_STEP * ui_scale.0;
     let (nx, ny) = ((area.width() / step) as i32, (area.height() / step) as i32);
-    let size = 1.6 / rig.zoom;
-    let color = style.dotted_ring.with_alpha(0.55);
+    let size = 2.0 * ui_scale.0 / rig.zoom;
+    let color = style.dotted_ring.with_alpha(0.8);
     for y in 0..=ny {
         for x in 0..=nx {
             let at = area.min + Vec2::new(x as f32, y as f32) * step;
@@ -844,6 +852,7 @@ pub(super) fn draw_dots(
 }
 
 /// The wheel scrolls the graph or the palette under the pointer.
+#[allow(clippy::type_complexity)]
 pub(super) fn scroll(
     window: Single<&Window, With<PrimaryWindow>>,
     wheel: Res<AccumulatedMouseScroll>,

@@ -33,7 +33,7 @@ use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
 
-use crate::camera::CameraSet;
+use crate::camera::{CameraRig, CameraSet};
 use crate::drydock::PlayerDesign;
 use crate::fx::FxFlush;
 use crate::mode::AppMode;
@@ -122,7 +122,7 @@ impl Plugin for BehaviorPlugin {
                 Update,
                 (
                     (actions::clicks, actions::shortcuts, screen::sync_search).in_set(BehaviorSet::Input),
-                    (ui_scale, actions::apply, screen::scroll).chain().in_set(BehaviorSet::Apply),
+                    (fit_window, actions::apply, screen::scroll).chain().in_set(BehaviorSet::Apply),
                     (
                         screen::show_view,
                         screen::rebuild_graph,
@@ -176,10 +176,14 @@ fn show(mode: Res<State<AppMode>>, mut root: Query<&mut Visibility, With<screen:
     }
 }
 
-/// The UI scale: min(w / 1280, h / 720), 1 to 2.
-fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>) {
+/// The window: the UI scale (min(w / 1280, h / 720), 1 to 2) and the camera rig's viewport, which places the
+/// icons and the dot grid (world sprites under the UI) on screen.
+fn fit_window(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
     let s = (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
+    }
+    if rig.viewport != window.size() {
+        rig.viewport = window.size();
     }
 }
