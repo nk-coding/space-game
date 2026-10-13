@@ -12,10 +12,11 @@
 //! * **Value** (lead default): build points per cargo unit (hull parts with their material's factor); a
 //!   fragment is worth its part's build points. The sim does not read the career's research values.
 //! * **Collecting**: every `SalvageTuning::interval` ticks each running vessel of an owner that collects takes
-//!   one item that fits its free hold: the nearest loose fragment within reach of its hull, else from the
-//!   nearest salvage piece within reach (pieces in order of distance, the first one with something that fits):
-//!   its wreck's cargo first (the best item), then its best salvageable part (ties: the lowest part index). A stripped part
-//!   leaves through the destroy path without the destruction (`Ship::remove_part`: no `PartDestroyed`, no
+//!   one item that fits its free hold, from salvage within reach of its hull that moves no faster than
+//!   `SalvageTuning::max_speed` relative to it (fly slowly over a wreck, GDR-0063): the nearest loose fragment, else
+//!   from the nearest salvage piece (pieces in order of distance, the first one with something that fits): its
+//!   wreck's cargo first (the best item), then its best salvageable part (ties: the lowest part index). A stripped
+//!   part leaves through the destroy path without the destruction (`Ship::remove_part`: no `PartDestroyed`, no
 //!   fragment); the wreck may split as in any breakage. `SimEvent::Collected` tells the client.
 //! * **Fragments** ([`Loose`]): a part whose salvage block names a fragment, destroyed by damage, leaves one at its
 //!   centroid with its velocity: a point the sim moves every tick (no body, no collisions) until it is collected
@@ -483,13 +484,23 @@ fn near(a: &Piece, b_pos: Vec2, b_radius: f32, reach: f32) -> bool {
     (b_pos - a.body.pos).length_squared() <= lim * lim
 }
 
-/// What collector `k` (a vessel with `free` units) takes this pass, if anything.
-fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) -> Option<Pick> {
+/// What collector `k` (a vessel with `free` units) takes this pass, if anything: from salvage within `reach` of its
+/// hull and at most `max_speed` relative to it.
+fn pick(
+    ships: &[Ship],
+    st: &mut SalvageState,
+    k: usize,
+    free: u32,
+    reach: f32,
+    max_speed: f32,
+) -> Option<Pick> {
     let c = &ships[k];
     let cp = c.piece(c.control?)?;
     if cp.colliders.is_empty() {
         return None;
     }
+    let v = cp.body.linvel;
+    let slow = |u: Vec2| (u - v).length_squared() <= max_speed * max_speed;
     st.boxes.clear();
     st.boxes
         .extend(cp.colliders.iter().map(|c| Aabb::of(c.points())));
@@ -504,7 +515,7 @@ fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) 
     // Loose items first: the nearest that fits (ties: the lower id).
     let mut best: Option<(f32, usize)> = None;
     for (i, l) in st.loose.iter().enumerate() {
-        if l.units > free || !near(cp, l.pos, 0.0, reach) {
+        if l.units > free || !slow(l.vel) || !near(cp, l.pos, 0.0, reach) {
             continue;
         }
         if let Some(d) = hull.point_distance(l.pos, reach)
@@ -521,7 +532,7 @@ fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) 
     st.near.clear();
     for (j, s) in ships.iter().enumerate() {
         for (q, p) in s.pieces.iter().enumerate() {
-            if p.controlled || !near(cp, p.body.pos, p.radius, reach) {
+            if p.controlled || !slow(p.body.linvel) || !near(cp, p.body.pos, p.radius, reach) {
                 continue;
             }
             if let Some(d) = hull.piece_distance(p, reach) {
@@ -666,7 +677,7 @@ impl Sim {
             if free == 0 {
                 continue;
             }
-            if let Some(pick) = pick(&self.ships, &mut self.salvage, k, free, t.reach) {
+            if let Some(pick) = pick(&self.ships, &mut self.salvage, k, free, t.reach, t.max_speed) {
                 stripped |= self.take(k, pick);
             }
         }

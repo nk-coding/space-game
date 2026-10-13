@@ -98,6 +98,9 @@ pub struct SalvageTuning {
     pub interval: u32,
     /// A collecting vessel strips salvage whose hull is at most this far from its own hull (m).
     pub reach: f32,
+    /// ... and that moves at most this fast relative to it (m/s, centre of mass to centre of mass; a fragment by
+    /// its velocity): GDR-0063's "fly slowly over a wreck".
+    pub max_speed: f32,
     /// Ticks a loose fragment drifts before it is gone (1800 = 60 s).
     pub fragment_ticks: u32,
     /// Owners whose running vessels collect, by `Owner.0`: the player (owner 0) only by default; owners
@@ -122,6 +125,7 @@ impl Default for SalvageTuning {
         SalvageTuning {
             interval: 10,
             reach: 5.0,
+            max_speed: 4.0,
             fragment_ticks: 1800,
             collects,
         }
@@ -185,6 +189,7 @@ impl SimConfig {
         fix(&mut p.ram_threshold, dp.ram_threshold);
         fix(&mut p.ram_damage, dp.ram_damage);
         fix(&mut self.salvage.reach, d.salvage.reach);
+        fix(&mut self.salvage.max_speed, d.salvage.max_speed);
         fix(&mut self.voyage.spawn_radius, d.voyage.spawn_radius);
         fix(&mut self.voyage.recall_radius, d.voyage.recall_radius);
         self
@@ -255,6 +260,7 @@ impl StateHash for SimConfig {
         let s = &self.salvage;
         h.u32(s.interval);
         h.f32(s.reach);
+        h.f32(s.max_speed);
         h.u32(s.fragment_ticks);
         for &c in &s.collects {
             h.bool(c);

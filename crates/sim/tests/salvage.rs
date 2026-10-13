@@ -501,3 +501,44 @@ fn salvage_blocks_decide_what_is_collected_and_what_leaves_fragments() {
         }]
     );
 }
+
+/// GDR-0063: fly slowly over a wreck. Salvage moving faster than `SalvageTuning::max_speed` relative to the
+/// collector (centre of mass to centre of mass) is passed by; at the same speed, or slower, it is taken. The limit
+/// is in the hash, and a NaN one counts as its default.
+#[test]
+fn collecting_needs_a_slow_pass() {
+    let c = common::content();
+    let wreck = || {
+        custom(
+            &c,
+            &[
+                ("gyro", 0, 0, 0, false, None),
+                ("gyro", 1, 0, 0, false, None),
+            ],
+        )
+    };
+    assert_eq!(SimConfig::default().salvage.max_speed, 4.0);
+    let cases = [
+        (0.0, 6.0, false),
+        (6.0, 6.0, true),
+        (0.0, 3.0, true),
+        (-3.0, 3.0, false),
+    ];
+    for (mine, theirs, taken) in cases {
+        let mut w = Sim::new(1);
+        let body = |x: f32, vy: f32| Body {
+            linvel: Vec2::new(0.0, vy),
+            ..Body::at(Vec2::new(x, 0.0), 0.0)
+        };
+        w.spawn_ship(collector(2), Owner::PLAYER, body(0.0, mine));
+        w.spawn_wreck(wreck(), Owner(1), body(3.5, theirs), 0.0);
+        let got = run(&mut w, 1);
+        assert_eq!(!got.is_empty(), taken, "{mine} vs {theirs} m/s: {got:?}");
+    }
+    let mut config = SimConfig::default();
+    config.salvage.max_speed = 5.0;
+    let (a, b) = (Sim::new(1), Sim::with_config(1, config));
+    assert_ne!(a.state_hash(), b.state_hash());
+    config.salvage.max_speed = f32::NAN;
+    assert_eq!(*Sim::with_config(1, config).config(), SimConfig::default());
+}

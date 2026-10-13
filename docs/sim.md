@@ -1614,7 +1614,9 @@ were set by the salvage agent for Niklas to review.
 
 Every `interval` ticks (10, so at most 3 items a second per vessel), right after the weapons phase's breakage, each
 running vessel (`VesselState::Running`: not dormant, not dark) of an owner that collects (`collects`: the player
-only) with free units takes one item, in ship order:
+only) with free units takes one item, in ship order, from salvage that moves at most `max_speed` (4 m/s) relative
+to it (GDR-0063's "fly slowly over a wreck": the velocities of the two centres of mass, a fragment's own; checked
+before the distance, two subtractions per candidate):
 
 1. the nearest loose fragment within `reach` (5 m) of its hull (ties: the lower id); else
 2. the salvage pieces within reach, nearest hull first (ties: ship, then piece order), the first one with something
@@ -1623,7 +1625,7 @@ only) with free units takes one item, in ship order:
 
 Salvage pieces are every piece that is no controlling piece: wrecks, split-off debris (the collector's own too) and
 the cored pieces of a burned-out derelict. Only what fits counts: with 2 units free a 4-unit fusion reactor waits and
-smaller parts go first; a full hold takes nothing.
+smaller parts go first; a full hold takes nothing; only salvageable parts count (`PartSpec::salvageable`).
 
 - **A stripped part** leaves through the destroy path without the destruction (`Ship::remove_part`, which
   `apply_damage` shares): dead, out of the grid, its neighbours' exposure and bonuses refreshed, its piece re-checked;
@@ -1665,6 +1667,7 @@ later; the wreck counts for nobody. Used by the salvage scenario and the voyage 
 |---|---|---|
 | `interval` | 10 ticks | one item per collecting vessel per pass; 0 turns collecting off |
 | `reach` | 5 m | hull to hull |
+| `max_speed` | 4 m/s | relative speed of the salvage to the collector (centres of mass; a fragment's velocity) above which it is passed by (GDR-0063 "fly slowly"; 13 Oct 2026 review) |
 | `fragment_ticks` | 1800 (60 s) | how long an uncollected fragment drifts |
 | `collects` | owner 0 only | owners whose running vessels collect (by `Owner.0`; owners beyond the table never) |
 
