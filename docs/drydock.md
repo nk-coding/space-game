@@ -353,6 +353,9 @@ saved template copy moved to the cruiser frame).
   `// space-game: designs, format 1, saved 1760351234` (namespace, format version, Unix seconds).
   `Storage::read` refuses another namespace and formats newer than the build knows (`StorageError::Newer`) and
   hands older ones to `from_ron`, where migrations live (ADR-0024). A file without the header reads as format 1.
+  `Storage::set_aside` copies a document's text as stored to another name (a working document this build can't
+  read is kept before it is written over); `Storage::keep_on_leave` keeps a document that waits for its write, and
+  the web backend writes it when the page goes away or is hidden (made into text only then).
 - Backends: **web** the browser's local storage, keys `space-game/<namespace>/<name>` (per origin: the copies on
   :8080 and :8081 don't share designs; about 5 MB per origin, a design is 2–250 kB); **desktop** files
   `<data dir>/<namespace>/<name>.ron`, written to a temporary file and renamed (data dir: `$XDG_DATA_HOME` or
@@ -374,7 +377,8 @@ saved template copy moved to the cruiser frame).
 - **The working design** (`drydock/working`: `(saved_as: "<id>" or None, unsaved: <bool>, design: (<the ship in
   its frame>))`, so it comes back saved or not, with or without unsaved changes) is written about a second
   after the last change (`library::Autosave`, every change restarts the wait), at once
-  when the id it is saved under changes, when a test flight starts and when the desktop app closes; it comes
+  when the id it is saved under changes, when a test flight starts and when the desktop app closes (on the web, a
+  change still waiting is written when the page goes away or is hidden: a reload, a closed tab); it comes
   back at the next start, before the first frame, so a plain sandbox start flies it too (if it can't fly, the
   sandbox starts without the player's ship; T opens the drydock). The first start is a copy of the
   starter ship (`PlayerDesign::starter`) named "Halvex Runner copy". Opening centres the parts in the frame
@@ -550,7 +554,8 @@ Written 13 Oct 2026 (GDR-0057; the screen itself: `docs/client.md` "Behavior scr
   its name. A draft with errors is saved as its lines ("SAVED · 1 ERROR: IT FLIES ONCE FIXED"); flights fly the
   faction's behavior until it is fixed.
 - **Unsaved edits are never lost.** The draft stays in memory while the screen is closed (the drydock, a test) and
-  is written to `drydock/behavior` about a second after the last change and when the screen closes:
+  is written to `drydock/behavior` about a second after the last change and when the screen closes (on the web also
+  when the page goes away or is hidden before that second is over):
   `(source: "<id>" or None, name: "…", unsaved: <bool>, flown: "<id>" or None, text: "…")`, the behavior it was
   opened from, its name and text (the last valid program is the source's until the text is fixed), whether it has
   unsaved edits, and the behavior the design flew when it was opened. It comes back at the next visit after a reload;
