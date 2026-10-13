@@ -158,11 +158,9 @@ pub(super) fn apply(
                 ui.search.clear();
             }
             DrydockAction::PickPart(p) => ui.picked = Some(p.clone()),
-            DrydockAction::TestFly => {
-                if status.grounded.is_none() {
-                    scene.launch = true;
-                    next.set(AppMode::Flight);
-                }
+            DrydockAction::TestFly if status.grounded.is_none() => {
+                scene.launch = true;
+                next.set(AppMode::Flight);
             }
             // Editing (tools.rs), zoom (the camera), the rest has no handler yet.
             _ => {}

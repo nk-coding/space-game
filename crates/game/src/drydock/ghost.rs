@@ -220,6 +220,7 @@ fn outline(content: &Content, p: &Placement) -> Vec<Vec2> {
 }
 
 /// Rebuilds the see-through tiles when they change.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild(
     view: Res<GhostView>,
     design: Res<PlayerDesign>,
