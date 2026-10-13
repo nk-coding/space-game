@@ -103,4 +103,4 @@ When work produces a decision (or a provisional default), write or propose the r
 | Mind capacity | How many logic cores the ship-mind can run at once; grows with progression. |
 | Cluster | One simulation space, about 10+ minutes across. A voyage usually covers one. |
 | Band | Rim, outer, middle, inner, core. A guardian sits at every band gate. |
-| Style 2a | The chosen ship look: flat tiles, one flat colour per machine with a glowing icon, soft teal hull glow (coral for enemies). |
+| Style 2a | The chosen ship look: flat tiles with seams, machines drawn as their own components on hull-toned cells (GDR-0069), soft teal hull glow (coral for enemies). |
