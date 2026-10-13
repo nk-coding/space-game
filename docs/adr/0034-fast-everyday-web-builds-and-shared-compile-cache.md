@@ -34,6 +34,10 @@ The web build is for development only (not shipped), so its runtime speed matter
 
 ## Consequences
 
+- Measured after the change (14 Oct 2026, load ≈ 5–8): a real code change in `game` → `scripts/web-build.sh` in
+  29 s (cargo a few seconds, wasm-bindgen about 20 s on the 106 MB unoptimised wasm), against 4 min 44 s before.
+  The size report's brotli -q 11 alone had taken 107 s per build; the everyday build now reports only the raw
+  size (`--full` still reports gzip and brotli).
 - Browser performance numbers come only from `scripts/web-build.sh --full`.
 - The first `web-dev` build compiles every dependency once more (its own profile dir, ~2 GB).
 - On another machine without sccache, delete the wrapper line from `~/.cargo/config.toml` (it is not in the repo).

@@ -24,7 +24,7 @@ codegen-units = 1
 lto = "thin"
 
 # Everyday web builds (`scripts/web-build.sh`, ADR-0034): optimised code without LTO, split for the cores and
-# incremental, so a change in `game` rebuilds in about a minute instead of five. `--full` uses `release`.
+# incremental, so a change in `game` rebuilds in about 30 s instead of five minutes. `--full` uses `release`.
 [profile.web-dev]
 inherits = "release"
 codegen-units = 16
