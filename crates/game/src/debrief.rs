@@ -22,6 +22,8 @@
 //!   and what the flight counted ([`DebriefStats`]: sites, kills, ships lost). Kills and ships lost are not in the
 //!   save, so a game loaded with a `last_haul` shows only the one-line summary of it.
 //! * Dismissed is not saved: the next start shows the summary.
+//! * A voyage it opened adds VOYAGE MAP beside DISMISS: it dismisses the panel and flies to the gate
+//!   (`map::OpenMap`), where the map selects the newly open voyage.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -253,6 +255,10 @@ struct SummaryText;
 #[derive(Component)]
 struct DismissButton;
 
+/// VOYAGE MAP (after a voyage that opened another).
+#[derive(Component)]
+struct MapButton;
+
 pub struct DebriefPlugin;
 
 impl Plugin for DebriefPlugin {
@@ -313,14 +319,23 @@ fn dismiss(
     pointer: Res<UiPointer>,
     mut clicks: MessageReader<UiClick>,
     buttons: Query<(), With<DismissButton>>,
+    map_buttons: Query<(), With<MapButton>>,
     mut debrief: ResMut<Debrief>,
+    mut open_map: MessageWriter<crate::map::OpenMap>,
 ) {
-    let clicked = clicks.read().any(|c| buttons.contains(c.0));
+    let (mut clicked, mut to_map) = (false, false);
+    for c in clicks.read() {
+        clicked |= buttons.contains(c.0);
+        to_map |= map_buttons.contains(c.0);
+    }
     if !debrief.open || *mode.get() != AppMode::Home || fleet.open {
         return;
     }
     let key = !pointer.typing && keys.any_just_pressed([KeyCode::Escape, KeyCode::Enter, KeyCode::NumpadEnter]);
-    if clicked || key {
+    if to_map {
+        open_map.write(crate::map::OpenMap);
+    }
+    if clicked || key || to_map {
         debrief.open = false;
     }
 }
@@ -476,6 +491,9 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
     // DISMISS at the bottom.
     p.spawn(Node { flex_grow: 1.0, ..default() });
     p.spawn(Node { justify_content: JustifyContent::FlexEnd, ..row(10.0) }).with_children(|r| {
+        if !d.opened.is_empty() {
+            spawn_pill(r, fonts, "VOYAGE MAP", 10.0, 36.0, None, Pill::new(Tone::Teal), MapButton);
+        }
         spawn_pill(r, fonts, "DISMISS  ESC", 10.0, 36.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, DismissButton);
     });
 }
