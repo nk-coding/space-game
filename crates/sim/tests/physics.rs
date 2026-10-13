@@ -249,7 +249,7 @@ fn raycasts_skip_every_piece_of_the_own_ship() {
         hit.hit.distance > 27.0 && hit.hit.distance < 29.0,
         "{hit:?}"
     );
-    assert!(hit.part.is_some());
+    assert!(w.ship(other).unwrap().part(hit.part).alive);
     // Split the own ship (the middle column goes): both pieces are skipped.
     for cell in [(1, 0), (1, 1), (1, 2)] {
         w.apply_damage(me, DamageTarget::Cell(cell), 100.0);

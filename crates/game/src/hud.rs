@@ -126,7 +126,7 @@ fn update_debug(
     input: Res<PlayerInput>,
     focus: Res<PilotFocus>,
     watch: Res<BehaviorWatch>,
-    mut world: ResMut<SimWorld>,
+    world: Res<SimWorld>,
     atlas: Res<Atlas>,
     atlas_status: Res<AtlasStatus>,
     window: Single<&Window, With<PrimaryWindow>>,

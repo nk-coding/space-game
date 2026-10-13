@@ -758,7 +758,7 @@ fn raycast_finds_the_part_under_the_hit() {
         "{}",
         hit.hit.distance
     );
-    let part = hit.part.expect("part");
+    let part = hit.part;
     assert_eq!(d.parts[part as usize].shape.x, 0);
     assert!(
         w.raycast(Vec2::ZERO, Vec2::new(1.0, 0.0), 100.0, Some(s))
@@ -843,4 +843,84 @@ fn leading_hits_a_crossing_target() {
         direct < lead,
         "aiming at the target: {direct} hits, leading: {lead}"
     );
+}
+
+/// A lock turn while thrusting (finding of the 13 Oct review): the Runner with two RCS pods, locked on a point
+/// 90° to the left with W held. Full forward thrust takes the pods' nozzles that make its couples, so the turn
+/// must be planned with what translation leaves free (gyros and cores, then the last resort), or the nose
+/// overshoots the lock.
+#[test]
+fn a_lock_turn_while_thrusting_plans_with_what_the_thrust_leaves_free() {
+    let c = content();
+    let d = std::sync::Arc::new(sim::ShipDesign::compile(&c, &runner_with_pods(&c, 2)).unwrap());
+    let (mut w, s) = world_with(d);
+    let input = PilotInput {
+        lock: Some(Target::Point(Vec2::new(-5000.0, 0.0))),
+        axes: Some(sim::flight::PilotAxes { turn: 0.0, thrust: 1.0, strafe: 0.0 }),
+        ..Default::default()
+    };
+    let (mut reached, mut overshoot) = (None, 0.0f32);
+    for t in 1..=240 {
+        w.step(&TickInputs { commands: vec![(s, ShipCommand::Pilot(input))], ..Default::default() });
+        let tel = *w.ship(s).unwrap().telemetry();
+        let e = wrap_angle(tel.heading_target.unwrap() - piece(&w, s).body.angle);
+        if reached.is_none() && e.abs() < 1f32.to_radians() {
+            reached = Some(t as f32 / 30.0);
+        }
+        if reached.is_some() {
+            overshoot = overshoot.max(-e);
+        }
+    }
+    let reached = reached.expect("never reached the lock heading");
+    println!("runner + 2 pods, lock 90° left with W: {reached:.2} s, overshoot {:.2}°", overshoot.to_degrees());
+    assert!(overshoot < 2f32.to_radians(), "overshoot {}°", overshoot.to_degrees());
+}
+
+/// NaN and infinity from outside (a malformed packet, a tool) never reach the state (13 Oct 2026 review: one NaN
+/// raw throttle made the body NaN for good and panicked the debug state hash). Commands with such numbers are
+/// ignored, raw throttles, bodies and projectiles count them as 0, damage ignores them, a config takes the
+/// defaults for them. Every step below hashes the state (debug builds assert there is no NaN in it).
+#[test]
+fn non_finite_inputs_never_reach_the_state() {
+    let c = content();
+    let (nan, inf) = (f32::NAN, f32::INFINITY);
+    let d = sim::SimConfig::default();
+    let cfg = sim::SimConfig {
+        thrust_scale: nan,
+        flight: sim::FlightTuning { turn_margin: nan, ..d.flight },
+        physics: sim::PhysicsTuning { friction: inf, ..d.physics },
+        ..d
+    };
+    let mut w = sim::Sim::with_config(1, cfg);
+    assert_eq!(*w.config(), sim::SimConfig::default());
+    let d = design(&c, "halvex_runner");
+    let raw = w.spawn_ship(d.clone(), sim::Owner::PLAYER, Body { pos: Vec2::new(nan, 0.0), angle: inf, ..Default::default() });
+    let flown = w.spawn_ship(d.clone(), sim::Owner::PLAYER, Body::at(Vec2::new(40.0, 0.0), 0.0));
+    w.command(flown, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at: Vec2::new(40.0, 10.0) }, fire: false });
+    let bad = [
+        ShipCommand::Pilot(PilotInput { stick: Vec2::new(nan, 1.0), ..Default::default() }),
+        ShipCommand::Pilot(PilotInput { lock: Some(Target::Point(Vec2::new(0.0, inf))), ..Default::default() }),
+        ShipCommand::Goal { goal: FlightGoal { heading: HeadingGoal::Angle(nan), velocity: None }, fire: false },
+        ShipCommand::Goal { goal: FlightGoal { heading: HeadingGoal::Keep, velocity: Some(Vec2::new(inf, 0.0)) }, fire: false },
+        ShipCommand::Maneuver { maneuver: Maneuver::Orbit { target: Target::Ship(raw), radius: nan, ccw: true }, fire: false },
+    ];
+    for t in 0..60 {
+        w.step(&TickInputs {
+            controls: vec![(raw, controls(d.engines.len(), nan, false, true))],
+            commands: vec![(flown, bad[t % bad.len()])],
+            damage: vec![sim::DamageCommand { ship: raw, target: DamageTarget::Part(0), amount: inf }],
+        });
+    }
+    assert!(matches!(w.ship(flown).unwrap().helm(), sim::HelmMode::Maneuver { maneuver: Maneuver::Hold { .. }, .. }));
+    assert!(w.ship(raw).unwrap().part(0).alive, "infinite damage is ignored");
+    let key = piece(&w, raw).id;
+    w.teleport(raw, key, Body { pos: Vec2::new(inf, 3.0), angle: 0.5, linvel: Vec2::new(nan, 0.0), angvel: nan });
+    w.spawn_projectile(raw, data::WeaponFamily::Kinetic, Vec2::new(nan, 0.0), Vec2::new(0.0, inf), nan, 1, inf);
+    w.set_config(cfg);
+    idle(&mut w, 30);
+    for s in [raw, flown] {
+        let b = piece(&w, s).body;
+        assert!(b.pos.is_finite() && b.angle.is_finite() && b.linvel.is_finite() && b.angvel.is_finite(), "{b:?}");
+    }
+    assert_eq!(*w.config(), sim::SimConfig::default());
 }

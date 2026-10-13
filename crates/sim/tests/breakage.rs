@@ -211,6 +211,25 @@ fn runner_splits_down_the_middle() {
     );
 }
 
+/// A config change between a direct `Sim::apply_damage` and the next step (13 Oct 2026 review: the config's
+/// piece rebuild cleared the dirty flag, so the split was never resolved).
+#[test]
+fn a_config_change_keeps_pending_breakage() {
+    let c = content();
+    let (mut w, s) = world_with(design(&c, "automaton_raider"));
+    for cell in [(1, 0), (1, 1), (1, 2)] {
+        w.apply_damage(s, DamageTarget::Cell(cell), 100.0);
+    }
+    w.set_config(sim::SimConfig {
+        thrust_scale: 1.5,
+        ..Default::default()
+    });
+    w.step(&TickInputs::default());
+    let ship = w.ship(s).unwrap();
+    assert_eq!(ship.pieces().len(), 2);
+    ship.verify_caches().unwrap();
+}
+
 #[test]
 fn raider_breaks_into_salvage() {
     let c = content();

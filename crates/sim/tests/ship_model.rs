@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use sim::{DamageTarget, Stat, Vec2, thruster_wrench};
+use sim::{DamageTarget, Stat, Vec2};
 
 // ---------- mass properties ----------
 
@@ -463,7 +463,7 @@ fn runner_thrusts_straight_at_full_throttle() {
             .iter()
             .all(|t| t.dir == Vec2::new(0.0, 1.0) && t.plume_length > 0.0)
     );
-    let full = p.max_wrench(&[1.0, 1.0, 1.0]);
+    let full = engine_wrench(&p.thrusters, |_| 1.0);
     assert!(close(full.force.x, 0.0, 1e-6) && close(full.force.y, total, 1e-3));
     assert!(full.torque.abs() < 1e-2, "torque {}", full.torque);
     assert!(close(p.authority.forward, total, 1e-3));
@@ -477,7 +477,7 @@ fn runner_thrusts_straight_at_full_throttle() {
     let left = d.engines.iter().position(|e| e.point[0] < 6.0).unwrap();
     let mut th = [0.0; 3];
     th[left] = 1.0;
-    let wl = thruster_wrench(&p.thrusters, |slot| th[slot as usize]);
+    let wl = engine_wrench(&p.thrusters, |slot| th[slot as usize]);
     assert!(wl.torque < -10.0, "{}", wl.torque);
     // The runtime wrench equals the geometric one when power is plentiful (at rest: no speed falloff).
     w.step(&inputs(s, controls(3, 1.0, false, true)));

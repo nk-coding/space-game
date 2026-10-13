@@ -431,6 +431,22 @@ pub struct HullLoop {
     pub closed: bool,
 }
 
+/// The main piece among pieces given in order as `(has a logic core, number of parts)`: a piece with a core
+/// beats one without, then more parts wins, ties keep the earlier piece (the drydock model). The one rule for the
+/// drydock (`ShipGrid::main_piece`) and the simulation (spawns, splits, `sim::Ship::main_piece`); each caller
+/// says what "earlier" means by its order.
+pub fn main_of(pieces: impl IntoIterator<Item = (bool, usize)>) -> Option<usize> {
+    let mut main: Option<(usize, bool, usize)> = None;
+    for (id, (core, size)) in pieces.into_iter().enumerate() {
+        main = match main {
+            None => Some((id, core, size)),
+            Some((_, mc, ms)) if (core && !mc) || (core == mc && size > ms) => Some((id, core, size)),
+            m => m,
+        };
+    }
+    main.map(|m| m.0)
+}
+
 /// Connected groups of parts.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pieces {
@@ -710,22 +726,14 @@ impl ShipGrid {
         }
     }
 
-    /// The main piece as in the drydock model: pieces with a core beat pieces without; then more parts wins;
-    /// ties keep the earlier piece.
+    /// The main piece as in the drydock model ([`main_of`]), over the pieces in their row-major order.
     pub fn main_piece(&self, pieces: &Pieces, is_core: impl Fn(usize) -> bool) -> Option<usize> {
-        let mut main: Option<(usize, bool, usize)> = None;
-        for (id, parts) in pieces.parts.iter().enumerate() {
-            let core = parts.iter().any(|&p| is_core(p));
-            let size = parts.len();
-            main = match main {
-                None => Some((id, core, size)),
-                Some((_, mc, ms)) if (core && !mc) || (core == mc && size > ms) => {
-                    Some((id, core, size))
-                }
-                m => m,
-            };
-        }
-        main.map(|m| m.0)
+        main_of(
+            pieces
+                .parts
+                .iter()
+                .map(|parts| (parts.iter().any(|&p| is_core(p)), parts.len())),
+        )
     }
 
     /// Outer hull edge of the parts selected by `keep` (usually one piece), as in `hullPath`: slope faces are

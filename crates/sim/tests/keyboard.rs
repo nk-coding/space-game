@@ -237,3 +237,96 @@ fn the_nudge_springs_back() {
     let bearing = to.y.atan2(to.x) - std::f32::consts::FRAC_PI_2;
     assert!(wrap(back - bearing).abs() < 0.05, "springs back to the target: {}", wrap(back - bearing));
 }
+
+fn control(w: &sim::Sim, s: sim::ShipId) -> &sim::Piece {
+    let ship = w.ship(s).unwrap();
+    ship.piece(ship.control_piece().unwrap()).unwrap()
+}
+
+/// Holds `turn` (A +1, D -1) with the client's ramp and `thrust` (W) for `ticks` ticks. Every tick (GDR-0058: the
+/// keys never call the last resort) the last resort stays off, the key rate is at most what the first line can
+/// stop from (`cap`, first-line α of the authority), and the first line gives the torque the flight computer asks
+/// for (the request never counts on actuators that are busy or missing).
+fn first_line_key_turn(w: &mut sim::Sim, s: sim::ShipId, turn: f32, thrust: f32, ticks: usize) {
+    let tuning = sim::SimConfig::default().flight;
+    let mut level = 0.0;
+    for t in 0..ticks {
+        let p = control(w, s);
+        let first = sim::flight::Kin::plan_alpha(&p.authority, p.mass.inertia, false);
+        let cap = tuning.key_turn_rate.min((tuning.turn_margin * first * std::f32::consts::PI).sqrt());
+        level = turn_ramp_step(level, turn);
+        steer(w, s, axes(level, thrust, 0.0), 1);
+        let tel = *w.ship(s).unwrap().telemetry();
+        assert!(!tel.assist, "tick {t}: the keys opened (or kept open) the last resort");
+        match tel.goal.map(|g| g.heading) {
+            Some(sim::HeadingGoal::Rate(r)) => {
+                assert!(r.abs() <= cap + 1e-4, "tick {t}: key rate {r} above the first line's {cap}")
+            }
+            h => panic!("tick {t}: {h:?}"),
+        }
+        let missing = (tel.expected.torque - tel.torque).abs();
+        assert!(missing <= 1e-3 * (1.0 + tel.torque.abs()), "tick {t}: asked {} kN·m, got {}", tel.torque, tel.expected.torque);
+    }
+}
+
+/// A lock turn opens the last resort on the sample mid (no gyros), then the lock drops and A is pressed: the gate
+/// must not stay open for the key, nor raise the key rate with differential thrust (it turned at about 1.15 rad/s
+/// instead of 0.47).
+#[test]
+fn a_key_press_closes_the_last_resort_a_lock_turn_left_open() {
+    let c = content();
+    let (mut w, s) = world_with(design(&c, "sample_mid"));
+    let lock = PilotInput { lock: Some(Target::Point(Vec2::new(-200.0, 0.0))), ..axes(0.0, 0.0, 0.0) };
+    let mut ticks = 0;
+    while !w.ship(s).unwrap().telemetry().assist {
+        steer(&mut w, s, lock, 1);
+        ticks += 1;
+        assert!(ticks < 60, "the lock turn never opened the last resort");
+    }
+    steer(&mut w, s, lock, 10);
+    assert!(w.ship(s).unwrap().telemetry().assist, "still on before the key");
+    first_line_key_turn(&mut w, s, 1.0, 0.0, 45);
+}
+
+/// W+A on the Halvex Runner with two RCS pods (GDR-0055's strong turner): full forward thrust takes the pods'
+/// nozzles that make its couples, so the key turn gets the gyros and cores alone and must be asked of them alone.
+#[test]
+fn w_and_a_turn_on_what_the_thrust_leaves_free() {
+    let c = content();
+    let d = std::sync::Arc::new(sim::ShipDesign::compile(&c, &runner_with_pods(&c, 2)).unwrap());
+    let (mut w, s) = world_with(d);
+    first_line_key_turn(&mut w, s, 1.0, 1.0, 60);
+    let v = control(&w, s).body.linvel.length();
+    assert!(v > 15.0, "W pushed it to {v} m/s");
+}
+
+/// Two RCS pods whose couple turns only counter-clockwise (each has one end against the hull), on a ship whose
+/// only other turner is its logic core: D (clockwise) gets the core's torque alone.
+#[test]
+fn a_one_sided_couple_never_opens_the_last_resort() {
+    let c = content();
+    let d = custom(
+        &c,
+        &[
+            ("armor_block", 4, 0, 0, false, Some("steel")),
+            ("rcs_pod", 0, 1, 0, false, None),
+            ("fission_reactor", 1, 1, 0, false, None),
+            ("logic_core", 2, 1, 0, false, None),
+            ("fission_reactor", 3, 1, 0, false, None),
+            ("rcs_pod", 4, 1, 0, false, None),
+            ("armor_block", 0, 2, 0, false, Some("steel")),
+        ],
+    );
+    let (mut w, s) = world_with(d);
+    w.step(&TickInputs::default());
+    let a = control(&w, s).authority;
+    assert!(a.couple_ccw > 2.0 * a.torque_pure && a.couple_cw == 0.0, "one-sided: {a:?}");
+    first_line_key_turn(&mut w, s, -1.0, 0.0, 45);
+    // And the strong way round.
+    let (mut w, s) = world_with(control_design(&w, s));
+    first_line_key_turn(&mut w, s, 1.0, 0.0, 45);
+}
+
+fn control_design(w: &sim::Sim, s: sim::ShipId) -> std::sync::Arc<sim::ShipDesign> {
+    w.ship(s).unwrap().design().clone()
+}

@@ -15,9 +15,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
-use crate::drydock::PlayerDesign;
-use crate::sim_bridge::GameContent;
-use crate::tuning::Tuning;
+use crate::drydock::report::DrydockReport;
 use crate::ui_kit::{
     Hot, Pill, PillText, Ring, TextField, TextFieldText, Tone, ValueBar, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
 };
@@ -26,11 +24,9 @@ use super::actions::{BehaviorAction, BehaviorButton};
 use super::draft::BehaviorDraft;
 use super::edit::{Edit, EditState, apply_edit};
 use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SliderSpec, SwitchRow};
-use super::screen::{Kit, role_color};
+use super::screen::{Kit, LINE_W, role_color};
 use crate::style::ui_color;
 
-/// Logical px.
-const LINE_W: f32 = 1.2;
 /// Space above each block of the inspector.
 const GAP: f32 = 12.0;
 const STEPPER: f32 = 22.0;
@@ -64,10 +60,10 @@ pub(super) struct NoteField {
     focused: bool,
 }
 
-/// Measures the design's weapon reach when the screen opens (with the tuning's weapon range, as flights use).
-pub(super) fn measure_reach(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, mut reach: ResMut<DesignReach>) {
-    let scaled = tuning.scaled_content(&content.0, true);
-    let r = sim::design_report(&scaled, design.blueprint(), &tuning.config()).ok().and_then(|r| {
+/// Measures the design's weapon reach when the screen opens, from the design report (made with the tuning's weapon
+/// range, as flights use).
+pub(super) fn measure_reach(report: Res<DrydockReport>, mut reach: ResMut<DesignReach>) {
+    let r = report.get().and_then(|r| {
         let main = r.main?;
         let longest = r.guns.iter().filter(|g| g.piece == main && g.clear).map(|g| g.range).fold(0.0, f32::max);
         (longest > 0.0).then_some(longest)
@@ -334,6 +330,15 @@ pub(super) fn commit_notes(mut fields: Query<(&mut NoteField, &TextField)>, mut 
     }
 }
 
+/// Leaving the screen ends a slider drag (its stroke is closed) and a rule drag, so neither replays when the
+/// screen opens again with the button still remembered as held.
+pub(super) fn drop_drags(mut slider: ResMut<SliderDrag>, mut rows: ResMut<super::reorder::RowDrag>, mut draft: ResMut<BehaviorDraft>) {
+    if slider.0.take().is_some() {
+        draft.end_stroke();
+    }
+    *rows = default();
+}
+
 /// The held slider follows the pointer (one undo step per drag); its fill, knob and value text follow in place.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn drag_sliders(
@@ -350,12 +355,16 @@ pub(super) fn drag_sliders(
     let held = sliders.iter_mut().find(|(_, s, hot, ..)| hot.pressed && s.spec.target.is_some());
     let Some((e, mut slider, _, node, tf)) = held else {
         if drag.0.take().is_some() {
-            draft.edit(|ed| ed.end_stroke());
+            draft.end_stroke();
         }
         return;
     };
     if drag.0 != Some(e) {
         drag.0 = Some(e);
+        // The text has errors: the slider stays put (`draft.edit` refuses below), and the note says why.
+        if let Some(why) = draft.locked() {
+            state.refuse(why, time.elapsed_secs());
+        }
         draft.edit(|ed| ed.begin_stroke());
     }
     let scale = window.scale_factor();
@@ -379,7 +388,34 @@ pub(super) fn drag_sliders(
                 t.0 = spec.scale.kind.value(x).to_string().to_uppercase();
             }
         }
-        Some(Err(why)) => state.note = Some((why.to_string(), time.elapsed_secs())),
+        Some(Err(why)) => state.refuse(why.to_string(), time.elapsed_secs()),
         None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
+    use super::super::reorder::RowDrag;
+    use super::*;
+
+    /// A slider or rule drag held while the screen closes (Esc, T) does not replay when it opens again: the drags
+    /// end and the slider's stroke is closed.
+    #[test]
+    fn leaving_the_screen_ends_the_drags() {
+        let content = data::base_content();
+        let mut world = World::new();
+        let mut draft = BehaviorDraft::default();
+        draft.replace(BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), &content.behavior_nodes).unwrap());
+        let held = world.spawn_empty().id();
+        world.insert_resource(draft);
+        world.insert_resource(SliderDrag(Some(held)));
+        world.init_resource::<RowDrag>();
+        world.resource_mut::<RowDrag>().target = Some((2, 100.0));
+        world.resource_mut::<BehaviorDraft>().edit(|ed| ed.begin_stroke());
+        world.run_system_once(drop_drags).unwrap();
+        assert_eq!(world.resource::<SliderDrag>().0, None);
+        assert_eq!(world.resource::<RowDrag>().target, None);
     }
 }

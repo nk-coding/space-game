@@ -597,6 +597,22 @@ fn fill_is_one_step_and_mirrors() {
 }
 
 #[test]
+fn a_stroke_is_open_between_begin_and_end() {
+    let c = content();
+    let mut dock = empty(&c, (8, 8));
+    assert!(!dock.in_stroke());
+    dock.begin_stroke();
+    assert!(dock.in_stroke());
+    dock.paint((1, 1), "steel").unwrap();
+    dock.end_stroke();
+    assert!(!dock.in_stroke());
+    // Undo closes an open stroke too.
+    dock.begin_stroke();
+    dock.undo();
+    assert!(!dock.in_stroke());
+}
+
+#[test]
 fn strokes_are_one_undo_step() {
     let c = content();
     let mut dock = empty(&c, (8, 8));
@@ -942,6 +958,43 @@ fn twins_are_skipped_when_they_cannot_follow() {
         .unwrap();
     assert_eq!(o.twin, Twin::Itself);
     assert_eq!(dock.parts().len(), 1);
+}
+
+#[test]
+fn removing_a_part_takes_its_twin_and_nothing_else() {
+    let c = content();
+    let mut dock = empty(&c, (10, 10));
+    // A reactor left of the axis; an armour block covers its mirror cells (no twin of its kind).
+    dock.place(any(&c, "fusion_reactor", 1, 1, 0, false))
+        .unwrap();
+    dock.place(any(&c, "armor_block", 8, 1, 0, false)).unwrap();
+    dock.mirror = true;
+    let o = dock.remove_part(0).unwrap();
+    assert_eq!((o.changed, o.twin), (true, Twin::Skipped(Refusal::NoTwin)));
+    assert_eq!(dock.parts().len(), 1);
+    assert_eq!(dock.parts()[0].part, "armor_block");
+    // (Erase on the reactor's cell would have taken the block too.)
+    dock.undo();
+    assert_eq!(dock.parts().len(), 2);
+    assert_eq!(dock.erase((1, 1)).unwrap().twin, Twin::Applied);
+    assert!(dock.parts().is_empty());
+    // A mirrored pair goes together, as one undo step, whichever index is larger; a part on the axis goes once.
+    let mut dock = empty(&c, (10, 10));
+    dock.mirror = true;
+    dock.place(any(&c, "pulse_laser", 1, 0, 0, false)).unwrap();
+    dock.place(any(&c, "fusion_reactor", 4, 5, 0, false))
+        .unwrap();
+    assert_eq!(dock.parts().len(), 3);
+    let twin = dock.part_at((8, 0)).unwrap();
+    assert_eq!(dock.remove_part(twin).unwrap().twin, Twin::Applied);
+    assert_eq!(dock.parts().len(), 1);
+    assert_eq!(dock.remove_part(0).unwrap().twin, Twin::Itself);
+    assert!(dock.parts().is_empty());
+    dock.undo();
+    dock.undo();
+    assert_eq!(dock.parts().len(), 3);
+    assert_eq!(dock.remove_part(3), Err(Refusal::NoSuchPart(3)));
+    assert_grid(&dock);
 }
 
 /// The preview of an edit (the ghost) is what the edit does: the same refusal, the same twin outcome, the edited

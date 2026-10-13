@@ -23,6 +23,8 @@ pub struct PlayerDesign {
     seen: u64,
     /// Goes up with every change, including opening another design; never goes back.
     revision: u64,
+    /// Goes up when another design replaces this one ([`PlayerDesign::replace`]); edits leave it alone.
+    generation: u64,
 }
 
 impl PlayerDesign {
@@ -31,7 +33,7 @@ impl PlayerDesign {
     pub fn open(content: &Content, blueprint: &Blueprint, frame: (u32, u32)) -> Result<Self, OpenError> {
         let dock = Drydock::open(content, blueprint, frame)?;
         let blueprint = Blueprint { parts: Vec::new(), ..dock.header().clone() };
-        let mut design = Self { dock, blueprint, seen: 0, revision: 0 };
+        let mut design = Self { dock, blueprint, seen: 0, revision: 0, generation: 0 };
         design.rebuild();
         Ok(design)
     }
@@ -41,7 +43,7 @@ impl PlayerDesign {
     pub fn starter(content: &Content, ship: &str) -> Self {
         let empty = || Blueprint {
             id: String::new(),
-            name: "New design".into(),
+            name: super::library::NEW_NAME.into(),
             summary: String::new(),
             description: None,
             lore: None,
@@ -66,6 +68,7 @@ impl PlayerDesign {
     /// mirror and bevel modes stay as they are (they are the drydock's, not the design's).
     pub fn replace(&mut self, mut next: PlayerDesign) {
         next.revision = self.revision + 1;
+        next.generation = self.generation + 1;
         next.dock.mirror = self.dock.mirror;
         next.dock.bevel = self.dock.bevel;
         *self = next;
@@ -106,6 +109,12 @@ impl PlayerDesign {
     /// Bumped by every change; the drydock view, the checks and the stats rebuild when it changes.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// Bumped by [`PlayerDesign::replace`] (another design opened, NEW, an import), not by edits: cells of the old
+    /// design (the selection) mean nothing in the new one.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// The design as a blueprint to save or share: trimmed to its parts, the header as opened (or renamed).

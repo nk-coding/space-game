@@ -167,9 +167,12 @@ fn draw_icons(
             }
             UiIcon::Glyph { .. } => 1.0,
         };
-        let at = rig.screen_to_world(tf.translation / scale);
-        t.translation = at.extend(Z_UI_ICON);
-        t.scale = Vec3::new(px / rig.zoom, px / rig.zoom, 1.0);
+        // Written only when it moves: a written transform is propagated again.
+        let (at, k) = (rig.screen_to_world(tf.translation / scale).extend(Z_UI_ICON), Vec3::new(px / rig.zoom, px / rig.zoom, 1.0));
+        if t.translation != at || t.scale != k {
+            t.translation = at;
+            t.scale = k;
+        }
     }
     if need.0 != px_per_cell {
         need.0 = px_per_cell;

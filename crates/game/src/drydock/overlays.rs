@@ -31,7 +31,7 @@ use sim::report::Issue;
 use crate::atlas::{Atlas, Region};
 use crate::meshbuf::{MeshBuf, ensure_ccw, inset_convex};
 use crate::sim_bridge::GameContent;
-use crate::style::{Style, UiPalette, vcol};
+use crate::style::{Style, UiPalette, mix, vcol};
 use crate::ui_kit::Tone;
 
 use super::PlayerDesign;
@@ -202,12 +202,6 @@ fn outline_of(shape: &PlacedShape, inset: f32) -> Vec<Vec2> {
 fn circle(c: Vec2, r: f32) -> Vec<Vec2> {
     let n = ((r * 14.0) as usize).clamp(40, 160);
     (0..n).map(|k| c + Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU) * r).collect()
-}
-
-fn mix(a: Color, b: Color, t: f32) -> Color {
-    let (a, b) = (a.to_srgba(), b.to_srgba());
-    let t = t.clamp(0.0, 1.0);
-    Color::srgba(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, a.alpha + (b.alpha - a.alpha) * t)
 }
 
 /// The heat overlay's tint for a part at `ratio` = heat / limit at full use: teal and faint when cool, gold at

@@ -1,4 +1,6 @@
-//! Weapons v1 (every hit test is a ray cast through the physics world, `Physics::raycast`):
+//! Weapons v1 (every hit test is a ray cast through the physics world, resolved to a part by
+//! [`Sim::cast_part`]: parts destroyed earlier in the tick, whose colliders stay until breakage is resolved, are
+//! passed through to the part behind):
 //!
 //! * **Beams** (continuous hit-scan): `dps × work × DT` per tick on the first block in range.
 //! * **Pulses** (discrete hit-scan): a cooldown per gun; each pulse deals `damage / rate` to the first block.
@@ -19,7 +21,8 @@
 //!   the parts it destroys, along the same grid walk as a penetrating shot ([`Sim::ram_crush`]).
 //!
 //! Order inside a tick (after the ship systems, before physics): bubbles are collected, live projectiles fly,
-//! then every gun fires; breakage is resolved afterwards. All loops run in id/index order.
+//! then every gun fires, then engine plumes burn (`plume.rs`); breakage is resolved afterwards. All loops run in
+//! id/index order.
 //! Numbers in [`tuning`] are **placeholders**.
 
 use data::{Delivery, WeaponFamily};
@@ -50,8 +53,16 @@ pub mod tuning {
     pub const MAX_RICOCHETS: u8 = 2;
     /// Ray segments per projectile per tick (ricochets add segments).
     pub const MAX_SEGMENTS: usize = 4;
-    /// Grid cells a penetrating shot may walk through after its first hit.
+    /// Grid cells a penetrating shot may walk through after its first hit (also the walk through parts destroyed
+    /// earlier in the tick, `Sim::cast_part`).
     pub const MAX_WALK: usize = 64;
+    /// A ray that passed through parts destroyed earlier in the tick is cast again from where it left their
+    /// piece, at most this many times (`Sim::cast_part`).
+    pub const MAX_RECASTS: usize = 4;
+    /// A pulse or projectile gun fires at most this many shots per tick (240 per second); a faster rate (mod
+    /// content, stacked fire-rate bonuses) is capped there and the rest waits in its cooldown. Without the cap a
+    /// rate whose period is below half an ulp of the cooldown never ended the firing loop.
+    pub const MAX_SHOTS_PER_TICK: u32 = 8;
     /// A collapsed shield bubble comes back once it has recharged this share of its capacity.
     pub const SHIELD_RESTART: f32 = 0.3;
 }
@@ -228,6 +239,24 @@ impl GridWalk {
     }
 }
 
+/// A ray hit resolved to the alive part it lands on ([`Sim::cast_part`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PartRayHit {
+    /// Where the ray enters that part (the body hit, the distance from the ray's origin, the point and its
+    /// piece-frame position, the surface normal; `−dir` when the ray walked through destroyed parts to it).
+    pub hit: RayHit,
+    /// Index of the ship hit.
+    pub k: usize,
+    pub part: PartIdx,
+}
+
+/// What a ray hit on a body lands on ([`Sim::land`]).
+enum Landing {
+    Part(PartRayHit),
+    /// The ray passes through the piece (destroyed parts only) and leaves it at this distance.
+    Through(f32),
+}
+
 /// Where a shot went.
 struct ShotEnd {
     to: Vec2,
@@ -401,17 +430,80 @@ impl Sim {
         damage
     }
 
-    /// The part under a ray hit and its ship index.
-    pub(crate) fn hit_target(&self, h: &RayHit) -> Option<(usize, PartIdx)> {
+    /// The first alive part along a ray from `from` (unit `dir`, up to `len`) among the bodies `skip` lets
+    /// through: a ray cast through the physics, resolved to a part by [`Sim::land`]. A part destroyed earlier in
+    /// the tick keeps its collider until breakage is resolved, so a ray that hits it walks on through the piece
+    /// to the next alive part of that piece; if the walk leaves the piece first, the ray is cast again from there
+    /// (at most `tuning::MAX_RECASTS` times). The one hit rule of shots, plumes and [`Sim::raycast`].
+    pub(crate) fn cast_part(
+        &self,
+        from: Vec2,
+        dir: Vec2,
+        len: f32,
+        skip: impl Fn(BodyKey) -> bool,
+    ) -> Option<PartRayHit> {
+        let mut start = 0.0f32;
+        for _ in 0..=tuning::MAX_RECASTS {
+            let h = self
+                .physics
+                .raycast_skipping(from + dir * start, dir, len - start, &skip)?;
+            match self.land(&h, dir)? {
+                Landing::Part(mut p) => {
+                    p.hit.distance += start;
+                    return Some(p);
+                }
+                // Cast again from just past where the ray left the piece.
+                Landing::Through(t) => start += t + 1e-2,
+            }
+            if start >= len {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// What a ray hit (unit `dir`) lands on: the alive part under the hit point; else, when that cell's part was
+    /// destroyed earlier in the tick (its collider stays until breakage is resolved), the first alive part of
+    /// the same piece further along the ray (a grid walk through the destroyed cells), entered at its cell's
+    /// boundary; or where the walk leaves the piece. `None` for a body the sim does not know.
+    fn land(&self, h: &RayHit, dir: Vec2) -> Option<Landing> {
         let k = self
             .ships
             .binary_search_by_key(&h.key.ship, |s| s.id())
             .ok()?;
         let ship = &self.ships[k];
         let piece = ship.piece(h.key.piece)?;
-        let n_local = Rot::from_angle(piece.body.angle).apply_inverse(h.normal);
-        let part = ship.part_at_local(h.key.piece, h.local_point - n_local * 1e-3)?;
-        Some((k, part))
+        let rot = Rot::from_angle(piece.body.angle);
+        let n_local = rot.apply_inverse(h.normal);
+        if let Some(part) = ship.part_at_local(piece.id, h.local_point - n_local * 1e-3) {
+            return Some(Landing::Part(PartRayHit { hit: *h, k, part }));
+        }
+        let mut walk = GridWalk::new(piece.origin, h.local_point, rot.apply_inverse(dir));
+        let (mut cell, mut t) = ((walk.cx, walk.cy), 0.0f32);
+        for _ in 0..tuning::MAX_WALK {
+            match ship.grid().occupant(cell) {
+                Some(o) if ship.parts[o].piece == piece.id => {
+                    let local = walk.local_at(piece.origin, t);
+                    let hit = RayHit {
+                        distance: h.distance + t,
+                        point: piece.body.pos + rot.apply(local),
+                        local_point: local,
+                        normal: dir * -1.0,
+                        ..*h
+                    };
+                    return Some(Landing::Part(PartRayHit { hit, k, part: o as PartIdx }));
+                }
+                // Another piece's part: the ray has left this piece.
+                Some(_) => return Some(Landing::Through(h.distance + t)),
+                // Empty: a destroyed part of this piece lets the walk go on, anything else is outside it.
+                None => match ship.design().grid.occupant(cell) {
+                    Some(o) if !ship.parts[o].alive && ship.parts[o].piece == piece.id => {}
+                    _ => return Some(Landing::Through(h.distance + t)),
+                },
+            }
+            (cell, t) = walk.step();
+        }
+        Some(Landing::Through(h.distance + t))
     }
 
     /// Damages one part and reports it.
@@ -446,7 +538,7 @@ impl Sim {
         out
     }
 
-    /// The first body a shot of ship `owner` (fired for `team`) hits: never its own ship nor a vessel of its
+    /// The first part a shot of ship `owner` (fired for `team`) hits: never its own ship nor a vessel of its
     /// owner (GDR-0048).
     fn shot_cast(
         &self,
@@ -455,8 +547,8 @@ impl Sim {
         from: Vec2,
         dir: Vec2,
         len: f32,
-    ) -> Option<RayHit> {
-        self.physics.raycast_skipping(from, dir, len, |key| {
+    ) -> Option<PartRayHit> {
+        self.cast_part(from, dir, len, |key| {
             key.ship == owner || friendly(team, self.body_team(key))
         })
     }
@@ -474,7 +566,7 @@ impl Sim {
         damage: f32,
     ) -> ShotEnd {
         let hit = self.shot_cast(owner, team, from, dir, range);
-        let len = hit.map_or(range, |h| h.distance);
+        let len = hit.map_or(range, |h| h.hit.distance);
         let mut left = damage;
         if let Some(t) = self.shield_pass(owner, team, family, from, dir, len, &mut left) {
             return ShotEnd {
@@ -483,19 +575,17 @@ impl Sim {
             };
         }
         match hit {
-            Some(h) => {
-                if let Some((k, part)) = self.hit_target(&h) {
-                    self.damage_part(
-                        owner,
-                        family,
-                        k,
-                        part,
-                        h.point,
-                        h.normal,
-                        left,
-                        damage - left,
-                    );
-                }
+            Some(PartRayHit { hit: h, k, part }) => {
+                self.damage_part(
+                    owner,
+                    family,
+                    k,
+                    part,
+                    h.point,
+                    h.normal,
+                    left,
+                    damage - left,
+                );
                 ShotEnd {
                     to: h.point,
                     hit: true,
@@ -578,8 +668,9 @@ impl Sim {
     /// Ram damage to the body `key` of ship `k` (GDR-0047): `damage` hits the touching part `first`; what
     /// exceeds its hit points carries on to the next part inward (along `inward`, world, unit, from the contact
     /// `point`), and so on until it is used up or the walk leaves the piece's hull (an empty cell or another
-    /// piece's). The emptied cells of a big part just crushed are passed through. Returns whether any part took
-    /// damage. (Shields have taken their share already: [`Sim::ram_shields`].)
+    /// piece's). The emptied cells of a big part just crushed are passed through. A touching part that an earlier
+    /// contact of this tick destroyed passes all the damage inward. Returns false if the damage was ignored
+    /// (nothing positive to deal). (Shields have taken their share already: [`Sim::ram_shields`].)
     pub(crate) fn ram_crush(
         &mut self,
         k: usize,
@@ -589,7 +680,12 @@ impl Sim {
         inward: Vec2,
         damage: f32,
     ) -> bool {
-        let mut out = self.ships[k].apply_damage(DamageTarget::Part(first), damage);
+        let ship = &mut self.ships[k];
+        let mut out = if ship.part(first).alive || damage <= 0.0 {
+            ship.apply_damage(DamageTarget::Part(first), damage)
+        } else {
+            DamageOutcome::Destroyed { excess: damage }
+        };
         if out == DamageOutcome::Ignored {
             return false;
         }
@@ -645,7 +741,7 @@ impl Sim {
                     break;
                 }
                 let hit = self.shot_cast(p.owner, p.team, p.pos, dir, remaining);
-                let len = hit.map_or(remaining, |h| h.distance);
+                let len = hit.map_or(remaining, |h| h.hit.distance);
                 let before = p.damage;
                 if let Some(t) =
                     self.shield_pass(p.owner, p.team, p.family, p.pos, dir, len, &mut p.damage)
@@ -655,13 +751,8 @@ impl Sim {
                     break;
                 }
                 let absorbed = before - p.damage;
-                let Some(h) = hit else {
+                let Some(PartRayHit { hit: h, k, part }) = hit else {
                     p.pos += dir * remaining;
-                    break;
-                };
-                let Some((k, part)) = self.hit_target(&h) else {
-                    p.pos = h.point;
-                    gone = Some(GoneReason::Hit);
                     break;
                 };
                 if p.family == WeaponFamily::Kinetic
@@ -758,7 +849,9 @@ impl Sim {
                     return;
                 }
                 self.ships[k].gun_cooldown[slot] -= DT * work;
-                while self.ships[k].gun_cooldown[slot] <= 0.0 {
+                let mut shots = 0;
+                while self.ships[k].gun_cooldown[slot] <= 0.0 && shots < tuning::MAX_SHOTS_PER_TICK {
+                    shots += 1;
                     self.ships[k].gun_cooldown[slot] += 1.0 / g.rate;
                     match g.delivery {
                         Delivery::Pulse { .. } => {
@@ -830,5 +923,74 @@ impl Sim {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::design::ShipDesign;
+    use crate::ship::Body;
+
+    /// A 5×4 wall of steel blocks (1 hp each), salvage, its frame origin at (0.4, 20).
+    fn wall() -> (Sim, usize, BodyKey, Arc<ShipDesign>) {
+        let content = data::base_content();
+        let mut parts = Vec::new();
+        for y in 0..4 {
+            for x in 0..5 {
+                parts.push(data::Placement {
+                    part: "armor_block".into(),
+                    x,
+                    y,
+                    rot: 0,
+                    flip: false,
+                    material: Some("steel".into()),
+                    power: None,
+                });
+            }
+        }
+        let bp = data::Blueprint {
+            id: "wall".into(),
+            name: "Wall".into(),
+            summary: "Test wall.".into(),
+            description: None,
+            lore: None,
+            tags: vec![],
+            faction: "ship_mind".into(),
+            size: (5, 4),
+            parts,
+            behavior: None,
+            source: Default::default(),
+        };
+        let d = Arc::new(ShipDesign::compile(&content, &bp).unwrap());
+        let mut sim = Sim::new(1);
+        let id = sim.spawn_ship(d.clone(), Owner(1), Body::at(Vec2::new(0.4, 20.0), 0.0));
+        let key = BodyKey {
+            ship: id,
+            piece: sim.ship(id).unwrap().pieces()[0].id,
+        };
+        (sim, 0, key, d)
+    }
+
+    /// Two rams on the same touching part in one tick (13 Oct 2026 review): the second finds it destroyed and
+    /// crushes on inward from its cells instead of being dropped.
+    #[test]
+    fn a_second_ram_on_a_destroyed_part_crushes_on_inward() {
+        let (mut sim, k, key, d) = wall();
+        let cell = |x: i32, y: i32| d.grid.occupant((x, y)).unwrap() as PartIdx;
+        let hp = |sim: &Sim, x: i32, y: i32| {
+            let p = sim.ships[k].part(cell(x, y));
+            if p.alive { p.hp } else { 0.0 }
+        };
+        // The bottom face of column 2 (blueprint row 3), pushed up into the wall (+y).
+        let (point, inward) = (Vec2::new(0.4, 18.0), Vec2::Y);
+        assert!(sim.ram_crush(k, key, cell(2, 3), point, inward, 1.5));
+        assert_eq!((hp(&sim, 2, 3), hp(&sim, 2, 2)), (0.0, 0.5));
+        assert!(sim.ram_crush(k, key, cell(2, 3), point, inward, 1.5));
+        assert_eq!((hp(&sim, 2, 2), hp(&sim, 2, 1)), (0.0, 0.0), "the second ram crushes on");
+        assert_eq!(hp(&sim, 2, 0), 1.0);
+        assert!(!sim.ram_crush(k, key, cell(2, 3), point, inward, 0.0), "nothing to deal");
     }
 }

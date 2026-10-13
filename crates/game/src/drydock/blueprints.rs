@@ -19,7 +19,7 @@
 //!   (`PlayerDesign::edit_header`), Esc keeps the old name.
 
 use bevy::ecs::system::SystemParam;
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::text::{Justify, LineBreak};
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -34,12 +34,13 @@ use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillLock, TextField, TextFieldText, Tone, UiBlock, UiClick, label, number, prose, set_color, set_text, spawn_pill, tracked,
+    Hot, Pill, PillLock, TextField, TextFieldText, Tone, UiBlock, UiClick, label, name_in_place, number, prose, set_color, set_text,
+    spawn_pill, tracked, wheel_rows,
 };
 
 use super::actions::DrydockAction;
 use super::behaviors::{PlayerBehaviors, validate_design};
-use super::library::{self, Autosave, DesignSlot, Entry};
+use super::library::{self, Autosave, DesignSlot, Entry, MAX_NAME};
 use super::panels::PanelText;
 use super::share;
 use super::state::DrydockStatus;
@@ -50,8 +51,6 @@ use super::{DockSet, PlayerDesign, stats};
 const LIST_ROWS: usize = 6;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
-/// The longest design name.
-const MAX_NAME: usize = 40;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -65,7 +64,14 @@ impl Plugin for BlueprintsPlugin {
             .add_systems(Startup, spawn_shelf.after(crate::flight_hud::spawn_hud))
             .add_systems(
                 Update,
-                (title, apply, autosave, announce).chain().in_set(DockSet::Apply).after(stats::update),
+                (
+                    // Before the editing tools and the report: a design opened, renamed or moved to another frame
+                    // this frame is what they, the report and the status see in the same frame.
+                    (title, apply).chain().after(super::actions::apply).before(super::tools::apply),
+                    // After the status of this revision is made, so a message is not overwritten.
+                    (autosave, announce).chain().after(stats::update),
+                )
+                    .in_set(DockSet::Apply),
             )
             .add_systems(Update, (scroll_lists, sync_shelf, sync_title).in_set(DockSet::Show))
             .add_systems(OnExit(crate::mode::AppMode::Drydock), leave)
@@ -154,6 +160,11 @@ pub(super) struct Shelf {
 }
 
 impl Shelf {
+    /// BLUEPRINTS or EXPORT covers the design.
+    pub(super) fn is_open(&self) -> bool {
+        self.page.is_some()
+    }
+
     fn say(&mut self, text: impl AsRef<str>, tone: Tone) {
         self.say = Some((text.as_ref().to_uppercase(), tone));
     }
@@ -171,6 +182,8 @@ pub(super) struct Saver {
     editing_title: bool,
     /// A text field had the keyboard last frame (so this frame's Esc was for it).
     field_had_keys: bool,
+    /// The design revision last kept for the page going away (`Storage::keep_on_leave`).
+    kept: Option<u64>,
 }
 
 /// The resources the library operations work on.
@@ -191,23 +204,28 @@ impl Lib<'_> {
 
     /// Puts another design into the drydock. The one there is saved first when it has unsaved changes (its
     /// name is returned); if that fails, nothing changes.
-    fn switch(&mut self, content: &Content, mut next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
-        let kept = if self.slot.dirty(&self.design) {
-            library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix())
-                .map_err(|e| format!("couldn't save {} first: {e}", self.design.blueprint().name))?;
-            Some(self.design.blueprint().name.clone())
-        } else {
-            None
-        };
-        let (mirror, bevel) = (self.design.dock().mirror, self.design.dock().bevel);
-        next.edit(|d| {
-            d.mirror = mirror;
-            d.bevel = bevel;
-        });
+    fn switch(&mut self, content: &Content, next: PlayerDesign, slot: DesignSlot) -> Result<Option<String>, String> {
+        let kept = self.keep_current(content)?;
+        self.put(next, slot);
+        Ok(kept)
+    }
+
+    /// Saves the design in the drydock when it has unsaved changes, before something replaces it; returns its name
+    /// when it was saved.
+    fn keep_current(&mut self, content: &Content) -> Result<Option<String>, String> {
+        if !self.slot.dirty(&self.design) {
+            return Ok(None);
+        }
+        library::save(&mut self.storage, content, &self.design, &mut self.slot, now_unix())
+            .map_err(|e| format!("couldn't save {} first: {e}", self.design.blueprint().name))?;
+        Ok(Some(self.design.blueprint().name.clone()))
+    }
+
+    /// Replaces the design in the drydock (after [`Lib::keep_current`]).
+    fn put(&mut self, next: PlayerDesign, slot: DesignSlot) {
         self.design.replace(next);
         *self.slot = slot;
         self.cam.reset_view();
-        Ok(kept)
     }
 
     /// The design as it is exported: trimmed, under its id (or a new one from its name).
@@ -236,7 +254,8 @@ impl Lib<'_> {
     }
 
     /// Imports a share code or blueprint text: saved under a new id and opened. A behavior it carries is saved
-    /// too (under a new id if its own is taken) and the design names it.
+    /// too (under a new id if its own is taken) and the design names it. The design in the drydock is saved first:
+    /// if that fails, nothing of the import is written (a retry would have made second copies).
     fn import(&mut self, content: &Content, text: &str) -> Result<String, String> {
         let shared = share::read(text).map_err(|e| e.to_string())?;
         let faction = self.design.blueprint().faction.clone();
@@ -245,6 +264,7 @@ impl Lib<'_> {
             bp.summary = library::NEW_SUMMARY.into();
         }
         let mut opened = library::open_in_first_frame(content, &bp)?;
+        let kept = self.keep_current(content)?;
         if let Some(b) = carried {
             let (id, note) = self.behaviors.import(&mut self.storage, content, b, now_unix())?;
             opened.edit_header(|h| h.behavior = Some(id));
@@ -256,7 +276,7 @@ impl Lib<'_> {
         if !problems.is_empty() {
             notes.push(problems_note(&problems));
         }
-        let kept = self.switch(content, opened, slot)?;
+        self.put(opened, slot);
         let mut msg = format!("imported {}", self.design.blueprint().name);
         for n in kept.iter().map(|k| format!("{k} saved")).chain(notes) {
             msg.push_str("  ·  ");
@@ -295,9 +315,14 @@ fn restore(world: &mut World) -> (DesignSlot, Shelf) {
             shelf.say(format!("designs are kept only until the game closes: {why}"), Tone::Gold);
         }
         let content = &world.resource::<GameContent>().0;
-        match library::restore_working(&storage, content) {
-            Some(Ok(last)) if !new_game => (Some(last), None),
-            Some(Ok((last, mut slot))) if slot.dirty(&last) => {
+        match library::restore_working(&mut storage, content) {
+            Some(Ok((last, slot, note))) if !new_game => {
+                if let Some(note) = note {
+                    shelf.say(format!("the last design came back, but {note}"), Tone::Gold);
+                }
+                (Some((last, slot)), None)
+            }
+            Some(Ok((last, mut slot, _))) if slot.dirty(&last) => {
                 let name = last.blueprint().name.clone();
                 match library::save(&mut storage, content, &last, &mut slot, now_unix()) {
                     Ok(_) => (None, Some(Note::new("NEW GAME", format!("Your last design, {name}, was saved to BLUEPRINTS."), Tone::Teal))),
@@ -323,21 +348,23 @@ fn restore(world: &mut World) -> (DesignSlot, Shelf) {
     }
     // The first start or a new game: the starter ship (`PlayerDesign::starter`) as "<name> copy", not saved yet.
     let name = format!("{} copy", design.blueprint().name);
-    let id = library::slug(&name);
-    design.edit_header(|h| {
-        h.name = name;
-        h.id = id;
-    });
+    design.edit_header(|h| h.name = name);
     (DesignSlot::opened(None, &design), shelf)
 }
 
-/// Writes the working design a second after the last change.
+/// Writes the working design a second after the last change. Until then the web page keeps it to write if it goes
+/// away first (a reload within that second).
 fn autosave(time: Res<Time<Real>>, mut saver: ResMut<Saver>, mut lib: Lib, mut shelf: ResMut<Shelf>) {
     let now = time.elapsed_secs_f64();
-    saver.timer.note(lib.design.revision(), now);
+    let revision = lib.design.revision();
+    saver.timer.note(revision, now);
     // A save, an open or a delete changes the id the working design is saved under: written at once.
     if saver.timer.due(now) || lib.slot.is_changed() {
         write_working(&mut saver, &mut lib, &mut shelf);
+    } else if saver.timer.pending() && saver.kept != Some(revision) {
+        saver.kept = Some(revision);
+        let Lib { storage, design, slot, .. } = &mut lib;
+        storage.keep_on_leave(library::WORKING, || library::working_doc(design, slot));
     }
 }
 
@@ -348,13 +375,20 @@ fn write_working(saver: &mut Saver, lib: &mut Lib, shelf: &mut Shelf) {
     }
 }
 
-/// Leaving the drydock (a test flight): the working design is written now, the screens close.
-fn leave(mut saver: ResMut<Saver>, mut lib: Lib, mut shelf: ResMut<Shelf>) {
+/// Leaving the drydock (a test flight, the BEHAVIOR screen): the working design is written now, the screens close
+/// and their layer hides at once ([`sync_shelf`] runs only in the drydock; a layer left visible would block the
+/// pointer elsewhere), and the clipboard stops offering the code and taking pastes.
+fn leave(mut saver: ResMut<Saver>, mut lib: Lib, mut shelf: ResMut<Shelf>, mut clip: ResMut<Clipboard>, mut root: Single<&mut Visibility, With<ShelfRoot>>) {
     if saver.timer.pending() {
         write_working(&mut saver, &mut lib, &mut shelf);
     }
     shelf.page = None;
     shelf.mode = Mode::Browse;
+    shelf.code_selected = false;
+    shelf.paste_armed = false;
+    clip.offer = None;
+    clip.accept = false;
+    **root = Visibility::Hidden;
 }
 
 /// Closing the game (desktop): a waiting autosave is written.
@@ -375,13 +409,17 @@ fn announce(design: Res<PlayerDesign>, mut status: ResMut<DrydockStatus>, mut sh
     }
 }
 
-/// Files dropped onto the window (desktop) are imported.
+/// Files dropped onto the window (desktop) are imported; one larger than any design is not read.
 #[cfg(not(target_arch = "wasm32"))]
 fn dropped_files(mut drops: MessageReader<bevy::window::FileDragAndDrop>, mut shelf: ResMut<Shelf>) {
     for d in drops.read() {
         if let bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } = d {
             let name = path_buf.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-            shelf.incoming.push((name, std::fs::read_to_string(path_buf).map_err(|e| e.to_string())));
+            let text = match std::fs::metadata(path_buf) {
+                Ok(m) if m.len() > share::MAX_TEXT as u64 => Err(share::ShareError::TooLarge.to_string()),
+                _ => std::fs::read_to_string(path_buf).map_err(|e| e.to_string()),
+            };
+            shelf.incoming.push((name, text));
         }
     }
 }
@@ -441,27 +479,18 @@ fn title(
     mut design: ResMut<PlayerDesign>,
 ) {
     let (f, node) = &mut *field;
-    let mut show = |editing: bool, node: &mut Node| {
-        node.display = if editing { Display::Flex } else { Display::None };
+    let clicked = clicks.read().any(|c| c.0 == *button);
+    let (open, renamed) = name_in_place(&mut saver.editing_title, f, clicked, keys.just_pressed(KeyCode::Escape), &design.blueprint().name);
+    if let Some(new) = renamed {
+        design.edit_header(|h| h.name = new);
+    }
+    if let Some(open) = open {
+        node.display = if open { Display::Flex } else { Display::None };
         for (t, mut n) in &mut texts {
             if *t == PanelText::Name {
-                n.display = if editing { Display::None } else { Display::Flex };
+                n.display = if open { Display::None } else { Display::Flex };
             }
         }
-    };
-    if saver.editing_title && !f.focused {
-        saver.editing_title = false;
-        let new = f.value.trim().to_string();
-        if !keys.just_pressed(KeyCode::Escape) && !new.is_empty() && new != design.blueprint().name {
-            design.edit_header(|h| h.name = new);
-        }
-        show(false, node);
-    }
-    if clicks.read().any(|c| c.0 == *button) && !saver.editing_title {
-        saver.editing_title = true;
-        f.value = design.blueprint().name.clone();
-        f.focused = true;
-        show(true, node);
     }
 }
 
@@ -839,12 +868,20 @@ fn apply(
             todo.push(b.clone());
         }
     }
+    // Touched only when files came (a write marks the shelf changed, and its texts are made again then).
     #[cfg(target_arch = "wasm32")]
-    shelf.incoming.extend(share::take_picked());
-    for (file, text) in std::mem::take(&mut shelf.incoming) {
-        match text {
-            Ok(text) => import(&mut shelf, &mut lib, content, &text, &format!("{file}: ")),
-            Err(e) => shelf.say(format!("{file} doesn't read: {e}"), Tone::Coral),
+    {
+        let picked = share::take_picked();
+        if !picked.is_empty() {
+            shelf.incoming.extend(picked);
+        }
+    }
+    if !shelf.incoming.is_empty() {
+        for (file, text) in std::mem::take(&mut shelf.incoming) {
+            match text {
+                Ok(text) => import(&mut shelf, &mut lib, content, &text, &format!("{file}: ")),
+                Err(e) => shelf.say(format!("{file} doesn't read: {e}"), Tone::Coral),
+            }
         }
     }
     if let Some(done) = clip.copied.take() {
@@ -1029,9 +1066,9 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
                 return;
             }
             let size = lib.design.export().size;
+            // The camera fits the new frame by itself (`view::camera` follows the frame, undo included).
             match lib.design.edit(|d| d.set_frame(frame)) {
                 Ok(_) => {
-                    lib.cam.reset_view();
                     shelf.say(format!("moved to the {}", frame_name(content, frame)), Tone::Teal);
                 }
                 Err(_) => shelf.say(
@@ -1081,12 +1118,8 @@ fn scroll_lists(
             continue;
         }
         let len = if list.0 == 0 { shelf.designs.len() } else { shelf.templates.len() };
-        let steps = match scroll.unit {
-            MouseScrollUnit::Line => scroll.delta.y,
-            MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
-        };
         let max = len.saturating_sub(LIST_ROWS) as f32;
-        let offset = (shelf.offset[list.0] as f32 - steps.signum() * steps.abs().max(1.0).round()).clamp(0.0, max) as usize;
+        let offset = (shelf.offset[list.0] as f32 - wheel_rows(&scroll)).clamp(0.0, max) as usize;
         if offset != shelf.offset[list.0] {
             shelf.offset[list.0] = offset;
         }
@@ -1103,7 +1136,10 @@ fn sync_shelf(
     granted: Res<Granted>,
     style: Res<Style>,
     mut root: Single<&mut Visibility, With<ShelfRoot>>,
-    mut nodes: Query<(&mut Node, Option<&PageNode>, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>), Without<TextField>>,
+    mut nodes: Query<
+        (&mut Node, Option<&PageNode>, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>),
+        (Without<TextField>, Or<(With<PageNode>, With<BarNode>, With<RowNode>, With<EmptyHint>)>),
+    >,
     mut pills: Query<(&ShelfButton, &mut Pill)>,
     mut boxes: Query<(&mut BorderColor, &mut BackgroundColor, Has<CodeBox>, &Hot), Or<(With<CodeBox>, With<PasteBox>)>>,
     mut texts: Query<(&ShelfText, &mut Text, &mut TextColor)>,
@@ -1275,5 +1311,155 @@ fn sync_shelf(
         };
         set_text(&mut text, &s);
         set_color(&mut color, c(tone, if matches!(t, ShelfText::Code) { 0.9 } else { 1.0 }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
+    use super::*;
+    use crate::storage::MemoryBackend;
+
+    /// A world with what the screens' systems need (no window, no fonts).
+    fn world() -> World {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content, "halvex_runner"));
+        world.insert_resource(GameContent(content));
+        world.insert_resource(Storage::new(MemoryBackend::default()));
+        world.insert_resource(DockCamera::new(1.0));
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<Saver>();
+        world.init_resource::<Shelf>();
+        world.init_resource::<Clipboard>();
+        world
+    }
+
+    /// Storage that refuses to write one design (nearly full: the import fits, the design in the drydock not).
+    struct Refusing(MemoryBackend, &'static str);
+
+    impl crate::storage::Backend for Refusing {
+        fn list(&self, namespace: &str) -> Result<Vec<String>, crate::storage::StorageError> {
+            self.0.list(namespace)
+        }
+        fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, crate::storage::StorageError> {
+            self.0.read(namespace, name)
+        }
+        fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), crate::storage::StorageError> {
+            if name == self.1 {
+                return Err(crate::storage::StorageError::Full);
+            }
+            self.0.write(namespace, name, text)
+        }
+        fn delete(&mut self, namespace: &str, name: &str) -> Result<(), crate::storage::StorageError> {
+            self.0.delete(namespace, name)
+        }
+        fn location(&self) -> String {
+            "refusing".into()
+        }
+    }
+
+    /// An import whose save-first of the design in the drydock fails writes nothing (before, the imported design
+    /// and its behavior were saved anyway, and a retry made second copies).
+    #[test]
+    fn a_failed_import_writes_nothing() {
+        let mut world = world();
+        // The starter, unsaved and changed: it is saved before the import opens, as `halvex_runner_2`.
+        world.insert_resource(Storage::new(Refusing(MemoryBackend::default(), "halvex_runner_2")));
+        let content = data::base_content();
+        let mut careful = content.behaviors.get("skirmisher").unwrap().clone();
+        careful.id = "careful".into();
+        careful.name = "Careful".into();
+        careful.source = Default::default();
+        let ship = Blueprint { behavior: Some("careful".into()), source: Default::default(), ..content.ships.get("sample_mid").unwrap().clone() };
+        let code = share::encode(&content, &ship, Some(&careful));
+        let result = world.run_system_once(move |mut lib: Lib, content: Res<GameContent>| lib.import(&content.0, &code)).unwrap();
+        assert!(result.as_ref().is_err_and(|e| e.starts_with("couldn't save Halvex Runner first")), "{result:?}");
+        let storage = world.resource::<Storage>();
+        assert!(storage.list("designs").unwrap().is_empty() && storage.list("behaviors").unwrap().is_empty());
+        assert_eq!(world.resource::<PlayerDesign>().blueprint().name, "Halvex Runner");
+    }
+
+    /// Delete, a tool key or T while BLUEPRINTS covers the design does nothing to it; Ctrl+S still saves.
+    #[test]
+    fn keys_behind_the_screens_only_save() {
+        let mut world = world();
+        world.resource_mut::<Shelf>().page = Some(Page::Blueprints);
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<crate::ui_kit::UiPointer>();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        for k in [KeyCode::Delete, KeyCode::KeyT, KeyCode::KeyX, KeyCode::ControlLeft, KeyCode::KeyS] {
+            keys.press(k);
+        }
+        world.insert_resource(keys);
+        world.run_system_once(super::super::actions::shortcuts).unwrap();
+        let sent: Vec<DrydockAction> = world.resource::<Messages<DrydockAction>>().iter_current_update_messages().cloned().collect();
+        assert_eq!(sent, [DrydockAction::Save]);
+        // Without the screens the same keys act.
+        world.resource_mut::<Shelf>().page = None;
+        world.resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::ControlLeft);
+        world.resource_mut::<Messages<DrydockAction>>().clear();
+        world.run_system_once(super::super::actions::shortcuts).unwrap();
+        let sent = world.resource::<Messages<DrydockAction>>().len();
+        assert!(sent >= 3, "{sent}");
+    }
+
+    /// A frame without input leaves the shelf untouched, so its texts are not made again every frame.
+    #[test]
+    fn an_idle_frame_leaves_the_shelf_unchanged() {
+        let mut world = world();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<Messages<UiClick>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world.spawn((RenameField, TextField::default()));
+        world.resource_mut::<Shelf>().page = Some(Page::Blueprints);
+        let apply = world.register_system(apply);
+        let changed = world.register_system(|shelf: Res<Shelf>| shelf.is_changed());
+        world.run_system(apply).unwrap();
+        world.run_system(changed).unwrap();
+        world.run_system(apply).unwrap();
+        assert!(!world.run_system(changed).unwrap());
+    }
+
+    /// `/` and T in one (slow) frame: the search field takes the keyboard, no test flight starts.
+    #[test]
+    fn a_slash_takes_the_other_keys_of_its_frame_into_the_search() {
+        let mut world = world();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<crate::ui_kit::UiPointer>();
+        let search = world.spawn((super::super::actions::SearchField, TextField::default())).id();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyT);
+        keys.press(KeyCode::Slash);
+        world.insert_resource(keys);
+        world.run_system_once(super::super::actions::shortcuts).unwrap();
+        assert!(world.resource::<Messages<DrydockAction>>().is_empty());
+        assert!(world.get::<TextField>(search).unwrap().focused);
+    }
+
+    /// Leaving the drydock with BLUEPRINTS open (BEHAVIOR or TEST-FLY in the bottom bar, T) hides the layer and lets
+    /// go of the clipboard: the layer would block the pointer on the next screen, the clipboard would swallow
+    /// Ctrl+C / Ctrl+V in flight.
+    #[test]
+    fn leaving_the_drydock_hides_the_screens_and_lets_go_of_the_clipboard() {
+        let mut world = world();
+        {
+            let mut shelf = world.resource_mut::<Shelf>();
+            shelf.page = Some(Page::Blueprints);
+            shelf.paste_armed = true;
+            shelf.code_selected = true;
+        }
+        world.resource_mut::<Clipboard>().accept = true;
+        world.resource_mut::<Clipboard>().offer = Some("SGD2:x".into());
+        let root = world.spawn((ShelfRoot, Visibility::Inherited)).id();
+        world.run_system_once(leave).unwrap();
+        assert_eq!(world.get::<Visibility>(root), Some(&Visibility::Hidden));
+        let shelf = world.resource::<Shelf>();
+        assert!(shelf.page.is_none() && !shelf.paste_armed && !shelf.code_selected);
+        let clip = world.resource::<Clipboard>();
+        assert!(clip.offer.is_none() && !clip.accept);
     }
 }

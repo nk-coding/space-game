@@ -15,14 +15,12 @@ use crate::ui_kit::Hot;
 use super::actions::{BehaviorAction, BehaviorButton};
 use super::draft::BehaviorDraft;
 use super::edit::Edit;
-use super::screen::{GraphViewport, RowBand};
+use super::screen::{GraphViewport, ROOT_W, RowBand};
 
 /// How far (logical px) the pointer moves up or down before a press on a row becomes a drag.
 const START: f32 = 8.0;
 /// Above the graph's dots, under the UI.
 const Z_LINE: f32 = 5.0;
-/// Where the drop line starts in the graph area (logical px): the trunk, after the root.
-const TRUNK_X: f32 = 150.0;
 
 /// The rule being dragged.
 #[derive(Resource, Default, Debug)]
@@ -120,7 +118,8 @@ pub(super) fn draw_drop_line(
     let scale = window.scale_factor();
     let area = Rect::from_center_size(tf.translation / scale, node.size / scale);
     let y = (y / scale).clamp(area.min.y, area.max.y);
-    let x0 = area.min.x + TRUNK_X * ui_scale.0;
+    // From the trunk, after the root column.
+    let x0 = area.min.x + ROOT_W * ui_scale.0;
     let (a, b) = (rig.screen_to_world(Vec2::new(x0, y)), rig.screen_to_world(Vec2::new(area.max.x - 20.0 * ui_scale.0, y)));
     queue.line(&r.white, a, b, 2.0 * ui_scale.0 / rig.zoom, style.ui.teal.with_alpha(0.9), Z_LINE);
 }
