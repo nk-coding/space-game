@@ -19,6 +19,8 @@ use data::edit::{Outcome, Refusal, Twin};
 use data::{Cell, Content, MAX_POWER_WEIGHT, Part, Placement, PowerOverride, PowerTier, Shape};
 
 use crate::sim_bridge::GameContent;
+use crate::style::Style;
+use crate::ui_icons::UiIcon;
 use crate::ui_kit::{Ring, UiPointer};
 
 use super::PlayerDesign;
@@ -435,12 +437,17 @@ fn power_with(content: &Content, p: &Placement, tier: Option<PowerTier>, weight:
     (o != PowerOverride::default()).then_some(o)
 }
 
-/// Undo and redo look disabled when there is nothing to undo or redo.
-pub(super) fn sync_rings(design: Res<PlayerDesign>, mut rings: Query<(&ActionButton, &mut Ring)>) {
+/// Undo and redo look disabled (dim ring and arrow) when there is nothing to undo or redo.
+pub(super) fn sync_rings(
+    design: Res<PlayerDesign>,
+    style: Res<Style>,
+    mut rings: Query<(&ActionButton, &mut Ring, &Children)>,
+    mut icons: Query<&mut UiIcon>,
+) {
     if !design.is_changed() {
         return;
     }
-    for (b, mut ring) in &mut rings {
+    for (b, mut ring, children) in &mut rings {
         let disabled = match b.0 {
             DrydockAction::Undo => !design.dock().can_undo(),
             DrydockAction::Redo => !design.dock().can_redo(),
@@ -448,6 +455,15 @@ pub(super) fn sync_rings(design: Res<PlayerDesign>, mut rings: Query<(&ActionBut
         };
         if ring.disabled != disabled {
             ring.disabled = disabled;
+        }
+        let want = if disabled { style.ui.dim } else { style.ui.number };
+        for child in children {
+            if let Ok(mut icon) = icons.get_mut(*child)
+                && let UiIcon::Glyph { color, .. } = &mut *icon
+                && *color != want
+            {
+                *color = want;
+            }
         }
     }
 }
