@@ -3,16 +3,16 @@
 //! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part),
 //! the test flight and the ring menu (home). Zoom is handled by the camera (`view.rs`), editing (undo / redo,
 //! mirror, bevel, rotate, the selected part) by `tools.rs`, saving, export and the blueprint list by
-//! `blueprints.rs`, the BEHAVIOR button by `behavior_ui`.
+//! `blueprints.rs`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
 //! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
 //! undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom, / search.
 
 use bevy::prelude::*;
-use data::PowerTier;
+use data::{Content, PowerTier, Unlock};
 
-use crate::career::Granted;
+use crate::career::{Granted, unlocked_by};
 use crate::mode::AppMode;
 use crate::scene::{Launch, Scene};
 use crate::sim_bridge::GameContent;
@@ -56,6 +56,9 @@ pub enum DrydockAction {
     PartMaterial(String),
     PartTier(PowerTier),
     PartWeight(bool),
+    /// A click on a LOCKED palette row or a locked armour pill: the research screen on the node (id) that unlocks
+    /// it (`research` handles it).
+    Research(String),
 }
 
 /// A widget that sends an action when clicked (pills, rings, palette rows).
@@ -66,15 +69,32 @@ pub struct ActionButton(pub DrydockAction);
 #[derive(Component)]
 pub struct SearchField;
 
-/// Clicks on action widgets (disabled pills send nothing).
-pub(super) fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<(&ActionButton, Option<&Pill>)>, mut out: MessageWriter<DrydockAction>) {
+/// Clicks on action widgets. A disabled pill sends nothing, except a locked part's row or a locked armour pill:
+/// that opens the research screen on the node that unlocks it.
+pub(super) fn clicks(
+    mut clicks: MessageReader<UiClick>,
+    buttons: Query<(&ActionButton, Option<&Pill>)>,
+    content: Res<GameContent>,
+    mut out: MessageWriter<DrydockAction>,
+) {
     for c in clicks.read() {
-        if let Ok((b, pill)) = buttons.get(c.0)
-            && !pill.is_some_and(|p| p.disabled)
-        {
+        let Ok((b, pill)) = buttons.get(c.0) else { continue };
+        if !pill.is_some_and(|p| p.disabled) {
             out.write(b.0.clone());
+        } else if let Some(node) = locked_research(&content.0, &b.0) {
+            out.write(DrydockAction::Research(node));
         }
     }
+}
+
+/// The research node that unlocks what a disabled widget picks (a locked part or armour material), if any.
+pub fn locked_research(content: &Content, action: &DrydockAction) -> Option<String> {
+    let unlock = match action {
+        DrydockAction::PickPart(p) if !p.is_empty() => Unlock::Part(p.clone()),
+        DrydockAction::Material(m) | DrydockAction::PartMaterial(m) => Unlock::Material(m.clone()),
+        _ => return None,
+    };
+    unlocked_by(content, &unlock).map(|n| n.id.clone())
 }
 
 /// The keyboard shortcuts. While BLUEPRINTS or EXPORT covers the design only Ctrl+S acts (the pages handle Esc,
@@ -220,7 +240,7 @@ mod tests {
         app
     }
 
-    /// Locked rows and pills are disabled, so clicks on them send nothing; a locked part or material sent anyway
+    /// Locked rows and pills are disabled, so clicks on them pick nothing; a locked part or material sent anyway
     /// (keys 1–9) is not taken. Unlocked ones are.
     #[test]
     fn locked_parts_and_materials_cannot_be_picked() {
@@ -245,5 +265,26 @@ mod tests {
         app.update();
         assert_eq!(app.world().resource::<DrydockUi>().picked.as_deref(), Some("pulse_laser"));
         assert!(pill(&app, pulse).active);
+    }
+
+    /// A click on a locked part's row or a locked armour pill asks for the research screen on the node that
+    /// unlocks it; an unlocked one doesn't.
+    #[test]
+    fn locked_rows_lead_to_their_research() {
+        let mut app = app();
+        let beam = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("beam_laser".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        let composite = app.world_mut().spawn((ActionButton(DrydockAction::Material("composite".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        let pulse = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("pulse_laser".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        app.update();
+        for e in [beam, composite, pulse] {
+            app.world_mut().write_message(UiClick(e));
+        }
+        app.update();
+        let sent: Vec<DrydockAction> = app.world_mut().resource_mut::<Messages<DrydockAction>>().drain().collect();
+        let research: Vec<&DrydockAction> = sent.iter().filter(|a| matches!(a, DrydockAction::Research(_))).collect();
+        assert_eq!(research, [&DrydockAction::Research("beam_laser".into()), &DrydockAction::Research("composite_plating".into())]);
+        let content = data::base_content();
+        assert_eq!(locked_research(&content, &DrydockAction::PickPart(String::new())), None);
+        assert_eq!(locked_research(&content, &DrydockAction::Material("reactive".into())), None, "no research unlocks it");
     }
 }
