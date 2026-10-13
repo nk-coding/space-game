@@ -222,7 +222,8 @@ On 12 Oct 2026 the hash was `86eb72a03591bff2`; sim changes since then (the turn
 the lead compares it with a native run of the same commit (`docs/client.md` "Load test and determinism in the
 browser").
 
-**D. Flight feel (question 7).** Open `http://10.77.9.2:8080/` (the sandbox) and fly the Halvex Runner for a few
+**D. Flight feel (question 7).** Open `http://10.77.9.2:8080/?scene=sandbox` (the sandbox; since 13 Oct 2026 `/`
+opens the home screen, where TEST RANGE leads to the same flight) and fly the Halvex Runner for a few
 waves: W/S thrust, A/D rotate, Q/E strafe, let go to brake, X for drift, click a raider to lock (Tab for the next
 one), hold Space or the right mouse button to fire. Then say for each of these whether it feels right, or what is
 wrong: keyboard flight; the lock (it turns your guns onto the target, A/D nudge the aim); braking when you let go;

@@ -25,7 +25,7 @@ use sim::{BehaviorId, RuleStatus, ShipDesign, ShipId};
 use crate::drydock::behaviors::{PlayerBehaviors, errors_note};
 use crate::mode::{AppMode, FlightExit};
 use crate::params::Params;
-use crate::scene::{ResetRequest, Scene};
+use crate::scene::{Launch, ResetRequest, Scene};
 use crate::sim_bridge::{SimSet, SimWorld};
 
 /// The id a program not saved yet flies under in a test (`:` never appears in content or storage ids).
@@ -169,7 +169,7 @@ fn start(
     if *mode.get() == AppMode::Flight {
         reset.0 = true;
     } else {
-        scene.launch = true;
+        scene.launch = Some(Launch::TestFlight);
         next.set(AppMode::Flight);
     }
 }

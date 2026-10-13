@@ -39,6 +39,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Zoom (3–160 px per metre) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started | T | – |
+| Home (the ring menu; the flight ends) | M | – |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
@@ -46,16 +47,19 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Hide HUD / pause / reset scene | H / P / Shift+R (left Shift) | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
-The drydock's keys are in [Drydock](#drydock), the BEHAVIOR screen's in [Behavior screen](#behavior-screen).
+Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHAVIOR screen's in
+[Behavior screen](#behavior-screen).
 
 ## URL parameters
 
 | Parameter | Meaning |
 |---|---|
-| `scene=drydock` | start in the drydock (default: the sandbox) |
+| `scene=home` | start at home, the ring menu (the default) |
+| `scene=sandbox` | start in the sandbox (home's TEST RANGE) |
+| `scene=drydock` | start in the drydock |
 | `scene=behavior` | start on the BEHAVIOR screen (the design's behavior) |
 | `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
-| `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat (default: the sandbox) |
+| `scene=showcase` | the player's design holding position, three raiders orbiting it, no combat |
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
@@ -73,9 +77,15 @@ The drydock's keys are in [Drydock](#drydock), the BEHAVIOR screen's in [Behavio
 Natively the same `key=value&…` string comes from the `GAME_PARAMS` environment variable (`params.rs`). A bare
 key means 1; `0`, `false`, `off` and `no` turn a flag off.
 
+Where the game starts (`mode::AppMode::at_start`, since 13 Oct 2026, GDR-0062): `scene` decides when it is given
+(an unknown one starts at home). Without it, a parameter that only means something in flight starts the sandbox, as
+before home existed: `load`, `hashlog`, `hashticks`, `fleet`, `seed`, `zoom`, `fire`, `raiders`, `mind`, `tuning`,
+`touch` (`params::FLIGHT_ONLY`); so `?load=20`, `?hashlog=1&load=20` and `?fleet=3&mind=4` fly as they did. Anything
+else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=sandbox`.
+
 ## Scenes (`scene.rs`)
 
-- **Sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of the
+- **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of the
   Halvex Runner, after that the autosaved working design). Waves of automaton raiders (their faction's behavior,
   `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
@@ -138,21 +148,24 @@ FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::s
 Update                ui_kit (hit testing, text fields) → flight: fleet bar input, controls (keys, mouse, touch →
                       PlayerInput), camera input, HUD text, fleet bar, tuning panel (egui) | drydock: DockSet::Input →
                       Apply → Show → ui_kit styles | behavior: BehaviorSet::Input → Apply → Show → ui_kit styles;
-                      the TEXT view's editor in egui's pass
+                      the TEXT view's editor in egui's pass | home: clicks and keys → apply → the ship and the
+                      camera → ui_kit styles
 PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark)  →  shield::draw_bubbles
                       camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers;
-                      the drydock's frame overlay, the behavior graph's dot grid)  →  fx::flush;  ui_icons (after the
+                      the drydock's frame overlay, the behavior graph's dot grid, home's dotted ring and dock)  →
+                      fx::flush;  ui_icons (after the
                       UI layout and the camera)
 ```
 
-- **App mode** (`mode.rs`): `AppMode::{Flight, Drydock, Behavior}`, a Bevy state; `?scene=drydock` starts in the
-  drydock, `?scene=behavior` on the BEHAVIOR screen (opened from the drydock, see below). Each mode's systems run
+- **App mode** (`mode.rs`): `AppMode::{Home, Flight, Drydock, Behavior}`, a Bevy state; the game starts at home
+  ([Home](#home); `?scene=` picks another start, see URL parameters). Each mode's systems run
   only in it (`run_if(in_state(..))`), so input never crosses over. The switch happens in the state's enter / exit schedules: `OnExit(Flight)` empties the
-  world (views, effects, bubbles, the lock go; the clock is unpaused), `OnEnter(Flight)` builds the test flight
-  when the drydock or the BEHAVIOR screen asked for one (`Scene::launch`), the drydock's enter / exit set and restore the camera and the UI scale. Flight
+  world (views, effects, bubbles, the lock go; the clock is unpaused), `OnEnter(Flight)` builds what another mode
+  asked for (`Scene::launch`: `Launch::TestFlight` from the drydock or the BEHAVIOR screen, `Launch::Range` from
+  home), the drydock's and home's enter / exit set and restore the camera and the UI scale. Flight
   UI roots carry `mode::FlightUi` and are hidden when flight ends. A `SimWorld` always exists (an empty one
-  in the drydock and before Startup), because many flight systems read it. T in flight goes to `mode::FlightExit`
-  (the drydock; a behavior test sets the screen it came from; reset whenever flight ends).
+  outside flight and before Startup), because many flight systems read it. T in flight goes to `mode::FlightExit`
+  (the drydock; a behavior test sets the screen it came from; reset whenever flight ends), M home.
 - **TEST IN RANGE** (`test_range.rs`): the `StartTest` message (handled in every mode: from another mode it launches
   a flight, in flight it rebuilds the scene), `check` / `resolve` of the tested program, and `BehaviorWatch`
   (FixedUpdate, after the events: the tested ship's behavior state after each think). `scene.rs` builds the test
@@ -213,6 +226,44 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   atlas-textured, vertex-coloured 2D meshes; index order = draw order), `style.rs` (`Style`, the typed view of
   `art/tokens.json`, and `ui_color`).
 
+## Home
+
+The start screen ([GDR-0062](gdr/0062-first-playable-loop.md)), `home.rs`, written 13 Oct 2026: the shipyard's ring
+menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), after
+`docs/concept/boards/ui-mockups/phone-home-ring-menu.png`, laid out for the desktop. The game opens here (`/`,
+`?scene=home`). Screenshots: `docs/results/home-*.png`.
+
+| Keys | |
+|---|---|
+| Drydock | D, or DRYDOCK |
+| BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock) | B, or BEHAVIOR |
+| Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or TEST RANGE |
+| Debug overlay | F3 |
+
+- **The screen**: top left `THE SHIPYARD · RIM` and the working design's name; in the middle the docked ship in a
+  dotted dock rectangle with gold corners; around it a dotted ellipse through six ring buttons (`ui_kit::ring_node`
+  with a `RingAccent`, glyphs from `ui_icons`), each labelled beside it (the key dim after the name): DRYDOCK
+  (white, top), BEHAVIOR (violet, top left), TEST RANGE (coral, bottom right), and RESEARCH (top right), VOYAGES
+  (the big one at the bottom, the mockup's LAUNCH VOYAGE) and FLEET (bottom left) as disabled rings with
+  `COMING SOON` until their tracks (7G, 7I, 7F) give them an action. The mockup's galaxy map, fabricator and storage
+  wait for their phases; RESEARCHING (top right) and HAUL UNLOADED (bottom left) come with research. The place
+  name is UI chrome in code until content has places.
+- **The ship** is `drydock::PlayerDesign` drawn exactly as the drydock draws it (`ship_model::design_visual` →
+  `blueprint_visual` → `ship_view::build_body`, one mesh, rebuilt when the revision or the glow toggle changes),
+  framed by the camera rig in the dock rectangle with a cell of margin (at most 48 px per cell on the 1280 × 720
+  layout, so a tiny design stays small). The dotted ring and the dock are immediate-mode FX dots in screen pixels,
+  skipping the buttons.
+- **Layout**: a 1280 × 720 stage centred in the window; larger windows scale it (`UiScale` = min(w / 1280,
+  h / 720), 1 to 2), so 1600 × 900 shows the same layout 1.25× larger.
+- **Actions**: the working buttons and their keys send `HomeAction::{Drydock, Behavior, TestRange}`; `apply` sets
+  the next mode (TEST RANGE sets `Scene::launch = Some(Launch::Range)`: `OnEnter(Flight)` builds the sandbox as at a
+  plain start, not a test flight). A disabled ring carries no action, so it sends nothing. Coming back: the ring
+  button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`) and M in any
+  flight.
+- **Modes**: the screen and the ship's mesh are spawned once and hidden outside home, like the drydock's. Entering
+  home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight find the
+  camera as they left it.
+
 ## Drydock
 
 The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
@@ -222,7 +273,8 @@ also editing (`data::edit`), the live stats, status line and overlays from `sim:
 (SAVE, the autosave), has the BLUEPRINTS and EXPORT screens, share codes and files (Storage and sharing below), and
 the BEHAVIOR button ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)). Parts are unlimited in v1 (no spare counts).
 
-Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydock-*.png`.
+Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button top left goes home. Screenshots:
+`docs/results/drydock-*.png`.
 
 | Keys (only while no text field has the keyboard) | |
 |---|---|
@@ -288,7 +340,7 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   PartWeight}`. Handled here: the UI state and TestFly (when the design can fly: `Scene::launch` +
   `NextState(Flight)`); the camera handles the zoom, `tools::apply` the editing (undo, redo, mirror, bevel, rotate,
   the selected part), `blueprints.rs` save, export and the blueprint list (below), `behavior_ui` the BEHAVIOR
-  button. The menu has no handler yet. New handlers read the message in a system in
+  button; Menu (the ring button) goes home. New handlers read the message in a system in
   `DockSet::Apply` (`Input → Apply → Show`, drydock only), change `PlayerDesign` through `PlayerDesign::edit` (the revision goes up by itself), and
   write `DrydockStats` / `DrydockStatus`; `DrydockCursor::cell` is the frame cell under the pointer.
 - **View** (`view.rs`): the design is drawn with the flight tiles: `ship_model::blueprint_visual` (every part;
@@ -311,12 +363,13 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   messages go out through `DrydockStatus` once `stats::update` has made the status for the current revision
   (`blueprints::announce`).
 - **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
-  gold, the glowing primary, disabled, bare list rows), ring buttons, value bars, corner brackets and a one-line
+  gold, the glowing primary, disabled, bare list rows), ring buttons (plain, or glowing in an accent colour:
+  `RingAccent`, home's ring), value bars, corner brackets and a one-line
   text field; hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, or a glyph Barlow lacks: undo, redo, play,
-  search, menu, diamond) is drawn as a world-space mesh of the main camera placed over the node's rectangle every
+  search, menu, diamond; home's grid, tree, orbit, arrow, target, formation) is drawn as a world-space mesh of the main camera placed over the node's rectangle every
   frame (screen → world through the rig, scale 1 / zoom, z 600). A part icon is a one-part blueprint through
   `build_body`: the flight tile itself, composited in sRGB like the ships, so its colours are exactly the
   flight tiles' (bevy_ui image nodes would sample the sRGB atlas without encoding for the sRGB compositing and
@@ -334,7 +387,7 @@ panel in flight. Both views edit through the editing model `data::behavior_edit`
 "Editing model"): every graph edit is legal (or refused with a reason) and one undo step, and the text view follows.
 The storage under it: `docs/drydock.md` "Behaviors: storage, designs and tests".
 
-Open it with the drydock's BEHAVIOR button (bottom bar), or `?scene=behavior` (`&behavior=raider_basic` opens a
+Open it with the drydock's BEHAVIOR button (bottom bar), BEHAVIOR at home, or `?scene=behavior` (`&behavior=raider_basic` opens a
 content or saved behavior instead of the design's). Screenshots: `docs/results/behavior-screen-*.png`,
 `behavior-saving-*.png` (a template saved as the design's own copy; the BEHAVIORS list), `behavior-live-watch.png`
 (TEST IN RANGE, watch, with the live panel).
@@ -441,8 +494,8 @@ action selected).
 - **Actions** (`actions.rs`): every button (`BehaviorButton(BehaviorAction)`) and key sends one message,
   `BehaviorAction::{Back, Menu, View, Select, Deselect, TestMode, TestInRange}`, the editing group `{AddRule,
   AddNode, SelectRule, Edit(edit::Edit), Replace, Delete, Undo, Redo}` and `{Save, Behaviors}`. Handled here: Back (`NextState(Drydock)`),
-  View, Select / Deselect, TestMode; `edit::apply` handles the editing group. `saving.rs` handles Save and TestInRange, `list.rs` Behaviors; Menu has no
-  handler yet. New handlers read the message in a system in `BehaviorSet::Apply`
+  View, Select / Deselect, TestMode, Menu (home); `edit::apply` handles the editing group. `saving.rs` handles Save and TestInRange, `list.rs` Behaviors.
+  New handlers read the message in a system in `BehaviorSet::Apply`
   (`Input → Apply → Show`, behavior screen only) and change the program through `BehaviorDraft::edit`; the graph
   and the text follow `revision`. Disabled pills and rings send nothing.
 - **Editing** (`edit.rs`, `controls.rs`, `reorder.rs`): `edit::Edit` is one editing-model operation

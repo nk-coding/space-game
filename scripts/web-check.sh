@@ -5,7 +5,8 @@
 #
 # Usage: scripts/web-check.sh [options]
 #   --release            optimised build (default: dev build, faster to compile)
-#   --params '?a=1&b=2'  URL query string for the game (e.g. '?load=5', '?scene=showcase&hud=0')
+#   --params '?a=1&b=2'  URL query string for the game (e.g. '?scene=sandbox', '?load=5', '?scene=showcase&hud=0';
+#                        none: the home screen, where the game starts)
 #   --wait MS            how long the page runs before the screenshot (default 20000; SwiftShader is slow)
 #   --size WxH           viewport (default 1280x720)
 #   --out FILE           screenshot path (default: target/web-check/shot.png)

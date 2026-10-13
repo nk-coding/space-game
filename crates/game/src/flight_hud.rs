@@ -23,7 +23,7 @@ use crate::scene::{PilotFocus, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
-use crate::ui_kit::{label, number, set_text};
+use crate::ui_kit::{label, number, set_text, tracked};
 use crate::{RenderToggles, ship_view::PieceView};
 
 pub(crate) static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
@@ -146,7 +146,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
             root.spawn(Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() })
                 .with_children(|c| {
                     c.spawn((HudText::Warnings, label(&fonts, "", 14.0, coral)));
-                    c.spawn((HudText::Help, label(&fonts, "", 10.0, dim)));
+                    c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2)));
                 });
         });
 }
@@ -239,7 +239,7 @@ fn update_text(
                         Some(TestMode::Watch) => "WATCH",
                         Some(TestMode::Alongside) => "FLY ALONGSIDE",
                         None if scene.test_flight => "TEST FLIGHT",
-                        None => "SANDBOX",
+                        None => "TEST RANGE",
                     };
                     s.push_str(name);
                     if scene.test_mode().is_some() && !watch.name.is_empty() {
@@ -282,15 +282,15 @@ fn update_text(
             }
             HudText::Help => match scene.kind {
                 SceneKind::Sandbox if scene.watched().is_some() => {
-                    s.push_str("NOBODY PILOTS · DRAG PAN · F FOLLOW / FREE · WHEEL ZOOM · C WAVES · F3 RULES · T BACK · H HIDE");
+                    s.push_str("NOBODY PILOTS · DRAG PAN · F FOLLOW / FREE · WHEEL ZOOM · C WAVES · F3 RULES · T BACK · M HOME · H HIDE");
                 }
                 SceneKind::Sandbox if input.touch_ui => {
                     s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM");
                 }
                 SceneKind::Sandbox => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · U TUNING · F3 DEBUG · H HIDE",
+                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · M HOME · U TUNING · F3 DEBUG · H HIDE",
                 ),
-                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK"),
+                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK  ·  M HOME"),
             },
         }
         set_text(&mut text, scratch);

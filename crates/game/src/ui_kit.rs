@@ -1,7 +1,7 @@
 //! A small widget kit for bevy_ui screens in the reference look (style guide "UI", GDR-0008): wide-tracked
 //! uppercase labels, numbers, pill buttons (plain, active teal, active gold, the glowing primary, disabled),
-//! round ring buttons, thin value bars, corner brackets and a one-line text field. Written for the drydock
-//! (12 Oct 2026); any screen can use it.
+//! round ring buttons (plain, or glowing in an accent colour: [`RingAccent`]), thin value bars, corner brackets and
+//! a one-line text field. Written for the drydock (12 Oct 2026); any screen can use it.
 //!
 //! * **Hit testing** is done here by hand from the laid-out node rectangles (bevy_picking is not compiled and
 //!   `Interaction` is deprecated in Bevy 0.20): every node with [`Hot`] gets its hover and press state each
@@ -276,6 +276,11 @@ pub struct Ring {
     pub disabled: bool,
 }
 
+/// A glowing ring button in an accent colour (the home screen's ring menu, GDR-0008): the outline in the accent
+/// with a soft glow, brighter on hover. Disabled, it is dim like any ring.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct RingAccent(pub Tone);
+
 /// Spawns a pill with a text (and an icon before it) and returns it; `extra` goes on the pill (an action, a
 /// marker).
 #[allow(clippy::too_many_arguments)]
@@ -447,7 +452,10 @@ fn style_widgets(
         (Ref<Pill>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, &Children, Entity),
         Without<Ring>,
     >,
-    mut rings: Query<(Ref<Ring>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, &Children), Without<Pill>>,
+    mut rings: Query<
+        (Ref<Ring>, Ref<Hot>, Option<&RingAccent>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, &Children, Entity),
+        Without<Pill>,
+    >,
     mut texts: Query<&mut TextColor, With<PillText>>,
     mut bars: Query<(Ref<ValueBar>, &mut BackgroundColor, &Children), (Without<Pill>, Without<Ring>, Without<BarFill>)>,
     mut fills: Query<(&mut Node, &mut BackgroundColor, Has<BarMark>), (Or<(With<BarFill>, With<BarMark>)>, Without<ValueBar>, Without<Pill>, Without<Ring>)>,
@@ -504,24 +512,35 @@ fn style_widgets(
             }
         }
     }
-    for (ring, hot, mut border, mut bg, children) in &mut rings {
+    for (ring, hot, accent, mut border, mut bg, shadow, children, e) in &mut rings {
         if !ring.is_changed() && !hot.is_changed() {
             continue;
         }
-        let (b, f, t) = if ring.disabled {
-            (c(ui.dim, 0.3), Color::NONE, c(ui.dim, 0.75))
-        } else if hot.pressed {
-            (c(ui.teal, 0.8), c(ui.teal, 0.12), c(ui.number, 1.0))
-        } else if hot.hovered {
-            (c(ui.label, 0.8), c(ui.number, 0.04), c(ui.number, 1.0))
-        } else {
-            (c(ui.label, 0.4), Color::NONE, c(ui.number, 0.85))
+        let accent = accent.map(|a| a.0.color(ui));
+        let ((b, f, t), glow_alpha) = match accent {
+            _ if ring.disabled => ((c(ui.dim, 0.3), Color::NONE, c(ui.dim, 0.75)), 0.0),
+            Some(a) if hot.pressed => ((c(a, 1.0), c(a, 0.14), c(ui.number, 1.0)), 0.3),
+            Some(a) if hot.hovered => ((c(a, 1.0), c(a, 0.05), c(ui.number, 1.0)), 0.2),
+            Some(a) => ((c(a, 0.75), Color::NONE, c(ui.number, 0.85)), 0.12),
+            None if hot.pressed => ((c(ui.teal, 0.8), c(ui.teal, 0.12), c(ui.number, 1.0)), 0.0),
+            None if hot.hovered => ((c(ui.label, 0.8), c(ui.number, 0.04), c(ui.number, 1.0)), 0.0),
+            None => ((c(ui.label, 0.4), Color::NONE, c(ui.number, 0.85)), 0.0),
         };
         if border.top != b {
             *border = BorderColor::all(b);
         }
         if bg.0 != f {
             bg.0 = f;
+        }
+        match (shadow, accent.filter(|_| glow_alpha > 0.0)) {
+            (Some(mut s), Some(a)) => *s = glow(a, glow_alpha),
+            (Some(_), None) => {
+                commands.entity(e).remove::<BoxShadow>();
+            }
+            (None, Some(a)) => {
+                commands.entity(e).insert(glow(a, glow_alpha));
+            }
+            (None, None) => {}
         }
         for child in children {
             if let Ok(mut tc) = texts.get_mut(*child) {
