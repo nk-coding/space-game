@@ -132,7 +132,7 @@ impl Plugin for BehaviorPlugin {
             .add_systems(Startup, (screen::spawn, list::spawn, live::spawn).after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, show)
             .add_systems(OnEnter(AppMode::Behavior), (saving::open, controls::measure_reach))
-            .add_systems(OnExit(AppMode::Behavior), (list::leave, saving::leave).chain())
+            .add_systems(OnExit(AppMode::Behavior), (list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(

@@ -336,6 +336,13 @@ pub(super) fn editor(
     Ok(())
 }
 
+/// Leaving the screen: the editor stops offering its selection and taking pastes (it doesn't run elsewhere to
+/// reset them, and the web clipboard would keep Ctrl+C / Ctrl+V from the next screen).
+pub(super) fn leave(mut clipboard: ResMut<Clipboard>) {
+    clipboard.offer = None;
+    clipboard.accept = false;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

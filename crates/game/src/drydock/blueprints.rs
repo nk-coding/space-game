@@ -327,13 +327,20 @@ fn write_working(saver: &mut Saver, lib: &mut Lib, shelf: &mut Shelf) {
     }
 }
 
-/// Leaving the drydock (a test flight): the working design is written now, the screens close.
-fn leave(mut saver: ResMut<Saver>, mut lib: Lib, mut shelf: ResMut<Shelf>) {
+/// Leaving the drydock (a test flight, the BEHAVIOR screen): the working design is written now, the screens close
+/// and their layer hides at once ([`sync_shelf`] runs only in the drydock; a layer left visible would block the
+/// pointer elsewhere), and the clipboard stops offering the code and taking pastes.
+fn leave(mut saver: ResMut<Saver>, mut lib: Lib, mut shelf: ResMut<Shelf>, mut clip: ResMut<Clipboard>, mut root: Single<&mut Visibility, With<ShelfRoot>>) {
     if saver.timer.pending() {
         write_working(&mut saver, &mut lib, &mut shelf);
     }
     shelf.page = None;
     shelf.mode = Mode::Browse;
+    shelf.code_selected = false;
+    shelf.paste_armed = false;
+    clip.offer = None;
+    clip.accept = false;
+    **root = Visibility::Hidden;
 }
 
 /// Closing the game (desktop): a waiting autosave is written.
@@ -1254,5 +1261,52 @@ fn sync_shelf(
         };
         set_text(&mut text, &s);
         set_color(&mut color, c(tone, if matches!(t, ShelfText::Code) { 0.9 } else { 1.0 }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
+    use super::*;
+    use crate::storage::MemoryBackend;
+
+    /// A world with what the screens' systems need (no window, no fonts).
+    fn world() -> World {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(GameContent(content));
+        world.insert_resource(Storage::new(MemoryBackend::default()));
+        world.insert_resource(DockCamera::new(1.0));
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<Saver>();
+        world.init_resource::<Shelf>();
+        world.init_resource::<Clipboard>();
+        world
+    }
+
+    /// Leaving the drydock with BLUEPRINTS open (BEHAVIOR or TEST-FLY in the bottom bar, T) hides the layer and lets
+    /// go of the clipboard: the layer would block the pointer on the next screen, the clipboard would swallow
+    /// Ctrl+C / Ctrl+V in flight.
+    #[test]
+    fn leaving_the_drydock_hides_the_screens_and_lets_go_of_the_clipboard() {
+        let mut world = world();
+        {
+            let mut shelf = world.resource_mut::<Shelf>();
+            shelf.page = Some(Page::Blueprints);
+            shelf.paste_armed = true;
+            shelf.code_selected = true;
+        }
+        world.resource_mut::<Clipboard>().accept = true;
+        world.resource_mut::<Clipboard>().offer = Some("SGD2:x".into());
+        let root = world.spawn((ShelfRoot, Visibility::Inherited)).id();
+        world.run_system_once(leave).unwrap();
+        assert_eq!(world.get::<Visibility>(root), Some(&Visibility::Hidden));
+        let shelf = world.resource::<Shelf>();
+        assert!(shelf.page.is_none() && !shelf.paste_armed && !shelf.code_selected);
+        let clip = world.resource::<Clipboard>();
+        assert!(clip.offer.is_none() && !clip.accept);
     }
 }

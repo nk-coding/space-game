@@ -377,9 +377,17 @@ pub(super) fn apply(
     }
 }
 
-/// Leaving the screen closes the list.
-pub(super) fn leave(mut list: ResMut<BehaviorList>, mut ui: ResMut<BehaviorUi>, mut lib: Lib, content: Res<GameContent>) {
+/// Leaving the screen closes the list and hides its layer at once ([`sync`] runs only on the screen; a layer left
+/// visible would block the pointer in the drydock and in flight).
+pub(super) fn leave(
+    mut list: ResMut<BehaviorList>,
+    mut ui: ResMut<BehaviorUi>,
+    mut lib: Lib,
+    content: Res<GameContent>,
+    mut root: Single<&mut Visibility, With<ListRoot>>,
+) {
     set_open(&mut list, false, &mut ui, &mut lib, &content.0);
+    **root = Visibility::Hidden;
 }
 
 fn rename_behavior(list: &mut BehaviorList, lib: &mut Lib, content: &Content, id: &str, name: &str) {
@@ -690,7 +698,33 @@ fn plural(n: usize, word: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
     use super::*;
+    use crate::drydock::library::DesignSlot;
+    use crate::storage::{MemoryBackend, Storage};
+
+    /// Leaving the screen with the list open (the DRYDOCK pill under it, T) hides its layer: it would cover the
+    /// drydock and the flight and take their clicks.
+    #[test]
+    fn leaving_the_screen_hides_the_list_layer() {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(GameContent(content));
+        world.insert_resource(Storage::new(MemoryBackend::default()));
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<BehaviorDraft>();
+        world.init_resource::<super::super::saving::DraftSlot>();
+        world.init_resource::<super::super::saving::ScreenNote>();
+        world.init_resource::<BehaviorUi>();
+        world.insert_resource(BehaviorList { open: true, ..default() });
+        let root = world.spawn((ListRoot, Visibility::Inherited)).id();
+        world.run_system_once(leave).unwrap();
+        assert_eq!(world.get::<Visibility>(root), Some(&Visibility::Hidden));
+        assert!(!world.resource::<BehaviorList>().is_open());
+    }
 
     #[test]
     fn row_tags_say_what_the_design_flies_and_what_is_open() {
