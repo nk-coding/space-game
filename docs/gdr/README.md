@@ -15,7 +15,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0004](0004-grid-ship-building-no-wiring.md) | Ships are built on a grid of parts with no wiring: power pool per piece, heat and radiators, adjacency bonuses | Accepted; engine rule superseded by [GDR-0039](0039-engine-exhaust-hurts-parts.md) | concept phase |
 | [0005](0005-fully-physical-ships.md) | Ships are fully physical and break apart | Accepted | concept phase |
 | [0006](0006-ship-scale-no-fixed-cap.md) | Ships are ~60×60 blocks and up, with no fixed block cap | Accepted | 2026-10-10 |
-| [0007](0007-ship-style-2a.md) | Ships use style 2a: flat tiles with seams, glowing icons, a soft teal hull glow | Accepted | 2026-10-10 |
+| [0007](0007-ship-style-2a.md) | Ships use style 2a: flat tiles with seams, glowing icons, a soft teal hull glow | Accepted; machine-tile rule superseded by [GDR-0069](0069-machines-drawn-as-components.md) | 2026-10-10 |
 | [0008](0008-ui-ship-mind-interface.md) | The UI is a diegetic ship-mind interface with a floating HUD, landscape only | Accepted | 2026-10-10 |
 | [0009](0009-stick-and-lock-controls.md) | Controls: stick + lock with an always-on flight computer; letting go brakes | Accepted; PC/WASD part superseded by [GDR-0040](0040-keyboard-flight-and-smart-lock-aim.md) | 2026-10-10 |
 | [0010](0010-turning-sources.md) | Ships turn with core assist, gyros, RCS pods and their engines (gimbal and differential thrust) | Accepted | 2026-10-11 |
@@ -77,6 +77,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0066](0066-phase-7-wave-1-defaults.md) | Phase 7 wave 1 defaults: salvage values and fragments, cargo and collecting, the career model, the home screen | Accepted (provisional, lead) | 2026-10-13 |
 | [0067](0067-rams-pass-friendly-bubbles.md) | Rams pass friendly shield bubbles, like shots and plumes | Accepted | 2026-10-13 |
 | [0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md) | A voyage site clears when its enemies are destroyed or disarmed; only armed enemies block recall | Accepted | 2026-10-13 |
+| [0069](0069-machines-drawn-as-components.md) | Machines are drawn as their own components; engine nozzles reach past the hull | Accepted | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

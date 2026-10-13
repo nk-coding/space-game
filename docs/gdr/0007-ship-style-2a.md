@@ -1,6 +1,6 @@
 # GDR-0007: Ships use style 2a: flat tiles with seams, glowing icons, a soft teal hull glow
 
-- Status: Accepted
+- Status: Accepted; the machine-tile rule is superseded by [GDR-0069](0069-machines-drawn-as-components.md) (machines drawn as components)
 - Date: 2026-10-10
 - Decided by: Niklas
 - Related: [GDR-0008](0008-ui-ship-mind-interface.md), [ADR-0020](../adr/0020-style-2a-renderer.md), [ADR-0021](../adr/0021-no-fixed-raster-graphics.md), `docs/style-guide.md`, `docs/concept/boards/ship-style/chosen-2a.png`, `art/tokens.json`
