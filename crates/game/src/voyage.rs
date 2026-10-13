@@ -38,6 +38,9 @@ use crate::ui_kit::Tone;
 /// The warp-out after RECALL, and the time from losing the last vessel to home: 3 s (GDR-0062), in sim ticks.
 pub const HOME_TICKS: u64 = 3 * sim::TICK_HZ as u64;
 
+/// How long (s) the second M has to come to abandon a voyage.
+pub const ABANDON_SECONDS: f64 = 3.0;
+
 /// Launch a voyage (home's V key until the voyage map exists): `None` is the first open voyage whose goal is not
 /// cleared yet, else the first open one. From home only; refusals become a note on home.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
@@ -65,8 +68,9 @@ pub enum Phase {
     Flying,
     /// RECALL was granted: home at this tick, with the haul.
     Warping { home_at: u64 },
-    /// Every vessel is lost: home at this tick, without the haul (`left` items stayed in the wrecks).
-    Lost { home_at: u64, left: u32 },
+    /// Every vessel is lost (or the voyage was abandoned: M twice): home at this tick, without the haul (`left`
+    /// items stay behind).
+    Lost { home_at: u64, left: u32, abandoned: bool },
     /// Ended (the career knows; home is next).
     Ended,
 }
@@ -78,6 +82,10 @@ pub struct VoyageRun {
     pub phase: Phase,
     /// R or the RECALL pill asked for the recall; the next tick takes it.
     pub recall: bool,
+    /// M asked to abandon the voyage at this sim time (s); a second M within [`ABANDON_SECONDS`] does it.
+    pub abandon_asked: Option<f64>,
+    /// M twice: the next tick abandons the voyage (it is lost).
+    pub abandon: bool,
     /// The sim allows the recall now (refreshed every tick).
     pub can_recall: bool,
     /// Enemy vessels lost (destroyed or burned out), and the player's.
@@ -97,7 +105,7 @@ impl Plugin for VoyagePlugin {
             .add_systems(Update, start.run_if(not(in_state(AppMode::Flight))))
             .add_systems(
                 Update,
-                recall_key.run_if(in_state(AppMode::Flight)).run_if(not(egui_wants_any_keyboard_input)),
+                voyage_keys.run_if(in_state(AppMode::Flight)).run_if(not(egui_wants_any_keyboard_input)),
             )
             .add_systems(FixedUpdate, voyage_tick.after(SimSet::Events).run_if(in_state(AppMode::Flight)))
             .add_systems(OnExit(AppMode::Flight), cut_short);
@@ -242,11 +250,25 @@ fn start(mut requests: MessageReader<StartVoyage>, mut inputs: LaunchInputs, mut
     }
 }
 
-/// R asks for the recall (the RECALL pill does the same, `flight_hud.rs`).
-fn recall_key(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>) {
+/// R asks for the recall (the RECALL pill does the same, `flight_hud.rs`). M asks whether to abandon the voyage;
+/// M again within 3 s abandons it (it counts as lost, like closing the game: the way out of a stalemate).
+fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>, mut scene: ResMut<Scene>, world: Res<SimWorld>) {
+    if run.launched.is_none() || scene.voyage().is_none() || !matches!(run.phase, Phase::Flying | Phase::Warping { .. }) {
+        return;
+    }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    if run.launched.is_some() && keys.just_pressed(KeyCode::KeyR) && !shift {
+    if keys.just_pressed(KeyCode::KeyR) && !shift {
         run.recall = true;
+    }
+    if keys.just_pressed(KeyCode::KeyM) {
+        let now = world.sim.time_seconds();
+        match run.abandon_asked {
+            Some(at) if now - at <= ABANDON_SECONDS => run.abandon = true,
+            _ => {
+                run.abandon_asked = Some(now);
+                scene.say("ABANDON THE VOYAGE?".into(), "M AGAIN  ·  THE HAUL IS LOST".into(), Tone::Coral, now + ABANDON_SECONDS);
+            }
+        }
     }
 }
 
@@ -264,6 +286,11 @@ pub fn fleet_haul(sim: &sim::Sim, owner: Owner) -> Haul {
         .filter_map(|v| sim.ship(v.ship))
         .flat_map(|s| s.cargo().items().map(|(item, stack)| (haul_item(item), stack.count)))
         .collect()
+}
+
+/// Items in every hold of `owner`'s: what abandoning a voyage leaves behind.
+pub fn all_cargo(sim: &sim::Sim, owner: Owner) -> u32 {
+    sim.ships().iter().filter(|s| s.owner() == owner).flat_map(|s| s.cargo().items()).map(|(_, st)| st.count).sum()
 }
 
 /// Items left in `owner`'s wrecks (ships of theirs that are no vessel any more): what a lost voyage leaves.
@@ -362,11 +389,16 @@ fn voyage_tick(
     let alive = sim.vessels(PLAYER).next().is_some();
     run.can_recall = alive && sim.can_recall(PLAYER);
     let asked = std::mem::take(&mut run.recall);
+    let abandon = std::mem::take(&mut run.abandon);
     match run.phase {
         Phase::Flying | Phase::Warping { .. } if !alive => {
             // Losing every vessel wins over a warp-out underway.
             let left = left_behind(sim, PLAYER);
-            run.phase = Phase::Lost { home_at: tick + HOME_TICKS, left };
+            run.phase = Phase::Lost { home_at: tick + HOME_TICKS, left, abandoned: false };
+            scene.banner = None;
+        }
+        Phase::Flying | Phase::Warping { .. } if abandon => {
+            run.phase = Phase::Lost { home_at: tick + HOME_TICKS, left: all_cargo(sim, PLAYER), abandoned: true };
             scene.banner = None;
         }
         Phase::Flying if asked => {
@@ -462,8 +494,8 @@ fn unrecorded_haul(content: &Content, voyage: &str, how: VoyageEnd) -> LastHaul 
     LastHaul { voyage: voyage.to_string(), outcome, ticks, report }
 }
 
-/// Flight ends while a recorded voyage still runs (it shouldn't: M and T do nothing in a voyage): it is lost, as
-/// closing the game would make it. The run is forgotten either way.
+/// Flight ends while a recorded voyage still runs (it shouldn't: T does nothing in a voyage, M twice goes through
+/// the lost banner): it is lost, as closing the game would make it. The run is forgotten either way.
 fn cut_short(
     mut run: ResMut<VoyageRun>,
     mut career: ResMut<PlayerCareer>,
@@ -636,7 +668,7 @@ mod tests {
         assert!(!recall_words(Phase::Flying, false, 0).2);
         assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, 1), ("WARPING".into(), "HOME IN 3 S".into(), false));
         assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, 61).1, "HOME IN 1 S");
-        assert!(!recall_words(Phase::Lost { home_at: 90, left: 2 }, true, 0).2);
+        assert!(!recall_words(Phase::Lost { home_at: 90, left: 2, abandoned: false }, true, 0).2);
     }
 
     /// A voyage rolled and started as the scene does: banners for its site events, the site count.

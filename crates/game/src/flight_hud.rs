@@ -16,8 +16,8 @@
 //!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
 //!   what it does; markers at the screen edge for the sites off screen (name and distance: raiders coral, wrecks
 //!   gold, the goal brighter, cleared ones dim); banners for sites waking and cleared and for the goal; the
-//!   warp-out's countdown; `SHIP LOST · RECALLED HOME` with its countdown (`voyage-hud-lost.png`). No home ring
-//!   (M does nothing in a voyage).
+//!   warp-out's countdown; `SHIP LOST · RECALLED HOME` with its countdown (`voyage-hud-lost.png`; `VOYAGE
+//!   ABANDONED` after M twice). No home ring (M asks to abandon the voyage instead).
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
@@ -598,12 +598,13 @@ fn update_text(
                 let tone = if enabled || warping { Tone::Teal } else { Tone::Dim };
                 set_color(&mut color, ui_color(tone.color(&ui), 1.0));
             }
-            HudText::LostTitle => s.push_str("SHIP LOST"),
+            HudText::LostTitle => s.push_str(if matches!(run.phase, Phase::Lost { abandoned: true, .. }) { "VOYAGE ABANDONED" } else { "SHIP LOST" }),
             HudText::LostSub => s.push_str("RECALLED HOME"),
             HudText::LostNote => {
-                if let Phase::Lost { left, .. } = run.phase {
+                if let Phase::Lost { left, abandoned, .. } = run.phase {
                     if left > 0 {
-                        let _ = write!(s, "THE HAUL STAYS IN THE WRECK  ·  {left} {} LOST  ·  ", if left == 1 { "PART" } else { "PARTS" });
+                        let place = if abandoned { "BEHIND" } else { "IN THE WRECK" };
+                        let _ = write!(s, "THE HAUL STAYS {place}  ·  {left} {} LOST  ·  ", if left == 1 { "PART" } else { "PARTS" });
                     }
                     s.push_str("YOUR SHIPS RE-FORM AT HOME");
                 }
@@ -635,7 +636,7 @@ fn update_text(
                 ),
                 SceneKind::Voyage(_) if input.touch_ui => s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL"),
                 SceneKind::Voyage(_) => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK · SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · R RECALL · U TUNING · F3 DEBUG · H HIDE",
+                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK · SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · R RECALL · M M ABANDON · U TUNING · F3 DEBUG · H HIDE",
                 ),
                 _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK  ·  M HOME"),
             },
@@ -1051,12 +1052,19 @@ fn site_markers(
 /// the `viewport` that meets none of `avoid`; the first one if none is free.
 fn label_spot(spot: Vec2, ray: Vec2, size: Vec2, viewport: Vec2, avoid: &[Rect]) -> Rect {
     let gap = 18.0;
+    let down = Vec2::new(0.0, gap + size.y / 2.0);
+    let step = Vec2::new(0.0, size.y + 6.0);
     let candidates = [
         spot - ray * (gap + 8.0 + (size.x * ray.x.abs() + size.y * ray.y.abs()) / 2.0),
-        spot + Vec2::new(0.0, gap + size.y / 2.0),
-        spot - Vec2::new(0.0, gap + size.y / 2.0),
+        spot + down,
+        spot - down,
         spot + Vec2::new(gap + size.x / 2.0, 0.0),
         spot - Vec2::new(gap + size.x / 2.0, 0.0),
+        // Stacked under (or over) the others.
+        spot + down + step,
+        spot - down - step,
+        spot + down + step * 2.0,
+        spot - down - step * 2.0,
     ];
     let max = (viewport - size - Vec2::splat(6.0)).max(Vec2::splat(6.0));
     let place = |c: Vec2| {
