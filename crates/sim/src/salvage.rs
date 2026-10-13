@@ -23,8 +23,9 @@
 //!   a share of their parts already gone (rolled on `Stream::Encounter`).
 //!
 //! Everything here is in the state hash. Cost: one bounding-circle test per salvage piece and loose item per
-//! collecting vessel with free hold every `interval` ticks, and an exact hull distance (convex colliders) only for
-//! those that pass; fragments are moved with one add per tick. No allocation per tick once the buffers are warm.
+//! collecting vessel with free hold every `interval` ticks; for those that pass, the convex colliders are compared
+//! pair by pair, skipping pairs whose bounding boxes are farther apart than the reach (or the best distance so
+//! far); fragments are moved with one add per tick. No allocation per tick once the buffers are warm.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -247,6 +248,8 @@ pub(crate) struct SalvageState {
     next_loose: u32,
     /// Salvage pieces within reach of one collector: `(hull distance, ship index, piece index)`.
     near: Vec<(f32, usize, usize)>,
+    /// The bounding box of each of one collector's colliders (its frame).
+    boxes: Vec<Aabb>,
 }
 
 impl StateHash for SalvageState {
@@ -375,43 +378,180 @@ fn polygon_distance(p: &[Vec2], q: &[Vec2]) -> f32 {
     sqrt(d2)
 }
 
-/// Distance between the hulls (colliders) of two pieces; `ra` is `a`'s rotation.
-fn hull_distance(a: &Piece, ra: Rot, b: &Piece) -> f32 {
-    let rb = Rot::from_angle(b.body.angle);
-    let mut best = f32::INFINITY;
-    let mut q = [Vec2::ZERO; 4];
-    for cb in &b.colliders {
-        let pts = cb.points();
-        for (i, &v) in pts.iter().enumerate() {
-            q[i] = ra.apply_inverse(b.body.pos + rb.apply(v) - a.body.pos);
-        }
-        for ca in &a.colliders {
-            best = best.min(polygon_distance(ca.points(), &q[..pts.len()]));
-            if best == 0.0 {
-                return 0.0;
-            }
-        }
-    }
-    best
+/// An axis-aligned box.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Aabb {
+    min: Vec2,
+    max: Vec2,
 }
 
-/// Distance from a world point to a piece's hull (0 inside); `rot` is the piece's rotation.
-fn point_distance(piece: &Piece, rot: Rot, point: Vec2) -> f32 {
-    let local = rot.apply_inverse(point - piece.body.pos);
-    let mut d2 = f32::INFINITY;
-    for c in &piece.colliders {
-        if contains(c.points(), local) {
-            return 0.0;
+impl Aabb {
+    fn of(points: &[Vec2]) -> Aabb {
+        let mut b = Aabb {
+            min: points[0],
+            max: points[0],
+        };
+        for &v in &points[1..] {
+            b.min = Vec2::new(b.min.x.min(v.x), b.min.y.min(v.y));
+            b.max = Vec2::new(b.max.x.max(v.x), b.max.y.max(v.y));
         }
-        d2 = d2.min(outline_d2(c.points(), local));
+        b
     }
-    sqrt(d2)
+
+    fn union(self, o: Aabb) -> Aabb {
+        Aabb::of(&[self.min, self.max, o.min, o.max])
+    }
+
+    /// Squared gap between two boxes (0 when they touch or overlap): a lower bound of the squared distance
+    /// between anything inside them.
+    fn gap2(&self, o: &Aabb) -> f32 {
+        let dx = (o.min.x - self.max.x).max(self.min.x - o.max.x).max(0.0);
+        let dy = (o.min.y - self.max.y).max(self.min.y - o.max.y).max(0.0);
+        dx * dx + dy * dy
+    }
+}
+
+/// A collector's hull for one pass: its piece, rotation, and the box of each collider and of all (its frame).
+struct Hull<'a> {
+    piece: &'a Piece,
+    rot: Rot,
+    boxes: &'a [Aabb],
+    all: Aabb,
+}
+
+impl Hull<'_> {
+    /// World point → the collector's frame.
+    fn local(&self, world: Vec2) -> Vec2 {
+        self.rot.apply_inverse(world - self.piece.body.pos)
+    }
+
+    /// Distance from piece `b`'s hull to this one, if it is at most `reach` (0 when they overlap). Collider pairs
+    /// whose boxes are farther apart than the best distance so far (at first `reach`) are skipped.
+    fn piece_distance(&self, b: &Piece, reach: f32) -> Option<f32> {
+        let rb = Rot::from_angle(b.body.angle);
+        let mut found = None;
+        let mut lim = reach;
+        let mut q = [Vec2::ZERO; 4];
+        for cb in &b.colliders {
+            let pts = cb.points();
+            for (i, &v) in pts.iter().enumerate() {
+                q[i] = self.local(b.body.pos + rb.apply(v));
+            }
+            let q = &q[..pts.len()];
+            let qb = Aabb::of(q);
+            if self.all.gap2(&qb) > lim * lim {
+                continue;
+            }
+            for (ca, ab) in self.piece.colliders.iter().zip(self.boxes) {
+                if ab.gap2(&qb) > lim * lim {
+                    continue;
+                }
+                let d = polygon_distance(ca.points(), q);
+                if d <= lim {
+                    lim = d;
+                    found = Some(d);
+                    if d == 0.0 {
+                        return found;
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// Distance from a world point to this hull, if it is at most `reach` (0 inside).
+    fn point_distance(&self, point: Vec2, reach: f32) -> Option<f32> {
+        let local = self.local(point);
+        let pb = Aabb::of(&[local]);
+        if self.all.gap2(&pb) > reach * reach {
+            return None;
+        }
+        let mut d2 = f32::INFINITY;
+        for (c, b) in self.piece.colliders.iter().zip(self.boxes) {
+            if b.gap2(&pb) > reach * reach {
+                continue;
+            }
+            if contains(c.points(), local) {
+                return Some(0.0);
+            }
+            d2 = d2.min(outline_d2(c.points(), local));
+        }
+        let d = sqrt(d2);
+        (d <= reach).then_some(d)
+    }
 }
 
 /// Bounding circles about the frame origins within `reach` of each other?
 fn near(a: &Piece, b_pos: Vec2, b_radius: f32, reach: f32) -> bool {
     let lim = a.radius + b_radius + reach;
     (b_pos - a.body.pos).length_squared() <= lim * lim
+}
+
+/// What collector `k` (a vessel with `free` units) takes this pass, if anything.
+fn pick(ships: &[Ship], st: &mut SalvageState, k: usize, free: u32, reach: f32) -> Option<Pick> {
+    let c = &ships[k];
+    let cp = c.piece(c.control?)?;
+    if cp.colliders.is_empty() {
+        return None;
+    }
+    st.boxes.clear();
+    st.boxes
+        .extend(cp.colliders.iter().map(|c| Aabb::of(c.points())));
+    let all = st.boxes[1..].iter().fold(st.boxes[0], |a, &b| a.union(b));
+    let hull = Hull {
+        piece: cp,
+        rot: Rot::from_angle(cp.body.angle),
+        boxes: &st.boxes,
+        all,
+    };
+
+    // Loose items first: the nearest that fits (ties: the lower id).
+    let mut best: Option<(f32, usize)> = None;
+    for (i, l) in st.loose.iter().enumerate() {
+        if l.units > free || !near(cp, l.pos, 0.0, reach) {
+            continue;
+        }
+        if let Some(d) = hull.point_distance(l.pos, reach)
+            && best.is_none_or(|(b, _)| d < b)
+        {
+            best = Some((d, i));
+        }
+    }
+    if let Some((_, i)) = best {
+        return Some(Pick::Loose(i));
+    }
+
+    // Salvage pieces within reach, nearest first (ties: ship, then piece order).
+    st.near.clear();
+    for (j, s) in ships.iter().enumerate() {
+        for (q, p) in s.pieces.iter().enumerate() {
+            if p.controlled || !near(cp, p.body.pos, p.radius, reach) {
+                continue;
+            }
+            if let Some(d) = hull.piece_distance(p, reach) {
+                st.near.push((d, j, q));
+            }
+        }
+    }
+    st.near
+        .sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then((a.1, a.2).cmp(&(b.1, b.2))));
+    for &(_, j, q) in &st.near {
+        let s = &ships[j];
+        // A wreck's own cargo goes before its parts.
+        if !s.is_vessel()
+            && let Some(item) = s.cargo.best(free)
+        {
+            return Some(Pick::Cargo {
+                j,
+                q,
+                item: item.clone(),
+            });
+        }
+        if let Some(part) = s.best_part(q, free) {
+            return Some(Pick::Part { j, q, part });
+        }
+    }
+    None
 }
 
 impl Sim {
@@ -530,72 +670,13 @@ impl Sim {
             if free == 0 {
                 continue;
             }
-            if let Some(pick) = self.pick(k, free, t.reach) {
+            if let Some(pick) = pick(&self.ships, &mut self.salvage, k, free, t.reach) {
                 stripped |= self.take(k, pick);
             }
         }
         if stripped {
             self.resolve_breakage();
         }
-    }
-
-    /// What collector `k` (a vessel with `free` units) takes this pass, if anything.
-    fn pick(&mut self, k: usize, free: u32, reach: f32) -> Option<Pick> {
-        let c = &self.ships[k];
-        let cp = c.piece(c.control?)?;
-        let rc = Rot::from_angle(cp.body.angle);
-
-        // Loose items first: the nearest that fits (ties: the lower id).
-        let mut best: Option<(f32, usize)> = None;
-        for (i, l) in self.salvage.loose.iter().enumerate() {
-            if l.units > free || !near(cp, l.pos, 0.0, reach) {
-                continue;
-            }
-            let d = point_distance(cp, rc, l.pos);
-            if d <= reach && best.is_none_or(|(b, _)| d < b) {
-                best = Some((d, i));
-            }
-        }
-        if let Some((_, i)) = best {
-            return Some(Pick::Loose(i));
-        }
-
-        // Salvage pieces within reach, nearest first (ties: ship, then piece order).
-        let mut near_pieces = std::mem::take(&mut self.salvage.near);
-        near_pieces.clear();
-        for (j, s) in self.ships.iter().enumerate() {
-            for (q, p) in s.pieces.iter().enumerate() {
-                if p.controlled || !near(cp, p.body.pos, p.radius, reach) {
-                    continue;
-                }
-                let d = hull_distance(cp, rc, p);
-                if d <= reach {
-                    near_pieces.push((d, j, q));
-                }
-            }
-        }
-        near_pieces.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then((a.1, a.2).cmp(&(b.1, b.2))));
-        let mut pick = None;
-        for &(_, j, q) in &near_pieces {
-            let s = &self.ships[j];
-            // A wreck's own cargo goes before its parts.
-            if !s.is_vessel()
-                && let Some(item) = s.cargo.best(free)
-            {
-                pick = Some(Pick::Cargo {
-                    j,
-                    q,
-                    item: item.clone(),
-                });
-                break;
-            }
-            if let Some(part) = s.best_part(q, free) {
-                pick = Some(Pick::Part { j, q, part });
-                break;
-            }
-        }
-        self.salvage.near = near_pieces;
-        pick
     }
 
     /// Collector `k` takes `pick`: into its hold, `SimEvent::Collected`. Returns whether a part left a piece.
