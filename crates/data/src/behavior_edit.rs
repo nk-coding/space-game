@@ -35,8 +35,8 @@ use std::fmt;
 
 use crate::behavior::{
     Arg, Call, CmpOp, Col, Compare, Cond, MAX_CONDITIONS, MAX_LINE_CHARS, MAX_REACH_PERCENT,
-    MAX_RULES, Program, Rule, TargetLine, TextError, Unit, Value, check_param_value,
-    check_program, param_amount, parse_value, quantity_amount,
+    MAX_RULES, Program, Rule, TargetLine, TextError, Unit, Value, check_param_value, check_program,
+    param_amount, parse_value, quantity_amount,
 };
 use crate::edit::UNDO_STEPS;
 use crate::model::{BehaviorNode, NodeParam, NodeRole, ParamType, Quantity};
@@ -45,11 +45,13 @@ use crate::table::Table;
 /// The target selector of a program without a `target` line (`docs/behavior-format.md`).
 pub const DEFAULT_TARGET: &str = "nearest";
 
-/// Names one rule for as long as it exists (also across undo and redo).
+/// Names one rule for as long as it exists (also across undo and redo). Ids belong to the editor that handed
+/// them out (and its clones).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleId(u32);
 
-/// Names one condition of a rule for as long as it exists (also across undo and redo).
+/// Names one condition of a rule for as long as it exists (also across undo and redo). Ids belong to the editor
+/// that handed them out (and its clones).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CondId(u32);
 
@@ -67,9 +69,9 @@ pub enum NodeRef {
 /// Why an edit is not possible. The edit changed nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    /// The rule was deleted (or the id is from another editor).
+    /// No rule with this id (it was deleted).
     NoSuchRule(RuleId),
-    /// The condition was removed (or the id is from another editor).
+    /// No condition with this id (it was removed, or its rule deleted).
     NoSuchCondition(CondId),
     /// The vocabulary has no node with this id.
     UnknownNode(String),
@@ -388,7 +390,13 @@ impl BehaviorEditor {
         let place = self.place(at).ok()?;
         let (name, args, written, not, compare) = match place {
             Place::Target => match &self.program.target {
-                Some(t) => (t.call.name.as_str(), t.call.args.as_slice(), true, false, None),
+                Some(t) => (
+                    t.call.name.as_str(),
+                    t.call.args.as_slice(),
+                    true,
+                    false,
+                    None,
+                ),
                 None => (DEFAULT_TARGET, &[][..], false, false, None),
             },
             Place::Action(i) => {
@@ -397,7 +405,13 @@ impl BehaviorEditor {
             }
             Place::Cond(i, j) => {
                 let c = &self.program.rules[i].when[j];
-                (c.call.name.as_str(), c.call.args.as_slice(), true, c.not, c.cmp.as_ref())
+                (
+                    c.call.name.as_str(),
+                    c.call.args.as_slice(),
+                    true,
+                    c.not,
+                    c.cmp.as_ref(),
+                )
             }
         };
         let node = self.nodes.get(name)?;
@@ -928,9 +942,7 @@ impl BehaviorEditor {
     fn commit_call(&mut self, place: Place, call: Call) -> Result<bool, Refusal> {
         match place {
             // The default selector stays implicit until it changes.
-            Place::Target if self.program.target.is_none() && call == self.call(place) => {
-                Ok(false)
-            }
+            Place::Target if self.program.target.is_none() && call == self.call(place) => Ok(false),
             Place::Target => {
                 let note = self.program.target.as_ref().and_then(|t| t.note.clone());
                 self.commit_target(Some(TargetLine { call, note }))
@@ -1047,10 +1059,7 @@ fn check_text(nodes: &Table<BehaviorNode>, text: &str) -> Result<Program, Vec<Te
     if errors.is_empty() {
         Ok(program)
     } else {
-        Err(errors
-            .into_iter()
-            .map(|e| lines.to_text_error(e))
-            .collect())
+        Err(errors.into_iter().map(|e| lines.to_text_error(e)).collect())
     }
 }
 
@@ -1150,9 +1159,7 @@ fn finite(v: &Value) -> Result<(), Refusal> {
 /// A parameter value: finite, and of the parameter's type, unit and range.
 fn check_value(v: &Value, p: &NodeParam) -> Result<(), Refusal> {
     finite(v)?;
-    check_param_value(v, p)
-        .map(drop)
-        .map_err(Refusal::BadValue)
+    check_param_value(v, p).map(drop).map_err(Refusal::BadValue)
 }
 
 /// A comparison threshold, as [`check_program`] wants it: finite, of the quantity, at least 0.
