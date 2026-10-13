@@ -2,18 +2,12 @@
 //! runner, its `?fleet=` wingmen, re-forms and test flights). Raiders stay content ships.
 //!
 //! The design lives in a [`data::edit::Drydock`] (the editing model: legality, tools, mirror, undo). Every edit
-//! goes through [`PlayerDesign::edit`], which keeps the frame-coordinate blueprint the view, the checks and the
+//! goes through [`PlayerDesign::edit`], which keeps the frame-coordinate blueprint the view, the report and the
 //! flights read in step and bumps [`PlayerDesign::revision`].
 
 use bevy::prelude::*;
 use data::edit::{Drydock, OpenError};
 use data::{Blueprint, Content};
-use sim::ShipDesign;
-
-use crate::sim_bridge::GameContent;
-use crate::ui_kit::Tone;
-
-use super::state::DrydockStatus;
 
 /// The id the player's design flies under. Content ids are snake_case (validation), so a `:` never clashes.
 pub const PLAYER_DESIGN_ID: &str = "player:design";
@@ -127,40 +121,6 @@ impl PlayerDesign {
             ..self.dock.header().clone()
         };
     }
-
-    /// Why the design can't fly, or `None` when it can: it needs parts, a logic core on its main piece (the
-    /// piece a ship is flown from) and must compile. A placeholder check until `sim::report` lists the issues.
-    pub fn grounded(&self, content: &Content) -> Option<String> {
-        let bp = &self.blueprint;
-        if bp.parts.is_empty() {
-            return Some("empty frame".into());
-        }
-        let grid = match content.ship_grid(bp) {
-            Ok(g) => g,
-            Err(e) => return Some(e),
-        };
-        let core = |i: usize| content.parts.get(&bp.parts[i].part).is_some_and(|p| p.logic.is_some());
-        let pieces = grid.pieces();
-        let main = grid.main_piece(&pieces, core);
-        if !main.is_some_and(|m| pieces.parts[m].iter().any(|&i| core(i))) {
-            return Some("no logic core on the main piece".into());
-        }
-        ShipDesign::compile(content, bp).err()
-    }
-}
-
-/// The status line and the TEST-FLY switch, whenever the design's revision changes. A placeholder until
-/// `sim::report` lists the design's issues (heat, power, arcs) here too.
-pub(super) fn check_design(design: Res<PlayerDesign>, content: Res<GameContent>, mut status: ResMut<DrydockStatus>) {
-    if status.revision == Some(design.revision()) {
-        return;
-    }
-    status.revision = Some(design.revision());
-    status.grounded = design.grounded(&content.0);
-    (status.line, status.tone) = match &status.grounded {
-        None => ("FLIGHT-READY".into(), Tone::Teal),
-        Some(why) => (format!("CAN'T FLY  ·  {}", why.to_uppercase()), Tone::Coral),
-    };
 }
 
 #[cfg(test)]
@@ -179,7 +139,7 @@ mod tests {
         // The runner is 12 wide and symmetric: its axis is the frame's centre line.
         assert_eq!(b.min_x + b.max_x, d.frame().0 as i32);
         assert!(b.min_y >= 0 && b.max_y <= d.frame().1 as i32);
-        assert_eq!(d.grounded(&content), None);
+        assert!(sim::design_report(&content, d.blueprint(), &sim::SimConfig::default()).unwrap().flight_ready());
         // Exporting gives the content ship back.
         assert_eq!(d.export(), *content.ships.get(STARTER_SHIP).unwrap());
     }
@@ -212,26 +172,5 @@ mod tests {
         let next = PlayerDesign::starter(&content);
         d.replace(next);
         assert!(d.revision() > r3);
-    }
-
-    #[test]
-    fn a_design_without_a_core_is_grounded() {
-        let content = data::base_content();
-        let mut d = PlayerDesign::starter(&content);
-        d.edit(|dock| dock.mirror = false);
-        let cores: Vec<_> = d
-            .blueprint()
-            .parts
-            .iter()
-            .filter(|p| content.parts.get(&p.part).is_some_and(|p| p.logic.is_some()))
-            .map(|p| (p.x, p.y))
-            .collect();
-        for cell in cores {
-            d.edit(|dock| dock.erase(cell)).unwrap();
-        }
-        assert_eq!(d.grounded(&content).as_deref(), Some("no logic core on the main piece"));
-        let empty = Blueprint { parts: Vec::new(), ..d.export() };
-        d.replace(PlayerDesign::open(&content, &empty, d.frame()).unwrap());
-        assert_eq!(d.grounded(&content).as_deref(), Some("empty frame"));
     }
 }

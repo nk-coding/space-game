@@ -343,7 +343,8 @@ pub fn ring_node(diameter: f32) -> impl Bundle {
     )
 }
 
-/// A thin value bar: a 2 px track with a fill of `share` (0..1) in `tone`.
+/// A thin value bar: a 2 px track with a fill of `share` (0..1) in `tone`. A share over 1 (over a limit, e.g.
+/// a power deficit) fills the whole track and a notch marks where 100 % is (at `1 / share` of the width).
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct ValueBar {
     pub share: f32,
@@ -353,12 +354,18 @@ pub struct ValueBar {
 #[derive(Component)]
 struct BarFill;
 
+/// The 100 % notch of an overfull [`ValueBar`].
+#[derive(Component)]
+struct BarMark;
+
 /// Spawns a value bar that fills its parent's width.
 pub fn spawn_bar(parent: &mut ChildSpawnerCommands, bar: ValueBar, extra: impl Bundle) -> Entity {
     parent
         .spawn((bar, Node { width: percent(100), height: px(2), ..default() }, BackgroundColor(Color::NONE), extra))
         .with_children(|t| {
             t.spawn((BarFill, Node { width: percent(0), height: percent(100), ..default() }, BackgroundColor(Color::NONE)));
+            let mark = Node { display: Display::None, position_type: PositionType::Absolute, top: px(-2), width: px(2), height: px(6), ..default() };
+            t.spawn((BarMark, mark, BackgroundColor(Color::NONE)));
         })
         .id()
 }
@@ -442,7 +449,7 @@ fn style_widgets(
     mut rings: Query<(Ref<Ring>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, &Children), Without<Pill>>,
     mut texts: Query<&mut TextColor, With<PillText>>,
     mut bars: Query<(Ref<ValueBar>, &mut BackgroundColor, &Children), (Without<Pill>, Without<Ring>, Without<BarFill>)>,
-    mut fills: Query<(&mut Node, &mut BackgroundColor), (With<BarFill>, Without<Pill>, Without<Ring>)>,
+    mut fills: Query<(&mut Node, &mut BackgroundColor, Has<BarMark>), (Or<(With<BarFill>, With<BarMark>)>, Without<ValueBar>, Without<Pill>, Without<Ring>)>,
     mut fields: Query<(Ref<TextField>, Ref<Hot>, &mut BorderColor, &Children), (Without<Pill>, Without<Ring>)>,
     mut field_texts: Query<(&mut Text, &mut TextColor), (With<TextFieldText>, Without<PillText>)>,
     mut commands: Commands,
@@ -530,15 +537,27 @@ fn style_widgets(
             track.0 = t;
         }
         for child in children {
-            if let Ok((mut node, mut fill)) = fills.get_mut(*child) {
-                let w = percent((bar.share.clamp(0.0, 1.0) * 100.0).round());
-                if node.width != w {
-                    node.width = w;
+            let Ok((mut node, mut fill, mark)) = fills.get_mut(*child) else { continue };
+            if mark {
+                let over = bar.share > 1.0;
+                let (display, left) = if over { (Display::Flex, percent((100.0 / bar.share).round())) } else { (Display::None, percent(100)) };
+                if node.display != display || node.left != left {
+                    node.display = display;
+                    node.left = left;
                 }
-                let f = c(bar.tone.color(ui), 0.9);
+                let f = c(ui.number, 0.9);
                 if fill.0 != f {
                     fill.0 = f;
                 }
+                continue;
+            }
+            let w = percent((bar.share.clamp(0.0, 1.0) * 100.0).round());
+            if node.width != w {
+                node.width = w;
+            }
+            let f = c(bar.tone.color(ui), 0.9);
+            if fill.0 != f {
+                fill.0 = f;
             }
         }
     }

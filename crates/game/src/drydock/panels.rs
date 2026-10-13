@@ -37,6 +37,7 @@ use crate::ui_kit::{
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
 use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool};
+use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 use super::PlayerDesign;
 
@@ -44,8 +45,7 @@ use super::PlayerDesign;
 const ROWS: usize = 24;
 const ROW_H: f32 = 48.0;
 const ROW_GAP: f32 = 4.0;
-/// Stat cells (right panel) and the selected part's stat lines and bonus lines.
-const STAT_CELLS: usize = 8;
+/// The selected part's stat lines and bonus lines.
 const SEL_STATS: usize = 12;
 const SEL_BONUSES: usize = 3;
 
@@ -253,7 +253,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         ..default()
                     })
                     .with_children(|g| {
-                        for k in 0..STAT_CELLS {
+                        for k in 0..MAIN_CELLS {
                             g.spawn((StatCellNode(k), Node { flex_direction: FlexDirection::Column, row_gap: px(7), ..default() })).with_children(|cell| {
                                 cell.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() })
                                     .with_children(|r| {
@@ -262,6 +262,24 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                     });
                                 spawn_bar(cell, ValueBar { share: 0.0, tone: Tone::Gold }, StatBar(k));
                             });
+                        }
+                    });
+                    // The compact block under it: smaller, no bars (top speed, turn, mass, build points).
+                    rp.spawn(Node {
+                        display: Display::Grid,
+                        grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
+                        column_gap: px(28),
+                        row_gap: px(9),
+                        margin: UiRect::top(px(18)),
+                        ..default()
+                    })
+                    .with_children(|g| {
+                        for k in MAIN_CELLS..MAIN_CELLS + DETAIL_CELLS {
+                            g.spawn((StatCellNode(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() }))
+                                .with_children(|r| {
+                                    r.spawn((PanelText::StatLabel(k), label(fonts, "", 8.0, c(Tone::Label, 1.0))));
+                                    r.spawn((PanelText::StatValue(k), number(fonts, "", 12.5, c(Tone::Number, 1.0))));
+                                });
                         }
                     });
                     rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(20)), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
