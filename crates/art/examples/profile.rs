@@ -1,39 +1,59 @@
-//! Time per region and per mip step at one tier (default 256):
-//! `cargo run --release -p art --example profile -- 256`.
+//! Atlas rasterisation as the game spends it (`crates/game/src/atlas.rs`): `Rasterizer::step` until the frame
+//! budget of 6 ms is used, then the next frame, for a whole job at one tier (default 512), `runs` times (default
+//! 9). Prints the job start (`Rasterizer::new`), the longest step, the longest frame and the frames, as median and
+//! p95 over the runs: `cargo run --release -p art --example profile -- 512 [runs]`. The VM is noisy: note
+//! `uptime` next to the numbers.
 use std::sync::Arc;
 use std::time::Instant;
 
+/// `atlas.rs` `FRAME_BUDGET_MS`.
+const BUDGET_MS: f64 = 6.0;
+
 fn main() {
-    let tier: u32 = std::env::args().nth(1).map(|t| t.parse().unwrap()).unwrap_or(256);
+    let mut args = std::env::args().skip(1);
+    let tier: u32 = args.next().map(|t| t.parse().expect("tier")).unwrap_or(512);
+    let runs: usize = args.next().map(|t| t.parse().expect("runs")).unwrap_or(9);
     let layout = Arc::new(art::Layout::new(&data::base_content()));
-    let mut r = art::Rasterizer::new(layout.clone(), tier);
-    let mut times = Vec::new();
-    for reg in &layout.regions {
+    let ms = |t: Instant| t.elapsed().as_secs_f64() * 1e3;
+    let (mut start, mut step, mut frame, mut frames, mut total) = (vec![], vec![], vec![], vec![], vec![]);
+    for _ in 0..runs {
         let t = Instant::now();
-        r.step().unwrap();
-        times.push((t.elapsed().as_secs_f64() * 1e3, reg.name.clone()));
-    }
-    // The mip chain, a band of rows per step.
-    let (mut mips, mut longest, mut steps) = (0.0f64, 0.0f64, 0);
-    loop {
-        let t = Instant::now();
-        let done = r.step().unwrap();
-        let ms = t.elapsed().as_secs_f64() * 1e3;
-        mips += ms;
-        longest = longest.max(ms);
-        steps += 1;
-        if done {
-            break;
+        let mut r = art::Rasterizer::new(layout.clone(), tier);
+        start.push(ms(t));
+        let (mut longest_step, mut longest_frame, mut n, mut work) = (0.0f64, 0.0f64, 0, 0.0);
+        let mut done = false;
+        while !done {
+            let f = Instant::now();
+            while !done && ms(f) < BUDGET_MS {
+                let s = Instant::now();
+                done = r.step().expect("step");
+                longest_step = longest_step.max(ms(s));
+            }
+            let spent = ms(f);
+            longest_frame = longest_frame.max(spent);
+            work += spent;
+            n += 1;
         }
+        let t = Instant::now();
+        let raster = r.finish().expect("finish");
+        assert_eq!(raster.tier, tier);
+        drop(raster);
+        let end = ms(t);
+        step.push(longest_step);
+        frame.push(longest_frame.max(end));
+        frames.push(n as f64);
+        total.push(work + end);
     }
-    let raster = r.finish().unwrap();
-    times.sort_by(|a, b| b.0.total_cmp(&a.0));
-    let total: f64 = times.iter().map(|t| t.0).sum();
-    println!(
-        "tier {tier}: regions {total:.1} ms, mips {mips:.1} ms in {steps} steps (longest {longest:.2} ms), {} levels",
-        raster.levels
-    );
-    for (ms, name) in times.iter().take(12) {
-        println!("  {ms:7.2} ms  {name}");
+    println!("tier {tier}, {runs} runs, budget {BUDGET_MS} ms per frame: median / p95");
+    for (name, v) in [
+        ("job start (ms)", &mut start),
+        ("longest step (ms)", &mut step),
+        ("longest frame (ms)", &mut frame),
+        ("frames", &mut frames),
+        ("work (ms)", &mut total),
+    ] {
+        v.sort_by(f64::total_cmp);
+        let p = |q: f64| v[((v.len() - 1) as f64 * q).round() as usize];
+        println!("  {name:20} {:8.2} {:8.2}", p(0.5), p(0.95));
     }
 }
