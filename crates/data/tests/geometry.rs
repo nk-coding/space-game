@@ -314,3 +314,32 @@ fn guns_respect_rotation() {
     let g = grid(vec![turned, block(1, -2), block(4, 1)]);
     assert!(!g.line_of_fire_clear(0), "a gun turned right fires right");
 }
+
+/// The longest outlines a frame allows (a 128-wide comb: over 16000 unit sides) merge their collinear points in
+/// one pass (the old repeated scan took about 13 ms in a dev build, now about 2): only corners remain, and the
+/// outline still runs along every side.
+#[test]
+fn long_outlines_keep_exactly_their_corners() {
+    let side = data::validate::MAX_FRAME_SIZE as i32;
+    let mut parts: Vec<PlacedShape> = (0..side).map(|x| block(x, 0)).collect();
+    for x in (0..side).step_by(2) {
+        parts.extend((1..side).map(|y| block(x, y)));
+    }
+    let g = grid(parts);
+    let edges = g.hull_edges(|_| true);
+    let loops = hull_loops(&edges);
+    assert_eq!(loops.len(), 1);
+    let pts = &loops[0].points;
+    let n = pts.len();
+    // Top-left first; 2 corners per tooth side plus the bar's: every point is a corner.
+    assert_eq!(pts[0], GridPoint::new(0, 0));
+    assert_eq!(n, 4 * (side as usize / 2) + 2);
+    let mut perimeter = 0;
+    for k in 0..n {
+        let (a, b, c) = (pts[(k + n - 1) % n], pts[k], pts[(k + 1) % n]);
+        let (u, v) = ((b.x - a.x, b.y - a.y), (c.x - b.x, c.y - b.y));
+        assert!(u.0 * v.1 - u.1 * v.0 != 0, "{b:?} is no corner");
+        perimeter += (v.0.abs() + v.1.abs()) as usize;
+    }
+    assert_eq!(perimeter, edges.len());
+}

@@ -919,26 +919,33 @@ fn cw_order(from: (i32, i32), p: (i32, i32), q: (i32, i32)) -> std::cmp::Orderin
 }
 
 /// Drops collinear middle points; closed loops are rotated to start at the top-most, left-most vertex.
-fn simplify(mut pts: Vec<GridPoint>, closed: bool) -> Vec<GridPoint> {
+fn simplify(pts: Vec<GridPoint>, closed: bool) -> Vec<GridPoint> {
     let collinear = |a: GridPoint, b: GridPoint, c: GridPoint| {
         let (ux, uy) = ((b.x - a.x) as i64, (b.y - a.y) as i64);
         let (vx, vy) = ((c.x - b.x) as i64, (c.y - b.y) as i64);
         ux * vy - uy * vx == 0 && ux * vx + uy * vy > 0
     };
-    loop {
-        let n = pts.len();
-        if n < 3 {
-            break;
+    // A point goes when it lies straight on between its neighbours; removing one never changes whether another
+    // does, so one pass with a stack finds them all (O(n); the ends of an open line stay).
+    let mut out: Vec<GridPoint> = Vec::with_capacity(pts.len());
+    for p in pts {
+        while let [.., a, b] = out[..]
+            && collinear(a, b, p)
+        {
+            out.pop();
         }
-        let range = if closed { 0..n } else { 1..n - 1 };
-        let drop = range
-            .into_iter()
-            .find(|&k| collinear(pts[(k + n - 1) % n], pts[k], pts[(k + 1) % n]));
-        match drop {
-            Some(k) => {
-                pts.remove(k);
-            }
-            None => break,
+        out.push(p);
+    }
+    let mut pts = out;
+    // A closed loop also wraps: its last and first points may lie on the run through the seam.
+    while closed && pts.len() >= 3 {
+        let n = pts.len();
+        if collinear(pts[n - 2], pts[n - 1], pts[0]) {
+            pts.pop();
+        } else if collinear(pts[n - 1], pts[0], pts[1]) {
+            pts.remove(0);
+        } else {
+            break;
         }
     }
     if closed && let Some(start) = (0..pts.len()).min_by_key(|&k| (pts[k].y, pts[k].x)) {
