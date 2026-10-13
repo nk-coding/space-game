@@ -581,9 +581,20 @@ fn locked_parts_and_materials() {
     assert!(!c.parts.get("armor_block").unwrap().locked);
     assert!(!c.materials.get("steel").unwrap().locked);
     let raider = c.ships.get("automaton_raider").unwrap();
-    assert!(raider.parts.iter().any(|p| c.parts.get(&p.part).unwrap().locked));
-    assert_eq!(c.unit_hull_part(data::Shape::Rect).unwrap().id, "armor_block");
-    assert_eq!(c.unit_hull_part(data::Shape::Slope).unwrap().id, "slope_1x1");
+    assert!(
+        raider
+            .parts
+            .iter()
+            .any(|p| c.parts.get(&p.part).unwrap().locked)
+    );
+    assert_eq!(
+        c.unit_hull_part(data::Shape::Rect).unwrap().id,
+        "armor_block"
+    );
+    assert_eq!(
+        c.unit_hull_part(data::Shape::Slope).unwrap().id,
+        "slope_1x1"
+    );
 
     // The drydock's paint block and bevel slope stay available.
     let e = errors_with(
@@ -605,7 +616,12 @@ fn locked_parts_and_materials() {
                 armor: (tone: "{id}", mass_per_cell: 1, hp_per_cell: 1, build_point_factor: 1))"#
         )
     };
-    let all = format!("[{}, {}, {}]", lock("steel"), lock("composite"), lock("reactive"));
+    let all = format!(
+        "[{}, {}, {}]",
+        lock("steel"),
+        lock("composite"),
+        lock("reactive")
+    );
     let e = errors_with("materials/armor.ron", &all);
     assert_error(&e, "steel", "locked", "every armour material is locked");
     let some = format!("[{}, {}]", lock("steel"), lock("composite"));

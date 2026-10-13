@@ -80,7 +80,7 @@ editor (`dock.mirror`, `dock.bevel`).
   - On a slope of the same part: another material repaints it; the same material **turns** it to the next
     orientation in turning order that fits, centred on the clicked cell (so a 1×1 slope turns in place, and
     clicking again and again cycles through all of them).
-  - `slope_preview(part, cell, material)` gives the resulting placement for the ghost.
+  - `preview_slope(part, cell, material)` gives the resulting placement for the ghost (see Previews).
 - **Paint** `paint(cell, material)` (armour): an empty cell gets the 1×1 armour block; a hull part (block or slope)
   under the cursor takes the material; other parts refuse. The armour block is the first hull part with a 1×1
   rect footprint in content order (`armor_block`), the bevel slope the first hull part with a 1×1 slope footprint
@@ -127,6 +127,17 @@ Every edit applies to its mirror image too:
   happens and `Outcome::twin` is `Twin::Skipped(reason)`. If the primary edit is impossible, nothing happens.
 
 Mirrored edits keep a symmetric design symmetric (tested on the Halvex Runner, through undo and redo too).
+
+### Previews
+
+The ghost under the cursor asks what an edit would do without doing it: `preview_place(placement)`,
+`preview_slope(part, cell, material)`, `preview_paint(cell, material)` and `preview_move(part, dx, dy)` return a
+`Preview { placement, twin, mirrored }` (the placement the edit puts down or leaves, the `Twin` outcome the edit
+would report, and the twin's placement when it applies) or the edit's `Refusal`. The edits are planned by the same
+code (`place`, `paint`, the part tools and slope turns carry out their plan), so a preview always matches the edit;
+`previews_match_the_edits` checks it on every cell of the Halvex Runner's frame. A twin that would overlap the
+primary edit's new part is refused with `Overlaps(k)`, `k` the index that part has after the edit (for a new
+part `parts().len()`).
 
 ### Undo, strokes and revision
 

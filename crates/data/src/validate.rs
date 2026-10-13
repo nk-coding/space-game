@@ -525,7 +525,10 @@ impl<'a> Validator<'a> {
     /// fills and bevels with must stay available, and so must at least one armour material.
     fn locked(&mut self) {
         let c = self.c;
-        for (shape, what) in [(Shape::Rect, "paints and fills with"), (Shape::Slope, "bevels with")] {
+        for (shape, what) in [
+            (Shape::Rect, "paints and fills with"),
+            (Shape::Slope, "bevels with"),
+        ] {
             if let Some(p) = c.unit_hull_part(shape).filter(|p| p.locked) {
                 self.err(
                     p,
