@@ -16,7 +16,7 @@ use crate::text::parse_links;
 /// line of fire, an RCS part with no side open to space, a radiator that cannot vent, an empty placement power
 /// override, a control load above the cores' capacity, a `control_cost` on a part without a power role, a core
 /// with no control capacity, an icon nothing uses, research that unlocks what is already open, an encounter ship
-/// without a behavior, a voyage nothing can open).
+/// without a behavior, a voyage nothing can open, a start ship without a hold).
 pub fn validate(c: &Content) -> Vec<Problem> {
     let mut v = Validator { c, out: Vec::new() };
     v.packs();
@@ -55,6 +55,12 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         "can be researched",
     );
     v.entries(c.starts.as_slice(), |v, e| v.start(e));
+    if c.starts.is_empty() {
+        v.out.push(
+            Problem::error("the content has no start (`starts.ron`): a new game cannot begin")
+                .field("starts"),
+        );
+    }
     v.entries(c.encounters.as_slice(), |v, e| v.encounter(e));
     v.entries(c.voyages.as_slice(), |v, e| v.voyage(e));
     v.cycles(
@@ -64,6 +70,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         "opens after",
         "can ever open",
     );
+    v.voyages_open();
     v.locked();
     v.icons();
     v.wiki();
@@ -406,10 +413,12 @@ impl<'a> Validator<'a> {
         }
     }
 
-    /// A research data amount: finite, not negative (above 0 if `strict`), at most [`MAX_RESEARCH_DATA`].
+    /// A research data amount: finite, not negative (above 0 if `strict`), at most [`MAX_RESEARCH_DATA`] (one
+    /// error per field).
     fn research_data<T: Entry>(&mut self, e: &T, field: &str, x: f32, strict: bool) {
+        let before = self.out.len();
         self.number(e, field, x, 0.0, strict);
-        if x > MAX_RESEARCH_DATA {
+        if self.out.len() == before && x > MAX_RESEARCH_DATA {
             self.err(e, field, format!("at most {MAX_RESEARCH_DATA}, got {x}"));
         }
     }
@@ -843,7 +852,8 @@ impl<'a> Validator<'a> {
     }
 
     /// A start's ship must be one a new game can take on a voyage: built from what is not locked, fitting a frame
-    /// that is not locked, with no more logic cores than the start's mind capacity.
+    /// that is not locked, with a logic core and no more logic cores than the start's mind capacity; without a hold
+    /// (a warning) nothing salvaged comes home, so the career can never research anything.
     fn start(&mut self, s: &'a Start) {
         let c = self.c;
         self.mind_capacity(s, "mind_capacity", s.mind_capacity);
@@ -896,6 +906,23 @@ impl<'a> Validator<'a> {
             );
         }
         let cores = c.ship_totals(ship).logic_cores;
+        if cores == 0 {
+            self.err(
+                s,
+                "ship",
+                format!("ship `{}` has no logic core: nothing could fly it", s.ship),
+            );
+        } else if c.ship_hold(ship) == 0 {
+            self.warn(
+                s,
+                "ship",
+                format!(
+                    "ship `{}` has no hold (cargo on its main piece): nothing salvaged would come home, so \
+                     research could never start",
+                    s.ship
+                ),
+            );
+        }
         if cores > s.mind_capacity {
             self.err(
                 s,
@@ -1103,6 +1130,54 @@ impl<'a> Validator<'a> {
                 v,
                 "sites",
                 format!("at most {MAX_VOYAGE_SITES} sites in all, got {total}"),
+            );
+        }
+    }
+
+    /// Every voyage must be able to open (`docs/content-model.md` "Voyages"): through a start, or after voyages
+    /// that can all open. A voyage with `opens_after` that only unreachable voyages lead to is a warning (one with
+    /// none and no start is warned about in [`Validator::voyage`]; loops in [`Validator::cycles`]).
+    fn voyages_open(&mut self) {
+        let c = self.c;
+        let voyages = c.voyages.as_slice();
+        let mut open: Vec<bool> = voyages
+            .iter()
+            .map(|v| c.starts.iter().any(|s| s.voyages.contains(&v.id)))
+            .collect();
+        loop {
+            let mut changed = false;
+            for (k, v) in voyages.iter().enumerate() {
+                if !open[k]
+                    && !v.opens_after.is_empty()
+                    && v.opens_after
+                        .iter()
+                        .all(|id| c.voyages.position(id).is_some_and(|j| open[j]))
+                {
+                    open[k] = true;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        for (k, v) in voyages.iter().enumerate() {
+            if open[k] || v.opens_after.is_empty() {
+                continue;
+            }
+            let stuck: Vec<&str> = v
+                .opens_after
+                .iter()
+                .filter(|id| c.voyages.position(id).is_none_or(|j| !open[j]))
+                .map(String::as_str)
+                .collect();
+            self.warn(
+                v,
+                "opens_after",
+                format!(
+                    "it opens after `{}`, which can never open, so it can never be launched",
+                    stuck.join("`, `")
+                ),
             );
         }
     }

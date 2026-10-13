@@ -557,8 +557,8 @@ armour, Automaton plate and the capital frame stay locked.
 
 ### Starts (`starts.ron`, added 13 Oct 2026)
 
-How a new game begins. A new game has every part, material and frame that is not `locked`, plus what the start
-names.
+How a new game begins. A new game has every part, material and frame that is not `locked` (a start names no unlocks
+of its own). The content needs at least one start (an error otherwise).
 
 ```ron
 (
@@ -573,7 +573,7 @@ names.
 
 | Field | Notes |
 |---|---|
-| `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, no more logic cores than `mind_capacity` |
+| `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, a logic core, and no more logic cores than `mind_capacity`. A ship without a hold (cargo on its main piece) is a warning: nothing salvaged would come home |
 | `mind_capacity` | 1 to 100 (`data::validate::MAX_MIND_CAPACITY`, a sanity bound) |
 | `voyages` | optional: voyage ids, each known and listed once. Clearing a voyage opens those that name it in `opens_after` ([Voyages](#voyages-voyagesron-added-13-oct-2026)) |
 
@@ -611,12 +611,12 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
 |---|---|
 | `band` | snake_case key; text only until bands are content |
 | `map` | each coordinate 0 to 1 |
-| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning) |
+| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning, and so is one that opens only after voyages that can never open) |
 | `radius` | m, above 0 and at most 20000 (`data::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
 | `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |
 | `minutes` | `(min, max)`, `1 ≤ min ≤ max ≤ 600` |
 | `cleared` | optional text (a text key `voyage.<id>.cleared`): the debrief's line the first time the goal falls |
-| `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear) |
+| `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear), one of them armed (`Content::ship_armed`: a weapon and power on its main piece; GDR-0068) |
 
 Base voyages (placeholders, `docs/plans/slice-content.md` 3.3), in one file in chain order: `yard_approach` (open at
 the start; 600 m, raider pair ×2, derelict field, **raider pack**), `halvex_drift` (900 m, raider pack ×2, precursor
@@ -757,18 +757,21 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   `Content::unit_hull_part`), every armor material locked, every frame locked.
 - Career content (added 13 Oct 2026): unknown families, materials, nodes, ships and unlock targets; amounts out
   of range; `salvage` on a hull part or a material without `armor`; a node listed twice in `requires`; cycles in
-  `requires`; a start whose ship uses locked parts or materials, fits no open frame or has more logic cores than
-  its mind capacity; unknown or repeated voyages. Details in [Salvage](#salvage-added-13-oct-2026),
+  `requires`; no start at all; a start whose ship uses locked parts or materials, fits no open frame, has no
+  logic core or more logic cores than its mind capacity; unknown or repeated voyages. Details in [Salvage](#salvage-added-13-oct-2026),
   [Research nodes](#research-nodes-added-13-oct-2026) and [Starts](#starts-startsron-added-13-oct-2026).
 - Voyages and encounters (added 13 Oct 2026): unknown encounters, ships and voyages; cycles in `opens_after`; no
-  goal, two goals, a goal with a count above 1 or whose encounter may roll no ships; a fighting ship without a
+  goal, two goals, a goal with a count above 1 or whose encounter may roll no ships, or no armed ship (a weapon and
+  power on its main piece, GDR-0068: the site would clear the moment it wakes); a fighting ship without a
   logic core; an encounter with neither ships nor wrecks; numbers out of range (`MAX_VOYAGE_RADIUS`,
   `MAX_VOYAGE_SITES`, `MAX_ENCOUNTER_COUNT`, `MAX_VOYAGE_MINUTES`). Details in
   [Voyages](#voyages-voyagesron-added-13-oct-2026) and [Encounters](#encounters-encountersron-added-13-oct-2026).
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
   an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
   placement `power` override, a research node that unlocks an entry that is not `locked` or unlocks nothing, an
-  encounter ship without a behavior, a voyage that no start opens and that opens after nothing. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
+  encounter ship without a behavior, a voyage that no start opens and that opens after nothing, a voyage that
+  opens only after voyages that can never open, a start ship without a hold. (An engine with parts behind it is no
+  warning since GDR-0039: its plume burns them.)
 - Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
   `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
   the same weight range.

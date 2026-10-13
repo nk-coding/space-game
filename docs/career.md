@@ -26,7 +26,8 @@ only. Every question takes the `Content` it should be answered against.
 `Career` holds **facts only**. Everything that can be derived from content is derived on demand and never stored,
 so a content rebalance (a node's cost, a part's unlock) applies to old saves without a migration. The game stores
 `Career::to_ron()` as a document in `saves/` (ADR-0031 adds the header line) and reads it back with
-`Career::from_ron(text)` followed by `Career::reconcile(&content)`.
+`Career::from_ron(text)` followed by `Career::reconcile(&content)`. `from_ron` takes a blueprint's input limits
+(at most `limits::MAX_DOCUMENT_BYTES`, a leading byte order mark skipped).
 
 ```ron
 // space-game: saves, format 1, saved 1760351234
@@ -181,8 +182,9 @@ ready. Entries, in this order: per ship (flagship first, then escorts by index, 
 then for the fleet
 
 3. `TooManyCores { cores, capacity }`: its logic cores (all ships) exceed the mind capacity.
-4. `NoCargo`: no ship has cargo room, so nothing salvaged can come home. A warning only: `Readiness::blocks()` is
-   false for it alone.
+4. `NoCargo`: no ship has a hold (`Content::ship_hold`: cargo on its main piece, as the sim counts it; cargo on a
+   piece that falls off at spawn holds nothing), so nothing salvaged can come home. A warning only:
+   `Readiness::blocks()` is false for it alone.
 
 The drydock and the map show the first entry. Flight-readiness (power, thrust: the design report) is the sim's
 question and is checked by the game next to this list.

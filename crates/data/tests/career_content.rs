@@ -518,6 +518,39 @@ fn a_start_needs_a_ship_a_new_game_can_fly() {
         ("starts/s.ron", &start(r#"ship: "wide", mind_capacity: 1"#)),
     ]);
     assert_error(&p, "s", "ship", "fits no frame that is not locked");
+    // Without a logic core nothing flies it; without a hold (a warning) nothing salvaged comes home.
+    let hulk = r#"(id: "hulk", name: "Hulk", summary: "S.", faction: "ship_mind", size: (2, 1), parts: [
+        (part: "armor_block", x: 0, y: 0, material: "steel"), (part: "cargo_bay", x: 1, y: 0)])"#;
+    let dry = r#"(id: "dry", name: "Dry", summary: "S.", faction: "ship_mind", size: (3, 1), parts: [
+        (part: "logic_core", x: 0, y: 0), (part: "fission_reactor", x: 1, y: 0), (part: "thruster", x: 2, y: 0)])"#;
+    let p = problems_with(&[
+        ("ships/hulk.ron", hulk),
+        ("ships/dry.ron", dry),
+        ("starts/s.ron", &start(r#"ship: "hulk", mind_capacity: 1"#)),
+        ("starts/t.ron", &start(r#"ship: "dry", mind_capacity: 1"#).replace("\"s\"", "\"t\"")),
+    ]);
+    assert_error(&p, "s", "ship", "has no logic core");
+    assert_problem(&p, Severity::Warning, "t", "ship", "has no hold");
+    assert!(of(&p, "t", Severity::Error).is_empty(), "{p:?}");
+}
+
+/// Content without any start can't begin a career: an error (13 Oct 2026 review).
+#[test]
+fn content_needs_a_start() {
+    let mut c = Content::merge(&[base()]);
+    assert!(
+        data::validate(&c)
+            .iter()
+            .all(|p| p.field.as_deref() != Some("starts"))
+    );
+    c.starts = Default::default();
+    let p = data::validate(&c);
+    assert!(
+        p.iter().any(|p| p.severity == Severity::Error
+            && p.field.as_deref() == Some("starts")
+            && p.message.contains("no start")),
+        "{p:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -589,15 +589,18 @@ fn locked_parts_and_materials_are_named_once_per_ship() {
     );
     assert!(found.iter().all(Readiness::blocks));
     assert_eq!(voyage_ready(&c, &Unlocks::all(&c), 2, &runner, &[]), []);
-    // A part the content doesn't have counts as locked.
+    // A part the content doesn't have counts as locked (and a ship that cannot be built has no hold).
     let mut odd = ship(&c, "rim_skiff");
     odd.parts[2].part = "warp_core".into();
     assert_eq!(
         voyage_ready(&c, &u, 2, &odd, &[]),
-        [Readiness::LockedPart {
-            ship: flag,
-            part: "warp_core".into()
-        }]
+        [
+            Readiness::LockedPart {
+                ship: flag,
+                part: "warp_core".into()
+            },
+            Readiness::NoCargo
+        ]
     );
 }
 
@@ -1048,4 +1051,64 @@ fn an_evening(c: &Content) -> Career {
 #[test]
 fn an_evening_of_play() {
     an_evening(&content());
+}
+
+/// Research data that is not finite (a hand-edited or damaged save queried before `reconcile`) counts as none:
+/// it never pays a node (13 Oct 2026 review: NaN paid one node, infinity every node forever).
+#[test]
+fn research_data_that_is_not_finite_pays_nothing() {
+    let c = content();
+    for store in ["NaN", "inf", "-inf"] {
+        let text = format!(
+            r#"(start: "rim_awakening", seed: 1, generator: 2, data: {{"kinetic": {store}}})"#
+        );
+        let mut career = Career::from_ron(&text).unwrap();
+        match career.can_pay(&c, "automaton_cannon") {
+            Err(Refusal::CannotPay(short)) => assert!(
+                matches!(&short[..], [Shortfall::Data { have, .. }] if *have == 0.0),
+                "{store}: {short:?}"
+            ),
+            other => panic!("{store}: {other:?}"),
+        }
+        assert!(career.research(&c, "automaton_cannon").is_err());
+        assert!(career.researched().is_empty());
+    }
+}
+
+/// The hold is the cargo of the main piece (the sim's controlling piece): a fleet whose only cargo bay sits on a
+/// piece that falls off at spawn brings nothing home, so readiness warns.
+#[test]
+fn cargo_off_the_main_piece_is_no_cargo() {
+    let c = content();
+    let mut skiff = ship(&c, "rim_skiff");
+    // The skiff's bays, moved two columns right of its hull: a piece of their own.
+    let right = skiff.size.0 as i32;
+    let mut moved = 0;
+    for p in &mut skiff.parts {
+        if p.part == "cargo_bay" {
+            p.x = right + 1 + moved;
+            p.y = 0;
+            moved += 1;
+        }
+    }
+    assert_eq!(moved, 2);
+    skiff.size.0 += 4;
+    assert_eq!(c.ship_hold(&skiff), 0);
+    assert_eq!(c.ship_hold(&ship(&c, "rim_skiff")), 8);
+    let all = Unlocks::all(&c);
+    assert_eq!(voyage_ready(&c, &all, 2, &skiff, &[]), [Readiness::NoCargo]);
+}
+
+/// A save written by an editor that adds a byte order mark reads; one above the document size limit is refused
+/// before it is parsed.
+#[test]
+fn saves_take_the_blueprints_input_limits() {
+    let text = "\u{feff}(start: \"rim_awakening\", seed: 1, generator: 2)";
+    assert!(Career::from_ron(text).is_ok());
+    let huge = format!(
+        "(start: \"rim_awakening\", seed: 1, generator: 2, escorts: [{}])",
+        "\"x\",".repeat(data::limits::MAX_DOCUMENT_BYTES / 4 + 1)
+    );
+    let p = Career::from_ron(&huge).unwrap_err();
+    assert!(p[0].message.contains("bytes"), "{}", show(&p));
 }

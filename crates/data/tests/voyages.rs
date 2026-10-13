@@ -437,6 +437,29 @@ fn opens_after_must_not_loop_and_every_voyage_must_open_somehow() {
     ]);
     assert_clean(&p, "lonely");
     assert_clean(&p, "s");
+    // Opened only after an unreachable voyage: it can never open either (a warning on it too).
+    let after = GOOD_VOYAGE.replace(r#"["yard_approach"]"#, r#"["lonely", "yard_approach"]"#);
+    let p = problems_with(&[(
+        "voyages/v.ron",
+        &format!(
+            "[{}, {}]",
+            voyage("lonely", &lonely),
+            voyage("after", &after)
+        ),
+    )]);
+    assert_problem(
+        &p,
+        Severity::Warning,
+        "after",
+        "opens_after",
+        "it opens after `lonely`, which can never open",
+    );
+    assert!(
+        !p.iter()
+            .any(|x| x.id.as_deref() == Some("after") && x.message.contains("yard_approach")),
+        "{}",
+        show(&p)
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------------------

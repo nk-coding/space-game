@@ -26,7 +26,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::hash::{fnv1a64, splitmix64};
 use crate::kind::Kind;
-use crate::load::{Content, parse_error, ron_options};
+use crate::limits::MAX_DOCUMENT_BYTES;
+use crate::load::{Content, parse_error, ron_options, strip_bom};
 use crate::model::{Blueprint, Frame, ResearchNode, Unlock};
 use crate::problem::Problem;
 
@@ -330,7 +331,8 @@ pub enum Readiness {
     LockedMaterial { ship: FleetSlot, material: String },
     /// The fleet has more logic cores than the ship-mind runs at once.
     TooManyCores { cores: u32, capacity: u32 },
-    /// A warning only: no ship of the fleet has cargo room, so nothing salvaged can come home.
+    /// A warning only: no ship of the fleet has a hold (cargo on its main piece, `Content::ship_hold`), so nothing
+    /// salvaged can come home.
     NoCargo,
 }
 
@@ -365,14 +367,21 @@ impl Career {
 
     /// Reads a career written by [`Career::to_ron`] (or by hand) with the pack loader's options: `Some(..)` may
     /// be left out, unknown fields are errors. Only the syntax and the schema are checked; call
-    /// [`Career::reconcile`] next. `Err` holds the parse error with its line and column (one problem, in a list
+    /// [`Career::reconcile`] next. Text from outside has a blueprint's limits: at most
+    /// [`crate::limits::MAX_DOCUMENT_BYTES`], a leading byte order mark skipped. `Err` holds the parse error with its line and column (one problem, in a list
     /// like [`crate::parse_blueprint`]'s).
     ///
     /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
     /// roll its voyages differently. The game keeps such a save aside and never writes over it.
     pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
+        if text.len() > MAX_DOCUMENT_BYTES {
+            return Err(vec![Problem::error(format!(
+                "the text is too long for a save ({} bytes, at most {MAX_DOCUMENT_BYTES})",
+                text.len()
+            ))]);
+        }
         let career: Career = ron_options()
-            .from_str(text)
+            .from_str(strip_bom(text))
             .map_err(|e| vec![parse_error(&e)])?;
         if career.generator > GENERATOR {
             return Err(vec![
@@ -582,6 +591,16 @@ impl Career {
         &self.data
     }
 
+    /// The research data of one family that can pay: an amount that is not finite or below 0 (a save not
+    /// reconciled yet) counts as none.
+    fn store(&self, family: &str) -> f32 {
+        self.data
+            .get(family)
+            .copied()
+            .filter(|x| x.is_finite() && *x > 0.0)
+            .unwrap_or(0.0)
+    }
+
     /// Materials in store (amounts above 0 only).
     pub fn materials(&self) -> &BTreeMap<String, u32> {
         &self.materials
@@ -686,7 +705,7 @@ impl Career {
     ) -> Result<&'c ResearchNode, Refusal> {
         let n = self.payable(content, node)?;
         for (family, &cost) in &n.cost.data {
-            let left = self.data.get(family).copied().unwrap_or(0.0) - cost;
+            let left = self.store(family) - cost;
             if left > DATA_EPSILON {
                 self.data.insert(family.clone(), left);
             } else {
@@ -813,7 +832,7 @@ impl Career {
         }
         let mut short = Vec::new();
         for (family, &cost) in &n.cost.data {
-            let have = self.data.get(family).copied().unwrap_or(0.0);
+            let have = self.store(family);
             if have + DATA_EPSILON < cost {
                 short.push(Shortfall::Data {
                     family: family.clone(),
@@ -914,7 +933,7 @@ pub fn voyage_ready(
             .enumerate()
             .map(|(k, e)| (FleetSlot::Escort(k), e)),
     );
-    let (mut cores, mut cargo) = (0u32, 0.0f32);
+    let (mut cores, mut cargo) = (0u32, 0u32);
     for (slot, ship) in fleet {
         let (w, h) = ship.size;
         let fits = |f: &&Frame| f.size.0 >= w && f.size.1 >= h;
@@ -955,9 +974,8 @@ pub fn voyage_ready(
                     material: material.to_string(),
                 }),
         );
-        let totals = content.ship_totals(ship);
-        cores = cores.saturating_add(totals.logic_cores);
-        cargo += totals.cargo_capacity;
+        cores = cores.saturating_add(content.ship_totals(ship).logic_cores);
+        cargo = cargo.saturating_add(content.ship_hold(ship));
     }
     if cores > mind_capacity {
         out.push(Readiness::TooManyCores {
@@ -965,7 +983,7 @@ pub fn voyage_ready(
             capacity: mind_capacity,
         });
     }
-    if cargo <= 0.0 {
+    if cargo == 0 {
         out.push(Readiness::NoCargo);
     }
     out

@@ -588,42 +588,45 @@ impl Content {
         self.behaviors.get(id)
     }
 
+    /// The parts of an intact ship's main piece (the sim's controlling piece at spawn: `geometry::main_of`), in
+    /// placement order; none for a ship whose grid does not build.
+    fn main_piece_parts<'a>(&'a self, ship: &'a Blueprint) -> Vec<&'a Part> {
+        let Ok(grid) = self.ship_grid(ship) else {
+            return Vec::new();
+        };
+        let part = |i: usize| self.parts.get(&ship.parts[i].part);
+        let pieces = grid.pieces();
+        let Some(main) = grid.main_piece(&pieces, |i| part(i).is_some_and(|p| p.logic.is_some()))
+        else {
+            return Vec::new();
+        };
+        pieces.parts[main].iter().filter_map(|&i| part(i)).collect()
+    }
+
     /// Rule slots of an intact ship: the `logic.rule_slots` of every logic core on its main piece.
     pub fn ship_rule_slots(&self, ship: &Blueprint) -> u32 {
-        let Ok(grid) = self.ship_grid(ship) else {
-            return 0;
-        };
-        let logic = |i: usize| {
-            self.parts
-                .get(&ship.parts[i].part)
-                .and_then(|p| p.logic.as_ref())
-        };
-        let pieces = grid.pieces();
-        let Some(main) = grid.main_piece(&pieces, |i| logic(i).is_some()) else {
-            return 0;
-        };
-        pieces.parts[main]
+        self.main_piece_parts(ship)
             .iter()
-            .filter_map(|&i| logic(i))
+            .filter_map(|p| p.logic.as_ref())
             .fold(0, |sum: u32, l| sum.saturating_add(l.rule_slots))
+    }
+
+    /// The hold of an intact ship in cargo units: the summed `cargo.capacity` of its main piece, rounded down
+    /// (the sim's `Ship::cargo_capacity`; cargo parts that fall off at spawn hold nothing).
+    pub fn ship_hold(&self, ship: &Blueprint) -> u32 {
+        self.main_piece_parts(ship)
+            .iter()
+            .filter_map(|p| p.cargo.as_ref())
+            .map(|c| c.capacity)
+            .sum::<f32>() as u32
     }
 
     /// Control of an intact ship's main piece (GDR-0044): `(load, capacity)` = the summed `control_cost` of
     /// its parts and the summed `logic.control_capacity` of its logic cores. Load above capacity means the
     /// lowest-priority parts start idle. `(0, 0)` for a ship whose grid does not build.
     pub fn ship_control(&self, ship: &Blueprint) -> (u32, u32) {
-        let Ok(grid) = self.ship_grid(ship) else {
-            return (0, 0);
-        };
-        let part = |i: usize| self.parts.get(&ship.parts[i].part);
-        let pieces = grid.pieces();
-        let Some(main) = grid.main_piece(&pieces, |i| part(i).is_some_and(|p| p.logic.is_some()))
-        else {
-            return (0, 0);
-        };
-        pieces.parts[main]
+        self.main_piece_parts(ship)
             .iter()
-            .filter_map(|&i| part(i))
             .fold((0u32, 0u32), |(load, cap), p| {
                 (
                     load.saturating_add(p.control_cost()),
@@ -636,18 +639,11 @@ impl Content {
     /// `weapon` and a part that makes power. A voyage site clears once none of its ships is armed, so a goal
     /// encounter must always roll an armed ship. False for a ship whose grid does not build.
     pub fn ship_armed(&self, ship: &Blueprint) -> bool {
-        let Ok(grid) = self.ship_grid(ship) else {
-            return false;
-        };
-        let part = |i: usize| self.parts.get(&ship.parts[i].part);
-        let pieces = grid.pieces();
-        let Some(main) = grid.main_piece(&pieces, |i| part(i).is_some_and(|p| p.logic.is_some()))
-        else {
-            return false;
-        };
-        let main = || pieces.parts[main].iter().filter_map(|&i| part(i));
-        main().any(|p| p.weapon.is_some())
-            && main().any(|p| p.power.as_ref().is_some_and(|x| x.output > 0.0))
+        let main = self.main_piece_parts(ship);
+        main.iter().any(|p| p.weapon.is_some())
+            && main
+                .iter()
+                .any(|p| p.power.as_ref().is_some_and(|x| x.output > 0.0))
     }
 
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
