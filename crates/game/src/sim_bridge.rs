@@ -301,6 +301,9 @@ fn apply_events(
     let player = focus.0;
     // Pieces a vessel stripped parts from this tick: when one is emptied, it goes without a burst.
     let mut stripped: Vec<(ShipId, PieceId)> = Vec::new();
+    // Shots and plumes meet the shields before the physics step, at the tick's start pose (`prev_pos`); rams
+    // after the read-back, at the end pose, each led by its `Impact` (`Sim::step`).
+    let mut after_physics = false;
     for k in 0..n {
         // Copy what is needed out of the event (no clones of snapshots), then act with `world` borrowed mutably.
         let act = match &world.sim.events()[k] {
@@ -331,6 +334,10 @@ fn apply_events(
             SimEvent::PlumeHit { by, engine, point, .. } => Act::Burn(*by, *engine, v2(*point)),
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
+            }
+            SimEvent::Impact(_) => {
+                after_physics = true;
+                Act::None
             }
             SimEvent::Collected { ship, from, at, .. } => {
                 if let sim::Salvaged::Part { ship, piece, .. } = *from {
@@ -429,14 +436,15 @@ fn apply_events(
             Act::Burn(ship, engine, point) => fx.burn(ship, engine, point),
             Act::Shield(ship, piece, part, point, absorbed, depleted) => {
                 // The ripple starts where the shot entered: a direction from the emitter in the piece frame (the
-                // bubble turns with the ship), from the tick's pose, so it works while the view is being rebuilt;
-                // its strength is the share of the capacity the shot took.
+                // bubble turns with the ship), from the pose the hit was resolved at (above), so it works while
+                // the view is being rebuilt; its strength is the share of the capacity the shot took.
                 if let Some(s) = world.sim.ship(ship)
                     && let Some(pc) = s.piece(piece)
                 {
                     let [cx, cy] = s.design().parts[part as usize].shape.center();
                     let centre = Vec2::new(cx - pc.origin[0], pc.origin[1] - cy);
-                    let local = Mat2::from_angle(-pc.body.angle) * (point - v2(pc.body.pos));
+                    let (pos, angle) = if after_physics { (pc.body.pos, pc.body.angle) } else { (pc.prev_pos, pc.prev_angle) };
+                    let local = Mat2::from_angle(-angle) * (point - v2(pos));
                     let dir = (local - centre).normalize_or(Vec2::Y);
                     let share = absorbed / s.stats(part).get(Stat::ShieldCapacity).max(1e-3);
                     shields.hit(ship, part, dir, share, depleted);
