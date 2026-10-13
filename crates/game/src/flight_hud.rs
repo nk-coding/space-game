@@ -12,9 +12,10 @@
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use bevy::prelude::*;
-use sim::{ShipId, Stat, Target};
+use sim::{ShipDesign, ShipId, Stat, Target};
 
 use crate::camera::{CameraRig, CameraSet};
 use crate::controls::PlayerInput;
@@ -64,11 +65,33 @@ struct HullCell(u32);
 #[derive(Resource)]
 struct HudState {
     timer: Timer,
-    /// The ship the hull map shows.
-    map_ship: Option<ShipId>,
-    /// Display label per part of the player's design ("PULSE LASER 2").
+    /// The ship and design the hull map shows.
+    map_for: BuiltFor,
+    /// Display label per part of the shown ship's design ("PULSE LASER 2") and the design they were made for.
     labels: Vec<String>,
+    labels_for: Option<Arc<ShipDesign>>,
     scratch: String,
+}
+
+/// What the hull map was built for: a ship and its compiled design. Every new sim numbers its ships from 0 (the
+/// player's first ship is always `ShipId(0)`), so the id alone can't tell a test flight of an edited design from
+/// the last flight; the design is held, so a later design can't take its address.
+#[derive(Default)]
+struct BuiltFor(Option<(ShipId, Arc<ShipDesign>)>);
+
+impl BuiltFor {
+    /// Was it built for this ship as it is (or for no ship, when there is none)?
+    fn matches(&self, ship: Option<&sim::Ship>) -> bool {
+        match (&self.0, ship) {
+            (None, None) => true,
+            (Some((id, design)), Some(s)) => *id == s.id() && Arc::ptr_eq(design, s.design()),
+            _ => false,
+        }
+    }
+
+    fn set(&mut self, ship: Option<&sim::Ship>) {
+        self.0 = ship.map(|s| (s.id(), s.design().clone()));
+    }
 }
 
 pub struct FlightHudPlugin;
@@ -77,12 +100,14 @@ impl Plugin for FlightHudPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(HudState {
             timer: Timer::from_seconds(0.125, TimerMode::Repeating),
-            map_ship: None,
+            map_for: BuiltFor::default(),
             labels: Vec::new(),
+            labels_for: None,
             scratch: String::with_capacity(256),
         })
         .add_systems(Startup, spawn_hud)
         .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
+        .add_systems(OnExit(AppMode::Flight), forget_ship)
         .add_systems(PostUpdate, (lock_ring, offscreen_markers).after(CameraSet).before(crate::fx::FxFlush));
     }
 }
@@ -178,15 +203,16 @@ fn update_text(
     if !state.timer.tick(time.delta()).just_finished() {
         return;
     }
-    let HudState { scratch, labels, .. } = &mut *state;
+    let HudState { scratch, labels, labels_for, .. } = &mut *state;
     let alpha = fixed.overstep_fraction();
     let player = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
     let control = player.and_then(|s| s.control_piece().and_then(|c| s.piece(c)));
 
-    // Labels per part of the player's design.
+    // Labels per part of the shown ship's design (a design edited in the drydock can keep its part count).
     if let Some(s) = player
-        && labels.len() != s.design().parts.len()
+        && !labels_for.as_ref().is_some_and(|d| Arc::ptr_eq(d, s.design()))
     {
+        *labels_for = Some(s.design().clone());
         labels.clear();
         let mut seen: Vec<(String, u32)> = Vec::new();
         for p in &s.design().parts {
@@ -422,21 +448,33 @@ fn warnings(s: &mut String, ship: &sim::Ship, piece: &sim::Piece, labels: &[Stri
     }
 }
 
-/// The tiny hull map: one cell per blueprint cell of the player's ship, teal by hit points, coral when lost.
+/// Flight ended: the next flight's ships are new, whatever their ids.
+fn forget_ship(mut commands: Commands, mut state: ResMut<HudState>, map: Query<Entity, With<HullMap>>) {
+    state.map_for = BuiltFor::default();
+    state.labels.clear();
+    state.labels_for = None;
+    for map in &map {
+        commands.entity(map).despawn_children();
+    }
+}
+
+/// The tiny hull map: one cell per blueprint cell of the player's ship (in a behavior test's watch mode the
+/// watched one), teal by hit points, coral when lost. Rebuilt whenever the ship or its design changes.
 #[allow(clippy::too_many_arguments)]
 fn update_hull_map(
     mut commands: Commands,
     mut state: ResMut<HudState>,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
+    scene: Res<Scene>,
     style: Res<Style>,
     map: Query<Entity, With<HullMap>>,
     mut cells: Query<(&HullCell, &mut BackgroundColor)>,
 ) {
     let Ok(map) = map.single() else { return };
-    let ship = focus.0.and_then(|id| world.sim.ship(id));
-    if ship.map(|s| s.id()) != state.map_ship {
-        state.map_ship = ship.map(|s| s.id());
+    let ship = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
+    if !state.map_for.matches(ship) {
+        state.map_for.set(ship);
         commands.entity(map).despawn_children();
         if let Some(s) = ship {
             let b = s.design().grid.bounds().unwrap_or(data::Bounds { min_x: 0, min_y: 0, max_x: 1, max_y: 1 });
@@ -569,5 +607,47 @@ fn offscreen_markers(
         queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.dot(&regions.soft, pos, 18.0 * px, c.with_alpha(0.25), Z_HUD - 0.1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sim::Body;
+
+    use super::*;
+    use crate::scene::PLAYER;
+
+    fn design(content: &data::Content, id: &str) -> Arc<ShipDesign> {
+        Arc::new(ShipDesign::compile(content, content.ships.get(id).unwrap()).unwrap())
+    }
+
+    /// Every new sim numbers its ships from 0: a test flight of a smaller design after a flight of a bigger one
+    /// has the same ship id, so the hull map (one cell per part of the old design) must be rebuilt, or it indexes
+    /// past the new design's parts (it panicked).
+    #[test]
+    fn the_hull_map_is_rebuilt_for_a_new_sim_even_with_the_same_ship_id() {
+        let content = data::base_content();
+        let fly = |id: &str| {
+            let mut sim = sim::Sim::new(1);
+            let ship = sim.spawn_ship(design(&content, id), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
+            (sim, ship)
+        };
+        let (first, runner) = fly("halvex_runner");
+        let mut built = BuiltFor::default();
+        assert!(built.matches(None));
+        built.set(first.ship(runner));
+        assert!(built.matches(first.ship(runner)));
+        assert!(!built.matches(None));
+
+        // The drydock's T with fewer parts: a new sim, the same id, a smaller design.
+        let (second, skiff) = fly("rim_skiff");
+        assert_eq!(skiff, runner);
+        assert!(second.ship(skiff).unwrap().design().parts.len() < first.ship(runner).unwrap().design().parts.len());
+        assert!(!built.matches(second.ship(skiff)));
+        // The same design compiled again (Shift+R, another test flight) is a new design too.
+        let (third, again) = fly("halvex_runner");
+        assert!(!built.matches(third.ship(again)));
+        built.set(third.ship(again));
+        assert!(built.matches(third.ship(again)));
     }
 }
