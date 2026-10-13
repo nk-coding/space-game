@@ -279,13 +279,7 @@ impl TurnAssist {
 const ALIGN_NONE: f32 = 0.906_307_8;
 const ALIGN_FULL: f32 = 0.990_268_1;
 
-/// Body axes of the four thrust groups and their angle at body angle 0.
-pub const AXES: [Vec2; 4] = [
-    Vec2::new(0.0, 1.0),
-    Vec2::new(0.0, -1.0),
-    Vec2::new(1.0, 0.0),
-    Vec2::new(-1.0, 0.0),
-];
+/// Angle of the body axes of the four thrust groups (forward +y, backward −y, right +x, left −x) at body angle 0.
 const AXIS_ANGLE: [f32; 4] = [FRAC_PI_2, -FRAC_PI_2, 0.0, PI];
 
 /// Kinematics and capabilities of a controlling piece, as the controllers see them.

@@ -179,7 +179,11 @@ pub struct PartSpec {
     pub power_min_level: f32,
     /// Feeds the power pool.
     pub reactor: bool,
-    /// Candidate for chain reactions when destroyed (hook only; rule should move to data, see docs).
+    /// Candidate for chain reactions when destroyed: for now every part that makes power. Derived, not a
+    /// content field, on purpose: chain reactions are not built (`Ship::chain_reaction` is a hook) and today the
+    /// flag only picks the client's destruction flash (`SimEvent::PartDestroyed`). When they come, the planned
+    /// `explosion` content block (blast numbers per part, `docs/sim.md` "Damage and breakage") replaces this
+    /// rule; a bare `volatile` flag in content now would be a placeholder schema field without numbers.
     pub volatile: bool,
     /// Heat capacity (heat units per degree); proportional to area.
     pub heat_capacity: f32,

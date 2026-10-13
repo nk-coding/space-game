@@ -332,7 +332,8 @@ impl Scenario {
                         },
                     ));
                 }
-                ScenarioKind::Flight | ScenarioKind::Behavior | ScenarioKind::Load(_) => {
+                // Flight and behavior (the load test returned above: its behaviors fly on their own).
+                _ => {
                     let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
                     let len = if rng.chance(0.2) {
                         0.0

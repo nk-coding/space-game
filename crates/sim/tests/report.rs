@@ -529,7 +529,7 @@ fn yaw_balance_of_an_off_centre_engine() {
     let (w, s) = world_with(custom(&c, &parts));
     let ship = w.ship(s).unwrap();
     let piece = ship.piece(ship.control_piece().unwrap()).unwrap();
-    assert!(close(piece.max_wrench(&[1.0]).torque, r.flight.yaw, 1e-3));
+    assert!(close(engine_wrench(&piece.thrusters, |_| 1.0).torque, r.flight.yaw, 1e-3));
     // The base ships fly straight.
     for id in BASE_SHIPS {
         let r = base_report(&c, id);

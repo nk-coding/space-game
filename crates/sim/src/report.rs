@@ -208,7 +208,7 @@ pub struct HeatReport {
 }
 
 /// Main piece flight capability at full power (idle parts left out). Directions are the thrust groups
-/// forward (the nose), backward, right, left, as `flight::AXES`.
+/// forward (the nose, +y), backward, right (+x), left.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FlightReport {
     /// Thrust per direction (kN).

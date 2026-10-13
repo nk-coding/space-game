@@ -251,21 +251,6 @@ impl Thruster {
     }
 }
 
-/// Net force and torque of the engines among `thrusters` at the given throttles (by slot), ignoring power,
-/// heat, speed, gimbals and RCS nozzles.
-pub fn thruster_wrench(thrusters: &[Thruster], throttle: impl Fn(u32) -> f32) -> Wrench {
-    let mut w = Wrench::default();
-    for t in thrusters {
-        if t.slot == NO_SLOT {
-            continue;
-        }
-        let f = t.max_force * throttle(t.slot).clamp(0.0, 1.0);
-        w.force += t.dir * f;
-        w.torque += t.torque_per_force * f;
-    }
-    w
-}
-
 /// What a piece's actuators can do now, per direction (kN) and per turning sense (kN·m): only rows and torque
 /// sources that can produce (alive, not overheated, not idle, powered; [`producing`]), each at the power level
 /// it was served last (partial power scales the output). All zero while the piece is not active (dark, dormant,
@@ -289,7 +274,7 @@ pub struct ThrustAuthority {
     /// force), counter-clockwise and clockwise.
     pub couple_ccw: f32,
     pub couple_cw: f32,
-    /// Reachable top speed per thrust group (forward, backward, right, left; m/s, as `flight::AXES`): the
+    /// Reachable top speed per thrust group (forward +y, backward, right +x, left; m/s): the
     /// highest rated speed among the rows pushing that way, 0 if none (GDR-0041).
     pub speed: [f32; 4],
 }
@@ -537,13 +522,6 @@ impl Piece {
     /// Consumers in the order they get power (tier, weight descending, part).
     pub fn consumers(&self) -> &[Consumer] {
         &self.consumers
-    }
-
-    /// Net engine force and torque for the given per-slot throttles, ignoring power, heat and speed.
-    pub fn max_wrench(&self, throttle: &[f32]) -> Wrench {
-        thruster_wrench(&self.thrusters, |s| {
-            throttle.get(s as usize).copied().unwrap_or(0.0)
-        })
     }
 
     /// Damage per second of its working guns ([`gun_works`]) at full power, with bonuses (the `threat`

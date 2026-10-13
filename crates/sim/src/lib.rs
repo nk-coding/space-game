@@ -81,7 +81,7 @@ pub use rng::{Pcg32, Stream};
 pub use scenario::ScenarioKind;
 pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,
-    Wrench, inherited_velocity, producing, rated_falloff, thruster_wrench,
+    Wrench, gun_works, inherited_velocity, producing, rated_falloff,
 };
 pub use vessel::{MAX_OWNERS, Owner, VesselInfo, VesselState, friendly};
 pub use weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
