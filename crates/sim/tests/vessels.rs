@@ -681,6 +681,32 @@ fn an_idle_engine_without_a_draw_pushes_nothing_under_raw_throttles() {
     assert!((force - 4.0 * thrust).abs() < 1e-2, "{force} vs 4 × {thrust}");
 }
 
+/// A blueprint in two pieces of equal size, each with a core: the ship's controlling piece is the drydock's main
+/// piece (`data::ShipGrid::main_piece`, the earlier piece in row-major order), not the one listed first (13 Oct
+/// 2026 review: the sim kept the piece with the lowest part index, so the drydock's numbers could describe the
+/// other vessel).
+#[test]
+fn the_controlling_piece_is_the_drydocks_main_piece() {
+    let c = content();
+    let parts: Vec<P> = vec![
+        ("logic_core", 0, 2, 0, false, None),
+        ("fission_reactor", 1, 2, 0, false, None),
+        ("logic_core", 0, 0, 0, false, None),
+        ("fission_reactor", 1, 0, 0, false, None),
+    ];
+    let d = custom(&c, &parts);
+    let pieces = d.grid.pieces();
+    let main = d.grid.main_piece(&pieces, |i| d.parts[i].logic).unwrap();
+    let want: Vec<PartIdx> = pieces.parts[main].iter().map(|&p| p as PartIdx).collect();
+    assert_eq!(want, vec![2, 3], "the top piece comes first in row-major order");
+    let (w, s) = world_with(d.clone());
+    let ship = w.ship(s).unwrap();
+    assert_eq!(ship.piece(ship.control_piece().unwrap()).unwrap().parts, want);
+    assert_eq!(ship.main_piece(), ship.control_piece());
+    let r = sim::design_report(&c, &blueprint(&parts), &SimConfig::default()).unwrap();
+    assert_eq!(r.pieces[r.main.unwrap()].parts, want);
+}
+
 /// A dormant vessel that loses its last logic core is salvage, and salvage is never dormant (13 Oct 2026 review).
 #[test]
 fn a_dormant_vessel_that_loses_its_cores_is_salvage_not_dormant() {

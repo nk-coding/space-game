@@ -282,8 +282,11 @@ links. So "static lists filtered by alive" is always the current topology, and n
 ### Control, salvage and dark pieces
 
 - The **controlling piece** (`Ship::control_piece()`, `Piece::controlled`) is the blueprint's main piece if it
-  has a logic core: the ship's vessel. On a split it stays with the part that keeps the parent's id (the
-  component with a core, then the most parts). It holds control only while it has a core: if it loses its last
+  has a logic core: the ship's vessel. One rule, `data::geometry::main_of`, picks the main piece for the drydock
+  (`ShipGrid::main_piece`), at spawn, on splits and in `Ship::main_piece`: a piece with a core first, then the
+  most parts, then the earlier one (at spawn the pieces are in the drydock's row-major order, so a blueprint of
+  equal pieces gets the vessel the drydock describes; 13 Oct 2026 review fix). On a split it stays with the part
+  that keeps the parent's id (the component with a core, then the most parts). It holds control only while it has a core: if it loses its last
   core, or is destroyed, the ship is salvage for good (`SimEvent::ControlLost`, `VesselLost`).
 - **Every other cored piece of a split becomes a vessel of its own** (a new ship; GDR-0013, see
   [Vessels](#vessels)); the pieces left in a ship besides its controlling one have no core: salvage
@@ -1009,7 +1012,7 @@ Base content (placeholders): logic core N 16, automaton core N 4; fusion reactor
 
 | | |
 |---|---|
-| `SimEvent::VesselFormed { ship, owner, from }` | a vessel formed; `from: Some((ship, piece))` for a split-off piece (the client moves that view to the new ship), `None` at spawn |
+| `SimEvent::VesselFormed { ship, owner, from }` | a vessel formed; `from: Some((ship, piece))` for a piece that moved out of `ship` (split off a vessel, or a further cored piece of a blueprint built in several pieces, at spawn; the client moves that view to the new ship), `None` for a ship spawned with a core |
 | `SimEvent::VesselLost { ship, owner }` | lost its last logic core (after `ControlLost`) or removed |
 | `SimEvent::VesselDormant` / `VesselWoken { ship, owner }` | mind capacity |
 | `SimEvent::FocusChanged { owner, from, to }` | focus command, or the focus was lost |
@@ -1464,7 +1467,7 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 
 | Field | What |
 |---|---|
-| `pieces`, `main`, `falls_off` | the connected pieces (parts, `vessel` = has a logic core, `powered`), the main piece (the sim's rule: cored first, then most parts, then earlier), the parts not on it |
+| `pieces`, `main`, `falls_off` | the connected pieces (parts, `vessel` = has a logic core, `powered`), the main piece (`data::geometry::main_of`: cored first, then most parts, then earlier in row-major order), the parts not on it |
 | `parts[i]` | stats after bonuses, open (venting) sides, steady-state heat and `heat / limit`, power level at full use, idle |
 | `bonuses` | every bonus that applies (target, source, stat, effect), for the bonus overlay |
 | `mass`, `centre_of_mass`, `inertia`, `hp`, `cargo`, `rule_slots` | main piece |

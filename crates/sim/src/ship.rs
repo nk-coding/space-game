@@ -701,7 +701,15 @@ impl Ship {
         for &p in &all {
             ship.parts[p as usize].shield = ship.stats[p as usize].get(Stat::ShieldCapacity);
         }
-        let comps = ship.components(&all);
+        // Pieces in the blueprint's order (row-major by their first cell, as `data::ShipGrid::pieces`), so the
+        // main piece is the drydock's (`ShipGrid::main_piece`, the same rule and order) and piece ids follow it.
+        let mut comps = ship.components(&all);
+        let d = &ship.design;
+        comps.sort_by_key(|c| {
+            c.iter()
+                .map(|&p| (d.parts[p as usize].shape.y, d.parts[p as usize].shape.x))
+                .min()
+        });
         let main = ship.main_component(&comps);
         let origins: Vec<[f32; 2]> = comps.iter().map(|c| ship.com_bp(c)).collect();
         for (k, comp) in comps.into_iter().enumerate() {
@@ -841,22 +849,11 @@ impl Ship {
         self.pieces.binary_search_by_key(&id, |p| p.id).ok()
     }
 
-    /// The main piece: a piece with a logic core beats one without, then more parts, then the lower id.
+    /// The main piece (`data::geometry::main_of`): a piece with a logic core beats one without, then more parts,
+    /// then the lower id.
     pub fn main_piece(&self) -> Option<PieceId> {
-        let mut best: Option<&Piece> = None;
-        for p in &self.pieces {
-            best = match best {
-                None => Some(p),
-                Some(b)
-                    if (p.has_core && !b.has_core)
-                        || (p.has_core == b.has_core && p.parts.len() > b.parts.len()) =>
-                {
-                    Some(p)
-                }
-                b => b,
-            };
-        }
-        best.map(|p| p.id)
+        data::geometry::main_of(self.pieces.iter().map(|p| (p.has_core, p.parts.len())))
+            .map(|k| self.pieces[k].id)
     }
 
     pub fn controls(&self) -> &ShipControls {
@@ -968,20 +965,14 @@ impl Ship {
         comps
     }
 
-    /// Index of the main component: with a logic core first, then more parts, then the earlier one.
+    /// Index of the main component (`data::geometry::main_of`): with a logic core first, then more parts, then the
+    /// earlier one.
     pub(crate) fn main_component(&self, comps: &[Vec<PartIdx>]) -> usize {
         let has_core = |c: &Vec<PartIdx>| {
             c.iter()
                 .any(|&p| self.design.parts[p as usize].logic && self.parts[p as usize].alive)
         };
-        let mut best = 0;
-        for k in 1..comps.len() {
-            let (ck, cb) = (has_core(&comps[k]), has_core(&comps[best]));
-            if (ck && !cb) || (ck == cb && comps[k].len() > comps[best].len()) {
-                best = k;
-            }
-        }
-        best
+        data::geometry::main_of(comps.iter().map(|c| (has_core(c), c.len()))).unwrap_or(0)
     }
 
     /// Recounts the open sides of part `p` from the grid (no allocation). Exposure only changes when a

@@ -80,7 +80,8 @@ pub mod tuning {
 /// part indices are blueprint placement indices.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DesignReport {
-    /// The connected pieces (one rigid body each), in the sim's order (by lowest part index).
+    /// The connected pieces (one rigid body each), in the sim's order (row-major by their first cell, as
+    /// `data::ShipGrid::pieces`).
     pub pieces: Vec<PieceReport>,
     /// Index into `pieces` of the main piece (the sim's rule: a piece with a logic core first, then the most
     /// parts, then the earlier one). `None` for an empty blueprint.

@@ -68,10 +68,11 @@ pub enum SimEvent {
     /// The ship's controlling piece lost its last core (or was destroyed): the ship is salvage now, dark for
     /// good (`VesselLost` follows).
     ControlLost { ship: ShipId },
-    /// A vessel formed (GDR-0013): a ship spawned with a logic core (`from: None`), or a piece that kept a
-    /// logic core split off a vessel and became a ship of its own, a vessel of the same owner that inherits
-    /// the parent's behavior. `from` = the ship and piece it left: the piece keeps its id, so the client
-    /// moves the view of `(from.0, from.1)` to `(ship, from.1)` (the body moved the same way).
+    /// A vessel formed (GDR-0013): a ship spawned with a logic core (`from: None`), or a piece with a logic core
+    /// that moved out of a ship into a ship of its own, a vessel of the same owner that inherits the parent's
+    /// behavior: split off a vessel, or a further cored piece of a blueprint built in several pieces, at spawn.
+    /// `from` = the ship and piece it left: the piece keeps its id, so the client moves the view of
+    /// `(from.0, from.1)` to `(ship, from.1)` (the body moved the same way).
     VesselFormed {
         ship: ShipId,
         owner: Owner,
