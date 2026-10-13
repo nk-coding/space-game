@@ -451,7 +451,7 @@ mod tests {
         assert!(lights(&content, &c, 0).research);
         let (content, c) = career(", researched: [\"automaton_cannon\"]");
         assert!(lights(&content, &c, 0).research);
-        let (content, c) = career(", data: {\"kinetic\": 3.0}");
+        let (content, c) = career(", data: {\"kinetic\": 2.0}");
         assert!(!lights(&content, &c, 0).research, "not enough data for any node");
     }
 

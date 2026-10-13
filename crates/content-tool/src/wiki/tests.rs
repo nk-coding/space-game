@@ -289,7 +289,7 @@ fn career_pages_link_both_ways() {
     has(node, ">Refinement</span>");
     has(
         node,
-        "10 <a href=\"../family/logic.html\">Logic and sensors</a> data<br>2 <a href=\"../material/programmable_matter.html\">",
+        "10 <a href=\"../family/logic.html\">Logic and sensors</a> data<br>3 <a href=\"../material/programmable_matter.html\">",
     );
     has(
         node,
@@ -376,7 +376,7 @@ fn voyage_pages_link_both_ways() {
     has(first, "<dt>Sites</dt><dd>4</dd>");
     has(
         first,
-        "<dt>Goal</dt><dd><a href=\"../encounter/raider_pack.html\">Raider pack</a></dd>",
+        "<dt>Goal</dt><dd><a href=\"../encounter/raider_pair.html\">Raider pair</a></dd>",
     );
     has(
         first,
@@ -392,12 +392,9 @@ fn voyage_pages_link_both_ways() {
     );
     has(
         first,
-        &format!("href=\"../encounter/raider_pack.html\">Raider pack</a> {goal}"),
-    );
-    lacks(
-        first,
         &format!("href=\"../encounter/raider_pair.html\">Raider pair</a> {goal}"),
     );
+    lacks(first, "href=\"../encounter/raider_pack.html\"");
     has(
         first,
         "<blockquote><p>The lanes around the shipyard are quiet again. Further out, the <a href=\"../voyage/halvex_drift.html\">Halvex Drift</a> is waiting.</p></blockquote>",
@@ -428,14 +425,14 @@ fn voyage_pages_link_both_ways() {
     // and the voyages that place it (how many sites, the goal marked).
     let warden = "encounter/the_warden.html";
     has(warden, "<dt>Wake radius</dt><dd>300 m</dd>");
-    has(warden, "<dt>Ships</dt><dd>3–5</dd>");
+    has(warden, "<dt>Ships</dt><dd>2–3</dd>");
     lacks(warden, "<dt>Wrecks</dt>");
     has(warden, "aria-label=\"Automaton warden\"");
     has(
         warden,
         "href=\"../ship/automaton_raider.html\">Automaton raider</a></td><td>",
     );
-    has(warden, "<td class=\"num\">×2–4</td>");
+    has(warden, "<td class=\"num\">×1–2</td>");
     has(warden, "within 300 m of the site");
     has(warden, "<h2>Wrecks</h2>\n<p class=\"none\">None.</p>");
     has(
@@ -454,18 +451,22 @@ fn voyage_pages_link_both_ways() {
     );
     has(
         "encounter/raider_pair.html",
-        "<tr><td class=\"name\"><a href=\"../voyage/yard_approach.html\">Shipyard approach</a></td><td>",
+        &format!(
+            "<tr><td class=\"name\"><a href=\"../voyage/yard_approach.html\">Shipyard approach</a> {goal}"
+        ),
     );
     has(
         "encounter/raider_pair.html",
-        "<td class=\"num\">2 sites</td>",
+        "<td class=\"num\">3 sites</td>",
     );
-    for v in &c.voyages {
-        has(
-            "encounter/raider_pack.html",
-            &format!("href=\"../voyage/{}.html\"", v.id),
-        );
-    }
+    has(
+        "encounter/raider_pack.html",
+        "href=\"../voyage/wardens_gate.html\"",
+    );
+    lacks(
+        "encounter/raider_pack.html",
+        "href=\"../voyage/yard_approach.html\"",
+    );
     // A ship names the encounters it waits in, fighting or as a wreck; the encounters name it back.
     has(
         "ship/automaton_warden.html",
@@ -506,7 +507,7 @@ fn voyage_pages_link_both_ways() {
     );
     has(
         "encounters.html",
-        "<a href=\"ship/automaton_hunter.html\">Automaton hunter</a>&nbsp;×2–3<br><a href=\"ship/automaton_raider.html\">Automaton raider</a>&nbsp;×1–2</td><td>—</td><td class=\"num\">300 m</td>",
+        "<a href=\"ship/automaton_hunter.html\">Automaton hunter</a>&nbsp;×2–3</td><td>—</td><td class=\"num\">300 m</td>",
     );
     has(
         "encounters.html",

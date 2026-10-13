@@ -847,7 +847,7 @@ mod tests {
     fn unlock_names_the_cost() {
         let content = data::base_content();
         let words = |n: &str| unlock_words(content.research.get(n).unwrap());
-        assert_eq!(words("beam_laser"), ("UNLOCK  ·  ENERGY 18".into(), String::new()));
-        assert_eq!(words("mind_expansion_1"), ("UNLOCK  ·  LOGIC 10".into(), "2".into()));
+        assert_eq!(words("beam_laser"), ("UNLOCK  ·  ENERGY 10".into(), String::new()));
+        assert_eq!(words("mind_expansion_1"), ("UNLOCK  ·  LOGIC 10".into(), "3".into()));
     }
 }
