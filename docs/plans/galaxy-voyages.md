@@ -5,6 +5,10 @@ marked *(placeholder)* is for feel, not a spec. Records this plan would need are
 [5.8](#58-proposed-records); none of them is written yet. The roadmap and the record indexes are the lead's to
 update.
 
+**Owner direction since this was written (14 Oct 2026, [GDR-0075](../gdr/0075-voyages-feel-like-exploration.md)):**
+voyages must feel like *exploring a galaxy and following hints*, not like following a fixed path. Read the
+proposal below through that; where it lays out a fixed route, it needs rework before it becomes records.
+
 Read with: [GDR-0002](../gdr/0002-awakened-ship-mind-light-story.md), [GDR-0026](../gdr/0026-procedural-galaxy-and-bands.md),
 [GDR-0027](../gdr/0027-races.md), [GDR-0028](../gdr/0028-clusters-and-voyages.md),
 [ADR-0022](../adr/0022-one-simulation-space-per-cluster.md), [ADR-0024](../adr/0024-saves-seed-and-deltas.md),

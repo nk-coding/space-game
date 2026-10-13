@@ -83,6 +83,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0072](0072-shipyard-parts-voyage-flight-defaults.md) | Defaults of the shipyard home, the machine drawings and voyage flight | Accepted (provisional, lead) | 2026-10-13 |
 | [0073](0073-slice-tuning-v1.md) | Slice tuning v1: smaller packs, a gentler first voyage, research costs about halved | Accepted | 2026-10-13 |
 | [0074](0074-test-range-waves-emergency-recall-cannon.md) | Test-range waves follow the flown ship; recall also works when the fleet is disarmed; the cannon becomes an upgrade | Accepted | 2026-10-13 |
+| [0075](0075-voyages-feel-like-exploration.md) | Voyages should feel like exploring a galaxy and following hints, not a fixed path (direction) | Accepted | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
