@@ -284,8 +284,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         display: Display::Grid,
                         grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
                         column_gap: px(12),
-                        row_gap: px(12),
-                        margin: UiRect::top(px(16)),
+                        row_gap: px(10),
+                        margin: UiRect::top(px(14)),
                         ..default()
                     })
                     .with_children(|g| {
@@ -296,7 +296,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             });
                         }
                     });
-                    rp.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(16)), ..default() }).with_children(|b| {
+                    rp.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), margin: UiRect::top(px(12)), ..default() }).with_children(|b| {
                         for k in 0..SEL_BONUSES {
                             b.spawn((SelBonus(k), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }))
                                 .with_children(|r| {

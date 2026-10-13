@@ -3,8 +3,8 @@
 //!
 //! * **A placed part** (the select tool): icon, name, `2×2 · CELL 5,2 · INSTALLED` (or `IDLE` when it is over
 //!   the control capacity, `FALLS OFF` when it is not on the main piece), its stat lines after adjacency bonuses
-//!   (the content's stat lines with the report's values, boosted ones in gold; build points and control cost
-//!   stay in the palette and the stats panel), its peak heat at full use (`T / limit`, teal up to the limit,
+//!   (the content's stat lines with the report's values, boosted ones in gold; build points, control cost and
+//!   minimum power stay in the palette), its peak heat at full use (`T / limit`, teal up to the limit,
 //!   gold up to 120 % (GDR-0052), coral above) and its power level at full use, and one gold line per bonus it
 //!   receives or gives (`◆ +15% FIRE RATE FROM CAPACITOR ×2`, `◆ +15% FIRE RATE TO BEAM LASER`: names and
 //!   labels from content, the bonuses that apply from the report). Below: the armour pills of a hull part, the
@@ -35,8 +35,9 @@ use super::tools::{Selection, power_setting};
 
 /// Heat up to this share of the limit "runs hot" (gold), above it overheats (coral); GDR-0052, a placeholder.
 const RUNS_HOT: f32 = 1.2;
-/// Stat lines a placed part leaves to the palette and the stats panel.
-const DESIGN_TIME: [&str; 3] = ["build_points", "control_cost", "heat_limit"];
+/// Stat lines a placed part leaves to the palette and the stats panel (its heat limit is in PEAK HEAT, its
+/// minimum power behind its POWER LEVEL).
+const DESIGN_TIME: [&str; 4] = ["build_points", "control_cost", "heat_limit", "power_min_level"];
 
 /// One stat cell of the block.
 #[derive(Clone, Debug, PartialEq)]
@@ -159,18 +160,8 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
     let status = if idle { "IDLE" } else if falls_off { "FALLS OFF" } else { "INSTALLED" };
     let material = content.placement_material(p);
 
+    // The live numbers first (heat and power at full use), then the stat lines after bonuses.
     let mut stats = Vec::new();
-    for l in content.part_stats(part, material) {
-        if l.bonus.is_some() || DESIGN_TIME.contains(&l.stat.as_str()) {
-            continue;
-        }
-        let now = pr.and_then(|r| after_bonuses(&l.stat, l.value, &r.stats));
-        let (value, tone) = match now.filter(|v| (v - l.value).abs() > 1e-4 * l.value.abs().max(1.0)) {
-            Some(v) => (content.stat_line(&l.stat, v).map_or(l.text.clone(), |s| s.text), Tone::Gold),
-            None => (l.text.clone(), Tone::Number),
-        };
-        stats.push(SelLine { label: l.label.to_uppercase(), value, tone });
-    }
     if let Some(r) = pr {
         let limit = r.stats.get(Stat::HeatLimit);
         if let (Some(def), true) = (content.stats.get("peak_heat"), limit.is_finite() && part.heat.is_some()) {
@@ -192,6 +183,17 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
             stats.push(SelLine { label: "POWER LEVEL".into(), value, tone });
         }
     }
+    for l in content.part_stats(part, material) {
+        if l.bonus.is_some() || DESIGN_TIME.contains(&l.stat.as_str()) {
+            continue;
+        }
+        let now = pr.and_then(|r| after_bonuses(&l.stat, l.value, &r.stats));
+        let (value, tone) = match now.filter(|v| (v - l.value).abs() > 1e-4 * l.value.abs().max(1.0)) {
+            Some(v) => (content.stat_line(&l.stat, v).map_or(l.text.clone(), |s| s.text), Tone::Gold),
+            None => (l.text.clone(), Tone::Number),
+        };
+        stats.push(SelLine { label: l.label.to_uppercase(), value, tone });
+    }
 
     Inspector {
         part: part.id.clone(),
@@ -210,7 +212,8 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
 /// A content stat's value after bonuses, from the report's part stats; `None` for stats bonuses can't change.
 fn after_bonuses(stat: &str, base: f32, stats: &sim::PartStats) -> Option<f32> {
     match stat {
-        // Shots per second scale with the fire-rate multiplier.
+        // Damage per second and shots per second scale with the fire-rate multiplier (as `GunMount::dps`).
+        "damage" => Some(stats.get(Stat::Damage) * stats.get(Stat::FireRate)),
         "shot_rate" => Some(base * stats.get(Stat::FireRate)),
         _ => Stat::from_id(stat).map(|s| stats.get(s)),
     }
@@ -257,14 +260,14 @@ fn effect_text(def: &StatDef, e: Effect) -> String {
 pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content) {
     let ui = &style.ui;
     let c = |tone: Tone| ui_color(tone.color(ui), 1.0);
-    let row = |row_gap: f32| Node { display: Display::None, flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(5), row_gap: px(row_gap), margin: UiRect::top(px(14)), ..default() };
+    let row = || Node { display: Display::None, flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(5), row_gap: px(5), margin: UiRect::top(px(12)), flex_shrink: 0.0, ..default() };
     let glyph = |glyph: Glyph| (UiIcon::Glyph { glyph, color: ui.number }, Node { width: px(15), height: px(15), ..default() });
-    rp.spawn((ControlRow::Materials, row(5.0))).with_children(|r| {
+    rp.spawn((ControlRow::Materials, row())).with_children(|r| {
         for m in armor_materials(content) {
             spawn_pill(r, fonts, &m.name.to_uppercase(), 8.5, 24.0, None, Pill::new(Tone::Teal), ActionButton(DrydockAction::PartMaterial(m.id.clone())));
         }
     });
-    rp.spawn((ControlRow::Power, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..row(0.0) })).with_children(|col| {
+    rp.spawn((ControlRow::Power, Node { flex_direction: FlexDirection::Column, flex_wrap: FlexWrap::NoWrap, align_items: AlignItems::Stretch, row_gap: px(8), ..row() })).with_children(|col| {
         col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() })
             .with_children(|h| {
                 h.spawn(label(fonts, "POWER PRIORITY", 8.0, c(Tone::Label)));
@@ -286,7 +289,7 @@ pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, st
             }
         });
     });
-    rp.spawn((ControlRow::Actions, row(5.0))).with_children(|a| {
+    rp.spawn((ControlRow::Actions, row())).with_children(|a| {
         for (g, action) in [(Glyph::Undo, DrydockAction::RotateCcw), (Glyph::Redo, DrydockAction::RotateCw)] {
             a.spawn((ring_node(26.0), ActionButton(action))).with_children(|r| {
                 r.spawn(glyph(g));
@@ -375,6 +378,8 @@ mod tests {
         if let Some(b) = received.first() {
             let src = &content.parts.get(&d.dock().parts()[b.source as usize].part).unwrap().name;
             assert!(insp.bonuses.iter().any(|l| l.contains("FROM") && l.contains(&src.to_uppercase())), "{:?}", insp.bonuses);
+            // A faster beam does more damage per second: the boosted number is gold.
+            assert!(insp.stats.iter().any(|l| l.label == "DAMAGE" && l.tone == Tone::Gold), "{:?}", insp.stats);
         }
         assert!(insp.installed.as_ref().is_some_and(|i| i.power.is_some() && i.material.is_none()));
         // A hull part: its material, no power.
