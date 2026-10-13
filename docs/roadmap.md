@@ -157,6 +157,18 @@ Next session:
 - Open: plume numbers, mind capacity beyond the slice, whether RCS pods also reach past the hull (GDR-0069 lead
   reading), the needrestart exemption (CLAUDE.md, root).
 
+### 14 Oct 2026 (Niklas's answers, an hour of agent work)
+
+- **Next phase after the 7L play-test: galaxy exploration** (Niklas). First rework `docs/plans/galaxy-voyages.md`
+  around [GDR-0075](gdr/0075-voyages-feel-like-exploration.md) (explore uncharted space, follow hints, several
+  ways on; not a fixed path), ask Niklas the hint questions, then the outer band with new enemies and parts.
+- Judge in play, not now: the Warden at ~68 % clears; the starter turning faster than the Runner.
+- Confirmed: RCS pods stay inside their cells (GDR-0072's reading); FLEET's four slots and the 30 m escort default.
+- Changed: cargo a shrinking hold can't keep spills as collectable fragments (GDR-0076); abandoning a voyage asks
+  in a panel instead of M twice (to build).
+- Built today: the portal transition into the voyage map, zoom on the map out to the whole galaxy, Esc on the
+  BEHAVIOR screen goes back the way it came, the shipyard shows faintly behind BEHAVIOR and FLEET.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
