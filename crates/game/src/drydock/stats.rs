@@ -288,7 +288,8 @@ mod tests {
             labels,
             ["POWER", "PEAK HEAT", "THRUST/MASS", "YAW", "FIREPOWER", "CARGO", "CONTROL", "DEVICE LOAD", "TOP SPEED", "TURN 90°", "MASS", "BUILD POINTS"]
         );
-        // docs/sim.md "Design report (drydock)": 54 / 50 MW, 109 %, 10.3 m/s², 8.3 dps, 18 / 32, Light, 22 m/s, 0.77 s
+        // docs/sim.md "Design report (drydock)": 54 / 50 MW, 109 %, 10.3 m/s², 8.3 dps, 18 / 32, Light, 22 m/s, 1.5 s
+        // (90° turn since GDR-0055)
         // (shown with the content's one decimal).
         let power = value(&cells, "POWER");
         assert_eq!(power.value, "50 / 54");
@@ -304,7 +305,7 @@ mod tests {
         assert_eq!((control.value.as_str(), control.tone), ("18 / 32", Tone::Violet));
         assert_eq!(value(&cells, "DEVICE LOAD").value, "Light");
         assert_eq!(value(&cells, "TOP SPEED").value, "22 m/s");
-        assert_eq!(value(&cells, "TURN 90°").value, "0.8 s");
+        assert_eq!(value(&cells, "TURN 90°").value, "1.5 s");
         assert!(value(&cells, "MASS").value.ends_with(" t"));
         assert!(value(&cells, "BUILD POINTS").value.ends_with(" BP"));
     }
