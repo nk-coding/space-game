@@ -57,8 +57,7 @@ Open questions for Niklas (ask interactively):
   win only 3–5 of 12 waves; shields rarely collapse (regen 1.5/s vs ~0.4 per cannon hit).
 
 Client leftovers:
-- If Niklas still sees blur at high zoom: get the F3 atlas line from his browser. Region steps at tier 512 still
-  cost up to ~50 ms (large plumes).
+- Blur at high zoom: fixed 13 Oct (5I). Region steps at tier 512 still cost up to ~50 ms (large plumes).
 - Two non-focus ships still show each other's shield bubbles over their hulls (ADR-0029 note).
 - Browser load-test numbers (`?load=1|5|20`) need Niklas's real browser (headless timings are meaningless).
 
@@ -96,7 +95,7 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 | 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2, in progress (13 Oct) |
 | 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export, share codes (GDR-0054) | wave 2, in progress (13 Oct) |
 | 5H Turning feel (GDR-0055) | Keyboard rotation ~1.5 rad/s with a ramp; cores tiny, gyros modest, RCS strong (Runner 90° ≈ 1.5 s); differential thrust last resort; whole-speed fade | in progress (13 Oct) |
-| 5I Sharp icons | Part icons look pixelated at high zoom in Niklas's browser although the atlas tier (256 px/cell) is above the need (160): find and fix the sampling/upload bug | in progress (13 Oct) |
+| 5I Sharp icons | Part icons look pixelated at high zoom in Niklas's browser although the atlas tier (256 px/cell) is above the need (160): find and fix the sampling/upload bug | done 13 Oct: the material never switched to a new tier (Bevy 0.20 `get_mut` only marks on write), so icons sampled the 64 px/cell start atlas all session; fixed, plus a −0.5 LOD bias (`client.md` "Atlas", `results/atlas-sharpness-*.png`) |
 
 ## Phase 4: measurement
 

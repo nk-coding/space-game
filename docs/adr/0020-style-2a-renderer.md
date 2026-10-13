@@ -39,3 +39,8 @@ lists "glow on everything, bloom as a default" under Avoid.
   test (roadmap phase 4).
 - The icon atlas was first rasterised at build time (`atlas-tool`, PNG committed). ADR-0021 requires runtime
   rasterisation at display resolution, so that part has to change.
+
+13 Oct 2026: atlas meshes draw with `AtlasMaterial` (texture × vertex colour, sRGB output, sampled with a −0.5 LOD
+bias, `crates/game/src/atlas.wesl`) instead of `ColorMaterial`, and every new tier is a new image that the
+material is switched to one frame later. Until then the material kept sampling the start atlas (64 px/cell) for
+the whole session, which made icons look pixelated at high zoom (`docs/client.md` "Atlas").
