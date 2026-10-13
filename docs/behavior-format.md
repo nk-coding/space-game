@@ -27,8 +27,8 @@ switch off first. If no active rule matches, the ship stops and holds.
 target weakest(engines)
 when hull < 30% -> flee                                   # run when badly hurt
 when shield_down and target_on_me -> orbit(80%, ccw)      # dodge while the shields recharge
-when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)
-always -> approach(67%)
+when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)
+always -> approach(85%)
 ```
 
 | Line | Meaning |
@@ -36,7 +36,7 @@ always -> approach(67%)
 | `target <selector>` | Optional, first line: who the rules are about. Default `target nearest`. |
 | `when <condition> and <condition> ... -> <action>` | A rule: all conditions must hold. |
 | `always -> <action>` | A rule without conditions (usually the last one). |
-| `... # note` | A note at the end of a line. It belongs to the rule and survives the graph view. |
+| `... # note` | A note at the end of a line: one line of text (no tabs or other control characters). It belongs to the rule and survives the graph view. |
 
 There is no `end`, no `or` and no nesting. For "this **or** that", write two rules with the same action.
 
@@ -82,7 +82,9 @@ Numbers use a decimal point and a leading digit (`0.5`, not `.5`).
 
 Names and keywords are not case-sensitive (`When Hull < 30%` works; it is printed in lower case). `if` works
 for `when`; `→` works for `->`; `≤` and `≥` work for `<=` and `>=`. Spaces are free (`orbit( 45 , cw )`).
-The printed form is always the canonical one; parsing it again gives the same behavior.
+The printed form is always the canonical one; parsing it again gives the same behavior. That is why a line must
+fit 240 characters both as typed and as printed: `always->flee#…` typed compactly gains spaces when printed
+(`always -> flee # …`), so a line that grows past 240 is refused ("too long once written out").
 
 ### Errors
 
@@ -109,12 +111,15 @@ value     = number | name
 number    = [ "-" ] digits [ "." digits ] [ unit ]     unit: "m" | "s" | "%"
 cmp       = "<" | "<=" | ">" | ">=" | "≤" | "≥"
 arrow     = "->" | "→"
-note      = "#" text to the end of the line
+note      = "#" text to the end of the line         no control characters (tabs, line breaks)
 name      = letter { letter | digit | "_" }        case-insensitive
 ```
 
 Keywords (`when if always and or not target`) cannot be node or option names. Limits: 64 rules, 8 conditions
-per rule, 4 values per node, 240 characters per line.
+per rule, 4 values per node, 240 characters per line as typed and as printed (`check_program` checks the printed
+form, so content, stored and shared behaviors and the editor agree). Reading a text stops at the line after the
+target line and 64 rules (or lines with errors) with "at most 64 rules"; the RON form refuses more than 64 rules
+before reading any.
 
 ## In content files
 
