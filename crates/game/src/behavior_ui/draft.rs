@@ -3,13 +3,16 @@
 //! edits it through [`BehaviorDraft::edit`]; the text view edits [`BehaviorDraft::text`]: a valid text replaces
 //! the program, an invalid one keeps the last valid program and lists its errors.
 //!
-//! A draft starts as a copy of a behavior (the design's own `behavior`, else its faction's default; GDR-0057:
-//! content behaviors are templates to copy).
+//! A draft starts as a copy of a behavior: the one the design flies ([`design_behavior`]: a content template or
+//! one of the player's saved behaviors; GDR-0057), or one picked in the BEHAVIORS list. It remembers what it
+//! looked like when it was opened or last saved ([`BehaviorDraft::dirty`]), so the screen can say UNSAVED.
 
 use bevy::prelude::*;
-use data::behavior::{Program, TextError};
+use data::behavior::{Program, TextError, check_program};
 use data::behavior_edit::BehaviorEditor;
 use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
+
+use crate::drydock::behaviors::{PlayerBehaviors, text_of};
 
 /// The behavior on the BEHAVIOR screen.
 #[derive(Resource, Clone, Debug, Default)]
@@ -28,20 +31,64 @@ pub struct BehaviorDraft {
     revision: u64,
     /// `editor.revision()` when the draft last caught up with it.
     seen: u64,
+    /// The draft when it was opened or last saved (see [`BehaviorDraft::dirty`]).
+    clean: Snapshot,
+}
+
+/// The parts of a draft that are saved: its name and its rules (the canonical text of a valid program, else the
+/// text as typed), to tell unsaved edits.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Snapshot {
+    pub name: String,
+    pub body: String,
+}
+
+/// The lines of a behavior that check on their own (the target line too, if it does), opened in the editor: what
+/// the graph shows while the behavior's text has errors. `None` if no rule checks.
+fn checked_part(b: &Behavior, nodes: &Table<BehaviorNode>) -> Option<BehaviorEditor> {
+    let checks = |target: Option<&str>, rules: &[String]| Program::from_parts(target, rules).ok().filter(|p| check_program(p, nodes).is_empty());
+    let rules: Vec<String> = b.rules.iter().filter(|r| checks(None, std::slice::from_ref(*r)).is_some()).cloned().collect();
+    let target = b.target.as_deref().filter(|t| checks(Some(t), &rules).is_some());
+    BehaviorEditor::open(nodes, &checks(target, &rules)?).ok()
+}
+
+/// The behavior a design flies when nobody pilots it, for the editor: the one it names (a content template or one
+/// of the player's saved behaviors, also one with errors, so it can be fixed), else its faction's default. A
+/// name that is gone gives the faction's default, as flights do.
+pub fn design_behavior<'a>(content: &'a Content, behaviors: &'a PlayerBehaviors, design: &Blueprint) -> Option<&'a Behavior> {
+    design.behavior.as_deref().and_then(|id| behaviors.behavior(content, id)).or_else(|| {
+        let faction = content.factions.get(&design.faction)?;
+        content.behaviors.get(faction.behavior.as_deref()?)
+    })
 }
 
 impl BehaviorDraft {
-    /// A copy of a behavior. `None` if its rules don't check against the vocabulary (a content behavior always
-    /// does; content is validated at load).
+    /// A copy of a behavior (a content template or a saved one). Rules that don't check against the vocabulary
+    /// (a saved behavior with errors) open as their text with the errors; the program (what the graph shows) is
+    /// then the lines that check on their own until the text is fixed. `None` only when the vocabulary has no
+    /// action.
     pub fn from_behavior(b: &Behavior, nodes: &Table<BehaviorNode>) -> Option<Self> {
-        let editor = BehaviorEditor::open(nodes, &b.program().ok()?).ok()?;
-        Some(Self::with_editor(Some(b.id.clone()), b.name.clone(), editor))
+        let mut d = match b.program().ok().and_then(|p| BehaviorEditor::open(nodes, &p).ok()) {
+            Some(editor) => Self::with_editor(Some(b.id.clone()), b.name.clone(), editor),
+            None => {
+                let mut d = match checked_part(b, nodes) {
+                    Some(editor) => Self::with_editor(None, String::new(), editor),
+                    None => Self::empty(nodes)?,
+                };
+                d.source = Some(b.id.clone());
+                d.name.clone_from(&b.name);
+                d.set_text(&text_of(b));
+                d
+            }
+        };
+        d.mark_clean();
+        Some(d)
     }
 
-    /// The behavior a design's draft copies: `wanted` (a content id, e.g. from `?behavior=`) if it exists, else
-    /// the behavior the design names, else its faction's default.
-    pub fn source_for<'a>(content: &'a Content, design: &Blueprint, wanted: Option<&str>) -> Option<&'a Behavior> {
-        wanted.and_then(|id| content.behaviors.get(id)).or_else(|| content.ship_behavior(design))
+    /// The behavior a design's draft copies: `wanted` (a content or saved behavior id, e.g. from `?behavior=`) if
+    /// it exists, else the one the design flies ([`design_behavior`]).
+    pub fn source_for<'a>(content: &'a Content, behaviors: &'a PlayerBehaviors, design: &Blueprint, wanted: Option<&str>) -> Option<&'a Behavior> {
+        wanted.and_then(|id| behaviors.behavior(content, id)).or_else(|| design_behavior(content, behaviors, design))
     }
 
     /// A new draft with one rule: `always ->` the vocabulary's first action (a behavior needs a rule). `None`
@@ -54,7 +101,9 @@ impl BehaviorDraft {
 
     fn with_editor(source: Option<String>, name: String, editor: BehaviorEditor) -> Self {
         let text = editor.text();
-        Self { source, name, seen: editor.revision(), editor: Some(editor), text, errors: Vec::new(), revision: 1 }
+        let mut d = Self { source, name, seen: editor.revision(), editor: Some(editor), text, errors: Vec::new(), revision: 1, clean: Snapshot::default() };
+        d.mark_clean();
+        d
     }
 
     /// Replaces this draft with another one (opened, loaded or new); the revision keeps going up.
@@ -118,6 +167,28 @@ impl BehaviorDraft {
         }
     }
 
+    /// What would be saved now: the name and the rules (the canonical text of the program when the text is
+    /// valid, else the text as typed).
+    pub fn snapshot(&self) -> Snapshot {
+        let body = if self.errors.is_empty() { self.program().to_text() } else { self.text.clone() };
+        Snapshot { name: self.name.trim().to_string(), body }
+    }
+
+    /// The draft differs from the behavior it was opened from or last saved as.
+    pub fn dirty(&self) -> bool {
+        self.clean != self.snapshot()
+    }
+
+    /// The draft was just saved (or opened): nothing unsaved.
+    pub fn mark_clean(&mut self) {
+        self.clean = self.snapshot();
+    }
+
+    /// Unsaved from now on, whatever it looks like (a draft restored with unsaved edits whose source is gone).
+    pub fn mark_unsaved(&mut self) {
+        self.clean = Snapshot::default();
+    }
+
     /// After an edit through the model: a changed program becomes the text, the errors go.
     fn sync(&mut self) {
         let Some(editor) = &self.editor else { return };
@@ -137,8 +208,9 @@ mod tests {
     #[test]
     fn a_design_gets_its_faction_default() {
         let content = data::base_content();
+        let lib = PlayerBehaviors::default();
         let runner = content.ships.get("halvex_runner").unwrap();
-        let b = BehaviorDraft::source_for(&content, runner, None).unwrap();
+        let b = BehaviorDraft::source_for(&content, &lib, runner, None).unwrap();
         let d = BehaviorDraft::from_behavior(b, &content.behavior_nodes).unwrap();
         assert_eq!(d.source.as_deref(), Some("skirmisher"));
         assert_eq!(d.name, "Skirmisher");
@@ -146,16 +218,60 @@ mod tests {
         assert_eq!(d.text, d.program().to_text());
         assert!(d.text.starts_with("target nearest\nwhen hull < 25% -> flee"));
         assert!(d.errors.is_empty());
-        // A design that names its own behavior gets that one; a wanted content behavior comes first.
+        assert!(!d.dirty());
+        // A design that names its own behavior gets that one; a wanted behavior comes first.
         let mut own = runner.clone();
         own.behavior = Some("raider_basic".into());
-        assert_eq!(BehaviorDraft::source_for(&content, &own, None).unwrap().id, "raider_basic");
-        assert_eq!(BehaviorDraft::source_for(&content, &own, Some("skirmisher")).unwrap().id, "skirmisher");
-        assert_eq!(BehaviorDraft::source_for(&content, &own, Some("nonsense")).unwrap().id, "raider_basic");
+        assert_eq!(BehaviorDraft::source_for(&content, &lib, &own, None).unwrap().id, "raider_basic");
+        assert_eq!(BehaviorDraft::source_for(&content, &lib, &own, Some("skirmisher")).unwrap().id, "skirmisher");
+        assert_eq!(BehaviorDraft::source_for(&content, &lib, &own, Some("nonsense")).unwrap().id, "raider_basic");
+        // A name that is gone: the faction's default, as flights fly it.
+        own.behavior = Some("gone".into());
+        assert_eq!(design_behavior(&content, &lib, &own).unwrap().id, "skirmisher");
         // No behavior at all (no faction default): none.
         own.behavior = None;
         own.faction = "nobody".into();
-        assert!(BehaviorDraft::source_for(&content, &own, None).is_none());
+        assert!(BehaviorDraft::source_for(&content, &lib, &own, None).is_none());
+    }
+
+    #[test]
+    fn player_behaviors_open_and_ones_with_errors_open_as_text() {
+        use crate::storage::{MemoryBackend, Storage};
+        let content = data::base_content();
+        let mut storage = Storage::new(MemoryBackend::default());
+        let mut lib = PlayerBehaviors::default();
+        let mut careful = lib.copy_of(&content, "skirmisher").unwrap();
+        careful.name = "Careful".into();
+        careful.rules[0] = "when hull < 50% -> flee".into();
+        let careful = lib.save(&mut storage, &content, &careful, 1).unwrap();
+        let mut broken = lib.copy_of(&content, "raider_basic").unwrap();
+        broken.rules[0] = "when sheild_down -> flee".into();
+        let broken = lib.save(&mut storage, &content, &broken, 2).unwrap();
+        let mut runner = content.ships.get("halvex_runner").unwrap().clone();
+        runner.behavior = Some(careful.clone());
+        let b = BehaviorDraft::source_for(&content, &lib, &runner, None).unwrap();
+        let d = BehaviorDraft::from_behavior(b, &content.behavior_nodes).unwrap();
+        assert_eq!((d.source.as_deref(), d.name.as_str()), (Some(careful.as_str()), "Careful"));
+        assert!(d.text.contains("when hull < 50% -> flee") && d.errors.is_empty() && !d.dirty());
+        // With errors: the saved lines and their errors, nothing unsaved; fixing the text is an edit.
+        runner.behavior = Some(broken.clone());
+        let b = BehaviorDraft::source_for(&content, &lib, &runner, None).unwrap();
+        let mut d = BehaviorDraft::from_behavior(b, &content.behavior_nodes).unwrap();
+        assert_eq!(d.source.as_deref(), Some(broken.as_str()));
+        assert_eq!(d.text, text_of(b));
+        assert_eq!((d.errors.len(), d.errors[0].line, d.errors[0].col), (1, 2, 6));
+        // The graph shows the lines that check: the target and the other rule.
+        assert_eq!(d.program().to_text(), format!("target nearest\n{}\n", b.rules[1]));
+        assert!(!d.dirty());
+        let fixed = d.text.replace("sheild", "shield");
+        d.set_text(&fixed);
+        assert!(d.errors.is_empty() && d.dirty());
+        // Renaming is an edit too; saving (marking clean) ends it.
+        d.mark_clean();
+        d.name = "Fixed".into();
+        assert!(d.dirty());
+        d.mark_clean();
+        assert!(!d.dirty());
     }
 
     #[test]

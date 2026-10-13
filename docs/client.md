@@ -52,7 +52,7 @@ The drydock's keys are in [Drydock](#drydock), the BEHAVIOR screen's in [Behavio
 |---|---|
 | `scene=drydock` | start in the drydock (default: the sandbox) |
 | `scene=behavior` | start on the BEHAVIOR screen (the design's behavior) |
-| `behavior=<id>` | the BEHAVIOR screen opens this content behavior (e.g. `raider_basic`) instead of the design's |
+| `behavior=<id>` | the BEHAVIOR screen opens this content or saved behavior (e.g. `raider_basic`) instead of the design's |
 | `scene=showcase` | runner holding position, three raiders orbiting it, no combat (default: the sandbox) |
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the runner under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
@@ -87,7 +87,9 @@ The drydock's keys are in [Drydock](#drydock), the BEHAVIOR screen's in [Behavio
   unpiloted on the behavior, the camera and the HUD follow it, focus switches are dropped, losing it ends the test.
   **Fly alongside** (`FLY ALONGSIDE · …`): you fly the design, a second copy is a wingman on the behavior. T and a
   lost test return to where the test started (`mode::FlightExit`: the screen that sent it, the drydock for the
-  URL); Shift+R starts over. `test_range::BehaviorWatch` has the tested ship's rules live (F3 shows them).
+  URL); Shift+R starts over. `test_range::BehaviorWatch` has the tested ship's rules live: a compact panel in the
+  HUD shows them (right, under the target panel; the rule that decides in teal, why the rules above don't match;
+  `behavior_ui/live.rs`), F3 every rule with why.
 - Every sandbox flight flies the **player's saved behaviors**: they join the player's content, so the library has
   them and a design naming one flies it (`drydock::behaviors`).
 - **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
@@ -306,21 +308,26 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is op
 
 How the design on the drydock's grid thinks (Behavior editor v1, [GDR-0057](gdr/0057-behavior-editor-v1.md); the
 look follows `docs/concept/boards/ui-mockups/phone-behavior-editor.png`, laid out for the desktop), `behavior_ui/`,
-written 13 Oct 2026: the mode, the screen, the graph and text views, the inspector and the palette. Both views edit
-through the editing model `data::behavior_edit` (`docs/behavior-format.md` "Editing model"): every graph edit is
-legal (or refused with a reason) and one undo step, and the text view follows. Saving behaviors (the player
-storage) and TEST IN RANGE (the range scenes) plug in through the resources and the action message below. Until
-they do, the edits stay on the screen: flights still fly the content behavior.
+written 13 Oct 2026: the mode, the screen, the graph and text views, the inspector and the palette; behaviors as
+saved documents (the name and SAVE, the BEHAVIORS list, the design's behavior) and TEST IN RANGE with a live rule
+panel in flight. Both views edit through the editing model `data::behavior_edit` (`docs/behavior-format.md`
+"Editing model"): every graph edit is legal (or refused with a reason) and one undo step, and the text view follows.
+The storage under it: `docs/drydock.md` "Behaviors: storage, designs and tests".
 
 Open it with the drydock's BEHAVIOR button (bottom bar), or `?scene=behavior` (`&behavior=raider_basic` opens a
-content behavior instead of the design's). Screenshots: `docs/results/behavior-screen-*.png`.
+content or saved behavior instead of the design's). Screenshots: `docs/results/behavior-screen-*.png`,
+`behavior-saving-*.png` (a template saved as the design's own copy; the BEHAVIORS list), `behavior-live-watch.png`
+(TEST IN RANGE, watch, with the live panel).
 
-| Keys (only while no text field nor the TEXT view has the keyboard) | |
+| Keys (only while neither a text field nor the TEXT view has the keyboard, and the BEHAVIORS list is closed) | |
 |---|---|
-| Back to the drydock (the design is untouched) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it) |
-| Test in range (the WATCH / FLY ALONGSIDE pills pick the mode) | T, or TEST IN RANGE (no handler yet: the range scenes come with the plumbing) |
+| Back to the drydock (the design is untouched; the draft stays) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it) |
+| Test in range (the WATCH / FLY ALONGSIDE pills pick the mode) | T, or TEST IN RANGE; T in the test comes back |
+| Save | Ctrl+S (also while the TEXT view types), or SAVE |
+| Rename the behavior | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
+| BEHAVIORS list | the button; Esc or CLOSE closes it (Esc first leaves a rename or a delete question) |
 | Search the palette | / (Esc or Enter leaves the field) |
-| Scroll the graph or the palette | wheel |
+| Scroll the graph, the palette or a list | wheel |
 | Select a node / a rule / nothing | click it / click its `always` chip or its row's empty space / click the graph's empty space |
 | Add a rule | `+ RULE` |
 | Add a condition to the selected rule; replace its action; set the target | click a condition / an action / a target selector in ADD NODE |
@@ -332,8 +339,10 @@ content behavior instead of the design's). Screenshots: `docs/results/behavior-s
 | TEXT view | type; Ctrl+C / Ctrl+V copy and paste (through `clipboard.rs` on the web); Ctrl+Z is egui's undo while the text has the keyboard |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `BEHAVIOR · HALVEX RUNNER` (the design's name) and
-the behavior's name, the `6 / 12 RULE SLOTS` pill (rules / the design's slots, `Content::ship_rule_slots`, from its
-logic cores); GRAPH / TEXT; TEST IN RANGE with WATCH and FLY ALONGSIDE under it. Left the graph: the `TARGET` line
+the behavior's name (a click renames it) with its saved state after it (TEMPLATE, SAVED, UNSAVED or NOT SAVED YET,
+and `THE DESIGN FLIES <NAME>` when the open behavior is not the design's), the `6 / 12 RULE SLOTS` pill (rules / the
+design's slots, `Content::ship_rule_slots`, from its logic cores); GRAPH / TEXT; TEST IN RANGE with WATCH and FLY
+ALONGSIDE under it. Left the graph: the `TARGET` line
 on top (`Nearest` and `DEFAULT` when the program has none), the `Priority · first match` root, the trunk with a
 dot per rule, each rule as violet condition chips (content name, values dim, the comparison as written: `Enemies
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
@@ -343,8 +352,9 @@ dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); the
 pill; a dot grid behind (immediate-mode FX dots). The selected rule's row is lit faintly, the selected chip glows.
 Right the inspector (below), ADD NODE (its line says where a pick goes: `ADD NODE · TO RULE 3`, `REPLACE HULL ·
 PICK A CONDITION`) with its search and the palette (the content vocabulary: conditions violet, actions teal, Rhai
-gold, target selectors white). Bottom the DRYDOCK pill, undo / redo and the status line (text errors, rules without
-a slot, else how rules run; a refusal in coral after it for 3 s, like the drydock's info line). Larger windows
+gold, target selectors white). Bottom the DRYDOCK pill, undo / redo, the status line (a message from saving, opening or testing until the draft
+changes; else text errors, rules without a slot, or how rules run; a refusal in coral after it for 3 s, like the
+drydock's info line), BEHAVIORS and SAVE (as in the drydock). Larger windows
 scale the screen like the drydock. The phone layout and touch come later.
 
 The inspector shows the selection with its kicker (`ACTION · MANEUVER`), its name in its role's colour and its
@@ -383,6 +393,19 @@ action selected).
   `errors` fill. `revision()` goes up with every change (the graph and the inspector follow it). Leaving the TEXT
   view tidies a valid text to canonical form. Opening the screen keeps the draft while it is still the same behavior
   (typed text and the undo history survive a look at the drydock), else copies the new one.
+- **Saving** (`saving.rs`; the rules in `docs/drydock.md` "On the BEHAVIOR screen"): the name field and the saved
+  state, SAVE (`save_draft`: a template becomes the player's copy and, when the design flew the template, the
+  design names it; a saved behavior is updated), the working draft (`drydock/behavior`, so unsaved edits survive
+  leaving the screen and a reload; `DraftSlot` remembers the behavior the design flew when the draft was opened:
+  while it still does, the screen keeps the draft, else it opens the design's behavior and saves unsaved edits
+  first), `ScreenNote` (the status line's message), and TEST IN RANGE (`test_request`: the draft by id when saved
+  and unchanged, else its text; refused with the reason when the text has errors, the behavior can't fly or the
+  design can't).
+- **BEHAVIORS** (`list.rs`): a layer over the screen above the bottom bar like the drydock's BLUEPRINTS: your
+  behaviors (most recently saved first; rules, when saved or the first error; `THIS DESIGN`, `IN THE EDITOR`,
+  `UNSAVED` tags) and the templates; OPEN, USE FOR THIS DESIGN, DUPLICATE, RENAME, DELETE (with a confirm) on the
+  picked row, NEW BEHAVIOR. The TEXT view's editor (egui) would draw over the layer, so the screen shows the graph
+  while the list is open and goes back to the text when it closes.
 - **Context** (`mod.rs`): `EditorContext { design_name, slots }`, set when the screen opens; `BehaviorUi { view,
   selected, test_mode, search }`, the UI state (`BehaviorView::{Graph, Text}`, `TestMode::{Watch, FlyAlongside}`,
   `inspect::Selection::{Node(NodeRef), Rule(RuleId), Vocabulary(id)}`: the model's stable ids, so a selection keeps
@@ -397,8 +420,8 @@ action selected).
 - **Actions** (`actions.rs`): every button (`BehaviorButton(BehaviorAction)`) and key sends one message,
   `BehaviorAction::{Back, Menu, View, Select, Deselect, TestMode, TestInRange}` and the editing group `{AddRule,
   AddNode, SelectRule, Edit(edit::Edit), Replace, Delete, Undo, Redo}`. Handled here: Back (`NextState(Drydock)`),
-  View, Select / Deselect, TestMode; `edit::apply` handles the editing group. Not handled yet: TestInRange (the range
-  scenes: read `BehaviorUi::test_mode`), Menu. New handlers read the message in a system in `BehaviorSet::Apply`
+  View, Select / Deselect, TestMode; `edit::apply` handles the editing group. `saving.rs` handles Save and TestInRange, `list.rs` Behaviors; Menu has no
+  handler yet. New handlers read the message in a system in `BehaviorSet::Apply`
   (`Input → Apply → Show`, behavior screen only) and change the program through `BehaviorDraft::edit`; the graph
   and the text follow `revision`. Disabled pills and rings send nothing.
 - **Editing** (`edit.rs`, `controls.rs`, `reorder.rs`): `edit::Edit` is one editing-model operation
@@ -418,13 +441,13 @@ action selected).
   dragged by `reorder::drag_rows` (a press on a row that moves more than 8 px up or down; a teal FX line shows the
   drop place; letting go sends `MoveRule`).
 - **Screen** (`screen.rs`): the frame is spawned once (hidden outside the screen); the graph, the inspector and the
-  palette are rebuilt when what they show changes (program revision and slots; selection; search). The graph is a
-  flex row (root column, then a grid: trunk, conditions as max-content, actions as max-content, notes), so actions
-  line up and shorter condition groups get longer connectors. Chips carry `ChipLook` and are coloured by
-  `style_chips` from their state (idle, hovered, pressed, selected with a glow, dimmed without a slot). The graph
-  and the palette scroll (`ScrollPosition`, the wheel); `ui_kit`'s hit test skips nodes clipped out of a scrolled
-  parent (`CalculatedClip`). The screen keeps the camera rig's viewport in step with the window, so `ui_icons`
-  and the dot grid sit right.
+  palette are rebuilt when what they show changes (program revision and slots; selection, name and source; search).
+  The graph is a flex row (root column, then a grid: trunk, conditions as max-content, actions as max-content,
+  notes), so actions line up and shorter condition groups get longer connectors. Chips carry `ChipLook` and are
+  coloured by `style_chips` from their state (idle, hovered, pressed, selected with a glow, dimmed without a slot).
+  The graph and the palette scroll (`ScrollPosition`, the wheel); `ui_kit`'s hit test skips nodes clipped out of a
+  scrolled parent (`CalculatedClip`). The screen keeps the camera rig's viewport in step with the window, so
+  `ui_icons` and the dot grid sit right.
 - **TEXT view** (`text_view.rs`): bevy_ui has no text input, so the editor is an egui multi-line `TextEdit` over
   the graph area's node, styled to the look: Barlow (added to egui as the `barlow` family, egui's fonts as fallback),
   no frame, the names coloured like the graph (`highlight`), dim line numbers in a gutter, each error in coral
@@ -434,6 +457,12 @@ action selected).
   While the editor has the keyboard, the game's `Clipboard` offers the selection (Ctrl+C) and accepts pastes
   (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. Headless tests
   must hold modifiers across frames (`down ControlLeft; wait 300; press KeyC; …`): egui reads them once per frame.
+- **Live rule panel** (`live.rs`, in flight): while TEST IN RANGE runs, a compact panel right under the target
+  panel: `BEHAVIOR · <NAME>`, which rule decides (or `NO RULE MATCHES · IT HOLDS`), every rule as one line of the
+  graph's chip labels (`Shield down and Target on me  ›  Orbit 80% · ccw`), the deciding rule teal in a pill, rules
+  without a slot dimmed, and under each rule above it why it doesn't match (the sim's `describe`: `hull < 25% is
+  false (hull is 96%)`). It follows `test_range::BehaviorWatch` (10 Hz): rows are spawned when the behavior changes,
+  only colours and why-lines change in between. Hidden outside tests and with the HUD (H).
 - **Dashed outlines** (`dashed.rs`, `dashed.wesl`): a `UiMaterial` (`DashedOutline { color }`) on the chip node
   itself draws a dashed stadium as wide as the node's border (physical px), dashes spaced to close evenly. Its colour
   is an sRGB colour as numbers (`ui_color`), returned unchanged.

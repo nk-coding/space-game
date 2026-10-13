@@ -3,14 +3,14 @@
 //!
 //! ```text
 //! (o) BEHAVIOR · HALVEX RUNNER   [6 / 12 RULE SLOTS]            [GRAPH][TEXT]   [▶ TEST IN RANGE T]
-//!     Skirmisher                                                                [WATCH][FLY ALONGSIDE]
+//!     Skirmisher  UNSAVED                                                       [WATCH][FLY ALONGSIDE]
 //!             TARGET ── [Nearest]                                          │ ACTION · MANEUVER
 //!                     ┌● [Hull < 25%] ──────────────── [Flee]  too hurt    │ Orbit
 //!   ( Priority   )────┼● [Shield down] [Target on me] ─ [Orbit 80% · ccw]  │ Circle the target at …
 //!   ( FIRST MATCH)    ┊ ┄┄ 2 RULE SLOTS · THE RULES BELOW DO NOT RUN ┄┄┄   │ RADIUS · 80%   …
 //!                     └● [always] ─────────────────── [Approach 67%]      │ ADD NODE  [search]
 //!                        ( + RULE · NO SLOT LEFT )                         │ [HULL][SHIELD CHARGE]…
-//! [‹ DRYDOCK ESC]  status line
+//! [‹ DRYDOCK ESC]  status line                                                 [BEHAVIORS] [SAVE CTRL S]
 //! ```
 //!
 //! The frame (header, pills, columns) is spawned once at start, hidden outside the screen; the graph, the
@@ -27,6 +27,7 @@ use data::NodeRole;
 use data::behavior_edit::RuleId;
 
 use crate::camera::CameraRig;
+use crate::drydock::behaviors::PlayerBehaviors;
 use crate::flight_hud::HudFonts;
 use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
@@ -43,6 +44,7 @@ use super::draft::BehaviorDraft;
 use super::edit::EditState;
 use super::graph::{Chip, GraphView, add_rule_label, slot_line_label, slots_pill};
 use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
+use super::saving::ScreenNote;
 use super::text_view::TextViewport;
 use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
 
@@ -196,7 +198,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     });
                     tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
                         col.spawn((ScreenText::Breadcrumb, label(fonts, "", 10.0, kit.c(Tone::Label, 1.0))));
-                        col.spawn((ScreenText::Name, prose(fonts, "", 21.0, kit.c(Tone::Number, 1.0))));
+                        // The name (a click renames it) and its saved state (`saving.rs`).
+                        super::saving::spawn_title(col, fonts, kit.c(Tone::Number, 1.0), kit.c(Tone::Dim, 1.0), kit.c(Tone::Label, 0.3));
                     });
                     tl.spawn((
                         Node {
@@ -228,7 +231,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         let play = UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
                         spawn_pill(t, fonts, "TEST IN RANGE  T", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, BehaviorButton(BehaviorAction::TestInRange));
                         t.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(6), ..default() }).with_children(|m| {
-                            for (text, mode) in [("WATCH", TestMode::Watch), ("FLY ALONGSIDE", TestMode::FlyAlongside)] {
+                            for (text, mode) in [("WATCH", TestMode::Watch), ("FLY ALONGSIDE", TestMode::Alongside)] {
                                 spawn_pill(m, fonts, text, 8.5, 24.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::TestMode(mode)));
                             }
                         });
@@ -301,7 +304,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 ));
             });
 
-            // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it).
+            // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it); the behavior list
+            // and SAVE (as in the drydock).
             root.spawn(Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) })
                 .with_children(|bb| {
                     spawn_pill(bb, fonts, "‹  DRYDOCK  ESC", 10.0, 32.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Back));
@@ -311,7 +315,11 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             r.spawn((UiIcon::Glyph { glyph: g, color: kit.ui.dim }, Node { width: px(18), height: px(18), ..default() }));
                         });
                     }
-                    bb.spawn((ScreenText::Status, label(fonts, "", 10.0, kit.c(Tone::Label, 1.0)), Node { flex_grow: 1.0, margin: UiRect::left(px(14)), ..default() }))
+                    bb.spawn((
+                        ScreenText::Status,
+                        label(fonts, "", 10.0, kit.c(Tone::Label, 1.0)),
+                        Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), margin: UiRect::left(px(14)), ..default() },
+                    ))
                         .with_child((
                             NoteSpan,
                             TextSpan::new(""),
@@ -319,6 +327,10 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             TextColor(kit.c(Tone::Coral, 1.0)),
                             bevy::text::LetterSpacing::Px(3.0),
                         ));
+                    bb.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(10), flex_shrink: 0.0, ..default() }).with_children(|r| {
+                        spawn_pill(r, fonts, "BEHAVIORS", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Behaviors));
+                        spawn_pill(r, fonts, "SAVE  CTRL S", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Save));
+                    });
                 });
         });
 }
@@ -589,10 +601,12 @@ pub(super) struct InspectorKey {
     selected: Option<Selection>,
     revision: u64,
     cx: inspect::Context,
+    name: String,
+    source: Option<String>,
 }
 
-/// Rebuilds the inspector when the selection, the program, REPLACE or the slots change; not while a slider is
-/// held (it keeps its node and follows in place).
+/// Rebuilds the inspector when the selection, the program, REPLACE, the slots or the behavior (its name, which one
+/// it is) change; not while a slider is held (it keeps its node and follows in place).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild_inspector(
     mut commands: Commands,
@@ -603,6 +617,7 @@ pub(super) fn rebuild_inspector(
     reach: Res<DesignReach>,
     drag: Res<SliderDrag>,
     content: Res<GameContent>,
+    behaviors: Res<PlayerBehaviors>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     body: Single<(Entity, &mut ScrollPosition), With<InspectorBody>>,
@@ -613,7 +628,13 @@ pub(super) fn rebuild_inspector(
         return;
     }
     let cx = inspect::Context { slots: context.slots, reach: reach.0, replacing: edit.replacing };
-    let key = InspectorKey { selected: ui.selected.clone(), revision: draft.revision(), cx };
+    let key = InspectorKey {
+        selected: ui.selected.clone(),
+        revision: draft.revision(),
+        cx,
+        name: draft.name.clone(),
+        source: draft.source.clone(),
+    };
     if built.as_ref() == Some(&key) {
         return;
     }
@@ -624,7 +645,7 @@ pub(super) fn rebuild_inspector(
     }
     *built = Some(key);
     let i = ui.selected.as_ref().and_then(|s| inspect(ed, s, &cx)).unwrap_or_else(|| {
-        let source = draft.source.as_deref().and_then(|id| content.0.behaviors.get(id));
+        let source = draft.source.as_deref().and_then(|id| behaviors.behavior(&content.0, id));
         behavior_inspection(&draft.name, source, ed.rules().len())
     });
     let kit = Kit { fonts: &fonts, ui: style.ui };
@@ -714,16 +735,17 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
     }
 }
 
-/// The header and the status line.
+/// The header and the status line (a message from saving, opening or testing first, until the draft changes).
 pub(super) fn sync_texts(
     draft: Res<BehaviorDraft>,
     ui: Res<BehaviorUi>,
     context: Res<EditorContext>,
     edit: Res<EditState>,
+    note: Res<ScreenNote>,
     style: Res<Style>,
     mut texts: Query<(&ScreenText, &mut Text, &mut TextColor)>,
 ) {
-    if !draft.is_changed() && !ui.is_changed() && !context.is_changed() && !edit.is_changed() {
+    if !draft.is_changed() && !ui.is_changed() && !context.is_changed() && !edit.is_changed() && !note.is_changed() {
         return;
     }
     for (t, mut text, mut color) in &mut texts {
@@ -731,7 +753,7 @@ pub(super) fn sync_texts(
             ScreenText::Breadcrumb => (format!("BEHAVIOR  ·  {}", context.design_name.to_uppercase()), Tone::Label),
             ScreenText::Name => (draft.name.clone(), Tone::Number),
             ScreenText::Slots => (slots_pill(draft.program().rules.len(), context.slots), Tone::Violet),
-            ScreenText::Status => status_line(&draft, ui.view, context.slots),
+            ScreenText::Status => note.show(&draft).unwrap_or_else(|| status_line(&draft, ui.view, context.slots)),
             ScreenText::AddNode => match draft.editor() {
                 Some(ed) => (palette_hint(ed, ui.selected.as_ref(), edit.replacing), if edit.replacing.is_some() { Tone::Teal } else { Tone::Label }),
                 None => ("ADD NODE".into(), Tone::Label),

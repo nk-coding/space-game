@@ -1,12 +1,13 @@
 //! What the behavior screen's buttons and keys mean. Both send one message, [`BehaviorAction`]: a click on a
 //! node with a [`BehaviorButton`] sends its action, the keys send the same ones. Handlers read the message and
 //! never touch widget code; this module handles the UI state (view, selection, test mode) and the way back.
-//! Editing (`edit.rs`) handles the editing group (`AddRule`, `AddNode`, `Edit`, `Undo`, ...), the range scenes
-//! `TestInRange`; the ring menu has no handler yet (as in the drydock).
+//! Editing (`edit.rs`) handles the editing group (`AddRule`, `AddNode`, `Edit`, `Undo`, ...), `saving.rs` SAVE and
+//! `TestInRange`, `list.rs` the BEHAVIORS list; the ring menu has no handler yet (as in the drydock).
 //!
-//! Keys (only while no text field or the text view has the keyboard): Esc cancels REPLACE, else back to the
-//! drydock; T test in range; / search the palette; Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo; Delete or
-//! Backspace removes the selected condition, rule or target line.
+//! Keys (only while no text field or the text view has the keyboard, and the BEHAVIORS list is closed): Esc
+//! cancels REPLACE, else back to the drydock; T test in range; / search the palette; Ctrl+Z undo, Ctrl+Shift+Z or
+//! Ctrl+Y redo; Delete or Backspace removes the selected condition, rule or target line. Ctrl+S saves, also in the
+//! text view. With the list open, the list handles its keys (Esc closes it).
 
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
@@ -18,6 +19,7 @@ use crate::ui_kit::{Pill, Ring, TextField, UiClick, UiPointer};
 
 use super::edit::{Edit, EditState};
 use super::inspect::Selection;
+use super::list::BehaviorList;
 use super::screen::SearchField;
 use super::{BehaviorDraft, BehaviorUi, BehaviorView, TestMode};
 
@@ -54,6 +56,11 @@ pub enum BehaviorAction {
     Delete,
     Undo,
     Redo,
+    // Behaviors as saved documents (`saving.rs`, `list.rs`).
+    /// SAVE (Ctrl+S): saves the draft (a template as the player's copy).
+    Save,
+    /// BEHAVIORS: opens or closes the list of the player's behaviors and the templates.
+    Behaviors,
 }
 
 /// A widget that sends an action when clicked.
@@ -82,17 +89,22 @@ pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     edit: Res<EditState>,
+    list: Res<BehaviorList>,
     mut contexts: EguiContexts,
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<BehaviorAction>,
 ) {
-    // The text view's editor (egui) or the search field has the keyboard.
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
+    // Ctrl+S also while the text view types (not in a one-line field, which would take the S).
+    if ctrl && keys.just_pressed(KeyCode::KeyS) && !pointer.typing {
+        out.write(BehaviorAction::Save);
+    }
+    // The text view's editor (egui) or a field has the keyboard, or the BEHAVIORS list handles its own keys.
     let egui_typing = contexts.ctx_mut().is_ok_and(|c| c.egui_wants_keyboard_input());
-    if pointer.typing || egui_typing {
+    if pointer.typing || egui_typing || list.is_open() {
         return;
     }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     for key in keys.get_just_pressed() {
         match (*key, ctrl) {
             (KeyCode::KeyZ, true) => {
@@ -140,10 +152,13 @@ pub(super) fn apply(
             BehaviorAction::Select(n) => ui.selected = Some(Selection::Node(*n)),
             BehaviorAction::Deselect => ui.selected = None,
             BehaviorAction::TestMode(m) => ui.test_mode = *m,
-            // The range scenes (TestInRange); the menu has no handler yet.
-            BehaviorAction::Menu | BehaviorAction::TestInRange => {}
-            // Editing: `edit::apply`.
-            BehaviorAction::AddRule
+            // `edit::apply` (editing), `saving.rs` (Save, TestInRange), `list.rs` (Behaviors); the menu has no
+            // handler yet.
+            BehaviorAction::Menu
+            | BehaviorAction::TestInRange
+            | BehaviorAction::Save
+            | BehaviorAction::Behaviors
+            | BehaviorAction::AddRule
             | BehaviorAction::AddNode(_)
             | BehaviorAction::SelectRule(_)
             | BehaviorAction::Edit(_)

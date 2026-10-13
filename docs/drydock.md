@@ -336,7 +336,8 @@ saved template copy moved to the cruiser frame).
 
 - `Storage` (a resource) holds one `Backend` (a trait: `list(namespace)`, `read(namespace, name)`,
   `write(namespace, name, text)`, `delete(namespace, name)`, `location()`) and stores **named RON documents in
-  namespaces**: `designs/<id>`, `drydock/working` and `behaviors/<id>` (see
+  namespaces**: `designs/<id>`, `drydock/working`, `drydock/behavior` (the BEHAVIOR screen's working draft) and
+  `behaviors/<id>` (see
   [Behaviors](#behaviors-storage-designs-and-tests)) now; `saves/` and `settings/` later. Names are `a-z 0-9 _ -`
   (at most 64), safe as file names and keys everywhere.
 - A document type implements `Document` (`NAMESPACE`, `FORMAT`, `to_ron`, `from_ron(text, format)`).
@@ -434,10 +435,15 @@ Written 13 Oct 2026 for the behavior editor ([GDR-0057](gdr/0057-behavior-editor
 their own, a design names one, TEST IN RANGE watches it or flies alongside it). The plumbing under the BEHAVIOR
 screen: `crates/game/src/drydock/behaviors.rs` (behaviors on the storage layer, the checks, flights),
 `drydock/share.rs` (they travel with designs, [above](#sharing-export-files-and-share-codes)), `test_range.rs` and
-`scene.rs` (TEST IN RANGE). Tests: `cargo test -p game -- behaviors share test_range scene`. Screenshots (1280 × 720,
-F3 on): `docs/results/behavior-test-watch.png` (`?scene=watch&behavior=careful`: a saved copy of the skirmisher
-that flees below 50% hull, every rule with why), `behavior-test-alongside.png` (`?scene=alongside`: the working
-design names `careful`; the wingman on the right runs it, the player's ship sits unpiloted at the centre).
+`scene.rs` (TEST IN RANGE); on the screen `behavior_ui/saving.rs` (SAVE, the working draft, the design's behavior,
+starting a test), `behavior_ui/list.rs` (BEHAVIORS) and `behavior_ui/live.rs` (the live panel in flight). Tests:
+`cargo test -p game -- behaviors share test_range scene behavior_ui`. Screenshots (1280 × 720):
+`docs/results/behavior-test-watch.png` (F3 on; `?scene=watch&behavior=careful`: a saved copy of the skirmisher that
+flees below 50% hull, every rule with why), `behavior-test-alongside.png` (F3 on; `?scene=alongside`: the working
+design names `careful`; the wingman on the right runs it, the player's ship sits unpiloted at the centre),
+`behavior-saving-linked.png` (the skirmisher template renamed "Careful" and saved: the player's copy, and the design
+flies it now), `behavior-saving-list.png` (BEHAVIORS), `behavior-live-watch.png` (TEST IN RANGE from the screen,
+watch: the live panel, the last rule deciding, why the five above don't match).
 
 ### Saved behaviors
 
@@ -505,9 +511,57 @@ design names `careful`; the wingman on the right runs it, the player's ship sits
   behavior that can't fly (it has errors, or was deleted) flies its faction's instead, with a banner
   (`behaviors::fallback`: "BEHAVIOR CAREFUL HAS 1 ERROR: …; FLIES SKIRMISHER").
 
+### On the BEHAVIOR screen
+
+Written 13 Oct 2026 (GDR-0057; the screen itself: `docs/client.md` "Behavior screen").
+
+- **What opens**: the behavior the design flies (`draft::design_behavior`: the one it names, a content template or a
+  saved one, also one with errors, which opens in the TEXT view with its errors; else its faction's default; a name
+  that is gone gives the faction's, as flights do, and the status line says `BEHAVIOR <ID> IS GONE: <DESIGN> FLIES
+  SKIRMISHER`). The header says what the draft is: TEMPLATE (`SAVE MAKES THIS DESIGN'S OWN COPY`), SAVED, UNSAVED
+  or NOT SAVED YET, and `THE DESIGN FLIES <NAME>` when it is not the design's.
+- **SAVE** (Ctrl+S, the button; `saving::save_draft`): a **template**'s draft becomes the player's copy under a new
+  id: named "Skirmisher copy" (`PlayerBehaviors::copy_of`), or the draft's own name when it was renamed (the id from
+  that name, `careful`); its summary, description and tags come along. When the design flew the template, the design
+  names the copy from now on (`PlayerDesign::edit_header(|h| h.behavior = Some(id))`; the working design is written
+  at once, so a reload keeps the link; the drydock shows the design UNSAVED, like any header change, until it is
+  saved). A **saved behavior**'s draft updates it under its id (renaming keeps the id). A **new** one gets an id from
+  its name. A draft with errors is saved as its lines ("SAVED · 1 ERROR: IT FLIES ONCE FIXED"); flights fly the
+  faction's behavior until it is fixed.
+- **Unsaved edits are never lost.** The draft stays in memory while the screen is closed (the drydock, a test) and
+  is written to `drydock/behavior` about a second after the last change and when the screen closes:
+  `(source: "<id>" or None, name: "…", unsaved: <bool>, flown: "<id>" or None, text: "…")`, the behavior it was
+  opened from, its name and text (the last valid program is the source's until the text is fixed), whether it has
+  unsaved edits, and the behavior the design flew when it was opened. It comes back at the next visit after a reload.
+  While the design still flies that behavior, opening the screen keeps the draft (also one picked in BEHAVIORS);
+  when the design flies another one (another design opened in the drydock), the screen opens that one. Whenever a
+  draft with unsaved edits would be replaced (that, OPEN, USE, NEW), it is **saved first** (a template's as a new
+  copy, not linked) and the status line says so ("YOUR EDITS SAVED AS SKIRMISHER COPY · OPENED RAIDER PACK"), as the
+  drydock does with designs; if that save fails, nothing is replaced.
+- **BEHAVIORS** (the list): your behaviors and the templates; **OPEN** edits one (the design keeps flying its own),
+  **USE FOR THIS DESIGN** makes the design name it (a template by its content id) and opens it, **DUPLICATE** saves a
+  copy with a fresh name, **RENAME** renames a saved one at once (the open draft follows; designs keep naming it by
+  id), **DELETE** asks first (`DELETE CAREFUL? THERE IS NO UNDO · THIS DESIGN FLIES IT`). A design naming a deleted
+  behavior keeps the name and flies its faction's (`behaviors::fallback`), and the status line says so ("… NAMED IT:
+  IT FLIES SKIRMISHER UNTIL YOU USE ANOTHER"); deleting the open behavior leaves it on the screen, not saved (it is
+  not saved again unless it changes). **NEW BEHAVIOR**: "New behavior" (a fresh name) with one rule (`always ->` the
+  vocabulary's first action), not saved until SAVE.
+- Checked 13 Oct 2026 in headless Chromium at 1280 × 720 (dev build, `scripts/web-drive.mjs`): drydock → BEHAVIOR →
+  rename the skirmisher template → SAVE (the copy `careful`, linked) → reload → the drydock's design still names it
+  and the screen opens it SAVED; BEHAVIORS: DUPLICATE, DELETE with its question (of the design's own: the fallback
+  note), NEW, USE FOR THIS DESIGN of a template; a text with an error saved (Ctrl+S in the TEXT view) and reopened
+  after a reload in the TEXT view with its error; TEST IN RANGE refused for that text; WATCH and FLY ALONGSIDE with
+  the live panel, T back to the screen with the draft as it was. No panics or page errors.
+
 ### TEST IN RANGE
 
-- The BEHAVIOR screen sends `test_range::StartTest { test: BehaviorTest { mode, program }, back }`:
+- The BEHAVIOR screen (T, TEST IN RANGE; `saving::test_request`) sends the draft: `TestProgram::Id(id)` when it is a
+  template or saved behavior without unsaved edits, else `TestProgram::Text { name, text }` (its rules, not saved);
+  in the mode of the WATCH / FLY ALONGSIDE pills; `back` is the BEHAVIOR screen, so T in the test returns to it, the
+  draft untouched. It refuses, with the reason in the status line, when the text has errors (`CAN'T TEST: THE TEXT
+  HAS 1 ERROR: LINE 9, COLUMN 6: …`), `test_range::check` fails, or the design can't fly (its design report as the
+  drydock's status line reads it: `THE DESIGN CAN'T FLY (NO LOGIC CORE)`).
+- The request is `test_range::StartTest { test: BehaviorTest { mode, program }, back }`:
   `mode` is `TestMode::Watch` or `TestMode::Alongside`; `program` is `TestProgram::Id(id)` (a content or saved
   behavior), `TestProgram::Text { name, text }` (the editor's text, not saved yet: the flight's library gets it
   under the id `test:behavior`, so it never shadows a saved one) or `TestProgram::Design` (the one the design
@@ -528,11 +582,14 @@ design names `careful`; the wingman on the right runs it, the player's ship sits
   banner. T returns to the drydock.
 - **Live view**: `test_range::BehaviorWatch` (a resource) holds the tested ship's behavior, refreshed after each of
   its thinks (10 Hz; `is_changed()` says when): `mode`, `ship`, `running` (false while piloted, lost or before the
-  first think), `behavior` (its id in the flight's library) and `name`, `active` (the rule that decides, `None`:
+  first think), `behavior` (its id in the flight's library), `name` and `program` (its rules), `active` (the rule
+  that decides, `None`:
   no rule matches and the ship holds), `rules` (every rule's `sim::RuleStatus`: `Active`, `Skipped`, `NoSlot`,
   `NoTarget`, `Failed { cond, why }`), `why` (one line per rule, `BehaviorState::describe`: "`hull < 50%` is false
-  (hull is 96%)"), `slots` (working rule slots), `target`, `think` (its tick). Empty outside a test. The F3
-  overlay lists the rules with `>` at the one that decides.
+  (hull is 96%)"), `slots` (working rule slots), `target`, `think` (its tick). Empty outside a test. The HUD's
+  live panel (`behavior_ui/live.rs`) shows the rules as the graph's chip labels, the one that decides teal, rules
+  without a slot dimmed and why the rules above it don't match; the F3 overlay lists every rule with why and `>` at
+  the one that decides.
 - Checked 13 Oct 2026 in headless Chromium (dev build, `scripts/web-drive.mjs`; the player's behavior and working
   design put into the browser's storage with `eval`, then `reload`): watch and fly alongside with a content
   behavior (`raider_basic`) and with a saved one (`careful`, by id and named by the design), a URL naming a behavior

@@ -1,11 +1,13 @@
 //! The BEHAVIOR screen (GDR-0057): how the design on the drydock's grid thinks, in the look of
 //! `docs/concept/boards/ui-mockups/phone-behavior-editor.png` (laid out for desktop, 1280 × 720 and up). Opened
 //! with the drydock's BEHAVIOR button ([`AppMode::Behavior`]); Esc or the DRYDOCK pill go back, the design
-//! untouched. `?scene=behavior` starts here; `?behavior=<id>` opens a content behavior instead of the design's.
+//! untouched. `?scene=behavior` starts here; `?behavior=<id>` opens a content or saved behavior instead of the
+//! design's.
 //!
 //! The mode, the screen and its widgets, the graph and text views of the behavior, the inspector and the
-//! palette; editing in the graph view goes through the editing model (`data::behavior_edit`). TEST IN RANGE (the
-//! range scenes) plugs in through the resources and the action message below.
+//! palette; editing in the graph view goes through the editing model (`data::behavior_edit`); behaviors as saved
+//! documents (SAVE, the BEHAVIORS list, the design's behavior) and TEST IN RANGE with its live panel in the flight
+//! HUD.
 //!
 //! * [`draft`]: [`BehaviorDraft`], the behavior being edited: the editing model, the text, the errors.
 //! * [`graph`]: the graph view as data (the program → chips and rows with the model's stable ids, the slot line,
@@ -19,6 +21,11 @@
 //! * [`reorder`]: dragging a rule's row to another place in the list.
 //! * [`text_view`]: the TEXT view (an egui text editor in the look) with live errors.
 //! * [`dashed`]: the dashed pill outline (Rhai nodes, `+ RULE`), a UI material.
+//! * [`saving`]: the name and saved state in the header, SAVE, the working draft (unsaved edits survive leaving
+//!   and reloading), linking a behavior to the design, TEST IN RANGE.
+//! * [`list`]: the BEHAVIORS list (the player's behaviors and the templates: open, use for this design, duplicate,
+//!   rename, delete, new).
+//! * [`live`]: the live rule panel in the flight HUD while a test runs.
 //!
 //! **For handlers** (the range scenes): read `MessageReader<BehaviorAction>` in a system in
 //! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::edit`] (the graph and the text
@@ -32,7 +39,10 @@ pub mod draft;
 pub mod edit;
 pub mod graph;
 pub mod inspect;
+pub mod list;
+pub mod live;
 pub mod reorder;
+pub mod saving;
 pub mod screen;
 pub mod text_view;
 pub mod values;
@@ -43,11 +53,8 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::camera::{CameraRig, CameraSet};
-use crate::drydock::PlayerDesign;
 use crate::fx::FxFlush;
 use crate::mode::AppMode;
-use crate::params::Params;
-use crate::sim_bridge::GameContent;
 use crate::ui_kit::{UiInputSet, UiStyleSet};
 
 pub use actions::BehaviorAction;
@@ -72,15 +79,8 @@ pub enum BehaviorView {
     Text,
 }
 
-/// The two modes of TEST IN RANGE (GDR-0057).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum TestMode {
-    /// The design flies unpiloted on the behavior against raider waves; the camera follows it.
-    #[default]
-    Watch,
-    /// The player flies their ship; the tested design joins as a wingman on the behavior.
-    FlyAlongside,
-}
+/// The two modes of TEST IN RANGE (GDR-0057): WATCH and FLY ALONGSIDE.
+pub use crate::test_range::TestMode;
 
 /// The screen's UI state.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
@@ -117,6 +117,9 @@ impl Plugin for BehaviorPlugin {
             .init_resource::<controls::SliderDrag>()
             .init_resource::<controls::DesignReach>()
             .init_resource::<reorder::RowDrag>()
+            .init_resource::<saving::DraftSlot>()
+            .init_resource::<saving::ScreenNote>()
+            .init_resource::<list::BehaviorList>()
             .add_message::<BehaviorAction>()
             .configure_sets(
                 Update,
@@ -126,9 +129,10 @@ impl Plugin for BehaviorPlugin {
                     .before(UiStyleSet)
                     .run_if(in_state(AppMode::Behavior)),
             )
-            .add_systems(Startup, screen::spawn.after(crate::flight_hud::spawn_hud))
+            .add_systems(Startup, (screen::spawn, list::spawn, live::spawn).after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, show)
-            .add_systems(OnEnter(AppMode::Behavior), (open, controls::measure_reach))
+            .add_systems(OnEnter(AppMode::Behavior), (saving::open, controls::measure_reach))
+            .add_systems(OnExit(AppMode::Behavior), (list::leave, saving::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(
@@ -152,36 +156,23 @@ impl Plugin for BehaviorPlugin {
                         .in_set(BehaviorSet::Show),
                 ),
             )
+            .add_systems(
+                Update,
+                (
+                    (saving::title, saving::apply, list::apply, list::scroll, saving::autosave)
+                        .chain()
+                        .after(actions::apply)
+                        .in_set(BehaviorSet::Apply),
+                    (saving::sync_title, list::sync).in_set(BehaviorSet::Show),
+                ),
+            )
+            // The live rule panel in the flight HUD (TEST IN RANGE).
+            .add_systems(Update, live::update.run_if(in_state(AppMode::Flight)))
             .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
             .add_systems(PostUpdate, (screen::draw_dots, reorder::draw_drop_line).run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }
-}
-
-/// Opening the screen: the design's name and rule slots; the draft for its behavior (kept from the last visit
-/// when it is still the same behavior, so typed text survives a look at the drydock).
-fn open(
-    design: Res<PlayerDesign>,
-    content: Res<GameContent>,
-    params: Res<Params>,
-    mut draft: ResMut<BehaviorDraft>,
-    mut context: ResMut<EditorContext>,
-    mut ui: ResMut<BehaviorUi>,
-) {
-    let content = &content.0;
-    let bp = design.blueprint();
-    *context = EditorContext { design_name: bp.name.clone(), slots: content.ship_rule_slots(bp) };
-    let wanted = BehaviorDraft::source_for(content, bp, params.text("behavior"));
-    if draft.editor().is_none() || draft.source.as_deref() != wanted.map(|b| b.id.as_str()) {
-        let nodes = &content.behavior_nodes;
-        let next = wanted.and_then(|b| BehaviorDraft::from_behavior(b, nodes)).or_else(|| BehaviorDraft::empty(nodes));
-        // The revision keeps going up, so the graph rebuilds.
-        if let Some(next) = next {
-            draft.replace(next);
-        }
-    }
-    ui.selected = None;
 }
 
 /// The screen is shown only in its mode.
