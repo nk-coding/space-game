@@ -480,6 +480,10 @@ watch: the live panel, the last rule deciding, why the five above don't match).
   in by hand) is listed as a problem and never flies. Renaming keeps the id, so designs keep naming it. Content
   behaviors (`skirmisher`, `raider_basic`) are **templates**: `copy_of` makes an unsaved copy ("Skirmisher copy",
   `skirmisher_copy`), `duplicate` saves one.
+- **Two copies of the game on one storage** (two browser tabs of one origin): a new behavior or design gets an id
+  no saved document has, also one the other copy saved after this one started (`save` checks the storage), so
+  neither overwrites the other; updates of the same saved behavior or design, the working design and the working
+  draft are last-writer-wins.
 - **Checked against the vocabulary** (the `behavior_nodes` content) on load and on every save, exactly as content
   validation checks a content behavior (`behaviors::check`: `Program::from_parts` + `check_program`). A behavior
   with errors **still loads, as its lines**, so the player can fix it: `PlayerBehavior::errors` locates them in its
@@ -494,10 +498,9 @@ watch: the live panel, the last rule deciding, why the five above don't match).
   `behavior(&content, id)` (a template or a saved one), `list()` (`BehaviorEntry`: id, name, summary, rule count,
   when saved, the first error or why it doesn't read; most recently saved first), `names()`, `new_id`, `copy_of`,
   `save(&mut storage, &content, &behavior, now)` (an empty id gets one from the name; returns the id),
-  `rename`, `duplicate`, `delete`, `import` (behaviors that come with a shared design), `revision()` (goes up with
-  every change), `add_to(&mut content)` (flights), `named_by(&content, &blueprint)` (the player behavior a design
-  names, for exports). Every operation writes the storage and the resource together; errors are words for the
-  status line.
+  `rename`, `duplicate`, `delete`, `import` (behaviors that come with a shared design), `add_to(&mut content)`
+  (flights), `named_by(&content, &blueprint)` (the player behavior a design names, for exports). Every operation
+  writes the storage and the resource together; errors are words for the status line.
 
 ### Designs name their behavior
 
