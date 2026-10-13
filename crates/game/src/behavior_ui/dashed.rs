@@ -1,12 +1,13 @@
 //! A dashed pill outline for bevy_ui nodes (bevy_ui borders are solid): a UI material drawn by `dashed.wesl`.
-//! Put [`dashed_outline`] as a child of a pill-shaped node; its border width sets the stroke, the material's
-//! colour (an sRGB colour from `style::ui_color`) the colour.
+//! Put a `MaterialNode<DashedOutline>` on a pill-shaped node (next to its background colour, without a border
+//! colour): the node's border width sets the stroke, the material's colour (an sRGB colour from
+//! `style::ui_color`, see [`outline_color`]) the colour.
 
 use bevy::asset::{AssetPath, embedded_asset, embedded_path};
 use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
-use bevy::ui_render::prelude::{MaterialNode, UiMaterial, UiMaterialPlugin};
+use bevy::ui_render::prelude::{UiMaterial, UiMaterialPlugin};
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct DashedOutline {
@@ -23,22 +24,6 @@ impl UiMaterial for DashedOutline {
 pub(super) fn plugin(app: &mut App) {
     embedded_asset!(app, "dashed.wesl");
     app.add_plugins(UiMaterialPlugin::<DashedOutline>::default());
-}
-
-/// The outline node: fills its (positioned) parent; `width` is the stroke in logical px.
-pub fn dashed_outline(material: Handle<DashedOutline>, width: f32) -> impl Bundle {
-    (
-        MaterialNode(material),
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(0),
-            right: px(0),
-            top: px(0),
-            bottom: px(0),
-            border: UiRect::all(px(width)),
-            ..default()
-        },
-    )
 }
 
 /// The material's colour from a UI colour (already through `style::ui_color`).

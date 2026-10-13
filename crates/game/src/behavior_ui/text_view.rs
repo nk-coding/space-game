@@ -32,6 +32,8 @@ const TEXT_SIZE: f32 = 16.0;
 const ERROR_SIZE: f32 = 12.5;
 /// Width of the line number gutter at UI scale 1.
 const GUTTER: f32 = 44.0;
+/// Error messages wrap at this width (UI scale 1).
+const MESSAGE_WIDTH: f32 = 420.0;
 
 /// The node the editor covers (the graph area's rectangle).
 #[derive(Component)]
@@ -177,8 +179,10 @@ pub(super) fn editor(
     ui_scale: Res<UiScale>,
     window: Single<&Window, With<PrimaryWindow>>,
     viewport: Single<(&ComputedNode, &UiGlobalTransform), With<TextViewport>>,
+    clear: Res<ClearColor>,
     mut font_ready: Local<bool>,
     mut rule_lines: Local<(String, Vec<u32>)>,
+    mut was_open: Local<bool>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     if !*font_ready {
@@ -187,6 +191,8 @@ pub(super) fn editor(
         // The font is there from the next pass on.
         return Ok(());
     }
+    let opened = view.view == BehaviorView::Text && !*was_open;
+    *was_open = view.view == BehaviorView::Text;
     if view.view != BehaviorView::Text {
         return Ok(());
     }
@@ -239,14 +245,18 @@ pub(super) fn editor(
             };
             let out = egui::TextEdit::multiline(&mut text)
                 .id(egui::Id::new("behavior_text"))
-                .frame(egui::Frame::NONE)
-                .margin(egui::Margin { left: (GUTTER * k) as i8, right: 0, top: (8.0 * k) as i8, bottom: (8.0 * k) as i8 })
+                // No box: the frame only keeps the gutter free (a frame replaces the `margin` setting).
+                .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: (GUTTER * k) as i8, right: 0, top: (8.0 * k) as i8, bottom: (8.0 * k) as i8 }))
                 .desired_width(f32::INFINITY)
                 .desired_rows(((rect.height() / row_h) as usize).saturating_sub(1).max(1))
                 .lock_focus(true)
                 .layouter(&mut layouter)
                 .show(ui);
             changed = out.response.changed();
+            // Switching to TEXT puts the caret into the text.
+            if opened {
+                out.response.request_focus();
+            }
 
             // The gutter, the errors after their lines, the rules without a slot.
             let painter = ui.painter();
@@ -275,15 +285,26 @@ pub(super) fn editor(
                     painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(1.5 * k, coral));
                 }
             }
+            // The messages after their lines; one that does not fit moves left over the line's end, on the
+            // backdrop's colour so it stays readable.
+            let visible = ui.clip_rect();
+            let veil = egui_color(clear.0, 0.92);
             for (n, r) in ends.iter().enumerate() {
                 let line = n as u32 + 1;
                 let msgs: Vec<String> = draft.errors.iter().filter(|e| e.line == line).map(|e| format!("col {}  ·  {}", e.col, e.message)).collect();
-                let x = r.right() + 28.0 * k;
-                if !msgs.is_empty() {
-                    painter.text(egui::pos2(x, r.center().y), egui::Align2::LEFT_CENTER, format!("←  {}", msgs.join("   ·   ")), small.clone(), coral);
+                let (msg, color) = if !msgs.is_empty() {
+                    (msgs.join("   ·   "), coral)
                 } else if no_slot.contains(&line) {
-                    painter.text(egui::pos2(x, r.center().y), egui::Align2::LEFT_CENTER, "NO SLOT", small.clone(), egui_color(ui_c.coral, 0.6));
-                }
+                    ("no rule slot: this rule does not run".to_string(), egui_color(ui_c.coral, 0.6))
+                } else {
+                    continue;
+                };
+                let galley = painter.layout(msg, small.clone(), color, MESSAGE_WIDTH * k);
+                let size = galley.size();
+                let x = (r.right() + 28.0 * k).min(visible.right() - size.x - 8.0 * k).max(r.left());
+                let at = egui::pos2(x, r.center().y - galley.rows.first().map_or(size.y, |row| row.rect().height()) / 2.0);
+                painter.rect_filled(egui::Rect::from_min_size(at, size).expand(4.0 * k), 4.0 * k, veil);
+                painter.galley(at, galley, color);
             }
         });
     });

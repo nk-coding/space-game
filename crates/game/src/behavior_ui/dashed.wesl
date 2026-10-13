@@ -1,5 +1,5 @@
 // A dashed pill outline for bevy_ui nodes (the behavior editor's Rhai nodes and its "+ RULE" pill): the stroke of
-// a stadium as wide as the node's left border, dashes spaced so they close evenly around it. The colour comes in
+// a stadium as wide as the node's left border (physical px), dashes spaced so they close evenly around it. The colour comes in
 // as sRGB numbers (like every UI colour here, `style::ui_color`), so it is returned as is.
 import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 
@@ -18,7 +18,7 @@ const GAP: f32 = 3.5;
 @fragment
 fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let size = in.size;
-    let w = max(in.border_widths.x * size.x, 1.0);
+    let w = max(in.border_widths.x, 1.0);
     // Pixels from the centre, y down.
     let p = (in.uv - vec2<f32>(0.5)) * size;
     let rc = max(size.y * 0.5 - w * 0.5, 0.5);

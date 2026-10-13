@@ -20,11 +20,13 @@
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use data::NodeRole;
 
+use crate::camera::CameraRig;
 use crate::flight_hud::HudFonts;
+use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
@@ -34,7 +36,9 @@ use crate::ui_kit::{
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
-use super::dashed::{DashedOutline, dashed_outline, outline_color};
+use bevy::ui_render::prelude::MaterialNode;
+
+use super::dashed::{DashedOutline, outline_color};
 use super::draft::BehaviorDraft;
 use super::graph::{Chip, GraphView, NodeRef, add_rule_label, slot_line_label, slots_pill};
 use super::inspect::{Inspection, Row, Selection, behavior_inspection, inspect, palette};
@@ -62,6 +66,9 @@ const INACTIVE: f32 = 0.4;
 const DASHES: usize = 160;
 /// Wheel steps in px.
 const WHEEL_LINE: f32 = 40.0;
+/// The dot grid behind the graph: spacing in logical px, FX layer (under ships and effects; the world is empty).
+const DOT_STEP: f32 = 28.0;
+const Z_DOTS: f32 = 4.0;
 
 /// The screen's root (shown only on the screen).
 #[derive(Component)]
@@ -309,7 +316,7 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, materials: &mut Assets<Da
     let color = role_color(&kit.ui, chip.role, false);
     let k = if active { 1.0 } else { INACTIVE };
     let dashed = chip.rhai.then(|| materials.add(DashedOutline { color: outline_color(ui_color(color, 0.6 * k)) }));
-    p.spawn((
+    let mut e = p.spawn((
         ChipLook { color, dashed: dashed.clone(), fill: true, active, node: Some(chip.node) },
         Hot::default(),
         BehaviorButton(BehaviorAction::Select(chip.node)),
@@ -325,11 +332,11 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, materials: &mut Assets<Da
         },
         BorderColor::all(Color::NONE),
         BackgroundColor(Color::NONE),
-    ))
-    .with_children(|c| {
-        if let Some(m) = dashed {
-            c.spawn(dashed_outline(m, LINE_W));
-        }
+    ));
+    if let Some(m) = dashed {
+        e.insert(MaterialNode(m));
+    }
+    e.with_children(|c| {
         if chip.not {
             c.spawn(prose(kit.fonts, "not", CHIP_FONT, kit.c(Tone::Violet, k)));
         }
@@ -505,16 +512,21 @@ pub(super) fn rebuild_graph(
                 let m = materials.add(DashedOutline { color: outline_color(kit.c(Tone::Label, 0.5)) });
                 r.spawn((
                     ChipLook { color: kit.ui.label, dashed: Some(m.clone()), fill: false, active: true, node: None },
+                    MaterialNode(m),
                     Hot::default(),
                     BehaviorButton(BehaviorAction::AddRule),
-                    Node { height: px(CHIP_H), padding: UiRect::horizontal(px(20)), align_items: AlignItems::Center, border_radius: BorderRadius::MAX, ..default() },
+                    Node {
+                        height: px(CHIP_H),
+                        padding: UiRect::horizontal(px(20)),
+                        border: UiRect::all(px(LINE_W)),
+                        align_items: AlignItems::Center,
+                        border_radius: BorderRadius::MAX,
+                        ..default()
+                    },
                     BorderColor::all(Color::NONE),
                     BackgroundColor(Color::NONE),
                 ))
-                .with_children(|p| {
-                    p.spawn(dashed_outline(m, LINE_W));
-                    p.spawn(tracked(kit.fonts, &add_rule_label(g.rules.len(), g.slots), 9.0, kit.c(Tone::Label, 1.0), 0.3));
-                });
+                .with_child(tracked(kit.fonts, &add_rule_label(g.rules.len(), g.slots), 9.0, kit.c(Tone::Label, 1.0), 0.3));
             });
     });
 }
@@ -547,7 +559,7 @@ fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Inspection) {
         None => kit.ui.number,
     };
     p.spawn(tracked(kit.fonts, &i.kicker, 9.0, kit.c(Tone::Label, 1.0), 0.32));
-    p.spawn((prose(kit.fonts, &i.name, 27.0, ui_color(name_color, 1.0)), Node { margin: UiRect::top(px(6)), ..default() }, glow(name_color, 0.12)));
+    p.spawn((prose(kit.fonts, &i.name, 27.0, ui_color(name_color, 1.0)), Node { margin: UiRect::top(px(6)), ..default() }));
     if !i.summary.is_empty() {
         p.spawn((prose(kit.fonts, &i.summary, 12.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(8)), ..default() }));
     }
@@ -795,6 +807,38 @@ pub(super) fn style_chips(
                 commands.entity(e).insert(glow(look.color, glow_alpha));
             }
             (None, false) => {}
+        }
+    }
+}
+
+/// The dot grid behind the graph (as in the mockup): immediate-mode FX dots at fixed screen spacing inside the
+/// graph area, drawn in the world under the UI.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn draw_dots(
+    ui: Res<BehaviorUi>,
+    rig: Res<CameraRig>,
+    style: Res<Style>,
+    ui_scale: Res<UiScale>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    graph: Single<(&ComputedNode, &UiGlobalTransform), With<GraphViewport>>,
+    regions: Option<Res<FxRegions>>,
+    mut queue: ResMut<FxQueue>,
+) {
+    let Some(r) = regions else { return };
+    if ui.view != BehaviorView::Graph {
+        return;
+    }
+    let (node, tf) = *graph;
+    let scale = window.scale_factor();
+    let area = Rect::from_center_size(tf.translation / scale, node.size / scale);
+    let step = DOT_STEP * ui_scale.0;
+    let (nx, ny) = ((area.width() / step) as i32, (area.height() / step) as i32);
+    let size = 1.6 / rig.zoom;
+    let color = style.dotted_ring.with_alpha(0.55);
+    for y in 0..=ny {
+        for x in 0..=nx {
+            let at = area.min + Vec2::new(x as f32, y as f32) * step;
+            queue.dot(&r.hard, rig.screen_to_world(at), size, color, Z_DOTS);
         }
     }
 }

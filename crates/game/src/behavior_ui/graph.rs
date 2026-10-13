@@ -83,15 +83,6 @@ impl GraphView {
         let slots = self.slots as usize;
         (self.rules.len() > slots).then_some(slots)
     }
-
-    /// The chip of a node, if the program has it.
-    pub fn chip(&self, node: NodeRef) -> Option<&Chip> {
-        match node {
-            NodeRef::Target => Some(&self.target),
-            NodeRef::Cond { rule, cond } => self.rules.get(rule)?.conds.get(cond),
-            NodeRef::Action { rule } => self.rules.get(rule).map(|r| &r.action),
-        }
-    }
 }
 
 fn chip(call: &Call, node: NodeRef, role: NodeRole, nodes: &Table<BehaviorNode>) -> Chip {
@@ -191,8 +182,7 @@ mod tests {
         // `always -> approach(67%)`: no conditions.
         assert!(g.rules[5].conds.is_empty());
         assert_eq!((g.rules[5].action.name.as_str(), g.rules[5].action.args.as_str()), ("Approach", "67%"));
-        assert_eq!(g.chip(NodeRef::Action { rule: 5 }).unwrap().name, "Approach");
-        assert!(g.chip(NodeRef::Cond { rule: 5, cond: 0 }).is_none());
+        assert_eq!(g.rules[5].action.node, NodeRef::Action { rule: 5 });
     }
 
     #[test]

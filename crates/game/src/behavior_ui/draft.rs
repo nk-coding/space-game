@@ -30,14 +30,16 @@ pub struct BehaviorDraft {
 impl BehaviorDraft {
     /// A copy of a content behavior.
     pub fn from_behavior(b: &Behavior) -> Self {
+        let mut d = Self { source: Some(b.id.clone()), name: b.name.clone(), ..default() };
         // Content behaviors are validated at load, so they parse; a broken one opens empty rather than panic.
-        let program = b.program().unwrap_or_default();
-        Self { source: Some(b.id.clone()), name: b.name.clone(), text: program.to_text(), program, errors: Vec::new(), revision: 0 }
+        d.set_program(b.program().unwrap_or_default());
+        d
     }
 
-    /// The draft for a design: the behavior it names, else its faction's default; empty if neither exists.
-    pub fn for_design(content: &Content, design: &Blueprint) -> Self {
-        content.ship_behavior(design).map_or_else(Self::empty, Self::from_behavior)
+    /// The content behavior a design's draft copies: `wanted` (a content id, e.g. from `?behavior=`) if it
+    /// exists, else the behavior the design names, else its faction's default.
+    pub fn source_for<'a>(content: &'a Content, design: &Blueprint, wanted: Option<&str>) -> Option<&'a Behavior> {
+        wanted.and_then(|id| content.behaviors.get(id)).or_else(|| content.ship_behavior(design))
     }
 
     /// A draft without rules (a design whose faction has no default behavior).
@@ -100,16 +102,24 @@ mod tests {
     fn a_design_gets_its_faction_default() {
         let content = data::base_content();
         let runner = content.ships.get("halvex_runner").unwrap();
-        let d = BehaviorDraft::for_design(&content, runner);
+        let b = BehaviorDraft::source_for(&content, runner, None).unwrap();
+        let d = BehaviorDraft::from_behavior(b);
         assert_eq!(d.source.as_deref(), Some("skirmisher"));
         assert_eq!(d.name, "Skirmisher");
         assert_eq!(d.program.rules.len(), 6);
         assert_eq!(d.text, d.program.to_text());
         assert!(d.text.starts_with("target nearest\nwhen hull < 25% -> flee"));
-        // A design that names its own behavior gets that one.
+        assert!(d.errors.is_empty());
+        // A design that names its own behavior gets that one; a wanted content behavior comes first.
         let mut own = runner.clone();
         own.behavior = Some("raider_basic".into());
-        assert_eq!(BehaviorDraft::for_design(&content, &own).source.as_deref(), Some("raider_basic"));
+        assert_eq!(BehaviorDraft::source_for(&content, &own, None).unwrap().id, "raider_basic");
+        assert_eq!(BehaviorDraft::source_for(&content, &own, Some("skirmisher")).unwrap().id, "skirmisher");
+        assert_eq!(BehaviorDraft::source_for(&content, &own, Some("nonsense")).unwrap().id, "raider_basic");
+        // No behavior at all (no faction default): none.
+        own.behavior = None;
+        own.faction = "nobody".into();
+        assert!(BehaviorDraft::source_for(&content, &own, None).is_none());
     }
 
     #[test]
@@ -119,9 +129,10 @@ mod tests {
         let mut d = BehaviorDraft::from_behavior(content.behaviors.get("raider_basic").unwrap());
         let before = d.program.clone();
         // A typo: the program stays, the error names line, column and the suggestion.
+        let r0 = d.revision;
         assert!(!d.set_text("target nearest\nwhen sheild_down -> flee\n", nodes));
         assert_eq!(d.program, before);
-        assert_eq!(d.revision, 0);
+        assert_eq!(d.revision, r0);
         assert_eq!(d.errors.len(), 1);
         assert_eq!((d.errors[0].line, d.errors[0].col), (2, 6));
         assert!(d.errors[0].message.contains("did you mean `shield_down`?"), "{}", d.errors[0].message);
@@ -131,14 +142,14 @@ mod tests {
         // Fixed: the program changes, the errors go, the typed text stays until it is tidied.
         assert!(d.set_text("If hull≤ 30 % -> flee", nodes));
         assert!(d.errors.is_empty());
-        assert_eq!(d.revision, 1);
+        assert_eq!(d.revision, r0 + 1);
         assert_eq!(d.program.rules.len(), 1);
         assert_eq!(d.text, "If hull≤ 30 % -> flee");
         d.tidy_text();
         assert_eq!(d.text, "when hull <= 30% -> flee\n");
         // The same program again changes nothing.
         assert!(!d.set_text("when hull <= 30% -> flee", nodes));
-        assert_eq!(d.revision, 1);
+        assert_eq!(d.revision, r0 + 1);
         // No rules at all is an error (a behavior needs one); the last program stays.
         assert!(!d.set_text("", nodes));
         assert_eq!(d.errors.len(), 1);

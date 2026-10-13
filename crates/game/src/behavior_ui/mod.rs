@@ -33,7 +33,9 @@ use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
 
+use crate::camera::CameraSet;
 use crate::drydock::PlayerDesign;
+use crate::fx::FxFlush;
 use crate::mode::AppMode;
 use crate::params::Params;
 use crate::sim_bridge::GameContent;
@@ -134,7 +136,8 @@ impl Plugin for BehaviorPlugin {
                         .in_set(BehaviorSet::Show),
                 ),
             )
-            .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)));
+            .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
+            .add_systems(PostUpdate, screen::draw_dots.run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }
@@ -153,7 +156,7 @@ fn open(
     let content = &content.0;
     let bp = design.blueprint();
     *context = EditorContext { design_name: bp.name.clone(), slots: content.ship_rule_slots(bp) };
-    let wanted = params.text("behavior").and_then(|id| content.behaviors.get(id)).or_else(|| content.ship_behavior(bp));
+    let wanted = BehaviorDraft::source_for(content, bp, params.text("behavior"));
     if draft.source.is_none() || draft.source.as_deref() != wanted.map(|b| b.id.as_str()) {
         let next = wanted.map_or_else(BehaviorDraft::empty, BehaviorDraft::from_behavior);
         // The revision keeps going up, so the graph rebuilds.
