@@ -190,8 +190,8 @@ saved template copy moved to the cruiser frame).
   its frame>))`, so it comes back saved or not, with or without unsaved changes) is written about a second
   after the last change (`library::Autosave`, every change restarts the wait), at once
   when the id it is saved under changes, when a test flight starts and when the desktop app closes; it comes
-  back at the next start, before the first frame, so a plain sandbox start flies it too (a design that can't
-  fly gives a sandbox without the player's ship, as before). The first start is a copy of the
+  back at the next start, before the first frame, so a plain sandbox start flies it too (if it can't fly, the
+  sandbox starts without the player's ship; T opens the drydock). The first start is a copy of the
   starter ship (`PlayerDesign::starter`) named "Halvex Runner copy". Opening centres the parts in the frame
   (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept.
 - **The name** top left: a click turns it into a text field; Enter or a click elsewhere renames the design
