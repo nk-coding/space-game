@@ -59,7 +59,9 @@ Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-
 - **Text**: Barlow. Labels are uppercase with wide letter-spacing (0.2–0.38em) in grey `#869099` or dim `#5d6a74`. Numbers are white `#ebf5ff` with a slight glow.
 - **Accents**: teal `#8cefdb` (primary), gold `#eed595`, coral `#ec8f7c` (danger and enemies), violet `#ae8cec` (logic and conditions).
 - **Controls**: pill buttons. The primary action is a glowing teal pill. Round glowing ring buttons for menus and tools.
-- **Layout**: a floating HUD with no boxed panels. The ring menu sits around the docked ship on the home screen.
+- **Layout**: a floating HUD with no boxed panels. The home screen is the shipyard itself, a top-down scene of the
+  station with small tracked labels over its places ([GDR-0071](gdr/0071-shipyard-home-long-u.md); it replaced the
+  ring menu around the docked ship).
 - **Fleet bar** ([GDR-0050](gdr/0050-fleet-bar.md), 12 Oct 2026): a row of chips at the top centre, no panel.
   Each chip is outlined only by four thin corner brackets (grey at 40 %, teal for the focus); inside, the vessel's
   number (white; teal for the focus, coral when dark, dim when dormant), small violet dots for its logic cores, a
