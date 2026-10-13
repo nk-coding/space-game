@@ -127,10 +127,11 @@ file says.
     id: "raider_basic",
     name: "Raider pack",
     summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
+    tags: ["automaton", "attack"],
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)",
-        "always -> approach(67%)",
+        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)",
+        "always -> approach(85%)",
     ],
 )
 ```

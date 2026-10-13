@@ -1,9 +1,9 @@
 //! The texture atlas, rasterised at runtime from vector sources (rule: no fixed raster graphics).
 //!
-//! `crates/art` embeds the SVG icons and style tokens, lays every region out in resolution-independent atlas
-//! units and rasterises the layout at a *tier* (pixels per ship cell, a power of two). This module picks the
-//! tier from what the screen needs (camera zoom, or the part icons in the UI when they are larger
-//! ([`UiAtlasNeed`]), × window scale factor, capped by the GPU's largest texture),
+//! `crates/art` takes the SVG icons from the content and the embedded style tokens, lays every region out in
+//! resolution-independent atlas units and rasterises the layout at a *tier* (pixels per ship cell, a power of
+//! two). This module picks the tier from what the screen needs (camera zoom, or the part icons in the UI when
+//! they are larger ([`UiAtlasNeed`]), × window scale factor, capped by the GPU's largest texture),
 //! rasterises a new atlas when that tier changes (regions and mip chain spread over frames within a time
 //! budget, the old texture stays in use meanwhile; a job for a tier the zoom has already outgrown is dropped
 //! for the new one) and switches the material to the new image a frame after adding it ([`rasterise_step`]).

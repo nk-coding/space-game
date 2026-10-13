@@ -3,7 +3,7 @@
 //!
 //! Module map:
 //! - `mode`: the app mode (flight, drydock or the BEHAVIOR screen) and what runs in which.
-//! - `atlas`, `style`, `meshbuf`: the baked texture atlas + style tokens, mesh building.
+//! - `atlas`, `style`, `meshbuf`: the texture atlas rasterised at runtime + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
 //! - `scene`: sandbox (player + raider waves), test flight, showcase, load test; writes the player's pilot input.
 //! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.

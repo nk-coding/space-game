@@ -1,9 +1,9 @@
 //! Scenes: what is in the world and who flies it. Chosen by URL parameters:
 //!
-//! * **sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at start a copy of the
-//!   Halvex Runner) as the focus; waves of automaton raiders under their content behavior (`raider_basic`), a
-//!   new wave a few seconds after the last raider goes dark (C turns the waves off and on); the player's other
-//!   vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//! * **sandbox** (default): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of
+//!   the Halvex Runner, then the autosaved working design) as the focus; waves of automaton raiders under their
+//!   content behavior (`raider_basic`), a new wave a few seconds after the last raider goes dark (C turns the
+//!   waves off and on); the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
 //!   far from the player; when the player has no vessel left, a new one re-forms.
@@ -18,8 +18,8 @@
 //! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //!
 //! The scene writes the player's pilot input into the tick inputs (`FixedUpdate`, before the step). Leaving
-//! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from the drydock
-//! (`OnEnter`) builds the test flight.
+//! flight (`OnExit(AppMode::Flight)`) tears the scene down to an empty world; entering it from the drydock or the
+//! BEHAVIOR screen (`OnEnter`) builds the test flight or the behavior test.
 //!
 //! Owners, vessels and the focus live in the sim (`sim::vessel`): the player is [`PLAYER`], the raiders
 //! [`ENEMY`]; [`PilotFocus`] mirrors `Sim::focus(PLAYER)`, and focus switches are `ShipCommand::Focus`.

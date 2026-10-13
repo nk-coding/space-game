@@ -1,7 +1,7 @@
 //! The drydock: the ship editor of the client (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
 //! `docs/concept/boards/ui-mockups/desktop-drydock.png`). This is the foundation: the mode, the static view of
-//! the player's design, the layout with its widgets, and the test flight. Editing, the live stats and saving
-//! plug in through the resources and the action message below.
+//! the player's design, the layout with its widgets, and the test flight; editing, the live stats, saving and
+//! sharing (wave 2, 13 Oct 2026) are the modules below.
 //!
 //! * [`design`]: [`PlayerDesign`], the blueprint every flight of the player flies.
 //! * [`state`]: what the widgets show (`DrydockUi`, `DrydockStatus`, `DrydockStats`).

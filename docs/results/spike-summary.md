@@ -3,7 +3,9 @@
 The answers to the seven questions of `docs/spike-plan.md`, as far as they can be answered without a phone and
 without Niklas's browser. Written 12 Oct 2026 (late evening) on `dev` `5b824b6`, after re-measuring on the new VM.
 Phone measurements are deferred until Android work starts ([ADR-0006](../adr/0006-web-as-development-platform.md));
-the browser measurements wait for Niklas (steps in [Steps for Niklas](#steps-for-niklas-host-browser)).
+the browser measurements wait for Niklas (steps in [Steps for Niklas](#steps-for-niklas-host-browser)). The
+numbers are those of 12 Oct 2026; later sim changes (the slower turning of 13 Oct 2026, GDR-0055) change the
+flight numbers and the state hashes, as noted where it matters.
 
 | # | Question | Status | Key numbers |
 |---|---|---|---|
@@ -13,7 +15,7 @@ the browser measurements wait for Niklas (steps in [Steps for Niklas](#steps-for
 | 4 | Is the phone fast enough? | **Deferred to Android** | native proxy: 20 ships 0.011 ms median / 0.028 ms p95 sim step, against a 4 ms phone budget |
 | 5 | How does the browser compare? | **Answered natively, browser numbers pending** | wasm under Node (V8) 1.5× native for 20 ships (1.2–1.9× in the physics benchmark) |
 | 6 | Is the style 2a look affordable? | **Browser numbers pending; phone deferred** | none yet (headless SwiftShader timings say nothing) |
-| 7 | Does flying feel right? | **Browser: changed after the first play-test, Niklas's verdict on the new flight pending; phone deferred** | Runner 90° in 0.77 s, 0 → 22 m/s in 2.5 s (was 90° in 3.3 s, ~10 m/s top) |
+| 7 | Does flying feel right? | **Browser: changed after the play-tests of 12 and 13 Oct 2026; phone deferred** | Runner 0 → 22 m/s in 2.5 s; 90° in 1.50 s since 13 Oct (0.77 s on 12 Oct, 3.3 s before) |
 
 Machines: the old VM was an Intel Core Ultra 7 155H (15 vCPUs, 11 GB), the new VM (since 12 Oct 2026) is an AMD
 Ryzen 9 9950X3D (16 vCPUs, 17 GB). Rust 1.99.0, Node 24.11.1, release builds.
@@ -176,9 +178,14 @@ Niklas flew the web build on 12 Oct 2026. What he said and what changed the same
 - The engines going dark at the speed cap looked weird, and a fixed cap is wrong → each engine's rated speed sets
   the top speed, a calm cruise flame at the cap, no drag ([GDR-0041](../gdr/0041-engine-rated-speed.md)).
 
-He has not yet said whether the new flight feels right. Open lead defaults that touch the feel (`docs/sim.md`
-"Design questions"): braking and strafing under lock with rear engines only (2), diagonal top speed (14),
-differential thrust pushing a locked ship (15). Stick + lock with the touch stick is a phone question.
+Niklas flew it again on 13 Oct 2026: the acceleration stays, but turning was far too strong and the A/D aim
+slippery → keys turn at about 1.5 rad/s with a ramp, logic cores barely turn, gyros moderately, RCS pods strongly,
+the Runner turns 90° in 1.50 s (the raider in 0.57 s), differential thrust only as a last resort, and a thruster
+pushing with the motion fades by the whole speed ([GDR-0055](../gdr/0055-slower-crisper-turning.md),
+[GDR-0058](../gdr/0058-turning-v2-defaults.md)). Still open and touching the feel (`docs/sim.md`
+"Design questions"): the feel of "fly that way" (3). Braking and strafing under lock with rear engines only is
+decided (GDR-0011: RCS pods or side thrusters are the answer).
+Stick + lock with the touch stick is a phone question.
 
 ## Steps for Niklas (host browser)
 
@@ -210,14 +217,16 @@ frames, so wait about 15 s after a switch before reading them.
 
 **C. Browser hash (question 2, optional, one minute).** Open
 `http://10.77.9.2:8080/?hashlog=1&load=20&hashticks=600` and wait about half a minute until the console prints
-`# hashlog done`. The line before it should read
-`# final=86eb72a03591bff2 label=load ships=20 seed=42 (browser) ticks=600`. Copy it.
+`# hashlog done`. The line before it reads `# final=<hash> label=load ships=20 seed=42 (browser) ticks=600`. Copy it.
+On 12 Oct 2026 the hash was `86eb72a03591bff2`; sim changes since then (the turning of 13 Oct) change it, so
+the lead compares it with a native run of the same commit (`docs/client.md` "Load test and determinism in the
+browser").
 
 **D. Flight feel (question 7).** Open `http://10.77.9.2:8080/` (the sandbox) and fly the Halvex Runner for a few
 waves: W/S thrust, A/D rotate, Q/E strafe, let go to brake, X for drift, click a raider to lock (Tab for the next
 one), hold Space or the right mouse button to fire. Then say for each of these whether it feels right, or what is
 wrong: keyboard flight; the lock (it turns your guns onto the target, A/D nudge the aim); braking when you let go;
-top speed and acceleration (~22 m/s, 90° in ~0.8 s) with the calm cruise flame at top speed. If you change
+top speed and acceleration (~22 m/s, 90° in ~1.5 s) with the calm cruise flame at top speed. If you change
 anything in the tuning panel (U; T now opens the drydock), copy the query string it prints.
 
 **What to send back:**
