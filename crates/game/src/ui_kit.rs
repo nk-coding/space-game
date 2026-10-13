@@ -14,19 +14,28 @@
 //!   state, the kit turns state + pointer into colours ([`UiStyleSet`]), writing only what changed.
 //! * Colours go through [`ui_color`] (the world composites in sRGB, bevy_ui does not encode for it).
 //! * Glyphs that Barlow lacks (arrows, the play triangle, the search lens) are vector icons (`ui_icons`).
+//! * [`Tip`]: a control's tooltip (its name and key; labels carry no key letters).
+//! * [`ScreenFx`] / [`ScreenPart`] (`transition`): a screen's enter / exit transition, its panels sliding in from
+//!   their edges while they fade in; every screen opened from the shipyard uses it.
 
 use bevy::input::ButtonState;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use bevy::text::{LetterSpacing, TextBackgroundColor};
-use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, UiGlobalTransform};
+use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
+
+mod transition;
+
+pub use transition::{
+    EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
+};
 
 use crate::clipboard::Clipboard;
 use crate::flight_hud::HudFonts;
 use crate::style::{Style, UiPalette, ui_color};
-use crate::ui_icons::UiIcon;
+use crate::ui_icons::{Glyph, UiIcon};
 
 /// The palette's colours by role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -169,10 +178,13 @@ pub struct UiKitPlugin;
 impl Plugin for UiKitPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiPointer>()
+            .init_resource::<TipState>()
             .add_message::<UiClick>()
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
+            .add_systems(Startup, spawn_tip.after(crate::flight_hud::spawn_hud))
             .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
-            .add_systems(Update, (style_widgets, show_locks, place_scroll_cues).in_set(UiStyleSet));
+            .add_systems(Update, (style_widgets, show_locks, place_scroll_cues, show_tip).in_set(UiStyleSet));
+        transition::plugin(app);
     }
 }
 
@@ -258,6 +270,162 @@ fn hit_test(
 }
 
 // ---------------------------------------------------------------------------------------------------------
+// Tooltips
+
+/// A control's tooltip: its name and the key that does the same, if any (Niklas, 13 Oct 2026: labels carry no key
+/// letters; the tooltip names the key). Put it on a [`Hot`] node (a pill, a ring, a field, a click area over the
+/// world such as home's places): resting the mouse on the node for [`TIP_DELAY`] shows a small dark plate near the
+/// pointer, the name in label grey and the key in white, kept inside the window ([`tip_position`]). A press hides
+/// it until the pointer leaves the node. Touch has no hover, so no tooltips.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct Tip {
+    pub name: &'static str,
+    pub key: Option<&'static str>,
+}
+
+impl Tip {
+    /// A name only (an icon button without a key).
+    pub fn new(name: &'static str) -> Self {
+        Self { name, key: None }
+    }
+
+    /// A name and its key (`"B"`, `"CTRL+S"`, `"Q / E"`).
+    pub fn key(name: &'static str, key: &'static str) -> Self {
+        Self { name, key: Some(key) }
+    }
+}
+
+/// How long the mouse rests on a control before its tooltip shows (seconds).
+pub const TIP_DELAY: f32 = 0.5;
+/// The tooltip's offset from the pointer (right and down, UI px) and the least room to the window's edges.
+const TIP_OFFSET: Vec2 = Vec2::new(12.0, 20.0);
+const TIP_MARGIN: f32 = 6.0;
+
+/// Where a tooltip of `size` goes for the pointer at `cursor` in a window of `window` (all UI px, y down; the
+/// tooltip's top-left corner): right of and below the pointer; left of it when it would leave the right edge,
+/// above it when it would leave the bottom; always at least [`TIP_MARGIN`] inside the window (a tooltip larger
+/// than the window keeps its top-left corner inside).
+pub fn tip_position(cursor: Vec2, size: Vec2, window: Vec2) -> Vec2 {
+    let mut at = cursor + TIP_OFFSET;
+    if at.x + size.x > window.x - TIP_MARGIN {
+        at.x = cursor.x - TIP_OFFSET.x - size.x;
+    }
+    if at.y + size.y > window.y - TIP_MARGIN {
+        at.y = cursor.y - TIP_OFFSET.y.min(10.0) - size.y;
+    }
+    let max = (window - size - Vec2::splat(TIP_MARGIN)).max(Vec2::splat(TIP_MARGIN));
+    at.clamp(Vec2::splat(TIP_MARGIN), max)
+}
+
+/// The tooltip plate (one for the whole game) and its texts.
+#[derive(Component)]
+struct TipPlate;
+
+#[derive(Component)]
+struct TipName;
+
+#[derive(Component)]
+struct TipKey;
+
+/// Which control the mouse rests on, since when, and what the plate shows.
+#[derive(Resource, Default, Debug)]
+struct TipState {
+    over: Option<Entity>,
+    since: f32,
+    /// A press on `over`: no tooltip until the pointer leaves it.
+    pressed: bool,
+    /// The plate shows this control's tip (its texts are set; it is placed once laid out).
+    shown: Option<Entity>,
+}
+
+fn spawn_tip(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
+    let ui = &style.ui;
+    commands
+        .spawn((
+            TipPlate,
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0),
+                top: px(0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(10),
+                padding: UiRect::axes(px(9), px(5)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                ..default()
+            },
+            BackgroundColor(ui_color(style.background.outer(), 0.94)),
+            BorderColor::all(ui_color(ui.label, 0.28)),
+            GlobalZIndex(i32::MAX - 8),
+            UiTransform::default(),
+            Visibility::Hidden,
+        ))
+        .with_children(|p| {
+            p.spawn((TipName, tracked(&fonts, "", 8.5, ui_color(ui.label, 1.0), 0.25), TextLayout::no_wrap()));
+            p.spawn((TipKey, number(&fonts, "", 10.0, ui_color(ui.number, 1.0)), TextLayout::no_wrap()));
+        });
+}
+
+/// Shows the tooltip of the control the mouse has rested on for [`TIP_DELAY`] and keeps it by the pointer (moved
+/// by its transform: no layout); hides it when the pointer leaves, presses or the control goes.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn show_tip(
+    time: Res<Time<Real>>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    ui_scale: Res<UiScale>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    mut state: ResMut<TipState>,
+    tips: Query<(Entity, &Tip, &Hot, &InheritedVisibility)>,
+    mut plate: Single<(&mut Visibility, &mut UiTransform, &ComputedNode), With<TipPlate>>,
+    mut name: Single<(&mut Text, &mut Node), (With<TipName>, Without<TipKey>)>,
+    mut key: Single<(&mut Text, &mut Node), (With<TipKey>, Without<TipName>)>,
+) {
+    let now = time.elapsed_secs();
+    let cursor = window.cursor_position();
+    let over = cursor.and_then(|_| tips.iter().find(|(_, _, h, v)| h.hovered && v.get())).map(|(e, ..)| e);
+    if over != state.over {
+        (state.over, state.since, state.pressed) = (over, now, false);
+    }
+    if buttons.any_just_pressed([MouseButton::Left, MouseButton::Right, MouseButton::Middle]) && over.is_some() {
+        state.pressed = true;
+    }
+    let want = over.filter(|_| !state.pressed && now - state.since >= TIP_DELAY);
+    let (vis, tf, node) = &mut *plate;
+    let Some((e, tip)) = want.and_then(|e| tips.get(e).ok()).map(|(e, t, ..)| (e, t)) else {
+        state.shown = None;
+        if **vis != Visibility::Hidden {
+            **vis = Visibility::Hidden;
+        }
+        return;
+    };
+    if state.shown != Some(e) {
+        // New texts: laid out this frame, placed and shown from the next.
+        state.shown = Some(e);
+        set_text(&mut name.0, tip.name);
+        set_text(&mut key.0, tip.key.unwrap_or(""));
+        let d = if tip.key.is_some() { Display::Flex } else { Display::None };
+        if key.1.display != d {
+            key.1.display = d;
+        }
+        if **vis != Visibility::Hidden {
+            **vis = Visibility::Hidden;
+        }
+        return;
+    }
+    let k = ui_scale.0.max(1e-3);
+    let size = node.size * node.inverse_scale_factor;
+    let at = tip_position(cursor.unwrap_or_default() / k, size, window.size() / k);
+    let t = Val2::px(at.x, at.y);
+    if tf.translation != t {
+        tf.translation = t;
+    }
+    if **vis != Visibility::Inherited {
+        **vis = Visibility::Inherited;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------
 // Widgets
 
 /// A pill button. The screen sets `active` and `disabled`; the kit colours it (in [`UiStyleSet`]).
@@ -292,6 +460,16 @@ pub struct PillLock;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Default)]
 pub struct Ring {
     pub disabled: bool,
+}
+
+/// A vector glyph inside a [`Ring`] coloured with the ring's state, like a [`PillText`] (the zoom's and the
+/// steppers' plus and minus): spawn it with [`ring_glyph`].
+#[derive(Component)]
+pub struct RingGlyph;
+
+/// A [`RingGlyph`] `size` px across: centred in its ring by the ring's own layout, and drawn centred on its node.
+pub fn ring_glyph(glyph: Glyph, size: f32) -> impl Bundle {
+    (RingGlyph, UiIcon::Glyph { glyph, color: Color::NONE }, Node { width: px(size), height: px(size), flex_shrink: 0.0, ..default() })
 }
 
 /// Spawns a pill with a text in Barlow medium (the mockup's pills are semi-bold) and an optional icon before it,
@@ -477,13 +655,23 @@ fn place_scroll_cues(
     }
 }
 
-/// The screens (the drydock, the BEHAVIOR screen) are laid out for 1280 × 720 logical px; larger windows scale
-/// them up to this.
+/// The screens (the drydock, the BEHAVIOR screen, home, FLEET) are laid out for 1280 × 720 logical px; larger
+/// windows scale them up to this.
 const MAX_UI_SCALE: f32 = 2.0;
+/// Smaller windows scale them down to this (below it they no longer fit).
+const MIN_UI_SCALE: f32 = 0.5;
 
-/// The UI scale for a window: min(w / 1280, h / 720), 1 to [`MAX_UI_SCALE`].
+/// The UI scale for a window: min(w / 1280, h / 720), [`MIN_UI_SCALE`] to [`MAX_UI_SCALE`]. So the 1280 × 720
+/// layout always fits the window: a window narrower or lower than that scales it down (until 13 Oct 2026 the scale
+/// stopped at 1, and a centred layout such as FLEET's lost its left and top edges in a 1080 px wide or a 650 px
+/// high window); a wider aspect leaves room at the sides, a taller one below and above.
 pub fn ui_scale_for(window: &Window) -> f32 {
-    (window.width() / 1280.0).min(window.height() / 720.0).clamp(1.0, MAX_UI_SCALE)
+    ui_scale(window.size())
+}
+
+/// [`ui_scale_for`] for a window of `size` logical px.
+pub fn ui_scale(size: Vec2) -> f32 {
+    (size.x / 1280.0).min(size.y / 720.0).clamp(MIN_UI_SCALE, MAX_UI_SCALE)
 }
 
 /// Pixels of a touchpad's wheel that count as one line (one list row, 40 px of a scrolled area).
@@ -792,6 +980,7 @@ fn style_widgets(
         Without<Pill>,
     >,
     mut texts: Query<&mut TextColor, With<PillText>>,
+    mut glyphs: Query<&mut UiIcon, With<RingGlyph>>,
     mut bars: Query<(Ref<ValueBar>, &mut BackgroundColor, &Children), (Without<Pill>, Without<Ring>, Without<BarFill>)>,
     mut fills: Query<(&mut Node, &mut BackgroundColor, Has<BarMark>), (Or<(With<BarFill>, With<BarMark>)>, Without<ValueBar>, Without<Pill>, Without<Ring>)>,
     mut fields: Query<(Ref<TextField>, Ref<Hot>, &mut BorderColor, &Children), (Without<Pill>, Without<Ring>)>,
@@ -852,15 +1041,17 @@ fn style_widgets(
         if !ring.is_changed() && !hot.is_changed() {
             continue;
         }
-        let (b, f, t) = if ring.disabled {
-            (c(ui.dim, 0.3), Color::NONE, c(ui.dim, 0.75))
+        // The text colour as a palette colour and its opacity (glyphs are world meshes: no `ui_color`).
+        let (b, f, (ink, k)) = if ring.disabled {
+            (c(ui.dim, 0.3), Color::NONE, (ui.dim, 0.75))
         } else if hot.pressed {
-            (c(ui.teal, 0.8), c(ui.teal, 0.12), c(ui.number, 1.0))
+            (c(ui.teal, 0.8), c(ui.teal, 0.12), (ui.number, 1.0))
         } else if hot.hovered {
-            (c(ui.label, 0.8), c(ui.number, 0.04), c(ui.number, 1.0))
+            (c(ui.label, 0.8), c(ui.number, 0.04), (ui.number, 1.0))
         } else {
-            (c(ui.label, 0.4), Color::NONE, c(ui.number, 0.85))
+            (c(ui.label, 0.4), Color::NONE, (ui.number, 0.85))
         };
+        let t = c(ink, k);
         if border.top != b {
             *border = BorderColor::all(b);
         }
@@ -870,6 +1061,12 @@ fn style_widgets(
         for child in children {
             if let Ok(mut tc) = texts.get_mut(*child) {
                 set_color(&mut tc, t);
+            }
+            if let Ok(mut icon) = glyphs.get_mut(*child)
+                && let UiIcon::Glyph { color, .. } = &mut *icon
+                && *color != ink.with_alpha(k)
+            {
+                *color = ink.with_alpha(k);
             }
         }
     }
@@ -992,13 +1189,49 @@ mod tests {
         }
     }
 
+    /// A tooltip sits right of and below the pointer, flips left or up at the window's edges and never leaves it.
+    #[test]
+    fn a_tooltip_stays_inside_the_window() {
+        let (window, size) = (Vec2::new(1280.0, 720.0), Vec2::new(120.0, 24.0));
+        assert_eq!(tip_position(Vec2::new(100.0, 100.0), size, window), Vec2::new(112.0, 120.0));
+        // At the right edge: left of the pointer; at the bottom: above it.
+        let right = tip_position(Vec2::new(1250.0, 100.0), size, window);
+        assert_eq!(right, Vec2::new(1250.0 - 12.0 - 120.0, 120.0));
+        let bottom = tip_position(Vec2::new(600.0, 710.0), size, window);
+        assert!(bottom.y + size.y <= 710.0 && bottom.x == 612.0, "{bottom}");
+        // In a corner and at any pointer position (also off the window): fully inside, margin kept.
+        for c in [Vec2::ZERO, Vec2::new(-50.0, -50.0), Vec2::new(1279.0, 719.0), Vec2::new(2000.0, 900.0), Vec2::new(5.0, 715.0), Vec2::new(1275.0, 3.0)] {
+            let at = tip_position(c, size, window);
+            assert!(at.x >= TIP_MARGIN && at.y >= TIP_MARGIN, "{c}: {at}");
+            assert!(at.x + size.x <= window.x - TIP_MARGIN && at.y + size.y <= window.y - TIP_MARGIN, "{c}: {at}");
+        }
+        // A tooltip wider than the window keeps its start (its name) inside: at the left margin.
+        assert_eq!(tip_position(Vec2::new(300.0, 100.0), Vec2::new(400.0, 24.0), Vec2::new(320.0, 200.0)).x, TIP_MARGIN);
+    }
+
     #[test]
     fn the_ui_grows_with_the_window() {
         let window = |w: f32, h: f32| Window { resolution: bevy::window::WindowResolution::new(w as u32, h as u32), ..default() };
         assert_eq!(ui_scale_for(&window(1280.0, 720.0)), 1.0);
         assert_eq!(ui_scale_for(&window(1920.0, 1080.0)), 1.5);
-        assert_eq!(ui_scale_for(&window(1000.0, 700.0)), 1.0);
         assert_eq!(ui_scale_for(&window(5120.0, 2880.0)), MAX_UI_SCALE);
+        assert_eq!(ui_scale_for(&window(400.0, 200.0)), MIN_UI_SCALE);
+    }
+
+    /// The 1280 × 720 layout fits every window the play-test named (Niklas, 13 Oct 2026: things at the left and
+    /// top were cut off at some aspects): scaled, it is never wider or higher than the window, it fills the window
+    /// in one direction, and a layout centred in the window (FLEET's stage) starts inside it.
+    #[test]
+    fn the_layout_fits_any_aspect() {
+        for (w, h) in [(1280.0, 720.0), (1600.0, 900.0), (1440.0, 1080.0), (1280.0, 1024.0), (3440.0, 1305.0), (1080.0, 1350.0), (1000.0, 700.0), (1280.0, 650.0), (2560.0, 1080.0)] {
+            let k = ui_scale(Vec2::new(w, h));
+            let layout = Vec2::new(1280.0, 720.0) * k;
+            assert!(layout.x <= w + 1e-3 && layout.y <= h + 1e-3, "{w}x{h}: {layout}");
+            assert!((layout.x - w).abs() < 1e-3 || (layout.y - h).abs() < 1e-3, "{w}x{h}: fills one direction");
+            // Centred: the left and top edges are inside the window.
+            let start = (Vec2::new(w, h) - layout) / 2.0;
+            assert!(start.x >= -1e-3 && start.y >= -1e-3, "{w}x{h}: {start}");
+        }
     }
 
     /// A key without text (arrows, Home, a modifier), pressed or let go.

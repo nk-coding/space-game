@@ -110,12 +110,37 @@ pub fn parse_hex(s: &str) -> Option<Color> {
 
 /// The material of every atlas mesh: the atlas × the vertex colour, like Bevy's `ColorMaterial` but sampled with
 /// a mip LOD bias of −0.5 (`atlas.wesl` says why). Alpha-blended, or opaque (no blending, writes depth).
+///
+/// `tint`'s alpha fades everything drawn with it: a group of meshes that fades as one (a screen's world-space
+/// elements, its UI icons, the shipyard while a screen covers it) shares a material of its own
+/// ([`Atlas::group_material`], [`set_alpha`]), so a fade writes one uniform per frame and no mesh.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct AtlasMaterial {
     #[texture(0)]
     #[sampler(1)]
     texture: Handle<Image>,
+    #[uniform(2)]
+    tint: Vec4,
     opaque: bool,
+}
+
+impl Atlas {
+    /// A new alpha-blended material on the atlas (it follows every tier like the shared one), at alpha 1: for a
+    /// group of meshes that fades as one ([`set_alpha`]).
+    pub fn group_material(&self, materials: &mut Assets<AtlasMaterial>) -> Handle<AtlasMaterial> {
+        let texture = materials.get(&self.material).map(|m| m.texture.clone()).unwrap_or_default();
+        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, opaque: false })
+    }
+}
+
+/// Sets a group material's alpha (written only when it changes: a write re-prepares the material).
+pub fn set_alpha(materials: &mut Assets<AtlasMaterial>, material: &Handle<AtlasMaterial>, alpha: f32) {
+    let a = alpha.clamp(0.0, 1.0);
+    if materials.get(material).is_some_and(|m| (m.tint.w - a).abs() > 1e-4)
+        && let Some(mut m) = materials.get_mut(material)
+    {
+        m.tint.w = a;
+    }
 }
 
 impl Material2d for AtlasMaterial {
@@ -256,8 +281,8 @@ impl Plugin for AtlasPlugin {
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
         let mut materials = world.resource_mut::<Assets<AtlasMaterial>>();
-        let material = materials.add(AtlasMaterial { texture: image.clone(), opaque: false });
-        let opaque = materials.add(AtlasMaterial { texture: image, opaque: true });
+        let material = materials.add(AtlasMaterial { texture: image.clone(), tint: Vec4::ONE, opaque: false });
+        let opaque = materials.add(AtlasMaterial { texture: image, tint: Vec4::ONE, opaque: true });
         let atlas = Atlas { material, opaque, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
@@ -400,8 +425,10 @@ fn rasterise_step(
         return;
     }
     let Job { raster, image, spent, frames, longest, upload, .. } = job.job.take().expect("job");
-    for handle in [&atlas.material, &atlas.opaque] {
-        if let Some(mut m) = materials.get_mut(handle) {
+    // Every atlas material: the shared ones and the groups' (`Atlas::group_material`).
+    let ids: Vec<_> = materials.ids().collect();
+    for id in ids {
+        if let Some(mut m) = materials.get_mut(id) {
             m.texture = image.clone();
         }
     }

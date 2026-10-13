@@ -79,6 +79,11 @@ Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-
 - **Text**: Barlow. Labels are uppercase with wide letter-spacing (0.2–0.38em) in grey `#869099` or dim `#5d6a74`. Numbers are white `#ebf5ff` with a slight glow.
 - **Accents**: teal `#8cefdb` (primary), gold `#eed595`, coral `#ec8f7c` (danger and enemies), violet `#ae8cec` (logic and conditions).
 - **Controls**: pill buttons. The primary action is a glowing teal pill. Round glowing ring buttons for menus and tools.
+  Labels name the action only, never its key (Niklas, 13 Oct 2026: no `SAVE CTRL S`, `PAINT B`).
+- **Tooltips** (13 Oct 2026): the key goes into a tooltip. After the pointer rests 0.5 s on a control, a small dark
+  plate (the backdrop's darkest `#010409` at 94 %, a 1 px border in label grey at 28 %, 4 px corners, no glow) shows
+  near the pointer: the control's name as a tracked label in grey `#869099` (8.5 px), then its key in white `#ebf5ff`
+  (Barlow medium 10 px), e.g. `SAVE  CTRL+S`. It never leaves the window. Places in the shipyard get the same.
 - **Layout**: a floating HUD with no boxed panels. The home screen is the shipyard itself, a top-down scene of the
   station with small tracked labels over its places ([GDR-0071](gdr/0071-shipyard-home-long-u.md); it replaced the
   ring menu around the docked ship).

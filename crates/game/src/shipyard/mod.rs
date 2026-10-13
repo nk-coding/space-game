@@ -30,10 +30,11 @@ use bevy::prelude::*;
 use data::{Blueprint, Content, career::Career};
 
 use crate::RenderToggles;
-use crate::atlas::Atlas;
+use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
+use crate::drydock::panels::DrydockRoot;
+use crate::ui_kit::{ScreenFx, WorldCover};
 use crate::career::{EscortDesigns, PlayerCareer};
 use crate::drydock::PlayerDesign;
-use crate::fleet::Fleet;
 use crate::meshbuf::MeshBuf;
 use crate::mode::AppMode;
 use crate::ship_model::{blueprint_visual, design_visual};
@@ -136,6 +137,10 @@ struct Moored {
 #[derive(Resource)]
 struct Station {
     palette: Palette,
+    /// The fading groups' materials: the U, its rigging and the docked ship; the yard around it, the floor, the
+    /// drones and the moored escorts.
+    core: Handle<AtlasMaterial>,
+    outer: Handle<AtlasMaterial>,
 }
 
 pub struct ShipyardPlugin;
@@ -156,20 +161,22 @@ impl Plugin for ShipyardPlugin {
     }
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<Atlas>, style: Res<Style>) {
+fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<AtlasMaterial>>, atlas: Res<Atlas>, style: Res<Style>) {
     let palette = Palette::new(&atlas, &style);
-    let mut spawn = |commands: &mut Commands, bundle: (Transform, Visibility), mesh: Mesh| {
-        commands.spawn((Mesh2d(meshes.add(mesh)), MeshMaterial2d(atlas.material.clone()), bundle)).id()
+    // Two fading groups (see [`show`]): what stays around the drydock, and what is home's alone.
+    let (core, outer) = (atlas.group_material(&mut materials), atlas.group_material(&mut materials));
+    let mut spawn = |commands: &mut Commands, bundle: (Transform, Visibility), material: &Handle<AtlasMaterial>| {
+        commands.spawn((Mesh2d(meshes.add(MeshBuf::placeholder())), MeshMaterial2d(material.clone()), bundle)).id()
     };
     let hidden = |z: f32| (Transform::from_xyz(0.0, 0.0, z), Visibility::Hidden);
-    for (layer, z) in [(Layer::Yard, Z_YARD), (Layer::Floor, Z_FLOOR), (Layer::Walls, Z_WALLS)] {
-        let e = spawn(&mut commands, hidden(z), MeshBuf::placeholder());
+    for (layer, z, m) in [(Layer::Yard, Z_YARD, &outer), (Layer::Floor, Z_FLOOR, &outer), (Layer::Walls, Z_WALLS, &core)] {
+        let e = spawn(&mut commands, hidden(z), m);
         commands.entity(e).insert(layer);
     }
-    let e = spawn(&mut commands, hidden(Z_SHIP), MeshBuf::placeholder());
+    let e = spawn(&mut commands, hidden(Z_SHIP), &core);
     commands.entity(e).insert(DockedShip { built: None });
     for slot in 0..MOORINGS {
-        let e = spawn(&mut commands, hidden(Z_SHIP), MeshBuf::placeholder());
+        let e = spawn(&mut commands, hidden(Z_SHIP), &outer);
         commands.entity(e).insert(Moored { slot, built: None });
     }
     // The rigging: small meshes, built once (the cranes with the frame), moved by transforms.
@@ -185,7 +192,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<At
     let mut pen = Pen::new(&atlas, true);
     draw::drone(&mut pen, &palette);
     let drone = meshes.add(pen.into_mesh());
-    let material = MeshMaterial2d(atlas.material.clone());
+    let material = MeshMaterial2d(core.clone());
     for k in 0..layout::CRANES.len() {
         commands
             .spawn((Crane(k), Mesh2d(meshes.add(MeshBuf::placeholder())), material.clone(), hidden(Z_CRANES)))
@@ -200,9 +207,9 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<At
         }
     }
     for k in 0..DRONES {
-        commands.spawn((Drone(k), Mesh2d(drone.clone()), material.clone(), hidden(Z_DRONES)));
+        commands.spawn((Drone(k), Mesh2d(drone.clone()), MeshMaterial2d(outer.clone()), hidden(Z_DRONES)));
     }
-    commands.insert_resource(Station { palette });
+    commands.insert_resource(Station { palette, core, outer });
 }
 
 /// The layout follows the design's frame, the lights the career and the fleet.
@@ -392,20 +399,33 @@ fn animate(
 
 /// Which parts show: everything at home (none while FLEET covers it) and behind the research screen, the walls and
 /// the parked rigging in the drydock, nothing elsewhere.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn show(
     mode: Res<State<AppMode>>,
-    fleet: Res<Fleet>,
+    cover: Res<WorldCover>,
+    mut yard: ResMut<Yard>,
+    station: Res<Station>,
+    drydock: Query<&ScreenFx, With<DrydockRoot>>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
     mut parts: ParamSet<(
         Query<(&Layer, &mut Visibility)>,
         Query<&mut Visibility, Or<(With<Crane>, With<Clamp>)>>,
-        Query<&mut Visibility, Or<(With<Drone>, With<DockedShip>)>>,
+        Query<&mut Visibility, With<Drone>>,
+        Query<&mut Visibility, With<DockedShip>>,
         Query<(&Moored, &mut Visibility)>,
     )>,
     escorts: Res<EscortDesigns>,
 ) {
-    let home = (*mode.get() == AppMode::Home && !fleet.open) || *mode.get() == AppMode::Research;
-    let dock = *mode.get() == AppMode::Drydock;
+    let mode = *mode.get();
+    // The drydock has the room cleared (the BEHAVIOR screen opened from it finds it so).
+    if mode == AppMode::Drydock && yard.clear != 1.0 {
+        yard.clear = 1.0;
+    }
+    let (core, outer) = station_alpha(mode, cover.0, yard.clear);
+    set_alpha(&mut materials, &station.core, core);
+    set_alpha(&mut materials, &station.outer, outer);
+    // The drydock's own design covers the docked ship's place while its screen shows (the same picture).
+    let dock_shows = drydock.single().is_ok_and(ScreenFx::visible);
     let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
     let put = |v: &mut Visibility, want: Visibility| {
         if *v != want {
@@ -413,17 +433,32 @@ fn show(
         }
     };
     for (layer, mut v) in &mut parts.p0() {
-        put(&mut v, vis(home || (dock && *layer == Layer::Walls)));
+        put(&mut v, vis(if *layer == Layer::Walls { core > 0.0 } else { outer > 0.0 }));
     }
     for mut v in &mut parts.p1() {
-        put(&mut v, vis(home || dock));
+        put(&mut v, vis(core > 0.0));
     }
     for mut v in &mut parts.p2() {
-        put(&mut v, vis(home));
+        put(&mut v, vis(outer > 0.0));
     }
-    for (m, mut v) in &mut parts.p3() {
-        put(&mut v, vis(home && m.slot < escorts.0.len()));
+    for mut v in &mut parts.p3() {
+        put(&mut v, vis(core > 0.0 && mode != AppMode::Drydock && !dock_shows));
     }
+    for (m, mut v) in &mut parts.p4() {
+        put(&mut v, vis(outer > 0.0 && m.slot < escorts.0.len()));
+    }
+}
+
+/// How much of the station shows in `mode`: the U, its rigging and the docked ship (`core`), and the yard around it,
+/// the floor, the drones and the moorings (`outer`, also gone as far as the rigging has made room for the drydock,
+/// `clear`). Screens that cover the world (`ui_kit::WorldCover`: FLEET, the BEHAVIOR screen) fade it out as they
+/// open and back in as they close, so nothing of it vanishes at once; flight has a world of its own.
+fn station_alpha(mode: AppMode, cover: f32, clear: f32) -> (f32, f32) {
+    if mode == AppMode::Flight {
+        return (0.0, 0.0);
+    }
+    let core = (1.0 - cover).clamp(0.0, 1.0);
+    (core, core * (1.0 - clear.clamp(0.0, 1.0)))
 }
 
 #[cfg(test)]
@@ -435,6 +470,18 @@ mod tests {
         let mut c = Career::from_ron(&format!("(start: \"rim_awakening\", seed: 1, generator: {}{extra})", data::career::GENERATOR)).unwrap();
         c.reconcile(&content);
         (content, c)
+    }
+
+    /// The station shows at home, fades under a covering screen and with the room made for the drydock, and not in
+    /// flight.
+    #[test]
+    fn the_station_fades_under_screens() {
+        assert_eq!(station_alpha(AppMode::Home, 0.0, 0.0), (1.0, 1.0));
+        assert_eq!(station_alpha(AppMode::Home, 0.0, 0.25), (1.0, 0.75));
+        assert_eq!(station_alpha(AppMode::Drydock, 0.0, 1.0), (1.0, 0.0));
+        assert_eq!(station_alpha(AppMode::Behavior, 0.5, 0.0), (0.5, 0.5));
+        assert_eq!(station_alpha(AppMode::Home, 1.0, 0.0), (0.0, 0.0));
+        assert_eq!(station_alpha(AppMode::Flight, 0.0, 0.0), (0.0, 0.0));
     }
 
     /// A new game: research dark (nothing to pay with), the gate awake (the first voyage is open), no escorts.

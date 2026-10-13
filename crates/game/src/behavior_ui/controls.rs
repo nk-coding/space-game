@@ -17,7 +17,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::drydock::report::DrydockReport;
 use crate::ui_kit::{
-    Hot, Pill, PillText, Ring, TextField, Tone, ValueBar, field_text, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
+    Hot, Pill, Ring, TextField, Tone, ValueBar, field_text, glow, prose, ring_glyph, ring_node, spawn_bar, spawn_pill, tracked,
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
@@ -26,6 +26,7 @@ use super::edit::{Edit, EditState, apply_edit};
 use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SliderSpec, SwitchRow};
 use super::screen::{Kit, LINE_W, role_color};
 use crate::style::ui_color;
+use crate::ui_icons::Glyph;
 
 /// Space above each block of the inspector.
 const GAP: f32 = 12.0;
@@ -129,15 +130,13 @@ fn spawn_button(p: &mut ChildSpawnerCommands, kit: &Kit, b: &Button, height: f32
 }
 
 /// A small ring with `−` or `+`; dimmed without an action.
-fn spawn_stepper(p: &mut ChildSpawnerCommands, kit: &Kit, text: &str, action: &Option<BehaviorAction>) {
+fn spawn_stepper(p: &mut ChildSpawnerCommands, sign: Glyph, action: &Option<BehaviorAction>) {
     let mut e = p.spawn(ring_node(STEPPER));
     match action {
         Some(a) => e.insert(BehaviorButton(a.clone())),
         None => e.insert(Ring { disabled: true }),
     };
-    e.with_children(|r| {
-        r.spawn((PillText, number(kit.fonts, text, 13.0, kit.c(Tone::Number, 1.0))));
-    });
+    e.with_child(ring_glyph(sign, (STEPPER * 0.45).round()));
 }
 
 /// A label with DEFAULT after it when the rule leaves the value out.
@@ -171,9 +170,9 @@ fn spawn_number(p: &mut ChildSpawnerCommands, kit: &Kit, n: &NumberRow) {
             spawn_bar(col, ValueBar { share: spec.scale.share(spec.value), tone: Tone::Teal }, ());
         } else {
             col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }).with_children(|r| {
-                spawn_stepper(r, kit, "−", &n.minus);
+                spawn_stepper(r, Glyph::Minus, &n.minus);
                 spawn_slider(r, kit, spec, text);
-                spawn_stepper(r, kit, "+", &n.plus);
+                spawn_stepper(r, Glyph::Plus, &n.plus);
             });
         }
         if !n.units.is_empty() || n.reset.is_some() {

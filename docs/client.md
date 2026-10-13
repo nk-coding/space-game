@@ -101,7 +101,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
-  `WAVES ON` / `WAVES OFF (C)`, Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
+  `WAVES ON` / `WAVES OFF` (C turns them on, the help line says so), Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
   they are more than 320 m from the player or dark for 75 s (the player's vessels, dark or dormant, stay). When
   the focus loses its last logic core the sim moves the focus to another vessel of the player (a split-off half
   too); when the player has no vessel left, a new one re-forms after 3 s (its wreck, with whatever its hold
@@ -357,20 +357,23 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
 - **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
   (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
   viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
-  frame inside the arms) and the clamps retract under the walls; then the drydock's panels appear and nothing else
-  moves. In the drydock the walls and the parked cranes stay around the frame (dimmed by its veil outside the grid
-  viewport); the yard, the floor (the drydock draws its own dots, at the same corners) and the drones are home's.
-  **Going back** reverses it: home starts on the drydock's last view and flies out while the cranes return. The
-  other screens go back the same way from their place (the mind, the test range for any flight, the gate after a
-  voyage while its debrief is open); when FLEET closes
-  other screens go back the same way from their place (the mind, the lab, the test range for any flight); when FLEET closes
-  the camera flies back out from the moorings.
+  frame inside the arms) and the clamps retract under the walls, and the yard around the U, the floor and the drones
+  fade out with the flight (`shipyard::station_alpha`); then the drydock's panels slide in from their edges and its
+  world fades in ([Screen transitions](#screen-transitions)). In the drydock the walls and the parked cranes stay
+  around the frame (dimmed by its veil outside the grid viewport); the yard, the floor (the drydock draws its own
+  dots, at the same corners) and the drones are home's. **Going back** reverses it: the drydock's panels slide out
+  and its world fades, home's camera waits on the drydock's last view for that (`EXIT_SECONDS`, `Fly::after`) and then
+  flies out while the cranes return and the yard fades back in. The other screens go back the same way from their
+  place (the mind, the lab, the test range for any flight, the gate after a voyage while its debrief is open); when
+  FLEET closes the camera flies back out from the moorings once it has closed. Home's words and labels fade out
+  when the camera leaves the yard and fade in when it rests there again; the labels follow the camera meanwhile
+  (moved by their transforms), the invisible click areas come and go at once.
 - **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
   placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
-  FRIGATE 24 × 24  D` (gold, in the area), `BEHAVIOR  B` / `THE MIND` (violet), `TEST RANGE  T` / `NO RISK · NO
-  HAUL` (coral), `FLEET  F` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
-  `RESEARCH  R` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
-  while dark), `VOYAGES  V` / `THE GATE · HALVEX DRIFT` (teal: the voyage the map will select; `DORMANT` while no
+  FRIGATE 24 × 24` (gold, in the area), `BEHAVIOR` / `THE MIND` (violet), `TEST RANGE` / `NO RISK · NO
+  HAUL` (coral), `FLEET` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
+  `RESEARCH` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
+  while dark), `VOYAGES` / `THE GATE · HALVEX DRIFT` (teal: the voyage the map will select; `DORMANT` while no
   voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
@@ -378,12 +381,16 @@ scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera
   the debrief covers the right side until dismissed, then its one-line summary sits top left under the design's
   name ([Voyages](#voyages)). The place names are UI chrome in code until content has places.
 - **The camera**: on the yard it shows the station's overview (from the near moorings to past the gate, 80 × 45 m
-  for the frigate frame), fitted to the window (16 px per metre at 1280 × 720, the sketch's 20 at 1600 × 900). The
-  UI scale is the drydock's (`ui_kit::ui_scale_for`), so the drydock's layout is the one the camera flies onto.
+  for the frigate frame) and every place's label, all at least 18 px inside the window (`MARGIN`) at any aspect
+  (`shipyard::layout::fit_tagged`, tested at 1280 × 720, 1600 × 900, 4:3, 5:4, 3440 × 1305 and 1080 × 1350; 13 Oct
+  2026, Niklas: things at the left and top were cut off at some aspects): the labels keep their pixel size while the
+  world scales, so each label edge bounds the zoom (`home::LabelTags` measures them from the laid-out labels). About
+  15 px per metre at 1280 × 720, 19 at 1600 × 900. The UI scale is the drydock's (`ui_kit::ui_scale_for`), so the
+  drydock's layout is the one the camera flies onto.
   Entering home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight
   find the camera as they left it.
 - **Modes**: the station and the screen are spawned once and shown only at home (the walls and cranes in the
-  drydock too), and step aside while FLEET is open (it stays a layer for now; the moorings view can take its place
+  drydock too), and fade out while FLEET opens (a covering screen, [Screen transitions](#screen-transitions)) (it stays a layer for now; the moorings view can take its place
   later). Coming back: the ring button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`,
   `BehaviorAction::Menu`), and in any flight M or the ring top left of the HUD.
 
@@ -441,7 +448,7 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
 - **The HUD** (after `docs/plans/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
   the subtitle `SITES 1 / 4 · 2:05` (sites cleared, and wreck-only sites once they spawned, of all; the sim time);
   under the hull the cargo block: `SALVAGE`, the shown ship's `5 / 8` in gold with one pip per cargo unit (20 at
-  most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (R) and
+  most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (its tooltip names R) and
   what it does: `WARP HOME 3 S · KEEPS THE HAUL` (teal) while `Sim::can_recall(PLAYER)` allows it, else dimmed with
   `ARMED ENEMIES NEAR · NO RECALL`. Sites off screen get a marker at the screen edge (the enemy markers' code: an
   arrow kept clear of the HUD) with the encounter's name and the distance from the focus: raiders coral, wrecks
@@ -468,7 +475,7 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
   `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
-  now; `✓ HALVEX DRIFT IS NOW OPEN` for voyages it opened; the voyage's `cleared` words at the first clear. Then a
+  now; `HALVEX DRIFT IS NOW OPEN` after a vector tick (Barlow has no ✓; the materials’ ◆ is a vector diamond too) for voyages it opened; the voyage's `cleared` words at the first clear. Then a
   one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
   PARTS → KINETIC WEAPONS +18 · …`). A game loaded with a `last_haul` starts with that line (kills and ships lost are
   not saved).
@@ -537,7 +544,7 @@ there). Screenshots:
 
 - **The layer**: top left the ring button (closes it), `SHIPYARD › FLEET` and "Fleet", and the rule in words
   (escorts fly the behavior their design names and follow the flagship's lock); top right `CORES 3 / 4` with one dot
-  per core of the mind (filled for the fleet's, coral past the capacity) and CLOSE ESC. In the middle the flagship
+  per core of the mind (filled for the fleet's, coral past the capacity) and CLOSE (Esc). In the middle the flagship
   (the drydock's working design) in a bracketed box, under it its name, cores and cargo and the fleet's voyage-ready
   line. Around it the escort slots (`MAX_ESCORTS` = 4 places: left and right, upper and lower): each filled slot
   shows its design, `ESCORT n`, name, cores and cargo, and REMOVE; one empty slot more while there is room says how
@@ -553,6 +560,52 @@ there). Screenshots:
 - **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
 - Not yet: the mockup's preview of a picked card before ENTER adds it (one click adds), the dotted formation ring
   and the lines to the flagship, the escort's behavior name.
+
+## Screen transitions
+
+Niklas, 13 Oct 2026: "the stuff on the left and right should slide in … the whole transition should feel really
+smooth, nothing should be hidden abruptly". `ui_kit::transition` (re-exported from `ui_kit`) is the one helper every
+screen uses; new screens adopt it the same way:
+
+1. Put `ScreenFx::closed()` on the screen's UI root (`.covering()` when the screen hides the world behind it: the
+   shipyard fades out under it, `WorldCover`), spawned `Visibility::Hidden`; from then on the kit owns the root's
+   visibility.
+2. Put `ScreenPart::new(edge, order)` on each panel or bar: `Edge::Left/Right/Top/Bottom` slides it in from beyond
+   that window edge, `Edge::Fade` fades it in place (use it for anything other code positions from its rectangle:
+   the drydock's grid viewport, the BEHAVIOR screen's graph area). `order` 0–3 staggers them. Everything not inside
+   a part fades with the root. A root may be a part itself (the debrief panel slides in from the right).
+3. Open and close it with `show_screen(&mut fx, open)` (e.g. from the mode in a system on `state_changed`);
+   `snap_screen` jumps without a transition where the UI scale or the world change at once (to and from flight).
+4. World-space elements read `ScreenFx::alpha()` (FX colours × alpha, or a group material: `Atlas::group_material`
+   and `atlas::set_alpha`) and draw while `ScreenFx::visible()`, so they fade out after the mode has been left.
+
+How: the root's progress runs to 1 in `ENTER_SECONDS` (0.53 s: each part slides 0.38 s, eased out, 0.05 s after the
+order before) and back to 0 in `EXIT_SECONDS` (0.32 s, the last part in going first); defaults for review. A part
+moves by its `UiTransform` from fully past its edge (no layout); colours of texts, backgrounds, borders and glows
+are written × alpha while it runs and given back exactly when it ends (a colour a screen writes meanwhile becomes
+the faded one, per colour); UI icons follow their node's place and draw with their part's own atlas material whose
+alpha is the part's (`IconMaterials`); `AtlasMaterial` has a `tint` uniform for this (alpha only). Nothing is
+written once a transition has ended. Tested: the timing at 30–144 fps, the stagger, the slide distances, the colour
+hand-back. There is no reduced-motion setting in the game yet; when one comes, `snap_screen` is the switch.
+
+Screenshots (headless 1280 × 720, 13 Oct 2026): `docs/results/ui-drydock-enter-1.png` … `-4.png` (home's labels
+fading as the camera flies in; arrived; the panels sliding in and the frame's dots fading in; nearly in place),
+`ui-drydock-exit-1.png`, `-2.png` (the panels sliding out; the camera waiting before it flies out),
+`ui-fleet-enter.png` (the station fading under FLEET); tooltips `ui-tooltip-drydock.png`, `ui-tooltip-home.png`; the
+fits `ui-fit-*.png` (3440 × 1305 and 1080 × 1350); `ui-select-footprint.png`, `ui-erase-footprint.png` (a 2 × 2
+reactor marked whole), `ui-zoom-rings.png`.
+
+Who uses it: the drydock (top bars from the top, the palette from the left, stats and inspector from the right, the
+tools from the top and the info line and bottom bar from the bottom; the frame's dots, brackets, veil, the pointer's
+mark, the ghost and the overlays fade; the design fades too unless it comes from or goes home, where the docked ship
+is the same picture; going to the BEHAVIOR screen the camera stays on the drydock's view, `DockCamera::parked`, so
+the design fades in place), the BEHAVIOR screen (covering; its dot grid fades), the research screen (its four roots;
+its veil fades), the voyage map (covering: the panel from the right, the map and its drawing fade; SET COURSE
+snaps it), FLEET (covering), the debrief, home's words and labels, and the flight HUD (slides in when flight
+starts; H hides it the same way; leaving flight snaps it shut). The station fades as a whole under covering screens
+(`shipyard::station_alpha`, two group materials: the U with its rigging and the docked ship, and what is home's
+alone). Not faded yet: the BEHAVIOR screen's dashed outlines (a UI material), the BLUEPRINTS / BEHAVIORS layers
+(hidden at once when their screen is left), the TEXT view's egui editor, and the flight world itself (a scene cut).
 
 ## Research
 
@@ -657,8 +710,11 @@ picked part: icon, name, footprint and category, summary, stat lines and bonus l
 scrolls with the wheel when it doesn't fit above the bottom bar, with a `MORE BELOW · WHEEL` cue); below the grid the hover
 cell, mirror and axis, why the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo,
 MIRROR, BEVEL, the status line and the voyage-ready line after it (wrapping under it when both don't fit), BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key), BLUEPRINTS,
-EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
-screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or the BEHAVIOR screen is open). The phone layout comes later.
+EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; other windows scale the whole
+screen (`UiScale` = min(w / 1280, h / 720), 0.5 to 2, at home, in the drydock, on the BEHAVIOR screen and FLEET; flight
+keeps 1). So the layout always fits: a window narrower or lower than 1280 × 720 scales it down (until 13 Oct 2026 the
+scale stopped at 1 and a centred layout such as FLEET's lost its left and top edges), a wider aspect leaves room at
+the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every play-test size). The phone layout comes later.
 
 - **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::edit::Drydock`) and the blueprint built
   from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through
@@ -710,7 +766,7 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   line of fire from `ShipGrid::line_of_fire_clear`, the hull edge around all parts, nav lights on the main piece,
   no aura) and `ship_view::build_body` into one mesh, replaced only when `revision` (or the glow toggle)
   changes. Blueprint `(x, y)` is world `(x, −y)`. The frame overlay is immediate-mode FX (dots at the cell
-  corners, at least 6 px apart: on small cells only every 2nd, 4th, ... corner, brackets, the dashed mirror axis while mirroring, the hover cell) drawn inside the grid viewport; a
+  corners, at least 6 px apart: on small cells only every 2nd, 4th, ... corner, brackets, the dashed mirror axis while mirroring) drawn inside the grid viewport (the pointer's mark, the cell or in SELECT and ERASE the whole part under it, is the ghost's); a
   veil in the backdrop's darkest colour (62 %) dims the world outside it, so a ship zoomed under the side panels
   sinks into the background and the grid area reads lighter than the panels, as in the mockup.
 - **Camera**: the drydock drives the shared `CameraRig` (the atlas tier follows its zoom). `CameraRig::view_offset`
@@ -739,6 +795,19 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   WHEEL` over a scrolled area's bottom edge while more of it lies below); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
+- **Tooltips** (`ui_kit::Tip`, 13 Oct 2026; Niklas: labels carry no key letters, the tooltip names the key): a
+  `Tip { name, key }` on any `Hot` node (pills, rings, fields, and home's invisible click areas over the world's
+  places, so the shipyard's places get them too). Resting the mouse on it for 0.5 s (`TIP_DELAY`) shows one shared
+  plate (`show_tip`, in `UiStyleSet`): the name in label grey, the key in white (`B`, `CTRL+S`, `Q / E`, `ESC`),
+  12 px right of and 20 px below the pointer, flipped left or above it at the window's edges and kept 6 px inside the
+  window (`tip_position`, tested). It moves by its `UiTransform` (no layout), is laid out for one frame before it
+  shows, hides when the pointer leaves or presses (until it leaves the control), and never shows for touch. Every
+  control with a key has one (the drydock's tools, MIRROR, BEVEL, SAVE, TEST-FLY, undo / redo, the zoom rings, the
+  ARMOR pills `1`–`9`, the search `/`, FLIP, DELETE, the rotate rings; the BEHAVIOR screen's TEST IN RANGE, DRYDOCK,
+  SAVE, undo / redo, search; CLOSE on FLEET, BLUEPRINTS and BEHAVIORS; DISMISS; RECALL; the home rings; home's
+  places); the keys work as before. Screens added later give their controls a `Tip` instead of a key in the label.
+  Banners and help lines that tell what a key does (`PAUSED · P`, `ABANDON THE VOYAGE? · M AGAIN`, the flight help
+  line) stay: they are not controls.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, a whole design for FLEET, or a glyph Barlow
   lacks: undo, redo, play, search, menu, diamond, lock; home's grid, tree, orbit, arrow, target, formation) is drawn
   as a world-space mesh of the main camera placed over the node's rectangle every
@@ -749,7 +818,9 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   raises the atlas tier to the icons' pixels per cell (twice what a part icon shows: icons are stored at
   `art::ICON_DENSITY`, 0.5). bevy_ui draws after
   the world, so nodes over an icon should have at most a faint background. bevy_ui's clipping doesn't reach the
-  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again.
+  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again. An icon follows
+  its node when a screen transition slides it, and fades with its screen part (the part's atlas material,
+  `ui_kit::IconMaterials`; [Screen transitions](#screen-transitions)).
 
 ## Behavior screen
 

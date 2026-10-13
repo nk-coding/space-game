@@ -22,7 +22,10 @@ use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 
 use crate::RenderToggles;
-use crate::atlas::Atlas;
+use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
+use crate::mode::AppMode;
+use bevy::state::state::StateTransitionEvent;
+use crate::ui_kit::{ScreenFx, show_screen, snap_screen};
 use crate::camera::{CamMode, CameraRig, MAX_PX_PER_M};
 use crate::fx::{FxQueue, FxRegions, FxSprite};
 use crate::ship_model::{blueprint_visual, design_visual};
@@ -74,6 +77,9 @@ pub struct DockCamera {
     drag_last: Option<Vec2>,
     /// The frame the view was made for: another one (FRAME, its undo) fits the view again.
     frame: (u32, u32),
+    /// The drydock went to the BEHAVIOR screen and left the camera on its view (so its world fades out in place);
+    /// the flight zoom is given back when the BEHAVIOR screen goes anywhere but here ([`unpark`]).
+    parked: bool,
 }
 
 /// The cell under the pointer (frame cells, `None` off the frame or over a panel), for the info line and the
@@ -83,19 +89,86 @@ pub struct DrydockCursor {
     pub cell: Option<(i32, i32)>,
 }
 
-pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<Atlas>) {
+/// How the drydock's world fades with its screen (`ui_kit::ScreenFx` on the drydock's root): the frame overlay, the
+/// ghost and the overlays at the screen's alpha; the design at full alpha when it comes from or goes to home (home's
+/// docked ship is the same picture at the same place, so the two swap unseen), else with the screen.
+#[derive(Resource, Debug)]
+pub struct DockFade {
+    /// The ghost's and the overlays' material.
+    pub world: Handle<AtlasMaterial>,
+    /// The design's material.
+    ship: Handle<AtlasMaterial>,
+    /// The screen's alpha now (the frame overlay and the ghost's lines draw with it).
+    pub alpha: f32,
+    /// The mode the drydock opened from, and the one it closes to.
+    from: Option<AppMode>,
+    to: Option<AppMode>,
+}
+
+/// Whether anything of the drydock shows (open, or opening / closing): its world elements draw then.
+pub fn shown(root: Query<&ScreenFx, With<super::panels::DrydockRoot>>) -> bool {
+    root.single().is_ok_and(ScreenFx::visible)
+}
+
+pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, atlas: Res<Atlas>, mut materials: ResMut<Assets<AtlasMaterial>>) {
+    let fade = DockFade { world: atlas.group_material(&mut materials), ship: atlas.group_material(&mut materials), alpha: 0.0, from: None, to: None };
     commands.spawn((
         DockShip { built: None },
         Mesh2d(meshes.add(crate::meshbuf::MeshBuf::placeholder())),
-        MeshMaterial2d(atlas.material.clone()),
+        MeshMaterial2d(fade.ship.clone()),
         Transform::from_xyz(0.0, 0.0, Z_SHIP),
         Visibility::Hidden,
     ));
+    commands.insert_resource(fade);
+}
+
+/// The screen opens with the drydock's mode and closes when it is left: with its transition, except to flight,
+/// where the world and the UI scale change at once (a slide would jump), so it snaps shut.
+pub(super) fn open_close(
+    mode: Res<State<AppMode>>,
+    mut transitions: MessageReader<StateTransitionEvent<AppMode>>,
+    mut root: Single<&mut ScreenFx, With<super::panels::DrydockRoot>>,
+    mut fade: ResMut<DockFade>,
+) {
+    let here = *mode.get() == AppMode::Drydock;
+    if let Some(t) = transitions.read().last() {
+        if here {
+            (fade.from, fade.to) = (t.exited, None);
+        } else if t.exited == Some(AppMode::Drydock) {
+            fade.to = t.entered;
+        }
+    }
+    if !here && fade.to == Some(AppMode::Flight) {
+        snap_screen(&mut root, false);
+    } else {
+        show_screen(&mut root, here);
+    }
+}
+
+/// The world elements follow the screen's fade: the ghost's and overlays' material, the design's (see
+/// [`DockFade`]); the design shows while the screen does.
+pub(super) fn fade_world(
+    root: Single<&ScreenFx, With<super::panels::DrydockRoot>>,
+    mut fade: ResMut<DockFade>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
+    mut ship: Single<&mut Visibility, With<DockShip>>,
+) {
+    let a = root.alpha();
+    let home = if root.is_open() { fade.from == Some(AppMode::Home) } else { fade.to == Some(AppMode::Home) };
+    set_alpha(&mut materials, &fade.world, a);
+    set_alpha(&mut materials, &fade.ship, if home { 1.0 } else { a });
+    if fade.alpha != a {
+        fade.alpha = a;
+    }
+    let want = if root.visible() { Visibility::Inherited } else { Visibility::Hidden };
+    if **ship != want {
+        **ship = want;
+    }
 }
 
 impl DockCamera {
     pub(crate) fn new(flight_zoom: f32) -> Self {
-        Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None, frame: (0, 0) }
+        Self { fit: 0.0, viewport: Rect::default(), view: None, flight_zoom, drag_last: None, frame: (0, 0), parked: false }
     }
 
     /// Fits the frame again (another design or frame was opened).
@@ -132,7 +205,10 @@ fn fit_zoom(size: Vec2, frame: Vec2) -> f32 {
 /// Opening the drydock: remember the flight zoom; the camera stops following. The view is set once the
 /// viewport is laid out ([`camera`]).
 pub(super) fn enter(mut rig: ResMut<CameraRig>, mut cam: ResMut<DockCamera>) {
-    cam.flight_zoom = rig.zoom_target;
+    // Back from the BEHAVIOR screen with the camera parked: the flight zoom is still the one remembered.
+    if !std::mem::take(&mut cam.parked) {
+        cam.flight_zoom = rig.zoom_target;
+    }
     cam.fit = 0.0;
     rig.mode = CamMode::Free;
     rig.auto_mode = CamMode::Free;
@@ -144,16 +220,39 @@ pub(super) fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<DockCamer
 }
 
 /// Leaving the drydock: keep the view for next time, give flight its zoom back, the UI its normal scale.
-pub(super) fn exit(mut rig: ResMut<CameraRig>, mut cam: ResMut<DockCamera>, mut ui_scale: ResMut<UiScale>) {
+pub(super) fn exit(
+    mut transitions: MessageReader<StateTransitionEvent<AppMode>>,
+    mut rig: ResMut<CameraRig>,
+    mut cam: ResMut<DockCamera>,
+    mut ui_scale: ResMut<UiScale>,
+) {
     rig.settle_zoom();
     if cam.fit > 0.0 {
         cam.view = Some((rig.pos, rig.zoom_target / cam.fit));
     }
+    cam.drag_last = None;
+    // To the BEHAVIOR screen (the same UI scale, no world of its own): the camera stays, so the design and the frame
+    // fade out where they are.
+    if transitions.read().last().and_then(|t| t.entered) == Some(AppMode::Behavior) {
+        cam.parked = true;
+        return;
+    }
     rig.view_offset = Vec2::ZERO;
     rig.zoom = cam.flight_zoom;
     rig.zoom_target = cam.flight_zoom;
-    cam.drag_last = None;
     ui_scale.0 = 1.0;
+}
+
+/// Leaving the BEHAVIOR screen for anywhere but the drydock while the drydock's view is parked: flight gets its
+/// zoom back (as the drydock's exit would have done).
+pub(super) fn unpark(mut transitions: MessageReader<StateTransitionEvent<AppMode>>, mut rig: ResMut<CameraRig>, mut cam: ResMut<DockCamera>) {
+    if !cam.parked || transitions.read().last().and_then(|t| t.entered) == Some(AppMode::Drydock) {
+        return;
+    }
+    cam.parked = false;
+    rig.view_offset = Vec2::ZERO;
+    rig.zoom = cam.flight_zoom;
+    rig.zoom_target = cam.flight_zoom;
 }
 
 /// The UI scale: the layout is made for 1280 × 720 logical pixels and grows with larger windows.
@@ -302,20 +401,22 @@ fn dot_stride(zoom: f32) -> i32 {
     stride
 }
 
-/// The frame's dots, brackets and mirror axis, and the hover cell (screen-pixel sizes, so redrawn each frame),
-/// inside the grid viewport.
+/// The frame's dots, brackets and mirror axis (screen-pixel sizes, so redrawn each frame), inside the grid viewport;
+/// the pointer's mark is the ghost's (`ghost::hover_mark`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_frame(
     design: Res<PlayerDesign>,
-    cursor: Res<DrydockCursor>,
     rig: Res<CameraRig>,
     cam: Res<DockCamera>,
     style: Res<Style>,
     clear: Res<ClearColor>,
+    fade: Res<DockFade>,
     regions: Option<Res<FxRegions>>,
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(r) = regions else { return };
+    // Everything here fades with the screen.
+    let fa = fade.alpha;
     let px = 1.0 / rig.zoom;
     let (w, h) = (design.frame().0 as i32, design.frame().1 as i32);
     let ui_c = &style.ui;
@@ -325,7 +426,7 @@ pub(super) fn draw_frame(
     let view = Rect::from_corners(a, b);
     // The veil: four quads around the viewport, out to the window's edges.
     let window = Rect::from_corners(rig.screen_to_world(Vec2::ZERO), rig.screen_to_world(rig.viewport));
-    let veil = clear.0.with_alpha(VEIL);
+    let veil = clear.0.with_alpha(VEIL * fa);
     for q in [
         Rect::new(window.min.x, view.max.y, window.max.x, window.max.y),
         Rect::new(window.min.x, window.min.y, window.max.x, view.min.y),
@@ -340,7 +441,7 @@ pub(super) fn draw_frame(
     // `MIN_DOT_GAP` pixels (a large frame zoomed out) only every 2nd, 4th, ... corner gets one, so the dots stay a
     // grid, not a carpet, and their number stays below about (viewport / gap)² whatever the frame.
     let dot = (1.6 + rig.zoom * 0.04).min(3.0) * px;
-    let dot_c = style.dotted_ring.with_alpha(0.85);
+    let dot_c = style.dotted_ring.with_alpha(0.85 * fa);
     let stride = dot_stride(rig.zoom);
     let first = |a: f32| ((a.ceil() as i32).max(0) + stride - 1) / stride * stride;
     let (x0, x1) = (first(view.min.x), (view.max.x.floor() as i32).min(w));
@@ -352,7 +453,7 @@ pub(super) fn draw_frame(
     }
     // Corner brackets just outside the frame.
     let (arm, off, lw) = (16.0 * px, 9.0 * px, 1.5 * px);
-    let bracket_c = ui_c.label.with_alpha(0.6);
+    let bracket_c = ui_c.label.with_alpha(0.6 * fa);
     for (cx, cy, sx, sy) in [(0.0, 0.0, -1.0, 1.0), (w as f32, 0.0, 1.0, 1.0), (0.0, -h as f32, -1.0, -1.0), (w as f32, -h as f32, 1.0, -1.0)] {
         let corner = Vec2::new(cx + sx * off, cy + sy * off);
         if view.contains(corner) {
@@ -364,23 +465,13 @@ pub(super) fn draw_frame(
     let x = w as f32 / 2.0;
     if design.dock().mirror && x >= view.min.x && x <= view.max.x {
         let (dash, gap) = (6.0 * px, 5.0 * px);
-        let axis_c = ui_c.label.with_alpha(0.45);
+        let axis_c = ui_c.label.with_alpha(0.45 * fa);
         let (top, bottom) = ((-view.max.y).max(0.0), (-view.min.y).min(h as f32));
         let mut y = top;
         while y < bottom {
             let end = (y + dash).min(bottom);
             queue.line(&r.white, Vec2::new(x, -y), Vec2::new(x, -end), 1.2 * px, axis_c, Z_UNDER);
             y = end + gap;
-        }
-    }
-    // The cell under the pointer.
-    if let Some((cx, cy)) = cursor.cell {
-        let c = Vec2::new(cx as f32 + 0.5, -(cy as f32) - 0.5);
-        queue.push(FxSprite { rect: r.white.uv, pos: c, angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui_c.teal.with_alpha(0.1), z: Z_OVER });
-        let teal = ui_c.teal.with_alpha(0.8);
-        let corners = [c + Vec2::new(-0.5, 0.5), c + Vec2::new(0.5, 0.5), c + Vec2::new(0.5, -0.5), c + Vec2::new(-0.5, -0.5)];
-        for k in 0..4 {
-            queue.line(&r.white, corners[k], corners[(k + 1) % 4], 1.5 * px, teal, Z_OVER);
         }
     }
 }

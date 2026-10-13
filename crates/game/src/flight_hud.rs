@@ -6,7 +6,7 @@
 //!   hidden for a ship without a hold);
 //! * left: speed (m/s), the top speed and the drift state;
 //! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target);
-//! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost,
+//! * top centre: scene / wave line and whether raider waves come, centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
@@ -38,7 +38,7 @@ use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Pill, PillText, Tone, UiClick, UiInputSet, UiStyleSet, label, number, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Edge, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, number, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{self, Phase, VoyageRun};
 use crate::{RenderToggles, ship_view::PieceView};
 
@@ -225,15 +225,21 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
     };
 
     commands
-        .spawn((HudRoot, FlightUi, Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() }))
+        .spawn((
+            HudRoot,
+            FlightUi,
+            // Slides in when flight starts (`ui_kit::ScreenFx`); H hides it the same way. Leaving flight snaps it shut.
+            ScreenFx::closed(),
+            Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() },
+        ))
         .with_children(|root| {
             // Top left: the home ring (as on the drydock and the BEHAVIOR screen), then the hull.
-            root.spawn(abs(Some(20.0), None, Some(18.0), None)).with_children(|c| {
-                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0))).with_children(|r| {
+            root.spawn((ScreenPart::new(Edge::Left, 0), abs(Some(20.0), None, Some(18.0), None))).with_children(|c| {
+                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0), Tip::key("SHIPYARD", "M"))).with_children(|r| {
                     r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(19), height: px(19), ..default() }));
                 });
             });
-            root.spawn(abs(Some(68.0), None, Some(18.0), None)).with_children(|c| {
+            root.spawn((ScreenPart::new(Edge::Left, 0), abs(Some(68.0), None, Some(18.0), None))).with_children(|c| {
                 c.spawn(label(&fonts, "HULL", 13.0, grey));
                 c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() })
                     .with_children(|row| {
@@ -253,26 +259,26 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                         v.spawn((HudText::SalvageSub, label(&fonts, "", 10.0, dim)));
                         v.spawn(Node { height: px(16), ..default() });
                         v.spawn(Node { align_self: AlignSelf::FlexStart, ..default() }).with_children(|r| {
-                            spawn_pill(r, &fonts, "RECALL  R", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone));
+                            spawn_pill(r, &fonts, "RECALL", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone, Tip::key("RECALL", "R")));
                         });
                         v.spawn((HudText::RecallSub, label(&fonts, "", 9.5, teal)));
                     });
             });
             // Left: speed, ending at mid-height (on a 390 px phone it sits between the hull block and the stick).
-            root.spawn(Node { bottom: percent(50), ..abs(Some(28.0), None, None, None) }).with_children(|c| {
+            root.spawn((ScreenPart::new(Edge::Left, 1), Node { bottom: percent(50), ..abs(Some(28.0), None, None, None) })).with_children(|c| {
                 c.spawn(label(&fonts, "SPEED", 12.0, grey));
                 c.spawn((HudText::SpeedValue, number(&fonts, "0", 34.0, white)));
                 c.spawn((HudText::SpeedSub, label(&fonts, "M/S", 11.0, dim)));
             });
             // Top right: target.
-            root.spawn(Node { align_items: AlignItems::FlexEnd, ..abs(None, Some(28.0), Some(18.0), None) })
+            root.spawn((ScreenPart::new(Edge::Right, 0), Node { align_items: AlignItems::FlexEnd, ..abs(None, Some(28.0), Some(18.0), None) }))
                 .with_children(|c| {
                     c.spawn((HudText::TargetName, label(&fonts, "NO TARGET", 13.0, grey)));
                     c.spawn((HudText::TargetValue, number(&fonts, "", 34.0, coral)));
                     c.spawn((HudText::TargetSub, label(&fonts, "", 11.0, dim)));
                 });
             // Top centre: title.
-            root.spawn(Node { position_type: PositionType::Absolute, top: px(16), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, ..default() })
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, top: px(16), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, ..default() }))
                 .with_children(|c| {
                     c.spawn((HudText::Title, label(&fonts, "", 16.0, white)));
                     c.spawn((HudText::Subtitle, label(&fonts, "", 11.0, grey)));
@@ -318,10 +324,11 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                 });
             }
             // Bottom centre: warnings, then help.
-            root.spawn(Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() })
+            root.spawn((ScreenPart::new(Edge::Bottom, 1), Node { position_type: PositionType::Absolute, bottom: px(14), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }))
                 .with_children(|c| {
                     c.spawn((HudText::Warnings, label(&fonts, "", 14.0, coral)));
-                    c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2)));
+                    // Centred and kept off the window's edges when it wraps (a narrow window).
+                    c.spawn((HudText::Help, tracked(&fonts, "", 10.0, dim, 0.2), TextLayout::justify(bevy::text::Justify::Center), Node { margin: UiRect::horizontal(px(20)), ..default() }));
                 });
         });
 }
@@ -412,13 +419,10 @@ fn update_text(
     run: Res<VoyageRun>,
     style: Res<Style>,
     mut texts: Query<(&HudText, &mut Text, &mut TextColor)>,
-    mut root: Query<&mut Visibility, With<HudRoot>>,
+    mut root: Query<&mut ScreenFx, With<HudRoot>>,
 ) {
-    for mut v in &mut root {
-        let want = if toggles.hud { Visibility::Inherited } else { Visibility::Hidden };
-        if *v != want {
-            *v = want;
-        }
+    for mut fx in &mut root {
+        show_screen(&mut fx, toggles.hud);
     }
     if !state.timer.tick(time.delta()).just_finished() {
         return;
@@ -527,7 +531,7 @@ fn update_text(
                     SceneKind::Sandbox => {
                         // The player's vessels are in the fleet bar (`fleet_bar.rs`).
                         let _ = write!(s, "RAIDERS {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
-                        s.push_str(if scene.waves { "  ·  WAVES ON" } else { "  ·  WAVES OFF (C)" });
+                        s.push_str(if scene.waves { "  ·  WAVES ON" } else { "  ·  WAVES OFF" });
                     }
                     SceneKind::Load(_) => {
                         let active = world.sim.ships().iter().filter(|s| s.is_active()).count();

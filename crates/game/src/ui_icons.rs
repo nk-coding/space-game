@@ -11,6 +11,9 @@
 //! where ships show its drawing on a hull-toned cell (GDR-0069). Glyphs Barlow lacks (arrows, the play triangle, the search
 //! lens, the menu dots, the bonus diamond, the lock) are small meshes of the same kind.
 //!
+//! An icon follows its node's laid-out place (a sliding screen part moves it) and, while its screen's transition
+//! runs, fades with its part ([`IconMaterials`]: the part's own atlas material).
+//!
 //! The world draws before bevy_ui, so UI nodes are drawn over icons: give the nodes behind an icon at most a
 //! faint background. Icons follow their node's visibility, and hide when a scrolled parent clips them (an icon
 //! is a world mesh: bevy_ui's clipping does not reach it).
@@ -23,13 +26,14 @@ use bevy::window::PrimaryWindow;
 use data::{Blueprint, Placement};
 
 use crate::RenderToggles;
-use crate::atlas::{Atlas, UiAtlasNeed};
+use crate::atlas::{Atlas, AtlasMaterial, UiAtlasNeed};
 use crate::camera::{CameraRig, CameraSet};
 use crate::meshbuf::MeshBuf;
 use crate::ship_model::{blueprint_visual, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, vcol};
+use crate::ui_kit::IconMaterials;
 
 /// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane.
 const Z_UI_ICON: f32 = 600.0;
@@ -60,6 +64,13 @@ pub enum Glyph {
     Formation,
     /// A padlock (locked parts, materials and frames).
     Lock,
+    /// Plus and minus (zoom and stepper rings): drawn as bars centred on the node, so they sit exactly in the
+    /// middle of their ring (Barlow's `+` and `−` sit on the font's math axis inside a text line box, off the
+    /// box's centre and with side bearings).
+    Plus,
+    Minus,
+    /// A tick (Barlow has no ✓).
+    Check,
 }
 
 /// The mesh drawing one node's icon.
@@ -104,11 +115,14 @@ fn draw_icons(
     content: Res<GameContent>,
     toggles: Res<RenderToggles>,
     mut need: ResMut<UiAtlasNeed>,
+    mut faded: ResMut<IconMaterials>,
+    mut mats: Query<&mut MeshMaterial2d<AtlasMaterial>, With<UiIconMesh>>,
 ) {
     for node in removed.read() {
         if let Some(m) = state.0.remove(&node) {
             commands.entity(m.entity).despawn();
         }
+        faded.0.remove(&node);
     }
     let scale = window.scale_factor();
     let mut px_per_cell = 0.0f32;
@@ -127,6 +141,13 @@ fn draw_icons(
             IconMesh { entity, mesh, built: None, dims: Vec2::ONE }
         });
         let Ok((mut t, mut v)) = placed.get_mut(m.entity) else { continue };
+        // A screen's transition fades the icon with its part (`ui_kit::ScreenPart`'s material).
+        if let Ok(mut mat) = mats.get_mut(m.entity) {
+            let want = faded.0.get(&node_e).unwrap_or(&atlas.material);
+            if mat.0 != *want {
+                mat.0 = want.clone();
+            }
+        }
         let size = node.size / scale;
         // Shown only whole: an icon a scrolled parent cuts would draw over its neighbours.
         let inside = |c: &CalculatedClip| {
@@ -244,6 +265,18 @@ fn ship_icon(content: &data::Content, style: &Style, atlas: &Atlas, bp: &Bluepri
     Some((build_body(&v, atlas, style, glow, true), v.bounds_max - v.bounds_min))
 }
 
+/// The bars of a plus (`plus`) or a minus `side` px across, centred on the origin (the node's centre): the
+/// horizontal bar, and for a plus the vertical bar's halves above and below it (no overlap, so no doubled alpha).
+fn sign_bars(plus: bool, side: f32) -> Vec<Rect> {
+    let (arm, t) = (0.32 * side, (side * 0.1).max(1.4) / 2.0);
+    let mut bars = vec![Rect::new(-arm, -t, arm, t)];
+    if plus {
+        bars.push(Rect::new(-t, -arm, t, -t));
+        bars.push(Rect::new(-t, t, t, arm));
+    }
+    bars
+}
+
 /// A glyph `side` px across, centred on the origin, in pixels (y up). Strokes are 1.6 px wide, thicker on glyphs
 /// above about 23 px.
 fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
@@ -298,6 +331,15 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
                 m.strip(&tri, true, w, &white, col);
             }
         }
+        Glyph::Plus | Glyph::Minus => {
+            for bar in sign_bars(glyph == Glyph::Plus, s) {
+                m.polygon(&[bar.min, Vec2::new(bar.max.x, bar.min.y), bar.max, Vec2::new(bar.min.x, bar.max.y)], uv, col);
+            }
+        }
+        Glyph::Check => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            m.strip(&[p(-0.3, 0.02), p(-0.09, -0.2), p(0.32, 0.24)], false, (s * 0.06).max(0.8), &white, col);
+        }
         Glyph::Lock => {
             let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
             m.strip(&[p(-0.26, 0.04), p(0.26, 0.04), p(0.26, -0.34), p(-0.26, -0.34)], true, w, &white, col);
@@ -309,4 +351,29 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
         }
     }
     m.into_mesh()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plus and minus are centred on the node: their bars' bounds are symmetric around the origin, at any size.
+    #[test]
+    fn plus_and_minus_are_centred() {
+        for side in [8.0, 13.0, 14.0, 22.0] {
+            for plus in [true, false] {
+                let bars = sign_bars(plus, side);
+                let all = bars.iter().fold(bars[0], |a, b| a.union(*b));
+                assert!(all.center().length() < 1e-5, "{plus} {side}: {all:?}");
+                assert!((all.width() - 0.64 * side).abs() < 1e-4);
+                assert_eq!(all.height() > all.width() * 0.9, plus);
+                // The plus's bars don't overlap (the alpha would double where they cross).
+                for (i, a) in bars.iter().enumerate() {
+                    for b in &bars[i + 1..] {
+                        assert!(a.intersect(*b).is_empty() || a.intersect(*b).width() * a.intersect(*b).height() < 1e-6);
+                    }
+                }
+            }
+        }
+    }
 }

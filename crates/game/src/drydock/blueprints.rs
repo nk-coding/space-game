@@ -34,7 +34,7 @@ use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, PillLock, TextField, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose, set_color,
+    Hot, Pill, PillLock, TextField, Tip, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose, set_color,
     set_text, spawn_pill, sub_tone, tracked, wheel_rows,
 };
 
@@ -630,7 +630,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                     col.spawn((ShelfText::Crumb, label(fonts, "", 10.0, c(Tone::Label, 1.0))));
                     col.spawn((ShelfText::Title, number(fonts, "", 20.0, c(Tone::Number, 1.0))));
                 });
-                spawn_pill(h, fonts, "CLOSE ESC", 9.5, 30.0, None, pill, ShelfButton::Close);
+                spawn_pill(h, fonts, "CLOSE", 9.5, 30.0, None, pill, (ShelfButton::Close, Tip::key("CLOSE", "ESC")));
             });
 
             // BLUEPRINTS: the two lists, the action bar, NEW and FRAME, IMPORT.

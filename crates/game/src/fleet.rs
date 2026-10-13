@@ -40,7 +40,7 @@ use crate::storage::{Document, Storage};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, tracked,
+    Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, tracked,
     wheel_rows,
 };
 
@@ -359,12 +359,10 @@ pub fn card_state(content: &Content, granted: &Granted, d: &FleetDesign, in_flee
     if in_fleet { (format!("IN THE FLEET  ·  {}", plural(d.cores, "CORE")), Tone::Label) } else { (format!("FITS  ·  {}", plural(d.cores, "CORE")), Tone::Teal) }
 }
 
-/// FLEET is shown at home while it is open; home's ring steps aside meanwhile (`home::show`).
-fn show(mode: Res<State<AppMode>>, fleet: Res<Fleet>, mut root: Single<&mut Visibility, With<FleetRoot>>) {
-    let want = if *mode.get() == AppMode::Home && fleet.open { Visibility::Inherited } else { Visibility::Hidden };
-    if **root != want {
-        **root = want;
-    }
+/// FLEET is shown at home while it is open, with its transition (`ui_kit::ScreenFx`; it covers the station, which
+/// fades out under it); home's words step aside meanwhile (`home::show`).
+fn show(mode: Res<State<AppMode>>, fleet: Res<Fleet>, mut root: Single<&mut ScreenFx, With<FleetRoot>>) {
+    show_screen(&mut root, *mode.get() == AppMode::Home && fleet.open);
 }
 
 fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
@@ -383,7 +381,12 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let placeholder = |size: f32| UiIcon::Glyph { glyph: Glyph::Formation, color: ui.dim.with_alpha(size) };
     let boxed = |accent: Tone| Pill { bare: true, ..Pill::new(accent) };
     commands
-        .spawn((FleetRoot, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() }, Visibility::Hidden))
+        .spawn((
+            FleetRoot,
+            ScreenFx::closed().covering(),
+            Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
+            Visibility::Hidden,
+        ))
         .with_children(|root| {
             root.spawn(Node {
                 position_type: PositionType::Absolute,
@@ -397,9 +400,9 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
                     // Top left: the way back, where we are, the words.
                     stage
-                        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) })
+                        .spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Vec2::new(22.0, 14.0), None) }))
                         .with_children(|tl| {
-                            tl.spawn((ring_node(40.0), FleetButton::Close)).with_child((
+                            tl.spawn((ring_node(40.0), FleetButton::Close, Tip::key("SHIPYARD", "ESC"))).with_child((
                                 UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet },
                                 Node { width: px(22), height: px(22), ..default() },
                             ));
@@ -409,12 +412,13 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                             });
                         });
                     stage.spawn((
+                        ScreenPart::new(Edge::Fade, 1),
                         prose(fonts, "Escorts fly the behavior their design names and follow the flagship's lock.", 12.0, c(Tone::Label, 1.0)),
                         abs(Vec2::new(28.0, 84.0), Some(Vec2::new(300.0, 40.0))),
                     ));
                     // Top right: the mind's cores, CLOSE.
                     stage
-                        .spawn(Node {
+                        .spawn((ScreenPart::new(Edge::Top, 0), Node {
                             position_type: PositionType::Absolute,
                             right: px(20),
                             top: px(19),
@@ -422,7 +426,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                             align_items: AlignItems::Center,
                             column_gap: px(10),
                             ..default()
-                        })
+                        }))
                         .with_children(|tr| {
                             tr.spawn(label(fonts, "CORES", 9.0, c(Tone::Label, 1.0)));
                             tr.spawn((FleetText::Cores, number(fonts, "", 17.0, c(Tone::Violet, 1.0))));
@@ -436,12 +440,12 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                     ));
                                 }
                             });
-                            spawn_pill(tr, fonts, "CLOSE ESC", 9.5, 30.0, None, Pill::new(Tone::Teal), FleetButton::Close);
+                            spawn_pill(tr, fonts, "CLOSE", 9.5, 30.0, None, Pill::new(Tone::Teal), (FleetButton::Close, Tip::key("CLOSE", "ESC")));
                         });
 
                     // The flagship on the dock.
                     let (centre_at, size) = FLAGSHIP;
-                    stage.spawn(abs(centre_at - size / 2.0, Some(size))).with_children(|b| {
+                    stage.spawn((ScreenPart::new(Edge::Fade, 1), abs(centre_at - size / 2.0, Some(size)))).with_children(|b| {
                         spawn_brackets(b, 16.0, 1.4, c(Tone::Teal, 0.55));
                         b.spawn((
                             FleetIcon::Flagship,
@@ -449,7 +453,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                             Node { position_type: PositionType::Absolute, left: px(24), top: px(20), width: px(size.x - 48.0), height: px(size.y - 40.0), ..default() },
                         ));
                     });
-                    stage.spawn(column(6.0, abs(Vec2::new(centre_at.x - 240.0, centre_at.y + size.y / 2.0 + 14.0), Some(Vec2::new(480.0, 90.0)))))
+                    stage.spawn((ScreenPart::new(Edge::Fade, 1), column(6.0, abs(Vec2::new(centre_at.x - 240.0, centre_at.y + size.y / 2.0 + 14.0), Some(Vec2::new(480.0, 90.0))))))
                         .with_children(|t| {
                             t.spawn(label(fonts, "FLAGSHIP  ·  THE DRYDOCK'S DESIGN", 8.5, c(Tone::Dim, 1.0)));
                             t.spawn((FleetText::ShipName, prose(fonts, "", 18.0, c(Tone::Number, 1.0))));
@@ -459,7 +463,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
 
                     // The escort slots.
                     for (k, at) in SLOTS.iter().enumerate() {
-                        stage.spawn((FleetNode::Slot(k), column(6.0, abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0))))))
+                        let side = if at.x < STAGE.x / 2.0 { Edge::Left } else { Edge::Right };
+                        stage.spawn((FleetNode::Slot(k), ScreenPart::new(side, 2), column(6.0, abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0))))))
                             .with_children(|s| {
                                 s.spawn((
                                     FleetButton::Slot(k),
@@ -495,10 +500,11 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     }
 
                     // The player's designs.
-                    stage.spawn((FleetText::ListHead, label(fonts, "", 9.0, c(Tone::Dim, 1.0)), abs(Vec2::new(36.0, 540.0), None)));
+                    stage.spawn((FleetText::ListHead, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), abs(Vec2::new(36.0, 540.0), None)));
                     stage
                         .spawn((
                             CardRow,
+                            ScreenPart::new(Edge::Bottom, 3),
                             Node { flex_direction: FlexDirection::Row, column_gap: px(14), ..abs(Vec2::new(36.0, 562.0), Some(Vec2::new(1208.0, 94.0))) },
                         ))
                         .with_children(|row| {
@@ -541,7 +547,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                 });
                             }
                         });
-                    stage.spawn((FleetText::Status, label(fonts, "", 9.5, c(Tone::Teal, 1.0)), abs(Vec2::new(36.0, 676.0), Some(Vec2::new(1208.0, 30.0)))));
+                    stage.spawn((FleetText::Status, ScreenPart::new(Edge::Bottom, 3), label(fonts, "", 9.5, c(Tone::Teal, 1.0)), abs(Vec2::new(36.0, 676.0), Some(Vec2::new(1208.0, 30.0)))));
                 });
             });
         });

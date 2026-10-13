@@ -129,7 +129,8 @@ impl Plugin for ResearchPlugin {
             )
             // The drydock's LOCKED rows (a handler in the drydock's Apply set, as its own handlers).
             .add_systems(Update, from_drydock.in_set(DockSet::Apply))
-            .add_systems(PostUpdate, draw_veil.run_if(in_state(AppMode::Research)).after(CameraSet).before(FxFlush));
+            // While the screen shows (it closes after the mode is left), fading with it.
+            .add_systems(PostUpdate, draw_veil.after(CameraSet).before(FxFlush));
     }
 }
 
@@ -275,11 +276,21 @@ fn from_drydock(mut actions: MessageReader<DrydockAction>, mut view: ResMut<Rese
     }
 }
 
-/// The veil over the station: one quad over the whole view, in the backdrop's darkest colour.
-fn draw_veil(rig: Res<CameraRig>, clear: Res<ClearColor>, regions: Option<Res<FxRegions>>, mut queue: ResMut<FxQueue>) {
+/// The veil over the station: one quad over the whole view, in the backdrop's darkest colour, fading with the
+/// screen (`ui_kit::ScreenFx`).
+fn draw_veil(
+    rig: Res<CameraRig>,
+    clear: Res<ClearColor>,
+    root: Single<&crate::ui_kit::ScreenFx, With<screen::ResearchRoot>>,
+    regions: Option<Res<FxRegions>>,
+    mut queue: ResMut<FxQueue>,
+) {
     let Some(r) = regions else { return };
+    if !root.visible() {
+        return;
+    }
     let view = Rect::from_corners(rig.screen_to_world(Vec2::ZERO), rig.screen_to_world(rig.viewport));
-    queue.push(FxSprite { rect: r.white.uv, pos: view.center(), angle: 0.0, size: view.size() * 1.02, anchor: Vec2::ZERO, color: clear.0.with_alpha(VEIL), z: Z_VEIL });
+    queue.push(FxSprite { rect: r.white.uv, pos: view.center(), angle: 0.0, size: view.size() * 1.02, anchor: Vec2::ZERO, color: clear.0.with_alpha(VEIL * root.alpha()), z: Z_VEIL });
 }
 
 #[cfg(test)]

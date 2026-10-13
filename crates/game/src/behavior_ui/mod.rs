@@ -48,6 +48,7 @@ pub mod text_view;
 pub mod values;
 
 use bevy::prelude::*;
+use bevy::state::state::StateTransitionEvent;
 use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
@@ -58,6 +59,7 @@ use crate::drydock::report::DrydockReport;
 use crate::sim_bridge::GameContent;
 use crate::tuning::Tuning;
 use crate::fx::FxFlush;
+use crate::ui_kit::{ScreenFx, show_screen, snap_screen};
 use crate::mode::AppMode;
 use crate::ui_kit::{UiInputSet, UiStyleSet};
 
@@ -131,13 +133,14 @@ impl Plugin for BehaviorPlugin {
                     .run_if(in_state(AppMode::Behavior)),
             )
             .add_systems(Startup, (screen::spawn, list::spawn, live::spawn).after(crate::flight_hud::spawn_hud))
-            .add_systems(PostStartup, show)
+
             // The design report (the drydock's, `drydock::report`) is brought up to date first: the reach and TEST IN
             // RANGE read it.
             .add_systems(OnEnter(AppMode::Behavior), (design_report, (saving::open, controls::measure_reach)).chain())
             .add_systems(OnExit(AppMode::Behavior), (controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
+            .add_systems(PostUpdate, screen::draw_dots.after(CameraSet).before(FxFlush))
             .add_systems(
                 Update,
                 (
@@ -177,7 +180,7 @@ impl Plugin for BehaviorPlugin {
             // The live rule panel in the flight HUD (TEST IN RANGE).
             .add_systems(Update, live::update.run_if(in_state(AppMode::Flight)))
             .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
-            .add_systems(PostUpdate, (screen::draw_dots, reorder::draw_drop_line).run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
+            .add_systems(PostUpdate, reorder::draw_drop_line.run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }
@@ -190,13 +193,15 @@ fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: R
     crate::drydock::report::update(design, content, tuning, time, out);
 }
 
-/// The screen is shown only in its mode.
-fn show(mode: Res<State<AppMode>>, mut root: Query<&mut Visibility, With<screen::BehaviorRoot>>) {
-    let want = if *mode.get() == AppMode::Behavior { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in &mut root {
-        if *v != want {
-            *v = want;
-        }
+/// The screen is shown only in its mode, opening and closing with its transition (`ui_kit::ScreenFx`); to and from
+/// flight it snaps (the UI scale and the world change at once there).
+fn show(mode: Res<State<AppMode>>, mut transitions: MessageReader<StateTransitionEvent<AppMode>>, mut root: Single<&mut ScreenFx, With<screen::BehaviorRoot>>) {
+    let here = *mode.get() == AppMode::Behavior;
+    let flight = transitions.read().last().is_some_and(|t| t.entered == Some(AppMode::Flight));
+    if !here && flight {
+        snap_screen(&mut root, false);
+    } else {
+        show_screen(&mut root, here);
     }
 }
 

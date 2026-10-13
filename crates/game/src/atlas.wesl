@@ -17,6 +17,8 @@ import bevy_render::color_operations::linear_rgb_to_oklab;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var atlas_texture: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var atlas_sampler: sampler;
+// A group's fade (`Atlas::group_material`): its alpha scales the colour's.
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> tint: vec4<f32>;
 
 const LOD_BIAS: f32 = -0.5;
 
@@ -25,6 +27,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var color = textureSampleBias(atlas_texture, atlas_sampler, in.uv, LOD_BIAS);
     @if(VERTEX_COLORS)
     color = color * in.color;
+    color.a = color.a * tint.a;
     @if(TONEMAP_IN_SHADER)
     color = tonemapping::tone_mapping(color, view.color_grading);
     @if(SRGB_OUTPUT)

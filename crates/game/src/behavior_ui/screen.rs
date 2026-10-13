@@ -2,7 +2,7 @@
 //! for 1280 × 720 logical pixels and up (larger windows scale it):
 //!
 //! ```text
-//! (o) BEHAVIOR · HALVEX RUNNER   [6 / 12 RULE SLOTS]            [GRAPH][TEXT]   [▶ TEST IN RANGE T]
+//! (o) BEHAVIOR · HALVEX RUNNER   [6 / 12 RULE SLOTS]            [GRAPH][TEXT]   [▶ TEST IN RANGE]
 //!     Skirmisher  UNSAVED                                                       [WATCH][FLY ALONGSIDE]
 //!             TARGET ── [Nearest]                                          │ ACTION · MANEUVER
 //!                     ┌● [Hull < 25%] ──────────────── [Flee]  too hurt    │ Orbit
@@ -10,7 +10,7 @@
 //!   ( FIRST MATCH)    ┊ ┄┄ 2 RULE SLOTS · THE RULES BELOW DO NOT RUN ┄┄┄   │ RADIUS · 80%   …
 //!                     └● [always] ─────────────────── [Approach 67%]      │ ADD NODE  [search]
 //!                        ( + RULE · NO SLOT LEFT )                         │ [HULL][SHIELD CHARGE]…
-//! [‹ DRYDOCK ESC]  status line                                                 [BEHAVIORS] [SAVE CTRL S]
+//! [‹ DRYDOCK]  status line                                                     [BEHAVIORS] [SAVE]
 //! ```
 //!
 //! The frame (header, pills, columns) is spawned once at start, hidden outside the screen; the graph, the
@@ -34,7 +34,7 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, TextField, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill, spawn_scroll_cue, tracked,
+    Edge, Hot, Pill, ScreenFx, ScreenPart, TextField, Tip, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill, spawn_scroll_cue, tracked,
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
@@ -195,14 +195,16 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
     commands
         .spawn((
             BehaviorRoot,
+            // Opens and closes with a transition (`ui_kit::ScreenFx`); the station fades out behind it.
+            ScreenFx::closed().covering(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
             Visibility::Hidden,
         ))
         .with_children(|root| {
             // Top left: the ring menu, the breadcrumb and the behavior's name, the rule slots.
-            root.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(SIDE), None, Some(14.0), None) })
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(SIDE), None, Some(14.0), None) }))
                 .with_children(|tl| {
-                    tl.spawn((ring_node(40.0), BehaviorButton(BehaviorAction::Menu))).with_children(|r| {
+                    tl.spawn((ring_node(40.0), BehaviorButton(BehaviorAction::Menu), Tip::new("SHIPYARD"))).with_children(|r| {
                         r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: kit.ui.violet }, Node { width: px(22), height: px(22), ..default() }));
                     });
                     tl.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|col| {
@@ -229,7 +231,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 });
 
             // Top right: GRAPH / TEXT, TEST IN RANGE and its two modes under it.
-            root.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexStart, column_gap: px(28), ..abs(None, Some(20.0), Some(16.0), None) })
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexStart, column_gap: px(28), ..abs(None, Some(20.0), Some(16.0), None) }))
                 .with_children(|tr| {
                     tr.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), margin: UiRect::top(px(3)), ..default() }).with_children(|v| {
                         for (text, view) in [("GRAPH", BehaviorView::Graph), ("TEXT", BehaviorView::Text)] {
@@ -238,7 +240,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     });
                     tr.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), ..default() }).with_children(|t| {
                         let play = UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
-                        spawn_pill(t, fonts, "TEST IN RANGE  T", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, BehaviorButton(BehaviorAction::TestInRange));
+                        spawn_pill(t, fonts, "TEST IN RANGE", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (BehaviorButton(BehaviorAction::TestInRange), Tip::key("TEST IN RANGE", "T")));
                         t.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(6), ..default() }).with_children(|m| {
                             for (text, mode) in [("WATCH", TestMode::Watch), ("FLY ALONGSIDE", TestMode::Alongside)] {
                                 spawn_pill(m, fonts, text, 8.5, 24.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::TestMode(mode)));
@@ -249,8 +251,10 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
 
             // The graph area (and, in the TEXT view, the editor's rectangle).
             // A click on its empty space deselects.
+            // It fades in place: the TEXT view's editor and the dot grid are placed from its rectangle.
             root.spawn((
                 GraphViewport,
+                ScreenPart::new(Edge::Fade, 1),
                 TextViewport,
                 Hot::default(),
                 BehaviorButton(BehaviorAction::Deselect),
@@ -267,8 +271,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             });
 
             // The divider and the right column: the inspector, ADD NODE with its search and the palette.
-            root.spawn((Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
-            root.spawn(Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) }).with_children(|rp| {
+            root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
+            root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) })).with_children(|rp| {
                 let body = rp.spawn((InspectorBody, ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() })).id();
                 rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
                 rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
@@ -276,6 +280,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     SearchField,
                     TextField { placeholder: "Search nodes".into(), max_chars: 24, ..default() },
                     Hot::default(),
+                    Tip::key("SEARCH NODES", "/"),
                     Node {
                         height: px(32),
                         flex_shrink: 0.0,
@@ -293,7 +298,6 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 .with_children(|f| {
                     f.spawn((UiIcon::Glyph { glyph: Glyph::Search, color: kit.ui.label }, Node { width: px(13), height: px(13), flex_shrink: 0.0, ..default() }));
                     f.spawn((field_text(fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
-                    f.spawn(label(fonts, "/", 10.0, kit.c(Tone::Dim, 1.0)));
                 });
                 let palette = rp
                     .spawn((
@@ -320,12 +324,12 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
 
             // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it); the behavior list
             // and SAVE (as in the drydock).
-            root.spawn(Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) })
+            root.spawn((ScreenPart::new(Edge::Bottom, 2), Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) }))
                 .with_children(|bb| {
-                    spawn_pill(bb, fonts, "‹  DRYDOCK  ESC", 10.0, 32.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Back));
+                    spawn_pill(bb, fonts, "‹  DRYDOCK", 10.0, 32.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Back), Tip::key("DRYDOCK", "ESC")));
                     bb.spawn(Node { width: px(8), ..default() });
-                    for (g, action) in [(Glyph::Undo, BehaviorAction::Undo), (Glyph::Redo, BehaviorAction::Redo)] {
-                        bb.spawn((ring_node(34.0), BehaviorButton(action))).with_children(|r| {
+                    for (g, action, tip) in [(Glyph::Undo, BehaviorAction::Undo, Tip::key("UNDO", "CTRL+Z")), (Glyph::Redo, BehaviorAction::Redo, Tip::key("REDO", "CTRL+SHIFT+Z"))] {
+                        bb.spawn((ring_node(34.0), BehaviorButton(action), tip)).with_children(|r| {
                             r.spawn((UiIcon::Glyph { glyph: g, color: kit.ui.dim }, Node { width: px(18), height: px(18), ..default() }));
                         });
                     }
@@ -343,7 +347,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         ));
                     bb.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(10), flex_shrink: 0.0, ..default() }).with_children(|r| {
                         spawn_pill(r, fonts, "BEHAVIORS", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Behaviors));
-                        spawn_pill(r, fonts, "SAVE  CTRL S", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Save));
+                        spawn_pill(r, fonts, "SAVE", 9.5, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Save), Tip::key("SAVE", "CTRL+S")));
                     });
                 });
         });
@@ -949,11 +953,12 @@ pub(super) fn draw_dots(
     ui_scale: Res<UiScale>,
     window: Single<&Window, With<PrimaryWindow>>,
     graph: Single<(&ComputedNode, &UiGlobalTransform), With<GraphViewport>>,
+    root: Single<&ScreenFx, With<BehaviorRoot>>,
     regions: Option<Res<FxRegions>>,
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(r) = regions else { return };
-    if ui.view != BehaviorView::Graph {
+    if ui.view != BehaviorView::Graph || !root.visible() {
         return;
     }
     let (node, tf) = *graph;
@@ -962,7 +967,8 @@ pub(super) fn draw_dots(
     let step = DOT_STEP * ui_scale.0;
     let (nx, ny) = ((area.width() / step) as i32, (area.height() / step) as i32);
     let size = 2.0 * ui_scale.0 / rig.zoom;
-    let color = style.dotted_ring.with_alpha(0.8);
+    // The dots fade with the screen.
+    let color = style.dotted_ring.with_alpha(0.8 * root.alpha());
     for y in 0..=ny {
         for x in 0..=nx {
             let at = area.min + Vec2::new(x as f32, y as f32) * step;
