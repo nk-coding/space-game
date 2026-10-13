@@ -92,7 +92,8 @@ impl Plugin for ModePlugin {
 }
 
 /// T in flight: back to the drydock, or to where a behavior test started; M: home (the scene is torn down in
-/// `OnExit(Flight)`). Neither in a voyage: RECALL goes home, M twice abandons it (`voyage.rs`).
+/// `OnExit(Flight)`). Neither in a voyage: RECALL goes home, M asks in a panel whether to abandon it
+/// (`voyage.rs`).
 fn leave_by_key(
     keys: Res<ButtonInput<KeyCode>>,
     exit: Res<FlightExit>,

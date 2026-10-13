@@ -80,11 +80,12 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0069](0069-machines-drawn-as-components.md) | Machines are drawn as their own components; engine nozzles reach past the hull | Accepted | 2026-10-13 |
 | [0070](0070-phase-7-wave-2-defaults.md) | Phase 7 wave 2 defaults: flight and AI numbers, voyage clearing details, the career save, the drydock gating | Accepted (provisional, lead) | 2026-10-13 |
 | [0071](0071-shipyard-home-long-u.md) | The home screen is the shipyard: a long U-shaped dock, the building area fills the U, the gate at the open side | Accepted | 2026-10-13 |
-| [0072](0072-shipyard-parts-voyage-flight-defaults.md) | Defaults of the shipyard home, the machine drawings and voyage flight | Accepted (provisional, lead) | 2026-10-13 |
+| [0072](0072-shipyard-parts-voyage-flight-defaults.md) | Defaults of the shipyard home, the machine drawings and voyage flight | Accepted (provisional, lead); abandon superseded by [GDR-0077](0077-abandon-voyage-asks-in-a-panel.md) | 2026-10-13 |
 | [0073](0073-slice-tuning-v1.md) | Slice tuning v1: smaller packs, a gentler first voyage, research costs about halved | Accepted | 2026-10-13 |
 | [0074](0074-test-range-waves-emergency-recall-cannon.md) | Test-range waves follow the flown ship; recall also works when the fleet is disarmed; the cannon becomes an upgrade | Accepted | 2026-10-13 |
 | [0075](0075-voyages-feel-like-exploration.md) | Voyages should feel like exploring a galaxy and following hints, not a fixed path (direction) | Accepted | 2026-10-14 |
 | [0076](0076-spilled-cargo-becomes-fragments.md) | Cargo that no longer fits a shrinking hold spills as loose items that can be collected again | Accepted | 2026-10-14 |
+| [0077](0077-abandon-voyage-asks-in-a-panel.md) | Abandoning a voyage asks in a panel (M opens it) instead of M twice | Accepted | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

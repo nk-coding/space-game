@@ -17,6 +17,9 @@
 //!   (`VoyageEnd::Recalled`, the goal cleared or not); losing every vessel shows `SHIP LOST · RECALLED HOME` and
 //!   ends 3 s later (`VoyageEnd::Lost`: the haul stays in the wrecks). Either way the save is written and the
 //!   debrief opens at home. Leaving flight any other way while a recorded voyage runs counts as lost too.
+//! * **Abandoning** (GDR-0077): M opens the ABANDON VOYAGE? panel (`flight_hud.rs`); its ABANDON VOYAGE (or Enter)
+//!   ends the voyage as lost (`Phase::Lost { abandoned: true }`, every hold's cargo stays behind), KEEP FLYING, Esc
+//!   or M again close it. The sim runs on while it is open (a real-time sim, co-op later: nothing pauses).
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -38,9 +41,6 @@ use crate::ui_kit::Tone;
 
 /// The warp-out after RECALL, and the time from losing the last vessel to home: 3 s (GDR-0062), in sim ticks.
 pub const HOME_TICKS: u64 = 3 * sim::TICK_HZ as u64;
-
-/// How long (s) the second M has to come to abandon a voyage.
-pub const ABANDON_SECONDS: f64 = 3.0;
 
 /// Launch a voyage (the voyage map's SET COURSE): `None` is the first open voyage whose goal is not cleared yet, else
 /// the first open one. Outside flight only; a refusal becomes a note on home and a [`LaunchRefused`].
@@ -73,7 +73,7 @@ pub enum Phase {
     Flying,
     /// RECALL was granted: home at this tick, with the haul.
     Warping { home_at: u64 },
-    /// Every vessel is lost (or the voyage was abandoned: M twice): home at this tick, without the haul (`left`
+    /// Every vessel is lost (or the voyage was abandoned: the ABANDON VOYAGE? panel): home at this tick, without the haul (`left`
     /// items stay behind).
     Lost { home_at: u64, left: u32, abandoned: bool },
     /// Ended (the career knows; home is next).
@@ -87,9 +87,9 @@ pub struct VoyageRun {
     pub phase: Phase,
     /// R or the RECALL pill asked for the recall; the next tick takes it.
     pub recall: bool,
-    /// M asked to abandon the voyage at this wall-clock time (s); a second M within [`ABANDON_SECONDS`] does it.
-    pub abandon_asked: Option<f64>,
-    /// M twice: the next tick abandons the voyage (it is lost).
+    /// The ABANDON VOYAGE? panel is open (M opens it; `flight_hud.rs` shows it).
+    pub asking: bool,
+    /// The panel's ABANDON VOYAGE (or Enter): the next tick abandons the voyage (it is lost).
     pub abandon: bool,
     /// The sim allows the recall now (refreshed every tick).
     pub can_recall: bool,
@@ -101,6 +101,14 @@ pub struct VoyageRun {
     pub ships_lost: u32,
     /// The last tick seen (a voyage cut short counts as lost after this long).
     pub tick: u64,
+}
+
+impl VoyageRun {
+    /// The panel's ABANDON VOYAGE: it closes, the next tick abandons the voyage.
+    pub fn abandon_now(&mut self) {
+        self.asking = false;
+        self.abandon = true;
+    }
 }
 
 pub struct VoyagePlugin;
@@ -265,15 +273,10 @@ fn start(
     }
 }
 
-/// R asks for the recall (the RECALL pill does the same, `flight_hud.rs`). M asks whether to abandon the voyage;
-/// M again within 3 s abandons it (it counts as lost, like closing the game: the way out of a stalemate).
-fn voyage_keys(
-    keys: Res<ButtonInput<KeyCode>>,
-    real: Res<Time<Real>>,
-    mut run: ResMut<VoyageRun>,
-    mut scene: ResMut<Scene>,
-    world: Res<SimWorld>,
-) {
+/// R asks for the recall (the RECALL pill does the same, `flight_hud.rs`). M opens the ABANDON VOYAGE? panel and
+/// closes it again, Esc closes it, Enter abandons the voyage (like the panel's button; it counts as lost, like
+/// closing the game: the way out of a stalemate).
+fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>, scene: Res<Scene>) {
     if run.launched.is_none() || scene.voyage().is_none() || !matches!(run.phase, Phase::Flying | Phase::Warping { .. }) {
         return;
     }
@@ -282,15 +285,11 @@ fn voyage_keys(
         run.recall = true;
     }
     if keys.just_pressed(KeyCode::KeyM) {
-        // The window is wall-clock time (what the player feels, also while the sim lags); the banner sim time.
-        let (wall, now) = (real.elapsed_secs_f64(), world.sim.time_seconds());
-        match run.abandon_asked {
-            Some(at) if wall - at <= ABANDON_SECONDS => run.abandon = true,
-            _ => {
-                run.abandon_asked = Some(wall);
-                scene.say("ABANDON THE VOYAGE?".into(), "M AGAIN  ·  THE HAUL IS LOST".into(), Tone::Coral, now + ABANDON_SECONDS);
-            }
-        }
+        run.asking = !run.asking;
+    } else if run.asking && keys.just_pressed(KeyCode::Escape) {
+        run.asking = false;
+    } else if run.asking && keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter]) {
+        run.abandon_now();
     }
 }
 
@@ -422,6 +421,7 @@ fn voyage_tick(
             // Losing every vessel wins over a warp-out underway.
             let left = left_behind(sim, PLAYER);
             run.phase = Phase::Lost { home_at: tick + HOME_TICKS, left, abandoned: false };
+            run.asking = false;
             scene.banner = None;
         }
         Phase::Flying | Phase::Warping { .. } if abandon => {
@@ -522,8 +522,8 @@ fn unrecorded_haul(content: &Content, voyage: &str, how: VoyageEnd) -> LastHaul 
     LastHaul { voyage: voyage.to_string(), outcome, ticks, report }
 }
 
-/// Flight ends while a recorded voyage still runs (it shouldn't: T does nothing in a voyage, M twice goes through
-/// the lost banner): it is lost, as closing the game would make it. The run is forgotten either way.
+/// Flight ends while a recorded voyage still runs (it shouldn't: T does nothing in a voyage, abandoning goes
+/// through the lost banner): it is lost, as closing the game would make it. The run is forgotten either way.
 fn cut_short(
     mut run: ResMut<VoyageRun>,
     mut career: ResMut<PlayerCareer>,

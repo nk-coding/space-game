@@ -39,7 +39,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view: "Lock framing" under [Structure](#structure)) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
-| Home (the shipyard; the flight ends); in a voyage M asks, M again within 3 s abandons the voyage (lost) | M, or the ring top left (not in a voyage) | the ring top left |
+| Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
@@ -432,7 +432,7 @@ Track 7H of the first playable loop, 14 Oct 2026 (GDR-0062, GDR-0065, GDR-0068, 
 `scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `debrief.rs` (the debrief).
 Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (the start: sites, cargo, RECALL),
 `voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png`,
-`voyage-abandoned.png` (the lost banner after M twice), `voyage-debrief.png`, `voyage-debrief-lost.png`,
+`voyage-abandon-panel.png` (M: the ABANDON VOYAGE? panel), `voyage-abandoned.png` (the lost banner after abandoning), `voyage-debrief.png`, `voyage-debrief-lost.png`,
 `voyage-summary.png` (home after DISMISS).
 
 - **Launch** (`voyage::StartVoyage { voyage }`, sent by the voyage map's SET COURSE with the selected voyage; `None`
@@ -449,7 +449,7 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   is the player's only) and started (`Sim::start_voyage(plan, PLAYER, ENEMY)`). The flagship (the drydock's working
   design) enters at the plan's entry as the focus; the FLEET escorts take `?fleet=` wingman slots behind it (turned
   with the entry), fly the behavior their design names and follow the flagship (`Leader`). No raider waves (C does
-  nothing), no re-form, no wreck clean-up; Shift+R and T do nothing, M asks whether to abandon the voyage.
+  nothing), no re-form, no wreck clean-up; Shift+R and T do nothing, M asks in a panel whether to abandon the voyage.
 - **The HUD** (after `docs/plans/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
   the subtitle `SITES 1 / 4 · 2:05` (sites cleared, and wreck-only sites once they spawned, of all; the sim time);
   under the hull the cargo block: `SALVAGE`, the shown ship's `5 / 8` in gold with one pip per cargo unit (20 at
@@ -461,7 +461,7 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   only gold, the goal brighter (`· GOAL`, a glow), cleared ones dim (`· CLEARED`); a sleeping site's ships get no
   enemy marker of their own. Banners (with a line under them): `RAIDER PAIR · AWAKE` (coral), `SITE CLEARED ·
   RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
-  · R` (gold). The home ring top left is hidden. The help line names R RECALL.
+  · R` (gold). The home ring top left is hidden. The help line names R RECALL and M ABANDON.
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
   RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`); losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones
@@ -469,9 +469,15 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   (`VoyageEnd::Recalled { haul, cleared: goal cleared, ticks }`), the save is written, home opens with the debrief.
 - **Lost**: when the player has no vessel left, `SHIP LOST` / `RECALLED HOME` / `THE HAUL STAYS IN THE WRECK · 5
   PARTS LOST · YOUR SHIPS RE-FORM AT HOME` with a 3 s countdown (`voyage-hud-lost.png`), the cargo block says
-  `LEFT IN THE WRECK`; then `VoyageEnd::Lost { ticks }`, the save, home. **Abandoning**: M shows `ABANDON THE
-  VOYAGE? · M AGAIN · THE HAUL IS LOST`; M again within 3 s goes the same way (`VOYAGE ABANDONED`, every hold's
-  items lost), as closing the game would: the way out when a dark ship is stuck near an armed enemy. Leaving flight
+  `LEFT IN THE WRECK`; then `VoyageEnd::Lost { ticks }`, the save, home. **Abandoning** (GDR-0077): M opens the ABANDON
+  VOYAGE? panel (`flight_hud.rs`; centred low over the help line, so the ship stays in sight; it slides up from
+  the bottom and back): `THE HAUL IS LOST · 5 PARTS STAY BEHIND` (every hold's items), `The voyage counts as lost.
+  Your ships re-form at home.`, `THE FLIGHT GOES ON WHILE YOU DECIDE`, and the pills ABANDON VOYAGE (coral, tooltip
+  `ENTER`) and KEEP FLYING (tooltip `ESC / M`). The sim keeps running while it is open (a real-time sim, co-op
+  later; P still pauses), the keys still fly and fire; clicks on the panel are its own (`HudButton`), and an Esc
+  that closes it keeps the lock. ABANDON VOYAGE or Enter goes the same way as losing every vessel (`VOYAGE
+  ABANDONED`, every hold's items lost), as closing the game would: the way out when a dark ship is stuck near an
+  armed enemy. The panel closes by itself when the voyage is lost another way. Leaving flight
   any other way while a recorded voyage runs ends it as lost too (a guard; nothing in the game does it).
 - **Counts** for the debrief: kills are the enemy's `VesselLost` events (a split-off half counts on its own), ships
   lost the player's.
@@ -810,10 +816,10 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   shows, hides when the pointer leaves or presses (until it leaves the control), and never shows for touch. Every
   control with a key has one (the drydock's tools, MIRROR, BEVEL, SAVE, TEST-FLY, undo / redo, the zoom rings, the
   ARMOR pills `1`–`9`, the search `/`, FLIP, DELETE, the rotate rings; the BEHAVIOR screen's TEST IN RANGE, DRYDOCK,
-  SAVE, undo / redo, search; CLOSE on FLEET, BLUEPRINTS and BEHAVIORS; DISMISS; RECALL; the home rings; home's
+  SAVE, undo / redo, search; CLOSE on FLEET, BLUEPRINTS and BEHAVIORS; DISMISS; RECALL, ABANDON VOYAGE and KEEP FLYING; the home rings; home's
   places); the keys work as before. Screens added later give their controls a `Tip` instead of a key in the label.
-  Banners and help lines that tell what a key does (`PAUSED · P`, `ABANDON THE VOYAGE? · M AGAIN`, the flight help
-  line) stay: they are not controls.
+  Banners and help lines that tell what a key does (`PAUSED · P`, the flight help line) stay: they are not
+  controls.
 - **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, a whole design for FLEET, or a glyph Barlow
   lacks: undo, redo, play, search, menu, diamond, lock; home's grid, tree, orbit, arrow, target, formation) is drawn
   as a world-space mesh of the main camera placed over the node's rectangle every
