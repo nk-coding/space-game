@@ -9,7 +9,7 @@
 //! HULL · 4                              (the grid: view.rs)                    SELECTED PART
 //! [▣ Armor block   1×1 · ..]                                                   [▣] Armor block
 //! ...                                   CELL 5,2 · MIRROR ON · AXIS 12 ...  (−) 100 % (+)
-//! (↶)(↷) [MIRROR M][BEVEL SHIFT B]  FLIGHT-READY         [BLUEPRINTS][EXPORT][SAVE CTRL S]  [▶ TEST-FLY T]
+//! (↶)(↷) [MIRROR M][BEVEL SHIFT B]  FLIGHT-READY  [BEHAVIOR][BLUEPRINTS][EXPORT][SAVE CTRL S]  [▶ TEST-FLY T]
 //! ```
 //!
 //! Everything is spawned once at start (hidden outside the drydock) and updated in place from the drydock's
@@ -368,6 +368,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     spawn_pill(bb, fonts, "MIRROR M", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Mirror));
                     spawn_pill(bb, fonts, "BEVEL SHIFT B", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Bevel));
                     bb.spawn((PanelText::Status, label(fonts, "", 10.0, c(Tone::Teal, 1.0)), Node { flex_grow: 1.0, margin: UiRect::left(px(22)), ..default() }));
+                    spawn_pill(bb, fonts, "BEHAVIOR", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Behavior));
                     spawn_pill(bb, fonts, "BLUEPRINTS", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Blueprints));
                     spawn_pill(bb, fonts, "EXPORT", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Export));
                     spawn_pill(bb, fonts, "SAVE CTRL S", 10.0, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Save));

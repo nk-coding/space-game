@@ -32,6 +32,8 @@ pub enum DrydockAction {
     Export,
     Blueprints,
     TestFly,
+    /// BEHAVIOR: open the BEHAVIOR screen for the design (`behavior_ui` handles it).
+    Behavior,
     /// The ring button top left (the shipyard's ring menu).
     Menu,
     /// Armour material for hull parts (content id).
@@ -162,7 +164,8 @@ pub(super) fn apply(
                 scene.launch = true;
                 next.set(AppMode::Flight);
             }
-            // Editing (tools.rs), zoom (the camera), save / export / blueprints (blueprints.rs); the menu has no handler yet.
+            // Editing (tools.rs), zoom (the camera), save / export / blueprints (blueprints.rs), the BEHAVIOR screen
+            // (`behavior_ui`); the menu has no handler yet.
             _ => {}
         }
     }

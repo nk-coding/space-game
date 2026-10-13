@@ -2,12 +2,14 @@
 //! `docs/client.md` for controls, URL parameters and the structure.
 //!
 //! Module map:
-//! - `mode`: the app mode (flight or drydock; T switches) and what runs in which.
+//! - `mode`: the app mode (flight, drydock or the BEHAVIOR screen) and what runs in which.
 //! - `atlas`, `style`, `meshbuf`: the baked texture atlas + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
 //! - `scene`: sandbox (player + raider waves), test flight, showcase, load test; writes the player's pilot input.
 //! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
 //! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
+//! - `behavior_ui`: the BEHAVIOR screen (how the design thinks: graph and text views of its rules), opened from
+//!   the drydock.
 //! - `ui_kit`, `ui_icons`: bevy_ui widgets with hand-made hit testing; vector icons in UI nodes.
 //! - `storage`, `clipboard`: the player's documents (designs and behaviors now; saves, settings later) and copy /
 //!   paste of UI text, per platform.
@@ -21,6 +23,7 @@
 
 mod atlas;
 mod backdrop;
+mod behavior_ui;
 mod camera;
 mod clipboard;
 mod controls;
@@ -109,7 +112,7 @@ fn main() {
             sim_bridge::SimBridgePlugin,
             (storage::StoragePlugin, clipboard::ClipboardPlugin),
             // After the bridge (it reads the content the bridge loads) and the storage.
-            (drydock::DrydockPlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
+            (drydock::DrydockPlugin, behavior_ui::BehaviorPlugin, ui_kit::UiKitPlugin, ui_icons::UiIconsPlugin),
             camera::CameraPlugin,
             controls::ControlsPlugin,
             fx::FxPlugin,
