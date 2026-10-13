@@ -49,6 +49,8 @@ use super::{DockSet, PlayerDesign, stats};
 const LIST_ROWS: usize = 6;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
+/// The width of the heads before the NEW, FRAME and IMPORT rows (their pills line up).
+const HEAD_W: f32 = 176.0;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -472,17 +474,31 @@ fn title(
 }
 
 /// "UNSAVED" while the design differs from its saved (or opened) version.
-fn sync_title(design: Res<PlayerDesign>, slot: Res<DesignSlot>, mut note: Single<&mut Text, With<TitleNote>>, mut done: Local<bool>) {
+fn sync_title(
+    design: Res<PlayerDesign>,
+    slot: Res<DesignSlot>,
+    style: Res<Style>,
+    note: Single<(&mut Text, &mut TextColor), With<TitleNote>>,
+    mut done: Local<bool>,
+) {
     if *done && !design.is_changed() && !slot.is_changed() {
         return;
     }
     *done = true;
-    let text = match (slot.id.is_some(), slot.dirty(&design)) {
-        (_, true) => "UNSAVED",
-        (true, false) => "SAVED",
-        (false, false) => "",
-    };
-    set_text(&mut note, text);
+    let (text, tone) = title_tag(slot.id.is_some(), slot.dirty(&design));
+    let (mut t, mut color) = note.into_inner();
+    set_text(&mut t, text);
+    set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
+}
+
+/// The saved state after the design's name, in the BEHAVIOR screen's tones (`behavior_ui::saving::header_tag`):
+/// UNSAVED gold, SAVED grey, nothing for a design never saved and unchanged.
+fn title_tag(saved_before: bool, dirty: bool) -> (&'static str, Tone) {
+    match (saved_before, dirty) {
+        (_, true) => ("UNSAVED", Tone::Gold),
+        (true, false) => ("SAVED", Tone::Label),
+        (false, false) => ("", Tone::Dim),
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -653,14 +669,16 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                         });
                     });
                     page.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    // NEW in a frame; the frame of the design in the drydock.
+                    // NEW in a frame; the frame of the design in the drydock: two rows with their own heads (on one
+                    // line the two sets of frame pills looked alike).
                     page.spawn(row(8.0)).with_children(|r| {
-                        r.spawn(head("NEW", 80.0));
+                        r.spawn(head("NEW EMPTY DESIGN", HEAD_W));
                         for (name, size) in &frames {
                             spawn_pill(r, fonts, name, 9.5, 30.0, None, pill, ShelfButton::New(*size));
                         }
-                        r.spawn(Node { width: px(40), ..default() });
-                        r.spawn(head("FRAME", 70.0));
+                    });
+                    page.spawn(row(8.0)).with_children(|r| {
+                        r.spawn(head("FRAME OF THIS DESIGN", HEAD_W));
                         for (name, size) in &frames {
                             let text = format!("{name} {}×{}", size.0, size.1);
                             spawn_pill(r, fonts, &text, 9.5, 30.0, None, pill, ShelfButton::Frame(*size));
@@ -668,7 +686,7 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                     });
                     // IMPORT: a file, or paste a code.
                     page.spawn(row(8.0)).with_children(|r| {
-                        r.spawn(head("IMPORT", 80.0));
+                        r.spawn(head("IMPORT", HEAD_W));
                         spawn_pill(r, fonts, ".RON FILE", 9.5, 30.0, None, pill, ShelfButton::ImportFile);
                         r.spawn((
                             PasteBox,
@@ -1353,6 +1371,15 @@ mod tests {
         let storage = world.resource::<Storage>();
         assert!(storage.list("designs").unwrap().is_empty() && storage.list("behaviors").unwrap().is_empty());
         assert_eq!(world.resource::<PlayerDesign>().blueprint().name, "Halvex Runner");
+    }
+
+    /// The saved state after the name reads like the BEHAVIOR screen's: UNSAVED gold, SAVED grey.
+    #[test]
+    fn the_title_tag_matches_the_behavior_screen() {
+        assert_eq!(title_tag(true, true), ("UNSAVED", Tone::Gold));
+        assert_eq!(title_tag(false, true), ("UNSAVED", Tone::Gold));
+        assert_eq!(title_tag(true, false), ("SAVED", Tone::Label));
+        assert_eq!(title_tag(false, false).0, "");
     }
 
     /// Delete, a tool key or T while BLUEPRINTS covers the design does nothing to it; Ctrl+S still saves.
