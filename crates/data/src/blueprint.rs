@@ -4,7 +4,8 @@
 use std::fmt::Write as _;
 
 use crate::kind::Kind;
-use crate::load::{parse_error, ron_options};
+use crate::limits::MAX_DOCUMENT_BYTES;
+use crate::load::{parse_error, ron_options, strip_bom};
 use crate::model::{Blueprint, Placement, PowerOverride};
 use crate::problem::Problem;
 
@@ -55,9 +56,19 @@ pub fn blueprint_to_ron(bp: &Blueprint) -> String {
 /// `Some(..)` may be left out, unknown fields are errors, comments are fine. `source` stays empty.
 ///
 /// Only the syntax and the schema are checked here; [`crate::validate_ship`] checks the blueprint against the
-/// content. `Err` holds the parse error (kind `ship`, line and column).
+/// content. Limits for text from outside: at most [`MAX_DOCUMENT_BYTES`], coordinates within
+/// ±[`crate::limits::MAX_COORD`]; a leading byte order mark is skipped. `Err` holds the parse error (kind `ship`,
+/// line and column).
 pub fn parse_blueprint(text: &str) -> Result<Blueprint, Vec<Problem>> {
-    ron_options().from_str(text).map_err(|e| {
+    if text.len() > MAX_DOCUMENT_BYTES {
+        let mut p = Problem::error(format!(
+            "the text is too long for a blueprint ({} bytes, at most {MAX_DOCUMENT_BYTES})",
+            text.len()
+        ));
+        p.kind = Some(Kind::Ship);
+        return Err(vec![p]);
+    }
+    ron_options().from_str(strip_bom(text)).map_err(|e| {
         let mut p = parse_error(&e);
         p.kind = Some(Kind::Ship);
         vec![p]

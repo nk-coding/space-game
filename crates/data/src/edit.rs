@@ -27,16 +27,14 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::geometry::{
-    Bounds, Cell, Dir, Footprint, PlacedShape, transform_point, transform_vector,
+    Bounds, Cell, Dir, Footprint, PlacedShape, span, transform_point, transform_vector,
 };
 use crate::load::Content;
 use crate::model::{Blueprint, MAX_POWER_WEIGHT, Placement, PowerOverride, Shape};
+use crate::validate::MAX_FRAME_SIZE;
 
 /// Undo steps kept; older ones are dropped.
 pub const UNDO_STEPS: usize = 256;
-
-/// Largest frame side in cells.
-pub const MAX_FRAME: u32 = 1024;
 
 const NONE: u32 = u32::MAX;
 
@@ -71,7 +69,7 @@ pub enum Refusal {
     NoRoom,
     /// The content has no 1×1 hull block to paint or fill with.
     NoBlockPart,
-    /// A frame side must be 1 to [`MAX_FRAME`] cells.
+    /// A frame side must be 1 to [`MAX_FRAME_SIZE`] cells.
     BadFrame,
     /// Mirror mode: the part has no mirror twin (no part of the same kind at its mirror image).
     NoTwin,
@@ -117,7 +115,7 @@ pub struct Preview {
 /// Why a blueprint cannot be opened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpenError {
-    /// A frame side must be 1 to [`MAX_FRAME`] cells.
+    /// A frame side must be 1 to [`MAX_FRAME_SIZE`] cells.
     BadFrame,
     UnknownPart {
         index: usize,
@@ -131,7 +129,7 @@ pub enum OpenError {
         index: usize,
         other: usize,
     },
-    /// The design's bounding box (`w`, `h`) is larger than the frame.
+    /// The design's bounding box (`w`, `h`, saturated at `u32::MAX`) is larger than the frame.
     DoesNotFit {
         design: (u32, u32),
     },
@@ -204,7 +202,7 @@ enum Change {
     Frame {
         old: (i32, i32),
         new: (i32, i32),
-        shift: (i32, i32),
+        shift: (i64, i64),
     },
 }
 
@@ -284,8 +282,9 @@ pub struct Drydock {
 
 impl Drydock {
     /// Opens a blueprint in a frame of `frame = (w, h)` cells, its parts' bounding box centred (rounded
-    /// towards the top-left). The blueprint's other fields are kept for [`Drydock::export`]. Pass a blueprint
-    /// without parts to start a new design.
+    /// towards the top-left). The blueprint's other fields are kept for [`Drydock::export`], except `source`:
+    /// the design comes from no pack. Pass a blueprint without parts to start a new design. Placements anywhere
+    /// in the `i32` range are fine: parts too far apart for the frame give [`OpenError::DoesNotFit`].
     pub fn open(
         content: &Content,
         blueprint: &Blueprint,
@@ -319,6 +318,7 @@ impl Drydock {
             catalog,
             header: Blueprint {
                 parts: Vec::new(),
+                source: Default::default(),
                 ..blueprint.clone()
             },
             frame: (0, 0),
@@ -332,9 +332,10 @@ impl Drydock {
             revision: 0,
         };
         let shift = dock.centring(frame).ok_or_else(|| {
-            let b = dock.bounds().unwrap();
+            let [x0, y0, x1, y1] = span(&dock.shapes).unwrap_or_default();
+            let side = |n: i64| u32::try_from(n).unwrap_or(u32::MAX);
             OpenError::DoesNotFit {
-                design: (b.width() as u32, b.height() as u32),
+                design: (side(x1 - x0), side(y1 - y0)),
             }
         })?;
         dock.frame = frame;
@@ -417,23 +418,12 @@ impl Drydock {
 
     /// The parts' bounding box in frame coordinates, `None` for an empty design.
     pub fn bounds(&self) -> Option<Bounds> {
-        self.shapes.iter().fold(None, |b, s| {
-            let (w, h) = s.dims();
-            let (ax, ay, bx, by) = (s.x, s.y, s.x + w as i32, s.y + h as i32);
-            Some(match b {
-                None => Bounds {
-                    min_x: ax,
-                    min_y: ay,
-                    max_x: bx,
-                    max_y: by,
-                },
-                Some(o) => Bounds {
-                    min_x: o.min_x.min(ax),
-                    min_y: o.min_y.min(ay),
-                    max_x: o.max_x.max(bx),
-                    max_y: o.max_y.max(by),
-                },
-            })
+        // Every part lies inside the frame, so the box fits an i32.
+        span(&self.shapes).map(|[min_x, min_y, max_x, max_y]| Bounds {
+            min_x: min_x as i32,
+            min_y: min_y as i32,
+            max_x: max_x as i32,
+            max_y: max_y as i32,
         })
     }
 
@@ -452,7 +442,8 @@ impl Drydock {
     }
 
     /// The mirror image of a placement across the frame's vertical centre line: cells reflected
-    /// (`x' = W − x − w`, with `w` the rotated width), flip toggled, `rot' = (4 − rot) % 4`.
+    /// (`x' = W − x − w`, with `w` the rotated width), flip toggled, `rot' = (4 − rot) % 4`. `p` must name a part
+    /// of the content the drydock was opened with (as every placement of the palette does).
     pub fn mirror_of(&self, p: &Placement) -> Placement {
         let s = self.shape_of(p);
         with_pose(p, &mirrored(&s, self.frame.0))
@@ -460,7 +451,7 @@ impl Drydock {
 
     /// The mirror image of a cell: `(W − 1 − x, y)`.
     pub fn mirror_cell(&self, (x, y): Cell) -> Cell {
-        (self.frame.0 - 1 - x, y)
+        ((self.frame.0 - 1).saturating_sub(x), y)
     }
 
     /// What [`Drydock::place`] would do: the placement (an empty power override dropped) and its mirror image.
@@ -1102,7 +1093,8 @@ impl Drydock {
         other: Option<(&PlacedShape, usize)>,
     ) -> Result<(), Refusal> {
         let (w, h) = s.dims();
-        if s.x < 0 || s.y < 0 || s.x + w as i32 > self.frame.0 || s.y + h as i32 > self.frame.1 {
+        let (x, y) = (s.x as i64, s.y as i64);
+        if x < 0 || y < 0 || x + w as i64 > self.frame.0 as i64 || y + h as i64 > self.frame.1 as i64 {
             return Err(Refusal::Outside);
         }
         let other = other.map(|(o, k)| (o.cells(), k));
@@ -1199,24 +1191,25 @@ impl Drydock {
         }
     }
 
-    /// The shift that centres the design's bounding box in `frame`; `None` if it does not fit.
-    fn centring(&self, frame: (i32, i32)) -> Option<(i32, i32)> {
-        let Some(b) = self.bounds() else {
+    /// The shift that centres the design's bounding box in `frame`; `None` if it does not fit. In `i64`: a
+    /// blueprint being opened may lie anywhere in the `i32` range.
+    fn centring(&self, (fw, fh): (i32, i32)) -> Option<(i64, i64)> {
+        let Some([x0, y0, x1, y1]) = span(&self.shapes) else {
             return Some((0, 0));
         };
-        if b.width() > frame.0 || b.height() > frame.1 {
+        let (w, h, fw, fh) = (x1 - x0, y1 - y0, fw as i64, fh as i64);
+        if w > fw || h > fh {
             return None;
         }
-        Some((
-            (frame.0 - b.width()) / 2 - b.min_x,
-            (frame.1 - b.height()) / 2 - b.min_y,
-        ))
+        Some(((fw - w) / 2 - x0, (fh - h) / 2 - y0))
     }
 
-    fn shift_parts(&mut self, (dx, dy): (i32, i32)) {
+    /// Moves every part by a [`Drydock::centring`] shift, which puts them all inside the frame.
+    fn shift_parts(&mut self, (dx, dy): (i64, i64)) {
+        let to = |v: i32, d: i64| (v as i64 + d) as i32;
         for (p, s) in self.parts.iter_mut().zip(&mut self.shapes) {
-            (p.x, p.y) = (p.x + dx, p.y + dy);
-            (s.x, s.y) = (s.x + dx, s.y + dy);
+            (p.x, p.y) = (to(p.x, dx), to(p.y, dy));
+            (s.x, s.y) = (to(s.x, dx), to(s.y, dy));
         }
     }
 
@@ -1282,7 +1275,7 @@ impl Drydock {
 }
 
 fn frame_dims((w, h): (u32, u32)) -> Option<(i32, i32)> {
-    let ok = |n: u32| (1..=MAX_FRAME).contains(&n);
+    let ok = |n: u32| (1..=MAX_FRAME_SIZE).contains(&n);
     (ok(w) && ok(h)).then_some((w as i32, h as i32))
 }
 
@@ -1319,15 +1312,17 @@ fn unit_placement(part: &str, (x, y): Cell, rot: u8, material: &str) -> Placemen
     }
 }
 
-/// The edit of [`Drydock::move_part`]: the twin moves the other way in x.
+/// The edit of [`Drydock::move_part`]: the twin moves the other way in x. A move past the `i32` range is
+/// outside any frame.
 fn move_by(
     dx: i32,
     dy: i32,
 ) -> impl Fn(&Placement, &PlacedShape, bool) -> Result<Placement, Refusal> {
     move |old, _, twin| {
+        let dx = if twin { dx.checked_neg() } else { Some(dx) };
         Ok(Placement {
-            x: old.x + if twin { -dx } else { dx },
-            y: old.y + dy,
+            x: dx.and_then(|dx| old.x.checked_add(dx)).ok_or(Refusal::Outside)?,
+            y: old.y.checked_add(dy).ok_or(Refusal::Outside)?,
             ..old.clone()
         })
     }
@@ -1346,8 +1341,9 @@ fn with_pose(p: &Placement, s: &PlacedShape) -> Placement {
 
 /// The mirror image across the vertical centre line of a frame `width` cells wide.
 fn mirrored(s: &PlacedShape, width: i32) -> PlacedShape {
+    // Saturating: a placement far outside the frame stays far outside, it never wraps into it.
     PlacedShape {
-        x: width - s.x - s.dims().0 as i32,
+        x: width.saturating_sub(s.x).saturating_sub_unsigned(s.dims().0),
         ..flipped(s)
     }
 }

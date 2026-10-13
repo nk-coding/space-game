@@ -721,12 +721,26 @@ impl<'a> Validator<'a> {
         if let Some(b) = &s.behavior {
             self.behavior_ref(s, b);
         }
-        let (sw, sh) = (s.size.0 as i32, s.size.1 as i32);
-        if sw == 0 || sh == 0 {
+        let (sw, sh) = s.size;
+        let size_ok = if sw == 0 || sh == 0 {
             self.err(s, "size", "size must be at least 1×1");
-        }
+            false
+        } else if sw > MAX_FRAME_SIZE || sh > MAX_FRAME_SIZE {
+            self.err(
+                s,
+                "size",
+                format!("each side must be at most {MAX_FRAME_SIZE} cells; got {sw}×{sh}"),
+            );
+            false
+        } else {
+            true
+        };
         if s.parts.is_empty() {
             self.err(s, "parts", "a ship needs at least one part");
+            return;
+        }
+        // The placements are checked against the frame, so a frame out of range ends the check here.
+        if !size_ok {
             return;
         }
         let errors_before = self.out.iter().filter(|p| p.is_error()).count();
@@ -795,7 +809,8 @@ impl<'a> Validator<'a> {
             }
             let shape = self.c.placed_shape(pl).unwrap();
             let (w, h) = shape.dims();
-            if pl.x < 0 || pl.y < 0 || pl.x + w as i32 > sw || pl.y + h as i32 > sh {
+            let (x, y) = (pl.x as i64, pl.y as i64);
+            if x < 0 || y < 0 || x + w as i64 > sw as i64 || y + h as i64 > sh as i64 {
                 self.err(
                     s,
                     &f,
@@ -804,6 +819,8 @@ impl<'a> Validator<'a> {
                         pl.part, pl.x, pl.y
                     ),
                 );
+                // Its cells are not looked at: they may be far out (or very many, for a bad part size).
+                continue;
             }
             for cell in shape.cells() {
                 if let Some(other) = occupied.insert(cell, k) {
@@ -852,7 +869,10 @@ impl<'a> Validator<'a> {
                 ),
             );
         }
-        let grid = self.c.ship_grid(s).unwrap();
+        // Clean placements inside a frame of at most MAX_FRAME_SIZE cells always make a grid.
+        let Ok(grid) = self.c.ship_grid(s) else {
+            return;
+        };
         let pieces = grid.pieces();
         if pieces.len() > 1 {
             let sizes: Vec<usize> = pieces.parts.iter().map(Vec::len).collect();

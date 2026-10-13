@@ -20,6 +20,7 @@ pub mod blueprint;
 pub mod edit;
 pub mod geometry;
 pub mod kind;
+pub mod limits;
 pub mod load;
 pub mod model;
 pub mod problem;

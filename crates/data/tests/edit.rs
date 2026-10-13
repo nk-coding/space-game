@@ -408,7 +408,7 @@ fn slopes_orient_to_the_hull() {
     let c = content();
     let lean = |dock: &Drydock, i: usize| dock.shapes()[i].slope_normal().unwrap();
     let links = |dock: &Drydock, i: usize| {
-        let grid = data::ShipGrid::new(dock.shapes().to_vec());
+        let grid = data::ShipGrid::new(dock.shapes().to_vec()).unwrap();
         dock.shapes()[i]
             .connectable_sides()
             .into_iter()
@@ -788,7 +788,8 @@ fn halvex_runner_round_trips() {
     assert_eq!(dock.parts()[0].y, ship.parts[0].y + 8);
     assert_grid(&dock);
     assert_symmetric(&c, &dock, "opening");
-    assert_eq!(dock.export(), ship);
+    // The design comes from no pack: its problems are not located in the template's file.
+    assert_eq!(dock.export(), Blueprint { source: Default::default(), ..ship });
 }
 
 #[test]
@@ -882,7 +883,7 @@ fn mirrored_edits_keep_the_runner_symmetric() {
         undone += 1;
     }
     assert_eq!(undone, steps);
-    assert_eq!(dock.export(), ship);
+    assert_eq!(dock.export(), Blueprint { source: Default::default(), ..ship.clone() });
     while dock.redo() {
         assert_symmetric(&c, &dock, "redo");
     }

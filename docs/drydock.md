@@ -41,15 +41,19 @@ Tests: `crates/data/tests/edit.rs`.
 
 - Coordinates are the blueprint conventions of `data::geometry`: x right, y down, forward = −y, `rot` = quarter
   turns clockwise, flip mirrors before rotating, a placement's `x, y` is the top-left cell of its rotated footprint.
-- The editor holds one design in **frame coordinates**. The frame `(w, h)` (1 to 1024 cells a side) is the editing
-  area; every part lies inside it.
+- The editor holds one design in **frame coordinates**. The frame `(w, h)` (1 to 128 cells a side,
+  `data::validate::MAX_FRAME_SIZE`, the same limit as content frames) is the editing area; every part lies inside
+  it.
 - `Drydock::open(content, blueprint, frame)` centres the parts' bounding box in the frame (rounded towards the
   top-left) and refuses a design that does not fit, an unknown part, `rot > 3` or overlapping parts. A blueprint
-  without parts starts a new design. The editor copies what it needs from `Content` (footprints, the hull flag,
-  which parts draw power, the armour materials), so it owns its data.
+  without parts starts a new design. Coordinates anywhere in the `i32` range are safe: the box is computed in
+  `i64`, parts too far apart give `DoesNotFit` (its size saturated at `u32::MAX`), a lone far part is centred. The
+  editor copies what it needs from `Content` (footprints, the hull flag, which parts draw power, the armour
+  materials), so it owns its data.
 - `export()` trims to the bounding box: `size` = its size, parts shifted so the smallest `x` and `y` are 0, in part
-  index order; every other blueprint field is kept from `open`. Opening the Halvex Runner in a 24×24 frame and
-  exporting gives back the identical blueprint.
+  index order; every other blueprint field is kept from `open`, except `source` (cleared: a design comes from no
+  pack, so a template copy's problems are not located in the template's file). Opening the Halvex Runner in a
+  24×24 frame and exporting gives back the identical blueprint (without its `source`).
 - `set_frame(w, h)` re-centres the design in the new frame; refused (frame unchanged) if the design does not fit.
   A frame change is an undoable step.
 - **Part indices** are the indices of `parts()`, which become the exported blueprint's `parts`. New parts are
@@ -426,6 +430,14 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   (`PlayerBehaviors::import`: under its own id when that is free or already holds the same behavior, else under a
   new one) and the design names it; any other unknown behavior is dropped (noted in the status line); a design no
   frame takes is refused; other problems (`behaviors::validate_design`) are named but don't block.
+- **Limits on text from outside** (`data::limits`, added 13 Oct 2026 after the untrusted-input review): reading a
+  blueprint with the content options (`parse_blueprint`, a share code's payload, a stored document) refuses
+  placement coordinates further than `MAX_COORD` (65536) from 0, and RON nested deeper than `RON_RECURSION_LIMIT`
+  (32); `parse_blueprint` refuses texts over `MAX_DOCUMENT_BYTES` (4 MiB) and skips a byte order mark. The limits
+  for the readers outside `data` are constants there too: `MAX_DOCUMENT_BYTES` for a stored document, a pasted or
+  dropped file and a code's unpacked payload, `MAX_SHARE_CODE_BYTES` (1 MiB) for a code before it is decoded. A
+  blueprint built in code may still hold any `i32`: `Drydock::open`, `validate_ship` and `Content::ship_grid`
+  compute in `i64` and refuse what doesn't fit.
 - **Copy and paste** (`clipboard.rs`): screens set `Clipboard::offer` (the text Ctrl+C copies), `accept` (Ctrl+V
   pastes) or `copy` (copy now). Web: winit cancels every key on the canvas, so while something is offered or
   accepted a capturing `keydown` listener keeps Ctrl/Cmd+C and +V from it, and the `copy` / `paste` listeners

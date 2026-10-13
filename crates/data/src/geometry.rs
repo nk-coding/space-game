@@ -192,7 +192,7 @@ impl Footprint {
 
     /// Area in cells: `w·h`, or half of it for slopes.
     pub fn area(&self) -> f32 {
-        let a = (self.w * self.h) as f32;
+        let a = self.w as f32 * self.h as f32;
         if self.shape == Shape::Slope {
             a / 2.0
         } else {
@@ -268,7 +268,7 @@ impl PlacedShape {
     /// Occupied cells, in local row-major order (`partCells`).
     pub fn cells(&self) -> Vec<Cell> {
         let (w, h) = (self.footprint.w as i32, self.footprint.h as i32);
-        let mut out = Vec::with_capacity((w * h) as usize);
+        let mut out = Vec::with_capacity(self.footprint.w as usize * self.footprint.h as usize);
         for j in 0..h {
             for i in 0..w {
                 out.push(self.xf_cell(i, j));
@@ -365,6 +365,20 @@ fn signed_area2(pts: &[GridPoint]) -> i64 {
         .sum()
 }
 
+/// The bounding box `[min_x, min_y, max_x, max_y]` (max exclusive) of placed shapes, `None` for none. In
+/// `i64`, so shapes anywhere in the `i32` range cannot overflow it.
+pub(crate) fn span<'a>(shapes: impl IntoIterator<Item = &'a PlacedShape>) -> Option<[i64; 4]> {
+    shapes.into_iter().fold(None, |b, s| {
+        let (w, h) = s.dims();
+        let (x, y) = (s.x as i64, s.y as i64);
+        let a = [x, y, x + w as i64, y + h as i64];
+        Some(match b {
+            None => a,
+            Some(o) => [o[0].min(a[0]), o[1].min(a[1]), o[2].max(a[2]), o[3].max(a[3])],
+        })
+    })
+}
+
 /// Axis-aligned bounds in cells (`max` exclusive) = metres.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bounds {
@@ -455,20 +469,22 @@ pub struct ShipGrid {
 
 impl ShipGrid {
     /// Builds the grid. Overlapping parts are invalid content; if they occur anyway the later part wins
-    /// the shared cells (as in `drydock-model.js`).
-    pub fn new(shapes: Vec<PlacedShape>) -> Self {
-        let (mut x0, mut y0, mut x1, mut y1) = (0, 0, 0, 0);
-        let mut first = true;
-        for s in &shapes {
-            let (w, h) = s.dims();
-            let (ax, ay, bx, by) = (s.x, s.y, s.x + w as i32, s.y + h as i32);
-            if first {
-                (x0, y0, x1, y1) = (ax, ay, bx, by);
-                first = false;
-            } else {
-                (x0, y0, x1, y1) = (x0.min(ax), y0.min(ay), x1.max(bx), y1.max(by));
+    /// the shared cells (as in `drydock-model.js`). `None` when the parts lie further than
+    /// [`crate::limits::MAX_COORD`] from 0 or span more than [`crate::validate::MAX_FRAME_SIZE`] cells in either
+    /// direction: no ship fits a frame like that.
+    pub fn new(shapes: Vec<PlacedShape>) -> Option<Self> {
+        let (x0, y0, x1, y1) = match span(&shapes) {
+            Some([x0, y0, x1, y1]) => {
+                let reach = crate::limits::MAX_COORD as i64;
+                let side = crate::validate::MAX_FRAME_SIZE as i64;
+                if x0.min(y0) < -reach || x1.max(y1) > reach || x1 - x0 > side || y1 - y0 > side {
+                    return None;
+                }
+                // Within ±MAX_COORD, so every coordinate below fits an i32 with room to spare.
+                (x0 as i32, y0 as i32, x1 as i32, y1 as i32)
             }
-        }
+            None => (0, 0, 0, 0),
+        };
         let (width, height) = (x1 - x0, y1 - y0);
         let n = (width * height) as usize;
         let mut grid = ShipGrid {
@@ -483,7 +499,7 @@ impl ShipGrid {
         for i in 0..grid.shapes.len() {
             grid.stamp(i);
         }
-        grid
+        Some(grid)
     }
 
     fn stamp(&mut self, i: usize) {
@@ -784,29 +800,19 @@ impl ShipGrid {
 
     /// Bounds of the present parts selected by `keep`.
     pub fn bounds_of(&self, keep: impl Fn(usize) -> bool) -> Option<Bounds> {
-        let mut b: Option<Bounds> = None;
-        for (i, s) in self.shapes.iter().enumerate() {
-            if !self.present[i] || !keep(i) {
-                continue;
-            }
-            let (w, h) = s.dims();
-            let (ax, ay, bx, by) = (s.x, s.y, s.x + w as i32, s.y + h as i32);
-            b = Some(match b {
-                None => Bounds {
-                    min_x: ax,
-                    min_y: ay,
-                    max_x: bx,
-                    max_y: by,
-                },
-                Some(o) => Bounds {
-                    min_x: o.min_x.min(ax),
-                    min_y: o.min_y.min(ay),
-                    max_x: o.max_x.max(bx),
-                    max_y: o.max_y.max(by),
-                },
-            });
-        }
-        b
+        let kept = self
+            .shapes
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| self.present[i] && keep(i))
+            .map(|(_, s)| s);
+        // `new` keeps every shape within ±MAX_COORD, so the box fits an i32.
+        span(kept).map(|[min_x, min_y, max_x, max_y]| Bounds {
+            min_x: min_x as i32,
+            min_y: min_y as i32,
+            max_x: max_x as i32,
+            max_y: max_y as i32,
+        })
     }
 
     /// Cells of part `i` on its `dir` side whose neighbour in `dir` is not part of `i`.

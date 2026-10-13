@@ -625,9 +625,11 @@ impl Part {
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub part: String,
-    /// Left column of the rotated footprint.
+    /// Left column of the rotated footprint (reading refuses values beyond ±[`crate::limits::MAX_COORD`]).
+    #[serde(deserialize_with = "crate::limits::coord")]
     pub x: i32,
-    /// Top row of the rotated footprint.
+    /// Top row of the rotated footprint (likewise within ±[`crate::limits::MAX_COORD`]).
+    #[serde(deserialize_with = "crate::limits::coord")]
     pub y: i32,
     /// Quarter turns clockwise (0..=3).
     #[serde(default)]

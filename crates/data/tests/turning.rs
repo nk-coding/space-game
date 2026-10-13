@@ -103,13 +103,13 @@ fn open_sides_are_rcs_nozzles() {
         rot: 2,
         flip: false,
     }; // straight: Up, Right
-    let g = ShipGrid::new(vec![block(1, 1), block(0, 1), slope]);
+    let g = ShipGrid::new(vec![block(1, 1), block(0, 1), slope]).unwrap();
     assert_eq!(
         g.open_sides(0),
         vec![((1, 1), Dir::Down), ((1, 1), Dir::Right)]
     );
     // The slope's straight bottom links to the pod; either way the cell above is occupied, so no nozzle.
-    let g2 = ShipGrid::new(vec![block(1, 1), block(0, 1), flipped]);
+    let g2 = ShipGrid::new(vec![block(1, 1), block(0, 1), flipped]).unwrap();
     assert_eq!(
         g2.open_sides(0),
         vec![((1, 1), Dir::Down), ((1, 1), Dir::Right)]
@@ -117,7 +117,7 @@ fn open_sides_are_rcs_nozzles() {
     // Exposure (the venting rule) counts the side towards the unlinked slope face; open_sides does not.
     assert_eq!(g2.exposure((1, 1)), 3);
     // A lone pod has four nozzles; removing a neighbour opens a side.
-    let mut g3 = ShipGrid::new(vec![block(1, 1), block(0, 1)]);
+    let mut g3 = ShipGrid::new(vec![block(1, 1), block(0, 1)]).unwrap();
     assert_eq!(g3.open_sides(0).len(), 3);
     g3.remove(1);
     assert_eq!(g3.open_sides(0).len(), 4);
@@ -130,7 +130,7 @@ fn open_sides_are_rcs_nozzles() {
         rot: 0,
         flip: false,
     };
-    assert_eq!(ShipGrid::new(vec![big]).open_sides(0).len(), 8);
+    assert_eq!(ShipGrid::new(vec![big]).unwrap().open_sides(0).len(), 8);
 }
 
 #[test]
