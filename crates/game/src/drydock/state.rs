@@ -63,7 +63,7 @@ impl DrydockUi {
         let category = content.categories.iter().next().map(|c| c.id.clone()).unwrap_or_default();
         let picked = content.parts.iter().find(|p| p.category == category).map(|p| p.id.clone());
         let material = design
-            .blueprint
+            .blueprint()
             .parts
             .iter()
             .find_map(|p| p.material.clone())

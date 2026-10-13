@@ -10,7 +10,7 @@
 //! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`).
 //!
 //! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
-//! [`DockSet::Apply`]; change [`PlayerDesign`] (bump `revision`: the view, the status and the palette follow),
+//! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
 //! write [`DrydockStats`] and [`DrydockStatus`]; read [`DrydockUi`] (tool, material, mirror, rotation, picked
 //! part) and [`DrydockCursor`] (the cell under the pointer). Nothing here needs to change for that.
 

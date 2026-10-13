@@ -371,6 +371,17 @@ impl Drydock {
         Ok(self.finish(log, None, Twin::Off))
     }
 
+    /// The design's header: the opened blueprint without its parts (id, name, summary, faction, behavior, ...).
+    /// Its `size` and `parts` are not used; [`Drydock::export`] takes everything else from it.
+    pub fn header(&self) -> &Blueprint {
+        &self.header
+    }
+
+    /// The header to rename or re-describe the design. Not an edit: no undo step, no revision change.
+    pub fn header_mut(&mut self) -> &mut Blueprint {
+        &mut self.header
+    }
+
     /// The parts in frame coordinates; their order is the exported blueprint's.
     pub fn parts(&self) -> &[Placement] {
         &self.parts

@@ -222,7 +222,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
                 Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),
             }
             let mut world = SimWorld::new(sim, content).with_others(others);
-            let Some(runner) = world.design_from(&inputs.design.blueprint, PLAYER) else { return world };
+            let Some(runner) = world.design_from(inputs.design.blueprint(), PLAYER) else { return world };
             scene.player_design = Some(runner.clone());
             // `Body` places the design's main piece, wherever the blueprint sits in its drydock frame.
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
@@ -294,7 +294,7 @@ fn launch_test_flight(
     scene.test_flight = true;
     scene.waves = true;
     *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
-    info!("test flight: {} parts, revision {}", inputs.design.blueprint.parts.len(), inputs.design.revision);
+    info!("test flight: {} parts, revision {}", inputs.design.blueprint().parts.len(), inputs.design.revision());
 }
 
 /// Leaving flight (T, or a lost test flight): the world empties, views and effects go, the clock runs again.

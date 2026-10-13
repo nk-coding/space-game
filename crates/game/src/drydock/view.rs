@@ -155,7 +155,7 @@ pub(super) fn camera(
     let centre = tf.translation / scale;
     rig.view_offset = centre - rig.viewport / 2.0;
     cam.viewport = Rect::from_center_size(centre, size);
-    let frame = Vec2::new(design.frame.0 as f32, design.frame.1 as f32);
+    let frame = Vec2::new(design.frame().0 as f32, design.frame().1 as f32);
     let fit = (size.x / (frame.x + 2.0 * FIT_MARGIN)).min(size.y / (frame.y + 2.0 * FIT_MARGIN));
     let frame_centre = Vec2::new(frame.x / 2.0, -frame.y / 2.0);
     if cam.fit <= 0.0 {
@@ -210,7 +210,7 @@ pub(super) fn camera(
 
     let in_view = |c: &Vec2| !pointer.blocked && cam.viewport.contains(*c);
     let cell = cursor.filter(in_view).map(|c| rig.screen_to_world(c)).map(|w| (w.x.floor() as i32, (-w.y).floor() as i32));
-    cursor_cell.cell = cell.filter(|c| c.0 >= 0 && c.1 >= 0 && c.0 < design.frame.0 as i32 && c.1 < design.frame.1 as i32);
+    cursor_cell.cell = cell.filter(|c| c.0 >= 0 && c.1 >= 0 && c.0 < design.frame().0 as i32 && c.1 < design.frame().1 as i32);
 }
 
 /// Rebuilds the design's mesh when its revision (or the glow setting) changes.
@@ -224,15 +224,15 @@ pub(super) fn rebuild_ship(
     mut meshes: ResMut<Assets<Mesh>>,
     mut ship: Single<(&mut DockShip, &Mesh2d)>,
 ) {
-    let key = (design.revision, toggles.glow_sprites);
+    let key = (design.revision(), toggles.glow_sprites);
     let (dock, mesh) = &mut *ship;
     if dock.built == Some(key) {
         return;
     }
     dock.built = Some(key);
     let content = &content.0;
-    let built = design_visual(content, &design.blueprint, &style)
-        .and_then(|dv| content.ship_grid(&design.blueprint).map(|grid| blueprint_visual(&dv, &grid)));
+    let built = design_visual(content, design.blueprint(), &style)
+        .and_then(|dv| content.ship_grid(design.blueprint()).map(|grid| blueprint_visual(&dv, &grid)));
     let new = match built {
         Ok(v) => build_body(&v, &atlas, &style, toggles.glow_sprites, true),
         Err(e) => {
@@ -261,7 +261,7 @@ pub(super) fn draw_frame(
 ) {
     let Some(r) = regions else { return };
     let px = 1.0 / rig.zoom;
-    let (w, h) = (design.frame.0 as i32, design.frame.1 as i32);
+    let (w, h) = (design.frame().0 as i32, design.frame().1 as i32);
     let ui_c = &style.ui;
     // What of the world the grid viewport shows (frame rows count down: blueprint y = −world y).
     let a = rig.screen_to_world(cam.viewport.min);

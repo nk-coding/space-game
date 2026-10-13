@@ -582,11 +582,11 @@ pub(super) fn sync_texts(
         s.clear();
         let tone = match *t {
             PanelText::Breadcrumb => {
-                s.push_str(&format!("SHIPYARD  ›  DRYDOCK  ·  {}×{} FRAME", design.frame.0, design.frame.1));
+                s.push_str(&format!("SHIPYARD  ›  DRYDOCK  ·  {}×{} FRAME", design.frame().0, design.frame().1));
                 Tone::Label
             }
             PanelText::Name => {
-                s.push_str(&design.blueprint.name);
+                s.push_str(&design.blueprint().name);
                 Tone::Number
             }
             PanelText::Section => {
@@ -692,7 +692,7 @@ pub(super) fn sync_live(
                     None => write!(s, "CELL —"),
                 };
                 let mirror = if ui.mirror { "ON" } else { "OFF" };
-                let _ = write!(s, "  ·  MIRROR {mirror}  ·  AXIS {}  ·  SPACE + DRAG TO PAN", design.frame.0 as f32 / 2.0);
+                let _ = write!(s, "  ·  MIRROR {mirror}  ·  AXIS {}  ·  SPACE + DRAG TO PAN", design.frame().0 as f32 / 2.0);
             }
             PanelText::Zoom => {
                 if cam.fit > 0.0 {
