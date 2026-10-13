@@ -1,6 +1,6 @@
 # GDR-0042: Agility target "Agile": the Halvex Runner turns 90° in ~0.8 s and reaches ~22 m/s in ~2.5 s; small ships are snappier
 
-- Status: Accepted
+- Status: Accepted; the turning target is superseded by [GDR-0055](0055-slower-crisper-turning.md) (the acceleration target stays)
 - Date: 2026-10-12
 - Decided by: Niklas (the content numbers and the flight-tuning changes that reach the target are the implementing
   agent's placeholders)

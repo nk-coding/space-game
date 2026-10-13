@@ -49,8 +49,8 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0038](0038-logic-cores-control-parts.md) | Each logic core runs up to N parts; mind capacity caps the running cores and so the ship's size | Accepted | 2026-10-12 |
 | [0039](0039-engine-exhaust-hurts-parts.md) | Engines may sit anywhere; their exhaust damages and heats the parts in its path | Accepted | 2026-10-12 |
 | [0040](0040-keyboard-flight-and-smart-lock-aim.md) | PC keyboard flight controls: rotate + thrust + strafe, smart lock aim with A/D nudge | Accepted | 2026-10-12 |
-| [0041](0041-engine-rated-speed.md) | Top speed comes from each engine's rated speed; no drag; a calm cruise flame at the cap | Accepted | 2026-10-12 |
-| [0042](0042-agility-target.md) | Agility target "Agile": the Halvex Runner turns 90° in ~0.8 s and reaches ~22 m/s in ~2.5 s; small ships are snappier | Accepted | 2026-10-12 |
+| [0041](0041-engine-rated-speed.md) | Top speed comes from each engine's rated speed; no drag; a calm cruise flame at the cap | Accepted; fade refined by [GDR-0055](0055-slower-crisper-turning.md) | 2026-10-12 |
+| [0042](0042-agility-target.md) | Agility target "Agile": the Halvex Runner turns 90° in ~0.8 s and reaches ~22 m/s in ~2.5 s; small ships are snappier | Accepted; turning superseded by [GDR-0055](0055-slower-crisper-turning.md) | 2026-10-12 |
 | [0043](0043-shields-as-energy-bubbles.md) | Shields are drawn as glowing energy bubbles | Accepted | 2026-10-12 |
 | [0044](0044-control-cost-priority-idle-dormant-newest.md) | Parts have a control cost; parts over the cores' limit idle by power priority; the newest vessels go dormant first | Accepted | 2026-10-12 |
 | [0045](0045-shields-absorb-rams-no-friendly-ram-damage.md) | Shields absorb ram damage; vessels of the same team bump without ram damage | Accepted | 2026-10-12 |
@@ -63,6 +63,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0052](0052-drydock-stats-full-use.md) | Drydock stats show the ship at full use and full power; up to ~120 % heat reads "runs hot" | Accepted | 2026-10-12 |
 | [0053](0053-drydock-v1-lead-defaults.md) | Drydock v1 defaults: frames, tools, mirror, keys and test flight | Accepted (provisional, lead); palette rule superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md) | 2026-10-13 |
 | [0054](0054-drydock-locked-parts-tools-saving-sharing.md) | Drydock: enemy parts locked until unlocked; fill and bevel confirmed; the working design autosaves; designs are stored and can be shared | Accepted | 2026-10-13 |
+| [0055](0055-slower-crisper-turning.md) | Turning is slower and crisper; RCS pods are the strong turners; top speed is capped by the whole speed | Accepted | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

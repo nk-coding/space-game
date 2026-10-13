@@ -1,6 +1,6 @@
 # GDR-0041: Top speed comes from each engine's rated speed; no drag; a calm cruise flame at the cap
 
-- Status: Accepted
+- Status: Accepted; the fade of thrusters pushing with the motion is refined by [GDR-0055](0055-slower-crisper-turning.md) (whole speed, not the speed along the axis)
 - Date: 2026-10-12
 - Decided by: Niklas (the falloff shape, the partial-stick rule and the cruise-flame look are the implementing
   agent's choices, documented in `docs/sim.md`)
