@@ -12,6 +12,7 @@
 use bevy::prelude::*;
 use data::PowerTier;
 
+use crate::career::Granted;
 use crate::mode::AppMode;
 use crate::scene::{Launch, Scene};
 use crate::sim_bridge::GameContent;
@@ -153,11 +154,13 @@ fn digit(k: KeyCode) -> Option<usize> {
     KEYS.iter().position(|&d| d == k)
 }
 
-/// The UI-state actions, the test flight (only a design that can fly takes off) and the way home.
+/// The UI-state actions, the test flight (only a design that can fly takes off) and the way home. Locked parts
+/// and materials are never picked (their rows and pills are disabled; the keys 1–9 reach locked ones too).
 pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut ui: ResMut<DrydockUi>,
     status: Res<DrydockStatus>,
+    granted: Res<Granted>,
     design: Res<PlayerDesign>,
     mut scene: ResMut<Scene>,
     mut next: ResMut<NextState<AppMode>>,
@@ -165,13 +168,13 @@ pub(super) fn apply(
     for a in actions.read() {
         match a {
             DrydockAction::Tool(t) => ui.tool = *t,
-            DrydockAction::Material(m) => ui.material.clone_from(m),
+            DrydockAction::Material(m) if granted.unlocks.has_material(m) => ui.material.clone_from(m),
             DrydockAction::Overlay(o) => ui.toggle_overlay(*o),
             DrydockAction::Category(c) => {
                 ui.category.clone_from(c);
                 ui.search.clear();
             }
-            DrydockAction::PickPart(p) => ui.picked = Some(p.clone()),
+            DrydockAction::PickPart(p) if granted.unlocks.has_part(p) => ui.picked = Some(p.clone()),
             // Only on a status made for the design as it is now (one changed on the BEHAVIOR screen gets its status
             // in the first drydock frame).
             DrydockAction::TestFly if status.grounded.is_none() && status.revision == Some(design.revision()) => {
@@ -183,5 +186,64 @@ pub(super) fn apply(
             // (`behavior_ui`).
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::state::app::StatesPlugin;
+    use data::Career;
+
+    use super::*;
+    use crate::drydock::PlayerDesign;
+    use crate::drydock::panels::sync_pills;
+    use crate::scene::SceneKind;
+
+    /// A drydock with a new game's unlocks: a locked part's row and a locked armour pill, and the handlers.
+    fn app() -> App {
+        let content = data::base_content();
+        let career = Career::new(&content, "rim_awakening", 1).unwrap();
+        let granted = Granted { unlocks: career.unlocks(&content), mind_capacity: 2, ..Default::default() };
+        let design = PlayerDesign::starter(&content, "rim_skiff");
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, StatesPlugin))
+            .insert_state(AppMode::Drydock)
+            .insert_resource(Scene::new(SceneKind::Sandbox, 1))
+            .insert_resource(DrydockUi::new(&content, &design, &granted.unlocks))
+            .insert_resource(design)
+            .insert_resource(granted)
+            .init_resource::<DrydockStatus>()
+            .insert_resource(GameContent(content))
+            .add_message::<DrydockAction>()
+            .add_message::<UiClick>()
+            .add_systems(Update, (clicks, apply, sync_pills).chain());
+        app
+    }
+
+    /// Locked rows and pills are disabled, so clicks on them send nothing; a locked part or material sent anyway
+    /// (keys 1–9) is not taken. Unlocked ones are.
+    #[test]
+    fn locked_parts_and_materials_cannot_be_picked() {
+        let mut app = app();
+        let beam = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("beam_laser".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        let composite = app.world_mut().spawn((ActionButton(DrydockAction::Material("composite".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        let pulse = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("pulse_laser".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        app.update();
+        let pill = |app: &App, e: Entity| *app.world().get::<Pill>(e).unwrap();
+        assert!(pill(&app, beam).disabled && pill(&app, composite).disabled && !pill(&app, pulse).disabled);
+        let before = app.world().resource::<DrydockUi>().clone();
+        app.world_mut().write_message(UiClick(beam));
+        app.world_mut().write_message(UiClick(composite));
+        app.update();
+        app.world_mut().write_message(DrydockAction::PickPart("beam_laser".into()));
+        app.world_mut().write_message(DrydockAction::Material("composite".into()));
+        app.update();
+        let ui = app.world().resource::<DrydockUi>();
+        assert_eq!((&ui.picked, &ui.material), (&before.picked, &before.material));
+        assert_eq!(ui.material, "steel");
+        app.world_mut().write_message(UiClick(pulse));
+        app.update();
+        assert_eq!(app.world().resource::<DrydockUi>().picked.as_deref(), Some("pulse_laser"));
+        assert!(pill(&app, pulse).active);
     }
 }

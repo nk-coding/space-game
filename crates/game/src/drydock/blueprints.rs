@@ -4,12 +4,13 @@
 //! * **SAVE** (Ctrl+S, the button) writes the design under its id (`library::save`); a design with problems
 //!   still saves, and the status line names the first problem.
 //! * **Autosave**: the working design (with its frame and the id it is saved under) is written about a second
-//!   after the last change and when a test flight starts, and comes back at the next start. The first start is
-//!   a copy of the starter ship ("Halvex Runner copy").
+//!   after the last change and when a test flight starts, and comes back at the next start. The first start, and
+//!   every new game, is a copy of the career's start ship ("Rim skiff copy"; a new game saves the last design's
+//!   unsaved changes first).
 //! * **BLUEPRINTS** floats over the screen above the bottom bar: your designs (name, frame, size, parts, when
 //!   saved) and the content ships as templates; OPEN, DUPLICATE, RENAME, DELETE (with a confirm step) on the
 //!   picked one; NEW in a frame; FRAME of the design in the drydock (refused with a message when it doesn't
-//!   fit); IMPORT a `.ron` file (web: a file chooser; desktop: drop it onto the window) or paste a share code.
+//!   fit; frames the career hasn't unlocked are dimmed with a lock); IMPORT a `.ron` file (web: a file chooser; desktop: drop it onto the window) or paste a share code.
 //!   Opening another design replaces the one in the drydock; when that one has unsaved changes, it is saved
 //!   first.
 //! * **EXPORT** shows the design's `.ron` file (download on the web, a file in the data directory on desktop)
@@ -25,14 +26,16 @@ use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 use data::{Blueprint, Content};
 
+use crate::career::{Granted, Note, PlayerCareer};
 use crate::clipboard::Clipboard;
 use crate::flight_hud::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
+use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, TextField, TextFieldText, Tone, UiBlock, UiClick, label, name_in_place, number, prose, set_color, set_text, spawn_pill, tracked,
-    wheel_rows,
+    Hot, Pill, PillLock, TextField, TextFieldText, Tone, UiBlock, UiClick, label, name_in_place, number, prose, set_color, set_text,
+    spawn_pill, tracked, wheel_rows,
 };
 
 use super::actions::DrydockAction;
@@ -301,28 +304,49 @@ pub(super) fn frame_name(content: &Content, frame: (u32, u32)) -> String {
 // Start, autosave, leaving
 
 /// At start (the plugin's build, after `DrydockPlugin` put the starter design in): the working design of the
-/// last session, else a copy of the starter ship. Needs the `Storage` (`StoragePlugin` comes first).
+/// last session, else a copy of the starter ship (the career's start ship). A new game (`PlayerCareer::new_game`)
+/// docks the starter ship in any case; unsaved changes of the last design are saved first, so BLUEPRINTS keeps
+/// them (if that fails, the last design stays). Needs the `Storage` and the career (both plugins come first).
 fn restore(world: &mut World) -> (DesignSlot, Shelf) {
     let mut shelf = Shelf::default();
-    let mut storage = world.remove_resource::<Storage>().expect("StoragePlugin is added before DrydockPlugin");
-    if let Some(why) = &storage.fallback {
-        shelf.say(format!("designs are kept only until the game closes: {why}"), Tone::Gold);
-    }
-    let restored = library::restore_working(&mut storage, &world.resource::<GameContent>().0);
-    world.insert_resource(storage);
-    let mut design = world.resource_mut::<PlayerDesign>();
-    match restored {
-        Some(Ok((next, slot, note))) => {
-            design.replace(next);
-            if let Some(note) = note {
-                shelf.say(format!("the last design came back, but {note}"), Tone::Gold);
-            }
-            return (slot, shelf);
+    let new_game = world.resource::<PlayerCareer>().new_game();
+    let (keep, note) = world.resource_scope(|world, mut storage: Mut<Storage>| {
+        if let Some(why) = &storage.fallback {
+            shelf.say(format!("designs are kept only until the game closes: {why}"), Tone::Gold);
         }
-        Some(Err(e)) => shelf.say(format!("the last design didn't come back: {e}"), Tone::Coral),
-        None => {}
+        let content = &world.resource::<GameContent>().0;
+        match library::restore_working(&mut storage, content) {
+            Some(Ok((last, slot, note))) if !new_game => {
+                if let Some(note) = note {
+                    shelf.say(format!("the last design came back, but {note}"), Tone::Gold);
+                }
+                (Some((last, slot)), None)
+            }
+            Some(Ok((last, mut slot, _))) if slot.dirty(&last) => {
+                let name = last.blueprint().name.clone();
+                match library::save(&mut storage, content, &last, &mut slot, now_unix()) {
+                    Ok(_) => (None, Some(Note::new("NEW GAME", format!("Your last design, {name}, was saved to BLUEPRINTS."), Tone::Teal))),
+                    Err(e) => {
+                        let why = format!("{name} couldn't be saved ({e}), so it stays in the drydock.");
+                        (Some((last, slot)), Some(Note::new("NEW GAME", why, Tone::Coral)))
+                    }
+                }
+            }
+            Some(Ok(_)) => (None, None),
+            Some(Err(e)) => {
+                shelf.say(format!("the last design didn't come back: {e}"), Tone::Coral);
+                (None, None)
+            }
+            None => (None, None),
+        }
+    });
+    world.resource_mut::<PlayerCareer>().notes.extend(note);
+    let mut design = world.resource_mut::<PlayerDesign>();
+    if let Some((next, slot)) = keep {
+        design.replace(next);
+        return (slot, shelf);
     }
-    // The first start: the starter ship (`PlayerDesign::starter`) as "<name> copy", not saved yet.
+    // The first start or a new game: the starter ship (`PlayerDesign::starter`) as "<name> copy", not saved yet.
     let name = format!("{} copy", design.blueprint().name);
     design.edit_header(|h| h.name = name);
     (DesignSlot::opened(None, &design), shelf)
@@ -652,17 +676,18 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                         });
                     });
                     page.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(c(Tone::Label, 0.14))));
-                    // NEW in a frame; the frame of the design in the drydock.
+                    // NEW in a frame; the frame of the design in the drydock. Locked frames are dimmed with a lock.
+                    let lock = || Some(UiIcon::Glyph { glyph: Glyph::Lock, color: ui.dim });
                     page.spawn(row(8.0)).with_children(|r| {
                         r.spawn(head("NEW", 80.0));
                         for (name, size) in &frames {
-                            spawn_pill(r, fonts, name, 9.5, 30.0, None, pill, ShelfButton::New(*size));
+                            spawn_pill(r, fonts, name, 9.5, 30.0, lock(), pill, (ShelfButton::New(*size), PillLock));
                         }
                         r.spawn(Node { width: px(40), ..default() });
                         r.spawn(head("FRAME", 70.0));
                         for (name, size) in &frames {
                             let text = format!("{name} {}×{}", size.0, size.1);
-                            spawn_pill(r, fonts, &text, 9.5, 30.0, None, pill, ShelfButton::Frame(*size));
+                            spawn_pill(r, fonts, &text, 9.5, 30.0, lock(), pill, (ShelfButton::Frame(*size), PillLock));
                         }
                     });
                     // IMPORT: a file, or paste a code.
@@ -1108,6 +1133,7 @@ fn sync_shelf(
     lib_slot: Res<DesignSlot>,
     design: Res<PlayerDesign>,
     content: Res<GameContent>,
+    granted: Res<Granted>,
     style: Res<Style>,
     mut root: Single<&mut Visibility, With<ShelfRoot>>,
     mut nodes: Query<
@@ -1139,7 +1165,7 @@ fn sync_shelf(
             bg.0 = f;
         }
     }
-    if !shelf.is_changed() && !design.is_changed() && !lib_slot.is_changed() {
+    if !shelf.is_changed() && !design.is_changed() && !lib_slot.is_changed() && !granted.is_changed() {
         return;
     }
     let content = &content.0;
@@ -1178,7 +1204,9 @@ fn sync_shelf(
             ShelfButton::Open | ShelfButton::Duplicate => (false, !(readable || matches!(shelf.pick, Some(Pick::Template(_))))),
             ShelfButton::Rename => (false, !readable),
             ShelfButton::Delete => (false, !is_design),
-            ShelfButton::Frame(f) => (design.frame() == *f, false),
+            // A locked frame (the career's) can't be built in; a design already in one keeps it.
+            ShelfButton::Frame(f) => (design.frame() == *f, !granted.frame_open(content, *f)),
+            ShelfButton::New(f) => (false, !granted.frame_open(content, *f)),
             ShelfButton::ConfirmDelete => (true, false),
             ShelfButton::Copy => (false, shelf.export.code.is_empty()),
             _ => (false, false),
@@ -1297,7 +1325,7 @@ mod tests {
     fn world() -> World {
         let content = data::base_content();
         let mut world = World::new();
-        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(PlayerDesign::starter(&content, "halvex_runner"));
         world.insert_resource(GameContent(content));
         world.insert_resource(Storage::new(MemoryBackend::default()));
         world.insert_resource(DockCamera::new(1.0));

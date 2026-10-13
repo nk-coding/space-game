@@ -294,6 +294,47 @@ fn research_pays_and_unlocks_at_once() {
 }
 
 #[test]
+fn researched_parts_are_fresh_until_seen() {
+    let c = content();
+    let mut career = new_game(&c);
+    assert!(career.fresh_parts(&c).is_empty());
+    // A part a new game has is never fresh.
+    assert!(!career.mark_seen(&c, "pulse_laser"));
+    bring_home(
+        &mut career,
+        &c,
+        &[(part("automaton_cannon"), 5), (part("automaton_core"), 2)],
+    );
+    career.research(&c, "automaton_cannon").unwrap();
+    career.research(&c, "tamed_core").unwrap();
+    let both = BTreeSet::from(["automaton_cannon".to_string(), "automaton_core".to_string()]);
+    assert_eq!(career.fresh_parts(&c), both);
+    // Seeing it once is enough; locked parts not researched yet are not fresh.
+    assert!(career.mark_seen(&c, "automaton_cannon"));
+    assert!(!career.mark_seen(&c, "automaton_cannon"));
+    assert!(!career.mark_seen(&c, "beam_laser"));
+    assert_eq!(
+        career.fresh_parts(&c),
+        BTreeSet::from(["automaton_core".to_string()])
+    );
+    // The save keeps what was seen.
+    let text = career.to_ron();
+    assert!(
+        text.contains("seen: [\n        \"automaton_cannon\",\n    ],"),
+        "{text}"
+    );
+    assert_eq!(Career::from_ron(&text).unwrap(), career);
+    // A seen part the content no longer has goes without a note.
+    let text = text.replace(
+        "\"automaton_cannon\",\n    ],",
+        "\"automaton_cannon\",\n        \"gone_gun\",\n    ],",
+    );
+    let mut back = Career::from_ron(&text).unwrap();
+    assert!(back.reconcile(&c).is_empty());
+    assert_eq!(back, career);
+}
+
+#[test]
 fn research_refusals() {
     let c = content();
     let mut career = new_game(&c);

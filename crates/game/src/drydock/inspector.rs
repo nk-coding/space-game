@@ -348,7 +348,7 @@ mod tests {
     use super::*;
 
     fn runner_design(content: &Content) -> PlayerDesign {
-        let mut d = PlayerDesign::starter(content);
+        let mut d = PlayerDesign::starter(content, "halvex_runner");
         d.edit(|dock| dock.mirror = false);
         d
     }
@@ -395,7 +395,7 @@ mod tests {
     fn a_palette_part_shows_content_numbers() {
         let content = data::base_content();
         let d = runner_design(&content);
-        let mut ui = DrydockUi::new(&content, &d);
+        let mut ui = DrydockUi::new(&content, &d, &data::career::Unlocks::all(&content));
         ui.picked = Some("capacitor".into());
         let insp = picked(&content, &ui);
         assert_eq!(insp.installed, None);

@@ -5,14 +5,14 @@
 //!
 //! ```text
 //! THE SHIPYARD · RIM                         (#) DRYDOCK  D
-//! Halvex Runner
+//! Rim skiff copy
 //!               BEHAVIOR  B (⑂)       · · ·        (o) RESEARCH
 //!                             ·  .----------.  ·       COMING SOON
 //!                            ·   |  the ship |   ·
 //!                             ·  '----------'  ·
-//!                    FLEET (⁂)        · · ·        (◎) TEST RANGE  T
-//!              COMING SOON          (A) VOYAGES
-//!                                       COMING SOON
+//!                  FLEET  F (⁂)       · · ·        (◎) TEST RANGE  T
+//!                  CORES 2 / 2        (A) VOYAGES
+//! NEW GAME · …                            COMING SOON
 //! ```
 //!
 //! * **The docked ship** is the drydock's working design ([`PlayerDesign`]), drawn with the flight tiles exactly as
@@ -20,10 +20,13 @@
 //!   rebuilt when the design's revision changes) and framed in the dock rectangle by the shared camera rig. A
 //!   dotted ring runs through the buttons and a dotted dock rectangle with gold corners surrounds the ship
 //!   (immediate-mode FX, like the drydock's frame).
-//! * **The ring** ([`SLOTS`]): DRYDOCK (D), BEHAVIOR (B: the BEHAVIOR screen for the working design) and TEST
-//!   RANGE (T: the sandbox with raider waves, `scene::Launch::Range`) work. RESEARCH, VOYAGES and FLEET are
-//!   disabled rings ("COMING SOON") until their tracks give them an action. Every working button and its key
-//!   send one message, [`HomeAction`].
+//! * **The ring** ([`SLOTS`]): DRYDOCK (D), BEHAVIOR (B: the BEHAVIOR screen for the working design), TEST RANGE
+//!   (T: the sandbox with raider waves, `scene::Launch::Range`) and FLEET (F: the fleet layer, `fleet.rs`, with the
+//!   fleet's cores against the mind under its name) work. RESEARCH and VOYAGES are disabled rings ("COMING SOON")
+//!   until their tracks give them an action. Every working button and its key send one message, [`HomeAction`];
+//!   while FLEET is open, the ring and the ship step aside and home's keys wait.
+//! * **Notes** bottom left: what the career has to say (a new game, a save kept as it is, content that changed,
+//!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
 //! * **Coming back**: the ring button top left of the drydock and the BEHAVIOR screen, and M in flight.
 //!
 //! The screen and the ship's mesh are spawned once at start and hidden outside home (like the drydock's). Entering
@@ -38,7 +41,9 @@ use bevy::window::PrimaryWindow;
 use crate::RenderToggles;
 use crate::atlas::Atlas;
 use crate::camera::{CamMode, CameraRig, CameraSet, MIN_PX_PER_M};
+use crate::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use crate::drydock::PlayerDesign;
+use crate::fleet::{self, Fleet};
 use crate::flight_hud::HudFonts;
 use crate::fx::{FxFlush, FxQueue, FxRegions};
 use crate::meshbuf::MeshBuf;
@@ -49,7 +54,7 @@ use crate::ship_view::build_body;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Ring, RingAccent, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_text};
+use crate::ui_kit::{Ring, RingAccent, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_color, set_text};
 
 /// The layout's size in logical px (the stage, centred in the window).
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
@@ -84,10 +89,12 @@ pub enum HomeAction {
     Behavior,
     /// TEST RANGE (T): the sandbox with raider waves.
     TestRange,
+    /// FLEET (F): the fleet layer over home (`fleet.rs` opens it).
+    Fleet,
 }
 
 impl HomeAction {
-    const ALL: [HomeAction; 3] = [HomeAction::Drydock, HomeAction::Behavior, HomeAction::TestRange];
+    const ALL: [HomeAction; 4] = [HomeAction::Drydock, HomeAction::Behavior, HomeAction::TestRange, HomeAction::Fleet];
 
     /// The key and its name on the button.
     fn key(self) -> (KeyCode, &'static str) {
@@ -95,6 +102,7 @@ impl HomeAction {
             HomeAction::Drydock => (KeyCode::KeyD, "D"),
             HomeAction::Behavior => (KeyCode::KeyB, "B"),
             HomeAction::TestRange => (KeyCode::KeyT, "T"),
+            HomeAction::Fleet => (KeyCode::KeyF, "F"),
         }
     }
 }
@@ -118,7 +126,7 @@ const SLOTS: [Slot; 6] = [
     Slot { label: "RESEARCH", glyph: Glyph::Orbit, accent: Tone::Teal, dir: Vec2::new(DIAG, -DIAG), diameter: RING, action: None },
     Slot { label: "TEST RANGE", glyph: Glyph::Target, accent: Tone::Coral, dir: Vec2::new(DIAG, DIAG), diameter: RING, action: Some(HomeAction::TestRange) },
     Slot { label: "VOYAGES", glyph: Glyph::Arrow, accent: Tone::Teal, dir: Vec2::new(0.0, 1.0), diameter: BIG_RING, action: None },
-    Slot { label: "FLEET", glyph: Glyph::Formation, accent: Tone::Gold, dir: Vec2::new(-DIAG, DIAG), diameter: RING, action: None },
+    Slot { label: "FLEET", glyph: Glyph::Formation, accent: Tone::Gold, dir: Vec2::new(-DIAG, DIAG), diameter: RING, action: Some(HomeAction::Fleet) },
     Slot { label: "BEHAVIOR", glyph: Glyph::Tree, accent: Tone::Violet, dir: Vec2::new(-DIAG, -DIAG), diameter: RING, action: Some(HomeAction::Behavior) },
 ];
 
@@ -141,6 +149,20 @@ struct SlotLabel;
 /// A working button.
 #[derive(Component, Clone, Copy)]
 struct HomeButton(HomeAction);
+
+/// The line under FLEET's name: the fleet's cores against the mind (`CORES 2 / 2`).
+#[derive(Component)]
+struct FleetCores;
+
+/// The career's notes bottom left: one head and its words per note.
+#[derive(Component, Clone, Copy)]
+enum NoteText {
+    Head(usize),
+    Body(usize),
+}
+
+/// Notes shown at most (the most serious first; the console has them all): two fit under FLEET on the 1280 × 720 layout.
+const NOTES: usize = 2;
 
 /// The node the dotted ring is drawn through (its size is the ring's).
 #[derive(Component)]
@@ -175,16 +197,16 @@ impl Plugin for HomePlugin {
             .add_systems(PostStartup, (show, remember_start_zoom.run_if(in_state(AppMode::Home))))
             .add_systems(OnEnter(AppMode::Home), enter)
             .add_systems(OnExit(AppMode::Home), exit)
-            .add_systems(Update, show.run_if(state_changed::<AppMode>))
+            .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<Fleet>)))
             .add_systems(
                 Update,
-                (ui_scale, (clicks, keys), apply, rebuild_ship, frame, sync_name)
+                (ui_scale, (clicks, keys).run_if(not(fleet::is_open)), apply, rebuild_ship, frame, sync_name, sync_cores, sync_notes)
                     .chain()
                     .after(UiInputSet)
                     .before(UiStyleSet)
                     .run_if(in_state(AppMode::Home)),
             )
-            .add_systems(PostUpdate, draw_dots.run_if(in_state(AppMode::Home)).after(CameraSet).before(FxFlush));
+            .add_systems(PostUpdate, draw_dots.run_if(in_state(AppMode::Home)).run_if(not(fleet::is_open)).after(CameraSet).before(FxFlush));
     }
 }
 
@@ -225,6 +247,22 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             .with_children(|tl| {
                 tl.spawn(label(fonts, "THE SHIPYARD  ·  RIM", 11.0, c(Tone::Label, 1.0)));
                 tl.spawn((DesignName, prose(fonts, "", 28.0, c(Tone::Number, 1.0))));
+            });
+            // Bottom left: the career's notes, the newest kind last.
+            root.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: px(28),
+                bottom: px(22),
+                width: px(300),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(5),
+                ..default()
+            })
+            .with_children(|notes| {
+                for k in 0..NOTES {
+                    notes.spawn((NoteText::Head(k), label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::top(px(if k == 0 { 0.0 } else { 6.0 })), ..default() }));
+                    notes.spawn((NoteText::Body(k), prose(fonts, "", 11.0, c(Tone::Label, 1.0))));
+                }
             });
             // The stage, centred in the window: the ring, its buttons and the dock.
             root.spawn(Node {
@@ -283,6 +321,9 @@ fn spawn_slot(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style,
                         TextColor(c(Tone::Dim, 1.0)),
                         bevy::text::LetterSpacing::Px(15.0 * 0.3),
                     ));
+                    if action == HomeAction::Fleet {
+                        col.spawn((FleetCores, label(fonts, "", 10.5, c(Tone::Violet, 1.0))));
+                    }
                 }
                 None => {
                     col.spawn(label(fonts, slot.label, 15.0, c(Tone::Dim, 1.0)));
@@ -293,10 +334,10 @@ fn spawn_slot(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style,
     });
 }
 
-/// Home's screen and ship are shown only at home.
+/// Home's screen and ship are shown only at home, and step aside while FLEET is open.
 #[allow(clippy::type_complexity)]
-fn show(mode: Res<State<AppMode>>, mut nodes: Query<&mut Visibility, Or<(With<HomeRoot>, With<HomeShip>)>>) {
-    let want = if *mode.get() == AppMode::Home { Visibility::Inherited } else { Visibility::Hidden };
+fn show(mode: Res<State<AppMode>>, fleet: Res<Fleet>, mut nodes: Query<&mut Visibility, Or<(With<HomeRoot>, With<HomeShip>)>>) {
+    let want = if *mode.get() == AppMode::Home && !fleet.open { Visibility::Inherited } else { Visibility::Hidden };
     for mut v in &mut nodes {
         if *v != want {
             *v = want;
@@ -342,7 +383,7 @@ fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<&HomeButton>, mut o
     }
 }
 
-/// D, B, T.
+/// D, B, T, F.
 fn keys(keys: Res<ButtonInput<KeyCode>>, mut out: MessageWriter<HomeAction>) {
     for a in HomeAction::ALL {
         if keys.just_pressed(a.key().0) {
@@ -361,6 +402,62 @@ fn apply(mut actions: MessageReader<HomeAction>, mut scene: ResMut<Scene>, mut n
                 scene.launch = Some(Launch::Range);
                 next.set(AppMode::Flight);
             }
+            // A layer over home, not a mode: `fleet::open` reads the same message.
+            HomeAction::Fleet => {}
+        }
+    }
+}
+
+/// FLEET's line: the fleet's cores (the docked design and the escorts) against the mind, coral when over it.
+fn sync_cores(
+    design: Res<PlayerDesign>,
+    escorts: Res<EscortDesigns>,
+    granted: Res<Granted>,
+    content: Res<GameContent>,
+    style: Res<Style>,
+    mut line: Single<(&mut Text, &mut TextColor), With<FleetCores>>,
+) {
+    if !(design.is_changed() || escorts.is_changed() || granted.is_changed()) {
+        return;
+    }
+    let cores = fleet_cores(&content.0, design.blueprint(), &escorts.0);
+    let tone = if cores > granted.mind_capacity { Tone::Coral } else { Tone::Violet };
+    let (text, color) = &mut *line;
+    set_text(text, &format!("CORES {cores} / {}", granted.mind_capacity));
+    set_color(color, ui_color(tone.color(&style.ui), 1.0));
+}
+
+/// The career's notes bottom left: the [`NOTES`] most serious (coral, then gold, then the rest, each in order), and
+/// how many more the console has.
+fn sync_notes(career: Res<PlayerCareer>, style: Res<Style>, mut texts: Query<(&NoteText, &mut Text, &mut TextColor, &mut Node)>) {
+    if !career.is_changed() {
+        return;
+    }
+    let rank = |t: Tone| match t {
+        Tone::Coral => 0,
+        Tone::Gold => 1,
+        _ => 2,
+    };
+    let mut shown: Vec<_> = career.notes.iter().collect();
+    shown.sort_by_key(|n| rank(n.tone));
+    let more = shown.len().saturating_sub(NOTES);
+    shown.truncate(NOTES);
+    for (t, mut text, mut color, mut node) in &mut texts {
+        let (k, (s, tone)) = match *t {
+            NoteText::Head(k) => (k, shown.get(k).map_or((String::new(), Tone::Dim), |n| (n.head.clone(), n.tone))),
+            NoteText::Body(k) => {
+                let mut body = shown.get(k).map_or(String::new(), |n| n.body.clone());
+                if more > 0 && k + 1 == shown.len() {
+                    body.push_str(&format!(" (+{more} more in the console)"));
+                }
+                (k, (body, Tone::Label))
+            }
+        };
+        set_text(&mut text, &s);
+        set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
+        let display = if k < shown.len() { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
         }
     }
 }

@@ -16,7 +16,7 @@ starts, salvage blocks, `locked`) is described in `content-model.md`.
 | The content it reads | `Content.families`, `.research`, `.starts`, `Part::salvage`, `Material::salvage`, `locked` | `content-model.md` "Salvage", "Research families", "Research nodes", "Starts" |
 | Cargo and collecting (the items a haul is made of) | `sim::salvage` (track 7B) | `sim.md` "Salvage" |
 | Voyages as content, rolling and running them | `Content.voyages`, `.encounters`; `sim::voyage` (track 7E) | `content-model.md` "Voyages", "Encounters"; `sim.md` "Voyages" |
-| The save document, new game, gating the drydock | `game::storage` namespace `saves/` (track 7F) | not written yet |
+| The save document, new game, the switches, gating the drydock, FLEET | `game::career` (`crates/game/src/career.rs`), `saves/<slot>` in `game::storage`; `drydock/`, `fleet.rs` (track 7F) | [below](#where-the-game-keeps-the-save), `client.md` "Career", "FLEET", `drydock.md` |
 
 The model is pure, like `data::edit` for the drydock (ADR-0030): no Bevy, no I/O, wasm-safe, ordered containers
 only. Every question takes the `Content` it should be answered against.
@@ -50,6 +50,9 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
     },
     escorts: [
         "drone_wing",
+    ],
+    seen: [
+        "automaton_cannon",
     ],
     voyages: {
         "yard_approach": (
@@ -93,6 +96,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `data` | research data in store per family (f32, only amounts above 0) |
 | `materials` | materials in store (whole numbers, only amounts above 0) |
 | `escorts` | saved design ids (`designs/`) flown as escorts; the flagship is the drydock's working design |
+| `seen` | parts research unlocked that the player has since picked or selected in the drydock; left out when empty (added 13 Oct 2026, track 7F: no new format, it has a default) |
 | `voyages` | per voyage ever launched: `launched` (count), `cleared` (the goal was cleared on a voyage that came home), `best_ticks` (the quickest such voyage, sim ticks at 30 per second) |
 | `underway` | the voyage launched and not ended; left out when none |
 | `log` | voyages launched, recalled, lost; items salvaged (parts and fragments unloaded) |
@@ -114,6 +118,10 @@ fields with a default need no new format. The last haul's report is history (wha
   every voyage with `opens_after` whose voyages have all been cleared (`VoyageRecord::cleared`: a goal cleared on
   a voyage that came home). A voyage without `opens_after` opens only through a start. Loading drops records of
   voyages the content no longer has.
+- **Fresh parts** (`fresh_parts(&content)`): `locked` parts a researched node unlocked that are not in `seen` (the
+  drydock's NEW tags). `mark_seen(&content, part)` adds a fresh part to `seen` and says whether it was fresh (the
+  game writes the save then); any other part changes nothing. `reconcile` drops seen ids the content no longer has,
+  without a note (it is what the drydock showed, not progress).
 
 ## Research
 
@@ -216,11 +224,39 @@ Not in the model: kills (the game would have to count them; the plan's log examp
 new game (the game picks it, the model has no clock), whether escort designs still exist (they live in the game's
 storage).
 
+## Where the game keeps the save
+
+Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there, `cargo test -p game career`).
+
+- **The document**: `saves/<slot>` in the player storage (ADR-0031: the browser's local storage on the web, key
+  `space-game/saves/career`; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
+  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 1, saved
+  <unix seconds>` (`CareerDoc`, format `career::FORMAT`). The slot is `career`; `?save=<slot>` plays another one
+  (a storage name: `a-z 0-9 _ -`; another name falls back to `career` with a note).
+- **Loading** (`career::load`, in the plugin's build before the first frame): read → `Career::from_ron` →
+  `reconcile` (the first change and how many more become a note on home). No save, or `?newgame=1`: a new game from
+  the content's first start, seeded with the clock (Unix seconds), written at once; the drydock then docks a copy
+  of the start's ship (`rim_skiff`), saving the last design's unsaved changes first so BLUEPRINTS keeps them.
+- **A save that doesn't read** (broken RON, unknown fields, a header from a newer build) is **kept as it is**: the
+  game runs a new career in memory as a stand-in, never writes it, keeps the drydock's design and says so on home
+  ("THE SAVE IS KEPT AS IT IS"). `?newgame=1` starts over in its place. Content without any start gets the same
+  treatment (a stand-in career that unlocks what the content doesn't lock, mind capacity 0).
+- **Writes**: at a new game, after every FLEET change, when the drydock first shows a fresh part (`seen`); the
+  research screen (7G) writes after UNLOCK and the voyage (7H) at launch and end. Never during a voyage. A failed
+  write leaves the change in the running game and says why (home's notes, FLEET's status line).
+- **`?unlock=all`** (free mode): the drydock offers every part, material and frame (`Unlocks::all`), shows nothing
+  locked and no NEW tags, and checks voyage-readiness against everything. No unlock is ever written: the save keeps
+  the career's own progress (FLEET still saves its escorts).
+- **Escorts**: their saved designs are read at start and whenever home or the drydock opens (`EscortDesigns`); an
+  escort whose design is gone or doesn't read leaves the fleet, the save is written and home notes it.
+
 ## How the game uses it
 
 - **Start**: read `saves/career` → `Career::from_ron` → `reconcile` (show the notes); none: `Career::new(&content,
   start, seed)` with the content's first start.
-- **Drydock**: `unlocks` gates the palette, armour and frames; `voyage_ready` gives the status line.
+- **Drydock**: `unlocks` gates the palette, armour and frames (locked ones shown dimmed); `fresh_parts` gives the
+  NEW tags and `mark_seen` ends them; `voyage_ready` gives the status line's voyage-ready line.
+- **FLEET**: `escorts` and `set_escorts`; `mind_capacity` limits the picks; `voyage_ready` for the fleet.
 - **Research screen**: `data()` and `materials()` on top, `can_pay` per node (the refusal says why not),
   `research` on UNLOCK, then write the save.
 - **Map**: `open_voyages`, `voyage(id)` for cleared and best time, `voyage_ready` for SET COURSE.

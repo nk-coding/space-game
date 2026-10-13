@@ -1,7 +1,8 @@
 //! The stats grid and the status line, from the design report ([`DrydockReport`], `sim::report`): every number
 //! the right panel shows and the line next to TEST-FLY, rewritten whenever the report is (once per design
 //! revision, or when the tuning changes). The mapping is pure ([`stat_cells`], [`status_line`]) so it is tested
-//! without Bevy; [`update`] only writes the resources.
+//! without Bevy; [`update`] only writes the resources. [`voyage`] adds the career's voyage-ready line after the
+//! status line (`career::voyage_line`).
 //!
 //! * **Labels, units and precision** come from content (`stats.ron`: `data::stats::SHIP_STATS` and the part
 //!   stats for mass and build points). Values are shortened to three significant digits (never more decimals
@@ -22,9 +23,11 @@ use data::stats::{format_number, with_unit};
 use sim::DesignReport;
 use sim::report::{Issue, LoadClass, Severity};
 
+use crate::career::{EscortDesigns, Granted, voyage_line};
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::Tone;
 
+use super::PlayerDesign;
 use super::report::DrydockReport;
 use super::state::{DrydockStats, DrydockStatus, StatCell};
 
@@ -259,6 +262,28 @@ pub(super) fn update(report: Res<DrydockReport>, content: Res<GameContent>, mut 
     status.tone = s.tone;
 }
 
+/// The voyage-ready line after the status line: the career's readiness of the fleet with this design as the
+/// flagship and FLEET's escorts (`career::voyage_line`). A design that can't fly is not voyage-ready either.
+pub(super) fn voyage(
+    design: Res<PlayerDesign>,
+    granted: Res<Granted>,
+    escorts: Res<EscortDesigns>,
+    content: Res<GameContent>,
+    mut status: ResMut<DrydockStatus>,
+) {
+    if !(design.is_changed() || granted.is_changed() || escorts.is_changed() || status.is_changed()) {
+        return;
+    }
+    let (line, tone) = match status.grounded {
+        Some(_) => ("NOT VOYAGE-READY".to_string(), Tone::Coral),
+        None => voyage_line(&content.0, &granted, design.blueprint(), &escorts.0),
+    };
+    if status.voyage != line || status.voyage_tone != tone {
+        status.voyage = line;
+        status.voyage_tone = tone;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,7 +295,7 @@ mod tests {
 
     fn runner() -> (Content, DesignReport) {
         let content = data::base_content();
-        let r = report_of(&content, &PlayerDesign::starter(&content)).unwrap();
+        let r = report_of(&content, &PlayerDesign::starter(&content, "halvex_runner")).unwrap();
         (content, r)
     }
 
@@ -417,7 +442,7 @@ mod tests {
     #[test]
     fn real_designs_without_cores_or_parts_are_grounded() {
         let content = data::base_content();
-        let mut d = PlayerDesign::starter(&content);
+        let mut d = PlayerDesign::starter(&content, "halvex_runner");
         d.edit(|dock| dock.mirror = false);
         let cores: Vec<_> = d
             .blueprint()

@@ -67,6 +67,9 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `scene=showcase&fire=1` | the same, but the raiders (`raiders=N` of them, default 3) attack the design under their behavior: for looking at shield hits (add `zoom=70` for a close-up) |
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
+| `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
+| `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
+| `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
@@ -89,8 +92,8 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 
 ## Scenes (`scene.rs`)
 
-- **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of the
-  Halvex Runner, after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
+- **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start and a new game
+  a copy of the career's start ship, the Rim skiff; after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
   the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
@@ -159,8 +162,9 @@ FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::s
 Update                ui_kit (hit testing, text fields) → flight: camera input, HUD text and the home ring, fleet bar,
                       touch widgets, tuning panel (egui) | drydock: DockSet::Input →
                       Apply → Show → ui_kit styles | behavior: BehaviorSet::Input → Apply → Show → ui_kit styles;
-                      the TEXT view's editor in egui's pass | home: clicks and keys → apply → the ship and the
-                      camera → ui_kit styles
+                      the TEXT view's editor in egui's pass | home: clicks and keys (not while FLEET is open) →
+                      apply → the ship and the camera → FLEET's open, input, sync → ui_kit styles
+PreUpdate             career::grant (Granted follows the career)
 PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark)  →  shield::draw_bubbles
                       camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers;
                       the drydock's frame overlay, the behavior graph's dot grid, home's dotted ring and dock)  →
@@ -177,6 +181,8 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   UI roots carry `mode::FlightUi` and are hidden when flight ends. A `SimWorld` always exists (an empty one
   outside flight and before Startup), because many flight systems read it. T in flight goes to `mode::FlightExit`
   (the drydock; a behavior test sets the screen it came from; reset whenever flight ends), M home.
+- **Career** (`career.rs`): the player's career save, loaded before the first frame (`CareerPlugin`, after the
+  storage and before the drydock), and what it grants the screens. See [Career](#career).
 - **TEST IN RANGE** (`test_range.rs`): the `StartTest` message (handled in every mode: from another mode it launches
   a flight, in flight it rebuilds the scene), `check` / `resolve` of the tested program, and `BehaviorWatch`
   (FixedUpdate, after the events: the tested ship's behavior state after each think). `scene.rs` builds the test
@@ -275,16 +281,20 @@ menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), af
 | Drydock | D, or DRYDOCK |
 | BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock) | B, or BEHAVIOR |
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or TEST RANGE |
+| FLEET: the escorts ([FLEET](#fleet)); Esc, CLOSE or its ring button closes it | F, or FLEET |
 | Debug overlay | F3 |
 
 - **The screen**: top left `THE SHIPYARD · RIM` and the working design's name; in the middle the docked ship in a
   dotted dock rectangle with gold corners; around it a dotted ellipse through six ring buttons (`ui_kit::ring_node`
   with a `RingAccent`, glyphs from `ui_icons`), each labelled beside it (the key dim after the name): DRYDOCK
-  (white, top), BEHAVIOR (violet, top left), TEST RANGE (coral, bottom right), and RESEARCH (top right), VOYAGES
-  (the big one at the bottom, the mockup's LAUNCH VOYAGE) and FLEET (bottom left) as disabled rings with
-  `COMING SOON` until their tracks (7G, 7I, 7F) give them an action. The mockup's galaxy map, fabricator and storage
-  wait for their phases; RESEARCHING (top right) and HAUL UNLOADED (bottom left) come with research. The place
-  name is UI chrome in code until content has places.
+  (white, top), BEHAVIOR (violet, top left), TEST RANGE (coral, bottom right), FLEET (gold, bottom left; under it
+  `CORES 2 / 2`: the fleet's logic cores against the mind capacity, coral when over), and RESEARCH (top right) and
+  VOYAGES (the big one at the bottom, the mockup's LAUNCH VOYAGE) as disabled rings with `COMING SOON` until their
+  tracks (7G, 7I) give them an action. Bottom left the career's notes (a head and a line each; the two most serious, coral before gold, and how many more the console has): a new
+  game and its start's summary, a save kept as it is, content that changed under the save, `?save=`, `?unlock=all`,
+  an escort whose design is gone ([Career](#career)). The mockup's galaxy map, fabricator and storage wait for their
+  phases; RESEARCHING (top right) and HAUL UNLOADED come with research. The place name is UI chrome in code until
+  content has places.
 - **The ship** is `drydock::PlayerDesign` drawn exactly as the drydock draws it (`ship_model::design_visual` →
   `blueprint_visual` → `ship_view::build_body`, one mesh, rebuilt when the revision or the glow toggle changes),
   framed by the camera rig in the dock rectangle with a cell of margin (at most 48 px per cell on the 1280 × 720
@@ -292,14 +302,65 @@ menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), af
   skipping the buttons.
 - **Layout**: a 1280 × 720 stage centred in the window; larger windows scale it (`UiScale` = min(w / 1280,
   h / 720), 1 to 2), so 1600 × 900 shows the same layout 1.25× larger.
-- **Actions**: the working buttons and their keys send `HomeAction::{Drydock, Behavior, TestRange}`; `apply` sets
-  the next mode (TEST RANGE sets `Scene::launch = Some(Launch::Range)`: `OnEnter(Flight)` builds the sandbox as at a
-  plain start, not a test flight). A disabled ring carries no action, so it sends nothing. Coming back: the ring
-  button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`), and in any
-  flight M or the ring top left of the HUD.
-- **Modes**: the screen and the ship's mesh are spawned once and hidden outside home, like the drydock's. Entering
-  home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight find the
-  camera as they left it.
+- **Actions**: the working buttons and their keys send `HomeAction::{Drydock, Behavior, TestRange, Fleet}`; `apply`
+  sets the next mode (TEST RANGE sets `Scene::launch = Some(Launch::Range)`: `OnEnter(Flight)` builds the sandbox as
+  at a plain start, not a test flight); FLEET is a layer, not a mode (`fleet::open` reads the same message). A
+  disabled ring carries no action, so it sends nothing. Coming back: the ring button top left of the drydock and the
+  BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`), and in any flight M or the ring top left of the
+  HUD.
+- **Modes**: the screen and the ship's mesh are spawned once and hidden outside home, like the drydock's, and while
+  FLEET is open (home's clicks, keys and dots wait then). Entering home keeps the flight camera's zoom; leaving gives
+  it back with the UI scale 1, so the drydock and flight find the camera as they left it.
+
+## Career
+
+The player's progression in the game (track 7F, 13 Oct 2026; GDR-0062, GDR-0063, ADR-0033), `career.rs`: the save,
+a new game, the development switches and what the career grants the screens. The rules are the pure model
+`data::career`; where the save lives, when it is written and how a broken one is kept: `docs/career.md` "Where the
+game keeps the save".
+
+- **`CareerPlugin`** (after `StoragePlugin`, before `DrydockPlugin`) loads `saves/<slot>` in its build, before the
+  first frame (`career::load`): reconciled with the content, or a new game from the content's first start
+  (written at once; the drydock then docks a copy of the start's ship, `rim_skiff`), or a stand-in when the save
+  doesn't read (kept as it is, never written). Every problem is a note (`PlayerCareer::notes`: home's note block
+  and the console), never a panic.
+- **Resources**: `PlayerCareer` (the `Career`, the slot, the switches, the notes; `update(storage, f)` changes and
+  writes it), `Granted` (the unlocks the drydock offers: the career's, or everything with `?unlock=all`; the fresh
+  parts for the NEW tags; the mind capacity; recomputed in `PreUpdate` whenever the career changes) and
+  `EscortDesigns` (the escorts' saved designs, re-read when home or the drydock opens; a gone one leaves the fleet
+  with a note).
+- **Messages**: `SeenPart` (the drydock showed a fresh part: it is fresh no more, the save is written).
+- **Words**: `career::readiness_words` and `voyage_line` turn `data::career::voyage_ready` into the drydock's and
+  FLEET's lines (`VOYAGE-READY · CORES 2 / 2`, `NOT VOYAGE-READY · USES BEAM LASER · +2`, `3 CORES, YOUR MIND RUNS
+  2`, `NO CARGO · YOU CAN'T BRING SALVAGE HOME` as a gold warning); `unlocked_by` names the research node that
+  unlocks a locked part.
+- **Switches** (URL parameters): `?save=<slot>`, `?newgame=1`, `?unlock=all`. Test flights, the test range and TEST
+  IN RANGE never touch the save.
+
+## FLEET
+
+The fleet on the dock ([GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md), after
+`docs/plans/mockups/fleet-b.png`), `fleet.rs`, a layer over home (F or the FLEET ring). Screenshots:
+`docs/results/career-fleet*.png`.
+
+- **The layer**: top left the ring button (closes it), `SHIPYARD › FLEET` and "Fleet", and the rule in words
+  (escorts fly the behavior their design names and follow the flagship's lock); top right `CORES 3 / 4` with one dot
+  per core of the mind (filled for the fleet's, coral past the capacity) and CLOSE ESC. In the middle the flagship
+  (the drydock's working design) in a bracketed box, under it its name, cores and cargo and the fleet's voyage-ready
+  line. Around it the escort slots (`MAX_ESCORTS` = 4 places: left and right, upper and lower): each filled slot
+  shows its design, `ESCORT n`, name, cores and cargo, and REMOVE; one empty slot more while there is room says how
+  many cores are free for it. At the bottom `YOUR DESIGNS · PICK ONE FOR ESCORT n` and four cards of the saved designs
+  (most recently saved first; the wheel scrolls): the ship, name, size, cores, cargo, and what a pick would do
+  (`FITS · 1 CORE` teal, `IN THE FLEET · 1 CORE`, `USES BEAM LASER` gold: it may fly but the fleet is not voyage-ready,
+  `NEEDS 2 CORES · 1 FREE`, `CAN'T FLY · NO THRUST`, `NO LOGIC CORE` coral). The last line says what happened.
+- **Picking** (`fleet::pick`): a click on a slot picks it (teal outline); a click on a card puts that design into the
+  picked slot (the empty slot adds an escort) when the mind runs the fleet then: the flagship's cores, the other
+  escorts' and the design's together within the capacity (`Granted::mind_capacity`); a design without a logic core
+  or that can't fly is refused too, with the reason. A design may fly in more than one slot. Every change writes the
+  save (`escorts`); the slot then moves on to the next empty one.
+- **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
+- Not yet: the mockup's preview of a picked card before ENTER adds it (one click adds), the dotted formation ring
+  and the lines to the flagship, the escort's behavior name.
 
 ## Drydock
 
@@ -319,7 +380,7 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 | Grid (mouse) | left button: the tool (drag: paint and erase strokes, the fill rectangle, moving the selected part); right button: erase |
 | Selected part | F flip, Delete / Backspace delete, Esc deselect (Q / E turn it) |
 | Mirror / bevel | M / Shift+B |
-| Armour material | 1–9 (the ARMOR pills in content order; locked materials are left out) |
+| Armour material | 1–9 (the ARMOR pills in content order; a locked material's key does nothing) |
 | Undo / redo / save | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y / Ctrl+S (the browser's save dialog stays shut) |
 | Search the parts | / (Esc or Enter leaves the field; a click elsewhere too) |
 | Zoom | wheel (around the cursor), + / −, the − / + buttons; 100 % = the whole frame fits |
@@ -330,17 +391,19 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 | BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box. While a screen covers the design the other keys do nothing (Ctrl+S still saves; the bottom bar's buttons work) |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
-frame's content name) and the design's name (a click renames it; "UNSAVED" or "SAVED" after it); the ARMOR pills
-(every unlocked content material with an `armor` block) and the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS,
-ARCS: any combination, drawn over the design); left the search, the category pills (content categories) and the
-part list (unlocked parts; icon, name, footprint and one key stat from `Content::part_stats`: the first stat after
-build points, control, mass, hit points, power draw and heat, else the bonus it gives, else its hit points; the
-wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
+frame's content name) and the design's name (a click renames it; "UNSAVED"
+or "SAVED" after it); the ARMOR pills (every content material with an `armor` block; one the career hasn't
+unlocked is dimmed with a lock and does nothing, one no research unlocks is left out) and the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS, ARCS:
+any combination, drawn over the design); left the search, the category pills (content categories), the section
+(`WEAPONS · 1 · 2 LOCKED`) and the part list (the unlocked parts: icon, name, footprint and one key stat from
+`Content::part_stats`: the first stat after build points, control, mass, hit points, power draw and heat, else the
+bonus it gives, else its hit points; a gold NEW tag on fresh ones; then the locked parts research can unlock, dimmed with a lock and
+`LOCKED · <research node>`, not pickable, GDR-0065; the wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
 FIREPOWER, CARGO, CONTROL, DEVICE LOAD, then a compact TOP SPEED, TURN 90°, MASS, BUILD POINTS block, all from
 `sim::report`) and SELECTED PART (the selected placed part with the report's numbers and its controls, else the
 picked part: icon, name, footprint and category, summary, stat lines and bonus lines); below the grid the hover
 cell, mirror and axis, why the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo,
-MIRROR, BEVEL, the status line, BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key), BLUEPRINTS,
+MIRROR, BEVEL, the status line and the voyage-ready line after it (wrapping under it when both don't fit), BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key), BLUEPRINTS,
 EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
 screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or the BEHAVIOR screen is open). The phone layout comes later.
 
@@ -348,9 +411,10 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through
   `PlayerDesign::edit`, which bumps `revision`; `replace` (another design opened) bumps both (cells of the old
   design, the selection, mean nothing in the new one). At start it is the last session's working design
-  (`library::restore_working`, in `BlueprintsPlugin`'s build), else the starter: a copy of `halvex_runner` centred
-  in the first content frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, named "Halvex Runner copy";
-  it flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, the
+  (`library::restore_working`, in `BlueprintsPlugin`'s build), else (and at every new game) the starter: a copy of
+  the career's start ship (`PlayerCareer::start_ship`: `rim_skiff` for `rim_awakening`) centred in the first content
+  frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, named "Rim skiff copy"; a new game saves the last
+  design's unsaved changes first. It flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, the
   `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content ships.
 - **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or tuning
   change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
@@ -359,15 +423,19 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   on the storage layer, the behavior a design names and its fallback with a banner ([drydock.md](drydock.md#behaviors-storage-designs-and-tests)).
 - **Stats and status** (`stats.rs`): whenever `report::DrydockReport` is recomputed, `stats::update` fills
   `DrydockStats` and `DrydockStatus` from it (`CAN'T FLY` for blockers, an empty frame or a design that doesn't
-  compile, which sets `grounded`; else `FLIGHT-READY` with the most important warning). Mapping, wording and
-  tones: `docs/drydock.md` "Client: stats and overlays".
+  compile, which sets `grounded`; else `FLIGHT-READY` with the most important warning); `stats::voyage` adds the
+  career's voyage-ready line for the fleet with this design as the flagship (`career::voyage_line`). Mapping,
+  wording and tones: `docs/drydock.md` "Client: stats and overlays".
 - **Overlays** (`overlays.rs`): the five overlays and the issue marks, one world-space mesh over the design (a
   child of its mesh), rebuilt when the report or the overlay pills change. Details in `docs/drydock.md`.
 - **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, the brush rotation, the picked part, the
   category, the search text; the mirror and bevel modes are the editor's, `PlayerDesign::dock().mirror` and
-  `.bevel`), `DrydockStatus` (`grounded`, the status line and its tone), `DrydockStats` (the stats grid's cells:
-  label, value, tone, optional bar); `palette_parts` and `armor_materials` (what the player has: content without
-  the `locked` entries). The widgets only show these.
+  `.bevel`), `DrydockStatus` (`grounded`, the status line and its tone, the voyage-ready line and its tone),
+  `DrydockStats` (the stats grid's cells: label, value, tone, optional bar); `palette_parts` (what the career has
+  unlocked, `career::Granted`), `palette_list` (a category's or a search's parts: the unlocked ones, then the locked
+  ones) and `armor_materials` (every armour material; the pills dim the locked ones). The widgets only show these.
+  Locked parts and materials can't be picked: their rows and pills are disabled, and `actions::apply` refuses them
+  (the keys 1–9 reach locked materials too). A design that uses locked parts still opens, shows and test-flies.
 - **Editing** (`tools.rs`, `ghost.rs`, `inspector.rs`, 13 Oct 2026; `docs/drydock.md` "Client: editing"): the
   tools on the grid (`tools::Gesture`, device-free), `tools::Selection` (a cell), undo / redo, the ghost of the edit
   under the cursor from the editing model's previews, the fill rectangle and selection brackets, the refusal after
@@ -405,13 +473,15 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
   status for the current revision (`blueprints::announce`).
 - **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
-  gold, the glowing primary, disabled, bare list rows), ring buttons (plain, or glowing in an accent colour:
+  gold, the glowing primary, disabled, bare list rows; `PillLock`: a lock icon shown only while the pill is
+  disabled, for locked armour and frames), ring buttons (plain, or glowing in an accent colour:
   `RingAccent`, home's ring), value bars, corner brackets and a one-line
   text field; hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
-- **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, or a glyph Barlow lacks: undo, redo, play,
-  search, menu, diamond; home's grid, tree, orbit, arrow, target, formation) is drawn as a world-space mesh of the main camera placed over the node's rectangle every
+- **Icons in the UI** (`ui_icons.rs`): a `UiIcon` on a node (a part, a whole design for FLEET, or a glyph Barlow
+  lacks: undo, redo, play, search, menu, diamond, lock; home's grid, tree, orbit, arrow, target, formation) is drawn
+  as a world-space mesh of the main camera placed over the node's rectangle every
   frame (screen → world through the rig, scale 1 / zoom, z 600). A part icon is a one-part blueprint through
   `build_body`: the flight tile itself, composited in sRGB like the ships, so its colours are exactly the
   flight tiles' (bevy_ui image nodes would sample the sRGB atlas without encoding for the sRGB compositing and
