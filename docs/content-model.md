@@ -459,7 +459,7 @@ keyword), so there is no second representation to keep in sync and errors point 
     summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(58%)",
+        "when target_in_range(120%) and cycle(9s) >= 3s -> orbit(58%)",
         "always -> approach(85%)",
     ],
 )

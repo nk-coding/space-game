@@ -418,6 +418,34 @@ fn disarmed_enemies_clear_their_site_and_do_not_block_the_recall() {
     assert!(w.can_recall(Owner::PLAYER), "only armed awake enemies block the recall");
 }
 
+/// GDR-0074: a fleet with no working gun may always recall (the emergency warp), even with armed enemies near; an
+/// armed escort beside it takes that away again.
+#[test]
+fn a_disarmed_fleet_may_recall_under_fire() {
+    let c = content();
+    let (mut w, me) = voyage_world(&c, "yard_approach", 3);
+    let (k, pos) = goal(&w);
+    put(&mut w, me, pos + Vec2::new(0.0, -60.0));
+    step(&mut w);
+    assert_eq!(state(&w, k), SiteState::Awake);
+    assert!(!w.fleet_disarmed(Owner::PLAYER));
+    assert!(!w.can_recall(Owner::PLAYER), "armed raiders within 200 m");
+    w.step(&TickInputs {
+        damage: kill_guns(&w, me),
+        ..Default::default()
+    });
+    assert!(!w.ship(me).unwrap().is_armed());
+    assert!(w.voyage().unwrap().sites()[k].ships().iter().any(|&s| w.armed_enemy(Owner::PLAYER, w.ship(s).unwrap())));
+    assert!(w.fleet_disarmed(Owner::PLAYER));
+    assert!(w.can_recall(Owner::PLAYER), "the emergency recall");
+    assert!(!w.fleet_disarmed(Owner(3)) && !w.can_recall(Owner(3)), "no vessels, nothing to recall");
+    // An armed escort beside the disarmed flagship: the fleet is armed, the raiders block the recall again.
+    let at = w.ship(me).unwrap().piece(w.ship(me).unwrap().control_piece().unwrap()).unwrap().com_world();
+    w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(at + Vec2::new(10.0, 0.0), 0.0));
+    assert!(!w.fleet_disarmed(Owner::PLAYER));
+    assert!(!w.can_recall(Owner::PLAYER));
+}
+
 /// Clearing is final, so it must not fire on a passing state (13 Oct 2026 review): an awake site whose armed
 /// enemies all went dormant (their owner's mind capacity cut to 0) stays awake; dormant enemies do not block the
 /// recall; once they run again they do.

@@ -17,8 +17,9 @@
 //! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
 //!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
 //!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
-//! * **Recall** ([`Sim::can_recall`], GDR-0062, GDR-0068): no armed awake enemy ([`Sim::armed_enemy`]) within
-//!   `VoyageTuning::recall_radius` of any of the owner's vessels.
+//! * **Recall** ([`Sim::can_recall`], GDR-0062, GDR-0068, GDR-0074): no armed awake enemy ([`Sim::armed_enemy`])
+//!   within `VoyageTuning::recall_radius` of any of the owner's vessels, or none of its vessels armed (the
+//!   emergency recall, [`Sim::fleet_disarmed`]).
 //!
 //! Everything works by owner (the player and the enemy side passed to `start_voyage`), so co-op can add more
 //! player owners later. The voyage's state is in the state hash. Cost per step: one pass over this step's events,
@@ -273,6 +274,11 @@ fn place_site(
         }
     }
     good.or(best).map_or(Vec2::ZERO, |(_, p)| p)
+}
+
+/// A ship's controlling piece's centre of mass in the world (`None` without one).
+fn control_com(s: &Ship) -> Option<Vec2> {
+    Some(s.piece(s.control_piece()?)?.com_world())
 }
 
 /// Radius of a design's hull circle about the point a spawn pose places (m): the farthest corner of any of its
@@ -548,27 +554,43 @@ impl Sim {
         ship.is_armed() && self.awake_enemy(owner, ship)
     }
 
-    /// May `owner` recall home now (GDR-0062, GDR-0068)? It needs a vessel, and no armed awake enemy
-    /// ([`Sim::armed_enemy`]) may be within `VoyageTuning::recall_radius` (centre of mass to centre of mass) of any
-    /// of its vessels.
+    /// May `owner` recall home now (GDR-0062, GDR-0068, GDR-0074)? It needs a vessel, and either no armed awake
+    /// enemy ([`Sim::armed_enemy`]) is within `VoyageTuning::recall_radius` (centre of mass to centre of mass) of any
+    /// of its vessels, or none of its vessels has a working gun ([`Sim::fleet_disarmed`]: the emergency recall, the
+    /// same warp).
     pub fn can_recall(&self, owner: Owner) -> bool {
         let r = self.config().voyage.recall_radius;
-        let at = |s: &Ship| Some(s.piece(s.control_piece()?)?.com_world());
-        let mine = || {
-            self.ships
-                .iter()
-                .filter(|s| s.team() == Some(owner))
-                .filter_map(at)
-        };
+        let mine = || self.own_vessels(owner).filter_map(control_com);
         if mine().next().is_none() {
             return false;
         }
-        !self
-            .ships
+        self.fleet_disarmed(owner)
+            || !self
+                .ships
+                .iter()
+                .filter(|s| self.armed_enemy(owner, s))
+                .filter_map(control_com)
+                .any(|q| mine().any(|p| (q - p).length_squared() <= r * r))
+    }
+
+    /// Has `owner` vessels and none of them a working gun ([`Ship::is_armed`])? Then its recall is an emergency
+    /// warp that armed enemies near do not block (GDR-0074).
+    pub fn fleet_disarmed(&self, owner: Owner) -> bool {
+        let mut any = false;
+        for s in self.own_vessels(owner) {
+            if s.is_armed() {
+                return false;
+            }
+            any = true;
+        }
+        any
+    }
+
+    /// `owner`'s ships with a controlling piece (its vessels, running, dark or dormant).
+    fn own_vessels(&self, owner: Owner) -> impl Iterator<Item = &Ship> + '_ {
+        self.ships
             .iter()
-            .filter(|s| self.armed_enemy(owner, s))
-            .filter_map(at)
-            .any(|q| mine().any(|p| (q - p).length_squared() <= r * r))
+            .filter(move |s| s.team() == Some(owner) && s.control_piece().is_some())
     }
 
     fn running(&self, ship: ShipId) -> bool {

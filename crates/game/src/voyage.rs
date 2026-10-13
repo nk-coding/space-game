@@ -11,7 +11,8 @@
 //!   rolled from the seed the next launch would get and never written into the save.
 //! * **Running** ([`VoyageRun`]): kills and ships lost are counted from the sim's `VesselLost` events, site events
 //!   become banners, R or the RECALL pill asks for the recall, which starts a 3 s warp-out only when the sim allows
-//!   it (`Sim::can_recall`: no armed awake enemy within 200 m).
+//!   it (`Sim::can_recall`: no armed awake enemy within 200 m, or no working gun left in the fleet: the emergency
+//!   recall, GDR-0074, which the hint names).
 //! * **Endings**: the warp-out ends at home with every surviving vessel's cargo as the haul
 //!   (`VoyageEnd::Recalled`, the goal cleared or not); losing every vessel shows `SHIP LOST · RECALLED HOME` and
 //!   ends 3 s later (`VoyageEnd::Lost`: the haul stays in the wrecks). Either way the save is written and the
@@ -92,6 +93,9 @@ pub struct VoyageRun {
     pub abandon: bool,
     /// The sim allows the recall now (refreshed every tick).
     pub can_recall: bool,
+    /// No vessel of the fleet has a working gun (`Sim::fleet_disarmed`): the recall is an emergency warp that armed
+    /// enemies near do not block (GDR-0074; refreshed every tick).
+    pub emergency: bool,
     /// Enemy vessels lost (destroyed or burned out), and the player's.
     pub kills: u32,
     pub ships_lost: u32,
@@ -341,9 +345,13 @@ pub fn encounter_name(content: &Content, encounter: &str) -> String {
     content.encounters.get(encounter).map_or(encounter, |e| e.name.as_str()).to_uppercase()
 }
 
-/// The RECALL pill and the line under it: its text, the line, and whether it can be pressed.
-pub fn recall_words(phase: Phase, can_recall: bool, tick: u64) -> (String, String, bool) {
+/// The RECALL pill and the line under it: its text, the line, and whether it can be pressed. `emergency`: the fleet
+/// has no working gun, so the recall is the emergency warp (GDR-0074).
+pub fn recall_words(phase: Phase, can_recall: bool, emergency: bool, tick: u64) -> (String, String, bool) {
     match phase {
+        Phase::Flying if can_recall && emergency => {
+            ("RECALL".into(), "EMERGENCY RECALL  ·  NO WORKING GUN  ·  WARP HOME 3 S".into(), true)
+        }
         Phase::Flying if can_recall => ("RECALL".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true),
         Phase::Flying => ("RECALL".into(), "ARMED ENEMIES NEAR  ·  NO RECALL".into(), false),
         Phase::Warping { home_at } => ("WARPING".into(), format!("HOME IN {} S", seconds_left(home_at, tick)), false),
@@ -406,6 +414,7 @@ fn voyage_tick(
     }
     let alive = sim.vessels(PLAYER).next().is_some();
     run.can_recall = alive && sim.can_recall(PLAYER);
+    run.emergency = alive && sim.fleet_disarmed(PLAYER);
     let asked = std::mem::take(&mut run.recall);
     let abandon = std::mem::take(&mut run.abandon);
     match run.phase {
@@ -422,7 +431,8 @@ fn voyage_tick(
         Phase::Flying if asked => {
             if run.can_recall {
                 run.phase = Phase::Warping { home_at: tick + HOME_TICKS };
-                scene.say("WARPING HOME".into(), "THE HAUL COMES WITH YOU".into(), Tone::Teal, now + 3.0);
+                let title = if run.emergency { "EMERGENCY WARP" } else { "WARPING HOME" };
+                scene.say(title.into(), "THE HAUL COMES WITH YOU".into(), Tone::Teal, now + 3.0);
             } else {
                 scene.say("NO RECALL".into(), "ARMED ENEMIES WITHIN 200 M".into(), Tone::Coral, now + 2.0);
             }
@@ -682,11 +692,14 @@ mod tests {
         assert_eq!(title(&content, "x"), "X");
         assert_eq!((clock(0), clock(30 * 425), clock(30 * 3600 + 29)), ("0:00".into(), "7:05".into(), "60:00".into()));
         assert_eq!(encounter_name(&content, "raider_pack"), "RAIDER PACK");
-        assert_eq!(recall_words(Phase::Flying, true, 0), ("RECALL".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true));
-        assert!(!recall_words(Phase::Flying, false, 0).2);
-        assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, 1), ("WARPING".into(), "HOME IN 3 S".into(), false));
-        assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, 61).1, "HOME IN 1 S");
-        assert!(!recall_words(Phase::Lost { home_at: 90, left: 2, abandoned: false }, true, 0).2);
+        assert_eq!(recall_words(Phase::Flying, true, false, 0), ("RECALL".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true));
+        assert!(!recall_words(Phase::Flying, false, false, 0).2);
+        // GDR-0074: a fleet without a working gun gets the emergency recall, and the hint says why.
+        let (_, line, enabled) = recall_words(Phase::Flying, true, true, 0);
+        assert!(enabled && line.starts_with("EMERGENCY RECALL"), "{line}");
+        assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, false, 1), ("WARPING".into(), "HOME IN 3 S".into(), false));
+        assert_eq!(recall_words(Phase::Warping { home_at: 90 }, true, true, 61).1, "HOME IN 1 S");
+        assert!(!recall_words(Phase::Lost { home_at: 90, left: 2, abandoned: false }, true, true, 0).2);
     }
 
     /// A voyage rolled and started as the scene does: banners for its site events, the site count.

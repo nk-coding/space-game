@@ -41,7 +41,10 @@
         hp: 1,
         power: (draw: 2, tier: Low),
         heat: (output: 1, limit: 3),
-        weapon: (family: Kinetic, damage: 1.2, range: 75, delivery: Projectile(rate: 1.5, speed: 90, penetration: 1, recoil: 2)),
+        // `damage` is per second, so a shot deals damage / rate. 14 Oct 2026 (GDR-0074): rate 1.5 → 1.2 and speed
+        // 90 → 150 (a shot 0.8 → 1 hit point: it takes a gun off in one hit; the same damage per second), so the
+        // reverse-engineered cannon is an upgrade for the starter (docs/results/slice-balance-2026-10-13.md).
+        weapon: (family: Kinetic, damage: 1.2, range: 75, delivery: Projectile(rate: 1.2, speed: 150, penetration: 1, recoil: 2)),
         salvage: (family: "kinetic", data: 3),
     ),
 ]

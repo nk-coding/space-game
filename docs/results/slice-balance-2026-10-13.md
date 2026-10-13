@@ -24,6 +24,9 @@ placeholder; this report says how they play against each other for a scripted pi
 - Not changed: the sandbox wave (its size is client code; the test range flies the player's own design, and the
   starter wins only 50% of waves of 3). Open: the reverse-engineered cannon is a step back for the scripted pilot; a
   disarmed ship cannot escape a raider of its own top speed.
+- 14 Oct 2026, [GDR-0074](../gdr/0074-test-range-waves-emergency-recall-cannon.md): a disarmed fleet may always
+  recall, the cannon is an upgrade (with `raider_basic` attacking 3 s of 9), test-range waves follow the flown
+  design; see the last section.
 
 ## Method
 
@@ -226,3 +229,78 @@ target/release/examples/voyage --voyage halvex_drift --design skiff_hauler.ron -
 is this change. The sandbox numbers come from a copy of `../space-game-balance` pointed at this worktree, with the
 orbit variant's base rule moved to 58% and the shield defaults to 3 / 0.2 (the content since GDR-0061), setups for
 waves of 4 and 5 and for the starter, and an environment switch for packs at rest 250 m ahead of a moving Runner.
+
+## GDR-0074 (14 Oct 2026): emergency recall, the cannon, test-range waves
+
+[GDR-0074](../gdr/0074-test-range-waves-emergency-recall-cannon.md) answered the three open findings above. Same
+runner, pilot and seeds (1–60), release build on `dev` `19f252c` plus this change, load average about 1–2.
+
+**Emergency recall** (`Sim::can_recall`: also when none of the owner's vessels has a working gun). The pilot already
+goes home when disarmed; now the sim lets it. Old content, before → after the rule (clear / home / lost / out of time):
+
+| Voyage | `rim_skiff` | Halvex Runner | Runner + `rim_skiff` |
+|---|---|---|---|
+| yard_approach | 35 / 15 / 2 / 8 → 37 / 22 / 1 / 0 | 36 / 17 / 5 / 2 → 36 / 21 / 3 / 0 | – → 53 / 6 / 1 / 0 |
+| halvex_drift | 22 / 14 / 12 / 12 → 22 / 33 / 5 / 0 | 40 / 15 / 4 / 1 → 40 / 17 / 3 / 0 | – → 47 / 8 / 2 / 3 |
+| corran_reach | 9 / 27 / 9 / 15 → 9 / 48 / 3 / 0 | 27 / 24 / 5 / 4 → 27 / 28 / 3 / 2 | – → 39 / 17 / 1 / 3 |
+| wardens_gate | 2 / 31 / 8 / 19 → 2 / 57 / 1 / 0 | 12 / 39 / 6 / 3 → 12 / 44 / 4 / 0 | 25 / 29 / 2 / 4 → 24 / 32 / 1 / 3 |
+
+The runs that ended chased until the time ran out now come home with their haul; fewer are lost (a disarmed ship
+warps out instead of being rammed apart). Clears are unchanged. With an armed escort the fleet is still armed, so a
+few escort runs still end out of time.
+
+**The cannon.** In content `damage` is per second and a projectile deals `damage / rate`: the old cannon's 1.2 at
+1.5 shots/s is 0.8 per shot, two hits for a 1-hit-point gun. That is why `skiff_cannon` lost: a raider's nose cannon
+took two hits to come off while the starter's pulse lasers took two raider hits each. Damage per second barely
+matters; a shot of a full hit point does (a starter with cannons, the raiders unchanged, 60 seeds: damage 1.2–1.49 at
+rate 1.5 clears 5–6, 1.5 clears 50; rate 3 at the same shot clears 12; speed 160 alone clears 13). But the raiders,
+the hunters and the Warden carry the same gun, and a one-hit raider shot takes the starter's lasers and the Runner's
+beams off just as fast (the stock starter fell from 37 to 16–22). So the change comes in two parts:
+
+- `automaton_cannon`: rate 1.5 → 1.2, projectile speed 90 → 150 m/s, damage per second 1.2 (unchanged), range 75:
+  a shot of 1 hit point, fewer and faster shots (kinetic: heavy rounds, recoil as before).
+- `raider_basic`: attacks for 3 s of every 9 instead of 5 (orbits for the other 6). Searched with the cannon above:
+  4 s left the Runner at 19–21 of 60 on the first voyage, 3.5 s at 24; 3 s was the only value tried that kept every setup
+  within noise of where it was (±4 of 60) or above.
+
+Goal cleared and home (of 60, emergency recall in both), before → after; `skiff_cannon` is `rim_skiff` with
+`automaton_cannon` in place of both pulse lasers:
+
+| Voyage | `rim_skiff` | `skiff_cannon` | Halvex Runner | Runner + `rim_skiff` |
+|---|---|---|---|---|
+| yard_approach | 37 → 37 | 5 → **41** | 36 → 38 | 53 → 57 |
+| halvex_drift | 22 → 19 | 9 → 32 | 40 → 46 | 47 → 48 |
+| corran_reach | 9 → 10 | 5 → 21 | 27 → 40 | 39 → 43 |
+| wardens_gate | 2 → 2 | 1 → 11 | 12 → 17 | 24 → 41 |
+
+On 60 other seeds (61–120): `rim_skiff` 25 → 35 and `skiff_cannon` 5 → 45 on the first voyage, the Runner 28 → 38,
+Runner + starter at the Warden's gate 24 → 32. So the cannon is now the upgrade GDR-0074 asks for (first voyage 41
+and 45 against the stock starter's 37 and 35), and the raiders are not stronger: about the same for the starter,
+weaker for the Runner from the third voyage on (the Warden with a Runner and an escort 40% → 68% on seeds 1–60,
+40% → 53% on 61–120). The Warden's gate is now easier than the GDR-0073 curve meant; its pack or the Warden's
+escort count is the knob if that matters in play.
+
+**Sandbox waves** (the balance harness, a copy pointed at this worktree with setups for 1–6 raiders and the
+starter; 200 seeds, win / loss / timeout %, before → after the cannon and `raider_basic` change):
+
+| Setup | 2 raiders | 3 raiders | 4 raiders | 5 raiders | 6 raiders |
+|---|---|---|---|---|---|
+| Runner, passive pilot | 100 → 100 | 98 → 100 | 88 → **96** | 61 → 78 | 34 → 46 |
+| Runner, closing pilot | – | 98 → 100 | 86 → **94** | 58 → 86 | – |
+| rim_skiff, passive pilot | 98 → **96** | 50 → 67 | 10 → 16 | – | – |
+| rim_skiff, closing pilot | 97 → **88** | 54 → 54 | 24 → 18 | – | – |
+| Runner under `skirmisher`, 3 raiders | | 50 / 24 / 26 → 54 / 28 / 18 | | | |
+| 3 Sample early under `skirmisher` vs 3 | | 58 / 24 / 19 → 32 / 46 / 22 | | | |
+| Sample early under `skirmisher` vs 1 | 23 / 70 / 7 → 16 / 80 / 4 (1 raider) | | | | |
+
+AI-flown early ships with 1-hit-point guns lose more (a one-hit raider shot); piloted ships and the Runner win more.
+
+**Test-range waves follow the flown ship** (`scene::wave_size`, placeholder): the design's build points over a
+raider's (15.8), halved and rounded, at least 1, at most 8. The starter (59) meets 2 raiders (96% / 88% won above),
+the Runner (132.5) 4 (96% / 94%), `sample_mid` (112) 4, `sample_early` (50) 2. Halving keeps both slice ships at
+about nine wins in ten; the starter's next size up (3) it wins 54–67%. The tuning panel's raiders per wave (and
+`?raiders=N`) still sets a size by hand.
+
+Determinism: `scripts/determinism-check.sh --ticks 1800`, voyage, salvage and core, seeds 42 and 7: **IDENTICAL**
+(native vs wasm32-wasip1). Last ticks: voyage `ef60b15278439964` / `5ace45868f103729`, salvage `970981a54a9a4882` /
+`35ebab6317c1cb03`, core `d787112be99026e9` / `9ebd8fad6fa9bcc6`.
