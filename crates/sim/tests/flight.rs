@@ -884,10 +884,13 @@ fn a_lock_turn_while_thrusting_plans_with_what_the_thrust_leaves_free() {
 fn non_finite_inputs_never_reach_the_state() {
     let c = content();
     let (nan, inf) = (f32::NAN, f32::INFINITY);
-    let mut cfg = sim::SimConfig::default();
-    cfg.thrust_scale = nan;
-    cfg.flight.turn_margin = nan;
-    cfg.physics.friction = inf;
+    let d = sim::SimConfig::default();
+    let cfg = sim::SimConfig {
+        thrust_scale: nan,
+        flight: sim::FlightTuning { turn_margin: nan, ..d.flight },
+        physics: sim::PhysicsTuning { friction: inf, ..d.physics },
+        ..d
+    };
     let mut w = sim::Sim::with_config(1, cfg);
     assert_eq!(*w.config(), sim::SimConfig::default());
     let d = design(&c, "halvex_runner");

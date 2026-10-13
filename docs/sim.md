@@ -203,6 +203,24 @@ scenario's 147 impacts are pieces of one ship pushing against each other after s
 with the burner). The flight scenario's hull hits fell from 166 to 47, mostly because ship-mind ships no
 longer hit each other.
 
+**With the 13 Oct 2026 review fixes** (release builds, 1800 ticks): core, flight, load (20 ships) and behavior
+with seed 42, flight and load with seed 7: native x86_64 vs wasm32-wasip1 under Node 24 **identical** (6 runs).
+Against the `dev` build before the fixes (`4f4d68b`), seed 42: core differs only in ticks 908–918 (a ram split now
+ghosts one step longer; the state converges again); flight from tick 326 (the same ghost fix, and from tick 1501
+the fight itself; counters unchanged); load from tick 261 (ghost) and 285 (a shot that hits a block destroyed
+earlier in the tick now reaches the part behind it: 681 → 704 hits, 77 → 80 parts destroyed, 133 → 125 shots);
+behavior from tick 601 (idle guns no longer count for reach and firepower, slots only from working cores: 231 →
+183 shots, 125 → 122 parts destroyed, 896 → 1123 Rhai evaluations). The other fixes (keys and the last resort, NaN
+inputs, the shot cap, the main-piece rule, the per-piece heat pass) leave all four streams bit-identical. Counters
+with seed 42:
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Shield hits | Impacts / rams | Burns | Overheated part-ticks |
+|---|---|---|---|---|---|---|---|---|
+| core | 271 | 48 | 603 | 35 | 0 | 22 / 2 | 244 | 124 |
+| flight | 137 | 22 | 946 | 90 | 2 | 49 / 5 | 0 | 0 |
+| load (20) | 80 | 3 | 125 | 704 | 18 | 140 / 2 | 9 | 0 |
+| behavior | 122 | 18 | 183 | 123 | 8 | 119 / 0 | 14 | 0 |
+
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
