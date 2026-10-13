@@ -187,7 +187,7 @@ resources and the action message below; nothing is edited, computed or saved yet
 
 Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydock-*.png`.
 
-| Keys (only while the search field does not have the keyboard) | |
+| Keys (only while no text field has the keyboard) | |
 |---|---|
 | Tools | B paint, G fill, X erase, V select, Q / E rotate the part to place |
 | Mirror / bevel | M / Shift+B |
@@ -198,9 +198,11 @@ Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydoc
 | Pan | Space + drag, or drag with the middle button |
 | Test flight | T or TEST-FLY (disabled, with the reason in the status line, while the design can't fly) |
 | Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
+| Rename the design | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
+| BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box |
 
-The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · 24×24 FRAME` and the
-design's name; the ARMOR pills (every content material with an `armor` block) and the OVERLAY pills (HEAT,
+The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
+frame's content name) and the design's name (a click renames it; "UNSAVED" or "SAVED" after it); the ARMOR pills (every content material with an `armor` block) and the OVERLAY pills (HEAT,
 MASS, BONUS in gold, SHIELDS, ARCS: toggle state only); left the search, the category pills (content
 categories) and the part list (icon, name, footprint and one key stat from `Content::part_stats`: the first
 stat after build points, control, mass, hit points, power draw and heat, else the bonus it gives, else its hit
@@ -223,8 +225,8 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is op
 - **Actions** (`actions.rs`): every button (`ActionButton(DrydockAction)`) and every shortcut sends one message,
   `DrydockAction::{Tool, RotateCcw, RotateCw, Mirror, Bevel, Undo, Redo, Save, Export, Blueprints, TestFly, Menu,
   Material, Overlay, Category, PickPart, ZoomIn, ZoomOut}`. Handled here: the UI state and TestFly (when the design
-  can fly: `Scene::launch` + `NextState(Flight)`); the camera handles the zoom. Undo, redo, save, export, the
-  blueprint list and the menu have no handler yet. New handlers read the message in a system in
+  can fly: `Scene::launch` + `NextState(Flight)`); the camera handles the zoom; save, export and the blueprint
+  list are handled in `blueprints.rs` (below). Undo, redo and the menu have no handler yet. New handlers read the message in a system in
   `DockSet::Apply` (`Input → Apply → Show`, drydock only), change `PlayerDesign` (and bump `revision`), and
   write `DrydockStats` / `DrydockStatus`; `DrydockCursor::cell` is the frame cell under the pointer.
 - **View** (`view.rs`): the design is drawn with the flight tiles: `ship_model::blueprint_visual` (every part;
@@ -238,6 +240,13 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is op
   centres the rig on the grid viewport between the panels while the camera still covers the window, and the
   screen ↔ world helpers include it. Opening the drydock remembers the flight zoom; leaving restores it and keeps
   the drydock's view for the next visit.
+- **Storage and sharing** (`storage.rs`, `clipboard.rs`, `drydock/library.rs`, `share.rs`, `blueprints.rs`;
+  [drydock.md "Storage and sharing"](drydock.md#storage-and-sharing)): `Storage` (named RON documents per
+  namespace with a format version; the browser's local storage on the web, files in the user's data directory on
+  desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the
+  BLUEPRINTS and EXPORT screens (one floating layer over everything above the bottom bar: `ShelfRoot`, a `Hot`
+  veil so clicks reach nothing under it), share codes and `.ron` files, copy and paste (`Clipboard`). Status
+  messages go out through `DrydockStatus` once `check_design` has seen the current revision.
 - **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
   gold, the glowing primary, disabled, bare list rows), ring buttons, value bars, corner brackets and a one-line
   text field; hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and

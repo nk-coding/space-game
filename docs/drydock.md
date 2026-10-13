@@ -17,6 +17,7 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [ADR-0030](ad
 | One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::blueprint`, `Content.frames`, `Content::ship_totals`, `data::stats::SHIP_STATS` | `content-model.md` |
 | Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
 | The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
+| Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
 
 Status (13 Oct 2026): wave 1 is merged. The screen shows the design with the flight tiles, the mockup's layout,
 the palette with search, the selected part, and test flights with the waves toggle. Not wired yet (wave 2):
@@ -147,3 +148,95 @@ indices shift) 3.2 µs (3.3 µs) and its undo 3.3 µs (3.4 µs), mirrored erase 
 rotate 0.16–0.27 µs (≤ 0.31 µs), auto-oriented slope 0.53 µs (0.59 µs). Filling an empty 64×64 frame (4096 blocks,
 one step) 0.49 ms (0.64 ms), undoing it 0.15 ms (0.19 ms), exporting 4096 parts 0.18 ms (0.23 ms). Run with
 `cargo test -p data --release --test edit -- --ignored --nocapture`.
+
+## Storage and sharing
+
+Written 13 Oct 2026 (Niklas: "a player storage layer, but a sharable format in addition"). Code:
+`crates/game/src/storage.rs` (the layer), `clipboard.rs` (copy and paste), `drydock/library.rs` (designs on the
+layer), `drydock/share.rs` (files and share codes), `drydock/blueprints.rs` (the screens and handlers). Tests:
+`cargo test -p game -- storage library share`. Screenshots (1280 × 720): `docs/results/drydock-blueprints-list.png`
+(BLUEPRINTS), `drydock-blueprints-export.png` (EXPORT, the code selected), `drydock-blueprints-cruiser.png` (a
+saved template copy moved to the cruiser frame).
+
+### The storage layer
+
+- `Storage` (a resource) holds one `Backend` (a trait: `list(namespace)`, `read(namespace, name)`,
+  `write(namespace, name, text)`, `delete(namespace, name)`, `location()`) and stores **named RON documents in
+  namespaces**: `designs/<id>` and `drydock/working` now; `saves/`, `behaviors/` and `settings/` later. Names
+  are `a-z 0-9 _ -` (at most 64), safe as file names and keys everywhere.
+- A document type implements `Document` (`NAMESPACE`, `FORMAT`, `to_ron`, `from_ron(text, format)`).
+  `Storage::write` puts one header line before the RON, a comment, so the document stays valid RON:
+  `// space-game: designs, format 1, saved 1760351234` (namespace, format version, Unix seconds).
+  `Storage::read` refuses another namespace and formats newer than the build knows (`StorageError::Newer`) and
+  hands older ones to `from_ron`, where migrations live (ADR-0024). A file without the header reads as format 1.
+- Backends: **web** the browser's local storage, keys `space-game/<namespace>/<name>` (per origin: the copies on
+  :8080 and :8081 don't share designs; about 5 MB per origin, a design is 2–250 kB); **desktop** files
+  `<data dir>/<namespace>/<name>.ron`, written to a temporary file and renamed (data dir: `$XDG_DATA_HOME` or
+  `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows, each
+  `/space-game`); **memory** for tests and as the fallback when the platform gives no storage (the status line
+  says so; Android until its backend, the files backend on the app's internal data path, lands).
+- `StorageError` reaches the status line in words: no storage, storage full (the browser's quota, a full disk),
+  I/O, unreadable document, newer format, bad name.
+
+### Designs
+
+- **SAVE** (the button, Ctrl+S) writes `designs/<id>`: the content ship format (`data::blueprint_to_ron`) in the
+  design's frame (`size` = the frame, parts in frame coordinates), so opening it brings the frame back. The id
+  comes from the name on the first save (`library::slug`: lowercase ASCII, umlauts spelled out, `_` between
+  words, at most 40 characters, starting with a letter), unique among saved designs and never a content ship's
+  id (`_2`, `_3`, ...); renaming keeps it. A design with problems still saves; the status line says
+  "SAVED AS WORK IN PROGRESS · n PROBLEMS: …" with the first one (`data::validate_ship`).
+- **The working design** (`drydock/working`, the same format, its `id` = the id it is saved under or empty) is
+  written about a second after the last change (`library::Autosave`, every change restarts the wait), at once
+  when the id it is saved under changes, when a test flight starts and when the desktop app closes; it comes
+  back at the next start (with its frame and whether it has unsaved changes). The first start is a copy of the
+  starter ship (`PlayerDesign::starter`) named "Halvex Runner copy". Opening centres the parts in the frame
+  (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept.
+- **The name** top left: a click turns it into a text field; Enter or a click elsewhere renames the design
+  (`PlayerDesign::edit_header`, no undo step), Esc keeps the old name. "UNSAVED" or "SAVED" stands after it.
+- The breadcrumb names the frame from content ("DRYDOCK · FRIGATE FRAME"; a size for frames content lacks).
+
+### BLUEPRINTS
+
+The BLUEPRINTS button opens a screen over everything above the bottom bar (the bar stays usable; Esc or CLOSE
+closes it; Esc first leaves a rename, a delete question or a selected box):
+
+- **Your designs** (most recently saved first: name; frame, parts' size, part count, when saved; "IN THE
+  DRYDOCK" for the open one, "· UNSAVED" when it changed since) and **templates**, the content ships, opened as
+  copies with a fresh name ("Sample mid copy", "Sample mid copy 2", ...) and not saved until they change or SAVE.
+  The wheel scrolls a list. An unreadable document is listed with the reason, so it can be deleted.
+- On the picked row: **OPEN** (a template: as a copy), **DUPLICATE** (a saved copy with a fresh name; for a
+  template, its copy saved as a design), **RENAME** (a field; Enter renames, Esc cancels; the open design follows),
+  **DELETE** (asks first: DELETE / KEEP; deleting the open design leaves it in the drydock, unsaved).
+- **NEW** in a content frame (an empty design named "New design"), **FRAME** of the design in the drydock (the
+  content frames as pills; a design that doesn't fit is refused with its size in the status line; a frame change
+  is an undo step).
+- **IMPORT**: a `.ron` file (web: the browser's file chooser; desktop: drop the file onto the window) or a share
+  code or blueprint text pasted into the paste box (click it, Ctrl+V). An import is saved under a new id and
+  opened.
+- Opening, NEW and imports replace the design in the drydock; when it has unsaved changes it is **saved
+  first** (the status line names it), so no work is lost; if that save fails, nothing is replaced.
+
+### Sharing: EXPORT, files and share codes
+
+- **EXPORT** opens a page with the design's `.ron` file and its share code, both made from the design trimmed to
+  its parts (`PlayerDesign::export`) under its id (or one from its name): DOWNLOAD .RON on the web (a Blob behind
+  a temporary link), WRITE .RON FILE on desktop (`<data dir>/exports/<id>.ron`, the path in the status line).
+  The file is the content ship format, so it can go into a pack's `ships/` folder as is.
+- **Share code**: `SGD1:` + base64url (no padding) of the zlib-compressed payload, a RON
+  `(packs: [("base", "0.1.0"), ...], ship: (...))` with the content packs (id, version) the design was made with.
+  The Halvex Runner is 663 characters. zlib's checksum catches damaged codes; whitespace inside a code (a chat
+  program's line breaks), a lower-case tag and `=` padding are ignored. The code shows in a box: click it (it
+  turns teal) and press Ctrl+C, or COPY.
+- **Imports are checked** (`share::read`, `share::check`): a newer share format ("made by a newer version of the
+  game (share format 9; this one reads 1)"), a damaged code, text that is no blueprint (with the RON error's line
+  and column) and parts or materials the game doesn't have ("it uses part plasma_lance this game doesn't have
+  (made with lances 2.0)": the packs of the code that aren't loaded in that version) give a message instead of a
+  crash. An unknown faction becomes the player's, an unknown behavior is dropped (noted in the status line); a
+  design no frame takes is refused; other problems (`data::validate_ship`) are named but don't block.
+- **Copy and paste** (`clipboard.rs`): screens set `Clipboard::offer` (the text Ctrl+C copies), `accept` (Ctrl+V
+  pastes) or `copy` (copy now). Web: winit cancels every key on the canvas, so while something is offered or
+  accepted a capturing `keydown` listener keeps Ctrl/Cmd+C and +V from it, and the `copy` / `paste` listeners
+  hand the text over; COPY uses `document.execCommand("copy")` (then `navigator.clipboard` in secure contexts).
+  This works over plain http (`http://10.77.9.2:8080` is no secure context), tested in headless Chromium on both
+  kinds of origin. Desktop: `arboard`. Android: not yet (COPY says so).

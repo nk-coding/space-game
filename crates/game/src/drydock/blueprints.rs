@@ -101,6 +101,23 @@ struct Export {
     ron: String,
     code: String,
     made_with: String,
+    /// The design revision they were made from.
+    revision: u64,
+}
+
+impl Export {
+    /// The export of the design in the drydock.
+    fn of(lib: &Lib, content: &Content) -> Self {
+        let bp = lib.export(content);
+        let made_with: Vec<String> = content.packs.iter().map(|p| format!("{} {}", p.id, p.version)).collect();
+        Export {
+            file: format!("{}.ron", bp.id),
+            ron: data::blueprint_to_ron(&bp),
+            code: share::encode(content, &bp),
+            made_with: made_with.join(", ").to_uppercase(),
+            revision: lib.design.revision(),
+        }
+    }
 }
 
 /// The BLUEPRINTS and EXPORT screens' state.
@@ -500,6 +517,8 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
         .spawn((
             ShelfRoot,
             UiBlock,
+            // Hot, so a click on the veil reaches no widget under it.
+            Hot::default(),
             GlobalZIndex(20),
             Visibility::Hidden,
             BackgroundColor(ui_color(clear.0, 0.985)),
@@ -703,16 +722,7 @@ fn toggle(shelf: &mut Shelf, page: Page, lib: &Lib, content: &Content) {
             refresh(shelf, lib, content);
             shelf.pick = lib.slot.id.clone().map(Pick::Design);
         }
-        Page::Export => {
-            let bp = lib.export(content);
-            let made_with: Vec<String> = content.packs.iter().map(|p| format!("{} {}", p.id, p.version)).collect();
-            shelf.export = Export {
-                file: format!("{}.ron", bp.id),
-                ron: data::blueprint_to_ron(&bp),
-                code: share::encode(content, &bp),
-                made_with: made_with.join(", ").to_uppercase(),
-            };
-        }
+        Page::Export => shelf.export = Export::of(lib, content),
     }
 }
 
@@ -803,6 +813,10 @@ fn apply(
         clip.accept = false;
         return;
     };
+    // The design changed under the export page (undo, redo): the file and the code follow.
+    if page == Page::Export && shelf.export.revision != lib.design.revision() {
+        shelf.export = Export::of(&lib, content);
+    }
     // A press anywhere else lets go of the code box and the paste box.
     if mouse.just_pressed(MouseButton::Left) {
         for (hot, code) in &boxes {
@@ -1119,6 +1133,7 @@ fn sync_shelf(
         }
     }
     let working = lib_slot.id.as_deref();
+    let working_dirty = lib_slot.dirty(&design);
     let mut s = String::new();
     for (t, mut text, mut color) in &mut texts {
         s.clear();
@@ -1173,7 +1188,7 @@ fn sync_shelf(
             }
             ShelfText::RowTag(list, k) => {
                 if list == 0 && shelf.designs.get(shelf.offset[0] + k).is_some_and(|e| Some(e.id.as_str()) == working) {
-                    s.push_str("IN THE DRYDOCK");
+                    s.push_str(if working_dirty { "IN THE DRYDOCK  ·  UNSAVED" } else { "IN THE DRYDOCK" });
                 }
                 Tone::Teal
             }
