@@ -33,5 +33,25 @@ bevy = { version = "=0.20.0", default-features = false, features = [
   "x11",                  # native desktop builds (winit loads libX11 at runtime, no headers needed)
 ] }
 
+# Share codes (drydock/share.rs): base64url of the zlib-compressed design; the payload is RON.
+base64 = "=0.22.1"
+miniz_oxide = "=0.8.9"
+ron = "0.12.2"
+serde = { version = "1.0.229", features = ["derive"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Location", "console"] }
+web-sys = { version = "0.3", features = [
+  "Window", "Location", "console",
+  # storage.rs: the browser's local storage
+  "Storage", "DomException",
+  # clipboard.rs, drydock/share.rs: copy / paste events, downloads, the file chooser
+  "Document", "HtmlDocument", "Element", "HtmlElement", "HtmlAnchorElement", "HtmlInputElement", "CssStyleDeclaration",
+  "Navigator", "Clipboard", "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "ClipboardEvent",
+  "DataTransfer", "Blob", "BlobPropertyBag", "Url", "File", "FileList", "FileReader",
+] }
+js-sys = "=0.3.106"
+wasm-bindgen = "=0.2.129"
+
+# The system clipboard on desktop (already in the build through bevy_egui).
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+arboard = { version = "=3.6.1", default-features = false }
