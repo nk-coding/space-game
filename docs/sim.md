@@ -1634,17 +1634,26 @@ behavior library (`set_behaviors`) and spawns the fleet at `plan.entry`. From th
    ships was hit, or one of them is no running vessel any more (*lead default*, the last two: a sniped or rammed
    sleeper wakes its pack): every ship of the site gets its behavior (`BehaviorLibrary::default_for`: its own or its
    faction's); `SimEvent::SiteWoke { site }`.
-4. **Clears** an awake site when none of its ships (split-off vessels included) is a running vessel
-   (`VesselState::Running`): `SimEvent::SiteCleared { site, goal }`. Clearing is final; a quiet site is never
-   cleared.
+4. **Clears** an awake site when each of its ships (split-off vessels included) is destroyed or disarmed
+   (GDR-0068): none is a vessel (running, dark or dormant) that is still armed: `SimEvent::SiteCleared { site, goal }`.
+   Clearing is final, so the passing states don't count: a dark or dormant enemy that is armed keeps its site open
+   (13 Oct 2026 review). A quiet site is never cleared.
+
+**Armed** (`Ship::is_armed`, GDR-0068; the rule is a *lead default*): the controlling piece still has a gun and a
+power source, both alive parts (`Piece::guns` and the piece's reactors, rebuilt on every breakage, so the check is
+one look-up). Only losses that never come back disarm: a gun that overheats, idles (control capacity), browns out
+or has its line of fire blocked by its own hull still counts (the blocker can be shot off); a piece without a
+reactor never fires again. `Sim::awake_enemy(owner, ship)`: a running vessel of another owner that is not one of a
+sleeping site's ships (`Voyage::asleep`); `Sim::armed_enemy(owner, ship)`: an awake enemy that is armed. The
+recall, the voyage scenario and the voyage runner use these two, so they cannot drift apart.
 
 Sites are indexed in plan order (`site` in the events). Owners: everything is keyed on the `player` and `enemy`
 owners, so co-op can add player owners later (the spawn and wake tests would take every player owner's vessels).
 
-**Recall** (`Sim::can_recall(owner)`, GDR-0062): `owner` has at least one vessel, and no vessel of another owner
-(`friendly` is false) that is running and not one of a sleeping site's ships is within
-`VoyageTuning::recall_radius` (200 m, centre of mass to centre of mass) of any of `owner`'s vessels. It works without
-a voyage too (sandbox waves count as awake). The 3 s warp-out is the client's.
+**Recall** (`Sim::can_recall(owner)`, GDR-0062, GDR-0068): `owner` has at least one vessel, and no armed awake enemy
+(`Sim::armed_enemy`) is within `VoyageTuning::recall_radius` (200 m, centre of mass to centre of mass) of any of
+`owner`'s vessels: a disarmed enemy, a sleeper and a dark or dormant enemy never block it. It works without a voyage
+too (sandbox waves count as awake). The 3 s warp-out is the client's.
 
 Queries: `Sim::voyage() -> Option<&Voyage>`: `id`, `seed`, `radius`, `entry`, `player`, `enemy`, `sites()`,
 `site_of(ship)` (a site's ship, split-off vessel or wreck), `goal_cleared()`; per `Site`: `encounter`, `goal`, `pos`,
@@ -1656,7 +1665,7 @@ ids; some may be gone or salvage by now), `plan()`.
 | Field | Default | What |
 |---|---|---|
 | `spawn_radius` | 600 m | a site spawns when a player vessel comes this close (the plan's lazy spawning) |
-| `recall_radius` | 200 m | no awake enemy vessel this close to recall (GDR-0062) |
+| `recall_radius` | 200 m | no armed awake enemy vessel this close to recall (GDR-0062, GDR-0068) |
 
 The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) are constants in `voyage.rs`.
 
@@ -1679,10 +1688,10 @@ other agents' builds, 20 seeds per voyage).
 
 `ScenarioKind::Voyage` (`--scenario voyage`): the content's first voyage (`yard_approach`) rolled from the seed and
 started for the player against `Owner(1)`, one ship per ship-mind blueprint with a hold (the starter, the Runner and
-the two samples) in a row at the entry, the first the focus. Every 30 ticks (staggered) each fights the nearest awake
-enemy within 300 m with random pilot input (locked on it, firing, the stick roughly towards it), else flies to the
+the two samples) in a row at the entry, the first the focus. Every 30 ticks (staggered) each fights the nearest armed awake
+enemy (`Sim::armed_enemy`) within 300 m with random pilot input (locked on it, firing, the stick roughly towards it), else flies to the
 nearest salvage within 150 m (as the salvage scenario), else holds at a site of its own among those not cleared;
-the cores of the first awake enemy are shot out every 150 ticks, plus random hits (3 % a tick) and a blast every 300
+the cores of the first armed awake enemy are shot out every 150 ticks, plus random hits (3 % a tick) and a blast every 300
 ticks. The summary counts sites woken and cleared and the ticks the player could recall.
 
 13 Oct 2026, release builds, native x86_64 vs wasm32-wasip1 under Node 24: voyage 1800 ticks seeds 42 and 7, core and
@@ -1696,9 +1705,10 @@ other scenarios' streams once (they spawn every blueprint).
 [--minutes 30]`: the balance tool of track 7K. It rolls the voyage per seed, puts the design at the entry and flies
 it with a scripted pilot (see the example's doc: in fights the balance study's *closing* stand-in, or a content
 behavior with `--behavior`; salvage it can catch; the sites in turn, the goal last; home once the goal and the sites
-are done or the hold is full, when it has no working gun left, or after 3 minutes without progress), and prints per
-seed the outcome (recalled, lost, out of time), goal, sites cleared, time, hull lost, kills, running enemies left
-(how many unarmed), haul items and research data per family (`data::career::unload`), then medians, p95 and the step
+are done or the hold is full, when it is disarmed (`Ship::is_armed`; an overheated or idle gun still counts), or
+after 3 minutes without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and prints per seed the
+outcome (recalled, lost, out of time), goal, sites cleared, time, hull lost, kills, awake enemies left (how many
+disarmed), haul items and research data per family (`data::career::unload`), then medians, p95 and the step
 time.
 
 First numbers (13 Oct 2026, content and sim of `dev` after the 7C merge and the sim review fixes, before the GDR-0064

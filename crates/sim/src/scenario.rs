@@ -24,9 +24,9 @@
 //!   collector lost with its cargo (its wreck keeps it; the others strip it), plus random hits.
 //! * [`ScenarioKind::Voyage`]: the voyage director (`voyage.rs`): the content's first voyage rolled from the seed
 //!   and started, one player ship per ship-mind blueprint with a hold entering at its edge. Each flies random
-//!   pilot input locked on the nearest awake enemy within reach of a fight, else to the nearest salvage, else to a
-//!   site not yet cleared, so sites spawn, sleep, wake and clear; the cores of an awake enemy are shot out every
-//!   few seconds (fragments, wrecks to strip), plus random hits.
+//!   pilot input locked on the nearest armed awake enemy (`Sim::armed_enemy`) within reach of a fight, else to the
+//!   nearest salvage, else to a site not yet cleared, so sites spawn, sleep, wake and clear; the cores of an armed
+//!   awake enemy are shot out every few seconds (fragments, wrecks to strip), plus random hits.
 //!
 //! Owners: ship-mind ships belong to [`Owner::PLAYER`], every other faction's to `Owner(1)`
 //! ([`scenario_owner`]). Splits leave vessels of their own (GDR-0013), so ship counts grow during a run.
@@ -721,9 +721,9 @@ fn salvage_target(
     Some(best.map_or(Maneuver::Brake, |(_, _, m)| m))
 }
 
-/// Voyage scenario script: every this many ticks the cores of the first awake enemy vessel are shot out.
+/// Voyage scenario script: every this many ticks the cores of the first armed awake enemy vessel are shot out.
 const VOYAGE_KILL_EVERY: u64 = 150;
-/// Voyage scenario script: a player ship fights the nearest awake enemy within this many metres.
+/// Voyage scenario script: a player ship fights the nearest armed awake enemy within this many metres.
 const VOYAGE_FIGHT_RANGE: f32 = 300.0;
 
 /// What a player ship of the voyage scenario does next.
@@ -780,12 +780,8 @@ impl Scenario {
         let Some(v) = self.sim.voyage() else {
             return;
         };
-        let awake = |s: &Ship| {
-            s.team() == Some(v.enemy())
-                && s.vessel_state() == Some(crate::VesselState::Running)
-                && v.site_of(s.id())
-                    .is_none_or(|k| v.sites()[k].state() != crate::SiteState::Asleep)
-        };
+        // The enemies that matter (GDR-0068): armed and awake.
+        let awake = |s: &Ship| self.sim.armed_enemy(Owner::PLAYER, s);
         if tick > 0
             && tick.is_multiple_of(VOYAGE_KILL_EVERY)
             && let Some(enemy) = self.sim.ships().iter().find(|s| awake(s))

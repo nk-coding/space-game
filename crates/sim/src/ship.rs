@@ -797,6 +797,16 @@ impl Ship {
             .is_some_and(|p| p.active)
     }
 
+    /// Armed (GDR-0068): the controlling piece still has a gun and a power source (alive parts). Only losses that
+    /// never come back count: a gun that overheats, idles, browns out or has its line of fire blocked keeps its
+    /// ship armed (the blocker can be shot off); a piece without a reactor never fires again. One look-up, no
+    /// allocation. False for salvage.
+    pub fn is_armed(&self) -> bool {
+        self.control
+            .and_then(|c| self.piece(c))
+            .is_some_and(|p| !p.guns.is_empty() && !p.reactors.is_empty())
+    }
+
     pub fn helm(&self) -> &HelmMode {
         &self.helm
     }

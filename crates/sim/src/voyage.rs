@@ -13,10 +13,10 @@
 //! * **Waking**: a sleeping site's ships fly their behavior (their own or their faction's) once a player vessel
 //!   comes within the encounter's wake radius, one of them is hit, or one of them stopped being a running vessel
 //!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site.
-//! * **Clearing**: an awake site is cleared when none of its ships is a running vessel any more
-//!   (`SimEvent::SiteCleared { goal }`); clearing is final. A site that rolled no ships is quiet: nothing wakes there
-//!   and it is never cleared.
-//! * **Recall** ([`Sim::can_recall`], GDR-0062): no awake vessel of another owner within
+//! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
+//!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
+//!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
+//! * **Recall** ([`Sim::can_recall`], GDR-0062, GDR-0068): no armed awake enemy ([`Sim::armed_enemy`]) within
 //!   `VoyageTuning::recall_radius` of any of the owner's vessels.
 //!
 //! Everything works by owner (the player and the enemy side passed to `start_voyage`), so co-op can add more
@@ -36,7 +36,7 @@ use crate::ids::ShipId;
 use crate::maneuver::Maneuver;
 use crate::math::{Vec2, cos, sin, sqrt};
 use crate::rng::{Pcg32, RngStreams, Stream};
-use crate::ship::Body;
+use crate::ship::{Body, Ship};
 use crate::vessel::{Owner, VesselState, friendly};
 use crate::world::{ShipCommand, Sim};
 
@@ -46,7 +46,7 @@ use crate::world::{ShipCommand, Sim};
 pub struct VoyageTuning {
     /// A site's ships and wrecks spawn when a player vessel comes this close to it (m).
     pub spawn_radius: f32,
-    /// Recall works when no awake enemy vessel is this close to any of the owner's vessels (m).
+    /// Recall works when no armed awake enemy vessel is this close to any of the owner's vessels (m).
     pub recall_radius: f32,
 }
 
@@ -311,7 +311,7 @@ pub enum SiteState {
     Asleep,
     /// Its ships fly their behavior.
     Awake,
-    /// None of its ships is a running vessel any more (final).
+    /// Each of its ships is destroyed or disarmed: none is a vessel that is still armed (GDR-0068; final).
     Cleared,
 }
 
@@ -411,8 +411,8 @@ impl Voyage {
             .iter()
             .any(|s| s.plan.goal && s.state == SiteState::Cleared)
     }
-    /// Is this ship one of a sleeping site's?
-    fn asleep(&self, ship: ShipId) -> bool {
+    /// Is this ship one of a sleeping site's (or a vessel split off one)?
+    pub fn asleep(&self, ship: ShipId) -> bool {
         self.site_of(ship)
             .is_some_and(|k| self.sites[k].state == SiteState::Asleep)
     }
@@ -502,11 +502,27 @@ impl Sim {
         self.voyage.as_deref()
     }
 
-    /// May `owner` recall home now (GDR-0062)? It needs a vessel, and no awake vessel of another owner may be
-    /// within `VoyageTuning::recall_radius` of any of its vessels: running, and not one of a sleeping site's ships.
+    /// Is `ship` an awake enemy of `owner`: a running vessel of another owner that is not one of a sleeping voyage
+    /// site's ships? Without a voyage every running vessel of another owner is awake (sandbox waves).
+    pub fn awake_enemy(&self, owner: Owner, ship: &Ship) -> bool {
+        ship.team().is_some()
+            && !friendly(ship.team(), Some(owner))
+            && ship.vessel_state() == Some(VesselState::Running)
+            && !self.voyage().is_some_and(|v| v.asleep(ship.id()))
+    }
+
+    /// Is `ship` an armed awake enemy of `owner` ([`Sim::awake_enemy`] and [`Ship::is_armed`])? Only these block
+    /// `owner`'s recall (GDR-0068); the voyage scenario and the voyage runner fight them.
+    pub fn armed_enemy(&self, owner: Owner, ship: &Ship) -> bool {
+        ship.is_armed() && self.awake_enemy(owner, ship)
+    }
+
+    /// May `owner` recall home now (GDR-0062, GDR-0068)? It needs a vessel, and no armed awake enemy
+    /// ([`Sim::armed_enemy`]) may be within `VoyageTuning::recall_radius` (centre of mass to centre of mass) of any
+    /// of its vessels.
     pub fn can_recall(&self, owner: Owner) -> bool {
         let r = self.config().voyage.recall_radius;
-        let at = |s: &crate::ship::Ship| Some(s.piece(s.control_piece()?)?.com_world());
+        let at = |s: &Ship| Some(s.piece(s.control_piece()?)?.com_world());
         let mine = || {
             self.ships
                 .iter()
@@ -519,18 +535,19 @@ impl Sim {
         !self
             .ships
             .iter()
-            .filter(|s| {
-                s.team().is_some()
-                    && !friendly(s.team(), Some(owner))
-                    && s.vessel_state() == Some(VesselState::Running)
-                    && !self.voyage().is_some_and(|v| v.asleep(s.id()))
-            })
+            .filter(|s| self.armed_enemy(owner, s))
             .filter_map(at)
             .any(|q| mine().any(|p| (q - p).length_squared() <= r * r))
     }
 
     fn running(&self, ship: ShipId) -> bool {
         self.ship(ship).and_then(|s| s.vessel_state()) == Some(VesselState::Running)
+    }
+
+    /// Does `ship` keep its site from clearing (GDR-0068): a vessel (running, dark or dormant: those states pass)
+    /// that is still armed?
+    fn fights(&self, ship: ShipId) -> bool {
+        self.ship(ship).is_some_and(|s| s.is_vessel() && s.is_armed())
     }
 
     /// The director's pass at the end of a step: spawn the sites near player vessels, follow the events since the
@@ -600,7 +617,7 @@ impl Sim {
             }
             let site = &mut v.sites[k];
             site.hit = false;
-            if site.state == SiteState::Awake && !site.ships.iter().any(|&s| self.running(s)) {
+            if site.state == SiteState::Awake && !site.ships.iter().any(|&s| self.fights(s)) {
                 site.state = SiteState::Cleared;
                 self.events.push(SimEvent::SiteCleared {
                     site: k as u32,

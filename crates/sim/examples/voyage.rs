@@ -5,17 +5,18 @@
 //! `cargo run --release -p sim --example voyage -- --voyage yard_approach --design rim_skiff --seeds 1..20`
 //! `[--behavior skirmisher] [--minutes 30]`
 //!
-//! The pilot (a script, not a player): it fights an awake enemy within 400 m (the one it fought last, else the
-//! nearest), or the nearest running ship of the awake site it is heading for, as the balance study's *closing*
+//! The pilot (a script, not a player): it fights an armed awake enemy (`Sim::armed_enemy`, GDR-0068) within 400 m
+//! (the nearest), or the nearest such ship of the awake site it is heading for, as the balance study's *closing*
 //! stand-in does (`docs/results/balance-2026-10-13.md`: locked on it, firing, the stick towards it while it is
 //! farther than 75 % of its longest clear gun's reach) or, with `--behavior`, by handing the ship to that content
 //! behavior while there is a fight; else it strips the nearest salvage within 250 m that fits its hold and drifts
 //! slower than 6 m/s (giving up on a piece after 20 s without a part); else it flies to the nearest site still to do
 //! (a site with ships until it is cleared, a wreck site until it has been there), the goal last. It goes home as
 //! soon as the sim allows (`Sim::can_recall`, running from the nearest enemy until then) once the goal is cleared
-//! and every site is done or the hold is full, or when it has no working gun left, or after 3 minutes without
-//! progress (no kill, site, salvage or new site). A seed ends recalled, lost (the ship is no vessel any more) or out
-//! of time. Native only; the wall clock times the steps (median and p95), never the sim.
+//! and every site is done or the hold is full, or when it is disarmed (`Ship::is_armed`: no gun or no power source
+//! left; a gun that overheats or idles still counts), or after 3 minutes without progress (no kill, site, salvage
+//! or new site). A seed ends recalled, lost (the ship is no vessel any more) or out of time. Native only; the wall
+//! clock times the steps (median and p95), never the sim.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -25,7 +26,7 @@ use data::career::{Haul, HaulItem, unload};
 use sim::flight::AimMode;
 use sim::{
     BehaviorLibrary, Item, Maneuver, Owner, PieceId, PilotInput, ShipCommand, ShipDesign, ShipId,
-    Sim, SimConfig, SimEvent, SiteState, Target, TickInputs, Vec2, VesselState, VoyagePlan,
+    Sim, SimConfig, SimEvent, SiteState, Target, TickInputs, Vec2, VoyagePlan,
 };
 
 const ENEMY: Owner = Owner(1);
@@ -108,7 +109,8 @@ struct Run {
     sites_cleared: usize,
     sites: usize,
     kills: u32,
-    /// Running enemy vessels of woken sites at the end, and how many of them have no working gun.
+    /// Awake enemies at the end (`Sim::awake_enemy`), and how many of them are disarmed (they no longer block
+    /// clearing or the recall, GDR-0068).
     left: (usize, usize),
     /// What the ship carries at the end (a lost ship brings nothing home).
     haul: Haul,
@@ -131,16 +133,11 @@ fn at(sim: &Sim, ship: ShipId) -> Option<Vec2> {
     Some(s.piece(s.control_piece()?)?.com_world())
 }
 
-/// Running enemy vessels that are not one of a sleeping site's: `(distance, ship, position)`.
-fn awake_enemies(sim: &Sim, from: Vec2) -> Vec<(f32, ShipId, Vec2)> {
-    let v = sim.voyage().unwrap();
+/// Armed awake enemies (`Sim::armed_enemy`): `(distance, ship, position)`.
+fn armed_enemies(sim: &Sim, from: Vec2) -> Vec<(f32, ShipId, Vec2)> {
     sim.ships()
         .iter()
-        .filter(|s| s.team() == Some(ENEMY) && s.vessel_state() == Some(VesselState::Running))
-        .filter(|s| {
-            v.site_of(s.id())
-                .is_none_or(|k| v.sites()[k].state() != SiteState::Asleep)
-        })
+        .filter(|s| sim.armed_enemy(Owner::PLAYER, s))
         .filter_map(|s| {
             let p = at(sim, s.id())?;
             Some(((p - from).length(), s.id(), p))
@@ -233,11 +230,8 @@ fn run(
         if sim.tick().is_multiple_of(DECIDE) {
             let ship = sim.ship(me).unwrap();
             let free = ship.cargo_capacity().saturating_sub(ship.cargo().used());
-            // Disarmed, or nothing happened for a while (an unarmed remnant it cannot catch): give up.
-            let fighting = sim.tick() - pilot.progress < STALEMATE
-                && ship
-                    .piece(ship.control_piece().unwrap())
-                    .is_some_and(|p| p.firepower(ship.parts()) > 0.0);
+            // Disarmed, or nothing happened for a while (an enemy it cannot catch): give up.
+            let fighting = sim.tick() - pilot.progress < STALEMATE && ship.is_armed();
             let v = sim.voyage().unwrap();
             for (k, s) in v.sites().iter().enumerate() {
                 if (s.pos() - here).length() <= VISITED && pilot.visited.insert(k) {
@@ -263,7 +257,7 @@ fn run(
                 .min_by(|a, b| (a.1 - here).length().total_cmp(&(b.1 - here).length()))
                 .copied();
             let goal = v.goal_cleared();
-            let enemies = awake_enemies(&sim, here);
+            let enemies = armed_enemies(&sim, here);
             let foe = enemies
                 .iter()
                 .filter(|e| e.0 <= FIGHT_RANGE)
@@ -375,12 +369,11 @@ fn run(
         }
     };
     let v = sim.voyage().unwrap();
-    let left: Vec<bool> = awake_enemies(&sim, Vec2::ZERO)
+    let left: Vec<bool> = sim
+        .ships()
         .iter()
-        .filter_map(|e| {
-            let s = sim.ship(e.1)?;
-            Some(s.piece(s.control_piece()?)?.firepower(s.parts()) > 0.0)
-        })
+        .filter(|s| sim.awake_enemy(Owner::PLAYER, s))
+        .map(|s| s.is_armed())
         .collect();
     let left = (left.len(), left.iter().filter(|&&armed| !armed).count());
     let ship = sim.ship(me).unwrap();
@@ -488,7 +481,7 @@ fn main() {
         a.minutes
     );
     println!(
-        "| seed | outcome | goal | sites | time | hull lost | kills | left (unarmed) | haul (items) | data |"
+        "| seed | outcome | goal | sites | time | hull lost | kills | left (disarmed) | haul (items) | data |"
     );
     println!("|---|---|---|---|---|---|---|---|---|---|");
     let max_ticks = a.minutes * 60 * sim::TICK_HZ as u64;

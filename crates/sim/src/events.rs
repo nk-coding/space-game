@@ -175,8 +175,8 @@ pub enum SimEvent {
     /// A voyage site woke (`voyage.rs`): its ships fly their behavior from now on. `site` indexes
     /// `Voyage::sites`.
     SiteWoke { site: u32 },
-    /// A voyage site was cleared: none of its ships is a running vessel any more. `goal`: it was the voyage's
-    /// goal, so the voyage is cleared too.
+    /// A voyage site was cleared (GDR-0068): each of its ships is destroyed or disarmed, none is a vessel that is
+    /// still armed (`Ship::is_armed`). `goal`: it was the voyage's goal, so the voyage is cleared too.
     SiteCleared { site: u32, goal: bool },
     /// A shot (or a plume) entered a shield bubble, which took `absorbed` of its damage.
     ShieldHit {
