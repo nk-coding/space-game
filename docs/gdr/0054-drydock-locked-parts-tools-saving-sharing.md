@@ -1,6 +1,6 @@
 # GDR-0054: Drydock: enemy parts locked until unlocked; fill and bevel confirmed; the working design autosaves; designs are stored and can be shared
 
-- Status: Accepted
+- Status: Accepted; hiding locked parts is superseded for the career's drydock by [GDR-0065](0065-phase-7-screens-and-escort-action.md) (shown dimmed)
 - Date: 2026-10-13
 - Decided by: Niklas (interactively)
 - Supersedes: the palette rule of [GDR-0053](0053-drydock-v1-lead-defaults.md) ("every part and armour material is offered")

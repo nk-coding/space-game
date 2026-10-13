@@ -62,7 +62,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0051](0051-drydock-v1.md) | Drydock v1 comes next: unlimited parts, stats as information, test-fly into the sandbox, the mockup's look | Accepted | 2026-10-12 |
 | [0052](0052-drydock-stats-full-use.md) | Drydock stats show the ship at full use and full power; up to ~120 % heat reads "runs hot" | Accepted | 2026-10-12 |
 | [0053](0053-drydock-v1-lead-defaults.md) | Drydock v1 defaults: frames, tools, mirror, keys and test flight | Accepted (provisional, lead); palette rule superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md) | 2026-10-13 |
-| [0054](0054-drydock-locked-parts-tools-saving-sharing.md) | Drydock: enemy parts locked until unlocked; fill and bevel confirmed; the working design autosaves; designs are stored and can be shared | Accepted | 2026-10-13 |
+| [0054](0054-drydock-locked-parts-tools-saving-sharing.md) | Drydock: enemy parts locked until unlocked; fill and bevel confirmed; the working design autosaves; designs are stored and can be shared | Accepted; hiding locked parts superseded for the career by [GDR-0065](0065-phase-7-screens-and-escort-action.md) | 2026-10-13 |
 | [0055](0055-slower-crisper-turning.md) | Turning is slower and crisper; RCS pods are the strong turners; top speed is capped by the whole speed | Accepted | 2026-10-13 |
 | [0056](0056-drydock-wave-2-defaults.md) | Drydock wave 2 defaults: editing gestures, stats wording, saving behaviour | Accepted (provisional, lead) | 2026-10-13 |
 | [0057](0057-behavior-editor-v1.md) | Behavior editor v1: its own screen from the drydock; behaviors are saved on their own and designs pick one; test by watching or flying alongside; graph and text views | Accepted | 2026-10-13 |
@@ -73,6 +73,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0062](0062-first-playable-loop.md) | The first playable loop: start at home, short hand-made rim voyages, mind capacity 2 → 4 | Accepted | 2026-10-13 |
 | [0064](0064-lock-feed-forward-and-ai-flight-fixes.md) | The lock and `face` lead a moving target's turn; AI flight fixes from the balance study | Accepted | 2026-10-13 |
 | [0063](0063-salvage-and-research-v1.md) | Salvage and research v1: fly over wrecks, the haul is dismantled at home into research data, unlocks are unlimited | Accepted | 2026-10-13 |
+| [0065](0065-phase-7-screens-and-escort-action.md) | Phase 7 screens: debrief panel, research tree, star map, recall under the cargo, fleet formation, locked parts shown dimmed; an `escort` action | Accepted | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
