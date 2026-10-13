@@ -580,3 +580,74 @@ fn collecting_needs_a_slow_pass() {
     config.salvage.max_speed = f32::NAN;
     assert_eq!(*Sim::with_config(1, config).config(), SimConfig::default());
 }
+
+/// Two collectors at one piece in one pass (13 Oct 2026 review): the first strips a part, and the piece's
+/// colliders are stale until the pass ends, so the second leaves it for the next pass.
+#[test]
+fn a_piece_stripped_in_a_pass_waits_for_the_next() {
+    let c = common::content();
+    let mut w = Sim::new(1);
+    let a = w.spawn_ship(collector(2), Owner::PLAYER, Body::at(Vec2::new(-4.0, 0.0), 0.0));
+    let b = w.spawn_ship(collector(2), Owner::PLAYER, Body::at(Vec2::new(4.5, 0.0), 0.0));
+    let wreck = custom(
+        &c,
+        &[
+            ("gyro", 0, 0, 0, false, None),
+            ("gyro", 1, 0, 0, false, None),
+            ("gyro", 0, 1, 0, false, None),
+            ("gyro", 1, 1, 0, false, None),
+        ],
+    );
+    w.spawn_wreck(wreck, Owner(1), Body::default(), 0.0, 0);
+    let first = run(&mut w, 1);
+    assert_eq!(first.len(), 1, "{first:?}");
+    assert_eq!(first[0].0, a);
+    // In ship order the first collector goes first every pass; the second takes what is left once it is done.
+    assert_eq!(run(&mut w, 10).iter().map(|g| g.0).collect::<Vec<_>>(), [a]);
+    w.remove_ship(a);
+    assert_eq!(run(&mut w, 10).iter().map(|g| g.0).collect::<Vec<_>>(), [b]);
+}
+
+/// A full hold that loses a cargo bay drops its lowest-value items and says so (`SimEvent::CargoLost`).
+#[test]
+fn a_shrinking_full_hold_reports_what_it_drops() {
+    let c = common::content();
+    let mut w = Sim::new(1);
+    let me = w.spawn_ship(collector(2), Owner::PLAYER, Body::default());
+    let wreck = custom(
+        &c,
+        &[
+            ("gyro", 0, 0, 0, false, None),
+            ("gyro", 1, 0, 0, false, None),
+            ("radiator", 2, 0, 0, false, None),
+            ("radiator", 0, 1, 0, false, None),
+            ("armor_block", 1, 1, 0, false, STEEL),
+            ("armor_block", 2, 1, 0, false, STEEL),
+            ("armor_block", 0, 2, 0, false, STEEL),
+            ("armor_block", 1, 2, 0, false, STEEL),
+            ("armor_block", 2, 2, 0, false, STEEL),
+        ],
+    );
+    w.spawn_wreck(wreck, Owner(1), Body::at(Vec2::new(4.0, 0.0), 0.0), 0.0, 0);
+    run(&mut w, 100);
+    assert_eq!(w.ship(me).unwrap().cargo().used(), 8, "full");
+    let bay = common::find(w.ship(me).unwrap().design(), "cargo_bay", 1, 1);
+    w.apply_damage(me, DamageTarget::Part(bay), 1000.0);
+    w.step(&TickInputs::default());
+    let lost: Vec<(String, u32)> = w
+        .events()
+        .iter()
+        .filter_map(|e| match e {
+            SimEvent::CargoLost { ship, item, count } if *ship == me => {
+                Some((item.part().to_string(), *count))
+            }
+            _ => None,
+        })
+        .collect();
+    let s = w.ship(me).unwrap();
+    assert_eq!((s.cargo_capacity(), s.cargo().used()), (4, 4));
+    // The best went in first (two gyros and two radiators, then four steel blocks); the blocks go now.
+    assert_eq!(lost, [("armor_block".to_string(), 4)]);
+    assert_eq!(s.cargo().count(&part("gyro")), 2);
+    assert_eq!(s.cargo().count(&part("radiator")), 2);
+}

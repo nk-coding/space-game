@@ -597,3 +597,154 @@ fn wrecks_do_not_depend_on_the_order_the_sites_spawn_in() {
     assert!(a.iter().all(|s| !s.is_empty()), "every site spawned");
     assert_eq!(a, b);
 }
+
+/// A one-site plan (tests): `ships` at `pos`, nothing else.
+fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
+    VoyagePlan {
+        voyage: "test".into(),
+        seed: 1,
+        radius: 1000.0,
+        entry: Body::at(Vec2::new(0.0, -1000.0), 0.0),
+        sites: vec![sim::SitePlan {
+            encounter: "raider_pack".into(),
+            goal: true,
+            pos: Vec2::ZERO,
+            wake_radius,
+            ships,
+            wrecks: Vec::new(),
+        }],
+    }
+}
+
+/// A blueprint in two cored pieces (13 Oct 2026 review): the second forms a vessel of its own at spawn. Its
+/// vessels join the site in id order, hold where they are, and a hit on one wakes the site.
+#[test]
+fn a_site_ship_in_several_cored_pieces_keeps_the_list_ascending() {
+    let c = content();
+    let twin = custom(
+        &c,
+        &[
+            ("automaton_cannon", 0, 0, 0, false, None),
+            ("automaton_core", 0, 1, 0, false, None),
+            ("automaton_cannon", 3, 0, 0, false, None),
+            ("automaton_core", 3, 1, 0, false, None),
+        ],
+    );
+    let spawn = |x: f32| sim::Spawn {
+        design: twin.clone(),
+        body: Body::at(Vec2::new(x, 0.0), 0.0),
+        damage: 0.0,
+        seed: 0,
+    };
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(one_site(vec![spawn(0.0), spawn(20.0)], 100.0), Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
+    step(&mut w);
+    let ships = w.voyage().unwrap().sites()[0].ships().to_vec();
+    assert_eq!(ships.len(), 4, "two ships, each with a split-off vessel");
+    assert!(ships.windows(2).all(|p| p[0] < p[1]), "{ships:?}");
+    for &s in &ships {
+        let ship = w.ship(s).unwrap();
+        assert!(ship.is_vessel());
+        assert!(
+            matches!(ship.helm(), HelmMode::Maneuver { maneuver: Maneuver::Hold { .. }, fire: false }),
+            "{s:?}: {:?}",
+            ship.helm()
+        );
+        assert_eq!(w.voyage().unwrap().site_of(s), Some(0));
+    }
+    assert_eq!(state(&w, 0), SiteState::Asleep);
+    // A shot at a split-off vessel wakes the site.
+    let target = ships[1];
+    let at = w.ship(target).unwrap().pieces()[0].com_world();
+    w.spawn_projectile(me, data::WeaponFamily::Kinetic, at + Vec2::new(-4.0, 0.0), Vec2::new(90.0, 0.0), 0.1, 1, 1.0);
+    for _ in 0..4 {
+        step(&mut w);
+    }
+    assert_eq!(state(&w, 0), SiteState::Awake);
+}
+
+/// A sleeper also wakes when its bubble takes a whole shot (`ShieldHit` only) or when it is rammed hard enough to
+/// take damage (`Impact` with damage), while it still runs.
+#[test]
+fn a_shot_into_a_bubble_or_a_ram_wakes_a_sleeping_site() {
+    let c = content();
+    // A small shielded ship whose bubble reaches past its hull takes an energy shot whole.
+    let shielded = custom(
+        &c,
+        &[
+            ("logic_core", 0, 0, 0, false, None),
+            ("fission_reactor", 1, 0, 0, false, None),
+            ("shield_emitter", 2, 0, 0, false, None),
+        ],
+    );
+    let warden = sim::Spawn {
+        design: shielded,
+        body: Body::default(),
+        damage: 0.0,
+        seed: 0,
+    };
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(one_site(vec![warden], 100.0), Owner::PLAYER, ENEMY);
+    let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
+    for _ in 0..5 {
+        step(&mut w);
+    }
+    let id = w.voyage().unwrap().sites()[0].ships()[0];
+    let (centre, radius) = w
+        .bubbles()
+        .iter()
+        .find(|b| b.ship == id)
+        .map(|b| (b.centre, b.radius))
+        .expect("the bubble is up");
+    let from = centre + Vec2::new(radius + 2.0, 0.0);
+    w.spawn_projectile(me, data::WeaponFamily::Energy, from, Vec2::new(-90.0, 0.0), 0.5, 1, 1.0);
+    let (mut shield, mut hit, mut woke) = (false, false, false);
+    for _ in 0..4 {
+        for e in step(&mut w) {
+            shield |= matches!(e, SimEvent::ShieldHit { ship, .. } if ship == id);
+            hit |= matches!(e, SimEvent::Hit { .. });
+            woke |= e == SimEvent::SiteWoke { site: 0 };
+        }
+    }
+    assert!(shield && !hit, "the bubble took it all");
+    // It woke (and, unarmed, cleared at once: GDR-0068).
+    assert!(woke);
+
+    // A drifting wreck rams a sleeping raider.
+    let raider = sim::Spawn {
+        design: design(&c, "automaton_raider"),
+        body: Body::default(),
+        damage: 0.0,
+        seed: 0,
+    };
+    let mut w = Sim::new(1);
+    w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
+    w.start_voyage(one_site(vec![raider], 100.0), Owner::PLAYER, ENEMY);
+    w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
+    step(&mut w);
+    let id = w.voyage().unwrap().sites()[0].ships()[0];
+    // From behind, on its armour and thruster.
+    let ram = Body {
+        linvel: Vec2::new(0.0, 25.0),
+        ..Body::at(Vec2::new(0.0, -6.0), 0.0)
+    };
+    w.spawn_wreck(design(&c, "automaton_raider"), Owner(2), ram, 0.0, 0);
+    let (mut rammed, mut woke) = (false, false);
+    for _ in 0..10 {
+        for e in step(&mut w) {
+            rammed |= matches!(e, SimEvent::Impact(c) if c.damage > 0.0 && (c.a.ship == id || c.b.ship == id));
+            woke |= e == SimEvent::SiteWoke { site: 0 };
+        }
+        if rammed {
+            break;
+        }
+    }
+    assert!(rammed && woke, "the wreck rammed the raider: {rammed} {woke}");
+    assert_eq!(
+        w.ship(id).unwrap().vessel_state(),
+        Some(sim::VesselState::Running)
+    );
+}

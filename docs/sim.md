@@ -165,7 +165,8 @@ The rules (also in `src/math.rs`, enforced where possible):
   order), wrench, collider vertices, gun output, actuator commands (throttle, gimbal, RCS couple, torque) and
   the last-resort turning state (`Piece::assist`), and per ship the burned-out flag, the hull base (GDR-0064) and
   the cargo; then every projectile; then
-  the loose salvage items; then Rapier's own state per body in key
+  the loose salvage items; then the voyage, if one is underway ([Voyages](#state-hash-1)); then Rapier's own state
+  per body in key
   order (translation, rotation as cos/sin, linear and angular velocity, sleeping and ghost flags). Floats by
   exact bits; NaN canonicalised (and debug-asserted never to occur). Computed every tick in debug builds, on
   demand in release.
@@ -179,7 +180,7 @@ How it is checked:
 - `cargo test -p sim` (`tests/determinism.rs`): same seed → identical hash sequence (core 600 ticks, flight 900
   ticks); different seeds → different hashes and different runs; a cloned world continues identically; a 1e-6
   change in one part's hp changes the hash; incrementally maintained caches equal a full recompute.
-- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage]` builds the `determinism`
+- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage|voyage]` builds the `determinism`
   example natively and for `wasm32-wasip1`, runs the wasm under Node's built-in WASI (`scripts/wasi-run.mjs`)
   and compares the per-tick hashes, printing the first divergent tick (exit 1). `--compare A.txt B.txt` compares
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
@@ -1606,7 +1607,8 @@ were set by the salvage agent for Niklas to review.
   8.
 - **A hold that shrinks** (a cargo part destroyed or split off): the lowest-value items go, one at a time (ties: the
   last in item order first), until the load fits (`Sim::shed_cargo`, after each breakage of a vessel). They are gone,
-  not spilled (*lead default*).
+  not spilled (*lead default*): `SimEvent::CargoLost { ship, item, count }` per kind dropped, in the order they
+  went.
 - **A lost vessel's ship keeps its cargo**: its wreck carries it (no capacity check once the ship is no vessel), and
   a collector takes it before the wreck's parts. A vessel that splits off starts with an empty hold; the cargo stays
   with the ship that keeps the controlling piece.
@@ -1634,6 +1636,10 @@ smaller parts go first; a full hold takes nothing; only salvageable parts count 
   `Split`, `PieceDestroyed`): the wreck may break up further.
 - `SimEvent::Collected { ship, from, item, units, at }`: `from` is `Salvaged::Part { ship, piece, part }`,
   `Cargo { ship }` or `Loose(id)`; `at` where the item was (world). It comes before the breakage events of the pass.
+- **One strip per piece and pass**: the stripped pieces' breakage is resolved once, after the pass, so their
+  colliders are stale until then; a later collector of the same pass leaves a piece stripped earlier in it for the
+  next pass (13 Oct 2026 review: it could reach parts through a part already taken). In ship order, so the first
+  collector at a piece goes first every pass.
 - **Reach**, hull to hull: a broad test on bounding circles about the frame origins (`Piece::radius`), then the exact
   distance between the two pieces' convex colliders in the collector's frame (corner to edge; 0 when a corner lies
   inside the other); a fragment by its distance to the collector's colliders.
@@ -1754,7 +1760,9 @@ runner, the scenario and the tests seed the `Sim` with the voyage seed too). The
    1. **Counts**: each ship entry of its encounter, then each wreck entry, rolls its count in `(min, max)`, both
       included.
    2. **Layout** (*lead default*): a spot for each ship, then each wreck, uniform within 30 m of the site, their hull
-      circles at least 5 m apart (the disc widens by 10 m after every 16 misses); then a heading for each, in the same
+      circles at least 5 m apart (the disc widens by 10 m after every 16 misses; a hull circle is centred where the
+      pose puts the main piece's centre of mass and reaches the blueprint's farthest corner, so the gap holds for
+      lopsided blueprints too); then a heading for each, in the same
       order; all at rest. Wrecks keep their entry's `damage` share.
    3. **Wreck seeds**: one `u64` per wreck (`Spawn::seed`), from which `Sim::spawn_wreck` picks the parts already
       gone, so a wreck does not depend on when or in which order the sites spawn.
@@ -1770,13 +1778,15 @@ behavior library (`set_behaviors`) and spawns the fleet at `plan.entry`. From th
 
 1. **Spawns** every site that has not spawned yet once a vessel of `player` (not dormant) is within
    `VoyageTuning::spawn_radius` (600 m) of it: its ships for `enemy` (`spawn_ship`; each holds where it spawned:
-   `ShipCommand::Maneuver { Hold, fire: false }`), then its wrecks (`spawn_wreck`, owner `enemy`). A site with ships
-   is **asleep**; a site that rolled none (a derelict field without its raider) is **quiet**.
+   `ShipCommand::Maneuver { Hold, fire: false }`, and so do the vessels a blueprint in several cored pieces forms at
+   spawn, which join the site there), then its wrecks (`spawn_wreck` with each wreck's seed, owner `enemy`). A site
+   with ships is **asleep**; a site that rolled none (a derelict field without its raider) is **quiet**.
 2. Reads the events since its last pass: a vessel that splits off one of a site's ships (`VesselFormed { from }`)
-   joins that site; a `Hit` or `PlumeHit` on a sleeping site's ship marks it.
+   joins that site (inserted in id order); a `Hit`, `PlumeHit` or `ShieldHit` (a shot its bubble took whole) on a
+   site's ship, or an `Impact` with ram damage on either side, marks its site.
 3. **Wakes** a sleeping site when a player vessel is within the encounter's `wake_radius` of the site, one of its
-   ships was hit, or one of them is no running vessel any more (*lead default*, the last two: a sniped or rammed
-   sleeper wakes its pack): every ship of the site gets its behavior (`BehaviorLibrary::default_for`: its own or its
+   ships was marked, or one of them is no running vessel any more (*lead default*, the last two: a sniped, shot at or
+   rammed sleeper wakes its pack): every ship of the site gets its behavior (`BehaviorLibrary::default_for`: its own or its
    faction's); `SimEvent::SiteWoke { site }`.
 4. **Clears** an awake site when each of its ships (split-off vessels included) is destroyed or disarmed
    (GDR-0068): none is a vessel (running, dark or dormant) that is still armed: `SimEvent::SiteCleared { site, goal }`.
@@ -1816,13 +1826,14 @@ The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) 
 ### State hash
 
 After the loose items: the voyage, if one is underway: its id, seed, radius, entry, owners, and per site the plan
-(encounter id, goal, spot, wake radius, every spawn's design id, pose and damage), the state and the ids of its ships
+(encounter id, goal, spot, wake radius, every spawn's design id, pose, damage and seed), the state and the ids of its ships
 and wrecks. `VoyageTuning` with the config.
 
 ### Cost
 
 Per step with a voyage: one pass over the step's events, the player's vessels, one distance test per site and
-player vessel, and for awake sites one ship look-up per site ship; nothing allocates once warm except the ships a
+player vessel, and for sleeping and awake sites one ship look-up per site ship (the wake test, the clearing test);
+nothing allocates once warm except the ships a
 site spawns. Spawning a site costs its ships' `Ship::new` and bodies once (a raider pair or a den: a few
 microseconds). The voyage runner below steps whole voyages (a ship, one to three sites' ships and wrecks in the
 world) at 0.005–0.007 ms median and 0.008–0.017 ms p95 per step (native release, 13 Oct 2026, load average 8–11 from

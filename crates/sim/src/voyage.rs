@@ -11,8 +11,9 @@
 //!   (holding where they spawned, `Maneuver::Hold`) and wrecks (`Sim::spawn_wreck`) spawn once a vessel of the
 //!   player owner comes within `VoyageTuning::spawn_radius` of it.
 //! * **Waking**: a sleeping site's ships fly their behavior (their own or their faction's) once a player vessel
-//!   comes within the encounter's wake radius, one of them is hit, or one of them stopped being a running vessel
-//!   (`SimEvent::SiteWoke`). Vessels that split off a site's ships belong to the site.
+//!   comes within the encounter's wake radius, one of them is hit (a shot or a plume on the hull, a shot its bubble
+//!   took, a ram that deals damage), or one of them stopped being a running vessel (`SimEvent::SiteWoke`). Vessels
+//!   that split off a site's ships belong to the site.
 //! * **Clearing** (GDR-0068): an awake site is cleared when each of its ships is destroyed or disarmed: none is a
 //!   vessel (running, dark or dormant) that is still armed ([`Ship::is_armed`]) (`SimEvent::SiteCleared { goal }`);
 //!   clearing is final. A site that rolled no ships is quiet: nothing wakes there and it is never cleared.
@@ -34,6 +35,7 @@ use crate::events::SimEvent;
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::ShipId;
 use crate::maneuver::Maneuver;
+use crate::mass::combine;
 use crate::math::{Vec2, cos, sin, sqrt};
 use crate::rng::{Pcg32, splitmix64};
 use crate::ship::{Body, Ship};
@@ -273,12 +275,31 @@ fn place_site(
     good.or(best).map_or(Vec2::ZERO, |(_, p)| p)
 }
 
-/// Radius of a design's hull circle about its middle (m): half the diagonal of its grid's bounds.
+/// Radius of a design's hull circle about the point a spawn pose places (m): the farthest corner of any of its
+/// parts from its main piece's centre of mass (the frame origin `Ship::new` puts at the pose; the same quantity as
+/// `Piece::radius`, for the whole blueprint). 1 for a design without parts.
 fn hull_radius(d: &ShipDesign) -> f32 {
-    d.grid.bounds().map_or(1.0, |b| {
-        let (w, h) = (b.width() as f32, b.height() as f32);
-        0.5 * sqrt(w * w + h * h)
-    })
+    let pieces = d.grid.pieces();
+    let Some(main) = d.grid.main_piece(&pieces, |i| d.parts[i].logic) else {
+        return 1.0;
+    };
+    let com = combine(
+        pieces.parts[main].iter().map(|&i| {
+            let s = &d.parts[i];
+            (s.mass, s.centroid, s.inertia)
+        }),
+        [0.0, 0.0],
+    )
+    .1;
+    let mut r2 = 0.0f32;
+    for s in &d.parts {
+        for c in s.shape.polygon() {
+            let [x, y] = c.to_f32();
+            let (dx, dy) = (x - com[0], y - com[1]);
+            r2 = r2.max(dx * dx + dy * dy);
+        }
+    }
+    sqrt(r2)
 }
 
 /// Poses for things of these hull radii around a site: random spots and headings, hull circles at least
@@ -582,27 +603,35 @@ impl Sim {
                 self.spawn_site(&mut v, k);
             }
         }
+        let mark = |v: &mut Voyage, ship: ShipId| {
+            if let Some(k) = v.site_of(ship)
+                && v.sites[k].ships.binary_search(&ship).is_ok()
+            {
+                v.sites[k].hit = true;
+            }
+        };
         for e in &self.events {
-            match *e {
-                SimEvent::VesselFormed {
+            match e {
+                &SimEvent::VesselFormed {
                     ship,
                     from: Some((parent, _)),
                     ..
                 } => {
                     if let Some(k) = v.site_of(parent)
-                        && v.sites[k].ships.contains(&parent)
+                        && v.sites[k].ships.binary_search(&parent).is_ok()
+                        && let Err(i) = v.sites[k].ships.binary_search(&ship)
                     {
-                        // New ids are the highest so far: the list stays ascending.
-                        v.sites[k].ships.push(ship);
+                        v.sites[k].ships.insert(i, ship);
                         v.site_of.insert(ship, k as u32);
                     }
                 }
-                SimEvent::Hit { ship, .. } | SimEvent::PlumeHit { ship, .. } => {
-                    if let Some(k) = v.site_of(ship)
-                        && v.sites[k].ships.binary_search(&ship).is_ok()
-                    {
-                        v.sites[k].hit = true;
-                    }
+                // Hurt or shot at: a hit on the hull or by a plume, a shot its bubble took, a ram with damage.
+                &SimEvent::Hit { ship, .. }
+                | &SimEvent::PlumeHit { ship, .. }
+                | &SimEvent::ShieldHit { ship, .. } => mark(&mut v, ship),
+                SimEvent::Impact(c) if c.damage > 0.0 => {
+                    mark(&mut v, c.a.ship);
+                    mark(&mut v, c.b.ship);
                 }
                 _ => {}
             }
@@ -638,7 +667,9 @@ impl Sim {
         self.voyage = Some(v);
     }
 
-    /// Spawns site `k`: its ships for the enemy, holding where they are, then its wrecks.
+    /// Spawns site `k`: its ships for the enemy, holding where they are (with the vessels a blueprint in several
+    /// cored pieces forms at spawn), then its wrecks. New ships come after every existing one, so the site's list
+    /// stays ascending.
     fn spawn_site(&mut self, v: &mut Voyage, k: usize) {
         let Voyage {
             sites,
@@ -648,17 +679,25 @@ impl Sim {
         } = v;
         let site = &mut sites[k];
         for s in &site.plan.ships {
-            let id = self.spawn_ship(Arc::clone(&s.design), *enemy, s.body);
-            let hold = Maneuver::Hold { at: s.body.pos };
-            self.command(
-                id,
-                ShipCommand::Maneuver {
-                    maneuver: hold,
-                    fire: false,
-                },
-            );
-            site.ships.push(id);
-            site_of.insert(id, k as u32);
+            let first = self.ships.len();
+            self.spawn_ship(Arc::clone(&s.design), *enemy, s.body);
+            for j in first..self.ships.len() {
+                let ship = &self.ships[j];
+                let id = ship.id();
+                let at = match ship.control_piece().and_then(|c| ship.piece(c)) {
+                    Some(p) if j > first => p.com_world(),
+                    _ => s.body.pos,
+                };
+                self.command(
+                    id,
+                    ShipCommand::Maneuver {
+                        maneuver: Maneuver::Hold { at },
+                        fire: false,
+                    },
+                );
+                site.ships.push(id);
+                site_of.insert(id, k as u32);
+            }
         }
         for w in &site.plan.wrecks {
             let id = self.spawn_wreck(Arc::clone(&w.design), *enemy, w.body, w.damage, w.seed);
@@ -689,6 +728,32 @@ mod tests {
         assert_eq!(seen, [true; 3]);
         assert_eq!(roll_count(&mut rng, (3, 3)), 3);
         assert_eq!(roll_count(&mut rng, (5, 1)), 5);
+    }
+
+    /// The hull circle is about the point a spawn pose places, the main piece's centre of mass (13 Oct 2026
+    /// review): every collider of a spawned ship lies inside it, also for a lopsided blueprint.
+    #[test]
+    fn hull_circles_hold_the_spawned_ship() {
+        let content = data::base_content();
+        for bp in content.ships.iter() {
+            let d = Arc::new(ShipDesign::compile(&content, bp).unwrap());
+            let r = hull_radius(&d);
+            let mut w = Sim::new(1);
+            let at = Vec2::new(30.0, -20.0);
+            let id = w.spawn_ship(Arc::clone(&d), Owner(1), Body::at(at, 0.7));
+            let mut far = 0.0f32;
+            for s in w.ships() {
+                for p in s.pieces() {
+                    for c in &p.colliders {
+                        for &v in c.points() {
+                            far = far.max((p.body.to_world(v) - at).length());
+                        }
+                    }
+                }
+            }
+            assert!(far <= r + 1e-3, "{}: {far} > {r}", bp.id);
+            assert!(w.ship(id).is_some());
+        }
     }
 
     #[test]

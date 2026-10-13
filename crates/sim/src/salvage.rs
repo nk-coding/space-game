@@ -37,10 +37,9 @@ use crate::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
-use crate::mass::to_piece;
 use crate::math::{Rot, Vec2, sqrt};
 use crate::rng::{Pcg32, Stream, splitmix64};
-use crate::ship::{Body, Piece, Ship, inherited_velocity};
+use crate::ship::{Body, Piece, Ship};
 use crate::vessel::{Owner, VesselState};
 use crate::world::Sim;
 
@@ -164,8 +163,9 @@ impl Cargo {
     }
 
     /// Drops the lowest-value items (ties: the last in item order), one at a time, until the load fits
-    /// `capacity`.
-    pub(crate) fn shed(&mut self, capacity: u32) {
+    /// `capacity`. Returns what went, with counts, in the order it went.
+    pub(crate) fn shed(&mut self, capacity: u32) -> Vec<(Item, u32)> {
+        let mut gone: Vec<(Item, u32)> = Vec::new();
         while self.used > capacity {
             let mut worst: Option<(&Item, f32)> = None;
             for (item, s) in &self.items {
@@ -173,10 +173,15 @@ impl Cargo {
                     worst = Some((item, s.value));
                 }
             }
-            let Some((item, _)) = worst else { return };
+            let Some((item, _)) = worst else { break };
             let item = item.clone();
             self.take(&item);
+            match gone.iter_mut().find(|(i, _)| *i == item) {
+                Some((_, n)) => *n += 1,
+                None => gone.push((item, 1)),
+            }
         }
+        gone
     }
 }
 
@@ -249,6 +254,9 @@ pub(crate) struct SalvageState {
     next_loose: u32,
     /// Salvage pieces within reach of one collector: `(hull distance, ship index, piece index)`.
     near: Vec<(f32, usize, usize)>,
+    /// Pieces stripped earlier in this pass `(ship index, piece index)`: their colliders are stale until the
+    /// breakage is resolved at the end of the pass, so later collectors leave them for the next pass.
+    stripped: Vec<(usize, usize)>,
     /// The bounding box of each of one collector's colliders (its frame).
     boxes: Vec<Aabb>,
 }
@@ -303,21 +311,6 @@ impl Ship {
             spec.cargo_units,
             spec.build_points / spec.cargo_units as f32,
         )
-    }
-
-    /// World position of part `p`'s centroid (in its piece's pose) and the velocity of that point.
-    fn part_motion(&self, p: PartIdx) -> Option<(Vec2, Vec2)> {
-        let piece = self.piece(self.parts[p as usize].piece)?;
-        let rot = Rot::from_angle(piece.body.angle);
-        let local = to_piece(self.design.parts[p as usize].centroid, piece.origin);
-        let b = &piece.body;
-        let vel = inherited_velocity(
-            b.linvel,
-            b.angvel,
-            rot.apply(piece.mass.com),
-            rot.apply(local),
-        );
-        Some((b.pos + rot.apply(local), vel))
     }
 
     /// The best alive salvageable part of piece `q` that fits into `free` units: highest value per unit, ties the
@@ -536,7 +529,11 @@ fn pick(
     st.near.clear();
     for (j, s) in ships.iter().enumerate() {
         for (q, p) in s.pieces.iter().enumerate() {
-            if p.controlled || !slow(p.body.linvel) || !near(cp, p.body.pos, p.radius, reach) {
+            if p.controlled
+                || !slow(p.body.linvel)
+                || !near(cp, p.body.pos, p.radius, reach)
+                || st.stripped.contains(&(j, q))
+            {
                 continue;
             }
             if let Some(d) = hull.piece_distance(p, reach) {
@@ -623,7 +620,7 @@ impl Sim {
             if !spec.fragment {
                 continue;
             }
-            let Some((pos, vel)) = s.part_motion(p) else {
+            let Some((pos, vel)) = s.part_world(p) else {
                 continue;
             };
             st.loose.push(Loose {
@@ -642,7 +639,8 @@ impl Sim {
         }
     }
 
-    /// Ship `k`'s hold after breakage: a vessel whose hold shrank below its load drops its lowest-value items.
+    /// Ship `k`'s hold after breakage: a vessel whose hold shrank below its load drops its lowest-value items
+    /// (`SimEvent::CargoLost` for each kind).
     pub(crate) fn shed_cargo(&mut self, k: usize) {
         let s = &mut self.ships[k];
         if !s.is_vessel() {
@@ -650,7 +648,10 @@ impl Sim {
         }
         let capacity = s.cargo_capacity();
         if s.cargo.used > capacity {
-            s.cargo.shed(capacity);
+            let ship = s.id;
+            for (item, count) in s.cargo.shed(capacity) {
+                self.events.push(SimEvent::CargoLost { ship, item, count });
+            }
         }
     }
 
@@ -674,6 +675,7 @@ impl Sim {
             return;
         }
         let mut stripped = false;
+        self.salvage.stripped.clear();
         for k in 0..self.ships.len() {
             let c = &self.ships[k];
             if !t.collects(c.owner) || c.vessel_state() != Some(VesselState::Running) {
@@ -725,13 +727,14 @@ impl Sim {
             Pick::Part { j, q, part } => {
                 let s = &mut self.ships[j];
                 let (item, units, value) = s.part_item(part);
-                let at = s.part_motion(part).map_or(s.pieces[q].com_world(), |m| m.0);
+                let at = s.part_world(part).map_or(s.pieces[q].com_world(), |m| m.0);
                 let from = Salvaged::Part {
                     ship: s.id,
                     piece: s.pieces[q].id,
                     part,
                 };
                 s.remove_part(part as usize);
+                self.salvage.stripped.push((j, q));
                 (item, units, value, from, at, true)
             }
         };
