@@ -217,8 +217,16 @@ fn the_focus_is_piloted_and_moves_on_when_it_loses_its_cores() {
     }));
 }
 
-/// A test pack: a cold core and a core that overheats quickly, each running 4 control.
+/// A test pack: a cold core and a core that overheats quickly, each running 4 control; an engine that costs
+/// control but draws no power and a reactor that costs no control.
 const CORES: &str = r#"[
+    (id: "free_thruster", name: "Free thruster", summary: "Test engine without a draw.", category: "propulsion",
+     icon: "thruster", size: (1, 1), build_points: 3, mass: 2, hp: 1, control_cost: 1,
+     heat: (output: 0.8, limit: 3.2),
+     engine: (thrust: 200, rated_speed: 20, gimbal: 5, plume: (length: 3, damage: 1, heat: 1.5))),
+    (id: "free_reactor", name: "Free reactor", summary: "Test reactor without a control cost.",
+     category: "power", icon: "fission-reactor", size: (1, 1), build_points: 4, mass: 4, hp: 1, control_cost: 0,
+     power: (output: 10), heat: (output: 3, limit: 6)),
     (id: "cold_core", name: "Cold core", summary: "Test core.", category: "logic", icon: "logic-core",
      size: (1, 1), build_points: 3, mass: 1, hp: 1, power: (draw: 1, tier: Critical),
      logic: (rule_slots: 6, control_capacity: 4)),
@@ -645,4 +653,49 @@ fn a_shielded_ram_drains_the_bubble_first() {
             .any(|e| matches!(e, SimEvent::ShieldHit { absorbed, .. } if *absorbed > 0.0)),
         "{events:?}"
     );
+}
+
+/// An idle engine that draws no power (content may give it a control cost without a draw; validation only
+/// warns) pushes nothing under raw throttles either (13 Oct 2026 review: only a zero power level kept idle movers
+/// still, and such an engine has no level of its own).
+#[test]
+fn an_idle_engine_without_a_draw_pushes_nothing_under_raw_throttles() {
+    let c = core_content();
+    // A cold core (capacity 4), a reactor that costs nothing, five engines that cost 1 each: one idles.
+    let mut parts: Vec<P> = vec![
+        ("free_reactor", 0, 1, 0, false, None),
+        ("cold_core", 1, 1, 0, false, None),
+    ];
+    for x in 0..5 {
+        parts.push(("free_thruster", x, 2, 0, false, None));
+    }
+    let d = custom(&c, &parts);
+    let (mut w, s) = world_with(d.clone());
+    step(&mut w, 1);
+    w.step(&inputs(s, controls(d.engines.len(), 1.0, false, true)));
+    let ship = w.ship(s).unwrap();
+    let idle = (0..d.parts.len() as PartIdx).filter(|&i| ship.part(i).idle).count();
+    assert_eq!(idle, 1);
+    let thrust = c.parts.get("free_thruster").unwrap().engine.as_ref().unwrap().thrust;
+    let force = ship.pieces()[0].wrench.force.y;
+    assert!((force - 4.0 * thrust).abs() < 1e-2, "{force} vs 4 × {thrust}");
+}
+
+/// A dormant vessel that loses its last logic core is salvage, and salvage is never dormant (13 Oct 2026 review).
+#[test]
+fn a_dormant_vessel_that_loses_its_cores_is_salvage_not_dormant() {
+    let c = content();
+    let runner = design(&c, "halvex_runner");
+    let mut cfg = SimConfig::default();
+    cfg.mind_capacity[0] = 2;
+    let mut w = sim::Sim::with_config(1, cfg);
+    w.spawn_ship(runner.clone(), PLAYER, Body::default());
+    let b = w.spawn_ship(runner.clone(), PLAYER, Body::at(Vec2::new(40.0, 0.0), 0.0));
+    assert!(w.ship(b).unwrap().is_dormant());
+    for (i, _) in runner.parts.iter().enumerate().filter(|(_, p)| p.logic) {
+        w.apply_damage(b, DamageTarget::Part(i as PartIdx), 100.0);
+    }
+    step(&mut w, 1);
+    let ship = w.ship(b).unwrap();
+    assert!(!ship.is_vessel() && !ship.is_dormant());
 }

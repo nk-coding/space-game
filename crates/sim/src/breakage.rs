@@ -136,6 +136,9 @@ impl Ship {
                 k += 1;
                 continue;
             }
+            // Only this resolution clears it: a rebuild for other reasons (`Sim::set_config`) must not drop
+            // a part destroyed since the last resolution.
+            self.pieces[k].dirty = false;
             let alive: Vec<PartIdx> = self.pieces[k]
                 .parts
                 .iter()

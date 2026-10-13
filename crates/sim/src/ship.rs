@@ -1091,7 +1091,6 @@ impl Ship {
             &mut self.pieces[k],
             Piece::new(PieceId(u32::MAX), Vec::new(), [0.0; 2], Body::default()),
         );
-        piece.dirty = false;
         let pid = piece.id;
 
         // Core flag and control load.
@@ -1401,18 +1400,15 @@ impl Ship {
             };
 
             // Wrench at the power each actuator actually got and the speed falloff of this tick. `level` is
-            // the power level of a working thruster (0 if it cannot work).
+            // the power level of a thruster that can produce (0 if it cannot: dead, overheated, idle or
+            // unpowered, [`producing`]; an idle mover that draws no power has no level of its own to zero).
             let fmax = &mut scratch.fmax;
             fmax.clear();
             let level = &mut scratch.level;
             level.clear();
             for t in &piece.thrusters {
                 let ps = &parts[t.part as usize];
-                level.push(if active && ps.alive && !ps.overheated {
-                    ps.power
-                } else {
-                    0.0
-                });
+                level.push(if active && producing(ps) { ps.power } else { 0.0 });
             }
             fmax.extend(piece.thrusters.iter().enumerate().map(|(i, t)| {
                 t.max_force * level[i] * piece.falloff.get(i).copied().unwrap_or(1.0)
@@ -1430,28 +1426,21 @@ impl Ship {
             tmax.clear();
             tmax.extend(piece.torque_sources.iter().map(|src| {
                 let ps = &parts[src.part as usize];
-                if active && ps.alive && !ps.overheated {
+                if active && producing(ps) {
                     src.max * ps.power
                 } else {
                     0.0
                 }
             }));
-            if piece.act.throttle.len() == piece.thrusters.len()
-                && piece.act.torque.len() == tmax.len()
-            {
-                piece.wrench = wrench_of(&piece.thrusters, fmax, full, tmax, &piece.act);
-                for (i, t) in piece.thrusters.iter().enumerate() {
-                    piece.output[i] = if t.max_force > 0.0 {
-                        (piece.act.throttle[i] * fmax[i] + piece.act.couple[i] * full[i])
-                            / t.max_force
-                    } else {
-                        0.0
-                    };
-                    piece.cruise[i] = piece.act.cruise.get(i).copied().unwrap_or(0.0) * level[i];
-                }
-            } else {
-                piece.wrench = Wrench::default();
-                piece.cruise.fill(0.0);
+            // `act` matches the tables: the flight computer sizes it every tick, rebuilds size it too.
+            piece.wrench = wrench_of(&piece.thrusters, fmax, full, tmax, &piece.act);
+            for (i, t) in piece.thrusters.iter().enumerate() {
+                piece.output[i] = if t.max_force > 0.0 {
+                    (piece.act.throttle[i] * fmax[i] + piece.act.couple[i] * full[i]) / t.max_force
+                } else {
+                    0.0
+                };
+                piece.cruise[i] = piece.act.cruise[i] * level[i];
             }
             for g in &mut piece.guns {
                 g.output = g.dps * parts[g.part as usize].work;

@@ -225,14 +225,16 @@ impl Sim {
     }
 
     /// One lane's damage and heat on the part it hit: shields of non-friendly ships covering the point first
-    /// (energy share; the heat goes with the damage), never the engine's own.
+    /// (energy share; the heat goes with the damage), never the engine's own. A plume that does only heat loses
+    /// each covering bubble's energy share of it, without draining the bubble (heat is not damage).
     fn burn(&mut self, b: &Burn) {
         let mut damage = b.damage;
         let mut heat = b.heat;
-        if !b.own && damage > 0.0 {
+        if !b.own && (damage > 0.0 || heat > 0.0) {
             let fi = family_index(WeaponFamily::Energy);
+            let heat_only = damage <= 0.0;
             for n in 0..self.bubbles.len() {
-                if damage <= 1e-6 {
+                if (if heat_only { heat } else { damage }) <= 1e-6 {
                     break;
                 }
                 let bub = &self.bubbles[n];
@@ -243,6 +245,10 @@ impl Sim {
                     || (b.point - bub.centre).length_squared() > bub.radius * bub.radius
                     || !self.ships[bub.ship_index].parts[bub.part as usize].alive
                 {
+                    continue;
+                }
+                if heat_only {
+                    heat *= 1.0 - bub.absorb[fi].min(1.0);
                     continue;
                 }
                 let took = self.absorb(n, fi, b.by, b.point, damage);

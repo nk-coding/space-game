@@ -138,6 +138,8 @@ pub struct Sim {
     /// Events before this index belong to the previous step.
     events_mark: usize,
     tick_hash: Option<u64>,
+    /// This tick's physics step has run (the impacts phase of `step`); false between steps.
+    stepped: bool,
     plans: Vec<flight::Plan>,
     /// Live projectiles, ascending id.
     pub(crate) projectiles: Vec<Projectile>,
@@ -181,6 +183,7 @@ impl Sim {
             events: Vec::new(),
             events_mark: 0,
             tick_hash: None,
+            stepped: false,
             plans: Vec::new(),
             projectiles: Vec::new(),
             beams: Vec::new(),
@@ -515,6 +518,8 @@ impl Sim {
             }
         }
         if lost {
+            // Salvage is never dormant (the mind pass looks at vessels only).
+            self.ships[k].dormant = false;
             let s = &self.ships[k];
             self.events.push(SimEvent::VesselLost {
                 ship: s.id(),
@@ -525,9 +530,12 @@ impl Sim {
         self.form_vessels(k);
     }
 
-    /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting.
+    /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting: the pieces ghost each
+    /// other for `split_ghost_ticks` physics steps from the next one (this tick's, or the next tick's when this
+    /// tick has stepped already: a split from the impacts phase).
     fn sync_bodies(&mut self, k: usize, from: usize) {
-        let ghost_until = self.tick + self.config.split_ghost_ticks as u64;
+        let next_step = self.tick + self.stepped as u64;
+        let ghost_until = next_step + self.config.split_ghost_ticks as u64;
         for e in from..self.events.len() {
             let ship = &mut self.ships[k];
             let sid = ship.id();
@@ -687,6 +695,7 @@ impl Sim {
             }
         }
         self.physics.step();
+        self.stepped = true;
 
         // Contacts → impacts (needs the velocities from before the step), read-back, ramming.
         mark(StepPhase::Impacts);
@@ -706,6 +715,7 @@ impl Sim {
         }
         self.ram();
 
+        self.stepped = false;
         self.tick += 1;
         self.events_mark = self.events.len();
         if cfg!(debug_assertions) {
@@ -876,5 +886,35 @@ impl StateHash for Sim {
             p.hash_state(h);
         }
         self.physics.hash_state(h);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Split pieces ghost each other for `split_ghost_ticks` physics steps from the next one, also when the split
+    /// is resolved after this tick's step (a ram; 13 Oct 2026 review: those ghosted one step less).
+    #[test]
+    fn split_ghosts_last_the_configured_steps_from_the_next_physics_step() {
+        let content = data::base_content();
+        let raider = content.ships.get("automaton_raider").unwrap();
+        let d = Arc::new(ShipDesign::compile(&content, raider).unwrap());
+        for stepped in [false, true] {
+            let mut sim = Sim::new(1);
+            let s = sim.spawn_ship(d.clone(), Owner(1), Body::default());
+            sim.step(&TickInputs::default());
+            sim.stepped = stepped;
+            for cell in [(1, 0), (1, 1), (1, 2)] {
+                sim.apply_damage(s, DamageTarget::Cell(cell), 100.0);
+            }
+            sim.resolve_breakage();
+            let next = sim.tick + stepped as u64;
+            let pieces = sim.ship(s).unwrap().pieces();
+            assert_eq!(pieces.len(), 2);
+            for p in pieces {
+                assert_eq!(p.ghost_until, next + sim.config.split_ghost_ticks as u64);
+            }
+        }
     }
 }

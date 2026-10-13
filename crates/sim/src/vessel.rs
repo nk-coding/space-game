@@ -156,13 +156,17 @@ impl Ship {
         self.parked.as_ref()
     }
 
-    /// Dormant or awake. Waking marks the vessel active until the next systems update decides.
+    /// Dormant or awake. Waking marks the vessel active until the next systems update decides. The control
+    /// pass looks at the idle set again either way (a dormant vessel has no idle parts, GDR-0044, even when its
+    /// capacity was 0 already because its cores overheated). A woken vessel's parts get power, and with it
+    /// authority, in its next systems step.
     fn set_dormant(&mut self, dormant: bool) {
         self.dormant = dormant;
         if let Some(c) = self.control
             && let Some(p) = self.piece_mut(c)
         {
             p.active = !dormant && p.has_core;
+            p.control_dirty = true;
         }
     }
 
@@ -213,10 +217,12 @@ impl Ship {
             }
         }
         // The piece's caches (mass, colliders, power lists, thrusters, guns, control load) were built for
-        // this piece already and stay valid; only control changes.
+        // this piece already and stay valid; only control changes, and with it the authority (built while the
+        // piece was salvage: all zero), so the vessel's first plan sees what it can do.
         piece.controlled = true;
         piece.active = piece.has_core;
         piece.control_dirty = true;
+        crate::ship::refresh_authority(&mut piece, &t.parts);
         t.pieces.push(piece);
         t
     }

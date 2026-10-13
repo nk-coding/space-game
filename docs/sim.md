@@ -555,7 +555,9 @@ dark or dormant vessel does not fly at all. Code: `ship::refresh_authority`, the
 
 - `Piece::authority` (`ThrustAuthority`) counts those thruster rows and torque sources, each at its last power
   level (partial power scales its output). It is refreshed after every systems step (after the heat step, so a
-  part that just overheated is out) and on rebuilds, and is zero while the piece is not active. `Kin` takes the
+  part that just overheated is out), on rebuilds and when a split-off piece becomes a vessel of its own (13 Oct
+  2026 review fix: its first plan saw no thrust), and is zero while the piece is not active (a woken vessel gets
+  power, and so authority, in its first systems step). `Kin` takes the
   thrust per axis, the top speed per axis (`speeds`, `top_speed`) and the planning angular acceleration from it,
   so the turn-rate planning, the stick's full length, `Auto`'s flip decision and every maneuver's top speed follow
   what still works.
@@ -1155,7 +1157,9 @@ other vessels of the same owner (GDR-0046). Rules marked *lead default* are [GDR
   own piece and every vessel of the same owner (`Physics::raycast_skipping`). Enemy vessels, salvage (the ship's
   own wrecked pieces included) and debris are hit. Bubbles of non-friendly ships covering the hit point absorb the
   plume like energy damage (their `absorb[Energy]` share, in bubble order, `ShieldHit { by: the engine's ship }`),
-  and the heat goes with the damage in proportion (*lead default*).
+  and the heat goes with the damage in proportion (*lead default*). A plume that does only heat (content
+  `damage: 0`) loses each covering bubble's energy share of its heat without draining the bubble (heat is not
+  damage; 13 Oct 2026 review fix, the review agent's default: until then such a plume ignored shields).
 - **Depth** (*lead default*): each lane stops at the first part it hits, on whichever ship; that part takes the
   lane's damage and heat. Once it is destroyed the plume reaches further, from the next tick on (it burns its way
   through).
@@ -1271,8 +1275,9 @@ are no fixed bodies yet).
 
 ### Ghosting after splits
 
-Every piece of a split (the kept one and the new ones) is a ghost for `split_ghost_ticks` (10 ticks): a ghost
-group in its collider's user data (the id of the ship that split) plus Rapier's contact-pair filter hook, which
+Every piece of a split (the kept one and the new ones) is a ghost for `split_ghost_ticks` (10) physics steps
+from the next one (a split resolved after a tick's physics step, by a ram, counts from the next tick's step; until
+the 13 Oct 2026 review fix those ghosted one step less): a ghost group in its collider's user data (the id of the ship that split) plus Rapier's contact-pair filter hook, which
 drops a pair when both colliders are ghosts of the same group. A piece that split off as a vessel of its own
 moves to a new ship but keeps its group, so it ghosts its parent too. It is a pure function of the two
 colliders (deterministic), and other pairs never run the hook. Ghosts still collide with other ships. So
