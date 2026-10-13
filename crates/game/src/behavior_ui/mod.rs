@@ -189,8 +189,8 @@ impl Plugin for BehaviorPlugin {
 /// The drydock's design report (`drydock::report`), brought up to date on this screen too: the weapon reach and
 /// TEST IN RANGE read it. (A system of its own: the drydock's schedule orders its systems by `report::update`'s
 /// name, which must stay unique there.)
-fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, out: ResMut<DrydockReport>) {
-    crate::drydock::report::update(design, content, tuning, out);
+fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, time: Res<Time<Real>>, out: ResMut<DrydockReport>) {
+    crate::drydock::report::update(design, content, tuning, time, out);
 }
 
 /// The screen is shown only in its mode.

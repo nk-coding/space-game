@@ -13,6 +13,10 @@ use crate::tuning::Tuning;
 
 use super::PlayerDesign;
 
+/// While a paint or erase drag runs, the report follows at most this often (real seconds); the last one comes when
+/// the stroke ends. A report of a full 64 × 64 frame takes about 5 ms (dev build), too much for every frame.
+const STROKE_SECS: f64 = 0.1;
+
 /// The report of the design at [`DrydockReport::revision`].
 #[derive(Resource, Default)]
 pub struct DrydockReport {
@@ -22,6 +26,8 @@ pub struct DrydockReport {
     pub revision: Option<u64>,
     /// The content the report is made with (the tuning's scales applied), made again when the tuning changes.
     scaled: Option<Content>,
+    /// When it was made (real seconds).
+    made_at: f64,
 }
 
 impl DrydockReport {
@@ -31,17 +37,26 @@ impl DrydockReport {
     }
 }
 
-/// Recomputes the report when the design or the tuning changes (about 25 µs for the Halvex Runner).
-pub(crate) fn update(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, mut out: ResMut<DrydockReport>) {
+/// Recomputes the report when the design or the tuning changes (about 25 µs for the Halvex Runner); during a paint
+/// or erase drag at most every [`STROKE_SECS`].
+pub(crate) fn update(
+    design: Res<PlayerDesign>,
+    content: Res<GameContent>,
+    tuning: Res<Tuning>,
+    time: Res<Time<Real>>,
+    mut out: ResMut<DrydockReport>,
+) {
     if tuning.is_changed() || out.scaled.is_none() {
         out.scaled = Some(tuning.scaled_content(&content.0, true));
         out.revision = None;
     }
-    if out.revision == Some(design.revision()) {
+    let now = time.elapsed_secs_f64();
+    if out.revision == Some(design.revision()) || (design.dock().in_stroke() && out.revision.is_some() && now - out.made_at < STROKE_SECS) {
         return;
     }
     let out = &mut *out;
     let Some(content) = out.scaled.as_ref() else { return };
     out.revision = Some(design.revision());
+    out.made_at = now;
     out.report = Some(sim::design_report(content, design.blueprint(), &tuning.config()));
 }

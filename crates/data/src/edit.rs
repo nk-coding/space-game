@@ -744,6 +744,11 @@ impl Drydock {
         !self.redo.is_empty()
     }
 
+    /// A stroke is open (a paint or erase drag): the design may change again next frame.
+    pub fn in_stroke(&self) -> bool {
+        self.stroke.is_some()
+    }
+
     // ---- edits, internals ----
 
     /// Plans replacing part `i` by `make(placement, shape, false)` if it fits (its own old cells do not count),

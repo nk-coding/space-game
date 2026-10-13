@@ -597,6 +597,22 @@ fn fill_is_one_step_and_mirrors() {
 }
 
 #[test]
+fn a_stroke_is_open_between_begin_and_end() {
+    let c = content();
+    let mut dock = empty(&c, (8, 8));
+    assert!(!dock.in_stroke());
+    dock.begin_stroke();
+    assert!(dock.in_stroke());
+    dock.paint((1, 1), "steel").unwrap();
+    dock.end_stroke();
+    assert!(!dock.in_stroke());
+    // Undo closes an open stroke too.
+    dock.begin_stroke();
+    dock.undo();
+    assert!(!dock.in_stroke());
+}
+
+#[test]
 fn strokes_are_one_undo_step() {
     let c = content();
     let mut dock = empty(&c, (8, 8));
