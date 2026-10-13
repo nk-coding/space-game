@@ -332,7 +332,7 @@ fn rebuild_escorts(
 
 /// Cranes slide to the mouth as the yard clears for the drydock (and back), carriages ride their cranes (up onto
 /// the arms when parked), hoist lines reach for the ship, clamps retract into the walls, drones circle the ship.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn animate(
     time: Res<Time<Real>>,
     mode: Res<State<AppMode>>,

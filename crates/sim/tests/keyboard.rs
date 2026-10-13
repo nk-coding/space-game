@@ -123,13 +123,13 @@ fn w_thrusts_along_the_nose_and_cancels_drift() {
     let mut w = sim::Sim::new(3);
     // Nose rotated 0.6 rad, drifting sideways at 3 m/s.
     let angle = 0.6f32;
-    let nose = Vec2::new(-angle.sin(), angle.cos());
-    let side = Vec2::new(angle.cos(), angle.sin());
+    let nose = Vec2::new(-libm::sinf(angle), libm::cosf(angle));
+    let side = Vec2::new(libm::cosf(angle), libm::sinf(angle));
     let s = w.spawn_ship(rcs_ship(&c), sim::Owner::PLAYER, Body { pos: Vec2::ZERO, angle, linvel: side * 3.0, angvel: 0.0 });
     steer(&mut w, s, axes(0.0, 1.0, 0.0), 600);
     let b = body(&w, s);
-    let n = Vec2::new(-b.angle.sin(), b.angle.cos());
-    let sd = Vec2::new(b.angle.cos(), b.angle.sin());
+    let n = Vec2::new(-libm::sinf(b.angle), libm::cosf(b.angle));
+    let sd = Vec2::new(libm::cosf(b.angle), libm::sinf(b.angle));
     assert!(b.linvel.dot(n) > 1.0, "moves along the nose: {:?}", b.linvel);
     assert!(b.linvel.dot(sd).abs() < 0.5, "sideways drift cancelled: {}", b.linvel.dot(sd));
     assert!((b.angle - angle).abs() < 0.05, "W does not turn the ship");
@@ -167,7 +167,7 @@ fn smart_aim_picks_a_side_gun_when_the_front_guns_are_gone() {
         let ship = w.ship(me).unwrap();
         tp - ship.piece(ship.control_piece().unwrap()).unwrap().com_world()
     };
-    let bearing = to.y.atan2(to.x);
+    let bearing = libm::atan2f(to.y, to.x);
     // Both guns are equal; the front group wins the tie: the nose (+y) points at the target.
     let nose = body(&w, me).angle + std::f32::consts::FRAC_PI_2;
     assert!(wrap(nose - bearing).abs() < 0.1, "front gun bears first: {}", wrap(nose - bearing));
@@ -178,7 +178,7 @@ fn smart_aim_picks_a_side_gun_when_the_front_guns_are_gone() {
     let ship = w.ship(me).unwrap();
     let t = w.ship(target).unwrap();
     let to = t.piece(t.control_piece().unwrap()).unwrap().com_world() - ship.piece(ship.control_piece().unwrap()).unwrap().com_world();
-    let bearing = to.y.atan2(to.x);
+    let bearing = libm::atan2f(to.y, to.x);
     assert!(wrap(right - bearing).abs() < 0.1, "side gun bears: {}", wrap(right - bearing));
 }
 
@@ -234,7 +234,7 @@ fn the_nudge_springs_back() {
         t.piece(t.control_piece().unwrap()).unwrap().com_world()
             - ship.piece(ship.control_piece().unwrap()).unwrap().com_world()
     };
-    let bearing = to.y.atan2(to.x) - std::f32::consts::FRAC_PI_2;
+    let bearing = libm::atan2f(to.y, to.x) - std::f32::consts::FRAC_PI_2;
     assert!(wrap(back - bearing).abs() < 0.05, "springs back to the target: {}", wrap(back - bearing));
 }
 

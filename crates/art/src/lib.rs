@@ -820,9 +820,9 @@ fn copy_region(src: &[u8], w: usize, h: usize, atlas: &mut [u8], atlas_w: u32, p
             let i = (y * w + x) * 4;
             let o = row + x * 4;
             let a = src[i + 3] as u32;
-            if a > 0 {
-                for c in 0..3 {
-                    atlas[o + c] = ((src[i + c] as u32 * 255 + a / 2) / a).min(255) as u8;
+            for c in 0..3 {
+                if let Some(v) = (src[i + c] as u32 * 255 + a / 2).checked_div(a) {
+                    atlas[o + c] = v.min(255) as u8;
                 }
             }
             atlas[o + 3] = a as u8;

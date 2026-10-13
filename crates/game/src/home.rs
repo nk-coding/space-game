@@ -595,7 +595,7 @@ fn show(
 
 /// Labels and the name plate follow the camera, during its flights too, by their transforms (no layout); the click
 /// areas (sized) and the plate's letters only while it rests on the yard (UI px = logical px / the UI scale).
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn place_labels(
     yard: Res<Yard>,
     rig: Res<CameraRig>,

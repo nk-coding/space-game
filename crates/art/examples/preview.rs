@@ -31,7 +31,7 @@ fn main() {
             // premultiply level 0 for tiny-skia and save
             let n = (r.width * r.height * 4) as usize;
             let mut px = r.data[..n].to_vec();
-            for p in px.chunks_exact_mut(4) {
+            for p in px.as_chunks_mut::<4>().0 {
                 let a = p[3] as u32;
                 for c in &mut p[..3] {
                     *c = ((*c as u32 * a + 127) / 255) as u8;

@@ -72,10 +72,7 @@ impl Tuning {
 
     /// The sim config for these values.
     pub fn config(&self) -> SimConfig {
-        let mut c = SimConfig::default();
-        c.thrust_scale = self.thrust;
-        c.torque_scale = self.torque;
-        c.speed_scale = self.speed;
+        let mut c = SimConfig { thrust_scale: self.thrust, torque_scale: self.torque, speed_scale: self.speed, ..SimConfig::default() };
         c.flight.max_turn_rate = self.max_turn_rate;
         c.flight.key_turn_rate = self.key_turn_rate;
         c.mind_capacity[Owner::PLAYER.0 as usize] = self.mind_capacity;

@@ -47,6 +47,9 @@ const MAX_ROWS: usize = 6;
 /// The panel's width (logical px).
 const WIDTH: f32 = 420.0;
 
+/// What one part's items gave: how many, research data per family, materials per id.
+type Gave = (u32, BTreeMap<String, f32>, BTreeMap<String, u32>);
+
 /// What the flight counted, beside the career's last haul.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DebriefStats {
@@ -121,7 +124,7 @@ impl DebriefData {
         let upper = |s: &str| s.to_uppercase();
 
         // Rows: per part (fragments apart), what its items gave, most first.
-        let mut rows: BTreeMap<(bool, String), (u32, BTreeMap<String, f32>, BTreeMap<String, u32>)> = BTreeMap::new();
+        let mut rows: BTreeMap<(bool, String), Gave> = BTreeMap::new();
         for (item, &n) in &haul.items {
             let one = unload(content, &[(item.clone(), n)].into_iter().collect());
             let key = match item {

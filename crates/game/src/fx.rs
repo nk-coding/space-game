@@ -183,6 +183,7 @@ impl Effects {
         self.burns.clear();
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn spray(&mut self, pos: Vec2, dir: Vec2, spread: f32, n: usize, speed: (f32, f32), life: (f32, f32), size: f32, color: Color) {
         let base = dir.y.atan2(dir.x);
         for _ in 0..n {
@@ -368,7 +369,7 @@ fn draw_ships_fx(
                 let ext = if dir.x.abs() > 0.5 { w } else { h } as f32;
                 let large = w.min(h) >= 2;
                 // From the nozzle's mouth: the stern edge, or past it where the engine's drawing reaches (GDR-0069).
-                let overhang = view.visual.parts.iter().find(|p| p.index == th.part as u32).map_or(0.0, |p| p.overhang);
+                let overhang = view.visual.parts.iter().find(|p| p.index == th.part).map_or(0.0, |p| p.overhang);
                 let nozzle = v2(th.point) - dir * (ext / 2.0 + overhang - 0.05);
                 let (idle, full) = if large { (0.75, 2.05) } else { (0.4, 1.15) };
                 let shorten = 1.0 - calm * (1.0 - style.plume.cruise_length);

@@ -204,6 +204,7 @@ fn backdrop_mesh(atlas: &Atlas, gradient: &RadialGradient) -> Mesh {
     m
 }
 
+#[allow(clippy::type_complexity)]
 fn place_dust(
     toggles: Res<RenderToggles>,
     camera: Single<(&Camera, &Projection, &Transform), (With<MainCamera>, Without<DustCopy>)>,

@@ -835,7 +835,8 @@ mod tests {
         assert_eq!(m.card.x, CARD_MAX_W);
         let placed = tree.place(&m);
         let right = placed.cards.iter().map(|r| r.max.x).fold(0.0, f32::max);
-        assert!(right <= TREE_RIGHT && right < PANEL_X - 20.0, "{right}");
+        const { assert!(TREE_RIGHT < PANEL_X - 20.0) };
+        assert!(right <= TREE_RIGHT, "{right}");
         let bottom = placed.lanes.last().map(|l| l.0 + l.1).unwrap();
         assert!(bottom <= TREE_BOTTOM - TREE_TOP, "{bottom}");
         // More columns: narrower cards, still inside.

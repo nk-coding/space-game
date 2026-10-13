@@ -85,6 +85,7 @@ pub(super) fn clicks(
 }
 
 /// The keys.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
