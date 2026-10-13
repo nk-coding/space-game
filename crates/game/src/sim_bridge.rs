@@ -93,7 +93,9 @@ pub struct HashLog {
 }
 
 impl HashLog {
+    /// A log of `ticks` ticks (at least one).
     pub fn new(label: String, ticks: u64) -> Self {
+        let ticks = ticks.max(1);
         Self { label, remaining: ticks, total: ticks, acc: sim::StateHasher::new(), buf: String::with_capacity(4096) }
     }
 }
@@ -522,4 +524,16 @@ pub fn despawn_all_views(commands: &mut Commands, world: &mut SimWorld) {
 pub fn piece_com(piece: &sim::Piece, alpha: f32) -> Vec2 {
     let (pos, angle) = piece.render_pose(alpha);
     world_of(pos, angle, v2(piece.mass.com))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `?hashticks=0` underflowed the countdown on the first tick (a panic in debug builds).
+    #[test]
+    fn a_hash_log_logs_at_least_one_tick() {
+        let log = HashLog::new("load".into(), 0);
+        assert_eq!((log.remaining, log.total), (1, 1));
+    }
 }

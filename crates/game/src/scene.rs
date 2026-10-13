@@ -180,7 +180,7 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         let params = app.world().resource::<Params>().clone();
-        let seed = params.f32("seed").map(|s| s as u64).unwrap_or(42);
+        let seed = params.u64("seed").unwrap_or(42);
         let kind = if let Some(n) = params.f32("load") {
             SceneKind::Load(n.max(1.0) as u32)
         } else if params.flag("hashlog").unwrap_or(false) {
@@ -250,7 +250,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
             let sim = sim::scenario::load_test(n as usize, scene.seed);
             let mut world = SimWorld::new(sim, base.clone());
             if params.flag("hashlog").unwrap_or(false) {
-                let ticks = params.f32("hashticks").map(|t| t as u64).unwrap_or(600);
+                let ticks = params.u64("hashticks").unwrap_or(600).max(1);
                 let label = format!("load ships={n} seed={} (browser)", scene.seed);
                 console_out(&format!("# sim determinism scenario=load ships={n} seed={} ticks={ticks} (browser)", scene.seed));
                 world.hashlog = Some(HashLog::new(label, ticks));
