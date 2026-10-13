@@ -593,7 +593,8 @@ tools from the top and the info line and bottom bar from the bottom; the frame's
 mark, the ghost and the overlays fade; the design fades too unless it comes from or goes home, where the docked ship
 is the same picture; going to the BEHAVIOR screen the camera stays on the drydock's view, `DockCamera::parked`, so
 the design fades in place), the BEHAVIOR screen (covering; its dot grid fades), the research screen (its four roots;
-its veil fades), FLEET (covering), the debrief, home's words and labels, and the flight HUD (slides in when flight
+its veil fades), the voyage map (covering: the panel from the right, the map and its drawing fade; SET COURSE
+snaps it), FLEET (covering), the debrief, home's words and labels, and the flight HUD (slides in when flight
 starts; H hides it the same way; leaving flight snaps it shut). The station fades as a whole under covering screens
 (`shipyard::station_alpha`, two group materials: the U with its rigging and the docked ship, and what is home's
 alone). Not faded yet: the BEHAVIOR screen's dashed outlines (a UI material), the BLUEPRINTS / BEHAVIORS layers
