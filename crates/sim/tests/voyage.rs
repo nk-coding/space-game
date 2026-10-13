@@ -218,7 +218,7 @@ fn a_site_wakes_when_one_of_its_ships_stops_running_and_clears_when_all_are_dest
     step(&mut w);
     let ships = w.voyage().unwrap().sites()[goal].ships().to_vec();
     assert_eq!(w.voyage().unwrap().sites()[goal].state(), SiteState::Asleep);
-    assert!(ships.len() >= 3);
+    assert!(ships.len() >= 2);
     // Shooting the cores out of one sleeper wakes the rest.
     let inputs = TickInputs {
         damage: kill_cores(&w, ships[0]),
@@ -324,7 +324,7 @@ fn recall_needs_no_awake_enemy_near() {
     assert!(w.can_recall(Owner::PLAYER));
     // Awake (another of them shot), within the recall radius: no recall, for either side.
     w.step(&TickInputs {
-        damage: kill_cores(&w, ships[2]),
+        damage: kill_cores(&w, ships[1]),
         ..Default::default()
     });
     assert_eq!(w.voyage().unwrap().sites()[goal].state(), SiteState::Awake);

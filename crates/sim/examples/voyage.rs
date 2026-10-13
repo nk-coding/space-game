@@ -1,22 +1,36 @@
 //! The headless voyage runner (track 7K's balance tool, `docs/sim.md` "Voyages"): flies a content voyage with one
-//! ship over many seeds, as a simple player would, and reports per seed whether the goal was cleared, the time, the
-//! hull lost, and the haul (items, and research data per family as the career unloads it), then a summary.
+//! ship (and escorts) over many seeds, as a simple player would, and reports per seed whether the goal was cleared,
+//! the time, the hull lost, and the haul (items, and research data per family as the career unloads it), then a
+//! summary.
 //!
 //! `cargo run --release -p sim --example voyage -- --voyage yard_approach --design rim_skiff --seeds 1..20`
-//! `[--behavior skirmisher] [--minutes 30]`
+//! `[--escort rim_skiff[,...]] [--behavior skirmisher] [--minutes 30]`
 //!
-//! The pilot (a script, not a player): it fights an armed awake enemy (`Sim::armed_enemy`, GDR-0068) within 400 m
-//! (the nearest), or the nearest such ship of the awake site it is heading for, as the balance study's *closing*
-//! stand-in does (`docs/results/balance-2026-10-13.md`: locked on it, firing, the stick towards it while it is
-//! farther than 75 % of its longest clear gun's reach) or, with `--behavior`, by handing the ship to that content
-//! behavior while there is a fight; else it strips the nearest salvage within 250 m that fits its hold and drifts
-//! slower than 6 m/s (giving up on a piece after 20 s without a part); else it flies to the nearest site still to do
-//! (a site with ships until it is cleared, a wreck site until it has been there), the goal last. It goes home as
-//! soon as the sim allows (`Sim::can_recall`, running from the nearest enemy until then) once the goal is cleared
-//! and every site is done or the hold is full, or when it is disarmed (`Ship::is_armed`: no gun or no power source
-//! left; a gun that overheats or idles still counts), or after 3 minutes without progress (no kill, site, salvage
-//! or new site). A seed ends recalled, lost (the ship is no vessel any more) or out of time. Native only; the wall
-//! clock times the steps (median and p95), never the sim.
+//! `--design` and `--escort` take a content ship id or a blueprint file (`*.ron`, a saved or exported drydock
+//! design: a ship a player would build that is not content). Escorts start behind the flagship and fly the
+//! `escort` template with the flagship as their leader (they fight its lock); their holds count for the haul.
+//!
+//! The pilot (a script, not a player), every 10 ticks, in this order:
+//! - **Fight** an armed awake enemy (`Sim::armed_enemy`, GDR-0068) within 400 m, or the nearest such ship of the
+//!   awake site it is heading for. It keeps its lock on one enemy while that one is armed and near (else the
+//!   nearest), as the balance study's *closing* stand-in (`docs/results/balance-2026-10-13.md`): locked on it,
+//!   firing, the stick towards it while it is farther than 75 % of its shortest clear gun's reach, eased off over
+//!   the last 40 m and never more than 60 % of the top speed (a ship without forward thrust cannot brake with its
+//!   nose on the target). With `--behavior` the ship flies that content behavior while there is a fight.
+//! - **Finish off** a disarmed awake enemy within 200 m (it rams, and its wreck is salvage) while the hold has room,
+//!   giving up on one after 20 s.
+//! - **Strip** salvage within 250 m that fits its hold and drifts slower than 6 m/s, the best value per cargo unit
+//!   first (as the strip order counts it), a point of value worth 50 m of the way; it gives up on a piece after 20 s
+//!   without a part.
+//! - **Fly** to the nearest site still to do (a site with ships until it is cleared, a wreck site until it has been
+//!   there), the goal last. A site whose ships sleep: it stops 40 m outside the wake radius, then creeps in at a
+//!   quarter of its top speed, so the pack wakes in front of a slow ship.
+//!
+//! It goes home as soon as the sim allows (`Sim::can_recall`, running from the nearest enemy until then) once the
+//! goal is cleared and every site is done with nothing left in reach to strip (or the hold is full), or when it is
+//! disarmed (`Ship::is_armed`: no gun or no power source left; a gun that overheats or idles still counts), or after
+//! 3 minutes without progress (no kill, site, salvage or new site). A seed ends recalled, lost (the flagship is no
+//! vessel any more) or out of time. Native only; the wall clock times the steps (median and p95), never the sim.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -38,14 +52,29 @@ const FIGHT_RANGE: f32 = 400.0;
 const SALVAGE_RANGE: f32 = 250.0;
 /// ... and gives up on a piece after this many ticks without a part from it.
 const GIVE_UP: u64 = 600;
+/// A point of value per cargo unit is worth this many metres of the way to the salvage.
+const WORTH_PER_M: f32 = 50.0;
 /// Salvage drifting faster than this (m/s) is not worth the chase.
 const CATCHABLE: f32 = 6.0;
 /// A wreck site counts as done once it came this close.
 const VISITED: f32 = 60.0;
-/// It closes to this share of its longest clear gun's reach.
+/// It closes to this share of its shortest clear gun's reach (so every gun can fire).
 const CLOSE_TO: f32 = 0.75;
+/// Escorts start this many metres behind and beside the flagship (per row).
+const ESCORT_GAP: f32 = 25.0;
 /// It gives up after this many ticks without progress (3 min).
 const STALEMATE: u64 = 5400;
+/// In a fight the stick eases off over this many metres before the stand-off ...
+const EASE: f32 = 40.0;
+/// ... and is never longer than this (a share of the top speed).
+const CLOSE_STICK: f32 = 0.6;
+/// It finishes off disarmed awake enemies within this many metres (when its hold has room).
+const MOP_RANGE: f32 = 200.0;
+/// It stops this many metres outside a sleeping site's wake radius ...
+const STAGE: f32 = 40.0;
+/// ... then creeps in with this share of the top speed, braking first if it is faster than this (m/s).
+const CREEP: f32 = 0.25;
+const CREEP_BRAKE: f32 = 7.5;
 
 /// A salvage piece: its ship and piece.
 type PieceKey = (ShipId, PieceId);
@@ -55,6 +84,7 @@ struct Args {
     design: String,
     seeds: Vec<u64>,
     behavior: Option<String>,
+    escorts: Vec<String>,
     minutes: u64,
 }
 
@@ -64,6 +94,7 @@ fn args() -> Args {
         design: "rim_skiff".into(),
         seeds: (1..=20).collect(),
         behavior: None,
+        escorts: Vec::new(),
         minutes: 30,
     };
     let mut it = std::env::args().skip(1);
@@ -73,6 +104,7 @@ fn args() -> Args {
             "--voyage" => a.voyage = v,
             "--design" => a.design = v,
             "--behavior" => a.behavior = Some(v),
+            "--escort" => a.escorts.extend(v.split(',').map(str::to_string)),
             "--minutes" => a.minutes = v.parse().expect("--minutes: whole minutes"),
             "--seeds" => {
                 a.seeds = match v.split_once("..") {
@@ -126,6 +158,11 @@ struct Pilot {
     visited: BTreeSet<usize>,
     flying_behavior: bool,
     progress: u64,
+    /// The armed enemy it has locked.
+    lock: Option<ShipId>,
+    /// The disarmed enemy it hunts, since when, and the ones it gave up on.
+    mopping: Option<(ShipId, u64)>,
+    spared: BTreeSet<ShipId>,
 }
 
 fn at(sim: &Sim, ship: ShipId) -> Option<Vec2> {
@@ -153,16 +190,19 @@ fn salvage_near(
     free: u32,
     pilot: &Pilot,
 ) -> Option<(Option<PieceKey>, Vec2)> {
+    // Worth: the best value per cargo unit it would get there (as the strip order counts it), less a point per
+    // `WORTH_PER_M` metres of the way: a player goes for the machines on a wreck before its armour plates.
     let mut best: Option<(f32, Option<PieceKey>, Vec2)> = None;
-    let mut consider = |key, pos: Vec2| {
+    let mut consider = |key, pos: Vec2, value: f32| {
         let d = (pos - from).length();
-        if d <= SALVAGE_RANGE && best.is_none_or(|(b, _, _)| d < b) {
-            best = Some((d, key, pos));
+        let score = value - d / WORTH_PER_M;
+        if d <= SALVAGE_RANGE && best.is_none_or(|(b, _, _)| score > b) {
+            best = Some((score, key, pos));
         }
     };
     if free > 0 {
         for l in sim.loose().iter().filter(|l| l.vel.length() <= CATCHABLE) {
-            consider(None, l.pos);
+            consider(None, l.pos, l.value);
         }
     }
     for s in sim.ships() {
@@ -172,12 +212,17 @@ fn salvage_near(
             .filter(|p| p.salvage() && p.body.linvel.length() <= CATCHABLE)
         {
             let key = (s.id(), p.id);
-            let fits = p.parts.iter().any(|&i| {
-                let spec = &s.design().parts[i as usize];
-                s.parts()[i as usize].alive && spec.salvageable && spec.cargo_units <= free
-            });
-            if fits && !pilot.given_up.contains(&key) {
-                consider(Some(key), p.com_world());
+            let value = p
+                .parts
+                .iter()
+                .filter_map(|&i| {
+                    let spec = &s.design().parts[i as usize];
+                    (s.parts()[i as usize].alive && spec.salvageable && spec.cargo_units <= free)
+                        .then(|| spec.build_points / spec.cargo_units.max(1) as f32)
+                })
+                .fold(None, |b: Option<f32>, v| Some(b.map_or(v, |b| b.max(v))));
+            if let Some(value) = value.filter(|_| !pilot.given_up.contains(&key)) {
+                consider(Some(key), p.com_world(), value);
             }
         }
     }
@@ -199,6 +244,7 @@ fn run(
     design: &Arc<ShipDesign>,
     reach: f32,
     behavior: Option<&str>,
+    escorts: &[Arc<ShipDesign>],
     seed: u64,
     max_ticks: u64,
     step_ms: &mut Vec<f64>,
@@ -216,6 +262,20 @@ fn run(
     let me = sim.spawn_ship(Arc::clone(design), Owner::PLAYER, entry);
     if fight_behavior.is_none() {
         sim.command(me, ShipCommand::Focus);
+    }
+    // Escorts (a fleet, GDR-0065): behind the flagship, left and right in turn, under the `escort` template,
+    // following the flagship's lock.
+    let escort_behavior = sim.behaviors().id("escort").expect("the escort behavior");
+    let mut wing = Vec::new();
+    for (k, d) in escorts.iter().enumerate() {
+        let side = if k % 2 == 0 { 1.0 } else { -1.0 };
+        let row = (k / 2 + 1) as f32;
+        let mut body = entry;
+        body.pos = entry.pos + Vec2::new(side * ESCORT_GAP * row, -ESCORT_GAP * row);
+        let id = sim.spawn_ship(Arc::clone(d), Owner::PLAYER, body);
+        sim.command(id, ShipCommand::Leader(Some(me)));
+        sim.command(id, ShipCommand::Behavior(Some(escort_behavior)));
+        wing.push(id);
     }
     let mut pilot = Pilot::default();
     let mut kills = 0;
@@ -259,10 +319,17 @@ fn run(
                 .copied();
             let goal = v.goal_cleared();
             let enemies = armed_enemies(&sim, here);
+            // It keeps its lock on one enemy while that one is armed and near (a player does not switch the
+            // lock to whichever raider is nearest this second: every switch costs a turn), else the nearest.
             let foe = enemies
                 .iter()
-                .filter(|e| e.0 <= FIGHT_RANGE)
-                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .find(|e| Some(e.1) == pilot.lock && e.0 <= FIGHT_RANGE)
+                .or_else(|| {
+                    enemies
+                        .iter()
+                        .filter(|e| e.0 <= FIGHT_RANGE)
+                        .min_by(|a, b| a.0.total_cmp(&b.0))
+                })
                 .or_else(|| {
                     // The site it heads for is awake: hunt down its last ships wherever they are.
                     let (k, ..) = next.filter(|n| n.3 == SiteState::Awake)?;
@@ -273,19 +340,50 @@ fn run(
                         .min_by(|a, b| a.0.total_cmp(&b.0))
                 })
                 .copied();
+            pilot.lock = foe.map(|f| f.1);
             // Done (or full), or given up: home as soon as the sim allows.
-            if ((goal && (todo.is_empty() || free == 0)) || !fighting)
-                && sim.can_recall(Owner::PLAYER)
-            {
+            // (Done: the goal cleared, every site done and nothing left in reach to strip.)
+            let done = todo.is_empty() && salvage_near(&sim, here, free, &pilot).is_none();
+            if ((goal && (done || free == 0)) || !fighting) && sim.can_recall(Owner::PLAYER) {
                 break Outcome::Recalled;
             }
+            // A disarmed awake enemy near by (it rams, and its wreck is salvage): finish it off while there is
+            // room in the hold.
+            let mop = (free > 0 && fighting)
+                .then(|| {
+                    sim.ships()
+                        .iter()
+                        .filter(|s| sim.awake_enemy(Owner::PLAYER, s) && !s.is_armed())
+                        .filter(|s| !pilot.spared.contains(&s.id()))
+                        .filter_map(|s| {
+                            let p = at(&sim, s.id())?;
+                            Some(((p - here).length(), s.id(), p))
+                        })
+                        .filter(|e| e.0 <= MOP_RANGE)
+                        .min_by(|a, b| a.0.total_cmp(&b.0))
+                })
+                .flatten();
             if let Some((_, foe, _)) = foe.filter(|_| !fighting) {
                 // Nothing left to shoot with: run, and recall once clear.
                 let maneuver = Maneuver::Flee {
                     from: Target::Ship(foe),
                 };
                 fly(&mut sim, me, maneuver, false, &mut pilot);
-            } else if let Some((_, foe, foe_at)) = foe {
+            } else if let Some((_, foe, foe_at)) = foe.or_else(|| {
+                // Hunting a disarmed one: give up on it after a time without the kill.
+                let (_, id, _) = mop?;
+                let tick = sim.tick();
+                match pilot.mopping {
+                    Some((cur, since)) if cur == id && tick - since > GIVE_UP => {
+                        pilot.spared.insert(id);
+                        pilot.mopping = None;
+                        return None;
+                    }
+                    Some((cur, _)) if cur == id => {}
+                    _ => pilot.mopping = Some((id, tick)),
+                }
+                mop
+            }) {
                 match fight_behavior {
                     Some(b) => {
                         if !pilot.flying_behavior {
@@ -294,11 +392,14 @@ fn run(
                         }
                     }
                     None => {
-                        // The closing stand-in of the balance study: lock, fire, the stick towards the
-                        // target while it is out of reach, drift on.
+                        // The closing stand-in of the balance study (lock, fire, the stick towards the target
+                        // when it is out of reach), with the stick eased off as the gap closes, so it does
+                        // not fly through the pack at top speed (a ship without forward thrust cannot brake
+                        // with its nose on the target).
                         let way = foe_at - here;
-                        let stick = if way.length() > reach * CLOSE_TO {
-                            way * (1.0 / way.length())
+                        let gap = way.length() - reach * CLOSE_TO;
+                        let stick = if gap > 0.0 {
+                            way * ((gap / EASE).min(CLOSE_STICK) / way.length())
                         } else {
                             Vec2::ZERO
                         };
@@ -338,12 +439,40 @@ fn run(
                     None => Maneuver::Hold { at: pos },
                 };
                 fly(&mut sim, me, maneuver, false, &mut pilot);
+            } else if let Some((k, pos, ..)) = next {
+                // A site whose ships still sleep: stop short of its wake radius, then creep in, so the pack
+                // wakes in front of a slow ship rather than one passing through at top speed.
+                let site = &sim.voyage().unwrap().sites()[k];
+                let sleeping = matches!(site.state(), SiteState::Unspawned | SiteState::Asleep)
+                    && !site.plan().ships.is_empty();
+                let way = pos - here;
+                let dist = way.length();
+                let stage = site.wake_radius() + STAGE;
+                let speed = sim
+                    .ship(me)
+                    .and_then(|s| s.piece(s.control_piece()?))
+                    .map_or(0.0, |p| p.body.linvel.length());
+                if sleeping && dist > stage + VISITED {
+                    let at = pos - way * (stage / dist);
+                    fly(&mut sim, me, Maneuver::Hold { at }, false, &mut pilot);
+                } else if sleeping && speed > CREEP_BRAKE && dist > stage - VISITED {
+                    fly(&mut sim, me, Maneuver::Brake, false, &mut pilot);
+                } else if sleeping {
+                    let input = PilotInput {
+                        stick: way * (CREEP / dist),
+                        drift: false,
+                        ..Default::default()
+                    };
+                    if pilot.flying_behavior {
+                        sim.command(me, ShipCommand::Behavior(None));
+                        pilot.flying_behavior = false;
+                    }
+                    sim.command(me, ShipCommand::Pilot(input));
+                } else {
+                    fly(&mut sim, me, Maneuver::Hold { at: pos }, false, &mut pilot);
+                }
             } else {
-                let maneuver = match next {
-                    Some((_, pos, ..)) => Maneuver::Hold { at: pos },
-                    None => Maneuver::Brake,
-                };
-                fly(&mut sim, me, maneuver, false, &mut pilot);
+                fly(&mut sim, me, Maneuver::Brake, false, &mut pilot);
             }
         }
         let t0 = Instant::now();
@@ -384,12 +513,16 @@ fn run(
         .map_or(0.0, |p| {
             p.parts.iter().map(|&i| ship.parts()[i as usize].hp).sum()
         });
-    let haul: Haul = if outcome == Outcome::Lost {
-        Haul::default()
-    } else {
-        ship.cargo()
-            .items()
-            .map(|(item, stack)| {
+    // The haul: the cargo of every player vessel (the flagship and its escorts; GDR-0072); a lost flagship
+    // ends the run with nothing.
+    let mut haul = Haul::default();
+    if outcome != Outcome::Lost {
+        for s in sim
+            .ships()
+            .iter()
+            .filter(|s| s.id() == me || (wing.contains(&s.id()) && s.is_vessel()))
+        {
+            for (item, stack) in s.cargo().items() {
                 let item = match item {
                     Item::Part { part, material } => HaulItem::Part {
                         part: part.clone(),
@@ -397,10 +530,10 @@ fn run(
                     },
                     Item::Fragment { part } => HaulItem::Fragment { part: part.clone() },
                 };
-                (item, stack.count)
-            })
-            .collect()
-    };
+                haul.add(item, stack.count);
+            }
+        }
+    }
     let items = haul.items.values().sum();
     Run {
         outcome,
@@ -449,6 +582,21 @@ fn data_line(data: &BTreeMap<String, f32>) -> String {
         .join(", ")
 }
 
+/// A content ship by id, or a blueprint file (a saved or exported drydock design, `*.ron`): a design a player
+/// would build that is not content.
+fn blueprint(content: &data::Content, design: &str) -> data::Blueprint {
+    if design.ends_with(".ron") {
+        let text = std::fs::read_to_string(design).unwrap_or_else(|e| panic!("{design}: {e}"));
+        data::parse_blueprint(&text).unwrap_or_else(|e| panic!("{design}: {e:?}"))
+    } else {
+        content
+            .ships
+            .get(design)
+            .unwrap_or_else(|| panic!("no ship `{design}`"))
+            .clone()
+    }
+}
+
 fn main() {
     let a = args();
     let content = data::base_content();
@@ -456,26 +604,36 @@ fn main() {
         .voyages
         .get(&a.voyage)
         .unwrap_or_else(|| panic!("no voyage `{}`", a.voyage));
-    let bp = content
-        .ships
-        .get(&a.design)
-        .unwrap_or_else(|| panic!("no ship `{}`", a.design));
-    let design = Arc::new(ShipDesign::compile(&content, bp).expect("the design compiles"));
-    let report = sim::design_report(&content, bp, &SimConfig::default()).expect("a report");
+    let bp = blueprint(&content, &a.design);
+    let design = Arc::new(ShipDesign::compile(&content, &bp).expect("the design compiles"));
+    let report = sim::design_report(&content, &bp, &SimConfig::default()).expect("a report");
     let reach = report
         .guns
         .iter()
         .filter(|g| g.clear)
         .map(|g| g.range)
-        .fold(0.0, f32::max);
+        .fold(f32::INFINITY, f32::min);
+    let escorts: Vec<Arc<ShipDesign>> = a
+        .escorts
+        .iter()
+        .map(|id| {
+            let bp = blueprint(&content, id);
+            Arc::new(ShipDesign::compile(&content, &bp).expect("the escort compiles"))
+        })
+        .collect();
     let pilot = match &a.behavior {
         Some(b) => format!("behavior `{b}` in fights"),
         None => format!("closing to {:.0} m", reach * CLOSE_TO),
     };
     println!(
-        "# voyage {} with {} ({pilot}), seeds {}..{} ({}), at most {} min",
+        "# voyage {} with {}{} ({pilot}), seeds {}..{} ({}), at most {} min",
         a.voyage,
         a.design,
+        if a.escorts.is_empty() {
+            String::new()
+        } else {
+            format!(" and escorts {} (`escort`)", a.escorts.join(", "))
+        },
         a.seeds.first().unwrap_or(&0),
         a.seeds.last().unwrap_or(&0),
         a.seeds.len(),
@@ -495,6 +653,7 @@ fn main() {
             &design,
             reach,
             a.behavior.as_deref(),
+            &escorts,
             seed,
             max_ticks,
             &mut step_ms,

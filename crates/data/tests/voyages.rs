@@ -509,13 +509,13 @@ fn base_voyages_form_the_slice_chain() {
             goal("corran_reach"),
             goal("wardens_gate")
         ],
-        ["raider_pack", "raider_den", "hunter_den", "the_warden"]
+        ["raider_pair", "raider_den", "hunter_den", "the_warden"]
     );
     let sites: Vec<u32> = chain
         .iter()
         .map(|id| c.voyages.get(id).unwrap().site_count())
         .collect();
-    assert_eq!(sites, [4, 5, 5, 4]);
+    assert_eq!(sites, [4, 4, 3, 3]);
     // Every encounter is used, and the Warden waits at the end.
     for e in c.encounters.iter() {
         assert!(

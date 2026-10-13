@@ -272,7 +272,7 @@ fn research_pays_and_unlocks_at_once() {
     assert_eq!(career.can_pay(&c, "automaton_cannon"), Ok(()));
     let node = career.research(&c, "automaton_cannon").unwrap();
     assert_eq!(node.id, "automaton_cannon");
-    assert_eq!(career.data()["kinetic"], 3.0);
+    assert_eq!(career.data()["kinetic"], 12.0);
     assert_eq!(career.researched(), ["automaton_cannon"]);
     assert!(career.is_researched("automaton_cannon"));
     assert!(career.unlocks(&c).has_part("automaton_cannon"));
@@ -281,13 +281,17 @@ fn research_pays_and_unlocks_at_once() {
     bring_home(
         &mut career,
         &c,
-        &[(part("automaton_core"), 2), (part("automaton_cannon"), 1)],
+        &[
+            (part("logic_core"), 1),
+            (fragment("automaton_core"), 1),
+            (part("automaton_cannon"), 1),
+        ],
     );
-    assert_eq!(career.data()["logic"], 8.0);
+    assert_eq!(career.data()["logic"], 3.0);
     assert_eq!(career.materials()["programmable_matter"], 2);
     career.research(&c, "tamed_core").unwrap();
     assert!(!career.data().contains_key("logic"));
-    assert_eq!(career.data()["kinetic"], 6.0);
+    assert_eq!(career.data()["kinetic"], 15.0);
     assert_eq!(career.materials()["programmable_matter"], 1);
     assert_eq!(career.researched(), ["automaton_cannon", "tamed_core"]);
     assert!(career.unlocks(&c).has_part("automaton_core"));
@@ -357,7 +361,7 @@ fn research_refusals() {
             Shortfall::Data {
                 family: "logic".into(),
                 have: 0.0,
-                cost: 8.0
+                cost: 3.0
             },
             Shortfall::Material {
                 material: "programmable_matter".into(),
@@ -369,14 +373,14 @@ fn research_refusals() {
     bring_home(
         &mut career,
         &c,
-        &[(part("logic_core"), 1), (fragment("automaton_core"), 5)],
+        &[(part("thruster"), 1), (fragment("automaton_core"), 5)],
     );
     assert_eq!(
         career.can_pay(&c, "tamed_core"),
         Err(Refusal::CannotPay(vec![Shortfall::Data {
             family: "logic".into(),
-            have: 3.0,
-            cost: 8.0
+            have: 0.0,
+            cost: 3.0
         }]))
     );
     // A refused research changes nothing.
@@ -404,8 +408,8 @@ fn data_within_epsilon_of_a_cost_pays_it() {
         "parts/dust.ron",
         &format!(
             "[{}, {}]",
-            salvage_part("near", "kinetic", 12.0 - DATA_EPSILON / 2.0),
-            salvage_part("short", "kinetic", 11.99)
+            salvage_part("near", "kinetic", 3.0 - DATA_EPSILON / 2.0),
+            salvage_part("short", "kinetic", 2.99)
         ),
     )]);
     let mut career = new_game(&c);
@@ -1046,8 +1050,11 @@ fn an_evening(c: &Content) -> Career {
         career.researched(),
         ["automaton_cannon", "tamed_core", "mind_expansion_1"]
     );
-    assert_eq!(career.data(), &map(&[("hull", 8.0), ("logic", 2.0)]));
-    assert_eq!(career.materials(), &map(&[("programmable_matter", 4)]));
+    assert_eq!(
+        career.data(),
+        &map(&[("hull", 8.0), ("kinetic", 9.0), ("logic", 7.0)])
+    );
+    assert_eq!(career.materials(), &map(&[("programmable_matter", 3)]));
 
     // Three cores: the skiff and a one-core escort fit, two skiffs don't.
     let unlocks = career.unlocks(c);

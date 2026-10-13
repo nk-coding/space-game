@@ -495,12 +495,12 @@ mod tests {
         assert!(chips.iter().any(|c| c.1 == Tone::Coral) && chips.contains(&("WRECKS".into(), Tone::Gold)), "{chips:?}");
         let rows = site_rows(&content, v);
         assert_eq!(rows.len(), 4);
-        assert_eq!((rows[0].name.as_str(), rows[0].dot, rows[0].tag.0.as_str()), ("Raider pack ×2", Dot::Enemies, "3 SHIPS"));
+        assert_eq!((rows[0].name.as_str(), rows[0].dot, rows[0].tag.0.as_str()), ("Raider pair", Dot::Enemies, "2 SHIPS"));
         assert_eq!((rows[1].dot, rows[1].tag.0.as_str()), (Dot::Wrecks, "WRECKS"));
         assert!(!rows[1].gives.is_empty() && !rows[1].gives.contains("STEEL"), "{}", rows[1].gives);
-        assert_eq!((rows[3].dot, rows[3].tag.0.as_str()), (Dot::Goal, "GOAL  ·  4–5 SHIPS"));
-        assert_eq!(site_dots(&content, v), [Dot::Enemies, Dot::Enemies, Dot::Wrecks, Dot::Wrecks, Dot::Goal]);
-        assert_eq!(minutes(v), "≈ 10–15 MIN");
+        assert_eq!((rows[3].dot, rows[3].tag.0.as_str()), (Dot::Goal, "GOAL  ·  2–3 SHIPS"));
+        assert_eq!(site_dots(&content, v), [Dot::Enemies, Dot::Wrecks, Dot::Wrecks, Dot::Goal]);
+        assert_eq!(minutes(v), "≈ 6–10 MIN");
         let warden = content.voyages.get("wardens_gate").unwrap();
         assert_eq!(site_rows(&content, warden).last().unwrap().dot, Dot::Guardian);
         assert!(super::chips(&content, warden).contains(&("GUARDIAN".into(), Tone::Coral)));

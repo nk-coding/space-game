@@ -1867,17 +1867,25 @@ shields and rams; release builds, 1800 ticks): voyage seeds 42 and 7 **identical
 woken and 2 cleared, 6 items collected, recall allowed 1755 of 1800 ticks; seed 7: 4 woken, 3 cleared, 7 items, 1682
 ticks.
 
+After the slice tuning (13 Oct 2026, GDR-0073: the first voyage's goal is a raider pair, the encounters smaller; release
+builds, 1800 ticks): voyage, salvage, core and behavior, seeds 42 and 7, native x86_64 vs wasm32-wasip1 under Node 24:
+**identical**. Only the voyage stream changed (from tick 1: the plan is hashed); salvage, core and behavior are
+bit-identical to before. Seed 42: 2 sites woken and 2 cleared, 6 items, recall 1755 ticks; seed 7: 4 woken, 4 cleared,
+7 items, 1682 ticks.
+
 ### The headless voyage runner
 
-`cargo run --release -p sim --example voyage -- --voyage <id> --design <ship> --seeds 1..20 [--behavior <id>]
-[--minutes 30]`: the balance tool of track 7K. It rolls the voyage per seed, puts the design at the entry and flies
-it with a scripted pilot (see the example's doc: in fights the balance study's *closing* stand-in, or a content
-behavior with `--behavior`; salvage it can catch; the sites in turn, the goal last; home once the goal and the sites
-are done or the hold is full, when it is disarmed (`Ship::is_armed`; an overheated or idle gun still counts), or
-after 3 minutes without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and prints per seed the
-outcome (recalled, lost, out of time), goal, sites cleared, time, hull lost, kills, awake enemies left (how many
-disarmed), haul items and research data per family (`data::career::unload`), then medians, p95 and the step
-time.
+`cargo run --release -p sim --example voyage -- --voyage <id> --design <ship> --seeds 1..20 [--escort <ship>[,...]]
+[--behavior <id>] [--minutes 30]`: the balance tool of track 7K. It rolls the voyage per seed, puts the design at the
+entry (and the escorts behind it, under the `escort` template with the flagship as leader) and flies it with a
+scripted pilot (see the example's doc: in fights the balance study's *closing* stand-in, or a content behavior with
+`--behavior`; salvage it can catch; the sites in turn, the goal last; home once the goal and the sites are done or
+the hold is full, when it is disarmed (`Ship::is_armed`; an overheated or idle gun still counts), or after 3 minutes
+without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and prints per seed the outcome
+(recalled, lost, out of time), goal, sites cleared, time, hull lost, kills, awake enemies left (how many disarmed),
+haul items and research data per family (`data::career::unload`; every player vessel's hold), then medians, p95 and
+the step time. `--design` and `--escort` also take a blueprint file (`*.ron`, a saved or exported drydock design),
+for ships a player would build that are not content.
 
 First numbers (13 Oct 2026, content and sim of `dev` after the 7C merge and the sim review fixes, before the GDR-0064
 flight fixes; 20 seeds each, closing pilot):
@@ -1928,6 +1936,25 @@ Step time median 0.008–0.010 ms, p95 0.011–0.016 ms. What changed, for 7K:
 - **Out of time** (19 of 80): the pilot is still armed, the goal is not cleared, and one armed enemy keeps it from
   recalling (it flees and is chased, or the fight never ends); before, it gave up when its guns overheated.
 - Disarmed sites leave no wrecks to strip (their cores still run), so the haul stays small.
+
+**The slice tuning** (13 Oct 2026, track 7J/7K, [GDR-0073](gdr/0073-slice-tuning-v1.md), report
+[`results/slice-balance-2026-10-13.md`](results/slice-balance-2026-10-13.md)). The pilot first became closer to
+sensible play: it stops 40 m outside a sleeping site's wake radius and creeps in at a quarter of its top speed (it
+used to meet a waking pack at 22 m/s and, without forward thrust, could not brake with its nose on the target),
+eases the stick off as it closes (to 75% of its *shortest* clear gun's reach, so a Runner's beams reach), keeps its
+lock on one armed enemy (it switched to the nearest every 10 ticks), finishes off disarmed enemies within 200 m while
+the hold has room, strips the best value per cargo unit first and strips what is in reach before recalling. Then the
+encounters, sites and research costs were tuned. Goal cleared and home, 60 seeds (1–60), same pilot, before → after
+the content change (load average 6–9):
+
+| Voyage | `rim_skiff` | Halvex Runner | Runner + `rim_skiff` escort | Data per home run (starter / Runner) |
+|---|---|---|---|---|
+| yard_approach | 43% → **58%** | 37% → 60% | – | 8.7 → 10.2 / 9.4 → 10.8 |
+| halvex_drift | 0% → **37%** | 0% → 67% | – → 78% | 4.9 → 11.7 / 5.9 → 15.4 |
+| corran_reach | 0% → 15% | 0% → **45%** | – → 65% | 4.1 → 8.7 / 3.8 → 11.9 |
+| wardens_gate | 0% → 3% | 0% → 20% | 3% → **42%** | 3.1 → 8.9 / 4.1 → 11.3 |
+
+Scripted times 2.5–3.5 min per voyage (median); step time median 0.007–0.009 ms, p95 0.013–0.016 ms.
 
 ## Driving the sim from the client
 

@@ -2,7 +2,8 @@
 // site), then fly their faction's behavior; wrecks spawn as salvage with `damage` (a share of their parts) already
 // gone, rolled on the sim's encounter stream. Counts are `(min, max)`, both included, rolled per launch. The
 // variants by count (a pair, a pack, a den) are entries of their own. PLACEHOLDER NUMBERS (docs/plans/slice-content.md
-// 3.2, track 7J draft of 13 Oct 2026; tuned in track 7K with the headless voyage runner).
+// 3.2, track 7J draft of 13 Oct 2026; counts tuned with the headless voyage runner the same day, GDR-0073 and
+// docs/results/slice-balance-2026-10-13.md: no single ship of the slice wins against three raiders at once often).
 [
     (
         id: "raider_pair",
@@ -23,31 +24,28 @@
     (
         id: "raider_den",
         name: "Raider den",
-        summary: "Where the raiders gather: a big pack that wakes all at once.",
+        summary: "Where the raiders gather: a pack that wakes all at once, and from farther off.",
         tags: ["raiders"],
-        ships: [(ship: "automaton_raider", count: (4, 5))],
+        ships: [(ship: "automaton_raider", count: (2, 3))],
         wake_radius: 300,
     ),
     (
         id: "hunter_pack",
         name: "Hunter pack",
-        summary: "Heavier automatons with a cannon on each prong, and a raider running ahead of them.",
+        summary: "A heavier automaton with a cannon on each prong, and a raider running ahead of it.",
         tags: ["hunters"],
         ships: [
-            (ship: "automaton_hunter", count: (2, 2)),
-            (ship: "automaton_raider", count: (0, 1)),
+            (ship: "automaton_hunter", count: (1, 1)),
+            (ship: "automaton_raider", count: (1, 1)),
         ],
         wake_radius: 250,
     ),
     (
         id: "hunter_den",
         name: "Hunter den",
-        summary: "The hunters' lair, guarded by the whole pack.",
+        summary: "The hunters' lair: two or three of them, waking together.",
         tags: ["hunters"],
-        ships: [
-            (ship: "automaton_hunter", count: (2, 3)),
-            (ship: "automaton_raider", count: (1, 2)),
-        ],
+        ships: [(ship: "automaton_hunter", count: (2, 3))],
         wake_radius: 300,
     ),
     (
@@ -69,7 +67,7 @@
         summary: "Old hulls full of parts the shipyard has forgotten how to make.",
         lore: "Their logs stop mid-sentence, all on the same day.",
         tags: ["wrecks"],
-        ships: [(ship: "automaton_raider", count: (0, 2))],
+        ships: [(ship: "automaton_raider", count: (0, 1))],
         wrecks: [(ship: "sample_mid", count: (1, 2), damage: 0.4)],
         wake_radius: 200,
     ),
@@ -79,7 +77,7 @@
         summary: "Burned-out raiders lying in rows, many of their cores still whole.",
         lore: "Raiders drag their burned-out kin here and leave them in rows. Nobody taught them to.",
         tags: ["wrecks", "cores"],
-        ships: [(ship: "automaton_raider", count: (1, 2))],
+        ships: [(ship: "automaton_raider", count: (0, 1))],
         wrecks: [(ship: "automaton_raider", count: (4, 6), damage: 0.3)],
         wake_radius: 200,
     ),
@@ -92,7 +90,7 @@
         tags: ["boss"],
         ships: [
             (ship: "automaton_warden", count: (1, 1)),
-            (ship: "automaton_raider", count: (2, 4)),
+            (ship: "automaton_raider", count: (1, 2)),
         ],
         wake_radius: 300,
     ),

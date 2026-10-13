@@ -703,8 +703,8 @@ fn base_research_nodes() {
     let n = c.research.get("mind_expansion_2").unwrap();
     assert_eq!(n.kind, ResearchKind::Refinement);
     assert_eq!(n.requires, ["mind_expansion_1"]);
-    assert_eq!(n.cost.data["logic"], 20.0);
-    assert_eq!(n.cost.materials["programmable_matter"], 4);
+    assert_eq!(n.cost.data["logic"], 16.0);
+    assert_eq!(n.cost.materials["programmable_matter"], 5);
     assert_eq!(
         c.research.get("cruiser_drydock").unwrap().unlocks,
         [Unlock::Frame("cruiser".into())]

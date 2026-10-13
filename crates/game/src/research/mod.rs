@@ -332,11 +332,11 @@ mod tests {
     /// refusal is said and changes nothing.
     #[test]
     fn unlock_pays_unlocks_and_writes_the_save() {
-        let mut app = app(", data: {\"kinetic\": 12.0, \"logic\": 3.0}");
+        let mut app = app(", data: {\"kinetic\": 3.0, \"logic\": 2.0}");
         send(&mut app, ResearchAction::Select("tamed_core".into()));
         send(&mut app, ResearchAction::Unlock);
         let view = app.world().resource::<ResearchView>();
-        assert_eq!(view.say, Some(("NOT ENOUGH DATA  ·  LOGIC 3 / 8  ·  PROGRAMMABLE MATTER 0 / 1".into(), Tone::Coral)));
+        assert_eq!(view.say, Some(("NOT ENOUGH DATA  ·  LOGIC 2 / 3  ·  PROGRAMMABLE MATTER 0 / 1".into(), Tone::Coral)));
         assert!(app.world().resource::<PlayerCareer>().career().researched().is_empty());
 
         send(&mut app, ResearchAction::Select("automaton_cannon".into()));

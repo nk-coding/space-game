@@ -550,12 +550,12 @@ Validation: the family, every cost family and material, every `requires` node an
 node listed twice in `requires`; no cycle in `requires` (each cycle is reported once, with its path); unlocking an
 entry that is not `locked` is a warning (a new game has it already), so is a node that unlocks nothing.
 
-Base nodes (`research/rim.ron`, the first playable loop's nine, placeholders): `automaton_cannon` (kinetic 12),
-`composite_plating` (hull 20, unlocks composite), `beam_laser` (energy 18), `fusion_reactor` (power 20),
-`torch_drive` (propulsion 20), `tamed_core` (logic 8 + programmable matter 1, unlocks the automaton core),
-`mind_expansion_1` (logic 10 + 2, needs `tamed_core`), `mind_expansion_2` (logic 20 + 4, needs
-`mind_expansion_1`), `cruiser_drydock` (hull 30, needs `composite_plating`, unlocks the cruiser frame). Reactive
-armour, Automaton plate and the capital frame stay locked.
+Base nodes (`research/rim.ron`, the first playable loop's nine, placeholders; costs about halved by the slice
+tuning, GDR-0073): `automaton_cannon` (kinetic 3), `composite_plating` (hull 8, unlocks composite), `beam_laser`
+(energy 10), `fusion_reactor` (power 10), `torch_drive` (propulsion 10), `tamed_core` (logic 3 + programmable
+matter 1, unlocks the automaton core), `mind_expansion_1` (logic 10 + 3, needs `tamed_core`), `mind_expansion_2`
+(logic 16 + 5, needs `mind_expansion_1`), `cruiser_drydock` (hull 20, needs `composite_plating`, unlocks the cruiser
+frame). Reactive armour, Automaton plate and the capital frame stay locked.
 
 ### Starts (`starts.ron`, added 13 Oct 2026)
 
@@ -598,10 +598,10 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
     opens_after: ["yard_approach"],      // voyages whose goal must have been cleared once
     radius: 900,                         // m: the sites lie inside; the fleet enters at the edge
     spacing: (400, 700),                 // m between sites (see below)
-    minutes: (10, 15),                   // expected length, for the map ("≈ 15 MIN")
+    minutes: (6, 10),                    // expected length, for the map ("≈ 6–10 MIN")
     cleared: "The raiders' den is broken. Their hunters still hold the [[voyage:corran_reach]].",
     sites: [
-        (encounter: "raider_pack", count: 2),
+        (encounter: "raider_pair"),
         (encounter: "precursor_wrecks"),
         (encounter: "core_graveyard"),
         (encounter: "raider_den", goal: true),   // clearing it clears the voyage
@@ -651,12 +651,15 @@ gone (`Sim::spawn_wreck`). Variants by count (a pair, a pack, a den) are entries
 | `wrecks` | optional: any known ship, `count` as above, `damage` 0 to below 1 (default 0) |
 | `wake_radius` | m, above 0 and at most 20000 |
 
-An encounter needs ships or wrecks. Base encounters (placeholders, `docs/plans/slice-content.md` 3.2): `raider_pair`
-(2 raiders), `raider_pack` (3), `raider_den` (4–5, wakes at 300 m), `hunter_pack` (2 hunters, 0–1 raider),
-`hunter_den` (2–3 hunters, 1–2 raiders), `derelict_field` (0–1 raider; a `sample_early` and 2–3 raider wrecks, half
-their parts gone), `precursor_wrecks` (0–2 raiders; 1–2 `sample_mid` wrecks), `core_graveyard` (1–2 raiders; 4–6
-raider wrecks, 30 % gone, so most of their cores are intact), `the_warden` (the `automaton_warden` and 2–4 raiders).
-Packs wake at 250 m, wreck sites at 200 m, dens and the Warden at 300 m.
+An encounter needs ships or wrecks. Base encounters (placeholders, `docs/plans/slice-content.md` 3.2, counts tuned
+by GDR-0073): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `hunter_pack` (1
+hunter, 1 raider), `hunter_den` (2–3 hunters), `derelict_field` (0–1 raider; a `sample_early` and 2–3 raider wrecks,
+half their parts gone), `precursor_wrecks` (0–1 raider; 1–2 `sample_mid` wrecks), `core_graveyard` (0–1 raider; 4–6
+raider wrecks, 30 % gone, so most of their cores are intact), `the_warden` (the `automaton_warden` and 1–2 raiders).
+Packs wake at 250 m, wreck sites at 200 m, dens and the Warden at 300 m. The voyages (`voyages/rim.ron`): Shipyard
+approach (raider pair ×2, derelict field, goal raider pair), Halvex Drift (raider pair, precursor wrecks, core
+graveyard, goal raider den), Corran Reach (hunter pack, precursor wrecks, goal hunter den), the Warden's gate (raider
+pack, core graveyard, goal the Warden).
 
 ## Coordinates and geometry
 

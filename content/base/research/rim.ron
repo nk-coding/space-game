@@ -1,6 +1,8 @@
 // Research nodes of the first playable loop (docs/plans/first-playable-loop.md 3.2). PLACEHOLDER NUMBERS (lead
-// defaults, 13 Oct 2026): costs are research data per family (from salvage) and materials, paid at once; a node
-// unlocks the moment it is paid (GDR-0063). Reactive armour, the automaton plate and the capital frame stay locked.
+// defaults, 13 Oct 2026; costs about halved by the slice tuning of the same day, GDR-0073, to fit what the starter's
+// hold brings home: docs/results/slice-balance-2026-10-13.md): costs are research data per family (from salvage) and
+// materials, paid at once; a node unlocks the moment it is paid (GDR-0063). Reactive armour, the automaton plate and
+// the capital frame stay locked.
 [
     (
         id: "automaton_cannon",
@@ -8,7 +10,7 @@
         summary: "Build the raiders' crude kinetic gun into your own ships.",
         family: "kinetic",
         kind: NewPart,
-        cost: (data: {"kinetic": 12}),
+        cost: (data: {"kinetic": 3}),
         unlocks: [Part("automaton_cannon")],
     ),
     (
@@ -17,7 +19,7 @@
         summary: "Plating that is lighter and tougher than steel.",
         family: "hull",
         kind: NewPart,
-        cost: (data: {"hull": 20}),
+        cost: (data: {"hull": 8}),
         unlocks: [Material("composite")],
     ),
     (
@@ -26,7 +28,7 @@
         summary: "A continuous beam: strong, hungry and hot.",
         family: "energy",
         kind: NewPart,
-        cost: (data: {"energy": 18}),
+        cost: (data: {"energy": 10}),
         unlocks: [Part("beam_laser")],
     ),
     (
@@ -35,7 +37,7 @@
         summary: "A big reactor with plenty of power that runs hot.",
         family: "power",
         kind: NewPart,
-        cost: (data: {"power": 20}),
+        cost: (data: {"power": 10}),
         unlocks: [Part("fusion_reactor")],
     ),
     (
@@ -44,7 +46,7 @@
         summary: "A big drive: hot, heavy and very fast.",
         family: "propulsion",
         kind: NewPart,
-        cost: (data: {"propulsion": 20}),
+        cost: (data: {"propulsion": 10}),
         unlocks: [Part("torch_drive")],
     ),
     (
@@ -54,7 +56,7 @@
         description: "Rebuilds the feral [[part:automaton_core]] as a core the ship-mind can run.",
         family: "logic",
         kind: NewPart,
-        cost: (data: {"logic": 8}, materials: {"programmable_matter": 1}),
+        cost: (data: {"logic": 3}, materials: {"programmable_matter": 1}),
         unlocks: [Part("automaton_core")],
     ),
     (
@@ -63,7 +65,7 @@
         summary: "Run one more logic core at once.",
         family: "logic",
         kind: Refinement,
-        cost: (data: {"logic": 10}, materials: {"programmable_matter": 2}),
+        cost: (data: {"logic": 10}, materials: {"programmable_matter": 3}),
         requires: ["tamed_core"],
         unlocks: [MindCapacity(1)],
     ),
@@ -73,7 +75,7 @@
         summary: "Run one more logic core at once.",
         family: "logic",
         kind: Refinement,
-        cost: (data: {"logic": 20}, materials: {"programmable_matter": 4}),
+        cost: (data: {"logic": 16}, materials: {"programmable_matter": 5}),
         requires: ["mind_expansion_1"],
         unlocks: [MindCapacity(1)],
     ),
@@ -83,7 +85,7 @@
         summary: "Expand the drydock for line ships with several big machines.",
         family: "hull",
         kind: SizeClass,
-        cost: (data: {"hull": 30}),
+        cost: (data: {"hull": 20}),
         requires: ["composite_plating"],
         unlocks: [Frame("cruiser")],
     ),

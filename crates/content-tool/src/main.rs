@@ -835,7 +835,7 @@ mod tests {
         assert_eq!(node["unlocks"], json!([{"MindCapacity": 1}]));
         assert_eq!(
             node["cost"],
-            json!({"data": {"logic": 10.0}, "materials": {"programmable_matter": 2}})
+            json!({"data": {"logic": 10.0}, "materials": {"programmable_matter": 3}})
         );
         let start = find("starts", "rim_awakening");
         assert_eq!(
@@ -884,7 +884,7 @@ mod tests {
         assert_eq!(first["site_count"], json!(4));
         assert_eq!(
             first["sites"][2],
-            json!({"encounter": "raider_pack", "count": 1, "goal": true})
+            json!({"encounter": "raider_pair", "count": 1, "goal": true})
         );
         assert_eq!(first["opens"], json!(["halvex_drift"]));
         assert_eq!(first["opened_by_starts"], json!(["rim_awakening"]));
@@ -899,10 +899,13 @@ mod tests {
             (&last["opens"], &last["opened_by_starts"]),
             (&json!([]), &json!([]))
         );
-        let in_load_order: Vec<&str> = c.voyages.iter().map(|x| x.id.as_str()).collect();
+        assert_eq!(
+            find("encounters", "raider_pair")["used_by_voyages"],
+            json!(["yard_approach", "halvex_drift"])
+        );
         assert_eq!(
             find("encounters", "raider_pack")["used_by_voyages"],
-            json!(in_load_order)
+            json!(["wardens_gate"])
         );
         assert_eq!(
             find("encounters", "hunter_den")["used_by_voyages"],
@@ -923,13 +926,14 @@ mod tests {
             json!(["the_warden"])
         );
         assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
-        // The raider is everywhere: fighting in every encounter, lying as a wreck in two of them.
+        // The raider is almost everywhere: fighting in every encounter but the hunters' den, lying as a wreck in two
+        // of them.
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len()
+            c.encounters.len() - 1
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
         // f32 numbers export as written, without the noise of widening them to f64.

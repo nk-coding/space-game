@@ -410,20 +410,20 @@ mod tests {
     /// Card states follow the model: done, ready, locked by requirements, short of data (with what is held).
     #[test]
     fn card_states_come_from_the_career() {
-        let (content, c) = career(", researched: [\"tamed_core\"], data: {\"logic\": 10.0, \"hull\": 14.0, \"energy\": 19.0}, materials: {\"programmable_matter\": 1}");
+        let (content, c) = career(", researched: [\"tamed_core\"], data: {\"logic\": 10.0, \"hull\": 6.0, \"energy\": 19.0}, materials: {\"programmable_matter\": 1}");
         assert_eq!(state(&content, &c, "tamed_core"), CardState::Done);
         assert_eq!(state(&content, &c, "beam_laser"), CardState::Ready);
         assert_eq!(state(&content, &c, "cruiser_drydock"), CardState::Locked(vec!["composite_plating".into()]));
-        assert_eq!(state(&content, &c, "mind_expansion_1"), CardState::Short(vec![Shortfall::Material { material: "programmable_matter".into(), have: 1, cost: 2 }]));
-        assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "2".into(), payable: true }]);
+        assert_eq!(state(&content, &c, "mind_expansion_1"), CardState::Short(vec![Shortfall::Material { material: "programmable_matter".into(), have: 1, cost: 3 }]));
+        assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "3".into(), payable: true }]);
         let ready: Vec<&str> = ready(&content, &c).iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ready, ["beam_laser"]);
         let chips_of = |n: &str| chips(&c, content.research.get(n).unwrap());
-        assert_eq!(chips_of("composite_plating"), [Chip { material: false, text: "HULL 14 / 20".into(), payable: false }]);
-        assert_eq!(chips_of("beam_laser"), [Chip { material: false, text: "ENERGY 18".into(), payable: true }]);
+        assert_eq!(chips_of("composite_plating"), [Chip { material: false, text: "HULL 6 / 8".into(), payable: false }]);
+        assert_eq!(chips_of("beam_laser"), [Chip { material: false, text: "ENERGY 10".into(), payable: true }]);
         assert_eq!(
             chips_of("mind_expansion_1"),
-            [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "1 / 2".into(), payable: false }]
+            [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "1 / 3".into(), payable: false }]
         );
     }
 
@@ -440,9 +440,9 @@ mod tests {
         assert!(c.fresh_parts(&content).contains("automaton_cannon"), "the drydock shows it NEW");
         let n = c.research(&content, "tamed_core").unwrap();
         assert_eq!(n.id, "tamed_core");
-        assert!(c.data().get("logic").is_some_and(|x| (x - 1.5).abs() < 1e-4));
+        assert!(c.data().get("logic").is_some_and(|x| (x - 6.5).abs() < 1e-4));
         let short = c.research(&content, "mind_expansion_1").unwrap_err();
-        assert_eq!(refusal_words(&content, &short), "NOT ENOUGH DATA  ·  LOGIC 1.5 / 10  ·  PROGRAMMABLE MATTER 0 / 2");
+        assert_eq!(refusal_words(&content, &short), "NOT ENOUGH DATA  ·  LOGIC 6.5 / 10  ·  PROGRAMMABLE MATTER 0 / 3");
         let me = content.research.get("mind_expansion_1").unwrap();
         assert_eq!(unlocked_words(me, 3), "MIND EXPANSION I  ·  YOUR MIND RUNS 3 CORES");
         assert_eq!(gives(&content, me, 2), "One more logic core in the mind (runs 3)");
