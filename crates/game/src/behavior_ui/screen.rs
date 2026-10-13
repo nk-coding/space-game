@@ -1027,11 +1027,11 @@ mod tests {
         assert_eq!(status_line(&d, BehaviorView::Graph, 0).1, Tone::Coral);
         // An `always` rule above others (the skirmisher's fallback moved to the top).
         let mut never = d.clone();
-        let fallback = never.editor().unwrap().rule_at(5).unwrap().id;
+        let fallback = never.editor().unwrap().rule_at(3).unwrap().id;
         never.edit(|e| e.move_rule(fallback, 0)).unwrap().unwrap();
         assert_eq!(
             status_line(&never, BehaviorView::Graph, 12),
-            ("5 RULES ARE NEVER REACHED  ·  AN ALWAYS RULE ABOVE MATCHES FIRST".into(), Tone::Gold)
+            ("3 RULES ARE NEVER REACHED  ·  AN ALWAYS RULE ABOVE MATCHES FIRST".into(), Tone::Gold)
         );
         d.errors = vec![TextError { line: 4, col: 6, message: "x".into() }];
         assert_eq!(status_line(&d, BehaviorView::Text, 12), ("1 ERROR  ·  FIRST ON LINE 4, COLUMN 6".into(), Tone::Coral));
