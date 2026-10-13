@@ -49,7 +49,9 @@ use crate::ship_view::build_body;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Ring, RingAccent, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_text};
+use crate::ui_kit::{
+    Ring, RingAccent, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, label, prose, ring_node, set_text,
+};
 
 /// The layout's size in logical px (the stage, centred in the window).
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
@@ -342,8 +344,13 @@ fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<&HomeButton>, mut o
     }
 }
 
-/// D, B, T.
-fn keys(keys: Res<ButtonInput<KeyCode>>, mut out: MessageWriter<HomeAction>) {
+/// D, B, T: not while a text field has the keyboard, and not with Ctrl or Cmd held (Ctrl+D is the browser's
+/// bookmark key), as the drydock's shortcuts.
+fn keys(keys: Res<ButtonInput<KeyCode>>, pointer: Res<UiPointer>, mut out: MessageWriter<HomeAction>) {
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
+    if pointer.typing || ctrl {
+        return;
+    }
     for a in HomeAction::ALL {
         if keys.just_pressed(a.key().0) {
             out.write(a);
@@ -509,6 +516,31 @@ mod tests {
             assert_eq!(*app.world().resource::<State<AppMode>>().get(), mode);
             assert_eq!(app.world().resource::<Scene>().launch, None);
         }
+    }
+
+    /// D, B and T go to their screens, but not with Ctrl or Cmd held, nor while a text field has the keyboard.
+    #[test]
+    fn home_keys_ignore_modifiers_and_typing() {
+        let press = |mods: &[KeyCode], typing: bool| -> AppMode {
+            let mut app = app();
+            let mut pointer = UiPointer::default();
+            pointer.typing = typing;
+            app.init_resource::<ButtonInput<KeyCode>>()
+                .insert_resource(pointer)
+                .add_systems(Update, keys.before(apply));
+            let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            for &m in mods {
+                input.press(m);
+            }
+            input.press(KeyCode::KeyD);
+            app.update();
+            app.update();
+            *app.world().resource::<State<AppMode>>().get()
+        };
+        assert_eq!(press(&[], false), AppMode::Drydock);
+        assert_eq!(press(&[KeyCode::ControlLeft], false), AppMode::Home);
+        assert_eq!(press(&[KeyCode::SuperRight], false), AppMode::Home);
+        assert_eq!(press(&[], true), AppMode::Home);
     }
 
     /// Every working action has one button and its own key; the buttons sit on the stage, apart from each other and
