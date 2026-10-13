@@ -15,9 +15,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
-use crate::drydock::PlayerDesign;
-use crate::sim_bridge::GameContent;
-use crate::tuning::Tuning;
+use crate::drydock::report::DrydockReport;
 use crate::ui_kit::{
     Hot, Pill, PillText, Ring, TextField, TextFieldText, Tone, ValueBar, glow, number, prose, ring_node, spawn_bar, spawn_pill, tracked,
 };
@@ -64,10 +62,10 @@ pub(super) struct NoteField {
     focused: bool,
 }
 
-/// Measures the design's weapon reach when the screen opens (with the tuning's weapon range, as flights use).
-pub(super) fn measure_reach(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, mut reach: ResMut<DesignReach>) {
-    let scaled = tuning.scaled_content(&content.0, true);
-    let r = sim::design_report(&scaled, design.blueprint(), &tuning.config()).ok().and_then(|r| {
+/// Measures the design's weapon reach when the screen opens, from the design report (made with the tuning's weapon
+/// range, as flights use).
+pub(super) fn measure_reach(report: Res<DrydockReport>, mut reach: ResMut<DesignReach>) {
+    let r = report.get().and_then(|r| {
         let main = r.main?;
         let longest = r.guns.iter().filter(|g| g.piece == main && g.clear).map(|g| g.range).fold(0.0, f32::max);
         (longest > 0.0).then_some(longest)

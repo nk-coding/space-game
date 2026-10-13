@@ -53,6 +53,10 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::camera::{CameraRig, CameraSet};
+use crate::drydock::PlayerDesign;
+use crate::drydock::report::DrydockReport;
+use crate::sim_bridge::GameContent;
+use crate::tuning::Tuning;
 use crate::fx::FxFlush;
 use crate::mode::AppMode;
 use crate::ui_kit::{UiInputSet, UiStyleSet};
@@ -131,7 +135,9 @@ impl Plugin for BehaviorPlugin {
             )
             .add_systems(Startup, (screen::spawn, list::spawn, live::spawn).after(crate::flight_hud::spawn_hud))
             .add_systems(PostStartup, show)
-            .add_systems(OnEnter(AppMode::Behavior), (saving::open, controls::measure_reach))
+            // The design report (the drydock's, `drydock::report`) is brought up to date first: the reach and TEST IN
+            // RANGE read it.
+            .add_systems(OnEnter(AppMode::Behavior), (design_report, (saving::open, controls::measure_reach)).chain())
             .add_systems(OnExit(AppMode::Behavior), (controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
@@ -145,6 +151,7 @@ impl Plugin for BehaviorPlugin {
                     (
                         fit_window,
                         actions::apply,
+                        design_report,
                         (saving::title, saving::apply, list::apply, list::scroll).chain(),
                         edit::apply,
                         controls::drag_sliders,
@@ -177,6 +184,13 @@ impl Plugin for BehaviorPlugin {
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }
+}
+
+/// The drydock's design report (`drydock::report`), brought up to date on this screen too: the weapon reach and
+/// TEST IN RANGE read it. (A system of its own: the drydock's schedule orders its systems by `report::update`'s
+/// name, which must stay unique there.)
+fn design_report(design: Res<PlayerDesign>, content: Res<GameContent>, tuning: Res<Tuning>, out: ResMut<DrydockReport>) {
+    crate::drydock::report::update(design, content, tuning, out);
 }
 
 /// The screen is shown only in its mode.

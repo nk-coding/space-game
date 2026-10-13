@@ -24,6 +24,7 @@ use data::{Behavior, Content};
 use sim::DesignReport;
 
 use crate::drydock::PlayerDesign;
+use crate::drydock::report::DrydockReport;
 use crate::drydock::behaviors::{NEW_SUMMARY, PlayerBehaviors, errors_note, set_program, set_text};
 use crate::drydock::library::{self, Autosave, DesignSlot};
 use crate::flight_hud::HudFonts;
@@ -33,7 +34,6 @@ use crate::sim_bridge::GameContent;
 use crate::storage::{Document, Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::test_range::{self, BehaviorTest, StartTest, TestProgram};
-use crate::tuning::Tuning;
 use crate::ui_kit::{Hot, TextField, TextFieldText, Tone, UiClick, label, prose, set_color, set_text as set_ui_text};
 
 use super::draft::{BehaviorDraft, Snapshot, design_behavior};
@@ -400,14 +400,14 @@ pub(super) fn open(mut lib: Lib, content: Res<GameContent>, params: Res<Params>,
     ui.selected = None;
 }
 
-/// SAVE and TEST IN RANGE.
+/// SAVE and TEST IN RANGE (with the design report of the design as it is: `drydock::report::update` runs before).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn apply(
     mut actions: MessageReader<BehaviorAction>,
     mut lib: Lib,
     content: Res<GameContent>,
     ui: Res<BehaviorUi>,
-    tuning: Res<Tuning>,
+    report: Res<DrydockReport>,
     mut start: MessageWriter<StartTest>,
 ) {
     for a in actions.read() {
@@ -416,7 +416,7 @@ pub(super) fn apply(
                 let (line, tone) = lib.save(&content.0);
                 lib.say(line, tone);
             }
-            BehaviorAction::TestInRange => match test_request(&lib.draft, &lib.behaviors, &content.0, &design_report(&lib.design, &content.0, &tuning)) {
+            BehaviorAction::TestInRange => match report.report.as_ref().ok_or("the design has no report yet").map_err(String::from).and_then(|r| test_request(&lib.draft, &lib.behaviors, &content.0, r)) {
                 Ok(program) => {
                     start.write(StartTest { test: BehaviorTest { mode: ui.test_mode, program }, back: AppMode::Behavior });
                 }
@@ -437,11 +437,6 @@ pub fn test_request(draft: &BehaviorDraft, behaviors: &PlayerBehaviors, content:
         return Err(format!("the design can't fly ({why})"));
     }
     Ok(program)
-}
-
-/// The design's report with the content and config flights use (as the drydock computes it).
-fn design_report(design: &PlayerDesign, content: &Content, tuning: &Tuning) -> Result<DesignReport, String> {
-    sim::design_report(&tuning.scaled_content(content, true), design.blueprint(), &tuning.config())
 }
 
 /// The working draft is written a second after the last change, at once after a save, an open or a link.
