@@ -119,6 +119,7 @@ pub(super) fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<DockCamer
 
 /// Leaving the drydock: keep the view for next time, give flight its zoom back, the UI its normal scale.
 pub(super) fn exit(mut rig: ResMut<CameraRig>, mut cam: ResMut<DockCamera>, mut ui_scale: ResMut<UiScale>) {
+    rig.settle_zoom();
     if cam.fit > 0.0 {
         cam.view = Some((rig.pos, rig.zoom_target / cam.fit));
     }
@@ -172,6 +173,7 @@ pub(super) fn camera(
     if cam.fit <= 0.0 {
         // First frame of a visit: the last view, else the whole frame.
         let (pos, share) = cam.view.unwrap_or((frame_centre, 1.0));
+        rig.end_zoom_anchor();
         rig.pos = pos;
         rig.zoom = fit * share;
         rig.zoom_target = rig.zoom;
@@ -210,14 +212,20 @@ pub(super) fn camera(
         (true, Some(last), Some(c)) => {
             let d = c - last;
             let z = rig.zoom;
+            rig.end_zoom_anchor();
             rig.pos -= Vec2::new(d.x, -d.y) / z;
             cam.drag_last = Some(c);
         }
         (true, Some(_), None) => {}
         _ => cam.drag_last = None,
     }
-    // The frame centre never leaves the frame.
-    rig.pos = rig.pos.clamp(Vec2::new(0.0, -frame.y), Vec2::new(frame.x, 0.0));
+    // The frame centre never leaves the frame (a zoom around the cursor that would take it out eases on around
+    // the view centre).
+    let clamped = rig.pos.clamp(Vec2::new(0.0, -frame.y), Vec2::new(frame.x, 0.0));
+    if clamped != rig.pos {
+        rig.end_zoom_anchor();
+        rig.pos = clamped;
+    }
 
     let in_view = |c: &Vec2| !pointer.blocked && cam.viewport.contains(*c);
     let cell = cursor.filter(in_view).map(|c| rig.screen_to_world(c)).map(|w| (w.x.floor() as i32, (-w.y).floor() as i32));

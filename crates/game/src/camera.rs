@@ -69,6 +69,10 @@ pub struct CameraRig {
     pub view_offset: Vec2,
     drag_last: Option<Vec2>,
     pinch_last: Option<(f32, Vec2)>,
+    /// While a zoom around a screen point eases in (free camera): the point's offset from the view centre
+    /// (logical pixels, y up) and the world point kept under it until the zoom arrives. Moving the camera any
+    /// other way ends it ([`CameraRig::end_zoom_anchor`]).
+    zoom_anchor: Option<(Vec2, Vec2)>,
 }
 
 impl Default for CameraRig {
@@ -88,6 +92,7 @@ impl Default for CameraRig {
             view_offset: Vec2::ZERO,
             drag_last: None,
             pinch_last: None,
+            zoom_anchor: None,
         }
     }
 }
@@ -153,16 +158,46 @@ impl CameraRig {
         self.view_center() + Vec2::new(d.x, -d.y)
     }
     /// Zooms the target by `factor` within `min..max` px per metre. With a screen point, a free camera keeps
-    /// the world point under it in place (wheel zoom around the cursor).
+    /// the world point under it in place (wheel zoom around the cursor) all through the eased zoom, not only
+    /// once it arrives: the position follows the zoom ([`CameraRig::ease_zoom`]).
     pub fn zoom_around(&mut self, factor: f32, around: Option<Vec2>, min: f32, max: f32) {
-        let old = self.zoom_target;
         self.zoom_target = (self.zoom_target * factor).clamp(min, max);
-        if self.mode == CamMode::Free
-            && let Some(screen) = around
-        {
-            let d = screen - self.view_center();
-            let d = Vec2::new(d.x, -d.y);
-            self.pos += d / old - d / self.zoom_target;
+        self.zoom_anchor = match (self.mode, around) {
+            (CamMode::Free, Some(screen)) => {
+                let d = screen - self.view_center();
+                let d = Vec2::new(d.x, -d.y);
+                Some((d, self.pos + d / self.zoom))
+            }
+            _ => None,
+        };
+    }
+    /// The camera was moved another way (pan, clamp, reset): a zoom still easing in does so around the view
+    /// centre from here on.
+    pub fn end_zoom_anchor(&mut self) {
+        self.zoom_anchor = None;
+    }
+    /// Jumps to where an easing zoom is going (leaving a screen keeps the view it was zooming to).
+    pub fn settle_zoom(&mut self) {
+        self.zoom = self.zoom_target;
+        if let (CamMode::Free, Some((d, w))) = (self.mode, self.zoom_anchor) {
+            self.pos = w - d / self.zoom;
+        }
+        self.zoom_anchor = None;
+    }
+    /// One frame of the eased zoom (time constant 0.1 s); a zoom around a point moves the camera with it.
+    fn ease_zoom(&mut self, dt: f32) {
+        let k = 1.0 - (-dt / 0.1).exp();
+        let z = self.zoom + (self.zoom_target - self.zoom) * k;
+        // Within 0.1 % the zoom has arrived (an exponential never does).
+        let arrived = (z - self.zoom_target).abs() <= 1e-3 * self.zoom_target;
+        self.zoom = if arrived { self.zoom_target } else { z }.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
+        if let Some((d, w)) = self.zoom_anchor {
+            if self.mode == CamMode::Free {
+                self.pos = w - d / self.zoom;
+            }
+            if self.mode != CamMode::Free || arrived {
+                self.zoom_anchor = None;
+            }
         }
     }
     /// Half the visible world size.
@@ -185,6 +220,9 @@ impl Plugin for CameraPlugin {
                 update_camera
                     .in_set(CameraSet)
                     .after(crate::ship_view::sync_piece_views)
+                    // The projection (zoom) must reach this frame's camera matrices like the transform does;
+                    // otherwise the world draws one frame's zoom behind the UI icons placed for it.
+                    .before(bevy::camera::CameraUpdateSystems)
                     .before(bevy::transform::TransformSystems::Propagate),
             );
     }
@@ -340,9 +378,7 @@ fn update_camera(
         }
         CamMode::Free => {}
     }
-    let k = 1.0 - (-dt / 0.1).exp();
-    let z = rig.zoom + (rig.zoom_target - rig.zoom) * k;
-    rig.zoom = z.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
+    rig.ease_zoom(dt);
 
     let (mut tf, mut proj) = camera.into_inner();
     // The camera covers the whole window; `pos` sits at the view centre.
@@ -383,6 +419,26 @@ mod tests {
     }
 
 #[test]
+    fn a_zoom_around_the_cursor_keeps_its_world_point_under_it_while_easing() {
+        let mut rig =
+            CameraRig { mode: CamMode::Free, pos: Vec2::new(3.0, -2.0), zoom: 20.0, zoom_target: 20.0, ..default() };
+        let cursor = Vec2::new(900.0, 200.0);
+        let w = rig.screen_to_world(cursor);
+        rig.zoom_around(1.5, Some(cursor), 1.0, 200.0);
+        for _ in 0..60 {
+            rig.ease_zoom(1.0 / 60.0);
+            assert!(rig.screen_to_world(cursor).distance(w) < 1e-3, "{} vs {w}", rig.screen_to_world(cursor));
+        }
+        assert_eq!(rig.zoom, 30.0);
+        // Panning ends the anchor: the rest of the zoom eases around the view centre.
+        rig.zoom_around(1.5, Some(cursor), 1.0, 200.0);
+        rig.end_zoom_anchor();
+        let pos = rig.pos;
+        rig.ease_zoom(1.0 / 60.0);
+        assert_eq!(rig.pos, pos);
+    }
+
+    #[test]
     fn focus_glide_is_quick_smooth_and_framerate_independent() {
         let (a, jump_a) = glide_path(30);
         let (b, jump_b) = glide_path(150);
