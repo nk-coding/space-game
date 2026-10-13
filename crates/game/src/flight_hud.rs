@@ -183,6 +183,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
 #[allow(clippy::too_many_arguments)]
 fn update_text(
     time: Res<Time<Real>>,
+    virtual_time: Res<Time<Virtual>>,
     mut state: ResMut<HudState>,
     world: Res<SimWorld>,
     scene: Res<Scene>,
@@ -208,6 +209,9 @@ fn update_text(
     let alpha = fixed.overstep_fraction();
     let player = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
     let control = player.and_then(|s| s.control_piece().and_then(|c| s.piece(c)));
+    // Watch: nobody pilots or locks; the target panel shows what the watched ship's behavior targets.
+    let watching = focus.0.is_none() && scene.watched().is_some();
+    let target = if watching { player.and_then(|s| s.behavior()).and_then(|b| b.target()).map(Target::Ship) } else { input.lock };
 
     // Labels per part of the shown ship's design (a design edited in the drydock can keep its part count).
     if let Some(s) = player
@@ -270,7 +274,8 @@ fn update_text(
                 }
             }
             HudText::TargetName | HudText::TargetValue | HudText::TargetSub => {
-                target_text(*kind, s, &world, &input, control.map(|p| piece_com(p, alpha)).or(rig.focus));
+                let from = control.map(|p| piece_com(p, alpha)).or(rig.focus);
+                target_text(*kind, s, &world, target, !watching, from);
             }
             HudText::Title => match scene.kind {
                 SceneKind::Sandbox => {
@@ -308,7 +313,9 @@ fn update_text(
                 }
             }
             HudText::Banner => {
-                if let Some((b, until)) = &scene.banner
+                if virtual_time.is_paused() {
+                    s.push_str("PAUSED  ·  P");
+                } else if let Some((b, until)) = &scene.banner
                     && world.sim.time_seconds() < *until
                 {
                     s.push_str(b);
@@ -350,11 +357,13 @@ pub fn hull_fraction(ship: &sim::Ship, control: Option<sim::PieceId>) -> f32 {
     if full > 0.0 { have / full } else { 0.0 }
 }
 
-fn target_text(kind: HudText, s: &mut String, world: &SimWorld, input: &PlayerInput, from: Option<Vec2>) {
-    let Some(lock) = input.lock else {
+/// The target panel: the player's lock (with how to lock when there is none), or in watch mode the watched
+/// ship's behavior target (`hint` off: nobody can lock).
+fn target_text(kind: HudText, s: &mut String, world: &SimWorld, target: Option<Target>, hint: bool, from: Option<Vec2>) {
+    let Some(lock) = target else {
         if kind == HudText::TargetName {
             s.push_str("NO TARGET");
-        } else if kind == HudText::TargetSub {
+        } else if kind == HudText::TargetSub && hint {
             s.push_str("CLICK OR TAB TO LOCK");
         }
         return;
