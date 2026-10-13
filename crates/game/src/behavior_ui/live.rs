@@ -4,8 +4,9 @@
 //! match (the sim's `BehaviorState::describe`). Right side, under the target panel; hidden outside tests and with
 //! the HUD (H).
 //!
-//! It follows `test_range::BehaviorWatch` (refreshed after each think of the tested ship, 10 Hz): the rows are
-//! spawned when the behavior changes, and only their colours and why-lines change in between.
+//! It follows `test_range::BehaviorWatch` (refreshed after each think of the tested ship, 10 Hz) and does nothing
+//! in frames without a change: the rows are spawned when the behavior changes, and only their colours and why-lines
+//! change in between.
 
 use bevy::prelude::*;
 use data::behavior::Program;
@@ -186,6 +187,10 @@ pub(super) fn update(
 ) {
     let hud_changed = *hud_was != toggles.hud;
     *hud_was = toggles.hud;
+    // Nothing new (the watch is reset when flight ends, so a new flight always gets here once).
+    if !watch.is_changed() && !hud_changed {
+        return;
+    }
     // FlightUi roots are hidden when flight ends; this one shows itself again while it runs.
     let panel = live_panel(&watch, &content.0.behavior_nodes);
     let want = if panel.is_some() && toggles.hud { Visibility::Inherited } else { Visibility::Hidden };
@@ -231,9 +236,6 @@ pub(super) fn update(
                 });
             }
         });
-    }
-    if !watch.is_changed() && !hud_changed {
-        return;
     }
     for (t, mut text, mut color) in &mut texts {
         let (s, tone) = match t {
