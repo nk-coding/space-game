@@ -39,7 +39,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view: "Lock framing" under [Structure](#structure)) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started | T | – |
-| Home (the ring menu; the flight ends) | M, or the ring top left | the ring top left |
+| Home (the shipyard; the flight ends) | M, or the ring top left | the ring top left |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
@@ -58,7 +58,7 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 
 | Parameter | Meaning |
 |---|---|
-| `scene=home` | start at home, the ring menu (the default) |
+| `scene=home` | start at home, the shipyard (the default) |
 | `scene=sandbox` | start in the sandbox (home's TEST RANGE) |
 | `scene=drydock` | start in the drydock |
 | `scene=behavior` | start on the BEHAVIOR screen (the design's behavior) |
@@ -163,11 +163,12 @@ Update                ui_kit (hit testing, text fields) → flight: camera input
                       touch widgets, tuning panel (egui) | drydock: DockSet::Input →
                       Apply → Show → ui_kit styles | behavior: BehaviorSet::Input → Apply → Show → ui_kit styles;
                       the TEXT view's editor in egui's pass | home: clicks and keys (not while FLEET is open) →
-                      apply → the ship and the camera → FLEET's open, input, sync → ui_kit styles
+                      the camera's flight → apply → labels → shipyard (layout, meshes, rigging; also in the
+                      drydock) → FLEET's open, input, sync → ui_kit styles
 PreUpdate             career::grant (Granted follows the career)
 PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transform, lit/dark)  →  shield::draw_bubbles
                       camera::update_camera  →  fx (plumes, trails, beams, tracers, sparks; lock ring, markers;
-                      the drydock's frame overlay, the behavior graph's dot grid, home's dotted ring and dock)  →
+                      the drydock's frame overlay, the behavior graph's dot grid, home's hover brackets)  →
                       fx::flush;  ui_icons (after the
                       UI layout and the camera)
 ```
@@ -271,46 +272,90 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 
 ## Home
 
-The start screen ([GDR-0062](gdr/0062-first-playable-loop.md)), `home.rs`, written 13 Oct 2026: the shipyard's ring
-menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), after
-`docs/concept/boards/ui-mockups/phone-home-ring-menu.png`, laid out for the desktop. The game opens here (`/`,
-`?scene=home`). Screenshots: `docs/results/home-*.png`.
+The start screen ([GDR-0062](gdr/0062-first-playable-loop.md)) is the shipyard itself
+([GDR-0071](gdr/0071-shipyard-home-long-u.md), 13 Oct 2026; it replaced the ring menu of track 7D): a top-down world
+scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera. The game opens here (`/`,
+`?scene=home`). The station is `shipyard/`, the screen over it and the camera's flights `home.rs`. Screenshots:
+`docs/results/home-shipyard-1280.png`, `home-shipyard-1600.png` (1280 × 720 and 1600 × 900) and
+`home-shipyard-to-drydock.png` (mid-flight into the drydock).
 
 | Keys | |
 |---|---|
-| Drydock | D, or DRYDOCK |
-| BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock) | B, or BEHAVIOR |
-| Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or TEST RANGE |
-| FLEET: the escorts ([FLEET](#fleet)); Esc, CLOSE or its ring button closes it | F, or FLEET |
+| Drydock: the building area | D, or a click on the U |
+| BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock): the mind | B, or a click on the mind |
+| Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
+| FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
+| Research, voyages: inert until their screens exist (tracks 7G, 7H/7I) | R, V (nothing yet) |
 | Debug overlay | F3 |
 
-- **The screen**: top left `THE SHIPYARD · RIM` and the working design's name; in the middle the docked ship in a
-  dotted dock rectangle with gold corners; around it a dotted ellipse through six ring buttons (`ui_kit::ring_node`
-  with a `RingAccent`, glyphs from `ui_icons`), each labelled beside it (the key dim after the name): DRYDOCK
-  (white, top), BEHAVIOR (violet, top left), TEST RANGE (coral, bottom right), FLEET (gold, bottom left; under it
-  `CORES 2 / 2`: the fleet's logic cores against the mind capacity, coral when over), and RESEARCH (top right) and
-  VOYAGES (the big one at the bottom, the mockup's LAUNCH VOYAGE) as disabled rings with `COMING SOON` until their
-  tracks (7G, 7I) give them an action. Bottom left the career's notes (a head and a line each; the two most serious, coral before gold, and how many more the console has): a new
-  game and its start's summary, a save kept as it is, content that changed under the save, `?save=`, `?unlock=all`,
-  an escort whose design is gone ([Career](#career)). The mockup's galaxy map, fabricator and storage wait for their
-  phases; RESEARCHING (top right) and HAUL UNLOADED come with research. The place name is UI chrome in code until
-  content has places.
-- **The ship** is `drydock::PlayerDesign` drawn exactly as the drydock draws it (`ship_model::design_visual` →
-  `blueprint_visual` → `ship_view::build_body`, one mesh, rebuilt when the revision or the glow toggle changes),
-  framed by the camera rig in the dock rectangle with a cell of margin (at most 48 px per cell on the 1280 × 720
-  layout, so a tiny design stays small). The dotted ring and the dock are immediate-mode FX dots in screen pixels,
-  skipping the buttons.
-- **Layout**: a 1280 × 720 stage centred in the window; larger windows scale it (`UiScale` = min(w / 1280,
-  h / 720), 1 to 2), so 1600 × 900 shows the same layout 1.25× larger.
-- **Actions**: the working buttons and their keys send `HomeAction::{Drydock, Behavior, TestRange, Fleet}`; `apply`
-  sets the next mode (TEST RANGE sets `Scene::launch = Some(Launch::Range)`: `OnEnter(Flight)` builds the sandbox as
-  at a plain start, not a test flight); FLEET is a layer, not a mode (`fleet::open` reads the same message). A
-  disabled ring carries no action, so it sends nothing. Coming back: the ring button top left of the drydock and the
-  BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`), and in any flight M or the ring top left of the
-  HUD.
-- **Modes**: the screen and the ship's mesh are spawned once and hidden outside home, like the drydock's, and while
-  FLEET is open (home's clicks, keys and dots wait then). Entering home keeps the flight camera's zoom; leaving gives
-  it back with the UI scale 1, so the drydock and flight find the camera as they left it.
+- **The station** (`shipyard::layout`, a pure function of the frame; sizes are the sketch's at 20 px per cell,
+  placeholders): a long U on its side, walls 3.1 m thick, its base on the left, its mouth to the right. **The inside
+  of the U is the drydock frame of the working design**: blueprint `(x, y)` sits at world `(x, −y)` exactly where the
+  drydock draws its grid, so the building area spans `0..w × −h..0` and the ship is docked where it was built (nose
+  up). A bigger frame (cruiser 40 × 40) makes a bigger U and moves the buildings along; their sizes stay. The arms
+  reach 3.5 m past the area, the gate's ring (7.5 m) stands 13 m beyond the tips with chevrons leading to it.
+  Research (with two dishes and an antenna) and the fabricator sit on the top wall, the test range's tower and its
+  target lane and the salvage bay under the bottom wall, the mind behind the base (joined by violet conduits), four
+  escort moorings on two truss bridges running off the left edge (two in view, two past it).
+- **Detail** (`shipyard::draw`): plate runs in four tones with dark seams, a lattice truss along each outer face,
+  three conduits (teal, gold, violet) along the inner faces, window rows (lit or dark by state), radiator fins,
+  chamfered tips and a base strip, the name plate (`YARD 7 · RIM`, a label), red and green navigation lights on the
+  arm tips, the base, the gate pylons and the moorings, antennas, the building area's floor with a dot at every cell
+  corner, work lights pooling from the walls, gold corner brackets, a teal light strip with lamps around the inside.
+  Three gantry cranes span the arms with carriages riding them and hoist lines to the ship; four docking clamps
+  reach in from the arms; six drones circle the ship.
+- **Colours**: `station.*` in `art/tokens.json` (plate tones, structure, floor, nav lights) and the UI accents
+  (`ui.*`); glows are the atlas's soft dot and halo strip, as the ships' (the glow toggle turns them off).
+- **Cost**: the station is three static meshes, the yard around the U (z 1), the floor (z 2) and the walls (z 3),
+  rebuilt only when the frame size, the career's lights or the glow setting change (a frigate yard is a few thousand
+  quads, built once). The docked ship is one mesh rebuilt with the design's revision (as the drydock's), each escort
+  one. What moves is a dozen small meshes moved only by their transforms: the cranes (z 12, over the ship), their
+  carriages and hoist lines, the clamps (z 2.5, under the walls), the drones (z 14). Labels and click areas are a few
+  UI nodes written only when they change.
+- **States** (`shipyard::lights`, from the career; defaults for review): **research** is lit (windows, the orbit
+  emblem's glow, the dishes in gold) once anything has been researched or any node can be paid now
+  (`Career::can_pay`); a new game has no research data, so it starts dark. **The gate** is awake (glow, inner light,
+  teal approach path) while any voyage is open (`Career::open_voyages`); a new game opens its first voyage, so it is
+  awake from the start, and only a career without voyages (no start) shows it dormant. **The moorings** hold FLEET's
+  escorts (`EscortDesigns`; escort 1 top near, 2 bottom near, 3 and 4 past the edge), drawn as the drydock draws
+  them, nose up, at most 0.45 × the drydock's scale and smaller when they would not fit (5 × 5.2 m); an occupied
+  mooring's windows and inner edge light up. **The fabricator and the salvage bay** stay dark (`LATER`) until they
+  have screens.
+- **Places and flights** (`shipyard::layout::Place`, `shipyard::fly`): a click or a tap on a place (an invisible UI
+  node over it, hit-tested by `ui_kit` like any button, so touch works) or its key flies the camera there in 0.6 s
+  (a smootherstep of the time since it began, so the same at any frame rate) around the flight's zoom anchor: the one
+  world point that sits at the same place on screen in both views stays put while the zoom changes geometrically, as
+  a zoom around the cursor does; without a change of zoom it pans. On arrival the place sends `HomeAction` and its
+  screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (research,
+  the gate, the dark buildings) neither highlight nor react.
+- **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
+  (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
+  viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
+  frame inside the arms) and the clamps retract under the walls; then the drydock's panels appear and nothing else
+  moves. In the drydock the walls and the parked cranes stay around the frame (dimmed by its veil outside the grid
+  viewport); the yard, the floor (the drydock draws its own dots, at the same corners) and the drones are home's.
+  **Going back** reverses it: home starts on the drydock's last view and flies out while the cranes return. The
+  other screens go back the same way from their place (the mind, the test range for any flight); when FLEET closes
+  the camera flies back out from the moorings.
+- **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
+  placed at their anchors from the camera and shown only while the camera rests on the yard: `BUILDING AREA ·
+  FRIGATE 24 × 24  D` (gold, in the area), `BEHAVIOR  B` / `THE MIND` (violet), `TEST RANGE  T` / `NO RISK · NO
+  HAUL` (coral), `FLEET  F` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
+  `RESEARCH` / `COMING SOON` (gold while lit, else dim), `VOYAGES` / `THE GATE · COMING SOON` (`DORMANT` while it
+  sleeps), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
+  bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
+  more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
+  save, `?save=`, `?unlock=all`, an escort whose design is gone ([Career](#career)). The place names are UI chrome
+  in code until content has places.
+- **The camera**: on the yard it shows the station's overview (from the near moorings to past the gate, 80 × 45 m
+  for the frigate frame), fitted to the window (16 px per metre at 1280 × 720, the sketch's 20 at 1600 × 900). The
+  UI scale is the drydock's (`ui_kit::ui_scale_for`), so the drydock's layout is the one the camera flies onto.
+  Entering home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight
+  find the camera as they left it.
+- **Modes**: the station and the screen are spawned once and shown only at home (the walls and cranes in the
+  drydock too), and step aside while FLEET is open (it stays a layer for now; the moorings view can take its place
+  later). Coming back: the ring button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`,
+  `BehaviorAction::Menu`), and in any flight M or the ring top left of the HUD.
 
 ## Career
 
@@ -340,7 +385,8 @@ game keeps the save".
 ## FLEET
 
 The fleet on the dock ([GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md), after
-`docs/plans/mockups/fleet-b.png`), `fleet.rs`, a layer over home (F or the FLEET ring). Screenshots:
+`docs/plans/mockups/fleet-b.png`), `fleet.rs`, a layer over home (F or the moorings, once the camera has flown
+there). Screenshots:
 `docs/results/career-fleet*.png`.
 
 - **The layer**: top left the ring button (closes it), `SHIPYARD › FLEET` and "Fleet", and the rule in words
@@ -475,12 +521,10 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   before the editing tools and the report, so a design opened, renamed or moved to another frame gets its report
   and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
   status for the current revision (`blueprints::announce`).
-- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
-  gold, the glowing primary, disabled, bare list rows; `PillLock`: a lock icon shown only while the pill is
-  disabled, for locked armour and frames), ring buttons (plain, or glowing in an accent colour:
-- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (Barlow medium, as the mockup's semi-bold pills; plain, active teal, active
-  gold, the glowing primary, disabled, bare list rows), ring buttons (plain, or glowing in an accent colour:
-  `RingAccent`, home's ring), value bars, corner brackets and a one-line
+- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (Barlow medium, as the mockup's
+  semi-bold pills; plain, active teal, active gold, the glowing primary, disabled, bare list rows; `PillLock`: a lock
+  icon shown only while the pill is disabled, for locked armour and frames), ring buttons, value bars, corner
+  brackets and a one-line
   text field (`TextField`, used for the names, the searches and the notes: a caret and a selection, both drawn in
   place as text spans of `field_text`; Left / Right / Home / End move the caret, with Shift they select, Backspace
   / Delete work at the caret, Ctrl+A selects all, Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste through

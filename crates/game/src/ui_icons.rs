@@ -54,17 +54,6 @@ pub enum Glyph {
     /// The ring menu: a ring of dots around a centre dot.
     Menu,
     Diamond,
-    // The home screen's ring (`home.rs`, after `phone-home-ring-menu.png`).
-    /// A square split into four cells (the drydock).
-    Grid,
-    /// A node forking into two (behaviors).
-    Tree,
-    /// A tilted orbit around a small ring (research).
-    Orbit,
-    /// A navigation arrowhead (voyages).
-    Arrow,
-    /// Two rings around a dot (the test range).
-    Target,
     /// Three small ships in formation (the fleet).
     Formation,
     /// A padlock (locked parts, materials and frames).
@@ -248,7 +237,7 @@ fn ship_icon(content: &data::Content, style: &Style, atlas: &Atlas, bp: &Bluepri
 }
 
 /// A glyph `side` px across, centred on the origin, in pixels (y up). Strokes are 1.6 px wide, thicker on glyphs
-/// above about 23 px (the home ring's).
+/// above about 23 px.
 fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
     let white = atlas.region("fx/white");
     let uv = white.uv_center();
@@ -293,41 +282,6 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
         }
         Glyph::Diamond => {
             m.polygon(&[Vec2::new(0.0, 0.42 * s), Vec2::new(-0.42 * s, 0.0), Vec2::new(0.0, -0.42 * s), Vec2::new(0.42 * s, 0.0)], uv, col);
-        }
-        Glyph::Grid => {
-            let r = 0.3 * s;
-            m.strip(&[Vec2::new(-r, r), Vec2::new(r, r), Vec2::new(r, -r), Vec2::new(-r, -r)], true, w, &white, col);
-            m.strip(&[Vec2::new(0.0, r), Vec2::new(0.0, -r)], false, w, &white, col);
-            m.strip(&[Vec2::new(-r, 0.0), Vec2::new(r, 0.0)], false, w, &white, col);
-        }
-        Glyph::Tree => {
-            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
-            m.polygon(&arc(p(0.0, 0.26), 0.07 * s, 0.0, std::f32::consts::TAU, 12)[..12], uv, col);
-            m.strip(&[p(0.0, 0.2), p(0.0, 0.04)], false, w, &white, col);
-            m.strip(&[p(-0.24, -0.16), p(-0.24, 0.04), p(0.24, 0.04), p(0.24, -0.16)], false, w, &white, col);
-            for x in [-0.24, 0.24] {
-                m.polygon(&[p(x - 0.08, -0.14), p(x + 0.08, -0.14), p(x + 0.08, -0.3), p(x - 0.08, -0.3)], uv, col);
-            }
-        }
-        Glyph::Orbit => {
-            let tilt = Vec2::from_angle(0.45);
-            let ring: Vec<Vec2> = (0..36)
-                .map(|k| {
-                    let a = k as f32 * std::f32::consts::TAU / 36.0;
-                    tilt.rotate(Vec2::new(a.cos() * 0.38, a.sin() * 0.16) * s)
-                })
-                .collect();
-            m.strip(&ring, true, w, &white, col);
-            m.strip(&arc(Vec2::ZERO, 0.11 * s, 0.0, std::f32::consts::TAU, 20)[..20], true, w, &white, col);
-        }
-        Glyph::Arrow => {
-            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
-            m.strip(&[p(0.0, 0.36), p(0.27, -0.34), p(0.0, -0.18), p(-0.27, -0.34)], true, w, &white, col);
-        }
-        Glyph::Target => {
-            m.strip(&arc(Vec2::ZERO, 0.32 * s, 0.0, std::f32::consts::TAU, 36)[..36], true, w, &white, col);
-            m.strip(&arc(Vec2::ZERO, 0.17 * s, 0.0, std::f32::consts::TAU, 24)[..24], true, w, &white, col);
-            m.polygon(&arc(Vec2::ZERO, 0.06 * s, 0.0, std::f32::consts::TAU, 12)[..12], uv, col);
         }
         Glyph::Formation => {
             for (x, y) in [(0.0, 0.14), (-0.24, -0.2), (0.24, -0.2)] {
