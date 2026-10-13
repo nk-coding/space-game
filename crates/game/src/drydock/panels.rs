@@ -43,7 +43,7 @@ use crate::ui_kit::{
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
 use super::inspector::Inspector;
-use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, palette_list};
+use super::state::{DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, material_shown, palette_list};
 use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 use super::PlayerDesign;
@@ -456,20 +456,25 @@ pub(super) fn sync_pills(
     design: Res<PlayerDesign>,
     status: Res<DrydockStatus>,
     granted: Res<Granted>,
-    mut pills: Query<(&ActionButton, &mut Pill)>,
+    content: Res<GameContent>,
+    mut pills: Query<(&ActionButton, &mut Pill, &mut Node)>,
 ) {
     let unlocks = &granted.unlocks;
-    for (b, mut pill) in &mut pills {
+    for (b, mut pill, mut node) in &mut pills {
         let (active, disabled) = match &b.0 {
             DrydockAction::Tool(t) => (ui.tool == *t, false),
             DrydockAction::Mirror => (design.dock().mirror, false),
             DrydockAction::Bevel => (design.dock().bevel, false),
-            DrydockAction::Material(m) => (ui.material == *m, !unlocks.has_material(m)),
+            DrydockAction::Material(m) => {
+                set_display(&mut node, material_shown(&content.0, unlocks, m));
+                (ui.material == *m, !unlocks.has_material(m))
+            }
             DrydockAction::Overlay(o) => (ui.overlay(*o), false),
             DrydockAction::Category(cat) => (ui.search.is_empty() && ui.category == *cat, false),
             DrydockAction::PickPart(p) => (ui.picked.as_deref() == Some(p.as_str()), !p.is_empty() && !unlocks.has_part(p)),
             DrydockAction::TestFly => (false, status.grounded.is_some()),
             DrydockAction::PartMaterial(m) => {
+                set_display(&mut node, material_shown(&content.0, unlocks, m));
                 let disabled = !unlocks.has_material(m);
                 if pill.disabled != disabled {
                     pill.disabled = disabled;

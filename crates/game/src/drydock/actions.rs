@@ -225,9 +225,9 @@ mod tests {
     #[test]
     fn locked_parts_and_materials_cannot_be_picked() {
         let mut app = app();
-        let beam = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("beam_laser".into())), Pill::new(crate::ui_kit::Tone::Teal))).id();
-        let composite = app.world_mut().spawn((ActionButton(DrydockAction::Material("composite".into())), Pill::new(crate::ui_kit::Tone::Teal))).id();
-        let pulse = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("pulse_laser".into())), Pill::new(crate::ui_kit::Tone::Teal))).id();
+        let beam = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("beam_laser".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        let composite = app.world_mut().spawn((ActionButton(DrydockAction::Material("composite".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
+        let pulse = app.world_mut().spawn((ActionButton(DrydockAction::PickPart("pulse_laser".into())), Pill::new(crate::ui_kit::Tone::Teal), Node::default())).id();
         app.update();
         let pill = |app: &App, e: Entity| *app.world().get::<Pill>(e).unwrap();
         assert!(pill(&app, beam).disabled && pill(&app, composite).disabled && !pill(&app, pulse).disabled);

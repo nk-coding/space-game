@@ -4,9 +4,10 @@
 //! from the career's unlocks (`career::Granted`; everything in free mode, `?unlock=all`).
 
 use data::career::Unlocks;
-use data::{Content, Material, Part};
+use data::{Content, Material, Part, Unlock};
 use bevy::prelude::*;
 
+use crate::career::unlocked_by;
 use crate::ui_kit::Tone;
 
 use super::PlayerDesign;
@@ -91,12 +92,14 @@ pub fn palette_parts<'c>(content: &'c Content, unlocks: &'c Unlocks) -> impl Ite
 }
 
 /// The palette's list for a category, or for a search (non-empty: every part whose name contains it): the unlocked
-/// parts, then the locked ones (shown dimmed as `LOCKED · <research node>`, never picked; GDR-0065), each in
-/// content order. Returns the part ids and how many of them (the last ones) are locked.
+/// parts, then the locked ones research can unlock (shown dimmed as `LOCKED · <research node>`, never picked;
+/// GDR-0065: the drydock shows what research gives), each in content order. Locked parts no research node unlocks
+/// stay hidden. Returns the part ids and how many of them (the last ones) are locked.
 pub fn palette_list(content: &Content, unlocks: &Unlocks, category: &str, search: &str) -> (Vec<String>, usize) {
     let search = search.to_lowercase();
     let listed = |p: &&Part| if search.is_empty() { p.category == category } else { p.name.to_lowercase().contains(&search) };
-    let (open, locked): (Vec<&Part>, Vec<&Part>) = content.parts.iter().filter(listed).partition(|p| unlocks.has_part(&p.id));
+    let shown = |p: &&Part| unlocks.has_part(&p.id) || unlocked_by(content, &Unlock::Part(p.id.clone())).is_some();
+    let (open, locked): (Vec<&Part>, Vec<&Part>) = content.parts.iter().filter(listed).filter(shown).partition(|p| unlocks.has_part(&p.id));
     let n = locked.len();
     (open.into_iter().chain(locked).map(|p| p.id.clone()).collect(), n)
 }
@@ -104,6 +107,11 @@ pub fn palette_list(content: &Content, unlocks: &Unlocks, category: &str, search
 /// Every armour material, in content order: the ARMOR pills and keys 1–9. Locked ones are dimmed and refused.
 pub fn armor_materials(content: &Content) -> impl Iterator<Item = &Material> + Clone {
     content.materials.iter().filter(|m| m.armor.is_some())
+}
+
+/// Is an armour material's pill shown: unlocked, or locked and research can unlock it (like the palette's rows).
+pub fn material_shown(content: &Content, unlocks: &Unlocks, material: &str) -> bool {
+    unlocks.has_material(material) || unlocked_by(content, &Unlock::Material(material.to_string())).is_some()
 }
 
 /// The status line under the grid and whether the design can fly.
@@ -178,7 +186,9 @@ mod tests {
         assert!(new_game.has_part(ui.picked.as_deref().unwrap()));
         assert_eq!(ui.material, "steel");
         assert_eq!(DrydockUi::new(&content, &runner, &all).material, "composite");
-        // The ARMOR pills: every armour material, locked or not.
+        // The ARMOR pills: every armour material; a locked one shows (dimmed) only when research can unlock it.
         assert!(armor_materials(&content).any(|m| m.id == "composite") && armor_materials(&content).all(|m| m.armor.is_some()));
+        assert!(material_shown(&content, &new_game, "steel") && material_shown(&content, &new_game, "composite"));
+        assert!(!material_shown(&content, &new_game, "reactive") && material_shown(&content, &all, "reactive"));
     }
 }

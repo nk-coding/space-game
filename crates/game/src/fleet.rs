@@ -39,7 +39,8 @@ use crate::storage::{Document, Storage};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Hot, Pill, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, wheel_rows,
+    Hot, Pill, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, tracked,
+    wheel_rows,
 };
 
 /// Escort slots the layout has (placeholder: the slice's mind grows to 4 cores, so at most 3 escorts fly).
@@ -305,10 +306,12 @@ fn input(
                 let with_cores: Vec<(String, u32)> =
                     ids.iter().zip(&escorts.0).map(|(id, b)| (id.clone(), content.ship_totals(b).logic_cores)).collect();
                 let flagship = content.ship_totals(design.blueprint()).logic_cores;
-                match pick(&with_cores, flagship, granted.mind_capacity, fleet.slot, &d) {
+                // The picked slot, as the layer shows it (escorts may have left since it was picked).
+                let slot = fleet.slot.min(ids.len()).min(MAX_ESCORTS - 1);
+                match pick(&with_cores, flagship, granted.mind_capacity, slot, &d) {
                     Ok(next) => {
-                        fleet.say = Some((format!("{} FLIES AS ESCORT {}", d.blueprint.name.to_uppercase(), fleet.slot + 1), Tone::Teal));
-                        fleet.slot = (fleet.slot + 1).min(next.len()).min(MAX_ESCORTS - 1);
+                        fleet.say = Some((format!("{} FLIES AS ESCORT {}", d.blueprint.name.to_uppercase(), slot + 1), Tone::Teal));
+                        fleet.slot = (slot + 1).min(next.len()).min(MAX_ESCORTS - 1);
                         Some(next)
                     }
                     Err(r) => {
@@ -352,8 +355,7 @@ pub fn card_state(content: &Content, granted: &Granted, d: &FleetDesign, in_flee
     if let Some(locked) = voyage_ready(content, &granted.unlocks, u32::MAX, &d.blueprint, &[]).iter().find(|r| r.blocks()) {
         return (readiness_words(content, locked), Tone::Gold);
     }
-    let fits = format!("FITS  ·  {}", plural(d.cores, "CORE"));
-    if in_fleet { (format!("IN THE FLEET  ·  {fits}"), Tone::Label) } else { (fits, Tone::Teal) }
+    if in_fleet { (format!("IN THE FLEET  ·  {}", plural(d.cores, "CORE")), Tone::Label) } else { (format!("FITS  ·  {}", plural(d.cores, "CORE")), Tone::Teal) }
 }
 
 /// FLEET is shown at home while it is open; home's ring steps aside meanwhile (`home::show`).
@@ -376,7 +378,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         height: size.map_or(Val::Auto, |s| px(s.y)),
         ..default()
     };
-    let column = |gap: f32| Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(gap), ..default() };
+    let column = |gap: f32, at: Node| Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(gap), ..at };
     let placeholder = |size: f32| UiIcon::Glyph { glyph: Glyph::Formation, color: ui.dim.with_alpha(size) };
     let boxed = |accent: Tone| Pill { bare: true, ..Pill::new(accent) };
     commands
@@ -446,7 +448,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                             Node { position_type: PositionType::Absolute, left: px(24), top: px(20), width: px(size.x - 48.0), height: px(size.y - 40.0), ..default() },
                         ));
                     });
-                    stage.spawn((column(6.0), abs(Vec2::new(centre_at.x - 240.0, centre_at.y + size.y / 2.0 + 14.0), Some(Vec2::new(480.0, 90.0)))))
+                    stage.spawn(column(6.0, abs(Vec2::new(centre_at.x - 240.0, centre_at.y + size.y / 2.0 + 14.0), Some(Vec2::new(480.0, 90.0)))))
                         .with_children(|t| {
                             t.spawn(label(fonts, "FLAGSHIP  ·  THE DRYDOCK'S DESIGN", 8.5, c(Tone::Dim, 1.0)));
                             t.spawn((FleetText::ShipName, prose(fonts, "", 18.0, c(Tone::Number, 1.0))));
@@ -456,7 +458,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
 
                     // The escort slots.
                     for (k, at) in SLOTS.iter().enumerate() {
-                        stage.spawn((FleetNode::Slot(k), column(6.0), abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0)))))
+                        stage.spawn((FleetNode::Slot(k), column(6.0, abs(Vec2::new(at.x - 120.0, at.y - SLOT_BOX.y / 2.0), Some(Vec2::new(240.0, 170.0))))))
                             .with_children(|s| {
                                 s.spawn((
                                     FleetButton::Slot(k),
@@ -532,8 +534,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                     card.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), flex_shrink: 1.0, min_width: px(0), ..default() })
                                         .with_children(|t| {
                                             t.spawn((FleetText::CardName(k), prose(fonts, "", 14.0, c(Tone::Number, 1.0))));
-                                            t.spawn((FleetText::CardSub(k), label(fonts, "", 7.5, c(Tone::Dim, 1.0))));
-                                            t.spawn((FleetText::CardState(k), label(fonts, "", 7.5, c(Tone::Teal, 1.0))));
+                                            t.spawn((FleetText::CardSub(k), tracked(fonts, "", 7.5, c(Tone::Dim, 1.0), 0.15)));
+                                            t.spawn((FleetText::CardState(k), tracked(fonts, "", 7.5, c(Tone::Teal, 1.0), 0.15)));
                                         });
                                 });
                             }
@@ -718,7 +720,7 @@ mod tests {
         let skiff = design(&content, "skiff", "rim_skiff");
         let runner = design(&content, "runner", "halvex_runner");
         assert_eq!(card_state(&content, &granted, &skiff, false, 2), ("FITS  ·  2 CORES".into(), Tone::Teal));
-        assert_eq!(card_state(&content, &granted, &skiff, true, 2).0, "IN THE FLEET  ·  FITS  ·  2 CORES");
+        assert_eq!(card_state(&content, &granted, &skiff, true, 2).0, "IN THE FLEET  ·  2 CORES");
         assert_eq!(card_state(&content, &granted, &skiff, false, 1), ("NEEDS 2 CORES  ·  1 FREE".into(), Tone::Coral));
         let (words, tone) = card_state(&content, &granted, &runner, false, 2);
         assert!(words.starts_with("USES ") && tone == Tone::Gold, "{words}");

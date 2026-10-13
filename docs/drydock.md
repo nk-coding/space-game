@@ -253,13 +253,17 @@ unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked
 - **Locked parts are shown, not hidden** (GDR-0065 replaces GDR-0054's hiding for the career's drydock): the
   palette lists a category's unlocked parts, then its locked ones, each in content order (`state::palette_list`;
   a search the same over every category). A locked row is dimmed, has a lock in place of its icon and says
-  `LOCKED · <the research node that unlocks it>` (`career::unlocked_by`, the first node in content order; `LOCKED`
-  alone when no node does). The section line counts them: `WEAPONS · 1 · 2 LOCKED`. A locked row is a disabled
-  pill: a click sends nothing, and `actions::apply` refuses a locked `PickPart` anyway, so it is never picked or
-  placed.
-- **Locked materials and frames**: every armour material has an ARMOR pill (the 1–9 keys count them all); a locked
-  one is dimmed with a lock (`ui_kit::PillLock`) and refused, and so are its pills in the inspector. BLUEPRINTS'
-  NEW and FRAME pills of a locked frame (the cruiser and the capital) are dimmed with a lock too.
+  `LOCKED · <the research node that unlocks it>` (`career::unlocked_by`, the first node in content order). The
+  section line counts them: `WEAPONS · 1 · 2 LOCKED`. A locked row is a disabled pill: a click sends nothing, and
+  `actions::apply` refuses a locked `PickPart` anyway, so it is never picked or placed.
+- **What no research unlocks stays hidden** (default, track 7F: GDR-0065's "the career's drydock shows what research
+  gives"): a locked part or armour material no research node unlocks (in the base pack: reactive armour and the
+  automaton plate) is not shown at all, as before; free mode shows it. Four armour pills with locks also don't fit
+  the top bar at 1280 px.
+- **Locked materials and frames**: every armour material research can unlock has an ARMOR pill (the 1–9 keys count
+  every armour material, hidden ones too); a locked one is dimmed with a lock (`ui_kit::PillLock`) and refused, and
+  so are its pills in the inspector (`state::material_shown`). BLUEPRINTS' NEW and FRAME pills of a locked frame
+  (the cruiser and the capital) are dimmed with a lock.
 - **NEW**: a part research unlocked carries a gold NEW tag in the palette until it is picked there or a placed one
   is selected (whatever the SELECTED PART block shows: `panels::see_fresh` sends `career::SeenPart`). The career
   keeps what was seen in the save (`seen`, written at once), so a tag goes for good and a new game shows them again.

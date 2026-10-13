@@ -324,7 +324,7 @@ The fleet on the dock ([GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md)
   shows its design, `ESCORT n`, name, cores and cargo, and REMOVE; one empty slot more while there is room says how
   many cores are free for it. At the bottom `YOUR DESIGNS · PICK ONE FOR ESCORT n` and four cards of the saved designs
   (most recently saved first; the wheel scrolls): the ship, name, size, cores, cargo, and what a pick would do
-  (`FITS · 1 CORE` teal, `IN THE FLEET · FITS`, `USES BEAM LASER` gold: it may fly but the fleet is not voyage-ready,
+  (`FITS · 1 CORE` teal, `IN THE FLEET · 1 CORE`, `USES BEAM LASER` gold: it may fly but the fleet is not voyage-ready,
   `NEEDS 2 CORES · 1 FREE`, `CAN'T FLY · NO THRUST`, `NO LOGIC CORE` coral). The last line says what happened.
 - **Picking** (`fleet::pick`): a click on a slot picks it (teal outline); a click on a card puts that design into the
   picked slot (the empty slot adds an escort) when the mind runs the fleet then: the flagship's cores, the other
@@ -366,11 +366,11 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
 frame's content name; `· ALL UNLOCKED` with `?unlock=all`) and the design's name (a click renames it; "UNSAVED"
 or "SAVED" after it); the ARMOR pills (every content material with an `armor` block; one the career hasn't
-unlocked is dimmed with a lock and does nothing) and the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS, ARCS:
+unlocked is dimmed with a lock and does nothing, one no research unlocks is left out) and the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS, ARCS:
 any combination, drawn over the design); left the search, the category pills (content categories), the section
 (`WEAPONS · 1 · 2 LOCKED`) and the part list (the unlocked parts: icon, name, footprint and one key stat from
 `Content::part_stats`: the first stat after build points, control, mass, hit points, power draw and heat, else the
-bonus it gives, else its hit points; a gold NEW tag on fresh ones; then the locked parts, dimmed with a lock and
+bonus it gives, else its hit points; a gold NEW tag on fresh ones; then the locked parts research can unlock, dimmed with a lock and
 `LOCKED · <research node>`, not pickable, GDR-0065; the wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
 FIREPOWER, CARGO, CONTROL, DEVICE LOAD, then a compact TOP SPEED, TURN 90°, MASS, BUILD POINTS block, all from
 `sim::report`) and SELECTED PART (the selected placed part with the report's numbers and its controls, else the
