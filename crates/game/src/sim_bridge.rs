@@ -310,6 +310,8 @@ fn apply_events(
         return;
     }
     let player = focus.0;
+    // Pieces a vessel stripped parts from this tick: when one is emptied, it goes without a burst.
+    let mut stripped: Vec<(ShipId, PieceId)> = Vec::new();
     for k in 0..n {
         // Copy what is needed out of the event (no clones of snapshots), then act with `world` borrowed mutably.
         let act = match &world.sim.events()[k] {
@@ -340,6 +342,12 @@ fn apply_events(
             SimEvent::PlumeHit { by, engine, point, .. } => Act::Burn(*by, *engine, v2(*point)),
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
+            }
+            SimEvent::Collected { ship, from, at, .. } => {
+                if let sim::Salvaged::Part { ship, piece, .. } = *from {
+                    stripped.push((ship, piece));
+                }
+                Act::Collected(*ship, v2(*at))
             }
             _ => Act::None,
         };
@@ -379,7 +387,9 @@ fn apply_events(
             }
             Act::PieceGone(ship, piece) => {
                 if let Some(e) = world.views.remove(&(ship, piece)) {
-                    if let Ok((v, tf)) = views.get(e) {
+                    if let Ok((v, tf)) = views.get(e)
+                        && !stripped.contains(&(ship, piece))
+                    {
                         let c = tf.transform_point(v.center.extend(0.0)).truncate();
                         fx.burst(c, v.glow, 1.4);
                     }
@@ -419,6 +429,14 @@ fn apply_events(
                 fx.hit(point, normal, color, damage);
             }
             Act::Ricochet(point, vel) => fx.ricochet(point, vel),
+            Act::Collected(ship, at) => {
+                // Salvage scooped into a hold: a short teal streak from where it was into the ship.
+                let to = world.sim.ship(ship).and_then(|s| s.piece(s.control_piece()?)).map(|p| v2(p.com_world()));
+                fx.flash(at, style.glow_player, 0.9, 0.25);
+                if let Some(to) = to {
+                    fx.pulse(at, to, style.glow_player);
+                }
+            }
             Act::Burn(ship, engine, point) => fx.burn(ship, engine, point),
             Act::Shield(ship, piece, part, point, absorbed, depleted) => {
                 // The ripple starts where the shot entered: a direction from the emitter in the piece frame (the
@@ -453,6 +471,8 @@ enum Act {
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
+    /// A vessel collected salvage that was at this point.
+    Collected(ShipId, Vec2),
     /// An engine's plume (ship, engine part) burns a part at a point.
     Burn(ShipId, sim::PartIdx, Vec2),
     Shield(ShipId, PieceId, sim::PartIdx, Vec2, f32, bool),

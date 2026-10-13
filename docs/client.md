@@ -93,7 +93,12 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   `WAVES ON` / `WAVES OFF (C)`, Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
   they are more than 320 m from the player or dark for 75 s (the player's vessels, dark or dormant, stay). When
   the focus loses its last logic core the sim moves the focus to another vessel of the player (a split-off half
-  too); when the player has no vessel left, a new one re-forms after 3 s.
+  too); when the player has no vessel left, a new one re-forms after 3 s (its wreck, with whatever its hold
+  carried, is removed then).
+- **Salvage in the sandbox** (GDR-0063, 13 Oct 2026; the first feel check of track 7B): every running vessel of
+  the player collects (`SimConfig::salvage`, the sim's defaults): fly within 5 m of a wreck (raiders shot down,
+  their split-off pieces) or a loose core fragment, and one part every 1/3 s goes into the hold, best first
+  (`docs/sim.md` "Salvage"). The HUD shows `CARGO n / m` under the hull; nothing is done with the haul yet.
 - **Test flight**: the sandbox launched from the drydock (T or TEST-FLY), waves on, title `TEST FLIGHT`. Losing
   every vessel returns to the drydock after the same 3 s (`SHIP LOST · BACK TO THE DRYDOCK`) instead of
   re-forming; T returns at any time. Shift+R restarts the test flight.
@@ -209,8 +214,14 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   draw call each with the atlas material, rewritten in place. Plumes come from `piece.thrusters[i]` ×
   `piece.output[i]` and `piece.cruise[i]` (see Plumes below; RCS nozzles: small puffs; engine gimbal from
   `piece.act.deflect`), beams from `Sim::beams()` re-attached to the gun at the render pose, tracers from
-  `Sim::projectiles()` interpolated.
-- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, speed with the top speed of the
+  `Sim::projectiles()` interpolated, loose salvage fragments from `Sim::loose()` interpolated the same way (a
+  small diamond of lines in the logic colour, `#ae8cec`, turning slowly in a soft breathing glow; atlas regions
+  only, no new texture). `SimEvent::Collected` plays a teal flash where the item was and a pulse streak from there
+  into the collecting vessel (`Effects::flash`, `Effects::pulse`); a piece emptied by stripping goes without the
+  usual burst.
+- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, the hold (`CARGO 3 / 8`: cargo units
+  in use / the alive cargo parts of the controlling piece, `Ship::cargo` and `cargo_capacity`; empty for a ship
+  without a hold), speed with the top speed of the
   best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
   hull block and the touch stick on a phone), target panel, wave line, warnings, help; lock ring and off-screen
   markers are world-space FX. Debug overlay and toggles: `hud.rs`.

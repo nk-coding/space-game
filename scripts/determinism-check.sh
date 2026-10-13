@@ -5,6 +5,9 @@
 #   scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario NAME] [--package CRATE] [--example NAME]
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
+# Scenarios of sim's `determinism` example (sim::scenario): core (default), flight, load (--ships N in the example),
+# behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost ship's cargo).
+#
 # Hash stream format (what the example prints): one "<tick> <hash>" line per tick; lines starting with '#'
 # are comments (header, summary) and are shown but not compared. Any producer that prints this format can
 # be checked: the physics layer adds scenarios to sim's `determinism` example (--scenario), and the browser

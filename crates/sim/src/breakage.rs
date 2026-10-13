@@ -55,6 +55,17 @@ impl Ship {
             return DamageOutcome::Damaged { hp_left: ps.hp };
         }
         let excess = -ps.hp;
+        self.remove_part(part);
+        self.pending_destroyed.push(part as PartIdx);
+        DamageOutcome::Destroyed { excess }
+    }
+
+    /// Takes an alive part out of the ship: dead, out of the grid, its neighbours' exposure and bonuses
+    /// refreshed, its piece re-checked in the next [`Ship::resolve_breakage`]. The destroy path without the
+    /// destruction: no `PartDestroyed` event, no chain reaction, no fragment. Damage adds those
+    /// ([`Ship::apply_damage`]); salvage strips parts and pre-breaks wrecks with this alone (`salvage.rs`).
+    pub(crate) fn remove_part(&mut self, part: usize) {
+        let ps = &mut self.parts[part];
         ps.hp = 0.0;
         ps.alive = false;
         ps.heat = 0.0;
@@ -87,8 +98,6 @@ impl Ship {
         if let Some(k) = self.piece_index(piece) {
             self.pieces[k].dirty = true;
         }
-        self.pending_destroyed.push(part as PartIdx);
-        DamageOutcome::Destroyed { excess }
     }
 
     /// The controlling piece keeps control only while it has a core. Returns true if control was lost now.

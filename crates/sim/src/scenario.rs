@@ -17,6 +17,11 @@
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
 //!   (rule slots drop). The leader is the player's focus, and the player's mind capacity is
 //!   [`BEHAVIOR_MIND_CAPACITY`] cores, so the newest ship-mind vessels start dormant and wake as others fall.
+//! * [`ScenarioKind::Salvage`]: salvage (`salvage.rs`): a wreck of every blueprint spawned as a wreck
+//!   (`Sim::spawn_wreck`, part of it already gone), the player's ship-mind ships with a hold flying to the
+//!   nearest salvage (pieces and loose fragments) and collecting it, two raiders under their content behavior
+//!   whose cores are shot out (fragments), a cargo part of one collector destroyed (its hold sheds) and one
+//!   collector lost with its cargo (its wreck keeps it; the others strip it), plus random hits.
 //!
 //! Owners: ship-mind ships belong to [`Owner::PLAYER`], every other faction's to `Owner(1)`
 //! ([`scenario_owner`]). Splits leave vessels of their own (GDR-0013), so ship counts grow during a run.
@@ -34,6 +39,7 @@ use crate::events::SimEvent;
 use crate::flight::{PilotInput, Target};
 use crate::math::{Vec2, cos, sin};
 use crate::rng::Stream;
+use crate::salvage::{Item, Salvaged};
 use crate::ship::{Body, Ship, ShipControls};
 use crate::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
@@ -56,6 +62,8 @@ pub enum ScenarioKind {
     Load(u32),
     /// Behaviors (content and player programs, Rhai conditions, target priorities, slots).
     Behavior,
+    /// Salvage: wrecks spawned as wrecks, collecting, fragments, cargo kept by a lost ship.
+    Salvage,
 }
 
 impl ScenarioKind {
@@ -65,6 +73,7 @@ impl ScenarioKind {
             "flight" => Some(ScenarioKind::Flight),
             "load" => Some(ScenarioKind::Load(20)),
             "behavior" => Some(ScenarioKind::Behavior),
+            "salvage" => Some(ScenarioKind::Salvage),
             _ => None,
         }
     }
@@ -75,6 +84,7 @@ impl ScenarioKind {
             ScenarioKind::Core => 0.25,
             ScenarioKind::Flight => 0.08,
             ScenarioKind::Behavior => 0.06,
+            ScenarioKind::Salvage => 0.04,
             ScenarioKind::Load(_) => 0.0,
         }
     }
@@ -84,6 +94,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 75,
             ScenarioKind::Flight | ScenarioKind::Behavior => 150,
+            ScenarioKind::Salvage => 300,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -93,6 +104,7 @@ impl ScenarioKind {
         match self {
             ScenarioKind::Core => 20,
             ScenarioKind::Flight | ScenarioKind::Behavior => 45,
+            ScenarioKind::Salvage => SALVAGE_RETARGET,
             ScenarioKind::Load(_) => u64::MAX,
         }
     }
@@ -129,6 +141,13 @@ pub struct ScenarioStats {
     pub dormant: u32,
     pub woken: u32,
     pub focus_changes: u32,
+    /// Salvage: items collected (`SimEvent::Collected`), the cargo units they took, how many came from a
+    /// wreck's cargo and how many were fragments; fragments spawned (loose ids handed out).
+    pub collected: u32,
+    pub collected_units: u32,
+    pub collected_cargo: u32,
+    pub collected_fragments: u32,
+    pub fragments: u32,
 }
 
 pub struct Scenario {
@@ -136,6 +155,8 @@ pub struct Scenario {
     pub stats: ScenarioStats,
     pub kind: ScenarioKind,
     inputs: TickInputs,
+    /// Salvage: the collecting ships, in spawn order.
+    collectors: Vec<crate::ShipId>,
 }
 
 impl Scenario {
@@ -152,7 +173,11 @@ impl Scenario {
                 stats: ScenarioStats::default(),
                 kind,
                 inputs: TickInputs::default(),
+                collectors: Vec::new(),
             });
+        }
+        if kind == ScenarioKind::Salvage {
+            return salvage_scenario(content, seed);
         }
         let mut config = crate::SimConfig::default();
         if kind == ScenarioKind::Behavior {
@@ -215,6 +240,7 @@ impl Scenario {
             stats: ScenarioStats::default(),
             kind,
             inputs: TickInputs::default(),
+            collectors: Vec::new(),
         })
     }
 
@@ -244,8 +270,19 @@ impl Scenario {
                 SimEvent::VesselDormant { .. } => self.stats.dormant += 1,
                 SimEvent::VesselWoken { .. } => self.stats.woken += 1,
                 SimEvent::FocusChanged { .. } => self.stats.focus_changes += 1,
+                SimEvent::Collected {
+                    from, item, units, ..
+                } => {
+                    self.stats.collected += 1;
+                    self.stats.collected_units += units;
+                    self.stats.collected_cargo += matches!(from, Salvaged::Cargo { .. }) as u32;
+                    self.stats.collected_fragments += matches!(item, Item::Fragment { .. }) as u32;
+                }
                 _ => {}
             }
+        }
+        if let Some(l) = self.sim.loose().last() {
+            self.stats.fragments = self.stats.fragments.max(l.id.0 + 1);
         }
         for ship in self.sim.ships() {
             self.stats.overheated_part_ticks += ship
@@ -279,6 +316,9 @@ impl Scenario {
         }
         if kind == ScenarioKind::Core && tick % RAM_RUN_EVERY == RAM_RUN_EVERY * 3 / 4 {
             self.plume_run(tick / RAM_RUN_EVERY);
+        }
+        if kind == ScenarioKind::Salvage {
+            self.salvage_run(tick);
         }
         let ships: Vec<(crate::ShipId, usize, bool, bool)> = self
             .sim
@@ -356,6 +396,8 @@ impl Scenario {
                     };
                     self.inputs.commands.push((id, ShipCommand::Pilot(input)));
                 }
+                // The collectors fly to salvage (`salvage_run`), the raiders their behavior.
+                ScenarioKind::Salvage => {}
             }
         }
 
@@ -481,6 +523,176 @@ impl Scenario {
             },
         ));
     }
+}
+
+/// The salvage scenario's collectors pick a new target every this many ticks (staggered per collector).
+const SALVAGE_RETARGET: u64 = 30;
+/// Salvage scenario script: at each of these ticks the cores of the first raider still a vessel are shot out.
+const SALVAGE_RAIDER_KILLS: [u64; 2] = [120, 240];
+/// Salvage scenario script: a cargo part of the second collector is destroyed (its hold sheds).
+const SALVAGE_HOLD_HIT: u64 = 450;
+/// Salvage scenario script: the first collector stops (90 ticks before) and loses its logic cores (its wreck
+/// keeps its cargo); the last collector waits until then with an empty hold and then strips that wreck.
+const SALVAGE_LOST: u64 = 540;
+
+/// The salvage scenario: a wreck of every blueprint in a ring (radius 30 m, drifting a little, 20–50 % of
+/// their parts gone), one collector per ship-mind blueprint with a hold in a ring outside it (45 m), two raiders
+/// 100 m out under their content behavior.
+fn salvage_scenario(content: &Content, seed: u64) -> Result<Scenario, String> {
+    let mut sim = Sim::new(seed);
+    sim.set_behaviors(library(content)?);
+    let designs: Vec<Arc<ShipDesign>> = content
+        .ships
+        .iter()
+        .map(|b| ShipDesign::compile(content, b).map(Arc::new))
+        .collect::<Result<_, _>>()?;
+    let ring = |k: usize, n: usize, r: f32| {
+        let a = k as f32 * (core::f32::consts::TAU / n.max(1) as f32);
+        (Vec2::new(cos(a) * r, sin(a) * r), a)
+    };
+    for (k, d) in designs.iter().enumerate() {
+        let (pos, a) = ring(k, designs.len(), 30.0);
+        let damage = sim.rng(Stream::Scenario).range_f32(0.2, 0.5);
+        let body = Body {
+            pos,
+            angle: a,
+            linvel: Vec2::new(-sin(a) * 0.5, cos(a) * 0.5),
+            angvel: 0.05,
+        };
+        sim.spawn_wreck(Arc::clone(d), scenario_owner(d), body, damage);
+    }
+    let holds: Vec<&Arc<ShipDesign>> = designs
+        .iter()
+        .filter(|d| scenario_owner(d) == Owner::PLAYER && d.parts.iter().any(|p| p.cargo > 0.0))
+        .collect();
+    let mut collectors = Vec::new();
+    for (k, d) in holds.iter().enumerate() {
+        let (pos, a) = ring(k, holds.len(), 45.0);
+        collectors.push(sim.spawn_ship(Arc::clone(d), Owner::PLAYER, Body::at(pos, a)));
+    }
+    if let Some(raider) = designs.iter().find(|d| scenario_owner(d) != Owner::PLAYER) {
+        for k in 0..2 {
+            let (pos, a) = ring(k, 2, 100.0);
+            let body = Body::at(pos, a + core::f32::consts::PI);
+            let id = sim.spawn_ship(Arc::clone(raider), Owner(1), body);
+            let behavior = sim.behaviors().default_for(raider);
+            sim.command(id, ShipCommand::Behavior(behavior));
+        }
+    }
+    Ok(Scenario {
+        sim,
+        stats: ScenarioStats::default(),
+        kind: ScenarioKind::Salvage,
+        inputs: TickInputs::default(),
+        collectors,
+    })
+}
+
+/// Damage that destroys every alive part of `ship` that `which` picks.
+fn destroy_parts(
+    ship: &Ship,
+    which: impl Fn(&crate::design::PartSpec) -> bool,
+) -> Vec<DamageCommand> {
+    ship.parts()
+        .iter()
+        .enumerate()
+        .filter(|&(i, p)| p.alive && which(&ship.design().parts[i]))
+        .map(|(i, _)| DamageCommand {
+            ship: ship.id(),
+            target: DamageTarget::Part(i as PartIdx),
+            amount: 1000.0,
+        })
+        .collect()
+}
+
+impl Scenario {
+    /// The salvage scenario's script for this tick: collectors fly to the nearest salvage, and the scripted
+    /// losses (the `SALVAGE_*` ticks).
+    fn salvage_run(&mut self, tick: u64) {
+        let last = self.collectors.len().saturating_sub(1);
+        for (n, &c) in self.collectors.iter().enumerate() {
+            let brake = Some(crate::maneuver::Maneuver::Brake);
+            let target = if n == last && n > 0 {
+                match tick < SALVAGE_LOST {
+                    true => brake,
+                    false => salvage_target(&self.sim, c, self.collectors.first().copied()),
+                }
+            } else if n == 0 && tick + 90 >= SALVAGE_LOST {
+                brake
+            } else {
+                salvage_target(&self.sim, c, None)
+            };
+            if (tick + n as u64 * 7).is_multiple_of(SALVAGE_RETARGET)
+                && let Some(maneuver) = target
+            {
+                let fly = ShipCommand::Maneuver {
+                    maneuver,
+                    fire: false,
+                };
+                self.inputs.commands.push((c, fly));
+            }
+        }
+        if SALVAGE_RAIDER_KILLS.contains(&tick)
+            && let Some(raider) = self.sim.ships().iter().find(|s| s.team() == Some(Owner(1)))
+        {
+            self.inputs
+                .damage
+                .extend(destroy_parts(raider, |p| p.logic));
+        }
+        let collector = |n: usize| self.collectors.get(n).and_then(|&id| self.sim.ship(id));
+        if tick == SALVAGE_HOLD_HIT
+            && let Some(s) = collector(1)
+        {
+            let hold = destroy_parts(s, |p| p.cargo > 0.0);
+            self.inputs.damage.extend(hold.into_iter().take(1));
+        }
+        if tick == SALVAGE_LOST
+            && let Some(s) = collector(0)
+        {
+            self.inputs.damage.extend(destroy_parts(s, |p| p.logic));
+        }
+    }
+}
+
+/// Where collector `c` flies: to the nearest salvage piece of ship `prefer` within 150 m, else the nearest loose
+/// fragment (to it), else the nearest other salvage piece (close in on it); brake when there is none. `None`
+/// when `c` is no vessel.
+fn salvage_target(
+    sim: &Sim,
+    c: crate::ShipId,
+    prefer: Option<crate::ShipId>,
+) -> Option<crate::maneuver::Maneuver> {
+    use crate::maneuver::Maneuver;
+    let ship = sim.ship(c)?;
+    let at = ship.piece(ship.control_piece()?)?.com_world();
+    // Rank: pieces of `prefer`, then loose fragments, then other pieces; nearest first in each.
+    let mut best: Option<(u8, f32, Maneuver)> = None;
+    let mut consider = |rank: u8, pos: Vec2, m: Maneuver| {
+        let d = (pos - at).length_squared();
+        if d <= 150.0 * 150.0 && best.is_none_or(|(r, b, _)| (rank, d) < (r, b)) {
+            best = Some((rank, d, m));
+        }
+    };
+    for l in sim.loose() {
+        consider(1, l.pos, Maneuver::Hold { at: l.pos });
+    }
+    for s in sim.ships() {
+        let rank = if Some(s.id()) == prefer { 0 } else { 2 };
+        for p in s.pieces().iter().filter(|p| p.salvage()) {
+            let target = Target::Piece(s.id(), p.id);
+            let aim = crate::flight::AimMode::Auto;
+            consider(
+                rank,
+                p.com_world(),
+                Maneuver::Approach {
+                    target,
+                    range: 0.0,
+                    aim,
+                },
+            );
+        }
+    }
+    Some(best.map_or(Maneuver::Brake, |(_, _, m)| m))
 }
 
 /// Player programs of the behavior scenario (text form, as typed in the editor).

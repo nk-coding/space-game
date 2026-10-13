@@ -90,6 +90,44 @@ impl Default for PhysicsTuning {
     }
 }
 
+/// Salvage (GDR-0063; see `salvage.rs` and `docs/sim.md` "Salvage"). All numbers are **placeholders** (lead,
+/// 13 Oct 2026).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SalvageTuning {
+    /// Collecting runs every this many ticks (10 = 3 parts per second at most per vessel); 0 = never.
+    pub interval: u32,
+    /// A collecting vessel strips salvage whose hull is at most this far from its own hull (m).
+    pub reach: f32,
+    /// Ticks a loose fragment drifts before it is gone (1800 = 60 s).
+    pub fragment_ticks: u32,
+    /// Owners whose running vessels collect, by `Owner.0`: the player (owner 0) only by default; owners
+    /// beyond the table never collect.
+    pub collects: [bool; MAX_OWNERS],
+}
+
+impl SalvageTuning {
+    /// Do this owner's running vessels collect?
+    pub fn collects(&self, owner: Owner) -> bool {
+        self.collects
+            .get(owner.0 as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+}
+
+impl Default for SalvageTuning {
+    fn default() -> Self {
+        let mut collects = [false; MAX_OWNERS];
+        collects[Owner::PLAYER.0 as usize] = true;
+        SalvageTuning {
+            interval: 10,
+            reach: 5.0,
+            fragment_ticks: 1800,
+            collects,
+        }
+    }
+}
+
 /// Simulation-wide settings.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimConfig {
@@ -109,6 +147,7 @@ pub struct SimConfig {
     /// the table have no limit. **PLACEHOLDERS** (lead, 12 Oct 2026): owner 0 (the player by convention) 24
     /// cores (twelve Halvex Runners), AI owners 1000.
     pub mind_capacity: [u32; MAX_OWNERS],
+    pub salvage: SalvageTuning,
 }
 
 impl SimConfig {
@@ -131,6 +170,7 @@ impl Default for SimConfig {
             flight: FlightTuning::default(),
             physics: PhysicsTuning::default(),
             mind_capacity: [24, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
+            salvage: SalvageTuning::default(),
         }
     }
 }
@@ -171,6 +211,13 @@ impl StateHash for SimConfig {
         }
         for &c in &self.mind_capacity {
             h.u32(c);
+        }
+        let s = &self.salvage;
+        h.u32(s.interval);
+        h.f32(s.reach);
+        h.u32(s.fragment_ticks);
+        for &c in &s.collects {
+            h.bool(c);
         }
     }
 }

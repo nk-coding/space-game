@@ -170,7 +170,16 @@ pub struct PartSpec {
     pub control_capacity: u32,
     /// What the part costs against its vessel's control capacity (content `control_cost`, default by kind).
     pub control_cost: u32,
+    /// Cargo capacity of a cargo part (content `cargo.capacity`, in cargo units; 0 for other parts).
     pub cargo: f32,
+    /// Armour material of a hull part (the placement's; `None` for other parts). Salvaged hull parts carry it.
+    pub material: Option<String>,
+    /// Build points as placed (hull parts with their material's factor): what a salvaged part is worth by
+    /// default (`salvage.rs`).
+    pub build_points: f32,
+    /// Cargo units the part takes in a hold when salvaged: its footprint cells (`size.0 × size.1`, a code rule;
+    /// a slope counts its whole footprint).
+    pub cargo_units: u32,
     /// `Some` for parts that draw power.
     pub consumer: Option<ConsumerKind>,
     /// Consumers: tier and weight at spawn (the part's content default, or the placement's override).
@@ -437,6 +446,9 @@ impl ShipDesign {
                 control_capacity: def.logic.as_ref().map_or(0, |l| l.control_capacity),
                 control_cost: def.control_cost(),
                 cargo: def.cargo.as_ref().map_or(0.0, |c| c.capacity),
+                material: if def.hull { pl.material.clone() } else { None },
+                build_points: def.build_points_in(content.placement_armor(pl)),
+                cargo_units: def.size.0.saturating_mul(def.size.1).max(1),
                 consumer,
                 power_setting,
                 power_min_level: power.min_level,

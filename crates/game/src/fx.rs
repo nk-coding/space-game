@@ -6,8 +6,9 @@
 //! material, which is the wrong tool for thousands of changing particles.)
 //!
 //! Drawn here: engine plumes and RCS puffs (from `piece.thrusters` × `piece.output`), dotted engine trails,
-//! beams (attached to the gun at the render pose), pulse flashes, interpolated projectile tracers, muzzle
-//! flashes, hit and ricochet sparks and part bursts. Shield hits and collapses play in the bubbles (`shield.rs`).
+//! beams (attached to the gun at the render pose), pulse flashes, interpolated projectile tracers, loose salvage
+//! fragments (`Sim::loose`: a small turning diamond with a soft glow), muzzle flashes, hit and ricochet sparks,
+//! part bursts and salvage streaks. Shield hits and collapses play in the bubbles (`shield.rs`).
 
 use std::collections::BTreeMap;
 
@@ -472,6 +473,24 @@ fn draw_ships_fx(
         queue.line(&regions.halo, back, at, 0.5, c.with_alpha(0.7), Z_WEAPONS);
         queue.line(&regions.white, back, at, 0.06, core_tint(c).with_alpha(0.9), Z_WEAPONS + 0.1);
         queue.dot(&regions.soft, at, 0.55, c.with_alpha(0.85), Z_WEAPONS + 0.2);
+    }
+
+    // Loose fragments (salvage, GDR-0063): a small diamond in the logic colour, turning slowly in a soft
+    // breathing glow, interpolated like the projectiles.
+    let frag = style.system_color("logic");
+    for l in world.sim.loose() {
+        let at = v2(l.prev_pos) + (v2(l.pos) - v2(l.prev_pos)) * alpha;
+        let phase = l.id.0 as f32 * 1.7;
+        let glow = 0.8 + 0.2 * (t * 3.0 + phase).sin();
+        queue.dot(&regions.soft, at, 1.7 * glow, frag.with_alpha(0.5), Z_WEAPONS);
+        let spin = t * 0.9 + phase;
+        let corner = |k: usize| {
+            let a = spin + k as f32 * std::f32::consts::FRAC_PI_2;
+            at + Vec2::new(a.cos(), a.sin()) * 0.45
+        };
+        for k in 0..4 {
+            queue.line(&regions.white, corner(k), corner(k + 1), 0.08, core_tint(frag).with_alpha(0.95), Z_WEAPONS + 0.1);
+        }
     }
 }
 

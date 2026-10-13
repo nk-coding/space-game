@@ -1,7 +1,8 @@
 //! The flight HUD in the reference look (`docs/concept/boards/ui-mockups/phone-flight-hud.png`): floating text,
 //! wide-tracked uppercase labels in Barlow, white numbers, no boxes.
 //!
-//! * top left: hull % and a tiny hull map of the player's ship (in a behavior test's watch mode: the watched one);
+//! * top left: hull % and a tiny hull map of the player's ship (in a behavior test's watch mode: the watched one),
+//!   and its hold (`CARGO 3 / 8`, salvage collected / cargo units; hidden for a ship without a hold);
 //! * left: speed (m/s), the top speed and the drift state;
 //! * top right: target panel (name, hull %, distance);
 //! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost);
@@ -38,6 +39,7 @@ pub struct HudFonts {
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum HudText {
     HullValue,
+    Cargo,
     SpeedValue,
     SpeedSub,
     TargetName,
@@ -117,6 +119,7 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
                         row.spawn((HudText::HullValue, number(&fonts, "–", 40.0, white)));
                         row.spawn((HullMap, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
                     });
+                c.spawn((HudText::Cargo, label(&fonts, "", 12.0, grey)));
             });
             // Left: speed, ending at mid-height (on a 390 px phone it sits between the hull block and the stick).
             root.spawn(Node { bottom: percent(50), ..abs(Some(28.0), None, None, None) }).with_children(|c| {
@@ -212,6 +215,15 @@ fn update_text(
                 }
                 None => s.push('–'),
             },
+            HudText::Cargo => {
+                // Salvage in the hold (GDR-0063): cargo units in use / the hold of the controlling piece.
+                if let Some(ship) = player {
+                    let (used, cap) = (ship.cargo().used(), ship.cargo_capacity());
+                    if cap > 0 || used > 0 {
+                        let _ = write!(s, "CARGO {used} / {cap}");
+                    }
+                }
+            }
             HudText::SpeedValue => {
                 if let Some(p) = control {
                     let _ = write!(s, "{:.1}", v2(p.body.linvel).length());

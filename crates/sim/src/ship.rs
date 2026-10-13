@@ -386,6 +386,9 @@ pub struct Piece {
     pub radius: f32,
     /// Has an alive logic core.
     pub has_core: bool,
+    /// Cargo units its alive cargo parts hold (the sum of their `cargo.capacity`, rounded down): a vessel's hold
+    /// is its controlling piece's (`salvage.rs`).
+    pub cargo_capacity: u32,
     /// The ship's controlling piece: the vessel (it holds the ship's logic cores). Every other piece of the
     /// ship is salvage without a core (cored pieces of a split become vessels of their own, GDR-0013).
     pub controlled: bool,
@@ -467,6 +470,7 @@ impl Piece {
             colliders: Vec::new(),
             radius: 0.0,
             has_core: false,
+            cargo_capacity: 0,
             controlled: false,
             active: false,
             control: crate::control::ControlState::default(),
@@ -607,6 +611,10 @@ pub struct Ship {
     pub(crate) formed: u64,
     /// While the vessel is its owner's focus (piloted), the behavior it runs again when the focus leaves.
     pub(crate) parked: Option<crate::behavior::BehaviorState>,
+    /// What the ship carries (`salvage.rs`): filled by collecting while it is a vessel, kept by its wreck.
+    pub(crate) cargo: crate::salvage::Cargo,
+    /// Spawned as a wreck (`Sim::spawn_wreck`): its logic cores never form a vessel.
+    pub(crate) burned_out: bool,
 }
 
 impl Ship {
@@ -666,6 +674,8 @@ impl Ship {
             claim: 0,
             formed: 0,
             parked: None,
+            cargo: crate::salvage::Cargo::default(),
+            burned_out: false,
         };
         let all: Vec<PartIdx> = (0..n as u32).collect();
         for &p in &all {
@@ -1070,8 +1080,13 @@ impl Ship {
         piece.dirty = false;
         let pid = piece.id;
 
-        // Core flag and control load.
+        // Core flag, hold and control load.
         piece.has_core = piece.parts.iter().any(|&p| d.parts[p as usize].logic);
+        piece.cargo_capacity = piece
+            .parts
+            .iter()
+            .map(|&p| d.parts[p as usize].cargo)
+            .sum::<f32>() as u32;
         piece.control.load = piece
             .parts
             .iter()
@@ -1737,6 +1752,8 @@ impl StateHash for Ship {
             }
             None => h.u8(0),
         }
+        h.bool(self.burned_out);
+        self.cargo.hash_state(h);
         h.u32(self.parts.len() as u32);
         for ps in &self.parts {
             h.u32(ps.alive as u32 | (ps.overheated as u32) << 1 | (ps.idle as u32) << 2);

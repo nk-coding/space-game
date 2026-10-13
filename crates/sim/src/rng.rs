@@ -113,15 +113,19 @@ pub enum Stream {
     Ai = 3,
     /// Test scenarios and scripted hazards (determinism check). Never used by game systems.
     Scenario = 4,
+    /// Encounters: site placement and counts (the voyage director), and which parts of a wreck spawned as a
+    /// wreck are already destroyed (`Sim::spawn_wreck`).
+    Encounter = 5,
 }
 
 impl Stream {
-    pub const ALL: [Stream; 5] = [
+    pub const ALL: [Stream; 6] = [
         Stream::Damage,
         Stream::Weapons,
         Stream::Debris,
         Stream::Ai,
         Stream::Scenario,
+        Stream::Encounter,
     ];
     pub const COUNT: usize = Self::ALL.len();
 

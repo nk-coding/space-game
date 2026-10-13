@@ -6,6 +6,7 @@ use crate::design::PartIdx;
 use crate::ids::{PieceId, ShipId};
 use crate::mass::MassProps;
 use crate::math::Vec2;
+use crate::salvage::{Item, Salvaged};
 use crate::ship::Body;
 use crate::vessel::Owner;
 use crate::weapons::{GoneReason, ProjectileId, ShotKind};
@@ -158,6 +159,17 @@ pub enum SimEvent {
         damage: f32,
         heat: f32,
         absorbed: f32,
+    },
+    /// A vessel collected salvage (`salvage.rs`): `item` (taking `units` cargo units) went into the hold of
+    /// `ship`, from a wreck's part (it left its piece without destruction: no `PartDestroyed`; `PieceChanged`,
+    /// `Split` or `PieceDestroyed` for that piece follow in the same tick), a wreck's cargo or a loose fragment.
+    /// `at`: where it was (world).
+    Collected {
+        ship: ShipId,
+        from: Salvaged,
+        item: Item,
+        units: u32,
+        at: Vec2,
     },
     /// A shot (or a plume) entered a shield bubble, which took `absorbed` of its damage.
     ShieldHit {
