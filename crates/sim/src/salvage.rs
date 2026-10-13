@@ -1,24 +1,25 @@
 //! Salvage v1 (GDR-0063, `docs/sim.md` "Salvage"): cargo, collecting, fragments and wrecks spawned as wrecks.
 //!
 //! * **Items** ([`Item`]): a whole part by content id (hull parts carry their armour material), or the fragment
-//!   a destroyed part with a logic block leaves. A part takes its footprint cells in cargo units
+//!   a destroyed part leaves. The content's `salvage` blocks decide what counts (compiled into the design,
+//!   `PartSpec::salvageable` and `PartSpec::fragment`): only parts with a block (hull parts: their material's)
+//!   are collected, and only parts whose block names a `fragment` leave one. A part takes its footprint cells in cargo units
 //!   (`PartSpec::cargo_units`), a fragment one.
 //! * **Cargo** ([`Cargo`], `Ship::cargo`): items and counts in item order, and the units in use. A vessel's hold
 //!   is the summed capacity of the alive cargo parts of its controlling piece (`Piece::cargo_capacity`); when it
 //!   drops below the load, the lowest-value items go. A lost vessel's ship keeps its cargo: its wreck carries
 //!   it.
 //! * **Value** (lead default): build points per cargo unit (hull parts with their material's factor); a
-//!   fragment is worth its part's build points. The content's `salvage` block will say more later; the sim does
-//!   not read the career's research values.
+//!   fragment is worth its part's build points. The sim does not read the career's research values.
 //! * **Collecting**: every `SalvageTuning::interval` ticks each running vessel of an owner that collects takes
 //!   one item that fits its free hold: the nearest loose fragment within reach of its hull, else from the
 //!   nearest salvage piece within reach (pieces in order of distance, the first one with something that fits):
-//!   its wreck's cargo first (the best item), then its best part (ties: the lowest part index). A stripped part
+//!   its wreck's cargo first (the best item), then its best salvageable part (ties: the lowest part index). A stripped part
 //!   leaves through the destroy path without the destruction (`Ship::remove_part`: no `PartDestroyed`, no
 //!   fragment); the wreck may split as in any breakage. `SimEvent::Collected` tells the client.
-//! * **Fragments** ([`Loose`]): a part with a logic block destroyed by damage leaves one at its centroid with
-//!   its velocity: a point the sim moves every tick (no body, no collisions) until it is collected or its
-//!   `SalvageTuning::fragment_ticks` are over.
+//! * **Fragments** ([`Loose`]): a part whose salvage block names a fragment, destroyed by damage, leaves one at its
+//!   centroid with its velocity: a point the sim moves every tick (no body, no collisions) until it is collected
+//!   or its `SalvageTuning::fragment_ticks` are over.
 //! * **Wrecks spawned as wrecks** ([`Sim::spawn_wreck`]): burned out (no vessel ever forms from their cores),
 //!   a share of their parts already gone (rolled on `Stream::Encounter`).
 //!
@@ -50,7 +51,7 @@ pub enum Item {
         part: String,
         material: Option<String>,
     },
-    /// What a destroyed part with a logic block leaves (content part id of that part).
+    /// What a destroyed part whose salvage block names a `fragment` leaves (content part id of that part).
     Fragment { part: String },
 }
 
@@ -314,13 +315,13 @@ impl Ship {
         Some((b.pos + rot.apply(local), vel))
     }
 
-    /// The best alive part of piece `q` that fits into `free` units: highest value per unit, ties the lowest
-    /// part index.
+    /// The best alive salvageable part of piece `q` that fits into `free` units: highest value per unit, ties the
+    /// lowest part index.
     fn best_part(&self, q: usize, free: u32) -> Option<PartIdx> {
         let mut best: Option<(PartIdx, f32)> = None;
         for &p in &self.pieces[q].parts {
             let spec = &self.design.parts[p as usize];
-            if !self.parts[p as usize].alive || spec.cargo_units > free {
+            if !self.parts[p as usize].alive || !spec.salvageable || spec.cargo_units > free {
                 continue;
             }
             let value = spec.build_points / spec.cargo_units as f32;
@@ -594,15 +595,15 @@ impl Sim {
         id
     }
 
-    /// Fragments for ship `k`'s parts with a logic block destroyed by damage since its last breakage
-    /// resolution (call before it): at each part's centroid, with the velocity of that point of its piece.
+    /// Fragments for ship `k`'s parts that leave one (`PartSpec::fragment`) destroyed by damage since its last
+    /// breakage resolution (call before it): at each part's centroid, with the velocity of that point of its piece.
     pub(crate) fn spawn_fragments(&mut self, k: usize) {
         let expires = self.tick() + self.config().salvage.fragment_ticks as u64;
         let s = &self.ships[k];
         let st = &mut self.salvage;
         for &p in &s.pending_destroyed {
             let spec = &s.design.parts[p as usize];
-            if !spec.logic {
+            if !spec.fragment {
                 continue;
             }
             let Some((pos, vel)) = s.part_motion(p) else {

@@ -421,3 +421,83 @@ fn salvage_scenario_is_deterministic_and_collects() {
     }
     assert!(sc.stats.collected > 0);
 }
+
+/// A test pack for the content's salvage blocks: a gyro and an armour material without one, a thruster whose block
+/// names a fragment and a logic core whose block names none.
+const SALVAGE_PACK: [(&str, &str); 3] = [
+    (
+        "pack.ron",
+        r#"(id: "test_salvage", name: "Test salvage", version: "1.0.0", schema_version: 1, depends: ["base"])"#,
+    ),
+    (
+        "parts/test.ron",
+        r#"[
+    (id: "bare_gyro", name: "Bare gyro", summary: "No salvage block.", category: "propulsion", icon: "gyro",
+     size: (1, 1), build_points: 9, mass: 2, hp: 1, power: (draw: 3), gyro: (torque: 1250)),
+    (id: "rich_thruster", name: "Rich thruster", summary: "Leaves a fragment.", category: "propulsion",
+     icon: "thruster", size: (1, 1), build_points: 3, mass: 2, hp: 1, power: (draw: 2),
+     engine: (thrust: 200, rated_speed: 20, plume: (length: 3, damage: 1, heat: 1.5)),
+     salvage: (family: "propulsion", data: 3, fragment: {"programmable_matter": 1})),
+    (id: "quiet_core", name: "Quiet core", summary: "Leaves no fragment.", category: "logic", icon: "logic-core",
+     size: (1, 1), build_points: 3, mass: 1, hp: 1, power: (draw: 1, tier: Critical),
+     logic: (rule_slots: 6, control_capacity: 16), salvage: (family: "logic", data: 3)),
+]"#,
+    ),
+    (
+        "materials/test.ron",
+        r#"[(id: "bare_steel", name: "Bare steel", summary: "No salvage block.", icon: "armor-steel",
+     armor: (tone: "steel", mass_per_cell: 2, hp_per_cell: 1, build_point_factor: 9))]"#,
+    ),
+];
+
+/// The content's salvage blocks decide (`docs/content-model.md` "Salvage"): a part without one (a hull part: its
+/// material without one) is never collected, and only a part whose block names a `fragment` leaves one, logic
+/// block or not.
+#[test]
+fn salvage_blocks_decide_what_is_collected_and_what_leaves_fragments() {
+    let m = data::Pack::from_files(SALVAGE_PACK).unwrap();
+    let c = data::Content::load(&[data::base_pack().unwrap(), m]).unwrap();
+    let mut w = Sim::new(1);
+    let me = w.spawn_ship(collector(2), Owner::PLAYER, Body::default());
+    // The bare gyro and the bare-steel block are worth the most by build points, yet only the gyro is taken.
+    let wreck_design = custom(
+        &c,
+        &[
+            ("bare_gyro", 0, 0, 0, false, None),
+            ("armor_block", 1, 0, 0, false, Some("bare_steel")),
+            ("gyro", 0, 1, 0, false, None),
+        ],
+    );
+    let spec = |i: usize| (wreck_design.parts[i].salvageable, wreck_design.parts[i].fragment);
+    assert_eq!([spec(0), spec(1), spec(2)], [(false, false), (false, false), (true, false)]);
+    let wreck = w.spawn_wreck(wreck_design, Owner(1), Body::at(Vec2::new(4.0, 0.0), 0.0), 0.0);
+    let got = run(&mut w, 60);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].2, part("gyro"));
+    assert_eq!(w.ship(me).unwrap().cargo().used(), 1);
+    let left = w.ship(wreck).unwrap();
+    assert_eq!(left.parts().iter().filter(|p| p.alive).count(), 2);
+
+    // Destroyed: the thruster's block names a fragment, the core's does not, the gyro has no block.
+    let d = custom(
+        &c,
+        &[
+            ("quiet_core", 0, 0, 0, false, None),
+            ("rich_thruster", 1, 0, 0, false, None),
+            ("bare_gyro", 0, 1, 0, false, None),
+        ],
+    );
+    let mut w = Sim::new(1);
+    let s = w.spawn_wreck(d, Owner(1), Body::at(Vec2::new(40.0, 0.0), 0.0), 0.0);
+    for p in 0..3 {
+        w.apply_damage(s, DamageTarget::Part(p), 1000.0);
+    }
+    w.resolve_breakage();
+    let items: Vec<&Item> = w.loose().iter().map(|l| &l.item).collect();
+    assert_eq!(
+        items,
+        [&Item::Fragment {
+            part: "rich_thruster".into()
+        }]
+    );
+}

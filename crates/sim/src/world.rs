@@ -506,7 +506,7 @@ impl Sim {
     }
 
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
-    /// the physics. Destroyed parts with a logic block leave fragments; split-off pieces with a logic core
+    /// the physics. Destroyed parts whose salvage block names a fragment leave one; split-off pieces with a logic core
     /// become vessels of their own (new ships, after the existing ones); lost vessels and cores update the
     /// minds (focus, dormant vessels); a vessel whose hold shrank drops cargo.
     pub fn resolve_breakage(&mut self) {

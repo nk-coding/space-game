@@ -231,7 +231,8 @@ pub struct BarrelArt {
 }
 
 /// What a salvaged part gives when the haul is dismantled at home (GDR-0063). The career turns a haul into
-/// research data and materials with it; the sim never reads it. A part without it is never collected.
+/// research data and materials with it. The sim reads only two facts: a part without it is never collected, and
+/// only a part whose `fragment` is not empty leaves a fragment when destroyed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SalvageSpec {

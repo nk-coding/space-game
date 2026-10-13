@@ -472,9 +472,11 @@ the leader's lock, keep near the leader between fights; GDR-0065).
 ### Salvage (added 13 Oct 2026)
 
 What a salvaged part gives when the haul is dismantled at home (GDR-0063): research data for one
-[family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The block is pure data: the
-sim collects parts and fragments into cargo by its own rules and never reads it; the career model turns a haul into
-data and materials with it (`docs/career.md` "Unloading a haul"). A part without the block is never collected.
+[family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The career model turns a haul
+into data and materials with it (`docs/career.md` "Unloading a haul"). The sim reads only two facts from it
+(compiled into the ship's design): a part without the block (a hull part: its material without one) is never
+collected, and only a part whose block has a non-empty `fragment` leaves a fragment when destroyed. What a
+collector takes first and how much room an item needs are sim rules (`docs/sim.md` "Salvage").
 
 ```ron
 // parts/automatons.ron

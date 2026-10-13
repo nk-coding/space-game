@@ -173,7 +173,8 @@ fn salvage_near(
         {
             let key = (s.id(), p.id);
             let fits = p.parts.iter().any(|&i| {
-                s.parts()[i as usize].alive && s.design().parts[i as usize].cargo_units <= free
+                let spec = &s.design().parts[i as usize];
+                s.parts()[i as usize].alive && spec.salvageable && spec.cargo_units <= free
             });
             if fits && !pilot.given_up.contains(&key) {
                 consider(Some(key), p.com_world());

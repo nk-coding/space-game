@@ -1585,14 +1585,19 @@ were set by the salvage agent for Niklas to review.
 ### Items and cargo
 
 - **Items** (`Item`): `Part { part, material }`, a whole part by content id (hull parts carry their armour
-  material), and `Fragment { part }`, what a destroyed part with a logic block leaves (the content id of that part).
-  Ordered: cargo lists and ties follow this order.
+  material), and `Fragment { part }`, what a destroyed part leaves if its `salvage` block names a `fragment` (the
+  content id of that part). Ordered: cargo lists and ties follow this order.
+- **What counts** (the content's `salvage` blocks, `docs/content-model.md` "Salvage", compiled into the design as
+  `PartSpec::salvageable` and `PartSpec::fragment`, so the sim never looks content up per tick): only a part with a
+  `salvage` block is collected (a hull part: its armour material's block), and only a part whose block has a
+  non-empty `fragment` leaves a fragment when destroyed. In the base pack every part and armour material has a
+  block and exactly the two cores name a fragment.
 - **Cargo units** (code rule): a part takes its footprint cells, `size.0 × size.1` (a slope its whole footprint;
   `PartSpec::cargo_units`): a beam laser 2, a fusion reactor 4; a fragment 1.
 - **Value** (*lead default*; the sim must not depend on the career's research values): build points per cargo unit,
   hull parts with their material's `build_point_factor` (`PartSpec::build_points`); a fragment is worth its part's
-  build points. The content's `salvage` block (track 7A) will say what an item is worth in research data and
-  programmable matter; the sim does not read it.
+  build points. What an item gives in research data and materials at home is the career's business
+  (`data::career::unload`); the sim reads only whether a block exists and names a fragment.
 - **The hold** (`Ship::cargo()`, `Cargo`): per item the count, the units each takes and its value per unit
   (`Stack`), in item order (a `BTreeMap`), and `used()`. `Ship::cargo_capacity()`: the summed `cargo.capacity` of
   the alive cargo parts of the controlling piece (`Piece::cargo_capacity`, summed in part order on piece rebuilds,
@@ -1634,11 +1639,11 @@ smaller parts go first; a full hold takes nothing.
 
 ### Fragments
 
-- A part with a logic block (logic cores, automaton cores) **destroyed by damage** leaves a fragment (GDR-0063:
+- A part whose `salvage` block names a `fragment` (in the base pack: logic cores and automaton cores) **destroyed by
+  damage** leaves a fragment (GDR-0063:
   programmable matter to scoop): a `Loose` item (`id`, `item`, `units` 1, `value`, `pos`, `prev_pos`, `vel`,
   `expires`) at the part's centroid with the velocity of that point of its piece (`v + ω × r`), made in
-  `Sim::resolve_breakage` before the piece is rebuilt. Which parts leave fragments is "a logic block" for now;
-  the content's `salvage` block may say more later.
+  `Sim::resolve_breakage` before the piece is rebuilt.
 - **The cheapest representation**: a point in `Sim::loose()` (ascending `LooseId`, monotonic), no Rapier body, no
   collisions, moved after the physics step by `pos += vel × DT` (exact IEEE operations), gone after
   `fragment_ticks` (1800 = 60 s) if nobody collects it. Parts stripped by collectors and parts removed when a wreck
