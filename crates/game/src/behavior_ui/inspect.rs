@@ -96,7 +96,7 @@ fn of_node(node: &BehaviorNode, call: &Call, cond: Option<&Cond>, note: Option<S
     let mut rows = Vec::new();
     if node.role == NodeRole::Condition {
         let not = cond.is_some_and(|c| c.not);
-        rows.push(Row::Choice { label: "WHEN".into(), options: vec![("TRUE".into(), !not), ("NOT TRUE".into(), not)], default: !not });
+        rows.push(Row::Choice { label: "WHEN".into(), options: vec![("TRUE".into(), !not), ("NOT TRUE".into(), not)], default: false });
     }
     if let (Some(q), Some(cmp)) = (node.value, cond.and_then(|c| c.cmp.as_ref())) {
         let ops = ["<", "<=", ">", ">="];
@@ -248,7 +248,7 @@ mod tests {
         // `hull < 25%`
         let hull = inspect(&p, &content.behavior_nodes, &Selection::Node(NodeRef::Cond { rule: 0, cond: 0 })).unwrap();
         assert_eq!(hull.kicker, "CONDITION  ·  VALUE");
-        assert_eq!(hull.rows[0], Row::Choice { label: "WHEN".into(), options: vec![("TRUE".into(), true), ("NOT TRUE".into(), false)], default: true });
+        assert_eq!(hull.rows[0], Row::Choice { label: "WHEN".into(), options: vec![("TRUE".into(), true), ("NOT TRUE".into(), false)], default: false });
         let Row::Choice { options, .. } = &hull.rows[1] else { panic!() };
         assert_eq!(options.iter().filter(|o| o.1).map(|o| o.0.as_str()).collect::<Vec<_>>(), ["<"]);
         assert_eq!(hull.rows[2], Row::Value { label: "THAN".into(), value: "25%".into(), range: "0 – 100 %".into(), share: Some(0.25), default: false });
