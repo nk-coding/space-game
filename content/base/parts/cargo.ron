@@ -1,4 +1,6 @@
 // Cargo. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [
     (
         id: "cargo_bay",
@@ -12,6 +14,7 @@
         mass: 1.5,
         hp: 1,
         cargo: (capacity: 4),
+        salvage: (family: "utility", data: 1.5),
     ),
     (
         id: "cargo_hold",
@@ -25,5 +28,6 @@
         mass: 5,
         hp: 4,
         cargo: (capacity: 20),
+        salvage: (family: "utility", data: 5),
     ),
 ]

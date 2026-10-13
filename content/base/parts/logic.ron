@@ -1,12 +1,15 @@
 // Logic. PLACEHOLDER NUMBERS (concept-board drydock values; the core torque is invented: tiny since 13 Oct 2026,
 // GDR-0055, just enough to keep a ship without gyros or RCS controllable), for feel only.
 // Power tiers (lead defaults, placeholders like the numbers): the mind is fed first.
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
+// Cores also give programmable matter, and a destroyed core leaves a fragment of it to scoop (GDR-0063).
 [
     (
         id: "logic_core",
         name: "Logic core",
         summary: "Hosts a copy of the ship-mind and runs its behavior rules.",
-        description: "Its built-in reaction wheel gives a little turning help. Every logic core needs programmable matter; salvaged [[part:automaton_core|automaton cores]] are the first source.",
+        description: "Its built-in reaction wheel gives a little turning help. Every logic core needs [[material:programmable_matter|programmable matter]]; salvaged [[part:automaton_core|automaton cores]] are the first source.",
         tags: ["core"],
         category: "logic",
         icon: "logic-core",
@@ -18,5 +21,6 @@
         heat: (output: 0.4, limit: 3),
         logic: (rule_slots: 6, control_capacity: 16), // control capacity: lead placeholder (12 Oct 2026)
         gyro: (torque: 50),
+        salvage: (family: "logic", data: 3, materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1}),
     ),
 ]

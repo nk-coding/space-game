@@ -1,0 +1,40 @@
+// The starter ship of a new game (start `rim_awakening`), built from the early-game kit only. PLACEHOLDER design
+// (lead default, 13 Oct 2026): `sample_early` with a gyro pair in place of its two rear armour blocks (it turned only
+// on its cores and differential thrust) and radiators on the shoulders in place of two slopes, so each reactor has
+// two venting radiators and feeds the gyros too.
+(
+    id: "rim_skiff",
+    name: "Rim skiff",
+    summary: "A small steel ship from the dead shipyard: twin pulse lasers, two fission reactors and a gyro pair.",
+    tags: ["starter"],
+    faction: "ship_mind",
+    size: (8, 4),
+    parts: [
+        (part: "slope_1x1", x: 2, y: 0, flip: true, material: "steel"),
+        (part: "slope_1x1", x: 5, y: 0, material: "steel"),
+        (part: "pulse_laser", x: 3, y: 0),
+        (part: "pulse_laser", x: 4, y: 0, flip: true),
+        (part: "radiator", x: 1, y: 1),
+        (part: "radiator", x: 6, y: 1, flip: true),
+        (part: "armor_block", x: 2, y: 1, material: "steel"),
+        (part: "armor_block", x: 5, y: 1, flip: true, material: "steel"),
+        (part: "capacitor", x: 3, y: 1),
+        (part: "capacitor", x: 4, y: 1, flip: true),
+        (part: "radiator", x: 0, y: 2),
+        (part: "radiator", x: 7, y: 2, flip: true),
+        (part: "fission_reactor", x: 1, y: 2),
+        (part: "fission_reactor", x: 6, y: 2, flip: true),
+        (part: "cargo_bay", x: 2, y: 2),
+        (part: "cargo_bay", x: 5, y: 2, flip: true),
+        (part: "logic_core", x: 3, y: 2),
+        (part: "logic_core", x: 4, y: 2, flip: true),
+        (part: "slope_1x1", x: 0, y: 3, rot: 2, material: "steel"),
+        (part: "slope_1x1", x: 7, y: 3, rot: 2, flip: true, material: "steel"),
+        (part: "thruster", x: 1, y: 3),
+        (part: "thruster", x: 6, y: 3, flip: true),
+        (part: "shield_emitter", x: 2, y: 3),
+        (part: "shield_emitter", x: 5, y: 3, flip: true),
+        (part: "gyro", x: 3, y: 3),
+        (part: "gyro", x: 4, y: 3, flip: true),
+    ],
+)

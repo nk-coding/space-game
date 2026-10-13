@@ -1,8 +1,9 @@
 // Drydock frames (GDR-0006): the grid a design is built on; bigger frames come with drydock expansions.
 // The order here is the order in the drydock.
 // The sizes are lead placeholders (12 Oct 2026), not a balance decision.
+// `locked` frames wait for research: a new game builds in the frigate frame only (Niklas, 13 Oct 2026, GDR-0063).
 [
     (id: "frigate", name: "Frigate", summary: "The first drydock frame: room for scouts, escorts and raiders.", size: (24, 24)),
-    (id: "cruiser", name: "Cruiser", summary: "An expanded drydock frame for line ships that carry several big machines.", size: (40, 40)),
-    (id: "capital", name: "Capital", summary: "The largest drydock frame, for capital ships at the heart of a fleet.", size: (64, 64)),
+    (id: "cruiser", name: "Cruiser", summary: "An expanded drydock frame for line ships that carry several big machines.", size: (40, 40), locked: true),
+    (id: "capital", name: "Capital", summary: "The largest drydock frame, for capital ships at the heart of a fleet.", size: (64, 64), locked: true),
 ]

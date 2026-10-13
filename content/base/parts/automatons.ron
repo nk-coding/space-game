@@ -1,12 +1,15 @@
 // Parts of the rogue automatons. PLACEHOLDER NUMBERS (invented for feel; no concept-board values exist). The core
 // torque makes the raider the snappiest base ship (agility target, GDR-0042, 12 Oct 2026).
 // They use the enemy (coral) system colour instead of their category's.
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
+// Cores also give programmable matter, and a destroyed core leaves a fragment of it to scoop (GDR-0063).
 [
     (
         id: "automaton_core",
         name: "Automaton core",
         summary: "The feral mind and power plant of a rogue automaton.",
-        description: "A precursor drone core gone wild. Salvaged cores are the first source of programmable matter for new [[part:logic_core|logic cores]].",
+        description: "A precursor drone core gone wild. Salvaged cores are the first source of [[material:programmable_matter|programmable matter]] for new [[part:logic_core|logic cores]].",
         tags: ["automaton", "core"],
         locked: true, // hidden in the drydock until salvage or research unlocks it (Niklas, 13 Oct 2026)
         category: "logic",
@@ -20,6 +23,7 @@
         heat: (output: 1, limit: 4),
         logic: (rule_slots: 2, control_capacity: 4), // control capacity: lead placeholder (12 Oct 2026)
         gyro: (torque: 300), // 13 Oct 2026 (GDR-0055): the raider turns 90° in ~0.57 s, still the snappiest
+        salvage: (family: "logic", data: 4, materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1}),
     ),
     (
         id: "automaton_cannon",
@@ -37,5 +41,6 @@
         power: (draw: 2, tier: Low),
         heat: (output: 1, limit: 3),
         weapon: (family: Kinetic, damage: 1.2, range: 75, delivery: Projectile(rate: 1.5, speed: 90, penetration: 1, recoil: 2)),
+        salvage: (family: "kinetic", data: 3),
     ),
 ]

@@ -33,6 +33,9 @@ pub struct Pack {
     pub ships: Vec<Blueprint>,
     pub behavior_nodes: Vec<BehaviorNode>,
     pub behaviors: Vec<Behavior>,
+    pub families: Vec<Family>,
+    pub research: Vec<ResearchNode>,
+    pub starts: Vec<Start>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
     pub wiki: Vec<WikiPage>,
@@ -44,8 +47,8 @@ impl Pack {
     ///
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
-    ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`. A file holds one entry `( ... )`
-    ///   or a list `[ ( ... ), ... ]`.
+    ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
+    ///   `starts` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
     /// * Anything else that is not `.ron` or `.svg` is ignored (READMEs, `.gitkeep`); unknown `.ron` files and
@@ -105,6 +108,9 @@ impl Pack {
             ships: Vec::new(),
             behavior_nodes: Vec::new(),
             behaviors: Vec::new(),
+            families: Vec::new(),
+            research: Vec::new(),
+            starts: Vec::new(),
             icons: Vec::new(),
             wiki: Vec::new(),
         };
@@ -127,9 +133,15 @@ impl Pack {
                 };
                 match Kind::from_dir(dir) {
                     Some(Kind::Stat) => parse_into(text, &src, &mut pack.stats, &mut problems),
-                    Some(Kind::Category) => parse_into(text, &src, &mut pack.categories, &mut problems),
-                    Some(Kind::Faction) => parse_into(text, &src, &mut pack.factions, &mut problems),
-                    Some(Kind::Material) => parse_into(text, &src, &mut pack.materials, &mut problems),
+                    Some(Kind::Category) => {
+                        parse_into(text, &src, &mut pack.categories, &mut problems)
+                    }
+                    Some(Kind::Faction) => {
+                        parse_into(text, &src, &mut pack.factions, &mut problems)
+                    }
+                    Some(Kind::Material) => {
+                        parse_into(text, &src, &mut pack.materials, &mut problems)
+                    }
                     Some(Kind::Part) => parse_into(text, &src, &mut pack.parts, &mut problems),
                     Some(Kind::Frame) => parse_into(text, &src, &mut pack.frames, &mut problems),
                     Some(Kind::Ship) => parse_into(text, &src, &mut pack.ships, &mut problems),
@@ -139,10 +151,16 @@ impl Pack {
                     Some(Kind::Behavior) => {
                         parse_into(text, &src, &mut pack.behaviors, &mut problems)
                     }
-                    _ => problems.push(
-                        Problem::error(
-                            "unknown content file location; RON files belong in stats, categories, factions, materials, parts, frames, ships, behavior_nodes or behaviors",
-                        )
+                    Some(Kind::Family) => parse_into(text, &src, &mut pack.families, &mut problems),
+                    Some(Kind::Research) => {
+                        parse_into(text, &src, &mut pack.research, &mut problems)
+                    }
+                    Some(Kind::Start) => parse_into(text, &src, &mut pack.starts, &mut problems),
+                    Some(Kind::Page) | None => problems.push(
+                        Problem::error(format!(
+                            "unknown content file location; RON files belong in {}",
+                            or_list(Kind::ALL.iter().filter_map(|k| k.dir()))
+                        ))
                         .at(&src),
                     ),
                 }
@@ -173,10 +191,18 @@ impl Pack {
                     _ => None,
                 };
                 match parsed {
-                    Some((kind, id)) => pack.wiki.push(WikiPage { kind, id: id.to_string(), markdown: text.to_string(), source: src }),
+                    Some((kind, id)) => pack.wiki.push(WikiPage {
+                        kind,
+                        id: id.to_string(),
+                        markdown: text.to_string(),
+                        source: src,
+                    }),
                     None if path.ends_with(".md") => problems.push(
-                        Problem::error("wiki files must be wiki/<kind>/<id>.md with kind stat, category, faction, material, part, frame, ship, behavior_node, behavior or page")
-                            .at(&src),
+                        Problem::error(format!(
+                            "wiki files must be wiki/<kind>/<id>.md with kind {}",
+                            or_list(Kind::ALL.iter().map(|k| k.key()))
+                        ))
+                        .at(&src),
                     ),
                     None => {}
                 }
@@ -192,6 +218,9 @@ impl Pack {
         check_duplicates(&pack.ships, &mut problems);
         check_duplicates(&pack.behavior_nodes, &mut problems);
         check_duplicates(&pack.behaviors, &mut problems);
+        check_duplicates(&pack.families, &mut problems);
+        check_duplicates(&pack.research, &mut problems);
+        check_duplicates(&pack.starts, &mut problems);
         let mut seen: BTreeMap<(Kind, &str), &Source> = BTreeMap::new();
         for page in &pack.wiki {
             if let Some(first) = seen.insert((page.kind, &page.id), &page.source) {
@@ -208,6 +237,15 @@ impl Pack {
         } else {
             Err(problems)
         }
+    }
+}
+
+/// `a, b or c`.
+fn or_list<'a>(items: impl Iterator<Item = &'a str>) -> String {
+    let items: Vec<&str> = items.collect();
+    match items.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        _ => items.join(""),
     }
 }
 
@@ -299,6 +337,10 @@ pub struct Content {
     pub ships: Table<Blueprint>,
     pub behavior_nodes: Table<BehaviorNode>,
     pub behaviors: Table<Behavior>,
+    /// Research families in load order, which is also their display order.
+    pub families: Table<Family>,
+    pub research: Table<ResearchNode>,
+    pub starts: Table<Start>,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
     /// Wiki prose keyed `"<kind>:<id>"` (e.g. `"part:fission_reactor"`). Empty in the game build.
@@ -347,6 +389,18 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.behaviors.upsert(e)));
+            p.families
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.families.upsert(e)));
+            p.research
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.research.upsert(e)));
+            p.starts
+                .iter()
+                .cloned()
+                .for_each(|e| drop(c.starts.upsert(e)));
             for i in &p.icons {
                 c.icons.insert(i.key.clone(), i.clone());
             }
@@ -381,6 +435,9 @@ impl Content {
             Kind::Ship => self.ships.contains(id),
             Kind::BehaviorNode => self.behavior_nodes.contains(id),
             Kind::Behavior => self.behaviors.contains(id),
+            Kind::Family => self.families.contains(id),
+            Kind::Research => self.research.contains(id),
+            Kind::Start => self.starts.contains(id),
             Kind::Page => self.wiki.contains_key(&format!("page:{id}")),
         }
     }
@@ -397,6 +454,9 @@ impl Content {
             Kind::Ship => self.ships.get(id).map(|e| e.name.as_str()),
             Kind::BehaviorNode => self.behavior_nodes.get(id).map(|e| e.name.as_str()),
             Kind::Behavior => self.behaviors.get(id).map(|e| e.name.as_str()),
+            Kind::Family => self.families.get(id).map(|e| e.name.as_str()),
+            Kind::Research => self.research.get(id).map(|e| e.name.as_str()),
+            Kind::Start => self.starts.get(id).map(|e| e.name.as_str()),
             Kind::Page => self.wiki.get(&format!("page:{id}")).map(|p| {
                 p.markdown
                     .lines()

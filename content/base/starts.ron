@@ -1,0 +1,13 @@
+// How a new game begins. A new game has every part, material and frame that is not `locked`, plus what a start
+// names here. PLACEHOLDER NUMBERS (GDR-0062: mind capacity 2, research adds up to 4 in the first playable loop).
+// `voyages` are plain ids until the voyage kind exists; only their format is checked for now.
+[
+    (
+        id: "rim_awakening",
+        name: "Awakening at the rim",
+        summary: "You wake in a dead shipyard with one small ship and a drydock that still works.",
+        ship: "rim_skiff",
+        mind_capacity: 2,
+        voyages: ["yard_approach"],
+    ),
+]

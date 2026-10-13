@@ -12,6 +12,8 @@
 // a second or two. Gyros turn the ship without thrust; RCS pods fire a nozzle out of every side that is open to
 // space (they have no plume), and two nozzles of opposite sides firing together turn the ship without pushing it.
 // Power tier: everything that moves the ship is `Normal` (the default), so thrust and turning brown out together.
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [
     (
         id: "thruster",
@@ -27,11 +29,13 @@
         power: (draw: 2),
         heat: (output: 0.8, limit: 3.2),
         engine: (thrust: 200, rated_speed: 20, gimbal: 5, plume: (length: 3, damage: 1, heat: 1.5)),
+        salvage: (family: "propulsion", data: 3),
     ),
     (
         id: "torch_drive",
         name: "Torch drive",
         summary: "A big drive: hot, heavy and very fast.",
+        locked: true, // mid-game: a new game starts without it, research unlocks it (Niklas, 13 Oct 2026, GDR-0063)
         tags: ["engine"],
         category: "propulsion",
         icon: "torch-drive",
@@ -43,6 +47,7 @@
         power: (draw: 6),
         heat: (output: 4, limit: 5),
         engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, heat: 4)),
+        salvage: (family: "propulsion", data: 9),
     ),
     (
         id: "gyro",
@@ -59,6 +64,7 @@
         power: (draw: 3),
         heat: (output: 1, limit: 4),
         gyro: (torque: 1250),
+        salvage: (family: "propulsion", data: 4),
     ),
     (
         id: "rcs_pod",
@@ -75,5 +81,6 @@
         power: (draw: 1),
         heat: (output: 0.4, limit: 3),
         rcs: (thrust: 200, rated_speed: 14),
+        salvage: (family: "propulsion", data: 2),
     ),
 ]

@@ -45,6 +45,7 @@ fn embedded_base_pack_loads_and_validates() {
         "automaton_raider",
         "sample_early",
         "sample_mid",
+        "rim_skiff",
     ] {
         assert!(c.ships.contains(id), "missing ship {id}");
     }

@@ -1,0 +1,11 @@
+// Precursor materials: not armour, so no `armor` block; the drydock never offers them. PLACEHOLDER (text only, no
+// numbers yet: what they cost and yield lives in the salvage blocks and research nodes that name them).
+[
+    (
+        id: "programmable_matter",
+        name: "Programmable matter",
+        summary: "Precursor matter that can host a copy of the ship-mind.",
+        description: "Every [[part:logic_core|logic core]] is made of it, and room for one more core in the mind costs some. Destroyed cores leave a small fragment of it; salvaged [[part:automaton_core|automaton cores]] give more.",
+        icon: "programmable-matter",
+    ),
+]

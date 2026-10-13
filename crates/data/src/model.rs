@@ -3,6 +3,8 @@
 //! Every entry starts with the shared header (`id`, `name`, `summary`, optional `description` and `lore`, `tags`).
 //! Structs deny unknown fields so typos fail loudly. Numbers are `f32`, containers are ordered.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::kind::Kind;
@@ -200,6 +202,9 @@ pub struct Material {
     pub icon: Option<String>,
     #[serde(default)]
     pub armor: Option<ArmorSpec>,
+    /// What one cell of hull area in this material gives when salvaged (armour materials only).
+    #[serde(default)]
+    pub salvage: Option<HullSalvageSpec>,
     /// Not available to the player until unlocked (salvage, research): the drydock hides it. Content ships may
     /// still use it.
     #[serde(default)]
@@ -208,6 +213,35 @@ pub struct Material {
     pub source: Source,
 }
 entry!(Material, Kind::Material);
+
+/// What a salvaged part gives when the haul is dismantled at home (GDR-0063). The career turns a haul into
+/// research data and materials with it; the sim never reads it. A part without it is never collected.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SalvageSpec {
+    /// The research family (id) the data goes to.
+    pub family: String,
+    /// Research data one intact part gives.
+    pub data: f32,
+    /// Materials (id → amount) one intact part gives besides the data.
+    #[serde(default)]
+    pub materials: BTreeMap<String, u32>,
+    /// Materials (id → amount) a destroyed part of this kind leaves as a fragment to scoop (GDR-0063: destroyed
+    /// cores leave programmable matter). Empty: it leaves nothing.
+    #[serde(default)]
+    pub fragment: BTreeMap<String, u32>,
+}
+
+/// What one cell of hull area in an armour material gives when salvaged (slopes count half a cell): research data
+/// for a family. Hull parts have no salvage block of their own, as they have no mass or hit points of their own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HullSalvageSpec {
+    /// The research family (id) the data goes to.
+    pub family: String,
+    /// Research data per cell of hull area.
+    pub data: f32,
+}
 
 /// Footprint shape. `Slope` is a right triangle over a `w × 1` footprint (see `geometry`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -546,6 +580,9 @@ pub struct Part {
     pub rcs: Option<RcsSpec>,
     #[serde(default)]
     pub bonuses: Vec<Bonus>,
+    /// What the part gives when salvaged (non-hull parts; hull parts take it from their material per cell).
+    #[serde(default)]
+    pub salvage: Option<SalvageSpec>,
     /// Not available to the player until unlocked (salvage, research): the drydock hides it. Content ships may
     /// still use it.
     #[serde(default)]
@@ -659,6 +696,10 @@ pub struct Frame {
     pub tags: Vec<String>,
     /// Grid size `(w, h)` in cells, each side 1 to [`crate::validate::MAX_FRAME_SIZE`].
     pub size: (u32, u32),
+    /// Not available to the player until unlocked (research): a new game cannot build in it. Content ships of
+    /// its size still open and fly.
+    #[serde(default)]
+    pub locked: bool,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
@@ -940,6 +981,124 @@ impl Behavior {
         crate::behavior::Program::from_parts(self.target.as_deref(), &self.rules)
     }
 }
+
+/// `families.ron` / `families/*.ron`: a research family (GDR-0024: one tech tree per system family). Salvaged parts
+/// give research data per family; research nodes belong to one and are paid in its data. Order in the files =
+/// display order.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Family {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub lore: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// System colour key (see [`crate::art_keys::SYSTEM_COLORS`]); none = the neutral colour, as for the hull
+    /// category.
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(skip_deserializing)]
+    pub source: Source,
+}
+entry!(Family, Kind::Family);
+
+/// The kind of a research node (GDR-0024): how the research screen draws it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ResearchKind {
+    /// A new part with a new silhouette and role.
+    NewPart,
+    /// A sidegrade of an existing part with a trade-off.
+    Variant,
+    /// A bigger footprint or frame for bigger hulls.
+    SizeClass,
+    /// A small step (one of a chain), such as a stat step or more mind capacity.
+    Refinement,
+    /// Needs reverse-engineered alien tech.
+    Alien,
+}
+
+/// What a research node costs: research data per family and materials, paid at once (GDR-0063).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResearchCost {
+    /// Research data per family (id → amount).
+    #[serde(default)]
+    pub data: BTreeMap<String, f32>,
+    /// Materials (id → amount).
+    #[serde(default)]
+    pub materials: BTreeMap<String, u32>,
+}
+
+/// What a research node unlocks for the player who researched it.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum Unlock {
+    /// A `locked` part (id).
+    Part(String),
+    /// A `locked` material (id).
+    Material(String),
+    /// A `locked` drydock frame (id).
+    Frame(String),
+    /// More mind capacity: this many more logic cores the ship-mind runs at once (GDR-0013).
+    MindCapacity(u32),
+}
+
+/// `research/*.ron`: a research node. Unlocks at once when paid (GDR-0063); the player's set of researched nodes
+/// lives in the save, never in content.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResearchNode {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub lore: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// The family (id) whose tree the node sits in.
+    pub family: String,
+    pub kind: ResearchKind,
+    pub cost: ResearchCost,
+    /// Nodes (ids, any family) that must be researched first.
+    #[serde(default)]
+    pub requires: Vec<String>,
+    pub unlocks: Vec<Unlock>,
+    #[serde(skip_deserializing)]
+    pub source: Source,
+}
+entry!(ResearchNode, Kind::Research);
+
+/// `starts.ron` / `starts/*.ron`: how a new game begins. A new game has every part, material and frame that is
+/// not `locked`, plus what the start names here.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Start {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub lore: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// The ship (id) whose copy is the first working design.
+    pub ship: String,
+    /// Logic cores the ship-mind runs at once at the start (GDR-0013); research adds to it.
+    pub mind_capacity: u32,
+    /// Voyages (ids) open at the start. Plain ids for now: there is no voyage kind yet, so they are checked for
+    /// their format only; the check that they exist comes with the voyage kind.
+    #[serde(default)]
+    pub voyages: Vec<String>,
+    #[serde(skip_deserializing)]
+    pub source: Source,
+}
+entry!(Start, Kind::Start);
 
 /// Long-form wiki prose from `wiki/<kind>/<id>.md`. Never needed by the game.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

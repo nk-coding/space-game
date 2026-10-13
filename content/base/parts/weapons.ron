@@ -2,6 +2,8 @@
 // feel only.
 // Guns are fixed: they fire along the part's forward side and need a clear line of fire.
 // Power tier (lead default): guns come last. A beam below half its draw cannot hold focus (placeholder).
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [
     (
         id: "pulse_laser",
@@ -18,11 +20,13 @@
         power: (draw: 4, tier: Low),
         heat: (output: 1.5, limit: 3),
         weapon: (family: Energy, damage: 1, range: 60, delivery: Pulse(rate: 4)),
+        salvage: (family: "energy", data: 3),
     ),
     (
         id: "beam_laser",
         name: "Beam laser",
         summary: "A continuous beam: strong, hungry and hot.",
+        locked: true, // mid-game: a new game starts without it, research unlocks it (Niklas, 13 Oct 2026, GDR-0063)
         description: "Needs a clear line of fire. [[part:capacitor|Capacitors]] beside it make it fire faster.",
         tags: ["laser"],
         category: "weapons",
@@ -35,5 +39,6 @@
         power: (draw: 9, tier: Low, min_level: 0.5),
         heat: (output: 3.2, limit: 4.2),
         weapon: (family: Energy, damage: 2.6, range: 45, delivery: Beam),
+        salvage: (family: "energy", data: 7),
     ),
 ]

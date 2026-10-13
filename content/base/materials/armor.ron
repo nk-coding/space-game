@@ -1,6 +1,8 @@
 // Armor materials. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
 // A hull part's mass and hit points are `*_per_cell × area` (slopes count half their footprint);
 // its build points are multiplied by `build_point_factor`. `tone` is a key into art/tokens.json ship.armor.
+// `salvage`: research data per cell of hull area when salvaged and dismantled at home (slopes count half a cell;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [
     (
         id: "steel",
@@ -8,20 +10,25 @@
         summary: "Cheap, heavy plating.",
         icon: "armor-steel",
         armor: (tone: "steel", mass_per_cell: 2, hp_per_cell: 1, build_point_factor: 1),
+        salvage: (family: "hull", data: 1),
     ),
     (
         id: "composite",
         name: "Composite",
         summary: "Lighter and tougher than steel, but it costs more to build.",
+        locked: true, // mid-game: a new game starts without it, research unlocks it (Niklas, 13 Oct 2026, GDR-0063)
         icon: "armor-composite",
         armor: (tone: "composite", mass_per_cell: 1.5, hp_per_cell: 1.4, build_point_factor: 1.5),
+        salvage: (family: "hull", data: 1.5),
     ),
     (
         id: "reactive",
         name: "Reactive",
         summary: "Heavy plating that breaks up incoming hits.",
+        locked: true, // mid-game: a new game starts without it, research unlocks it (Niklas, 13 Oct 2026, GDR-0063)
         icon: "armor-reactive",
         armor: (tone: "reactive", mass_per_cell: 2.4, hp_per_cell: 2.1, build_point_factor: 2),
+        salvage: (family: "hull", data: 2),
     ),
     (
         id: "automaton_plate",
@@ -31,5 +38,6 @@
         locked: true, // hidden in the drydock until salvage or research unlocks it (Niklas, 13 Oct 2026)
         icon: "armor-enemy-armor",
         armor: (tone: "enemy", mass_per_cell: 2.2, hp_per_cell: 1.2, build_point_factor: 1.2),
+        salvage: (family: "hull", data: 1),
     ),
 ]

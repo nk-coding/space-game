@@ -27,9 +27,13 @@ content/base/
   categories.ron           part categories; order = palette/wiki order
   factions/*.ron           ship_mind, automatons
   materials/armor.ron      armor materials
+  materials/precursor.ron  materials without an armor block (programmable matter)
   parts/<category>.ron     parts, one file per category (+ automatons.ron for enemy parts)
   frames.ron               drydock frames (the design grid sizes); order = drydock order
   ships/<id>.ron           one blueprint per file
+  families.ron             research families (one tech tree each); order = display order
+  research/*.ron           research nodes (research/rim.ron: the first playable loop's nodes)
+  starts.ron               how a new game begins
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
@@ -40,14 +44,14 @@ content/base/
 File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
-  `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`. File names
-  are free; group however reads best.
+  `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
+  `research`, `starts`. File names are free; group however reads best.
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
   `icons/` as `<key>.svg` with a kebab-case key; other files (READMEs) are ignored.
 - Files are read in sorted path order, entries in file order. That is the **load order**, which is also the
-  display order for stats, categories, frames and the drydock palette.
+  display order for stats, categories, frames, families and the drydock palette.
 - `wiki/` is for tools only. The game build never embeds it.
 
 ## Common header
@@ -132,12 +136,27 @@ Materials with an optional component block. For now only armor:
 A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_per_cell × area` and
 `build_points × build_point_factor`; slopes have half the area of their footprint. Fabrication resources
 (He-3, chitin, ...) will be materials without an `armor` block, which is why the kind is not called "armor".
+The first one is **programmable matter** (`materials/precursor.ron`, added 13 Oct 2026): research costs it, and
+cores give it when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A material without `armor` never shows in
+the drydock and cannot be a placement's material.
 
-`locked` (optional, default `false`, added 13 Oct 2026), on materials and parts alike: not available to the
-player until unlocked (salvage, research). The drydock hides locked entries (palette, armor pills, the 1–9 keys);
-content ships that use them still load, open in the drydock and fly. The base pack locks the automaton core,
-the automaton cannon and Automaton plate (Niklas, 13 Oct 2026). Nothing unlocks yet; that comes with salvage and
-research.
+An armour material may carry a `salvage` block (what one cell of hull area in it gives when salvaged; see
+[Salvage](#salvage-added-13-oct-2026)):
+
+```ron
+(id: "composite", ..., salvage: (family: "hull", data: 1.5))
+```
+
+`locked` (optional, default `false`, added 13 Oct 2026), on materials, parts and frames alike: not available to
+the player until unlocked (research: an unlock of a [research node](#research-nodes-added-13-oct-2026)
+clears it per player, GDR-0063). The drydock hides locked parts and materials (palette, armor pills, the 1–9
+keys); content ships that use them still load, open in the drydock and fly. The base pack locks the automatons'
+core, cannon and plate (GDR-0054) and the mid-game kit (GDR-0063): composite and reactive armour, the fusion
+reactor, the beam laser, the torch drive, and the cruiser and capital frames (Niklas, 13 Oct 2026). A new game
+has everything else (the early-game kit: steel, fission reactor,
+capacitor, radiator, pulse laser, shield emitter, thruster, gyro, RCS pod, logic core, cargo bay and hold, the
+frigate frame). Until the career drydock reads the player's unlocks, the free drydock and the sandbox simply hide
+what is locked; a development switch (`?unlock=all`) is planned.
 
 ### Parts (`parts/*.ron`)
 
@@ -164,7 +183,8 @@ research.
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
 | `hull` | `true`: takes an armor material per placement; then `mass`/`hp` must be absent |
 | `mass`, `hp` | required for non-hull parts |
-| `locked` | optional, default `false`: not available to the player until unlocked (salvage, research); the drydock hides it. Content ships may still use it (the raider flies its locked automaton parts) |
+| `locked` | optional, default `false`: not available to the player until unlocked (research); the drydock hides it. Content ships may still use it (the raider flies its locked automaton parts) |
+| `salvage` | optional, non-hull parts only: what the part gives when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A part without it is never collected |
 
 Optional component blocks (a part has any combination):
 
@@ -301,10 +321,11 @@ with drydock expansions). The common header plus `size`:
 | Field | Notes |
 |---|---|
 | `size` | grid `(w, h)` in cells; each side 1 to 128 (`data::validate::MAX_FRAME_SIZE`, a placeholder) |
+| `locked` | optional, default `false` (added 13 Oct 2026): a new game cannot build in it until research unlocks it (`Unlock::Frame`). At least one frame must stay open |
 
 Load order is the drydock's display order (`Content::frames`, a `Table<Frame>`); mods override and add frames by
 id like any other kind. Base frames (lead placeholders, 12 Oct 2026): `frigate` 24×24, `cruiser` 40×40,
-`capital` 64×64. Text keys `frame.<id>.name` etc., links `[[frame:id]]`, wiki prose `wiki/frame/<id>.md`.
+`capital` 64×64; cruiser and capital are locked (GDR-0063, 13 Oct 2026). Text keys `frame.<id>.name` etc., links `[[frame:id]]`, wiki prose `wiki/frame/<id>.md`.
 Blueprints keep their own `size` and name no frame (v1); every base ship fits the frigate frame.
 
 ### Ships (`ships/<id>.ron`)
@@ -330,7 +351,10 @@ may be left out. The index of a placement in `parts` is the part index used by t
 ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`).
 
 Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raider.svg`), `sample_early` and
-`sample_mid` (from the concept-board drafts).
+`sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
+`sample_early` with a gyro pair in place of its two rear armour blocks and radiators on the shoulders in place of
+two slopes, so it turns 90° in about 0.67 s by the design report instead of 1.6 s and its reactors feed the gyros;
+early-game kit only; a lead placeholder).
 
 **Blueprint text** (added 12 Oct 2026, for the drydock). Saved player designs and exported blueprints use exactly
 the format of the content ships, so an export can go into a pack's `ships/` folder as is:
@@ -431,6 +455,115 @@ keyword), so there is no second representation to keep in sync and errors point 
 two rules for one automaton core; it replaced the hard-coded raider brain) and `skirmisher` (the ship-mind's
 default for unpiloted ships, six rules, uses the Rhai condition).
 
+### Salvage (added 13 Oct 2026)
+
+What a salvaged part gives when the haul is dismantled at home (GDR-0063): research data for one
+[family](#research-families-familiesron-added-13-oct-2026) and, optionally, materials. The block is pure data: the
+sim collects parts and fragments into cargo by its own rules and never reads it; the career model turns a haul into
+data and materials with it. A part without the block is never collected.
+
+```ron
+// parts/automatons.ron
+(id: "automaton_cannon", ..., salvage: (family: "kinetic", data: 3)),
+(id: "automaton_core", ..., salvage: (family: "logic", data: 4,
+    materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1})),
+// materials/armor.ron: per cell of hull area in this material (slopes count half a cell)
+(id: "steel", ..., salvage: (family: "hull", data: 1)),
+```
+
+| Field | Notes |
+|---|---|
+| `family` | research family id the data goes to |
+| `data` | research data one intact part gives (on a material: per cell of hull area); finite, 0 to 10000 (`data::validate::MAX_RESEARCH_DATA`) |
+| `materials` | parts only, optional: materials (id → amount) one intact part gives besides the data |
+| `fragment` | parts only, optional: materials (id → amount) a **destroyed** part of this kind leaves as a fragment to scoop (GDR-0063: destroyed cores leave programmable matter); empty = it leaves nothing |
+
+Material amounts are whole numbers, 1 to 10000 (`data::validate::MAX_MATERIAL_AMOUNT`), of known materials. Hull
+parts have no block of their own (like `mass` and `hp`, it comes from their material); only armour materials have
+one. Cargo units a salvaged part takes are a sim rule, not content.
+
+Base values (lead placeholders, 13 Oct 2026, after `docs/plans/first-playable-loop.md` 3.2: data about the part's
+build points): automaton cannon kinetic 3, thruster propulsion 3, gyro propulsion 4, RCS pod propulsion 2, torch
+drive propulsion 9, pulse laser energy 3, beam laser energy 7, fission reactor power 4, fusion reactor power 10,
+capacitor power 2, shield emitter shields 3, radiator thermal 2, cargo bay utility 1.5, cargo hold utility 5, logic
+core logic 3, automaton core logic 4; both cores also give 1 programmable matter and leave a fragment of 1. Hull per
+cell: steel 1, composite 1.5, reactive 2, Automaton plate 1.
+
+### Research families (`families.ron`, added 13 Oct 2026)
+
+One tech tree per system family (GDR-0024), and the pool its research data goes to. The common header plus an
+optional `color`, a system colour key (see [Art keys](#art-keys)); without one the family shows in the neutral
+colour, like the hull category. Load order is the display order.
+
+```ron
+(id: "energy", name: "Energy weapons", summary: "Lasers and beams.", color: "weapons")
+```
+
+Base families (lead placeholders, 13 Oct 2026): `hull` (no colour), `power`, `energy` and `kinetic` (`weapons`),
+`shields`, `thermal` (`heat`), `propulsion`, `logic`, `utility` (`cargo`). Missiles come when missiles exist.
+
+### Research nodes (added 13 Oct 2026)
+
+`research/*.ron`. A node is paid at once in research data and materials and unlocks immediately (GDR-0063); which
+nodes a player has researched lives in the save, never in content.
+
+```ron
+(
+    id: "mind_expansion_1",
+    name: "Mind expansion I",
+    summary: "Run one more logic core at once.",
+    family: "logic",
+    kind: Refinement,
+    cost: (data: {"logic": 10}, materials: {"programmable_matter": 2}),
+    requires: ["tamed_core"],
+    unlocks: [MindCapacity(1)],
+)
+```
+
+| Field | Notes |
+|---|---|
+| `family` | the family whose tree the node sits in |
+| `kind` | `NewPart`, `Variant`, `SizeClass`, `Refinement` or `Alien` (GDR-0024): how the research screen draws it |
+| `cost` | required: `data` (family id → amount, each above 0, at most 10000) and `materials` (id → whole amount, 1 to 10000); both may be left out (`cost: ()`) |
+| `requires` | optional: node ids (any family) that must be researched first |
+| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)` (clears that entry's `locked` for the player) and `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100) |
+
+Validation: the family, every cost family and material, every `requires` node and every unlock target exist; no
+node listed twice in `requires`; no cycle in `requires` (each cycle is reported once, with its path); unlocking an
+entry that is not `locked` is a warning (a new game has it already), so is a node that unlocks nothing.
+
+Base nodes (`research/rim.ron`, the first playable loop's nine, placeholders): `automaton_cannon` (kinetic 12),
+`composite_plating` (hull 20, unlocks composite), `beam_laser` (energy 18), `fusion_reactor` (power 20),
+`torch_drive` (propulsion 20), `tamed_core` (logic 8 + programmable matter 1, unlocks the automaton core),
+`mind_expansion_1` (logic 10 + 2, needs `tamed_core`), `mind_expansion_2` (logic 20 + 4, needs
+`mind_expansion_1`), `cruiser_drydock` (hull 30, needs `composite_plating`, unlocks the cruiser frame). Reactive
+armour, Automaton plate and the capital frame stay locked.
+
+### Starts (`starts.ron`, added 13 Oct 2026)
+
+How a new game begins. A new game has every part, material and frame that is not `locked`, plus what the start
+names.
+
+```ron
+(
+    id: "rim_awakening",
+    name: "Awakening at the rim",
+    summary: "You wake in a dead shipyard with one small ship and a drydock that still works.",
+    ship: "rim_skiff",              // the first working design (a copy)
+    mind_capacity: 2,               // logic cores the mind runs at once (GDR-0013); research adds to it
+    voyages: ["yard_approach"],     // voyages open at the start
+)
+```
+
+| Field | Notes |
+|---|---|
+| `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, no more logic cores than `mind_capacity` |
+| `mind_capacity` | 1 to 100 (`data::validate::MAX_MIND_CAPACITY`, a sanity bound) |
+| `voyages` | optional. **Plain ids for now**: there is no voyage kind yet, so they are only checked for snake_case and duplicates; the check that they exist comes with the voyage kind (track 7E) |
+
+Base start (placeholder, GDR-0062): `rim_awakening`, ship `rim_skiff`, mind capacity 2 (the two mind expansions
+bring it to 4), voyage `yard_approach` open.
+
 ## Coordinates and geometry
 
 All in the **blueprint frame**, 1 cell = 1 m:
@@ -472,7 +605,7 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 - Fields that name another entry hold its id (`category: "power"`, `faction: "automatons"`,
   `material: "steel"`, `target: Part("capacitor")`); validation checks each target exists.
 - Any text field and wiki file may link: `[[kind:id]]` or `[[kind:id|label]]`, kind one of `stat category
-  faction material part frame ship behavior_node behavior page`. The game renders links as plain names (`Content::render_plain`), the wiki
+  faction material part frame ship behavior_node behavior family research start page`. The game renders links as plain names (`Content::render_plain`), the wiki
   as hyperlinks. Broken links are errors.
 
 ## Text and localisation
@@ -528,10 +661,16 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, frame sides outside 1–128 cells, wiki pages for missing entries, broken or malformed
   links, a locked paint block or bevel slope (the first 1×1 hull part of each shape in content order, which the
-  drydock paints, fills and bevels with: `Content::unit_hull_part`), every armor material locked.
+  drydock paints, fills and bevels with: `Content::unit_hull_part`), every armor material locked, every frame
+  locked.
+- Career content (added 13 Oct 2026): unknown families, materials, nodes, ships and unlock targets; amounts out
+  of range; `salvage` on a hull part or a material without `armor`; a node listed twice in `requires`; cycles in
+  `requires`; a start whose ship uses locked parts or materials, fits no open frame or has more logic cores than
+  its mind capacity; malformed or repeated voyage ids. Details in [Salvage](#salvage-added-13-oct-2026),
+  [Research nodes](#research-nodes-added-13-oct-2026) and [Starts](#starts-startsron-added-13-oct-2026).
 - Warnings (valid but probably unintended): a ship that is several pieces, a gun without a clear line of fire,
   an RCS part without any side open to space, a radiator that cannot vent, an icon nothing uses, an empty
-  placement `power` override. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
+  placement `power` override, a research node that unlocks an entry that is not `locked` or unlocks nothing. (An engine with parts behind it is no warning since GDR-0039: its plume burns them.)
 - Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
   `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
   the same weight range.
@@ -576,7 +715,10 @@ connectable sides) and `used_by_ships`. Ships add per-placement `cells`, `polygo
 plus `bounds`, `pieces`, `main_piece`, `hull_loops`, summed `totals` (including `control_cost` and
 `control_capacity`; from `Content::ship_totals`, a key present when some part has that stat line), `rule_slots`,
 `control_load`, `control_capacity` (of the main piece) and `effective_behavior`.
-`frames` (added 12 Oct 2026) hold the header fields, `size` and the usual `text_keys`, `links` and `wiki`.
+`frames` (added 12 Oct 2026) hold the header fields, `size`, `locked` and the usual `text_keys`, `links` and `wiki`.
+Parts, materials and frames add `unlocked_by` (the research nodes that unlock them); parts and armour materials
+carry their `salvage` block. `families` (added 13 Oct 2026) add `salvaged_from_parts`, `salvaged_from_materials`
+(what feeds them) and `research` (their nodes); `research` nodes add `required_by`; `starts` hold their fields.
 `behavior_nodes` add `param_text_keys`, `builtin` (false for Rhai nodes) and `used_by_behaviors`;
 `behaviors` add `text` (the canonical text form), `program` (the parsed rules), `rule_count`,
 `default_of_factions` and `flown_by_ships`. Categories list their parts,
@@ -634,6 +776,8 @@ let t = content.ship_totals(ship);   // ShipTotals: sums over every placement (b
                                      // mass, hp, power output/draw, thrust, cargo, logic cores, rule slots, control)
 content.icon_svg("pulse-laser");                         // Option<&str>: SVG text of icons/pulse-laser.svg
 content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
+content.families / content.research / content.starts;      // Table<Family>, Table<ResearchNode>, Table<Start>
+part.salvage / material.salvage;                             // Option<SalvageSpec> / Option<HullSalvageSpec>
 content.ship_behavior(ship); content.ship_rule_slots(ship);   // effective behavior, slots of the intact ship
 content.ship_control(ship); part.control_cost();              // (load, capacity) of the intact ship; cost with default
 data::validate_ship(&content, &design);                      // Vec<Problem>: the content checks on one blueprint
