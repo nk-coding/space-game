@@ -44,6 +44,7 @@ use super::draft::BehaviorDraft;
 use super::edit::EditState;
 use super::graph::{Chip, GraphView, add_rule_label, slot_line_label, slots_pill};
 use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
+use super::list::BehaviorList;
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
 use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
@@ -900,19 +901,21 @@ pub(super) fn draw_dots(
     }
 }
 
-/// The wheel scrolls the graph or the palette under the pointer.
+/// The wheel scrolls the graph or the palette under the pointer (not under the BEHAVIORS list, which scrolls its
+/// own rows).
 #[allow(clippy::type_complexity)]
 pub(super) fn scroll(
     window: Single<&Window, With<PrimaryWindow>>,
     wheel: Res<AccumulatedMouseScroll>,
     ui: Res<BehaviorUi>,
+    list: Res<BehaviorList>,
     mut areas: Query<
         (&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children, Has<GraphViewport>),
         Or<(With<GraphViewport>, With<PaletteList>, With<InspectorBody>)>,
     >,
     contents: Query<&ComputedNode>,
 ) {
-    if wheel.delta.y == 0.0 {
+    if wheel.delta.y == 0.0 || list.is_open() {
         return;
     }
     let Some(cursor) = window.physical_cursor_position() else { return };

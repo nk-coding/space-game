@@ -375,6 +375,10 @@ pub(super) fn apply(
     for b in todo {
         press(b, &mut list, &mut ui, &mut lib, content, &mut rename);
     }
+    // A save while the list is open (Ctrl+S, SAVE in the bottom bar) shows in its rows at once.
+    if list.open && lib.behaviors.is_changed() {
+        list.refresh(&lib.behaviors, content);
+    }
 }
 
 /// Leaving the screen closes the list and hides its layer at once ([`sync`] runs only on the screen; a layer left
@@ -724,6 +728,38 @@ mod tests {
         world.run_system_once(leave).unwrap();
         assert_eq!(world.get::<Visibility>(root), Some(&Visibility::Hidden));
         assert!(!world.resource::<BehaviorList>().is_open());
+    }
+
+    /// A save while the list is open (Ctrl+S, SAVE) shows in the rows at once.
+    #[test]
+    fn the_open_list_follows_a_save() {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.insert_resource(PlayerDesign::starter(&content));
+        world.insert_resource(Storage::new(MemoryBackend::default()));
+        world.init_resource::<PlayerBehaviors>();
+        world.init_resource::<DesignSlot>();
+        world.init_resource::<BehaviorDraft>();
+        world.init_resource::<super::super::saving::DraftSlot>();
+        world.init_resource::<super::super::saving::ScreenNote>();
+        world.init_resource::<BehaviorUi>();
+        world.init_resource::<BehaviorList>();
+        world.init_resource::<Messages<BehaviorAction>>();
+        world.init_resource::<Messages<UiClick>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<UiPointer>();
+        world.spawn((RenameField, TextField::default()));
+        world.insert_resource(GameContent(content.clone()));
+        let apply = world.register_system(apply);
+        world.write_message(BehaviorAction::Behaviors);
+        world.run_system(apply).unwrap();
+        assert!(world.resource::<BehaviorList>().is_open() && world.resource::<BehaviorList>().mine.is_empty());
+        let copy = world.resource::<PlayerBehaviors>().copy_of(&content, "skirmisher").unwrap();
+        world.resource_scope(|world, mut storage: Mut<Storage>| {
+            world.resource_mut::<PlayerBehaviors>().save(&mut storage, &content, &copy, 1).unwrap();
+        });
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<BehaviorList>().mine.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["skirmisher_copy"]);
     }
 
     #[test]

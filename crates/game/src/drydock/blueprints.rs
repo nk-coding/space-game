@@ -1375,6 +1375,22 @@ mod tests {
         assert!(sent >= 3, "{sent}");
     }
 
+    /// `/` and T in one (slow) frame: the search field takes the keyboard, no test flight starts.
+    #[test]
+    fn a_slash_takes_the_other_keys_of_its_frame_into_the_search() {
+        let mut world = world();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<crate::ui_kit::UiPointer>();
+        let search = world.spawn((super::super::actions::SearchField, TextField::default())).id();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyT);
+        keys.press(KeyCode::Slash);
+        world.insert_resource(keys);
+        world.run_system_once(super::super::actions::shortcuts).unwrap();
+        assert!(world.resource::<Messages<DrydockAction>>().is_empty());
+        assert!(world.get::<TextField>(search).unwrap().focused);
+    }
+
     /// Leaving the drydock with BLUEPRINTS open (BEHAVIOR or TEST-FLY in the bottom bar, T) hides the layer and lets
     /// go of the clipboard: the layer would block the pointer on the next screen, the clipboard would swallow
     /// Ctrl+C / Ctrl+V in flight.

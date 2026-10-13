@@ -412,9 +412,11 @@ pub struct TextField {
 #[derive(Component)]
 pub struct TextFieldText;
 
-/// Typing into the focused field: printable characters, Backspace; Esc and Enter release it.
-fn type_into_fields(mut keys: MessageReader<KeyboardInput>, mut fields: Query<&mut TextField>) {
+/// Typing into the focused field: printable characters, Backspace; Esc and Enter release it. Characters typed with
+/// Ctrl or Cmd held are shortcuts (the web fills in their letter), not text.
+fn type_into_fields(mut keys: MessageReader<KeyboardInput>, held: Res<ButtonInput<KeyCode>>, mut fields: Query<&mut TextField>) {
     let mut field = fields.iter_mut().find(|f| f.focused);
+    let shortcut = held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
     for k in keys.read() {
         let Some(f) = field.as_mut() else { continue };
         if k.state != ButtonState::Pressed {
@@ -425,6 +427,7 @@ fn type_into_fields(mut keys: MessageReader<KeyboardInput>, mut fields: Query<&m
                 f.value.pop();
             }
             Key::Escape | Key::Enter => f.focused = false,
+            _ if shortcut => {}
             _ => {
                 if let Some(t) = &k.text {
                     for c in t.chars().filter(|c| !c.is_control()) {
@@ -593,5 +596,37 @@ fn style_widgets(
             set_text(&mut text, &s);
             set_color(&mut color, col);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(code: KeyCode, text: &str) -> KeyboardInput {
+        KeyboardInput {
+            key_code: code,
+            logical_key: Key::Character(text.into()),
+            state: ButtonState::Pressed,
+            text: Some(text.into()),
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        }
+    }
+
+    /// The web fills in the letter of Ctrl+S / Ctrl+Z; in a one-line field that is a shortcut, not text.
+    #[test]
+    fn fields_take_text_but_not_shortcut_letters() {
+        let mut world = World::new();
+        world.init_resource::<Messages<KeyboardInput>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        let field = world.spawn(TextField { focused: true, max_chars: 10, ..default() }).id();
+        let typing = world.register_system(type_into_fields);
+        world.write_message(key(KeyCode::KeyA, "a"));
+        world.run_system(typing).unwrap();
+        world.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ControlLeft);
+        world.write_message(key(KeyCode::KeyS, "s"));
+        world.run_system(typing).unwrap();
+        assert_eq!(world.get::<TextField>(field).unwrap().value, "a");
     }
 }

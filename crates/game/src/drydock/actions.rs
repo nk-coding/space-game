@@ -95,6 +95,14 @@ pub(super) fn shortcuts(
     let mut send = |a: DrydockAction| {
         out.write(a);
     };
+    // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
+    // one frame come in no order).
+    if !covered && !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
+        for mut f in &mut search {
+            f.focused = true;
+        }
+        return;
+    }
     for key in keys.get_just_pressed() {
         if covered && !(ctrl && *key == KeyCode::KeyS) {
             continue;
@@ -118,11 +126,6 @@ pub(super) fn shortcuts(
             (KeyCode::KeyT, ..) => send(DrydockAction::TestFly),
             (KeyCode::Equal | KeyCode::NumpadAdd, ..) => send(DrydockAction::ZoomIn),
             (KeyCode::Minus | KeyCode::NumpadSubtract, ..) => send(DrydockAction::ZoomOut),
-            (KeyCode::Slash | KeyCode::NumpadDivide, ..) => {
-                for mut f in &mut search {
-                    f.focused = true;
-                }
-            }
             (k, ..) => {
                 if let Some(n) = digit(k)
                     && let Some(m) = armor_materials(&content.0).nth(n)

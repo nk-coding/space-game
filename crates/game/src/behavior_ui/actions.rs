@@ -104,6 +104,14 @@ pub(super) fn shortcuts(
     if pointer.typing || egui_typing || list.is_open() {
         return;
     }
+    // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
+    // one frame come in no order).
+    if !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
+        for mut f in &mut search {
+            f.focused = true;
+        }
+        return;
+    }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     for key in keys.get_just_pressed() {
         match (*key, ctrl) {
@@ -122,11 +130,6 @@ pub(super) fn shortcuts(
             }
             (KeyCode::KeyT, _) => {
                 out.write(BehaviorAction::TestInRange);
-            }
-            (KeyCode::Slash | KeyCode::NumpadDivide, _) => {
-                for mut f in &mut search {
-                    f.focused = true;
-                }
             }
             _ => {}
         }
