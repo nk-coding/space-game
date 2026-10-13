@@ -59,6 +59,10 @@ pub mod tuning {
     /// A ray that passed through parts destroyed earlier in the tick is cast again from where it left their
     /// piece, at most this many times (`Sim::cast_part`).
     pub const MAX_RECASTS: usize = 4;
+    /// A pulse or projectile gun fires at most this many shots per tick (240 per second); a faster rate (mod
+    /// content, stacked fire-rate bonuses) is capped there and the rest waits in its cooldown. Without the cap a
+    /// rate whose period is below half an ulp of the cooldown never ended the firing loop.
+    pub const MAX_SHOTS_PER_TICK: u32 = 8;
     /// A collapsed shield bubble comes back once it has recharged this share of its capacity.
     pub const SHIELD_RESTART: f32 = 0.3;
 }
@@ -845,7 +849,9 @@ impl Sim {
                     return;
                 }
                 self.ships[k].gun_cooldown[slot] -= DT * work;
-                while self.ships[k].gun_cooldown[slot] <= 0.0 {
+                let mut shots = 0;
+                while self.ships[k].gun_cooldown[slot] <= 0.0 && shots < tuning::MAX_SHOTS_PER_TICK {
+                    shots += 1;
                     self.ships[k].gun_cooldown[slot] += 1.0 / g.rate;
                     match g.delivery {
                         Delivery::Pulse { .. } => {

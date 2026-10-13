@@ -538,6 +538,23 @@ fn a_projectile_keeps_the_owner_it_was_fired_with() {
     assert_eq!(enemy_hits, 1);
 }
 
+/// A gun with an absurd rate (13 Oct 2026 review: a period below half an ulp of the cooldown never ended the
+/// firing loop) fires at most `MAX_SHOTS_PER_TICK` shots per tick.
+#[test]
+fn a_gun_fires_at_most_a_few_shots_per_tick() {
+    let c = content();
+    let mut d = (*custom(&c, &gunboat("pulse_laser"))).clone();
+    let gun = find(&d, "pulse_laser", 0, 0);
+    d.parts[gun as usize].delivery = data::Delivery::Pulse { rate: 1e9 };
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(Arc::new(d), sim::Owner::PLAYER, Body::default());
+    for _ in 0..3 {
+        w.step(&fire(s));
+        let shots = w.events().iter().filter(|e| matches!(e, SimEvent::ShotFired { .. })).count();
+        assert_eq!(shots as u32, sim::weapons::tuning::MAX_SHOTS_PER_TICK);
+    }
+}
+
 /// Two hits on one block in the same tick (13 Oct 2026 review): the first destroys it, but its collider stays
 /// until breakage is resolved after the weapons phase. The second shot must go on to the part behind it, not
 /// end on the stale collider without damage.

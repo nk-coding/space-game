@@ -1073,7 +1073,7 @@ behavior each gun fires when the target crosses its own facing.
 | Delivery (content) | Behaviour |
 |---|---|
 | `Beam` | continuous hit-scan; each tick `dps × work × DT` to the first block in range; `Sim::beams()` lists this tick's beams (`from`, `to`, `hit`) |
-| `Pulse(rate)` | a cooldown per gun (`rate × fire_rate` shots/s, slower when browned out); each pulse is a hit-scan dealing `damage / rate` to the first block |
+| `Pulse(rate)` | a cooldown per gun (`rate × fire_rate` shots/s, slower when browned out; at most `weapons::tuning::MAX_SHOTS_PER_TICK` = 8 shots per tick, 240/s, also for projectiles: a faster rate is capped there and the rest waits in the cooldown); each pulse is a hit-scan dealing `damage / rate` to the first block |
 | `Projectile(rate, speed, penetration, recoil)` | same cooldown; a `Projectile` entity at the muzzle with the muzzle's velocity (`v + ω × r`) plus `speed`, living `range / speed` s |
 
 - **Lasers** (beam, pulse) burn the first block only.
@@ -1092,7 +1092,8 @@ behavior each gun fires when the target crosses its own facing.
   of what reaches it). A shot that starts inside a bubble passes it. A bubble that runs empty collapses and
   stays down until it has recharged 30% of its capacity. A beam that a bubble fully absorbs ends at the bubble.
 - Tuning constants (`weapons::tuning`, placeholders): ricochet cosine 0.5, speed 0.6, damage 0.5, max 2
-  ricochets, shield restart 0.3.
+  ricochets, shield restart 0.3, at most 8 shots per gun per tick (a safety cap, 13 Oct 2026 review: a rate
+  whose period was below half an ulp of the cooldown hung the step), 4 re-casts past destroyed parts.
 
 Events (in `Sim::events()`, for visuals and sound):
 
