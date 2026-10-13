@@ -167,7 +167,8 @@ impl Ship {
     }
 
     /// Moves piece `j` (not the controlling piece) out of this ship into a new ship `id` that controls it:
-    /// the vessel model's split (GDR-0013). Part states, settings, controls, helm and leader are copied;
+    /// the vessel model's split (GDR-0013). Part states, settings, controls, helm and leader are copied (the
+    /// cargo stays with the ship that keeps the controlling piece);
     /// each ship keeps only its own parts alive and in its grid (pieces never link to each other, so no
     /// exposure, bonus or clearance changes). Behavior, claim and age are the caller's.
     pub(crate) fn detach(&mut self, j: usize, id: ShipId) -> Ship {
@@ -199,6 +200,8 @@ impl Ship {
             claim: 0,
             formed: 0,
             parked: None,
+            cargo: crate::salvage::Cargo::default(),
+            burned_out: false,
         };
         for i in 0..self.parts.len() {
             if !self.parts[i].alive {
@@ -305,8 +308,12 @@ impl Sim {
     /// its own (after a split, or a blueprint built in several pieces). It inherits the parent's behavior (a
     /// copy of the running one, or of the one the focus parked; a split-off piece of an unpiloted parent
     /// without a behavior keeps the parent's helm). A piece split off the focus gets the content default
-    /// behavior if the parent had none parked, and never the pilot's input.
+    /// behavior if the parent had none parked, and never the pilot's input. A wreck spawned as a wreck
+    /// (`Ship::burned_out`) forms no vessels: its cores stay salvage.
     pub(crate) fn form_vessels(&mut self, k: usize) {
+        if self.ships[k].burned_out {
+            return;
+        }
         let mut j = 0;
         while j < self.ships[k].pieces.len() {
             let p = &self.ships[k].pieces[j];

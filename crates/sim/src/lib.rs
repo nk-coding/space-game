@@ -53,6 +53,7 @@ mod plume;
 pub mod power;
 pub mod report;
 pub mod rng;
+pub mod salvage;
 pub mod scenario;
 pub mod ship;
 pub mod vessel;
@@ -63,7 +64,7 @@ pub use alloc::{Actuation, TorqueSource};
 pub use behavior::{BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
 pub use breakage::{DamageOutcome, DamageTarget};
 pub use collider::ConvexPolygon;
-pub use config::{FlightTuning, PhysicsTuning, SimConfig};
+pub use config::{FlightTuning, PhysicsTuning, SalvageTuning, SimConfig};
 pub use control::ControlState;
 pub use data::PowerTier;
 pub use design::{ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
@@ -78,6 +79,7 @@ pub use physics::{BodyKey, Contact, Physics, RayHit};
 pub use power::{Consumer, PowerSetting};
 pub use report::{DesignReport, design_report};
 pub use rng::{Pcg32, Stream};
+pub use salvage::{Cargo, Item, Loose, LooseId, Salvaged, Stack};
 pub use scenario::ScenarioKind;
 pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,

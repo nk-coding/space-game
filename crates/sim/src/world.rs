@@ -11,9 +11,11 @@
 //! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
 //!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
 //! 5. Ship systems: power → heat → wrench (engines, RCS, gimbals, gyros, cores) and gun output.
-//! 6. Weapons (shields, projectiles, guns) and engine plumes, then breakage again.
-//! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT`, contacts become
-//!    `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back
+//! 6. Weapons (shields, projectiles, guns) and engine plumes, then breakage again; every
+//!    `SalvageTuning::interval` ticks collecting vessels take salvage (`salvage.rs`), and what they stripped
+//!    breaks up.
+//! 7. Physics: split ghosts expire, wrenches are set, Rapier steps `DT` and loose fragments drift, contacts
+//!    become `SimEvent::Impact` (closing speed from the velocities before the step), bodies are read back
 //!    (previous pose kept for interpolation); impacts above the ramming threshold crush inward from the
 //!    touching parts (none between vessels of one owner; shield bubbles covering the point absorb first), and
 //!    breakage is resolved once more.
@@ -33,6 +35,7 @@ use crate::maneuver::Maneuver;
 use crate::math::{Rot, Vec2};
 use crate::physics::{BodyDesc, BodyKey, Contact, Physics, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
+use crate::salvage::SalvageState;
 use crate::ship::{Body, Piece, Ship, ShipControls};
 use crate::vessel::{self, MindRow, Owner};
 use crate::weapons::{BeamTrace, Bubble, Projectile};
@@ -46,7 +49,7 @@ pub enum StepPhase {
     Flight,
     /// Power, heat, wrenches, guns.
     Systems,
-    /// Shields, projectiles, firing, breakage.
+    /// Shields, projectiles, firing, breakage, salvage.
     Weapons,
     /// The Rapier step (with setting wrenches and ghosts).
     Physics,
@@ -157,6 +160,8 @@ pub struct Sim {
     /// Something changed that the mind pass must look at (vessels, cores, focus, config).
     pub(crate) mind_dirty: bool,
     pub(crate) mind_scratch: Vec<MindRow>,
+    /// Loose fragments and the collect pass's buffer (`salvage.rs`).
+    pub(crate) salvage: SalvageState,
 }
 
 impl Sim {
@@ -190,6 +195,7 @@ impl Sim {
             mind_seq: 0,
             mind_dirty: false,
             mind_scratch: Vec::new(),
+            salvage: SalvageState::default(),
         }
     }
 
@@ -284,6 +290,18 @@ impl Sim {
     pub fn spawn_ship(&mut self, design: Arc<ShipDesign>, owner: Owner, body: Body) -> ShipId {
         let id = self.ids.ship();
         let ship = Ship::new(id, design, owner, body, &mut self.ids, &self.config);
+        let k = self.add_ship(ship);
+        if self.ships[k].is_vessel() {
+            self.vessel_formed(k, None);
+        }
+        self.form_vessels(k);
+        self.update_minds();
+        id
+    }
+
+    /// Adds a new ship (its id after every existing one): a body per piece, `ShipSpawned`. Returns its index.
+    pub(crate) fn add_ship(&mut self, ship: Ship) -> usize {
+        let id = ship.id();
         for p in ship.pieces() {
             self.physics.create_body(
                 BodyKey {
@@ -299,13 +317,7 @@ impl Sim {
         }
         self.ships.push(ship);
         self.events.push(SimEvent::ShipSpawned { ship: id });
-        let k = self.ships.len() - 1;
-        if self.ships[k].is_vessel() {
-            self.vessel_formed(k, None);
-        }
-        self.form_vessels(k);
-        self.update_minds();
-        id
+        self.ships.len() - 1
     }
 
     /// Removes a ship and all its bodies. Emits `VesselLost` (if it was a vessel) and `ShipRemoved`; a
@@ -464,10 +476,14 @@ impl Sim {
     }
 
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
-    /// the physics. Split-off pieces with a logic core become vessels of their own (new ships, after the
-    /// existing ones); lost vessels and cores update the minds (focus, dormant vessels).
+    /// the physics. Destroyed parts with a logic block leave fragments; split-off pieces with a logic core
+    /// become vessels of their own (new ships, after the existing ones); lost vessels and cores update the
+    /// minds (focus, dormant vessels); a vessel whose hold shrank drops cargo.
     pub fn resolve_breakage(&mut self) {
         for k in 0..self.ships.len() {
+            if !self.ships[k].pending_destroyed.is_empty() {
+                self.spawn_fragments(k);
+            }
             let from = self.events.len();
             self.ships[k].resolve_breakage(&mut self.ids, &mut self.events);
             if self.events.len() > from {
@@ -502,6 +518,7 @@ impl Sim {
             self.mind_dirty = true;
         }
         self.form_vessels(k);
+        self.shed_cargo(k);
     }
 
     /// Mirrors new breakage events of ship `k` into the physics and starts split ghosting.
@@ -640,10 +657,11 @@ impl Sim {
             s.update_systems();
         }
 
-        // Weapons (shields, projectiles, guns) and engine plumes, then whatever they broke.
+        // Weapons (shields, projectiles, guns) and engine plumes, then whatever they broke; then salvage.
         mark(StepPhase::Weapons);
         self.weapons_step();
         self.resolve_breakage();
+        self.collect();
 
         // Physics: ghosts expire, this tick's wrenches replace the last ones (world force at the centre of
         // mass), one Rapier step.
@@ -668,6 +686,7 @@ impl Sim {
             }
         }
         self.physics.step();
+        self.drift_loose();
 
         // Contacts → impacts (needs the velocities from before the step), read-back, ramming.
         mark(StepPhase::Impacts);
@@ -856,6 +875,7 @@ impl StateHash for Sim {
         for p in &self.projectiles {
             p.hash_state(h);
         }
+        self.salvage.hash_state(h);
         self.physics.hash_state(h);
     }
 }
