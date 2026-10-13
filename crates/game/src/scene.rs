@@ -1,9 +1,9 @@
 //! Scenes: what is in the world and who flies it. Chosen by URL parameters, or by the screen that starts a flight:
 //!
 //! * **sandbox** (home's TEST RANGE, `?scene=sandbox`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of
-//!   the Halvex Runner, then the autosaved working design) as the focus; waves of automaton raiders under their
-//!   content behavior (`raider_basic`), a new wave a few seconds after the last raider goes dark (C turns the
-//!   waves off and on); the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//!   the Halvex Runner, then the autosaved working design) as the focus; waves of raiders (the first content ship
+//!   tagged `enemy`: the automaton raider) under their content behavior (`raider_basic`), a new wave a few seconds
+//!   after the last raider goes dark (C turns the waves off and on); the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
 //!   far from the player; when the player has no vessel left, a new one re-forms.
@@ -55,6 +55,19 @@ pub const ENEMY: Owner = Owner(1);
 /// controls all read this. Every other vessel of the player runs its behaviour.
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PilotFocus(pub Option<ShipId>);
+
+/// Content ships with this tag are raiders: the sandbox's waves and the showcase's attackers fly the first one
+/// (content order: the base pack's `automaton_raider`).
+const RAIDER_TAG: &str = "enemy";
+
+/// The design the raiders fly, compiled for [`ENEMY`].
+fn raider_design(world: &mut SimWorld) -> Option<Arc<ShipDesign>> {
+    let Some(id) = world.content.ships.iter().find(|s| s.tags.iter().any(|t| t == RAIDER_TAG)).map(|s| s.id.clone()) else {
+        warn_once!("no content ship is tagged `{RAIDER_TAG}`: no raiders");
+        return None;
+    };
+    world.design(&id, ENEMY)
+}
 
 /// Is this ship a vessel of the player?
 pub fn is_friendly(world: &SimWorld, ship: ShipId) -> bool {
@@ -180,7 +193,7 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         let params = app.world().resource::<Params>().clone();
-        let seed = params.f32("seed").map(|s| s as u64).unwrap_or(42);
+        let seed = params.u64("seed").unwrap_or(42);
         let kind = if let Some(n) = params.f32("load") {
             SceneKind::Load(n.max(1.0) as u32)
         } else if params.flag("hashlog").unwrap_or(false) {
@@ -250,7 +263,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
             let sim = sim::scenario::load_test(n as usize, scene.seed);
             let mut world = SimWorld::new(sim, base.clone());
             if params.flag("hashlog").unwrap_or(false) {
-                let ticks = params.f32("hashticks").map(|t| t as u64).unwrap_or(600);
+                let ticks = params.u64("hashticks").unwrap_or(600).max(1);
                 let label = format!("load ships={n} seed={} (browser)", scene.seed);
                 console_out(&format!("# sim determinism scenario=load ships={n} seed={} ticks={ticks} (browser)", scene.seed));
                 world.hashlog = Some(HashLog::new(label, ticks));
@@ -315,7 +328,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
                 // from (about 45-50 m), so hits come at once.
                 let attack = params.flag("fire").unwrap_or(false);
                 let (n, dist) = if attack { (tuning.raiders_per_wave.max(1), 46.0) } else { (3, 16.0) };
-                if let Some(raider) = world.design("automaton_raider", ENEMY) {
+                if let Some(raider) = raider_design(&mut world) {
                     for k in 0..n {
                         let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
                         let pos = Vec2::new(a.cos(), a.sin()) * dist;
@@ -455,6 +468,9 @@ fn scene_tick(
     exit: Res<FlightExit>,
     mut next_mode: ResMut<NextState<AppMode>>,
 ) {
+    // The keys and fire buttons for this tick (held now or since the last tick); the latch starts over every
+    // tick, whoever flies.
+    let (axes, fire) = player_input.for_tick();
     if scene.kind != SceneKind::Sandbox {
         return;
     }
@@ -497,19 +513,19 @@ fn scene_tick(
                 };
                 input.lock = lock;
                 // The A/D nudge only acts under a lock; it springs back otherwise (one step per tick).
-                let turn = if lock.is_some() && !input.stick_mode { input.axes.x } else { 0.0 };
+                let turn = if lock.is_some() && !input.stick_mode { axes.x } else { 0.0 };
                 input.nudge = nudge_step(input.nudge, turn);
                 // Without a lock A/D rotate with a ramp (GDR-0055): a tap nudges the nose, a hold turns faster up
                 // to the key turn rate (one step per tick).
-                let key = if lock.is_none() && !input.stick_mode { input.axes.x } else { 0.0 };
+                let key = if lock.is_none() && !input.stick_mode { axes.x } else { 0.0 };
                 input.turn_ramp = turn_ramp_step(input.turn_ramp, key);
-                let axes = (!input.stick_mode).then_some(PilotAxes { turn: input.turn_ramp, thrust: input.axes.y, strafe: input.axes.z });
+                let keys = (!input.stick_mode).then_some(PilotAxes { turn: input.turn_ramp, thrust: axes.y, strafe: axes.z });
                 let pilot = PilotInput {
                     stick: sv(input.stick),
                     lock,
                     drift: input.drift,
-                    fire: input.fire,
-                    axes,
+                    fire,
+                    axes: keys,
                     aim_offset: input.nudge,
                     ..default()
                 };
@@ -570,7 +586,7 @@ fn scene_tick(
             .map(|p| v2(p.com_world()))
             .unwrap_or(Vec2::ZERO);
         let n = tuning.raiders_per_wave.max(1);
-        if let Some(raider) = world.design("automaton_raider", ENEMY) {
+        if let Some(raider) = raider_design(world) {
             let base = scene.rng.range(0.0, std::f32::consts::TAU);
             for k in 0..n {
                 let a = base + (k as f32 - (n as f32 - 1.0) / 2.0) * 0.32;

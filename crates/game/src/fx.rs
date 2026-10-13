@@ -10,13 +10,11 @@
 //! fragments (`Sim::loose`: a small turning diamond with a soft glow), muzzle flashes, hit and ricochet sparks,
 //! part bursts and salvage streaks. Shield hits and collapses play in the bubbles (`shield.rs`).
 
-use std::collections::BTreeMap;
-
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
-use sim::ShipId;
+use sim::{PieceId, ShipId};
 
 use crate::RenderToggles;
 use crate::atlas::{Atlas, Region};
@@ -119,8 +117,6 @@ struct Spark {
     life: f32,
     size: f32,
     color: Color,
-    /// Drawn as a short streak along the velocity.
-    streak: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -149,8 +145,6 @@ pub struct Effects {
     lines: Vec<Line>,
     trail: Vec<Spark>,
     rng: Rng,
-    /// Weapon / glow colour per ship (filled lazily).
-    ship_colors: BTreeMap<ShipId, (Color, Color)>,
     /// Where engine plumes are burning a part now (`SimEvent::PlumeHit`, refreshed every tick while it lasts).
     burns: Vec<Burn>,
 }
@@ -175,7 +169,6 @@ impl Default for Effects {
             lines: Vec::with_capacity(128),
             trail: Vec::with_capacity(1024),
             rng: Rng::new(0xF0F0_1234),
-            ship_colors: BTreeMap::new(),
             burns: Vec::with_capacity(32),
         }
     }
@@ -187,7 +180,6 @@ impl Effects {
         self.flashes.clear();
         self.lines.clear();
         self.trail.clear();
-        self.ship_colors.clear();
         self.burns.clear();
     }
 
@@ -204,7 +196,6 @@ impl Effects {
                 life: l,
                 size: size * self.rng.range(0.7, 1.3),
                 color,
-                streak: true,
             });
         }
     }
@@ -430,7 +421,7 @@ fn draw_ships_fx(
                         let back = view.emit[i] / rate;
                         let v = point_vel + ew * speed * (0.6 + 0.4 * out);
                         if fx.trail.len() < 2048 {
-                            fx.trail.push(Spark { pos: tip + v * back, vel: v, age: back, life, size: r0, color: view.glow, streak: false });
+                            fx.trail.push(Spark { pos: tip + v * back, vel: v, age: back, life, size: r0, color: view.glow });
                         }
                     }
                 } else {
@@ -439,6 +430,13 @@ fn draw_ships_fx(
             }
         }
     }
+
+    // Weapon effects take the design's weapon colour (`DesignVisual::weapon_color`, through the piece view), like
+    // the muzzle flashes and pulses (`sim_bridge::apply_events`).
+    let weapon_color = |ship: ShipId| {
+        let view = world.views.range((ship, PieceId(0))..=(ship, PieceId(u32::MAX))).next();
+        view.and_then(|(_, e)| views.get(*e).ok()).map_or(Color::WHITE, |v| v.weapon_color)
+    };
 
     // Beams: attached to the gun at the render pose, with the tick's length.
     for b in world.sim.beams() {
@@ -450,7 +448,7 @@ fn draw_ships_fx(
         let dir = Mat2::from_angle(angle) * v2(gun.dir);
         let len = (v2(b.to) - v2(b.from)).length();
         let to = from + dir * len;
-        let c = ship_colors(fx, &world, b.ship, &style).0;
+        let c = weapon_color(b.ship);
         let pulse = 0.85 + 0.15 * (t * 40.0).sin();
         queue.line(&regions.halo, from, to, 0.9, c.with_alpha(0.9 * pulse), Z_WEAPONS);
         queue.line(&regions.white, from, to, 0.08, core_tint(c).with_alpha(0.95), Z_WEAPONS + 0.1);
@@ -469,7 +467,7 @@ fn draw_ships_fx(
             continue;
         }
         let back = at - v / speed * (speed * 0.05).clamp(0.6, 3.0);
-        let c = ship_colors(fx, &world, p.owner, &style).0;
+        let c = weapon_color(p.owner);
         queue.line(&regions.halo, back, at, 0.5, c.with_alpha(0.7), Z_WEAPONS);
         queue.line(&regions.white, back, at, 0.06, core_tint(c).with_alpha(0.9), Z_WEAPONS + 0.1);
         queue.dot(&regions.soft, at, 0.55, c.with_alpha(0.85), Z_WEAPONS + 0.2);
@@ -492,25 +490,6 @@ fn draw_ships_fx(
             queue.line(&regions.white, corner(k), corner(k + 1), 0.08, core_tint(frag).with_alpha(0.95), Z_WEAPONS + 0.1);
         }
     }
-}
-
-/// `(weapon colour, glow colour)` of a ship.
-fn ship_colors(fx: &mut Effects, world: &SimWorld, ship: ShipId, style: &Style) -> (Color, Color) {
-    if let Some(c) = fx.ship_colors.get(&ship) {
-        return *c;
-    }
-    let enemy = world
-        .sim
-        .ship(ship)
-        .and_then(|s| world.content.factions.get(&s.design().faction))
-        .is_some_and(|f| f.glow == "enemy");
-    let c = if enemy {
-        (style.system_color("enemy"), style.glow_enemy)
-    } else {
-        (style.system_color("weapons"), style.glow_player)
-    };
-    fx.ship_colors.insert(ship, c);
-    c
 }
 
 /// Ages the event effects and draws them.

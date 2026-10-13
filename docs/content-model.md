@@ -177,6 +177,7 @@ what is locked; a development switch (`?unlock=all`) is planned.
 | `category` | category id |
 | `icon` | icon key: `fission-reactor` → `icons/fission-reactor.svg` in any loaded pack (see [Icons](#icons)). Hull parts have none: they show their material |
 | `color` | optional system colour key overriding the category's (automaton parts use `"enemy"`) |
+| `barrel` | optional, guns only: `(width, length, muzzle)` in cells, the barrel the client draws through the gun's nose (`length` beyond its front edge) and the radius of the muzzle glow at its tip; a gun without one gets a small glow at its front edge (13 Oct 2026, from the reference SVGs) |
 | `size` | footprint `(w, h)` in cells before rotation; each side 1 to 16 (`data::validate::MAX_PART_SIDE`, a placeholder) |
 | `shape` | `Rect` (default) or `Slope` |
 | `build_points` | cost against the drydock budget (no economy; balancing and enemy scaling) |

@@ -7,6 +7,12 @@
 //! where it was onto it over 0.3–0.5 s (longer for longer jumps, smootherstep). Only in follow mode: a free
 //! camera stays put, dragging during a glide ends it, and the zoom is untouched.
 //!
+//! **Lock framing** (a default for review, 13 Oct 2026): while the camera follows and a target is locked, it
+//! zooms out just enough to keep the target on screen ([`LOCK_MARGIN`] px inside the edges), at most to
+//! [`LOCK_MIN_SHARE`] of the chosen zoom, and eases back to the chosen zoom when the lock ends. The chosen zoom
+//! (`zoom_target`, what the wheel, + / − and a pinch set) is untouched; zooming by hand during a lock starts
+//! from what is on screen and ends the framing until the lock does.
+//!
 //! The camera always covers the whole window. [`CameraRig::view_offset`] moves the point the rig centres on
 //! away from the window centre (the drydock centres its grid between the side panels); the screen ↔ world
 //! helpers include it. Flight input (wheel, drag, pinch, F) runs only in flight; the drydock drives the rig
@@ -17,6 +23,7 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
+use sim::Target;
 
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
@@ -30,6 +37,10 @@ const FOLLOW_TAU: f32 = 0.12;
 /// Focus-switch glide: duration for a short hop and for a jump of [`GLIDE_FAR`] metres or more.
 const GLIDE_SECONDS: (f32, f32) = (0.3, 0.5);
 const GLIDE_FAR: f32 = 150.0;
+/// Lock framing: how far inside the view's edges the locked target's centre stays (logical px), and the least
+/// share of the chosen zoom it zooms out to.
+pub const LOCK_MARGIN: f32 = 90.0;
+pub const LOCK_MIN_SHARE: f32 = 0.35;
 
 #[derive(Component)]
 pub struct MainCamera;
@@ -56,6 +67,10 @@ pub struct CameraRig {
     pub auto_mode: CamMode,
     /// The user zoomed by hand (framing keeps its zoom then).
     pub user_zoom: bool,
+    /// The lock framing zooms out below the chosen zoom now.
+    framed: bool,
+    /// The user zoomed by hand during this lock: no lock framing until it ends.
+    unframed: bool,
     /// Where the focused vessel is (for the range rings), if any.
     pub focus: Option<Vec2>,
     /// The vessel followed last frame; a change starts a glide.
@@ -84,6 +99,8 @@ impl Default for CameraRig {
             mode: CamMode::Follow,
             auto_mode: CamMode::Follow,
             user_zoom: false,
+            framed: false,
+            unframed: false,
             focus: None,
             followed: None,
             follow_pos: Vec2::ZERO,
@@ -184,13 +201,14 @@ impl CameraRig {
         }
         self.zoom_anchor = None;
     }
-    /// One frame of the eased zoom (time constant 0.1 s); a zoom around a point moves the camera with it.
-    fn ease_zoom(&mut self, dt: f32) {
+    /// One frame of the zoom easing towards `target` (time constant 0.1 s; `zoom_target`, or less while lock
+    /// framing keeps a target on screen); a zoom around a point moves the camera with it.
+    fn ease_zoom(&mut self, dt: f32, target: f32) {
         let k = 1.0 - (-dt / 0.1).exp();
-        let z = self.zoom + (self.zoom_target - self.zoom) * k;
+        let z = self.zoom + (target - self.zoom) * k;
         // Within 0.1 % the zoom has arrived (an exponential never does).
-        let arrived = (z - self.zoom_target).abs() <= 1e-3 * self.zoom_target;
-        self.zoom = if arrived { self.zoom_target } else { z }.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
+        let arrived = (z - target).abs() <= 1e-3 * target;
+        self.zoom = if arrived { target } else { z }.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
         if let Some((d, w)) = self.zoom_anchor {
             if self.mode == CamMode::Free {
                 self.pos = w - d / self.zoom;
@@ -204,6 +222,23 @@ impl CameraRig {
     pub fn half_extent(&self) -> Vec2 {
         self.viewport / (2.0 * self.zoom)
     }
+    /// A zoom by hand: while the lock framing zooms out, what is on screen becomes the chosen zoom, and the
+    /// framing stops until the lock ends.
+    fn hand_zoom(&mut self) {
+        if self.framed {
+            self.zoom_target = self.zoom;
+            self.framed = false;
+        }
+        self.unframed = true;
+    }
+}
+
+/// Lock framing: the zoom (px per metre) that keeps a target `d` metres from the followed ship [`LOCK_MARGIN`] px
+/// inside a view of `viewport` logical px, between [`LOCK_MIN_SHARE`] of the `chosen` zoom and the chosen zoom.
+fn lock_fit(viewport: Vec2, d: Vec2, chosen: f32) -> f32 {
+    let room = (viewport / 2.0 - Vec2::splat(LOCK_MARGIN)).max(Vec2::ONE);
+    let fit = (room.x / d.x.abs().max(1e-3)).min(room.y / d.y.abs().max(1e-3));
+    fit.max(chosen * LOCK_MIN_SHARE).max(MIN_PX_PER_M).min(chosen)
 }
 
 pub struct CameraPlugin;
@@ -242,6 +277,7 @@ pub fn camera_bundle(zoom: f32) -> impl Bundle {
 }
 
 fn zoom_by(rig: &mut CameraRig, factor: f32, around: Option<Vec2>) {
+    rig.hand_zoom();
     rig.zoom_around(factor, around, MIN_PX_PER_M, MAX_PX_PER_M);
     rig.user_zoom = true;
 }
@@ -304,6 +340,7 @@ fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInp
     let mid = (pa + pb) / 2.0;
     if let Some((last_dist, last_mid)) = rig.pinch_last {
         let f = dist / last_dist;
+        rig.hand_zoom();
         rig.zoom_target = (rig.zoom_target * f).clamp(MIN_PX_PER_M, MAX_PX_PER_M);
         rig.user_zoom = true;
         if rig.mode == CamMode::Free {
@@ -315,12 +352,14 @@ fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInp
     rig.pinch_last = Some((dist, mid));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_camera(
     time: Res<Time<Real>>,
     fixed: Res<Time<Fixed>>,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
     scene: Res<Scene>,
+    input: Res<PlayerInput>,
     mut rig: ResMut<CameraRig>,
     camera: Single<(&mut Transform, &mut Projection), With<MainCamera>>,
 ) {
@@ -378,7 +417,17 @@ fn update_camera(
         }
         CamMode::Free => {}
     }
-    rig.ease_zoom(dt);
+    // Lock framing: zoom out enough to keep the locked target on screen (see the module doc).
+    let lock = input.lock.and_then(|t| target_point(&world, t, alpha));
+    if input.lock.is_none() {
+        rig.unframed = false;
+    }
+    let want = match (rig.mode, rig.focus, lock) {
+        (CamMode::Follow, Some(f), Some(t)) if !rig.unframed => lock_fit(rig.viewport, t - f, rig.zoom_target),
+        _ => rig.zoom_target,
+    };
+    rig.framed = want < rig.zoom_target;
+    rig.ease_zoom(dt, want);
 
     let (mut tf, mut proj) = camera.into_inner();
     // The camera covers the whole window; `pos` sits at the view centre.
@@ -393,9 +442,49 @@ fn update_camera(
     }
 }
 
+/// Where a locked target is at the render pose: a ship's controlling (else main) piece, a piece, or the point.
+fn target_point(world: &SimWorld, target: Target, alpha: f32) -> Option<Vec2> {
+    let (ship, piece) = match target {
+        Target::Ship(id) => {
+            let s = world.sim.ship(id)?;
+            (s, s.control_piece().or_else(|| s.main_piece())?)
+        }
+        Target::Piece(id, p) => (world.sim.ship(id)?, p),
+        Target::Point(p) => return Some(v2(p)),
+    };
+    ship.piece(piece).map(|p| piece_com(p, alpha))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A raider locked 58 m away, straight up, at the default 18 px/m in a 1600 x 900 window was off screen: the
+    /// camera zooms out until it is 90 px inside the edge, but not below 35 % of the chosen zoom; a target already
+    /// in view changes nothing.
+    #[test]
+    fn lock_framing_zooms_out_just_enough_and_no_further() {
+        let view = Vec2::new(1600.0, 900.0);
+        // 15 m up is 270 px from the centre: in view, 90 px clear of the edge.
+        assert_eq!(lock_fit(view, Vec2::new(0.0, 15.0), 18.0), 18.0);
+        let up = lock_fit(view, Vec2::new(0.0, 45.0), 18.0);
+        assert!((up - 360.0 / 45.0).abs() < 1e-4, "{up}");
+        assert!((45.0 * up - (450.0 - LOCK_MARGIN)).abs() < 1e-3);
+        let far = lock_fit(view, Vec2::new(0.0, 58.0), 18.0);
+        assert!((far - 18.0 * LOCK_MIN_SHARE).abs() < 1e-4, "{far}");
+        // Sideways there is more room.
+        let side = lock_fit(view, Vec2::new(58.0, 0.0), 18.0);
+        assert!((side - 710.0 / 58.0).abs() < 1e-4, "{side}");
+    }
+
+    /// A zoom by hand while framed starts from what is on screen and ends the framing for this lock.
+    #[test]
+    fn a_hand_zoom_during_a_lock_takes_the_framed_zoom() {
+        let mut rig = CameraRig { zoom: 9.0, framed: true, ..default() };
+        zoom_by(&mut rig, 1.25, None);
+        assert!((rig.zoom_target - 9.0 * 1.25).abs() < 1e-4, "{}", rig.zoom_target);
+        assert!(rig.unframed && !rig.framed);
+    }
 
     /// Glides a camera from the origin to a vessel 100 m away that flies at 20 m/s, at `fps` (a multiple of 10);
     /// returns the camera position every 0.1 s of the first 0.7 s and the largest jump between two frames,
@@ -426,7 +515,7 @@ mod tests {
         let w = rig.screen_to_world(cursor);
         rig.zoom_around(1.5, Some(cursor), 1.0, 200.0);
         for _ in 0..60 {
-            rig.ease_zoom(1.0 / 60.0);
+            rig.ease_zoom(1.0 / 60.0, rig.zoom_target);
             assert!(rig.screen_to_world(cursor).distance(w) < 1e-3, "{} vs {w}", rig.screen_to_world(cursor));
         }
         assert_eq!(rig.zoom, 30.0);
@@ -434,7 +523,7 @@ mod tests {
         rig.zoom_around(1.5, Some(cursor), 1.0, 200.0);
         rig.end_zoom_anchor();
         let pos = rig.pos;
-        rig.ease_zoom(1.0 / 60.0);
+        rig.ease_zoom(1.0 / 60.0, rig.zoom_target);
         assert_eq!(rig.pos, pos);
     }
 

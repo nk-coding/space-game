@@ -227,6 +227,16 @@ impl ShieldBubbles {
     pub fn clear(&mut self) {
         self.bubbles.clear();
     }
+
+    /// A piece with these parts left ship `from` and became ship `to` (`SimEvent::VesselFormed`): its bubbles
+    /// keep their state (charge, ripples, a shatter in progress) under the new ship.
+    pub fn moved(&mut self, from: ShipId, to: ShipId, parts: &[PartIdx]) {
+        for &part in parts {
+            if let Some(b) = self.bubbles.remove(&(from, part)) {
+                self.bubbles.insert((to, part), b);
+            }
+        }
+    }
 }
 
 #[derive(Default)]

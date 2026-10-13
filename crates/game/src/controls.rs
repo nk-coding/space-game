@@ -7,11 +7,18 @@
 //!   left button on empty space (or the right button, or Space) = fire. Tab = next target, Esc = unlock, X = drift toggle. V / Shift+V = next / previous vessel of the player (the sim's
 //!   vessel list); clicking a friendly vessel switches to it. Both send `ShipCommand::Focus`; the sim moves the
 //!   focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and taps on the fleet bar
-//!   (`fleet_bar.rs`) are the bar's, never the world's.
+//!   (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring) are theirs, never the
+//!   world's.
 //! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button bottom-right, tap a
 //!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
 //!   (or with `?touch=1`).
+//!
+//! **Timing.** The input systems run every frame before the frame's sim ticks (`RunFixedMainLoop`, before the
+//! fixed loop), so a press reaches the tick of the same frame. Between ticks the keys and fire buttons are latched
+//! ([`PlayerInput::for_tick`]): a tap shorter than a tick (33 ms), even one pressed and released within one frame,
+//! still reaches the next tick. The sim gets the result as data, once per tick (`scene::scene_tick`).
 
+use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::{egui_wants_any_keyboard_input, egui_wants_any_pointer_input};
@@ -19,6 +26,7 @@ use sim::{ShipCommand, ShipId, Target};
 
 use crate::camera::CameraRig;
 use crate::fleet_bar::FleetBar;
+use crate::flight_hud::{HudButtons, HudZone, on_hud_button};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PilotFocus, is_friendly, player_vessels};
 use crate::sim_bridge::{SimWorld, piece_com, sv, v2};
@@ -50,6 +58,8 @@ pub struct PlayerInput {
     pub touch_ui: bool,
     key_axes: Vec3,
     key_fire: bool,
+    /// What was held since the last tick.
+    latch: TickLatch,
     lmb: Option<LmbPress>,
     stick_touch: Option<(u64, Vec2)>,
     fire_touch: Option<u64>,
@@ -74,11 +84,72 @@ impl PlayerInput {
             _ => None,
         }
     }
+
+    /// The keyboard axes and fire for one sim tick: what is held now, else what was held since the last tick
+    /// (a tap between two ticks); then the latch starts over. Called once per tick by the scene.
+    pub fn for_tick(&mut self) -> (Vec3, bool) {
+        self.latch.take(self.axes, self.fire)
+    }
 }
 
-/// The input systems (keyboard, mouse, touch → [`PlayerInput`]), in `Update`, in flight only.
+/// The keyboard axes and fire held at any frame since the last sim tick (frames run faster than ticks).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct TickLatch {
+    /// Per axis (turn, thrust, strafe): held towards + / towards −.
+    pos: [bool; 3],
+    neg: [bool; 3],
+    fire: bool,
+}
+
+impl TickLatch {
+    /// One frame's input.
+    fn note(&mut self, axes: Vec3, fire: bool) {
+        for k in 0..3 {
+            self.pos[k] |= axes[k] > 0.0;
+            self.neg[k] |= axes[k] < 0.0;
+        }
+        self.fire |= fire;
+    }
+
+    /// The tick's input: each axis as held now, or else as held since the last tick; fire if held at all.
+    fn take(&mut self, axes: Vec3, fire: bool) -> (Vec3, bool) {
+        let mut out = axes;
+        for k in 0..3 {
+            if out[k] == 0.0 {
+                out[k] = (self.pos[k] as i32 - self.neg[k] as i32) as f32;
+            }
+        }
+        let fire = fire || self.fire;
+        *self = TickLatch::default();
+        (out, fire)
+    }
+}
+
+/// The input systems (keyboard, mouse, touch → [`PlayerInput`]), in flight only, every frame before the sim
+/// ticks: in `RunFixedMainLoop`, [`RunFixedMainLoopSystems::BeforeFixedMainLoop`].
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ControlsSet;
+
+/// The input systems in [`ControlsSet`], before the frame's sim ticks, in flight only.
+fn add_input_systems(app: &mut App) {
+    app.init_resource::<PlayerInput>()
+        .configure_sets(
+            RunFixedMainLoop,
+            ControlsSet.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop).run_if(in_state(AppMode::Flight)),
+        )
+        .add_systems(
+            RunFixedMainLoop,
+            (
+                release_keys.run_if(egui_wants_any_keyboard_input),
+                keyboard.run_if(not(egui_wants_any_keyboard_input)),
+                mouse.run_if(not(egui_wants_any_pointer_input)),
+                touch,
+                combine,
+            )
+                .chain()
+                .in_set(ControlsSet),
+        );
+}
 
 #[derive(Component)]
 struct StickBase;
@@ -91,22 +162,8 @@ pub struct ControlsPlugin;
 
 impl Plugin for ControlsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PlayerInput>()
-            .configure_sets(Update, ControlsSet.run_if(in_state(AppMode::Flight)))
-            .add_systems(Startup, spawn_touch_ui)
-            .add_systems(
-                Update,
-                (
-                    release_keys.run_if(egui_wants_any_keyboard_input),
-                    keyboard.run_if(not(egui_wants_any_keyboard_input)),
-                    mouse.run_if(not(egui_wants_any_pointer_input)),
-                    touch,
-                    combine,
-                    touch_ui,
-                )
-                    .chain()
-                    .in_set(ControlsSet),
-            );
+        add_input_systems(app);
+        app.add_systems(Startup, spawn_touch_ui).add_systems(Update, touch_ui.run_if(in_state(AppMode::Flight)));
     }
 }
 
@@ -123,14 +180,16 @@ fn keyboard(
     focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
 ) {
-    let k = |a: KeyCode, b: KeyCode| keys.pressed(a) || keys.pressed(b);
+    // Held this frame, or pressed and released within it (a quick tap).
+    let down = |k: KeyCode| keys.pressed(k) || keys.just_pressed(k);
+    let k = |a: KeyCode, b: KeyCode| down(a) || down(b);
     let axis = |pos: bool, neg: bool| (pos as i32 - neg as i32) as f32;
     input.key_axes = Vec3::new(
         axis(k(KeyCode::KeyA, KeyCode::ArrowLeft), k(KeyCode::KeyD, KeyCode::ArrowRight)),
         axis(k(KeyCode::KeyW, KeyCode::ArrowUp), k(KeyCode::KeyS, KeyCode::ArrowDown)),
-        axis(keys.pressed(KeyCode::KeyE), keys.pressed(KeyCode::KeyQ)),
+        axis(down(KeyCode::KeyE), down(KeyCode::KeyQ)),
     );
-    input.key_fire = keys.pressed(KeyCode::Space);
+    input.key_fire = down(KeyCode::Space);
     if keys.just_pressed(KeyCode::KeyX) {
         input.drift = !input.drift;
     }
@@ -164,6 +223,7 @@ fn mouse(
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
     fleet: Res<FleetBar>,
+    hud: HudButtons,
     mut input: ResMut<PlayerInput>,
 ) {
     if focus.0.is_none() {
@@ -174,6 +234,7 @@ fn mouse(
     if buttons.just_pressed(MouseButton::Left)
         && let Some(c) = cursor
         && !fleet.blocks(c)
+        && !on_hud_button(&hud, c)
     {
         let alpha = fixed.overstep_fraction();
         let hit = pick(&world, focus.0, rig.screen_to_world(c), 1.0 / rig.zoom, alpha);
@@ -193,7 +254,8 @@ fn mouse(
             input.lmb = None;
         }
     }
-    input.key_fire = input.key_fire || lmb_fire || buttons.pressed(MouseButton::Right);
+    let right = buttons.pressed(MouseButton::Right) || buttons.just_pressed(MouseButton::Right);
+    input.key_fire = input.key_fire || lmb_fire || right;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -206,6 +268,7 @@ fn touch(
     rig: Res<CameraRig>,
     fixed: Res<Time<Fixed>>,
     fleet: Res<FleetBar>,
+    hud: HudButtons,
     mut input: ResMut<PlayerInput>,
 ) {
     let size = window.size();
@@ -215,7 +278,7 @@ fn touch(
     for t in touches.iter_just_pressed() {
         input.touch_ui = true;
         let p = t.position();
-        if fleet.blocks(p) {
+        if fleet.blocks(p) || on_hud_button(&hud, p) {
             continue;
         }
         if focus.0.is_some() && input.stick_touch.is_none() && p.distance(stick_c) < STICK_RADIUS * 1.7 {
@@ -263,6 +326,8 @@ fn combine(touches: Res<Touches>, mut input: ResMut<PlayerInput>) {
     input.stick = stick.unwrap_or(Vec2::ZERO);
     input.axes = input.key_axes;
     input.fire = input.key_fire || input.fire_touch.is_some();
+    let (axes, fire) = (input.axes, input.fire);
+    input.latch.note(axes, fire);
 }
 
 /// A click or tap on a ship: the player's vessels take the focus (a command for the sim), anything else is
@@ -333,6 +398,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<crate::
         .spawn((
             StickBase,
             FlightUi,
+            HudZone,
             Node {
                 position_type: PositionType::Absolute,
                 left: px(50),
@@ -369,6 +435,7 @@ fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<crate::
         .spawn((
             FireButton,
             FlightUi,
+            HudZone,
             Node {
 
                 position_type: PositionType::Absolute,
@@ -438,6 +505,97 @@ fn touch_ui(
         if n.left != l || n.top != t {
             n.left = l;
             n.top = t;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use bevy::state::app::StatesPlugin;
+    use bevy::time::TimeUpdateStrategy;
+
+    use super::*;
+
+    #[test]
+    fn the_latch_gives_a_tap_to_the_next_tick_once_and_held_keys_win() {
+        let mut latch = TickLatch::default();
+        // A for one frame, then Space for one frame, no tick in between.
+        latch.note(Vec3::new(1.0, 0.0, 0.0), false);
+        latch.note(Vec3::ZERO, true);
+        assert_eq!(latch.take(Vec3::ZERO, false), (Vec3::new(1.0, 0.0, 0.0), true));
+        assert_eq!(latch.take(Vec3::ZERO, false), (Vec3::ZERO, false));
+        // D held at the tick after an A tap and some W: D and W.
+        latch.note(Vec3::new(1.0, 1.0, 0.0), false);
+        assert_eq!(latch.take(Vec3::new(-1.0, 0.0, 0.0), false), (Vec3::new(-1.0, 1.0, 0.0), false));
+    }
+
+    #[derive(Resource, Default)]
+    struct Ticks(Vec<(Vec3, bool)>);
+
+    /// The input systems as the plugin schedules them (no window here: the mouse and touch systems skip), a
+    /// 30 Hz tick that takes the input like the scene does, and frames of `frame_ms`.
+    fn app(frame_ms: f64) -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, StatesPlugin))
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(frame_ms / 1000.0)))
+            .insert_resource(Time::<Fixed>::from_hz(sim::TICK_HZ as f64))
+            .insert_state(AppMode::Flight)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<Touches>()
+            .init_resource::<bevy_egui::input::EguiWantsInput>()
+            .init_resource::<FleetBar>()
+            .init_resource::<PilotFocus>()
+            .init_resource::<CameraRig>()
+            .init_resource::<Ticks>()
+            .insert_resource(SimWorld::new(sim::Sim::new(1), data::Content::default()));
+        add_input_systems(&mut app);
+        app.add_systems(FixedUpdate, |mut input: ResMut<PlayerInput>, mut ticks: ResMut<Ticks>| {
+            ticks.0.push(input.for_tick())
+        });
+        app
+    }
+
+    /// One frame with these key changes; the ticks it ran.
+    fn frame(app: &mut App, keys: impl FnOnce(&mut ButtonInput<KeyCode>)) -> Vec<(Vec3, bool)> {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.clear();
+        keys(&mut input);
+        let before = app.world().resource::<Ticks>().0.len();
+        app.update();
+        app.world().resource::<Ticks>().0[before..].to_vec()
+    }
+
+    /// A key held in a frame reaches that frame's ticks (the input runs before them, not one frame later).
+    #[test]
+    fn a_held_key_reaches_the_tick_of_the_same_frame() {
+        // Frames longer than a tick: every frame runs one.
+        let mut app = app(40.0);
+        frame(&mut app, |_| {});
+        let ticks = frame(&mut app, |k| k.press(KeyCode::KeyW));
+        assert!(!ticks.is_empty());
+        assert!(ticks.iter().all(|t| t.0.y == 1.0), "{ticks:?}");
+    }
+
+    /// Frames at 100 Hz, ticks at 30 Hz: a tap pressed and released within one frame, between two ticks,
+    /// reaches the next tick, once.
+    #[test]
+    fn a_tap_shorter_than_a_tick_reaches_one_tick() {
+        let mut app = app(10.0);
+        for (key, check) in [(KeyCode::KeyA, (Vec3::X, false)), (KeyCode::Space, (Vec3::ZERO, true))] {
+            // Right after a tick.
+            while frame(&mut app, |_| {}).is_empty() {}
+            let mut ticks = frame(&mut app, |k| {
+                k.press(key);
+                k.release(key);
+            });
+            while ticks.len() < 2 {
+                ticks.extend(frame(&mut app, |_| {}));
+            }
+            assert_eq!(ticks[0], check, "{key:?}");
+            assert_eq!(ticks[1], (Vec3::ZERO, false), "{key:?}");
         }
     }
 }
