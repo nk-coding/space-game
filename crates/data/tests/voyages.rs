@@ -329,6 +329,66 @@ fn exactly_one_goal_that_can_be_cleared() {
         &sites(r#"(encounter: "derelict_field", goal: true)"#),
     )]);
     assert_error(&p, "v", "sites[0].encounter", "may roll no ships");
+    // GDR-0068: a site clears once its enemies are destroyed or disarmed, so the goal must always roll an armed
+    // ship: a weapon and power on its main piece. A gun without a reactor is not armed, nor is a ship without guns.
+    let ship = |id: &str, parts: &str| {
+        format!(
+            r#"(id: "{id}", name: "S", summary: "S.", faction: "automatons", size: (3, 3), parts: [{parts}])"#
+        )
+    };
+    let files = [
+        (
+            "ships/drone.ron",
+            ship(
+                "drone",
+                r#"(part: "logic_core", x: 1, y: 1), (part: "fission_reactor", x: 1, y: 2),
+                   (part: "thruster", x: 0, y: 2)"#,
+            ),
+        ),
+        (
+            "ships/dry_gun.ron",
+            ship(
+                "dry_gun",
+                r#"(part: "pulse_laser", x: 1, y: 0), (part: "logic_core", x: 1, y: 1),
+                   (part: "thruster", x: 1, y: 2)"#,
+            ),
+        ),
+        (
+            "encounters/e.ron",
+            format!(
+                "[{}, {}]",
+                encounter(
+                    "unarmed",
+                    r#"ships: [(ship: "drone", count: (1, 2)), (ship: "dry_gun", count: (1, 1)),
+                       (ship: "automaton_raider", count: (0, 2))], wake_radius: 200"#
+                ),
+                encounter(
+                    "armed",
+                    r#"ships: [(ship: "drone", count: (1, 2)), (ship: "automaton_raider", count: (1, 1))],
+                       wake_radius: 200"#
+                )
+            ),
+        ),
+        (
+            "voyages/v.ron",
+            sites(r#"(encounter: "unarmed", goal: true)"#),
+        ),
+        (
+            "voyages/w.ron",
+            voyage(
+                "w",
+                r#"band: "rim", map: (0.5, 0.5), opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
+                   minutes: (5, 10), sites: [(encounter: "unarmed"), (encounter: "armed", goal: true)]"#,
+            ),
+        ),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(f, s)| (*f, s.as_str())).collect();
+    let p = problems_with(&files);
+    assert_error(&p, "v", "sites[0].encounter", "may roll no armed ship");
+    assert_clean(&p, "w");
+    let c = data::base_content();
+    assert!(c.ship_armed(c.ships.get("automaton_warden").unwrap()));
+    assert!(c.ship_armed(c.ships.get("rim_skiff").unwrap()));
 }
 
 #[test]

@@ -632,6 +632,24 @@ impl Content {
             })
     }
 
+    /// Is an intact ship armed (GDR-0068, the sim's `Ship::is_armed` at spawn)? Its main piece has a part with a
+    /// `weapon` and a part that makes power. A voyage site clears once none of its ships is armed, so a goal
+    /// encounter must always roll an armed ship. False for a ship whose grid does not build.
+    pub fn ship_armed(&self, ship: &Blueprint) -> bool {
+        let Ok(grid) = self.ship_grid(ship) else {
+            return false;
+        };
+        let part = |i: usize| self.parts.get(&ship.parts[i].part);
+        let pieces = grid.pieces();
+        let Some(main) = grid.main_piece(&pieces, |i| part(i).is_some_and(|p| p.logic.is_some()))
+        else {
+            return false;
+        };
+        let main = || pieces.parts[main].iter().filter_map(|&i| part(i));
+        main().any(|p| p.weapon.is_some())
+            && main().any(|p| p.power.as_ref().is_some_and(|x| x.output > 0.0))
+    }
+
     /// Hit points of a placed part: the part's `hp`, or for hull parts `hp_per_cell × area`.
     pub fn placement_hp(&self, p: &Placement) -> Option<f32> {
         self.parts.get(&p.part)?.hp_in(self.placement_armor(p))

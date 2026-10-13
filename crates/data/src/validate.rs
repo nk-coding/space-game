@@ -1068,15 +1068,30 @@ impl<'a> Validator<'a> {
                     format!("the goal is one site, got a count of {}", s.count),
                 );
             }
-            if let Some(e) = encounter.filter(|e| !e.always_has_ships()) {
-                self.err(
-                    v,
-                    format!("{f}.encounter"),
-                    format!(
-                        "encounter `{}` may roll no ships, so the goal could never be cleared",
-                        e.id
-                    ),
-                );
+            if let Some(e) = encounter {
+                if !e.always_has_ships() {
+                    self.err(
+                        v,
+                        format!("{f}.encounter"),
+                        format!(
+                            "encounter `{}` may roll no ships, so the goal could never be cleared",
+                            e.id
+                        ),
+                    );
+                } else if !e.ships.iter().any(|s| {
+                    s.count.0 > 0 && c.ships.get(&s.ship).is_some_and(|b| c.ship_armed(b))
+                }) {
+                    self.err(
+                        v,
+                        format!("{f}.encounter"),
+                        format!(
+                            "encounter `{}` may roll no armed ship (a weapon and power on its main piece): a site \
+                             clears once its enemies are destroyed or disarmed (GDR-0068), so the goal would clear \
+                             the moment it wakes",
+                            e.id
+                        ),
+                    );
+                }
             }
         }
         if goals == 0 {

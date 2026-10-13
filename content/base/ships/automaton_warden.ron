@@ -1,13 +1,15 @@
 // Automaton warden: the guardian at the end of the first playable loop (voyage wardens_gate). A shielded heart
-// between two armed fists, each section with its own automaton core and its own 6 MW (heart: two shield emitters;
-// each fist: two cannons and a thruster), joined by one bridge block per fist. Shot apart, the fists fly on as
-// vessels of their own (GDR-0013) and the heart keeps its shields up until its core dies. PLACEHOLDER layout and
-// numbers (docs/plans/slice-content.md 2.2, track 7J draft of 13 Oct 2026; tuned in track 7K).
+// between two armed fists, each section with its own automaton core and its own 6 MW (heart: a cannon in its nose
+// and a shield emitter; each fist: two cannons and a thruster), joined by one bridge block per fist. Shot apart,
+// the fists fly on as vessels of their own (GDR-0013) and the heart fights on until its core or its cannon is
+// gone. The heart's cannon (GDR-0068: a site clears when its enemies are destroyed or disarmed) took the place of
+// its second shield emitter, so each section still runs on its own 6 MW. PLACEHOLDER layout and numbers
+// (docs/plans/slice-content.md 2.2, track 7J draft of 13 Oct 2026; tuned in track 7K).
 (
     id: "automaton_warden",
     name: "Automaton warden",
     summary: "A rogue automaton guardian: a shielded heart between two armed fists.",
-    description: "Three [[part:automaton_core|cores]] run it, one in the heart and one in each fist. Break a bridge and that fist fights on alone; the heart holds its [[part:shield_emitter|shields]] up until its core goes dark.",
+    description: "Three [[part:automaton_core|cores]] run it, one in the heart and one in each fist. Break a bridge and that fist fights on alone; the heart keeps its [[part:shield_emitter|shield]] up and its [[part:automaton_cannon|cannon]] firing until its core goes dark.",
     lore: "It was built to keep the gate shut until its makers came back.",
     tags: ["enemy", "boss"],
     faction: "automatons",
@@ -17,7 +19,7 @@
         (part: "automaton_cannon", x: 1, y: 0),
         (part: "slope_1x1", x: 2, y: 0, material: "automaton_plate"),
         (part: "slope_1x1", x: 3, y: 0, flip: true, material: "automaton_plate"),
-        (part: "armor_block", x: 4, y: 0, material: "automaton_plate"),
+        (part: "automaton_cannon", x: 4, y: 0),
         (part: "slope_1x1", x: 5, y: 0, material: "automaton_plate"),
         (part: "slope_1x1", x: 6, y: 0, flip: true, material: "automaton_plate"),
         (part: "automaton_cannon", x: 7, y: 0),
@@ -53,7 +55,7 @@
         (part: "thruster", x: 7, y: 4),
         (part: "slope_1x1", x: 8, y: 4, rot: 2, flip: true, material: "automaton_plate"),
         (part: "armor_block", x: 3, y: 5, material: "automaton_plate"),
-        (part: "shield_emitter", x: 4, y: 5),
+        (part: "armor_block", x: 4, y: 5, material: "automaton_plate"),
         (part: "armor_block", x: 5, y: 5, material: "automaton_plate"),
         (part: "slope_1x1", x: 3, y: 6, rot: 2, material: "automaton_plate"),
         (part: "armor_block", x: 4, y: 6, material: "automaton_plate"),

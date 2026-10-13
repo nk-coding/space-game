@@ -364,7 +364,9 @@ Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raide
 two slopes, so it turns 90° in about 0.67 s by the design report instead of 1.6 s and its reactors feed the gyros;
 early-game kit only; a lead placeholder), and the voyages' enemies `automaton_hunter` (5×4, two cannons on forward
 prongs, one core) and `automaton_warden` (9×7, the boss of `wardens_gate`: a shielded heart and two armed fists,
-three cores, so it fights on in pieces), both from `docs/plans/slice-content.md` 2 (placeholders).
+three cores, so it fights on in pieces), both from `docs/plans/slice-content.md` 2 (placeholders). Since GDR-0068
+(a site clears when its enemies are destroyed or disarmed) the Warden's heart has a cannon in its nose in place of
+its second shield emitter, so the heart must be beaten too and each section still runs on its own core's 6 MW.
 
 **Blueprint text** (added 12 Oct 2026, for the drydock). Saved player designs and exported blueprints use exactly
 the format of the content ships, so an export can go into a pack's `ships/` folder as is:

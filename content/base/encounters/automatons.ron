@@ -87,7 +87,7 @@
         id: "the_warden",
         name: "The Warden",
         summary: "The gate's old guardian, with raiders at its side.",
-        description: "Shoot the [[ship:automaton_warden]] apart and it fights on in pieces: each fist flies on alone, and the shielded heart holds until its core goes dark.",
+        description: "Shoot the [[ship:automaton_warden]] apart and it fights on in pieces: each fist flies on alone, and the shielded heart holds until its core goes dark or its cannon is shot off.",
         lore: "Nobody ever told it that its makers are not coming back.",
         tags: ["boss"],
         ships: [
