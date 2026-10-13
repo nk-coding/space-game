@@ -182,16 +182,18 @@ The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
 `docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 Oct 2026. This is the foundation:
 the mode, the static view of the player's design, the screen with its widgets and the test flight. Editing
 (`data::edit`), the live stats and issues (`sim::report`) and saving (the RON writer) plug in through the
-resources and the action message below; nothing is edited, computed or saved yet. Parts are unlimited in v1
+resources and the action message below (editing: wave 2, below). Parts are unlimited in v1
 (no spare counts).
 
 Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydock-*.png`.
 
 | Keys (only while the search field does not have the keyboard) | |
 |---|---|
-| Tools | B paint, G fill, X erase, V select, Q / E rotate the part to place |
+| Tools | B paint, G fill, X erase, V select, Q / E rotate (the selected part, else the part to place) |
+| Grid (mouse) | left button: the tool (drag: paint and erase strokes, the fill rectangle, moving the selected part); right button: erase |
+| Selected part | F flip, Delete / Backspace delete, Esc deselect (Q / E turn it) |
 | Mirror / bevel | M / Shift+B |
-| Armour material | 1–9 (the ARMOR pills in content order) |
+| Armour material | 1–9 (the ARMOR pills in content order; locked materials are left out) |
 | Undo / redo / save | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y / Ctrl+S (the browser's save dialog stays shut) |
 | Search the parts | / (Esc or Enter leaves the field; a click elsewhere too) |
 | Zoom | wheel (around the cursor), + / −, the − / + buttons; 100 % = the whole frame fits |
@@ -200,14 +202,15 @@ Open it with `?scene=drydock`, or T in flight. Screenshots: `docs/results/drydoc
 | Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · 24×24 FRAME` and the
-design's name; the ARMOR pills (every content material with an `armor` block) and the OVERLAY pills (HEAT,
+design's name; the ARMOR pills (every unlocked content material with an `armor` block) and the OVERLAY pills (HEAT,
 MASS, BONUS in gold, SHIELDS, ARCS: toggle state only); left the search, the category pills (content
-categories) and the part list (icon, name, footprint and one key stat from `Content::part_stats`: the first
+categories) and the part list (unlocked parts; icon, name, footprint and one key stat from `Content::part_stats`: the first
 stat after build points, control, mass, hit points, power draw and heat, else the bonus it gives, else its hit
 points; the wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT,
 THRUST/MASS, YAW, FIREPOWER, CARGO, CONTROL, DEVICE LOAD, values `—` until `sim::report`) and SELECTED PART
-(the picked part: icon, name, footprint and category, summary, stat lines and bonus lines); below the grid the
-hover cell, mirror and axis, and the zoom; at the bottom undo / redo, MIRROR, BEVEL, the status line,
+(the selected placed part with the report's numbers and its controls, else the picked part: icon, name,
+footprint and category, summary, stat lines and bonus lines); below the grid the hover cell, mirror and axis, why
+the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo, MIRROR, BEVEL, the status line,
 BLUEPRINTS, EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windows scale the whole
 screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is open). The phone layout comes later.
 
@@ -217,14 +220,23 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock is op
   it never clashes). The player, the `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content
   ships. `PlayerDesign::grounded` is the placeholder flight check (parts, a logic core on the main piece, the
   design compiles); `check_design` turns it into `DrydockStatus` whenever `revision` changes.
-- **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, mirror, bevel, the brush rotation, the
-  picked part, the category, the search text), `DrydockStatus` (`grounded`, the status line and its tone),
-  `DrydockStats` (the stats grid's cells: label, value, tone, optional bar). The widgets only show these.
+- **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, the brush rotation, the picked part, the
+  category, the search text; the mirror and bevel modes are the editor's, `PlayerDesign::dock().mirror` and
+  `.bevel`), `DrydockStatus` (`grounded`, the status line and its tone), `DrydockStats` (the stats grid's cells:
+  label, value, tone, optional bar); `palette_parts` and `armor_materials` (what the player has: content without
+  the `locked` entries). The widgets only show these.
+- **Editing** (`tools.rs`, `ghost.rs`, `inspector.rs`, 13 Oct 2026; `docs/drydock.md` "Client: editing"): the
+  tools on the grid (`tools::Gesture`, device-free), `tools::Selection` (a cell), undo / redo, the ghost of the edit
+  under the cursor from the editing model's previews, the fill rectangle and selection brackets, the refusal after
+  the info line (`tools::EditNote`), and the SELECTED PART block (`inspector::Inspector`: the selected placed part
+  with the design report's numbers, its armor, power tier and weight, rotate / flip / delete; else the palette
+  part).
 - **Actions** (`actions.rs`): every button (`ActionButton(DrydockAction)`) and every shortcut sends one message,
   `DrydockAction::{Tool, RotateCcw, RotateCw, Mirror, Bevel, Undo, Redo, Save, Export, Blueprints, TestFly, Menu,
-  Material, Overlay, Category, PickPart, ZoomIn, ZoomOut}`. Handled here: the UI state and TestFly (when the design
-  can fly: `Scene::launch` + `NextState(Flight)`); the camera handles the zoom. Undo, redo, save, export, the
-  blueprint list and the menu have no handler yet. New handlers read the message in a system in
+  Material, Overlay, Category, PickPart, ZoomIn, ZoomOut, Flip, Delete, Deselect, PartMaterial, PartTier,
+  PartWeight}`. Handled here: the UI state and TestFly (when the design can fly: `Scene::launch` +
+  `NextState(Flight)`); the camera handles the zoom, `tools::apply` the editing (undo, redo, mirror, bevel, rotate,
+  the selected part). Save, export, the blueprint list and the menu have no handler yet. New handlers read the message in a system in
   `DockSet::Apply` (`Input → Apply → Show`, drydock only), change `PlayerDesign` (and bump `revision`), and
   write `DrydockStats` / `DrydockStatus`; `DrydockCursor::cell` is the frame cell under the pointer.
 - **View** (`view.rs`): the design is drawn with the flight tiles: `ship_model::blueprint_visual` (every part;
