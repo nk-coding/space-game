@@ -56,9 +56,9 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
 | `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
 | `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
-| `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee) |
+| `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee, Escort), goals capped at the top speed |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
-| `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
+| `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
 | `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
@@ -229,6 +229,21 @@ with seed 42:
 | flight | 137 | 22 | 946 | 90 | 2 | 49 / 5 | 0 | 0 |
 | load (20) | 80 | 3 | 125 | 704 | 18 | 140 / 2 | 9 | 0 |
 | behavior | 122 | 18 | 183 | 123 | 8 | 119 / 0 | 14 | 0 |
+
+**With the fight balance and the flight fixes of 13 Oct 2026** (GDR-0061 content, GDR-0064 feed-forward, goal cap,
+continuous fade, turrets and split-off hull share, GDR-0065 `escort`, GDR-0067 friendly bubbles; release builds,
+1800 ticks): core, flight, load (20 ships), behavior and salvage, seeds 42 and 7: native x86_64 vs wasm32-wasip1
+under Node 24 **identical** (10 runs). The hash streams changed once (new hashed state: `HeadingGoal::Track`, the
+ship's hull base, `Maneuver::Escort`; and the fights). The feed-forward uses one cross product and one division,
+the fade one multiplication and a `min`. Counters with seed 42 (collected = salvage items):
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Shield hits | Impacts / rams | Burns | Overheated part-ticks |
+|---|---|---|---|---|---|---|---|---|
+| core | 311 | 60 | 823 | 38 | 0 | 209 / 1 | 221 | 248 |
+| flight | 135 | 29 | 1547 | 126 | 11 | 19 / 2 | 50 | 0 |
+| load (20) | 92 | 5 | 138 | 787 | 13 | 104 / 2 | 23 | 0 |
+| behavior | 123 | 22 | 431 | 84 | 5 | 106 / 0 | 12 | 0 |
+| salvage | 85 | 26 | 15 | 13 | 15 | 196 / 12 | 132 | 0 |
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
