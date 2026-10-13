@@ -1,8 +1,9 @@
 # Content model
 
 How game content is organised so that the game, the tools and a future wiki read the same files.
-Written 11 Oct 2026. Code: `crates/data` (schema, loader, validation, stat lines, geometry) and
-`crates/content-tool` (CLI). Content: `content/base/`.
+Written 11 Oct 2026. Code: `crates/data` (schema, loader, validation, stat lines, geometry, the blueprint text
+format, the drydock's and the behavior editor's editing models) and `crates/content-tool` (CLI). Content:
+`content/base/`.
 
 ## Principles
 
@@ -638,4 +639,6 @@ let design = data::parse_blueprint(&text)?;                  // Result<Blueprint
 let program = data::behavior::Program::parse(text)?;         // text form (or behavior.program() for RON form)
 program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>
+data::behavior::check_text(text, &content.behavior_nodes);    // Result<Program, Vec<TextError>>: parse + check, by text line
+// Editing models: data::edit::Drydock (docs/drydock.md), data::behavior_edit::BehaviorEditor (docs/behavior-format.md)
 ```
