@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use data::geometry::hull_loops;
-use data::{Content, Entry, Kind, Pack, Problem, Severity, text_key};
+use data::{Content, Entry, Kind, Pack, Problem, Severity, Unlock, text_key};
 use serde_json::{Value, json};
 
 const USAGE: &str = "usage:
@@ -272,6 +272,15 @@ fn entry_json<T: Entry + serde::Serialize>(c: &Content, e: &T) -> Value {
     v
 }
 
+/// The research nodes (ids, load order) that unlock what `unlock` names.
+fn unlocked_by(c: &Content, unlock: &Unlock) -> Vec<String> {
+    c.research
+        .iter()
+        .filter(|n| n.unlocks.contains(unlock))
+        .map(|n| n.id.clone())
+        .collect()
+}
+
 fn export(c: &Content) -> Value {
     let stats: Vec<Value> = c.stats.iter().map(|e| entry_json(c, e)).collect();
     let categories: Vec<Value> = c
@@ -310,6 +319,7 @@ fn export(c: &Content) -> Value {
         .map(|e| {
             let mut v = entry_json(c, e);
             v["stat_lines"] = json!(c.material_stats(e));
+            v["unlocked_by"] = json!(unlocked_by(c, &Unlock::Material(e.id.clone())));
             v
         })
         .collect();
@@ -349,10 +359,65 @@ fn export(c: &Content) -> Value {
                 .map(|s| s.id.as_str())
                 .collect();
             v["used_by_ships"] = json!(used_by);
+            v["unlocked_by"] = json!(unlocked_by(c, &Unlock::Part(p.id.clone())));
             v
         })
         .collect();
-    let frames: Vec<Value> = c.frames.iter().map(|e| entry_json(c, e)).collect();
+    let frames: Vec<Value> = c
+        .frames
+        .iter()
+        .map(|e| {
+            let mut v = entry_json(c, e);
+            v["unlocked_by"] = json!(unlocked_by(c, &Unlock::Frame(e.id.clone())));
+            v
+        })
+        .collect();
+    // Families list what feeds them (parts and armour materials by their salvage) and their research nodes.
+    let families: Vec<Value> = c
+        .families
+        .iter()
+        .map(|e| {
+            let mut v = entry_json(c, e);
+            let parts: Vec<&str> = c
+                .parts
+                .iter()
+                .filter(|p| p.salvage.as_ref().is_some_and(|s| s.family == e.id))
+                .map(|p| p.id.as_str())
+                .collect();
+            let materials: Vec<&str> = c
+                .materials
+                .iter()
+                .filter(|m| m.salvage.as_ref().is_some_and(|s| s.family == e.id))
+                .map(|m| m.id.as_str())
+                .collect();
+            let research: Vec<&str> = c
+                .research
+                .iter()
+                .filter(|n| n.family == e.id)
+                .map(|n| n.id.as_str())
+                .collect();
+            v["salvaged_from_parts"] = json!(parts);
+            v["salvaged_from_materials"] = json!(materials);
+            v["research"] = json!(research);
+            v
+        })
+        .collect();
+    let research: Vec<Value> = c
+        .research
+        .iter()
+        .map(|n| {
+            let mut v = entry_json(c, n);
+            let required_by: Vec<&str> = c
+                .research
+                .iter()
+                .filter(|m| m.requires.contains(&n.id))
+                .map(|m| m.id.as_str())
+                .collect();
+            v["required_by"] = json!(required_by);
+            v
+        })
+        .collect();
+    let starts: Vec<Value> = c.starts.iter().map(|e| entry_json(c, e)).collect();
     let ships: Vec<Value> = c.ships.iter().map(|s| ship_json(c, s)).collect();
     let behavior_nodes: Vec<Value> = c
         .behavior_nodes
@@ -452,6 +517,9 @@ fn export(c: &Content) -> Value {
         "ships": ships,
         "behavior_nodes": behavior_nodes,
         "behaviors": behaviors,
+        "families": families,
+        "research": research,
+        "starts": starts,
         "icons": icons,
         "pages": pages,
         "texts": c.texts(),
@@ -601,5 +669,73 @@ mod tests {
         assert_eq!(locked("parts", "pulse_laser"), json!(false));
         assert_eq!(locked("materials", "automaton_plate"), json!(true));
         assert_eq!(locked("materials", "steel"), json!(false));
+        assert_eq!(locked("frames", "cruiser"), json!(true));
+        assert_eq!(locked("frames", "frigate"), json!(false));
+    }
+
+    /// The career's content: families with what feeds them, research nodes with what needs them, starts, the
+    /// salvage blocks, and per part, material and frame the nodes that unlock it.
+    #[test]
+    fn export_holds_the_career_content() {
+        let base = data::fs::load_pack_dir(&pack_dirs(&[])[0]).unwrap();
+        let c = Content::load(&[base]).unwrap();
+        let v = export(&c);
+        let find = |kind: &str, id: &str| -> Value {
+            let entries = v[kind].as_array().unwrap_or_else(|| panic!("no {kind}"));
+            entries.iter().find(|e| e["id"] == id).unwrap().clone()
+        };
+        let logic = find("families", "logic");
+        assert_eq!(logic["color"], json!("logic"));
+        assert_eq!(logic["text_keys"]["name"], json!("family.logic.name"));
+        assert_eq!(
+            logic["salvaged_from_parts"],
+            json!(["automaton_core", "logic_core"])
+        );
+        assert_eq!(
+            logic["research"],
+            json!(["tamed_core", "mind_expansion_1", "mind_expansion_2"])
+        );
+        assert_eq!(
+            find("families", "hull")["salvaged_from_materials"],
+            json!(["steel", "composite", "reactive", "automaton_plate"])
+        );
+        let node = find("research", "mind_expansion_1");
+        assert_eq!(node["kind"], json!("Refinement"));
+        assert_eq!(node["requires"], json!(["tamed_core"]));
+        assert_eq!(node["required_by"], json!(["mind_expansion_2"]));
+        assert_eq!(node["unlocks"], json!([{"MindCapacity": 1}]));
+        assert_eq!(
+            node["cost"],
+            json!({"data": {"logic": 10.0}, "materials": {"programmable_matter": 2}})
+        );
+        let start = find("starts", "rim_awakening");
+        assert_eq!(
+            (&start["ship"], &start["mind_capacity"]),
+            (&json!("rim_skiff"), &json!(2))
+        );
+        let core = find("parts", "automaton_core");
+        assert_eq!(core["unlocked_by"], json!(["tamed_core"]));
+        assert_eq!(
+            core["salvage"],
+            json!({"family": "logic", "data": 4.0, "materials": {"programmable_matter": 1},
+                   "fragment": {"programmable_matter": 1}})
+        );
+        assert_eq!(find("parts", "pulse_laser")["unlocked_by"], json!([]));
+        assert_eq!(
+            find("materials", "composite")["unlocked_by"],
+            json!(["composite_plating"])
+        );
+        assert_eq!(
+            find("materials", "steel")["salvage"],
+            json!({"family": "hull", "data": 1.0})
+        );
+        assert_eq!(
+            find("frames", "cruiser")["unlocked_by"],
+            json!(["cruiser_drydock"])
+        );
+        assert_eq!(
+            v["texts"]["research.cruiser_drydock.name"],
+            json!("Cruiser drydock")
+        );
     }
 }
