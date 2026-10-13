@@ -104,6 +104,19 @@ impl Vec2 {
     pub fn is_finite(self) -> bool {
         self.x.is_finite() && self.y.is_finite()
     }
+
+    /// Each component, or 0 where it is NaN or infinite ([`finite_or_zero`]).
+    #[inline]
+    pub fn finite_or_zero(self) -> Vec2 {
+        Vec2::new(finite_or_zero(self.x), finite_or_zero(self.y))
+    }
+}
+
+/// `x`, or 0 if it is NaN or infinite: external input (tools, packets, replays) is cleaned at the boundary, so no
+/// NaN reaches the state or the physics.
+#[inline]
+pub fn finite_or_zero(x: f32) -> f32 {
+    if x.is_finite() { x } else { 0.0 }
 }
 
 impl Add for Vec2 {

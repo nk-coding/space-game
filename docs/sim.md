@@ -92,7 +92,11 @@ numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` m
 1. Events of the previous step are dropped (events from calls made since, such as `spawn_ship` or a direct
    `resolve_breakage`, are kept).
 2. Inputs in list order: raw `controls` (switch the ship to `HelmMode::Raw`), `commands` (pilot input,
-   maneuver, goal, behavior, leader, power setting, focus, wake), scripted `damage`.
+   maneuver, goal, behavior, leader, power setting, focus, wake), scripted `damage`. No NaN or infinity from
+   outside reaches the state (13 Oct 2026 review fix): a pilot input, maneuver or goal with one is ignored, a raw
+   throttle counts it as 0, damage ignores it; so do `spawn_ship`, `teleport` and `spawn_projectile` (as 0),
+   and `with_config`, `set_config` and `design_report` replace it with the default
+   (`SimConfig::finite_or_default`). Test `non_finite_inputs_never_reach_the_state`.
 3. `resolve_breakage`: each damaged piece is processed once (connectivity, rebuild, splits) → events; bodies
    are updated, created and removed in the physics, and split pieces ghost each other for a few ticks. Cored
    pieces of a split become vessels of their own, and the mind pass runs if anything changed (see

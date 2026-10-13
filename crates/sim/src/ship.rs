@@ -87,6 +87,16 @@ impl Body {
     pub fn to_world(&self, local: Vec2) -> Vec2 {
         self.pos + Rot::from_angle(self.angle).apply(local)
     }
+
+    /// The body with every NaN or infinite number set to 0 (bodies from outside: spawns, teleports).
+    pub fn finite_or_zero(self) -> Body {
+        Body {
+            pos: self.pos.finite_or_zero(),
+            angle: crate::math::finite_or_zero(self.angle),
+            linvel: self.linvel.finite_or_zero(),
+            angvel: crate::math::finite_or_zero(self.angvel),
+        }
+    }
 }
 
 /// The velocity a new piece inherits when a rigid body breaks: the velocity of its centre of mass as a
@@ -844,11 +854,14 @@ impl Ship {
         &self.controls
     }
 
-    /// Replaces the controls (the throttle list is resized to the engine count) and switches the helm to
-    /// `HelmMode::Raw` (no flight computer).
+    /// Replaces the controls (the throttle list is resized to the engine count; a NaN or infinite throttle
+    /// counts as 0) and switches the helm to `HelmMode::Raw` (no flight computer).
     pub fn set_controls(&mut self, c: &ShipControls) {
         self.helm = HelmMode::Raw;
-        self.controls.throttle.clone_from(&c.throttle);
+        self.controls.throttle.clear();
+        self.controls
+            .throttle
+            .extend(c.throttle.iter().map(|&t| crate::math::finite_or_zero(t)));
         self.controls
             .throttle
             .resize(self.design.engines.len(), 0.0);

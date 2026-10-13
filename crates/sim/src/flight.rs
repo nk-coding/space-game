@@ -40,6 +40,16 @@ pub enum Target {
     Point(Vec2),
 }
 
+impl Target {
+    /// No NaN or infinite number in it (commands are checked at the boundary, `Sim::command`).
+    pub(crate) fn is_finite(&self) -> bool {
+        match self {
+            Target::Point(p) => p.is_finite(),
+            Target::Ship(_) | Target::Piece(..) => true,
+        }
+    }
+}
+
 /// Where a target is now.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TargetState {
@@ -79,6 +89,18 @@ pub struct PilotInput {
     /// Under a lock: extra aim angle (rad, counter-clockwise), the A/D nudge. The client integrates it every tick
     /// with [`nudge_step`], so it springs back when released.
     pub aim_offset: f32,
+}
+
+impl PilotInput {
+    /// No NaN or infinite number in it (commands are checked at the boundary, `Sim::command`).
+    pub(crate) fn is_finite(&self) -> bool {
+        self.stick.is_finite()
+            && self.aim_offset.is_finite()
+            && self.lock.is_none_or(|t| t.is_finite())
+            && self.axes.is_none_or(|a| {
+                a.turn.is_finite() && a.thrust.is_finite() && a.strafe.is_finite()
+            })
+    }
 }
 
 /// Ship-relative pilot axes (PC keyboard), each -1..1.
@@ -162,6 +184,18 @@ pub struct FlightGoal {
     pub heading: HeadingGoal,
     /// Desired world velocity; `None` = coast (no translation control).
     pub velocity: Option<Vec2>,
+}
+
+impl FlightGoal {
+    /// No NaN or infinite number in it (commands are checked at the boundary, `Sim::command`).
+    pub(crate) fn is_finite(&self) -> bool {
+        let heading = match self.heading {
+            HeadingGoal::Keep | HeadingGoal::Auto => true,
+            HeadingGoal::Angle(a) | HeadingGoal::Rate(a) => a.is_finite(),
+            HeadingGoal::Thrust(d) => d.is_finite(),
+        };
+        heading && self.velocity.is_none_or(Vec2::is_finite)
+    }
 }
 
 /// Who flies the ship.

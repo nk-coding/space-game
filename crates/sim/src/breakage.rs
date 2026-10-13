@@ -19,7 +19,7 @@ use crate::ship::{Body, Piece, Ship, inherited_velocity};
 /// What a hit did.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DamageOutcome {
-    /// Nothing there (dead part, empty cell, unknown ship) or a non-positive amount.
+    /// Nothing there (dead part, empty cell, unknown ship) or an amount that is not positive and finite.
     Ignored,
     /// The part survived with this many hit points.
     Damaged { hp_left: f32 },
@@ -46,7 +46,10 @@ impl Ship {
                 None => return DamageOutcome::Ignored,
             },
         };
-        if part >= self.parts.len() || !self.parts[part].alive || amount <= 0.0 || amount.is_nan() {
+        if part >= self.parts.len()
+            || !self.parts[part].alive
+            || !(amount > 0.0 && amount.is_finite())
+        {
             return DamageOutcome::Ignored;
         }
         let ps = &mut self.parts[part];

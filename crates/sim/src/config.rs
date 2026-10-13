@@ -112,6 +112,40 @@ pub struct SimConfig {
 }
 
 impl SimConfig {
+    /// The config with every NaN or infinite number replaced by its default (a config comes from outside: the
+    /// tuning panel, URL parameters, a replay). `Sim::with_config` and `Sim::set_config` apply it, so no NaN
+    /// reaches the ships or the physics.
+    pub fn finite_or_default(mut self) -> SimConfig {
+        let d = SimConfig::default();
+        let fix = |v: &mut f32, d: f32| {
+            if !v.is_finite() {
+                *v = d;
+            }
+        };
+        fix(&mut self.thrust_scale, d.thrust_scale);
+        fix(&mut self.torque_scale, d.torque_scale);
+        fix(&mut self.speed_scale, d.speed_scale);
+        let (f, df) = (&mut self.flight, d.flight);
+        fix(&mut f.max_turn_rate, df.max_turn_rate);
+        fix(&mut f.turn_margin, df.turn_margin);
+        fix(&mut f.turn_gain, df.turn_gain);
+        fix(&mut f.stop_margin, df.stop_margin);
+        fix(&mut f.position_gain, df.position_gain);
+        fix(&mut f.stick_deadzone, df.stick_deadzone);
+        fix(&mut f.keep_heading_fraction, df.keep_heading_fraction);
+        fix(&mut f.key_turn_rate, df.key_turn_rate);
+        let (p, dp) = (&mut self.physics, d.physics);
+        fix(&mut p.friction, dp.friction);
+        fix(&mut p.restitution, dp.restitution);
+        fix(&mut p.sleep_speed, dp.sleep_speed);
+        fix(&mut p.sleep_time, dp.sleep_time);
+        fix(&mut p.ccd_prediction, dp.ccd_prediction);
+        fix(&mut p.impact_min_impulse, dp.impact_min_impulse);
+        fix(&mut p.ram_threshold, dp.ram_threshold);
+        fix(&mut p.ram_damage, dp.ram_damage);
+        self
+    }
+
     /// The mind capacity of an owner (`u32::MAX` beyond the table).
     pub fn mind_capacity(&self, owner: Owner) -> u32 {
         self.mind_capacity

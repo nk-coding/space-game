@@ -165,7 +165,10 @@ impl Sim {
         Sim::with_config(seed, SimConfig::default())
     }
 
+    /// A world with `config` (NaN or infinite numbers in it count as their defaults,
+    /// `SimConfig::finite_or_default`).
     pub fn with_config(seed: u64, config: SimConfig) -> Sim {
+        let config = config.finite_or_default();
         Sim {
             tick: 0,
             seed,
@@ -246,8 +249,9 @@ impl Sim {
     }
 
     /// Changes the config. Thrust, torque and speed scales, the physics tuning and the mind capacities apply to
-    /// every ship at once.
+    /// every ship at once. NaN or infinite numbers count as their defaults (`SimConfig::finite_or_default`).
     pub fn set_config(&mut self, config: SimConfig) {
+        let config = config.finite_or_default();
         self.config = config;
         self.physics.configure(config.physics);
         for s in &mut self.ships {
@@ -280,9 +284,10 @@ impl Sim {
     /// Spawns a ship for `owner`. `body` is the pose and velocity of the blueprint's main piece. Emits
     /// `ShipSpawned`, and `VesselFormed` if it has a logic core (a blueprint in several pieces with cores in
     /// more than one: each further cored piece becomes a vessel of its own). It may start dormant if its
-    /// owner's mind capacity is used up (`VesselDormant`).
+    /// owner's mind capacity is used up (`VesselDormant`). NaN or infinite numbers in `body` count as 0.
     pub fn spawn_ship(&mut self, design: Arc<ShipDesign>, owner: Owner, body: Body) -> ShipId {
         let id = self.ids.ship();
+        let body = body.finite_or_zero();
         let ship = Ship::new(id, design, owner, body, &mut self.ids, &self.config);
         for p in ship.pieces() {
             self.physics.create_body(
@@ -348,8 +353,10 @@ impl Sim {
         self.ships.binary_search_by_key(&id, |s| s.id()).ok()
     }
 
-    /// Sets a piece's pose and velocities in the sim and the physics (tools, tests, respawn).
+    /// Sets a piece's pose and velocities in the sim and the physics (tools, tests, respawn); NaN or infinite
+    /// numbers count as 0.
     pub fn teleport(&mut self, ship: ShipId, piece: PieceId, body: Body) {
+        let body = body.finite_or_zero();
         if let Some(p) = self.ship_mut(ship).and_then(|s| s.piece_mut(piece)) {
             p.body = body;
             p.prev_pos = body.pos;
@@ -358,11 +365,22 @@ impl Sim {
         }
     }
 
-    /// Hands a command to a ship now (same as putting it into the next tick's inputs).
+    /// Hands a command to a ship now (same as putting it into the next tick's inputs). A pilot input, maneuver
+    /// or goal with a NaN or infinite number in it is ignored (it would poison the flight computer and the
+    /// physics body).
     pub fn command(&mut self, ship: ShipId, cmd: ShipCommand) {
         let Some(k) = self.ship_index(ship) else {
             return;
         };
+        let finite = match &cmd {
+            ShipCommand::Pilot(p) => p.is_finite(),
+            ShipCommand::Maneuver { maneuver, .. } => maneuver.is_finite(),
+            ShipCommand::Goal { goal, .. } => goal.is_finite(),
+            _ => true,
+        };
+        if !finite {
+            return;
+        }
         let piloted = self.focus(self.ships[k].owner()) == Some(ship);
         match cmd {
             ShipCommand::Focus => return self.set_focus(ship),
@@ -394,7 +412,7 @@ impl Sim {
     }
 
     /// Spawns a projectile directly (tools, tests). It flies from the next step on and never hits `owner`, nor
-    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048).
+    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048). NaN or infinite numbers count as 0.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_projectile(
         &mut self,
@@ -406,6 +424,9 @@ impl Sim {
         pierce: u32,
         life: f32,
     ) -> crate::weapons::ProjectileId {
+        use crate::math::finite_or_zero;
+        let (pos, vel) = (pos.finite_or_zero(), vel.finite_or_zero());
+        let (damage, life) = (finite_or_zero(damage), finite_or_zero(life));
         let id = self.ids.projectile();
         let team = self.ship(owner).and_then(|s| s.team());
         self.projectiles.push(Projectile {

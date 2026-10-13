@@ -419,6 +419,7 @@ pub fn design_report(
     blueprint: &Blueprint,
     config: &SimConfig,
 ) -> Result<DesignReport, String> {
+    let config = &config.finite_or_default();
     let design = Arc::new(ShipDesign::compile(content, blueprint)?);
     let mut ship = Ship::new(
         ShipId(0),

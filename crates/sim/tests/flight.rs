@@ -875,3 +875,49 @@ fn a_lock_turn_while_thrusting_plans_with_what_the_thrust_leaves_free() {
     println!("runner + 2 pods, lock 90° left with W: {reached:.2} s, overshoot {:.2}°", overshoot.to_degrees());
     assert!(overshoot < 2f32.to_radians(), "overshoot {}°", overshoot.to_degrees());
 }
+
+/// NaN and infinity from outside (a malformed packet, a tool) never reach the state (13 Oct 2026 review: one NaN
+/// raw throttle made the body NaN for good and panicked the debug state hash). Commands with such numbers are
+/// ignored, raw throttles, bodies and projectiles count them as 0, damage ignores them, a config takes the
+/// defaults for them. Every step below hashes the state (debug builds assert there is no NaN in it).
+#[test]
+fn non_finite_inputs_never_reach_the_state() {
+    let c = content();
+    let (nan, inf) = (f32::NAN, f32::INFINITY);
+    let mut cfg = sim::SimConfig::default();
+    cfg.thrust_scale = nan;
+    cfg.flight.turn_margin = nan;
+    cfg.physics.friction = inf;
+    let mut w = sim::Sim::with_config(1, cfg);
+    assert_eq!(*w.config(), sim::SimConfig::default());
+    let d = design(&c, "halvex_runner");
+    let raw = w.spawn_ship(d.clone(), sim::Owner::PLAYER, Body { pos: Vec2::new(nan, 0.0), angle: inf, ..Default::default() });
+    let flown = w.spawn_ship(d.clone(), sim::Owner::PLAYER, Body::at(Vec2::new(40.0, 0.0), 0.0));
+    w.command(flown, ShipCommand::Maneuver { maneuver: Maneuver::Hold { at: Vec2::new(40.0, 10.0) }, fire: false });
+    let bad = [
+        ShipCommand::Pilot(PilotInput { stick: Vec2::new(nan, 1.0), ..Default::default() }),
+        ShipCommand::Pilot(PilotInput { lock: Some(Target::Point(Vec2::new(0.0, inf))), ..Default::default() }),
+        ShipCommand::Goal { goal: FlightGoal { heading: HeadingGoal::Angle(nan), velocity: None }, fire: false },
+        ShipCommand::Goal { goal: FlightGoal { heading: HeadingGoal::Keep, velocity: Some(Vec2::new(inf, 0.0)) }, fire: false },
+        ShipCommand::Maneuver { maneuver: Maneuver::Orbit { target: Target::Ship(raw), radius: nan, ccw: true }, fire: false },
+    ];
+    for t in 0..60 {
+        w.step(&TickInputs {
+            controls: vec![(raw, controls(d.engines.len(), nan, false, true))],
+            commands: vec![(flown, bad[t % bad.len()])],
+            damage: vec![sim::DamageCommand { ship: raw, target: DamageTarget::Part(0), amount: inf }],
+        });
+    }
+    assert!(matches!(w.ship(flown).unwrap().helm(), sim::HelmMode::Maneuver { maneuver: Maneuver::Hold { .. }, .. }));
+    assert!(w.ship(raw).unwrap().part(0).alive, "infinite damage is ignored");
+    let key = piece(&w, raw).id;
+    w.teleport(raw, key, Body { pos: Vec2::new(inf, 3.0), angle: 0.5, linvel: Vec2::new(nan, 0.0), angvel: nan });
+    w.spawn_projectile(raw, data::WeaponFamily::Kinetic, Vec2::new(nan, 0.0), Vec2::new(0.0, inf), nan, 1, inf);
+    w.set_config(cfg);
+    idle(&mut w, 30);
+    for s in [raw, flown] {
+        let b = piece(&w, s).body;
+        assert!(b.pos.is_finite() && b.angle.is_finite() && b.linvel.is_finite() && b.angvel.is_finite(), "{b:?}");
+    }
+    assert_eq!(*w.config(), sim::SimConfig::default());
+}
