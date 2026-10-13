@@ -5,16 +5,18 @@
 // Runner's pulse lasers (60 m) and beams (45 m) and died within a second or two each; then it shot from just
 // outside the pulse lasers and circled at 50 m (67%). 13 Oct 2026 (GDR-0061): 50 m was exactly where the
 // Runner's beams stop touching a raider (a knife edge); it now circles at 58% (43.5 m), through the beams
-// (see docs/sim.md "Behaviors").
+// (see docs/sim.md "Behaviors"). 14 Oct 2026 (GDR-0074): the cannon's shot grew to 1 hit point (it takes a
+// 1-hit-point gun off in one hit), so the pack attacks for 3 s of every 9 instead of 5 and circles for the
+// other 6 (docs/results/slice-balance-2026-10-13.md "GDR-0074").
 (
     id: "raider_basic",
     name: "Raider pack",
     summary: "Close in and shoot, then strafe around the target for a few seconds, and again.",
-    description: "Picks the nearest enemy. Within engagement range it attacks for five seconds out of every nine and circles the target for the other four, so a pack never sits still in front of the guns.",
+    description: "Picks the nearest enemy. Within engagement range it attacks for three seconds out of every nine and circles the target for the other six, so a pack never sits still in front of the guns.",
     tags: ["automaton", "attack"],
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(58%)",
+        "when target_in_range(120%) and cycle(9s) >= 3s -> orbit(58%)",
         "always -> approach(85%)",
     ],
 )

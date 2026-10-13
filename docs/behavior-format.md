@@ -140,7 +140,7 @@ file says.
     tags: ["automaton", "attack"],
     target: "nearest",
     rules: [
-        "when target_in_range(120%) and cycle(9s) >= 5s -> orbit(58%)",
+        "when target_in_range(120%) and cycle(9s) >= 3s -> orbit(58%)",
         "always -> approach(85%)",
     ],
 )
