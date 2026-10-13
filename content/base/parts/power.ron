@@ -1,4 +1,6 @@
 // Power parts. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [
     (
         id: "fission_reactor",
@@ -14,6 +16,7 @@
         hp: 1,
         power: (output: 10),
         heat: (output: 3, limit: 6),
+        salvage: (family: "power", data: 4),
     ),
     (
         id: "fusion_reactor",
@@ -30,6 +33,7 @@
         hp: 4,
         power: (output: 30),
         heat: (output: 6, limit: 8),
+        salvage: (family: "power", data: 10),
     ),
     (
         id: "capacitor",
@@ -44,6 +48,7 @@
         mass: 1,
         hp: 1,
         heat: (output: 0.15, limit: 4),
+        salvage: (family: "power", data: 2),
         bonuses: [
             (target: Tag("laser"), stat: "fire_rate", effect: Percent(15), max_stacks: 3),
         ],

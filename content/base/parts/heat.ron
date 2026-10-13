@@ -1,4 +1,6 @@
 // Heat. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
+// `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
+// PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [
     (
         id: "radiator",
@@ -13,6 +15,7 @@
         mass: 1,
         hp: 1,
         radiator: (vent: 1.5),
+        salvage: (family: "thermal", data: 2),
         bonuses: [
             (target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [SourceVenting]),
         ],
