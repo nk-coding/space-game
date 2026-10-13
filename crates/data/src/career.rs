@@ -453,27 +453,6 @@ impl Career {
             notes.push(note.entry(Kind::Start, &old).field("start"));
         }
 
-        if self.generator == 0 {
-            notes.push(
-                Problem::warning(format!(
-                    "unknown voyage roller version 0: voyages roll with version {GENERATOR}"
-                ))
-                .field("generator"),
-            );
-            self.generator = GENERATOR;
-        } else if self.generator < GENERATOR {
-            // No stored fact refers to a rolled voyage, so the migration loses nothing (see `GENERATOR`).
-            notes.push(
-                Problem::warning(format!(
-                    "voyages were rolled with version {} of the roller: from now on they roll with version \
-                     {GENERATOR}",
-                    self.generator
-                ))
-                .field("generator"),
-            );
-            self.generator = GENERATOR;
-        }
-
         let mut kept: Vec<String> = Vec::new();
         for (k, id) in std::mem::take(&mut self.researched).into_iter().enumerate() {
             let field = format!("researched[{k}]");
@@ -560,6 +539,28 @@ impl Career {
                 );
                 self.last_haul = None;
             }
+        }
+
+        // Last: the least interesting change for the status line, which shows the first.
+        if self.generator == 0 {
+            notes.push(
+                Problem::warning(format!(
+                    "unknown voyage roller version 0: voyages roll with version {GENERATOR}"
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
+        } else if self.generator < GENERATOR {
+            // No stored fact refers to a rolled voyage, so the migration loses nothing (see `GENERATOR`).
+            notes.push(
+                Problem::warning(format!(
+                    "voyages were rolled with version {} of the roller: from now on they roll with version \
+                     {GENERATOR}",
+                    self.generator
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
         }
         notes
     }

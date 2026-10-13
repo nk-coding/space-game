@@ -204,14 +204,15 @@ path such as `researched[1]` or `data.lasers`) for the status line:
 
 - a pack of `packs` that is not loaded now is noted; `packs` becomes the current list;
 - an unknown `start` is replaced by the content's first start;
-- a `generator` below `GENERATOR` is migrated to it with a note (0, which no build writes, too);
 - researched nodes the content doesn't have, or listed twice, are dropped (their unlocks go with them);
 - data of unknown families and materials the content doesn't have are dropped, in the stores and in the last haul's
   report; data that is not finite or below 0 is dropped; amounts above `MAX_DATA` or `MAX_MATERIALS` are lowered to
   it; zero amounts are dropped silently;
 - records of voyages the content doesn't know are dropped, and so is a last haul from one;
 - a voyage still `underway` was interrupted: it ends as `Lost` (ticks 0) when its launch is on record, else the
-  mark is dropped.
+  mark is dropped;
+- last (the least interesting note, so the status line shows another first): a `generator` below `GENERATOR` is
+  migrated to it with a note (0, which no build writes, too).
 
 The queries themselves cope with content that was not reconciled (an unknown start gives mind capacity 0 plus
 research and opens only the voyages whose `opens_after` are all cleared; unknown nodes unlock nothing; research data
