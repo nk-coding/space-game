@@ -196,7 +196,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
         .spawn((
             BehaviorRoot,
             // Opens and closes with a transition (`ui_kit::ScreenFx`); the station fades out behind it.
-            ScreenFx::closed().covering(),
+            ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
             Visibility::Hidden,
         ))
@@ -326,7 +326,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // and SAVE (as in the drydock).
             root.spawn((ScreenPart::new(Edge::Bottom, 2), Node { height: px(40), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..abs(Some(SIDE), Some(20.0), None, Some(14.0)) }))
                 .with_children(|bb| {
-                    spawn_pill(bb, fonts, "‹  DRYDOCK", 10.0, 32.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Back), Tip::key("DRYDOCK", "ESC")));
+                    spawn_pill(bb, fonts, "‹  DRYDOCK", 10.0, 32.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Back), Tip::new("DRYDOCK")));
                     bb.spawn(Node { width: px(8), ..default() });
                     for (g, action, tip) in [(Glyph::Undo, BehaviorAction::Undo, Tip::key("UNDO", "CTRL+Z")), (Glyph::Redo, BehaviorAction::Redo, Tip::key("REDO", "CTRL+SHIFT+Z"))] {
                         bb.spawn((ring_node(34.0), BehaviorButton(action), tip)).with_children(|r| {

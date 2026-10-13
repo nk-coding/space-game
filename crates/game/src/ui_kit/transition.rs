@@ -79,20 +79,26 @@ pub struct ScreenFx {
     t: f32,
     /// Nothing left to write until it is asked to change.
     settled: bool,
-    /// The screen hides the world behind it ([`WorldCover`]).
-    covers: bool,
+    /// How much the screen hides the world behind it while open ([`WorldCover`]; 0: not at all).
+    covers: f32,
     material: Option<Handle<AtlasMaterial>>,
 }
 
 impl ScreenFx {
     /// Closed (spawn screens like this, hidden).
     pub fn closed() -> Self {
-        Self { open: false, t: 0.0, settled: false, covers: false, material: None }
+        Self { open: false, t: 0.0, settled: false, covers: 0.0, material: None }
     }
 
     /// The screen hides the world behind it while open.
     pub fn covering(self) -> Self {
-        Self { covers: true, ..self }
+        Self { covers: 1.0, ..self }
+    }
+
+    /// The screen hides the world behind it while open all but a trace ([`BEHIND`] of it still shows, as the
+    /// shipyard behind the BEHAVIOR screen and FLEET).
+    pub fn dimming(self) -> Self {
+        Self { covers: 1.0 - BEHIND, ..self }
     }
 
     /// Asked to be open (it may still be on its way).
@@ -130,6 +136,10 @@ pub fn snap_screen(fx: &mut Mut<ScreenFx>, open: bool) {
         fx.settled = false;
     }
 }
+
+/// How much of the world still shows behind a dimming screen ([`ScreenFx::dimming`]; default for review: just
+/// barely, under the screen's own backdrop).
+pub const BEHIND: f32 = 0.15;
 
 /// How much the open covering screens hide the world (0: not at all, 1: fully).
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
@@ -285,9 +295,7 @@ fn animate(
                 *vis = want;
             }
         }
-        if fx.covers {
-            covered = covered.max(fx.alpha());
-        }
+        covered = covered.max(fx.covers * fx.alpha());
     }
     if cover.0 != covered {
         cover.0 = covered;

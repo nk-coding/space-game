@@ -5,7 +5,7 @@
 //! `saving.rs` SAVE and `TestInRange`, `list.rs` the BEHAVIORS list.
 //!
 //! Keys (only while no text field or the text view has the keyboard, and the BEHAVIORS list is closed): Esc
-//! cancels REPLACE, else back to the drydock; T test in range; / search the palette; Ctrl+Z undo, Ctrl+Shift+Z or
+//! cancels REPLACE, else back the way the screen was opened (home or the drydock); T test in range; / search the palette; Ctrl+Z undo, Ctrl+Shift+Z or
 //! Ctrl+Y redo; Delete or Backspace removes the selected condition, rule or target line. Ctrl+S saves, also in the
 //! text view. With the list open, the list handles its keys (Esc closes it).
 
@@ -89,6 +89,7 @@ pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     edit: Res<EditState>,
+    ui: Res<BehaviorUi>,
     list: Res<BehaviorList>,
     mut contexts: EguiContexts,
     mut search: Query<&mut TextField, With<SearchField>>,
@@ -123,7 +124,11 @@ pub(super) fn shortcuts(
             }
             (_, true) => {}
             (KeyCode::Escape, _) => {
-                out.write(if edit.replacing.is_some() { BehaviorAction::Replace } else { BehaviorAction::Back });
+                out.write(match (edit.replacing.is_some(), ui.from_home) {
+                    (true, _) => BehaviorAction::Replace,
+                    (false, true) => BehaviorAction::Menu,
+                    (false, false) => BehaviorAction::Back,
+                });
             }
             (KeyCode::Delete | KeyCode::Backspace, _) => {
                 out.write(BehaviorAction::Delete);
@@ -169,6 +174,16 @@ pub(super) fn apply(
             | BehaviorAction::Undo
             | BehaviorAction::Redo => {}
         }
+    }
+}
+
+/// Remembers whether the screen was opened from home or from the drydock (Esc goes back there); coming back from a
+/// test flight keeps it.
+pub(super) fn way_in(mut transitions: MessageReader<StateTransitionEvent<AppMode>>, mut ui: ResMut<BehaviorUi>) {
+    match transitions.read().last().and_then(|t| t.exited) {
+        Some(AppMode::Home) => ui.from_home = true,
+        Some(AppMode::Drydock) => ui.from_home = false,
+        _ => {}
     }
 }
 

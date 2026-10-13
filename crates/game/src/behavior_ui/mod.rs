@@ -1,7 +1,7 @@
 //! The BEHAVIOR screen (GDR-0057): how the design on the drydock's grid thinks, in the look of
 //! `docs/concept/boards/ui-mockups/phone-behavior-editor.png` (laid out for desktop, 1280 × 720 and up). Opened
-//! with the drydock's BEHAVIOR button ([`AppMode::Behavior`]); Esc or the DRYDOCK pill go back, the design
-//! untouched. `?scene=behavior` starts here; `?behavior=<id>` opens a content or saved behavior instead of the
+//! with the drydock's BEHAVIOR button or from home ([`AppMode::Behavior`]); Esc goes back the way it came, the
+//! DRYDOCK pill to the drydock, the design untouched. `?scene=behavior` starts here; `?behavior=<id>` opens a content or saved behavior instead of the
 //! design's.
 //!
 //! The mode, the screen and its widgets, the graph and text views of the behavior, the inspector and the
@@ -97,6 +97,9 @@ pub struct BehaviorUi {
     pub test_mode: TestMode,
     /// The palette search.
     pub search: String,
+    /// The screen was opened from home (the shipyard's behavior building), so Esc goes back there; from the
+    /// drydock it goes back to the drydock. A test flight keeps the way in.
+    pub from_home: bool,
 }
 
 /// What the screen edits for: the design's name and its rule slots (from its logic cores), set when the
@@ -136,7 +139,7 @@ impl Plugin for BehaviorPlugin {
 
             // The design report (the drydock's, `drydock::report`) is brought up to date first: the reach and TEST IN
             // RANGE read it.
-            .add_systems(OnEnter(AppMode::Behavior), (design_report, (saving::open, controls::measure_reach)).chain())
+            .add_systems(OnEnter(AppMode::Behavior), (actions::way_in, design_report, (saving::open, controls::measure_reach)).chain())
             .add_systems(OnExit(AppMode::Behavior), (controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
