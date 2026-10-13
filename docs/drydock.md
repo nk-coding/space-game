@@ -434,7 +434,7 @@ Written 13 Oct 2026 for the behavior editor ([GDR-0057](gdr/0057-behavior-editor
 their own, a design names one, TEST IN RANGE watches it or flies alongside it). The plumbing under the BEHAVIOR
 screen: `crates/game/src/drydock/behaviors.rs` (behaviors on the storage layer, the checks, flights),
 `drydock/share.rs` (they travel with designs, [above](#sharing-export-files-and-share-codes)), `test_range.rs` and
-`scene.rs` (TEST IN RANGE). Tests: `cargo test -p game -- behaviors share test_range`. Screenshots (1280 × 720,
+`scene.rs` (TEST IN RANGE). Tests: `cargo test -p game -- behaviors share test_range scene`. Screenshots (1280 × 720,
 F3 on): `docs/results/behavior-test-watch.png` (`?scene=watch&behavior=careful`: a saved copy of the skirmisher
 that flees below 50% hull, every rule with why), `behavior-test-alongside.png` (`?scene=alongside`: the working
 design names `careful`; the wingman on the right runs it, the player's ship sits unpiloted at the centre).
