@@ -67,6 +67,8 @@ const INACTIVE: f32 = 0.4;
 const DASHES: usize = 160;
 /// Wheel steps in px.
 const WHEEL_LINE: f32 = 40.0;
+/// The palette keeps at least this height (about three rows of pills); a taller inspector scrolls.
+const PALETTE_MIN: f32 = 120.0;
 /// The dot grid behind the graph: spacing in logical px, FX layer (under ships and effects; the world is empty).
 const DOT_STEP: f32 = 28.0;
 const Z_DOTS: f32 = 4.0;
@@ -133,6 +135,12 @@ pub(super) struct ChipLook {
 /// A cell of a rule's row: the row is lit while the rule (or one of its nodes) is selected.
 #[derive(Component, Clone, Copy, Debug)]
 pub(super) struct RowBand(RuleId);
+
+impl RowBand {
+    pub(super) fn rule(&self) -> RuleId {
+        self.0
+    }
+}
 
 /// Fonts, colours and materials for spawning.
 pub(super) struct Kit<'a> {
@@ -249,7 +257,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // The divider and the right column: the inspector, ADD NODE with its search and the palette.
             root.spawn((Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
             root.spawn(Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) }).with_children(|rp| {
-                rp.spawn((InspectorBody, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() }));
+                rp.spawn((InspectorBody, ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() }));
                 rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
                 rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
                 rp.spawn((
@@ -286,7 +294,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         row_gap: px(7),
                         flex_grow: 1.0,
                         flex_basis: px(0),
-                        min_height: px(0),
+                        min_height: px(PALETTE_MIN),
                         overflow: Overflow::scroll_y(),
                         ..default()
                     },
@@ -597,7 +605,7 @@ pub(super) fn rebuild_inspector(
     content: Res<GameContent>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
-    body: Single<Entity, With<InspectorBody>>,
+    body: Single<(Entity, &mut ScrollPosition), With<InspectorBody>>,
     mut built: Local<Option<InspectorKey>>,
 ) {
     let Some(ed) = draft.editor() else { return };
@@ -609,13 +617,18 @@ pub(super) fn rebuild_inspector(
     if built.as_ref() == Some(&key) {
         return;
     }
+    let (body, mut scroll) = body.into_inner();
+    // Another selection starts at the top; an edit keeps the place.
+    if built.as_ref().is_none_or(|b| b.selected != key.selected) {
+        scroll.0 = Vec2::ZERO;
+    }
     *built = Some(key);
     let i = ui.selected.as_ref().and_then(|s| inspect(ed, s, &cx)).unwrap_or_else(|| {
         let source = draft.source.as_deref().and_then(|id| content.0.behaviors.get(id));
         behavior_inspection(&draft.name, source, ed.rules().len())
     });
     let kit = Kit { fonts: &fonts, ui: style.ui };
-    commands.entity(*body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
+    commands.entity(body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
 }
 
 /// Rebuilds the palette when the search changes.
@@ -868,7 +881,10 @@ pub(super) fn scroll(
     window: Single<&Window, With<PrimaryWindow>>,
     wheel: Res<AccumulatedMouseScroll>,
     ui: Res<BehaviorUi>,
-    mut areas: Query<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children, Has<GraphViewport>), Or<(With<GraphViewport>, With<PaletteList>)>>,
+    mut areas: Query<
+        (&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children, Has<GraphViewport>),
+        Or<(With<GraphViewport>, With<PaletteList>, With<InspectorBody>)>,
+    >,
     contents: Query<&ComputedNode>,
 ) {
     if wheel.delta.y == 0.0 {
@@ -883,7 +899,8 @@ pub(super) fn scroll(
         if (is_graph && ui.view != BehaviorView::Graph) || !node.contains_point(*tf, cursor) {
             continue;
         }
-        // The content's height: the graph has one content node, the palette's pills wrap inside it.
+        // The content's height: the graph has one content node; the palette's pills and the inspector's blocks are
+        // laid out inside their node.
         let content_h = if is_graph {
             children.iter().filter_map(|c| contents.get(c).ok()).map(|c| c.size.y).sum::<f32>()
         } else {

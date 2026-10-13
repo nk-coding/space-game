@@ -16,6 +16,7 @@
 //! * [`actions`]: [`BehaviorAction`], the one message the screen's buttons and keys send; the UI-state handler.
 //! * [`screen`]: the screen's nodes (`ui_kit` widgets), rebuilt from the data above when it changes.
 //! * [`controls`]: the inspector's controls as nodes; slider drags and note fields.
+//! * [`reorder`]: dragging a rule's row to another place in the list.
 //! * [`text_view`]: the TEXT view (an egui text editor in the look) with live errors.
 //! * [`dashed`]: the dashed pill outline (Rhai nodes, `+ RULE`), a UI material.
 //!
@@ -31,6 +32,7 @@ pub mod draft;
 pub mod edit;
 pub mod graph;
 pub mod inspect;
+pub mod reorder;
 pub mod screen;
 pub mod text_view;
 pub mod values;
@@ -114,6 +116,7 @@ impl Plugin for BehaviorPlugin {
             .init_resource::<edit::EditState>()
             .init_resource::<controls::SliderDrag>()
             .init_resource::<controls::DesignReach>()
+            .init_resource::<reorder::RowDrag>()
             .add_message::<BehaviorAction>()
             .configure_sets(
                 Update,
@@ -131,7 +134,7 @@ impl Plugin for BehaviorPlugin {
             .add_systems(
                 Update,
                 (
-                    (actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes).in_set(BehaviorSet::Input),
+                    (actions::clicks, actions::shortcuts, screen::sync_search, controls::commit_notes, reorder::drag_rows).in_set(BehaviorSet::Input),
                     (fit_window, actions::apply, edit::apply, controls::drag_sliders, screen::scroll).chain().in_set(BehaviorSet::Apply),
                     (
                         screen::show_view,
@@ -150,7 +153,7 @@ impl Plugin for BehaviorPlugin {
                 ),
             )
             .add_systems(EguiPrimaryContextPass, text_view::editor.run_if(in_state(AppMode::Behavior)))
-            .add_systems(PostUpdate, screen::draw_dots.run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
+            .add_systems(PostUpdate, (screen::draw_dots, reorder::draw_drop_line).run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
     }

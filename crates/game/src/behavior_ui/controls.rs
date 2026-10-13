@@ -24,13 +24,15 @@ use crate::ui_kit::{
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use super::draft::BehaviorDraft;
-use super::edit::{EditState, apply_edit};
+use super::edit::{Edit, EditState, apply_edit};
 use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SliderSpec, SwitchRow};
 use super::screen::{Kit, role_color};
 use crate::style::ui_color;
 
 /// Logical px.
 const LINE_W: f32 = 1.2;
+/// Space above each block of the inspector.
+const GAP: f32 = 12.0;
 const STEPPER: f32 = 22.0;
 const SLIDER_H: f32 = 18.0;
 const KNOB: f32 = 12.0;
@@ -95,7 +97,7 @@ pub(super) fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Insp
             Control::Choice(ch) => spawn_choice(p, kit, ch),
             Control::Switch(s) => spawn_switch(p, kit, s),
             Control::Buttons { label, buttons } => {
-                p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), margin: UiRect::top(px(14)), ..default() }).with_children(|col| {
+                p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), margin: UiRect::top(px(GAP)), ..default() }).with_children(|col| {
                     if !label.is_empty() {
                         col.spawn(tracked(kit.fonts, label, 8.5, kit.c(Tone::Label, 1.0), 0.3));
                     }
@@ -114,7 +116,7 @@ pub(super) fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Insp
         }
     }
     if let Some(script) = &i.script {
-        p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(14)), ..default() }).with_children(|n| {
+        p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(GAP)), ..default() }).with_children(|n| {
             n.spawn(tracked(kit.fonts, "RHAI SCRIPT", 8.5, kit.c(Tone::Gold, 1.0), 0.3));
             n.spawn(prose(kit.fonts, script, 11.0, kit.c(Tone::Gold, 0.7)));
         });
@@ -151,7 +153,7 @@ fn spawn_label(p: &mut ChildSpawnerCommands, kit: &Kit, label: &str, default: bo
 }
 
 fn spawn_number(p: &mut ChildSpawnerCommands, kit: &Kit, n: &NumberRow) {
-    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), margin: UiRect::top(px(14)), ..default() }).with_children(|col| {
+    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), margin: UiRect::top(px(GAP)), ..default() }).with_children(|col| {
         let mut text = Entity::PLACEHOLDER;
         col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, justify_content: JustifyContent::SpaceBetween, column_gap: px(8), ..default() })
             .with_children(|h| {
@@ -232,7 +234,7 @@ fn spawn_slider(p: &mut ChildSpawnerCommands, kit: &Kit, spec: SliderSpec, text:
 }
 
 fn spawn_choice(p: &mut ChildSpawnerCommands, kit: &Kit, ch: &ChoiceRow) {
-    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), margin: UiRect::top(px(14)), ..default() }).with_children(|col| {
+    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(7), margin: UiRect::top(px(GAP)), ..default() }).with_children(|col| {
         col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() })
             .with_children(|h| {
                 h.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, column_gap: px(8), ..default() })
@@ -255,7 +257,7 @@ fn spawn_switch(p: &mut ChildSpawnerCommands, kit: &Kit, s: &SwitchRow) {
         flex_direction: FlexDirection::Row,
         align_items: AlignItems::Center,
         justify_content: JustifyContent::SpaceBetween,
-        margin: UiRect::top(px(14)),
+        margin: UiRect::top(px(GAP)),
         ..default()
     })
     .with_children(|r| {
@@ -289,7 +291,7 @@ fn spawn_switch(p: &mut ChildSpawnerCommands, kit: &Kit, s: &SwitchRow) {
 
 /// NOTE and a one-line field.
 fn spawn_note(p: &mut ChildSpawnerCommands, kit: &Kit, target: NoteTarget, text: &str) {
-    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), margin: UiRect::top(px(14)), ..default() }).with_children(|col| {
+    p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), margin: UiRect::top(px(GAP)), ..default() }).with_children(|col| {
         col.spawn(tracked(kit.fonts, if target == NoteTarget::Target { "NOTE ON THE TARGET LINE" } else { "NOTE" }, 8.5, kit.c(Tone::Label, 1.0), 0.3));
         col.spawn((
             NoteField { target, note: text.to_string(), focused: false },
@@ -318,13 +320,13 @@ fn spawn_note(p: &mut ChildSpawnerCommands, kit: &Kit, target: NoteTarget, text:
 /// A note field that lets go of the keyboard writes its note (if it changed) as one edit.
 pub(super) fn commit_notes(mut fields: Query<(&mut NoteField, &TextField)>, mut out: MessageWriter<BehaviorAction>) {
     for (mut nf, tf) in &mut fields {
+        // A written note changes the program, so the inspector is rebuilt with it.
         if nf.focused && !tf.focused && tf.value.trim() != nf.note.trim() {
             let note = tf.value.trim().to_string();
             out.write(BehaviorAction::Edit(match nf.target {
-                NoteTarget::Rule(rule) => super::edit::Edit::SetRuleNote { rule, note: note.clone() },
-                NoteTarget::Target => super::edit::Edit::SetTargetNote(note.clone()),
+                NoteTarget::Rule(rule) => Edit::SetRuleNote { rule, note },
+                NoteTarget::Target => Edit::SetTargetNote(note),
             }));
-            nf.note = note;
         }
         if nf.focused != tf.focused {
             nf.focused = tf.focused;

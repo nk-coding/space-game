@@ -360,7 +360,7 @@ fn params(out: &mut Vec<Control>, at: Option<NodeRef>, params: &[ParamView], cx:
         if let ParamType::Choice(options) = &p.param.ty {
             out.push(Control::Choice(ChoiceRow {
                 label,
-                default: p.is_default,
+                default: !p.written,
                 reset,
                 options: options
                     .iter()
@@ -390,7 +390,7 @@ fn params(out: &mut Vec<Control>, at: Option<NodeRef>, params: &[ParamView], cx:
             value: p.value.to_string(),
             hint: reach_hint(&p.value, cx.reach),
             range: if units.is_empty() { scale.label() } else { String::new() },
-            default: p.is_default,
+            default: !p.written,
             reset,
             minus: step(scale.down(x)),
             plus: step(scale.up(x)),
