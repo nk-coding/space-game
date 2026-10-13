@@ -388,7 +388,9 @@ Reactors make `heat × (1/3 + 2/3 × load)` (none when nothing draws). The stead
 model's (`loss·T = gen − Σ K (T − T_n)`, K = 1). A part above its `heat.limit` shuts down (no work, no draw,
 no output) from the next tick until it cools below **75%** of the limit (hysteresis). Constants in
 `ship::tuning`, all placeholders. With the current Halvex Runner layout nothing overheats under combat load;
-flat out with the gyros working all the time the shield emitters overheat after about 15 s.
+flat out with the gyros working all the time the shield emitters overheat after about 15 s. Links never cross
+pieces, so a ship that owns little of its blueprint (a split-off vessel) runs the step over its pieces' own parts
+and links (`Piece::heat_links`); see [Vessels, Cost](#cost-1).
 
 ### Adjacency bonuses
 
@@ -1042,6 +1044,18 @@ interleaved with a build of the commit before (3 runs each, load average 2–7, 
 | cut a 2000-part slab in two (`Sim::resolve_breakage`), both halves with cores | 0.08–0.11 | 0.13–0.15 (the second half becomes a vessel) |
 
 The per-tick differences are within the VM's noise; the split pays about 0.05 ms for copying 2000 parts' state.
+
+**Vessels split off a big blueprint** (13 Oct 2026 review fix): each vessel keeps the whole blueprint's per-part
+state (dead outside its own pieces), and until then its heat pass walked every part and link of the blueprint,
+so a 2000-part slab shot into 25 cored chunks cost 25 times the slab per tick. Each piece now keeps its own heat
+links (`Piece::heat_links`, built on rebuilds), and a ship that owns less than half of its blueprint's parts
+walks only its pieces' parts and links; one that owns more keeps the single pass over everything (cheaper per
+part). Both give bit-identical heat (the state hashes of all four scenarios are unchanged). Measured with a
+throwaway harness (a 50×40 slab with a core in every 10×8 block, cut into 25 cored chunks: 25 vessels, 1575
+parts; 600 ticks, medians of five runs, native release, load average 5–13): step 0.073–0.085 ms before,
+0.011 ms after; the intact slab 0.0069–0.0071 ms before, 0.0066–0.0067 ms after. A rebuild walks the design's
+links once more (about 4 µs for 2000 parts; "lose one part" in `sim_perf` 0.052–0.054 → 0.057 ms). The copy at
+the split itself is unchanged (once per split, not per tick).
 
 ### Determinism and scenarios
 

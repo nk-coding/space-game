@@ -442,6 +442,10 @@ pub struct Piece {
     pub(crate) consumers: Vec<Consumer>,
     /// Parts that make heat without a power role (e.g. capacitors).
     pub(crate) heaters: Vec<PartIdx>,
+    /// The links heat conducts through: indices into `ShipDesign::links` with both ends in this piece, in that
+    /// order (links never cross pieces). The heat pass walks these and `parts`, so a vessel split off a big
+    /// blueprint costs what its own parts cost, not the whole blueprint.
+    pub(crate) heat_links: Vec<u32>,
     pub(crate) dirty: bool,
     /// The idle set must be recomputed (rebuilt piece, changed power setting).
     pub(crate) control_dirty: bool,
@@ -496,6 +500,7 @@ impl Piece {
             reactors: Vec::new(),
             consumers: Vec::new(),
             heaters: Vec::new(),
+            heat_links: Vec::new(),
             dirty: false,
             control_dirty: true,
         }
@@ -1040,6 +1045,7 @@ impl Ship {
             if fp.mass != piece.mass
                 || fp.colliders != piece.colliders
                 || fp.consumers != piece.consumers
+                || fp.heat_links != piece.heat_links
             {
                 return Err(format!(
                     "piece {:?}: caches differ from a rebuild",
@@ -1107,6 +1113,15 @@ impl Ship {
 
         // Power lists (reactors, consumers in allocation order, heaters).
         self.rebuild_power_lists(&mut piece);
+
+        // Heat links: the design's links between alive parts of this piece, in the design's order.
+        piece.heat_links.clear();
+        for (i, l) in d.links.iter().enumerate() {
+            let (a, b) = (&self.parts[l.a as usize], &self.parts[l.b as usize]);
+            if a.alive && b.alive && a.piece == pid && b.piece == pid {
+                piece.heat_links.push(i as u32);
+            }
+        }
 
         // Torque sources (gyros, logic cores) and cores.
         piece.cores.clear();
@@ -1418,35 +1433,48 @@ impl Ship {
             }
         }
 
-        // Heat (ship-wide; links never cross pieces). Generation and conduction explicit, loss implicit.
+        // Heat. Generation and conduction explicit, loss implicit. Links never cross pieces, so the ship can
+        // walk its pieces' own parts and links (`Piece::heat_links`): a vessel split off a big blueprint then
+        // costs what it owns, not the whole blueprint. A ship that still holds most of its blueprint walks all
+        // parts and links in one pass instead (cheaper per part). Both give the same numbers: every part's sums
+        // run in the same order. Every energy is written before it is read, so the scratch needs no clearing.
         let e = &mut scratch.energy;
-        e.clear();
-        e.resize(parts.len(), 0.0);
-        for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
-            if ps.alive {
-                *e = ps.heat * k.cap + k.out * ps.work * DT;
-            }
+        if e.len() != parts.len() {
+            e.clear();
+            e.resize(parts.len(), 0.0);
         }
-        for l in &d.links {
-            let (a, b) = (l.a as usize, l.b as usize);
-            if !parts[a].alive || !parts[b].alive {
-                continue;
+        let owned: usize = pieces.iter().map(|p| p.parts.len()).sum();
+        if 2 * owned >= parts.len() {
+            for ((ps, k), e) in parts.iter().zip(heat_k.iter()).zip(e.iter_mut()) {
+                if ps.alive {
+                    *e = heat_energy(ps, k);
+                }
             }
-            let q =
-                tuning::HEAT_CONDUCTANCE * l.edges as f32 * (parts[a].heat - parts[b].heat) * DT;
-            e[a] -= q;
-            e[b] += q;
-        }
-        for ((ps, k), &e) in parts.iter_mut().zip(heat_k.iter()).zip(e.iter()) {
-            if !ps.alive {
-                continue;
+            for l in &d.links {
+                conduct(l, parts, e);
             }
-            let h = e / (k.cap + k.loss * DT);
-            ps.heat = if h > 0.0 { h } else { 0.0 };
-            if ps.heat > k.limit {
-                ps.overheated = true;
-            } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
-                ps.overheated = false;
+            for ((ps, k), &e) in parts.iter_mut().zip(heat_k.iter()).zip(e.iter()) {
+                if ps.alive {
+                    settle_heat(ps, k, e);
+                }
+            }
+        } else {
+            for piece in pieces.iter() {
+                for &p in &piece.parts {
+                    let ps = &parts[p as usize];
+                    if ps.alive {
+                        e[p as usize] = heat_energy(ps, &heat_k[p as usize]);
+                    }
+                }
+                for &l in &piece.heat_links {
+                    conduct(&d.links[l as usize], parts, e);
+                }
+                for &p in &piece.parts {
+                    let ps = &mut parts[p as usize];
+                    if ps.alive {
+                        settle_heat(ps, &heat_k[p as usize], e[p as usize]);
+                    }
+                }
             }
         }
 
@@ -1454,6 +1482,36 @@ impl Ship {
         for piece in pieces.iter_mut() {
             refresh_authority(piece, parts);
         }
+    }
+}
+
+/// Heat step, generation: a part's heat energy this tick before conduction and loss.
+#[inline]
+fn heat_energy(ps: &PartState, k: &HeatK) -> f32 {
+    ps.heat * k.cap + k.out * ps.work * DT
+}
+
+/// Heat step, conduction over one link between alive parts (explicit, from the heat before this tick's step).
+#[inline]
+fn conduct(l: &crate::design::Link, parts: &[PartState], e: &mut [f32]) {
+    let (a, b) = (l.a as usize, l.b as usize);
+    if !parts[a].alive || !parts[b].alive {
+        return;
+    }
+    let q = tuning::HEAT_CONDUCTANCE * l.edges as f32 * (parts[a].heat - parts[b].heat) * DT;
+    e[a] -= q;
+    e[b] += q;
+}
+
+/// Heat step, loss to space (implicit) and the overheat hysteresis, from the part's energy `e`.
+#[inline]
+fn settle_heat(ps: &mut PartState, k: &HeatK, e: f32) {
+    let h = e / (k.cap + k.loss * DT);
+    ps.heat = if h > 0.0 { h } else { 0.0 };
+    if ps.heat > k.limit {
+        ps.overheated = true;
+    } else if ps.overheated && ps.heat < k.limit * tuning::OVERHEAT_RESUME {
+        ps.overheated = false;
     }
 }
 
