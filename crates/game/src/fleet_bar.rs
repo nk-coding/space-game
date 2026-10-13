@@ -19,6 +19,7 @@
 
 use std::fmt::Write as _;
 
+use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
@@ -28,7 +29,7 @@ use sim::{ShipCommand, ShipId, VesselInfo, VesselState};
 use crate::RenderToggles;
 use crate::camera::CameraRig;
 use crate::controls::ControlsSet;
-use crate::flight_hud::HudFonts;
+use crate::flight_hud::{HudFonts, HudZone};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{PLAYER, PilotFocus};
 use crate::sim_bridge::SimWorld;
@@ -113,13 +114,16 @@ impl Plugin for FleetBarPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FleetBar>()
             .add_systems(Startup, spawn_bar.after(crate::flight_hud::spawn_hud))
+            // Clicks with the other input, before the frame's sim ticks, so a focus switch reaches the next tick.
             .add_systems(
-                Update,
-                (fleet_input.run_if(not(egui_wants_any_pointer_input)), update_bar)
-                    .chain()
-                    .before(ControlsSet)
-                    .run_if(in_state(AppMode::Flight)),
-            );
+                RunFixedMainLoop,
+                fleet_input
+                    .run_if(not(egui_wants_any_pointer_input))
+                    .run_if(in_state(AppMode::Flight))
+                    .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop)
+                    .before(ControlsSet),
+            )
+            .add_systems(Update, update_bar.run_if(in_state(AppMode::Flight)));
     }
 }
 
@@ -145,6 +149,7 @@ fn spawn_bar(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
         .with_children(|root| {
             root.spawn((
                 FleetBlock,
+                HudZone,
                 Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() },
             ))
             .with_children(|block| {

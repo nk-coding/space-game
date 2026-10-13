@@ -33,7 +33,7 @@ use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Hot, Pill, TextField, TextFieldText, Tone, WHEEL_LINE_PX, glow, label, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 
 use super::actions::{BehaviorAction, BehaviorButton};
 use bevy::ui_render::prelude::MaterialNode;
@@ -44,6 +44,7 @@ use super::draft::BehaviorDraft;
 use super::edit::EditState;
 use super::graph::{Chip, GraphView, add_rule_label, slot_line_label, slots_pill};
 use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
+use super::list::BehaviorList;
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
 use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
@@ -56,19 +57,20 @@ const RIGHT_W: f32 = 296.0;
 /// The graph area ends this far from the right edge (the right column, its divider and a gap).
 const GRAPH_RIGHT: f32 = SIDE + RIGHT_W + 34.0;
 /// The graph's columns: the root, the trunk; its rows.
-const ROOT_W: f32 = 150.0;
+pub(super) const ROOT_W: f32 = 150.0;
 const TRUNK_W: f32 = 30.0;
 const ROW_H: f32 = 52.0;
 const SLOT_ROW_H: f32 = 30.0;
 const CHIP_H: f32 = 34.0;
 const CHIP_FONT: f32 = 14.5;
-const LINE_W: f32 = 1.2;
+pub(super) const LINE_W: f32 = 1.2;
 /// How much inactive rules (no rule slot) are dimmed.
 const INACTIVE: f32 = 0.4;
-/// Dashes in a dashed line (more than the widest line needs; the rest is clipped).
+/// A dash and the gap after it (logical px).
+const DASH: f32 = 6.0;
+const DASH_GAP: f32 = 4.0;
+/// Dashes in a dashed line that fills its row (more than the widest graph area needs; the rest is clipped).
 const DASHES: usize = 160;
-/// Wheel steps in px.
-const WHEEL_LINE: f32 = 40.0;
 /// The palette keeps at least this height (about three rows of pills); a taller inspector scrolls.
 const PALETTE_MIN: f32 = 120.0;
 /// The dot grid behind the graph: spacing in logical px, FX layer (under ships and effects; the world is empty).
@@ -343,8 +345,9 @@ fn spawn_line(p: &mut ChildSpawnerCommands, node: Node, color: Color) {
 }
 
 /// A dashed horizontal line: `width` long, or (`None`) filling what the parent row leaves (it adds nothing to
-/// the row's own size).
+/// the row's own size). A line of known width gets only the dashes it shows.
 fn spawn_dashes(p: &mut ChildSpawnerCommands, width: Option<f32>, color: Color) {
+    let dashes = width.map_or(DASHES, |w| (w / (DASH + DASH_GAP)).ceil() as usize + 1);
     p.spawn(Node {
         width: width.map_or(Val::Auto, px),
         flex_grow: if width.is_none() { 1.0 } else { 0.0 },
@@ -353,22 +356,55 @@ fn spawn_dashes(p: &mut ChildSpawnerCommands, width: Option<f32>, color: Color) 
         min_width: px(0),
         height: px(LINE_W),
         flex_direction: FlexDirection::Row,
-        column_gap: px(4),
+        column_gap: px(DASH_GAP),
         overflow: Overflow::clip(),
         ..default()
     })
     .with_children(|d| {
-        for _ in 0..DASHES {
-            d.spawn((Node { width: px(6), height: px(LINE_W), flex_shrink: 0.0, ..default() }, BackgroundColor(color)));
+        for _ in 0..dashes {
+            d.spawn((Node { width: px(DASH), height: px(LINE_W), flex_shrink: 0.0, ..default() }, BackgroundColor(color)));
         }
     });
 }
 
+/// The dashed outline materials of the graph (Rhai chips, `+ RULE`), reused from one rebuild to the next: each
+/// chip needs its own (`style_chips` recolours it on hover), but not a new asset and bind group every rebuild.
+#[derive(Default)]
+pub(super) struct Outlines(Vec<Handle<DashedOutline>>);
+
+/// The outlines handed out in one rebuild.
+struct OutlineKit<'a> {
+    pool: &'a mut Outlines,
+    assets: &'a mut Assets<DashedOutline>,
+    used: usize,
+}
+
+impl OutlineKit<'_> {
+    /// The next material of this rebuild, in `color`.
+    fn take(&mut self, color: LinearRgba) -> Handle<DashedOutline> {
+        let h = match self.pool.0.get(self.used) {
+            Some(h) => {
+                if let Some(mut m) = self.assets.get_mut(h) {
+                    m.color = color;
+                }
+                h.clone()
+            }
+            None => {
+                let h = self.assets.add(DashedOutline { color });
+                self.pool.0.push(h.clone());
+                h
+            }
+        };
+        self.used += 1;
+        h
+    }
+}
+
 /// A chip of the graph: the node's name, its values dim, the comparison, `not` and the RHAI tag.
-fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, materials: &mut Assets<DashedOutline>, chip: &Chip, active: bool) {
+fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit, chip: &Chip, active: bool) {
     let color = role_color(&kit.ui, chip.role, false);
     let k = if active { 1.0 } else { INACTIVE };
-    let dashed = chip.rhai.then(|| materials.add(DashedOutline { color: outline_color(ui_color(color, 0.6 * k)) }));
+    let dashed = chip.rhai.then(|| outlines.take(outline_color(ui_color(color, 0.6 * k))));
     let mut e = p.spawn((
         ChipLook { color, dashed: dashed.clone(), fill: true, active, select: Some(Selection::Node(chip.node)) },
         Hot::default(),
@@ -469,27 +505,30 @@ fn spawn_slot_line(p: &mut ChildSpawnerCommands, kit: &Kit, slots: u32, span: bo
     });
 }
 
-/// Rebuilds the graph when the program or the rule slots change.
+/// Rebuilds the graph when the program or the rule slots change; not while a slider is held (each frame of the drag
+/// changes the program: the graph follows once it is let go, the inspector shows the value meanwhile).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild_graph(
     mut commands: Commands,
     draft: Res<BehaviorDraft>,
     context: Res<EditorContext>,
+    drag: Res<SliderDrag>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     mut built: ResMut<GraphBuilt>,
     mut materials: ResMut<Assets<DashedOutline>>,
+    mut outlines: Local<Outlines>,
     graph: Single<Entity, With<GraphContent>>,
 ) {
     let key = (draft.revision(), context.slots);
     let Some(ed) = draft.editor() else { return };
-    if built.0 == Some(key) {
+    if built.0 == Some(key) || drag.0.is_some() {
         return;
     }
     built.0 = Some(key);
     let g = GraphView::of(ed, context.slots);
     let kit = Kit { fonts: &fonts, ui: style.ui };
-    let materials = &mut *materials;
+    let materials = &mut OutlineKit { pool: &mut outlines, assets: &mut materials, used: 0 };
     commands.entity(*graph).despawn_children().with_children(|gc| {
         // The target line.
         gc.spawn(Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, flex_shrink: 0.0, ..default() }).with_children(|r| {
@@ -570,7 +609,7 @@ pub(super) fn rebuild_graph(
         // + RULE.
         gc.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, padding: UiRect::new(px(ROOT_W + TRUNK_W), px(0), px(12), px(8)), ..default() })
             .with_children(|r| {
-                let m = materials.add(DashedOutline { color: outline_color(kit.c(Tone::Label, 0.5)) });
+                let m = materials.take(outline_color(kit.c(Tone::Label, 0.5)));
                 r.spawn((
                     ChipLook { color: kit.ui.label, dashed: Some(m.clone()), fill: false, active: true, select: None },
                     MaterialNode(m),
@@ -603,10 +642,12 @@ pub(super) struct InspectorKey {
     cx: inspect::Context,
     name: String,
     source: Option<String>,
+    refusals: u64,
 }
 
 /// Rebuilds the inspector when the selection, the program, REPLACE, the slots or the behavior (its name, which one
-/// it is) change; not while a slider is held (it keeps its node and follows in place).
+/// it is) change, and after a refused edit (a refused note's field shows the note again); not while a slider is
+/// held (it keeps its node and follows in place).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild_inspector(
     mut commands: Commands,
@@ -634,6 +675,7 @@ pub(super) fn rebuild_inspector(
         cx,
         name: draft.name.clone(),
         source: draft.source.clone(),
+        refusals: edit.refusals(),
     };
     if built.as_ref() == Some(&key) {
         return;
@@ -717,7 +759,7 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
     if let Some(e) = draft.errors.first() {
         return match view {
             BehaviorView::Text => (format!("{errors} ERROR{s}  ·  FIRST ON LINE {}, COLUMN {}", e.line, e.col), Tone::Coral),
-            BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES"), Tone::Gold),
+            BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES, READ-ONLY UNTIL IT IS FIXED"), Tone::Gold),
         };
     }
     let rules = draft.program().rules.len();
@@ -897,24 +939,26 @@ pub(super) fn draw_dots(
     }
 }
 
-/// The wheel scrolls the graph or the palette under the pointer.
+/// The wheel scrolls the graph or the palette under the pointer (not under the BEHAVIORS list, which scrolls its
+/// own rows).
 #[allow(clippy::type_complexity)]
 pub(super) fn scroll(
     window: Single<&Window, With<PrimaryWindow>>,
     wheel: Res<AccumulatedMouseScroll>,
     ui: Res<BehaviorUi>,
+    list: Res<BehaviorList>,
     mut areas: Query<
         (&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children, Has<GraphViewport>),
         Or<(With<GraphViewport>, With<PaletteList>, With<InspectorBody>)>,
     >,
     contents: Query<&ComputedNode>,
 ) {
-    if wheel.delta.y == 0.0 {
+    if wheel.delta.y == 0.0 || list.is_open() {
         return;
     }
     let Some(cursor) = window.physical_cursor_position() else { return };
     let dy = match wheel.unit {
-        MouseScrollUnit::Line => wheel.delta.y * WHEEL_LINE,
+        MouseScrollUnit::Line => wheel.delta.y * WHEEL_LINE_PX,
         MouseScrollUnit::Pixel => wheel.delta.y,
     };
     for (node, tf, mut pos, children, is_graph) in &mut areas {

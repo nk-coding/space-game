@@ -14,6 +14,9 @@ use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 
 use crate::drydock::behaviors::{PlayerBehaviors, text_of};
 
+/// The name a new behavior gets ("New behavior", "New behavior 2", ... in the BEHAVIORS list).
+pub const NEW_NAME: &str = "New behavior";
+
 /// The behavior on the BEHAVIOR screen.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct BehaviorDraft {
@@ -29,6 +32,9 @@ pub struct BehaviorDraft {
     pub errors: Vec<TextError>,
     /// Goes up whenever the program changes or another draft opens (the graph rebuilds then); never goes back.
     revision: u64,
+    /// Goes up when another draft replaces this one ([`BehaviorDraft::replace`]): the editor's ids (rules,
+    /// conditions) mean nothing in the next one, so a selection made in this one must go.
+    generation: u64,
     /// `editor.revision()` when the draft last caught up with it.
     seen: u64,
     /// The draft when it was opened or last saved (see [`BehaviorDraft::dirty`]).
@@ -96,20 +102,36 @@ impl BehaviorDraft {
     pub fn empty(nodes: &Table<BehaviorNode>) -> Option<Self> {
         let action = nodes.iter().find(|n| n.role == NodeRole::Action)?;
         let editor = BehaviorEditor::from_text(nodes, &format!("always -> {}", action.id)).ok()?;
-        Some(Self::with_editor(None, "New behavior".into(), editor))
+        Some(Self::with_editor(None, NEW_NAME.into(), editor))
     }
 
     fn with_editor(source: Option<String>, name: String, editor: BehaviorEditor) -> Self {
         let text = editor.text();
-        let mut d = Self { source, name, seen: editor.revision(), editor: Some(editor), text, errors: Vec::new(), revision: 1, clean: Snapshot::default() };
+        let mut d = Self {
+            source,
+            name,
+            seen: editor.revision(),
+            editor: Some(editor),
+            text,
+            errors: Vec::new(),
+            revision: 1,
+            generation: 0,
+            clean: Snapshot::default(),
+        };
         d.mark_clean();
         d
     }
 
-    /// Replaces this draft with another one (opened, loaded or new); the revision keeps going up.
+    /// Replaces this draft with another one (opened, loaded or new); the revision and the generation keep going up.
     pub fn replace(&mut self, mut next: BehaviorDraft) {
         next.revision = self.revision + 1;
+        next.generation = self.generation + 1;
         *self = next;
+    }
+
+    /// Goes up with every [`BehaviorDraft::replace`] (not with edits).
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// The last valid program: what the graph shows and what would fly.
@@ -129,13 +151,32 @@ impl BehaviorDraft {
         self.revision
     }
 
-    /// Runs an edit on the editing model (the graph view and the inspector), then brings the text up to date:
-    /// a changed program is printed canonically and the text view's errors go. `None` before the screen opens.
+    /// Runs an edit on the editing model (the graph view and the inspector), then brings the text up to date: a
+    /// changed program is printed canonically. `None` before the screen opens, and while the text has errors
+    /// ([`BehaviorDraft::locked`]): the model holds only the last valid program, so printing it would throw the
+    /// typed lines away (undo could not bring them back).
     pub fn edit<R>(&mut self, f: impl FnOnce(&mut BehaviorEditor) -> R) -> Option<R> {
+        if self.locked().is_some() {
+            return None;
+        }
         let editor = self.editor.as_mut()?;
         let r = f(editor);
         self.sync();
         Some(r)
+    }
+
+    /// Why the graph and the inspector can't edit the program now: the text has errors (fix them in the TEXT view).
+    pub fn locked(&self) -> Option<String> {
+        let n = self.errors.len();
+        (n > 0).then(|| format!("fix the text first ({n} error{} in the TEXT view)", if n == 1 { "" } else { "s" }))
+    }
+
+    /// Closes the editing model's open stroke (a slider drag), also while the text has errors: it changes no
+    /// program.
+    pub fn end_stroke(&mut self) {
+        if let Some(editor) = self.editor.as_mut() {
+            editor.end_stroke();
+        }
     }
 
     /// The text view changed: parse and check it. A valid text becomes the program (`true` if that changed
@@ -189,14 +230,13 @@ impl BehaviorDraft {
         self.clean = Snapshot::default();
     }
 
-    /// After an edit through the model: a changed program becomes the text, the errors go.
+    /// After an edit through the model (never while the text has errors): a changed program becomes the text.
     fn sync(&mut self) {
         let Some(editor) = &self.editor else { return };
         if editor.revision() != self.seen {
             self.seen = editor.revision();
             self.revision += 1;
             self.text = editor.text();
-            self.errors.clear();
         }
     }
 }
@@ -274,6 +314,30 @@ mod tests {
         assert!(!d.dirty());
     }
 
+    /// While the typed text has errors, the graph and the inspector can't edit: printing the model's last valid
+    /// program would replace the typed lines (the broken one is lost, and SAVE would store the loss).
+    #[test]
+    fn model_edits_wait_while_the_typed_text_has_errors() {
+        let content = data::base_content();
+        let nodes = &content.behavior_nodes;
+        let mut d = BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), nodes).unwrap();
+        let typed = "target nearest\nwhen sheild_down -> flee\nalways -> approach(67%)\n";
+        assert!(!d.set_text(typed));
+        let (r0, program) = (d.revision(), d.program().clone());
+        assert_eq!(d.locked().as_deref(), Some("fix the text first (1 error in the TEXT view)"));
+        let first = d.editor().unwrap().rule_at(0).unwrap().id;
+        assert_eq!(d.edit(|e| e.delete_rule(first)), None);
+        assert_eq!(d.edit(|e| e.undo()), None);
+        assert_eq!((d.text.as_str(), d.revision(), d.program()), (typed, r0, &program));
+        // A slider's stroke still closes; once the text is fixed, edits go through again.
+        d.end_stroke();
+        assert!(d.set_text(&typed.replace("sheild", "shield")));
+        assert!(d.locked().is_none());
+        let first = d.editor().unwrap().rule_at(0).unwrap().id;
+        assert_eq!(d.edit(|e| e.delete_rule(first)), Some(Ok(true)));
+        assert_eq!(d.text, "target nearest\nalways -> approach(67%)\n");
+    }
+
     #[test]
     fn a_valid_text_replaces_the_program_an_invalid_one_keeps_it() {
         let content = data::base_content();
@@ -313,13 +377,11 @@ mod tests {
         let content = data::base_content();
         let nodes = &content.behavior_nodes;
         let mut d = BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), nodes).unwrap();
-        d.errors.push(TextError { line: 1, col: 1, message: "x".into() });
         let r0 = d.revision();
         let first = d.editor().unwrap().rule_at(0).unwrap().id;
         assert_eq!(d.edit(|e| e.delete_rule(first)), Some(Ok(true)));
         assert_eq!(d.program().rules.len(), 5);
         assert_eq!(d.text, d.program().to_text());
-        assert!(d.errors.is_empty());
         assert_eq!(d.revision(), r0 + 1);
         // Undo brings the rule back, again through the text.
         assert_eq!(d.edit(|e| e.undo()), Some(true));

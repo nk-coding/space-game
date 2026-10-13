@@ -149,13 +149,17 @@ fn mods_override_new_kinds_in_place() {
 fn layout_errors_name_the_new_dirs_and_kinds() {
     let err = Pack::from_files([("pack.ron", MOD_MANIFEST), ("tech/x.ron", "[]")]).unwrap_err();
     assert!(
-        err[0].message.contains("families, research or starts"),
+        err[0]
+            .message
+            .contains("families, research, starts, voyages or encounters"),
         "{}",
         err[0]
     );
     let err = Pack::from_files([("pack.ron", MOD_MANIFEST), ("wiki/tech/x.md", "hi")]).unwrap_err();
     assert!(
-        err[0].message.contains("family, research, start or page"),
+        err[0]
+            .message
+            .contains("family, research, start, voyage, encounter or page"),
         "{}",
         err[0]
     );
@@ -480,11 +484,13 @@ fn a_start_needs_a_ship_a_new_game_can_fly() {
     assert_clean(&p, "s");
     let p = problems_with(&[(
         "starts/s.ron",
-        &start(r#"ship: "warp_yacht", mind_capacity: 0, voyages: ["Yard-Approach", "a", "a"]"#),
+        &start(
+            r#"ship: "warp_yacht", mind_capacity: 0, voyages: ["nowhere", "halvex_drift", "halvex_drift"]"#,
+        ),
     )]);
     assert_error(&p, "s", "ship", "unknown ship `warp_yacht`");
     assert_error(&p, "s", "mind_capacity", "mind capacity of 1 to 100");
-    assert_error(&p, "s", "voyages[0]", "snake_case");
+    assert_error(&p, "s", "voyages[0]", "unknown voyage `nowhere`");
     assert_error(&p, "s", "voyages[2]", "listed twice");
     // The Halvex Runner is built from locked parts and composite.
     let p = problems_with(&[(

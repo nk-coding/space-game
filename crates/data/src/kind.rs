@@ -23,12 +23,16 @@ pub enum Kind {
     Research,
     /// How a new game begins.
     Start,
+    /// A voyage: one small cluster with seeded sites (GDR-0062).
+    Voyage,
+    /// What waits at a voyage site: ships and wrecks.
+    Encounter,
     /// Free-standing wiki article (`wiki/page/<id>.md`); has no RON data.
     Page,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 13] = [
+    pub const ALL: [Kind; 15] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
@@ -41,6 +45,8 @@ impl Kind {
         Kind::Family,
         Kind::Research,
         Kind::Start,
+        Kind::Voyage,
+        Kind::Encounter,
         Kind::Page,
     ];
 
@@ -58,6 +64,8 @@ impl Kind {
             Kind::Family => "family",
             Kind::Research => "research",
             Kind::Start => "start",
+            Kind::Voyage => "voyage",
+            Kind::Encounter => "encounter",
             Kind::Page => "page",
         }
     }
@@ -77,6 +85,8 @@ impl Kind {
             Kind::Family => Some("families"),
             Kind::Research => Some("research"),
             Kind::Start => Some("starts"),
+            Kind::Voyage => Some("voyages"),
+            Kind::Encounter => Some("encounters"),
             Kind::Page => None,
         }
     }

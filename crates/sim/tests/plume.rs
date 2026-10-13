@@ -138,7 +138,11 @@ fn plume_damage_scales_with_the_thrust_output() {
 /// Runner's tail, `gap` metres below it, offset 0.3 m to the right so the torch drive's two lanes run down two of
 /// its columns.
 fn tail_chase(c: &data::Content, target: Arc<ShipDesign>, owner: Owner, gap: f32) -> (Sim, ShipId, ShipId) {
-    let runner = design(c, "halvex_runner");
+    tail_chase_with(design(c, "halvex_runner"), target, owner, gap)
+}
+
+/// [`tail_chase`] with a Runner design of its own (stats changed in memory).
+fn tail_chase_with(runner: Arc<ShipDesign>, target: Arc<ShipDesign>, owner: Owner, gap: f32) -> (Sim, ShipId, ShipId) {
     let mut w = Sim::new(1);
     let r = w.spawn_ship(runner.clone(), Owner::PLAYER, Body::default());
     let origin = w.ship(r).unwrap().pieces()[0].origin;
@@ -254,4 +258,32 @@ fn enemy_bubbles_absorb_a_plume_but_own_bubbles_never_stop_the_own_exhaust() {
     let b = burns(&w);
     assert!(b.len() == 1 && b[0].3 > 0.0 && b[0].5 == 0.0, "{b:?}");
     assert!(!w.events().iter().any(|e| matches!(e, SimEvent::ShieldHit { .. })));
+}
+
+/// A plume that does only heat (13 Oct 2026 review: it ignored shields): an enemy bubble covering the hit point
+/// takes its energy share of the heat (all of it for the base emitter) without spending its charge.
+#[test]
+fn a_heat_only_plume_is_stopped_by_enemy_bubbles_too() {
+    let c = content();
+    let mut runner = (*design(&c, "halvex_runner")).clone();
+    for p in runner.parts.iter_mut().filter(|p| p.is_engine) {
+        p.base.v[sim::Stat::PlumeDamage as usize] = 0.0;
+    }
+    let target = shielded(&c);
+    let emitter = find(&target, "shield_emitter", 1, 1);
+    let (mut w, r, t) = tail_chase_with(Arc::new(runner), target, Owner(1), 0.5);
+    burn_step(&mut w, r, true); // bubbles come up in the first tick's systems
+    let full = w.ship(t).unwrap().part(emitter).shield;
+    for _ in 0..30 {
+        burn_step(&mut w, r, true);
+        assert!(burns(&w).iter().all(|b| b.1 != t), "{:?}", burns(&w));
+    }
+    let ship = w.ship(t).unwrap();
+    assert!(ship.part(emitter).shield >= full, "heat spends no charge");
+    // Without the bubble the heat arrives.
+    w.apply_damage(t, DamageTarget::Part(emitter), 100.0);
+    burn_step(&mut w, r, true);
+    burn_step(&mut w, r, true);
+    let b = burns(&w);
+    assert!(!b.is_empty() && b.iter().all(|x| x.1 == t && x.3 == 0.0 && x.4 > 0.0), "{b:?}");
 }

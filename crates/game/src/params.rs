@@ -38,6 +38,11 @@ impl Params {
         self.0.get(key).and_then(|v| v.parse().ok())
     }
 
+    /// A whole number, exact over the full range (seeds, tick counts; an `f32` loses digits above 2^24).
+    pub fn u64(&self, key: &str) -> Option<u64> {
+        self.0.get(key).and_then(|v| v.parse().ok())
+    }
+
     pub fn text(&self, key: &str) -> Option<&str> {
         self.0.get(key).map(String::as_str)
     }
@@ -60,4 +65,21 @@ fn raw_query() -> String {
 #[cfg(not(target_arch = "wasm32"))]
 fn raw_query() -> String {
     std::env::var("GAME_PARAMS").unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Seeds and tick counts parse exactly (as `f32`, 123456789 became 123456792 and the browser's hash stream
+    /// never matched the native one).
+    #[test]
+    fn whole_numbers_parse_exactly() {
+        let p = Params::parse("?seed=123456789&hashticks=0&big=18446744073709551615&neg=-3&half=2.5");
+        assert_eq!(p.u64("seed"), Some(123_456_789));
+        assert_eq!(p.u64("hashticks"), Some(0));
+        assert_eq!(p.u64("big"), Some(u64::MAX));
+        assert_eq!((p.u64("neg"), p.u64("half"), p.u64("missing")), (None, None, None));
+        assert_eq!(p.f32("half"), Some(2.5));
+    }
 }

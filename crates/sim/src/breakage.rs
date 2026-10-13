@@ -19,11 +19,12 @@ use crate::ship::{Body, Piece, Ship, inherited_velocity};
 /// What a hit did.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DamageOutcome {
-    /// Nothing there (dead part, empty cell, unknown ship) or a non-positive amount.
+    /// Nothing there (dead part, empty cell, unknown ship) or an amount that is not positive and finite.
     Ignored,
     /// The part survived with this many hit points.
     Damaged { hp_left: f32 },
-    /// The part was destroyed; `excess` is the damage beyond its hit points (for penetration later).
+    /// The part was destroyed; `excess` is the damage beyond its hit points (it carries on in penetrating shots
+    /// and ram crush).
     Destroyed { excess: f32 },
 }
 
@@ -46,7 +47,10 @@ impl Ship {
                 None => return DamageOutcome::Ignored,
             },
         };
-        if part >= self.parts.len() || !self.parts[part].alive || amount <= 0.0 || amount.is_nan() {
+        if part >= self.parts.len()
+            || !self.parts[part].alive
+            || !(amount > 0.0 && amount.is_finite())
+        {
             return DamageOutcome::Ignored;
         }
         let ps = &mut self.parts[part];
@@ -142,6 +146,9 @@ impl Ship {
                 k += 1;
                 continue;
             }
+            // Only this resolution clears it: a rebuild for other reasons (`Sim::set_config`) must not drop
+            // a part destroyed since the last resolution.
+            self.pieces[k].dirty = false;
             let alive: Vec<PartIdx> = self.pieces[k]
                 .parts
                 .iter()

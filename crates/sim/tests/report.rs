@@ -53,11 +53,11 @@ fn report_agrees_with_a_spawned_ship() {
             for g in &r.guns {
                 assert_eq!(g.clear, ship.part(g.part).clear, "{id} gun {}", g.part);
             }
-            assert_eq!(r.firepower, piece.firepower());
+            assert_eq!(r.firepower, piece.firepower(ship.parts()));
             assert_eq!(r.rule_slots, ship.rule_slots());
             // No base ship idles a part, so a fresh ship plans with the same authority.
             assert!(r.control.idle.is_empty());
-            let kin = Kin::of(piece);
+            let kin = Kin::of(piece, ship.parts());
             assert_eq!(r.flight.thrust, kin.caps, "{id}");
             assert_eq!(r.flight.top_speed, kin.speeds, "{id}");
             assert_eq!(r.flight.alpha, kin.alpha, "{id}");
@@ -402,6 +402,63 @@ fn control_over_capacity_idles_the_lowest_priorities() {
         }));
     let row = r.power.consumers.iter().find(|c| c.part == last).unwrap();
     assert_eq!(row.want, 0.0, "idle parts ask for nothing");
+    // The idle laser never fires: it counts for neither the report's firepower nor the running ship's.
+    let dps = r.guns[0].dps;
+    assert!(close(r.firepower, 15.0 * dps, 1e-4), "{} vs 15 × {dps}", r.firepower);
+    let (mut w, s) = world_with(custom(&c, &parts));
+    w.step(&sim::TickInputs::default());
+    let ship = w.ship(s).unwrap();
+    assert!(ship.part(last).idle);
+    let piece = ship.piece(ship.control_piece().unwrap()).unwrap();
+    assert!(close(piece.firepower(ship.parts()), r.firepower, 1e-4));
+}
+
+/// A part the player set `Off` asks for nothing: it is not "running short" in a deficit (13 Oct 2026 review).
+#[test]
+fn a_consumer_set_off_does_not_run_short() {
+    let c = content();
+    let mut bp = blueprint(&[
+        ("beam_laser", 0, 0, 0, false, None),
+        ("beam_laser", 1, 0, 0, false, None),
+        ("beam_laser", 2, 0, 0, false, None),
+        ("fission_reactor", 0, 2, 0, false, None),
+        ("logic_core", 1, 2, 0, false, None),
+        ("thruster", 2, 2, 0, false, None),
+    ]);
+    bp.parts[0].power = Some(data::PowerOverride {
+        tier: Some(sim::PowerTier::Off),
+        weight: None,
+    });
+    let r = design_report(&c, &bp, &SimConfig::default()).unwrap();
+    // The two other beams share the 7 left over: below their minimum, the higher index switches off.
+    assert_eq!((r.power.demand, r.power.served), (21.0, 10.0));
+    let off = r.power.consumers.iter().find(|c| c.part == 0).unwrap();
+    assert_eq!((off.want, off.level), (0.0, 0.0));
+    let Some(Issue::PowerDeficit { short, .. }) =
+        r.issues.iter().find(|i| matches!(i, Issue::PowerDeficit { .. }))
+    else {
+        panic!("{:?}", r.issues)
+    };
+    assert_eq!(short, &vec![1, 2]);
+}
+
+/// Rule slots come from working logic cores only (GDR-0035: alive, not overheated, powered): a core the player
+/// set `Off` gets no power and gives no slots, in the report and in flight.
+#[test]
+fn an_unpowered_core_gives_no_rule_slots() {
+    let c = content();
+    let mut bp = c.ships.get("halvex_runner").unwrap().clone();
+    let core = bp.parts.iter().position(|p| p.part == "logic_core").unwrap();
+    bp.parts[core].power = Some(data::PowerOverride {
+        tier: Some(sim::PowerTier::Off),
+        weight: None,
+    });
+    let r = design_report(&c, &bp, &SimConfig::default()).unwrap();
+    let slots = c.parts.get("logic_core").unwrap().logic.as_ref().unwrap().rule_slots;
+    assert_eq!(r.rule_slots, slots);
+    let (mut w, s) = world_with(std::sync::Arc::new(sim::ShipDesign::compile(&c, &bp).unwrap()));
+    w.step(&sim::TickInputs::default());
+    assert_eq!(w.ship(s).unwrap().rule_slots(), slots);
 }
 
 #[test]
@@ -472,7 +529,7 @@ fn yaw_balance_of_an_off_centre_engine() {
     let (w, s) = world_with(custom(&c, &parts));
     let ship = w.ship(s).unwrap();
     let piece = ship.piece(ship.control_piece().unwrap()).unwrap();
-    assert!(close(piece.max_wrench(&[1.0]).torque, r.flight.yaw, 1e-3));
+    assert!(close(engine_wrench(&piece.thrusters, |_| 1.0).torque, r.flight.yaw, 1e-3));
     // The base ships fly straight.
     for id in BASE_SHIPS {
         let r = base_report(&c, id);
@@ -481,6 +538,54 @@ fn yaw_balance_of_an_off_centre_engine() {
             "{id}: {}",
             r.flight.yaw
         );
+    }
+}
+
+/// Flying straight on the stick (or under a lock) steers to a heading, so once the first line is at its limit
+/// the flight computer holds a yaw with differential thrust too (the last resort): every row outside the forward
+/// group whose torque turns against the yaw counts in `yaw_hold` (13 Oct 2026 review: the report left them out).
+/// `yaw_balanced` says whether the allocation (first line, then the last resort with differential thrust) holds
+/// full forward thrust's yaw at rest.
+#[test]
+fn yaw_hold_counts_the_thrusters_that_turn_against_it() {
+    use sim::alloc::{Actuation, AllocTable, allocate, assist};
+    let c = content();
+    // The off-centre torch drive of the test above, two rows lower, with `n` thrusters pushing right in front of
+    // the centre of mass (they turn the ship clockwise, against the drive).
+    let design = |n: usize| {
+        let mut parts: Vec<P> = vec![
+            ("fission_reactor", 0, 1, 0, false, None),
+            ("fission_reactor", 0, 2, 0, false, None),
+            ("logic_core", 1, 2, 0, false, None),
+            ("armor_block", 2, 2, 0, false, Some("steel")),
+            ("armor_block", 3, 2, 0, false, Some("steel")),
+            ("armor_block", 4, 2, 0, false, Some("steel")),
+            ("armor_block", 5, 2, 0, false, Some("steel")),
+            ("torch_drive", 4, 3, 0, false, None),
+        ];
+        parts.extend([(5, 1), (4, 1), (5, 0), (4, 0)].iter().take(n).map(|&(x, y)| ("thruster", x, y, 1, false, None)));
+        parts
+    };
+    for (n, balanced) in [(0, false), (4, true)] {
+        let parts = design(n);
+        let r = report_of(&c, &parts);
+        assert_eq!(r.flight.yaw_balanced, balanced, "{n} side thrusters: {:?}", r.flight);
+        // One allocation at rest: full forward thrust, no turn asked; what the yaw leaves missing after the
+        // last resort.
+        let (w, s) = world_with(custom(&c, &parts));
+        let ship = w.ship(s).unwrap();
+        let p = ship.piece(ship.control_piece().unwrap()).unwrap();
+        let th = &p.thrusters;
+        let full: Vec<f32> = th.iter().map(|t| t.max_force).collect();
+        let tmax: Vec<f32> = p.torque_sources.iter().map(|s| s.max).collect();
+        let table = AllocTable::build(th);
+        let mut act = Actuation::default();
+        act.resize(th.len(), tmax.len());
+        let force = sim::Vec2::new(0.0, 1e6);
+        let missing = allocate(th, &table, &full, &full, &tmax, force, 0.0, &mut act);
+        let missing = assist(th, &table, &full, &full, missing, true, &mut act);
+        println!("{n} side thrusters: yaw {:.0}, hold {:.0}, missing {missing:.0}", r.flight.yaw, r.flight.yaw_hold);
+        assert_eq!(missing.abs() < 1e-3 * r.flight.yaw, balanced, "missing {missing}");
     }
 }
 

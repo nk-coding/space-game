@@ -1,20 +1,26 @@
 //! The flight HUD in the reference look (`docs/concept/boards/ui-mockups/phone-flight-hud.png`): floating text,
 //! wide-tracked uppercase labels in Barlow, white numbers, no boxes.
 //!
-//! * top left: hull % and a tiny hull map of the player's ship (in a behavior test's watch mode: the watched one),
-//!   and its hold (`CARGO 3 / 8`, salvage collected / cargo units; hidden for a ship without a hold);
+//! * top left: the home ring (what M does: home, for touch), hull % and a tiny hull map of the player's ship (in a
+//!   behavior test's watch mode: the watched one), and its hold (`CARGO 3 / 8`, salvage collected / cargo units;
+//!   hidden for a ship without a hold);
 //! * left: speed (m/s), the top speed and the drift state;
-//! * top right: target panel (name, hull %, distance);
-//! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost);
+//! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target);
+//! * top centre: scene / wave line and whether raider waves come (C), centre: banners (wave cleared, ship lost,
+//!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
-//! * in the world: a dotted lock ring around the target, off-screen markers for enemies.
+//! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
+//!   clear of the HUD's texts and widgets).
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use bevy::prelude::*;
-use sim::{ShipId, Stat, Target};
+use sim::{ShipDesign, ShipId, Stat, Target};
+
+use bevy::ui::{ComputedNode, UiGlobalTransform};
 
 use crate::camera::{CameraRig, CameraSet};
 use crate::controls::PlayerInput;
@@ -24,7 +30,8 @@ use crate::scene::{PilotFocus, Scene, SceneKind};
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
-use crate::ui_kit::{label, number, set_text, tracked};
+use crate::ui_icons::{Glyph, UiIcon};
+use crate::ui_kit::{UiClick, UiInputSet, label, number, ring_node, set_text, tracked};
 use crate::{RenderToggles, ship_view::PieceView};
 
 pub(crate) static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
@@ -61,14 +68,67 @@ struct HullMap;
 #[derive(Component)]
 struct HullCell(u32);
 
+/// The ring top left that goes home (what M does), for touch.
+#[derive(Component)]
+struct HomeRing;
+
+/// A flight widget that takes clicks and taps (the home ring): they never reach the world (`controls`).
+#[derive(Component)]
+pub struct HudButton;
+
+/// A flight UI rectangle the off-screen markers keep clear of (besides the HUD's texts).
+#[derive(Component)]
+pub struct HudZone;
+
+/// The laid-out [`HudButton`]s.
+pub type HudButtons<'w, 's> =
+    Query<'w, 's, (&'static ComputedNode, &'static UiGlobalTransform, &'static InheritedVisibility), With<HudButton>>;
+
+/// Is this logical window point on a visible [`HudButton`]?
+pub fn on_hud_button(buttons: &HudButtons, p: Vec2) -> bool {
+    buttons.iter().any(|(node, tf, vis)| vis.get() && logical_rect(node, tf).is_some_and(|r| r.contains(p)))
+}
+
+/// A laid-out node's rectangle in logical window pixels (`None` while it has no size).
+fn logical_rect(node: &ComputedNode, tf: &UiGlobalTransform) -> Option<Rect> {
+    let s = node.inverse_scale_factor;
+    node.size.cmpgt(Vec2::ZERO).all().then(|| Rect::from_center_size(tf.translation * s, node.size * s))
+}
+
+/// Off-screen markers: inset from the window edge, and clearance around HUD rectangles (logical px).
+const MARKER_INSET: f32 = 34.0;
+const MARKER_CLEARANCE: f32 = 14.0;
+
 #[derive(Resource)]
 struct HudState {
     timer: Timer,
-    /// The ship the hull map shows.
-    map_ship: Option<ShipId>,
-    /// Display label per part of the player's design ("PULSE LASER 2").
+    /// The ship and design the hull map shows.
+    map_for: BuiltFor,
+    /// Display label per part of the shown ship's design ("PULSE LASER 2") and the design they were made for.
     labels: Vec<String>,
+    labels_for: Option<Arc<ShipDesign>>,
     scratch: String,
+}
+
+/// What the hull map was built for: a ship and its compiled design. Every new sim numbers its ships from 0 (the
+/// player's first ship is always `ShipId(0)`), so the id alone can't tell a test flight of an edited design from
+/// the last flight; the design is held, so a later design can't take its address.
+#[derive(Default)]
+struct BuiltFor(Option<(ShipId, Arc<ShipDesign>)>);
+
+impl BuiltFor {
+    /// Was it built for this ship as it is (or for no ship, when there is none)?
+    fn matches(&self, ship: Option<&sim::Ship>) -> bool {
+        match (&self.0, ship) {
+            (None, None) => true,
+            (Some((id, design)), Some(s)) => *id == s.id() && Arc::ptr_eq(design, s.design()),
+            _ => false,
+        }
+    }
+
+    fn set(&mut self, ship: Option<&sim::Ship>) {
+        self.0 = ship.map(|s| (s.id(), s.design().clone()));
+    }
 }
 
 pub struct FlightHudPlugin;
@@ -77,12 +137,15 @@ impl Plugin for FlightHudPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(HudState {
             timer: Timer::from_seconds(0.125, TimerMode::Repeating),
-            map_ship: None,
+            map_for: BuiltFor::default(),
             labels: Vec::new(),
+            labels_for: None,
             scratch: String::with_capacity(256),
         })
         .add_systems(Startup, spawn_hud)
         .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
+        .add_systems(Update, go_home.after(UiInputSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(OnExit(AppMode::Flight), forget_ship)
         .add_systems(PostUpdate, (lock_ring, offscreen_markers).after(CameraSet).before(crate::fx::FxFlush));
     }
 }
@@ -93,11 +156,12 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
         medium: fonts_assets.add(Font::from_bytes(BARLOW_MEDIUM.to_vec())),
     };
     commands.insert_resource(fonts.clone());
-    let grey = ui_color(style.ui_label, 1.0);
-    let white = ui_color(Color::srgb_u8(0xeb, 0xf5, 0xff), 1.0);
-    let coral = ui_color(style.glow_enemy, 1.0);
-    let teal = ui_color(style.glow_player, 1.0);
-    let dim = ui_color(Color::srgb_u8(0x5d, 0x6a, 0x74), 1.0);
+    let ui = &style.ui;
+    let grey = ui_color(ui.label, 1.0);
+    let white = ui_color(ui.number, 1.0);
+    let coral = ui_color(ui.coral, 1.0);
+    let teal = ui_color(ui.teal, 1.0);
+    let dim = ui_color(ui.dim, 1.0);
     let abs = |l: Option<f32>, r: Option<f32>, t: Option<f32>, b: Option<f32>| Node {
         position_type: PositionType::Absolute,
         left: l.map(px).unwrap_or(Val::Auto),
@@ -111,13 +175,18 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
     commands
         .spawn((HudRoot, FlightUi, Node { width: percent(100), height: percent(100), position_type: PositionType::Absolute, ..default() }))
         .with_children(|root| {
-            // Top left: hull.
-            root.spawn(abs(Some(28.0), None, Some(18.0), None)).with_children(|c| {
+            // Top left: the home ring (as on the drydock and the BEHAVIOR screen), then the hull.
+            root.spawn(abs(Some(20.0), None, Some(18.0), None)).with_children(|c| {
+                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0))).with_children(|r| {
+                    r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(19), height: px(19), ..default() }));
+                });
+            });
+            root.spawn(abs(Some(68.0), None, Some(18.0), None)).with_children(|c| {
                 c.spawn(label(&fonts, "HULL", 13.0, grey));
                 c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() })
                     .with_children(|row| {
                         row.spawn((HudText::HullValue, number(&fonts, "–", 40.0, white)));
-                        row.spawn((HullMap, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
+                        row.spawn((HullMap, HudZone, Node { width: px(100), height: px(60), position_type: PositionType::Relative, ..default() }));
                     });
                 c.spawn((HudText::Cargo, label(&fonts, "", 12.0, grey)));
             });
@@ -154,9 +223,17 @@ pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<
         });
 }
 
+/// The home ring: home, like M.
+fn go_home(mut clicks: MessageReader<UiClick>, ring: Query<(), With<HomeRing>>, mut next: ResMut<NextState<AppMode>>) {
+    if clicks.read().any(|c| ring.contains(c.0)) {
+        next.set(AppMode::Home);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn update_text(
     time: Res<Time<Real>>,
+    virtual_time: Res<Time<Virtual>>,
     mut state: ResMut<HudState>,
     world: Res<SimWorld>,
     scene: Res<Scene>,
@@ -178,15 +255,19 @@ fn update_text(
     if !state.timer.tick(time.delta()).just_finished() {
         return;
     }
-    let HudState { scratch, labels, .. } = &mut *state;
+    let HudState { scratch, labels, labels_for, .. } = &mut *state;
     let alpha = fixed.overstep_fraction();
     let player = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
     let control = player.and_then(|s| s.control_piece().and_then(|c| s.piece(c)));
+    // Watch: nobody pilots or locks; the target panel shows what the watched ship's behavior targets.
+    let watching = focus.0.is_none() && scene.watched().is_some();
+    let target = if watching { player.and_then(|s| s.behavior()).and_then(|b| b.target()).map(Target::Ship) } else { input.lock };
 
-    // Labels per part of the player's design.
+    // Labels per part of the shown ship's design (a design edited in the drydock can keep its part count).
     if let Some(s) = player
-        && labels.len() != s.design().parts.len()
+        && !labels_for.as_ref().is_some_and(|d| Arc::ptr_eq(d, s.design()))
     {
+        *labels_for = Some(s.design().clone());
         labels.clear();
         let mut seen: Vec<(String, u32)> = Vec::new();
         for p in &s.design().parts {
@@ -243,7 +324,8 @@ fn update_text(
                 }
             }
             HudText::TargetName | HudText::TargetValue | HudText::TargetSub => {
-                target_text(*kind, s, &world, &input, control.map(|p| piece_com(p, alpha)).or(rig.focus));
+                let from = control.map(|p| piece_com(p, alpha)).or(rig.focus);
+                target_text(*kind, s, &world, target, !watching, from);
             }
             HudText::Title => match scene.kind {
                 SceneKind::Sandbox => {
@@ -281,7 +363,9 @@ fn update_text(
                 }
             }
             HudText::Banner => {
-                if let Some((b, until)) = &scene.banner
+                if virtual_time.is_paused() {
+                    s.push_str("PAUSED  ·  P");
+                } else if let Some((b, until)) = &scene.banner
                     && world.sim.time_seconds() < *until
                 {
                     s.push_str(b);
@@ -323,11 +407,13 @@ pub fn hull_fraction(ship: &sim::Ship, control: Option<sim::PieceId>) -> f32 {
     if full > 0.0 { have / full } else { 0.0 }
 }
 
-fn target_text(kind: HudText, s: &mut String, world: &SimWorld, input: &PlayerInput, from: Option<Vec2>) {
-    let Some(lock) = input.lock else {
+/// The target panel: the player's lock (with how to lock when there is none), or in watch mode the watched
+/// ship's behavior target (`hint` off: nobody can lock).
+fn target_text(kind: HudText, s: &mut String, world: &SimWorld, target: Option<Target>, hint: bool, from: Option<Vec2>) {
+    let Some(lock) = target else {
         if kind == HudText::TargetName {
             s.push_str("NO TARGET");
-        } else if kind == HudText::TargetSub {
+        } else if kind == HudText::TargetSub && hint {
             s.push_str("CLICK OR TAB TO LOCK");
         }
         return;
@@ -422,21 +508,33 @@ fn warnings(s: &mut String, ship: &sim::Ship, piece: &sim::Piece, labels: &[Stri
     }
 }
 
-/// The tiny hull map: one cell per blueprint cell of the player's ship, teal by hit points, coral when lost.
+/// Flight ended: the next flight's ships are new, whatever their ids.
+fn forget_ship(mut commands: Commands, mut state: ResMut<HudState>, map: Query<Entity, With<HullMap>>) {
+    state.map_for = BuiltFor::default();
+    state.labels.clear();
+    state.labels_for = None;
+    for map in &map {
+        commands.entity(map).despawn_children();
+    }
+}
+
+/// The tiny hull map: one cell per blueprint cell of the player's ship (in a behavior test's watch mode the
+/// watched one), teal by hit points, coral when lost. Rebuilt whenever the ship or its design changes.
 #[allow(clippy::too_many_arguments)]
 fn update_hull_map(
     mut commands: Commands,
     mut state: ResMut<HudState>,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
+    scene: Res<Scene>,
     style: Res<Style>,
     map: Query<Entity, With<HullMap>>,
     mut cells: Query<(&HullCell, &mut BackgroundColor)>,
 ) {
     let Ok(map) = map.single() else { return };
-    let ship = focus.0.and_then(|id| world.sim.ship(id));
-    if ship.map(|s| s.id()) != state.map_ship {
-        state.map_ship = ship.map(|s| s.id());
+    let ship = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
+    if !state.map_for.matches(ship) {
+        state.map_for.set(ship);
         commands.entity(map).despawn_children();
         if let Some(s) = ship {
             let b = s.design().grid.bounds().unwrap_or(data::Bounds { min_x: 0, min_y: 0, max_x: 1, max_y: 1 });
@@ -477,7 +575,7 @@ fn update_hull_map(
             ui_color(style.ui_label, 0.35)
         } else {
             let f = (st.hp / full).clamp(0.0, 1.0);
-            if f < 0.5 { ui_color(Color::srgb_u8(0xe2, 0xb1, 0x5c), 0.85) } else { ui_color(style.glow_player, 0.45 + 0.45 * f) }
+            if f < 0.5 { ui_color(style.system_color("power"), 0.85) } else { ui_color(style.glow_player, 0.45 + 0.45 * f) }
         };
         if bg.0 != c {
             bg.0 = c;
@@ -527,27 +625,37 @@ fn lock_ring(
     }
 }
 
-/// Markers at the screen edge pointing at active enemies outside the view.
-#[allow(clippy::too_many_arguments)]
+/// Markers at the screen edge pointing at active enemies (of the focus; in watch mode of the watched ship) outside
+/// the view, kept clear of the HUD's texts and widgets (bevy_ui draws over the world: a marker there hid them or
+/// was hidden).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn offscreen_markers(
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
+    scene: Res<Scene>,
     input: Res<PlayerInput>,
     rig: Res<CameraRig>,
     regions: Option<Res<FxRegions>>,
     style: Res<Style>,
     toggles: Res<RenderToggles>,
+    zones: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), Or<(With<HudText>, With<HudZone>)>>,
+    mut rects: Local<Vec<Rect>>,
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(regions) = regions else { return };
-    let Some(me) = focus.0.and_then(|id| world.sim.ship(id)) else { return };
+    // The focus, else (watch) the watched ship.
+    let Some(me) = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id)) else { return };
     if !toggles.hud {
         return;
     }
+    rects.clear();
+    let shown = zones.iter().filter(|z| z.2.get());
+    rects.extend(shown.filter_map(|(node, tf, _)| logical_rect(node, tf)).map(|r| r.inflate(MARKER_CLEARANCE)));
     let team = me.team();
     let px = 1.0 / rig.zoom;
     let half = rig.half_extent();
-    let inset = Vec2::splat(34.0 * px);
+    let centre = rig.view_center();
+    let edge = rig.viewport / 2.0 - Vec2::splat(MARKER_INSET);
     for s in world.sim.ships() {
         if !s.is_active() || sim::friendly(team, s.team()) {
             continue;
@@ -558,10 +666,10 @@ fn offscreen_markers(
         if d.x.abs() < half.x && d.y.abs() < half.y {
             continue;
         }
-        let box_half = half - inset;
-        let scale = (box_half.x / d.x.abs().max(1e-3)).min(box_half.y / d.y.abs().max(1e-3));
-        let pos = rig.pos + d * scale;
-        let dir = d.normalize_or_zero();
+        // On screen (y down): the ray from the view centre towards the ship.
+        let ray = rig.world_to_screen(at) - centre;
+        let pos = rig.screen_to_world(marker_spot(centre, ray, edge, &rects));
+        let dir = Vec2::new(ray.x, -ray.y).normalize_or_zero();
         let side = Vec2::new(-dir.y, dir.x);
         let locked = input.locked_ship() == Some(s.id());
         let c = style.glow_enemy.with_alpha(if locked { 1.0 } else { 0.75 });
@@ -569,5 +677,90 @@ fn offscreen_markers(
         queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.dot(&regions.soft, pos, 18.0 * px, c.with_alpha(0.25), Z_HUD - 0.1);
+    }
+}
+
+/// Where an off-screen marker sits (logical screen px, y down): on the `ray` from the view `centre` towards its
+/// ship, where it meets the view's edge inset to `edge` (half sizes), then moved back along the ray until it is
+/// out of every `zone`.
+fn marker_spot(centre: Vec2, ray: Vec2, edge: Vec2, zones: &[Rect]) -> Vec2 {
+    let mut k = (edge.x / ray.x.abs().max(1e-3)).min(edge.y / ray.y.abs().max(1e-3));
+    // Where the ray enters the slab `lo..hi` of one axis, as a multiple of the ray.
+    let enter = |c: f32, d: f32, lo: f32, hi: f32| {
+        if d.abs() < 1e-6 { f32::NEG_INFINITY } else { ((lo - c) / d).min((hi - c) / d) }
+    };
+    for _ in 0..=zones.len() {
+        let p = centre + ray * k;
+        let Some(r) = zones.iter().find(|r| r.contains(p)) else { break };
+        let t = enter(centre.x, ray.x, r.min.x, r.max.x).max(enter(centre.y, ray.y, r.min.y, r.max.y));
+        if t <= 0.0 {
+            // The centre itself is in it: stay at the edge.
+            break;
+        }
+        k = t - 1.0 / ray.length().max(1e-3);
+    }
+    centre + ray * k
+}
+
+#[cfg(test)]
+mod tests {
+    use sim::Body;
+
+    use super::*;
+    use crate::scene::PLAYER;
+
+    fn design(content: &data::Content, id: &str) -> Arc<ShipDesign> {
+        Arc::new(ShipDesign::compile(content, content.ships.get(id).unwrap()).unwrap())
+    }
+
+    /// Every new sim numbers its ships from 0: a test flight of a smaller design after a flight of a bigger one
+    /// has the same ship id, so the hull map (one cell per part of the old design) must be rebuilt, or it indexes
+    /// past the new design's parts (it panicked).
+    #[test]
+    fn the_hull_map_is_rebuilt_for_a_new_sim_even_with_the_same_ship_id() {
+        let content = data::base_content();
+        let fly = |id: &str| {
+            let mut sim = sim::Sim::new(1);
+            let ship = sim.spawn_ship(design(&content, id), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
+            (sim, ship)
+        };
+        let (first, runner) = fly("halvex_runner");
+        let mut built = BuiltFor::default();
+        assert!(built.matches(None));
+        built.set(first.ship(runner));
+        assert!(built.matches(first.ship(runner)));
+        assert!(!built.matches(None));
+
+        // The drydock's T with fewer parts: a new sim, the same id, a smaller design.
+        let (second, skiff) = fly("rim_skiff");
+        assert_eq!(skiff, runner);
+        assert!(second.ship(skiff).unwrap().design().parts.len() < first.ship(runner).unwrap().design().parts.len());
+        assert!(!built.matches(second.ship(skiff)));
+        // The same design compiled again (Shift+R, another test flight) is a new design too.
+        let (third, again) = fly("halvex_runner");
+        assert!(!built.matches(third.ship(again)));
+        built.set(third.ship(again));
+        assert!(built.matches(third.ship(again)));
+    }
+
+    /// A marker for a ship up and to the left of a 1600 x 900 view: at the edge it sat on the hull block; it moves
+    /// in along its ray, out of the block and the title, and stays in the view.
+    #[test]
+    fn off_screen_markers_keep_clear_of_the_hud() {
+        let (centre, edge) = (Vec2::new(800.0, 450.0), Vec2::new(800.0, 450.0) - Vec2::splat(MARKER_INSET));
+        let hull = Rect::new(54.0, 4.0, 330.0, 150.0);
+        let title = Rect::new(560.0, 2.0, 1040.0, 70.0);
+        let ray = Vec2::new(-600.0, -420.0);
+        let free = marker_spot(centre, ray, edge, &[]);
+        assert!((free.y - MARKER_INSET).abs() < 1e-3, "{free}");
+        assert!(hull.contains(free));
+        let spot = marker_spot(centre, ray, edge, &[title, hull]);
+        assert!(!hull.contains(spot) && !title.contains(spot), "{spot}");
+        assert!((spot - centre).perp_dot(ray).abs() < 1e-2 * ray.length(), "off the ray: {spot}");
+        // Just outside the block, where the ray leaves it.
+        assert!(hull.inflate(1.5).contains(spot), "{spot}");
+        // Straight up through the title: just below it.
+        let up = marker_spot(centre, Vec2::new(0.0, -500.0), edge, &[title, hull]);
+        assert!((up.x - 800.0).abs() < 1e-3 && up.y > title.max.y && up.y <= title.max.y + 1.5, "{up}");
     }
 }

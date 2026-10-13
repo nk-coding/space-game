@@ -25,7 +25,8 @@
 //! line has been at its limit for a few ticks (GDR-0055, `FlightTuning::assist_after`):
 //!
 //! 4. **Gimbals** of firing engines (a small lateral force).
-//! 5. **Differential thrust**, only while steering to a heading or a rate (not to stop a spin without one):
+//! 5. **Differential thrust**, only while steering to a heading (not for keyboard rotation, never to stop a
+//!    spin without a heading):
 //!    thrusters whose torque has the needed sign are throttled up (strongest lever first). Rotation has priority
 //!    over translation here.
 
@@ -256,23 +257,18 @@ pub fn couples(
     torque
 }
 
-/// The first line (steps 1–3): allocates `force` (piece frame, kN) and `torque` (kN·m) over translation, pure
-/// torque and RCS couples. `fmax[i]`: available force of row `i` now, after the rated-speed falloff (0 for rows
-/// that cannot push this tick, and at the rating); `full[i]`: the same without the falloff (RCS couples);
-/// `tmax[j]`: available torque of source `j`. Writes `out` (resized by the caller) and returns the torque still
-/// missing (0 when met): what only the last resort ([`assist`]) could add.
-#[allow(clippy::too_many_arguments)]
-pub fn allocate(
+/// Step 1 of the first line: per axis group the requested `force` (piece frame, kN, clamped to the group's
+/// capacity in `fmax`), with the free choice of torque inside the groups that comes closest to `torque`. Adds the
+/// throttles to `throttle` (zeroed and resized by the caller) and returns the torque they make. The flight
+/// computer also runs it alone (no turn asked) to see which rows translation leaves free for the RCS couples.
+pub fn translate(
     th: &[Thruster],
     table: &AllocTable,
     fmax: &[f32],
-    full: &[f32],
-    tmax: &[f32],
     force: Vec2,
     torque: f32,
-    out: &mut Actuation,
+    throttle: &mut [f32],
 ) -> f32 {
-    // 1. Translation per group, with the free torque choice.
     let want = [force.y, -force.y, force.x, -force.x];
     let mut fg = [0.0f32; GROUPS];
     let (mut lo, mut hi) = (0.0f32, 0.0f32);
@@ -304,7 +300,7 @@ pub fn allocate(
                 th,
                 fmax,
                 f,
-                Some((&mut out.throttle, 1.0 - lam)),
+                Some((&mut *throttle, 1.0 - lam)),
             );
         }
         if lam > 0.0 {
@@ -313,17 +309,50 @@ pub fn allocate(
                 th,
                 fmax,
                 f,
-                Some((&mut out.throttle, lam)),
+                Some((&mut *throttle, lam)),
             );
         }
     }
-    for t in &mut out.throttle {
+    for t in throttle.iter_mut() {
         *t = t.clamp(0.0, 1.0);
     }
     let mut made = 0.0f32;
     for (i, t) in th.iter().enumerate() {
-        made += out.throttle[i] * fmax[i] * t.torque_per_force;
+        made += throttle[i] * fmax[i] * t.torque_per_force;
     }
+    made
+}
+
+/// The part of `force` (piece frame, kN) that its thrust groups cannot push in full this tick (the request is at
+/// least the group's capacity in `fmax`): translation that goes on in the next ticks. A request a group meets in
+/// full is done within the tick (dead-beat) and frees its rows again.
+pub fn lasting(table: &AllocTable, fmax: &[f32], force: Vec2) -> Vec2 {
+    let cap = |g: usize| -> f32 { table.groups[g].iter().map(|&i| fmax[i as usize]).sum() };
+    let keep = |f: f32, pos: usize, neg: usize| {
+        let saturated = (f > 0.0 && f >= cap(pos)) || (f < 0.0 && -f >= cap(neg));
+        if saturated { f } else { 0.0 }
+    };
+    Vec2::new(keep(force.x, 2, 3), keep(force.y, 0, 1))
+}
+
+/// The first line (steps 1–3): allocates `force` (piece frame, kN) and `torque` (kN·m) over translation, pure
+/// torque and RCS couples. `fmax[i]`: available force of row `i` now, after the rated-speed falloff (0 for rows
+/// that cannot push this tick, and at the rating); `full[i]`: the same without the falloff (RCS couples);
+/// `tmax[j]`: available torque of source `j`. Writes `out` (resized by the caller) and returns the torque still
+/// missing (0 when met): what only the last resort ([`assist`]) could add.
+#[allow(clippy::too_many_arguments)]
+pub fn allocate(
+    th: &[Thruster],
+    table: &AllocTable,
+    fmax: &[f32],
+    full: &[f32],
+    tmax: &[f32],
+    force: Vec2,
+    torque: f32,
+    out: &mut Actuation,
+) -> f32 {
+    // 1. Translation per group, with the free torque choice.
+    let made = translate(th, table, fmax, force, torque, &mut out.throttle);
     let mut rest = torque - made;
     let tol = tolerance(torque);
 
@@ -360,7 +389,7 @@ pub fn allocate(
 
 /// The last resort (steps 4 and 5) for the torque `rest` that the first line ([`allocate`]) left missing:
 /// gimbals of the firing engines, then, if `differential` (the flight computer allows it only while it steers
-/// to a heading or a rate, never to stop a spin without one), differential thrust. Both add force nobody asked
+/// to a heading, never to stop a spin without one), differential thrust. Both add force nobody asked
 /// for. Adds to `out` and returns the torque still missing.
 pub fn assist(
     th: &[Thruster],

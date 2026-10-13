@@ -537,3 +537,49 @@ fn a_projectile_keeps_the_owner_it_was_fired_with() {
     }
     assert_eq!(enemy_hits, 1);
 }
+
+/// A gun with an absurd rate (13 Oct 2026 review: a period below half an ulp of the cooldown never ended the
+/// firing loop) fires at most `MAX_SHOTS_PER_TICK` shots per tick.
+#[test]
+fn a_gun_fires_at_most_a_few_shots_per_tick() {
+    let c = content();
+    let mut d = (*custom(&c, &gunboat("pulse_laser"))).clone();
+    let gun = find(&d, "pulse_laser", 0, 0);
+    d.parts[gun as usize].delivery = data::Delivery::Pulse { rate: 1e9 };
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(Arc::new(d), sim::Owner::PLAYER, Body::default());
+    for _ in 0..3 {
+        w.step(&fire(s));
+        let shots = w.events().iter().filter(|e| matches!(e, SimEvent::ShotFired { .. })).count();
+        assert_eq!(shots as u32, sim::weapons::tuning::MAX_SHOTS_PER_TICK);
+    }
+}
+
+/// Two hits on one block in the same tick (13 Oct 2026 review): the first destroys it, but its collider stays
+/// until breakage is resolved after the weapons phase. The second shot must go on to the part behind it, not
+/// end on the stale collider without damage.
+#[test]
+fn a_second_hit_in_the_same_tick_reaches_the_part_behind() {
+    let c = content();
+    // Two projectiles in one tick (both fly before the guns).
+    let (mut w, s, t, d) = range(&c, "pulse_laser");
+    for _ in 0..2 {
+        w.spawn_projectile(s, WeaponFamily::Kinetic, Vec2::new(0.0, 12.0), Vec2::new(0.0, 300.0), 1.5, 1, 1.0);
+    }
+    w.step(&TickInputs::default());
+    assert_eq!(hp(&w, t, &d, 2, 3), 0.0, "the first projectile destroys the near block");
+    assert_eq!(hp(&w, t, &d, 2, 2), 0.0, "the second one destroys the block behind it");
+    assert_eq!(hp(&w, t, &d, 2, 1), 1.0, "and stops there (penetration 1)");
+    // A projectile, then a pulse of a gun in the same tick.
+    let (mut w, s, t, d) = range(&c, "pulse_laser");
+    for _ in 0..10 {
+        w.step(&inputs(s, controls(0, 0.0, false, true))); // the gun reloads to ready
+    }
+    w.spawn_projectile(s, WeaponFamily::Kinetic, Vec2::new(0.0, 12.0), Vec2::new(0.0, 300.0), 1.5, 1, 1.0);
+    w.step(&fire(s));
+    let per_pulse = w.ship(s).unwrap().pieces()[0].guns[0].shot_damage;
+    assert_eq!(hp(&w, t, &d, 2, 3), 0.0);
+    assert!((hp(&w, t, &d, 2, 2) - (1.0 - per_pulse)).abs() < 1e-5, "the pulse hits the block behind");
+    let hits = w.events().iter().filter(|e| matches!(e, SimEvent::Hit { .. })).count();
+    assert_eq!(hits, 2);
+}

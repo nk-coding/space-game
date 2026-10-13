@@ -9,7 +9,8 @@
 //! * **Own vessel.** The parts of the engine's own piece in the lane's path come precomputed from the blueprint
 //!   (`ShipDesign::plume_path`): the first alive one within reach is hit. Its own shield bubbles never stop it.
 //! * **Other bodies.** Enemy vessels, salvage and debris (other owners, or none) are found with one ray cast per
-//!   lane through Rapier's query pipeline, skipping the engine's own piece and every vessel of the same owner
+//!   lane (`Sim::cast_part`, the shots' hit rule: parts the guns destroyed earlier in the tick are passed through
+//!   to the part behind), skipping the engine's own piece and every vessel of the same owner
 //!   (GDR-0046). The cast runs only when another body's bounding circle can be within reach of the lane, and a
 //!   piece whose plumes reach neither a part of its own (`Piece::plume_blocked`, cached on rebuilds) nor another
 //!   body (one scan of the bounding circles against `Piece::plume_reach`) is skipped as a whole, so plumes into
@@ -191,7 +192,7 @@ impl Sim {
                             segment_near(c.centre, c.radius, from, exhaust, len)
                         });
                     let other = if near {
-                        self.physics.raycast_skipping(from, exhaust, len, |key| {
+                        self.cast_part(from, exhaust, len, |key| {
                             key == own_key || friendly(team, self.body_team(key))
                         })
                     } else {
@@ -209,9 +210,7 @@ impl Sim {
                         heat,
                     };
                     if let Some(h) = other {
-                        if let Some((tk, part)) = self.hit_target(&h) {
-                            sc.burns.push(burn(tk, part, h.point, false));
-                        }
+                        sc.burns.push(burn(h.k, h.part, h.hit.point, false));
                     } else if let Some((dist, part)) = own {
                         sc.burns.push(burn(k, part, from + exhaust * dist, true));
                     }
@@ -226,14 +225,16 @@ impl Sim {
     }
 
     /// One lane's damage and heat on the part it hit: shields of non-friendly ships covering the point first
-    /// (energy share; the heat goes with the damage), never the engine's own.
+    /// (energy share; the heat goes with the damage), never the engine's own. A plume that does only heat loses
+    /// each covering bubble's energy share of it, without draining the bubble (heat is not damage).
     fn burn(&mut self, b: &Burn) {
         let mut damage = b.damage;
         let mut heat = b.heat;
-        if !b.own && damage > 0.0 {
+        if !b.own && (damage > 0.0 || heat > 0.0) {
             let fi = family_index(WeaponFamily::Energy);
+            let heat_only = damage <= 0.0;
             for n in 0..self.bubbles.len() {
-                if damage <= 1e-6 {
+                if (if heat_only { heat } else { damage }) <= 1e-6 {
                     break;
                 }
                 let bub = &self.bubbles[n];
@@ -244,6 +245,10 @@ impl Sim {
                     || (b.point - bub.centre).length_squared() > bub.radius * bub.radius
                     || !self.ships[bub.ship_index].parts[bub.part as usize].alive
                 {
+                    continue;
+                }
+                if heat_only {
+                    heat *= 1.0 - bub.absorb[fi].min(1.0);
                     continue;
                 }
                 let took = self.absorb(n, fi, b.by, b.point, damage);

@@ -2,7 +2,7 @@
 //! content), what one live piece looks like ([`piece_visual`], from the `sim` state of that piece) and what a
 //! whole blueprint looks like at rest ([`blueprint_visual`], the drydock: every part, from the ship grid alone).
 //!
-//! Visual interpretation only (icon, tile tone, barrel sizes per gun art, nav lights). Shape and topology come
+//! Visual interpretation only (icon, tile tone, barrels from the part's content, nav lights). Shape and topology come
 //! from `data::geometry` and the sim: polygons, the piece's alive parts and frame origin, hull edges, line of
 //! fire, shield radius.
 
@@ -11,18 +11,10 @@ use data::{Blueprint, Content, ShipGrid};
 use sim::{Piece, Ship, Stat};
 
 use crate::ship_view::{GunVisual, PartVisual, ShipVisual};
-use crate::style::Style;
+use crate::style::{Style, mix};
 
-/// Barrel and muzzle look per gun icon, taken from the reference renders
-/// (`art/ships/halvex-runner.svg`, `art/ships/automaton-raider.svg`): `(barrel (width, protrusion), muzzle radius)`
-/// in cells. Guns without an entry get no barrel and a small muzzle glow at their front edge.
-fn gun_art(icon: Option<&str>) -> (Option<(f32, f32)>, f32) {
-    match icon {
-        Some("beam-laser") => (Some((0.25, 0.7)), 0.15),
-        Some("automaton-cannon") => (Some((0.2, 0.6)), 0.15),
-        _ => (None, 0.12),
-    }
-}
+/// The muzzle glow of a gun without a barrel (its content has no `barrel`), at its front edge, in cells.
+const BARE_MUZZLE: f32 = 0.12;
 
 /// The look of every part of one blueprint (blueprint frame), computed once per design.
 #[derive(Clone, Debug)]
@@ -35,6 +27,8 @@ pub struct DesignVisual {
     pub enemy: bool,
     /// Hull edge / aura / plume / trail tint.
     pub glow: Color,
+    /// The port navigation light (coral; starboard takes the glow).
+    pub port_light: Color,
     /// Weapon colour (muzzle flashes, beams, pulses).
     pub weapon_color: Color,
 }
@@ -65,7 +59,10 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
             (style.machine_tile, mix(style.machine_tile, sys, 0.55), def.icon.clone())
         };
         let gun = def.weapon.as_ref().map(|_| {
-            let (barrel, muzzle_radius) = gun_art(def.icon.as_deref());
+            let (barrel, muzzle_radius) = match def.barrel {
+                Some(b) => (Some((b.width, b.length)), b.muzzle),
+                None => (None, BARE_MUZZLE),
+            };
             let color = style.system_color(color_key.unwrap_or("weapons"));
             weapon_color = color;
             GunVisual { clear: true, barrel, muzzle_radius, color }
@@ -87,7 +84,7 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
         rect_part.push(def.shape == data::Shape::Rect);
         logic_part.push(def.logic.is_some());
     }
-    Ok(DesignVisual { parts, rect_part, logic_part, enemy, glow, weapon_color })
+    Ok(DesignVisual { parts, rect_part, logic_part, enemy, glow, port_light: style.glow_enemy, weapon_color })
 }
 
 /// The visual of one live piece: its alive parts, drawn in the sim's piece frame (pivot = `piece.origin`), with
@@ -202,14 +199,9 @@ fn nav_lights(dv: &DesignVisual, grid: &ShipGrid, parts: &[u32]) -> Vec<(Vec2, C
     }
     match (best_l, best_r) {
         (Some(l), Some(r)) => vec![
-            (Vec2::new(l.0 as f32 + 0.2, l.1 as f32 + 0.85), Color::srgb_u8(0xec, 0x8f, 0x7c)),
+            (Vec2::new(l.0 as f32 + 0.2, l.1 as f32 + 0.85), dv.port_light),
             (Vec2::new(r.0 as f32 + 0.8, r.1 as f32 + 0.85), dv.glow),
         ],
         _ => Vec::new(),
     }
-}
-
-fn mix(a: Color, b: Color, t: f32) -> Color {
-    let (a, b) = (a.to_srgba(), b.to_srgba());
-    Color::srgb(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t)
 }

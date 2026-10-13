@@ -46,12 +46,11 @@ pub fn sv(v: Vec2) -> sim::Vec2 {
 pub struct Timings {
     samples: Vec<f32>,
     next: usize,
-    scratch: Vec<f32>,
 }
 
 impl Timings {
     pub fn new(window: usize) -> Self {
-        Self { samples: Vec::with_capacity(window), next: 0, scratch: Vec::with_capacity(window) }
+        Self { samples: Vec::with_capacity(window), next: 0 }
     }
     pub fn push(&mut self, ms: f32) {
         if self.samples.len() < self.samples.capacity() {
@@ -61,25 +60,18 @@ impl Timings {
             self.next = (self.next + 1) % self.samples.len();
         }
     }
-    pub fn clear(&mut self) {
-        self.samples.clear();
-        self.next = 0;
-    }
-    pub fn len(&self) -> usize {
-        self.samples.len()
-    }
-    /// `(mean, median, p95, max)`.
-    pub fn stats(&mut self) -> (f32, f32, f32, f32) {
+    /// `(mean, median, p95, max)`. Read-only, so readers of the timings (the HUD a few times a second) take
+    /// `SimWorld` shared, not exclusively.
+    pub fn stats(&self) -> (f32, f32, f32, f32) {
         if self.samples.is_empty() {
             return (0.0, 0.0, 0.0, 0.0);
         }
-        self.scratch.clear();
-        self.scratch.extend_from_slice(&self.samples);
-        self.scratch.sort_by(|a, b| a.total_cmp(b));
-        let n = self.scratch.len();
-        let mean = self.scratch.iter().sum::<f32>() / n as f32;
-        let p = |q: f32| self.scratch[((n as f32 - 1.0) * q).round() as usize];
-        (mean, p(0.5), p(0.95), self.scratch[n - 1])
+        let mut sorted = self.samples.clone();
+        sorted.sort_by(|a, b| a.total_cmp(b));
+        let n = sorted.len();
+        let mean = sorted.iter().sum::<f32>() / n as f32;
+        let p = |q: f32| sorted[((n as f32 - 1.0) * q).round() as usize];
+        (mean, p(0.5), p(0.95), sorted[n - 1])
     }
 }
 
@@ -93,7 +85,9 @@ pub struct HashLog {
 }
 
 impl HashLog {
+    /// A log of `ticks` ticks (at least one).
     pub fn new(label: String, ticks: u64) -> Self {
+        let ticks = ticks.max(1);
         Self { label, remaining: ticks, total: ticks, acc: sim::StateHasher::new(), buf: String::with_capacity(4096) }
     }
 }
@@ -125,8 +119,6 @@ pub struct SimWorld {
     next_z: u32,
     pub step_ms: Timings,
     pub hashlog: Option<HashLog>,
-    /// Freeze the sim (used by the hash log when it is done, and by tools).
-    pub frozen: bool,
 }
 
 impl SimWorld {
@@ -143,7 +135,6 @@ impl SimWorld {
             next_z: 0,
             step_ms: Timings::new(900),
             hashlog: None,
-            frozen: false,
         }
     }
 
@@ -250,9 +241,6 @@ impl Plugin for SimBridgePlugin {
 }
 
 fn step_sim(mut world: ResMut<SimWorld>) {
-    if world.frozen {
-        return;
-    }
     let world = &mut *world;
     let t0 = Instant::now();
     world.sim.step(&world.inputs);
@@ -312,6 +300,9 @@ fn apply_events(
     let player = focus.0;
     // Pieces a vessel stripped parts from this tick: when one is emptied, it goes without a burst.
     let mut stripped: Vec<(ShipId, PieceId)> = Vec::new();
+    // Shots and plumes meet the shields before the physics step, at the tick's start pose (`prev_pos`); rams
+    // after the read-back, at the end pose, each led by its `Impact` (`Sim::step`).
+    let mut after_physics = false;
     for k in 0..n {
         // Copy what is needed out of the event (no clones of snapshots), then act with `world` borrowed mutably.
         let act = match &world.sim.events()[k] {
@@ -343,6 +334,10 @@ fn apply_events(
             SimEvent::ShieldHit { ship, piece, part, point, absorbed, depleted, .. } => {
                 Act::Shield(*ship, *piece, *part, v2(*point), *absorbed, *depleted)
             }
+            SimEvent::Impact(_) => {
+                after_physics = true;
+                Act::None
+            }
             SimEvent::Collected { ship, from, at, .. } => {
                 if let sim::Salvaged::Part { ship, piece, .. } = *from {
                     stripped.push((ship, piece));
@@ -366,6 +361,9 @@ fn apply_events(
             Act::Moved(ship, old, piece) => {
                 if let Some(e) = world.views.remove(&(old, piece)) {
                     commands.entity(e).despawn();
+                }
+                if let Some(p) = world.sim.ship(ship).and_then(|s| s.piece(piece)) {
+                    shields.moved(old, ship, &p.parts);
                 }
                 respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, player, ship, piece);
             }
@@ -440,14 +438,15 @@ fn apply_events(
             Act::Burn(ship, engine, point) => fx.burn(ship, engine, point),
             Act::Shield(ship, piece, part, point, absorbed, depleted) => {
                 // The ripple starts where the shot entered: a direction from the emitter in the piece frame (the
-                // bubble turns with the ship), from the tick's pose, so it works while the view is being rebuilt;
-                // its strength is the share of the capacity the shot took.
+                // bubble turns with the ship), from the pose the hit was resolved at (above), so it works while
+                // the view is being rebuilt; its strength is the share of the capacity the shot took.
                 if let Some(s) = world.sim.ship(ship)
                     && let Some(pc) = s.piece(piece)
                 {
                     let [cx, cy] = s.design().parts[part as usize].shape.center();
                     let centre = Vec2::new(cx - pc.origin[0], pc.origin[1] - cy);
-                    let local = Mat2::from_angle(-pc.body.angle) * (point - v2(pc.body.pos));
+                    let (pos, angle) = if after_physics { (pc.body.pos, pc.body.angle) } else { (pc.prev_pos, pc.prev_angle) };
+                    let local = Mat2::from_angle(-angle) * (point - v2(pos));
                     let dir = (local - centre).normalize_or(Vec2::Y);
                     let share = absorbed / s.stats(part).get(Stat::ShieldCapacity).max(1e-3);
                     shields.hit(ship, part, dir, share, depleted);
@@ -522,4 +521,16 @@ pub fn despawn_all_views(commands: &mut Commands, world: &mut SimWorld) {
 pub fn piece_com(piece: &sim::Piece, alpha: f32) -> Vec2 {
     let (pos, angle) = piece.render_pose(alpha);
     world_of(pos, angle, v2(piece.mass.com))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `?hashticks=0` underflowed the countdown on the first tick (a panic in debug builds).
+    #[test]
+    fn a_hash_log_logs_at_least_one_tick() {
+        let log = HashLog::new("load".into(), 0);
+        assert_eq!((log.remaining, log.total), (1, 1));
+    }
 }

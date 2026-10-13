@@ -199,13 +199,12 @@ pub struct BehaviorEntry {
 }
 
 /// The player's saved behaviors (a resource), read from the storage at start and kept in step with it by the
-/// operations below. Every operation that changes something raises [`PlayerBehaviors::revision`].
+/// operations below (screens follow it with Bevy's change detection).
 #[derive(Resource, Clone, Debug, Default)]
 pub struct PlayerBehaviors {
     by_id: BTreeMap<String, PlayerBehavior>,
     /// Documents that don't read (or use a content behavior's id), with why.
     unreadable: BTreeMap<String, String>,
-    revision: u64,
 }
 
 impl PlayerBehaviors {
@@ -230,12 +229,6 @@ impl PlayerBehaviors {
             }
         }
         Ok(out)
-    }
-
-    /// Goes up with every change.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the behavior screen calls it (GDR-0057 wave 2)"))]
-    pub fn revision(&self) -> u64 {
-        self.revision
     }
 
     /// A saved behavior.
@@ -303,11 +296,16 @@ impl PlayerBehaviors {
     }
 
     /// Saves a behavior under its id (a new one from its name when the id is empty) and checks it; returns the id.
-    /// A content behavior's id is refused (save a copy).
+    /// A content behavior's id is refused (save a copy). A new id (none of the behaviors read here) that the storage
+    /// holds already, saved by another copy of the game since this one read the list (a second browser tab), is
+    /// replaced by the next free one, so neither overwrites the other.
     pub fn save(&mut self, storage: &mut Storage, content: &Content, behavior: &Behavior, now: u64) -> Result<String, String> {
         let mut b = Behavior { source: Default::default(), ..behavior.clone() };
-        if b.id.is_empty() {
-            b.id = self.new_id(content, &b.name);
+        if !(self.by_id.contains_key(&b.id) || self.unreadable.contains_key(&b.id)) {
+            let stored = storage.list(BehaviorDoc::NAMESPACE).map_err(|e| e.to_string())?;
+            if b.id.is_empty() || stored.contains(&b.id) {
+                b.id = unique_id(&slug_or(&b.name, "behavior"), |id| self.taken(content, id) || stored.iter().any(|s| s == id));
+            }
         }
         if content.behaviors.contains(&b.id) {
             return Err(format!("{} is a content behavior; save a copy", b.id));
@@ -326,7 +324,6 @@ impl PlayerBehaviors {
         let errors = check(&b, content);
         self.unreadable.remove(&id);
         self.by_id.insert(id.clone(), PlayerBehavior { behavior: b, saved: Some(now), errors });
-        self.revision += 1;
         Ok(id)
     }
 
@@ -341,7 +338,6 @@ impl PlayerBehaviors {
         storage.write(id, &BehaviorDoc(b.clone()), now).map_err(|e| e.to_string())?;
         p.behavior = b;
         p.saved = Some(now);
-        self.revision += 1;
         Ok(())
     }
 
@@ -356,7 +352,6 @@ impl PlayerBehaviors {
         storage.delete::<BehaviorDoc>(id).map_err(|e| e.to_string())?;
         self.by_id.remove(id);
         self.unreadable.remove(id);
-        self.revision += 1;
         Ok(())
     }
 
@@ -531,9 +526,7 @@ mod tests {
         let copy = lib.copy_of(&content, "skirmisher").unwrap();
         assert_eq!((copy.id.as_str(), copy.name.as_str()), ("skirmisher_copy", "Skirmisher copy"));
         assert_eq!(copy.rules, content.behaviors.get("skirmisher").unwrap().rules);
-        let r0 = lib.revision();
         let id = lib.save(&mut storage, &content, &copy, 10).unwrap();
-        assert!(lib.revision() > r0);
         assert!(lib.get(&id).unwrap().runs());
         // The next copy gets the next name; DUPLICATE saves it.
         let dup = lib.duplicate(&mut storage, &content, "skirmisher", 20).unwrap();
@@ -553,6 +546,24 @@ mod tests {
         lib.delete(&mut storage, &dup2).unwrap();
         assert!(lib.get(&dup2).is_none());
         assert_eq!(storage.list("behaviors").unwrap(), [id, dup]);
+    }
+
+    /// Two tabs on one browser storage: the second one's new copy doesn't overwrite the first one's, although its
+    /// list (read at start) doesn't know it.
+    #[test]
+    fn a_new_behavior_never_overwrites_one_another_tab_saved() {
+        let content = data::base_content();
+        let mut storage = mem();
+        let mut tab_a = PlayerBehaviors::load(&storage, &content).unwrap();
+        let mut tab_b = PlayerBehaviors::load(&storage, &content).unwrap();
+        let a = tab_a.copy_of(&content, "skirmisher").unwrap();
+        let b = Behavior { rules: vec!["always -> hold".into()], ..tab_b.copy_of(&content, "skirmisher").unwrap() };
+        assert_eq!(a.id, b.id);
+        assert_eq!(tab_a.save(&mut storage, &content, &a, 1).unwrap(), "skirmisher_copy");
+        assert_eq!(tab_b.save(&mut storage, &content, &b, 2).unwrap(), "skirmisher_copy_2");
+        assert_eq!(storage.read::<BehaviorDoc>("skirmisher_copy").unwrap().unwrap().doc.0.rules, a.rules);
+        // Updating its own behavior writes under its id, as before.
+        assert_eq!(tab_b.save(&mut storage, &content, &Behavior { id: "skirmisher_copy_2".into(), ..b }, 3).unwrap(), "skirmisher_copy_2");
     }
 
     #[test]

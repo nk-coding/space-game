@@ -36,17 +36,21 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
-| Zoom (3–160 px per metre) | wheel, + / − | pinch |
+| Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view: "Lock framing" under [Structure](#structure)) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started | T | – |
-| Home (the ring menu; the flight ends) | M | – |
+| Home (the ring menu; the flight ends) | M, or the ring top left | the ring top left |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
 | Render toggles | 1 debug shapes, 2 glow sprites, 3 bloom | – |
-| Hide HUD / pause / reset scene | H / P / Shift+R (left Shift) | – |
+| Hide HUD / pause (`PAUSED · P` shows) / reset scene | H / P / Shift+R (left Shift) | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
+
+The keys reach the sim tick of the frame they are pressed in, and a tap shorter than a tick (33 ms, even a press
+and release within one frame) still reaches one tick: the controls run before the frame's ticks and latch the
+keys and fire buttons until the next tick takes them (`controls::PlayerInput::for_tick`, 13 Oct 2026).
 Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHAVIOR screen's in
 [Behavior screen](#behavior-screen).
 
@@ -64,8 +68,8 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
 | `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
-| `seed=N` | sim seed (default 42) |
-| `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600) |
+| `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
+| `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
 | `thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints them, `link` aside; `keyturn` is the A/D key turn rate, default 1.5 rad/s; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026) |
 | `mind=N` | the player's mind capacity in logic cores (default 24; a runner has 2): `?fleet=3&mind=4` leaves two runners dormant, for trying the fleet bar's swap |
 | `fleet=N` | N extra copies (at most 8; none in TEST IN RANGE) of the player's design fly with you under the behavior the design names (default its faction's, `skirmisher`), following your lock (`target locked`); switch with V or the fleet bar |
@@ -86,8 +90,8 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 ## Scenes (`scene.rs`)
 
 - **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of the
-  Halvex Runner, after that the autosaved working design). Waves of automaton raiders (their faction's behavior,
-  `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
+  Halvex Runner, after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
+  the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
   `WAVES ON` / `WAVES OFF (C)`, Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
@@ -147,11 +151,13 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 ## Structure
 
 ```
+RunFixedMainLoop      flight, before the ticks: fleet bar clicks → controls (keys, mouse, touch → PlayerInput, latched
+                      until the next tick)
 FixedUpdate (30 Hz)   scene::scene_tick (pilot input, waves)  →  sim_bridge::step_sim  →  sim_bridge::apply_events
   (flight only)                                                   (Sim::step, timing,       (views: spawn / rebuild /
                                                                    hash log)                 despawn; effects from events)
-Update                ui_kit (hit testing, text fields) → flight: fleet bar input, controls (keys, mouse, touch →
-                      PlayerInput), camera input, HUD text, fleet bar, tuning panel (egui) | drydock: DockSet::Input →
+Update                ui_kit (hit testing, text fields) → flight: camera input, HUD text and the home ring, fleet bar,
+                      touch widgets, tuning panel (egui) | drydock: DockSet::Input →
                       Apply → Show → ui_kit styles | behavior: BehaviorSet::Input → Apply → Show → ui_kit styles;
                       the TEXT view's editor in egui's pass | home: clicks and keys → apply → the ship and the
                       camera → ui_kit styles
@@ -204,6 +210,14 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   smootherstep over 0.3 s (a short hop) to 0.5 s (150 m or more), time-based, so the same at any frame rate (a
   unit test checks 30 and 150 fps). Only in follow mode: a free camera stays put, a drag during the glide ends
   it, the zoom is untouched.
+- **Lock framing** (`camera.rs`, 13 Oct 2026, a default for review): at the default 18 px/m a 1600 × 900 window
+  shows about 89 × 50 m, so a raider locked at 58 m (inside the Runner's 60 m gun range) was off screen. While the
+  camera follows and a target is locked, it zooms out just enough to keep the target's centre 90 px inside the
+  view's edges (`LOCK_MARGIN`), at most to 35 % of the chosen zoom (`LOCK_MIN_SHARE`; beyond that the off-screen
+  marker shows the way), and eases back (time constant 0.1 s, like every zoom) when the lock ends. The player's
+  zoom stays the choice (`CameraRig::zoom_target`, what the drydock and home remember); a zoom by hand during a
+  lock starts from what is on screen and ends the framing until the lock ends. Not in a free camera, the load
+  test's frame or watch mode (nobody locks there).
 - **Draw order**: every piece view gets its own layer (z 10..89, round robin) when it is built; the focused
   vessel's piece draws at z 100, decided every frame from `PilotFocus` (`ship_view::sync_piece_views`), so a
   switch reorders at once (before, the z was fixed when the view was built: after a switch the old focus stayed
@@ -214,17 +228,24 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   draw call each with the atlas material, rewritten in place. Plumes come from `piece.thrusters[i]` ×
   `piece.output[i]` and `piece.cruise[i]` (see Plumes below; RCS nozzles: small puffs; engine gimbal from
   `piece.act.deflect`), beams from `Sim::beams()` re-attached to the gun at the render pose, tracers from
-  `Sim::projectiles()` interpolated, loose salvage fragments from `Sim::loose()` interpolated the same way (a
+  `Sim::projectiles()` interpolated (beams, tracers, muzzle flashes and pulses all take the design's weapon colour,
+  `ship_model::DesignVisual::weapon_color`), loose salvage fragments from `Sim::loose()` interpolated the same way (a
   small diamond of lines in the logic colour, `#ae8cec`, turning slowly in a soft breathing glow; atlas regions
   only, no new texture). `SimEvent::Collected` plays a teal flash where the item was and a pulse streak from there
   into the collecting vessel (`Effects::flash`, `Effects::pulse`); a piece emptied by stripping goes without the
   usual burst.
-- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): hull %, hull map, the hold (`CARGO 3 / 8`: cargo units
+- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): the home ring top left (what M does, for touch; its
+  clicks never reach the world: `HudButton`), hull %, hull map (one cell per part of the shown ship's design,
+  rebuilt when the ship or its compiled design changes: every new sim numbers its ships from 0, so the id alone
+  can't tell a test flight of an edited design from the last flight), the hold (`CARGO 3 / 8`: cargo units
   in use / the alive cargo parts of the controlling piece, `Ship::cargo` and `cargo_capacity`; empty for a ship
   without a hold), speed with the top speed of the
   best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
-  hull block and the touch stick on a phone), target panel, wave line, warnings, help; lock ring and off-screen
-  markers are world-space FX. Debug overlay and toggles: `hud.rs`.
+  hull block and the touch stick on a phone), target panel (in watch mode the watched ship's behavior target),
+  wave line, banners (`PAUSED · P` while paused), warnings, help; lock ring and off-screen markers are world-space
+  FX (the markers in watch mode too). A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
+  every HUD text and widget (`HudZone`: hull map, fleet bar, home ring, touch widgets). HUD colours are the
+  `ui.*` tokens. Debug overlay and toggles: `hud.rs`.
 - **Tuning** (`tuning.rs`, bevy_egui 0.43.1): thrust / torque scale (separate or linked), speed scale (every
   engine's and RCS pod's rated speed, so every top speed; `SimConfig::speed_scale`, replaced the soft top speed
   factor on 12 Oct 2026), max turn rate, key turn rate (A/D held, `keyturn=`, GDR-0055) and the mind capacity (`mind=`) apply live
@@ -269,8 +290,8 @@ menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), af
 - **Actions**: the working buttons and their keys send `HomeAction::{Drydock, Behavior, TestRange}`; `apply` sets
   the next mode (TEST RANGE sets `Scene::launch = Some(Launch::Range)`: `OnEnter(Flight)` builds the sandbox as at a
   plain start, not a test flight). A disabled ring carries no action, so it sends nothing. Coming back: the ring
-  button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`) and M in any
-  flight.
+  button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`, `BehaviorAction::Menu`), and in any
+  flight M or the ring top left of the HUD.
 - **Modes**: the screen and the ship's mesh are spawned once and hidden outside home, like the drydock's. Entering
   home keeps the flight camera's zoom; leaving gives it back with the UI scale 1, so the drydock and flight find the
   camera as they left it.
@@ -278,11 +299,11 @@ menu around the docked ship ([GDR-0008](gdr/0008-ui-ship-mind-interface.md)), af
 ## Drydock
 
 The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
-`docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 Oct 2026. This is the foundation:
-the mode, the static view of the player's design, the screen with its widgets and the test flight; since wave 2
-also editing (`data::edit`), the live stats, status line and overlays from `sim::report`. Since 13 Oct it also saves
-(SAVE, the autosave), has the BLUEPRINTS and EXPORT screens, share codes and files (Storage and sharing below), and
-the BEHAVIOR button ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)). Parts are unlimited in v1 (no spare counts).
+`docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 and 13 Oct 2026: the mode, the view
+of the player's design, the screen with its widgets, editing (`data::edit`), the live stats, status line and
+overlays from `sim::report`, saving (SAVE, the autosave), the BLUEPRINTS and EXPORT screens, share codes and files
+(Storage and sharing below), the BEHAVIOR button and the test flight ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)).
+Parts are unlimited in v1 (no spare counts).
 
 Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button top left goes home. Screenshots:
 `docs/results/drydock-*.png`.
@@ -301,7 +322,7 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 | Test flight | T or TEST-FLY (disabled, with the reason in the status line, while the design can't fly) |
 | Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
 | Rename the design | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
-| BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box |
+| BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box. While a screen covers the design the other keys do nothing (Ctrl+S still saves; the bottom bar's buttons work) |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
 frame's content name) and the design's name (a click renames it; "UNSAVED" or "SAVED" after it); the ARMOR pills
@@ -319,13 +340,16 @@ EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; larger windo
 screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or the BEHAVIOR screen is open). The phone layout comes later.
 
 - **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::edit::Drydock`) and the blueprint built
-  from it in frame coordinates (`size` = the frame), plus `revision`; every change goes through
-  `PlayerDesign::edit`, which bumps `revision`. The first design is a copy of `halvex_runner` centred in the first
-  content frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, under the id `player:design` (content ids
-  are snake_case, so it never clashes). The player, the `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content
-  ships.
+  from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through
+  `PlayerDesign::edit`, which bumps `revision`; `replace` (another design opened) bumps both (cells of the old
+  design, the selection, mean nothing in the new one). At start it is the last session's working design
+  (`library::restore_working`, in `BlueprintsPlugin`'s build), else the starter: a copy of `halvex_runner` centred
+  in the first content frame it fits (`frames.ron`: the 24 × 24 frigate), mirror on, named "Halvex Runner copy";
+  it flies under the id `player:design` (content ids are snake_case, so it never clashes). The player, the
+  `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content ships.
 - **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or tuning
-  change. **Panels** (`panels.rs`): the screen's nodes, spawned once and updated in place from the resources (the
+  change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
+  5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels.rs`): the screen's nodes, spawned once and updated in place from the resources (the
   palette list and its key stat). **Behaviors** (`behaviors.rs`): `PlayerBehaviors`, the player's saved behaviors
   on the storage layer, the behavior a design names and its fallback with a banner ([drydock.md](drydock.md#behaviors-storage-designs-and-tests)).
 - **Stats and status** (`stats.rs`): whenever `report::DrydockReport` is recomputed, `stats::update` fills
@@ -358,7 +382,7 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   line of fire from `ShipGrid::line_of_fire_clear`, the hull edge around all parts, nav lights on the main piece,
   no aura) and `ship_view::build_body` into one mesh, replaced only when `revision` (or the glow toggle)
   changes. Blueprint `(x, y)` is world `(x, −y)`. The frame overlay is immediate-mode FX (dots at the cell
-  corners, brackets, the dashed mirror axis while mirroring, the hover cell) drawn inside the grid viewport; a
+  corners, at least 6 px apart: on small cells only every 2nd, 4th, ... corner, brackets, the dashed mirror axis while mirroring, the hover cell) drawn inside the grid viewport; a
   veil in the backdrop's darkest colour (62 %) dims the world outside it, so a ship zoomed under the side panels
   sinks into the background and the grid area reads lighter than the panels, as in the mockup.
 - **Camera**: the drydock drives the shared `CameraRig` (the atlas tier follows its zoom). `CameraRig::view_offset`
@@ -370,9 +394,11 @@ screen (`UiScale` = min(w / 1280, h / 720), 1 to 2, only while the drydock or th
   namespace with a format version; the browser's local storage on the web, files in the user's data directory on
   desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the
   BLUEPRINTS and EXPORT screens (one floating layer over everything above the bottom bar: `ShelfRoot`, a `Hot`
-  veil so clicks reach nothing under it), share codes and `.ron` files, copy and paste (`Clipboard`). Status
-  messages go out through `DrydockStatus` once `stats::update` has made the status for the current revision
-  (`blueprints::announce`).
+  veil so clicks reach nothing under it; hidden at once when the drydock is left, with the clipboard's offer and
+  paste target let go), share codes and `.ron` files, copy and paste (`Clipboard`). The screens' handlers run
+  before the editing tools and the report, so a design opened, renamed or moved to another frame gets its report
+  and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
+  status for the current revision (`blueprints::announce`).
 - **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (plain, active teal, active
   gold, the glowing primary, disabled, bare list rows), ring buttons (plain, or glowing in an accent colour:
   `RingAccent`, home's ring), value bars, corner brackets and a one-line
@@ -403,7 +429,7 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 `behavior-saving-*.png` (a template saved as the design's own copy; the BEHAVIORS list), `behavior-live-watch.png`
 (TEST IN RANGE, watch, with the live panel).
 
-| Keys (only while neither a text field nor the TEXT view has the keyboard, and the BEHAVIORS list is closed) | |
+| Keys (only while neither a text field nor the TEXT view has the keyboard, and the BEHAVIORS list is closed; Ctrl+S also with the list open) | |
 |---|---|
 | Back to the drydock (the design is untouched; the draft stays) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it) |
 | Test in range (the WATCH / FLY ALONGSIDE pills pick the mode) | T, or TEST IN RANGE; T in the test comes back |
@@ -475,9 +501,13 @@ action selected).
   `data::behavior_edit::BehaviorEditor` (`editor()`, `program()`), its text and the text's errors (line, column,
   message). `edit(|e| …)` runs an editing-model operation and prints a changed program canonically into the text;
   `set_text` checks a typed text: valid → the program changes (one undo step); invalid → the program stays,
-  `errors` fill. `revision()` goes up with every change (the graph and the inspector follow it). Leaving the TEXT
-  view tidies a valid text to canonical form. Opening the screen keeps the draft while it is still the same behavior
-  (typed text and the undo history survive a look at the drydock), else copies the new one.
+  `errors` fill. While the text has errors, `edit` refuses (`locked()`: "fix the text first"): the model holds
+  only the last valid program, and printing it would throw the typed lines away; the graph is read-only then.
+  `revision()` goes up with every change (the graph and the inspector follow it), `generation()` with every
+  `replace` (another draft: the selection and an armed REPLACE go). Leaving the TEXT view tidies a valid text to
+  canonical form. Opening the screen keeps the draft while the design still flies the behavior the draft was opened
+  for (also one opened from the BEHAVIORS list; typed text and the undo history survive a look at the drydock),
+  else opens the design's behavior (`DraftSlot`, below).
 - **Saving** (`saving.rs`; the rules in `docs/drydock.md` "On the BEHAVIOR screen"): the name field and the saved
   state, SAVE (`save_draft`: a template becomes the player's copy and, when the design flew the template, the
   design names it; a saved behavior is updated), the working draft (`drydock/behavior`, so unsaved edits survive
@@ -490,11 +520,13 @@ action selected).
   behaviors (most recently saved first; rules, when saved or the first error; `THIS DESIGN`, `IN THE EDITOR`,
   `UNSAVED` tags) and the templates; OPEN, USE FOR THIS DESIGN, DUPLICATE, RENAME, DELETE (with a confirm) on the
   picked row, NEW BEHAVIOR. The TEXT view's editor (egui) would draw over the layer, so the screen shows the graph
-  while the list is open and goes back to the text when it closes.
+  while the list is open and goes back to the text when it closes. A save while it is open (Ctrl+S, SAVE) shows in
+  its rows; the wheel over it scrolls only its lists; leaving the screen hides it at once.
 - **Context** (`mod.rs`): `EditorContext { design_name, slots }`, set when the screen opens; `BehaviorUi { view,
   selected, test_mode, search }`, the UI state (`BehaviorView::{Graph, Text}`, `TestMode::{Watch, FlyAlongside}`,
   `inspect::Selection::{Node(NodeRef), Rule(RuleId), Vocabulary(id)}`: the model's stable ids, so a selection keeps
-  naming the same node while rules move; a selection that an undo or a text edit removes goes).
+  naming the same node while rules move; a selection that an undo or a text edit removes goes, and another draft
+  (OPEN, USE, NEW, the design's behavior) clears it).
 - **Data for the widgets** (pure, tested): `graph::GraphView::of(editor, slots)` (chips with
   `data::behavior_edit::NodeRef::{Target, Action(RuleId), Cond(CondId)}`, rows with their `RuleId`, `slot_line()`),
   `slots_pill`, `add_rule_label`, `slot_line_label`; `inspect::inspect(editor, selection, Context { slots, reach,
@@ -520,13 +552,16 @@ action selected).
   (`approach` in the base content: a no-op above an `approach` fallback) above the last rule when that one is
   `always` (the fallback stays last), else at the bottom, and selects it. Refusals (`Refusal`'s `Display`) go to
   `EditState::note`. Sliders (`controls::Slider`) are dragged by `drag_sliders` inside one stroke
-  (`begin_stroke` / `end_stroke`); the inspector is not rebuilt while one is held (`SliderDrag`). Note fields
-  (`controls::NoteField`, `ui_kit` text fields) write the note when they let go of the keyboard. `DesignReach` (the
-  design's weapon reach, from `sim::design_report` with the tuning) is measured when the screen opens. Rule rows are
+  (`begin_stroke` / `end_stroke`); neither the inspector nor the graph is rebuilt while one is held (`SliderDrag`;
+  the graph follows when it is let go), and undo / redo wait until then. Note fields (`controls::NoteField`,
+  `ui_kit` text fields) write the note when they let go of the keyboard; a refused edit (`EditState::refuse`)
+  rebuilds the inspector, so a refused note's field shows the note again. `DesignReach` (the design's weapon reach,
+  from the drydock's `DrydockReport`) is measured when the screen opens. Rule rows are
   dragged by `reorder::drag_rows` (a press on a row that moves more than 8 px up or down; a teal FX line shows the
   drop place; letting go sends `MoveRule`).
 - **Screen** (`screen.rs`): the frame is spawned once (hidden outside the screen); the graph, the inspector and the
-  palette are rebuilt when what they show changes (program revision and slots; selection, name and source; search).
+  palette are rebuilt when what they show changes (program revision and slots; selection, name and source, a
+  refusal; search). The dashed outline materials are reused from one graph rebuild to the next.
   The graph is a flex row (root column, then a grid: trunk, conditions as max-content, actions as max-content,
   notes), so actions line up and shorter condition groups get longer connectors. Chips carry `ChipLook` and are
   coloured by `style_chips` from their state (idle, hovered, pressed, selected with a glow, dimmed without a slot).
@@ -540,14 +575,17 @@ action selected).
   underlined, `no rule slot` after rules beyond the slots. egui's shader linearises its colours but the main pass
   composites in sRGB, so `egui_color` pre-encodes them (they match bevy_ui's). Switching to TEXT puts the caret in.
   While the editor has the keyboard, the game's `Clipboard` offers the selection (Ctrl+C) and accepts pastes
-  (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. Headless tests
-  must hold modifiers across frames (`down ControlLeft; wait 300; press KeyC; …`): egui reads them once per frame.
+  (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. egui keeps the
+  editor's undo history under its id; it is cleared whenever the text changed outside the editor (a graph edit,
+  another draft, tidying), so Ctrl+Z never brings back another behavior's text. Headless tests must hold modifiers
+  across frames (`down ControlLeft; wait 300; press KeyC; …`): egui reads them once per frame.
 - **Live rule panel** (`live.rs`, in flight): while TEST IN RANGE runs, a compact panel right under the target
   panel: `BEHAVIOR · <NAME>`, which rule decides (or `NO RULE MATCHES · IT HOLDS`), every rule as one line of the
   graph's chip labels (`Shield down and Target on me  ›  Orbit 80% · ccw`), the deciding rule teal in a pill, rules
   without a slot dimmed, and under each rule above it why it doesn't match (the sim's `describe`: `hull < 25% is
-  false (hull is 96%)`). It follows `test_range::BehaviorWatch` (10 Hz): rows are spawned when the behavior changes,
-  only colours and why-lines change in between. Hidden outside tests and with the HUD (H).
+  false (hull is 96%)`). It follows `test_range::BehaviorWatch` (10 Hz): the rules' labels are made and the rows
+  spawned when the behavior changes, only colours and why-lines change in between. Hidden outside tests and with
+  the HUD (H).
 - **Dashed outlines** (`dashed.rs`, `dashed.wesl`): a `UiMaterial` (`DashedOutline { color }`) on the chip node
   itself draws a dashed stadium as wide as the node's border (physical px), dashes spaced to close evenly. Its colour
   is an sRGB colour as numbers (`ui_color`), returned unchanged.
@@ -625,7 +663,10 @@ the technique is [ADR-0029](adr/0029-shield-bubbles-batched-procedural-mesh.md).
   when the sim projects it (`piece.active`, emitter alive, `work > 0`, charge > 0, not `shield_down`: the same
   test as `weapons::collect_bubbles`); it grows in over 0.35 s and fades out over 0.12 s. Hits closer than
   0.16 s and about 20° to an existing one strengthen it instead of adding a ripple (beams hit every tick); a fifth
-  hit replaces the oldest. States without a view are dropped each frame; Shift+R clears them.
+  hit replaces the oldest. A ripple's direction is taken at the pose the hit was resolved at (shots and plumes:
+  the tick's start pose, before physics; rams: its end pose). A piece that splits off and becomes a vessel
+  (`VesselFormed`) takes its bubbles' state to its new ship id. States without a view are dropped each frame;
+  Shift+R clears them.
 - **The shader** (`shield.wesl`, WESL, embedded with `embedded_asset!`): rim line with an energy-conserving width
   when it is thinner than a pixel (`fwidth`), glow, fresnel-like fill, two value-noise layers for the shimmer and
   veins, a time-hashed stutter below `low_share`, four hit terms (ripple ring, impact flash, light along the rim),
@@ -696,6 +737,8 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
   `<g filter="url(#gl)" opacity="0.55">` group, which the `art` crate splits off) and set `icon: "<key>"` on the
   part. `data` embeds the pack, validation checks that the icon exists, and `art`'s test
   (`content_icons_rasterise_at_two_tiers`) checks that every content icon rasterises.
+- **A gun's barrel**: `barrel: (width, length, muzzle)` on the part in the content (`docs/content-model.md`); a gun
+  without one gets a small muzzle glow at its front edge (`ship_model::design_visual`).
 - **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line), call it from the event
   match in `sim_bridge::apply_events`, draw it in `fx::draw_effects`. Continuous visuals that follow sim state
   (like plumes) go in `fx::draw_ships_fx` and read the sim at the render pose.

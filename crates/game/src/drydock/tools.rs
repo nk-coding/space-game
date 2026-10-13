@@ -250,6 +250,15 @@ pub(super) fn pointer(
     }
 }
 
+/// Leaving the drydock (T during a drag): a gesture in progress ends here, its stroke closed and nothing more done
+/// (no fill, no move), so the first frame of the next visit doesn't continue it from wherever the pointer is.
+pub(super) fn leave(mut design: ResMut<PlayerDesign>, mut g: ResMut<DrydockGesture>) {
+    if g.button.is_some() {
+        design.edit(|d| d.end_stroke());
+        *g = DrydockGesture::default();
+    }
+}
+
 /// Carries out one op; returns why it could not happen (or happened without its mirror image).
 fn run(op: Op, content: &Content, ui: &DrydockUi, design: &mut PlayerDesign, sel: &mut Selection) -> Option<String> {
     let m = ui.material.as_str();
@@ -336,9 +345,23 @@ pub(super) fn apply(
     mut design: ResMut<PlayerDesign>,
     mut ui: ResMut<DrydockUi>,
     mut sel: ResMut<Selection>,
+    mut g: ResMut<DrydockGesture>,
     mut note: ResMut<EditNote>,
+    mut placed: Local<Option<(u64, (u32, u32))>>,
 ) {
     let content = &content.0;
+    // Another design (OPEN, NEW, an import) or another frame (FRAME, or its undo: every part moved): the selected
+    // cell would land on another part, and a gesture in progress on another place. Checked before the actions (a
+    // design opened this frame) and after them (an undo of a frame change).
+    let mut forget_if_moved = |design: &PlayerDesign, sel: &mut ResMut<Selection>| {
+        let now = (design.generation(), design.frame());
+        if placed.is_some_and(|p| p != now) {
+            sel.cell = None;
+            *g = DrydockGesture::default();
+        }
+        *placed = Some(now);
+    };
+    forget_if_moved(&design, &mut sel);
     for a in actions.read() {
         let selected = sel.part(&design);
         let result = match (a, selected) {
@@ -381,10 +404,10 @@ pub(super) fn apply(
             }
             (DrydockAction::RotateCcw | DrydockAction::RotateCw, Some(i)) => design.edit(|d| d.rotate(i, *a == DrydockAction::RotateCw)),
             (DrydockAction::Flip, Some(i)) => design.edit(|d| d.flip(i)),
+            // The selected part and, mirroring, its twin (not whatever covers its mirror cells).
             (DrydockAction::Delete, Some(i)) => {
-                let cell = (design.dock().parts()[i].x, design.dock().parts()[i].y);
                 sel.cell = None;
-                design.edit(|d| d.erase(cell))
+                design.edit(|d| d.remove_part(i))
             }
             (DrydockAction::PartMaterial(m), Some(i)) => design.edit(|d| d.set_material(i, m)),
             (DrydockAction::PartTier(t), Some(i)) => {
@@ -413,6 +436,7 @@ pub(super) fn apply(
             note.at = time.elapsed_secs();
         }
     }
+    forget_if_moved(&design, &mut sel);
     // An undo can take the selected part away.
     if sel.cell.is_some() && sel.part(&design).is_none() {
         sel.cell = None;
@@ -562,6 +586,103 @@ mod tests {
         assert_eq!((p.x, p.y, p.rot), (5, 5, 1));
         let p = brush_placement(part("slope_1x3"), (5, 5), 1, "steel");
         assert_eq!((p.x, p.y, p.material.as_deref()), (5, 4, Some("steel")));
+    }
+
+    /// Delete with mirror on removes the selected part and its twin (drydock.md), not an unrelated part that covers
+    /// its mirror cells.
+    #[test]
+    fn delete_takes_the_selected_part_and_its_twin_only() {
+        use bevy::ecs::system::RunSystemOnce;
+        let content = data::base_content();
+        let empty = data::Blueprint { parts: Vec::new(), ..content.ships.get("halvex_runner").unwrap().clone() };
+        let mut design = PlayerDesign::open(&content, &empty, (10, 10)).unwrap();
+        let reactor = Placement { part: "fusion_reactor".into(), x: 1, y: 1, rot: 0, flip: false, material: None, power: None };
+        design.edit(|d| {
+            d.place(reactor).unwrap();
+            d.paint((8, 1), "steel").unwrap();
+            d.mirror = true;
+        });
+        let ui = DrydockUi::new(&content, &design);
+        let mut world = World::new();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<EditNote>();
+        world.init_resource::<DrydockGesture>();
+        world.insert_resource(Selection { cell: Some((2, 2)) });
+        world.insert_resource(design);
+        world.insert_resource(ui);
+        world.insert_resource(GameContent(content));
+        world.write_message(DrydockAction::Delete);
+        world.run_system_once(apply).unwrap();
+        let design = world.resource::<PlayerDesign>();
+        assert_eq!(design.dock().parts().iter().map(|p| p.part.as_str()).collect::<Vec<_>>(), ["armor_block"]);
+        assert_eq!(world.resource::<Selection>().cell, None);
+        assert_eq!(world.resource::<EditNote>().text.as_deref(), Some("MIRROR SKIPPED  ·  NO MIRROR TWIN"));
+    }
+
+    /// The selection is a cell: after another design opens, or the frame changes (FRAME re-centres every part, and
+    /// its undo does it back), that cell lies under another part or none, so the selection (and a gesture in
+    /// progress) goes.
+    #[test]
+    fn the_selection_goes_with_another_design_or_frame() {
+        let content = data::base_content();
+        let design = PlayerDesign::starter(&content);
+        let reactor = design.dock().parts().iter().find(|p| p.part == "fusion_reactor").map(|p| (p.x, p.y)).unwrap();
+        let mut world = World::new();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<EditNote>();
+        world.init_resource::<DrydockGesture>();
+        world.init_resource::<Selection>();
+        world.insert_resource(DrydockUi::new(&content, &design));
+        world.insert_resource(design);
+        world.insert_resource(GameContent(content.clone()));
+        let apply = world.register_system(apply);
+        let select = |world: &mut World| {
+            world.resource_mut::<Selection>().cell = Some(reactor);
+            world.resource_mut::<DrydockGesture>().gesture = Gesture::Move { from: reactor, to: reactor };
+        };
+        world.run_system(apply).unwrap();
+        select(&mut world);
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<Selection>().cell, Some(reactor));
+        // OPEN: another design.
+        world.resource_mut::<PlayerDesign>().replace(PlayerDesign::starter(&content));
+        world.run_system(apply).unwrap();
+        assert_eq!((world.resource::<Selection>().cell, world.resource::<DrydockGesture>().gesture), (None, Gesture::Idle));
+        // FRAME CRUISER, then its undo.
+        select(&mut world);
+        world.resource_mut::<PlayerDesign>().edit(|d| d.set_frame((40, 40))).unwrap();
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<Selection>().cell, None);
+        select(&mut world);
+        world.write_message(DrydockAction::Undo);
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<PlayerDesign>().frame(), (24, 24));
+        assert_eq!(world.resource::<Selection>().cell, None);
+    }
+
+    /// T during a paint drag: the stroke ends with the drydock, and the next visit starts without a gesture.
+    #[test]
+    fn leaving_ends_a_gesture_in_progress() {
+        use bevy::ecs::system::RunSystemOnce;
+        let content = data::base_content();
+        let mut design = PlayerDesign::starter(&content);
+        design.edit(|d| {
+            d.begin_stroke();
+            d.paint((0, 0), "steel").unwrap();
+        });
+        let mut world = World::new();
+        world.insert_resource(design);
+        world.insert_resource(DrydockGesture { gesture: Gesture::Stroke { erase: false, last: (0, 0) }, button: Some(MouseButton::Left) });
+        world.run_system_once(leave).unwrap();
+        let g = world.resource::<DrydockGesture>();
+        assert_eq!((g.gesture, g.button), (Gesture::Idle, None));
+        // The stroke is one closed undo step: undoing it takes the painted blocks away.
+        let mut design = world.resource_mut::<PlayerDesign>();
+        let n = design.blueprint().parts.len();
+        assert!(design.edit(|d| d.undo()));
+        assert_eq!(design.blueprint().parts.len(), n - 2);
     }
 
     #[test]

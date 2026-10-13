@@ -9,12 +9,14 @@ use crate::load::{Content, SCHEMA_VERSION};
 use crate::model::*;
 use crate::problem::Problem;
 use crate::stats::{BONUS_STATS, BUILTIN_STATS, SHIP_STATS};
+use crate::table::Table;
 use crate::text::parse_links;
 
 /// Validates merged content. Returns errors and warnings (warnings: a ship in several pieces, a gun without a clear
 /// line of fire, an RCS part with no side open to space, a radiator that cannot vent, an empty placement power
 /// override, a control load above the cores' capacity, a `control_cost` on a part without a power role, a core
-/// with no control capacity, an icon nothing uses, research that unlocks what is already open).
+/// with no control capacity, an icon nothing uses, research that unlocks what is already open, an encounter ship
+/// without a behavior, a voyage nothing can open).
 pub fn validate(c: &Content) -> Vec<Problem> {
     let mut v = Validator { c, out: Vec::new() };
     v.packs();
@@ -45,8 +47,23 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         }
     });
     v.entries(c.research.as_slice(), |v, e| v.research(e));
-    v.research_cycles();
+    v.cycles(
+        &c.research,
+        |n| &n.requires,
+        "requires",
+        "requires",
+        "can be researched",
+    );
     v.entries(c.starts.as_slice(), |v, e| v.start(e));
+    v.entries(c.encounters.as_slice(), |v, e| v.encounter(e));
+    v.entries(c.voyages.as_slice(), |v, e| v.voyage(e));
+    v.cycles(
+        &c.voyages,
+        |x| &x.opens_after,
+        "opens_after",
+        "opens after",
+        "can ever open",
+    );
     v.locked();
     v.icons();
     v.wiki();
@@ -92,6 +109,15 @@ pub const MAX_MATERIAL_AMOUNT: u32 = 10_000;
 pub const MAX_MIND_CAPACITY: u32 = 100;
 /// Longest allowed side of a part's footprint, in cells (placeholder).
 pub const MAX_PART_SIDE: u32 = 16;
+/// Largest voyage radius, site spacing and encounter wake radius, in metres (a sanity bound, placeholder: `f32`
+/// still resolves millimetres there, ADR-0022).
+pub const MAX_VOYAGE_RADIUS: f32 = 20_000.0;
+/// Most sites one voyage places, the sum of its sites' counts (a sanity bound, placeholder).
+pub const MAX_VOYAGE_SITES: u32 = 64;
+/// Most ships or wrecks one entry of an encounter rolls (a sanity bound, placeholder).
+pub const MAX_ENCOUNTER_COUNT: u32 = 32;
+/// Longest expected voyage, in minutes (a sanity bound, placeholder).
+pub const MAX_VOYAGE_MINUTES: u32 = 600;
 /// Largest number in content (masses, hit points, thrust, damage, bonus amounts, ...): a sanity limit that keeps
 /// sums over a ship far from overflowing to infinity (placeholder).
 pub const MAX_NUMBER: f32 = 1.0e6;
@@ -426,6 +452,14 @@ impl<'a> Validator<'a> {
         if let Some(col) = &p.color {
             self.key_in(p, "color", col, SYSTEM_COLORS, "system colour");
         }
+        if let Some(b) = &p.barrel {
+            if p.weapon.is_none() {
+                self.err(p, "barrel", "only guns (parts with `weapon`) have a barrel");
+            }
+            self.number(p, "barrel.width", b.width, 0.0, true);
+            self.number(p, "barrel.length", b.length, 0.0, false);
+            self.number(p, "barrel.muzzle", b.muzzle, 0.0, true);
+        }
         let (w, h) = p.size;
         if w == 0 || h == 0 {
             self.err(p, "size", "footprint must be at least 1×1");
@@ -749,10 +783,18 @@ impl<'a> Validator<'a> {
         }
     }
 
-    /// `requires` must not loop: each cycle is reported once, at the requirement that closes it.
-    fn research_cycles(&mut self) {
-        let c = self.c;
-        let nodes = c.research.as_slice();
+    /// A list of requirements (`requires` of research nodes, `opens_after` of voyages) must not loop: each cycle
+    /// is reported once, at the requirement that closes it. Messages read "each <verb> the next" and "so none of
+    /// them <outcome>".
+    fn cycles<T: Entry>(
+        &mut self,
+        table: &'a Table<T>,
+        edges: impl Fn(&T) -> &[String],
+        field: &str,
+        verb: &str,
+        outcome: &str,
+    ) {
+        let nodes = table.as_slice();
         // 0: not visited, 1: on the current path, 2: done.
         let mut state = vec![0u8; nodes.len()];
         for root in 0..nodes.len() {
@@ -760,18 +802,18 @@ impl<'a> Validator<'a> {
                 continue;
             }
             state[root] = 1;
-            // Depth first without recursion (mods may chain many nodes): (node, next requirement to follow).
+            // Depth first without recursion (mods may chain many entries): (entry, next requirement to follow).
             let mut path: Vec<(usize, usize)> = vec![(root, 0)];
             while let Some(top) = path.last_mut() {
                 let (node, k) = *top;
-                let Some(r) = nodes[node].requires.get(k) else {
+                let Some(r) = edges(&nodes[node]).get(k) else {
                     state[node] = 2;
                     path.pop();
                     continue;
                 };
                 top.1 += 1;
-                let Some(j) = c.research.position(r) else {
-                    continue; // an unknown node: reported by `research`
+                let Some(j) = table.position(r) else {
+                    continue; // an unknown id: reported by the entry's own check
                 };
                 match state[j] {
                     0 => {
@@ -782,14 +824,14 @@ impl<'a> Validator<'a> {
                         let from = path.iter().position(|&(x, _)| x == j).unwrap();
                         let cycle: Vec<&str> = path[from..]
                             .iter()
-                            .map(|&(x, _)| nodes[x].id.as_str())
-                            .chain([nodes[j].id.as_str()])
+                            .map(|&(x, _)| nodes[x].id())
+                            .chain([nodes[j].id()])
                             .collect();
                         self.err(
                             &nodes[node],
-                            format!("requires[{k}]"),
+                            format!("{field}[{k}]"),
                             format!(
-                                "`requires` forms a cycle ({}, each requires the next), so none of them can be researched",
+                                "`{field}` forms a cycle ({}, each {verb} the next), so none of them {outcome}",
                                 cycle.join(" → ")
                             ),
                         );
@@ -807,8 +849,8 @@ impl<'a> Validator<'a> {
         self.mind_capacity(s, "mind_capacity", s.mind_capacity);
         for (k, v) in s.voyages.iter().enumerate() {
             let f = format!("voyages[{k}]");
-            if !is_snake_id(v) {
-                self.err(s, &f, format!("voyage id `{v}` must be snake_case"));
+            if !c.voyages.contains(v) {
+                self.err(s, &f, format!("unknown voyage `{v}`"));
             } else if s.voyages[..k].contains(v) {
                 self.err(s, &f, format!("`{v}` is listed twice"));
             }
@@ -862,6 +904,190 @@ impl<'a> Validator<'a> {
                     "ship `{}` has {cores} logic cores, more than the mind capacity {}",
                     s.ship, s.mind_capacity
                 ),
+            );
+        }
+    }
+
+    /// A count range `(min, max)`: `min ≤ max ≤ max_count`.
+    fn count_range<T: Entry>(&mut self, e: &T, field: &str, (lo, hi): (u32, u32), max_count: u32) {
+        if lo > hi {
+            self.err(e, field, format!("min {lo} is above max {hi}"));
+        } else if hi > max_count {
+            self.err(e, field, format!("at most {max_count}, got {hi}"));
+        }
+    }
+
+    /// A distance in metres: above 0 and at most [`MAX_VOYAGE_RADIUS`].
+    fn distance<T: Entry>(&mut self, e: &T, field: &str, x: f32) {
+        if !(x.is_finite() && x > 0.0 && x <= MAX_VOYAGE_RADIUS) {
+            self.err(
+                e,
+                field,
+                format!("a distance above 0 and at most {MAX_VOYAGE_RADIUS} m, got {x}"),
+            );
+        }
+    }
+
+    /// An encounter's ships must be able to fly (a logic core) and should fight (a behavior); its wrecks may be
+    /// any ship, with a share of their parts gone below 1.
+    fn encounter(&mut self, e: &'a Encounter) {
+        let c = self.c;
+        self.distance(e, "wake_radius", e.wake_radius);
+        if e.ships.is_empty() && e.wrecks.is_empty() {
+            self.err(e, "ships", "an encounter needs ships or wrecks");
+        }
+        for (k, s) in e.ships.iter().enumerate() {
+            let f = format!("ships[{k}]");
+            self.count_range(e, &format!("{f}.count"), s.count, MAX_ENCOUNTER_COUNT);
+            let Some(ship) = c.ships.get(&s.ship) else {
+                self.err(e, format!("{f}.ship"), format!("unknown ship `{}`", s.ship));
+                continue;
+            };
+            if c.ship_totals(ship).logic_cores == 0 {
+                self.err(
+                    e,
+                    format!("{f}.ship"),
+                    format!(
+                        "ship `{}` has no logic core, so it would spawn as salvage; list it under `wrecks`",
+                        s.ship
+                    ),
+                );
+            } else if c.ship_behavior(ship).is_none() {
+                self.warn(
+                    e,
+                    format!("{f}.ship"),
+                    format!(
+                        "ship `{}` has no behavior (its own or its faction's): it would hold and never fight",
+                        s.ship
+                    ),
+                );
+            }
+        }
+        for (k, w) in e.wrecks.iter().enumerate() {
+            let f = format!("wrecks[{k}]");
+            self.count_range(e, &format!("{f}.count"), w.count, MAX_ENCOUNTER_COUNT);
+            if !c.ships.contains(&w.ship) {
+                self.err(e, format!("{f}.ship"), format!("unknown ship `{}`", w.ship));
+            }
+            if !(w.damage.is_finite() && (0.0..1.0).contains(&w.damage)) {
+                self.err(
+                    e,
+                    format!("{f}.damage"),
+                    format!("a share of the parts, 0 to below 1, got {}", w.damage),
+                );
+            }
+        }
+    }
+
+    /// A voyage: its numbers in range, its sites' encounters known, exactly one goal that can be cleared, and
+    /// `opens_after` naming other voyages (loops: [`Validator::cycles`]).
+    fn voyage(&mut self, v: &'a Voyage) {
+        let c = self.c;
+        if !is_snake_id(&v.band) {
+            self.err(
+                v,
+                "band",
+                format!("band key `{}` must be snake_case", v.band),
+            );
+        }
+        let on_map = |x: f32| x.is_finite() && (0.0..=1.0).contains(&x);
+        if !(on_map(v.map.0) && on_map(v.map.1)) {
+            self.err(
+                v,
+                "map",
+                format!(
+                    "a place on the map, each 0 to 1, got ({}, {})",
+                    v.map.0, v.map.1
+                ),
+            );
+        }
+        for (k, id) in v.opens_after.iter().enumerate() {
+            let f = format!("opens_after[{k}]");
+            if !c.voyages.contains(id) {
+                self.err(v, &f, format!("unknown voyage `{id}`"));
+            } else if v.opens_after[..k].contains(id) {
+                self.err(v, &f, format!("`{id}` is listed twice"));
+            }
+        }
+        if v.opens_after.is_empty() && !c.starts.iter().any(|s| s.voyages.contains(&v.id)) {
+            self.warn(
+                v,
+                "opens_after",
+                "no start opens it and it opens after no other voyage, so it can never be launched",
+            );
+        }
+        self.distance(v, "radius", v.radius);
+        let (near, far) = v.spacing;
+        self.distance(v, "spacing", near);
+        self.distance(v, "spacing", far);
+        if near > far {
+            self.err(v, "spacing", format!("min {near} is above max {far}"));
+        } else if near > 2.0 * v.radius {
+            self.err(
+                v,
+                "spacing",
+                format!(
+                    "sites at least {near} m apart never fit into a radius of {} m",
+                    v.radius
+                ),
+            );
+        }
+        if v.minutes.0 == 0 {
+            self.err(v, "minutes", "at least 1 minute");
+        }
+        self.count_range(v, "minutes", v.minutes, MAX_VOYAGE_MINUTES);
+        if v.sites.is_empty() {
+            self.err(v, "sites", "a voyage needs at least one site");
+            return;
+        }
+        let mut goals = 0;
+        for (k, s) in v.sites.iter().enumerate() {
+            let f = format!("sites[{k}]");
+            if s.count == 0 {
+                self.err(v, format!("{f}.count"), "at least 1");
+            }
+            let encounter = c.encounters.get(&s.encounter);
+            if encounter.is_none() {
+                self.err(
+                    v,
+                    format!("{f}.encounter"),
+                    format!("unknown encounter `{}`", s.encounter),
+                );
+            }
+            if !s.goal {
+                continue;
+            }
+            goals += 1;
+            if goals > 1 {
+                self.err(v, format!("{f}.goal"), "only one site can be the goal");
+            }
+            if s.count != 1 {
+                self.err(
+                    v,
+                    format!("{f}.count"),
+                    format!("the goal is one site, got a count of {}", s.count),
+                );
+            }
+            if let Some(e) = encounter.filter(|e| !e.always_has_ships()) {
+                self.err(
+                    v,
+                    format!("{f}.encounter"),
+                    format!(
+                        "encounter `{}` may roll no ships, so the goal could never be cleared",
+                        e.id
+                    ),
+                );
+            }
+        }
+        if goals == 0 {
+            self.err(v, "sites", "no site is the goal: mark one `goal: true`");
+        }
+        let total = v.site_count();
+        if total > MAX_VOYAGE_SITES {
+            self.err(
+                v,
+                "sites",
+                format!("at most {MAX_VOYAGE_SITES} sites in all, got {total}"),
             );
         }
     }

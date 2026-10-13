@@ -1,6 +1,7 @@
 //! Collider shapes per piece, for the physics layer: convex polygons in the piece frame (y up, counter-
 //! clockwise). The square cells of rectangular parts are merged greedily into rectangles (fewer shapes =
-//! faster physics); slope triangles stay one shape each. Every candidate engine takes convex polygons.
+//! faster physics); slope triangles stay one shape each. Rapier takes them as one compound per piece
+//! (`physics.rs`).
 
 use crate::design::{PartIdx, ShipDesign};
 use crate::mass::to_piece;

@@ -121,6 +121,8 @@ impl Content {
         each(self.families.as_slice(), &mut f);
         each(self.research.as_slice(), &mut f);
         each(self.starts.as_slice(), &mut f);
+        each(self.voyages.as_slice(), &mut f);
+        each(self.encounters.as_slice(), &mut f);
     }
 
     /// Replaces texts by key (a locale table). Returns the keys that matched nothing.
@@ -154,6 +156,8 @@ impl Content {
         each(self.families.iter_mut(), overrides, &mut used);
         each(self.research.iter_mut(), overrides, &mut used);
         each(self.starts.iter_mut(), overrides, &mut used);
+        each(self.voyages.iter_mut(), overrides, &mut used);
+        each(self.encounters.iter_mut(), overrides, &mut used);
         for n in self.behavior_nodes.iter_mut() {
             let id = n.id.clone();
             for (field, text) in n.param_texts_mut() {

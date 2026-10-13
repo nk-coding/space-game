@@ -36,6 +36,8 @@ const GUTTER: f32 = 44.0;
 /// Error messages wrap at this width (UI scale 1), or narrower after a long line, down to the minimum.
 const MESSAGE_WIDTH: f32 = 420.0;
 const MIN_MESSAGE_WIDTH: f32 = 200.0;
+/// The editor's egui id (its state, and the undo history in it, is kept under it).
+const EDITOR_ID: &str = "behavior_text";
 
 /// The node the editor covers (the graph area's rectangle).
 #[derive(Component)]
@@ -158,6 +160,21 @@ fn install_font(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
+/// egui keeps the editor's undo history across frames under its id, whatever the text is now. When the text
+/// changed outside the editor (an edit in the graph or the inspector, another draft opened, tidying), that history
+/// belongs to another text: Ctrl+Z would bring back another behavior's text. It is cleared then; `seen` is the text
+/// the editor last showed. True when it was cleared.
+fn forget_outside_history(ctx: &egui::Context, id: egui::Id, seen: &mut Option<String>, text: &str) -> bool {
+    if seen.as_deref() == Some(text) {
+        return false;
+    }
+    *seen = Some(text.to_string());
+    let Some(mut state) = egui::widgets::text_edit::TextEditState::load(ctx, id) else { return false };
+    state.clear_undoer();
+    state.store(ctx, id);
+    true
+}
+
 /// Char index of the start of each line of `text`.
 fn line_starts(text: &str) -> Vec<usize> {
     let mut starts = vec![0];
@@ -186,6 +203,7 @@ pub(super) fn editor(
     mut font_ready: Local<bool>,
     mut rule_lines: Local<(String, Vec<u32>)>,
     mut was_open: Local<bool>,
+    mut seen: Local<Option<String>>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     if !*font_ready {
@@ -223,6 +241,8 @@ pub(super) fn editor(
     }
     let no_slot: Vec<u32> = rule_lines.1.iter().skip(context.slots as usize).copied().collect();
 
+    let id = egui::Id::new(EDITOR_ID);
+    forget_outside_history(ctx, id, &mut seen, &draft.text);
     let mut text = draft.text.clone();
     let mut changed = false;
     egui::Area::new(egui::Id::new("behavior_text_view")).fixed_pos(rect.min).order(egui::Order::Background).show(ctx, |ui| {
@@ -250,7 +270,7 @@ pub(super) fn editor(
                 ui.ctx().fonts_mut(|f| f.layout_job(job))
             };
             let out = egui::TextEdit::multiline(&mut text)
-                .id(egui::Id::new("behavior_text"))
+                .id(id)
                 // No box: the frame only keeps the gutter free (a frame replaces the `margin` setting).
                 .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: (GUTTER * k) as i8, right: 0, top: (8.0 * k) as i8, bottom: (8.0 * k) as i8 }))
                 .desired_width(f32::INFINITY)
@@ -331,9 +351,17 @@ pub(super) fn editor(
     // egui gets pasted text itself; the game's copy of it is not needed.
     clipboard.take_pasted();
     if changed {
+        *seen = Some(text.clone());
         draft.set_text(&text);
     }
     Ok(())
+}
+
+/// Leaving the screen: the editor stops offering its selection and taking pastes (it doesn't run elsewhere to
+/// reset them, and the web clipboard would keep Ctrl+C / Ctrl+V from the next screen).
+pub(super) fn leave(mut clipboard: ResMut<Clipboard>) {
+    clipboard.offer = None;
+    clipboard.accept = false;
 }
 
 #[cfg(test)]
@@ -385,6 +413,29 @@ mod tests {
         assert_eq!(spans("when orbit(45 -> flee").len(), 5);
         assert!(spans("").is_empty());
         assert_eq!(spans("é # ü"), [("# ü".into(), Span::Note)]);
+    }
+
+    /// Ctrl+Z in the editor never brings back the text of another behavior (or the text from before graph edits):
+    /// the history is cleared when the text changed outside the editor.
+    #[test]
+    fn the_editors_undo_history_follows_the_text() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::new(EDITOR_ID);
+        let undo_point = |text: &str| (egui::text::CCursorRange::default(), text.to_string());
+        let mut state = egui::widgets::text_edit::TextEditState::default();
+        let mut undoer = state.undoer();
+        undoer.add_undo(&undo_point("behavior A"));
+        state.set_undoer(undoer);
+        state.store(&ctx, id);
+        let has_undo = |now: &str| egui::widgets::text_edit::TextEditState::load(&ctx, id).unwrap().undoer().has_undo(&undo_point(now));
+        let mut seen = Some("behavior A, typed".to_string());
+        // The editor shows what it typed: the history stays.
+        assert!(!forget_outside_history(&ctx, id, &mut seen, "behavior A, typed"));
+        assert!(has_undo("behavior A, typed"));
+        // Another draft opened: the history goes.
+        assert!(forget_outside_history(&ctx, id, &mut seen, "behavior B"));
+        assert!(!has_undo("behavior B"));
+        assert_eq!(seen.as_deref(), Some("behavior B"));
     }
 
     #[test]
