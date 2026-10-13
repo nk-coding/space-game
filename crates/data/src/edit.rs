@@ -618,6 +618,29 @@ impl Drydock {
         Ok(self.finish(log, None, twin))
     }
 
+    /// The part tool of erase (Delete on a selected part): removes part `i` (later parts move down one index).
+    /// Mirror mode also removes its twin, the part that is its mirror image; whatever else covers the mirror cells
+    /// stays (`Twin::Skipped(NoTwin)` when it has no twin), unlike [`Drydock::erase`] on a cell.
+    pub fn remove_part(&mut self, i: usize) -> Result<Outcome, Refusal> {
+        if i >= self.parts.len() {
+            return Err(Refusal::NoSuchPart(i));
+        }
+        let (twin, other) = match self.mirror.then(|| self.twin(i)) {
+            None => (Twin::Off, None),
+            Some(None) => (Twin::Skipped(Refusal::NoTwin), None),
+            Some(Some(j)) if j == i => (Twin::Itself, None),
+            Some(Some(j)) => (Twin::Applied, Some(j)),
+        };
+        let mut log = Vec::new();
+        let mut doomed = [Some(i), other];
+        doomed.sort_unstable_by(|a, b| b.cmp(a));
+        for index in doomed.into_iter().flatten() {
+            let placement = self.parts[index].clone();
+            self.exec(Change::Remove { index, placement }, &mut log);
+        }
+        Ok(self.finish(log, None, twin))
+    }
+
     /// Moves a part by `(dx, dy)` cells if it still fits (its own old cells do not count). The mirror twin
     /// moves by `(−dx, dy)`.
     pub fn move_part(&mut self, i: usize, dx: i32, dy: i32) -> Result<Outcome, Refusal> {

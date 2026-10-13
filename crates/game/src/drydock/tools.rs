@@ -381,10 +381,10 @@ pub(super) fn apply(
             }
             (DrydockAction::RotateCcw | DrydockAction::RotateCw, Some(i)) => design.edit(|d| d.rotate(i, *a == DrydockAction::RotateCw)),
             (DrydockAction::Flip, Some(i)) => design.edit(|d| d.flip(i)),
+            // The selected part and, mirroring, its twin (not whatever covers its mirror cells).
             (DrydockAction::Delete, Some(i)) => {
-                let cell = (design.dock().parts()[i].x, design.dock().parts()[i].y);
                 sel.cell = None;
-                design.edit(|d| d.erase(cell))
+                design.edit(|d| d.remove_part(i))
             }
             (DrydockAction::PartMaterial(m), Some(i)) => design.edit(|d| d.set_material(i, m)),
             (DrydockAction::PartTier(t), Some(i)) => {
@@ -562,6 +562,37 @@ mod tests {
         assert_eq!((p.x, p.y, p.rot), (5, 5, 1));
         let p = brush_placement(part("slope_1x3"), (5, 5), 1, "steel");
         assert_eq!((p.x, p.y, p.material.as_deref()), (5, 4, Some("steel")));
+    }
+
+    /// Delete with mirror on removes the selected part and its twin (drydock.md), not an unrelated part that covers
+    /// its mirror cells.
+    #[test]
+    fn delete_takes_the_selected_part_and_its_twin_only() {
+        use bevy::ecs::system::RunSystemOnce;
+        let content = data::base_content();
+        let empty = data::Blueprint { parts: Vec::new(), ..content.ships.get("halvex_runner").unwrap().clone() };
+        let mut design = PlayerDesign::open(&content, &empty, (10, 10)).unwrap();
+        let reactor = Placement { part: "fusion_reactor".into(), x: 1, y: 1, rot: 0, flip: false, material: None, power: None };
+        design.edit(|d| {
+            d.place(reactor).unwrap();
+            d.paint((8, 1), "steel").unwrap();
+            d.mirror = true;
+        });
+        let ui = DrydockUi::new(&content, &design);
+        let mut world = World::new();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<EditNote>();
+        world.insert_resource(Selection { cell: Some((2, 2)) });
+        world.insert_resource(design);
+        world.insert_resource(ui);
+        world.insert_resource(GameContent(content));
+        world.write_message(DrydockAction::Delete);
+        world.run_system_once(apply).unwrap();
+        let design = world.resource::<PlayerDesign>();
+        assert_eq!(design.dock().parts().iter().map(|p| p.part.as_str()).collect::<Vec<_>>(), ["armor_block"]);
+        assert_eq!(world.resource::<Selection>().cell, None);
+        assert_eq!(world.resource::<EditNote>().text.as_deref(), Some("MIRROR SKIPPED  ·  NO MIRROR TWIN"));
     }
 
     #[test]

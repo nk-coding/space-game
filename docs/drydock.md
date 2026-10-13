@@ -99,7 +99,8 @@ editor (`dock.mirror`, `dock.bevel`).
   neighbour that is occupied but shows a slope face is neither touching nor open, so the cell is no corner.
 - **Fill** `fill(a, b, material)`: every empty cell of the rectangle spanned by the two corner cells (clipped to the
   frame) gets an armour block, row by row, as one undo step. Fill never bevels.
-- **Erase** `erase(cell)`: removes the part covering the cell.
+- **Erase** `erase(cell)`: removes the part covering the cell. `remove_part(i)` removes a part by index (Delete on
+  the selected part).
 - **Select** tools, on a part index: `move_part(i, dx, dy)`, `rotate(i, clockwise)`, `flip(i)`,
   `set_material(i, material)` (hull parts), `set_power(i, override)` (parts that draw power), each only if the
   result is legal.
@@ -124,6 +125,8 @@ Every edit applies to its mirror image too:
   auto-oriented slope, so the twin is exactly mirrored); paint paints the mirror cell; fill fills the mirrored
   rectangle; erase erases the part covering the mirror cell. Paint decides both cells (block, bevel slope or
   repaint) on the design as it was before the call, so painting next to the axis stays symmetric.
+- **Removing a part** (`remove_part`) removes its **twin** (below) too, and nothing else: a part with no twin of
+  its kind is removed alone (`Twin::Skipped(NoTwin)`), whatever covers its mirror cells.
 - **Part tools** (move, rotate, flip, material, power, turning or repainting a slope) act on the part's **twin**:
   the part with the same id whose shape is the part's mirror image (rects compare cells and facing, the flip only
   mirrors the icon; slopes compare cells and the corner of the right angle). The twin moves by `(−dx, dy)`, turns
