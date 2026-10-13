@@ -18,6 +18,7 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [ADR-0030](ad
 | Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
 | The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
 | Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
+| The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/drydock/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
 
 Status (13 Oct 2026): waves 1 and 2 are merged. The drydock edits (paint, fill, erase, select, rotate, flip,
 mirror, bevel, undo/redo, ghost and selection, the inspector with power overrides), shows the live stats, status
@@ -335,8 +336,9 @@ saved template copy moved to the cruiser frame).
 
 - `Storage` (a resource) holds one `Backend` (a trait: `list(namespace)`, `read(namespace, name)`,
   `write(namespace, name, text)`, `delete(namespace, name)`, `location()`) and stores **named RON documents in
-  namespaces**: `designs/<id>` and `drydock/working` now; `saves/`, `behaviors/` and `settings/` later. Names
-  are `a-z 0-9 _ -` (at most 64), safe as file names and keys everywhere.
+  namespaces**: `designs/<id>`, `drydock/working` and `behaviors/<id>` (see
+  [Behaviors](#behaviors-storage-designs-and-tests)) now; `saves/` and `settings/` later. Names are `a-z 0-9 _ -`
+  (at most 64), safe as file names and keys everywhere.
 - A document type implements `Document` (`NAMESPACE`, `FORMAT`, `to_ron`, `from_ron(text, format)`).
   `Storage::write` puts one header line before the RON, a comment, so the document stays valid RON:
   `// space-game: designs, format 1, saved 1760351234` (namespace, format version, Unix seconds).
@@ -358,7 +360,8 @@ saved template copy moved to the cruiser frame).
   comes from the name on the first save (`library::slug`: lowercase ASCII, umlauts spelled out, `_` between
   words, at most 40 characters, starting with a letter), unique among saved designs and never a content ship's
   id (`_2`, `_3`, ...); renaming keeps it. A design with problems still saves; the status line says
-  "SAVED AS WORK IN PROGRESS · n PROBLEMS: …" with the first one (`data::validate_ship`).
+  "SAVED AS WORK IN PROGRESS · n PROBLEMS: …" with the first one (`behaviors::validate_design`: `data::validate_ship`
+  with the player's behaviors known).
 - **The working design** (`drydock/working`: `(saved_as: "<id>" or None, unsaved: <bool>, design: (<the ship in
   its frame>))`, so it comes back saved or not, with or without unsaved changes) is written about a second
   after the last change (`library::Autosave`, every change restarts the wait), at once
@@ -397,21 +400,133 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
 - **EXPORT** opens a page with the design's `.ron` file and its share code, both made from the design trimmed to
   its parts (`PlayerDesign::export`) under its id (or one from its name): DOWNLOAD .RON on the web (a Blob behind
   a temporary link), WRITE .RON FILE on desktop (`<data dir>/exports/<id>.ron`, the path in the status line).
-  The file is the content ship format, so it can go into a pack's `ships/` folder as is.
-- **Share code**: `SGD1:` + base64url (no padding) of the zlib-compressed payload, a RON
-  `(packs: [("base", "0.1.0"), ...], ship: (...))` with the content packs (id, version) the design was made with.
-  The Halvex Runner is 663 characters. zlib's checksum catches damaged codes; whitespace inside a code (a chat
-  program's line breaks), a lower-case tag and `=` padding are ignored. The code shows in a box: click it (it
-  turns teal) and press Ctrl+C, or COPY.
+  The file is the content ship format, so it can go into a pack's `ships/` folder as is. A design that names one
+  of the player's behaviors carries it after the ship as a comment block (`share::export_text`): a line
+  `// behavior: behaviors/<id>.ron`, then that behavior file with every line commented out. Pack loaders skip it
+  (it is the file to put into the pack's `behaviors/` folder); an import reads it.
+- **Share code** (share format 2 since 13 Oct 2026, GDR-0057): `SGD2:` + base64url (no padding) of the
+  zlib-compressed payload, a RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))` with the content
+  packs (id, version) the design was made with and, when the design names one of the player's behaviors, that
+  behavior in the content format (a content behavior goes by its id in the ship only). The Halvex Runner is 663
+  characters; with a six-rule behavior of the player about 1000. Format 1 codes (`SGD1:`, no behavior) still
+  import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
+  lower-case tag and `=` padding are ignored. The code shows in a box: click it (it turns teal) and press Ctrl+C,
+  or COPY.
 - **Imports are checked** (`share::read`, `share::check`): a newer share format ("made by a newer version of the
-  game (share format 9; this one reads 1)"), a damaged code, text that is no blueprint (with the RON error's line
+  game (share format 9; this one reads 2)"), a damaged code, text that is no blueprint (with the RON error's line
   and column) and parts or materials the game doesn't have ("it uses part plasma_lance this game doesn't have
   (made with lances 2.0)": the packs of the code that aren't loaded in that version) give a message instead of a
-  crash. An unknown faction becomes the player's, an unknown behavior is dropped (noted in the status line); a
-  design no frame takes is refused; other problems (`data::validate_ship`) are named but don't block.
+  crash. An unknown faction becomes the player's; a behavior the design carries is saved
+  (`PlayerBehaviors::import`: under its own id when that is free or already holds the same behavior, else under a
+  new one) and the design names it; any other unknown behavior is dropped (noted in the status line); a design no
+  frame takes is refused; other problems (`behaviors::validate_design`) are named but don't block.
 - **Copy and paste** (`clipboard.rs`): screens set `Clipboard::offer` (the text Ctrl+C copies), `accept` (Ctrl+V
   pastes) or `copy` (copy now). Web: winit cancels every key on the canvas, so while something is offered or
   accepted a capturing `keydown` listener keeps Ctrl/Cmd+C and +V from it, and the `copy` / `paste` listeners
   hand the text over; COPY uses `document.execCommand("copy")` (then `navigator.clipboard` in secure contexts).
   This works over plain http (`http://10.77.9.2:8080` is no secure context), tested in headless Chromium on both
   kinds of origin. Desktop: `arboard`. Android: not yet (COPY says so).
+
+## Behaviors: storage, designs and tests
+
+Written 13 Oct 2026 for the behavior editor ([GDR-0057](gdr/0057-behavior-editor-v1.md): behaviors are saved on
+their own, a design names one, TEST IN RANGE watches it or flies alongside it). The plumbing under the BEHAVIOR
+screen: `crates/game/src/drydock/behaviors.rs` (behaviors on the storage layer, the checks, flights),
+`drydock/share.rs` (they travel with designs, [above](#sharing-export-files-and-share-codes)), `test_range.rs` and
+`scene.rs` (TEST IN RANGE). Tests: `cargo test -p game -- behaviors share test_range`. Screenshots (1280 × 720):
+`docs/results/behavior-test-watch.png`, `behavior-test-alongside.png`.
+
+### Saved behaviors
+
+- **`behaviors/<id>`** (format 1) holds exactly a content behavior (`content/base/behaviors/*.ron`, see
+  `docs/behavior-format.md` "In content files"): `id`, `name`, `summary`, optional `description`, `lore` and
+  `tags`, `target` (the target line without its keyword) and `rules` (one string per rule), written by
+  `behaviors::behavior_to_ron`, so a saved behavior can go into a pack's `behaviors/` folder as is:
+
+  ```ron
+  // space-game: behaviors, format 1, saved 1760351234
+  (
+      id: "careful",
+      name: "Careful",
+      summary: "Attack and strafe, dodge while the shields recharge, and run when badly hurt.",
+      tags: ["attack"],
+      target: "nearest",
+      rules: [
+          "when hull < 50% -> flee # run sooner",
+          "always -> approach(67%)",
+      ],
+  )
+  ```
+
+- **Ids**: snake_case from the name on the first save (`PlayerBehaviors::new_id`, `library::slug_or(name,
+  "behavior")`: "3 rules" → `behavior_3_rules`), unique among saved behaviors and **never a content behavior's
+  id** ("Skirmisher" → `skirmisher_2`); `save` refuses a content id, and a stored document under one (a file copied
+  in by hand) is listed as a problem and never flies. Renaming keeps the id, so designs keep naming it. Content
+  behaviors (`skirmisher`, `raider_basic`) are **templates**: `copy_of` makes an unsaved copy ("Skirmisher copy",
+  `skirmisher_copy`), `duplicate` saves one.
+- **Checked against the vocabulary** (the `behavior_nodes` content) on load and on every save, exactly as content
+  validation checks a content behavior (`behaviors::check`: `Program::from_parts` + `check_program`). A behavior
+  with errors **still loads, as its lines**, so the player can fix it: `PlayerBehavior::errors` locates them in its
+  text form (`text_of`: line 1 is `target <selector>` when it has a target line, then one line per rule), e.g.
+  `line 3, column 6: unknown condition `sheild_down`; did you mean `shield_down`?`. Only behaviors without errors
+  fly. A document whose RON doesn't read is listed with the reason, so it can be deleted.
+- **The text form**: `text_of(&behavior)` is what the TEXT view shows; `set_text(&mut behavior, text)` stores the
+  editor's text (the canonical print when it parses, else the lines as typed, so a program with errors comes back as
+  written); `set_program(&mut behavior, &program)` stores a `data::behavior::Program` (the graph view's model);
+  `check_text(text, &content)` gives the live errors (by text line and column) or the program.
+- **`PlayerBehaviors`** (a resource, read from the storage at start by `BehaviorsPlugin`): `get(id)`, `iter()`,
+  `behavior(&content, id)` (a template or a saved one), `list()` (`BehaviorEntry`: id, name, summary, rule count,
+  when saved, the first error or why it doesn't read; most recently saved first), `names()`, `new_id`, `copy_of`,
+  `save(&mut storage, &content, &behavior, now)` (an empty id gets one from the name; returns the id),
+  `rename`, `duplicate`, `delete`, `import` (behaviors that come with a shared design), `revision()` (goes up with
+  every change), `add_to(&mut content)` (flights), `named_by(&content, &blueprint)` (the player behavior a design
+  names, for exports). Every operation writes the storage and the resource together; errors are words for the
+  status line.
+
+### Designs name their behavior
+
+- The blueprint's `behavior` field names the behavior the design's ships fly when nobody pilots them: a content
+  behavior id or one of the player's; none (the default, as before) means the faction's (`skirmisher` for the
+  ship-mind). It is part of the design's header, so it stays through edits, saves, the working design and exports;
+  the BEHAVIOR screen sets it with `PlayerDesign::edit_header(|h| h.behavior = Some(id))`.
+- `behaviors::validate_design(&content, &behaviors, &blueprint)` is `data::validate_ship` with the player's
+  behaviors known: a design naming one has no "unknown behavior" problem, its rules must fit the design's rule
+  slots like a content behavior's, and one with errors is a problem of its own. SAVE and IMPORT use it.
+- **Flights** (the sandbox, test flights, TEST IN RANGE): `scene.rs` adds every saved behavior without errors to the
+  player's content (`PlayerBehaviors::add_to`: after the content behaviors, **in id order**), so
+  `sim::BehaviorLibrary::new` compiles them with handles in a fixed order (behaviors are inputs of the deterministic
+  sim, and a ship's behavior handle is part of the state hash; a test builds the library from storages filled in
+  different orders and checks the handles and 300 ticks of state hashes are equal) and a design naming one compiles
+  with it (`ShipDesign::behavior`). The player's ship when unpiloted, its `?fleet=` wingmen (their leader is the
+  player's ship, so `target locked` follows the player's lock), re-forms and test ships fly it. A design naming a
+  behavior that can't fly (it has errors, or was deleted) flies its faction's instead, with a banner
+  (`behaviors::fallback`: "BEHAVIOR CAREFUL HAS 1 ERROR: …; FLIES SKIRMISHER").
+
+### TEST IN RANGE
+
+- The BEHAVIOR screen sends `test_range::StartTest { test: BehaviorTest { mode, program }, back }`:
+  `mode` is `TestMode::Watch` or `TestMode::Alongside`; `program` is `TestProgram::Id(id)` (a content or saved
+  behavior), `TestProgram::Text { name, text }` (the editor's text, not saved yet: the flight's library gets it
+  under the id `test:behavior`, so it never shadows a saved one) or `TestProgram::Design` (the one the design
+  names); `back` is the mode T returns to (the behavior screen's). `test_range::check(&content, &behaviors,
+  &program)` says beforehand whether it can fly (the first error, if not). From the drydock or the behavior screen
+  the request launches a flight; in flight it rebuilds the scene.
+- **Watch**: the player's design spawns at the centre, unpiloted, on the behavior, raider waves on; the camera
+  follows it and the HUD shows it (hull, speed, warnings; title `WATCH · <BEHAVIOR> · WAVE n`). Nothing is
+  piloted: focus switches (V, clicks, the fleet bar) are dropped. Losing it ends the test after 3 s ("SHIP LOST ·
+  BACK TO THE …").
+- **Fly alongside**: the player flies the design as usual (it runs the design's own behavior when unpiloted); a
+  second copy starts 22 m to the left and 12 m behind as a wingman on the tested behavior, its leader the player's
+  ship. Title `FLY ALONGSIDE · <BEHAVIOR> · WAVE n`. Losing every vessel ends the test like a test flight.
+- In both: no `?fleet=` wingmen; T returns to where the test started (`mode::FlightExit`, back to the drydock
+  whenever flight ends); Shift+R starts the test over; C turns the waves off and on.
+- URL (for testing, no screen needed): `?scene=watch&behavior=<id>`, `?scene=alongside&behavior=<id>` (a content or
+  saved behavior; without `behavior` the design's own). A behavior that can't fly leaves the design's own, with a
+  banner. T returns to the drydock.
+- **Live view**: `test_range::BehaviorWatch` (a resource) holds the tested ship's behavior, refreshed after each of
+  its thinks (10 Hz; `is_changed()` says when): `mode`, `ship`, `running` (false while piloted, lost or before the
+  first think), `behavior` (its id in the flight's library) and `name`, `active` (the rule that decides, `None`:
+  no rule matches and the ship holds), `rules` (every rule's `sim::RuleStatus`: `Active`, `Skipped`, `NoSlot`,
+  `NoTarget`, `Failed { cond, why }`), `why` (one line per rule, `BehaviorState::describe`: "`hull < 50%` is false
+  (hull is 96%)"), `slots` (working rule slots), `target`, `think` (its tick). Empty outside a test. The F3
+  overlay lists the rules with `>` at the one that decides.

@@ -138,6 +138,10 @@ file says.
 A faction names the default behavior of its ships (`behavior: "raider_basic"`); a ship can name its own. The
 behavior a ship flies must fit the rule slots of its logic cores (validation checks it).
 
+The player's own behaviors are saved in exactly this format (one document per behavior, never under a content
+behavior's id), and a design names one the same way; see `docs/drydock.md` "Behaviors: storage, designs and
+tests".
+
 ## Rhai conditions
 
 A condition node with a `script` is a custom condition written in [Rhai](https://rhai.rs) (tagged "Rhai" in
