@@ -143,7 +143,7 @@ mod tests {
         let g = GraphView::of(&ed, 12);
         assert_eq!(g.target.name, "Nearest");
         assert!(!g.default_target);
-        assert_eq!(g.rules.len(), 6);
+        assert_eq!(g.rules.len(), 4);
         assert!(g.rules.iter().all(|r| r.active));
         assert_eq!(g.slot_line(), None);
 
@@ -167,21 +167,22 @@ mod tests {
         assert!(r1.conds.iter().all(|c| c.compare.is_empty() && c.args.is_empty()));
         assert_eq!((r1.action.name.as_str(), r1.action.args.as_str()), ("Orbit", "80% · ccw"));
 
-        // A value with arguments and a comparison: `enemies_near(100m) >= 3`.
-        let near = &g.rules[2].conds[0];
-        assert_eq!((near.name.as_str(), near.args.as_str(), near.compare.as_str()), ("Enemies near", "100m", ">= 3"));
-
         // `when closing_in(2s) and not target_in_range(100%) -> face`: the Rhai condition and a `not`.
-        let r4 = &g.rules[4];
-        assert!(r4.conds[0].rhai && !r4.conds[0].not);
-        assert_eq!((r4.conds[0].name.as_str(), r4.conds[0].args.as_str()), ("Closing in", "2s"));
-        assert!(r4.conds[1].not && !r4.conds[1].rhai);
-        assert_eq!((r4.conds[1].name.as_str(), r4.conds[1].args.as_str()), ("Target in range", "100%"));
-        assert_eq!(r4.action.name, "Face target");
+        let r2 = &g.rules[2];
+        assert!(r2.conds[0].rhai && !r2.conds[0].not);
+        assert_eq!((r2.conds[0].name.as_str(), r2.conds[0].args.as_str()), ("Closing in", "2s"));
+        assert!(r2.conds[1].not && !r2.conds[1].rhai);
+        assert_eq!((r2.conds[1].name.as_str(), r2.conds[1].args.as_str()), ("Target in range", "100%"));
+        assert_eq!(r2.action.name, "Face target");
 
         // `always -> approach(67%)`: no conditions.
-        assert!(g.rules[5].conds.is_empty());
-        assert_eq!((g.rules[5].action.name.as_str(), g.rules[5].action.args.as_str()), ("Approach", "67%"));
+        assert!(g.rules[3].conds.is_empty());
+        assert_eq!((g.rules[3].action.name.as_str(), g.rules[3].action.args.as_str()), ("Approach", "67%"));
+
+        // A value with arguments and a comparison: `enemies_near(100m) >= 3`.
+        let crowd = GraphView::of(&editor(&content, "when enemies_near(100m) >= 3 -> orbit(90%)"), 12);
+        let near = &crowd.rules[0].conds[0];
+        assert_eq!((near.name.as_str(), near.args.as_str(), near.compare.as_str()), ("Enemies near", "100m", ">= 3"));
     }
 
     #[test]
@@ -189,14 +190,14 @@ mod tests {
         let content = data::base_content();
         let mut ed = skirmisher(&content);
         let before = GraphView::of(&ed, 12);
-        let moved = before.rules[4].id;
+        let moved = before.rules[2].id;
         ed.move_rule(moved, 0).unwrap();
         let after = GraphView::of(&ed, 12);
         // The same rule and its chips, now on top; the others shifted down with their ids.
         assert_eq!(after.rules[0].id, moved);
-        assert_eq!(after.rules[0].conds[0].node, before.rules[4].conds[0].node);
+        assert_eq!(after.rules[0].conds[0].node, before.rules[2].conds[0].node);
         assert_eq!(after.rules[1].id, before.rules[0].id);
-        assert_eq!(after.rules[5].action.node, before.rules[5].action.node);
+        assert_eq!(after.rules[3].action.node, before.rules[3].action.node);
     }
 
     #[test]
@@ -205,14 +206,14 @@ mod tests {
         let ed = skirmisher(&content);
         let g = GraphView::of(&ed, 2);
         let active: Vec<bool> = g.rules.iter().map(|r| r.active).collect();
-        assert_eq!(active, [true, true, false, false, false, false]);
+        assert_eq!(active, [true, true, false, false]);
         assert_eq!(g.slot_line(), Some(2));
         // No core: nothing runs, the line is above the first rule.
         let none = GraphView::of(&ed, 0);
         assert!(none.rules.iter().all(|r| !r.active));
         assert_eq!(none.slot_line(), Some(0));
         // Exactly full: no line.
-        assert_eq!(GraphView::of(&ed, 6).slot_line(), None);
+        assert_eq!(GraphView::of(&ed, 4).slot_line(), None);
     }
 
     #[test]

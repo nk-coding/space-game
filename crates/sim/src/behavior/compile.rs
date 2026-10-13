@@ -120,12 +120,14 @@ pub enum Action {
     Face,
     Flee,
     Hold,
+    /// Keep within this distance of the leader (GDR-0065).
+    Escort(Dist),
 }
 
 impl Action {
-    /// Needs a target to fly (else the rule fails with `NoTarget`).
+    /// Needs a target to fly (else the rule fails with `NoTarget`). `escort` flies relative to the leader.
     pub fn needs_target(self) -> bool {
-        !matches!(self, Action::Hold)
+        !matches!(self, Action::Hold | Action::Escort(_))
     }
 }
 
@@ -300,6 +302,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "face" => Action::Face,
             "flee" => Action::Flee,
             "hold" => Action::Hold,
+            "escort" => Action::Escort(dist(args[0])),
             _ => return Err(fail(line, &r.action, "no implementation in the sim")),
         };
         code.rules.push(Rule {

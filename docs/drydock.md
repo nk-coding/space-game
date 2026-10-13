@@ -505,7 +505,7 @@ watch: the live panel, the last rule deciding, why the five above don't match).
   "behavior")`: "3 rules" → `behavior_3_rules`), unique among saved behaviors and **never a content behavior's
   id** ("Skirmisher" → `skirmisher_2`); `save` refuses a content id, and a stored document under one (a file copied
   in by hand) is listed as a problem and never flies. Renaming keeps the id, so designs keep naming it. Content
-  behaviors (`skirmisher`, `raider_basic`) are **templates**: `copy_of` makes an unsaved copy ("Skirmisher copy",
+  behaviors (`skirmisher`, `raider_basic`, `escort`) are **templates**: `copy_of` makes an unsaved copy ("Skirmisher copy",
   `skirmisher_copy`), `duplicate` saves one.
 - **Two copies of the game on one storage** (two browser tabs of one origin): a new behavior or design gets an id
   no saved document has, also one the other copy saved after this one started (`save` checks the storage), so
