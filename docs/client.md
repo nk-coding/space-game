@@ -464,7 +464,7 @@ and `THE DESIGN FLIES <NAME>` when the open behavior is not the design's), the `
 design's slots, `Content::ship_rule_slots`, from its logic cores); GRAPH / TEXT; TEST IN RANGE with WATCH and FLY
 ALONGSIDE under it. Left the graph: the `TARGET` line
 on top (`Nearest` and `DEFAULT` when the program has none), the `Priority · first match` root, the trunk with a
-dot per rule, each rule as violet condition chips (content name, values dim, the comparison as written: `Enemies
+dot per rule, each rule as violet condition chips (content name, values grey (white while the chip is selected), the comparison as written: `Enemies
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
 rule's note dim after it; Rhai conditions dashed with a gold RHAI tag; `always` as a plain chip; the dashed coral
 slot line above the first rule without a slot (`6 RULE SLOTS · THE RULES BELOW DO NOT RUN`) and those rules
@@ -597,7 +597,7 @@ action selected).
 - **Live rule panel** (`live.rs`, in flight): while TEST IN RANGE runs, a compact panel right under the target
   panel: `BEHAVIOR · <NAME>`, which rule decides (or `NO RULE MATCHES · IT HOLDS`), every rule as one line of the
   graph's chip labels (`Shield down and Target on me  ›  Orbit 80% · ccw`), the deciding rule teal in a pill, rules
-  without a slot dimmed, and under each rule above it why it doesn't match (the sim's `describe`: `hull < 25% is
+  without a slot dimmed, and under each rule above it, in the label grey, why it doesn't match (the sim's `describe`: `hull < 25% is
   false (hull is 96%)`). It follows `test_range::BehaviorWatch` (10 Hz): the rules' labels are made and the rows
   spawned when the behavior changes, only colours and why-lines change in between. Hidden outside tests and with
   the HUD (H).

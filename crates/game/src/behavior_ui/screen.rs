@@ -138,6 +138,11 @@ pub(super) struct ChipLook {
     select: Option<Selection>,
 }
 
+/// The values on a chip (`80% · ccw`): grey, white while the chip is selected (grey on its lit fill was hard to
+/// read).
+#[derive(Component)]
+pub(super) struct ChipValues;
+
 /// A cell of a rule's row: the row is lit while the rule (or one of its nodes) is selected.
 #[derive(Component, Clone, Copy, Debug)]
 pub(super) struct RowBand(RuleId);
@@ -438,7 +443,7 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit
         }
         c.spawn(prose(kit.fonts, &chip.name, CHIP_FONT, kit.c(Tone::Number, 0.95 * k)));
         if !chip.args.is_empty() {
-            c.spawn(prose(kit.fonts, &chip.args, CHIP_FONT, kit.c(Tone::Label, k)));
+            c.spawn((ChipValues, prose(kit.fonts, &chip.args, CHIP_FONT, kit.c(Tone::Label, k))));
         }
         if !chip.compare.is_empty() {
             c.spawn(prose(kit.fonts, &chip.compare, CHIP_FONT, kit.c(Tone::Number, 0.95 * k)));
@@ -849,21 +854,30 @@ pub(super) fn sync_pills(ui: Res<BehaviorUi>, mut pills: Query<(&BehaviorButton,
     }
 }
 
-/// Colours of chips from their state: idle, hovered, pressed, selected (a glow), dimmed without a slot.
+/// Colours of chips from their state: idle, hovered, pressed, selected (a glow, the values white), dimmed without
+/// a slot.
 #[allow(clippy::type_complexity)]
 pub(super) fn style_chips(
     ui: Res<BehaviorUi>,
-    mut chips: Query<(Ref<ChipLook>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, Entity)>,
+    style: Res<Style>,
+    mut chips: Query<(Ref<ChipLook>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, Option<&Children>, Entity)>,
+    mut values: Query<&mut TextColor, With<ChipValues>>,
     mut materials: ResMut<Assets<DashedOutline>>,
     mut commands: Commands,
 ) {
     let selection_changed = ui.is_changed();
-    for (look, hot, mut border, mut bg, shadow, e) in &mut chips {
+    for (look, hot, mut border, mut bg, shadow, children, e) in &mut chips {
         if !selection_changed && !look.is_changed() && !hot.is_changed() {
             continue;
         }
         let selected = look.select.is_some() && ui.selected == look.select;
         let k = if look.active { 1.0 } else { INACTIVE };
+        let ink = if selected { ui_color(style.ui.number, 0.9 * k) } else { ui_color(style.ui.label, k) };
+        for child in children.into_iter().flatten() {
+            if let Ok(mut c) = values.get_mut(*child) {
+                set_color(&mut c, ink);
+            }
+        }
         let idle_fill = if look.fill { 0.05 } else { 0.0 };
         let (edge, fill, glow_alpha) = if selected {
             (1.0, 0.16, 0.35)

@@ -56,6 +56,12 @@ impl Tone {
     }
 }
 
+/// The tone of a list row's subtitle (palette parts, blueprints, behaviors): dim, the label grey on the picked row
+/// (dim doesn't read on its lit fill).
+pub fn sub_tone(picked: bool) -> Tone {
+    if picked { Tone::Label } else { Tone::Dim }
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // Text
 

@@ -241,7 +241,7 @@ pub(super) fn update(
                         line.spawn((RowDot(i), dot, BackgroundColor(row_color(ui, row.state, true))));
                     });
                     let text = row.why.as_deref().unwrap_or("");
-                    b.spawn((RowWhy(i), prose(&fonts, text, 10.5, ui_color(ui.dim, 1.0)), Node { display: why, margin: UiRect::right(px(14)), ..default() }));
+                    b.spawn((RowWhy(i), prose(&fonts, text, 11.0, ui_color(ui.label, 1.0)), Node { display: why, margin: UiRect::right(px(14)), ..default() }));
                 });
             }
         });
@@ -284,7 +284,7 @@ pub(super) fn update(
             node.display = display;
         }
         set_text(&mut text, row.why.as_deref().unwrap_or(""));
-        set_color(&mut color, ui_color(ui.dim, 1.0));
+        set_color(&mut color, ui_color(ui.label, 1.0));
     }
 }
 

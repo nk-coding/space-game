@@ -31,7 +31,8 @@ use crate::sim_bridge::GameContent;
 use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose, set_color, set_text, spawn_pill, tracked,
+    Hot, Pill, TextField, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose, set_color, set_text, spawn_pill, sub_tone,
+    tracked,
     wheel_rows,
 };
 
@@ -1230,7 +1231,7 @@ fn sync_shelf(
                     if let Some(t) = e.saved {
                         s.push_str(&format!("  ·  {}", library::ago(shelf.now, t)));
                     }
-                    Tone::Dim
+                    sub_tone(picked(0, k))
                 }
                 None => Tone::Dim,
             },
@@ -1240,7 +1241,7 @@ fn sync_shelf(
                     let (w, h) = library::parts_size(content, b);
                     s.push_str(&format!("{w}×{h}  ·  {} PARTS  ·  {faction}", b.parts.len()));
                 }
-                Tone::Dim
+                sub_tone(picked(1, k))
             }
             ShelfText::RowTag(list, k) => {
                 if list == 0 && shelf.designs.get(shelf.offset[0] + k).is_some_and(|e| Some(e.id.as_str()) == working) {

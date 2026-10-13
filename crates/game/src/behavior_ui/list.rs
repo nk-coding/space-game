@@ -25,7 +25,8 @@ use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, tracked, wheel_rows,
+    Hot, Pill, TextField, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, sub_tone, tracked,
+    wheel_rows,
 };
 
 use super::draft::{BehaviorDraft, design_behavior};
@@ -662,7 +663,7 @@ pub(super) fn sync(
                             if let Some(t) = e.saved {
                                 s.push_str(&format!("  ·  {}", library::ago(list.now, t)));
                             }
-                            Tone::Dim
+                            sub_tone(pick.is_some() && list.row(0, k) == pick)
                         }
                     }
                 }
@@ -675,7 +676,7 @@ pub(super) fn sync(
                         s.push_str(&format!("  ·  {}", tag.to_uppercase()));
                     }
                 }
-                Tone::Dim
+                sub_tone(pick.is_some() && list.row(1, k) == pick)
             }
             ListText::RowTag(l, k) => {
                 if let Some(id) = list.row(l, k) {

@@ -32,7 +32,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Hot, Pill, PillText, TextField, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number, prose, ring_node, set_color,
-    set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, tracked, wheel_rows,
+    set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
 };
 
 use super::actions::{ActionButton, DrydockAction, SearchField};
@@ -677,7 +677,7 @@ pub(super) fn sync_texts(
                         s.push_str(&stat);
                     }
                 }
-                Tone::Dim
+                sub_tone(row_part(k).is_some_and(|p| ui.picked.as_deref() == Some(p.id.as_str())))
             }
             PanelText::StatLabel(k) => {
                 s.push_str(stats.cells.get(k).map_or("", |c| c.label.as_str()));
