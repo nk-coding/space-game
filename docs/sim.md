@@ -1115,10 +1115,18 @@ Base content (placeholders): logic core N 16, automaton core N 4; fusion reactor
   impact is still reported). Salvage (no owner) rams and is rammed as before.
 - **Shields absorb rams**: the ram damage to each side is first taken by the shield bubbles of this tick that
   cover the contact point (`|point − centre| ≤ radius`), each its kinetic share (`absorb[Kinetic]`, 0.5 for the
-  base emitter; GDR-0021) of what reaches it, in bubble order (ship, piece, emitter), except the bubbles of the
-  other side's piece (as a shot passes its shooter's bubbles). The same absorb step as shots
-  (`ShieldHit { by: the rammer }`, a bubble that runs empty collapses); the rest hits the part. The bubbles are
-  the ones collected in this tick's weapons phase (positions before the physics step).
+  base emitter; GDR-0021) of what reaches it, in bubble order (ship, piece, emitter), except the bubbles friendly
+  to the rammer: its own ship's and every other vessel of its owner (GDR-0067, decided by Niklas on 13 Oct 2026:
+  rams pass friendly bubbles, like shots and plumes). Until then only the rammer's own piece was skipped, so a
+  wingman whose bubble covered the contact point took the enemy's share of the ram and shielded the enemy (sim
+  review finding 4). Shots, plumes and rams now share one rule for which bubbles take damage from a source
+  (`weapons::absorbs_from`: not the source's own ship, not a vessel friendly to it, charge left, the family
+  absorbed, the emitter alive); only the geometry differs (a shot's path entering the bubble, a plume's or a
+  ram's point inside it). The same absorb step as shots (`ShieldHit { by: the rammer }`, a bubble that runs
+  empty collapses); the rest hits the part. The bubbles are the ones collected in this tick's weapons phase
+  (positions before the physics step). Test `a_ram_passes_the_bubbles_of_the_rammers_friends` (`tests/vessels.rs`):
+  a raider rams an unshielded block beside the raider's shielded wingman: the block takes the whole ram, the
+  wingman's bubble only its share of the damage dealt to the raider.
 - **Crush** (GDR-0047, decided by Niklas on 12 Oct 2026): what the shields leave hits the touching part, and
   what exceeds its hit points carries on to the next part inward, along the contact normal into the hull, until
   it is used up or leaves the hull (`Sim::ram_crush`, the grid walk of penetrating shots; the emptied cells of a

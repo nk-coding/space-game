@@ -680,6 +680,88 @@ fn a_shielded_ram_drains_the_bubble_first() {
     );
 }
 
+/// GDR-0067: rams pass friendly bubbles, as shots and plumes do. A raider rams an unshielded block head-on while
+/// a shielded wingman of the raider's owner hovers beside it, clear of both hulls, its bubble (enlarged for the
+/// test) covering the contact point. The block takes the whole ram: the wingman's bubble takes nothing of the
+/// damage the raider deals (before, it took its kinetic share and shielded the enemy); it still takes its share
+/// of the damage dealt to the raider, its friend.
+#[test]
+fn a_ram_passes_the_bubbles_of_the_rammers_friends() {
+    let mut c = content();
+    let mut emitter = c.parts.get("shield_emitter").unwrap().clone();
+    emitter.shield.as_mut().unwrap().radius = 8.0;
+    c.parts.upsert(emitter);
+    let armor = |x, y| ("armor_block", x, y, 0, false, Some("composite"));
+    let block = custom(
+        &c,
+        &[
+            armor(0, 0),
+            armor(1, 0),
+            armor(2, 0),
+            armor(0, 1),
+            armor(1, 1),
+            armor(2, 1),
+            ("fission_reactor", 0, 2, 0, false, None),
+            ("logic_core", 1, 2, 0, false, None),
+            armor(2, 2),
+        ],
+    );
+    let wingman = custom(
+        &c,
+        &[
+            armor(0, 0),
+            ("shield_emitter", 1, 0, 0, false, None),
+            armor(2, 0),
+            ("fission_reactor", 0, 1, 0, false, None),
+            ("logic_core", 1, 1, 0, false, None),
+            armor(2, 1),
+        ],
+    );
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(block, PLAYER, Body::default());
+    let r = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        Owner(1),
+        Body {
+            pos: Vec2::new(0.0, 12.0),
+            angle: PI,
+            linvel: Vec2::new(0.0, -20.0),
+            angvel: 0.0,
+        },
+    );
+    let wing = w.spawn_ship(wingman, Owner(1), Body::at(Vec2::new(6.5, 1.5), 0.0));
+    let shields = TickInputs {
+        controls: vec![(wing, controls(0, 0.0, false, true))],
+        ..Default::default()
+    };
+    let mut ram = None;
+    let mut events = Vec::new();
+    for _ in 0..40 {
+        w.step(&shields);
+        if let Some(c) = impacts(&w).into_iter().find(|c| c.damage > 0.0) {
+            ram = Some(c);
+            events = w.events().to_vec();
+            break;
+        }
+    }
+    let c = ram.expect("a ram");
+    assert_eq!(
+        [c.a.ship, c.b.ship].into_iter().filter(|&x| x == s || x == r).count(),
+        2,
+        "the raider rams the block: {c:?}"
+    );
+    let wing_hits: Vec<(ShipId, f32)> = events
+        .iter()
+        .filter_map(|e| match e {
+            SimEvent::ShieldHit { by, ship, absorbed, .. } if *ship == wing => Some((*by, *absorbed)),
+            _ => None,
+        })
+        .collect();
+    assert!(wing_hits.iter().all(|&(by, _)| by != r), "the wingman's bubble shielded the enemy: {wing_hits:?}");
+    assert!(wing_hits.iter().any(|&(by, _)| by == s), "it still shields its friend: {wing_hits:?}");
+    assert!((hp_lost(&w, s) - c.damage).abs() < 1e-3, "the block takes the whole ram: {} vs {}", hp_lost(&w, s), c.damage);
+}
+
 /// An idle engine that draws no power (content may give it a control cost without a draw; validation only
 /// warns) pushes nothing under raw throttles either (13 Oct 2026 review: only a zero power level kept idle movers
 /// still, and such an engine has no level of its own).
