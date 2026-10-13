@@ -166,9 +166,9 @@ Optional component blocks (a part has any combination):
 | `heat` | `output`, `limit` | heat at full load; shutdown level (none = never) |
 | `radiator` | `vent` | heat dumped per straight side open to space |
 | `weapon` | `family` (`Energy Kinetic Missile Disruption Drone Utility`), `damage` (per second), `range` (m), `delivery` (see below, default `Beam`) | fixed gun, fires along the part's forward side, needs a clear line of fire |
-| `engine` | `thrust`, `rated_speed` (m/s, required), `gimbal` (degrees, default 0, at most 45), `plume: (length, damage, heat)` (required, see below) | pushes along the part's forward side and may sit anywhere (GDR-0039); can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque. Its thrust fades out as the ship's speed along its push direction approaches `rated_speed` (full up to 80%, none at 100%; braking and sideways it keeps full thrust), so the fastest engines pushing a way set the ship's top speed that way (GDR-0041). Its exhaust plume burns the first part behind it |
+| `engine` | `thrust`, `rated_speed` (m/s, required), `gimbal` (degrees, default 0, at most 45), `plume: (length, damage, heat)` (required, see below) | pushes along the part's forward side and may sit anywhere (GDR-0039); can swing its thrust up to `gimbal` degrees to either side (same point of action), which adds torque. While it pushes with the ship's motion, its thrust fades out as the ship's whole speed approaches `rated_speed` (full up to 80%, none at 100%; braking and sideways it keeps full thrust), so the fastest engines set the ship's top speed (GDR-0041, GDR-0055). Its exhaust plume burns the first part behind it |
 | `gyro` | `torque` (kN·m) | pure reaction torque about the centre of mass, either direction, no thrust. On the gyro part, and as the small built-in turning help of logic cores |
-| `rcs` | `thrust` (kN per nozzle), `rated_speed` (m/s, required) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre, and fades out towards `rated_speed` along its own push direction like an engine |
+| `rcs` | `thrust` (kN per nozzle), `rated_speed` (m/s, required) | reaction-control thrusters: one nozzle on every straight side open to space (see `open_sides` below); each pushes the ship away from its side, at the side's centre, and fades out towards `rated_speed` like an engine; two nozzles of opposite sides fire as a turning couple that pushes nothing and keeps full thrust at any speed (GDR-0055) |
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
@@ -246,13 +246,17 @@ block rather than an engine mode on purpose: code that handles `engine` (rear ex
 RCS pod for a rear engine, and the wiki can describe it on its own. Power draw of a gyro or RCS
 pod is "at full use"; how draw and heat scale with use is up to the sim. The gyro sits in the `propulsion`
 category (it moves the ship, draws power like the engines and shares their power tier and colour), not
-`logic`.
+`logic`. Since 13 Oct 2026 (GDR-0055) a logic core's torque is tiny, gyros are moderate and RCS pods are the
+strong turners (two nozzles of opposite sides fire as a couple that turns without pushing); differential thrust
+and gimbals are the flight computer's last resort. Numbers: `docs/sim.md` "Turning and speed of the base ships".
 
 **Rated speed** (decided 12 Oct 2026, GDR-0041): every `engine` and `rcs` block has a `rated_speed`; there is no
 global speed cap and no drag. The stat lines are `rated_speed` (engines) and `rcs_rated_speed` (RCS nozzles), both
 labelled "Rated speed", so bonuses can raise them per part type (e.g. `(target: Tag("engine"), stat:
 "rated_speed", effect: Percent(10))`) and the wiki shows them. Base values (placeholders): thruster 20 m/s, torch
-drive 22 m/s, RCS pod 14 m/s. Thrust and torque numbers were set for the agility target of GDR-0042.
+drive 22 m/s, RCS pod 14 m/s. A thruster pushing with the ship's motion fades by the ship's whole speed
+(GDR-0055), so the fastest engines set the top speed. Engine thrust was set for the agility target of GDR-0042,
+torque and RCS thrust for GDR-0055.
 
 **Plume** (GDR-0039, GDR-0046, GDR-0049; added 12 Oct 2026). Engines may sit anywhere; there is no open-space
 rule. Every `engine` block has a required `plume`:
