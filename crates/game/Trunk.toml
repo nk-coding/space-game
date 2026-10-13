@@ -12,4 +12,6 @@ port = 8081
 open = false
 
 [watch]
-ignore = ["dist"]
+# Everything that goes into the wasm, not only this crate.
+watch = [".", "../sim", "../data", "../art", "../../content/base", "../../art/tokens.json"]
+ignore = ["dist", "../../content/base/wiki"]

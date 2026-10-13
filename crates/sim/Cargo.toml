@@ -9,7 +9,8 @@ publish.workspace = true
 [dependencies]
 data = { path = "../data" }
 # Pure-Rust transcendental functions (sin, cos, atan2, exp, ...): identical results on every platform.
-# `default-features = false` drops the `arch` feature, so no platform-specific code path is ever used.
+# `default-features = false` drops libm's `arch` feature here, but num-traits (through rapier) turns it back on;
+# that is harmless: `arch` only switches exactly rounded operations (sqrt, fabs, ...) to hardware instructions.
 libm = { version = "=0.2.16", default-features = false }
 # Custom behavior conditions (Rhai nodes in content). Sandboxed raw engine: no packages, no `**` (float powf
 # would go through the platform libm), no time, no modules/import, no eval; `sync` so the sim stays

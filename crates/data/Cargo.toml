@@ -15,7 +15,7 @@ fs = []
 
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
-ron = "0.12.2"
+ron = "=0.12.2"  # format-level: content, share codes and saved documents are RON text
 
 [dev-dependencies]
 serde_json = "1.0.154"
