@@ -603,10 +603,12 @@ pub(super) struct InspectorKey {
     cx: inspect::Context,
     name: String,
     source: Option<String>,
+    refusals: u64,
 }
 
 /// Rebuilds the inspector when the selection, the program, REPLACE, the slots or the behavior (its name, which one
-/// it is) change; not while a slider is held (it keeps its node and follows in place).
+/// it is) change, and after a refused edit (a refused note's field shows the note again); not while a slider is
+/// held (it keeps its node and follows in place).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rebuild_inspector(
     mut commands: Commands,
@@ -634,6 +636,7 @@ pub(super) fn rebuild_inspector(
         cx,
         name: draft.name.clone(),
         source: draft.source.clone(),
+        refusals: edit.refusals(),
     };
     if built.as_ref() == Some(&key) {
         return;
@@ -717,7 +720,7 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
     if let Some(e) = draft.errors.first() {
         return match view {
             BehaviorView::Text => (format!("{errors} ERROR{s}  ·  FIRST ON LINE {}, COLUMN {}", e.line, e.col), Tone::Coral),
-            BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES"), Tone::Gold),
+            BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES, READ-ONLY UNTIL IT IS FIXED"), Tone::Gold),
         };
     }
     let rules = draft.program().rules.len();

@@ -338,7 +338,7 @@ pub(super) fn commit_notes(mut fields: Query<(&mut NoteField, &TextField)>, mut 
 /// screen opens again with the button still remembered as held.
 pub(super) fn drop_drags(mut slider: ResMut<SliderDrag>, mut rows: ResMut<super::reorder::RowDrag>, mut draft: ResMut<BehaviorDraft>) {
     if slider.0.take().is_some() {
-        draft.edit(|ed| ed.end_stroke());
+        draft.end_stroke();
     }
     *rows = default();
 }
@@ -359,12 +359,16 @@ pub(super) fn drag_sliders(
     let held = sliders.iter_mut().find(|(_, s, hot, ..)| hot.pressed && s.spec.target.is_some());
     let Some((e, mut slider, _, node, tf)) = held else {
         if drag.0.take().is_some() {
-            draft.edit(|ed| ed.end_stroke());
+            draft.end_stroke();
         }
         return;
     };
     if drag.0 != Some(e) {
         drag.0 = Some(e);
+        // The text has errors: the slider stays put (`draft.edit` refuses below), and the note says why.
+        if let Some(why) = draft.locked() {
+            state.refuse(why, time.elapsed_secs());
+        }
         draft.edit(|ed| ed.begin_stroke());
     }
     let scale = window.scale_factor();
@@ -388,7 +392,7 @@ pub(super) fn drag_sliders(
                 t.0 = spec.scale.kind.value(x).to_string().to_uppercase();
             }
         }
-        Some(Err(why)) => state.note = Some((why.to_string(), time.elapsed_secs())),
+        Some(Err(why)) => state.refuse(why.to_string(), time.elapsed_secs()),
         None => {}
     }
 }

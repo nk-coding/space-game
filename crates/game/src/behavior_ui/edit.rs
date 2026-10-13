@@ -22,6 +22,7 @@ use crate::ui_icons::UiIcon;
 use crate::ui_kit::Ring;
 
 use super::actions::{BehaviorAction, BehaviorButton};
+use super::controls::SliderDrag;
 use super::draft::BehaviorDraft;
 use super::inspect::Selection;
 use super::BehaviorUi;
@@ -149,13 +150,27 @@ pub struct EditState {
     /// REPLACE is armed on this condition: the next palette condition replaces it.
     pub replacing: Option<NodeRef>,
     /// The last refusal and when it happened (real seconds).
-    pub note: Option<(String, f32)>,
+    note: Option<(String, f32)>,
+    /// Goes up with every refusal: the inspector is rebuilt, so a control shows the program again (a refused
+    /// note's field its old note).
+    refusals: u64,
 }
 
 impl EditState {
     /// The refusal while it is fresh.
     pub fn current_note(&self, now: f32) -> Option<&str> {
         self.note.as_ref().filter(|(_, at)| now - at < NOTE_SECS).map(|(t, _)| t.as_str())
+    }
+
+    /// An edit was refused at `now` (real seconds): the note says why for a few seconds.
+    pub fn refuse(&mut self, why: impl Into<String>, now: f32) {
+        self.note = Some((why.into(), now));
+        self.refusals += 1;
+    }
+
+    /// How many edits were refused so far.
+    pub fn refusals(&self) -> u64 {
+        self.refusals
     }
 }
 
@@ -166,6 +181,7 @@ pub(super) fn apply(
     mut ui: ResMut<BehaviorUi>,
     mut state: ResMut<EditState>,
     time: Res<Time<Real>>,
+    drag: Res<SliderDrag>,
     mut generation: Local<u64>,
 ) {
     // Another draft (OPEN, USE, NEW, the design's behavior): ids of the old one may exist in it and name other
@@ -177,6 +193,20 @@ pub(super) fn apply(
     }
     for a in actions.read() {
         let Some(ed) = draft.editor() else { return };
+        // Undo or redo while a slider is held would close its stroke and make every later step of the drag an
+        // undo step of its own; they are ignored while it is held.
+        if drag.0.is_some() && matches!(a, BehaviorAction::Undo | BehaviorAction::Redo) {
+            continue;
+        }
+        // The text has errors: the model can't change without losing the typed lines; say so for every edit.
+        let edits = matches!(
+            a,
+            BehaviorAction::Edit(_) | BehaviorAction::AddRule | BehaviorAction::Delete | BehaviorAction::Undo | BehaviorAction::Redo
+        ) || matches!(a, BehaviorAction::AddNode(id) if matches!(palette_click(ed, ui.selected.as_ref(), state.replacing, id), PaletteClick::Edit(_)));
+        if edits && let Some(why) = draft.locked() {
+            state.refuse(why, time.elapsed_secs());
+            continue;
+        }
         let edit = match a {
             BehaviorAction::Edit(e) => Some(e.clone()),
             BehaviorAction::AddRule => add_rule_edit(ed),
@@ -212,7 +242,7 @@ pub(super) fn apply(
             Some(Ok(After::Keep)) | None => {}
             Some(Ok(After::Select(s))) => ui.selected = Some(s),
             Some(Ok(After::Deselect)) => ui.selected = None,
-            Some(Err(why)) => state.note = Some((why.to_string(), time.elapsed_secs())),
+            Some(Err(why)) => state.refuse(why.to_string(), time.elapsed_secs()),
         }
         state.replacing = None;
     }
@@ -360,6 +390,7 @@ mod tests {
         world.init_resource::<Messages<BehaviorAction>>();
         world.init_resource::<Time<Real>>();
         world.init_resource::<EditState>();
+        world.init_resource::<SliderDrag>();
         let mut draft = BehaviorDraft::default();
         draft.replace(BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), nodes).unwrap());
         let cond = NodeRef::Cond(draft.editor().unwrap().rule_at(0).unwrap().conds[0]);
@@ -384,6 +415,40 @@ mod tests {
         assert_eq!(world.resource::<BehaviorUi>().selected, None);
         assert_eq!(world.resource::<EditState>().replacing, None);
         assert_eq!(*world.resource::<BehaviorDraft>().program(), before, "Delete reached the new draft");
+    }
+
+    /// A refused edit says why and counts (the inspector is rebuilt then, so a refused note's field shows the
+    /// note again); undo and redo are ignored while a slider is held.
+    #[test]
+    fn refusals_count_and_undo_waits_for_a_held_slider() {
+        let content = data::base_content();
+        let mut world = World::new();
+        world.init_resource::<Messages<BehaviorAction>>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<EditState>();
+        world.init_resource::<BehaviorUi>();
+        world.init_resource::<SliderDrag>();
+        let mut draft = BehaviorDraft::default();
+        draft.replace(BehaviorDraft::from_behavior(content.behaviors.get("skirmisher").unwrap(), &content.behavior_nodes).unwrap());
+        let rule = draft.editor().unwrap().rule_at(1).unwrap().id;
+        world.insert_resource(draft);
+        let apply = world.register_system(apply);
+        world.write_message(BehaviorAction::Edit(Edit::SetRuleNote { rule, note: "x".repeat(300) }));
+        world.run_system(apply).unwrap();
+        let state = world.resource::<EditState>();
+        assert_eq!((state.refusals(), state.current_note(0.0)), (1, Some(Refusal::LineTooLong.to_string().as_str())));
+        // An edit, then Ctrl+Z with a slider held: nothing is undone.
+        world.write_message(BehaviorAction::Edit(Edit::SetRuleNote { rule, note: "short".into() }));
+        world.run_system(apply).unwrap();
+        let edited = world.resource::<BehaviorDraft>().program().clone();
+        world.resource_mut::<SliderDrag>().0 = Some(Entity::PLACEHOLDER);
+        world.write_message(BehaviorAction::Undo);
+        world.run_system(apply).unwrap();
+        assert_eq!(*world.resource::<BehaviorDraft>().program(), edited);
+        world.resource_mut::<SliderDrag>().0 = None;
+        world.write_message(BehaviorAction::Undo);
+        world.run_system(apply).unwrap();
+        assert_ne!(*world.resource::<BehaviorDraft>().program(), edited);
     }
 
     #[test]
