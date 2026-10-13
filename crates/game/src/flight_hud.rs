@@ -373,7 +373,7 @@ fn voyage_widgets(
     if !voyage {
         return;
     }
-    let (text, _, enabled) = voyage::recall_words(run.phase, run.can_recall, world.sim.tick());
+    let (text, _, enabled) = voyage::recall_words(run.phase, run.can_recall, run.emergency, world.sim.tick());
     let warping = matches!(run.phase, Phase::Warping { .. });
     for (e, mut p) in &mut pill {
         if p.disabled == enabled || p.active != warping {
@@ -597,7 +597,7 @@ fn update_text(
                 }
             }
             HudText::RecallSub => {
-                let (_, line, enabled) = voyage::recall_words(run.phase, run.can_recall, tick);
+                let (_, line, enabled) = voyage::recall_words(run.phase, run.can_recall, run.emergency, tick);
                 s.push_str(&line);
                 let tone = if enabled || warping { Tone::Teal } else { Tone::Dim };
                 set_color(&mut color, ui_color(tone.color(&ui), 1.0));
