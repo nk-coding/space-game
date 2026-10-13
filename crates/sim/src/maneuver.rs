@@ -200,13 +200,10 @@ fn approach(
     }
 }
 
+/// Nose on the target (or its lead point), its bearing rate fed forward (GDR-0064).
 fn face(kin: &Kin, ts: &TargetState, aim: AimMode) -> HeadingGoal {
-    let to = kin.aim_point(ts, aim) - kin.pos;
-    if to.length_squared() > 1e-6 {
-        HeadingGoal::Angle(Kin::nose_heading(to))
-    } else {
-        HeadingGoal::Keep
-    }
+    kin.track(kin.aim_point(ts, aim), ts.vel, 0)
+        .unwrap_or(HeadingGoal::Keep)
 }
 
 /// Velocity that brings the ship to `standoff` metres from `at` (moving with `at_vel`) and stops it there.

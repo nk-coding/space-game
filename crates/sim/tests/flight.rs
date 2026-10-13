@@ -267,6 +267,71 @@ fn lock_keeps_the_nose_on_a_moving_target() {
     // it cannot brake while locked. Ships with RCS can: see `rcs_nozzles_follow_open_sides_and_strafe`.)
 }
 
+/// A raider at `(-100, 33)` drifting past the origin at 20 m/s, 33 m off (no behavior, no thrust).
+fn crossing_raider(w: &mut sim::Sim) -> sim::ShipId {
+    let c = content();
+    w.spawn_ship(
+        design(&c, "automaton_raider"),
+        sim::Owner(1),
+        Body { pos: Vec2::new(-100.0, 33.0), linvel: Vec2::new(20.0, 0.0), ..Body::default() },
+    )
+}
+
+/// The worst angle (rad) between the nose of `ship` and the direction to `target` while the target passes within
+/// 45° of its closest point (|x| < 33 m), stepping until it is past.
+fn worst_nose_error(w: &mut sim::Sim, ship: sim::ShipId, target: sim::ShipId) -> f32 {
+    let mut worst = 0.0f32;
+    for _ in 0..240 {
+        w.step(&TickInputs::default());
+        let to = piece(w, target).com_world() - piece(w, ship).com_world();
+        if to.x.abs() < 33.0 {
+            let err = wrap_angle(Kin::nose_heading(to) - piece(w, ship).body.angle);
+            worst = worst.max(err.abs());
+        }
+    }
+    worst
+}
+
+/// GDR-0064: the lock feeds the target's bearing rate forward, so the nose leads a crossing target instead of
+/// trailing it. A raider crossing 33 m in front of a Halvex Runner at 20 m/s turns the bearing at up to 0.6 rad/s;
+/// without the feed-forward the Runner's nose trailed it by about 6.7° (ω² / (2 · margin · α) with its first-line
+/// α of 2.21 rad/s²), a clean miss at that distance.
+#[test]
+fn the_lock_leads_a_crossing_target() {
+    let c = content();
+    let mut w = sim::Sim::new(1);
+    let hunter = w.spawn_ship(design(&c, "halvex_runner"), sim::Owner::PLAYER, Body::default());
+    let prey = crossing_raider(&mut w);
+    w.command(hunter, ShipCommand::Pilot(PilotInput { lock: Some(Target::Ship(prey)), ..Default::default() }));
+    let worst = worst_nose_error(&mut w, hunter, prey);
+    println!("lock on a crossing raider: worst nose error {:.2}°", worst.to_degrees());
+    assert!(worst < 1.5f32.to_radians(), "lock error {}°", worst.to_degrees());
+}
+
+/// GDR-0064: `face` feeds the bearing rate forward too. A small turret (no engines, a gyro) facing the crossing
+/// raider: before, the nose trailed it by `ω / turn_gain` (about 2.9° at 0.6 rad/s).
+#[test]
+fn face_leads_a_crossing_target() {
+    let c = content();
+    let turret = custom(
+        &c,
+        &[
+            ("pulse_laser", 1, 0, 0, false, None),
+            ("fission_reactor", 0, 1, 0, false, None),
+            ("logic_core", 1, 1, 0, false, None),
+            ("gyro", 2, 1, 0, false, None),
+        ],
+    );
+    let mut w = sim::Sim::new(1);
+    let me = w.spawn_ship(turret, sim::Owner::PLAYER, Body::default());
+    let prey = crossing_raider(&mut w);
+    let face = Maneuver::FaceTarget { target: Target::Ship(prey), aim: sim::flight::AimMode::Target };
+    w.command(me, ShipCommand::Maneuver { maneuver: face, fire: false });
+    let worst = worst_nose_error(&mut w, me, prey);
+    println!("face on a crossing raider: worst nose error {:.2}°", worst.to_degrees());
+    assert!(worst < 1.0f32.to_radians(), "face error {}°", worst.to_degrees());
+}
+
 /// GDR-0064: no maneuver asks for more than the ship's top speed. Goals beyond it (a target faster than the
 /// ship, an orbit around a moving target) left AI ships stuck at their top speed: the push they asked for was a
 /// hair "with" the motion, the whole-speed fade cut it off, and the heading logic never turned.

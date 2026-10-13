@@ -5,7 +5,8 @@
 //! * **Heading**: time-optimal-ish turn rate `ω_des = sign(e)·min(ω_max, √(2·margin·α·|e|), gain·|e|)` with
 //!   `α` the piece's planning angular acceleration (pure torque + the RCS couples that lasting translation
 //!   leaves free, plus differential thrust while the last resort is on), then `τ = I·(ω_des − ω)/DT`. Big ships
-//!   plan with their small `α` and do not overshoot; small ones snap.
+//!   plan with their small `α` and do not overshoot; small ones snap. A lock or `face` on a moving target adds
+//!   the target's bearing rate (feed-forward, GDR-0064), so the nose leads a crossing target.
 //! * **Last resort** (GDR-0055): gimbals and differential thrust push the ship sideways, so they help only
 //!   after gyros, cores and RCS couples have been at their limit for `FlightTuning::assist_after` ticks
 //!   ([`TurnAssist`]); never for keyboard rotation (GDR-0058).
@@ -176,6 +177,11 @@ pub enum HeadingGoal {
     /// Turn at this rate (rad/s, counter-clockwise; capped at the max turn rate). Keyboard rotate (up to
     /// `FlightTuning::key_turn_rate`).
     Rate(f32),
+    /// Body angle `angle`, which itself turns at `rate` rad/s (counter-clockwise): a lock or `face` on a moving
+    /// target, whose bearing rate is fed forward (GDR-0064). The flight computer asks for that rate (up to one
+    /// the ship can stop from within about a quarter turn) plus the usual turn towards `angle`, so the nose
+    /// leads a crossing target instead of trailing it.
+    Track { angle: f32, rate: f32 },
 }
 
 /// What the flight computer should achieve.
@@ -192,6 +198,7 @@ impl FlightGoal {
         let heading = match self.heading {
             HeadingGoal::Keep | HeadingGoal::Auto => true,
             HeadingGoal::Angle(a) | HeadingGoal::Rate(a) => a.is_finite(),
+            HeadingGoal::Track { angle, rate } => angle.is_finite() && rate.is_finite(),
             HeadingGoal::Thrust(d) => d.is_finite(),
         };
         heading && self.velocity.is_none_or(Vec2::is_finite)
@@ -412,6 +419,18 @@ impl Kin {
     /// Body angle that points the nose (+y) along world direction `d`.
     pub fn nose_heading(d: Vec2) -> f32 {
         wrap_angle(atan2(d.y, d.x) - FRAC_PI_2)
+    }
+
+    /// The heading goal that keeps one side of the ship (`side`: 0 nose, 1 tail, 2 right, 3 left) on the point
+    /// `aim`, which moves at `aim_vel`: [`HeadingGoal::Track`] with the bearing rate `(r × v) / |r|²` of the
+    /// point as seen from the ship (GDR-0064). `None` when the point is at the centre of mass.
+    pub fn track(&self, aim: Vec2, aim_vel: Vec2, side: usize) -> Option<HeadingGoal> {
+        let to = aim - self.pos;
+        let d2 = to.length_squared();
+        (d2 > 1e-6).then(|| HeadingGoal::Track {
+            angle: wrap_angle(atan2(to.y, to.x) - AXIS_ANGLE[side]),
+            rate: to.cross(aim_vel - self.vel) / d2,
+        })
     }
 
     /// Body angle that points the best thrust axis along world direction `d`.
@@ -644,11 +663,12 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
     }
 }
 
-/// Body angle that brings the strongest working guns to bear on a target (GDR-0040): guns are grouped by the
+/// The heading that brings the strongest working guns to bear on a target (GDR-0040): guns are grouped by the
 /// side they face; the group with the most damage per second among working guns (clear, alive, not overheated,
 /// not idle: [`gun_works`]) wins (ties: front, back, right, left), and it aims at the lead point if that group's
-/// strongest gun fires projectiles. `None` without working guns.
-pub fn smart_aim(ship: &Ship, piece: &Piece, kin: &Kin, t: &TargetState) -> Option<f32> {
+/// strongest gun fires projectiles. A [`HeadingGoal::Track`] with the target's bearing rate fed forward
+/// (GDR-0064). `None` without working guns.
+pub fn smart_aim(ship: &Ship, piece: &Piece, kin: &Kin, t: &TargetState) -> Option<HeadingGoal> {
     // [dps, best gun dps, its projectile speed (0 = hit-scan)] per facing group (forward, backward, right, left).
     let mut groups = [[0.0f32; 3]; 4];
     for g in piece.guns.iter().filter(|g| gun_works(g, ship.part(g.part))) {
@@ -682,12 +702,8 @@ pub fn smart_aim(ship: &Ship, piece: &Piece, kin: &Kin, t: &TargetState) -> Opti
     } else {
         t.pos
     };
-    let to = aim - kin.pos;
-    if to.length_squared() < 1e-6 {
-        return None;
-    }
-    // Rotate the group's facing onto `to`.
-    Some(wrap_angle(atan2(to.y, to.x) - AXIS_ANGLE[best]))
+    // Rotate the group's facing onto the aim point, and follow it as it moves.
+    kin.track(aim, t.vel, best)
 }
 
 /// Pilot input → goal: the touch stick ("fly that way") or the keyboard axes (rotate / thrust / strafe), with or
@@ -701,18 +717,18 @@ pub fn pilot_goal(
     tuning: &FlightTuning,
 ) -> FlightGoal {
     let lock = input.lock.as_ref().and_then(|t| resolve_target(ships, t));
+    // The lock follows the target's bearing (fed forward, GDR-0064); the A/D nudge offsets the angle only.
     let lock_heading = |t: &TargetState| -> HeadingGoal {
         let base = match input.aim {
             AimMode::Auto => smart_aim(ship, piece, kin, t),
             _ => None,
         };
-        let base = base.or_else(|| {
-            let to = kin.aim_point(t, input.aim) - kin.pos;
-            (to.length_squared() > 1e-6).then(|| Kin::nose_heading(to))
-        });
-        match base {
-            Some(a) => HeadingGoal::Angle(wrap_angle(a + input.aim_offset)),
-            None => HeadingGoal::Keep,
+        match base.or_else(|| kin.track(kin.aim_point(t, input.aim), t.vel, 0)) {
+            Some(HeadingGoal::Track { angle, rate }) => HeadingGoal::Track {
+                angle: wrap_angle(angle + input.aim_offset),
+                rate,
+            },
+            _ => HeadingGoal::Keep,
         }
     };
     if let Some(axes) = input.axes {
@@ -972,7 +988,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         // Heading → torque.
         let target = match goal.heading {
             HeadingGoal::Keep | HeadingGoal::Rate(_) => None,
-            HeadingGoal::Angle(a) => Some(a),
+            HeadingGoal::Angle(a) | HeadingGoal::Track { angle: a, .. } => Some(a),
             HeadingGoal::Thrust(d) => (d.length_squared() > 1e-12).then(|| kin.axis_heading(d)),
             HeadingGoal::Auto => {
                 if dv_len < AUTO_SETTLED {
@@ -1035,6 +1051,14 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         let alpha = Kin::alpha_with(&piece.authority, free, kin.inertia, piece.assist.on);
         let omega_des = match goal.heading {
             HeadingGoal::Rate(r) => r.clamp(-tuning.max_turn_rate, tuning.max_turn_rate),
+            // Feed-forward (GDR-0064): the goal's own turn rate, at most one the ship could stop from within
+            // about a quarter turn on what it turns with this tick (as the keys are capped), plus the turn
+            // towards the goal, within the max turn rate.
+            HeadingGoal::Track { rate, .. } => {
+                let lead = sqrt(tuning.turn_margin * alpha * PI);
+                (rate.clamp(-lead, lead) + turn_rate(error, alpha, tuning))
+                    .clamp(-tuning.max_turn_rate, tuning.max_turn_rate)
+            }
             _ => turn_rate(error, alpha, tuning),
         };
         let torque = kin.inertia * (omega_des - kin.omega) * (1.0 / DT);
@@ -1139,6 +1163,11 @@ impl StateHash for FlightGoal {
             HeadingGoal::Rate(r) => {
                 h.u8(4);
                 h.f32(r);
+            }
+            HeadingGoal::Track { angle, rate } => {
+                h.u8(5);
+                h.f32(angle);
+                h.f32(rate);
             }
         }
         match self.velocity {

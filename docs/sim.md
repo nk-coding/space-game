@@ -482,7 +482,9 @@ Every tick, for the controlling piece of every active ship:
    13 Oct 2026 review fix: a Runner with two pods, locked 90° to the left with W held, overshot the lock by 2.1°,
    now 0.45°). `Rate(r)` (keyboard) asks `ω_des = r`, but changes the turn rate only within `margin` × what the
    first line gives this tick in that sense, and never opens the last resort
-   ([Keyboard rotation](#keyboard-rotation)).
+   ([Keyboard rotation](#keyboard-rotation)). `Track { angle, rate }` (the lock and `face`,
+   [Feed-forward](#feed-forward-the-lock-and-face-lead-a-moving-target)) asks
+   `ω_des = clamp(rate, ±√(margin · α · π)) + turn_rate(e)`, within `ω_max`.
 4. **Flip, then burn**: while the ship turns its thrust towards the needed direction (`Thrust`/`Auto`), the
    translation force fades in from 25° to 8° of heading error, so slow-turning ships do not chase their own
    velocity vector.
@@ -508,7 +510,8 @@ Pilot input (concept: touch controls):
 - **Lock** (`Target::Ship / Piece / Point`): by default (`AimMode::Auto`, GDR-0040, `flight::smart_aim`) the ship
   turns its strongest working guns onto the target (the side with the most damage per second, front first on
   ties; their lead point if that side's strongest gun fires projectiles); `AimMode::Target` / `Lead` point the
-  nose at the target or its lead point (see [Aiming](#aiming-and-leading)); A/D add the nudge (`aim_offset`); the
+  nose at the target or its lead point (see [Aiming](#aiming-and-leading)); the target's bearing rate is fed
+  forward ([Feed-forward](#feed-forward-the-lock-and-face-lead-a-moving-target)); A/D add the nudge (`aim_offset`); the
   stick strafes with whatever thrusters push that
   way (RCS), the full stick being the top speed reachable along the stick from this heading
   (`Kin::top_along`); released = brake. A ship with engines only at the back cannot brake or strafe while locked.
@@ -518,6 +521,34 @@ Pilot input (concept: touch controls):
 
 `Ship::telemetry()` shows the top speed (best axis), goal, heading target, requested force/torque, the expected
 wrench and whether the last resort was on (`assist`).
+
+### Feed-forward: the lock and `face` lead a moving target
+
+Decided by Niklas on 13 Oct 2026 ([GDR-0064](gdr/0064-lock-feed-forward-and-ai-flight-fixes.md)). Code:
+`HeadingGoal::Track`, `Kin::track`, `flight::smart_aim`, `maneuver::face`, the `omega_des` match in
+`flight::execute`.
+
+- **The problem**: the heading controller turned the nose towards where the target *is*. Against a target whose
+  bearing turns at `ω`, the nose settled `max(ω / turn_gain, ω² / (2 · margin · α))` behind it. Since the slower
+  turning of GDR-0055 the second term dominates for the Halvex Runner (first-line α 2.21 rad/s²): a raider
+  crossing 33 m ahead at 20 m/s (up to 0.6 rad/s) was trailed by 6.7°, 3.9 m off, a clean miss
+  (`docs/results/balance-2026-10-13.md`, sim issue 4).
+- **The fix**: the lock (smart aim, GDR-0040, including side or rear gun groups and the lead point) and every
+  `face` (the `face` action, an approach or a kite at range) give a `HeadingGoal::Track { angle, rate }`: the
+  angle as before, and the bearing rate of the aim point as seen from the ship, `(r × v) / |r|²` (`r` from the
+  centre of mass to the aim point, `v` the target's velocity relative to the ship). The flight computer asks for
+  that rate plus the usual turn towards the angle: `ω_des = clamp(rate, ±√(margin · α · π)) + turn_rate(e)`,
+  within `max_turn_rate`. The feed-forward is capped at a rate the ship could stop from within about a quarter
+  turn on what it turns with this tick (the same cap as keyboard rotation, without the key rate), so a target
+  whipping past at close range cannot spin the ship faster than it can stop; the torque still comes from the
+  allocation, and the last resort follows its usual gate (GDR-0055).
+- **Unchanged**: keyboard rotation (`Rate`, the A/D ramp and its 1.5 rad/s), the lock's A/D nudge (the nudge
+  offsets the angle; its own rate is not fed forward, so the nose still trails a growing nudge by up to
+  0.29 rad), the turning table below and the agility tests (90° turns aim at a fixed heading).
+- Tests `the_lock_leads_a_crossing_target` (that crossing raider: the Runner's nose within 0.04° of it, 8.95°
+  before) and `face_leads_a_crossing_target` (a small turret under `face`: 0.03°, 2.89° before) in
+  `tests/flight.rs`.
+- Cost: one cross product and one division per locked or facing ship per tick.
 
 ### The last resort
 
@@ -749,7 +780,8 @@ early and 0.47 rad/s on the sample mid (what their first line can stop within a 
 the speed it can still stop from, then face the target or its lead point and keep pace), `Orbit { target,
 radius, ccw }` (tangential speed
 limited by the centripetal acceleration the ship can hold, radial error corrected). Each becomes a
-`FlightGoal` every tick; an unresolvable target brakes.
+`FlightGoal` every tick; an unresolvable target brakes. Facing a target (`FaceTarget`, an approach or a kite at
+range) feeds its bearing rate forward ([Feed-forward](#feed-forward-the-lock-and-face-lead-a-moving-target)).
 
 `KeepRange { target, range, aim }` (back off with `HeadingGoal::Auto` when closer than `range`, so forward-only
 ships turn away; otherwise like `Approach`) and `Flee { from }` (straight away at top speed) were added for
