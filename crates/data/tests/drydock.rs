@@ -5,6 +5,7 @@
 mod common;
 
 use common::*;
+use data::limits::MAX_COORD;
 use data::stats::{BUILTIN_STATS, SHIP_STATS};
 use data::{
     Better, Blueprint, Content, Kind, Pack, Placement, PowerOverride, PowerTier, Problem, Severity,
@@ -397,7 +398,7 @@ fn every_rotation_flip_and_power_override_round_trips() {
         ] {
             parts.push(Placement {
                 power: Some(PowerOverride { tier, weight }),
-                ..at("shield_emitter", i32::MIN, i32::MAX)
+                ..at("shield_emitter", -MAX_COORD, MAX_COORD)
             });
         }
     }

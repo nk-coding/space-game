@@ -5,8 +5,8 @@
 //! ```text
 //! target weakest(engines)
 //! when hull < 30% -> flee                       # run when badly hurt
-//! when target_in_range(120%) and cycle(9s) >= 5s -> orbit(60%)
-//! always -> approach(67%)
+//! when target_in_range(120%) and cycle(9s) >= 5s -> orbit(67%)
+//! always -> approach(85%)
 //! ```
 //!
 //! * [`Program::parse`] reads the text form, [`Program::from_parts`] the RON form (the `target` field and the
@@ -29,6 +29,8 @@ pub const KEYWORDS: &[&str] = &["when", "if", "always", "and", "or", "not", "tar
 pub const MAX_RULES: usize = 64;
 pub const MAX_CONDITIONS: usize = 8;
 pub const MAX_ARGS: usize = 4;
+/// Longest line, in characters: as typed (the parser refuses longer lines) and as printed in canonical form
+/// ([`check_program`] refuses a line that prints longer, e.g. compact input that gains spaces).
 pub const MAX_LINE_CHARS: usize = 240;
 /// Largest reach-relative distance (`%` on a distance), in percent.
 pub const MAX_REACH_PERCENT: f32 = 1000.0;
@@ -352,13 +354,28 @@ impl Program {
     }
 
     /// [`Program::parse`], plus the text line of every program line (to locate later vocabulary errors).
+    /// Reading stops after the target line and [`MAX_RULES`] rules (or lines with errors), with an error at the
+    /// next one, so a huge text costs no more than a full program.
     pub fn parse_with_lines(text: &str) -> Result<(Program, LineMap), Vec<TextError>> {
         let mut prog = Program::default();
         let mut map = LineMap::default();
         let mut errors = Vec::new();
+        let mut lines = 0;
         for (k, raw) in text.lines().enumerate() {
-            let line_no = k as u32 + 1;
-            match parse_line(raw) {
+            let line_no = (k + 1).try_into().unwrap_or(u32::MAX);
+            let parsed = parse_line(raw);
+            if !matches!(parsed, Ok(Line::Blank)) {
+                if lines == MAX_RULES + 1 {
+                    errors.push(TextError {
+                        line: line_no,
+                        col: 1,
+                        message: format!("at most {MAX_RULES} rules"),
+                    });
+                    break;
+                }
+                lines += 1;
+            }
+            match parsed {
                 Ok(Line::Blank) => {}
                 Ok(Line::Target(t)) => {
                     if prog.target.is_some() {
@@ -399,6 +416,9 @@ impl Program {
     /// Parses the RON form: `target` holds the selector (`nearest(engines)`, without the keyword), `rules` one
     /// rule per string.
     pub fn from_parts(target: Option<&str>, rules: &[String]) -> Result<Program, Vec<LineError>> {
+        if rules.len() > MAX_RULES {
+            return Err(vec![too_many_rules()]);
+        }
         let mut prog = Program::default();
         let mut errors = Vec::new();
         if let Some(t) = target {
@@ -479,13 +499,13 @@ fn describe(t: &Tok) -> String {
 type PResult<T> = Result<T, (u32, String)>;
 
 fn lex(line: &str) -> PResult<Vec<Token>> {
-    let chars: Vec<char> = line.chars().collect();
-    if chars.len() > MAX_LINE_CHARS {
+    if line.chars().nth(MAX_LINE_CHARS).is_some() {
         return Err((
             MAX_LINE_CHARS as u32 + 1,
             format!("line too long (at most {MAX_LINE_CHARS} characters)"),
         ));
     }
+    let chars: Vec<char> = line.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
     let n = chars.len();
@@ -498,8 +518,18 @@ fn lex(line: &str) -> PResult<Vec<Token>> {
         }
         let tok = if c == '#' {
             let note: String = chars[i + 1..].iter().collect();
+            let note = note.trim();
+            // A note is one line: the text form would split it (and the inspector refuses the same).
+            if note.chars().any(char::is_control) {
+                let skip = chars[i + 1..].iter().take_while(|c| c.is_whitespace()).count();
+                let k = chars[i + 1 + skip..].iter().position(|c| c.is_control()).unwrap_or(0);
+                return Err((
+                    (i + 2 + skip + k) as u32,
+                    "a note is one line of text: no line breaks, tabs or other control characters".into(),
+                ));
+            }
             i = n;
-            Tok::Note(note.trim().to_string())
+            Tok::Note(note.to_string())
         } else if c.is_ascii_alphabetic() {
             let start = i;
             while i < n && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
@@ -1041,17 +1071,15 @@ pub fn check_program(p: &Program, nodes: &Table<BehaviorNode>) -> Vec<LineError>
         });
     }
     if p.rules.len() > MAX_RULES {
-        out.push(LineError {
-            line: LineRef::Whole,
-            col: 1,
-            message: format!("at most {MAX_RULES} rules"),
-        });
+        out.push(too_many_rules());
     }
     if let Some(t) = &p.target {
+        check_printed_length(t, LineRef::Target, &mut out);
         check_call(&t.call, NodeRole::Target, nodes, LineRef::Target, &mut out);
     }
     for (i, r) in p.rules.iter().enumerate() {
         let at = LineRef::Rule(i);
+        check_printed_length(r, at, &mut out);
         for c in &r.when {
             let Some(node) = check_call(&c.call, NodeRole::Condition, nodes, at, &mut out) else {
                 continue;
@@ -1092,6 +1120,29 @@ pub fn check_program(p: &Program, nodes: &Table<BehaviorNode>) -> Vec<LineError>
         check_call(&r.action, NodeRole::Action, nodes, at, &mut out);
     }
     out
+}
+
+fn too_many_rules() -> LineError {
+    LineError {
+        line: LineRef::Whole,
+        col: 1,
+        message: format!("at most {MAX_RULES} rules"),
+    }
+}
+
+/// The canonical print of a line (spaces around `<`, `->`, `,` and `#`, `when` for `if`, ...) may be longer than
+/// what was typed; it must stay within [`MAX_LINE_CHARS`] too, so the printed text always parses back.
+fn check_printed_length(line: &impl std::fmt::Display, at: LineRef, out: &mut Vec<LineError>) {
+    let n = line.to_string().chars().count();
+    if n > MAX_LINE_CHARS {
+        out.push(LineError {
+            line: at,
+            col: 1,
+            message: format!(
+                "too long once written out ({n} characters, at most {MAX_LINE_CHARS}); shorten the note or drop a condition"
+            ),
+        });
+    }
 }
 
 fn role_word(r: NodeRole) -> &'static str {

@@ -177,7 +177,7 @@ what is locked; a development switch (`?unlock=all`) is planned.
 | `category` | category id |
 | `icon` | icon key: `fission-reactor` → `icons/fission-reactor.svg` in any loaded pack (see [Icons](#icons)). Hull parts have none: they show their material |
 | `color` | optional system colour key overriding the category's (automaton parts use `"enemy"`) |
-| `size` | footprint `(w, h)` in cells before rotation |
+| `size` | footprint `(w, h)` in cells before rotation; each side 1 to 16 (`data::validate::MAX_PART_SIDE`, a placeholder) |
 | `shape` | `Rect` (default) or `Slope` |
 | `build_points` | cost against the drydock budget (no economy; balancing and enemy scaling) |
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
@@ -207,7 +207,7 @@ Optional component blocks (a part has any combination):
 | Delivery | Fields | Meaning |
 |---|---|---|
 | `Beam` | — | continuous hit-scan: `damage` per second while firing, burns the first block it touches |
-| `Pulse(rate: r)` | `rate` (shots/s) | hit-scan pulses, each dealing `damage / rate`, first block only |
+| `Pulse(rate: r)` | `rate` (shots/s, at most 60) | hit-scan pulses, each dealing `damage / rate`, first block only |
 | `Projectile(rate: r, speed: v, penetration: n, recoil: j)` | shots/s, m/s, blocks, kN·s | a flying shot (inherits the ship's velocity), lives `range / speed` s, goes through up to `n` blocks, pushes the shooter back with `j` per shot; kinetic shots ricochet off slopes hit at a shallow angle |
 
 Stat lines: `range`, `shot_rate`, `shot_speed`, `penetration`, `recoil`, `shield_capacity`, `shield_regen`
@@ -223,8 +223,12 @@ bonuses: [(target: Tag("laser"), stat: "fire_rate", effect: Percent(15), max_sta
 bonuses: [(target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [SourceVenting])],
 ```
 
-`target` is `Part(id)`, `Tag(tag)` or `Category(id)`; `effect` is `Add(x)` (in the stat's unit) or
-`Percent(x)`; `max_stacks` limits how many sources count per target; `when` holds conditions
+`target` is `Part(id)`, `Tag(tag)` or `Category(id)`; `stat` is one the sim changes per part
+(`data::stats::BONUS_STATS`: `power_output power_draw heat_output heat_limit heat_vent damage fire_rate thrust
+shield_radius torque rcs_thrust gimbal range shield_capacity shield_regen rated_speed rcs_rated_speed plume_length
+plume_damage plume_heat`; any other is an error, not a silent no-op); `effect` is `Add(x)` (in the stat's unit,
+at most ±1000000) or `Percent(x)` (above −100, at most 1000); `max_stacks` limits how many sources count per
+target; `when` holds conditions
 (`SourceVenting`: the granting part has a straight side open to space). Declaring bonuses on the source lets a
 mod add a new capacitor or a new laser without editing existing parts. Note: the concept-board drydock gave
 the capacitor bonus to every gun; the content gives it to parts tagged `laser`, as the part text says.
@@ -342,8 +346,9 @@ Blueprints keep their own `size` and name no frame (v1); every base ship fits th
 )
 ```
 
-`size` is the blueprint's own grid (its frame); every placement must fit inside. It does not refer to a `frames`
-entry (v1). A placement is `part`, `x`, `y`, `rot`
+`size` is the blueprint's own grid (its frame), each side 1 to 128 cells like a frame; every placement must fit
+inside. It does not refer to a `frames` entry (v1). Placement coordinates are read only within ±65536
+(`data::limits::MAX_COORD`). A placement is `part`, `x`, `y`, `rot`
 (default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise) and `power`
 (optional, parts that draw power only): the player's override of the part's power tier and weight, e.g.
 `(part: "shield_emitter", x: 2, y: 6, power: (tier: Low))` or `power: (tier: High, weight: 2)`; either field
@@ -660,9 +665,9 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   with `mass`/`hp`, non-hull parts without them, illegal slopes (not `w × 1`, or not hull), hull placements
   without an armor material, materials on non-hull parts, `rot` outside 0–3, placements outside the frame,
   overlapping placements, frame sides outside 1–128 cells, wiki pages for missing entries, broken or malformed
-  links, a locked paint block or bevel slope (the first 1×1 hull part of each shape in content order, which the
-  drydock paints, fills and bevels with: `Content::unit_hull_part`), every armor material locked, every frame
-  locked.
+  links, unknown fields anywhere (inside `weapon.delivery` too), a locked paint block or bevel slope (the first 1×1
+  hull part of each shape in content order, which the drydock paints, fills and bevels with:
+  `Content::unit_hull_part`), every armor material locked, every frame locked.
 - Career content (added 13 Oct 2026): unknown families, materials, nodes, ships and unlock targets; amounts out
   of range; `salvage` on a hull part or a material without `armor`; a node listed twice in `requires`; cycles in
   `requires`; a start whose ship uses locked parts or materials, fits no open frame or has more logic cores than
@@ -680,6 +685,14 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   above 0.
 - Plume: `engine.plume` is required (a parse error when missing); `length`, `damage` and `heat` are finite and not
   negative, `length` at most 50 m.
+- Upper limits (added 13 Oct 2026 after the untrusted-input review; placeholders that keep a mod from hanging the
+  sim or exhausting memory, in `data::validate`): every number at most 1000000 (`MAX_NUMBER`); shot rates
+  (`Pulse`, `Projectile`) at most 60 per second (`MAX_SHOT_RATE`); footprint sides at most 16 cells
+  (`MAX_PART_SIDE`); frame sides and ship `size` sides at most 128 cells (`MAX_FRAME_SIZE`, also the drydock's
+  limit); `logic.rule_slots` at most 64 (the most rules a behavior has); `penetration`, `control_capacity` and
+  `max_stacks` at most 10000 (`MAX_COUNT`); bonus amounts as under Adjacency bonuses. `ship_rule_slots`,
+  `ship_control` and `ship_totals` saturate instead of overflowing. RON files may start with a byte order mark;
+  nesting deeper than 32 brackets is an error.
 - Control: `control_cost` at most 100 (`data::MAX_CONTROL_COST`). Warnings: a `control_cost` above 0 on a part
   that draws and makes no power (it can never idle), a logic core with `control_capacity` 0, a ship whose control
   load exceeds its cores' capacity (the lowest-priority parts start idle).
@@ -747,9 +760,17 @@ resolution it needs; the wiki can show the SVG as is or composite it on a tile).
 - `Content::icon_svg(key)` returns the SVG text from the last loaded pack that has the key; `Content::icons`
   lists them all (`Icon { key, svg, source }`). Mods add or replace icons by key.
 - Every icon must be usable SVG (`data::svg::check_svg`, a cheap structural check without an XML library):
-  well-formed tags, a root `<svg>` in the SVG namespace with a `viewBox`, and no `<image>`, `<text>`,
-  `<script>` or `<foreignObject>` (no raster graphics; the runtime rasteriser has no fonts; the wiki shows the
-  files in a browser).
+  well-formed tags and quoted attributes, a root `<svg>` in the SVG namespace with a `viewBox` (four numbers
+  separated by spaces or commas, either quote style; width and height above 0 and at most 10000 units,
+  `data::svg::MAX_VIEW_BOX`), and no `<image>`, `<feImage>`, `<text>`, `<script>` or `<foreignObject>` (in any
+  case, with or without a namespace prefix: no raster graphics; the runtime rasteriser has no fonts; the wiki shows
+  the files in a browser). Also refused (13 Oct 2026, untrusted-input review): event handler attributes (`on...`),
+  references outside the file (an `href` or `url(...)` that does not start with `#`, `@import`) and declarations
+  other than a plain `<!DOCTYPE ...>` (no entities).
+- The rasteriser (`art`) reads the viewBox with the same code (`data::svg::view_box`), so every icon that validates
+  lays out; one wider or taller than a row of the atlas layout is stored at a lower density. It never loads images
+  or files (its usvg image resolver returns nothing). An icon the XML parser still refuses (an undeclared
+  namespace prefix, say) stays blank and is named in `art::Raster::failed`; the rest of the atlas is fine.
 - Glyphs are drawn on a 20 × 20 `viewBox` (one cell) in their system colour, with their soft glow as a
   blurred group; see `docs/style-guide.md`.
 

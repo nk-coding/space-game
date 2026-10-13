@@ -46,6 +46,32 @@ pub const BUILTIN_STATS: &[&str] = &[
     "build_point_factor",
 ];
 
+/// Stat ids an adjacency bonus may change: the ones the sim applies to a part (`sim::design::Stat`). `fire_rate`
+/// is bonus-only (it multiplies the shot rate). A bonus on any other stat is a validation error, not a silent
+/// no-op.
+pub const BONUS_STATS: &[&str] = &[
+    "power_output",
+    "power_draw",
+    "heat_output",
+    "heat_limit",
+    "heat_vent",
+    "damage",
+    "fire_rate",
+    "thrust",
+    "shield_radius",
+    "torque",
+    "rcs_thrust",
+    "gimbal",
+    "range",
+    "shield_capacity",
+    "shield_regen",
+    "rated_speed",
+    "rcs_rated_speed",
+    "plume_length",
+    "plume_damage",
+    "plume_heat",
+];
+
 /// Ship-level stat ids of the drydock's stats panel; the values come from the sim's design report. Each must be
 /// defined in `stats.ron` (checked by validation, like [`BUILTIN_STATS`]). The panel shows build points, mass,
 /// hit points, cargo and rule slots under their part stat ids, summed over the ship ([`Content::ship_totals`]).

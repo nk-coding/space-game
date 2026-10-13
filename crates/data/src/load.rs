@@ -15,9 +15,17 @@ use crate::table::Table;
 /// Content schema version this crate reads. Packs declare theirs in `pack.ron`.
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// RON options used for every content file: `Some(..)` may be omitted (`power: (output: 10)`).
+/// RON options used for every content file: `Some(..)` may be omitted (`power: (output: 10)`); nesting deeper
+/// than [`crate::limits::RON_RECURSION_LIMIT`] is an error.
 pub fn ron_options() -> ron::Options {
-    ron::Options::default().with_default_extension(Extensions::IMPLICIT_SOME)
+    ron::Options::default()
+        .with_default_extension(Extensions::IMPLICIT_SOME)
+        .with_recursion_limit(crate::limits::RON_RECURSION_LIMIT)
+}
+
+/// The text without a leading byte order mark (Windows editors write one; RON reads it as an error).
+pub(crate) fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
 /// One parsed pack: entries per kind in sorted file order, sources filled in. Not merged, not validated.
@@ -67,7 +75,7 @@ impl Pack {
         let mut problems = Vec::new();
 
         let manifest = match files.iter().find(|(p, _)| p == "pack.ron") {
-            Some((_, c)) => match ron_options().from_str::<PackManifest>(c.as_ref()) {
+            Some((_, c)) => match ron_options().from_str::<PackManifest>(strip_bom(c.as_ref())) {
                 Ok(m) => Some(m),
                 Err(e) => {
                     problems.push(parse_problem(
@@ -290,6 +298,7 @@ fn parse_into<T: DeserializeOwned + Entry>(
     problems: &mut Vec<Problem>,
 ) {
     let opts = ron_options();
+    let text = strip_bom(text);
     let parsed = if is_list(text) {
         opts.from_str::<Vec<T>>(text)
     } else {
@@ -508,7 +517,8 @@ impl Content {
     }
 
     /// The occupancy grid of a blueprint; part indices = indices into `ship.parts`.
-    /// `Err` names the first unknown part id (impossible for validated content).
+    /// `Err` names the first unknown part id, or says that the parts lie too far apart (see
+    /// [`crate::geometry::ShipGrid::new`]); both are impossible for validated content.
     pub fn ship_grid(&self, ship: &Blueprint) -> Result<crate::geometry::ShipGrid, String> {
         let shapes = ship
             .parts
@@ -518,7 +528,13 @@ impl Content {
                     .ok_or_else(|| format!("ship `{}`: unknown part `{}`", ship.id, p.part))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(crate::geometry::ShipGrid::new(shapes))
+        crate::geometry::ShipGrid::new(shapes).ok_or_else(|| {
+            format!(
+                "ship `{}`: the parts span more than {} cells or lie too far out",
+                ship.id,
+                crate::validate::MAX_FRAME_SIZE
+            )
+        })
     }
 
     /// The armour material of a placement (hull parts only).
@@ -564,8 +580,7 @@ impl Content {
         pieces.parts[main]
             .iter()
             .filter_map(|&i| logic(i))
-            .map(|l| l.rule_slots)
-            .sum()
+            .fold(0, |sum: u32, l| sum.saturating_add(l.rule_slots))
     }
 
     /// Control of an intact ship's main piece (GDR-0044): `(load, capacity)` = the summed `control_cost` of
@@ -584,10 +599,10 @@ impl Content {
         pieces.parts[main]
             .iter()
             .filter_map(|&i| part(i))
-            .fold((0, 0), |(load, cap), p| {
+            .fold((0u32, 0u32), |(load, cap), p| {
                 (
-                    load + p.control_cost(),
-                    cap + p.logic.as_ref().map_or(0, |l| l.control_capacity),
+                    load.saturating_add(p.control_cost()),
+                    cap.saturating_add(p.logic.as_ref().map_or(0, |l| l.control_capacity)),
                 )
             })
     }

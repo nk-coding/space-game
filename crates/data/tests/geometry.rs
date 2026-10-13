@@ -18,6 +18,9 @@ fn block(x: i32, y: i32) -> PlacedShape {
 fn slope(w: u32, x: i32, y: i32, rot: u8, flip: bool) -> PlacedShape {
     at(Footprint::slope(w), x, y, rot, flip)
 }
+fn grid(shapes: Vec<PlacedShape>) -> ShipGrid {
+    ShipGrid::new(shapes).expect("a grid of nearby parts")
+}
 
 #[test]
 fn slope_links_only_through_straight_sides() {
@@ -32,7 +35,7 @@ fn slope_links_only_through_straight_sides() {
         (2, 1, Dir::Right, false),
         (1, 0, Dir::Up, false),
     ] {
-        let g = ShipGrid::new(vec![s, block(nx, ny)]);
+        let g = grid(vec![s, block(nx, ny)]);
         assert_eq!(g.linked((1, 1), d), linked, "neighbour on {d:?}");
         assert_eq!(g.linked((nx, ny), d.opposite()), linked);
         assert_eq!(g.pieces().len(), if linked { 1 } else { 2 });
@@ -43,7 +46,7 @@ fn slope_links_only_through_straight_sides() {
 fn long_slope_sides() {
     // slope_1x2 at (0,0): cells (0,0),(1,0); straight: Left of (0,0), Down of both.
     let s = slope(2, 0, 0, 0, false);
-    let g = ShipGrid::new(vec![
+    let g = grid(vec![
         s,
         block(1, 1),
         block(2, 0),
@@ -78,12 +81,12 @@ fn long_slope_sides() {
 fn slopes_meeting_face_to_face_do_not_link() {
     // A "V": left slope faces up-right, right slope (mirrored) faces up-left; they touch along the
     // vertical line between them, where neither has a straight side.
-    let g = ShipGrid::new(vec![slope(1, 0, 0, 0, false), slope(1, 1, 0, 0, true)]);
+    let g = grid(vec![slope(1, 0, 0, 0, false), slope(1, 1, 0, 0, true)]);
     assert!(!g.linked((0, 0), Dir::Right));
     assert_eq!(g.pieces().len(), 2);
     // Back to back (a peak): the left slope mirrored has its straight side on the right, the right one
     // unmirrored has its straight side on the left.
-    let g = ShipGrid::new(vec![slope(1, 0, 0, 0, true), slope(1, 1, 0, 0, false)]);
+    let g = grid(vec![slope(1, 0, 0, 0, true), slope(1, 1, 0, 0, false)]);
     assert!(g.linked((0, 0), Dir::Right));
     assert_eq!(g.pieces().len(), 1);
 }
@@ -125,9 +128,9 @@ fn bevel_orientations_exist_for_every_corner() {
 
 #[test]
 fn exposure_counts_open_straight_sides_plus_slope_face() {
-    let g = ShipGrid::new(vec![block(0, 0)]);
+    let g = grid(vec![block(0, 0)]);
     assert_eq!(g.exposure((0, 0)), 4);
-    let g = ShipGrid::new(vec![slope(1, 0, 0, 0, false)]);
+    let g = grid(vec![slope(1, 0, 0, 0, false)]);
     assert_eq!(g.exposure((0, 0)), 3);
     let mut parts = Vec::new();
     for y in 0..3 {
@@ -135,7 +138,7 @@ fn exposure_counts_open_straight_sides_plus_slope_face() {
             parts.push(block(x, y));
         }
     }
-    let mut g = ShipGrid::new(parts);
+    let mut g = grid(parts);
     assert_eq!(g.exposure((1, 1)), 0);
     assert!(!g.is_exposed(4));
     assert_eq!(g.exposure((0, 0)), 2);
@@ -144,14 +147,14 @@ fn exposure_counts_open_straight_sides_plus_slope_face() {
     let g2 = {
         let mut v: Vec<PlacedShape> = g.shapes().to_vec();
         v[5] = slope(1, 2, 1, 0, true); // flipped: straight sides Right and Down, face towards (1,1)
-        ShipGrid::new(v)
+        grid(v)
     };
     assert_eq!(g2.exposure((1, 1)), 1);
 }
 
 #[test]
 fn pieces_split_when_a_connector_breaks() {
-    let mut g = ShipGrid::new(vec![block(0, 0), block(1, 0), block(2, 0)]);
+    let mut g = grid(vec![block(0, 0), block(1, 0), block(2, 0)]);
     assert_eq!(g.pieces().len(), 1);
     g.remove(1);
     let p = g.pieces();
@@ -165,7 +168,7 @@ fn pieces_split_when_a_connector_breaks() {
 #[test]
 fn hull_edges_and_loops() {
     // One block: four unit sides, one square loop.
-    let g = ShipGrid::new(vec![block(0, 0)]);
+    let g = grid(vec![block(0, 0)]);
     let e = g.hull_edges(|_| true);
     assert_eq!(e.len(), 4);
     let l = hull_loops(&e);
@@ -181,7 +184,7 @@ fn hull_edges_and_loops() {
     );
 
     // Two linked blocks: the shared side is covered; the loop is a 2×1 rectangle.
-    let g = ShipGrid::new(vec![block(0, 0), block(1, 0)]);
+    let g = grid(vec![block(0, 0), block(1, 0)]);
     let e = g.hull_edges(|_| true);
     assert_eq!(e.len(), 6);
     assert_eq!(hull_loops(&e)[0].points.len(), 4);
@@ -189,13 +192,13 @@ fn hull_edges_and_loops() {
     assert_eq!(g.hull_edges(|i| i == 0).len(), 4);
 
     // Block + slope beside it, face towards the block: the block's side is boundary, plus the face.
-    let g = ShipGrid::new(vec![block(0, 0), slope(1, 1, 0, 0, true)]);
+    let g = grid(vec![block(0, 0), slope(1, 1, 0, 0, true)]);
     let e = g.hull_edges(|_| true);
     assert!(e.iter().any(|s| s.part == 0 && s.a.x == 1 && s.b.x == 1));
     assert_eq!(e.iter().filter(|s| s.slope).count(), 1);
 
     // Block + slope linked through its straight side: a trapezoid.
-    let g = ShipGrid::new(vec![block(0, 0), slope(1, 1, 0, 0, false)]);
+    let g = grid(vec![block(0, 0), slope(1, 1, 0, 0, false)]);
     let l = hull_loops(&g.hull_edges(|_| true));
     assert_eq!(l.len(), 1);
     assert_eq!(
@@ -223,7 +226,7 @@ fn hull_edges_and_loops() {
 
 #[test]
 fn blocks_touching_at_a_corner_give_two_loops() {
-    let g = ShipGrid::new(vec![block(0, 0), block(1, 1)]);
+    let g = grid(vec![block(0, 0), block(1, 1)]);
     assert_eq!(g.pieces().len(), 2);
     let loops = hull_loops(&g.hull_edges(|_| true));
     assert_eq!(loops.len(), 2);
@@ -300,14 +303,43 @@ fn rotating_a_placement_four_times_is_identity() {
 #[test]
 fn guns_respect_rotation() {
     let gun = at(Footprint::rect(1, 1), 1, 1, 0, false);
-    let g = ShipGrid::new(vec![gun, block(1, 3), block(2, 1)]);
+    let g = grid(vec![gun, block(1, 3), block(2, 1)]);
     assert!(g.line_of_fire_clear(0));
-    let g = ShipGrid::new(vec![gun, block(1, -2)]);
+    let g = grid(vec![gun, block(1, -2)]);
     assert!(
         !g.line_of_fire_clear(0),
         "anything ahead blocks, not just the next cell"
     );
     let turned = at(Footprint::rect(1, 1), 1, 1, 1, false);
-    let g = ShipGrid::new(vec![turned, block(1, -2), block(4, 1)]);
+    let g = grid(vec![turned, block(1, -2), block(4, 1)]);
     assert!(!g.line_of_fire_clear(0), "a gun turned right fires right");
+}
+
+/// The longest outlines a frame allows (a 128-wide comb: over 16000 unit sides) merge their collinear points in
+/// one pass (the old repeated scan took about 13 ms in a dev build, now about 2): only corners remain, and the
+/// outline still runs along every side.
+#[test]
+fn long_outlines_keep_exactly_their_corners() {
+    let side = data::validate::MAX_FRAME_SIZE as i32;
+    let mut parts: Vec<PlacedShape> = (0..side).map(|x| block(x, 0)).collect();
+    for x in (0..side).step_by(2) {
+        parts.extend((1..side).map(|y| block(x, y)));
+    }
+    let g = grid(parts);
+    let edges = g.hull_edges(|_| true);
+    let loops = hull_loops(&edges);
+    assert_eq!(loops.len(), 1);
+    let pts = &loops[0].points;
+    let n = pts.len();
+    // Top-left first; 2 corners per tooth side plus the bar's: every point is a corner.
+    assert_eq!(pts[0], GridPoint::new(0, 0));
+    assert_eq!(n, 4 * (side as usize / 2) + 2);
+    let mut perimeter = 0;
+    for k in 0..n {
+        let (a, b, c) = (pts[(k + n - 1) % n], pts[k], pts[(k + 1) % n]);
+        let (u, v) = ((b.x - a.x, b.y - a.y), (c.x - b.x, c.y - b.y));
+        assert!(u.0 * v.1 - u.1 * v.0 != 0, "{b:?} is no corner");
+        perimeter += (v.0.abs() + v.1.abs()) as usize;
+    }
+    assert_eq!(perimeter, edges.len());
 }
