@@ -269,6 +269,10 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there,
 - **Writes**: at a new game, after every FLEET change, when the drydock first shows a fresh part (`seen`); the
   research screen (7G) writes after UNLOCK and the voyage (7H) at launch and end. Never during a voyage. A failed
   write leaves the change in the running game and says why (home's notes, FLEET's status line).
+- **Voyages** (track 7H, `client.md` "Voyages"): a launch needs a voyage-ready fleet by what the career grants. The
+  development launch `?scene=voyage&voyage=<id>` flies what the career would refuse (a voyage not open, a fleet that
+  isn't ready by the career's own unlocks, so also a fleet only `?unlock=all` allows) as a practice run: rolled
+  from `voyage_seed` (the seed the next launch would get), never recorded or written.
 - **`?unlock=all`** (free mode): the drydock offers every part, material and frame (`Unlocks::all`), shows nothing
   locked and no NEW tags, and checks voyage-readiness against everything. No unlock is ever written: the save keeps
   the career's own progress (FLEET still saves its escorts).
@@ -286,4 +290,6 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there,
   `research` on UNLOCK, then write the save.
 - **Map**: `open_voyages`, `voyage(id)` for cleared and best time, `voyage_ready` for SET COURSE.
 - **Launch**: `voyage_launched` → write the save → roll the voyage with the returned seed and `mind_capacity`.
-- **End**: convert the surviving ships' cargo to a `Haul`, `voyage_ended`, write the save, show `last_haul`.
+- **End**: convert the surviving vessels' cargo to a `Haul` (`game::voyage::fleet_haul`), `voyage_ended`, write the
+  save, show the debrief (built from `last_haul`, the career before and after, and the flight's kills and losses,
+  which the model doesn't keep).
