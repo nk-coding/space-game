@@ -8,6 +8,7 @@
 //! * [`actions`]: `DrydockAction`, the one message buttons and keys send; the UI-state handler.
 //! * [`view`]: the design drawn with the flight tiles, the frame overlay, the camera, `DrydockCursor`.
 //! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`).
+//! * [`report`]: [`report::DrydockReport`], the design's `sim::report` per revision.
 //!
 //! **For handlers** (editing, `sim::report`, saving): read `MessageReader<DrydockAction>` in a system in
 //! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the status and the palette follow),
@@ -17,6 +18,7 @@
 pub mod actions;
 pub mod design;
 pub mod panels;
+pub mod report;
 pub mod state;
 pub mod view;
 
@@ -55,6 +57,7 @@ impl Plugin for DrydockPlugin {
             .insert_resource(DockCamera::new(0.0))
             .init_resource::<DrydockStatus>()
             .init_resource::<DrydockStats>()
+            .init_resource::<report::DrydockReport>()
             .init_resource::<DrydockCursor>()
             .init_resource::<panels::Palette>()
             .add_message::<DrydockAction>()
@@ -75,7 +78,7 @@ impl Plugin for DrydockPlugin {
                 Update,
                 (
                     (actions::clicks, actions::shortcuts, panels::sync_search).in_set(DockSet::Input),
-                    (view::ui_scale, view::camera, actions::apply, design::check_design).chain().in_set(DockSet::Apply),
+                    (view::ui_scale, view::camera, actions::apply, report::update, design::check_design).chain().in_set(DockSet::Apply),
                     (view::rebuild_ship, panels::sync_palette, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
                         .chain()
                         .in_set(DockSet::Show),
