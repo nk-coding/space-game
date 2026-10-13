@@ -77,8 +77,7 @@ go in `drydock::DockSet::Apply`; `PlayerDesign { blueprint, frame, revision }` (
 
 Open questions for Niklas (ask interactively):
 - Browser numbers and the flight-feel verdict: steps in `results/spike-summary.md` (port 8080).
-- Drydock defaults (GDR-0053): hide automaton parts and plate until salvage unlocks them? fill as a rectangle or a
-  bucket? bevel as a mode or a one-shot command? the frame sizes.
+- Drydock defaults (GDR-0053): the frame sizes (hidden enemy parts, fill and bevel answered 13 Oct, GDR-0054).
 - Still open from 12 Oct (below): mind capacity numbers, plume defaults, fleet bar defaults, vessel model lead
   defaults, flight lead defaults, fight balance.
 
@@ -93,9 +92,9 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 | 5B `data` plumbing | `validate_ship`, blueprint RON writer/reader, frames as content (frigate/cruiser/capital, placeholders), ship totals, ship-level stat labels | done 12 Oct (`docs/content-model.md`) |
 | 5C `data::edit` | Pure editing model: legality, paint, fill, erase, bevel, slope orientation, mirror, undo/redo | done 12 Oct (`docs/drydock.md`) |
 | 5D Client foundation | `Drydock` app state, static ship view with the flight tiles, the mockup's layout and widgets, test-fly round trip with an in-memory blueprint | done 13 Oct (`client.md` "Drydock", `results/drydock-*.png`) |
-| 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2, next session |
-| 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2, next session |
-| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2, next session |
+| 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit` | wave 2, in progress (13 Oct) |
+| 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | wave 2, in progress (13 Oct) |
+| 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export | wave 2, in progress (13 Oct) |
 
 ## Phase 4: measurement
 

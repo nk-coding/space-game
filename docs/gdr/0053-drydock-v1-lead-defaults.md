@@ -1,6 +1,6 @@
 # GDR-0053: Drydock v1 defaults: frames, tools, mirror, keys and test flight
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead); the palette rule is superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md), which also confirms fill and bevel
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-1 drydock agents
 - Related: [GDR-0051](0051-drydock-v1.md), [GDR-0052](0052-drydock-stats-full-use.md), [GDR-0006](0006-ship-scale-no-fixed-cap.md) (frames), [GDR-0008](0008-ui-ship-mind-interface.md), [ADR-0030](../adr/0030-drydock-architecture.md), `docs/drydock.md`, `docs/client.md` "Drydock", `docs/sim.md` "Design report (drydock)"
