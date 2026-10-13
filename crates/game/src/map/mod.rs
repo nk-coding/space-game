@@ -39,7 +39,8 @@ use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiSystems, UiTransform}
 use bevy::window::PrimaryWindow;
 
 use crate::RenderToggles;
-use crate::atlas::Atlas;
+use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
+use bevy::state::state::StateTransitionEvent;
 use crate::camera::{CameraRig, CameraSet};
 use crate::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use crate::drydock::PlayerDesign;
@@ -50,7 +51,7 @@ use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Hot, Pill, Tone, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{LaunchRefused, StartVoyage, default_voyage, fleet_blocker};
 
 use draw::{LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look};
@@ -159,7 +160,7 @@ impl Plugin for MapPlugin {
             .add_systems(Startup, spawn.after(crate::flight_hud::spawn_hud))
             .add_systems(OnEnter(AppMode::Map), enter)
             .add_systems(OnExit(AppMode::Map), |mut s: ResMut<UiScale>| s.0 = 1.0)
-            .add_systems(Update, show.run_if(state_changed::<AppMode>))
+            .add_systems(Update, (show.run_if(state_changed::<AppMode>), fade_mesh).chain())
             .add_systems(
                 Update,
                 (fit, input, refused, sync_map, sync_panel).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Map)),
@@ -170,7 +171,7 @@ impl Plugin for MapPlugin {
                     .after(UiSystems::Layout)
                     .after(CameraSet)
                     .before(bevy::transform::TransformSystems::Propagate)
-                    .run_if(in_state(AppMode::Map)),
+                    .run_if(shown),
             );
     }
 }
@@ -187,15 +188,34 @@ fn enter(career: Res<PlayerCareer>, content: Res<GameContent>, mut map: ResMut<V
     map.say = None;
 }
 
-fn show(mode: Res<State<AppMode>>, mut root: Single<&mut Visibility, With<MapRoot>>, mut mesh: Single<&mut Visibility, (With<MapMesh>, Without<MapRoot>)>) {
-    let want = if *mode.get() == AppMode::Map { Visibility::Inherited } else { Visibility::Hidden };
-    if **root != want {
-        **root = want;
+/// The map opens and closes with its transition (`ui_kit::ScreenFx`: the panel slides in from the right, the map
+/// fades in, the shipyard fades out under it); to flight (SET COURSE) it snaps shut.
+fn show(mode: Res<State<AppMode>>, mut transitions: MessageReader<StateTransitionEvent<AppMode>>, mut root: Single<&mut ScreenFx, With<MapRoot>>) {
+    let here = *mode.get() == AppMode::Map;
+    if !here && transitions.read().last().is_some_and(|t| t.entered == Some(AppMode::Flight)) {
+        snap_screen(&mut root, false);
+    } else {
+        show_screen(&mut root, here);
     }
+}
+
+/// The map's drawing (a world mesh) shows and fades with the screen.
+fn fade_mesh(root: Single<&ScreenFx, With<MapRoot>>, fade: Res<MapFade>, mut materials: ResMut<Assets<AtlasMaterial>>, mut mesh: Single<&mut Visibility, With<MapMesh>>) {
+    set_alpha(&mut materials, &fade.0, root.alpha());
+    let want = if root.visible() { Visibility::Inherited } else { Visibility::Hidden };
     if **mesh != want {
         **mesh = want;
     }
 }
+
+/// Whether the map shows (open, opening or closing).
+fn shown(root: Single<&ScreenFx, With<MapRoot>>) -> bool {
+    root.visible()
+}
+
+/// The map drawing's material (its alpha is the screen's).
+#[derive(Resource)]
+struct MapFade(Handle<AtlasMaterial>);
 
 #[allow(clippy::too_many_arguments)]
 fn spawn(
@@ -206,12 +226,15 @@ fn spawn(
     geo: Res<MapGeometry>,
     atlas: Res<Atlas>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
 ) {
     let mesh = meshes.add(MeshBuf::placeholder());
+    let fade = atlas.group_material(&mut materials);
+    commands.insert_resource(MapFade(fade.clone()));
     commands.spawn((
         MapMesh { mesh: mesh.clone(), built: None },
         Mesh2d(mesh),
-        MeshMaterial2d(atlas.material.clone()),
+        MeshMaterial2d(fade),
         Transform::from_xyz(0.0, 0.0, Z_MAP),
         Visibility::Hidden,
     ));
@@ -234,13 +257,14 @@ fn spawn(
         align_items: AlignItems::Center,
         ..default()
     };
-    commands.spawn((MapRoot, root, Visibility::Hidden)).with_children(|root| {
+    commands.spawn((MapRoot, ScreenFx::closed().covering(), root, Visibility::Hidden)).with_children(|root| {
         root.spawn((Stage, Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() })).with_children(|stage| {
             // ---- The map (everything left of the panel) ----
-            stage.spawn(Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), ..default() }).with_children(|m| {
+            // It fades in place: the map's drawing is placed from the stage.
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), ..default() })).with_children(|m| {
                 // Top left: the way back and where we are.
                 m.spawn(Node { position_type: PositionType::Absolute, left: px(22), top: px(14), ..row(14.0) }).with_children(|tl| {
-                    tl.spawn((ring_node(40.0), MapButton::Back))
+                    tl.spawn((ring_node(40.0), MapButton::Back, Tip::key("SHIPYARD", "ESC")))
                         .with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
                     tl.spawn(column(4.0)).with_children(|col| {
                         col.spawn((MapText::Header, label(fonts, "", 10.0, c(Tone::Label, 1.0))));
@@ -305,7 +329,7 @@ fn spawn(
 
             // ---- The panel: the selected voyage, the fleet, SET COURSE ----
             stage
-                .spawn(Node {
+                .spawn((ScreenPart::new(Edge::Right, 1), Node {
                     position_type: PositionType::Absolute,
                     left: px(PANEL_X),
                     top: px(0),
@@ -313,7 +337,7 @@ fn spawn(
                     height: px(STAGE.y),
                     padding: UiRect::new(px(PAD), px(PAD), px(24), px(22)),
                     ..column(8.0)
-                })
+                }))
                 .with_children(|p| {
                     p.spawn((MapText::Head, label(fonts, "", 9.0, c(Tone::Label, 1.0))));
                     p.spawn((MapText::Title, prose(fonts, "", 24.0, c(Tone::Number, 1.0))));
@@ -380,7 +404,7 @@ fn spawn(
                     p.spawn(Node { flex_grow: 1.0, ..default() });
                     p.spawn((MapText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), Node { margin: UiRect::bottom(px(4)), ..default() }));
                     let play = UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
-                    spawn_pill(p, fonts, "SET COURSE", 12.0, 46.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, MapButton::SetCourse);
+                    spawn_pill(p, fonts, "SET COURSE", 12.0, 46.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (MapButton::SetCourse, Tip::key("SET COURSE", "ENTER")));
                 });
         });
     });
