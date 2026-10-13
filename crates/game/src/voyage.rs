@@ -41,12 +41,16 @@ pub const HOME_TICKS: u64 = 3 * sim::TICK_HZ as u64;
 /// How long (s) the second M has to come to abandon a voyage.
 pub const ABANDON_SECONDS: f64 = 3.0;
 
-/// Launch a voyage (home's V key until the voyage map exists): `None` is the first open voyage whose goal is not
+/// Launch a voyage (home's gate, V, until the voyage map exists): `None` is the first open voyage whose goal is not
 /// cleared yet, else the first open one. From home only; refusals become a note on home.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct StartVoyage {
     pub voyage: Option<String>,
 }
+
+/// A [`StartVoyage`] was refused (the note on home says why): home's camera flies back from the gate.
+#[derive(Message, Clone, Debug, PartialEq, Eq)]
+pub struct LaunchRefused;
 
 /// What a launch decided: the voyage, the seed it rolls from, the mind and the escorts it flies with.
 #[derive(Clone, Debug, PartialEq)]
@@ -100,6 +104,7 @@ pub struct VoyagePlugin;
 impl Plugin for VoyagePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<StartVoyage>()
+            .add_message::<LaunchRefused>()
             .init_resource::<VoyageRun>()
             .add_systems(Startup, url_launch.before(crate::scene::setup))
             .add_systems(Update, start.run_if(not(in_state(AppMode::Flight))))
@@ -235,7 +240,12 @@ fn url_launch(params: Res<Params>, mut inputs: LaunchInputs, mut next: ResMut<Ne
 }
 
 /// A [`StartVoyage`] (from home): launch, or say why not.
-fn start(mut requests: MessageReader<StartVoyage>, mut inputs: LaunchInputs, mut next: ResMut<NextState<AppMode>>) {
+fn start(
+    mut requests: MessageReader<StartVoyage>,
+    mut inputs: LaunchInputs,
+    mut next: ResMut<NextState<AppMode>>,
+    mut refused: MessageWriter<LaunchRefused>,
+) {
     let Some(request) = requests.read().last().cloned() else { return };
     match inputs.launch(request.voyage.as_deref(), false) {
         Ok(()) => {
@@ -246,6 +256,7 @@ fn start(mut requests: MessageReader<StartVoyage>, mut inputs: LaunchInputs, mut
             info!("voyage: not launched: {why}");
             inputs.career.notes.retain(|n| n.head != "CAN'T LAUNCH");
             inputs.career.notes.insert(0, Note::new("CAN'T LAUNCH", why, Tone::Coral));
+            refused.write(LaunchRefused);
         }
     }
 }

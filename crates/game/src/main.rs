@@ -3,8 +3,9 @@
 //!
 //! Module map:
 //! - `mode`: the app mode (home, flight, drydock or the BEHAVIOR screen) and what runs in which.
-//! - `home`: the start screen, the shipyard's ring menu around the docked ship (drydock, behavior, test range, fleet);
-//!   `fleet`: the FLEET layer over it (escorts picked from saved designs, against the mind capacity).
+//! - `home`: the start screen over the shipyard (places, labels, the camera's flights to the drydock, behavior, test
+//!   range and fleet); `shipyard`: the station itself, a world scene built around the drydock frame; `fleet`: the
+//!   FLEET layer over home (escorts picked from saved designs, against the mind capacity).
 //! - `career`: the player's career save (`saves/<slot>`), a new game, what the career unlocks for the drydock.
 //! - `atlas`, `style`, `meshbuf`: the texture atlas rasterised at runtime + style tokens, mesh building.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
@@ -50,6 +51,7 @@ mod scene;
 mod shield;
 mod ship_model;
 mod ship_view;
+mod shipyard;
 mod sim_bridge;
 mod storage;
 mod style;
@@ -125,6 +127,7 @@ fn main() {
             // After the bridge (it reads the content the bridge loads), the storage and the career.
             (
                 drydock::DrydockPlugin,
+                shipyard::ShipyardPlugin,
                 behavior_ui::BehaviorPlugin,
                 home::HomePlugin,
                 fleet::FleetPlugin,

@@ -1,6 +1,6 @@
 //! The debrief (GDR-0065, after `docs/plans/mockups/home-b.png`): after a voyage, a full panel over home's right
-//! side until it is dismissed (DISMISS, Esc or Enter), then a one-line summary bottom right. A layer of its own over
-//! [`AppMode::Home`], independent of home's layout; hidden while FLEET is open.
+//! side until it is dismissed (DISMISS, Esc or Enter), then a one-line summary top left. A layer of its own over
+//! [`AppMode::Home`] (the shipyard), independent of home's layout; hidden while FLEET is open.
 //!
 //! ```text
 //! VOYAGE HOME · HAUL UNLOADED
@@ -299,7 +299,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
         SummaryText,
         Visibility::Hidden,
         tracked(&fonts, "", 10.5, ui_color(style.ui.label, 1.0), 0.18),
-        Node { position_type: PositionType::Absolute, right: px(28), bottom: px(40), max_width: px(760), ..default() },
+        // Top left under the shipyard's name (home's notes are bottom right).
+        Node { position_type: PositionType::Absolute, left: px(28), top: px(76), max_width: px(640), ..default() },
     ));
 }
 
