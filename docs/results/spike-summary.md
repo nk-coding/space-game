@@ -182,8 +182,9 @@ Niklas flew it again on 13 Oct 2026: the acceleration stays, but turning was far
 slippery → keys turn at about 1.5 rad/s with a ramp, logic cores barely turn, gyros moderately, RCS pods strongly,
 the Runner turns 90° in 1.50 s (the raider in 0.57 s), differential thrust only as a last resort, and a thruster
 pushing with the motion fades by the whole speed ([GDR-0055](../gdr/0055-slower-crisper-turning.md),
-[GDR-0058](../gdr/0058-turning-v2-defaults.md)). Open lead defaults that touch the feel (`docs/sim.md`
-"Design questions"): braking and strafing under lock with rear engines only (2), the feel of "fly that way" (3).
+[GDR-0058](../gdr/0058-turning-v2-defaults.md)). Still open and touching the feel (`docs/sim.md`
+"Design questions"): the feel of "fly that way" (3). Braking and strafing under lock with rear engines only is
+decided (GDR-0011: RCS pods or side thrusters are the answer).
 Stick + lock with the touch stick is a phone question.
 
 ## Steps for Niklas (host browser)
