@@ -588,6 +588,13 @@ alpha is the part's (`IconMaterials`); `AtlasMaterial` has a `tint` uniform for 
 written once a transition has ended. Tested: the timing at 30–144 fps, the stagger, the slide distances, the colour
 hand-back. There is no reduced-motion setting in the game yet; when one comes, `snap_screen` is the switch.
 
+Screenshots (headless 1280 × 720, 13 Oct 2026): `docs/results/ui-drydock-enter-1.png` … `-4.png` (home's labels
+fading as the camera flies in; arrived; the panels sliding in and the frame's dots fading in; nearly in place),
+`ui-drydock-exit-1.png`, `-2.png` (the panels sliding out; the camera waiting before it flies out),
+`ui-fleet-enter.png` (the station fading under FLEET); tooltips `ui-tooltip-drydock.png`, `ui-tooltip-home.png`; the
+fits `ui-fit-*.png` (3440 × 1305 and 1080 × 1350); `ui-select-footprint.png`, `ui-erase-footprint.png` (a 2 × 2
+reactor marked whole), `ui-zoom-rings.png`.
+
 Who uses it: the drydock (top bars from the top, the palette from the left, stats and inspector from the right, the
 tools from the top and the info line and bottom bar from the bottom; the frame's dots, brackets, veil, the pointer's
 mark, the ghost and the overlays fade; the design fades too unless it comes from or goes home, where the docked ship
