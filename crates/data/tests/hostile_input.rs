@@ -248,3 +248,131 @@ fn deep_nesting_and_huge_texts_give_clean_errors() {
     let err = parse_blueprint(&huge).unwrap_err();
     assert!(err[0].message.contains("too long"), "{}", show(&err));
 }
+
+// ---- tables of hostile blueprints and pack files ----
+
+/// A tiny xorshift generator: the same cases on every run and platform.
+fn rng(mut state: u64) -> impl FnMut() -> u64 {
+    move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    }
+}
+
+#[test]
+fn hostile_blueprint_texts_give_clean_errors() {
+    let c = content();
+    let runner = data::blueprint_to_ron(c.ships.get("halvex_runner").unwrap());
+    let head = r#"(id: "x", name: "x", summary: "x", faction: "ship_mind", size: (24, 24), parts: ["#;
+    let many = |n: usize, f: &dyn Fn(usize) -> String| {
+        format!("{head}{}])", (0..n).map(f).collect::<Vec<_>>().join(", "))
+    };
+    let texts = [
+        String::new(),
+        "\0".into(),
+        "é".repeat(1000),
+        "()".into(),
+        "(id: \"x\"".into(),
+        "(id: \"unterminated)".into(),
+        r#"(id: "\u{110000}")"#.into(),
+        r#"(id: "\xff")"#.into(),
+        "#![enable(unwrap_newtypes, unwrap_variant_newtypes, explicit_struct_names)]\n".to_string() + &runner,
+        "#![enable(nonsense)]\n".to_string() + &runner,
+        runner.replace("size: (12, 7)", "size: (4294967296, 7)"),
+        runner.replace("size: (12, 7)", "size: (-1, 7)"),
+        runner.replace("size: (12, 7)", "size: (0, 0)"),
+        runner.replace("size: (12, 7)", "size: (4294967295, 4294967295)"),
+        runner.replace("x: 3,", "x: 1e40,"),
+        runner.replace("x: 3,", "x: NaN,"),
+        runner.replace("flip: true", "flip: 1"),
+        runner.replace("flip: true", "rot: 255"),
+        runner.replace("flip: true", "rot: 256"),
+        runner.replace("flip: true", "power: (weight: NaN)"),
+        runner.replace("flip: true", "power: (weight: inf, tier: Off)"),
+        runner.replace("flip: true", "power: (weight: -1e38)"),
+        runner.replace("material: \"composite\"", "material: Some(Some(\"composite\"))"),
+        runner.replace("parts: [", "parts: [(part: \"\", x: 0, y: 0), "),
+        runner.replace("parts: [", "parts: [(part: \"no_such_part\", x: 0, y: 0), "),
+        runner.replace("faction: \"ship_mind\"", "faction: \"\""),
+        runner.replace("    parts: [", "    behavior: \"no_such_behavior\",\n    parts: ["),
+        runner.replace("    parts: [", "    tags: [\"Not Snake\", \"\"],\n    parts: ["),
+        runner.replace("name: \"Halvex Runner\"", "name: \"[[part:x]] [[ [[[[ ]] [[nope:nope|]]\""),
+        runner.replace("name: \"Halvex Runner\"", &format!("name: {:?}", "n".repeat(100_000))),
+        // A full largest frame, every part on the axis of the mirror, and a pile of parts on one cell.
+        many(16_384, &|k| format!("(part: \"armor_block\", x: {}, y: {}, material: \"steel\")", k % 128, k / 128)),
+        many(1_000, &|_| "(part: \"armor_block\", x: 12, y: 3, material: \"steel\")".into()),
+        many(100_000, &|_| "(part: \"logic_core\", x: 0, y: 0)".into()),
+        many(1_000, &|k| format!("(part: \"slope_1x3\", x: {}, y: {}, rot: {}, flip: {}, material: \"steel\")", k % 40, k / 40, k % 4, k % 2 == 0)),
+    ];
+    for text in &texts {
+        if let Ok(bp) = parse_blueprint(text) {
+            every_check(&c, &bp);
+        }
+    }
+    // The runner's file with random damage: characters dropped, junk inserted.
+    let junk = [
+        "-", "9", "99999999999", "-2147483648", "(", ")", "[", "]", ",", "\"", "\\", ":", "x: ", "rot: 255", "Some(",
+        "None", "/*", "*/", "//", "\n", "é", "\0", "1e40", "NaN", "inf", "true", "r#\"", "\"#", "material: \"steel\"",
+        "(part: \"armor_block\", x: 0, y: 0, material: \"steel\"), ",
+    ];
+    let mut next = rng(0x9e37_79b9_7f4a_7c15);
+    let mut read = 0;
+    for _ in 0..5_000 {
+        let mut text: Vec<char> = runner.chars().collect();
+        for _ in 0..1 + next() % 3 {
+            let at = (next() % (text.len() as u64 + 1)) as usize;
+            if next() % 2 == 0 && at < text.len() {
+                let end = (at + 1 + (next() % 8) as usize).min(text.len());
+                text.drain(at..end);
+            } else {
+                let piece = junk[(next() % junk.len() as u64) as usize];
+                text.splice(at..at, piece.chars());
+            }
+        }
+        let text: String = text.into_iter().collect();
+        if let Ok(bp) = parse_blueprint(&text) {
+            read += 1;
+            every_check(&c, &bp);
+        }
+    }
+    assert!(read > 100, "only {read} damaged texts read");
+}
+
+#[test]
+fn hostile_pack_files_give_clean_errors() {
+    let manifest = r#"(id: "m", name: "M", version: "1", schema_version: 1, depends: ["base"])"#;
+    let paths = [
+        "", ".", "/", "./", "parts", "parts.ron/x.ron", "../../etc/passwd.ron", "/abs/parts/x.ron", r"C:\parts\x.ron",
+        "parts/../../x.ron", "icons/../x.svg", "icons/.svg", "icons/a b.svg", "icons/A.svg", "icons/x/y.svg",
+        "wiki/part/x/y.md", "wiki/.md", "wiki/nope/x.md", "wiki/page/Bad Id.md", "ships/é.ron", "\0.ron",
+        "parts/x.RON", "PACK.RON", "pack.ron/", "icons/x.svg.ron", "stats.ron", "frames.ron", "behaviors/x.ron",
+        "behavior_nodes/x.ron",
+    ];
+    let contents = [
+        "",
+        "garbage (",
+        "[]",
+        "[(), (), ()]",
+        "\u{feff}",
+        r#"(id: "x")"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"></svg>"#,
+        r#"[(id: "x", name: "X", summary: "X.", size: (128, 128)), (id: "x", name: "X", summary: "X.", size: (0, 4294967295))]"#,
+        r#"(id: "b", name: "B", summary: "B.", rules: ["always -> flee # \u{7}", "when hull < 1e38% -> flee"])"#,
+        r#"(id: "n", name: "N", summary: "N.", role: Condition, params: [(id: "p", name: "P", type: Choice([]), default: "x", min: NaN)])"#,
+    ];
+    for path in paths {
+        for body in contents {
+            let packs = [
+                Pack::from_files([("pack.ron", manifest), (path, body)]),
+                Pack::from_files([(path, body)]),
+                Pack::from_files([("pack.ron", manifest), ("pack.ron", body), (path, body)]),
+            ];
+            for m in packs.into_iter().flatten() {
+                let merged = Content::merge(&[data::base_pack().unwrap(), m]);
+                let _ = data::validate(&merged);
+            }
+        }
+    }
+}
