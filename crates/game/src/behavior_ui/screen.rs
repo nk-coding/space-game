@@ -25,6 +25,7 @@ use bevy::window::PrimaryWindow;
 use data::NodeRole;
 
 use crate::camera::CameraRig;
+use crate::drydock::behaviors::PlayerBehaviors;
 use crate::flight_hud::HudFonts;
 use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
@@ -620,19 +621,20 @@ fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Inspection) {
     }
 }
 
-/// Rebuilds the inspector when the selection or the program changes.
-#[allow(clippy::too_many_arguments)]
+/// Rebuilds the inspector when the selection or the program changes (or the behavior's name, or which one it is).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn rebuild_inspector(
     mut commands: Commands,
     ui: Res<BehaviorUi>,
     draft: Res<BehaviorDraft>,
     content: Res<GameContent>,
+    behaviors: Res<PlayerBehaviors>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     body: Single<Entity, With<InspectorBody>>,
-    mut built: Local<Option<(Option<Selection>, u64)>>,
+    mut built: Local<Option<(Option<Selection>, u64, String, Option<String>)>>,
 ) {
-    let key = (ui.selected.clone(), draft.revision());
+    let key = (ui.selected.clone(), draft.revision(), draft.name.clone(), draft.source.clone());
     if built.as_ref() == Some(&key) {
         return;
     }
@@ -642,7 +644,7 @@ pub(super) fn rebuild_inspector(
         .selected
         .as_ref()
         .and_then(|s| inspect(draft.program(), &content.behavior_nodes, s))
-        .unwrap_or_else(|| behavior_inspection(&draft.name, draft.source.as_deref().and_then(|id| content.behaviors.get(id)), draft.program()));
+        .unwrap_or_else(|| behavior_inspection(&draft.name, draft.source.as_deref().and_then(|id| behaviors.behavior(content, id)), draft.program()));
     let kit = Kit { fonts: &fonts, ui: style.ui };
     commands.entity(*body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
 }

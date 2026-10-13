@@ -587,11 +587,14 @@ pub(super) fn sync(
     let pick = list.pick.as_deref();
     let opens = pick.is_some_and(|id| behaviors.behavior(content, id).is_some());
     let mine = pick.is_some_and(|id| list.entry(id).is_some());
+    // USE is for another behavior than the design names (or than its faction's default, when it names none);
+    // a design naming one that is gone can use any.
+    let used = design.blueprint().behavior.as_deref().or(flown.as_deref());
     for (b, mut pill) in &mut pills {
         let (active, disabled) = match b {
             ListButton::Row(l, k) => (pick.is_some() && list.row(*l, *k) == pick, false),
             ListButton::Open | ListButton::Duplicate => (false, !opens),
-            ListButton::Use => (false, !opens || pick == flown.as_deref()),
+            ListButton::Use => (false, !opens || pick == used),
             ListButton::Rename => (false, !(mine && opens)),
             ListButton::Delete => (false, !mine),
             ListButton::ConfirmDelete => (true, false),

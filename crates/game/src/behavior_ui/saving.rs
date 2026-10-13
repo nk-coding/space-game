@@ -21,6 +21,7 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use data::{Behavior, Content};
+use sim::DesignReport;
 
 use crate::drydock::PlayerDesign;
 use crate::drydock::behaviors::{NEW_SUMMARY, PlayerBehaviors, errors_note, set_program, set_text};
@@ -332,6 +333,8 @@ pub(super) fn open(mut lib: Lib, content: Res<GameContent>, params: Res<Params>,
     let bp = lib.design.blueprint();
     *context = EditorContext { design_name: bp.name.clone(), slots: content.ship_rule_slots(bp) };
     let (design_name, named) = (bp.name.clone(), bp.behavior.clone());
+    // Messages from the last visit are old news.
+    lib.note.line = None;
     let first = lib.draft.editor().is_none();
     if first {
         match lib.storage.read::<WorkingBehavior>(WORKING) {
@@ -391,7 +394,7 @@ pub(super) fn apply(
                 let (line, tone) = lib.save(&content.0);
                 lib.say(line, tone);
             }
-            BehaviorAction::TestInRange => match test_request(&lib, &content.0, &tuning) {
+            BehaviorAction::TestInRange => match test_request(&lib.draft, &lib.behaviors, &content.0, &design_report(&lib.design, &content.0, &tuning)) {
                 Ok(program) => {
                     start.write(StartTest { test: BehaviorTest { mode: ui.test_mode, program }, back: AppMode::Behavior });
                 }
@@ -403,14 +406,20 @@ pub(super) fn apply(
 }
 
 /// The test TEST IN RANGE would fly, or why not.
-fn test_request(lib: &Lib, content: &Content, tuning: &Tuning) -> Result<TestProgram, String> {
-    let program = test_program(&lib.draft)?;
-    test_range::check(content, &lib.behaviors, &program)?;
-    let report = sim::design_report(&tuning.scaled_content(content, true), lib.design.blueprint(), &tuning.config());
-    if let Some(why) = crate::drydock::stats::status_line(content, &report).grounded {
+/// What TEST IN RANGE flies, or why not: the text has errors, the behavior can't fly (`test_range::check`), or the
+/// design can't (`report`: its design report, as the drydock's status line reads it).
+pub fn test_request(draft: &BehaviorDraft, behaviors: &PlayerBehaviors, content: &Content, report: &Result<DesignReport, String>) -> Result<TestProgram, String> {
+    let program = test_program(draft)?;
+    test_range::check(content, behaviors, &program)?;
+    if let Some(why) = crate::drydock::stats::status_line(content, report).grounded {
         return Err(format!("the design can't fly ({why})"));
     }
     Ok(program)
+}
+
+/// The design's report with the content and config flights use (as the drydock computes it).
+fn design_report(design: &PlayerDesign, content: &Content, tuning: &Tuning) -> Result<DesignReport, String> {
+    sim::design_report(&tuning.scaled_content(content, true), design.blueprint(), &tuning.config())
 }
 
 /// The working draft is written a second after the last change, at once after a save, an open or a link.
@@ -608,6 +617,28 @@ mod tests {
         d.set_text("always -> orbit(50%)");
         d.name = "Circler".into();
         assert!(matches!(test_program(&d), Ok(TestProgram::Text { name, .. }) if name == "Circler"));
+    }
+
+    #[test]
+    fn tests_are_refused_with_the_reason() {
+        let (content, mut storage, mut lib) = setup();
+        let config = sim::SimConfig::default();
+        let runner = content.ships.get("halvex_runner").unwrap();
+        let flies = sim::design_report(&content, runner, &config);
+        let mut d = draft_of(&content, &lib, "skirmisher");
+        assert_eq!(test_request(&d, &lib, &content, &flies), Ok(TestProgram::Id("skirmisher".into())));
+        // A design that can't fly (no logic core, no thrust: one armor block).
+        let mut block = runner.clone();
+        block.parts.truncate(1);
+        let grounded = sim::design_report(&content, &block, &config);
+        assert!(test_request(&d, &lib, &content, &grounded).unwrap_err().starts_with("the design can't fly ("));
+        // Errors in the text.
+        d.set_text("when sheild_down -> flee");
+        assert!(test_request(&d, &lib, &content, &flies).unwrap_err().contains("unknown condition"));
+        // A saved behavior with errors, unchanged on the screen: refused too (by `test_range::check` it would be).
+        let id = save_draft(&mut d, &mut lib, &mut storage, &content, 1).unwrap().id;
+        assert!(test_range::check(&content, &lib, &TestProgram::Id(id)).is_err());
+        assert!(test_request(&d, &lib, &content, &flies).is_err());
     }
 
     #[test]
