@@ -66,6 +66,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0055](0055-slower-crisper-turning.md) | Turning is slower and crisper; RCS pods are the strong turners; top speed is capped by the whole speed | Accepted | 2026-10-13 |
 | [0056](0056-drydock-wave-2-defaults.md) | Drydock wave 2 defaults: editing gestures, stats wording, saving behaviour | Accepted (provisional, lead) | 2026-10-13 |
 | [0057](0057-behavior-editor-v1.md) | Behavior editor v1: its own screen from the drydock; behaviors are saved on their own and designs pick one; test by watching or flying alongside; graph and text views | Accepted | 2026-10-13 |
+| [0058](0058-turning-v2-defaults.md) | Turning v2 defaults: the numbers, RCS couples and when engines help turning | Accepted (provisional, lead) | 2026-10-13 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

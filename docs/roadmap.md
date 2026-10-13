@@ -94,7 +94,7 @@ with a waves toggle (T toggles back), the look close to `ui-mockups/desktop-dryd
 | 5E Editing in the client | Tools, palette, selection, inspector with power overrides, undo/redo wired to `data::edit`; locked parts hidden (GDR-0054) | done 13 Oct (`drydock.md` "Client: editing") |
 | 5F Stats and overlays | `sim::report` in the stats panel, inspector, status line and the heat/mass/bonus/shields/arcs overlays | done 13 Oct (`drydock.md` "Client: stats and overlays") |
 | 5G Blueprints | Save/load (local storage / files), the blueprints list (own designs + content ships as templates), frames, export, share codes (GDR-0054) | done 13 Oct (`drydock.md` \"Storage and sharing\", ADR-0031) |
-| 5H Turning feel (GDR-0055) | Keyboard rotation ~1.5 rad/s with a ramp; cores tiny, gyros modest, RCS strong (Runner 90° ≈ 1.5 s); differential thrust last resort; whole-speed fade | in progress (13 Oct) |
+| 5H Turning feel (GDR-0055) | Keyboard rotation ~1.5 rad/s with a ramp; cores tiny, gyros modest, RCS strong (Runner 90° ≈ 1.5 s); differential thrust last resort; whole-speed fade | done 13 Oct (GDR-0058; determinism IDENTICAL; fight balance not re-measured) |
 | 5I Sharp icons | Part icons look pixelated at high zoom in Niklas's browser although the atlas tier (256 px/cell) is above the need (160): find and fix the sampling/upload bug | done 13 Oct: the material never switched to a new tier (Bevy 0.20 `get_mut` only marks on write), so icons sampled the 64 px/cell start atlas all session; fixed, plus a −0.5 LOD bias (`client.md` "Atlas", `results/atlas-sharpness-*.png`) |
 
 ## Phase 6: Behavior editor (started 13 Oct 2026, GDR-0057)
