@@ -519,9 +519,9 @@ fn style_widgets(
         let accent = accent.map(|a| a.0.color(ui));
         let ((b, f, t), glow_alpha) = match accent {
             _ if ring.disabled => ((c(ui.dim, 0.3), Color::NONE, c(ui.dim, 0.75)), 0.0),
-            Some(a) if hot.pressed => ((c(a, 1.0), c(a, 0.14), c(ui.number, 1.0)), 0.45),
-            Some(a) if hot.hovered => ((c(a, 1.0), c(a, 0.06), c(ui.number, 1.0)), 0.35),
-            Some(a) => ((c(a, 0.75), Color::NONE, c(ui.number, 0.85)), 0.22),
+            Some(a) if hot.pressed => ((c(a, 1.0), c(a, 0.14), c(ui.number, 1.0)), 0.3),
+            Some(a) if hot.hovered => ((c(a, 1.0), c(a, 0.05), c(ui.number, 1.0)), 0.2),
+            Some(a) => ((c(a, 0.75), Color::NONE, c(ui.number, 0.85)), 0.12),
             None if hot.pressed => ((c(ui.teal, 0.8), c(ui.teal, 0.12), c(ui.number, 1.0)), 0.0),
             None if hot.hovered => ((c(ui.label, 0.8), c(ui.number, 0.04), c(ui.number, 1.0)), 0.0),
             None => ((c(ui.label, 0.4), Color::NONE, c(ui.number, 0.85)), 0.0),

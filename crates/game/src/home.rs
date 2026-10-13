@@ -134,6 +134,10 @@ struct DesignName;
 #[derive(Component)]
 struct SlotRing;
 
+/// A ring's label (the dotted ring skips it too).
+#[derive(Component)]
+struct SlotLabel;
+
 /// A working button.
 #[derive(Component, Clone, Copy)]
 struct HomeButton(HomeAction);
@@ -270,7 +274,7 @@ fn spawn_slot(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style,
         };
         ring.with_child((UiIcon::Glyph { glyph: slot.glyph, color: glyph_color }, Node { width: px(d * 0.4), height: px(d * 0.4), ..default() }));
         let align = if left { AlignItems::FlexEnd } else { AlignItems::FlexStart };
-        r.spawn(Node { flex_direction: FlexDirection::Column, align_items: align, row_gap: px(7), ..default() }).with_children(|col| {
+        r.spawn((SlotLabel, Node { flex_direction: FlexDirection::Column, align_items: align, row_gap: px(7), ..default() })).with_children(|col| {
             match slot.action {
                 Some(action) => {
                     col.spawn(label(fonts, slot.label, 15.0, c(Tone::Number, 0.88))).with_child((
@@ -290,6 +294,7 @@ fn spawn_slot(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style,
 }
 
 /// Home's screen and ship are shown only at home.
+#[allow(clippy::type_complexity)]
 fn show(mode: Res<State<AppMode>>, mut nodes: Query<&mut Visibility, Or<(With<HomeRoot>, With<HomeShip>)>>) {
     let want = if *mode.get() == AppMode::Home { Visibility::Inherited } else { Visibility::Hidden };
     for mut v in &mut nodes {
@@ -418,13 +423,15 @@ fn sync_name(design: Res<PlayerDesign>, mut name: Single<&mut Text, With<DesignN
     set_text(&mut name, &design.blueprint().name);
 }
 
-/// The dotted ring through the buttons (not under them) and the dotted dock with gold corners, in screen pixels.
-#[allow(clippy::type_complexity)]
+/// The dotted ring through the buttons (not under them or their labels) and the dotted dock with gold corners, in
+/// screen pixels.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn draw_dots(
     window: Single<&Window, With<PrimaryWindow>>,
     path: Single<(&ComputedNode, &UiGlobalTransform), With<RingPath>>,
     dock: Single<(&ComputedNode, &UiGlobalTransform), With<Dock>>,
     rings: Query<(&ComputedNode, &UiGlobalTransform), With<SlotRing>>,
+    labels: Query<(&ComputedNode, &UiGlobalTransform), With<SlotLabel>>,
     rig: Res<CameraRig>,
     style: Res<Style>,
     regions: Option<Res<FxRegions>>,
@@ -440,6 +447,7 @@ fn draw_dots(
         return;
     }
     let holes: Vec<(Vec2, f32)> = rings.iter().map(|(n, tf)| (tf.translation / scale, n.size.x / scale / 2.0 + 8.0 * k)).collect();
+    let words: Vec<Rect> = labels.iter().map(|l| rect(l).inflate(8.0 * k)).collect();
     let px = 1.0 / rig.zoom;
     let dot_c = style.dotted_ring.with_alpha(0.9);
     let mut dot = |at: Vec2, size: f32, color: Color| queue.dot(&r.hard, rig.screen_to_world(at), size * k * px, color, Z_DOTS);
@@ -451,7 +459,7 @@ fn draw_dots(
     for i in 0..n {
         let a = i as f32 / n as f32 * std::f32::consts::TAU;
         let at = path.center() + Vec2::new(a.cos(), a.sin()) * half;
-        if holes.iter().all(|(c, radius)| at.distance(*c) > *radius) {
+        if holes.iter().all(|(c, radius)| at.distance(*c) > *radius) && !words.iter().any(|w| w.contains(at)) {
             dot(at, DOT, dot_c);
         }
     }
