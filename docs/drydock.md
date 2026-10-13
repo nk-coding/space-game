@@ -212,7 +212,7 @@ changes (never per frame); sizes are in cells, so it zooms with the ship. Bottom
   its limit, coral from `RUNS_HOT_MAX`, more opaque the hotter (`overlays::heat_tint`); parts over their limit
   outlined (gold while they only run hot, coral above).
 - **MASS**: every part of the main piece shaded white by its mass per cell (content mass in its material over
-  its area, relative to the densest); the centre of mass (a dark disc with the quartered white symbol and a
+  its area, from faint for the lightest to strongest for the densest); the centre of mass (a dark disc with the quartered white symbol and a
   cross); the forward thrust line (dashed teal, with an arrow) through `com.x + yaw / thrust`; when it misses
   the centre of mass, a curved arrow above it showing which way full thrust turns the ship (gold if held, coral
   if not).

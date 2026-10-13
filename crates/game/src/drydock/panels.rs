@@ -248,7 +248,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     rp.spawn(Node {
                         display: Display::Grid,
                         grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
-                        column_gap: px(28),
+                        column_gap: px(20),
                         row_gap: px(16),
                         ..default()
                     })
@@ -268,7 +268,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     rp.spawn(Node {
                         display: Display::Grid,
                         grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
-                        column_gap: px(28),
+                        column_gap: px(20),
                         row_gap: px(9),
                         margin: UiRect::top(px(18)),
                         ..default()

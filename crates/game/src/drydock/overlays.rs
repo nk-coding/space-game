@@ -42,6 +42,8 @@ use super::view::DockShip;
 
 /// Above the design's tiles (relative to its mesh), below the frame's veil and hover cell (FX layer at z 400).
 const Z_OVERLAY: f32 = 30.0;
+/// Lines of fire run to their range (45–75 m, far past a frigate frame); outside the frame they fade to this.
+const FADED: f32 = 0.3;
 
 /// The overlay mesh and the overlay pills it was built for.
 #[derive(Component)]
@@ -90,7 +92,8 @@ pub(super) fn rebuild(
             .collect();
         let pen = Pen::new(&atlas, &style);
         let on = |o: Overlay| ui.overlay(o);
-        draw(&mut m, &pen, r, shapes, &masses, on);
+        let (w, h) = design.frame();
+        draw(&mut m, &pen, r, shapes, &masses, Rect::new(0.0, -(h as f32), w as f32, 0.0), on);
     }
     let new = if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() };
     let _ = meshes.insert(&mesh.0, new);
@@ -140,13 +143,15 @@ impl Pen {
         m.quad_uv([a + n, b + n, b - n, a - n], [self.white; 4], vcol(c, 1.0));
     }
 
-    /// Dashes from `a` to `b`, starting with a dash.
-    fn dashed(&self, m: &mut MeshBuf, a: Vec2, b: Vec2, dash: f32, gap: f32, hw: f32, c: Color) {
+    /// Dashes `(dash, gap)` from `a` to `b`, starting with a dash; dashes outside `keep` fade to a third.
+    fn dashed(&self, m: &mut MeshBuf, (a, b): (Vec2, Vec2), (dash, gap): (f32, f32), keep: Rect, hw: f32, c: Color) {
         let len = a.distance(b);
         let d = (b - a) / len.max(1e-6);
         let mut s = 0.0;
         while s < len {
-            self.seg(m, a + d * s, a + d * (s + dash).min(len), hw, c);
+            let (p, q) = (a + d * s, a + d * (s + dash).min(len));
+            let fade = if keep.contains((p + q) / 2.0) { 1.0 } else { FADED };
+            self.seg(m, p, q, hw, c.with_alpha(c.alpha() * fade));
             s += dash + gap;
         }
     }
@@ -277,8 +282,8 @@ fn first_block(shapes: &[PlacedShape], muzzle: Vec2, dir: Vec2, blockers: &[sim:
         .min_by(f32::total_cmp)
 }
 
-/// Everything the overlays `on` show, plus the issue marks, bottom to top.
-fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], masses: &[f32], on: impl Fn(Overlay) -> bool) {
+/// Everything the overlays `on` show, plus the issue marks, bottom to top. `frame` is the frame in world space.
+fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], masses: &[f32], frame: Rect, on: impl Fn(Overlay) -> bool) {
     let ui = &pen.ui;
     let main_part = |i: usize| r.main == Some(r.parts[i].piece);
 
@@ -288,12 +293,12 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
         }
     }
     if on(Overlay::Mass) {
+        // Shaded between the lightest and the densest part, so differences show even when they are small.
         let density = |i: usize| masses[i] / shapes[i].area().max(1e-3);
-        let max = (0..shapes.len()).filter(|&i| main_part(i)).map(density).fold(0.0f32, f32::max);
-        if max > 0.0 {
-            for (i, s) in shapes.iter().enumerate().filter(|(i, _)| main_part(*i)) {
-                pen.fill(m, &outline_of(s, 0.05), ui.number.with_alpha(0.04 + 0.3 * density(i) / max));
-            }
+        let (lo, hi) = (0..shapes.len()).filter(|&i| main_part(i)).map(density).fold((f32::MAX, 0.0f32), |(lo, hi), d| (lo.min(d), hi.max(d)));
+        for (i, s) in shapes.iter().enumerate().filter(|(i, _)| main_part(*i)) {
+            let t = if hi > lo { (density(i) - lo) / (hi - lo) } else { 1.0 };
+            pen.fill(m, &outline_of(s, 0.05), ui.number.with_alpha(0.04 + 0.32 * t));
         }
     }
     if on(Overlay::Shields) {
@@ -317,7 +322,7 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
                     pen.seg(m, o, end, 0.03, c.with_alpha(0.9));
                     pen.cross(m, end, 0.16, 0.035, c);
                 } else {
-                    pen.dashed(m, o, end, 0.3, 0.22, 0.022, c.with_alpha(0.75));
+                    pen.dashed(m, (o, end), (0.3, 0.22), frame, 0.022, c.with_alpha(0.75));
                     pen.seg(m, end - d.perp() * 0.22, end + d.perp() * 0.22, 0.022, c.with_alpha(0.75));
                 }
             }
@@ -326,8 +331,9 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
             let (o, d) = (world(g.muzzle), dir_world(g.facing));
             if g.clear {
                 let end = o + d * g.range;
-                pen.dashed(m, o, end, 0.45, 0.3, 0.03, pen.weapons.with_alpha(0.85));
-                pen.seg(m, end - d.perp() * 0.3, end + d.perp() * 0.3, 0.03, pen.weapons.with_alpha(0.85));
+                pen.dashed(m, (o, end), (0.45, 0.3), frame, 0.03, pen.weapons.with_alpha(0.85));
+                let tick = if frame.contains(end) { 0.85 } else { 0.85 * FADED };
+                pen.seg(m, end - d.perp() * 0.3, end + d.perp() * 0.3, 0.03, pen.weapons.with_alpha(tick));
             } else {
                 let t = first_block(shapes, o, d, &g.blockers).unwrap_or(0.0);
                 pen.seg(m, o, o + d * t.max(0.15), 0.035, ui.coral.with_alpha(0.95));
@@ -365,7 +371,7 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
         if f.thrust[0] > 0.0 {
             let x = c.x + f.yaw / f.thrust[0];
             let (bottom, top) = (Vec2::new(x, c.y - 2.2), Vec2::new(x, c.y + 2.4));
-            pen.dashed(m, bottom, top, 0.22, 0.16, 0.025, ui.teal.with_alpha(0.8));
+            pen.dashed(m, (bottom, top), (0.22, 0.16), frame, 0.025, ui.teal.with_alpha(0.8));
             pen.fill(m, &[top + Vec2::new(0.0, 0.3), top + Vec2::new(-0.16, 0.0), top + Vec2::new(0.16, 0.0)], ui.teal.with_alpha(0.9));
         }
         if let Some((pull, held)) = yaw_pull(r)
