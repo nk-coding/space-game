@@ -735,7 +735,7 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
 - **Two phases** (order-free, like the flight plan): every due ship decides from the same snapshot (the state
   after this tick's input breakage) into a per-ship scratch slot; then all decisions are applied. Per-pass
   caches: each ship's centre (one sin/cos per ship per pass instead of per candidate) and hull share (lazy).
-- **A think**: `Kin` of the controlling piece; reach = longest clear gun (60 m without guns). The target line
+- **A think**: `Kin` of the controlling piece; reach = longest working gun (clear, alive, not overheated, not idle: `ship::gun_works`; 60 m without, which is also `me.reach` in Rhai). The target line
   picks the target among active vessels of other owners (until 12 Oct: other factions), keeping the current one unless another's cost is
   below 0.8 × its own; the aim point is the nearest working part of the chosen kind on the target's controlling
   piece (or its centre). Then the rules in order, within the working slots: conditions short-circuit left to
@@ -751,7 +751,8 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   guns fire whenever the target crosses their line, e.g. while orbiting. One `atan2` per clear gun per tick;
   no allocation once warmed up. Pilot and helm fire set `fire` with an empty mask (all guns).
 - **Slots**: `Ship::rule_slots()` = `rule_slots_of(control piece)`: the sum of `rule_slots` of the piece's
-  working (alive, not overheated) logic cores, 0 while the piece is dark. Rules beyond are `NoSlot`.
+  working logic cores (GDR-0035: alive, not overheated, powered, and not idle: `ship::producing`; a woken
+  vessel's cores count from its first power pass), 0 while the piece is dark. Rules beyond are `NoSlot`.
 - **Conditions** (built-in): `hull` (Σ hp on the controlling piece / intact hp), `shield` (charge / capacity of
   working emitters; no emitters → `NoValue`), `shield_down`, `heat` (hottest part / its limit), `power`
   (served / demand), `target_in_range(d)`, `target_hull`, `target_on_me` (its behavior target, or its pilot
@@ -1465,7 +1466,7 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 | `power` | supply (working reactors after bonuses), demand at full use, served, deficit, the consumer rows in allocation order with what each asks and gets |
 | `heat` | peak `heat / limit` and its part, the parts above their limit (they would shut down) |
 | `flight` | thrust and acceleration per direction (forward, backward, right, left), top speed per direction (GDR-0041), pure and differential torque, the planning `α` (first line), the 90° turn time, the yaw balance |
-| `guns`, `firepower` | per gun: muzzle, facing, clear, blockers, range, dps, rate, family, delivery; Σ dps of the main piece's clear guns |
+| `guns`, `firepower` | per gun: muzzle, facing, clear, blockers, range, dps, rate, family, delivery; Σ dps of the main piece's working guns (clear, not idle) |
 | `engines` | per engine: facing, thrust, its plume lanes (origin, exhaust direction, length, the own part it burns and how far it reaches) |
 | `shields` | per emitter: centre and bubble radius after bonuses |
 | `control` | load, capacity, the parts that idle |
@@ -1476,12 +1477,13 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 **Assumptions.**
 
 - *Capabilities at full power*: thrust, torque, top speeds, the turn and firepower are what the main piece's
-  actuators and clear guns make at full power with bonuses, idle parts left out, as if the piece runs (a working,
+  actuators and clear guns make at full power with bonuses, idle parts (guns too) left out, as if the piece runs (a working,
   powered core). The power section says whether the reactors can feed it all at once; the client can scale by a
   part's level if it wants the brown-out view.
 - *Full use* for power and heat: every consumer at full activity at once: engines and RCS pods at full thrust,
   gyros at full torque, guns with a clear line of fire firing, shields on, logic cores and other consumers on.
-  Idle parts and blocked guns ask for nothing. It is the worst case.
+  Idle parts, blocked guns and consumers set `Off` ask for nothing (`want` 0; an `Off` part is never "short" in
+  a `PowerDeficit`). It is the worst case.
 - *Heat* is the steady state of the dynamic model at full use: per alive part `loss·T = out·work − Σ K·edges·(T −
   T_n)` (the fixed point of the tick in [Heat](#heat-dynamic-lumped-per-part)), with each part's work from that
   power pass (reactors `1/3 + 2/3 × served/supply`). The shutdown above a limit is not applied (those parts are
@@ -1505,10 +1507,15 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
   2.033 s, all equal; without the substep term the raider came out 17% slow). It ignores what the velocity hold
   and the gimbals add.
 - *Yaw balance*: `yaw` is the torque the forward thrust rows make at full thrust about the centre of mass
-  (counter-clockwise positive); `yaw_hold` is what the flight computer can hold against it while flying straight:
-  pure torque, the RCS couples that full forward thrust leaves free (right and left nozzles; the forward ones are
-  busy pushing) and the forward engines' gimbals (the last resort, after a few ticks; differential thrust is
-  only used while steering); `yaw_balanced = |yaw| ≤ yaw_hold`.
+  (counter-clockwise positive); `yaw_hold` is what the flight computer can hold against it while flying straight
+  at rest: pure torque, the torque of every thruster row outside the forward group that turns against it (RCS
+  couples, then differential thrust; the forward rows are busy pushing) and the forward engines' gimbals (those
+  two are the last resort, after a few ticks); `yaw_balanced = |yaw| ≤ yaw_hold` (test
+  `yaw_hold_counts_the_thrusters_that_turn_against_it`: it agrees with one allocation of the first line and the
+  last resort). Until the 13 Oct 2026 review fix it left differential thrust out, although flying on the stick
+  (`HeadingGoal::Thrust`) or under a lock (`Angle`) steers to a heading and so gets it. Two limits: differential
+  thrust fades with speed like all thrust (a row pushing sideways with the drift it causes fades by the whole
+  speed), and keyboard W without a lock flies with `HeadingGoal::Keep`, which gets only gimbals.
 - The report's public fields did not change with GDR-0055: `torque_pure` is gyros and cores only, the RCS
   couples show in `alpha` (now the first line's: pure torque and couples, what a fresh ship plans with) and
   `turn_90`; `torque_ccw/cw` are the differential thrust beyond the couples.

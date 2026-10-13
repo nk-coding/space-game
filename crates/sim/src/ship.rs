@@ -302,6 +302,14 @@ pub fn producing(ps: &PartState) -> bool {
     ps.alive && !ps.overheated && !ps.idle && ps.power > 0.0
 }
 
+/// Can this gun fire now, power aside? A clear line of fire, and its part (`ps`) alive, not overheated and not
+/// idle (GDR-0044). Firepower, reach and the smart lock aim count only these guns (power is the brown-out's
+/// business: a gun of a starved tier still counts).
+#[inline]
+pub fn gun_works(g: &GunMount, ps: &PartState) -> bool {
+    g.clear && ps.alive && !ps.overheated && !ps.idle
+}
+
 /// Recomputes `piece.authority` from the actuators that can produce now (see [`ThrustAuthority`]). One pass
 /// over the thruster rows and torque sources; no allocation.
 pub(crate) fn refresh_authority(piece: &mut Piece, parts: &[PartState]) {
@@ -538,10 +546,14 @@ impl Piece {
         })
     }
 
-    /// Damage per second of its clear guns at full power, with bonuses (the `threat` sensor's firepower and
-    /// the design report's).
-    pub fn firepower(&self) -> f32 {
-        self.guns.iter().filter(|g| g.clear).map(|g| g.dps).sum()
+    /// Damage per second of its working guns ([`gun_works`]) at full power, with bonuses (the `threat`
+    /// sensor's firepower and the design report's).
+    pub fn firepower(&self, parts: &[PartState]) -> f32 {
+        self.guns
+            .iter()
+            .filter(|g| gun_works(g, &parts[g.part as usize]))
+            .map(|g| g.dps)
+            .sum()
     }
 
     /// Centre of mass in world coordinates.
@@ -798,8 +810,8 @@ impl Ship {
         self.leader
     }
 
-    /// Behavior rule slots now: the `rule_slots` of the working (alive, not overheated) logic cores of the
-    /// controlling piece; 0 while the ship is dark.
+    /// Behavior rule slots now: the `rule_slots` of the working logic cores of the controlling piece (GDR-0035:
+    /// alive, not overheated, powered; and not idle, [`producing`]); 0 while the ship is dark.
     pub fn rule_slots(&self) -> u32 {
         self.control.map_or(0, |c| self.rule_slots_of(c))
     }
@@ -815,10 +827,7 @@ impl Ship {
         }
         p.cores
             .iter()
-            .filter(|&&c| {
-                let ps = &self.parts[c as usize];
-                ps.alive && !ps.overheated
-            })
+            .filter(|&&c| producing(&self.parts[c as usize]))
             .map(|&c| self.design.parts[c as usize].rule_slots)
             .sum()
     }

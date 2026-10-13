@@ -101,7 +101,8 @@ pub struct DesignReport {
     pub flight: FlightReport,
     /// Every gun of the ship (all pieces), in gun slot order.
     pub guns: Vec<GunReport>,
-    /// Main piece: damage per second of its clear guns at full power ([`crate::Piece::firepower`]).
+    /// Main piece: damage per second of its working guns (clear, not idle) at full power
+    /// ([`crate::Piece::firepower`]).
     pub firepower: f32,
     /// Every engine of the ship (all pieces), in engine slot order, with its plume lanes.
     pub engines: Vec<EngineReport>,
@@ -187,7 +188,7 @@ pub struct ConsumerReport {
     pub min_level: f32,
     /// Draw at full activity, after bonuses.
     pub draw: f32,
-    /// What it asks for (0 if idle or a blocked gun).
+    /// What it asks for (0 if idle, a blocked gun or set `Off`: the rows of `demand`).
     pub want: f32,
     /// The level the allocation gives its row (0..1; a row that asks for nothing gets its tier's level, so an
     /// idle part shows it here while its `PartReport::power` is 0).
@@ -232,9 +233,9 @@ pub struct FlightReport {
     /// Yaw balance: the torque full forward thrust makes about the centre of mass (kN·m, counter-clockwise
     /// positive; 0 = it flies straight).
     pub yaw: f32,
-    /// What the flight computer can hold against it while flying straight (kN·m): pure torque, the RCS couples
-    /// that full forward thrust leaves free, and the forward engines' gimbals (the last resort, after a few
-    /// ticks).
+    /// What the flight computer can hold against it while flying straight (kN·m): pure torque, the torque of
+    /// every other thruster row that turns against it (RCS couples, then differential thrust) and the forward
+    /// engines' gimbals (those two are the last resort, after a few ticks; flying straight steers to a heading).
     pub yaw_hold: f32,
     /// `|yaw| ≤ yaw_hold`: full forward thrust does not turn the ship.
     pub yaw_balanced: bool,
@@ -447,9 +448,9 @@ pub fn design_report(
         crate::control::update(piece, parts, d, running);
         piece.active = true;
         refresh_authority(piece, parts);
-        let kin = Kin::of(piece);
+        let kin = Kin::of(piece, parts);
         flight = flight_report(piece, parts, &kin, config);
-        firepower = piece.firepower();
+        firepower = piece.firepower(parts);
         mass = piece.mass.mass;
         inertia = piece.mass.inertia;
         centre_of_mass = [
@@ -498,7 +499,8 @@ pub fn design_report(
                     weight: c.weight,
                     min_level: c.min_level,
                     draw: c.draw,
-                    want: want[i],
+                    // A consumer the player set `Off` asks for nothing (it counts for neither demand nor served).
+                    want: if c.tier == PowerTier::Off { 0.0 } else { want[i] },
                     level: level[i],
                 })
                 .collect(),
@@ -702,18 +704,18 @@ fn flight_report(
         yaw += t.torque_per_force * f;
         gimbal += f * t.gimbal * t.torque_per_lateral.abs();
     }
-    // The RCS couples against the yaw, with the forward rows busy pushing.
-    let th = &piece.thrusters;
-    let room = |i: usize| {
-        let ps = &parts[th[i].part as usize];
-        if crate::alloc::group_of(th[i].dir) == 0 || !producing(ps) {
-            0.0
-        } else {
-            th[i].max_force * ps.power
+    // Against the yaw, with the forward rows busy pushing: every other row whose torque has the needed sign, as
+    // an RCS couple or as differential thrust (the last resort: flying straight on the stick or under a lock
+    // steers to a heading, so the flight computer opens it). Each row's force turns the ship the same either
+    // way, so the sum covers both.
+    let mut against = 0.0f32;
+    for t in &piece.thrusters {
+        let ps = &parts[t.part as usize];
+        if crate::alloc::group_of(t.dir) != 0 && producing(ps) && t.torque_per_force * yaw < 0.0 {
+            against += t.max_force * ps.power * t.torque_per_force.abs();
         }
-    };
-    let couple = crate::alloc::couples(th, &piece.alloc, yaw < 0.0, &room, None);
-    let yaw_hold = a.torque_pure + couple + gimbal;
+    }
+    let yaw_hold = a.torque_pure + against + gimbal;
     FlightReport {
         thrust: kin.caps,
         accel,

@@ -180,7 +180,7 @@ fn top_speed_per_direction_comes_from_the_thrusters_pushing_that_way() {
     let (_, engine) = thruster(&c);
     let rcs = c.parts.get("rcs_pod").unwrap().rcs.as_ref().unwrap().rated_speed;
     let (mut w, s) = world_with(rcs_box(&c));
-    let kin = Kin::of(control(&w, s));
+    let kin = Kin::of(control(&w, s), w.ship(s).unwrap().parts());
     // Forward: the thruster (and the rear pods' nozzles); the other ways only RCS.
     assert_eq!(kin.speeds, [engine.max(rcs), rcs, rcs, rcs]);
     assert_eq!(kin.top_along(Vec2::new(1.0, 0.0)), rcs);
@@ -216,7 +216,7 @@ fn top_speed_per_direction_comes_from_the_thrusters_pushing_that_way() {
         speed_scale: 1.5,
         ..Default::default()
     });
-    let kin = Kin::of(control(&w, s));
+    let kin = Kin::of(control(&w, s), w.ship(s).unwrap().parts());
     assert!(close(kin.speeds[2], 1.5 * rcs, 1e-4) && close(kin.top_speed, 1.5 * engine.max(rcs), 1e-4));
 }
 
@@ -280,7 +280,7 @@ fn agility(id: &str, d: Arc<ShipDesign>) -> (f32, f32, f32, f32, f32, f32) {
     assert!(overshoot < 2f32.to_radians(), "{id}: overshoot {}°", overshoot.to_degrees());
     // 0 → 95% of the top speed with the stick along the nose.
     let (mut w, s) = world_with(d);
-    let kin = Kin::of(control(&w, s));
+    let kin = Kin::of(control(&w, s), w.ship(s).unwrap().parts());
     w.command(
         s,
         ShipCommand::Pilot(PilotInput {

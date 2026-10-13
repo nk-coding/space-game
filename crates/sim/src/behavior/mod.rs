@@ -47,7 +47,7 @@ pub mod tuning {
     /// Fire at will: and its aim point (lead point, for projectile guns) within this angle of the gun's
     /// facing (rad).
     pub const FIRE_CONE: f32 = 0.12;
-    /// Reach (m) assumed for a ship without clear guns, for `%` distances.
+    /// Reach (m) assumed for a ship without working guns, for `%` distances and `me.reach`.
     pub const DEFAULT_REACH: f32 = 60.0;
     /// The current target keeps its place unless another one's cost is lower than `STICKY` × its own.
     pub const STICKY: f32 = 0.8;

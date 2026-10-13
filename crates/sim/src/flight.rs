@@ -29,7 +29,7 @@ use crate::ids::{PieceId, ShipId};
 use crate::maneuver::Maneuver;
 use crate::math::{Rot, Vec2, atan2, cos, sqrt};
 use crate::physics::wrap_angle;
-use crate::ship::{PartState, Piece, Ship, Wrench, producing};
+use crate::ship::{PartState, Piece, Ship, Wrench, gun_works, producing};
 
 /// What a lock or a maneuver points at.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -314,7 +314,7 @@ pub struct Kin {
     /// flight computer plans its turn with the couples that translation leaves free, plus differential thrust
     /// while the last resort is on.
     pub alpha: f32,
-    /// Longest reach of the piece's clear guns (m; 0 = no guns).
+    /// Longest reach of the piece's working guns (m; 0 = none; [`crate::ship::gun_works`]).
     pub reach: f32,
     /// Shot speed of its strongest projectile gun (by damage per second), if it has one.
     pub projectile_speed: Option<f32>,
@@ -323,7 +323,8 @@ pub struct Kin {
 }
 
 impl Kin {
-    pub fn of(p: &Piece) -> Kin {
+    /// The kinematics of piece `p` of a ship whose part states are `parts`.
+    pub fn of(p: &Piece, parts: &[PartState]) -> Kin {
         let a = &p.authority;
         let caps = [a.forward, a.backward, a.right, a.left];
         let mut best = 0;
@@ -338,7 +339,7 @@ impl Kin {
         let rot = Rot::from_angle(p.body.angle);
         let (mut reach, mut best_dps, mut best_proj_dps) = (0.0f32, -1.0f32, -1.0f32);
         let (mut projectile_speed, mut projectile_main) = (None, false);
-        for g in p.guns.iter().filter(|g| g.clear) {
+        for g in p.guns.iter().filter(|g| gun_works(g, &parts[g.part as usize])) {
             reach = reach.max(g.range);
             let speed = match g.delivery {
                 data::Delivery::Projectile { speed, .. } => Some(speed),
@@ -616,7 +617,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
         return Plan::DARK;
     }
     let tuning = &cfg.flight;
-    let kin = Kin::of(piece);
+    let kin = Kin::of(piece, &ship.parts);
     if let Some(b) = &ship.behavior {
         let (goal, fire) = crate::behavior::fly(b, &kin, ships, tuning);
         return Plan {
@@ -650,17 +651,13 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
 }
 
 /// Body angle that brings the strongest working guns to bear on a target (GDR-0040): guns are grouped by the
-/// side they face; the group with the most damage per second among clear, alive, not overheated guns wins (ties:
-/// front, back, right, left), and it aims at the lead point if that group's strongest gun fires projectiles.
-/// `None` without working guns.
+/// side they face; the group with the most damage per second among working guns (clear, alive, not overheated,
+/// not idle: [`gun_works`]) wins (ties: front, back, right, left), and it aims at the lead point if that group's
+/// strongest gun fires projectiles. `None` without working guns.
 pub fn smart_aim(ship: &Ship, piece: &Piece, kin: &Kin, t: &TargetState) -> Option<f32> {
-    // [dps, best gun dps, its projectile speed (0 = hit-scan)] per facing group (AXES order).
+    // [dps, best gun dps, its projectile speed (0 = hit-scan)] per facing group (forward, backward, right, left).
     let mut groups = [[0.0f32; 3]; 4];
-    for g in piece.guns.iter().filter(|g| g.clear) {
-        let st = ship.part(g.part);
-        if !st.alive || st.overheated {
-            continue;
-        }
+    for g in piece.guns.iter().filter(|g| gun_works(g, ship.part(g.part))) {
         let k = if g.dir.y.abs() >= g.dir.x.abs() {
             if g.dir.y >= 0.0 { 0 } else { 1 }
         } else if g.dir.x >= 0.0 {
@@ -928,7 +925,7 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
         }
         // Rated-speed falloff of every row at this tick's velocity (by the whole speed: one square root per
         // piece), for the allocation below and for the systems (raw throttles too): the same numbers both times.
-        let kin = Kin::of(piece);
+        let kin = Kin::of(piece, parts);
         let v_local = kin.rot.apply_inverse(kin.vel);
         let speed = v_local.length();
         for (f, t) in piece.falloff.iter_mut().zip(&piece.thrusters) {
