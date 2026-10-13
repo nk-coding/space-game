@@ -154,8 +154,11 @@ Written 13 Oct 2026 (wave 2, track 5F). Code: `crates/game/src/drydock/stats.rs`
 line), `overlays.rs` (the overlays and issue marks); both read `report::DrydockReport` (the design's
 `sim::design_report`, recomputed once per design revision or tuning change) and never compute anything of their
 own. Tests: `cargo test -p game drydock` (the pure mappings: report → cells, report → status line and tone, the
-heat colour ramp, issue marks, bonus link cells, the first blocker of a line of fire). Screenshots:
-`docs/results/drydock-stats-*.png`.
+heat colour ramp, issue marks, bonus link cells, the first blocker of a line of fire). Screenshots (1280 × 720,
+195 %): `docs/results/drydock-stats-heat.png` (the Halvex Runner runs hot: the beams and shield emitters over
+their limit, gold marks), `drydock-stats-overlays.png` (all five overlays), `drydock-stats-grounded.png`
+(`?scene=drydock&thrust=0`: the tuning's thrust scale 0 grounds it, `CAN'T FLY · NO THRUST`, TEST-FLY disabled;
+bonus and shields).
 
 ### Stats grid
 
