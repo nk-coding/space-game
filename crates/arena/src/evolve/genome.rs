@@ -689,3 +689,104 @@ impl Kit {
             .all(|p| key(&dock.mirror_of(p)).is_some_and(|k| keys.contains(&k)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A design is legal when the drydock opens it in the run's frame (known parts, inside, no overlaps) and the
+    /// content's checks find no error in it. (One check is about the behavior, not the design: a design with
+    /// fewer rule slots than its faction's default behavior has rules. The pre-filter refuses those.)
+    fn legal(c: &Content, kit: &Kit, bp: &Blueprint) {
+        assert!(
+            Drydock::open(c, bp, kit.frame_for(bp)).is_ok(),
+            "the drydock refuses {bp:?}"
+        );
+        let errors: Vec<_> = data::validate_ship(c, bp)
+            .into_iter()
+            .filter(|p| p.is_error() && p.field.as_deref() != Some("faction"))
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    fn kit(c: &Content, mirror: bool) -> Kit {
+        let limits = Limits {
+            mirror,
+            ..Limits::default()
+        };
+        Kit::new(c, &limits, (24, 24))
+    }
+
+    #[test]
+    fn every_mutant_and_child_is_legal() {
+        let c = data::base_content();
+        let skiff = c.ships.get("rim_skiff").unwrap().clone();
+        let runner = c.ships.get("halvex_runner").unwrap().clone();
+        let text = c.behaviors.get("skirmisher").unwrap().program().unwrap().to_text();
+        let raider = c.behaviors.get("raider_basic").unwrap().program().unwrap().to_text();
+        let mut rng = Pcg32::new(7, 1);
+        for mirror in [false, true] {
+            let kit = kit(&c, mirror);
+            let (mut a, mut b) = (skiff.clone(), runner.clone());
+            let (mut ta, mut tb) = (text.clone(), raider.clone());
+            let mut changed = 0;
+            for k in 0..400 {
+                if let Some(bp) = kit.mutate_design(&c, &a, &mut rng, 3) {
+                    legal(&c, &kit, &bp);
+                    if mirror {
+                        assert!(kit.symmetric(&c, &bp), "a mirror-locked mutant is not symmetric");
+                    }
+                    changed += 1;
+                    // Walk on, but come back to the start now and then so the designs stay ships.
+                    a = if k % 20 == 19 { skiff.clone() } else { bp };
+                }
+                if let Some(bp) = kit.cross_design(&c, &a, &b, &mut rng) {
+                    legal(&c, &kit, &bp);
+                    b = bp;
+                }
+                let slots = c.ship_rule_slots(&skiff);
+                if let Some(t) = kit.mutate_behavior(&ta, slots, &mut rng, 3) {
+                    let ed = BehaviorEditor::from_text(&c.behavior_nodes, &t).expect("a legal program");
+                    assert!(ed.program().rules.len() <= slots as usize);
+                    assert_eq!(ed.text(), t, "the canonical text");
+                    ta = t;
+                }
+                if let Some(t) = kit.cross_behavior(&ta, &tb, slots, &mut rng) {
+                    BehaviorEditor::from_text(&c.behavior_nodes, &t).expect("a legal program");
+                    tb = t;
+                }
+            }
+            assert!(changed > 300, "most mutations take ({changed} of 400)");
+        }
+    }
+
+    #[test]
+    fn the_symmetry_check_knows_the_content_ships() {
+        let c = data::base_content();
+        let kit = kit(&c, true);
+        for id in ["rim_skiff", "automaton_raider"] {
+            assert!(kit.symmetric(&c, c.ships.get(id).unwrap()), "{id}");
+        }
+        // One part moved off its twin's mirror cell.
+        let mut bp = c.ships.get("rim_skiff").unwrap().clone();
+        bp.parts[0].x -= 1;
+        assert!(!kit.symmetric(&c, &bp));
+    }
+
+    #[test]
+    fn a_random_design_flies() {
+        let c = data::base_content();
+        for mirror in [false, true] {
+            let kit = kit(&c, mirror);
+            let header = Blueprint {
+                parts: Vec::new(),
+                size: (0, 0),
+                ..c.ships.get("rim_skiff").unwrap().clone()
+            };
+            let mut rng = Pcg32::new(3, 1);
+            let g = kit.random_design(&c, &header, "always -> approach", &mut rng).unwrap();
+            legal(&c, &kit, &g.blueprint);
+            assert!(kit.assess(&c, &g).is_ok());
+        }
+    }
+}
