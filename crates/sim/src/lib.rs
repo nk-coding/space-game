@@ -37,6 +37,7 @@
 pub mod alloc;
 pub mod behavior;
 pub mod breakage;
+pub mod chain;
 pub mod collider;
 pub mod config;
 pub mod control;
@@ -69,7 +70,7 @@ pub use collider::ConvexPolygon;
 pub use config::{FlightTuning, PhysicsTuning, SalvageTuning, SimConfig};
 pub use control::ControlState;
 pub use data::PowerTier;
-pub use design::{ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
+pub use design::{BlastTarget, ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
 pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
 pub use hash::{StateHash, StateHasher};

@@ -1,7 +1,8 @@
 // Armor materials. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
 // A hull part's mass and hit points are `*_per_cell × area` (slopes count half their footprint);
-// its build points are multiplied by `build_point_factor`; it takes `blast_factor` of an explosion's damage (GDR-0084,
-// lead defaults of 14 Oct 2026: half, reactive a quarter). `tone` is a key into art/tokens.json ship.armor.
+// its build points are multiplied by `build_point_factor`; it takes `blast_factor` of an explosion's damage and lets
+// only that share through to the parts behind it (GDR-0084, GDR-0085, lead defaults of 14 Oct 2026: half, reactive a
+// quarter). `tone` is a key into art/tokens.json ship.armor.
 // `salvage`: research data per cell of hull area when salvaged and dismantled at home (slopes count half a cell;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [

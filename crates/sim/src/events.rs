@@ -59,10 +59,11 @@ pub enum SimEvent {
         part: PartIdx,
         volatile: bool,
     },
-    /// A destroyed part exploded (a chain reaction, GDR-0084): every part of its piece within `radius` m of its
-    /// centre took `damage` (times its armour's `blast_factor`) at once, before the breakage was resolved; parts
-    /// that died of it follow as `PartDestroyed` (and explode in turn). `at`: the part's centre (world), as the
-    /// piece was before the breakage.
+    /// A destroyed part exploded (a chain reaction, GDR-0084, GDR-0085): every part within `radius` m of its
+    /// centre, on any piece of any ship, took `damage` (times its armour's `blast_factor`, less what armour in
+    /// between and other ships' bubbles held back) at once, before the breakage was resolved; parts that died of
+    /// it follow as `PartDestroyed` (and explode in turn; on other ships with those ships' events). `at`: the
+    /// part's centre (world), as the piece was before the breakage.
     Explosion {
         ship: ShipId,
         piece: PieceId,

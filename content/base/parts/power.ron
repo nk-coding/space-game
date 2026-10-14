@@ -1,6 +1,7 @@
 // Power parts. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only).
-// `explosion`: the chain reaction when the part is destroyed (GDR-0019, GDR-0084; PLACEHOLDER, lead defaults of
-// 14 Oct 2026): `damage` once to every part of its piece with a cell within `radius` m of its centre.
+// `explosion`: the chain reaction when the part is destroyed (GDR-0019, GDR-0084, GDR-0085; PLACEHOLDER, lead
+// defaults of 14 Oct 2026): `damage` once to every part, on any ship, with a cell within `radius` m of its centre;
+// armour in between lets only its `blast_factor` through.
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).
 [

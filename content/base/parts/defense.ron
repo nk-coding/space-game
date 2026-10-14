@@ -19,6 +19,9 @@
         power: (draw: 3, tier: High, min_level: 0.25),
         heat: (output: 0.8, limit: 3.2),
         shield: (radius: 2.3, capacity: 3, regen: 0.2, absorb: {Energy: 1.0, Kinetic: 0.5, Missile: 1.0}),
+        // Its stored field lets go: twice a capacitor's blast, the same reach (PLACEHOLDER, lead default,
+        // 14 Oct 2026, GDR-0085).
+        explosion: (damage: 1, radius: 0.6),
         salvage: (family: "shields", data: 3),
     ),
 ]

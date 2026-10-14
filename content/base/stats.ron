@@ -28,7 +28,7 @@
     (id: "rcs_thrust", name: "Thrust per nozzle", summary: "Push of each RCS nozzle; a nozzle fires from every side open to space.", unit: "kN", decimals: 1, better: Higher),
     (id: "rcs_rated_speed", name: "Rated speed", summary: "Ship speed at which a nozzle's thrust has faded out while it pushes with the ship's motion; braking, turning and nozzle pairs that only turn the ship keep full thrust.", unit: "m/s", decimals: 1, better: Higher),
     (id: "torque", name: "Torque", summary: "Turning force without thrust, in either direction.", unit: "kN·m", decimals: 0, better: Higher),
-    (id: "blast_damage", name: "Blast damage", summary: "Damage the part's explosion deals once to every part of its piece within the blast radius when it is destroyed. The ship's own shields do not help; armour takes its share.", unit: "HP", decimals: 2, better: Lower),
+    (id: "blast_damage", name: "Blast damage", summary: "Damage the part's explosion deals once to every part within the blast radius when it is destroyed, on its own ship and on any other. The ship's own shields do not help, other ships' do; armour takes its share and shields the parts behind it.", unit: "HP", decimals: 2, better: Lower),
     (id: "blast_radius", name: "Blast radius", summary: "How far the explosion reaches from the part's centre: 1 m takes the eight cells around a one-cell part.", unit: "m", decimals: 1, better: Lower),
     (id: "shield_capacity", name: "Shield", summary: "Damage the bubble takes before it collapses.", unit: "HP", decimals: 1, better: Higher),
     (id: "shield_regen", name: "Shield regen", summary: "Shield capacity regained per second while powered.", unit: "HP/s", decimals: 1, better: Higher),
@@ -39,7 +39,7 @@
     (id: "mass_per_cell", name: "Mass per cell", summary: "Mass of one full cell of this armor; slopes count half a cell per footprint cell.", unit: "t", decimals: 2, better: Lower),
     (id: "hp_per_cell", name: "Hit points per cell", summary: "Hit points of one full cell of this armor.", unit: "HP", decimals: 2, better: Higher),
     (id: "build_point_factor", name: "Build point factor", summary: "Multiplies the build points of hull parts made of this armor.", unit: "×", decimals: 2, better: Lower),
-    (id: "blast_factor", name: "Blast damage taken", summary: "Share of an explosion's damage that hull parts of this armor take.", unit: "×", decimals: 2, better: Lower),
+    (id: "blast_factor", name: "Blast damage taken", summary: "Share of an explosion's damage that hull parts of this armor take, and that they let through to the parts behind them.", unit: "×", decimals: 2, better: Lower),
     // Ship-level stats of the drydock's stats panel (data::stats::SHIP_STATS; the sim's design report computes
     // them). The panel shows build points, mass, hit points, cargo and rule slots with the part stats above.
     // Units, precision and the summaries' definitions are placeholders (lead, 12 Oct 2026).

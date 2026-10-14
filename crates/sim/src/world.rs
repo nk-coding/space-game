@@ -157,6 +157,8 @@ pub struct Sim {
     /// The fire pass's hits, applied once every gun has fired (scratch, reused; `weapons.rs`).
     pub(crate) gun_hits: Vec<crate::weapons::GunHit>,
     pub(crate) plume_scratch: crate::plume::PlumeScratch,
+    /// The chain pass's queue and buffers (scratch, reused; `chain.rs`).
+    pub(crate) chain_scratch: crate::chain::ChainScratch,
     /// Behavior programs (shared; ships refer to them by `BehaviorId`).
     behaviors: BehaviorLibrary,
     behavior_scratch: behavior::Scratch,
@@ -203,6 +205,7 @@ impl Sim {
             shield_scratch: Vec::new(),
             gun_hits: Vec::new(),
             plume_scratch: Default::default(),
+            chain_scratch: Default::default(),
             behaviors: BehaviorLibrary::default(),
             behavior_scratch: behavior::Scratch::default(),
             focus: Vec::new(),
@@ -516,10 +519,12 @@ impl Sim {
     }
 
     /// Resolves breakage of all ships now (ascending ship id), appends the events and updates the bodies in
-    /// the physics. Destroyed parts whose salvage block names a fragment leave one; split-off pieces with a logic core
+    /// the physics. First every chain reaction goes off (`chain.rs`: a blast may reach any ship); then destroyed
+    /// parts whose salvage block names a fragment leave one; split-off pieces with a logic core
     /// become vessels of their own (new ships, after the existing ones); lost vessels and cores update the
     /// minds (focus, dormant vessels); a vessel whose hold shrank spills cargo as loose items.
     pub fn resolve_breakage(&mut self) {
+        self.chain_reactions();
         for k in 0..self.ships.len() {
             self.resolve_ship(k);
         }
@@ -530,8 +535,9 @@ impl Sim {
     /// runs the mind pass (`update_minds`).
     pub(crate) fn resolve_ship(&mut self, k: usize) {
         if !self.ships[k].pending_destroyed.is_empty() {
-            // The whole chain first, so every part it destroys leaves its fragment too.
-            self.ships[k].chain_reactions();
+            // Every chain first, so every part it destroys leaves its fragment too (a no-op after
+            // `resolve_breakage` set them off; parts a blast destroys on other ships wait for their resolution).
+            self.chain_reactions();
             self.spawn_fragments(k);
         }
         let from = self.events.len();

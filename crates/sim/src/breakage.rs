@@ -116,28 +116,24 @@ impl Ship {
         false
     }
 
-    /// Chain reactions (GDR-0019, GDR-0084): every destroyed part with an `explosion` deals its blast damage to
-    /// the parts in reach ([`ShipDesign::blast`](crate::ShipDesign::blast)) that are still alive and on its piece
-    /// (the piece as it was before this resolution: splits come after). Parts the blasts destroy join the queue and
-    /// explode in turn, so the whole chain resolves now, in the same tick, first destroyed first (a queue over
-    /// `pending_destroyed`; each blast hits its targets in ascending part order). Shields play no part: the
-    /// blast goes off inside the ship's own bubbles. Idempotent: parts already blasted are skipped.
-    pub(crate) fn chain_reactions(&mut self) {
-        let design = Arc::clone(&self.design);
+    /// Chain reactions of a ship on its own, without a world (GDR-0084, GDR-0085): every destroyed part not yet
+    /// blasted that has an `explosion` hits its own piece ([`Ship::own_blast`]), and what it destroys explodes in
+    /// turn, first destroyed first. In a [`Sim`](crate::Sim) the world's chain pass (`chain.rs`, which also
+    /// reaches other pieces and ships) has run before, so this finds nothing left to do.
+    fn chain_reactions(&mut self) {
+        let mut hits = Vec::new();
         while self.chained < self.pending_destroyed.len() {
             let p = self.pending_destroyed[self.chained] as usize;
             self.chained += 1;
-            let piece = self.parts[p].piece;
-            for &(t, damage) in design.blast.get(p) {
-                let ts = &self.parts[t as usize];
-                if ts.alive && ts.piece == piece {
-                    self.apply_damage(DamageTarget::Part(t), damage);
-                }
+            hits.clear();
+            self.own_blast(p, &mut hits);
+            for &(t, damage) in &hits {
+                self.apply_damage(DamageTarget::Part(t), damage);
             }
         }
     }
 
-    /// Processes all pieces that lost parts: sets off the chain reactions ([`Ship::chain_reactions`]), drops
+    /// Processes all pieces that lost parts: sets off the chain reactions left ([`Ship::chain_reactions`]), drops
     /// empty pieces, recomputes connectivity, rebuilds cached data and splits pieces that came apart. Emits events
     /// in a deterministic order (destroyed parts in the order they died, each exploding one followed by its
     /// `Explosion`, then pieces by ascending id).
