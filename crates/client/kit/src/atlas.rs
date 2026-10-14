@@ -15,7 +15,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use bevy::asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
+use bevy::asset::{AssetEventSystems, AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::platform::collections::HashMap;
 use bevy::platform::time::Instant;
@@ -29,6 +29,7 @@ use bevy::render::texture::GpuImage;
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
+use bevy::transform::TransformSystems;
 use bevy::window::PrimaryWindow;
 
 use crate::view::ViewScale;
@@ -322,6 +323,12 @@ impl Plugin for AtlasPlugin {
             })
             .collect();
         embedded_asset!(app, "atlas.wesl");
+        // Mesh changes are announced after every PostUpdate system that replaces a mesh (they place their meshes, so
+        // they run before the transforms are propagated). Announced in between, a mesh replaced in two frames in a
+        // row got a second announcement a frame late, after its new data had already gone to the GPU: Bevy logged
+        // "already extracted" and freed the mesh's GPU buffer, and it stayed invisible until it was replaced again
+        // (Niklas, 15 Oct 2026: drydock icon buttons showed only once hovered, which rebuilds their glyph).
+        app.configure_sets(PostUpdate, AssetEventSystems.after(TransformSystems::Propagate));
         app.add_plugins(Material2dPlugin::<AtlasMaterial>::default());
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);

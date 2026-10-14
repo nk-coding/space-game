@@ -335,7 +335,10 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
   layers, dotted range rings around the followed ship), `meshbuf.rs` (`MeshBuf`, the CPU builder for
-  atlas-textured, vertex-coloured 2D meshes; index order = draw order), `style.rs` (`Style`, the typed view of
+  atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
+  PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
+  change announcements to: announced earlier, a mesh replaced two frames in a row lost its GPU buffer and vanished),
+  `style.rs` (`Style`, the typed view of
   `art/tokens.json`, and `ui_color`).
 
 ## Home

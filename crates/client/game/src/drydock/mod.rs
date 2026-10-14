@@ -134,7 +134,8 @@ impl Plugin for DrydockPlugin {
             )
             .add_systems(PostUpdate, view::draw_frame.run_if(view::shown).after(CameraSet).before(FxFlush))
             // After the camera: ARCS is cut at the edge of the view of this frame.
-            .add_systems(PostUpdate, overlays::rebuild.run_if(view::shown).after(CameraSet));
+            // Before the transforms are propagated, like every mesh writer (`kit::atlas`: mesh changes are announced after).
+            .add_systems(PostUpdate, overlays::rebuild.run_if(view::shown).after(CameraSet).before(bevy::transform::TransformSystems::Propagate));
         editing(app);
     }
 }
