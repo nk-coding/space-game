@@ -157,7 +157,7 @@ fn pulses(pen: &mut Pen, at: Vec2, t: f32, glow: bool, tone: Color, f: impl Fn([
     }
     for k in [t, (t + 0.5).fract()] {
         let r = OPEN_R + (PULSE_R - OPEN_R) * k;
-        pen.ring(at, r, 0.9, f(vcol(tone, 0.85 * (1.0 - k) * (1.0 - k))));
+        pen.ring(at, r, 1.0, f(vcol(tone, 0.95 * (1.0 - k))));
     }
 }
 
