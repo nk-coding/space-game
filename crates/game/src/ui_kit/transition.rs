@@ -96,7 +96,7 @@ impl ScreenFx {
     }
 
     /// The screen hides the world behind it while open all but a trace ([`BEHIND`] of it still shows, as the
-    /// shipyard behind the BEHAVIOR screen and FLEET).
+    /// shipyard behind the BEHAVIOR, RESEARCH and FLEET screens).
     pub fn dimming(self) -> Self {
         Self { covers: 1.0 - BEHIND, ..self }
     }
@@ -137,9 +137,9 @@ pub fn snap_screen(fx: &mut Mut<ScreenFx>, open: bool) {
     }
 }
 
-/// How much of the world still shows behind a dimming screen ([`ScreenFx::dimming`]; default for review: just
-/// barely, under the screen's own backdrop).
-pub const BEHIND: f32 = 0.1;
+/// How much of the world still shows behind a dimming screen ([`ScreenFx::dimming`]): just barely, under the
+/// screen's own backdrop (Niklas, 14 Oct 2026: at 0.1 the building behind made BEHAVIOR and RESEARCH hard to read).
+pub const BEHIND: f32 = 0.03;
 
 /// How much the open covering screens hide the world (0: not at all, 1: fully).
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]

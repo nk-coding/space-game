@@ -233,8 +233,9 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
         .spawn((
             ResearchRoot,
             CardStates::default(),
-            // Opens and closes with a transition (`ui_kit::ScreenFx`): the four roots slide in from their edges.
-            ScreenFx::closed(),
+            // Opens and closes with a transition (`ui_kit::ScreenFx`): the four roots slide in from their edges; the
+            // lab behind it shows only faintly.
+            ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
             Visibility::Hidden,
         ))
