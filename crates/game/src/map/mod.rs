@@ -4,21 +4,24 @@
 //! out); SET COURSE launches the selected voyage (`voyage::StartVoyage`).
 //!
 //! ```text
-//! (o) RIM · 4 VOYAGES · 1 CLEARED        RIM    :    OUTER  | DESTINATION · VOYAGE 2 OF 4
-//!     Voyages                                   :            | Halvex Drift
-//!                          (o) HALVEX DRIFT     :            | [RIM] [ROGUE AUTOMATONS] [WRECKS]
-//!               ≈ 10–15 MIN  .  OPEN ●●●●◆       :            | A raider-haunted drift of wrecks ...
-//!   SHIPYARD APPROACH  ●'           <> THE WARDEN'S GATE      | SITES · 5   ● Raider pack ×2     3 SHIPS ...
-//!   CLEARED · BEST 7:42  .     o CORRAN REACH    :           | ≈ 10–15 MIN · RECALL WHEN CLEAR
-//!              <> SHIPYARD      LOCKED           :           | FLEET   CORES 2 / 2   [ship] Rim skiff ...
-//!  <> HOME  o OPEN  ● CLEARED  o LOCKED          :           | VOYAGE-READY ✓ FLIGHT-READY ✓ ONLY UNLOCKED PARTS
-//!  ● ENEMIES ● WRECKS ◆ GOAL SITE <> GUARDIAN    :           | [ ▶ SET COURSE ]
+//! (o) RIM · 2 VOYAGES · 1 CLEARED · 1 SIGNAL   RIM :    OUTER  | DESTINATION · VOYAGE 2
+//!     Voyages                                      :           | Halvex Drift
+//!                     ((o)) HALVEX DRIFT           :           | [RIM] [ROGUE AUTOMATONS] [WRECKS]
+//!                           [SIGNAL]  ●●●●◆        :           | A raider-haunted drift of wrecks ...
+//!   SHIPYARD APPROACH  ●                           :           | SITES · 4   ● Raider pair      2 SHIPS ...
+//!   CLEARED · BEST 7:42                            :           | ≈ 6–10 MIN · RECALL WHEN CLEAR
+//!              <> SHIPYARD                         :           | FLEET   CORES 2 / 2   [ship] Rim skiff ...
+//!  <> HOME  o OPEN  ● CLEARED  ((o)) SIGNAL        :           | VOYAGE-READY ✓ FLIGHT-READY ✓ ONLY UNLOCKED PARTS
+//!  ● ENEMIES ● WRECKS ◆ GOAL SITE <> GUARDIAN      :           | [ ▶ SET COURSE ]
 //! ```
 //!
 //! * **Layout** (`layout`): a stage of 1280 × 720 logical px scaled to fit the window at any aspect (centred,
 //!   nothing cut off); the map left of the panel, content's `map` positions in its rect, the shipyard bottom left,
-//!   the rim band's edges as arcs placed from the positions. **States** come from the career: open, cleared (with the
-//!   best time), locked, and a guardian at the chain's end.
+//!   the rim band's edges as arcs placed from the positions. **States** come from the career: a new signal, open,
+//!   cleared (with the best time), a guardian; no route joins the voyages (GDR-0078: the rim is explored, not
+//!   followed). Voyages not open yet are unknown space: no marker, no label, no beacon, no click area, not counted
+//!   in the header. A voyage just found by clearing the ones it opens after, and never launched, is a **signal**: a
+//!   ring sending out teal pulses and a SIGNAL tag under its name, until its first launch.
 //! * **Drawing** (`draw`, `galaxy`): the star map is four atlas meshes under the UI text (the world draws before
 //!   bevy_ui), placed over the stage node through the camera rig like `ui_icons`, each with its own material for
 //!   its fade: the galaxy and its far layer (moved and scaled with the view), the voyages' detail (placed through
@@ -28,13 +31,13 @@
 //!   out to the whole galaxy, pan (drag), reset (0, a double click on empty space, the reset button); entering
 //!   starts at the default view. The panel, the header and the legend stay fixed.
 //! * **Input**: a click or a tap on a voyage (its marker or its label) selects it (zoomed far out, a click on its
-//!   beacon also zooms in to it); ←/→ (and ↑/↓) step through the voyages (bringing one off the view into it);
+//!   beacon also zooms in to it); ←/→ (and ↑/↓) step through the known voyages (bringing one off the view into it);
 //!   Enter or SET COURSE launches; Esc or the ring button goes home (back out through the gate; not while the portal
 //!   is on its way out). SET COURSE is dimmed while the selected
-//!   voyage can't launch (`layout::course_blocker`: locked, another one underway, the fleet not ready); a click
+//!   voyage can't launch (`layout::course_blocker`: not open, another one underway, the fleet not ready); a click
 //!   then says why, as does a launch `voyage.rs` refuses.
 //! * **Entering** selects the first open voyage whose goal is not cleared (`voyage::default_voyage`): after a voyage
-//!   that opened the next one, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home opens the gate, as V).
+//!   that found a signal, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home opens the gate, as V).
 //!
 //! UI words are chrome in code, like home's.
 
@@ -175,7 +178,6 @@ enum MapText {
     Header,
     Name(usize),
     State(usize),
-    Route(usize),
     Head,
     Title,
     Summary,
@@ -197,8 +199,10 @@ enum MapText {
 /// Nodes shown, hidden or recoloured with the data.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 enum MapNode {
-    Route(usize),
-    Dots(usize),
+    /// A voyage's click area or label: shown only once the voyage is known.
+    Voyage(usize),
+    /// The tag around a voyage's state words: outlined while it is a new signal.
+    Tag(usize),
     Chip(usize),
     Site(usize),
     SiteDot(usize),
@@ -250,11 +254,13 @@ pub fn stage_scale(window: Vec2) -> f32 {
     (window.x / STAGE.x).min(window.y / STAGE.y).clamp(SCALE.0, SCALE.1)
 }
 
-/// Opening the map: the default view, the first open voyage not cleared yet selected.
+/// Opening the map: the default view, the first open voyage not cleared yet selected (else the first known one).
 fn enter(career: Res<PlayerCareer>, content: Res<GameContent>, mut map: ResMut<VoyageMap>, mut view: ResMut<MapView>) {
     view.snap_default();
     let content = &content.0;
-    map.selected = default_voyage(career.career(), content).or(content.voyages.iter().next().map(|v| v.id.as_str())).map(str::to_string);
+    let career = career.career();
+    let known = || content.voyages.iter().find(|v| VoyageState::of(content, career, &v.id).known()).map(|v| v.id.as_str());
+    map.selected = default_voyage(career, content).or_else(known).map(str::to_string);
     map.say = None;
 }
 
@@ -385,12 +391,6 @@ fn spawn(
                         m.spawn((Anchored::TopBand(k, x), UiTransform::default(), centred(x))).with_child((label(fonts, &name.replace('_', " ").to_uppercase(), 8.5, c(tone, 0.8)), words));
                     }
                 }
-                // The chain's times.
-                for (k, &route) in geo.routes.iter().enumerate() {
-                    let at = geo.route_label(route);
-                    let anchor = Anchored::At(geo.ends(route).0.lerp(geo.ends(route).1, 0.5), Layer::Detail);
-                    m.spawn((MapNode::Route(k), MapText::Route(k), anchor, UiTransform::default(), label(fonts, "", 8.0, c(Tone::Teal, 0.85)), words, abs(at.x, at.y - 5.0)));
-                }
                 // The shipyard's label, left of it.
                 let h = geo.home;
                 let node = Node { position_type: PositionType::Absolute, right: px(PANEL_X - h.x + 22.0), top: px(h.y - 10.0), align_items: AlignItems::FlexEnd, ..column(4.0) };
@@ -400,11 +400,11 @@ fn spawn(
                         l.spawn((label(fonts, "HOME  ·  DOCKED", 8.5, c(Tone::Label, 1.0)), words));
                     });
                 // The voyages: a click area on each marker (on its beacon zoomed out), and its label (a click area
-                // too, faded out with the detail).
+                // too, faded out with the detail); both hidden until the voyage is known.
                 for (k, v) in content.voyages.iter().enumerate() {
                     let at = geo.nodes[k];
                     let marker = Node { position_type: PositionType::Absolute, left: px(at.x - 22.0), top: px(at.y - 22.0), width: px(44), height: px(44), ..default() };
-                    m.spawn((MapButton::Voyage(k), Hot::default(), Anchored::At(at, Layer::Always), UiTransform::default(), marker));
+                    m.spawn((MapButton::Voyage(k), MapNode::Voyage(k), Hot::default(), Anchored::At(at, Layer::Always), UiTransform::default(), marker));
                     let left = geo.label_left(k);
                     let mut node = Node { position_type: PositionType::Absolute, top: px(at.y - 10.0), align_items: if left { AlignItems::FlexEnd } else { AlignItems::FlexStart }, ..column(4.0) };
                     if left {
@@ -412,10 +412,12 @@ fn spawn(
                     } else {
                         node.left = px(at.x + 24.0);
                     }
-                    m.spawn((MapButton::Voyage(k), Hot::default(), Anchored::At(at, Layer::Detail), UiTransform::default(), node)).with_children(|l| {
+                    m.spawn((MapButton::Voyage(k), MapNode::Voyage(k), Hot::default(), Anchored::At(at, Layer::Detail), UiTransform::default(), node)).with_children(|l| {
                         l.spawn((MapText::Name(k), label(fonts, &v.name.to_uppercase(), 10.5, c(Tone::Number, 1.0)), words));
-                        l.spawn((MapText::State(k), label(fonts, "", 8.5, c(Tone::Teal, 1.0)), words));
-                        l.spawn((MapNode::Dots(k), Node { margin: UiRect::top(px(2)), ..row(4.0) })).with_children(|d| {
+                        let tag = Node { border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() };
+                        l.spawn((MapNode::Tag(k), tag, BorderColor::all(Color::NONE)))
+                            .with_child((MapText::State(k), label(fonts, "", 8.5, c(Tone::Teal, 1.0)), words));
+                        l.spawn(Node { margin: UiRect::top(px(2)), ..row(4.0) }).with_children(|d| {
                             for s in site_dots(content, v).into_iter().take(MAX_DOTS) {
                                 let mut n = d.spawn((dot(6.0), BackgroundColor(c(s.tone(), 1.0))));
                                 if s.diamond() {
@@ -426,7 +428,7 @@ fn spawn(
                     });
                 }
                 // The legend.
-                let legend = [["HOME", "OPEN", "CLEARED", "LOCKED"], ["ENEMIES", "WRECKS", "GOAL SITE", "GUARDIAN"]];
+                let legend = [["HOME", "OPEN", "CLEARED", "SIGNAL"], ["ENEMIES", "WRECKS", "GOAL SITE", "GUARDIAN"]];
                 for (r, names) in legend.iter().enumerate() {
                     for (k, name) in names.iter().enumerate() {
                         m.spawn((label(fonts, name, 8.0, c(Tone::Label, 1.0)), words, abs(LEGEND_COLUMNS[k] + LEGEND_GAP, LEGEND_ROWS[r] - 5.5)));
@@ -575,8 +577,11 @@ fn input(
         return;
     }
     let content = &fleet.content.0;
-    let n = content.voyages.len();
-    let at = map.selected.as_deref().and_then(|id| content.voyages.position(id));
+    // The voyages the keys step through: the known ones, in content order.
+    let states = VoyageState::all(content, fleet.career.career());
+    let known: Vec<usize> = (0..states.len()).filter(|k| states[*k].known()).collect();
+    let n = known.len();
+    let at = map.selected.as_deref().and_then(|id| content.voyages.position(id)).and_then(|k| known.iter().position(|j| *j == k));
     let select = |map: &mut VoyageMap, k: usize| {
         let id = content.voyages.iter().nth(k).map(|v| v.id.clone());
         if map.selected != id {
@@ -614,7 +619,7 @@ fn input(
             0
         };
         if step > 0 {
-            let k = at.map_or(0, |k| (k + step) % n);
+            let k = known[at.map_or(0, |k| (k + step) % n)];
             select(&mut map, k);
             view.show(geo.0.nodes[k]);
         }
@@ -637,7 +642,7 @@ fn refused(mut refusals: MessageReader<LaunchRefused>, mut map: ResMut<VoyageMap
     }
 }
 
-/// The map's words: the header, each voyage's name and state, its dots, the chain's times.
+/// The map's words: the header, each voyage's name and state (a signal's in its tag); a voyage shows once known.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn sync_map(
     map: Res<VoyageMap>,
@@ -647,7 +652,7 @@ fn sync_map(
     style: Res<Style>,
     hots: Query<(&MapButton, Ref<Hot>)>,
     mut texts: Query<(&MapText, &mut Text, &mut TextColor)>,
-    mut nodes: Query<(&MapNode, &mut Node)>,
+    mut nodes: Query<(&MapNode, &mut Node, Option<&mut BorderColor>)>,
 ) {
     let hover = hots.iter().any(|(_, h)| h.is_changed());
     if !(hover || map.is_changed() || career.is_changed()) {
@@ -661,33 +666,48 @@ fn sync_map(
     for (t, mut text, mut color) in &mut texts {
         let (words, tone, alpha) = match *t {
             MapText::Header => {
-                let cleared = states.iter().filter(|s| matches!(s, VoyageState::Cleared { .. })).count();
+                let count = |f: fn(&VoyageState) -> bool| states.iter().filter(|s| f(s)).count();
+                let known = count(|s| s.known());
+                let cleared = count(|s| matches!(s, VoyageState::Cleared { .. }));
+                let signals = count(|s| *s == VoyageState::Signal);
                 let band = geo.0.band.key.replace('_', " ").to_uppercase();
-                (format!("{band}  ·  {} VOYAGES  ·  {cleared} CLEARED", states.len()), Tone::Label, 1.0)
+                let mut words = format!("{band}  ·  {known} {}  ·  {cleared} CLEARED", if known == 1 { "VOYAGE" } else { "VOYAGES" });
+                if signals > 0 {
+                    words.push_str(&format!("  ·  {signals} {}", if signals == 1 { "SIGNAL" } else { "SIGNALS" }));
+                }
+                (words, Tone::Label, 1.0)
             }
             MapText::Name(k) => {
                 let lit = selected == Some(k) || hovered(k);
-                let tone = if !lit && states[k] == VoyageState::Locked { Tone::Label } else { Tone::Number };
-                (text.0.clone(), tone, if lit { 1.0 } else { 0.8 })
+                (text.0.clone(), Tone::Number, if lit { 1.0 } else { 0.8 })
             }
             MapText::State(k) => {
                 let v = content.voyages.iter().nth(k);
                 let (w, tone) = state_words(states[k], v.is_some_and(|v| is_guardian(content, v)));
                 (w, tone, 1.0)
             }
-            MapText::Route(k) => {
-                let to = geo.0.routes[k].1;
-                (content.voyages.iter().nth(to).map(minutes).unwrap_or_default(), Tone::Teal, 0.85)
-            }
             _ => continue,
         };
         set_text(&mut text, &words);
         set_color(&mut color, ui_color(tone.color(ui), alpha));
     }
-    for (n, mut node) in &mut nodes {
+    for (n, mut node, border) in &mut nodes {
         let show = match *n {
-            MapNode::Dots(k) => states[k] != VoyageState::Locked,
-            MapNode::Route(k) => states[geo.0.routes[k].1] != VoyageState::Locked,
+            MapNode::Voyage(k) => states[k].known(),
+            MapNode::Tag(k) => {
+                let signal = states[k] == VoyageState::Signal;
+                let pad = if signal { UiRect::axes(px(6), px(2)) } else { UiRect::ZERO };
+                if node.padding != pad {
+                    node.padding = pad;
+                }
+                let want = BorderColor::all(if signal { ui_color(ui.teal, 0.7) } else { Color::NONE });
+                if let Some(mut b) = border
+                    && *b != want
+                {
+                    *b = want;
+                }
+                true
+            }
             _ => continue,
         };
         let d = if show { Display::Flex } else { Display::None };
@@ -748,12 +768,13 @@ fn sync_panel(
                 format!("CLEARED{}  ·  NEW SITES EACH TIME", best.map(|t| format!("  ·  BEST {}", crate::voyage::clock(t))).unwrap_or_default()),
                 Tone::Teal,
             ),
+            VoyageState::Signal => ("A NEW SIGNAL  ·  THE GATE IS OPEN".into(), Tone::Teal),
             _ => ("THE GATE IS OPEN".into(), Tone::Teal),
         }
     };
     for (t, mut text, mut color) in &mut texts {
         let (words, tone) = match *t {
-            MapText::Head => (format!("DESTINATION  ·  VOYAGE {} OF {}", k + 1, content.voyages.len()), Tone::Label),
+            MapText::Head => (format!("DESTINATION  ·  VOYAGE {}", k + 1), Tone::Label),
             MapText::Title => (v.name.clone(), Tone::Number),
             MapText::Summary => (content.render_plain(&v.summary), Tone::Label),
             MapText::Chip(j) => chips.get(j).cloned().unwrap_or((String::new(), Tone::Label)),
@@ -827,7 +848,7 @@ fn sync_panel(
                 true
             }
             MapNode::NoEscort => escorts.is_empty(),
-            MapNode::Route(_) | MapNode::Dots(_) => continue,
+            MapNode::Voyage(_) | MapNode::Tag(_) => continue,
         };
         let d = if show { Display::Flex } else { Display::None };
         if node.display != d {
@@ -875,6 +896,7 @@ fn place_mesh(
     toggles: Res<RenderToggles>,
     style: Res<Style>,
     atlas: Res<Atlas>,
+    time: Res<Time>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let content = &content.0;
@@ -884,6 +906,7 @@ fn place_mesh(
         selected: None,
         hovered: None,
         glow: toggles.glow_sprites,
+        pulse: 0,
     };
     let look = Look {
         selected: map.selected.as_deref().and_then(|id| content.voyages.position(id)),
@@ -891,6 +914,7 @@ fn place_mesh(
             MapButton::Voyage(k) if h.hovered => Some(*k),
             _ => None,
         }),
+        pulse: Look::pulse_at(&far.states, time.elapsed_secs_wrapped()),
         ..far.clone()
     };
     let (node, at) = *stage;
