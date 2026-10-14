@@ -715,7 +715,8 @@ fn spawn_row(slot: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone
     ))
     .with_children(|row| {
         row.spawn((RowIcon(k), UiIcon::Part { part: String::new(), material: None }, Node { width: px(32), height: px(28), flex_shrink: 0.0, ..default() }));
-        row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|t| {
+        // Clipped to its column: a long `LOCKED · <node>` line would otherwise run into the list's glow room.
+        row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip_x(), ..default() }).with_children(|t| {
             t.spawn((PanelText::RowName(k), prose(fonts, "", 13.5, c(Tone::Number, 1.0))));
             t.spawn((PanelText::RowSub(k), tracked(fonts, "", 8.0, c(Tone::Dim, 1.0), 0.2), TextLayout::no_wrap()));
         });

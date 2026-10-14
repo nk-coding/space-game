@@ -201,8 +201,17 @@ Next session:
   for 5 BP against 11 for reactor + logic core + gyro); the best 60-BP design won while the design report counted
   none of its guns as clear. Checked: blocked guns are silent as written (GDR-0004/0070), but the design puts its
   1-hp reactors and slopes in front of the cannons as shutters that the enemy shoots off, then fires (52 of 60
-  wins against 33–35 with the guns clear; `docs/arena.md`). Whether that is wanted is open (chain reactions,
-  GDR-0019/0020, would punish reactor shutters). Next: L4, the lab screen.
+  wins against 33–35 with the guns clear; `docs/arena.md`). Niklas chose chain reactions (14 Oct) and a latent
+  firepower axis for the archive (every gun as if clear and powered); both are built (below). Next: L4, the lab screen.
+- **Chain reactions v1** ([GDR-0084](gdr/0084-chain-reactions-v1.md), provisional numbers for review): reactors,
+  torch drives, capacitors and thrusters blast their own piece when destroyed (armour takes a `blast_factor` share);
+  `SimEvent::Explosion` is emitted. The old shutter design falls from 52 to 12 of 60 wins; the new best design (59
+  of 60) keeps every exploding part out of its lines of fire but stacks reserve guns behind guns. Hashes changed,
+  native vs wasm IDENTICAL. Voyage clear rates: the starter a little harder, the Runner's Corran Reach 89 → 70 of
+  120. Follow-ups: an explosion visual in the client, blast reach and warnings in the drydock, and the rule
+  questions listed in GDR-0084.
+- **Scrollbars and glow room** (`docs/client.md` UI kit): every scrolling list has an overlay scrollbar (shows while
+  scrolling or hovered, draggable), and lists let glows fade past their edges instead of clipping them.
 - **Sim fairness fixed** ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)): ship ids no longer decide a fight.
   Three causes: guns fired and hit in id order (now every shot is traced first, then all hits land), behaviors
   thought on id-staggered ticks (now shared ticks), `orbit(auto)` turned by its own id (now by both ships' ids).
