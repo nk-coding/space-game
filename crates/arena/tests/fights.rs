@@ -47,6 +47,28 @@ fn stepping_in_slices_gives_the_same_result() {
 }
 
 #[test]
+fn odd_seeds_spawn_side_one_first() {
+    let content = data::base_content();
+    for seed in [6, 7] {
+        let fight = Fight::new(&content, &runner_vs_raiders(seed)).unwrap();
+        let ships = fight.sim().ships();
+        assert_eq!(ships.len(), 4);
+        let first = (seed % 2) as usize;
+        assert_eq!(ships[0].owner(), arena::OWNERS[first]);
+        assert_eq!(ships[3].owner(), arena::OWNERS[1 - first]);
+        // Side 0 faces +y from the origin, side 1 faces it from `start_distance` ahead.
+        for s in ships {
+            let y = s.pieces()[0].body.pos.y;
+            if s.owner() == arena::OWNERS[0] {
+                assert!(y.abs() <= arena::JITTER, "{y}");
+            } else {
+                assert!((y - 100.0).abs() <= arena::JITTER, "{y}");
+            }
+        }
+    }
+}
+
+#[test]
 fn the_starter_against_one_raider_ends() {
     let content = data::base_content();
     let spec = FightSpec::new(
