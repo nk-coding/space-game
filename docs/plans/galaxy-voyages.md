@@ -34,7 +34,7 @@ the map is a route.
   `docs/career.md`).
 - **The career save** (`data::career`, format 1): unlocks, open and cleared voyages, voyage seeds from the game
   seed, the voyage id and the launch count, the haul.
-- **The voyage map** (`crates/game/src/map/`): a star map of the rim with the voyages, a panel with SET COURSE,
+- **The voyage map** (`crates/client/game/src/map/`): a star map of the rim with the voyages, a panel with SET COURSE,
   zoom out to the whole galaxy (five bands drawn as placeholders).
 - **Being changed now** (GDR-0078's slice step): the map no longer draws a route between voyages; voyages not yet
   opened stay unknown; clearing a goal reveals the next voyage as a new signal.

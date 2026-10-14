@@ -59,7 +59,7 @@ Open (this plan proposes answers):
 
 ### 3.1 State sync vs lockstep
 
-What the code offers today: `Sim::step(&TickInputs)` is the one seam (`crates/sim/src/world.rs`). The per-tick
+What the code offers today: `Sim::step(&TickInputs)` is the one seam (`crates/core/sim/src/world.rs`). The per-tick
 input is `TickInputs { controls: Vec<(ShipId, ShipControls)>, commands: Vec<(ShipId, ShipCommand)>, damage:
 Vec<DamageCommand> }`. A player's input is `ShipCommand::Pilot(PilotInput)`. `PilotInput` (`flight.rs`) holds
 `stick: Vec2`, `lock: Option<Target>`, `drift`, `fire`, `aim: AimMode`, `axes: Option<PilotAxes>` (three f32)
@@ -272,7 +272,7 @@ crates/net/            engine-free, no Bevy; builds for wasm32 (transports behin
   src/transport/       Transport trait; mem.rs (tests, simulated latency/jitter/loss on a seeded RNG),
                        ws.rs (web-sys on wasm, native client for tests), quic.rs (quinn, native, feature "quic")
 crates/relay/          native server binary (tokio): rooms by join code, QUIC + WebSocket, forwards frames
-crates/arena/          engine-free library (no threads, no filesystem; builds for wasm32) + native runner
+crates/tools/arena/          engine-free library (no threads, no filesystem; builds for wasm32) + native runner
   src/spec.rs          FightSpec (RON), fight codes (`SGF1:` + compressed RON, like share codes)
   src/run.rs           build_world(&Content, &FightSpec) -> Sim; run_fight -> FightResult
   src/score.rs         outcome, score, Bradley–Terry/Elo
@@ -290,7 +290,7 @@ bytes. `bitcode` 0.6 is smaller but its format may change between versions.
 ### 5.2 What the sim must change (track S1)
 
 1. **Every world change goes through `step`.** Today the sandbox calls `spawn_ship`, `remove_ship`, `command`
-   and `set_config` directly (`crates/game/src/scene.rs` `scene_tick` for waves, cleanup and re-forming;
+   and `set_config` directly (`crates/client/world/src/scene.rs` `scene_tick` for waves, cleanup and re-forming;
    `toggle_waves`; `tuning.rs`). This is although `sim_bridge.rs` says "nothing writes back into the sim except
    the inputs". Add:
 
@@ -391,7 +391,7 @@ by the 0/2-step rule.
 - **Replays everywhere**: a single-player sandbox session recorded the same way is a bug report, and an arena
   fight spec is a replay with no inputs (AI only). ADR-0010's "exact replays" come for free.
 
-### 5.6 Client bridge changes (`crates/game`)
+### 5.6 Client bridge changes (`crates/client/game`)
 
 - `sim_bridge.rs`: a `NetSession` resource (none / host / guest) and a new `SimSet::Net` between
   `SimSet::Inputs` and `SimSet::Step`. `step_sim` steps the number of ticks the session allows, so `apply_events`
@@ -465,7 +465,7 @@ fight tables into a command.
 | A1 Minimal headless arena | `arena` lib (`FightSpec`, `build_world`, `run_fight`, `FightResult`, score) + native runner over all cores + Markdown/CSV report. First sets: the `docs/sim.md` sandbox fight (Runner vs 3 raiders, seeds 1–12, passive/closing stand-ins), `skirmisher` vs raiders, a sweep of `raider_basic`'s stand-off and orbit | – | S | S1, P1, P2 |
 | A2 Fight replays in the client | `?scene=fight&fight=<code>`, final hash check, codes in report rows | A1 | S | A3, S1, N1 |
 | A3 Balance check | `scripts/arena-check.sh`, stored baseline, tolerances | A1 | S | A2, A4 |
-| A4 Ratings and part reports | Bradley–Terry/Elo, pick rate, win rate when used, flags; a pool of archetype designs in `crates/arena/sets/` | A1 | M | A2, A3, N-tracks |
+| A4 Ratings and part reports | Bradley–Terry/Elo, pick rate, win rate when used, flags; a pool of archetype designs in `crates/tools/arena/sets/` | A1 | M | A2, A3, N-tracks |
 | A5 Behavior evolution | MAP-Elites over rule programs on fixed hulls (`BehaviorEditor` operators); first target `raider_basic` / `skirmisher` | A1, A4 | M | N-tracks |
 | A6 Design evolution | `data::edit` operators, mirror lock, build-point budget, report pre-filter; then joint genome | A5 | L | N-tracks |
 | A7 Number tuning and exploit hunts | Outer-loop proposals as RON diffs for review; hunts → check-set fights | A6, A3 | L | – |

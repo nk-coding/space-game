@@ -1,4 +1,4 @@
-# Simulation core (`crates/sim`)
+# Simulation core (`crates/core/sim`)
 
 Written 11 Oct 2026, updated the same evening (phase 3a: physics seam, flight computer, maneuvers; then
 weapons v1 and shields). All numbers in the heat, power, flight, weapon and ramming models are **placeholders**
@@ -160,7 +160,7 @@ The rules (also in `src/math.rs`, enforced where possible):
   Stream ids are part of the save/replay format: append only, never renumber. (Behaviors use no
   randomness.)
 - **Math**: `f32` everywhere. `+ − × ÷`, `sqrt`, `abs`, `floor`, `min/max`, comparisons and casts are exact
-  IEEE operations. Transcendentals go through `sim::math` (libm, pure Rust). `crates/sim/clippy.toml` bans
+  IEEE operations. Transcendentals go through `sim::math` (libm, pure Rust). `crates/core/sim/clippy.toml` bans
   std's `sin/cos/tan/atan2/exp/ln/powf/powi/hypot/mul_add/...` in the crate (`cargo clippy -p sim` warns). Rust
   never fuses `a*b+c` by itself. `libm_values_are_pinned` pins exact bit patterns.
 - **Containers**: `Vec` and `BTreeMap` only; every loop runs in index order. Ids are monotonic counters.

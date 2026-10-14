@@ -25,9 +25,9 @@ escort a behavior, and fly further. Four voyages end at the Warden, an automaton
 
 | Area | Today | Missing for a loop |
 |---|---|---|
-| App start and modes | `AppMode::{Flight, Drydock, Behavior}` (`crates/game/src/mode.rs`); starts in the sandbox; `?scene=` picks another | A home screen, a research screen, a voyage picker; a start that isn't the sandbox |
+| App start and modes | `AppMode::{Flight, Drydock, Behavior}` (`crates/client/world/src/mode.rs`); starts in the sandbox; `?scene=` picks another | A home screen, a research screen, a voyage picker; a start that isn't the sandbox |
 | Home shipyard | Nothing. The drydock and behavior screens have a ring-menu button (`DrydockAction::Menu`, `BehaviorAction::Menu`) with no handler | The ring menu of `ui-mockups/phone-home-ring-menu.png` (GDR-0008) |
-| Flight and combat | Complete for the slice: physics, breakage, weapons, shields, plumes, vessels, focus, behaviors (`crates/sim`) | Nothing new for combat itself; balance is open (see risks) |
+| Flight and combat | Complete for the slice: physics, breakage, weapons, shields, plumes, vessels, focus, behaviors (`crates/core/sim`) | Nothing new for combat itself; balance is open (see risks) |
 | Enemies | `automaton_raider` (3×3, one core) and `raider_basic`; waves spawned by `scene.rs` with a client RNG (`backdrop::Rng`) | A few more enemy ships (a hunter, a boss), encounters placed in a world, spawning from the sim's seeded streams |
 | Scenes | `SceneKind::{Sandbox, Showcase, Load}` and test flights / TEST IN RANGE (`scene.rs`, `test_range.rs`). Wrecks are removed after 75 s dark or 320 m away; a lost ship re-forms in place after 3 s | A voyage scene: sites, wrecks that stay, recall home, death sends you home |
 | Wrecks and salvage | Pieces without a working core are salvage (`Piece::salvage()`, GDR-0013). `Stream::Debris` exists ("debris and salvage generation") but nothing uses salvage | Collecting parts from wrecks; wrecks spawned as wrecks (derelicts) |
@@ -549,7 +549,7 @@ It holds the save's facts as serde types and answers every rule question:
 ### 5.5 Sim changes (determinism kept)
 
 - **A new RNG stream**, appended: `Stream::Encounter = 5` (site placement, counts, wreck damage). `Stream` is append
-  only (`crates/sim/src/rng.rs`).
+  only (`crates/core/sim/src/rng.rs`).
 - **Wrecks from the start**: `Sim::spawn_wreck(design, owner, body, damage)`: the ship spawns as salvage (no
   controlled piece; a `burned_out` flag keeps `form_vessels` from making its cores vessels), then `damage` of its
   parts are destroyed (rolled on `Stream::Encounter`) and breakage splits it into pieces as usual.

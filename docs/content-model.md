@@ -1,8 +1,8 @@
 # Content model
 
 How game content is organised so that the game, the tools and a future wiki read the same files.
-Written 11 Oct 2026. Code: `crates/data` (schema, loader, validation, stat lines, geometry, the blueprint text
-format, the drydock's and the behavior editor's editing models) and `crates/content-tool` (CLI). Content:
+Written 11 Oct 2026. Code: `crates/core/data` (schema, loader, validation, stat lines, geometry, the blueprint text
+format, the drydock's and the behavior editor's editing models) and `crates/tools/content-tool` (CLI). Content:
 `content/base/`.
 
 ## Principles

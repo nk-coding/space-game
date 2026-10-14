@@ -4,7 +4,7 @@ A static website generated from the content packs: every part, material, categor
 behavior, behavior node, stat, research family, research node, start, voyage, encounter and free article gets a
 page, cross-linked both ways. Written 13 Oct 2026 (ADR-0032, Proposed); the career kinds (families, research,
 starts, salvage blocks, locked frames) and then voyages and encounters were added the same day. Code:
-`crates/content-tool/src/wiki/`. It is a developer and modder wiki for now: locked content is shown and marked.
+`crates/tools/content-tool/src/wiki/`. It is a developer and modder wiki for now: locked content is shown and marked.
 
 ![Index](results/wiki-index.png)
 
@@ -61,7 +61,7 @@ file, text keys).
   `data::design::geometry` (tiles, slopes, seams, icons turned and mirrored like the placements, the hull glow of the main
   piece in the faction's colour). Colours come from `art/tokens.json`, embedded at build time.
 - **Look**: the game's UI (`docs/style-guide.md`): the dark radial backdrop, Barlow (copied from
-  `crates/game/assets/fonts` with its licence), uppercase tracked grey labels, white numbers with a slight glow,
+  `crates/client/kit/assets/fonts` with its licence), uppercase tracked grey labels, white numbers with a slight glow,
   teal links, dotted rules instead of boxes.
 
 ## Prose files
@@ -89,7 +89,7 @@ The Markdown is a small subset, rendered by the tool itself:
 
 ## Tests
 
-`cargo test -p content-tool` (`crates/content-tool/src/wiki/tests.rs` and the unit tests next to the code):
+`cargo test -p content-tool` (`crates/tools/content-tool/src/wiki/tests.rs` and the unit tests next to the code):
 the base pack's wiki builds without warnings; every content item has a page and nothing else is written;
 every `href`, `url(...)` and `#fragment` resolves to a generated file and element; two runs are byte-identical;
 cross-links exist both ways (also for families, research nodes, starts, salvage and unlocks, and for voyages,

@@ -21,11 +21,11 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [GDR-0054](gd
 | Editing model (legality, tools, mirror, undo) | `data::design::edit::Drydock` | below |
 | One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::design::blueprint`, `Content.frames`, `Content::ship_totals`, `data::design::stats::SHIP_STATS` | `content-model.md` |
 | Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
-| The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
-| What the career unlocks: locked rows, NEW tags, the voyage-ready line | `crates/game/src/career.rs`, `drydock/{state,panels,stats}.rs`, `data::career` | [below](#locked-parts-new-and-voyage-ready), `career.md` |
-| Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
-| The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/player/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
-| The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/game/src/behavior_ui/`, `data::behavior::edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
+| The screen: app mode, view, panels, widgets, test flight | `crates/client/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
+| What the career unlocks: locked rows, NEW tags, the voyage-ready line | `crates/client/world/src/career.rs`, `drydock/{state,panels,stats}.rs`, `data::career` | [below](#locked-parts-new-and-voyage-ready), `career.md` |
+| Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/client/world/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
+| The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/client/world/src/player/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
+| The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/client/game/src/behavior_ui/`, `data::behavior::edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
 
 Status (13 Oct 2026): waves 1 and 2 are merged. The drydock edits (paint, fill, erase, select, rotate, flip,
 mirror, bevel, undo/redo, ghost and selection, the inspector with power overrides), shows the live stats, status
@@ -37,9 +37,9 @@ and variants, thumbnails, a native file dialog, Android storage.
 
 ## Editing model
 
-`data::design::edit::Drydock` (`crates/data/src/design/edit.rs`) is the editing model: no Bevy, no threads, no filesystem, so it
+`data::design::edit::Drydock` (`crates/core/data/src/design/edit.rs`) is the editing model: no Bevy, no threads, no filesystem, so it
 builds for wasm32. The client's drydock uses it for every edit, and the arena's evolution operators will too.
-Tests: `crates/data/tests/edit.rs`.
+Tests: `crates/core/data/tests/edit.rs`.
 
 ### Design, frame and part indices
 
@@ -149,7 +149,7 @@ refused with `Refusal::NoneLeft(part)` ("NO BEAM LASER LEFT" on the info line): 
 a new slope, painting or bevelling an empty cell; turning, repainting, moving and erasing never are. A mirror image
 that would need one more than is left is skipped (`Twin::Skipped(NoneLeft)`, the primary edit happens); fill fills
 as many cells as are left, row by row (none left: refused). Parts already in the design stay when a count drops
-below them, and undo and redo always restore their step. Tests: `crates/data/tests/edit_availability.rs`.
+below them, and undo and redo always restore their step. Tests: `crates/core/data/tests/edit_availability.rs`.
 
 ### Mirror mode
 
@@ -225,7 +225,7 @@ twin 0.32 µs, ending a bevel stroke of 128 cells 2.1 µs; the rest unchanged.
 
 ## Client: editing
 
-Wave 2, 13 Oct 2026: editing in the client (`crates/game/src/drydock/tools.rs`, `ghost.rs`, `inspector.rs`). Every
+Wave 2, 13 Oct 2026: editing in the client (`crates/client/game/src/drydock/tools.rs`, `ghost.rs`, `inspector.rs`). Every
 edit goes through `PlayerDesign::edit` and the editing model above; the client keeps no rules of its own.
 Screenshots (headless, 1280 × 720): `docs/results/drydock-editing-ghost.png` (a wing painted with mirror and bevel,
 the ghost of a turned beam laser and its twin), `-refused.png` (a refused ghost and its reason), `-select.png` (a
@@ -389,7 +389,7 @@ unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked
 
 ## Client: stats and overlays
 
-Written 13 Oct 2026 (wave 2, track 5F). Code: `crates/game/src/drydock/stats.rs` (the stats grid and the status
+Written 13 Oct 2026 (wave 2, track 5F). Code: `crates/client/game/src/drydock/stats.rs` (the stats grid and the status
 line), `overlays.rs` (the overlays and issue marks); both read `report::DrydockReport` (the design's
 `sim::design_report`, recomputed once per design revision or tuning change) and never compute anything of their
 own. Tests: `cargo test -p game drydock` (the pure mappings: report → cells, report → status line and tone, the
@@ -481,7 +481,7 @@ overlay opacities and sizes.
 ## Storage and sharing
 
 Written 13 Oct 2026 (Niklas: "a player storage layer, but a sharable format in addition"). Code:
-`crates/game/src/storage.rs` (the layer), `clipboard.rs` (copy and paste), `player/library.rs` (designs on the
+`crates/client/world/src/storage.rs` (the layer), `clipboard.rs` (copy and paste), `player/library.rs` (designs on the
 layer), `drydock/share.rs` (files and share codes), `drydock/blueprints.rs` (the screens and handlers). Tests:
 `cargo test -p game -- storage library share`. Screenshots (1280 × 720): `docs/results/drydock-blueprints-list.png`
 (BLUEPRINTS), `drydock-blueprints-export.png` (EXPORT, the code selected), `drydock-blueprints-cruiser.png` (a
@@ -613,7 +613,7 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
 
 Written 13 Oct 2026 for the behavior editor ([GDR-0057](gdr/0057-behavior-editor-v1.md): behaviors are saved on
 their own, a design names one, TEST IN RANGE watches it or flies alongside it). The plumbing under the BEHAVIOR
-screen: `crates/game/src/player/behaviors.rs` (behaviors on the storage layer, the checks, flights),
+screen: `crates/client/world/src/player/behaviors.rs` (behaviors on the storage layer, the checks, flights),
 `drydock/share.rs` (they travel with designs, [above](#sharing-export-files-and-share-codes)), `test_range.rs` and
 `scene.rs` (TEST IN RANGE); on the screen `behavior_ui/saving.rs` (SAVE, the working draft, the design's behavior,
 starting a test), `behavior_ui/list.rs` (BEHAVIORS) and `behavior_ui/live.rs` (the live panel in flight). Tests:

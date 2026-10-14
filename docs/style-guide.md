@@ -1,6 +1,6 @@
 # Style guide: ship style 2a and the UI look
 
-Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-2a.md)). Pictures: [`concept/boards/ship-style/chosen-2a.png`](concept/boards/ship-style/chosen-2a.png), `concept/boards/ui-mockups/*.png`, [`../art/overview.png`](../art/overview.png). Exact values: [`../art/tokens.json`](../art/tokens.json); the client embeds them through the `art` crate (typed view: `crates/game/src/style.rs`).
+Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-2a.md)). Pictures: [`concept/boards/ship-style/chosen-2a.png`](concept/boards/ship-style/chosen-2a.png), `concept/boards/ui-mockups/*.png`, [`../art/overview.png`](../art/overview.png). Exact values: [`../art/tokens.json`](../art/tokens.json); the client embeds them through the `art` crate (typed view: `crates/client/kit/src/style.rs`).
 
 ## Ships
 

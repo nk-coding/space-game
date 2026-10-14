@@ -1,7 +1,8 @@
-# Client (`crates/game`)
+# Client (`crates/client/kit`, `world`, `game`)
 
 The Bevy 0.20 client. Web (wasm32 + WebGL2) is the development platform; desktop and Android come later and
-must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026.
+must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026; split into three crates on 14 Oct 2026
+(ADR-0038, see [Structure](#structure)).
 
 ## Build and run
 
@@ -9,7 +10,7 @@ must keep compiling (`cargo check -p game` natively). Written 11–13 Oct 2026.
 |---|---|
 | Dev build with live reload | `scripts/web-serve.sh` → http://10.77.9.2:8081 (port via `PORT=`) |
 | Optimised build, served | `scripts/web-serve.sh --release` |
-| Optimised build into `crates/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
+| Optimised build into `crates/client/game/dist` + sizes | `scripts/web-build.sh` (cargo `release`, opt-level 3, wasm-opt -O3), then `scripts/web-serve-dist.sh` |
 | Atlas preview / timing | `cargo run --release -p art --example preview [-- <tier> <scratch.png>]` (the game rasterises its atlas at runtime; nothing raster is committed); the longest step and frame of a job as the game spends it: `... --example profile -- <tier> [runs]` |
 | Headless check | `node /home/devbox/workspace/tools/headless/shot.mjs <url> <png> <waitMs>` |
 | One bounded check (build, serve on a free port, headless shot, console, stop) | `scripts/web-check.sh [--release] [--params '?load=5'] [--wait MS] [--size WxH] [--out FILE]` |
@@ -165,6 +166,15 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
    `^[0-9]+ [0-9a-f]{16}$` and `^# ` (the console prints 30 lines per call).
 
 ## Structure
+
+**Three crates** (ADR-0038, 14 Oct 2026), each using only the ones below it; the module names stayed, so the file
+names in this document are found in the crate that holds them:
+
+| Crate | Modules |
+|---|---|
+| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `fonts`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
+| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud`, `fleet_bar`, `test_range`, `tuning`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
+| `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `research`, `map`, `debrief` (the panel), `drydock`, `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
 
 ```
 RunFixedMainLoop      flight, before the ticks: fleet bar clicks → controls (keys, mouse, touch → PlayerInput, latched
@@ -1386,7 +1396,7 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 - **A new effect**: add a constructor to `fx::Effects` (sparks, flash, line), call it from the event
   match in `sim_bridge::apply_events`, draw it in `fx::draw_effects`. Continuous visuals that follow sim state
   (like plumes) go in `fx::draw_ships_fx` and read the sim at the render pose.
-- **A new FX texture**: add it to `Layout::new` in `crates/art` (as SVG: a blurred `soft` document under a `crisp`
+- **A new FX texture**: add it to `Layout::new` in `crates/client/art` (as SVG: a blurred `soft` document under a `crisp`
   one, either optional, so no step blurs a large region; or a `Proc` function of `(u, v)`; with a size in atlas
   units), look it up once in `fx::FxRegions`.
 - **HUD text**: add a `HudText` variant in `flight_hud.rs` and fill it in `update_text` (8 Hz, re-laid out only

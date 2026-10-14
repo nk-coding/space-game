@@ -53,26 +53,26 @@ credits, no trading.
 
 ### What the code has today
 
-- `locked: bool` on `data::model::Part` and `Material` (`crates/data/src/model.rs`); set on `automaton_core` and
+- `locked: bool` on `data::model::Part` and `Material` (`crates/core/data/src/content/model.rs`); set on `automaton_core` and
   `automaton_cannon` (`content/base/parts/automatons.ron`) and `automaton_plate` (`content/base/materials/armor.ron`).
-  The drydock filters on it in `palette_parts` and `armor_materials` (`crates/game/src/drydock/state.rs`).
+  The drydock filters on it in `palette_parts` and `armor_materials` (`crates/client/game/src/drydock/state.rs`).
   Validation makes a locked paint block or bevel slope, or every armour material locked, an error.
 - Salvage exists as a state, not as a resource: `Piece::salvage()` (= not the controlling piece,
-  `crates/sim/src/ship.rs`), `Ship::control: Option<PieceId>` (`None` = a wreck for good), `Ship::team()` is `None`
-  for salvage while `Ship::owner()` is kept "for later salvage rights" (`crates/sim/src/vessel.rs`, `docs/sim.md`
+  `crates/core/sim/src/ship/mod.rs`), `Ship::control: Option<PieceId>` (`None` = a wreck for good), `Ship::team()` is `None`
+  for salvage while `Ship::owner()` is kept "for later salvage rights" (`crates/core/sim/src/ship/vessel.rs`, `docs/sim.md`
   "Owners"). Events: `PieceSnapshot::salvage`, `SimEvent::ControlLost`, `VesselLost`, `PartDestroyed { volatile }`
-  (`crates/sim/src/events.rs`).
-- `Stream::Debris = 2` ("debris and salvage generation", `crates/sim/src/rng.rs`) exists and is unused so far.
-- Cargo capacity is compiled per part (`crates/sim/src/design.rs`, `PartSpec` cargo) and shown by the drydock
-  (`DesignReport::cargo`, `crates/sim/src/report.rs`). Nothing fills it.
-- Wrecks are cleaned up by the client, not the sim: `crates/game/src/scene.rs` removes dark ships more than 320 m
+  (`crates/core/sim/src/events.rs`).
+- `Stream::Debris = 2` ("debris and salvage generation", `crates/core/sim/src/rng.rs`) exists and is unused so far.
+- Cargo capacity is compiled per part (`crates/core/sim/src/ship/design.rs`, `PartSpec` cargo) and shown by the drydock
+  (`DesignReport::cargo`, `crates/core/sim/src/report.rs`). Nothing fills it.
+- Wrecks are cleaned up by the client, not the sim: `crates/client/world/src/scene.rs` removes dark ships more than 320 m
   from the player or dark for 75 s; C removes raider vessels but their wrecks stay.
-- Player data: `crates/game/src/storage.rs` (`Storage`, `Backend`, `Document { NAMESPACE, FORMAT, to_ron,
+- Player data: `crates/client/world/src/storage.rs` (`Storage`, `Backend`, `Document { NAMESPACE, FORMAT, to_ron,
   from_ron(text, format) }`, header line `// space-game: <ns>, format N, saved T`). Namespaces in use:
   `designs/` (`DesignDoc`), `drydock/` (`WorkingDoc`, `WorkingBehavior`), `behaviors/` (`BehaviorDoc`). No save
   game, no inventory, no unlock state.
-- `AppMode { Flight, Drydock, Behavior }` (`crates/game/src/mode.rs`); no home screen yet.
-- Content kinds (`crates/data/src/kind.rs`): stat, category, faction, material, part, frame, ship, behavior_node,
+- `AppMode { Flight, Drydock, Behavior }` (`crates/client/world/src/mode.rs`); no home screen yet.
+- Content kinds (`crates/core/data/src/content/kind.rs`): stat, category, faction, material, part, frame, ship, behavior_node,
   behavior, page. No tech, recipe or facility kind. `data::SCHEMA_VERSION` is 1.
 
 ### Records that look wrong or need care
