@@ -234,8 +234,8 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   (palette, inspector) keep the icon on the dark machine tile (`ui_icons::part_tile`).
 - **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `VesselFormed` with a
   parent moves a split-off piece's view to its new ship, `PieceDestroyed` / `ShipRemoved` despawn them;
-  `PartDestroyed`, `ShotFired`, `Hit`, `Ricochet` become effects; `ShieldHit` starts a ripple in the bubble (and
-  its shatter when it emptied it).
+  `PartDestroyed`, `Explosion`, `ShotFired`, `Hit`, `Ricochet` become effects; `ShieldHit` starts a ripple in the
+  bubble (and its shatter when it emptied it).
 - **Vessels** (`scene.rs`, 12 Oct 2026): the sim owns owners, vessels and the focus (`docs/sim.md` "Vessels").
   The player is `scene::PLAYER` (`Owner(0)`), the raiders `scene::ENEMY` (`Owner(1)`). The sandbox gives every
   vessel its default behavior and sends `ShipCommand::Focus` for the runner; `PilotFocus` mirrors
@@ -287,6 +287,22 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   only, no new texture). `SimEvent::Collected` plays a teal flash where the item was and a pulse streak from there
   into the collecting vessel (`Effects::flash`, `Effects::pulse`); a piece emptied by stripping goes without the
   usual burst.
+- **Chain-reaction blasts** (`fx/blast.rs`, 14 Oct 2026; GDR-0084): `SimEvent::Explosion` plays a blast where the
+  part is drawn (its centroid through the view's transform; the sim's `at` only without a view), carried with its
+  piece's velocity, in the power colour (`#e2b15c`) with coral embers: a white-hot flash (0.15 s), a soft glow over
+  the reach (0.32 s), a ring that eases out to exactly the blast's `radius` in 0.2 s so its reach reads, then fades
+  by 0.45 s, and a few sparks (half gold, half coral). `damage` sets the strength (√(damage / 1.5), clamped
+  0.55–1.4: a capacitor's or thruster's blast is a fainter, thinner ring, a fusion reactor's flash is bigger). A
+  destroyed part that explodes plays no burst of its own (`PartDestroyed { volatile: true }`); the blast is it.
+  **Chains stay readable**: blasts that arrive before the previous one went off (a chain resolves in one tick) go
+  off one after the other, 40 ms apart (at most 8 steps), each flash and glow dimmed by 1/√(n + 1); at most 48
+  blasts live at once. The ring is a crisp core line over soft dots along it (strip segments showed seams at
+  small radii). Every number is in one const block, `fx::blast::BLAST`. No camera shake and no sound: the client
+  has neither yet. Pictures (a Rim skiff idle in the test range under five raiders, slowed down in the headless
+  browser by a `web-drive.mjs` `eval` step that makes `Performance.prototype.now` run at 3 % speed):
+  [`results/chain-blast.png`](results/chain-blast.png) (a fission reactor's chain: its ring growing over
+  the flash, a capacitor's at full reach, a thruster's starting; a thruster's ring fading on the right),
+  [`results/chain-blast-later.png`](results/chain-blast-later.png) (a moment later).
 - **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): the home ring top left (what M does, for touch; its
   clicks never reach the world: `HudButton`), hull %, hull map (one cell per part of the shown ship's design,
   rebuilt when the ship or its compiled design changes: every new sim numbers its ships from 0, so the id alone

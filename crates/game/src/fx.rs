@@ -8,7 +8,8 @@
 //! Drawn here: engine plumes and RCS puffs (from `piece.thrusters` × `piece.output`), dotted engine trails,
 //! beams (attached to the gun at the render pose), pulse flashes, interpolated projectile tracers, loose salvage
 //! fragments (`Sim::loose`: a small turning diamond with a soft glow), muzzle flashes, hit and ricochet sparks,
-//! part bursts and salvage streaks. Shield hits and collapses play in the bubbles (`shield.rs`).
+//! part bursts and salvage streaks. Shield hits and collapses play in the bubbles (`shield.rs`); chain-reaction
+//! blasts in [`blast`].
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
@@ -23,6 +24,8 @@ use crate::camera::CameraSet;
 use crate::ship_view::{PieceView, core_tint, world_of};
 use crate::sim_bridge::{SimWorld, v2};
 use crate::style::{Style, vcol};
+
+mod blast;
 
 /// Z layers (world).
 pub const Z_TRAILS: f32 = 5.0;
@@ -144,6 +147,7 @@ pub struct Effects {
     flashes: Vec<Flash>,
     lines: Vec<Line>,
     trail: Vec<Spark>,
+    blasts: Vec<blast::Blast>,
     rng: Rng,
     /// Where engine plumes are burning a part now (`SimEvent::PlumeHit`, refreshed every tick while it lasts).
     burns: Vec<Burn>,
@@ -168,6 +172,7 @@ impl Default for Effects {
             flashes: Vec::with_capacity(256),
             lines: Vec::with_capacity(128),
             trail: Vec::with_capacity(1024),
+            blasts: Vec::new(),
             rng: Rng::new(0xF0F0_1234),
             burns: Vec::with_capacity(32),
         }
@@ -180,6 +185,7 @@ impl Effects {
         self.flashes.clear();
         self.lines.clear();
         self.trail.clear();
+        self.blasts.clear();
         self.burns.clear();
     }
 
@@ -509,6 +515,7 @@ fn draw_effects(
         fx.flashes.clear();
         fx.lines.clear();
         fx.trail.clear();
+        fx.blasts.clear();
         fx.burns.clear();
         return;
     }
@@ -517,6 +524,7 @@ fn draw_effects(
         b.age += dt;
         b.age < BURN_SECONDS
     });
+    blast::draw_blasts(fx, &mut queue, &regions, dt);
     let drag = (-2.5 * dt).exp();
     fx.sparks.retain_mut(|s| {
         s.age += dt;
