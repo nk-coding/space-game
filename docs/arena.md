@@ -1,7 +1,8 @@
 # Arena (`crates/arena`)
 
 Headless, deterministic fights between designs on the real simulation: track **L1** of the evolution lab
-(`docs/plans/evolution-lab.md`), written 14 Oct 2026. Decisions: [ADR-0036](adr/0036-arena-crate.md) (the crate),
+(`docs/plans/evolution-lab.md`), written 14 Oct 2026; the voyage fitness (**L2**) and the evolution (**L3**) the same
+day: [Voyage fitness](#voyage-fitness), [Evolution](#evolution). Decisions: [ADR-0036](adr/0036-arena-crate.md) (the crate),
 [GDR-0083](gdr/0083-evolution-lab.md) (the lab), [GDR-0032](gdr/0032-balancing-arena-evolution.md) (balance by arena
 and evolution); the fight spec and the score follow `docs/plans/coop-arena.md` 3.7 and 5.7. Every number marked
 *placeholder* is for feel.
@@ -100,8 +101,9 @@ behavior, content behaviors that do not compile. Errors name the side and entry.
 
 ## The CLI
 
-The crate's binary (`src/bin/arena.rs`), not an example: it is the arena's tool for balance numbers and later
-`arena evolve` (like `content-tool`), not a one-off measurement; the examples hold checks (`fight_hashes`).
+The crate's binary (`src/bin/arena.rs`), not an example: it is the arena's tool for balance numbers and
+`arena evolve` ([Evolution](#the-cli-arena-evolve)) (like `content-tool`), not a one-off measurement; the examples
+hold checks (`fight_hashes`).
 
 ```sh
 cargo run --release -p arena -- fight crates/arena/fights/runner_vs_raiders.ron --seeds 200
@@ -165,3 +167,212 @@ threads scale about 12×. Building a fight (`Fight::new`: the behavior library, 
 What the 4000-seed runs say about the content (side 0 won / side 1 won / undecided): the Runner beats three raiders
 in 56 % (2227 / 543 / 1230, mean score 0.73); almost a third end undecided (the time limit or both out). The skiff
 mirror: 1607 / 1555 / 838 (mean score 0.507 / 0.493).
+
+## Voyage fitness
+
+Track L2 (`src/voyage.rs`): a design and a behavior flown through a content voyage by the headless voyage runner,
+scored 0..1. The runner's pilot moved out of the `voyage` example into the sim as a library, `sim::voyage_runner`
+(`docs/sim.md` "The headless voyage runner"; the example's output is unchanged), so the example, the arena and later
+the game share one pilot.
+
+- `VoyageSpec { voyage, seed, design, behavior, minutes }`: a content voyage id, the seed (the voyage's roll and the
+  world), a `DesignRef` (content ship or blueprint text, checked like a fight's), a `BehaviorRef` the ship flies in
+  fights (`None`: the runner's scripted *closing* pilot) and the time limit (`DEFAULT_VOYAGE_MINUTES` = 10,
+  placeholder; the scripted runs take 2.5–3.5 minutes).
+- `start_voyage(&content, &spec)` builds a steppable `sim::VoyageRunner`; `run_voyage` runs it to the end and gives
+  the `VoyageRun` (outcome, goal, ticks, hull lost, sites cleared of those with ships, kills, haul).
+- `voyage_score(&run, limit_ticks)`, *placeholder* weights:
+  - the goal cleared and home: **0.6 + 0.2 × (1 − share of the hull lost) + 0.2 × (1 − ticks / time limit)**;
+  - otherwise: **0.5 × (sites cleared / sites with ships)**, halved when the ship was lost.
+
+  So any cleared voyage beats any uncleared one, a faster and less damaged clear beats a slower one, and clearing
+  more sites counts before the goal falls.
+- `voyage_fitness(&content, &spec, voyages, seeds)`: the mean score over every voyage and seed, in order.
+
+Errors are `ArenaError` values (`UnknownVoyage`, `Voyage` for a design, behavior or roll that does not work, `Number`
+for the minutes). The starter on `yard_approach` with the skirmisher behavior in fights scores 0.115 over seeds 1–4
+(8-minute limit); 30 generations of evolution reach 0.916 (below).
+
+## Evolution
+
+Track L3 (`src/evolve/`): designs and behaviors bred through the editing models, scored by fights against a pool or by
+the voyages, kept in a MAP-Elites archive (GDR-0032, GDR-0083; the method of `docs/plans/coop-arena.md` 3.8). One
+`arena::Run` per run; single-threaded and steppable in the library, every core in the CLI, the same results either way.
+
+### A run is a text file
+
+`RunConfig` has a RON form (`RunConfig::from_ron`, `to_ron`; the content's RON options: `Some(..)` may be left out,
+unknown fields are errors, comments are fine). Examples in `crates/arena/runs/`:
+
+```ron
+// crates/arena/runs/skiff_design_60bp.ron
+(
+    seed: 1,                          // the run's own random stream
+    evolve: Design,                   // Behavior | Design | Both | Stages([...]), below
+    generations: 30,                  // left out with Stages
+    population: 32,                   // children per generation (default 32)
+    fitness: ArenaPool(
+        opponents: [
+            (design: Ship("automaton_raider"), count: 2),   // fight spec entries (docs above)
+            (design: Ship("automaton_raider"), count: 3),
+            (design: Ship("automaton_hunter")),
+        ],
+        seeds: 4,                     // seeds 1..=4 against each opponent (default 4; keep it even)
+        time_limit: 60,               // optional: start_distance, time_limit (fight defaults), count (1),
+                                      // hall_of_fame (0)
+    ),
+    limits: (frame: "frigate", build_points: 60, mirror: true),  // all optional, also parts: [...], materials: [...]
+    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),
+    // archive: (axes: [...]),        // default: acceleration × firepower, 8 × 8
+    // crossover: 0.2, mutations: 3,  // the defaults
+)
+```
+
+| Field | What |
+|---|---|
+| `evolve` | `Behavior` (the design stays), `Design` (the behavior stays), `Both` (each mutation picks one), or `Stages([(evolve: Behavior, generations: 10), (evolve: Design, generations: 10), (evolve: Both, generations: 10)])`: one after the other, one archive throughout |
+| `fitness` | `ArenaPool(opponents, seeds, hall_of_fame, count, start_distance, time_limit)`: the genome (`count` ships of it, side 0) fights each opponent entry and the best `hall_of_fame` elites so far over seeds 1..=`seeds`; the mean arena score. `Voyages(ids, seeds, minutes, pilot)`: each voyage over seeds 1..=`seeds`, the mean voyage score; `pilot: Behavior` (default: the genome's behavior flies the fights) or `Closing` (the runner's scripted pilot) |
+| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest the start fits). `build_points`: the most a design may cost. `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; the start must be symmetric) |
+| `start` | `Design(design, behavior)`: a content ship or blueprint text, and a behavior (default: the design's own, else its faction's). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
+| `archive` | `(axes: [(measure, min, max, cells), ...])`, one to three axes (at most 65 536 cells) |
+| `population`, `generations`, `seed`, `crossover`, `mutations` | Children per generation; generations; the run's stream; the share of children bred by crossover (0.2); a child gets 1 to `mutations` (3) mutations. All *placeholders* |
+
+Every error is a `RunError` value: `Config` (does not read, a number out of range, `generations` missing or given with
+`Stages`, an unknown frame, `EngageDistance` with the voyage fitness), `Start` (an unknown ship or behavior, the start
+breaks a limit or the pre-filter), `Fitness` (an opponent or voyage that does not resolve: `Run::new` builds one fight
+or voyage of each with the start).
+
+### Genomes, mutation and crossover
+
+A `Genome` is a blueprint (trimmed, as the drydock exports it; named "<start> (evolved)", tagged `evolved`, no
+behavior field) and a behavior text (canonical, without the start's notes). `genome.blueprint_text()` is the content
+RON form and `genome.behavior_text()` the text form, so the game can SAVE AS DESIGN.
+
+Designs change only through `data::edit::Drydock` (opened in the run's frame, one column narrower under the mirror
+lock when the design's width has the other parity), so every child is a legal placement; under the mirror lock an
+edit whose mirror image is impossible (`Twin::Skipped`) is undone. One mutation is one of (weights are
+*placeholders*):
+
+| Design operator | Weight | How |
+|---|---|---|
+| add a part | 30 | an allowed part on a free cell next to a random part: slopes oriented to the hull (`place_slope`), others in a random pose; only where the preview replaces nothing (since GDR-0081 `place` replaces what is under it) |
+| remove a part | 15 | `remove_part` (and its twin) |
+| move a part | 15 | by −2..2 cells each way (`move_part`, refused into other parts) |
+| rotate / flip | 10 / 5 | `rotate`, `flip` |
+| swap a part | 15 | another allowed part of the same footprint and shape in its place and pose: `place`, accepted only when it replaces just that part (and its twin) |
+| material | 10 | another allowed armour material on a hull part |
+
+Behaviors change only through `data::behavior_edit::BehaviorEditor`, so every program is legal; rules are added only
+below the design's rule slots:
+
+| Behavior operator | Weight | How |
+|---|---|---|
+| nudge a number | 30 | a comparison's threshold (one time in ten its comparator too) or a numeric parameter, × 0.6–1.4, rounded (`set_compare`, `set_param`, refused out of range) |
+| change a choice | 5 | another option (an orbit's direction, a target's aim point) |
+| move a rule | 10 | `move_rule` to a random place |
+| swap an action / the target | 10 / 5 | `replace_node` with a random action or selector |
+| add / remove a rule | 10 / 8 | `add_rule` (with a random condition four times in five), `delete_rule` |
+| add / remove / negate / replace a condition | 8 / 6 / 4 / 4 | `add_condition`, `remove_condition`, `toggle_not`, `replace_node` |
+
+**Crossover** (a `crossover` share of the children, before their mutations): designs splice `a`'s parts above a
+random row with `b`'s from that row down (both in `a`'s frame; `b`'s parts that overlap are left out), behaviors
+`a`'s first rules with `b`'s from a random rule on (the target line of either). What evolves decides which halves
+cross.
+
+**The pre-filter** (`Kit::assess`, part of the breeding time below) runs before any fight: the limits (parts, materials, frame, build
+points from `sim::design_report`, symmetry under the mirror lock), `data::validate_ship` without errors (this includes
+the rule-slot check of the faction's default behavior: a design with fewer slots than it has rules is refused), and
+the design report: it must fly (no blocker: a powered logic core and thrust), be one piece (no `FallsOff`) and carry a
+gun. A child that is refused, or equals its parent, is bred again (16 tries, then the generation is one smaller); the
+CLI's `refused` column counts the refusals.
+
+### The archive and the loop
+
+The archive is a grid over one to three **measures**: `TopSpeed`, `Acceleration`, `WeaponReach`, `BuildPoints`,
+`Mass`, `Firepower`, `HitPoints`, `Parts` (from the design report), `Rules` (the rules that run, at most the slots),
+`EngageDistance` (the mean distance from the genome's first running ship to the nearest enemy vessel in its fights,
+sampled every half second; arena pool only). An axis has `cells` equal bins from `min` to `max` (values outside go to
+the end bins); each cell keeps its best elite (genome, score, measures, generation); a child takes a cell when it is
+empty or the child scores higher (ties keep the elite).
+
+The default axes are **acceleration (0–24 m/s²) × firepower (0–16 damage per second), 8 × 8** (*placeholders*), not
+coop-arena 3.8's top speed × weapon reach: those are ratings of the part types (every base ship flies 20–22 m/s and
+reaches 45–75 m), so with the starter's parts every design sat in one or two cells (the first design run filled 2
+cells in 3 generations). Behavior runs want behavior measures (`EngageDistance` × `Rules`, as
+`skiff_behavior.ron`); in a behavior stage under design axes every child shares its parent's cell (a plain hill
+climb).
+
+Each generation: generation 0 is the start and `population − 1` mutants of it; later ones are `population` children
+of elites drawn uniformly from the occupied cells. Each child's jobs (every opponent × seed, or every voyage × seed)
+are evaluated; its score is their mean; then the children are offered to the archive in order. All random draws
+come from the run's PCG stream (`seed`, its own sequence) in a fixed order; fights and voyages use seeds 1..=n, the
+same for every child and generation, so scores stay comparable. The hall of fame (`hall_of_fame` best elites joining
+the pool) makes the fitness move with the archive; elites are not re-scored.
+
+### The API
+
+```rust
+let mut run = arena::Run::new(&content, config)?;   // checks the config, resolves the start, checks the fitness
+let p = run.step(20_000);                           // up to 20 000 ticks of fights this frame -> Progress
+let s = run.state();                                // generation, generations, stage, history, archive
+for (cell, elite) in s.archive.cells() { /* elite.genome, elite.score, elite.measures, elite.generation */ }
+let r = run.results();                              // history + every elite, best first
+let (blueprint, behavior) = (r.elites[0].genome.blueprint_text(), r.elites[0].genome.behavior_text());
+```
+
+- `Run::step(budget)`: breeds the next generation when none is open, then runs its jobs for up to `budget` sim ticks
+  (a fight or voyage is stepped in slices, `Fight::step` / `VoyageRunner::step`), and closes the generation after its
+  last job. Breeding is not counted against the budget: 4–8 ms per generation of 32 (native release, below).
+- `Run::jobs()` / `Run::submit(results)`: a generation's `Job`s (a `FightSpec` or `VoyageSpec` each, plain data) and
+  their `JobResult`s in the same order; `Job::run(&content)` runs one anywhere. The CLI uses these; don't mix them
+  with `step` within a generation.
+- `GenerationStats` per generation: stage and genes, children evaluated, refused, best and mean score, the archive's
+  best, occupied cells, children that took a cell, ticks.
+
+**Determinism**: a job's result depends only on the job and the content (it is a fight or voyage, deterministic on
+every platform), results are applied in job order, the archive is a `BTreeMap`. `tests/evolve.rs` checks that the
+same config and seed give the same results run twice, stepped in slices of 97 ticks, and on 1 and 4 threads; another
+seed gives another run. The CLI on 1 and on 16 threads printed identical tables and wrote identical files
+(`skiff_behavior.ron`, 14 Oct 2026).
+
+### The CLI: `arena evolve`
+
+```sh
+cargo run --release -p arena -- evolve crates/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design [--best 8] [--threads N]
+```
+
+Breeds on the main thread and runs each generation's jobs on every core (`--threads`, default all), prints a
+Markdown row per generation (evolves, children, refused, best, mean, archive best, cells, took a cell, million
+ticks, breeding ms, seconds), the generations per minute, and the best elites (rank, cell, score, measures,
+generation, parts). With `--out DIR` it writes the best `--best` (8) elites: `elite_NN.ron` (the blueprint, id
+`evolved_NN`, with a comment naming the run, rank, score and generation) and `elite_NN.txt` (its behavior).
+
+### What the example runs found
+
+`crates/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` (before the sim's spawn-order fix, which will move
+the fight numbers):
+
+| Run | Start's score | Best after gen 0 / 10 / 20 / 29 | Cells | Best elite |
+|---|---|---|---|---|
+| `skiff_behavior.ron`: the skiff's behavior against 2 and 3 raiders and a hunter (archive `EngageDistance` × `Rules`) | 0.577 (skirmisher) | 0.683 / 0.962 / 0.966 / **0.981** | 40 of 48 | `target threat(weapons)`, `when cycle(6s) < 5s -> face`: one rule, face the most dangerous enemy's guns 5 s in 6, idle (hold) the sixth |
+| `skiff_design_60bp.ron`: the skiff's design, 60 build points, mirror lock, frigate, all parts | 0.577 | 0.796 / 0.860 / 0.960 / **1.000** | 28 of 64 | 22 parts: the twin pulse lasers, four **automaton cores** and no reactor, logic core or thruster, two RCS pods for thrust, two gyros, two shield emitters, capacitors, composite blocks and automaton-plate slopes |
+| `skiff_voyage_stages.ron`: behavior 10, design 10, both 10, starter parts, mirror lock, `yard_approach` × 4 seeds | 0.115 | 0.432 / 0.753 / 0.755 / **0.916** | 22 of 64 | the starter's slopes, cores, thrusters and gyros; its radiators, capacitors, cargo bays and armour blocks traded for two more reactors, four more shield emitters and two more forward pulse lasers on the flanks; behavior `target threat(weapons)`, below 25 % hull `escort` (no leader: it holds), else `face` (three rules below that never run) |
+
+Balance findings for the lead: the automaton core is a power plant (6), a logic core (2 slots) and a gyro (300) in one
+5-build-point cell, while the starter's reactor, logic core and gyro cost 11; locked for players, but a design run
+with every part finds it at once. Facing the enemy's guns (`threat(weapons)`) beats the skirmisher's orbit against
+raiders.
+
+### Performance
+
+Native release on all 16 threads (`arena evolve`, 3 runs each, load average 7–14 from other agents' builds),
+14 Oct 2026:
+
+| Run | Generations per minute, median (range) | Fights or voyages per generation | Breeding ms per generation, median (p95) |
+|---|---|---|---|
+| `skiff_behavior.ron` | **326** (313–366) | 384 fights | 3.9 (4.4) |
+| `skiff_design_60bp.ron` | **335** (306–345) | 384 fights | 5.5 (7.7) |
+| `skiff_voyage_stages.ron` | **187** (178–192) | 128 voyage runs | 5.0 (6.2) |
+
+`skiff_behavior.ron` on one thread: 32.7 generations per minute (16 threads: 11×). A generation is 0.4–0.7 million
+ticks; the generation wall clock is 0.15–0.4 s.

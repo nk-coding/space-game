@@ -1,6 +1,6 @@
 # Plan: the evolution lab
 
-Status: **plan** (14 Oct 2026, lead), following [GDR-0083](../gdr/0083-evolution-lab.md) and
+Status: **plan** (14 Oct 2026, lead; L1–L3 built the same day), following [GDR-0083](../gdr/0083-evolution-lab.md) and
 [ADR-0036](../adr/0036-arena-crate.md). It narrows `docs/plans/coop-arena.md` sections 3.7, 3.8 and 5.7 (the arena
 half) to what the lab needs first. Numbers marked *(placeholder)* are for feel.
 
@@ -21,6 +21,32 @@ after L1.
 about 1200 (Runner vs 3 raiders) to 2300 (skiff mirror) fights per second on 16 threads; see [`docs/arena.md`](../arena.md).
 Found on the way: the side spawned first wins a mirror match about 3 to 1 (lower ship ids); the arena alternates the
 spawn order by seed parity.
+
+**L2 done** (14 Oct 2026): the voyage runner's pilot is a library (`sim::voyage_runner`, steppable; the example's
+output unchanged) and `arena::voyage` scores a design and behavior over voyages and seeds (goal cleared and home:
+0.6 + 0.2 × hull kept + 0.2 × time left; else 0.5 × share of sites cleared, halved when lost; placeholders).
+**L3 done** (14 Oct 2026): `arena::evolve` (`RunConfig` as RON with `Behavior` / `Design` / `Both` / `Stages`, arena
+pool or voyage fitness, optional frame, build-point, part, material and mirror limits, a design or random start;
+mutation and crossover only through `data::edit` and `data::behavior_edit`; the design-report pre-filter; a
+configurable MAP-Elites archive; `Run::step(ticks)` for a client, `Run::jobs` / `submit` for the CLI) and
+`arena evolve` on every core (identical results on 1 and 16 threads); 190–330 generations of 32 per minute on 16
+threads. See [`docs/arena.md`](../arena.md) "Voyage fitness" and "Evolution".
+
+Open after L3 (for the lead):
+
+- **The archive's axes**: the default is acceleration × firepower, not top speed × weapon reach (both are part-type
+  ratings, so the starter's kit fills one or two cells); behavior runs use `EngageDistance` × `Rules`. A behavior
+  stage under design axes is a plain hill climb.
+- **The automaton core** (power 6, 2 rule slots, a 300 gyro for 5 build points) wins every 60-build-point design run
+  that may use it; locked for players, but a balance question once research unlocks it.
+- **Fixed seeds** (1..=n for every child): scores stay comparable, but a run can fit its seeds; a validation pass on
+  other seeds for the final elites would show it.
+- **The hall of fame** makes the arena fitness move; elites keep the score they got (no re-scoring yet).
+- **Breeding is not budgeted** in `Run::step`: 4–8 ms per generation of 32 at once (native), so a lab screen sees
+  one short spike per generation.
+- The pre-filter refuses designs with fewer rule slots than their faction's default behavior has rules (content
+  validation of a blueprint without a behavior of its own), even when the evolved behavior would fit.
+- The fight numbers move once the sim's ship-id order fix lands (the arena's seed-parity stopgap goes with it).
 
 ## Placeholders
 

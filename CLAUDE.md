@@ -30,7 +30,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - `art`: style tokens (embedded), effect textures and the runtime SVG rasteriser. No Bevy.
 - `content-tool`: CLI over `data` (validate, export-json, list, and `wiki`: a static HTML wiki from the content).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
-- `arena`: headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`) and the native `arena` CLI (`fight`, `matrix`) on every core; evolution comes next (ADR-0036, `docs/arena.md`). No Bevy, no I/O or threads in the library.
+- `arena`: headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage_runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`) and the native `arena` CLI (`fight`, `matrix`, `evolve`) on every core (ADR-0036, `docs/arena.md`). No Bevy, no I/O or threads in the library.
 - Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023), a wiki generator built on `data`.
 
 ## Hard rules
