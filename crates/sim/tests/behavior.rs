@@ -694,29 +694,47 @@ fn behavior_scenario_is_deterministic() {
     }
 }
 
+/// Every ship thinks on its first tick, then on the same ticks as every other ship (not staggered by id,
+/// ADR-0037).
 #[test]
-fn thinks_on_the_first_tick_then_every_period_staggered() {
+fn thinks_on_the_first_tick_then_on_the_shared_period() {
     let (mut w, me, rs) = duel(&[(0.0, 80.0)]);
     let id = w.behaviors().id("raider_basic").unwrap();
+    w.step(&TickInputs::default());
     w.command(rs[0], ShipCommand::Behavior(Some(id)));
     program(&mut w, me, "always -> face");
     let period = sim::behavior::tuning::THINK_PERIOD;
-    let mut thinks = Vec::new();
+    let mut thinks = [Vec::new(), Vec::new()];
     for _ in 0..12 {
         let tick = w.tick();
         w.step(&TickInputs::default());
-        if state(&w, me).last_think() == Some(tick) {
-            thinks.push(tick);
+        for (k, ship) in [me, rs[0]].into_iter().enumerate() {
+            if state(&w, ship).last_think() == Some(tick) {
+                thinks[k].push(tick);
+            }
         }
     }
-    assert_eq!(thinks[0], 0, "first tick after the command");
-    for &t in &thinks[1..] {
-        assert_eq!((t + me.0 as u64) % period, 0);
+    assert_eq!(thinks[0], [1, 3, 6, 9, 12], "the first tick after the command, then every {period}");
+    assert_eq!(thinks[0], thinks[1], "both ships on the same ticks");
+}
+
+/// `orbit(r)` (auto): two ships circling one target go opposite ways, two ships circling each other go the same
+/// way, whichever has the lower id (ADR-0037).
+#[test]
+fn auto_orbits_split_a_fleet_and_match_a_duel() {
+    let (mut w, me, rs) = duel(&[(-10.0, 80.0), (10.0, 80.0)]);
+    for ship in [me, rs[0], rs[1]] {
+        program(&mut w, ship, "target nearest\nalways -> orbit(40m)");
     }
-    assert_eq!(
-        thinks.len(),
-        1 + 12 / period as usize - usize::from((me.0 as u64).is_multiple_of(period))
-    );
+    w.step(&TickInputs::default());
+    let ccw = |w: &Sim, ship| match state(w, ship).maneuver() {
+        Maneuver::Orbit { ccw, .. } => ccw,
+        m => panic!("{m:?}"),
+    };
+    assert_eq!(state(&w, rs[0]).target(), Some(me));
+    assert_ne!(ccw(&w, rs[0]), ccw(&w, rs[1]), "a fleet splits");
+    let mine = state(&w, me).target().unwrap();
+    assert_eq!(ccw(&w, me), ccw(&w, mine), "a duel circles one way");
 }
 
 #[test]

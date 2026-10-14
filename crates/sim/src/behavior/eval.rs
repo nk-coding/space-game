@@ -272,10 +272,11 @@ pub(crate) struct Scratch {
     pub(crate) script_evals: u64,
 }
 
-/// Does this ship think on this tick? Staggered by ship id so that a fleet spreads its thinks.
+/// Does this ship think on this tick? Every ship on the same ticks (not staggered by id: a ship that thinks a
+/// tick after its enemy reacts a tick sooner, which decided mirror fights, ADR-0037), and on its first tick.
 #[inline]
-fn due(st: &BehaviorState, id: ShipId, tick: u64) -> bool {
-    st.thought.is_none() || (tick + id.0 as u64).is_multiple_of(tuning::THINK_PERIOD)
+fn due(st: &BehaviorState, tick: u64) -> bool {
+    st.thought.is_none() || tick.is_multiple_of(tuning::THINK_PERIOD)
 }
 
 /// The think pass: every ship with a behavior whose turn it is (or every one, with `all`) decides, from one
@@ -294,7 +295,7 @@ pub(crate) fn think_all(
     let any_due = ships.iter().any(|s| {
         s.behavior
             .as_ref()
-            .is_some_and(|st| all || due(st, s.id(), tick))
+            .is_some_and(|st| all || due(st, tick))
     });
     if !any_due {
         return;
@@ -319,7 +320,7 @@ pub(crate) fn think_all(
             let Some(st) = &me.behavior else {
                 continue;
             };
-            if !(all || due(st, me.id(), tick)) || !me.is_active() {
+            if !(all || due(st, tick)) || !me.is_active() {
                 continue;
             }
             let mut cx = Ctx {
@@ -719,7 +720,9 @@ impl Ctx<'_> {
                 target,
                 radius: d.metres(r),
                 ccw: match dir {
-                    OrbitDir::Auto => self.me.id().0.is_multiple_of(2),
+                    // By the parity of both ids: half of a fleet circles a target each way, and two ships
+                    // circling each other go the same way, whichever has the lower id (ADR-0037).
+                    OrbitDir::Auto => self.me.id().0.wrapping_add(id.0).is_multiple_of(2),
                     OrbitDir::Ccw => true,
                     OrbitDir::Cw => false,
                 },
