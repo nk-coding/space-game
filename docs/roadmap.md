@@ -194,6 +194,12 @@ Next session:
 - Evolution lab decided ([GDR-0083](gdr/0083-evolution-lab.md), [ADR-0036](adr/0036-arena-crate.md),
   `docs/plans/evolution-lab.md` tracks L1–L5). L1 is built (`docs/arena.md`: fight specs, the score, the `arena`
   CLI; native vs wasm IDENTICAL; about 1200 Runner-vs-3-raiders fights/s and 2300 starter mirrors/s on 16 threads).
+  L2 and L3 are built too (`docs/arena.md` "Evolution"): scoring by voyages (`sim::voyage_runner`), configurable runs
+  (behavior / design / both / stages; arena pool or voyages; frame, build points, parts, mirror lock), a MAP-Elites
+  archive, `arena evolve` (identical on 1 or 16 threads; 200–400 generations of 32 per minute). Balance findings:
+  automaton parts dominate every design run that may use them (the automaton core: power 6, 2 rule slots and a gyro
+  for 5 BP against 11 for reactor + logic core + gyro); the best 60-BP design won while the design report counted
+  none of its guns as clear (being checked). Next: L4, the lab screen.
 - **Sim fairness fixed** ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)): ship ids no longer decide a fight.
   Three causes: guns fired and hit in id order (now every shot is traced first, then all hits land), behaviors
   thought on id-staggered ticks (now shared ticks), `orbit(auto)` turned by its own id (now by both ships' ids).
