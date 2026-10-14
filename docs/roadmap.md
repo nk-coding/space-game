@@ -165,9 +165,14 @@ Next session:
 - Judge in play, not now: the Warden at ~68 % clears; the starter turning faster than the Runner.
 - Confirmed: RCS pods stay inside their cells (GDR-0072's reading); FLEET's four slots and the 30 m escort default.
 - Changed: cargo a shrinking hold can't keep spills as collectable fragments (GDR-0076); abandoning a voyage asks
-  in a panel instead of M twice (to build).
+  in a panel instead of M twice (GDR-0077).
 - Built today: the portal transition into the voyage map, zoom on the map out to the whole galaxy, Esc on the
   BEHAVIOR screen goes back the way it came, the shipyard shows faintly behind BEHAVIOR and FLEET.
+- Open from today's map work: at the default zoom the map still draws the slice's voyages as a dotted chain with
+  travel times (from content's `opens_after`), which reads as the fixed path GDR-0075 wants to avoid; the zoomed-out
+  galaxy's inner bands are placeholders (their names crowd the centre). Both belong to the galaxy-exploration
+  rework.
+- Builds (ADR-0034): `scripts/web-build.sh` is now the 30-second everyday build; `--full` for performance numbers.
 
 ## Phase 4: measurement
 
