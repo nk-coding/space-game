@@ -32,6 +32,20 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             Visibility::Hidden,
         ))
         .with_children(|root| {
+            // Scrims behind the side columns, first so everything draws over them: the backdrop colour, solid to just
+            // past the panel and gone at the grid's edge, so the panels read over a ship or the yard behind them
+            // (Niklas, 14 Oct 2026: "with the ship in the background the side panels stuff is still barely
+            // readable"; the BEHAVIOR screen covers the world instead, which the drydock cannot: its ship is the
+            // world).
+            // A world mesh (`UiIcon::Scrim`), so it lies under the panels' icons too.
+            for (edge, width, solid) in [(Edge::Left, GRID_LEFT + SCRIM_INTO_GRID, LEFT_PANEL_END), (Edge::Right, GRID_RIGHT + SCRIM_INTO_GRID, RIGHT_PANEL_END)] {
+                let left = edge == Edge::Left;
+                let at = if left { abs(Some(0.0), None, Some(0.0), Some(0.0)) } else { abs(None, Some(0.0), Some(0.0), Some(0.0)) };
+                let fade = width - solid - SCRIM_SOLID_PAST;
+                let scrim = UiIcon::Scrim { color: back.with_alpha(SCRIM_ALPHA), fade, fade_left: !left };
+                root.spawn((ScreenPart::new(edge, 1), Node { width: px(width), ..at }, scrim));
+            }
+
             // Top left: the ring menu, the breadcrumb and the design's name.
             root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
                 .with_children(|tl| {
@@ -55,7 +69,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Left: search, armour, category chips, every part in sections.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Left, 1), Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(20.0), None, Some(74.0), Some(70.0)) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Left, 1), Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(SIDE), None, Some(74.0), Some(GRID_BOTTOM + INFO_H)) }))
                 .with_children(|lp| {
                     lp.spawn((
                         SearchField,
@@ -90,7 +104,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     lp.spawn((
                         SwatchStrip,
                         ScrollPosition::default(),
-                        Scrollbar::horizontal().outside().room(12),
+                        Scrollbar::horizontal().outside(),
                         Node { flex_direction: FlexDirection::Row, column_gap: px(SWATCH_GAP), width: percent(100), flex_shrink: 0.0, overflow: Overflow::scroll_x(), ..default() },
                     ))
                     .with_children(|strip| {
@@ -184,7 +198,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Right: the stats grid and the selected part.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), Node { width: px(292), flex_direction: FlexDirection::Column, ..abs(None, Some(20.0), Some(78.0), Some(70.0)) }))
+            root.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(78.0), Some(70.0)) }))
                 .with_children(|rp| {
                     rp.spawn(Node {
                         display: Display::Grid,
@@ -278,10 +292,10 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Centre: the grid viewport; the info line and the zoom.
-            root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(290.0), Some(332.0), Some(84.0), Some(66.0)) }).with_children(|ga| {
+            root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(GRID_LEFT), Some(GRID_RIGHT), Some(84.0), Some(GRID_BOTTOM)) }).with_children(|ga| {
                 // The info line moves, the grid viewport never (the camera centres on it).
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
-                ga.spawn((ScreenPart::new(Edge::Bottom, 2), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(30), flex_shrink: 0.0, ..default() }))
+                ga.spawn((ScreenPart::new(Edge::Bottom, 2), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(INFO_H), flex_shrink: 0.0, ..default() }))
                     .with_children(|b| {
                         b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(crate::drydock::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {

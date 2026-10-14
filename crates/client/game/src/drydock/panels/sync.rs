@@ -227,7 +227,7 @@ pub(in crate::drydock) fn scroll_chips(
         if left < x {
             smooth.to(left);
         } else if right > x + width {
-            smooth.to(right - width + FADE_DEPTH);
+            smooth.to(right - width);
         }
     }
 }

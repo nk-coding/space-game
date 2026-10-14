@@ -203,8 +203,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         col.spawn((ListText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                         col.spawn((
                             ListNode(list),
-                            // Less glow room: the section label is 10 px above (its fade would cover it).
-                            Scrollbar::vertical().room(8),
+                            Scrollbar::vertical(),
                             ScrollRows::default(),
                             Node {
                                 flex_direction: FlexDirection::Column,

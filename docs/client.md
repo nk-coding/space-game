@@ -562,7 +562,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   the content; Barlow has no ◆ either, the materials' diamond is a vector glyph too); the voyage's `cleared` words at
   the first clear. The report scrolls when it is longer than the panel (14 Oct 2026; Niklas: "the voyage report is
   not scrollable, and thus can cut things off"): everything above the buttons is one area with the kit's
-  `Scrollbar` (smooth wheel, overlay bar, edge fades; 12 px glow room, less than the 14 px gap above the buttons),
+  `Scrollbar` (smooth wheel, overlay bar),
   and VOYAGE MAP and DISMISS stay at the bottom (`docs/results/debrief-scroll.png`: 1280 × 600 with a padded
   report). Then a
   one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
@@ -945,25 +945,25 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   holds the whole list, FLEET has 12 card nodes, the text-only BLUEPRINTS and BEHAVIORS lists one more than fit. A
   screen that starts a list at the top writes its scroll (BLUEPRINTS and BEHAVIORS through a `top` request, set
   where a new entry lands at the top). The kit also sets the area's
-  `overflow_clip_margin` to `Scrollbar::room` px past its padding box (default 16: the kit's glow, a 10 px blur, is
-  gone by then), so the glow of a lit row, chip, swatch or card at an edge fades out instead of ending in a straight
+  `overflow_clip_margin` to `Scrollbar::room` px past its padding box (default 30: the kit's glow is a box shadow
+  with a 10 px blur, a Gaussian with sigma 10 px, gone after three sigma; 16 px still left a visible line under a
+  lit chip, Niklas: "this glow cutoff still looks weird"), so the glow of a lit row, chip, swatch or card at an edge fades out instead of ending in a straight
   line. An edge that content is scrolled past cuts it right at the edge instead (`cut_scrolled_edges`, after
   bevy_ui's clipping: every node inside gets one more clip rect, open across; 14 Oct 2026, Niklas: "the parts list
-  overlaps this categories thingy", rows scrolled out showed in the room over the category chips) and gets a fade
-  into the backdrop 26 px inside it while there is more past it (every edge, lists of rows too; the drydock's chip
-  line lost its own fades to these). Part and ship icons are world meshes that bevy_ui's clip does not reach, so an
+  overlaps this categories thingy", rows scrolled out showed in the room over the category chips). There are no fades over the edges (they were a
+  band of backdrop colour over the edge while more lay past it; removed the same day, as in Chrome: Niklas found
+  the panels' "weird gradient at top and bottom" odd over what lies behind them). Part and ship icons are world meshes that bevy_ui's clip does not reach, so an
   icon under a clip draws with an atlas material of its own cut to the clip's rectangle (`AtlasMaterial::clip`,
   `atlas::set_clip`, following its screen part's fade): a row half out of view shows half its icon (it hid the
   whole icon until fully in view before; Niklas: "it is unacceptable that the icon only shows when fully into
   view"). The
-  bar and these fades are all that say an area scrolls: the `MORE BELOW · WHEEL` cue (`ScrollCue`) and FLEET's
+  bar is all that says an area scrolls: the `MORE BELOW · WHEEL` cue (`ScrollCue`) and FLEET's
   `THE WHEEL SCROLLS` are gone (14 Oct 2026; Niklas: "there is no need for the UI to say that you can scroll via
   wheel"). Every scrolling area has one: the drydock's part list (`ScrollRows`), armour swatches and
   category chips (outside, below them), the SELECTED PART lines (room 0: the name block is right above); research's
-  lanes (room 10: the tier heads are 10 px above); the BEHAVIOR screen's graph, inspector and ADD NODE palette (room
-  0: its pills don't glow, the search is right above); the BLUEPRINTS and BEHAVIORS lists (`ScrollRows`, room 8:
-  their section label is 10 px above); FLEET's design cards (`ScrollRows`, outside); the debrief's report (room
-  12). The egui TEXT editor keeps its own scrollbars.
+  lanes; the BEHAVIOR screen's graph, inspector and ADD NODE palette (room 0: its pills don't glow, the search is
+  right above); the BLUEPRINTS and BEHAVIORS lists (`ScrollRows`); FLEET's design cards (`ScrollRows`, outside); the
+  debrief's report. (Smaller rooms that kept a fade off a label close by went with the fades.) The egui TEXT editor keeps its own scrollbars.
 - **Smooth scrolling** (`ui_kit::SmoothScroll`, `ui_kit/scrollbar.rs`, 14 Oct 2026; Niklas: "I want smooth
   scrolling like in chrome, not whatever the current thing is"). Every `Scrollbar` area has it (`Scrollbar` requires
   it), and the kit owns the wheel for all of them (the screens' own wheel systems are gone): a wheel event goes to

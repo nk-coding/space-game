@@ -45,7 +45,7 @@ mod widgets;
 pub use field::{Caret, FieldKey, TextField, TextFieldText, edit_line, field_text, name_in_place, selected_text};
 use field::{FieldSpan, field_parts, type_into_fields};
 pub use fonts::{BARLOW_REGULAR, HudFonts, load_fonts};
-pub use scrollbar::{FADE_DEPTH, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
+pub use scrollbar::{ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
 };

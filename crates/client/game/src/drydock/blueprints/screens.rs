@@ -120,8 +120,7 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
                                 col.spawn((ShelfText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                                 col.spawn((
                                     ListNode(list),
-                                    // Less glow room: the section label is 10 px above (its fade would cover it).
-                                    Scrollbar::vertical().room(8),
+                                    Scrollbar::vertical(),
                                     ScrollRows::default(),
                                     Node {
                                         flex_direction: FlexDirection::Column,

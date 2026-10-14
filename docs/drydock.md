@@ -255,6 +255,11 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
 `-1280x720-armor-tip.png` (a swatch's tooltip), `-1920x1080.png`, `-3440x1305.png`, `-1080x1350.png`,
 `-600x960-tools.png` (folded, the tools dropdown open), `-search.png`.
 
+- **Scrims and the column's end** (14 Oct 2026; Niklas: "with the ship in the background the side panels stuff is
+  still barely readable", "the parts list spills into that bottom area"): both side columns sit on a scrim, the
+  backdrop colour at 90 % from the window's edge to 4 px past the column, fading out to 10 px into the grid. It is
+  a world mesh (`UiIcon::Scrim`) just under the UI icons, so it covers the ship and the yard but not the panels'
+  icons (a UI background draws over every icon). The left column ends where the grid does, above the info line.
 - **Left column**, top to bottom: the search; `ARMOR · <name>` and the armour swatches (every armour material
   research can unlock, in content order: the armour block's tile in that material, a light outline so the
   near-black tones are told apart, the picked one outlined teal, a locked one a lock that leads to its research;

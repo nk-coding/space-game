@@ -36,8 +36,9 @@ use crate::style::{Style, vcol};
 use crate::ui_kit::{IconMaterials, ScrollClipSet};
 use crate::view::{ViewScale, ViewSet};
 
-/// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane.
+/// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane; scrims just under the icons.
 const Z_UI_ICON: f32 = 600.0;
+const Z_UI_SCRIM: f32 = 599.0;
 
 /// What a UI node shows.
 #[derive(Component, Clone, Debug, PartialEq)]
@@ -50,6 +51,10 @@ pub enum UiIcon {
     Ship(Box<Blueprint>),
     /// A vector glyph in a colour, fitted into the node.
     Glyph { glyph: Glyph, color: Color },
+    /// The node filled with a colour that fades out over its last `fade` px towards its right side (or its left,
+    /// `fade_left`): a scrim behind a panel that floats over the world, under the panel's icons (a UI background
+    /// would draw over them, the world draws first) and over the world (the drydock's side columns).
+    Scrim { color: Color, fade: f32, fade_left: bool },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,9 +95,9 @@ pub enum Glyph {
 struct IconMesh {
     entity: Entity,
     mesh: Handle<Mesh>,
-    /// What the mesh shows: the icon, the glyph's size in px (glyph strokes keep their pixel width) and the
-    /// glow setting; and for parts the footprint in cells.
-    built: Option<(UiIcon, u32, bool)>,
+    /// What the mesh shows: the icon, the node's size in px (glyph strokes keep their pixel width, a scrim fills the
+    /// node) and the glow setting; and for parts the footprint in cells.
+    built: Option<(UiIcon, UVec2, bool)>,
     dims: Vec2,
     /// Its own material while a parent clips it (made the first time one does).
     clipped: Option<Handle<AtlasMaterial>>,
@@ -199,16 +204,17 @@ fn draw_icons<S: IconShapes>(
             continue;
         }
         let side = size.min_element();
-        let (px_side, glow) = (side.round() as u32, toggles.glow_sprites);
+        let (px_size, glow) = (size.round().as_uvec2(), toggles.glow_sprites);
         // Compared in place: an icon (a whole ship) is cloned only when it is rebuilt.
-        if m.built.as_ref().is_none_or(|(i, s, g)| i != icon || *s != px_side || *g != glow) {
+        if m.built.as_ref().is_none_or(|(i, s, g)| i != icon || *s != px_size || *g != glow) {
             let (mesh, dims) = match icon {
                 UiIcon::Part { .. } | UiIcon::Ship(_) => shapes.shape(icon, &style, &atlas, glow),
                 UiIcon::Glyph { glyph, color } => Some((glyph_mesh(*glyph, *color, side, &atlas), Vec2::ONE)),
+                UiIcon::Scrim { color, fade, fade_left } => Some((scrim_mesh(*color, *fade, *fade_left, size, &atlas), Vec2::ONE)),
             }
             .unwrap_or_else(|| (MeshBuf::placeholder(), Vec2::ONE));
             let _ = meshes.insert(&m.mesh, mesh);
-            m.built = Some((icon.clone(), px_side, glow));
+            m.built = Some((icon.clone(), px_size, glow));
             m.dims = dims;
         }
         // Parts and ships: cells fitted into the node; glyphs are built at the node's size in pixels. Part icons are
@@ -220,10 +226,11 @@ fn draw_icons<S: IconShapes>(
                 px_per_cell = px_per_cell.max(k / density);
                 k
             }
-            UiIcon::Glyph { .. } => 1.0,
+            UiIcon::Glyph { .. } | UiIcon::Scrim { .. } => 1.0,
         };
+        let z = if matches!(icon, UiIcon::Scrim { .. }) { Z_UI_SCRIM } else { Z_UI_ICON };
         // Written only when it moves: a written transform is propagated again.
-        let (at, k) = (view.screen_to_world(tf.translation / scale).extend(Z_UI_ICON), Vec3::new(px / view.zoom, px / view.zoom, 1.0));
+        let (at, k) = (view.screen_to_world(tf.translation / scale).extend(z), Vec3::new(px / view.zoom, px / view.zoom, 1.0));
         if t.translation != at || t.scale != k {
             t.translation = at;
             t.scale = k;
@@ -259,6 +266,23 @@ fn sign_bars(plus: bool, side: f32) -> Vec<Rect> {
         bars.push(Rect::new(-t, t, t, arm));
     }
     bars
+}
+
+/// A scrim `size` px large, centred on the origin, in pixels (y up): solid, then fading out over `fade` px at its
+/// right side (or its left).
+fn scrim_mesh(color: Color, fade: f32, fade_left: bool, size: Vec2, atlas: &Atlas) -> Mesh {
+    let uv = atlas.region("fx/white").uv_center();
+    let (solid, clear) = (vcol(color, 1.0), vcol(color, 0.0));
+    let h = size / 2.0;
+    let fade = fade.min(size.x);
+    let mut m = MeshBuf::default();
+    // x from the solid side's edge to where the fade starts and to the clear edge; mirrored for a left fade.
+    let s = if fade_left { -1.0 } else { 1.0 };
+    let (a, b, c) = (-h.x * s, (h.x - fade) * s, h.x * s);
+    let p = |x: f32, y: f32| Vec2::new(x, y);
+    m.gradient_quad([p(a, -h.y), p(b, -h.y), p(b, h.y), p(a, h.y)], uv, [solid; 4]);
+    m.gradient_quad([p(b, -h.y), p(c, -h.y), p(c, h.y), p(b, h.y)], uv, [solid, clear, clear, solid]);
+    m.into_mesh()
 }
 
 /// A glyph `side` px across, centred on the origin, in pixels (y up). Strokes are 1.6 px wide, thicker on glyphs

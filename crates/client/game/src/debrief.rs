@@ -186,8 +186,7 @@ fn rebuild(
         // it.
         p.spawn((
             ScrollPosition::default(),
-            // Less glow room than the gap above the buttons, so the end's fade never covers them.
-            Scrollbar::vertical().room(GAP as u8 - 2),
+            Scrollbar::vertical(),
             Node { flex_direction: FlexDirection::Column, row_gap: px(GAP), flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
         ))
         .with_children(|body| fill(body, &fonts, &style, d));

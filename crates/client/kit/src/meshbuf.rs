@@ -57,6 +57,16 @@ impl MeshBuf {
         self.idx.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
+    /// A quad with a colour per corner (a gradient), sampling a single texel position (e.g. white). Corners in order
+    /// around the quad.
+    pub fn gradient_quad(&mut self, p: [Vec2; 4], uv: Vec2, c: [[f32; 4]; 4]) {
+        let base = self.vert(p[0], uv, c[0]);
+        for k in 1..4 {
+            self.vert(p[k], uv, c[k]);
+        }
+        self.idx.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
     /// Draws a whole atlas region into the axis-aligned box `min..max` (local, y up). `turns` rotates the
     /// art by quarter turns clockwise (as seen on screen) and `flip` mirrors it horizontally first.
     pub fn region_box(&mut self, r: &Region, min: Vec2, max: Vec2, turns: u8, flip: bool, c: [f32; 4]) {

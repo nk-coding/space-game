@@ -265,8 +265,7 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                             }
                             left.spawn((
                                 ScrollPosition::default(),
-                                // Less glow room: the tier heads are 10 px above the lanes.
-                                Scrollbar::vertical().room(10),
+                                Scrollbar::vertical(),
                                 Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP - TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
                             ))
                             .with_children(|area| {

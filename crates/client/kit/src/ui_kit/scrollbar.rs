@@ -11,9 +11,10 @@
 //!   `overflow_clip_margin`), so a glow at an edge fades out on its own instead of ending in a straight line. An
 //!   edge the content is scrolled past cuts it right there instead ([`cut_scrolled_edges`]; Niklas, 14 Oct 2026:
 //!   "the parts list overlaps this categories thingy": rows scrolled out of view showed in the room over the
-//!   category tabs), and a fade into the backdrop covers [`FADE_DEPTH`] px inside it while there is more past it
-//!   (Niklas, 14 Oct 2026: "there is no need for the UI to say that you can scroll via wheel": the bar and these
-//!   fades are all that say an area scrolls; the `MORE BELOW · WHEEL` cue is gone).
+//!   category tabs). No fades over the edges, as in Chrome (Niklas, 14 Oct 2026: the panels' "weird gradient at top
+//!   and bottom", a band of backdrop colour over whatever lay behind the panel): the bar is all that says an area
+//!   scrolls ("there is no need for the UI to say that you can scroll via wheel"; the `MORE BELOW · WHEEL` cue is
+//!   gone).
 //! * **What scrolls**: the area's own [`ScrollPosition`] (its content size from the layout), or, for a list that
 //!   shows a window of its rows in a fixed pool of row nodes, [`ScrollRows`]: the screen lays its rows out from the
 //!   list's scroll in UI px ([`ScrollRows::lay`]: which rows the pool shows; it keeps its rows while the view stays
@@ -38,7 +39,7 @@
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, OverflowClipMargin, UiGlobalTransform, UiSystems};
+use bevy::ui::{CalculatedClip, ComputedNode, ComputedStackIndex, OverflowClipMargin, UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use super::{Hot, UiPointer};
@@ -88,7 +89,7 @@ impl Scrollbar {
         Self { outside: true, ..self }
     }
 
-    /// Another glow room (less where something close by must not be covered while the area scrolls).
+    /// Another glow room (none where nothing in the area glows and something close by must stay clear).
     pub fn room(self, room: u8) -> Self {
         Self { room, ..self }
     }
@@ -261,10 +262,10 @@ impl SmoothScroll {
     }
 }
 
-/// The default glow room: the kit's glow (a 10 px blur) is gone 16 px past a lit row's edge.
-pub const GLOW_ROOM: u8 = 16;
-/// How far inside an edge its fade reaches (UI px).
-pub const FADE_DEPTH: f32 = 26.0;
+/// The default glow room: the kit's glow is a box shadow with a 10 px blur, a Gaussian with sigma 10 px, so it
+/// fades out over three sigma; at 16 px it still showed as a line under a lit chip (Niklas, 14 Oct 2026: "this
+/// glow cutoff still looks weird").
+pub const GLOW_ROOM: u8 = 30;
 /// How long the bar stays after the last scroll or hover (seconds).
 pub const HOLD_SECONDS: f32 = 1.0;
 /// Then it fades out over this.
@@ -283,8 +284,6 @@ const MIN_THUMB: f32 = 24.0;
 /// The thumb's alpha (label grey) at rest and while the pointer is on the bar or drags it.
 const ALPHA: f32 = 0.38;
 const ALPHA_HOT: f32 = 0.62;
-/// The fades' alpha (the backdrop) at their outer end.
-const FADE_ALPHA: f32 = 0.95;
 
 /// The thumb on a track of `track` px for a view of `view` over content of `content` scrolled by `scroll` (any one
 /// unit: px or rows): its start along the track and its length. `None` when the content fits.
@@ -323,8 +322,6 @@ pub fn bar_alpha(alpha: f32, idle: f32, dt: f32) -> f32 {
 struct Track {
     area: Entity,
     bar: Scrollbar,
-    /// The fades over the area's start and end edges.
-    fades: [Entity; 2],
     /// Seconds since the area last scrolled or was hovered.
     idle: f32,
     alpha: f32,
@@ -337,10 +334,6 @@ struct Track {
 /// The thumb inside a [`Track`].
 #[derive(Component)]
 struct Thumb;
-
-/// A fade over an edge of a [`Scrollbar`] area.
-#[derive(Component)]
-struct EdgeFade;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_systems(Update, (attach, (wheel, drag, glide).chain().after(super::hit_test)).in_set(super::UiInputSet))
@@ -383,25 +376,12 @@ fn cut_scrolled_edges(
     }
 }
 
-/// Gives every new [`Scrollbar`] area its glow room and spawns its fades and its bar as its next siblings (they draw
-/// over it, the bar over the fades).
-fn attach(mut commands: Commands, style: Res<Style>, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node), Added<Scrollbar>>) {
-    let back = style.background.outer();
+/// Gives every new [`Scrollbar`] area its glow room and spawns its bar as its next sibling (it draws over it).
+fn attach(mut commands: Commands, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node), Added<Scrollbar>>) {
     for (area, bar, parent, mut node) in &mut areas {
         node.overflow_clip_margin = OverflowClipMargin::padding_box().with_margin(f32::from(bar.room));
-        let fades = [false, true].map(|end| {
-            // Opaque at the outer end, clear inside the area.
-            let (from, to) = if end { (0.0, FADE_ALPHA) } else { (FADE_ALPHA, 0.0) };
-            let stops = vec![ColorStop::percent(ui_color(back, from), 0), ColorStop::percent(ui_color(back, to), 100)];
-            let gradient = match bar.axis {
-                BarAxis::Vertical => LinearGradient::to_bottom(stops),
-                BarAxis::Horizontal => LinearGradient::to_right(stops),
-            };
-            let node = Node { display: Display::None, position_type: PositionType::Absolute, ..default() };
-            commands.spawn((EdgeFade, node, BackgroundGradient::from(gradient), ChildOf(parent.parent()))).id()
-        });
         commands.spawn((
-            Track { area, bar: *bar, fades, idle: HOLD_SECONDS + FADE_OUT_SECONDS, alpha: 0.0, seen: None, grab: None },
+            Track { area, bar: *bar, idle: HOLD_SECONDS + FADE_OUT_SECONDS, alpha: 0.0, seen: None, grab: None },
             Hot::default(),
             Node { display: Display::None, position_type: PositionType::Absolute, ..default() },
             ChildOf(parent.parent()),
@@ -626,9 +606,8 @@ fn place(node: &mut Node, show: bool, rect: Rect) {
     }
 }
 
-/// Places every bar and its fades over the area, sizes and moves the thumb, fades the bar in while the area scrolls
-/// or is hovered (out [`HOLD_SECONDS`] later), shows a fade over each edge with more past it; hides the bar while
-/// the content fits.
+/// Places every bar over its area, sizes and moves the thumb, fades the bar in while the area scrolls or is hovered
+/// (out [`HOLD_SECONDS`] later); hides the bar while the content fits.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn show(
     time: Res<Time<Real>>,
@@ -637,8 +616,7 @@ fn show(
     mut tracks: Query<(&mut Track, &Hot, &mut Node, &ChildOf, &Children)>,
     areas: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility, &ScrollPosition, Option<&ScrollRows>), Without<Track>>,
     parents: Query<(&ComputedNode, &UiGlobalTransform), Without<Track>>,
-    mut thumbs: Query<(&mut Node, &mut BackgroundColor), (With<Thumb>, Without<Track>, Without<EdgeFade>)>,
-    mut fades: Query<&mut Node, (With<EdgeFade>, Without<Track>, Without<Thumb>)>,
+    mut thumbs: Query<(&mut Node, &mut BackgroundColor), (With<Thumb>, Without<Track>)>,
 ) {
     let dt = time.delta_secs();
     let cursor = window.physical_cursor_position();
@@ -652,20 +630,6 @@ fn show(
         let k = area.inverse_scale_factor;
         let min = ((at.translation - area.size / 2.0) - (p_at.translation - p.size / 2.0)) * k - p.border().min_inset * k;
         let r = Rect::from_corners(min, min + area.size * k);
-
-        // The fades: inside the start edge while scrolled from it, inside the end edge while more lies past it
-        // (the content is cut at such an edge, [`cut_scrolled_edges`]).
-        let (more_before, more_after) = (bar.is_some() && scroll > 0.5, bar.is_some() && scroll < content - view - 0.5);
-        let (start_rect, end_rect) = match axis {
-            BarAxis::Vertical => (Rect::new(r.min.x, r.min.y, r.max.x, r.min.y + FADE_DEPTH), Rect::new(r.min.x, r.max.y - FADE_DEPTH, r.max.x, r.max.y)),
-            BarAxis::Horizontal => (Rect::new(r.min.x, r.min.y, r.min.x + FADE_DEPTH, r.max.y), Rect::new(r.max.x - FADE_DEPTH, r.min.y, r.max.x, r.max.y)),
-        };
-        let [start_fade, end_fade] = track.fades;
-        for (e, show, rect) in [(start_fade, more_before, start_rect), (end_fade, more_after, end_rect)] {
-            if let Ok(mut n) = fades.get_mut(e) {
-                place(&mut n, show, rect);
-            }
-        }
 
         let Some((start, thumb_len)) = bar else {
             if node.display != Display::None {
