@@ -25,8 +25,8 @@ use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
-    Hot, Pill, TextField, Tip, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill, sub_tone, tracked,
-    wheel_rows,
+    Hot, Pill, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill,
+    sub_tone, tracked, wheel_rows,
 };
 
 use super::draft::{BehaviorDraft, design_behavior};
@@ -206,6 +206,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         col.spawn((ListText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                         col.spawn((
                             ListNode(list),
+                            Scrollbar::vertical(),
+                            ScrollRows::default(),
                             Node { flex_direction: FlexDirection::Column, row_gap: px(ROW_GAP), flex_grow: 1.0, min_height: px(0), overflow: Overflow::clip(), ..default() },
                         ))
                         .with_children(|l| {
@@ -536,27 +538,30 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
     }
 }
 
-/// The wheel over a list scrolls it.
+/// The wheel over a list scrolls it, and so does a drag on its scrollbar (which learns the rows shown).
 pub(super) fn scroll(
     window: Single<&Window, With<PrimaryWindow>>,
     wheel: Res<AccumulatedMouseScroll>,
-    lists: Query<(&ListNode, &ComputedNode, &UiGlobalTransform)>,
+    mut lists: Query<(&ListNode, &ComputedNode, &UiGlobalTransform, &mut ScrollRows)>,
     mut list: ResMut<BehaviorList>,
 ) {
-    if !list.open || wheel.delta.y == 0.0 {
+    if !list.open {
         return;
     }
-    let Some(cursor) = window.physical_cursor_position() else { return };
-    for (node, computed, tf) in &lists {
-        if !computed.contains_point(*tf, cursor) {
-            continue;
-        }
+    let cursor = window.physical_cursor_position();
+    for (node, computed, tf, mut rows) in &mut lists {
         let len = if node.0 == 0 { list.mine.len() } else { list.templates.len() };
-        let max = len.saturating_sub(LIST_ROWS) as f32;
-        let offset = (list.offset[node.0] as f32 - wheel_rows(&wheel)).clamp(0.0, max) as usize;
+        let max = len.saturating_sub(LIST_ROWS);
+        let mut offset = list.offset[node.0];
+        if let Some(first) = rows.take_want() {
+            offset = first.min(max);
+        } else if wheel.delta.y != 0.0 && cursor.is_some_and(|c| computed.contains_point(*tf, c)) {
+            offset = (offset as f32 - wheel_rows(&wheel)).clamp(0.0, max as f32) as usize;
+        }
         if offset != list.offset[node.0] {
             list.offset[node.0] = offset;
         }
+        ScrollRows::show(&mut rows, offset, LIST_ROWS.min(len), len);
     }
 }
 

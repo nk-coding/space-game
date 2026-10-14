@@ -84,6 +84,9 @@ Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-
   plate (the backdrop's darkest `#010409` at 94 %, a 1 px border in label grey at 28 %, 4 px corners, no glow) shows
   near the pointer: the control's name as a tracked label in grey `#869099` (8.5 px), then its key in white `#ebf5ff`
   (Barlow medium 10 px), e.g. `SAVE  CTRL+S`. It never leaves the window. Places in the shipyard get the same.
+- **Scrollbars** (14 Oct 2026): thin overlay bars, label grey `#869099` at 38 % (62 % under the pointer), 4 px wide
+  (6 px under the pointer), fully rounded, over the right edge (below a sideways strip); shown while scrolling or
+  hovering, gone 1 s later; never boxed. A glow at a list's edge fades out past it, never ends in a straight line.
 - **Layout**: a floating HUD with no boxed panels. The home screen is the shipyard itself, a top-down scene of the
   station with small tracked labels over its places ([GDR-0071](gdr/0071-shipyard-home-long-u.md); it replaced the
   ring menu around the docked ship).

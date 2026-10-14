@@ -265,7 +265,9 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
   sections** (`state::palette_sections`): a heading per category with its count (`WEAPONS 1 · 2 LOCKED`), the
   unlocked parts, then the locked ones. Rows: icon, name, footprint and key stat, the NEW tag, and how many are left
   (`∞`, a number once counts exist, coral at 0). The wheel scrolls the list by entries (headings and rows, so icons
-  are never cut). The search filters the whole list; empty sections and their chips go.
+  are never cut). The search filters the whole list; empty sections and their chips go. The list, the swatches and
+  the chips have the kit's overlay scrollbars (draggable; the strips' under them), and a lit row's, chip's or
+  swatch's glow fades out past their edges (`ui_kit::Scrollbar`, [client](client.md)).
 - **Top bar**: the breadcrumb and name left, the OVERLAY pills right (the armour moved to the left column).
 - **Bottom bar**: undo and redo; PAINT, FILL, ERASE, SELECT, ROTATE; MIRROR and BEVEL; the status line over the
   voyage-ready line; SAVE, BLUEPRINTS, EXPORT and ⋯ as icon rings (tooltips with name and key); BEHAVIOR and

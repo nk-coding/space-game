@@ -16,7 +16,7 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, UiBlock, show_screen, UiClick, WHEEL_LINE_PX, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
+    Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, WHEEL_LINE_PX, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
     spawn_scroll_cue, tracked, wheel_rows,
 };
 
@@ -276,6 +276,8 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                                 .spawn((
                                     TreeArea,
                                     ScrollPosition::default(),
+                                    // Less glow room: the tier heads are 10 px above the lanes.
+                                    Scrollbar::vertical().room(10),
                                     Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP - TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
                                 ))
                                 .with_children(|area| {

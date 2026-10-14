@@ -17,6 +17,9 @@
 //! * [`Tip`]: a control's tooltip (its name and key; labels carry no key letters).
 //! * [`ScreenFx`] / [`ScreenPart`] (`transition`): a screen's enter / exit transition, its panels sliding in from
 //!   their edges while they fade in; every screen opened from the shipyard uses it.
+//! * [`Scrollbar`] (`scrollbar`): the overlay scrollbar of every area that scrolls (shown while it scrolls or is
+//!   hovered, draggable), with room past its edges for the glow of a lit row and fades over the edges it scrolls
+//!   past; [`ScrollRows`] for a list that pages a pool of row nodes.
 
 use std::borrow::Cow;
 
@@ -28,8 +31,10 @@ use bevy::text::{LetterSpacing, TextBackgroundColor};
 use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 
+mod scrollbar;
 mod transition;
 
+pub use scrollbar::{FADE_DEPTH, ScrollRows, Scrollbar};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
 };
@@ -187,6 +192,7 @@ impl Plugin for UiKitPlugin {
             .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
             .add_systems(Update, (style_widgets, show_locks, place_scroll_cues, show_tip).in_set(UiStyleSet));
         transition::plugin(app);
+        scrollbar::plugin(app);
     }
 }
 
