@@ -175,7 +175,9 @@ Next session:
 - Builds (ADR-0034): `scripts/web-build.sh` is now the 30-second everyday build; `--full` for performance numbers.
 - Later on 14 Oct: galaxy exploration v1 decided ([GDR-0078](gdr/0078-galaxy-exploration-v1.md): signals that
   narrow as you search, blind jumps, jump range instead of lanes, hidden gates, scanning inside clusters);
-  `docs/plans/galaxy-voyages.md` reworked around it (tracks E0–E8; its section 9 holds the next questions). The
+  `docs/plans/galaxy-voyages.md` reworked around it (tracks E0–E8). Its eight follow-up questions answered the
+  same day ([GDR-0080](gdr/0080-exploration-searching-and-story.md): 2–3 km clusters, a scanner part, scans wake
+  enemies, free decoding, story by fragments and cards; [ADR-0035](adr/0035-saves-keep-the-galaxy-skeleton.md)). The
   slice's map step (no route, unknown until opened, a signal on clearing) is being built.
 - Niklas reviewed the lead defaults ([GDR-0079](gdr/0079-review-of-lead-defaults-14-oct.md)): most confirmed;
   collecting up to 8 m/s, loose items last the voyage, a speed zoom in flight (being built).
