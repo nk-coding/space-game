@@ -38,9 +38,9 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             // is still barely readable", then "I can still see a difference in background visibility between the
             // side and bottom thing"; the BEHAVIOR screen covers the world instead, which the drydock cannot: its
             // ship is the world). A world mesh (`UiIcon::Scrim`), so it lies under the panels' icons too.
-            let hole = [GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM + INFO_H];
-            let scrim = UiIcon::Scrim { color: back, hole, out: SCRIM_OUT, into: SCRIM_INTO };
-            root.spawn((ScreenPart::new(Edge::Fade, 1), Node { width: percent(100), height: percent(100), ..abs(Some(0.0), None, Some(0.0), None) }, scrim));
+            // Its hole comes from the grid viewport's laid-out rectangle (`sync_scrim`), not from copied numbers.
+            let scrim = UiIcon::Scrim { color: back, hole: [0.0; 4], out: SCRIM_OUT, into: SCRIM_INTO };
+            root.spawn((GridScrim, ScreenPart::new(Edge::Fade, 1), Node { width: percent(100), height: percent(100), ..abs(Some(0.0), None, Some(0.0), None) }, scrim));
 
             // Top left: the ring menu, the breadcrumb and the design's name.
             root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))

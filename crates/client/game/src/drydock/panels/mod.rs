@@ -72,7 +72,7 @@ use super::stats::{DETAIL_CELLS, MAIN_CELLS};
 use super::view::{DockCamera, DrydockCursor, GridViewport};
 
 pub(in crate::drydock) use spawn::spawn;
-pub(in crate::drydock) use sync::{fit_bar, fit_status, scroll_chips, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_palette, sync_pills, sync_search, sync_swatches, sync_texts};
+pub(in crate::drydock) use sync::{fit_bar, fit_status, scroll_chips, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_palette, sync_pills, sync_scrim, sync_search, sync_swatches, sync_texts};
 
 /// The keys of the first nine armour swatches (in their tooltips).
 const MATERIAL_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
@@ -92,6 +92,10 @@ const GRID_BOTTOM: f32 = 58.0;
 const INFO_H: f32 = 28.0;
 /// The grid area's distance from the window's top (just under the overlay pills).
 const GRID_TOP: f32 = 66.0;
+/// The scrim around the grid; its hole follows the grid viewport's laid-out rectangle ([`sync_scrim`]).
+#[derive(Component)]
+pub(in crate::drydock) struct GridScrim;
+
 /// The scrim around the grid: opaque up to this far outside the grid (12 px past the side columns), gone this far
 /// inside it. Opaque: at 90 % the yard's lit walls behind a column showed through, so half a column looked darker
 /// than the other (Niklas, 14 Oct 2026).

@@ -171,6 +171,25 @@ pub(in crate::drydock) fn sync_palette(
     }
 }
 
+/// The scrim's hole is the grid viewport as laid out (UI px from the scrim's edges), so it follows any layout change
+/// and any UI scale instead of copying the grid's numbers (Niklas, 14 Oct 2026: "Read rects, not constants").
+pub(in crate::drydock) fn sync_scrim(
+    viewport: Single<(&ComputedNode, &UiGlobalTransform), With<GridViewport>>,
+    scrim: Single<(&ComputedNode, &UiGlobalTransform, &mut UiIcon), With<GridScrim>>,
+) {
+    let (vp, vp_at) = *viewport;
+    let (node, at, mut icon) = scrim.into_inner();
+    let k = node.inverse_scale_factor;
+    let (outer, inner) = (Rect::from_center_size(at.translation, node.size), Rect::from_center_size(vp_at.translation, vp.size));
+    let want = [inner.min.x - outer.min.x, inner.min.y - outer.min.y, outer.max.x - inner.max.x, outer.max.y - inner.max.y].map(|v| (v * k).round());
+    if let UiIcon::Scrim { hole, .. } = &*icon
+        && *hole != want
+        && let UiIcon::Scrim { hole, .. } = &mut *icon
+    {
+        *hole = want;
+    }
+}
+
 /// The armour swatches: a locked material's tile is a lock (the strip scrolls through the kit's [`Scrollbar`]).
 pub(in crate::drydock) fn sync_swatches(granted: Res<Granted>, style: Res<Style>, content: Res<GameContent>, mut tiles: Query<(&SwatchTile, &mut UiIcon)>) {
     if granted.is_changed() {

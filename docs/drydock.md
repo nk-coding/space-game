@@ -260,7 +260,8 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
   background visibility between the side and bottom thing"): one scrim frames the grid on every side, the backdrop
   colour, opaque (at 90 % the yard's lit walls showed through half a column), up to 10 px outside the grid, fading out to 10 px inside it, so the
   columns, the top line, the info line and the bottom bar all sit on the same dark. It is one world mesh
-  (`UiIcon::Scrim`, a frame with a hole, so its corners are not doubled) just under the UI icons, so it covers the
+  (`UiIcon::Scrim`, a frame with a hole, so its corners are not doubled; the hole is the grid viewport's laid-out
+  rectangle, `sync_scrim`, not copied numbers) just under the UI icons, so it covers the
   ship and the yard but not the panels' icons (a UI background draws over every icon). The left column ends where
   the grid does, above the info line. The grid area runs from 66 px under the top (just under the overlay pills)
   to 58 px over the bottom (2 px over the bottom bar), its info line 28 px (they were 84 and 66 + 30: Niklas, "both

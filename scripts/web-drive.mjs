@@ -7,7 +7,8 @@
 //   wait <ms> | down <key> | up <key> | press <key> | type <text>
 //   move <x> <y> | mousedown <x> <y> [left|right|middle] | mouseup [left|right|middle] | click <x> <y>
 //   wheel <dy> | tap <x> <y> | touchdrag <x0> <y0> <x1> <y1> <holdMs> (one finger, CDP touch events)
-//   shot <file.png> | eval <js> | reload (the page again, same storage)
+//   shot <file.png> | crop <x> <y> <w> <h> <file.png> (a part of the page; enlarge with scripts/png-zoom.py)
+//   eval <js> | reload (the page again, same storage)
 //   upload <file> (the next file chooser gets this file) | clip <text> (put text on the clipboard) | readclip
 // Downloads are saved into <out-dir> under their suggested names ("[download] <path>" is printed).
 // Keys use Playwright names (KeyW, Space, Tab, Digit1, F3, ShiftLeft...).
@@ -75,6 +76,12 @@ for (const raw of steps.split(';').map(s => s.trim()).filter(Boolean)) {
       break;
     }
     case 'shot': await page.screenshot({ path: path.join(outDir, a[0]) }); console.log(`[shot] ${path.join(outDir, a[0])}`); break;
+    case 'crop': {
+      const to = path.join(outDir, a[4]);
+      await page.screenshot({ path: to, clip: { x: n(0), y: n(1), width: n(2), height: n(3) } });
+      console.log(`[crop] ${to}`);
+      break;
+    }
     case 'eval': console.log(await page.evaluate(a.join(' '))); break;
     case 'reload': await page.reload({ waitUntil: 'load', timeout: 120000 }); break;
     case 'upload': page.once('filechooser', fc => fc.setFiles(a[0])); break;

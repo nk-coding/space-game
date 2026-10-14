@@ -124,6 +124,7 @@ impl Plugin for DrydockPlugin {
                         panels::fit_status,
                         panels::sync_menus,
                         panels::sync_live,
+                        panels::sync_scrim,
                     )
                         .chain()
                         .in_set(DockSet::Show),
