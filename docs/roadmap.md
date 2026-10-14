@@ -186,6 +186,13 @@ Next session:
 - Home: the moorings hang off unbroken truss bridges and open up and down; the view centres the whole station at
   any window shape; BEHAVIOR, RESEARCH and FLEET share one veiled backdrop and let only 3 % of the station show
   through.
+- Drydock rework decided (Niklas): editing ([GDR-0081](gdr/0081-drydock-editing-bevel-rotate-replace.md): bevel after
+  the stroke, R / Shift+wheel turns the brush, painting and placing replace what is under, the shield radius while
+  placing) and layout ([GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md): every part in sections, armour
+  swatches on the left, tools in the bottom bar, icons and a ⋯ menu; part availability tracked, unlimited for now).
+  Both being built.
+- Evolution lab decided ([GDR-0083](gdr/0083-evolution-lab.md), [ADR-0036](adr/0036-arena-crate.md),
+  `docs/plans/evolution-lab.md` tracks L1–L5); L1 (the `arena` crate: headless fights, score, CLI) being built.
 
 ## Phase 4: measurement
 
