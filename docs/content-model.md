@@ -139,8 +139,9 @@ Materials with an optional component block. For now only armor:
 
 A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_per_cell × area` and
 `build_points × build_point_factor`; slopes have half the area of their footprint. `blast_factor` (optional, default
-1, at least 0; added 14 Oct 2026, GDR-0084) is the share of a chain reaction's damage the hull part takes (base: 0.5,
-reactive 0.25); stat line `blast_factor` ("Blast damage taken", ×). Fabrication resources
+1, at least 0; added 14 Oct 2026, GDR-0084) is the share of a chain reaction's damage the hull part takes, and since
+GDR-0085 also the share it lets through to the parts behind it (base: 0.5, reactive 0.25); stat line `blast_factor`
+("Blast damage taken", ×). Fabrication resources
 (He-3, chitin, ...) will be materials without an `armor` block, which is why the kind is not called "armor".
 The first one is **programmable matter** (`materials/precursor.ron`, added 13 Oct 2026): research costs it, and
 cores give it when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A material without `armor` never shows in
@@ -208,7 +209,7 @@ Optional component blocks (a part has any combination):
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
-| `explosion` | `damage`, `radius` (m, at most 4, `data::validate::MAX_BLAST_RADIUS`) | a chain reaction (GDR-0019, GDR-0084, added 14 Oct 2026): when damage destroys the part, every other part of its piece with a cell within `radius` m of its centre takes `damage` once (hull parts times their armour's `blast_factor`); parts it destroys explode in turn, in the same tick. Own shields do not help. Stat lines `blast_damage` (HP) and `blast_radius` (m). Base values (placeholders, lead, 14 Oct 2026): fission reactor 1.5 / 1, fusion reactor 2.5 / 1.5, torch drive 1.2 / 1.5, capacitor and thruster 0.5 / 0.6; the sim's rule is in `docs/sim.md` "Damage and breakage" |
+| `explosion` | `damage`, `radius` (m, at most 4, `data::validate::MAX_BLAST_RADIUS`) | a chain reaction (GDR-0019, GDR-0084, GDR-0085, added 14 Oct 2026): when damage destroys the part, every other part with a cell within `radius` m of its centre, on any piece of any ship, takes `damage` once (hull parts times their armour's `blast_factor`; intact armour on the line from the centre lets only its `blast_factor` through); parts it destroys explode in turn, in the same tick. Other ships' shields absorb it, the ship's own do not. Stat lines `blast_damage` (HP) and `blast_radius` (m). Base values (placeholders, lead, 14 Oct 2026, GDR-0085): fission reactor and automaton core 1.5 / 1.5, fusion reactor 2.5 / 2, torch drive 1.2 / 2, shield emitter 1 / 0.6, capacitor, thruster and RCS pod 0.5 / 0.6; the sim's rule is in `docs/sim.md` "Damage and breakage" |
 | `bonuses` | list, see below | adjacency bonuses this part grants |
 
 **Weapon delivery** (`weapon.delivery`, added 11 Oct 2026):
