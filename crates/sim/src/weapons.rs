@@ -23,7 +23,9 @@
 //!
 //! Order inside a tick (after the ship systems, before physics): bubbles are collected, live projectiles fly,
 //! then every gun fires, then engine plumes burn (`plume.rs`); breakage is resolved afterwards. All loops run in
-//! id/index order.
+//! id/index order. **Fire is mutual** (ADR-0037): every gun's shot is traced against the state at the start of
+//! the fire pass and the hits are applied once all guns have fired ([`Sim::fire_guns`]), as plumes are, so a ship
+//! never shoots an enemy's gun off before it fires in the same tick, whatever their ids.
 //! Numbers in [`tuning`] are **placeholders**.
 
 use data::{Delivery, WeaponFamily};
@@ -276,6 +278,22 @@ enum Landing {
     Part(PartRayHit),
     /// The ray passes through the piece (destroyed parts only) and leaves it at this distance.
     Through(f32),
+}
+
+/// A gun's hit on a part, traced against the state at the start of the fire pass and applied once every gun
+/// has fired ([`Sim::fire_guns`]): the shot from `from` along `dir` (unit, up to `range`) of ship `by`, its
+/// damage after shields.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GunHit {
+    by: ShipId,
+    team: Option<Owner>,
+    family: WeaponFamily,
+    from: Vec2,
+    dir: Vec2,
+    range: f32,
+    hit: PartRayHit,
+    damage: f32,
+    absorbed: f32,
 }
 
 /// Where a shot went.
@@ -569,7 +587,8 @@ impl Sim {
         })
     }
 
-    /// A hit-scan shot (beam tick or pulse): shields along the way, then the first block only.
+    /// A hit-scan shot (beam tick or pulse): shields along the way, then the first block only. The block's
+    /// damage waits in `gun_hits` until every gun has fired ([`Sim::fire_guns`]).
     #[allow(clippy::too_many_arguments)]
     fn hitscan(
         &mut self,
@@ -591,19 +610,20 @@ impl Sim {
             };
         }
         match hit {
-            Some(PartRayHit { hit: h, k, part }) => {
-                self.damage_part(
-                    owner,
+            Some(h) => {
+                self.gun_hits.push(GunHit {
+                    by: owner,
+                    team,
                     family,
-                    k,
-                    part,
-                    h.point,
-                    h.normal,
-                    left,
-                    damage - left,
-                );
+                    from,
+                    dir,
+                    range,
+                    hit: h,
+                    damage: left,
+                    absorbed: damage - left,
+                });
                 ShotEnd {
-                    to: h.point,
+                    to: h.hit.point,
                     hit: true,
                 }
             }
@@ -816,7 +836,13 @@ impl Sim {
         self.projectiles = list;
     }
 
+    /// Every gun fires at once: all shots are traced against the state at the start of the pass (which guns
+    /// fire, where they point, which parts are alive), then their hits are applied in firing order (ship, piece,
+    /// gun). So a ship never silences an enemy gun before it fires in the same tick: fire within a tick is
+    /// mutual, whatever the ship ids. A hit whose part an earlier hit of the pass destroyed goes on along its
+    /// shot to the part behind (as `cast_part` passes destroyed parts; no second shield pass).
     fn fire_guns(&mut self) {
+        self.gun_hits.clear();
         for k in 0..self.ships.len() {
             let owner = self.ships[k].id();
             for pi in 0..self.ships[k].pieces.len() {
@@ -825,6 +851,27 @@ impl Sim {
                 }
             }
         }
+        let hits = std::mem::take(&mut self.gun_hits);
+        for g in &hits {
+            let mut h = g.hit;
+            if !self.ships[h.k].parts[h.part as usize].alive {
+                match self.shot_cast(g.by, g.team, g.from, g.dir, g.range) {
+                    Some(next) => h = next,
+                    None => continue,
+                }
+            }
+            self.damage_part(
+                g.by,
+                g.family,
+                h.k,
+                h.part,
+                h.hit.point,
+                h.hit.normal,
+                g.damage,
+                g.absorbed,
+            );
+        }
+        self.gun_hits = hits;
     }
 
     fn fire_gun(&mut self, k: usize, owner: ShipId, pi: usize, gi: usize) {
