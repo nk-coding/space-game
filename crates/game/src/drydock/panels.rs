@@ -75,7 +75,8 @@ const MATERIAL_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
 /// The left column's width.
 const LEFT_W: f32 = 248.0;
-/// List entries in the pool (headings and part rows; as many show as fit, the list scrolls by pixels).
+/// List entries in the pool (headings and part rows; the list scrolls by pixels). More than the content has, so
+/// the pool never shows other entries while it scrolls (that rebuilt the part icons, a blink).
 const SLOTS: usize = 48;
 const ROW_H: f32 = 42.0;
 const HEAD_H: f32 = 26.0;
@@ -915,14 +916,14 @@ pub(super) fn sync_palette(
         smooth.to(lengths[..i].iter().sum::<f32>() + ROW_GAP * i as f32);
         jumped = Some(cat);
     }
-    let w = ScrollRows::lay(&mut bar, &lengths, ROW_GAP, node.size.y * node.inverse_scale_factor);
-    let (offset, visible) = (w.first, w.count.min(SLOTS));
+    let w = ScrollRows::lay(&mut bar, &lengths, ROW_GAP, node.size.y * node.inverse_scale_factor, SLOTS);
+    let (offset, visible, (top, end)) = (w.first, w.count.min(SLOTS), w.seen);
     // The lit chip: the one clicked while the list glides to it and while its heading is in view, else the section
     // at the top.
-    let in_view = |cat: &str| pal.entries[offset.min(pal.entries.len())..].iter().take(visible).any(|e| matches!(e, Entry::Head { category, .. } if category == cat));
+    let in_view = |cat: &str| pal.entries[top..end].iter().any(|e| matches!(e, Entry::Head { category, .. } if category == cat));
     let jumped = jumped.filter(|c| smooth.gliding() || in_view(c));
     let lit = jumped.clone().or_else(|| {
-        pal.entries[..(offset + 1).min(pal.entries.len())].iter().rev().find_map(|e| match e {
+        pal.entries[..(top + 1).min(pal.entries.len())].iter().rev().find_map(|e| match e {
             Entry::Head { category, .. } => Some(category.clone()),
             Entry::Part(_) => None,
         })

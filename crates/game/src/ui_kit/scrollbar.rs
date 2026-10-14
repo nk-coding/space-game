@@ -14,8 +14,9 @@
 //!   wheel": the bar and these fades are all that say an area scrolls; the `MORE BELOW · WHEEL` cue is gone).
 //! * **What scrolls**: the area's own [`ScrollPosition`] (its content size from the layout), or, for a list that
 //!   shows a window of its rows in a fixed pool of row nodes, [`ScrollRows`]: the screen lays its rows out from the
-//!   list's scroll in UI px ([`ScrollRows::lay`]: which rows the pool shows, one more for a row cut at the end) and
-//!   the kit shifts the pool by the rest (the node's own [`ScrollPosition`]), so such a list scrolls by pixels too.
+//!   list's scroll in UI px ([`ScrollRows::lay`]: which rows the pool shows; it keeps its rows while the view stays
+//!   inside them, see [`row_window`]) and the kit shifts the pool by the rest (the node's own [`ScrollPosition`]),
+//!   so such a list scrolls by pixels too.
 //! * **Smooth scrolling** (Niklas, 14 Oct 2026: "I want smooth scrolling like in chrome"): the kit owns the wheel
 //!   for every [`Scrollbar`] area (the topmost one under the pointer that has more to show, unless another layer
 //!   covers it; over a bar, its area). A wheel's notch glides ([`Glide`]): [`WHEEL_STEP`] UI px (at most
@@ -101,51 +102,57 @@ pub struct ScrollRows {
     pub content: f32,
     pub scroll: f32,
     pub shift: f32,
+    /// The pool's first row (kept while the view stays inside the pool).
+    pub first: usize,
 }
 
-/// Which rows of a pooled list show: from `first`, `count` of them (each at least partly in view), the pool
-/// shifted back by `shift` px (the part of the first row above or before the view); the content's length and the
-/// scroll kept within it.
+/// Which rows of a pooled list show: the pool holds `count` rows from `first` (every row in view, and as many past
+/// it as the pool has room for) and is shifted back by `shift` px (the part above or before the view); `seen` are
+/// the rows at least partly in view (from, to); the content's length and the scroll kept within it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RowWindow {
     pub first: usize,
     pub count: usize,
     pub shift: f32,
+    pub seen: (usize, usize),
     pub content: f32,
     pub scroll: f32,
 }
 
 /// The [`RowWindow`] of rows `lengths` long (UI px, along the list) with `gap` between them, scrolled by `scroll` in
-/// a view `view` long.
-pub fn row_window(lengths: &[f32], gap: f32, scroll: f32, view: f32) -> RowWindow {
-    let content = lengths.iter().sum::<f32>() + gap * lengths.len().saturating_sub(1) as f32;
+/// a view `view` long, for a pool of `pool` row nodes that held rows from `held` last frame. The pool keeps its
+/// rows while the view stays inside them: a row node that shows another row redraws it (a part icon is a mesh
+/// built again, which showed as a blink while a list glided), so with a pool as long as the list nothing changes
+/// rows while it scrolls, and a shorter pool moves on by as many rows as it can at once.
+pub fn row_window(lengths: &[f32], gap: f32, scroll: f32, view: f32, pool: usize, held: usize) -> RowWindow {
+    let total = lengths.len();
+    let content = lengths.iter().sum::<f32>() + gap * total.saturating_sub(1) as f32;
     let scroll = scroll.clamp(0.0, (content - view).max(0.0));
-    let (mut first, mut count, mut top, mut first_top) = (0, 0, 0.0, 0.0);
-    for (i, h) in lengths.iter().enumerate() {
-        let next = top + h + gap;
-        if count == 0 && next <= scroll {
-            // Wholly above the view, its gap too.
-            first = i + 1;
-        } else if top < scroll + view {
-            if count == 0 {
-                first_top = top;
-            }
-            count += 1;
-        } else {
-            break;
-        }
-        top = next;
-    }
-    RowWindow { first, count, shift: scroll - first_top, content, scroll }
+    let tops: Vec<f32> = lengths.iter().scan(0.0, |top, h| Some(std::mem::replace(top, *top + h + gap))).collect();
+    // In view: from the first row whose gap after it reaches the view, to the first row that starts below it.
+    let from = tops.iter().zip(lengths).take_while(|(t, h)| *t + *h + gap <= scroll).count();
+    let to = tops.iter().take_while(|t| **t < scroll + view).count().max(from);
+    let pool = pool.max(to - from);
+    let first = if held <= from && held + pool >= to {
+        held
+    } else if held > from {
+        // Up: the pool reaches as far above as it can.
+        to.saturating_sub(pool)
+    } else {
+        // Down: as far below.
+        from.min(total.saturating_sub(pool))
+    };
+    let shift = scroll - tops.get(first).copied().unwrap_or(0.0);
+    RowWindow { first, count: pool.min(total - first.min(total)), shift, seen: (from, to), content, scroll }
 }
 
 impl ScrollRows {
-    /// Lays the list out from its rows' lengths (UI px) with `gap` between them in a view `view` long: keeps the
-    /// content's length, the scroll within it and the pool's shift (written only when they change), and returns
-    /// which rows show.
-    pub fn lay(rows: &mut Mut<ScrollRows>, lengths: &[f32], gap: f32, view: f32) -> RowWindow {
-        let w = row_window(lengths, gap, rows.scroll, view);
-        let want = ScrollRows { content: w.content, scroll: w.scroll, shift: w.shift };
+    /// Lays the list out from its rows' lengths (UI px) with `gap` between them in a view `view` long, for a pool of
+    /// `pool` row nodes: keeps the content's length, the scroll within it, the pool's first row and its shift
+    /// (written only when they change), and returns which rows show.
+    pub fn lay(rows: &mut Mut<ScrollRows>, lengths: &[f32], gap: f32, view: f32, pool: usize) -> RowWindow {
+        let w = row_window(lengths, gap, rows.scroll, view, pool, rows.first);
+        let want = ScrollRows { content: w.content, scroll: w.scroll, shift: w.shift, first: w.first };
         if **rows != want {
             **rows = want;
         }
@@ -808,28 +815,39 @@ mod tests {
     }
 
     /// A pooled list shows the rows in view from its scroll in pixels, one cut at each edge, and shifts the pool by
-    /// what of the first row is out of view.
+    /// what lies above the view.
     #[test]
     fn a_pooled_list_scrolls_by_pixels() {
-        // Ten rows of 46 px with 4 px gaps (a pitch of 50) in a view of six rows (296 px).
+        // Ten rows of 46 px with 4 px gaps (a pitch of 50) in a view of six rows (296 px), a pool of seven.
         let rows = [46.0; 10];
-        let at = |scroll: f32| row_window(&rows, 4.0, scroll, 296.0);
-        assert_eq!(at(0.0), RowWindow { first: 0, count: 6, shift: 0.0, content: 496.0, scroll: 0.0 });
+        let at = |scroll: f32, held: usize| row_window(&rows, 4.0, scroll, 296.0, 7, held);
+        assert_eq!(at(0.0, 0), RowWindow { first: 0, count: 7, shift: 0.0, seen: (0, 6), content: 496.0, scroll: 0.0 });
         // 30 px down: the first row partly in view, a seventh cut at the bottom.
-        assert_eq!(at(30.0), RowWindow { first: 0, count: 7, shift: 30.0, content: 496.0, scroll: 30.0 });
+        assert_eq!(at(30.0, 0), RowWindow { first: 0, count: 7, shift: 30.0, seen: (0, 7), content: 496.0, scroll: 30.0 });
         // 48 px: the first row is gone, only its gap is above the view.
-        assert_eq!((at(48.0).first, at(48.0).shift), (0, 48.0));
-        assert_eq!((at(50.0).first, at(50.0).count, at(50.0).shift), (1, 6, 0.0));
-        assert_eq!((at(175.0).first, at(175.0).count, at(175.0).shift), (3, 7, 25.0));
+        assert_eq!((at(48.0, 0).first, at(48.0, 0).shift, at(48.0, 0).seen), (0, 48.0, (0, 7)));
+        assert_eq!(at(50.0, 0).seen, (1, 7));
+        // The pool keeps its rows while the view is inside them, then moves on as far as it can.
+        assert_eq!((at(50.0, 0).first, at(50.0, 0).shift), (0, 50.0));
+        let down = at(175.0, 0);
+        assert_eq!((down.first, down.count, down.shift, down.seen), (3, 7, 25.0, (3, 10)));
+        // Back up: the pool ends where the view does.
+        let up = at(60.0, 3);
+        assert_eq!((up.first, up.count, up.shift, up.seen), (1, 7, 10.0, (1, 8)));
         // Past the end: the last screenful.
-        assert_eq!(at(900.0), RowWindow { first: 4, count: 6, shift: 0.0, content: 496.0, scroll: 200.0 });
+        assert_eq!(at(900.0, 0), RowWindow { first: 3, count: 7, shift: 50.0, seen: (4, 10), content: 496.0, scroll: 200.0 });
+        // A pool as long as the list never moves.
+        assert_eq!(row_window(&rows, 4.0, 200.0, 296.0, 48, 0).first, 0);
+        assert_eq!(row_window(&rows, 4.0, 200.0, 296.0, 48, 0).shift, 200.0);
         // Headings and rows of other heights (the drydock's palette).
         let mixed = [26.0, 42.0, 42.0, 26.0, 42.0];
-        let w = row_window(&mixed, 3.0, 40.0, 60.0);
-        assert_eq!((w.first, w.count, w.shift, w.content), (1, 2, 11.0, 190.0));
+        let w = row_window(&mixed, 3.0, 40.0, 60.0, 2, 0);
+        assert_eq!((w.first, w.count, w.shift, w.seen, w.content), (1, 2, 11.0, (1, 3), 190.0));
+        // A pool shorter than the view asks for: as many rows as are in view.
+        assert_eq!(row_window(&rows, 4.0, 30.0, 296.0, 2, 0).count, 7);
         // Fewer rows than fit, or none: no scroll.
-        assert_eq!(row_window(&rows[..3], 4.0, 80.0, 296.0), RowWindow { first: 0, count: 3, shift: 0.0, content: 146.0, scroll: 0.0 });
-        assert_eq!(row_window(&[], 4.0, 10.0, 296.0), RowWindow::default());
+        assert_eq!(row_window(&rows[..3], 4.0, 80.0, 296.0, 7, 0), RowWindow { first: 0, count: 3, shift: 0.0, seen: (0, 3), content: 146.0, scroll: 0.0 });
+        assert_eq!(row_window(&[], 4.0, 10.0, 296.0, 7, 4), RowWindow::default());
     }
 
     /// In fast, held for a second after the last scroll or hover, then out; gone [`FADE_OUT_SECONDS`] later.

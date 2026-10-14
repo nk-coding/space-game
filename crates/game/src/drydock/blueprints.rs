@@ -148,8 +148,10 @@ pub(super) struct Shelf {
     /// Content ship ids, in content order.
     templates: Vec<String>,
     pick: Option<Pick>,
-    /// First row shown, per list.
+    /// The first row in each list's pool of row nodes.
     offset: [usize; 2],
+    /// A list to show from its top again (a copy saved there).
+    top: [bool; 2],
     mode: Mode,
     export: Export,
     /// The share code is selected: Ctrl+C copies it.
@@ -645,7 +647,8 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                                 col.spawn((ShelfText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                                 col.spawn((
                                     ListNode(list),
-                                    Scrollbar::vertical(),
+                                    // Less glow room: the section label is 10 px above (its fade would cover it).
+                                    Scrollbar::vertical().room(8),
                                     ScrollRows::default(),
                                     Node {
                                         flex_direction: FlexDirection::Column,
@@ -1056,7 +1059,7 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
                     refresh(shelf, lib, content);
                     let name = shelf.entry(&id).map_or(id.clone(), |e| e.name.clone());
                     shelf.say(format!("saved a copy: {name}"), Tone::Teal);
-                    shelf.offset[0] = 0;
+                    shelf.top[0] = true;
                     shelf.pick = Some(Pick::Design(id));
                 }
                 Err(e) => shelf.say(format!("no copy made: {e}"), Tone::Coral),
@@ -1147,19 +1150,19 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
     }
 }
 
-/// Lays each list out from its scroll (the kit's wheel and scrollbar move it): the first row its pool shows. A first
-/// row set here (a copy saved at the top) scrolls the list there.
-fn scroll_lists(mut lists: Query<(&ListNode, &ComputedNode, &mut ScrollRows)>, mut shelf: ResMut<Shelf>, mut laid: Local<[usize; 2]>) {
+/// Lays each list out from its scroll (the kit's wheel and scrollbar move it): the first row its pool shows; a list
+/// asked to start at the top (a copy saved there) scrolls there.
+fn scroll_lists(mut lists: Query<(&ListNode, &ComputedNode, &mut ScrollRows)>, mut shelf: ResMut<Shelf>) {
     if shelf.page != Some(Page::Blueprints) {
         return;
     }
     for (list, node, mut rows) in &mut lists {
         let len = if list.0 == 0 { shelf.designs.len() } else { shelf.templates.len() };
-        if shelf.offset[list.0] != laid[list.0] {
-            rows.scroll = shelf.offset[list.0] as f32 * (ROW_H + ROW_GAP);
+        if shelf.top[list.0] {
+            shelf.top[list.0] = false;
+            rows.scroll = 0.0;
         }
-        let w = ScrollRows::lay(&mut rows, &vec![ROW_H; len], ROW_GAP, node.size.y * node.inverse_scale_factor);
-        laid[list.0] = w.first;
+        let w = ScrollRows::lay(&mut rows, &vec![ROW_H; len], ROW_GAP, node.size.y * node.inverse_scale_factor, LIST_ROWS + 1);
         if shelf.offset[list.0] != w.first {
             shelf.offset[list.0] = w.first;
         }

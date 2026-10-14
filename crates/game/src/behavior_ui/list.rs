@@ -59,8 +59,10 @@ pub struct BehaviorList {
     templates: Vec<String>,
     /// The picked row's id (content and player ids never clash).
     pick: Option<String>,
-    /// First row shown, per list.
+    /// The first row in each list's pool of row nodes.
     offset: [usize; 2],
+    /// A list to show from its top again (a new behavior there).
+    top: [bool; 2],
     mode: Mode,
     /// When the list was made (Unix seconds), for "5 MIN AGO".
     now: u64,
@@ -97,9 +99,6 @@ impl BehaviorList {
             && !content.behaviors.contains(id)
         {
             self.pick = None;
-        }
-        for (list, len) in [self.mine.len(), self.templates.len()].into_iter().enumerate() {
-            self.offset[list] = self.offset[list].min(len.saturating_sub(LIST_ROWS));
         }
     }
 }
@@ -206,7 +205,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         col.spawn((ListText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                         col.spawn((
                             ListNode(list),
-                            Scrollbar::vertical(),
+                            // Less glow room: the section label is 10 px above (its fade would cover it).
+                            Scrollbar::vertical().room(8),
                             ScrollRows::default(),
                             Node {
                                 flex_direction: FlexDirection::Column,
@@ -487,7 +487,7 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
                     let name = lib.name_of(content, &new);
                     lib.say(format!("saved a copy: {name}"), Tone::Teal);
                     list.refresh(&lib.behaviors, content);
-                    list.offset[0] = 0;
+                    list.top[0] = true;
                     list.pick = Some(new);
                 }
                 Err(e) => lib.say(format!("no copy made: {e}"), Tone::Coral),
@@ -546,19 +546,19 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
     }
 }
 
-/// Lays each list out from its scroll (the kit's wheel and scrollbar move it): the first row its pool shows. A first
-/// row set here (a new behavior at the top) scrolls the list there.
-pub(super) fn scroll(mut lists: Query<(&ListNode, &ComputedNode, &mut ScrollRows)>, mut list: ResMut<BehaviorList>, mut laid: Local<[usize; 2]>) {
+/// Lays each list out from its scroll (the kit's wheel and scrollbar move it): the first row its pool shows; a list
+/// asked to start at the top (a new behavior there) scrolls there.
+pub(super) fn scroll(mut lists: Query<(&ListNode, &ComputedNode, &mut ScrollRows)>, mut list: ResMut<BehaviorList>) {
     if !list.open {
         return;
     }
     for (node, computed, mut rows) in &mut lists {
         let len = if node.0 == 0 { list.mine.len() } else { list.templates.len() };
-        if list.offset[node.0] != laid[node.0] {
-            rows.scroll = list.offset[node.0] as f32 * (ROW_H + ROW_GAP);
+        if list.top[node.0] {
+            list.top[node.0] = false;
+            rows.scroll = 0.0;
         }
-        let w = ScrollRows::lay(&mut rows, &vec![ROW_H; len], ROW_GAP, computed.size.y * computed.inverse_scale_factor);
-        laid[node.0] = w.first;
+        let w = ScrollRows::lay(&mut rows, &vec![ROW_H; len], ROW_GAP, computed.size.y * computed.inverse_scale_factor, LIST_ROWS + 1);
         if list.offset[node.0] != w.first {
             list.offset[node.0] = w.first;
         }
