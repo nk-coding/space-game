@@ -93,6 +93,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0082](0082-drydock-layout-v2-and-part-availability.md) | Drydock layout v2: every part in sections with scrolling jump chips, an armour swatch strip on the left, tools in the bottom bar (a dropdown when narrow), icons and a ⋯ menu; part availability tracked, unlimited for now | Accepted | 2026-10-14 |
 | [0083](0083-evolution-lab.md) | An evolution lab: configurable evolution of designs and behaviors (fitness and limits per run), a dev-only shipyard place first, a benchmark rating for players later | Accepted | 2026-10-14 |
 | [0084](0084-chain-reactions-v1.md) | Chain reactions v1: destroyed reactors, capacitors and drives explode into their piece (content blast numbers, armour takes a share, same tick, own shields no help) | Accepted (provisional, lead) | 2026-10-14 |
+| [0085](0085-voyage-transitions.md) | Voyage transitions: the fleet visibly warps out (charge, stretch, flash) and in, the camera eases in 12 % during the charge, the emergency recall looks unstable, every end dips to dark and the next screen comes up out of it | Accepted (provisional, lead) | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
