@@ -30,12 +30,8 @@
 //!   voyage's `cleared` words, and adds VOYAGE MAP beside DISMISS: it dismisses the panel and flies to the gate
 //!   (`map::OpenMap`), where the map selects the new signal.
 
-use std::collections::BTreeMap;
-use std::fmt::Write as _;
-
 use bevy::prelude::*;
-use data::career::{Haul, HaulItem, LastHaul, Outcome, unload};
-use data::{Career, Content};
+use data::career::{Haul, Outcome};
 
 use crate::career::PlayerCareer;
 use crate::fleet::{self, Fleet};
@@ -47,6 +43,7 @@ use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
 };
+use crate::voyage::clock;
 use crate::voyage::debrief::{Debrief, DebriefData, DebriefStats, amount};
 
 /// Rows of parts shown (the rest are counted in one line).
