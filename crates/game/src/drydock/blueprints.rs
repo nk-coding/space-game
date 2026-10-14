@@ -17,6 +17,8 @@
 //!   and its share code in a selectable box (click it, then Ctrl+C) with COPY.
 //! * **The name** top left: a click turns it into a text field; Enter (or a click elsewhere) renames the design
 //!   (`PlayerDesign::edit_header`), Esc keeps the old name.
+//! * **The ⋯ menu** of the bottom bar (GDR-0082) offers shortcuts to the screens' rarer actions, carried out as
+//!   there: a new design in this frame, the frame, copying the share code, the `.ron` file, importing one.
 
 use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseScroll;
@@ -38,7 +40,7 @@ use crate::ui_kit::{
     set_text, spawn_pill, sub_tone, tracked, wheel_rows,
 };
 
-use super::actions::DrydockAction;
+use super::actions::{DrydockAction, Rare};
 use super::behaviors::{PlayerBehaviors, validate_design};
 use super::library::{self, Autosave, DesignSlot, Entry, MAX_NAME};
 use super::panels::PanelText;
@@ -833,9 +835,10 @@ fn refresh(shelf: &mut Shelf, lib: &Lib, content: &Content) {
     }
 }
 
-/// The drydock's SAVE / EXPORT / BLUEPRINTS, the screens' buttons, keys, pasted text and picked files.
+/// The drydock's SAVE / EXPORT / BLUEPRINTS and the ⋯ menu's actions, the screens' buttons, keys, pasted text and
+/// picked files.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn apply(
+pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut clicks: MessageReader<UiClick>,
     buttons: Query<(&ShelfButton, Option<&Pill>)>,
@@ -876,6 +879,19 @@ fn apply(
             }
             DrydockAction::Blueprints => toggle(&mut shelf, Page::Blueprints, &lib, content),
             DrydockAction::Export => toggle(&mut shelf, Page::Export, &lib, content),
+            // The ⋯ menu: the screens' buttons, whether a screen is open or not.
+            DrydockAction::Rare(r) => {
+                let b = match r {
+                    Rare::NewDesign => ShelfButton::New(lib.design.frame()),
+                    Rare::Frame(f) => ShelfButton::Frame(*f),
+                    Rare::ImportFile => ShelfButton::ImportFile,
+                    Rare::CopyCode | Rare::Download => {
+                        shelf.export = Export::of(&lib, content);
+                        if *r == Rare::CopyCode { ShelfButton::Copy } else { ShelfButton::Download }
+                    }
+                };
+                press(b, &mut shelf, &mut lib, content, &mut rename, &mut clip);
+            }
             _ => {}
         }
     }
@@ -1343,7 +1359,9 @@ mod tests {
     fn world() -> World {
         let content = data::base_content();
         let mut world = World::new();
-        world.insert_resource(PlayerDesign::starter(&content, "halvex_runner"));
+        let design = PlayerDesign::starter(&content, "halvex_runner");
+        world.insert_resource(super::super::state::DrydockUi::new(&content, &design, &data::career::Unlocks::all(&content)));
+        world.insert_resource(design);
         world.insert_resource(GameContent(content));
         world.insert_resource(Storage::new(MemoryBackend::default()));
         world.insert_resource(DockCamera::new(1.0));

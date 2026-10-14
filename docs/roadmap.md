@@ -199,6 +199,13 @@ Next session:
   ship by ship in id order, so lower ids strike first within a tick. The arena alternates spawn order by seed
   parity as a stopgap; the sim fix (resolve shots against the tick's starting state, then apply) changes hashes
   and is next once disk allows another agent build.
+- **Next after the running work merges: a structure refactor** (Niklas, 14 Oct 2026: "these rust crates seem to lack
+  some structure"). Chosen: feature folders and one plugin per feature in every crate, and `game` (37k lines, 33 flat
+  top-level modules) split into a few crates (shared render and UI infrastructure, flight, the screens) for clearer
+  boundaries and faster rebuilds; `data` grouped into content / editing models / career and `sim` into sub-folders,
+  big files split at their seams. An ADR with the target layout goes to Niklas first; the refactor changes no
+  behaviour (tests and determinism hashes identical) and measures build times before and after. Done on a quiet
+  tree, after the four agents of 14 Oct merge.
 
 ## Phase 4: measurement
 
