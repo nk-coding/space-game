@@ -731,7 +731,9 @@ The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
 of the player's design, the screen with its widgets, editing (`data::edit`), the live stats, status line and
 overlays from `sim::report`, saving (SAVE, the autosave), the BLUEPRINTS and EXPORT screens, share codes and files
 (Storage and sharing below), the BEHAVIOR button and the test flight ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)).
-Parts are unlimited in v1 (no spare counts).
+Layout v2 since 14 Oct 2026 ([GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md), details in
+`docs/drydock.md` "Client: editing"). Parts are unlimited for now; each palette row shows how many are left (`∞`),
+from the career's part availability.
 
 Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button top left goes home. Screenshots:
 `docs/results/drydock-*.png`.
@@ -740,9 +742,9 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 |---|---|
 | Tools | B paint, G fill, X erase, V select, Q / E rotate (the selected part, else the part to place) |
 | Grid (mouse) | left button: the tool (drag: paint and erase strokes, the fill rectangle, moving the selected part); right button: erase |
-| Selected part | F flip, Delete / Backspace delete, Esc deselect (Q / E turn it) |
+| Selected part | F flip, Delete / Backspace delete, Esc deselect (Q / E turn it); Esc first closes an open bottom bar menu |
 | Mirror / bevel | M / Shift+B |
-| Armour material | 1–9 (the ARMOR pills in content order; a locked material's key does nothing) |
+| Armour material | 1–9 (the armour swatches in content order; a locked material's key does nothing) |
 | Undo / redo / save | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y / Ctrl+S (the browser's save dialog stays shut) |
 | Search the parts | / (Esc or Enter leaves the field; a click elsewhere too) |
 | Zoom | wheel (around the cursor), + / −, the − / + buttons; 100 % = the whole frame fits |
@@ -754,20 +756,24 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 
 The screen, top to bottom: the ring menu button, the breadcrumb `SHIPYARD › DRYDOCK · FRIGATE FRAME` (the
 frame's content name) and the design's name (a click renames it; "UNSAVED"
-or "SAVED" after it); the ARMOR pills (every content material with an `armor` block; one the career hasn't
-unlocked is dimmed with a lock and does nothing, one no research unlocks is left out) and the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS, ARCS:
-any combination, drawn over the design); left the search, the category pills (content categories), the section
-(`WEAPONS · 1 · 2 LOCKED`) and the part list (the unlocked parts: icon, name, footprint and one key stat from
+or "SAVED" after it); the OVERLAY pills (HEAT, MASS, BONUS in gold, SHIELDS, ARCS:
+any combination, drawn over the design); left the search, `ARMOR · <name>` over the armour swatches (every content
+material with an `armor` block; one the career hasn't unlocked shows a lock and leads to its research, one no
+research unlocks is left out), one line of category chips (content categories; it scrolls sideways and jumps the
+list to a section) and every part in sections (a heading per category with its count, `WEAPONS 1 · 2 LOCKED`; the
+unlocked parts: icon, name, footprint and one key stat from
 `Content::part_stats`: the first stat after build points, control, mass, hit points, power draw and heat, else the
-bonus it gives, else its hit points; a gold NEW tag on fresh ones; then the locked parts research can unlock, dimmed with a lock and
-`LOCKED · <research node>`, not pickable, GDR-0065; the wheel scrolls the list); the tools above the grid; right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
+bonus it gives, else its hit points; a gold NEW tag on fresh ones; how many are left, `∞`; then the locked parts research can unlock, dimmed with a lock and
+`LOCKED · <research node>`, not pickable, GDR-0065; the wheel scrolls the list; the search filters it); right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
 FIREPOWER, CARGO, CONTROL, DEVICE LOAD, then a compact TOP SPEED, TURN 90°, MASS, BUILD POINTS block, all from
 `sim::report`) and SELECTED PART (the selected placed part with the report's numbers and its controls, else the
 picked part: icon, name, footprint and category, summary, stat lines and bonus lines; what is under the name
 scrolls with the wheel when it doesn't fit above the bottom bar, with a `MORE BELOW · WHEEL` cue); below the grid the hover
 cell, mirror and axis, why the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo,
-MIRROR, BEVEL, the status line and the voyage-ready line after it (wrapping under it when both don't fit), BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key), BLUEPRINTS,
-EXPORT, SAVE and TEST-FLY. Laid out for 1280 × 720 logical pixels; other windows scale the whole
+the tools (PAINT, FILL, ERASE, SELECT, ROTATE), MIRROR, BEVEL, the status line over the voyage-ready line (each
+shortened with `…` when it doesn't fit), SAVE, BLUEPRINTS and EXPORT as icons, the ⋯ menu (NEW DESIGN, FRAME,
+COPY SHARE CODE, the `.ron` file, IMPORT), BEHAVIOR (opens the [Behavior screen](#behavior-screen); no key) and
+TEST-FLY. When the bar is too narrow the tools fold into one dropdown (`PAINT ▾`) and mirror and bevel into icons. Laid out for 1280 × 720 logical pixels; other windows scale the whole
 screen (`UiScale` = min(w / 1280, h / 720), 0.5 to 2, at home, in the drydock, on the BEHAVIOR screen and FLEET; flight
 keeps 1). So the layout always fits: a window narrower or lower than 1280 × 720 scales it down (until 13 Oct 2026 the
 scale stopped at 1 and a centred layout such as FLEET's lost its left and top edges), a wider aspect leaves room at
@@ -796,14 +802,16 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   child of its mesh), rebuilt when the report or the overlay pills change, and while ARCS is on when the view
   moves (in `PostUpdate` after the camera): the lines of fire and plume lanes (45–75 m) end at the grid
   viewport's edge instead of running through the pills and the status line. Details in `docs/drydock.md`.
-- **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, the brush rotation, the picked part, the
-  category, the search text; the mirror and bevel modes are the editor's, `PlayerDesign::dock().mirror` and
-  `.bevel`), `DrydockStatus` (`grounded`, the status line and its tone, the voyage-ready line and its tone),
-  `DrydockStats` (the stats grid's cells: label, value, tone, optional bar); `palette_parts` (what the career has
-  unlocked, `career::Granted`), `palette_list` (a category's or a search's parts: the unlocked ones, then the locked
-  ones) and `armor_materials` (every armour material; the pills dim the locked ones). The widgets only show these.
-  Locked parts and materials can't be picked: their rows and pills are disabled, and `actions::apply` refuses them
-  (the keys 1–9 reach locked materials too). A design that uses locked parts still opens, shows and test-flies.
+- **State** (`state.rs`): `DrydockUi` (tool, armour material, overlays, the brush rotation, the picked part, a
+  category chip's jump, the search text, the open bottom bar menu; the mirror and bevel modes are the editor's,
+  `PlayerDesign::dock().mirror` and `.bevel`), `DrydockStatus` (`grounded`, the status line and its tone, the
+  voyage-ready line and its tone), `DrydockStats` (the stats grid's cells: label, value, tone, optional bar);
+  `palette_sections` (a section per category with the search's parts: the unlocked ones, then the locked ones,
+  from `career::Granted`) and `armor_materials` (every armour material; the swatches show a lock on the locked ones).
+  The widgets only show these. Locked parts and materials can't be picked: their rows and swatches are disabled, and
+  `actions::apply` refuses them (the keys 1–9 reach locked materials too). A design that uses locked parts still
+  opens, shows and test-flies. Part counts (`Granted::counts`, from `Career::available`; none yet) reach the editing
+  model in `design::sync_available` when they change or another design opens.
 - **Editing** (`tools.rs`, `ghost.rs`, `inspector.rs`, 13 Oct 2026; `docs/drydock.md` "Client: editing"): the
   tools on the grid (`tools::Gesture`, device-free), `tools::Selection` (a cell), undo / redo, the ghost of the edit
   under the cursor from the editing model's previews, the fill rectangle and selection brackets, the refusal after

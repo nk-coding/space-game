@@ -122,6 +122,12 @@ below) is never written over: the game keeps it as it is ("How the game uses it"
   every voyage with `opens_after` whose voyages have all been cleared (`VoyageRecord::cleared`: a goal cleared on
   a voyage that came home). A voyage without `opens_after` opens only through a start. Loading drops records of
   voyages the content no longer has.
+- **Part availability** (`available(part) -> Availability`, [GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md),
+  14 Oct 2026): how many of a part the player has to build with, `Availability::Unlimited` or `Count(n)` (the parts
+  in a design use them up). Every part is `Unlimited` for now: GDR-0063 left parts unlimited until fabrication,
+  spares and bonding exist (GDR-0029, GDR-0031; their open questions stay in `docs/plans/salvage-research.md`), and
+  this is the one place they will fill the counts in. Derived, so the save holds no counts and its format is
+  unchanged; a stored count would need a new format with a migration.
 - **Fresh parts** (`fresh_parts(&content)`): `locked` parts a researched node unlocked that are not in `seen` (the
   drydock's NEW tags). `mark_seen(&content, part)` adds a fresh part to `seen` and says whether it was fresh (the
   game writes the save then); any other part changes nothing. `reconcile` drops seen ids the content no longer has,
@@ -283,8 +289,10 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there,
 
 - **Start**: read `saves/career` → `Career::from_ron` → `reconcile` (show the notes); none: `Career::new(&content,
   start, seed)` with the content's first start.
-- **Drydock**: `unlocks` gates the palette, armour and frames (locked ones shown dimmed); `fresh_parts` gives the
-  NEW tags and `mark_seen` ends them; `voyage_ready` gives the status line's voyage-ready line.
+- **Drydock**: `unlocks` gates the palette, armour and frames (locked ones shown dimmed); `available` gives each
+  palette row's count (`∞` today) and reaches the editing model (`Granted::counts` → `PlayerDesign::set_available` →
+  `data::edit::Drydock::set_available`), which refuses a placement with none left; `fresh_parts` gives the NEW tags
+  and `mark_seen` ends them; `voyage_ready` gives the status line's voyage-ready line.
 - **FLEET**: `escorts` and `set_escorts`; `mind_capacity` limits the picks; `voyage_ready` for the fleet.
 - **Research screen**: `data()` and `materials()` on top, `can_pay` per node (the refusal says why not),
   `research` on UNLOCK, then write the save.
