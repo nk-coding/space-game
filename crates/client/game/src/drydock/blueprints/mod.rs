@@ -52,7 +52,9 @@ use super::state::DrydockStatus;
 use super::view::DockCamera;
 use super::{DockSet, stats};
 
-use autosave::{announce, autosave, dropped_files, leave, restore, save_on_exit};
+use autosave::{announce, autosave, leave, restore, save_on_exit};
+#[cfg(not(target_arch = "wasm32"))]
+use autosave::dropped_files;
 use screens::{BarNode, CodeBox, EmptyHint, ListNode, PageNode, PasteBox, RenameField, RowNode, ShelfButton, ShelfRoot, ShelfText, spawn_shelf};
 use sync::{scroll_lists, sync_shelf};
 use title::{sync_title, title};
