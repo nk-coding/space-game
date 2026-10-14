@@ -3,12 +3,16 @@
 //! ```text
 //! arena fight <spec.ron> [--seeds N] [--threads N]
 //! arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]
+//! arena evolve <run.ron> [--out DIR] [--best N] [--threads N]
 //! ```
 //!
 //! `fight` runs a fight spec once per seed (the spec's seed and the N − 1 after it) and prints a row per seed and
 //! a summary. `matrix` runs every pair of designs (a content ship id, or a blueprint file `*.ron`) one against
 //! one under their default behaviors, N seeds in each starting position, and prints the win rate and mean score
-//! of each row's design against each column's. Both print fights per second. The fights run on
+//! of each row's design against each column's. Both print fights per second. `evolve` runs an evolution
+//! (`docs/arena.md` "Evolution"), a generation's fights or voyage runs on every core, prints a row per generation
+//! and writes the best elites (blueprint and behavior text) into `--out`; the results do not depend on the thread
+//! count. The fights run on
 //! `available_parallelism` threads (`--threads` to change); only the wall clock line depends on the machine.
 
 use std::process::ExitCode;
@@ -20,6 +24,7 @@ use arena::{DesignRef, Entry, FightResult, FightSpec, Formation, Outcome, Summar
 const USAGE: &str = "usage:
   arena fight <spec.ron> [--seeds N] [--threads N]
   arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]
+  arena evolve <run.ron> [--out DIR] [--best N] [--threads N]
 designs: a content ship id, or a blueprint file (*.ron)";
 
 struct Opts {
@@ -30,6 +35,9 @@ struct Opts {
     distance: Option<f32>,
     time: Option<f32>,
     threads: usize,
+    /// `evolve`: where the best elites are written, and how many.
+    out: Option<String>,
+    best: usize,
 }
 
 /// The value of option `a`, as a number.
@@ -48,6 +56,8 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         distance: None,
         time: None,
         threads: std::thread::available_parallelism().map_or(1, |n| n.get()),
+        out: None,
+        best: 8,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -62,6 +72,8 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--distance" => o.distance = Some(num(a, v)?),
             "--time" => o.time = Some(num(a, v)?),
             "--threads" => o.threads = num::<usize>(a, v)?.max(1),
+            "--out" => o.out = Some(v.clone()),
+            "--best" => o.best = num(a, v)?,
             _ => return Err(format!("unknown option {a}")),
         }
     }
@@ -76,6 +88,7 @@ fn main() -> ExitCode {
     let result = match args.split_first() {
         Some((cmd, rest)) if cmd == "fight" => parse(rest).and_then(|o| fight(&o)),
         Some((cmd, rest)) if cmd == "matrix" => parse(rest).and_then(|o| matrix(&o)),
+        Some((cmd, rest)) if cmd == "evolve" => parse(rest).and_then(|o| evolve(&o)),
         _ => Err(USAGE.into()),
     };
     match result {
@@ -289,6 +302,111 @@ fn matrix(o: &Opts) -> Result<(), String> {
             })
             .collect();
         println!("| {name} | {} |", line.join(" | "));
+    }
+    Ok(())
+}
+
+/// The cell of an elite as text: one bin per axis.
+fn cell_name(cell: &[u32]) -> String {
+    cell.iter()
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join("×")
+}
+
+fn evolve(o: &Opts) -> Result<(), String> {
+    let [path] = o.args.as_slice() else {
+        return Err(USAGE.into());
+    };
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let config = arena::RunConfig::from_ron(&text).map_err(|e| format!("{path}: {e}"))?;
+    let content = data::base_content();
+    let mut run = arena::Run::new(&content, config).map_err(|e| format!("{path}: {e}"))?;
+    let state = run.state();
+    println!(
+        "# {path}: {} generations of {} on {} threads",
+        state.generations,
+        run.config().population,
+        o.threads
+    );
+    println!(
+        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | s |"
+    );
+    println!("|---|---|---|---|---|---|---|---|---|---|---|");
+    let start = Instant::now();
+    while !run.finished() {
+        let t0 = Instant::now();
+        let jobs = run.jobs().to_vec();
+        let results = par_map(&jobs, o.threads, |j| j.run(&content));
+        run.submit(results);
+        let g = run.state().history.last().cloned().expect("a generation is done");
+        println!(
+            "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {:.2} |",
+            g.generation,
+            g.genes,
+            g.evaluated,
+            g.rejected,
+            g.best,
+            g.mean,
+            g.archive_best,
+            g.filled,
+            g.improved,
+            g.ticks as f64 / 1e6,
+            t0.elapsed().as_secs_f64()
+        );
+    }
+    let secs = start.elapsed().as_secs_f64();
+    let generations = run.state().generations;
+    println!(
+        "# {generations} generations in {secs:.1} s on {} threads: {:.1} generations per minute",
+        o.threads,
+        generations as f64 * 60.0 / secs
+    );
+    let results = run.results();
+    let axes: Vec<String> = run
+        .archive()
+        .shape()
+        .axes
+        .iter()
+        .map(|a| format!("{:?}", a.measure))
+        .collect();
+    println!();
+    println!("| rank | cell | score | {} | generation | parts |", axes.join(" | "));
+    println!("|---|---|---|{}---|---|", "---|".repeat(axes.len()));
+    for (k, e) in results.elites.iter().take(o.best).enumerate() {
+        let measures: Vec<String> = e.measures.iter().map(|m| format!("{m:.1}")).collect();
+        println!(
+            "| {} | {} | {:.3} | {} | {} | {} |",
+            k + 1,
+            cell_name(&run.archive().cell_of(&e.measures)),
+            e.score,
+            measures.join(" | "),
+            e.generation,
+            e.genome.blueprint.parts.len()
+        );
+    }
+    if let Some(out) = &o.out {
+        std::fs::create_dir_all(out).map_err(|e| format!("{out}: {e}"))?;
+        for (k, e) in results.elites.iter().take(o.best).enumerate() {
+            let base = format!("{out}/elite_{:02}", k + 1);
+            let mut bp = e.genome.blueprint.clone();
+            bp.id = format!("evolved_{:02}", k + 1);
+            let header = format!(
+                "// Evolved by `arena evolve {path}`: rank {}, score {:.3}, generation {}. Its behavior: elite_{:02}.txt\n",
+                k + 1,
+                e.score,
+                e.generation,
+                k + 1
+            );
+            std::fs::write(format!("{base}.ron"), header + data::blueprint_to_ron(&bp).as_str())
+                .map_err(|e| format!("{base}.ron: {e}"))?;
+            std::fs::write(format!("{base}.txt"), e.genome.behavior_text())
+                .map_err(|e| format!("{base}.txt: {e}"))?;
+        }
+        println!(
+            "# wrote the best {} elites to {out} (elite_NN.ron: the blueprint, elite_NN.txt: the behavior)",
+            o.best.min(results.elites.len())
+        );
     }
     Ok(())
 }

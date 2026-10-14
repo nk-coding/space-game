@@ -27,9 +27,11 @@
 #![forbid(unsafe_code)]
 
 mod error;
+pub mod evolve;
 mod fight;
 mod score;
 mod spec;
+mod voyage;
 
 pub use error::ArenaError;
 pub use fight::{
@@ -39,4 +41,9 @@ pub use score::{Summary, arena_score, run_seeds};
 pub use spec::{
     BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec,
     Formation, MAX_SHIPS_PER_SIDE, MAX_START_DISTANCE, MAX_TIME_LIMIT, Side,
+};
+pub use evolve::{Genome, Run, RunConfig, RunError};
+pub use voyage::{
+    DEFAULT_VOYAGE_MINUTES, MAX_VOYAGE_MINUTES, VoyageSpec, run_voyage, start_voyage,
+    voyage_fitness, voyage_score,
 };

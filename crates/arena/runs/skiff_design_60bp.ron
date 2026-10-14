@@ -1,0 +1,21 @@
+// Evolve a design from the starter ship within 60 build points, mirror-locked, in the frigate frame, flying the
+// skirmisher behavior, against two and three raiders and a hunter.
+// `cargo run --release -p arena -- evolve crates/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design`
+// The archive is the default: acceleration × firepower, 8 × 8 (`docs/arena.md` "Evolution"). PLACEHOLDER numbers.
+(
+    seed: 1,
+    evolve: Design,
+    generations: 30,
+    population: 32,
+    fitness: ArenaPool(
+        opponents: [
+            (design: Ship("automaton_raider"), count: 2),
+            (design: Ship("automaton_raider"), count: 3),
+            (design: Ship("automaton_hunter")),
+        ],
+        seeds: 4,
+        time_limit: 60,
+    ),
+    limits: (frame: "frigate", build_points: 60, mirror: true),
+    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),
+)

@@ -55,6 +55,10 @@ pub enum ArenaError {
     },
     /// The content's own behaviors do not compile.
     Content(String),
+    /// No voyage of this id in the content.
+    UnknownVoyage(String),
+    /// A voyage run cannot start: its design or behavior is not usable, or the voyage does not roll.
+    Voyage(String),
 }
 
 impl fmt::Display for ArenaError {
@@ -113,6 +117,8 @@ impl fmt::Display for ArenaError {
                 )
             }
             ArenaError::Content(e) => write!(f, "the content's behaviors do not compile: {e}"),
+            ArenaError::UnknownVoyage(id) => write!(f, "no voyage `{id}` in the content"),
+            ArenaError::Voyage(e) => write!(f, "the voyage run cannot start: {e}"),
         }
     }
 }
