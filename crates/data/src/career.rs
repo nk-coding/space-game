@@ -274,6 +274,15 @@ impl Unlocks {
     }
 }
 
+/// How many of a part the player has to build with ([`Career::available`], GDR-0082).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Availability {
+    /// As many as the player likes.
+    Unlimited,
+    /// This many in all: the parts in a design use them up.
+    Count(u32),
+}
+
 /// Why a career action is not possible.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Refusal {
@@ -682,6 +691,14 @@ impl Career {
             };
         }
         u
+    }
+
+    /// How many of a part the player has to build with (GDR-0082). Derived like the unlocks, so the save holds no
+    /// counts: every part is [`Availability::Unlimited`] until fabrication, spares and bonding fill the counts in
+    /// (GDR-0029, GDR-0031, GDR-0063; `docs/plans/salvage-research.md`). The drydock shows it on each palette row,
+    /// and its editing model refuses a placement when none is left ([`crate::edit::Drydock::set_available`]).
+    pub fn available(&self, _part: &str) -> Availability {
+        Availability::Unlimited
     }
 
     /// How many logic cores the ship-mind runs at once: the start's mind capacity plus every

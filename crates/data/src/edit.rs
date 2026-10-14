@@ -26,6 +26,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use crate::career::Availability;
 use crate::geometry::{
     Bounds, Cell, Dir, Footprint, PlacedShape, span, transform_point, transform_vector,
 };
@@ -73,6 +74,8 @@ pub enum Refusal {
     BadFrame,
     /// Mirror mode: the part has no mirror twin (no part of the same kind at its mirror image).
     NoTwin,
+    /// None of this part is left: the design holds as many as the player has ([`Drydock::set_available`]).
+    NoneLeft(String),
 }
 
 /// What happened to the mirror image of an edit.
@@ -278,6 +281,8 @@ pub struct Drydock {
     /// The open stroke's changes (one undo step), if a stroke is open.
     stroke: Option<Vec<Change>>,
     revision: u64,
+    /// How many of a part the design may hold, for the parts with a count ([`Drydock::set_available`]).
+    limits: BTreeMap<String, u32>,
 }
 
 impl Drydock {
@@ -330,6 +335,7 @@ impl Drydock {
             redo: Vec::new(),
             stroke: None,
             revision: 0,
+            limits: BTreeMap::new(),
         };
         let shift = dock.centring(frame).ok_or_else(|| {
             let [x0, y0, x1, y1] = span(&dock.shapes).unwrap_or_default();
@@ -438,7 +444,8 @@ impl Drydock {
     /// cell order is named).
     pub fn check(&self, p: &Placement) -> Result<(), Refusal> {
         let s = self.validate(p)?;
-        self.fits(&s, &[])
+        self.fits(&s, &[])?;
+        self.in_stock(&p.part, 1)
     }
 
     /// The mirror image of a placement across the frame's vertical centre line: cells reflected
@@ -462,6 +469,7 @@ impl Drydock {
         };
         let s = self.validate(&p)?;
         self.fits(&s, &[])?;
+        self.in_stock(&p.part, 1)?;
         Ok(self.new_part_preview(p, &s))
     }
 
@@ -563,6 +571,7 @@ impl Drydock {
     pub fn fill(&mut self, a: Cell, b: Cell, material: &str) -> Result<Outcome, Refusal> {
         self.armor(material)?;
         let block = self.catalog.block.clone().ok_or(Refusal::NoBlockPart)?;
+        self.in_stock(&block, 1)?;
         let (x0, x1) = (a.0.min(b.0).max(0), a.0.max(b.0).min(self.frame.0 - 1));
         let (y0, y1) = (a.1.min(b.1).max(0), a.1.max(b.1).min(self.frame.1 - 1));
         if x0 > x1 || y0 > y1 {
@@ -740,6 +749,29 @@ impl Drydock {
         self.stroke.is_some()
     }
 
+    /// How many of `part` the player has to build with (`career::Career::available`, GDR-0082): the design may
+    /// hold that many, and an edit that would put down more is refused with [`Refusal::NoneLeft`] (a mirror
+    /// image that would is skipped; fill fills as many cells as are left). Not an edit: no undo step, no revision
+    /// change; parts already placed stay, and undo and redo always restore their step.
+    pub fn set_available(&mut self, part: &str, available: Availability) {
+        match available {
+            Availability::Unlimited => self.limits.remove(part),
+            Availability::Count(n) => self.limits.insert(part.to_string(), n),
+        };
+    }
+
+    /// How many more of `part` the design may take: the count of [`Drydock::set_available`] less the parts of it
+    /// placed (0 when the design holds more), or unlimited.
+    pub fn left(&self, part: &str) -> Availability {
+        match self.limits.get(part) {
+            None => Availability::Unlimited,
+            Some(&n) => {
+                let used = self.parts.iter().filter(|p| p.part == part).count();
+                Availability::Count(n.saturating_sub(u32::try_from(used).unwrap_or(u32::MAX)))
+            }
+        }
+    }
+
     // ---- edits, internals ----
 
     /// Plans replacing part `i` by `make(placement, shape, false)` if it fits (its own old cells do not count),
@@ -826,7 +858,7 @@ impl Drydock {
             if same_shape(&m, s) {
                 (Twin::Itself, None)
             } else {
-                match self.fits_beside(&m, &[], Some((s, self.parts.len()))) {
+                match self.fits_beside(&m, &[], Some((s, self.parts.len()))).and_then(|()| self.in_stock(&p.part, 2)) {
                     Ok(()) => (Twin::Applied, Some(with_pose(&p, &m))),
                     Err(r) => (Twin::Skipped(r), None),
                 }
@@ -858,7 +890,10 @@ impl Drydock {
                 Ok(PaintAction::Nothing(j) | PaintAction::Recolor(j)) if Some(j) == first_part => {
                     (None, Twin::Itself)
                 }
-                Ok(a) => (Some(a), Twin::Applied),
+                Ok(a) => match self.pair_in_stock(&first, &a) {
+                    Ok(()) => (Some(a), Twin::Applied),
+                    Err(r) => (None, Twin::Skipped(r)),
+                },
             }
         };
         Ok(PaintPlan {
@@ -913,9 +948,15 @@ impl Drydock {
         material: &str,
         log: &mut Vec<Change>,
     ) {
+        let mut left = self.left(block);
         for y in y0..=y1 {
             for x in x0..=x1 {
                 if self.part_at((x, y)).is_none() {
+                    // Fills as many cells as blocks are left.
+                    if let Availability::Count(n) = &mut left {
+                        let Some(k) = n.checked_sub(1) else { return };
+                        *n = k;
+                    }
                     let placement = unit_placement(block, (x, y), 0, material);
                     let index = self.parts.len();
                     self.exec(Change::Insert { index, placement }, log);
@@ -945,6 +986,7 @@ impl Drydock {
             Some(c) => c,
             None => (self.catalog.block.as_ref().ok_or(Refusal::NoBlockPart)?, 0),
         };
+        self.in_stock(part, 1)?;
         Ok(PaintAction::Insert(unit_placement(
             part, cell, rot, material,
         )))
@@ -1018,6 +1060,7 @@ impl Drydock {
                 (links, std::cmp::Reverse(blocked), self.lean(s))
             })
             .ok_or(Refusal::NoRoom)?;
+        self.in_stock(part, 1)?;
         Ok(SlopePlan::New(with_pose(&new, &best)))
     }
 
@@ -1078,6 +1121,22 @@ impl Drydock {
     }
 
     // ---- validation ----
+
+    /// [`Refusal::NoneLeft`] unless `more` more of `part` are left.
+    fn in_stock(&self, part: &str, more: u32) -> Result<(), Refusal> {
+        match self.left(part) {
+            Availability::Count(n) if n < more => Err(Refusal::NoneLeft(part.to_string())),
+            _ => Ok(()),
+        }
+    }
+
+    /// Painting the mirror cell as well: a second new part of the same kind as the first needs two left.
+    fn pair_in_stock(&self, first: &PaintAction, second: &PaintAction) -> Result<(), Refusal> {
+        match (first, second) {
+            (PaintAction::Insert(a), PaintAction::Insert(b)) if a.part == b.part => self.in_stock(&b.part, 2),
+            _ => Ok(()),
+        }
+    }
 
     fn armor(&self, material: &str) -> Result<(), Refusal> {
         match self.catalog.armor.contains(material) {
