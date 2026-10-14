@@ -55,7 +55,9 @@ fn raider(w: &mut sim::Sim, owner: Owner, pos: Vec2, angle: f32, vel: Vec2) -> S
 
 #[test]
 fn split_pieces_carry_their_inherited_velocity_in_rapier() {
-    let c = content();
+    // Without chain reactions: the fusion reactor's blast (GDR-0085) would take a ring of parts around the cut,
+    // and this test is about the split.
+    let c = content_without_explosions();
     let d = design(&c, "halvex_runner");
     let mut w = sim::Sim::new(1);
     let body = Body {

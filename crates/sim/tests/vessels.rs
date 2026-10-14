@@ -111,7 +111,9 @@ fn a_split_leaves_two_vessels_running_the_behavior_within_their_own_slots() {
 /// design (it did lose half of itself). `hull` is read from the debug view: the value the failing rule measured.
 #[test]
 fn a_split_off_vessel_measures_its_hull_against_its_own_piece() {
-    let c = content();
+    // Without chain reactions: the cut runs through the fusion reactor, whose blast (GDR-0085) would reach both
+    // halves.
+    let c = content_without_explosions();
     let mut w = sim::Sim::new(1);
     with_behaviors(&mut w);
     let probe = w.behaviors_mut().add_text("probe", "when hull < 1% -> flee\nalways -> hold").unwrap();

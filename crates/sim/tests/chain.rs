@@ -25,32 +25,60 @@ fn part_events(w: &sim::Sim) -> Vec<(PartIdx, bool)> {
 #[test]
 fn blast_reach_follows_the_radius() {
     let c = content();
-    // A part of each kind in the middle of a 4×4 block of steel armour.
+    // A part of each kind in the middle of a block of steel armour, two cells deep all round.
     let block = |centre: &str, size: i32| {
-        let mut parts: Vec<P> = vec![(centre, 1, 1, 0, false, None)];
-        for y in 0..4 {
-            for x in 0..4 {
-                if !(1..1 + size).contains(&x) || !(1..1 + size).contains(&y) {
+        let mut parts: Vec<P> = vec![(centre, 2, 2, 0, false, None)];
+        for y in 0..4 + size {
+            for x in 0..4 + size {
+                if !(2..2 + size).contains(&x) || !(2..2 + size).contains(&y) {
                     parts.push(("armor_block", x, y, 0, false, Some("steel")));
                 }
             }
         }
         custom(&c, &parts)
     };
-    // Fission reactor, radius 1 m: the eight cells around it, steel taking half of 1.5.
+    // Every target with its cover: `(x, y, damage before cover, cover cells)`, row by row.
+    let reach = |d: &ShipDesign, p: PartIdx| {
+        d.blast
+            .get(p as usize)
+            .iter()
+            .map(|t| {
+                let s = &d.parts[t.part as usize].shape;
+                let cover: Vec<(i32, i32)> = d
+                    .blast_cover
+                    .get(t.cover as usize)
+                    .iter()
+                    .map(|&c| (d.parts[c as usize].shape.x, d.parts[c as usize].shape.y))
+                    .collect();
+                (s.x, s.y, t.damage, cover)
+            })
+            .collect::<Vec<_>>()
+    };
+    // Fission reactor, radius 1.5 m (GDR-0085): the eight cells around it and the next one straight out on each
+    // side, behind a steel block (steel taking half of 1.5, and letting half through).
     let d = block("fission_reactor", 1);
-    let r = find(&d, "fission_reactor", 1, 1);
-    let hits = d.blast.get(r as usize);
-    assert_eq!(hits.len(), 8);
-    assert!(hits.iter().all(|h| d.parts[h.part as usize].hull && h.damage == 0.75));
+    let hits = reach(&d, find(&d, "fission_reactor", 2, 2));
+    assert_eq!(hits.len(), 12);
+    assert!(hits.iter().all(|h| h.2 == 0.75));
+    for h in &hits {
+        let (dx, dy) = (h.0 - 2, h.1 - 2);
+        if dx.abs() == 2 || dy.abs() == 2 {
+            assert_eq!(dx * dy, 0, "{h:?}: straight out only");
+            assert_eq!(h.3, [(2 + dx / 2, 2 + dy / 2)], "{h:?}: behind the block beside the reactor");
+        } else {
+            assert!(h.3.is_empty(), "{h:?}: nothing between");
+        }
+    }
     // Capacitor, radius 0.6 m: the four beside it.
     let d = block("capacitor", 1);
-    assert_eq!(d.blast.get(find(&d, "capacitor", 1, 1) as usize).len(), 4);
-    // Fusion reactor (2 × 2), radius 1.5 m: the twelve cells around it, not the corners.
+    assert_eq!(d.blast.get(find(&d, "capacitor", 2, 2) as usize).len(), 4);
+    // Fusion reactor (2 × 2), radius 2 m: the twelve cells around it (corners too) and the eight two cells straight
+    // out; those behind a block of the ring.
     let d = block("fusion_reactor", 2);
-    let hits = d.blast.get(find(&d, "fusion_reactor", 1, 1) as usize);
-    assert_eq!(hits.len(), 12);
-    assert!(hits.iter().all(|h| h.damage == 1.25));
+    let hits = reach(&d, find(&d, "fusion_reactor", 2, 2));
+    assert_eq!(hits.len(), 20);
+    assert!(hits.iter().all(|h| h.2 == 1.25));
+    assert_eq!(hits.iter().filter(|h| h.3.len() == 1).count(), 8);
     // Parts without an explosion hit nothing.
     assert!(d.blast.get(find(&d, "armor_block", 0, 0) as usize).is_empty());
 }
@@ -86,18 +114,19 @@ fn a_reactor_shot_off_destroys_its_cannon_and_armour_survives() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(blast, (1.0, 1.5));
+    assert_eq!(blast, (1.5, 1.5));
     let ship = w.ship(s).unwrap();
     assert!(
         w.events()
             .contains(&SimEvent::PartDestroyed { ship: s, piece: ship.part(reactor).piece, part: reactor, volatile: true })
     );
-    // Steel armour takes half the blast (0.75 of its 1 hit point); the core, out of reach, nothing.
+    // Steel armour takes half the blast (0.75 of its 1 hit point); the core two cells down, behind the block
+    // below the reactor, gets only the half the steel lets through (GDR-0085) and survives.
     for (x, y) in [(0, 0), (1, 1)] {
         assert_eq!(ship.part(find(&d, "armor_block", x, y)).hp, 0.25);
     }
     let core = find(&d, "logic_core", 1, 2);
-    assert_eq!(ship.part(core).hp, d.parts[core as usize].hp);
+    assert_eq!(ship.part(core).hp, 0.25);
     assert!(ship.control_piece().is_some());
 }
 
@@ -527,7 +556,7 @@ fn a_chain_reaction_runs_across_two_ships() {
 fn cores_emitters_and_rcs_pods_explode() {
     let c = content();
     for (part, damage, radius) in [
-        ("automaton_core", 1.5, 1.0),
+        ("automaton_core", 1.5, 1.5),
         ("shield_emitter", 1.0, 0.6),
         ("rcs_pod", 0.5, 0.6),
     ] {

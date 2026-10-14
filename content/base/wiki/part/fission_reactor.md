@@ -15,10 +15,11 @@ left behind without a reactor go dark.
 
 ## When it is destroyed
 
-A destroyed reactor explodes. Every part in the eight cells around it takes the blast at once: machines with
-one hit point, such as a gun or a [[part:logic_core]] right beside it, go with it, and a reactor beside it goes
-off in turn. Armor takes only part of a blast and lets only that part through, so plating around a reactor
-usually survives it and shields what lies behind it. A reactor in front of a gun is no shield for it.
+A destroyed reactor explodes. Every part in the eight cells around it, and in the next cell straight out on each
+side, takes the blast at once: machines with one hit point, such as a gun or a [[part:logic_core]] near it, go
+with it, and a reactor beside it goes off in turn. Armor takes only part of a blast and lets only that part
+through, so plating around a reactor usually survives it and shields what lies behind it. A reactor in front of
+a gun is no shield for it.
 
 The blast does not stop at the hull: a ship alongside, a wreck or a piece that broke off takes it too, unless
 its own [[part:shield_emitter|shield]] holds it back. Your ship's own shields never do: the blast goes off

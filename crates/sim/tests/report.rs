@@ -403,7 +403,9 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
     assert!(!w.events().iter().any(|e| matches!(e, sim::SimEvent::ShotFired { .. })));
 
     // The left reactor shot off in the sim: its blast sets off the right one, and the two take both centre cannons
-    // and both slopes with them (1 hit point each; the steel slopes take half the blast, still more than their 0.5).
+    // and both slopes with them (1 hit point each; the steel slopes take half the blast, still more than their 0.5)
+    // and, two cells down behind the cannons (GDR-0085: 1.5 m), both shield emitters, whose blasts take the two
+    // outer cannons beside them.
     w.apply_damage(s, sim::DamageTarget::Cell((3, 0)), 10.0);
     w.step(&fire(s));
     let ship = w.ship(s).unwrap();
@@ -411,7 +413,10 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
         .filter(|&i| !ship.part(i as sim::PartIdx).alive)
         .map(|i| (d.parts[i].shape.x, d.parts[i].shape.y))
         .collect();
-    assert_eq!(gone, [(2, 1), (5, 1), (3, 1), (4, 1), (3, 0), (4, 0)]);
+    assert_eq!(
+        gone,
+        [(2, 1), (5, 1), (3, 1), (4, 1), (2, 2), (5, 2), (4, 2), (3, 2), (3, 0), (4, 0)]
+    );
     let rest: Vec<P> = SHUTTERED
         .iter()
         .copied()
@@ -432,9 +437,8 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
         assert_eq!(works, fires, "gun at {},{}", shape.x, shape.y);
         working[works as usize] += 1;
     }
-    // The two outer cannons are clear now, and with four parts fewer the control load (8) fits the capacity: every
-    // gun left works.
-    assert_eq!(working, [0, 4]);
+    // With eight parts fewer the control load fits the capacity: the two lasers left both work.
+    assert_eq!(working, [0, 2]);
 }
 
 #[test]

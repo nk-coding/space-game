@@ -19,7 +19,7 @@
         hp: 1,
         power: (output: 10),
         heat: (output: 3, limit: 6),
-        explosion: (damage: 1.5, radius: 1),
+        explosion: (damage: 1.5, radius: 1.5), // radius 1 → 1.5 (GDR-0085): two cells deep
         salvage: (family: "power", data: 4),
     ),
     (
@@ -38,7 +38,7 @@
         hp: 4,
         power: (output: 30),
         heat: (output: 6, limit: 8),
-        explosion: (damage: 2.5, radius: 1.5),
+        explosion: (damage: 2.5, radius: 2), // radius 1.5 → 2 (GDR-0085): two cells deep
         salvage: (family: "power", data: 10),
     ),
     (
