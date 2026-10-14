@@ -71,6 +71,8 @@ pub enum Glyph {
     Minus,
     /// A tick (Barlow has no ✓).
     Check,
+    /// Four corner brackets (a view back to its default: the voyage map's reset).
+    Fit,
 }
 
 /// The mesh drawing one node's icon.
@@ -334,6 +336,12 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
         Glyph::Plus | Glyph::Minus => {
             for bar in sign_bars(glyph == Glyph::Plus, s) {
                 m.polygon(&[bar.min, Vec2::new(bar.max.x, bar.min.y), bar.max, Vec2::new(bar.min.x, bar.max.y)], uv, col);
+            }
+        }
+        Glyph::Fit => {
+            for (x, y) in [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+                let p = |a: f32, b: f32| Vec2::new(x * a * s, y * b * s);
+                m.strip(&[p(0.34, 0.14), p(0.34, 0.34), p(0.14, 0.34)], false, w, &white, col);
             }
         }
         Glyph::Check => {

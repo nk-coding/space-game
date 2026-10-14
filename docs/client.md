@@ -532,12 +532,30 @@ selected, SET COURSE dimmed), `map-wide.png` (3440 × 1305) and `map-tall.png` (
   Some(id) }`; a launch `voyage.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
   don't allow flies as a practice run (`PRACTICE RUN, NOT SAVED · …` in gold). Entering the map selects the first
   open voyage whose goal is not cleared (after a first clear: the voyage it opened).
-- **Drawing** (`map::draw`): the star map is one atlas mesh in stage px (z 550: over the world, under the UI icons),
-  placed over the stage node through the camera rig as `ui_icons` places icons, so it scales with the stage; rebuilt
-  only when the states, the selection, the hover or the glow setting change (a few thousand vertices). Bottom to top:
-  a faint tint inside the gate, the band edges as dotted arcs, seeded star dust with a few faint constellation lines,
-  the chain, the markers, the legend's symbols, the panel's backing (it runs on past the stage, so wide and tall
-  windows are covered). Everything else is `ui_kit` text and nodes, hit-tested by hand, so touch works.
+- **Zoom and pan** (`map::view`, Niklas 14 Oct 2026: "zoom in/out (even see the whole galaxy)"): the wheel or a
+  trackpad pinch zooms around the cursor, + / − around the map's centre, 0 or a double click on empty space resets;
+  drag empty space (left button), or anywhere on the map with the middle or right button, to pan; on touch two
+  fingers pinch and pan, one finger on empty space pans. Bottom right of the map: −, the zoom in %, +, reset (their
+  tooltips name the keys). From 200 % out to the whole galaxy fitting the map (about 20 %); entering always starts
+  at 100 %, the map as it was. The zoom eases (0.1 s) around its anchor, which stays under the cursor all the way;
+  a reset glides back along the same kind of path. The pan keeps the galaxy over the map. The panel, the header and
+  the legend stay fixed. **Level of detail**: the voyages' labels, markers and routes fade out from about 55 % down
+  to 30 % (marker and label sizes stay in screen px at any zoom), the galaxy's band names (`RIM · CHARTED`, `OUTER ·
+  UNCHARTED`, ...), the charted band, the voyages' beacons and the shipyard's diamond fade in from 70 % down to 40 %.
+  Zoomed out, a click on a voyage's beacon selects it and zooms in to it; ←/→ bring a voyage off the view into it.
+- **Drawing** (`map::draw`, `map::galaxy`): the star map is four atlas meshes (z 550 and a little above: over the
+  world, under the UI icons), placed over the stage node through the camera rig as `ui_icons` places icons, so they
+  scale with the stage, each with its own material for its fade. Bottom to top: **the galaxy** (built once, in the
+  default view's stage px, moved and scaled with the view): haze along four spiral arms and a warm core, fog over
+  the uncharted bands under a faint coral tint inside the gate, seeded star dust with a few faint constellation
+  lines in the charted band and a sparse halo past the rim, every band edge as a dotted ring (where the bands past
+  the next one end is a placeholder); **the far layer** (the same frame; rebuilt when the states change): the
+  charted band lit, a beacon per voyage (no routes), the shipyard's diamond; **the detail** (rebuilt when the
+  states, the selection, the hover, the glow setting or the view change, a few hundred vertices): the chain and the
+  markers, cut and faded where they reach the panel; **the chrome** (fixed): the legend's symbols, the panel's
+  backing (it runs on past the stage, so wide and tall windows are covered). Everything else is `ui_kit` text and
+  nodes, hit-tested by hand, so touch works; the map's labels move with the view (`UiTransform`) and are cut at the
+  panel.
 - **The debrief** after a voyage that opened another adds VOYAGE MAP beside DISMISS: it dismisses the panel and home
   flies to the gate (`map::OpenMap`).
 
