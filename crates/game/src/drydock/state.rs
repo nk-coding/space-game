@@ -12,7 +12,7 @@ use crate::ui_kit::Tone;
 
 use super::PlayerDesign;
 
-/// The editing tools (pills above the grid).
+/// The editing tools (pills in the bottom bar, or its dropdown when the bar is narrow).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Tool {
     #[default]
@@ -40,11 +40,19 @@ impl Overlay {
     }
 }
 
+/// The bottom bar's menus, opening upward: the tools (when the bar is too narrow for their pills) and ⋯ (the rarer
+/// actions). One is open at a time; Esc, a click outside and any action close it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BarMenu {
+    Tools,
+    More,
+}
+
 /// The drydock's editing state.
 #[derive(Resource, Clone, Debug)]
 pub struct DrydockUi {
     pub tool: Tool,
-    /// The armour material hull parts are placed in (content id; the ARMOR pills).
+    /// The armour material hull parts are placed in (content id; the swatches over the palette).
     pub material: String,
     overlays: u8,
     /// Quarter turns clockwise of the part being placed (Q / E). The mirror and bevel modes are the editor's
@@ -52,18 +60,19 @@ pub struct DrydockUi {
     pub rot: u8,
     /// The part picked in the palette (content id).
     pub picked: Option<String>,
-    /// The palette's category (content id).
-    pub category: String,
-    /// The palette search; non-empty lists matching parts of every category.
+    /// A category chip was clicked: the palette's list jumps to its section (content id; the list takes it).
+    pub jump: Option<String>,
+    /// The palette search; non-empty lists only the parts whose name contains it.
     pub search: String,
+    /// The bottom bar's open menu.
+    pub menu: Option<BarMenu>,
 }
 
 impl DrydockUi {
-    /// Starts on the first category with its first part picked and the armour the design's hull is made of (else
-    /// the first armour material), both among what the player has unlocked.
+    /// Starts with the palette's first unlocked part picked and the armour the design's hull is made of (else the
+    /// first armour material), both among what the player has unlocked.
     pub fn new(content: &Content, design: &PlayerDesign, unlocks: &Unlocks) -> Self {
-        let category = content.categories.iter().next().map(|c| c.id.clone()).unwrap_or_default();
-        let picked = palette_parts(content, unlocks).find(|p| p.category == category).map(|p| p.id.clone());
+        let picked = palette_sections(content, unlocks, "").into_iter().find_map(|s| s.parts.into_iter().next().filter(|p| unlocks.has_part(p)));
         let open = |m: &str| unlocks.has_material(m) && armor_materials(content).any(|a| a.id == m);
         let material = design
             .blueprint()
@@ -74,7 +83,7 @@ impl DrydockUi {
             .map(str::to_string)
             .or_else(|| armor_materials(content).find(|m| unlocks.has_material(&m.id)).map(|m| m.id.clone()))
             .unwrap_or_default();
-        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, picked, category, search: String::new() }
+        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, picked, jump: None, search: String::new(), menu: None }
     }
 
     pub fn overlay(&self, o: Overlay) -> bool {
@@ -86,30 +95,45 @@ impl DrydockUi {
     }
 }
 
-/// The parts the player can build with (unlocked), in content order.
-pub fn palette_parts<'c>(content: &'c Content, unlocks: &'c Unlocks) -> impl Iterator<Item = &'c Part> + Clone {
-    content.parts.iter().filter(|p| unlocks.has_part(&p.id))
+/// One section of the palette's list (GDR-0082: every part in sections, a heading per category).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Section {
+    /// The category (content id).
+    pub category: String,
+    /// The unlocked parts, then the locked ones, each in content order.
+    pub parts: Vec<String>,
+    /// How many of `parts` (the last ones) are locked.
+    pub locked: usize,
 }
 
-/// The palette's list for a category, or for a search (non-empty: every part whose name contains it): the unlocked
-/// parts, then the locked ones research can unlock (shown dimmed as `LOCKED · <research node>`, never picked;
-/// GDR-0065: the drydock shows what research gives), each in content order. Locked parts no research node unlocks
-/// stay hidden. Returns the part ids and how many of them (the last ones) are locked.
-pub fn palette_list(content: &Content, unlocks: &Unlocks, category: &str, search: &str) -> (Vec<String>, usize) {
+/// The palette's list: a section per category in content order, with its parts that match the search (empty:
+/// all; else every part whose name contains it), sections left empty dropped. A section lists the unlocked parts,
+/// then the locked ones research can unlock (shown dimmed as `LOCKED · <research node>`, never picked; GDR-0065:
+/// the drydock shows what research gives). Locked parts no research node unlocks stay hidden.
+pub fn palette_sections(content: &Content, unlocks: &Unlocks, search: &str) -> Vec<Section> {
     let search = search.to_lowercase();
-    let listed = |p: &&Part| if search.is_empty() { p.category == category } else { p.name.to_lowercase().contains(&search) };
+    let listed = |p: &&Part| p.name.to_lowercase().contains(&search);
     let shown = |p: &&Part| unlocks.has_part(&p.id) || unlocked_by(content, &Unlock::Part(p.id.clone())).is_some();
-    let (open, locked): (Vec<&Part>, Vec<&Part>) = content.parts.iter().filter(listed).filter(shown).partition(|p| unlocks.has_part(&p.id));
-    let n = locked.len();
-    (open.into_iter().chain(locked).map(|p| p.id.clone()).collect(), n)
+    content
+        .categories
+        .iter()
+        .filter_map(|c| {
+            let in_section = |p: &&Part| p.category == c.id;
+            let (open, locked): (Vec<&Part>, Vec<&Part>) =
+                content.parts.iter().filter(in_section).filter(listed).filter(shown).partition(|p| unlocks.has_part(&p.id));
+            let n = locked.len();
+            let parts: Vec<String> = open.into_iter().chain(locked).map(|p| p.id.clone()).collect();
+            (!parts.is_empty()).then(|| Section { category: c.id.clone(), parts, locked: n })
+        })
+        .collect()
 }
 
-/// Every armour material, in content order: the ARMOR pills and keys 1–9. Locked ones are dimmed and refused.
+/// Every armour material, in content order: the ARMOR swatches and keys 1–9. Locked ones are dimmed and refused.
 pub fn armor_materials(content: &Content) -> impl Iterator<Item = &Material> + Clone {
     content.materials.iter().filter(|m| m.armor.is_some())
 }
 
-/// Is an armour material's pill shown: unlocked, or locked and research can unlock it (like the palette's rows).
+/// Is an armour material's swatch shown: unlocked, or locked and research can unlock it (like the palette's rows).
 pub fn material_shown(content: &Content, unlocks: &Unlocks, material: &str) -> bool {
     unlocks.has_material(material) || unlocked_by(content, &Unlock::Material(material.to_string())).is_some()
 }
@@ -159,27 +183,36 @@ mod tests {
         Career::from_ron(&format!("(start: \"rim_awakening\", seed: 1, generator: 1, researched: [{}])", list.join(", "))).unwrap()
     }
 
-    /// The palette offers what the career unlocked and lists the rest after it, locked, in content order.
+    /// The section of a category in the palette's list.
+    fn section(content: &Content, unlocks: &Unlocks, category: &str, search: &str) -> Option<Section> {
+        palette_sections(content, unlocks, search).into_iter().find(|s| s.category == category)
+    }
+
+    /// The palette lists every category's parts in sections, in content order: what the career unlocked, then the
+    /// rest, locked.
     #[test]
     fn the_palette_follows_the_unlocks() {
         let content = data::base_content();
         let in_order = |ids: &[&str]| -> Vec<String> { content.parts.iter().filter(|p| ids.contains(&p.id.as_str())).map(|p| p.id.clone()).collect() };
         let new_game = career(&[]).unlocks(&content);
-        let (parts, locked) = palette_list(&content, &new_game, "weapons", "");
-        assert_eq!(parts, [vec!["pulse_laser".to_string()], in_order(&["beam_laser", "automaton_cannon"])].concat());
-        assert_eq!(locked, 2);
-        assert!(palette_parts(&content, &new_game).all(|p| !p.locked));
+        let weapons = section(&content, &new_game, "weapons", "").unwrap();
+        assert_eq!(weapons.parts, [vec!["pulse_laser".to_string()], in_order(&["beam_laser", "automaton_cannon"])].concat());
+        assert_eq!(weapons.locked, 2);
+        let all_sections: Vec<String> = palette_sections(&content, &new_game, "").into_iter().map(|s| s.category).collect();
+        assert_eq!(all_sections, content.categories.iter().map(|c| c.id.clone()).collect::<Vec<_>>());
         // Research moves a part up among the unlocked ones.
         let cannon = career(&["automaton_cannon"]);
-        let (parts, locked) = palette_list(&content, &cannon.unlocks(&content), "weapons", "");
-        assert_eq!(parts, [in_order(&["pulse_laser", "automaton_cannon"]), vec!["beam_laser".to_string()]].concat());
-        assert_eq!(locked, 1);
+        let weapons = section(&content, &cannon.unlocks(&content), "weapons", "").unwrap();
+        assert_eq!(weapons.parts, [in_order(&["pulse_laser", "automaton_cannon"]), vec!["beam_laser".to_string()]].concat());
+        assert_eq!(weapons.locked, 1);
         assert!(cannon.fresh_parts(&content).contains("automaton_cannon"));
-        // A search lists every category, locked ones last; free mode locks nothing.
-        let (parts, locked) = palette_list(&content, &new_game, "hull", "LASER");
-        assert_eq!((parts, locked), (vec!["pulse_laser".to_string(), "beam_laser".to_string()], 1));
+        // A search filters the whole list, locked ones last in their section, empty sections dropped; free mode
+        // locks nothing.
+        let found = palette_sections(&content, &new_game, "LASER");
+        assert_eq!(found, vec![Section { category: "weapons".into(), parts: vec!["pulse_laser".to_string(), "beam_laser".to_string()], locked: 1 }]);
+        assert!(palette_sections(&content, &new_game, "no such part").is_empty());
         let all = Unlocks::all(&content);
-        assert_eq!(palette_list(&content, &all, "weapons", "").1, 0);
+        assert!(palette_sections(&content, &all, "").iter().all(|s| s.locked == 0));
         // The first part picked and the armour are unlocked ones: the Runner's composite hull gives way to steel.
         let runner = PlayerDesign::starter(&content, "halvex_runner");
         let ui = DrydockUi::new(&content, &runner, &new_game);

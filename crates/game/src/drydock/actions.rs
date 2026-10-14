@@ -6,8 +6,9 @@
 //! `blueprints.rs`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
-//! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
-//! undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom, / search.
+//! rotate, F flip, Delete / Backspace delete, Esc closes the open menu, else deselects, M mirror, 1–9 armour
+//! material (unlocked ones), Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom,
+//! / search.
 
 use bevy::prelude::*;
 use data::{Content, PowerTier, Unlock};
@@ -20,7 +21,7 @@ use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
 
 use super::PlayerDesign;
 use super::blueprints::Shelf;
-use super::state::{DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
+use super::state::{BarMenu, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
 
 #[derive(Message, Clone, Debug, PartialEq)]
 pub enum DrydockAction {
@@ -42,7 +43,7 @@ pub enum DrydockAction {
     /// Armour material for hull parts (content id).
     Material(String),
     Overlay(Overlay),
-    /// Palette category (content id).
+    /// A category chip: the palette's list jumps to the category's section (content id).
     Category(String),
     /// Pick a part in the palette (content id).
     PickPart(String),
@@ -56,9 +57,31 @@ pub enum DrydockAction {
     PartMaterial(String),
     PartTier(PowerTier),
     PartWeight(bool),
-    /// A click on a LOCKED palette row or a locked armour pill: the research screen on the node (id) that unlocks
+    /// A click on a LOCKED palette row or a locked armour swatch: the research screen on the node (id) that unlocks
     /// it (`research` handles it).
     Research(String),
+    /// Opens a bottom bar menu, or closes it when it is open.
+    OpenMenu(BarMenu),
+    /// Closes the open menu (Esc, a click outside it).
+    CloseMenu,
+    /// One of the ⋯ menu's rarer actions (`blueprints.rs`).
+    Rare(Rare),
+}
+
+/// The ⋯ menu's rarer actions (GDR-0082): shortcuts to what BLUEPRINTS and EXPORT offer, carried out the same way
+/// (`blueprints.rs`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Rare {
+    /// An empty design in the frame of the one in the drydock (that one is saved first when it has changes).
+    NewDesign,
+    /// Moves the design to the content frame of this size.
+    Frame((u32, u32)),
+    /// Copies the design's share code.
+    CopyCode,
+    /// Downloads the design's `.ron` file (desktop: writes it to the data directory).
+    Download,
+    /// Imports a `.ron` file (web: the file chooser).
+    ImportFile,
 }
 
 /// A widget that sends an action when clicked (pills, rings, palette rows).
@@ -99,11 +122,13 @@ pub fn locked_research(content: &Content, action: &DrydockAction) -> Option<Stri
 
 /// The keyboard shortcuts. While BLUEPRINTS or EXPORT covers the design only Ctrl+S acts (the pages handle Esc,
 /// Ctrl+C and Ctrl+V themselves): a key must not edit, select or fly a design nobody sees.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     content: Res<GameContent>,
     shelf: Res<Shelf>,
+    ui: Res<DrydockUi>,
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<DrydockAction>,
 ) {
@@ -143,6 +168,7 @@ pub(super) fn shortcuts(
             (KeyCode::KeyM, ..) => send(DrydockAction::Mirror),
             (KeyCode::KeyF, ..) => send(DrydockAction::Flip),
             (KeyCode::Delete | KeyCode::Backspace, ..) => send(DrydockAction::Delete),
+            (KeyCode::Escape, ..) if ui.menu.is_some() => send(DrydockAction::CloseMenu),
             (KeyCode::Escape, ..) => send(DrydockAction::Deselect),
             (KeyCode::KeyT, ..) => send(DrydockAction::TestFly),
             (KeyCode::Equal | KeyCode::NumpadAdd, ..) => send(DrydockAction::ZoomIn),
@@ -174,8 +200,9 @@ fn digit(k: KeyCode) -> Option<usize> {
     KEYS.iter().position(|&d| d == k)
 }
 
-/// The UI-state actions, the test flight (only a design that can fly takes off) and the way home. Locked parts
-/// and materials are never picked (their rows and pills are disabled; the keys 1–9 reach locked ones too).
+/// The UI-state actions, the menus, the test flight (only a design that can fly takes off) and the way home.
+/// Locked parts and materials are never picked (their rows and swatches are disabled; the keys 1–9 reach locked ones
+/// too). Any action but opening a menu closes the open menu (its own items' actions too).
 pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut ui: ResMut<DrydockUi>,
@@ -186,14 +213,15 @@ pub(super) fn apply(
     mut next: ResMut<NextState<AppMode>>,
 ) {
     for a in actions.read() {
+        if ui.menu.is_some() && !matches!(a, DrydockAction::OpenMenu(_)) {
+            ui.menu = None;
+        }
         match a {
+            DrydockAction::OpenMenu(m) => ui.menu = if ui.menu == Some(*m) { None } else { Some(*m) },
             DrydockAction::Tool(t) => ui.tool = *t,
             DrydockAction::Material(m) if granted.unlocks.has_material(m) => ui.material.clone_from(m),
             DrydockAction::Overlay(o) => ui.toggle_overlay(*o),
-            DrydockAction::Category(c) => {
-                ui.category.clone_from(c);
-                ui.search.clear();
-            }
+            DrydockAction::Category(c) => ui.jump = Some(c.clone()),
             DrydockAction::PickPart(p) if granted.unlocks.has_part(p) => ui.picked = Some(p.clone()),
             // Only on a status made for the design as it is now (one changed on the BEHAVIOR screen gets its status
             // in the first drydock frame).
@@ -202,8 +230,8 @@ pub(super) fn apply(
                 next.set(AppMode::Flight);
             }
             DrydockAction::Menu => next.set(AppMode::Home),
-            // Editing (tools.rs), zoom (the camera), save / export / blueprints (blueprints.rs), the BEHAVIOR screen
-            // (`behavior_ui`).
+            // Editing (tools.rs), zoom (the camera), save / export / blueprints and the ⋯ menu's actions
+            // (blueprints.rs), the BEHAVIOR screen (`behavior_ui`).
             _ => {}
         }
     }
@@ -233,6 +261,7 @@ mod tests {
             .insert_resource(design)
             .insert_resource(granted)
             .init_resource::<DrydockStatus>()
+            .init_resource::<crate::drydock::panels::Palette>()
             .insert_resource(GameContent(content))
             .add_message::<DrydockAction>()
             .add_message::<UiClick>()

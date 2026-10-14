@@ -18,10 +18,10 @@
 //!   when home or the drydock opens (a deleted design empties its slot with a note).
 //! * **Notes** ([`Note`]) go to home's note block and the console.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bevy::prelude::*;
-use data::career::{Readiness, Unlocks, voyage_ready};
+use data::career::{Availability, Readiness, Unlocks, voyage_ready};
 use data::{Blueprint, Career, Content, ResearchNode, Unlock};
 
 use crate::drydock::library::{DesignDoc, problems_text};
@@ -212,7 +212,18 @@ impl PlayerCareer {
     /// What the career grants now.
     pub fn granted(&self, content: &Content) -> Granted {
         let (unlocks, fresh) = if self.free { (Unlocks::all(content), BTreeSet::new()) } else { (self.career.unlocks(content), self.career.fresh_parts(content)) };
-        Granted { unlocks, fresh, mind_capacity: self.career.mind_capacity(content), free: self.free }
+        let counts = match self.free {
+            true => BTreeMap::new(),
+            false => content
+                .parts
+                .iter()
+                .filter_map(|p| match self.career.available(&p.id) {
+                    Availability::Count(n) => Some((p.id.clone(), n)),
+                    Availability::Unlimited => None,
+                })
+                .collect(),
+        };
+        Granted { unlocks, fresh, counts, mind_capacity: self.career.mind_capacity(content), free: self.free }
     }
 
     /// Changes the career and writes the save; `Err` says why it was not written (the change stays for this
@@ -237,6 +248,9 @@ pub struct Granted {
     pub unlocks: Unlocks,
     /// Parts research unlocked that the drydock hasn't shown yet (NEW tags; none in free mode).
     pub fresh: BTreeSet<String>,
+    /// How many the player has of the parts that are counted (`Career::available`, GDR-0082); every other part is
+    /// unlimited (all of them for now, and in free mode).
+    pub counts: BTreeMap<String, u32>,
     /// Logic cores the ship-mind runs at once.
     pub mind_capacity: u32,
     /// `?unlock=all`.
@@ -244,6 +258,11 @@ pub struct Granted {
 }
 
 impl Granted {
+    /// How many of a part the player has to build with.
+    pub fn available(&self, part: &str) -> Availability {
+        self.counts.get(part).map_or(Availability::Unlimited, |&n| Availability::Count(n))
+    }
+
     /// Is the content frame of this size open? (Sizes no content frame has are open: they came from elsewhere.)
     pub fn frame_open(&self, content: &Content, size: (u32, u32)) -> bool {
         content.frames.iter().find(|f| f.size == size).is_none_or(|f| self.unlocks.has_frame(&f.id))

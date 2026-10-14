@@ -6,14 +6,17 @@
 //! * [`state`]: what the widgets show (`DrydockUi`, `DrydockStatus`, `DrydockStats`).
 //! * [`actions`]: `DrydockAction`, the one message buttons and keys send; the UI-state handler.
 //! * [`view`]: the design drawn with the flight tiles, the frame overlay, the camera, `DrydockCursor`.
-//! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`); locked parts dimmed, NEW tags.
+//! * [`panels`]: the screen (built from `ui_kit` widgets and `ui_icons`, layout v2 of GDR-0082): the palette in
+//!   sections, the armour swatches, the bottom bar with its menus; locked parts dimmed, NEW tags.
 //! * [`report`]: [`report::DrydockReport`], the design's `sim::report` per revision.
 //! * [`stats`]: the stats grid and the status line (whether the design can fly) from the report; the
 //!   voyage-ready line from the career.
 //!
-//! What the player may build with is the career's (`career::Granted`): the palette, the ARMOR pills and the frames
-//! offer the unlocked parts, materials and frames and show the rest locked (everything in free mode,
+//! What the player may build with is the career's (`career::Granted`): the palette, the armour swatches and the
+//! frames offer the unlocked parts, materials and frames and show the rest locked (everything in free mode,
 //! `?unlock=all`). A design that uses locked parts still opens, shows and test-flies; it is only not voyage-ready.
+//! How many of each part the player has (part availability, GDR-0082; every part unlimited for now) reaches the
+//! editing model (`design::sync_available`), which refuses a placement when none is left.
 //! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
 //! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
 //! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
@@ -111,9 +114,25 @@ impl Plugin for DrydockPlugin {
                     (actions::clicks, actions::shortcuts, panels::sync_search).in_set(DockSet::Input),
                     (view::ui_scale, view::camera, actions::apply, report::update, stats::update, stats::voyage).chain().in_set(DockSet::Apply),
                     panels::see_fresh.after(inspector::update).in_set(DockSet::Apply),
-                    (view::rebuild_ship, overlays::rebuild, panels::sync_palette, panels::scroll_selected, panels::sync_blocks, panels::sync_pills, panels::sync_texts, panels::sync_live)
+                    (
+                        view::rebuild_ship,
+                        overlays::rebuild,
+                        panels::sync_palette,
+                        panels::scroll_chips,
+                        panels::sync_swatches,
+                        panels::scroll_selected,
+                        panels::sync_blocks,
+                        panels::sync_pills,
+                        panels::sync_texts,
+                        panels::fit_bar,
+                        panels::fit_status,
+                        panels::sync_menus,
+                        panels::sync_live,
+                    )
                         .chain()
                         .in_set(DockSet::Show),
+                    // The career's part counts reach the editing model before an edit of this frame.
+                    design::sync_available.after(blueprints::apply).before(tools::apply).in_set(DockSet::Apply),
                 ),
             )
             .add_systems(PostUpdate, view::draw_frame.run_if(view::shown).after(CameraSet).before(FxFlush))
