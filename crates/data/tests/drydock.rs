@@ -9,7 +9,7 @@ use data::content::limits::MAX_COORD;
 use data::design::stats::{BUILTIN_STATS, SHIP_STATS};
 use data::{
     Better, Blueprint, Content, Kind, Pack, Placement, PowerOverride, PowerTier, Problem, Severity,
-    blueprint_to_ron, parse_blueprint, content::validate, validate_ship,
+    blueprint_to_ron, parse_blueprint, validate, validate_ship,
 };
 
 const MOD_MANIFEST: &str =
