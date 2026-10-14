@@ -23,6 +23,8 @@
         heat: (output: 1, limit: 4),
         logic: (rule_slots: 2, control_capacity: 4), // control capacity: lead placeholder (12 Oct 2026)
         gyro: (torque: 300), // 13 Oct 2026 (GDR-0055): the raider turns 90° in ~0.57 s, still the snappiest
+        // A power plant: it goes off like a fission reactor (PLACEHOLDER, lead default, 14 Oct 2026, GDR-0085).
+        explosion: (damage: 1.5, radius: 1.5),
         salvage: (family: "logic", data: 4, materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1}),
     ),
     (

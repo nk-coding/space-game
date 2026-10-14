@@ -1,6 +1,9 @@
 # GDR-0084: Chain reactions v1: destroyed reactors, capacitors and drives explode into their piece
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 14 Oct 2026: Niklas answered the open questions; blasts now reach other pieces
+  and ships (their shields absorb), intact armour on the line shields what lies behind it, the radii grew to two cells
+  deep and the automaton core, shield emitter and RCS pod explode too: [GDR-0085](0085-chain-reactions-v2.md). The
+  rest stands.
 - Date: 2026-10-14
 - Decided by: Niklas (build chain reactions now, 14 Oct 2026); the numbers and v1 rules are lead defaults for him to
   review

@@ -648,17 +648,18 @@ fn a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off() {
         &c,
         &[
             ("fission_reactor", 0, 0, 0, false, None),
-            ("slope_1x1", 2, 0, 0, false, Some("steel")),
+            ("slope_1x1", 3, 0, 0, false, Some("steel")),
             ("automaton_cannon", 0, 1, 0, false, None),
-            ("automaton_cannon", 2, 1, 0, false, None),
+            ("automaton_cannon", 3, 1, 0, false, None),
             ("automaton_core", 0, 2, 0, false, None),
             ("armor_block", 1, 2, 0, false, Some("steel")),
-            ("automaton_core", 2, 2, 0, false, None),
+            ("armor_block", 2, 2, 0, false, Some("steel")),
+            ("automaton_core", 3, 2, 0, false, None),
         ],
     );
     let (mut w, s) = world_with(d.clone());
     let behind_reactor = find(&d, "automaton_cannon", 0, 1);
-    let behind_slope = find(&d, "automaton_cannon", 2, 1);
+    let behind_slope = find(&d, "automaton_cannon", 3, 1);
     let shots = |w: &sim::Sim| -> Vec<u32> {
         w.events()
             .iter()
@@ -689,7 +690,7 @@ fn a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off() {
     assert!(!w.ship(s).unwrap().part(behind_reactor).alive);
     assert!(fired.is_empty(), "{fired:?}");
     // Then the slope: its cannon fires.
-    w.apply_damage(s, sim::DamageTarget::Cell((2, 0)), 10.0);
+    w.apply_damage(s, sim::DamageTarget::Cell((3, 0)), 10.0);
     let mut fired = Vec::new();
     for _ in 0..30 {
         w.step(&fire(s));

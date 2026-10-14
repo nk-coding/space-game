@@ -65,7 +65,8 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
-| `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
+| `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome` |
+| `chain` | chain reactions (GDR-0084, GDR-0085): the world's blast queue, the reach scan of other pieces and ships, armour cover (`cover`, `in_reach`, shared with the design's compiled lists), shields (`BLAST_FAMILY`) |
 | `salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
 | `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `fleet_disarmed`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
 | `voyage_runner` | the headless voyage runner's scripted pilot as a library: `VoyageRunner` (steppable), `Flagship`, `VoyageRun`, `closing_reach` (see [The headless voyage runner](#the-headless-voyage-runner)) |
@@ -293,6 +294,25 @@ Counters with seed 42 (voyage: 2 sites woken and cleared, recall 1755 ticks):
 | behavior | 220 | 25 | 261 | 155 | 78 | 47 / 8 | 81 | 35 | 0 |
 | salvage | 104 | 29 | 13 | 11 | 8 | 398 / 11 | 124 | 14 | 0 |
 | voyage | 53 | 4 | 44 | 0 | 0 | 634 / 0 | 0 | 5 | 0 |
+
+**With chain reactions v2** ([GDR-0085](gdr/0085-chain-reactions-v2.md), 14 Oct 2026, release builds, 1800 ticks: blasts
+reach other pieces and ships, armour on the line shields, reactors reach two cells deep, cores, emitters and RCS pods
+explode): core, flight, load (20 ships), behavior, salvage and voyage, seeds 42 and 7: native x86_64 vs wasm32-wasip1
+under Node 24 **identical** (12 runs). Every stream differs from the GDR-0084 ones (more parts destroyed; no new state
+is hashed: the chain resolves within the breakage, the cover lists are part of the design and the reach scan reads the
+pieces' poses). Last ticks, seed 42 / 7: core `64b1b7a21ae3be76` / `685dde0be1258913`, flight `730ecc5c4e7ea76f` /
+`fc4fc75c2f6dd69a`, load `4a5901d79902bbdf` / `bb081c57ebd25ae0`, behavior `b35d7818ee707466` / `f9384c380d9bb1ab`,
+salvage `9216af47e53a36f6` / `6084ef2acac986d8`, voyage `a2397a3937187f33` / `21ae3b24b14dcf82`. Counters with seed 42
+(voyage: 3 sites woken and cleared, recall 1673 ticks):
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Shield hits | Impacts / rams | Burns | Explosions | Overheated part-ticks |
+|---|---|---|---|---|---|---|---|---|---|
+| core | 433 | 57 | 939 | 110 | 7 | 79 / 5 | 214 | 98 | 248 |
+| flight | 289 | 25 | 872 | 369 | 58 | 137 / 8 | 49 | 70 | 0 |
+| load (20) | 101 | 0 | 98 | 757 | 16 | 124 / 1 | 0 | 21 | 0 |
+| behavior | 263 | 27 | 269 | 342 | 117 | 27 / 3 | 73 | 56 | 0 |
+| salvage | 125 | 31 | 13 | 11 | 8 | 165 / 8 | 64 | 28 | 0 |
+| voyage | 84 | 6 | 89 | 0 | 0 | 562 / 0 | 0 | 17 | 0 |
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -1636,25 +1656,51 @@ GDR-0047).
   component that has a logic core then moves to a ship of its own, a vessel (`SimEvent::VesselFormed` after the
   `Split`; see [Vessels](#vessels)).
 - `Sim::raycast(origin, dir, max, exclude)` → `PartHit { ship, piece, part, hit }`.
-- **Chain reactions** (GDR-0019, [GDR-0084](gdr/0084-chain-reactions-v1.md), 14 Oct 2026; numbers are lead
-  placeholders in content). A part with an `explosion: (damage, radius)` block that damage destroys (shots, plumes,
-  rams, blasts, scripted damage; never salvage stripping or a spawned wreck's pre-breaking, which use
-  `Ship::remove_part`) deals `damage` once to every other alive part of its piece with a cell whose nearest point
-  lies within `radius` m of the part's centre (blueprint frame), times the target's `PartSpec::blast_factor` (a hull
-  part: its armour's `blast_factor`; others 1). Nothing blocks a blast, it does not fall off, and the ship's own
-  shields take none of it (it goes off inside them). Other pieces (the piece as it was before this resolution) and
-  other ships are not hit.
-  - The design compiles each part's targets once (`ShipDesign::blast`: `(part, damage)` in ascending part order).
-  - `Ship::chain_reactions` runs at the start of every breakage resolution (`Sim::resolve_ship` calls it before the
-    fragments, so parts a blast destroys leave theirs too): a queue over `pending_destroyed`, **first destroyed
-    first**; each blast hits its targets in ascending part order through `apply_damage`, and what it destroys joins
-    the end of the queue. So a whole chain resolves **in the same tick**, in a fixed order, before splits and events.
-  - `SimEvent::Explosion { ship, piece, part, at, radius, damage }`: `at` is the part's centre in the world as the
-    piece was before the breakage. The client draws nothing for it yet (a follow-up).
-  - Base content: fission reactor 1.5 within 1 m (the 8 cells around it), fusion reactor 2.5 within 1.5 m (the 12
-    cells around its 2 × 2), torch drive 1.2 within 1.5 m, capacitor and thruster 0.5 within 0.6 m (the 4 cells
-    beside them); armour `blast_factor` 0.5 (reactive 0.25). A fission reactor takes every 1-hit-point machine
-    around it, another fission reactor included (a chain), and leaves armour blocks standing.
+- **Chain reactions** (GDR-0019, [GDR-0084](gdr/0084-chain-reactions-v1.md), [GDR-0085](gdr/0085-chain-reactions-v2.md),
+  14 Oct 2026; the rules decided by Niklas, the details and numbers lead placeholders in content; code: `src/chain.rs`).
+  A part with an `explosion: (damage, radius)` block that damage destroys (shots, plumes, rams, blasts, scripted
+  damage; never salvage stripping or a spawned wreck's pre-breaking, which use `Ship::remove_part`) blasts every
+  other alive part with a cell whose nearest point lies within `radius` m of the part's centre, **on any piece of
+  any ship**: its own piece, its ship's split-off pieces, other ships, wrecks, salvage (loose fragments and cargo are
+  not parts and are not hit).
+  - **Damage**: `damage × PartSpec::blast_factor` of the target (a hull part: its armour's `blast_factor`; others 1),
+    then `× blast_factor` of every **intact armour part on the line**: a part with a `blast_factor` below 1, alive on
+    its piece when the blast goes off, whose cell the straight line from the blast's centre to the centre of the
+    target's nearest cell passes through (a stretch of positive length: touching a corner or running along an edge
+    does not count), not the target, not the exploding part. Machines shield nothing; a slope blocks its whole
+    cell. No falloff.
+  - **Its own piece** (as it was before this resolution): the design compiles the targets once
+    (`ShipDesign::blast`: `BlastTarget { part, damage, cover }`, ascending part) with the armour on each line
+    (`ShipDesign::blast_cover`); the sim skips targets and cover that are dead or on another piece by then.
+  - **Every other piece**: found when the blast goes off. The blast's centre in the world (its piece's pose now);
+    each piece of each ship (ship index, then piece order) whose bounding circle (`Piece::radius` + the blast radius
+    + 1 m of slack for slope cells) can reach it; the blast's centre in that piece's blueprint frame and the grid
+    cells in reach there (`chain::in_reach`, the same rule as the compiled lists). The cover counts the target
+    piece's armour on its stretch of the line and the exploding piece's on its stretch (both blueprint frames); a third
+    piece in between does not count. No physics query, no allocation once warmed up.
+  - **Shields**: on other pieces, the bubbles of this tick that the blast crosses (they cover the target's cell centre
+    and not the blast's centre) take their share first, `absorb[Missile]` (`chain::BLAST_FAMILY`), one target at a
+    time, in bubble order, up to what they hold (`SimEvent::ShieldHit` with `by` = the exploding ship). The exploding
+    ship's own bubbles never (the blast goes off inside them). **Blasts spare no one**: unlike shots, plumes and rams
+    (GDR-0048, GDR-0046, GDR-0067), friendly vessels are hit and their bubbles absorb (lead default).
+  - **Order**: `Sim::resolve_breakage` sets off every chain before any ship's breakage is resolved (and
+    `Sim::resolve_ship` before its fragments, so every part a blast destroys leaves its fragment): one queue over every
+    ship's destroyed parts, ships in index order, each ship's parts in the order they died; every part a blast destroys,
+    on any ship, joins the end at once, so a whole chain resolves **in the same tick**, first destroyed first. Each
+    blast computes all its hits from the state before it (what is alive and what covers what: armour the blast breaks
+    still shields what lies behind it from that blast; a later blast of the chain meets only what is left), then
+    applies them through `apply_damage`: its own piece's targets ascending, then the other pieces in ship and piece
+    order, their targets ascending. `Ship::resolve_breakage` on its own (a ship without a world) sets off only the
+    own-piece part of what is left.
+  - `SimEvent::Explosion { ship, piece, part, at, radius, damage }` follows the part's `PartDestroyed`: `at` is the
+    part's centre in the world as the piece was before the breakage. Parts it destroys on other ships appear with
+    those ships' events. The client draws nothing for it yet (a follow-up).
+  - Base content (GDR-0085): fission reactor and automaton core 1.5 within 1.5 m (the 8 cells around a one-cell part
+    and the next one straight out on each side), fusion reactor 2.5 and torch drive 1.2 within 2 m (the 12 cells
+    around a 2 × 2 and the 8 two cells straight out), shield emitter 1 within 0.6 m, capacitor, thruster and RCS pod
+    0.5 within 0.6 m (the 4 cells beside them); armour `blast_factor` 0.5 (reactive 0.25). A fission reactor takes
+    every 1-hit-point machine around it, another reactor included (a chain), leaves armour blocks standing, and a
+    machine two cells out behind a steel block takes 0.75 and survives.
 
 ## Salvage
 
@@ -2122,6 +2168,25 @@ No run ran out of time. The starter's two fission reactors sit beside its radiat
 emitters, so a reactor shot off now can take a corner of the ship with it; the raiders' thrusters (and the Warden's)
 explode too. Within the noise of 120 seeds (about ±7) except the starter on
 `yard_approach` (−8) and the Runner on `corran_reach` (−19).
+
+**Chain reactions v2** ([GDR-0085](gdr/0085-chain-reactions-v2.md), 14 Oct 2026). The `dev` build before (`aa9c68e`,
+reproducing the GDR-0084 column above exactly), v2's rules with GDR-0084's radii (blasts reach every piece and ship,
+armour shields, cores, emitters and RCS pods explode), and v2 as chosen (reactors and drives two cells deep); the same
+pilot, goal cleared and home of 120 (seeds 1–120), lost in brackets:
+
+| Voyage | `rim_skiff`: before | v2, old radii | **v2** | Halvex Runner: before | v2, old radii | **v2** |
+|---|---|---|---|---|---|---|
+| yard_approach | 59 (0) | 63 (0) | **60 (0)** | 83 (0) | 80 (0) | **73 (5)** |
+| halvex_drift | 36 (4) | 39 (4) | **36 (5)** | 91 (0) | 83 (0) | **79 (6)** |
+| corran_reach | 15 (7) | 18 (6) | **18 (15)** | 70 (1) | 75 (3) | **74 (3)** |
+| wardens_gate | 4 (0) | 3 (3) | **2 (9)** | 38 (3) | 30 (3) | **27 (8)** |
+
+As clear rates: the starter 49 / 30 / 13 / 3 % → 50 / 30 / 15 / 2 %, the Runner 69 / 76 / 58 / 32 % → 61 / 66 / 62 /
+23 %. No run ran out of time. With the old radii everything stays within the noise of 120 seeds (about ±7); the longer
+reach makes the voyages harder: the starter clears as often but is lost more often on the two harder voyages (7 → 15
+and 0 → 9 of 120; a reactor shot off now reaches the logic core two cells away through the cargo bay, nothing
+shields it), the Runner clears 10–12 fewer of 120 on three voyages and is lost a few times more (its reactors' blasts
+reach two cells out too).
 
 ## Driving the sim from the client
 

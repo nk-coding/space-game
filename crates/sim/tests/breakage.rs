@@ -234,7 +234,8 @@ fn a_config_change_keeps_pending_breakage() {
 
 #[test]
 fn raider_breaks_into_salvage() {
-    let c = content();
+    // Without chain reactions: the core's blast (GDR-0085) would take the cannon and thruster beside it at once.
+    let c = content_without_explosions();
     let d = design(&c, "automaton_raider");
     let (mut w, s) = world_with(d.clone());
     let id0 = w.ship(s).unwrap().pieces()[0].id;

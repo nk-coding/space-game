@@ -111,7 +111,9 @@ fn a_split_leaves_two_vessels_running_the_behavior_within_their_own_slots() {
 /// design (it did lose half of itself). `hull` is read from the debug view: the value the failing rule measured.
 #[test]
 fn a_split_off_vessel_measures_its_hull_against_its_own_piece() {
-    let c = content();
+    // Without chain reactions: the cut runs through the fusion reactor, whose blast (GDR-0085) would reach both
+    // halves.
+    let c = content_without_explosions();
     let mut w = sim::Sim::new(1);
     with_behaviors(&mut w);
     let probe = w.behaviors_mut().add_text("probe", "when hull < 1% -> flee\nalways -> hold").unwrap();
@@ -549,8 +551,8 @@ fn vessels_of_one_owner_bump_without_ram_damage() {
 fn a_hard_ram_crushes_inward_past_the_parts_it_destroys() {
     // Head-on at 20 m/s each (about 390 kN·s): ~5.8 hp per side, more than the raider's centre column holds
     // (cannon 1, core 2, thruster 1 hp): the nose is crushed and the damage carries through the core to the
-    // tail (GDR-0047). The side columns are untouched but for the crushed thruster's blast (GDR-0084) on the two
-    // tail slopes beside it.
+    // tail (GDR-0047). The side columns are untouched but for the blasts of the crushed core and thruster
+    // (GDR-0084, GDR-0085).
     let (mut w, a, b) = ram(Owner(2), 20.0);
     let mut hit = None;
     for _ in 0..30 {
@@ -574,14 +576,18 @@ fn a_hard_ram_crushes_inward_past_the_parts_it_destroys() {
             column.iter().all(|&p| !ship.part(p).alive),
             "{s:?}: the centre column is crushed"
         );
-        let thruster = column[2] as usize;
-        let blast = d.blast.get(thruster);
-        assert_eq!(blast.len(), 3, "the core and the two tail slopes");
-        for p in (0..d.parts.len() as PartIdx).filter(|p| !column.contains(p)) {
-            let full = d.parts[p as usize].hp;
-            let lost = blast.iter().find(|b| b.0 == p).map_or(0.0, |b| b.1);
-            assert!(ship.part(p).alive, "{s:?}: part {p} survives");
-            assert!(close(ship.part(p).hp, full - lost, 1e-6), "{s:?}: part {p} lost only the blast");
+        // The crushed core's blast (GDR-0085: it goes off like a fission reactor, 1.5 within 1 m, plate takes
+        // half) takes the four slopes around it (0.6 hit points each) and leaves the two plate blocks at 0.45; the
+        // thruster's finds nothing left in its reach. The other raider's nose is out of reach.
+        let core = column[1] as usize;
+        assert_eq!(d.blast.get(core).len(), 8);
+        for (x, y) in [(0, 0), (2, 0), (0, 2), (2, 2)] {
+            let p = d.grid.occupant((x, y)).unwrap() as PartIdx;
+            assert!(!ship.part(p).alive, "{s:?}: the slope at {x},{y} went in the blast");
+        }
+        for x in [0, 2] {
+            let p = d.grid.occupant((x, 1)).unwrap() as PartIdx;
+            assert!(close(ship.part(p).hp, 1.2 - 0.75, 1e-5), "{s:?}: the block at {x},1 lost only the blast");
         }
         assert!(ship.team().is_none(), "the core went with the column");
     }

@@ -48,7 +48,7 @@
         power: (draw: 6),
         heat: (output: 4, limit: 5),
         engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, heat: 4)),
-        explosion: (damage: 1.2, radius: 1.5), // PLACEHOLDER, lead default (14 Oct 2026, GDR-0084)
+        explosion: (damage: 1.2, radius: 2), // PLACEHOLDER, lead default (14 Oct 2026, GDR-0084; radius 1.5 → 2, GDR-0085)
         salvage: (family: "propulsion", data: 9),
     ),
     (
@@ -83,6 +83,7 @@
         power: (draw: 1),
         heat: (output: 0.4, limit: 3),
         rcs: (thrust: 200, rated_speed: 14),
+        explosion: (damage: 0.5, radius: 0.6), // as a thruster (PLACEHOLDER, lead default, 14 Oct 2026, GDR-0085)
         salvage: (family: "propulsion", data: 2),
     ),
 ]

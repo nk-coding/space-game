@@ -92,7 +92,8 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0081](0081-drydock-editing-bevel-rotate-replace.md) | Drydock editing: bevel after the stroke, R / Shift+wheel turn the brush (slopes auto first), placing and painting replace what is under them, shield parts show their radius while placing | Accepted | 2026-10-14 |
 | [0082](0082-drydock-layout-v2-and-part-availability.md) | Drydock layout v2: every part in sections with scrolling jump chips, an armour swatch strip on the left, tools in the bottom bar (a dropdown when narrow), icons and a ⋯ menu; part availability tracked, unlimited for now | Accepted | 2026-10-14 |
 | [0083](0083-evolution-lab.md) | An evolution lab: configurable evolution of designs and behaviors (fitness and limits per run), a dev-only shipyard place first, a benchmark rating for players later | Accepted | 2026-10-14 |
-| [0084](0084-chain-reactions-v1.md) | Chain reactions v1: destroyed reactors, capacitors and drives explode into their piece (content blast numbers, armour takes a share, same tick, own shields no help) | Accepted (provisional, lead) | 2026-10-14 |
+| [0084](0084-chain-reactions-v1.md) | Chain reactions v1: destroyed reactors, capacitors and drives explode into their piece (content blast numbers, armour takes a share, same tick, own shields no help) | Accepted (provisional, lead); reach, armour shielding, radii and more exploders by [GDR-0085](0085-chain-reactions-v2.md) | 2026-10-14 |
+| [0085](0085-chain-reactions-v2.md) | Chain reactions v2: blasts reach every piece and ship (other ships' shields absorb, friends are hit), intact armour on the line lets only its share through, reactors reach two cells deep, automaton cores, shield emitters and RCS pods explode; reserve guns stay | Accepted (rules Niklas; numbers and details lead defaults) | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

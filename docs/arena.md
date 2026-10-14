@@ -174,6 +174,11 @@ time limit, 2700 ticks, `bd3e258ebfe888fd`), 2 (a loss, 1554, `8b08eb23b1973618`
 `5dc38c6c72ed573a`) and `skiff_mirror` seeds 3 (the time limit, 2700, `b8c97bc4f43ddc20`) and 42 (the time limit,
 2700, `573b7d11e6fd6c6f`), the same final hashes as the CLI's.
 
+**With chain reactions v2** ([GDR-0085](gdr/0085-chain-reactions-v2.md), 14 Oct 2026, release builds): **identical** for
+`runner_vs_raiders` seeds 1 (the time limit, 2700 ticks, `9ec00a3352c3346f`), 2 (a loss, 1335, `b543f035fd7774db`) and
+11 (a loss, 1643, `41f5ffe35d6bf208`) and `skiff_mirror` seeds 3 and 42 (the time limit, 2700, `b8c97bc4f43ddc20` and
+`573b7d11e6fd6c6f`: unchanged, no part with an explosion is destroyed in them), the same final hashes as the CLI's.
+
 `tests/fights.rs`: the same spec twice gives the same result and hash, another seed another hash; stepping in slices
 gives the same result as one go; the starter against one raider ends; a short time limit ends undecided at 0.5 each;
 the score's edge cases; seeds averaged; the spec's RON round trip (blueprint and behavior texts included); every
@@ -459,7 +464,44 @@ the second centre cannon and both slopes with it (`sim/tests/report.rs`). The ne
 (mean per opponent), the old one took 31–40 s. It also wins all 60 under the old rules, so the old run had not found
 it; with latent firepower the archive files designs with reserve guns by all their guns (32 cells filled against 24).
 Open for Niklas: whether reserve guns behind guns and a control load above the capacity are wanted (both follow the
-rules as decided).
+rules as decided). Answered on 14 Oct 2026: fine, emergent play ([GDR-0085](gdr/0085-chain-reactions-v2.md)).
+
+**With chain reactions v2** (14 Oct 2026, [GDR-0085](gdr/0085-chain-reactions-v2.md): blasts reach every piece and
+ship, armour on the line shields, reactors and drives reach two cells deep, automaton cores, shield emitters and RCS
+pods explode). The same three runs, same seeds, on 10 threads; the `dev` build before reproduces the table above
+exactly:
+
+| Run | Archive best, gen 0 / 10 / 20 / 29 | Cells | Best elite |
+|---|---|---|---|
+| `skiff_behavior.ron` | 0.647 / 1.000 / 1.000 / **1.000** | 40 of 48 | `target threat(weapons)`, flee below 25 % hull, `face` while closing in and not yet within 46 % of its range, else `approach(81%)` (two rules below never run); the starter's start scores lower (0.647 against 0.726, the same with GDR-0084's radii) |
+| `skiff_design_60bp.ron` | 0.583 / 0.917 / 0.917 / **1.000** | 33 of 64 | 20 parts: two automaton cannons clear in the nose between reactive slopes, four logic cores in a 2 × 2 block behind them with cargo bays beside, gyros and RCS pods, the two fission reactors in the rear corners, away from guns and cores; **no automaton core**; latent firepower 2.4 (= as built) |
+| `skiff_voyage_stages.ron` | 0.198 / 0.918 / 0.923 / **0.927** | 29 of 64 | 32 parts in five rows: the starter's rows plus a second row of radiators, reactors, cargo bays and logic cores, shield emitters in place of the shoulder armour, the shoulder radiators gone; every gun clear; behavior `target threat(weapons)`, flee below 25 % hull, orbit while its shield is down under fire, `face` when closing in, else `approach(98%)` |
+
+**Does the automaton core still dominate?** Less. In the design run's archive 2 of 32 elites had automaton cores
+before (the best among them) and 12 of 33 after (not the best); one run is one path, so the design run went again
+with seeds 1–5 under each rule set, every archive elite written:
+
+| Rules | Archive elites with automaton cores | Automaton cores in them | Best elites with automaton cores |
+|---|---|---|---|
+| GDR-0084 | 88 of 163 (54 %) | 196 | 4 of 5 |
+| v2 with GDR-0084's radii | 67 of 145 (46 %) | 154 | 4 of 5 |
+| v2 (chosen) | 63 of 149 (42 %) | 142 | 2 of 5 |
+
+An automaton core now goes off like a fission reactor (1.5 within 1.5 m), so one shot out takes the 1-hit-point
+machines around it: still common, no longer the default.
+
+Fights of 60 s, seeds 1–20 against each pool opponent (2 raiders / 3 raiders / the hunter), as above:
+
+| Design | Rules | Won | Lost | Undecided |
+|---|---|---|---|---|
+| GDR-0084's best (reserve guns, two automaton cores) | GDR-0084 | **59** (20 / 19 / 20) | 1 | 0 |
+| GDR-0084's best | v2 | **59** (20 / 19 / 20) | 0 | 1 |
+| v2's best (no automaton core) | GDR-0084 | **53** (20 / 13 / 20) | 6 | 1 |
+| v2's best | v2 | **54** (20 / 14 / 20) | 4 | 2 |
+
+The fitness (4 seeds per opponent) saturates at 1.000, so the archive's best is one of many perfect scores, not the
+strongest design: GDR-0084's best still wins more of these 60 fights under the new rules, and the run did not find it
+again from this seed.
 
 ### Performance
 

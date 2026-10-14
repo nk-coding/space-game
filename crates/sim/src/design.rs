@@ -224,6 +224,17 @@ pub struct BonusLink {
     pub needs_venting: bool,
 }
 
+/// One part a blast reaches on the exploding part's own piece ([`ShipDesign::blast`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlastTarget {
+    pub part: PartIdx,
+    /// The explosion's damage times the target's `blast_factor`, before cover.
+    pub damage: f32,
+    /// Index of its cover list in [`ShipDesign::blast_cover`]: each of those parts still alive on the piece
+    /// lets only its `blast_factor` of the damage through (GDR-0085).
+    pub cover: u32,
+}
+
 /// Compressed adjacency lists: `items[start[i]..start[i + 1]]` belong to entry `i`.
 #[derive(Clone, Debug, Default)]
 pub struct Csr<T> {
@@ -316,10 +327,14 @@ pub struct ShipDesign {
     /// from the lane's origin to where the plume enters the part's first cell on the lane. A plume burns the
     /// first of them that is alive and in the engine's piece, if it is within its length (`plume.rs`).
     pub plume_path: Csr<(f32, PartIdx)>,
-    /// Per part, whom its explosion hits and how hard (`(part, damage)`, ascending part; empty for parts without
+    /// Per part, whom its explosion hits on its own piece and how hard (ascending part; empty for parts without
     /// one): every other part with a cell within the radius of its centre, the damage scaled by the target's
-    /// `blast_factor`. The sim skips targets that are dead or on another piece by then (`breakage.rs`).
-    pub blast: Csr<(PartIdx, f32)>,
+    /// `blast_factor`, and the armour between ([`BlastTarget::cover`]). The sim skips targets and cover that are
+    /// dead or on another piece by then; other pieces and ships are found when the blast goes off (`chain.rs`).
+    pub blast: Csr<BlastTarget>,
+    /// Per blast target ([`BlastTarget::cover`]), the parts with a `blast_factor` below 1 (armour) whose cell the
+    /// line from the blast's centre to the target's nearest cell centre passes through, ascending (GDR-0085).
+    pub blast_cover: Csr<PartIdx>,
     /// Content problems that do not stop the sim (e.g. bonuses on stats the sim does not model yet).
     pub warnings: Vec<String>,
     /// Hit points of the intact ship (sum over all parts): the 100% of the `hull` behavior sensors.
@@ -597,11 +612,7 @@ impl ShipDesign {
             }
         }
 
-        let blast = Csr::from_lists(
-            (0..n)
-                .map(|i| blast_targets(&grid, &parts, i))
-                .collect(),
-        );
+        let (blast, blast_cover) = blast_targets(&grid, &parts);
 
         let hp_total = parts.iter().map(|p: &PartSpec| p.hp).sum::<f32>();
         Ok(ShipDesign {
@@ -620,6 +631,7 @@ impl ShipDesign {
             plume_lanes,
             plume_path: Csr::from_lists(plume_path),
             blast,
+            blast_cover,
             warnings,
             hp_total,
             behavior: content.ship_behavior(ship).map(|b| b.id.clone()),
@@ -631,34 +643,40 @@ impl ShipDesign {
     }
 }
 
-/// Whom part `i`'s explosion hits: every other part with a cell whose nearest point lies within the radius of
-/// `i`'s centre, ascending, with the damage it takes (`damage × blast_factor`). Empty without an explosion.
-fn blast_targets(grid: &ShipGrid, parts: &[PartSpec], i: usize) -> Vec<(PartIdx, f32)> {
-    let Some(e) = &parts[i].explosion else {
-        return Vec::new();
-    };
-    let [cx, cy] = parts[i].shape.center();
-    let r = e.radius;
-    // Distance from the centre to the nearest point of the cell `[a, a + 1]` along one axis.
-    let gap = |a: i32, c: f32| (a as f32 - c).max(c - (a + 1) as f32).max(0.0);
-    let mut out: Vec<PartIdx> = Vec::new();
-    // Cells reach from `floor(c - r) - 1` (one that ends exactly at the radius) to `floor(c + r)`.
-    for y in (cy - r).floor() as i32 - 1..=(cy + r).floor() as i32 {
-        for x in (cx - r).floor() as i32 - 1..=(cx + r).floor() as i32 {
-            let (dx, dy) = (gap(x, cx), gap(y, cy));
-            if dx * dx + dy * dy <= r * r
-                && let Some(o) = grid.occupant((x, y))
-                && o != i
-            {
-                out.push(o as PartIdx);
+/// Whom each part's explosion hits on its own piece ([`ShipDesign::blast`]): every other part with a cell whose
+/// nearest point lies within the radius of the part's centre, ascending, with the damage it takes
+/// (`damage × blast_factor`) and its cover ([`ShipDesign::blast_cover`]): the armour that the line from the centre
+/// to the target's nearest cell centre passes through. Empty for parts without an explosion.
+fn blast_targets(grid: &ShipGrid, parts: &[PartSpec]) -> (Csr<BlastTarget>, Csr<PartIdx>) {
+    let mut lists = Vec::with_capacity(parts.len());
+    let mut covers = Vec::new();
+    let mut reach = Vec::new();
+    let mut cover = Vec::new();
+    for (i, spec) in parts.iter().enumerate() {
+        let mut list = Vec::new();
+        if let Some(e) = &spec.explosion {
+            let c = spec.shape.center();
+            crate::chain::in_reach(grid, c, e.radius, |o| o != i, &mut reach);
+            for &(t, cell) in &reach {
+                let t = t as usize;
+                crate::chain::cover(
+                    grid,
+                    c,
+                    cell,
+                    |o| o != i && o != t && parts[o].blast_factor < 1.0,
+                    &mut cover,
+                );
+                list.push(BlastTarget {
+                    part: t as PartIdx,
+                    damage: e.damage * parts[t].blast_factor,
+                    cover: covers.len() as u32,
+                });
+                covers.push(cover.clone());
             }
         }
+        lists.push(list);
     }
-    out.sort_unstable();
-    out.dedup();
-    out.into_iter()
-        .map(|o| (o, e.damage * parts[o as usize].blast_factor))
-        .collect()
+    (Csr::from_lists(lists), Csr::from_lists(covers))
 }
 
 /// Parts in the cells straight ahead of gun `i`'s `dir` side, to the edge of the grid. Same rule as

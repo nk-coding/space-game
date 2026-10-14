@@ -155,7 +155,7 @@ fn stat_lines_follow_stats_ron() {
         ]
     );
     assert_eq!(lines[7].text, "1.5 HP");
-    assert_eq!(lines[8].text, "1 m");
+    assert_eq!(lines[8].text, "1.5 m");
     assert_eq!(lines[1].text, "1");
     assert_eq!(lines[1].label, "Control cost");
     assert_eq!(lines[4].text, "10 MW");
