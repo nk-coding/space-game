@@ -96,9 +96,10 @@ const GRID_TOP: f32 = 66.0;
 #[derive(Component)]
 pub(in crate::drydock) struct GridScrim;
 
-/// The scrim around the grid: opaque up to this far outside the grid (12 px past the side columns), gone this far
-/// inside it. Opaque: at 90 % the yard's lit walls behind a column showed through, so half a column looked darker
-/// than the other (Niklas, 14 Oct 2026).
+/// The scrim around the grid: its alpha, the same all round (Niklas, 14 Oct 2026: "I still want them to be a bit
+/// transparent (just everywhere the same)"; half a column looked darker only while the scrim's hole ignored the UI
+/// scale), solid up to this far outside the grid (12 px past the side columns), gone this far inside it.
+const SCRIM_ALPHA: f32 = 0.85;
 const SCRIM_OUT: f32 = 10.0;
 const SCRIM_INTO: f32 = 10.0;
 /// List entries in the pool (headings and part rows; the list scrolls by pixels). More than the content has, so
