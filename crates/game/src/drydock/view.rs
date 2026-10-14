@@ -42,8 +42,9 @@ const Z_SHIP: f32 = 10.0;
 /// FX layers (`fx::layer_of`): under the ships, and the HUD layer above them.
 const Z_UNDER: f32 = 4.0;
 const Z_OVER: f32 = 410.0;
-/// How much the veil outside the grid viewport darkens the world.
-const VEIL: f32 = 0.62;
+/// How much the veil outside the grid viewport darkens the world (Niklas, 14 Oct 2026: at 0.62 a ship zoomed under
+/// the side panels made them hard to read).
+const VEIL: f32 = 0.9;
 /// Empty cells kept around the frame at 100 %.
 const FIT_MARGIN: f32 = 0.6;
 /// Zoom limits, as shares of the fit.

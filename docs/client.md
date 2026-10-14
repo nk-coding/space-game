@@ -824,7 +824,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   no aura) and `ship_view::build_body` into one mesh, replaced only when `revision` (or the glow toggle)
   changes. Blueprint `(x, y)` is world `(x, −y)`. The frame overlay is immediate-mode FX (dots at the cell
   corners, at least 6 px apart: on small cells only every 2nd, 4th, ... corner, brackets, the dashed mirror axis while mirroring) drawn inside the grid viewport (the pointer's mark, the cell or in SELECT and ERASE the whole part under it, is the ghost's); a
-  veil in the backdrop's darkest colour (62 %) dims the world outside it, so a ship zoomed under the side panels
+  veil in the backdrop's darkest colour (90 %; 62 % until 14 Oct 2026 left a zoomed ship too visible under the panels) dims the world outside it, so a ship zoomed under the side panels
   sinks into the background and the grid area reads lighter than the panels, as in the mockup.
 - **Camera**: the drydock drives the shared `CameraRig` (the atlas tier follows its zoom). `CameraRig::view_offset`
   centres the rig on the grid viewport between the panels while the camera still covers the window, and the
