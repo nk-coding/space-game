@@ -102,7 +102,7 @@ pub fn find(d: &ShipDesign, part: &str, x: i32, y: i32) -> PartIdx {
 /// A world with one ship of `design`, owned as in the scenarios (ship-mind ships are the player's).
 pub fn world_with(design: Arc<ShipDesign>) -> (Sim, ShipId) {
     let mut w = Sim::new(1);
-    let owner = sim::scenario::scenario_owner(&design);
+    let owner = sim::voyage::scenario::scenario_owner(&design);
     let s = w.spawn_ship(design, owner, Body::default());
     (w, s)
 }
@@ -155,7 +155,7 @@ pub fn turn_90(design: Arc<ShipDesign>) -> (Option<f32>, f32, f32) {
         let b = ship.piece(ship.control_piece().unwrap()).unwrap().body;
         alpha = alpha.max((b.angvel - omega).abs() * 30.0);
         omega = b.angvel;
-        let e = sim::physics::wrap_angle(FRAC_PI_2 - b.angle);
+        let e = sim::flight::physics::wrap_angle(FRAC_PI_2 - b.angle);
         if turn.is_none() && e.abs() < 1f32.to_radians() {
             turn = Some(t as f32 / 30.0);
         }

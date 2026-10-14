@@ -87,7 +87,7 @@ goes up. `depends` lists packs that must load earlier.
 
 Display information for every number the UI and wiki show: `name` (label), `summary`, `unit` (translatable,
 may be empty), `decimals` (maximum; trailing zeros are trimmed), `better` (`Higher`, `Lower`, `Neutral`, for
-green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::stats`), so
+green/red diffs in the drydock). Which part field feeds which stat id is fixed in code (`data::design::stats`), so
 the game requires these ids: `build_points mass hp power_output power_draw power_min_level heat_output heat_limit heat_vent
 damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal plume_length plume_damage plume_heat
 rcs_thrust rcs_rated_speed torque
@@ -99,7 +99,7 @@ speeds in m/s; 1 cell = 1 m.
 
 **Ship stats** (added 12 Oct 2026). The drydock's stats panel shows ship-level values that the sim's design
 report computes; their labels and units live in `stats.ron` too, and the game requires these ids
-(`data::stats::SHIP_STATS`, a separate list from the part stats `BUILTIN_STATS`):
+(`data::design::stats::SHIP_STATS`, a separate list from the part stats `BUILTIN_STATS`):
 
 | id | Label | Unit | Better | Shown as |
 |---|---|---|---|---|
@@ -186,7 +186,7 @@ what is locked; a development switch (`?unlock=all`) is planned.
 | `icon` | icon key: `fission-reactor` → `icons/fission-reactor.svg` in any loaded pack (see [Icons](#icons)). Hull parts have none: they show their material |
 | `color` | optional system colour key overriding the category's (automaton parts use `"enemy"`) |
 | `barrel` | optional, guns only: `(width, length, muzzle)` in cells, the barrel the client draws through the gun's nose (`length` beyond its front edge) and the radius of the muzzle glow at its tip; a gun without one gets a small glow at its front edge (13 Oct 2026, from the reference SVGs) |
-| `size` | footprint `(w, h)` in cells before rotation; each side 1 to 16 (`data::validate::MAX_PART_SIDE`, a placeholder) |
+| `size` | footprint `(w, h)` in cells before rotation; each side 1 to 16 (`data::content::validate::MAX_PART_SIDE`, a placeholder) |
 | `shape` | `Rect` (default) or `Slope` |
 | `build_points` | cost against the drydock budget (no economy; balancing and enemy scaling) |
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
@@ -209,7 +209,7 @@ Optional component blocks (a part has any combination):
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
-| `explosion` | `damage`, `radius` (m, at most 4, `data::validate::MAX_BLAST_RADIUS`) | a chain reaction (GDR-0019, GDR-0084, GDR-0085, added 14 Oct 2026): when damage destroys the part, every other part with a cell within `radius` m of its centre, on any piece of any ship, takes `damage` once (hull parts times their armour's `blast_factor`; intact armour on the line from the centre lets only its `blast_factor` through); parts it destroys explode in turn, in the same tick. Other ships' shields absorb it, the ship's own do not. Stat lines `blast_damage` (HP) and `blast_radius` (m). Base values (placeholders, lead, 14 Oct 2026, GDR-0085): fission reactor and automaton core 1.5 / 1.5, fusion reactor 2.5 / 2, torch drive 1.2 / 2, shield emitter 1 / 0.6, capacitor, thruster and RCS pod 0.5 / 0.6; the sim's rule is in `docs/sim.md` "Damage and breakage" |
+| `explosion` | `damage`, `radius` (m, at most 4, `data::content::validate::MAX_BLAST_RADIUS`) | a chain reaction (GDR-0019, GDR-0084, GDR-0085, added 14 Oct 2026): when damage destroys the part, every other part with a cell within `radius` m of its centre, on any piece of any ship, takes `damage` once (hull parts times their armour's `blast_factor`; intact armour on the line from the centre lets only its `blast_factor` through); parts it destroys explode in turn, in the same tick. Other ships' shields absorb it, the ship's own do not. Stat lines `blast_damage` (HP) and `blast_radius` (m). Base values (placeholders, lead, 14 Oct 2026, GDR-0085): fission reactor and automaton core 1.5 / 1.5, fusion reactor 2.5 / 2, torch drive 1.2 / 2, shield emitter 1 / 0.6, capacitor, thruster and RCS pod 0.5 / 0.6; the sim's rule is in `docs/sim.md` "Damage and breakage" |
 | `bonuses` | list, see below | adjacency bonuses this part grants |
 
 **Weapon delivery** (`weapon.delivery`, added 11 Oct 2026):
@@ -234,7 +234,7 @@ bonuses: [(target: Tag("reactor"), stat: "power_output", effect: Add(2), when: [
 ```
 
 `target` is `Part(id)`, `Tag(tag)` or `Category(id)`; `stat` is one the sim changes per part
-(`data::stats::BONUS_STATS`: `power_output power_draw heat_output heat_limit heat_vent damage fire_rate thrust
+(`data::design::stats::BONUS_STATS`: `power_output power_draw heat_output heat_limit heat_vent damage fire_rate thrust
 shield_radius torque rcs_thrust gimbal range shield_capacity shield_regen rated_speed rcs_rated_speed plume_length
 plume_damage plume_heat`; any other is an error, not a silent no-op); `effect` is `Add(x)` (in the stat's unit,
 at most ±1000000) or `Percent(x)` (above −100, at most 1000); `max_stacks` limits how many sources count per
@@ -309,7 +309,7 @@ engine: (thrust: 700, rated_speed: 22, gimbal: 3, plume: (length: 6, damage: 3, 
 
 | Field | Meaning |
 |---|---|
-| `length` | how far the exhaust reaches behind the engine's back side, m (0 = no plume; at most 50, `data::validate::MAX_PLUME_LENGTH`) |
+| `length` | how far the exhaust reaches behind the engine's back side, m (0 = no plume; at most 50, `data::content::validate::MAX_PLUME_LENGTH`) |
 | `damage` | damage per second at full thrust to the first part in its path |
 | `heat` | heat per second at full thrust into that part (same units as `heat.output`) |
 
@@ -334,7 +334,7 @@ with drydock expansions). The common header plus `size`:
 
 | Field | Notes |
 |---|---|
-| `size` | grid `(w, h)` in cells; each side 1 to 128 (`data::validate::MAX_FRAME_SIZE`, a placeholder) |
+| `size` | grid `(w, h)` in cells; each side 1 to 128 (`data::content::validate::MAX_FRAME_SIZE`, a placeholder) |
 | `locked` | optional, default `false` (added 13 Oct 2026): a new game cannot build in it until research unlocks it (`Unlock::Frame`). At least one frame must stay open |
 
 Load order is the drydock's display order (`Content::frames`, a `Table<Frame>`); mods override and add frames by
@@ -358,7 +358,7 @@ Blueprints keep their own `size` and name no frame (v1); every base ship fits th
 
 `size` is the blueprint's own grid (its frame), each side 1 to 128 cells like a frame; every placement must fit
 inside. It does not refer to a `frames` entry (v1). Placement coordinates are read only within ±65536
-(`data::limits::MAX_COORD`). A placement is `part`, `x`, `y`, `rot`
+(`data::content::limits::MAX_COORD`). A placement is `part`, `x`, `y`, `rot`
 (default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise) and `power`
 (optional, parts that draw power only): the player's override of the part's power tier and weight, e.g.
 `(part: "shield_emitter", x: 2, y: 6, power: (tier: Low))` or `power: (tier: High, weight: 2)`; either field
@@ -497,11 +497,11 @@ collector takes first and how much room an item needs are sim rules (`docs/sim.m
 | Field | Notes |
 |---|---|
 | `family` | research family id the data goes to |
-| `data` | research data one intact part gives (on a material: per cell of hull area); finite, 0 to 10000 (`data::validate::MAX_RESEARCH_DATA`) |
+| `data` | research data one intact part gives (on a material: per cell of hull area); finite, 0 to 10000 (`data::content::validate::MAX_RESEARCH_DATA`) |
 | `materials` | parts only, optional: materials (id → amount) one intact part gives besides the data |
 | `fragment` | parts only, optional: materials (id → amount) a **destroyed** part of this kind leaves as a fragment to scoop (GDR-0063: destroyed cores leave programmable matter); empty = it leaves nothing |
 
-Material amounts are whole numbers, 1 to 10000 (`data::validate::MAX_MATERIAL_AMOUNT`), of known materials. Hull
+Material amounts are whole numbers, 1 to 10000 (`data::content::validate::MAX_MATERIAL_AMOUNT`), of known materials. Hull
 parts have no block of their own (like `mass` and `hp`, it comes from their material); only armour materials have
 one. Cargo units a salvaged part takes are a sim rule, not content.
 
@@ -581,7 +581,7 @@ of its own). The content needs at least one start (an error otherwise).
 | Field | Notes |
 |---|---|
 | `ship` | a ship id. It must be one a new game can take on a voyage: no locked part or material, a size that fits a frame that is not locked, a logic core, and no more logic cores than `mind_capacity`. A ship without a hold (cargo on its main piece) is a warning: nothing salvaged would come home |
-| `mind_capacity` | 1 to 100 (`data::validate::MAX_MIND_CAPACITY`, a sanity bound) |
+| `mind_capacity` | 1 to 100 (`data::content::validate::MAX_MIND_CAPACITY`, a sanity bound) |
 | `voyages` | optional: voyage ids, each known and listed once. Clearing a voyage opens those that name it in `opens_after` ([Voyages](#voyages-voyagesron-added-13-oct-2026)) |
 
 Base start (placeholder, GDR-0062): `rim_awakening`, ship `rim_skiff`, mind capacity 2 (the two mind expansions
@@ -619,7 +619,7 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
 | `band` | snake_case key; text only until bands are content |
 | `map` | each coordinate 0 to 1 |
 | `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning, and so is one that opens only after voyages that can never open). The voyage map draws no route along it and doesn't show a voyage before it opens; one opened this way shows as a new signal until its first launch, and the debrief that opened it says `SIGNAL FOUND · <name>` (GDR-0078) |
-| `radius` | m, above 0 and at most 20000 (`data::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
+| `radius` | m, above 0 and at most 20000 (`data::content::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
 | `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |
 | `minutes` | `(min, max)`, `1 ≤ min ≤ max ≤ 600` |
 | `cleared` | optional text (a text key `voyage.<id>.cleared`): the debrief's line the first time the goal falls |
@@ -793,7 +793,7 @@ clean grid and report nothing until the placements are fixed. Header errors do n
 - Plume: `engine.plume` is required (a parse error when missing); `length`, `damage` and `heat` are finite and not
   negative, `length` at most 50 m.
 - Upper limits (added 13 Oct 2026 after the untrusted-input review; placeholders that keep a mod from hanging the
-  sim or exhausting memory, in `data::validate`): every number at most 1000000 (`MAX_NUMBER`); shot rates
+  sim or exhausting memory, in `data::content::validate`): every number at most 1000000 (`MAX_NUMBER`); shot rates
   (`Pulse`, `Projectile`) at most 60 per second (`MAX_SHOT_RATE`); footprint sides at most 16 cells
   (`MAX_PART_SIDE`); frame sides and ship `size` sides at most 128 cells (`MAX_FRAME_SIZE`, also the drydock's
   limit); `logic.rule_slots` at most 64 (the most rules a behavior has); `penetration`, `control_capacity` and
@@ -858,7 +858,7 @@ Content never holds colours. It names keys that `art/tokens.json` resolves:
 - hull glow: `player` (`ship.hull_glow.color`), `enemy` (`ship.hull_glow.enemy_color`)
 - icons: keys of `icons/<key>.svg` in the content packs (not `tokens.json`)
 
-The lists live in `data::art_keys`; a new key needs an entry there and in `tokens.json`.
+The lists live in `data::content::art_keys`; a new key needs an entry there and in `tokens.json`.
 
 ## Icons
 
@@ -869,15 +869,15 @@ resolution it needs; the wiki can show the SVG as is or composite it on a tile).
 
 - `Content::icon_svg(key)` returns the SVG text from the last loaded pack that has the key; `Content::icons`
   lists them all (`Icon { key, svg, source }`). Mods add or replace icons by key.
-- Every icon must be usable SVG (`data::svg::check_svg`, a cheap structural check without an XML library):
+- Every icon must be usable SVG (`data::content::svg::check_svg`, a cheap structural check without an XML library):
   well-formed tags and quoted attributes, a root `<svg>` in the SVG namespace with a `viewBox` (four numbers
   separated by spaces or commas, either quote style; width and height above 0 and at most 10000 units,
-  `data::svg::MAX_VIEW_BOX`), and no `<image>`, `<feImage>`, `<text>`, `<script>` or `<foreignObject>` (in any
+  `data::content::svg::MAX_VIEW_BOX`), and no `<image>`, `<feImage>`, `<text>`, `<script>` or `<foreignObject>` (in any
   case, with or without a namespace prefix: no raster graphics; the runtime rasteriser has no fonts; the wiki shows
   the files in a browser). Also refused (13 Oct 2026, untrusted-input review): event handler attributes (`on...`),
   references outside the file (an `href` or `url(...)` that does not start with `#`, `@import`) and declarations
   other than a plain `<!DOCTYPE ...>` (no entities).
-- The rasteriser (`art`) reads the viewBox with the same code (`data::svg::view_box`), so every icon that validates
+- The rasteriser (`art`) reads the viewBox with the same code (`data::content::svg::view_box`), so every icon that validates
   lays out; one wider or taller than a row of the atlas layout is stored at a lower density. It never loads images
   or files (its usvg image resolver returns nothing). An icon the XML parser still refuses (an undeclared
   namespace prefix, say) stays blank and is named in `art::Raster::failed`; the rest of the atlas is fine.
@@ -919,7 +919,7 @@ grid.occupant((x, y)); grid.linked((x, y), Dir::Up); grid.neighbors(i); grid.exp
 let pieces = grid.pieces();                              // Pieces { parts, piece_of_part }
 let main = grid.main_piece(&pieces, |i| part_of(i).logic.is_some());
 let edges = grid.piece_hull_edges(&pieces, main.unwrap()); // Vec<HullSegment>, as drawHullGlow
-let loops = data::geometry::hull_loops(&edges);          // closed outlines, collinear points merged
+let loops = data::design::geometry::hull_loops(&edges);          // closed outlines, collinear points merged
 grid.bounds(); grid.line_of_fire_clear(i); grid.remove(i); grid.shape(i).centroid();
 grid.open_sides(i);                                      // Vec<((x, y), Dir)>: RCS nozzles of part i
 dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
@@ -944,7 +944,7 @@ let program = data::behavior::Program::parse(text)?;         // text form (or be
 program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>
 data::behavior::check_text(text, &content.behavior_nodes);    // Result<Program, Vec<TextError>>: parse + check, by text line
-// Editing models: data::edit::Drydock (docs/drydock.md), data::behavior_edit::BehaviorEditor (docs/behavior-format.md)
+// Editing models: data::design::edit::Drydock (docs/drydock.md), data::behavior::edit::BehaviorEditor (docs/behavior-format.md)
 // The career (docs/career.md): the save's facts and the progression rules
 let mut career = data::Career::new(&content, "rim_awakening", seed)?; // or Career::from_ron(text)? + .reconcile(&content)
 career.unlocks(&content); career.mind_capacity(&content); career.open_voyages(&content);  // derived, never stored

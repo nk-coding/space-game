@@ -1,6 +1,6 @@
 //! Game content for Space Game: schema, pack loader, validation, stat lines, shared blueprint geometry, the
-//! blueprint text format of drydock designs, and the pure models of the drydock ([`edit`]), the behavior editor
-//! ([`behavior_edit`]) and the player's progression ([`career`]).
+//! blueprint text format of drydock designs, and the pure models of the drydock ([`design::edit`]), the behavior
+//! editor ([`behavior::edit`]) and the player's progression ([`career`]).
 //!
 //! No Bevy, no threads, no filesystem in the core: packs are built from in-memory `(path, contents)` pairs,
 //! so the same code runs natively, on wasm32 and later on Android. See `docs/content-model.md`.
@@ -11,46 +11,33 @@
 //! let grid = content.ship_grid(ship).unwrap();
 //! let pieces = grid.pieces();
 //! let main = grid.main_piece(&pieces, |i| content.parts.get(&ship.parts[i].part).unwrap().logic.is_some()).unwrap();
-//! let outline = data::geometry::hull_loops(&grid.piece_hull_edges(&pieces, main));
+//! let outline = data::design::geometry::hull_loops(&grid.piece_hull_edges(&pieces, main));
 //! ```
 
-pub mod art_keys;
 pub mod behavior;
-pub mod behavior_edit;
-pub mod blueprint;
 pub mod career;
-pub mod edit;
-pub mod geometry;
+pub mod content;
+pub mod design;
 pub mod hash;
-pub mod kind;
-pub mod limits;
-pub mod load;
-pub mod model;
-pub mod problem;
-pub mod stats;
-pub mod svg;
-pub mod table;
-pub mod text;
-pub mod validate;
 
 #[cfg(feature = "fs")]
 pub mod fs;
 
-pub use behavior_edit::BehaviorEditor;
-pub use blueprint::{blueprint_to_ron, parse_blueprint};
+pub use behavior::edit::BehaviorEditor;
 pub use career::Career;
-pub use edit::Drydock;
-pub use geometry::{
+pub use content::kind::Kind;
+pub use content::load::{Content, Pack, SCHEMA_VERSION, ron_options};
+pub use content::model::*;
+pub use content::problem::{Problem, Severity};
+pub use content::table::Table;
+pub use content::text::{Link, parse_links, text_key};
+pub use content::validate::{validate, validate_ship};
+pub use design::blueprint::{blueprint_to_ron, parse_blueprint};
+pub use design::edit::Drydock;
+pub use design::geometry::{
     Bounds, Cell, Dir, Footprint, GridPoint, HullLoop, HullSegment, Pieces, PlacedShape, ShipGrid,
 };
-pub use kind::Kind;
-pub use load::{Content, Pack, SCHEMA_VERSION, ron_options};
-pub use model::*;
-pub use problem::{Problem, Severity};
-pub use stats::{BonusInfo, ShipTotals, StatLine};
-pub use table::Table;
-pub use text::{Link, parse_links, text_key};
-pub use validate::{validate, validate_ship};
+pub use design::stats::{BonusInfo, ShipTotals, StatLine};
 
 #[cfg(feature = "embed")]
 mod embedded {

@@ -1155,7 +1155,7 @@ fn saves_take_the_blueprints_input_limits() {
     assert!(Career::from_ron(text).is_ok());
     let huge = format!(
         "(start: \"rim_awakening\", seed: 1, generator: 2, escorts: [{}])",
-        "\"x\",".repeat(data::limits::MAX_DOCUMENT_BYTES / 4 + 1)
+        "\"x\",".repeat(data::content::limits::MAX_DOCUMENT_BYTES / 4 + 1)
     );
     let p = Career::from_ron(&huge).unwrap_err();
     assert!(p[0].message.contains("bytes"), "{}", show(&p));

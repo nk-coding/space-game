@@ -2,9 +2,9 @@
 //! peers) must use the same config. All numbers are **placeholders** for feel.
 
 use crate::hash::{StateHash, StateHasher};
-use crate::vessel::{MAX_OWNERS, Owner};
+use crate::ship::vessel::{MAX_OWNERS, Owner};
 
-/// Flight-computer tuning (see `flight.rs` and `docs/sim.md`).
+/// Flight-computer tuning (see `flight/mod.rs` and `docs/sim.md`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlightTuning {
     /// Hard cap on the commanded turn rate (rad/s).
@@ -158,7 +158,7 @@ pub struct SimConfig {
     /// cores (twelve Halvex Runners), AI owners 1000.
     pub mind_capacity: [u32; MAX_OWNERS],
     pub salvage: SalvageTuning,
-    /// The voyage director (`voyage.rs`): spawn and recall radii.
+    /// The voyage director (`voyage/mod.rs`): spawn and recall radii.
     pub voyage: crate::voyage::VoyageTuning,
 }
 

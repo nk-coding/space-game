@@ -58,7 +58,7 @@ file, text keys).
   "Locked" badge; their pages say which research unlocks them, or that none does yet.
 - **Drawings are vector**: icons are the pack's SVGs, inlined once per page as `<symbol>`s (ids prefixed with
   `icon-<key>-`, because all icons use the same gradient ids); ships and parts are SVG built from
-  `data::geometry` (tiles, slopes, seams, icons turned and mirrored like the placements, the hull glow of the main
+  `data::design::geometry` (tiles, slopes, seams, icons turned and mirrored like the placements, the hull glow of the main
   piece in the faction's colour). Colours come from `art/tokens.json`, embedded at build time.
 - **Look**: the game's UI (`docs/style-guide.md`): the dark radial backdrop, Barlow (copied from
   `crates/game/assets/fonts` with its licence), uppercase tracked grey labels, white numbers with a slight glow,

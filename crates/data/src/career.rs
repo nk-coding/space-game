@@ -1,4 +1,4 @@
-//! The career: the player's progression as a pure model (GDR-0062, GDR-0063, ADR-0033), as [`crate::edit`] is
+//! The career: the player's progression as a pure model (GDR-0062, GDR-0063, ADR-0033), as [`crate::design::edit`] is
 //! for the drydock. No Bevy, no I/O, wasm-safe. The rules are documented in `docs/career.md`.
 //!
 //! A [`Career`] holds the save's **facts** only: the start, the game seed, the researched nodes, the research data
@@ -25,11 +25,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::hash::{fnv1a64, splitmix64};
-use crate::kind::Kind;
-use crate::limits::MAX_DOCUMENT_BYTES;
-use crate::load::{Content, parse_error, ron_options, strip_bom};
-use crate::model::{Blueprint, Frame, ResearchNode, Unlock};
-use crate::problem::Problem;
+use crate::content::kind::Kind;
+use crate::content::limits::MAX_DOCUMENT_BYTES;
+use crate::content::load::{Content, parse_error, ron_options, strip_bom};
+use crate::content::model::{Blueprint, Frame, ResearchNode, Unlock};
+use crate::content::problem::Problem;
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
 /// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
@@ -52,7 +52,7 @@ pub const FORMAT: u32 = 1;
 pub const GENERATOR: u32 = 2;
 
 /// Most research data of one family a store holds (a sanity bound, placeholder): a hundred times the largest cost
-/// content may ask for ([`crate::validate::MAX_RESEARCH_DATA`]).
+/// content may ask for ([`crate::content::validate::MAX_RESEARCH_DATA`]).
 pub const MAX_DATA: f32 = 1_000_000.0;
 
 /// Most of one material a store holds (a sanity bound, placeholder).
@@ -382,7 +382,7 @@ impl Career {
     /// Reads a career written by [`Career::to_ron`] (or by hand) with the pack loader's options: `Some(..)` may
     /// be left out, unknown fields are errors. Only the syntax and the schema are checked; call
     /// [`Career::reconcile`] next. Text from outside has a blueprint's limits: at most
-    /// [`crate::limits::MAX_DOCUMENT_BYTES`], a leading byte order mark skipped. `Err` holds the parse error with its line and column (one problem, in a list
+    /// [`crate::content::limits::MAX_DOCUMENT_BYTES`], a leading byte order mark skipped. `Err` holds the parse error with its line and column (one problem, in a list
     /// like [`crate::parse_blueprint`]'s).
     ///
     /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
@@ -696,7 +696,7 @@ impl Career {
     /// How many of a part the player has to build with (GDR-0082). Derived like the unlocks, so the save holds no
     /// counts: every part is [`Availability::Unlimited`] until fabrication, spares and bonding fill the counts in
     /// (GDR-0029, GDR-0031, GDR-0063; `docs/plans/salvage-research.md`). The drydock shows it on each palette row,
-    /// and its editing model refuses a placement when none is left ([`crate::edit::Drydock::set_available`]).
+    /// and its editing model refuses a placement when none is left ([`crate::design::edit::Drydock::set_available`]).
     pub fn available(&self, _part: &str) -> Availability {
         Availability::Unlimited
     }

@@ -1,12 +1,12 @@
 //! The player's design: the blueprint the drydock edits and every flight of the player flies (the sandbox
 //! runner, its `?fleet=` wingmen, re-forms and test flights). Raiders stay content ships.
 //!
-//! The design lives in a [`data::edit::Drydock`] (the editing model: legality, tools, mirror, undo). Every edit
+//! The design lives in a [`data::design::edit::Drydock`] (the editing model: legality, tools, mirror, undo). Every edit
 //! goes through [`PlayerDesign::edit`], which keeps the frame-coordinate blueprint the view, the report and the
 //! flights read in step and bumps [`PlayerDesign::revision`].
 
 use bevy::prelude::*;
-use data::edit::{Drydock, OpenError};
+use data::design::edit::{Drydock, OpenError};
 use data::{Blueprint, Content};
 
 use crate::career::Granted;

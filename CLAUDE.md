@@ -24,13 +24,13 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Crates (planned architecture)
 
-- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, the pure editing models `data::edit` (drydock) and `data::behavior_edit` (behavior editor), and the progression model `data::career`. No Bevy. Used by sim, game and tools (wiki).
+- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, the pure editing models `data::design::edit` (drydock) and `data::behavior::edit` (behavior editor), and the progression model `data::career`. No Bevy. Used by sim, game and tools (wiki).
 - `sim`: engine-free simulation: ships, parts, physics (Rapier2D with `enhanced-determinism`, ADR-0014), heat, power, damage, weapons, flight computer, behaviors + Rhai. Fixed 30 Hz, deterministic. No Bevy, no graphics.
 - `game`: the Bevy client (web first, later desktop and Android). Rendering at 60 fps with interpolation, UI, input.
 - `art`: style tokens (embedded), effect textures and the runtime SVG rasteriser. No Bevy.
 - `content-tool`: CLI over `data` (validate, export-json, list, and `wiki`: a static HTML wiki from the content).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
-- `arena`: headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage_runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`) and the native `arena` CLI (`fight`, `matrix`, `evolve`) on every core (ADR-0036, `docs/arena.md`). No Bevy, no I/O or threads in the library.
+- `arena`: headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage::runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`) and the native `arena` CLI (`fight`, `matrix`, `evolve`) on every core (ADR-0036, `docs/arena.md`). No Bevy, no I/O or threads in the library.
 - Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023), a wiki generator built on `data`.
 
 ## Hard rules

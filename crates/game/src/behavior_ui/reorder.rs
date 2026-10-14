@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
-use data::behavior_edit::{NodeRef, RuleId};
+use data::behavior::edit::{NodeRef, RuleId};
 
 use crate::camera::CameraRig;
 use crate::fx::{FxQueue, FxRegions};

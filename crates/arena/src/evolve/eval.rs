@@ -2,7 +2,7 @@
 //! content, so jobs may run in any order, on any thread, in one go or in slices, and give the same result.
 
 use data::Content;
-use sim::voyage_runner::VoyageRunner;
+use sim::voyage::runner::VoyageRunner;
 use sim::{Owner, Sim, VesselState};
 
 use crate::fight::{Fight, OWNERS};

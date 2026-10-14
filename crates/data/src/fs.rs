@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use crate::load::Pack;
-use crate::problem::Problem;
+use crate::content::load::Pack;
+use crate::content::problem::Problem;
 
 /// Reads every `.ron`, `.md` and `.svg` file below `dir` as `(relative path with '/', contents)`, sorted by
 /// path.

@@ -6,7 +6,7 @@ mod common;
 
 use common::*;
 use data::behavior::{MAX_LINE_CHARS, MAX_RULES, Program, check_program, check_text};
-use data::behavior_edit::BehaviorEditor;
+use data::behavior::edit::BehaviorEditor;
 use data::{Content, Pack, Problem, Severity};
 
 fn nodes() -> data::Table<data::BehaviorNode> {

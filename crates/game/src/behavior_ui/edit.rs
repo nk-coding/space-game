@@ -1,5 +1,5 @@
 //! Editing in the graph view, the inspector and the palette. Every change is an [`Edit`] carried out by the
-//! editing model (`data::behavior_edit::BehaviorEditor`, through [`BehaviorDraft::edit`]): each edit is legal or
+//! editing model (`data::behavior::edit::BehaviorEditor`, through [`BehaviorDraft::edit`]): each edit is legal or
 //! refused with a reason, each is one undo step, and the text view follows the program.
 //!
 //! * [`apply_edit`] runs an [`Edit`] and says what the selection becomes ([`After`]).
@@ -15,7 +15,7 @@
 use bevy::prelude::*;
 use data::NodeRole;
 use data::behavior::{CmpOp, Value};
-use data::behavior_edit::{BehaviorEditor, CondId, NodeRef, Refusal, RuleId};
+use data::behavior::edit::{BehaviorEditor, CondId, NodeRef, Refusal, RuleId};
 
 use crate::style::Style;
 use crate::ui_icons::UiIcon;

@@ -24,8 +24,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-use data::geometry::hull_loops;
-use data::stats::{SHIP_STATS, format_number, with_unit};
+use data::design::geometry::hull_loops;
+use data::design::stats::{SHIP_STATS, format_number, with_unit};
 use data::{
     Behavior, BehaviorNode, Better, Blueprint, Content, Delivery, Encounter, Entry, Family, Kind,
     Material, NodeRole, ParamType, Part, PlacedShape, ResearchKind, ResearchNode, Selector, Start,

@@ -17,7 +17,7 @@
 //!   test return to where the test started (`mode::FlightExit`).
 //! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
 //!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
-//! * **load test** (`?load=1|5|20`): `sim::scenario::load_test(n, seed)`, no player, the camera frames the fight.
+//! * **load test** (`?load=1|5|20`): `sim::voyage::scenario::load_test(n, seed)`, no player, the camera frames the fight.
 //! * **voyage** (`voyage.rs` launches it: home's V, `?scene=voyage&voyage=<id>`): the sim gets the career's mind
 //!   capacity and is seeded with the voyage's seed; the plan is rolled from the content the enemies fly with
 //!   (`sim::VoyagePlan::roll`) and the sim directs it (`Sim::start_voyage`); the flagship (the drydock's working
@@ -30,7 +30,7 @@
 //! (`OnEnter`) builds what that mode asked for ([`Scene::launch`]): the test flight or the behavior test, or the
 //! sandbox from home.
 //!
-//! Owners, vessels and the focus live in the sim (`sim::vessel`): the player is [`PLAYER`], the raiders
+//! Owners, vessels and the focus live in the sim (`sim::ship::vessel`): the player is [`PLAYER`], the raiders
 //! [`ENEMY`]; [`PilotFocus`] mirrors `Sim::focus(PLAYER)`, and focus switches are `ShipCommand::Focus`.
 
 use std::collections::BTreeMap;
@@ -330,7 +330,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
     match scene.kind.clone() {
         SceneKind::Voyage(id) => build_voyage(scene, focus, inputs, rig, &id),
         SceneKind::Load(n) => {
-            let sim = sim::scenario::load_test(n as usize, scene.seed);
+            let sim = sim::voyage::scenario::load_test(n as usize, scene.seed);
             let mut world = SimWorld::new(sim, base.clone());
             if params.flag("hashlog").unwrap_or(false) {
                 let ticks = params.u64("hashticks").unwrap_or(600).max(1);

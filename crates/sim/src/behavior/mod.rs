@@ -37,7 +37,7 @@ pub use eval::{BehaviorState, RuleStatus, Why};
 pub(crate) use eval::{Scratch, fly, guns_at_will, think_all};
 pub use script::{SCRIPT_API, ScriptFault, ShipView};
 
-use crate::design::ShipDesign;
+use crate::ship::design::ShipDesign;
 
 /// Placeholder numbers of behavior evaluation.
 pub mod tuning {

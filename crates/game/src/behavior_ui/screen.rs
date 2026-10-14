@@ -23,7 +23,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use data::NodeRole;
-use data::behavior_edit::RuleId;
+use data::behavior::edit::RuleId;
 
 use crate::camera::CameraRig;
 use crate::drydock::behaviors::PlayerBehaviors;

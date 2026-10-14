@@ -15,17 +15,17 @@ use super::script::{ScriptFault, ShipView};
 use super::{Behavior, BehaviorId, BehaviorLibrary, tuning};
 use crate::DT;
 use crate::config::FlightTuning;
-use crate::design::{PartIdx, Stat};
+use crate::ship::design::{PartIdx, Stat};
 use crate::flight::{
     AimMode, Fire, FlightGoal, HelmMode, Kin, Target, TargetState, find_ship, lead_point,
     resolve_target,
 };
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::ShipId;
-use crate::maneuver::Maneuver;
-use crate::mass::to_piece;
+use crate::flight::maneuver::Maneuver;
+use crate::ship::mass::to_piece;
 use crate::math::{Rot, Vec2, atan2};
-use crate::physics::wrap_angle;
+use crate::flight::physics::wrap_angle;
 use crate::ship::{Piece, Ship};
 
 /// Why a condition did not hold.
@@ -408,7 +408,7 @@ pub(crate) fn aims_at(s: &Ship) -> Option<ShipId> {
 
 /// An active vessel of another owner (salvage, dark and dormant vessels are no targets).
 fn is_enemy(me: &Ship, s: &Ship) -> bool {
-    s.id() != me.id() && !crate::vessel::friendly(me.team(), s.team()) && s.is_active()
+    s.id() != me.id() && !crate::ship::vessel::friendly(me.team(), s.team()) && s.is_active()
 }
 
 /// Centre of mass and velocity of a ship's controlling piece.

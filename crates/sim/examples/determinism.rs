@@ -20,13 +20,13 @@ fn main() {
             other => panic!("unknown argument {other}"),
         }
     }
-    let mut kind = sim::scenario::ScenarioKind::from_name(&scenario).unwrap_or_else(|| {
+    let mut kind = sim::voyage::scenario::ScenarioKind::from_name(&scenario).unwrap_or_else(|| {
         panic!("unknown scenario {scenario} (known: core, flight, load, behavior, salvage, voyage)")
     });
-    if let sim::scenario::ScenarioKind::Load(_) = kind {
-        kind = sim::scenario::ScenarioKind::Load(ships);
+    if let sim::voyage::scenario::ScenarioKind::Load(_) = kind {
+        kind = sim::voyage::scenario::ScenarioKind::Load(ships);
     }
-    let (hashes, stats) = sim::scenario::run_kind(kind, seed, ticks);
+    let (hashes, stats) = sim::voyage::scenario::run_kind(kind, seed, ticks);
     println!("# sim determinism scenario={scenario} seed={seed} ticks={ticks}");
     for (t, h) in hashes.iter().enumerate() {
         println!("{} {:016x}", t + 1, h);

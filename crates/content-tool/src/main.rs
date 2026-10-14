@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use data::geometry::hull_loops;
+use data::design::geometry::hull_loops;
 use data::{
     Content, Encounter, Entry, Kind, Material, Pack, Part, Problem, ResearchNode, Severity, Start,
     Unlock, Voyage, text_key,

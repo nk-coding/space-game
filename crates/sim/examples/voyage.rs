@@ -11,7 +11,7 @@
 //! `escort` template with the flagship as their leader (they fight its lock); their holds count for the haul.
 //! With `--behavior` the ship flies that content behavior in fights, else the closing pilot.
 //!
-//! The pilot and the run live in `sim::voyage_runner` (its module docs say how the pilot flies); this example
+//! The pilot and the run live in `sim::voyage::runner` (its module docs say how the pilot flies); this example
 //! parses the arguments, runs the seeds and prints. Native only; the wall clock times each tick of a run (the
 //! pilot's decision and the sim step; median and p95), never the sim.
 
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use data::career::unload;
-use sim::voyage_runner::{CLOSE_TO, Outcome};
+use sim::voyage::runner::{CLOSE_TO, Outcome};
 use sim::{BehaviorLibrary, Flagship, ShipDesign, SimConfig, VoyageRun, VoyageRunner};
 
 struct Args {

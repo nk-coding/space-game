@@ -7,7 +7,7 @@
 
 use bevy::math::{Rect, Vec2};
 use data::career::{Refusal, Shortfall};
-use data::stats::format_number;
+use data::design::stats::format_number;
 use data::{Career, Content, ResearchKind, ResearchNode, Unlock};
 
 /// One node's card in the tree.

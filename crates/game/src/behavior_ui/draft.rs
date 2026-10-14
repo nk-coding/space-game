@@ -1,4 +1,4 @@
-//! The behavior being edited: [`BehaviorDraft`], a [`BehaviorEditor`] (`data::behavior_edit`: the program, legal
+//! The behavior being edited: [`BehaviorDraft`], a [`BehaviorEditor`] (`data::behavior::edit`: the program, legal
 //! edits, undo) plus the text view's text and its errors. The graph view shows [`BehaviorDraft::program`] and
 //! edits it through [`BehaviorDraft::edit`]; the text view edits [`BehaviorDraft::text`]: a valid text replaces
 //! the program, an invalid one keeps the last valid program and lists its errors.
@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 use data::behavior::{Program, TextError, check_program};
-use data::behavior_edit::BehaviorEditor;
+use data::behavior::edit::BehaviorEditor;
 use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 
 use crate::drydock::behaviors::{PlayerBehaviors, text_of};

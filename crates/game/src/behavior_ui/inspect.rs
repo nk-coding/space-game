@@ -12,7 +12,7 @@
 //! * **A palette node** with nothing to add it to: its default values, read-only, and how to add it.
 
 use data::behavior::{CmpOp, MAX_RULES, Value, parse_value};
-use data::behavior_edit::{BehaviorEditor, CondId, NodeRef, ParamView, Refusal, RuleId};
+use data::behavior::edit::{BehaviorEditor, CondId, NodeRef, ParamView, Refusal, RuleId};
 use data::{Behavior, BehaviorNode, NodeRole, ParamType, Table};
 
 use crate::ui_kit::Tone;

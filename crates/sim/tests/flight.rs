@@ -5,9 +5,9 @@ mod common;
 use core::f32::consts::{FRAC_PI_2, PI};
 
 use common::*;
-use sim::alloc::{Actuation, AllocTable, allocate, assist, wrench_of};
+use sim::ship::alloc::{Actuation, AllocTable, allocate, assist, wrench_of};
 use sim::flight::Kin;
-use sim::physics::wrap_angle;
+use sim::flight::physics::wrap_angle;
 use sim::{
     Body, DamageTarget, FlightGoal, HeadingGoal, Maneuver, PilotInput, ShipCommand, SimEvent,
     Target, TickInputs, Vec2,
@@ -475,7 +475,7 @@ fn allocator_prefers_pure_torque_then_gimbal_then_differential_thrust() {
 fn rcs_couples_turn_without_pushing_and_ignore_the_rated_speed() {
     let (fwd, back) = (Vec2::new(0.0, 1.0), Vec2::new(0.0, -1.0));
     let rcs = |x: f32, dir: Vec2| sim::Thruster {
-        slot: sim::design::NO_SLOT,
+        slot: sim::ship::design::NO_SLOT,
         rcs: true,
         gimbal: 0.0,
         ..row(x, 0.0, dir, 10.0, 0.0)

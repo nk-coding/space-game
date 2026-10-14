@@ -11,7 +11,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
-use data::behavior_edit::{NodeRef, RuleId};
+use data::behavior::edit::{NodeRef, RuleId};
 
 use crate::drydock::actions::DrydockAction;
 use crate::mode::AppMode;

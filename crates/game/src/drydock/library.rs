@@ -10,7 +10,7 @@
 //! * **The working design** ([`WorkingDoc`], `drydock/working`): the design being edited, written about a
 //!   second after the last change ([`Autosave`]) and when a test flight starts, read back at start.
 
-use data::edit::OpenError;
+use data::design::edit::OpenError;
 use data::{Blueprint, Content, Problem};
 
 use crate::storage::{Document, Storage, StorageError, valid_name};

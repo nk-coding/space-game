@@ -171,7 +171,7 @@ pub struct Layout {
 
 impl Layout {
     /// Every content icon, its glow layer and the FX textures, packed into shelves. An icon that fails
-    /// `data::svg::check_svg` (impossible in validated content) gets no region; one too big for the layout
+    /// `data::content::svg::check_svg` (impossible in validated content) gets no region; one too big for the layout
     /// width is stored at a lower density.
     pub fn new(content: &data::Content) -> Layout {
         let t = tokens();
@@ -182,7 +182,7 @@ impl Layout {
 
         // A drawing and its glow layer (`<g filter="url(#gl)">` groups, rendered soft at half density).
         let mut drawing = |name: String, glow_name: String, src: &str, density: f32| {
-            let Some([_, _, vw, vh]) = data::svg::view_box(src) else { return };
+            let Some([_, _, vw, vh]) = data::content::svg::view_box(src) else { return };
             let cells = [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL];
             let (crisp, glow) = split_glow(src);
             // The glow is clipped to the region anyway: limit the blur's filter region to the viewBox (the sources
@@ -757,7 +757,7 @@ impl Rasterizer {
 
 /// usvg's options for content SVG: images (`<image>`, `<feImage>`) resolve to nothing. usvg's default resolver
 /// reads any path it is given from the disk (the art must never touch files; a mod's `/dev/zero` would never end)
-/// and decodes `data:` URLs (raster images are not allowed). `data::svg::check_svg` refuses such icons anyway.
+/// and decodes `data:` URLs (raster images are not allowed). `data::content::svg::check_svg` refuses such icons anyway.
 fn svg_options() -> usvg::Options<'static> {
     usvg::Options {
         image_href_resolver: usvg::ImageHrefResolver {
@@ -1092,12 +1092,12 @@ mod tests {
             ("unclosed-glow", format!(r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">{glow}<g filter="url(#gl)">é</g></svg><!-- </defs> é -->"##)),
         ];
         for (key, svg) in &icons {
-            assert_eq!(data::svg::check_svg(svg), Ok(()), "{key}");
+            assert_eq!(data::content::svg::check_svg(svg), Ok(()), "{key}");
         }
         let layout = Arc::new(Layout::new(&with_drawings(&icons)));
         for (key, svg) in &icons {
             let r = layout.get(&format!("ship/{key}")).unwrap_or_else(|| panic!("{key}"));
-            let [_, _, vw, vh] = data::svg::view_box(svg).unwrap();
+            let [_, _, vw, vh] = data::content::svg::view_box(svg).unwrap();
             assert_eq!(r.cells, [vw / UNITS_PER_CELL, vh / UNITS_PER_CELL], "{key}");
             assert!(r.rect[2] <= LAYOUT_WIDTH - 2.0 * GUTTER && r.rect[3] <= LAYOUT_WIDTH - 2.0 * GUTTER, "{key}");
         }

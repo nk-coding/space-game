@@ -2,7 +2,7 @@
 
 mod common;
 
-use sim::scenario::{self, Scenario, ScenarioKind};
+use sim::voyage::scenario::{self, Scenario, ScenarioKind};
 use sim::{DamageTarget, TickInputs};
 
 #[test]

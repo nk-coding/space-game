@@ -606,7 +606,7 @@ fn an_engine_less_vessel_turns_its_guns_onto_its_target() {
     let p = ship.piece(ship.control_piece().unwrap()).unwrap();
     let f = w.ship(foe).unwrap();
     let to = f.piece(f.control_piece().unwrap()).unwrap().com_world() - p.com_world();
-    let err = sim::physics::wrap_angle(sim::flight::Kin::nose_heading(to) - p.body.angle);
+    let err = sim::flight::physics::wrap_angle(sim::flight::Kin::nose_heading(to) - p.body.angle);
     assert!(err.abs() < 2f32.to_radians(), "nose {}° off the target", err.to_degrees());
 }
 
@@ -668,7 +668,7 @@ fn an_escort_keeps_near_its_leader_and_fights_its_lock() {
 
 #[test]
 fn behavior_scenario_is_deterministic() {
-    use sim::scenario::{ScenarioKind, run_kind};
+    use sim::voyage::scenario::{ScenarioKind, run_kind};
     let (a, stats) = run_kind(ScenarioKind::Behavior, 42, 900);
     let (b, _) = run_kind(ScenarioKind::Behavior, 42, 900);
     assert_eq!(a, b);
@@ -679,7 +679,7 @@ fn behavior_scenario_is_deterministic() {
 
     // A clone continues identically (library, scratch and Rhai scopes included).
     let content = content();
-    let mut sc = sim::scenario::Scenario::with_kind(&content, 42, ScenarioKind::Behavior).unwrap();
+    let mut sc = sim::voyage::scenario::Scenario::with_kind(&content, 42, ScenarioKind::Behavior).unwrap();
     for _ in 0..300 {
         sc.step();
     }

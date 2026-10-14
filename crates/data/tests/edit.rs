@@ -1,10 +1,10 @@
-//! The drydock editing model (`data::edit`): legality, the mirror and turning math against the geometry, bevel
+//! The drydock editing model (`data::design::edit`): legality, the mirror and turning math against the geometry, bevel
 //! corners, slope orientation and turning, fill, strokes, undo/redo, centring and trimming, the Halvex Runner
 //! round trip, and mirrored edits keeping a symmetric design symmetric.
 
 use std::collections::BTreeSet;
 
-use data::edit::{Drydock, OpenError, Outcome, Preview, Refusal, Twin, UNDO_STEPS};
+use data::design::edit::{Drydock, OpenError, Outcome, Preview, Refusal, Twin, UNDO_STEPS};
 use data::{Blueprint, Content, Dir, Placement, PowerOverride, PowerTier, Shape};
 
 fn content() -> Content {

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use data::{Blueprint, Placement};
-use sim::alloc::{Actuation, AllocTable, allocate, assist};
+use sim::ship::alloc::{Actuation, AllocTable, allocate, assist};
 use sim::{
     Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, StepPhase, Target,
     TickInputs, Vec2,

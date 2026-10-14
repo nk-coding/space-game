@@ -5,9 +5,9 @@
 mod common;
 
 use common::*;
-use data::edit::{Drydock, OpenError, Refusal};
-use data::limits::MAX_COORD;
-use data::validate::MAX_FRAME_SIZE;
+use data::design::edit::{Drydock, OpenError, Refusal};
+use data::content::limits::MAX_COORD;
+use data::content::validate::MAX_FRAME_SIZE;
 use data::{Blueprint, Content, Pack, Placement, ShipGrid, parse_blueprint, validate_ship};
 
 fn block(x: i32, y: i32) -> Placement {
@@ -244,7 +244,7 @@ fn deep_nesting_and_huge_texts_give_clean_errors() {
         assert!(parse_blueprint(&deep).is_err());
         let _ = Pack::from_files([("pack.ron", deep.as_str()), ("ships/x.ron", deep.as_str())]);
     }
-    let huge = format!("{ship}{}", " ".repeat(data::limits::MAX_DOCUMENT_BYTES));
+    let huge = format!("{ship}{}", " ".repeat(data::content::limits::MAX_DOCUMENT_BYTES));
     let err = parse_blueprint(&huge).unwrap_err();
     assert!(err[0].message.contains("too long"), "{}", show(&err));
 }

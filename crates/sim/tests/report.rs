@@ -640,7 +640,7 @@ fn yaw_balance_of_an_off_centre_engine() {
 /// full forward thrust's yaw at rest.
 #[test]
 fn yaw_hold_counts_the_thrusters_that_turn_against_it() {
-    use sim::alloc::{Actuation, AllocTable, allocate, assist};
+    use sim::ship::alloc::{Actuation, AllocTable, allocate, assist};
     let c = content();
     // The off-centre torch drive of the test above, two rows lower, with `n` thrusters pushing right in front of
     // the centre of mass (they turn the ship clockwise, against the drive).

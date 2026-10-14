@@ -1,13 +1,13 @@
 //! Genomes (a blueprint and a behavior text), and how they change: mutation and crossover through the editing
-//! models (`data::edit::Drydock` for designs, `data::behavior_edit::BehaviorEditor` for behaviors), so every
+//! models (`data::design::edit::Drydock` for designs, `data::behavior::edit::BehaviorEditor` for behaviors), so every
 //! child is a legal design and a legal program; the pre-filter (`sim::design_report`) before any fight.
 
 use std::collections::BTreeSet;
 
 use data::behavior::{CmpOp, MAX_RULES, Program, Value};
-use data::behavior_edit::{BehaviorEditor, NodeRef};
-use data::edit::{Drydock, Outcome, Refusal, Twin};
-use data::geometry::PlacedShape;
+use data::behavior::edit::{BehaviorEditor, NodeRef};
+use data::design::edit::{Drydock, Outcome, Refusal, Twin};
+use data::design::geometry::PlacedShape;
 use data::{BehaviorNode, Blueprint, Content, NodeRole, ParamType, Placement, Shape, Table};
 use sim::report::Issue;
 use sim::{Pcg32, SimConfig};

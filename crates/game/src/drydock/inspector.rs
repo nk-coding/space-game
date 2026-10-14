@@ -17,7 +17,7 @@
 //! are spawned and kept here.
 
 use bevy::prelude::*;
-use data::stats::{format_number, with_unit};
+use data::design::stats::{format_number, with_unit};
 use data::{Content, Effect, PowerTier, StatDef};
 use sim::{DesignReport, Stat};
 

@@ -5,7 +5,7 @@
 //! The screen (`screen.rs`) turns this into nodes; the tests below pin the mapping.
 
 use data::behavior::{Call, Cond};
-use data::behavior_edit::{BehaviorEditor, DEFAULT_TARGET, NodeRef, RuleId};
+use data::behavior::edit::{BehaviorEditor, DEFAULT_TARGET, NodeRef, RuleId};
 use data::{BehaviorNode, NodeRole, Table};
 
 /// One chip of the graph.

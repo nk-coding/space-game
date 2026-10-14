@@ -29,8 +29,8 @@ impl IdAlloc {
         id
     }
 
-    pub fn projectile(&mut self) -> crate::weapons::ProjectileId {
-        let id = crate::weapons::ProjectileId(self.next_projectile);
+    pub fn projectile(&mut self) -> crate::combat::weapons::ProjectileId {
+        let id = crate::combat::weapons::ProjectileId(self.next_projectile);
         self.next_projectile = self.next_projectile.wrapping_add(1);
         id
     }

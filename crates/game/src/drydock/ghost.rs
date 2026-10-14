@@ -6,7 +6,7 @@
 //! ([`hover_mark`]: the cell, or in SELECT and ERASE the whole part under it) and corner brackets around the
 //! selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
 //!
-//! [`update`] works the view out from the previews of `data::edit` (`preview_paint`, `preview_slope`,
+//! [`update`] works the view out from the previews of `data::design::edit` (`preview_paint`, `preview_slope`,
 //! `preview_place`, `preview_move`: what the edit would do, planned by the same code as the edit) when its inputs
 //! change (the design, the tool and picked part, the cursor cell, the gesture); the see-through tiles are one mesh (the flight tiles, `ship_view::build_body`, with a
 //! translucent material), a child of the design's mesh so it shows only in the drydock, rebuilt only when the
@@ -14,7 +14,7 @@
 
 use bevy::prelude::*;
 use bevy::mesh::VertexAttributeValues;
-use data::edit::{Preview, Refusal, Twin};
+use data::design::edit::{Preview, Refusal, Twin};
 use data::{Blueprint, Cell, Content, Placement};
 
 use crate::RenderToggles;

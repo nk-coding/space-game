@@ -74,7 +74,7 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
-| `load=1\|5\|20` | browser load test: `sim::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
+| `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
 | `thrust`, `torque`, `speed`, `turn`, `keyturn`, `range`, `damage`, `raiders`, `drift`, `link` | tuning values (the panel prints them, `link` aside; `keyturn` is the A/D key turn rate, default 1.5 rad/s; `speed` replaced `top` on 12 Oct 2026). `range` scales every side's weapons, `damage` only the player's (the raiders keep their content damage, 12 Oct 2026). `raiders=N` sets every wave's size by hand; without it waves follow the flown design (GDR-0074) |
@@ -225,7 +225,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   in this order: tiles (seams, fills), hull halo and line, machine glows, machines, muzzle glows, nav lights. The
   drawing fills the part's rotated footprint (`region_box` with `rot` and `flip`, as icons did) and, for an engine,
   reaches its overhang past the stern (`PartVisual::overhang`, from the drawing's viewBox through
-  `data::svg::ship_overhang`), over the hull line; plumes start at the nozzle's mouth (`fx.rs`). The cell's tone
+  `data::content::svg::ship_overhang`), over the hull line; plumes start at the nozzle's mouth (`fx.rs`). The cell's tone
   (`ship_model::HullTones`, the pure rule `hull_tone`, tested): the armour tone with the most hull cell sides
   touching the machine (a tie goes to the tone the design uses more, then name order), else the design's most
   used tone by hull area, else steel. Computed once per design (`design_visual`), so a piece that breaks off
@@ -782,7 +782,7 @@ from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's cam
 
 The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
 `docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 and 13 Oct 2026: the mode, the view
-of the player's design, the screen with its widgets, editing (`data::edit`), the live stats, status line and
+of the player's design, the screen with its widgets, editing (`data::design::edit`), the live stats, status line and
 overlays from `sim::report`, saving (SAVE, the autosave), the BLUEPRINTS and EXPORT screens, share codes and files
 (Storage and sharing below), the BEHAVIOR button and the test flight ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)).
 Layout v2 since 14 Oct 2026 ([GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md), details in
@@ -833,7 +833,7 @@ keeps 1). So the layout always fits: a window narrower or lower than 1280 × 720
 scale stopped at 1 and a centred layout such as FLEET's lost its left and top edges), a wider aspect leaves room at
 the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every play-test size). The phone layout comes later.
 
-- **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::edit::Drydock`) and the blueprint built
+- **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::design::edit::Drydock`) and the blueprint built
   from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through
   `PlayerDesign::edit`, which bumps `revision`; `replace` (another design opened) bumps both (cells of the old
   design, the selection, mean nothing in the new one). At start it is the last session's working design
@@ -1011,7 +1011,7 @@ defaults [GDR-0059](gdr/0059-behavior-editor-wave-a-defaults.md), [GDR-0060](gdr
 look follows `docs/concept/boards/ui-mockups/phone-behavior-editor.png`, laid out for the desktop), `behavior_ui/`,
 written 13 Oct 2026: the mode, the screen, the graph and text views, the inspector and the palette; behaviors as
 saved documents (the name and SAVE, the BEHAVIORS list, the design's behavior) and TEST IN RANGE with a live rule
-panel in flight. Both views edit through the editing model `data::behavior_edit` (`docs/behavior-format.md`
+panel in flight. Both views edit through the editing model `data::behavior::edit` (`docs/behavior-format.md`
 "Editing model"): every graph edit is legal (or refused with a reason) and one undo step, and the text view follows.
 The storage under it: `docs/drydock.md` "Behaviors: storage, designs and tests".
 
@@ -1093,7 +1093,7 @@ action selected).
 
 - **Draft** (`draft.rs`): `BehaviorDraft`, the behavior being edited: a copy of a content behavior
   (`BehaviorDraft::source_for`: `?behavior=`, else the design's `behavior`, else its faction's default) held in a
-  `data::behavior_edit::BehaviorEditor` (`editor()`, `program()`), its text and the text's errors (line, column,
+  `data::behavior::edit::BehaviorEditor` (`editor()`, `program()`), its text and the text's errors (line, column,
   message). `edit(|e| …)` runs an editing-model operation and prints a changed program canonically into the text;
   `set_text` checks a typed text: valid → the program changes (one undo step); invalid → the program stays,
   `errors` fill. While the text has errors, `edit` refuses (`locked()`: "fix the text first"): the model holds
@@ -1125,7 +1125,7 @@ action selected).
   naming the same node while rules move; a selection that an undo or a text edit removes goes, and another draft
   (OPEN, USE, NEW, the design's behavior) clears it).
 - **Data for the widgets** (pure, tested): `graph::GraphView::of(editor, slots)` (chips with
-  `data::behavior_edit::NodeRef::{Target, Action(RuleId), Cond(CondId)}`, rows with their `RuleId`, `slot_line()`),
+  `data::behavior::edit::NodeRef::{Target, Action(RuleId), Cond(CondId)}`, rows with their `RuleId`, `slot_line()`),
   `slots_pill`, `add_rule_label`, `slot_line_label`; `inspect::inspect(editor, selection, Context { slots, reach,
   replacing })` / `behavior_inspection` (the inspector's controls, each carrying the action it sends),
   `inspect::palette_hint`, `inspect::palette(nodes, search)`; `values` (`Kind`, `Scale`: ranges, steps, the

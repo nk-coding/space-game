@@ -80,7 +80,7 @@ swapped, 22 / 4 against 3 / 16 wins; the Runner mirror 4 of 1000).
 ## A fight
 
 `Fight::new(&content, &spec)` checks the spec and builds the world as the load test does
-(`sim::scenario::load_test_with`): the content's `BehaviorLibrary` plus the spec's behavior texts, each entry's design
+(`sim::voyage::scenario::load_test_with`): the content's `BehaviorLibrary` plus the spec's behavior texts, each entry's design
 compiled once (`Arc<ShipDesign>`), ships spawned and commanded. `fight.step(ticks)` runs up to that many ticks and
 returns `Some(FightResult)` once the fight has ended (later calls step nothing and return the same result), so a
 client can run a slice per frame; `fight.sim()` is the world for drawing. `run_fight(&content, &spec)` does it in one
@@ -217,7 +217,7 @@ against three raiders 2076 / 590 / 1334 (mean score 0.708 / 0.292, mean 60.4 s),
 ## Voyage fitness
 
 Track L2 (`src/voyage.rs`): a design and a behavior flown through a content voyage by the headless voyage runner,
-scored 0..1. The runner's pilot moved out of the `voyage` example into the sim as a library, `sim::voyage_runner`
+scored 0..1. The runner's pilot moved out of the `voyage` example into the sim as a library, `sim::voyage::runner`
 (`docs/sim.md` "The headless voyage runner"; the example's output is unchanged), so the example, the arena and later
 the game share one pilot.
 
@@ -294,7 +294,7 @@ A `Genome` is a blueprint (trimmed, as the drydock exports it; named "<start> (e
 behavior field) and a behavior text (canonical, without the start's notes). `genome.blueprint_text()` is the content
 RON form and `genome.behavior_text()` the text form, so the game can SAVE AS DESIGN.
 
-Designs change only through `data::edit::Drydock` (opened in the run's frame, one column narrower under the mirror
+Designs change only through `data::design::edit::Drydock` (opened in the run's frame, one column narrower under the mirror
 lock when the design's width has the other parity), so every child is a legal placement; under the mirror lock an
 edit whose mirror image is impossible (`Twin::Skipped`) is undone. One mutation is one of (weights are
 *placeholders*):
@@ -308,7 +308,7 @@ edit whose mirror image is impossible (`Twin::Skipped`) is undone. One mutation 
 | swap a part | 15 | another allowed part of the same footprint and shape in its place and pose: `place`, accepted only when it replaces just that part (and its twin) |
 | material | 10 | another allowed armour material on a hull part |
 
-Behaviors change only through `data::behavior_edit::BehaviorEditor`, so every program is legal; rules are added only
+Behaviors change only through `data::behavior::edit::BehaviorEditor`, so every program is legal; rules are added only
 below the design's rule slots:
 
 | Behavior operator | Weight | How |

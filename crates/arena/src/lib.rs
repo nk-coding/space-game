@@ -9,7 +9,7 @@
 //! seeds.
 //!
 //! [`VoyageSpec`], [`run_voyage`] and [`voyage_score`] score a design by the slice's voyages (the headless voyage
-//! runner, `sim::voyage_runner`). [`evolve`] breeds designs and behaviors ([`Run`], configured by a [`RunConfig`]).
+//! runner, `sim::voyage::runner`). [`evolve`] breeds designs and behaviors ([`Run`], configured by a [`RunConfig`]).
 //!
 //! No Bevy, no I/O, no threads, no wall clock; builds for wasm32. The same spec gives the same result and hash
 //! on every platform (the sim's determinism rules apply here too: ordered containers, `sim::math` for any

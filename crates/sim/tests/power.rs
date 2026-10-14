@@ -1,5 +1,5 @@
 //! Power allocation (GDR-0014): tiers, weights, minimum levels, blueprint overrides, runtime settings, and
-//! partial output scaling what parts do. The allocator's arithmetic has unit tests in `src/power.rs`.
+//! partial output scaling what parts do. The allocator's arithmetic has unit tests in `src/ship/power.rs`.
 
 mod common;
 

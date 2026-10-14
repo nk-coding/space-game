@@ -20,28 +20,28 @@
 //!    (previous pose kept for interpolation); impacts above the ramming threshold crush inward from the
 //!    touching parts (none between vessels of one owner; shield bubbles covering the point absorb first), and
 //!    breakage is resolved once more.
-//! 8. The voyage director, if a voyage is underway (`voyage.rs`): sites spawn, wake and clear.
+//! 8. The voyage director, if a voyage is underway (`voyage/mod.rs`): sites spawn, wake and clear.
 //! 9. `tick += 1`; debug builds store the state hash.
 
 use std::sync::Arc;
 
 use crate::behavior::{self, BehaviorId, BehaviorLibrary, BehaviorState};
-use crate::breakage::{DamageOutcome, DamageTarget};
+use crate::ship::breakage::{DamageOutcome, DamageTarget};
 use crate::config::SimConfig;
-use crate::design::{PartIdx, ShipDesign};
+use crate::ship::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
 use crate::flight::{self, HelmMode, PilotInput};
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{IdAlloc, PieceId, ShipId};
-use crate::maneuver::Maneuver;
+use crate::flight::maneuver::Maneuver;
 use crate::math::{Rot, Vec2};
-use crate::physics::{BodyDesc, BodyKey, Contact, Physics, RayHit};
+use crate::flight::physics::{BodyDesc, BodyKey, Contact, Physics, RayHit};
 use crate::rng::{Pcg32, RngStreams, Stream};
-use crate::salvage::SalvageState;
+use crate::combat::salvage::SalvageState;
 use crate::ship::{Body, Piece, Ship, ShipControls};
-use crate::vessel::{self, MindRow, Owner};
+use crate::ship::vessel::{self, MindRow, Owner};
 use crate::voyage::Voyage;
-use crate::weapons::{BeamTrace, Bubble, Projectile};
+use crate::combat::weapons::{BeamTrace, Bubble, Projectile};
 
 /// The phases of one [`Sim::step`], in order, for profiling tools ([`Sim::step_profiled`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,8 +96,8 @@ pub enum ShipCommand {
     /// Change a consumer part's power tier and weight (`Ship::set_power_setting`; ignored for parts that draw
     /// no power and for invalid weights).
     Power {
-        part: crate::design::PartIdx,
-        setting: crate::power::PowerSetting,
+        part: crate::ship::design::PartIdx,
+        setting: crate::ship::power::PowerSetting,
     },
     /// Make this vessel its owner's focus (instant; GDR-0013): it is piloted from now on (its behavior is
     /// parked) and never goes dormant; the vessel the focus left runs its behavior again. Ignored for salvage.
@@ -155,10 +155,10 @@ pub struct Sim {
     pub(crate) bubbles: Vec<Bubble>,
     pub(crate) shield_scratch: Vec<(f32, u32)>,
     /// The fire pass's hits, applied once every gun has fired (scratch, reused; `weapons.rs`).
-    pub(crate) gun_hits: Vec<crate::weapons::GunHit>,
-    pub(crate) plume_scratch: crate::plume::PlumeScratch,
+    pub(crate) gun_hits: Vec<crate::combat::weapons::GunHit>,
+    pub(crate) plume_scratch: crate::combat::plume::PlumeScratch,
     /// The chain pass's queue and buffers (scratch, reused; `chain.rs`).
-    pub(crate) chain_scratch: crate::chain::ChainScratch,
+    pub(crate) chain_scratch: crate::combat::chain::ChainScratch,
     /// Behavior programs (shared; ships refer to them by `BehaviorId`).
     behaviors: BehaviorLibrary,
     behavior_scratch: behavior::Scratch,
@@ -171,7 +171,7 @@ pub struct Sim {
     pub(crate) mind_scratch: Vec<MindRow>,
     /// Loose fragments and the collect pass's buffer (`salvage.rs`).
     pub(crate) salvage: SalvageState,
-    /// The voyage underway, if any (`voyage.rs`).
+    /// The voyage underway, if any (`voyage/mod.rs`).
     pub(crate) voyage: Option<Box<Voyage>>,
 }
 
@@ -457,7 +457,7 @@ impl Sim {
         damage: f32,
         pierce: u32,
         life: f32,
-    ) -> crate::weapons::ProjectileId {
+    ) -> crate::combat::weapons::ProjectileId {
         use crate::math::finite_or_zero;
         let (pos, vel) = (pos.finite_or_zero(), vel.finite_or_zero());
         let (damage, life) = (finite_or_zero(damage), finite_or_zero(life));

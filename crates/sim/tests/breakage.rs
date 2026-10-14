@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use sim::mass::to_piece;
+use sim::ship::mass::to_piece;
 use sim::{
     Body, DamageCommand, DamageOutcome, DamageTarget, Owner, PartIdx, ShipId, SimEvent, TickInputs,
     Vec2, inherited_velocity,
@@ -201,7 +201,7 @@ fn runner_splits_down_the_middle() {
     assert!((mom - want).length() < 1e-2, "{mom:?} vs {want:?}");
     // Each half has its own closed hull outline.
     for (sh, p) in [(ship, a), (ship_t, b)] {
-        let loops = data::geometry::hull_loops(&sh.piece_hull_edges(p.id));
+        let loops = data::design::geometry::hull_loops(&sh.piece_hull_edges(p.id));
         assert!(!loops.is_empty() && loops.iter().all(|l| l.closed));
     }
     // The split pose in the event equals the live body.

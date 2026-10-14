@@ -36,14 +36,14 @@ use data::{Blueprint, Content, Delivery, Dir, Effect, PowerTier, WeaponFamily};
 
 use crate::DT;
 use crate::config::SimConfig;
-use crate::design::{ConsumerKind, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat};
+use crate::ship::design::{ConsumerKind, NO_SLOT, PartIdx, PartStats, ShipDesign, Stat};
 use crate::flight::{Kin, TURNING, TurnAssist, turn_rate};
 use crate::ids::{IdAlloc, ShipId};
 use crate::ship::{
     Body, HeatK, PartState, Ship, applied_bonuses, gun_blockers, power_pass, producing,
     reactor_supply, refresh_authority, tuning as heat_tuning,
 };
-use crate::vessel::Owner;
+use crate::ship::vessel::Owner;
 
 /// Report tuning. **PLACEHOLDERS**, like every number in the sim.
 pub mod tuning {
@@ -460,7 +460,7 @@ pub fn design_report(
         let Ship { pieces, parts, .. } = &mut ship;
         let piece = &mut pieces[k];
         let running = piece.controlled;
-        crate::control::update(piece, parts, d, running);
+        crate::ship::control::update(piece, parts, d, running);
         piece.active = true;
         refresh_authority(piece, parts);
         let kin = Kin::of(piece, parts);
@@ -622,7 +622,7 @@ pub fn design_report(
                 .map(|l| {
                     let path = d.plume_path.get(l as usize);
                     let burn = if t.burns() {
-                        crate::plume::own_burn(path, t.plume_length, &ship.parts, piece.id)
+                        crate::combat::plume::own_burn(path, t.plume_length, &ship.parts, piece.id)
                     } else {
                         None
                     };
@@ -712,7 +712,7 @@ fn flight_report(
     let (mut yaw, mut gimbal) = (0.0f32, 0.0f32);
     for t in &piece.thrusters {
         let ps = &parts[t.part as usize];
-        if crate::alloc::group_of(t.dir) != 0 || !producing(ps) {
+        if crate::ship::alloc::group_of(t.dir) != 0 || !producing(ps) {
             continue;
         }
         let f = t.max_force * ps.power;
@@ -726,7 +726,7 @@ fn flight_report(
     let mut against = 0.0f32;
     for t in &piece.thrusters {
         let ps = &parts[t.part as usize];
-        if crate::alloc::group_of(t.dir) != 0 && producing(ps) && t.torque_per_force * yaw < 0.0 {
+        if crate::ship::alloc::group_of(t.dir) != 0 && producing(ps) && t.torque_per_force * yaw < 0.0 {
             against += t.max_force * ps.power * t.torque_per_force.abs();
         }
     }
@@ -774,7 +774,7 @@ fn turn_time(inertia: f32, a: &crate::ThrustAuthority, config: &SimConfig) -> Op
         } else {
             (first[1], a.torque_cw)
         };
-        let saturated = want.abs() - first > crate::alloc::tolerance(want);
+        let saturated = want.abs() - first > crate::ship::alloc::tolerance(want);
         gate = gate.step(saturated, e.abs() > TURNING, ft.assist_after);
         let cap = if gate.on { first + diff } else { first };
         let dw = want.clamp(-cap, cap) / inertia * DT;
@@ -809,7 +809,7 @@ fn steady_heat(d: &ShipDesign, heat_k: &[HeatK], parts: &[PartState], out: &mut 
         return;
     }
     // Rows of the matrix as neighbour lists (CSR, both directions of every live link, in link order).
-    let live = |l: &&crate::design::Link| parts[l.a as usize].alive && parts[l.b as usize].alive;
+    let live = |l: &&crate::ship::design::Link| parts[l.a as usize].alive && parts[l.b as usize].alive;
     let mut start = vec![0usize; n + 1];
     for l in d.links.iter().filter(live) {
         start[l.a as usize + 1] += 1;

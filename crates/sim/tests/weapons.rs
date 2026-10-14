@@ -551,7 +551,7 @@ fn a_gun_fires_at_most_a_few_shots_per_tick() {
     for _ in 0..3 {
         w.step(&fire(s));
         let shots = w.events().iter().filter(|e| matches!(e, SimEvent::ShotFired { .. })).count();
-        assert_eq!(shots as u32, sim::weapons::tuning::MAX_SHOTS_PER_TICK);
+        assert_eq!(shots as u32, sim::combat::weapons::tuning::MAX_SHOTS_PER_TICK);
     }
 }
 

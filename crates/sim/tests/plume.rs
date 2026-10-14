@@ -7,7 +7,7 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use sim::mass::to_piece;
+use sim::ship::mass::to_piece;
 use sim::{Body, DamageTarget, Owner, ShipDesign, ShipId, Sim, SimEvent, Vec2};
 
 /// Core and reactor on top, a thruster pushing up with two composite blocks right behind it (a buried

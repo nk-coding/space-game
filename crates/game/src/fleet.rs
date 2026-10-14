@@ -599,7 +599,7 @@ fn sync(
         capacity.saturating_sub(ship.logic_cores + others)
     };
     let card = |k: usize| fleet.designs.get(fleet.offset + k);
-    let cargo = |c: f32| data::stats::format_number(c, 0);
+    let cargo = |c: f32| data::design::stats::format_number(c, 0);
 
     for (t, mut text, mut color) in &mut texts {
         let (s, tone) = match *t {

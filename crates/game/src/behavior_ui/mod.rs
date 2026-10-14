@@ -5,7 +5,7 @@
 //! design's.
 //!
 //! The mode, the screen and its widgets, the graph and text views of the behavior, the inspector and the
-//! palette; editing in the graph view goes through the editing model (`data::behavior_edit`); behaviors as saved
+//! palette; editing in the graph view goes through the editing model (`data::behavior::edit`); behaviors as saved
 //! documents (SAVE, the BEHAVIORS list, the design's behavior) and TEST IN RANGE with its live panel in the flight
 //! HUD.
 //!

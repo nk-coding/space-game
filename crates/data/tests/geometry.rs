@@ -1,6 +1,6 @@
 //! Geometry cases from the drydock rules (`docs/concept/reference/drydock-model.js`).
 
-use data::geometry::{hull_loops, transform_cell};
+use data::design::geometry::{hull_loops, transform_cell};
 use data::{Dir, Footprint, GridPoint, PlacedShape, ShipGrid};
 
 fn at(footprint: Footprint, x: i32, y: i32, rot: u8, flip: bool) -> PlacedShape {
@@ -320,7 +320,7 @@ fn guns_respect_rotation() {
 /// outline still runs along every side.
 #[test]
 fn long_outlines_keep_exactly_their_corners() {
-    let side = data::validate::MAX_FRAME_SIZE as i32;
+    let side = data::content::validate::MAX_FRAME_SIZE as i32;
     let mut parts: Vec<PlacedShape> = (0..side).map(|x| block(x, 0)).collect();
     for x in (0..side).step_by(2) {
         parts.extend((1..side).map(|y| block(x, y)));

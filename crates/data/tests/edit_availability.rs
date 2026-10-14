@@ -4,7 +4,7 @@
 //! cells as are left. The career gives every part unlimited for now.
 
 use data::career::{Availability, Career};
-use data::edit::{Drydock, Refusal, Twin};
+use data::design::edit::{Drydock, Refusal, Twin};
 use data::{Blueprint, Content, Placement};
 
 fn empty(c: &Content) -> Drydock {

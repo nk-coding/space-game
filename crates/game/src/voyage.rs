@@ -667,7 +667,7 @@ mod tests {
         assert_eq!(haul_item(&Item::Fragment { part: "logic_core".into() }), HaulItem::Fragment { part: "logic_core".into() });
 
         let content = data::base_content();
-        let mut sc = sim::scenario::Scenario::with_kind(&content, 42, sim::ScenarioKind::Salvage).unwrap();
+        let mut sc = sim::voyage::scenario::Scenario::with_kind(&content, 42, sim::ScenarioKind::Salvage).unwrap();
         while sc.sim.tick() < 600 {
             sc.step();
         }

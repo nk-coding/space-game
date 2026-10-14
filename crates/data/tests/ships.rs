@@ -7,7 +7,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use common::*;
-use data::geometry::hull_loops;
+use data::design::geometry::hull_loops;
 use data::{Content, GridPoint, Shape};
 
 /// Parses the subset of SVG path syntax used by the art (M, L, H, V, Z, absolute, implicit repeats).

@@ -6,7 +6,7 @@
 #   scripts/determinism-check.sh --fight NAME [--seed N] [--ticks N]   # an arena fight (crates/arena/fights/NAME.ron)
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
-# Scenarios of sim's `determinism` example (sim::scenario): core (default), flight, load (--ships N in the example),
+# Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, load (--ships N in the example),
 # behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost ship's cargo), voyage (a voyage directed by
 # sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the recall check).
 # `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/arena/fights/NAME.ron

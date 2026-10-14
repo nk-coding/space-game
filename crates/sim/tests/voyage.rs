@@ -5,7 +5,7 @@
 mod common;
 
 use common::*;
-use sim::breakage::DamageTarget;
+use sim::ship::breakage::DamageTarget;
 use sim::flight::HelmMode;
 use sim::{
     Body, DamageCommand, Maneuver, Owner, PartIdx, ShipId, Sim, SimConfig, SimEvent, SiteState,
@@ -777,7 +777,7 @@ fn a_shot_into_a_bubble_or_a_ram_wakes_a_sleeping_site() {
     );
 }
 
-/// The voyage runner (`sim::voyage_runner`): the same seed gives the same run, stepped in slices or in one go,
+/// The voyage runner (`sim::voyage::runner`): the same seed gives the same run, stepped in slices or in one go,
 /// and a run ends within its time limit.
 #[test]
 fn the_voyage_runner_is_deterministic_in_slices() {

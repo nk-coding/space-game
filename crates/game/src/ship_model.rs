@@ -3,7 +3,7 @@
 //! whole blueprint looks like at rest ([`blueprint_visual`], the drydock: every part, from the ship grid alone).
 //!
 //! Visual interpretation only (ship drawing and icon, tile tone, barrels from the part's content, nav lights). Shape
-//! and topology come from `data::geometry` and the sim: polygons, the piece's alive parts and frame origin, hull
+//! and topology come from `data::design::geometry` and the sim: polygons, the piece's alive parts and frame origin, hull
 //! edges, line of fire, shield radius.
 //!
 //! Machines are drawn as housings on a hull-toned cell (GDR-0069): [`HullTones`] picks the cell's armour tone.
@@ -141,8 +141,8 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
         };
         let drawing = icon.as_deref().and_then(|k| content.ship_svg(k).map(|svg| (k, svg)));
         let overhang = drawing
-            .and_then(|(_, svg)| data::svg::view_box(svg))
-            .and_then(|vb| data::svg::ship_overhang(vb, def.size).ok())
+            .and_then(|(_, svg)| data::content::svg::view_box(svg))
+            .and_then(|vb| data::content::svg::ship_overhang(vb, def.size).ok())
             .unwrap_or(0.0);
         let gun = def.weapon.as_ref().map(|_| {
             let (barrel, muzzle_radius) = match def.barrel {
@@ -195,7 +195,7 @@ pub fn piece_visual(dv: &DesignVisual, ship: &Ship, piece: &Piece) -> ShipVisual
         }
         parts.push(p);
     }
-    let hull_loops = data::geometry::hull_loops(&ship.piece_hull_edges(piece.id))
+    let hull_loops = data::design::geometry::hull_loops(&ship.piece_hull_edges(piece.id))
         .into_iter()
         .map(|l| (l.points.iter().map(|g| Vec2::new(g.x as f32, g.y as f32)).collect(), l.closed))
         .collect();
@@ -238,7 +238,7 @@ pub fn blueprint_visual(dv: &DesignVisual, grid: &ShipGrid) -> ShipVisual {
     if parts.is_empty() {
         (min, max) = (Vec2::ZERO, Vec2::ZERO);
     }
-    let hull_loops = data::geometry::hull_loops(&grid.hull_edges(|_| true))
+    let hull_loops = data::design::geometry::hull_loops(&grid.hull_edges(|_| true))
         .into_iter()
         .map(|l| (l.points.iter().map(|g| Vec2::new(g.x as f32, g.y as f32)).collect(), l.closed))
         .collect();

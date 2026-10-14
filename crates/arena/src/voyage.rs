@@ -1,5 +1,5 @@
 //! Voyage fitness (track L2 of the evolution lab): a design (and a behavior) flown through the slice's voyages by
-//! the headless voyage runner (`sim::voyage_runner`), scored 0..1 by the goal cleared, the time and the hull lost.
+//! the headless voyage runner (`sim::voyage::runner`), scored 0..1 by the goal cleared, the time and the hull lost.
 
 use data::Content;
 use sim::{BehaviorLibrary, Flagship, SimConfig, VoyageRun, VoyageRunner};
@@ -119,7 +119,7 @@ pub fn voyage_score(run: &VoyageRun, limit_ticks: u64) -> f32 {
         } else {
             0.0
         };
-        let lost = if run.outcome == sim::voyage_runner::Outcome::Lost {
+        let lost = if run.outcome == sim::voyage::runner::Outcome::Lost {
             0.5
         } else {
             1.0

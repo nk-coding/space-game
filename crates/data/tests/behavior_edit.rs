@@ -1,12 +1,12 @@
-//! The behavior editing model (`data::behavior_edit`): every operation and refusal, the text round trip of the
+//! The behavior editing model (`data::behavior::edit`): every operation and refusal, the text round trip of the
 //! content behaviors, ids kept across text edits, rule slots, undo/redo and strokes, and random edit sequences
 //! that must keep the program legal and equal to its own text parsed again.
 
 use data::behavior::{
     CmpOp, MAX_CONDITIONS, MAX_LINE_CHARS, MAX_RULES, Program, Unit, Value, check_program,
 };
-use data::behavior_edit::{BehaviorEditor, CondId, DEFAULT_TARGET, NodeRef, Refusal, RuleId};
-use data::edit::UNDO_STEPS;
+use data::behavior::edit::{BehaviorEditor, CondId, DEFAULT_TARGET, NodeRef, Refusal, RuleId};
+use data::design::edit::UNDO_STEPS;
 use data::{Content, NodeParam, NodeRole, ParamType};
 
 fn content() -> Content {

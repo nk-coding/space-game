@@ -1,9 +1,9 @@
 //! SVG for the wiki, all vector: the pack's icons as page-level `<symbol>`s, and style-2a layouts of ships and
-//! single parts drawn from the blueprint geometry (`data::geometry`) in the colours of `art/tokens.json`.
+//! single parts drawn from the blueprint geometry (`data::design::geometry`) in the colours of `art/tokens.json`.
 
 use std::fmt::Write as _;
 
-use data::geometry::HullLoop;
+use data::design::geometry::HullLoop;
 use data::{GridPoint, PlacedShape};
 use serde_json::Value;
 
@@ -42,7 +42,7 @@ impl Style {
             .unwrap_or_else(|_| panic!("style token `{path}` is not a number"))
     }
 
-    /// Hull glow colour of a faction glow key (`data::art_keys::GLOWS`).
+    /// Hull glow colour of a faction glow key (`data::content::art_keys::GLOWS`).
     pub fn glow(&self, key: &str) -> String {
         self.get(if key == "enemy" {
             "ship.hull_glow.enemy_color"
@@ -54,7 +54,7 @@ impl Style {
 
 /// A number for SVG coordinates: at most 3 decimals, trailing zeros trimmed.
 fn n(v: f32) -> String {
-    data::stats::format_number(v, 3)
+    data::design::stats::format_number(v, 3)
 }
 
 /// The `>` that ends the tag starting at `s[0] == '<'`, quotes respected.
@@ -97,7 +97,7 @@ pub fn icon_id(key: &str) -> String {
 /// An icon SVG as a `<symbol id="icon-<key>">` for the page's sprite. The root's `viewBox` (and
 /// `preserveAspectRatio`) move to the symbol; every id inside gets the prefix `icon-<key>-` and every reference
 /// (`url(#..)`, `href="#.."`) follows, because all icons use the same ids (`gl`, `gCore`, ...) and share a page.
-/// The rest of the file is kept as it is (`data::svg::check_svg` has vetted it). `Err` for a file without a
+/// The rest of the file is kept as it is (`data::content::svg::check_svg` has vetted it). `Err` for a file without a
 /// usable root.
 pub fn icon_symbol(key: &str, svg: &str) -> Result<String, String> {
     let mut start = 0;
@@ -360,13 +360,13 @@ mod tests {
     #[test]
     fn every_token_the_wiki_uses_exists() {
         let s = Style::embedded();
-        for tone in data::art_keys::ARMOR_TONES {
+        for tone in data::content::art_keys::ARMOR_TONES {
             s.get(&format!("ship.armor.{tone}"));
         }
-        for key in data::art_keys::SYSTEM_COLORS {
+        for key in data::content::art_keys::SYSTEM_COLORS {
             s.get(&format!("ship.system_colors.{key}"));
         }
-        for key in data::art_keys::GLOWS {
+        for key in data::content::art_keys::GLOWS {
             s.glow(key);
         }
     }

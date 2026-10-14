@@ -1,4 +1,4 @@
-//! The shared load test (`sim::scenario::load_test`): n ships, half Halvex Runners and half automaton
+//! The shared load test (`sim::voyage::scenario::load_test`): n ships, half Halvex Runners and half automaton
 //! raiders, all under the content behavior `raider_basic`, engaging at once. Reports step times (the whole
 //! step, and the Rapier step alone via `Sim::step_profiled`) and what happened. Native only (wall-clock is used
 //! here, in the tool, never in the sim); the browser client runs the same setup.
@@ -43,7 +43,7 @@ fn main() {
     );
     println!("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for &n in &ships {
-        let mut world = sim::scenario::load_test(n, seed);
+        let mut world = sim::voyage::scenario::load_test(n, seed);
         let (mut times, mut rapier) = (Vec::with_capacity(ticks), Vec::with_capacity(ticks));
         let (mut pieces_max, mut proj_sum, mut proj_max) = (0usize, 0usize, 0usize);
         let (mut shots, mut hits, mut splits, mut impacts, mut rams) =

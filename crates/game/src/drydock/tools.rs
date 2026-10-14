@@ -1,4 +1,4 @@
-//! Editing on the grid: the tools turn pointer gestures into `data::edit` calls on the player's design, and the
+//! Editing on the grid: the tools turn pointer gestures into `data::design::edit` calls on the player's design, and the
 //! editing actions (undo, redo, mirror, bevel, rotate, flip, delete, the inspector's material and power) run
 //! here. Every edit goes through [`PlayerDesign::edit`]; the editor's `mirror` and `bevel` flags are the modes.
 //!
@@ -17,7 +17,7 @@
 //! what is under them (the editing model's rule).
 
 use bevy::prelude::*;
-use data::edit::{Outcome, Refusal, Twin};
+use data::design::edit::{Outcome, Refusal, Twin};
 use data::{Cell, Content, MAX_POWER_WEIGHT, Part, Placement, PowerOverride, PowerTier, Shape};
 
 use crate::sim_bridge::GameContent;

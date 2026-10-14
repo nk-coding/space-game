@@ -224,7 +224,7 @@ fn update_debug(
         let _ = write!(
             s,
             "\nfocus: heading {:+.1} deg  turn {:+.2} rad/s  speed {:.1} m/s  last resort {}",
-            sim::physics::wrap_angle(p.body.angle).to_degrees(),
+            sim::flight::physics::wrap_angle(p.body.angle).to_degrees(),
             p.body.angvel,
             p.body.linvel.length(),
             on(ship.telemetry().assist),

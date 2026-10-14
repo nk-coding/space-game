@@ -18,14 +18,14 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [GDR-0054](gd
 
 | Piece | Where | Doc |
 |---|---|---|
-| Editing model (legality, tools, mirror, undo) | `data::edit::Drydock` | below |
-| One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::blueprint`, `Content.frames`, `Content::ship_totals`, `data::stats::SHIP_STATS` | `content-model.md` |
+| Editing model (legality, tools, mirror, undo) | `data::design::edit::Drydock` | below |
+| One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::design::blueprint`, `Content.frames`, `Content::ship_totals`, `data::design::stats::SHIP_STATS` | `content-model.md` |
 | Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
 | The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
 | What the career unlocks: locked rows, NEW tags, the voyage-ready line | `crates/game/src/career.rs`, `drydock/{state,panels,stats}.rs`, `data::career` | [below](#locked-parts-new-and-voyage-ready), `career.md` |
 | Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
 | The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/drydock/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
-| The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/game/src/behavior_ui/`, `data::behavior_edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
+| The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/game/src/behavior_ui/`, `data::behavior::edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
 
 Status (13 Oct 2026): waves 1 and 2 are merged. The drydock edits (paint, fill, erase, select, rotate, flip,
 mirror, bevel, undo/redo, ghost and selection, the inspector with power overrides), shows the live stats, status
@@ -37,16 +37,16 @@ and variants, thumbnails, a native file dialog, Android storage.
 
 ## Editing model
 
-`data::edit::Drydock` (`crates/data/src/edit.rs`) is the editing model: no Bevy, no threads, no filesystem, so it
+`data::design::edit::Drydock` (`crates/data/src/design/edit.rs`) is the editing model: no Bevy, no threads, no filesystem, so it
 builds for wasm32. The client's drydock uses it for every edit, and the arena's evolution operators will too.
 Tests: `crates/data/tests/edit.rs`.
 
 ### Design, frame and part indices
 
-- Coordinates are the blueprint conventions of `data::geometry`: x right, y down, forward = −y, `rot` = quarter
+- Coordinates are the blueprint conventions of `data::design::geometry`: x right, y down, forward = −y, `rot` = quarter
   turns clockwise, flip mirrors before rotating, a placement's `x, y` is the top-left cell of its rotated footprint.
 - The editor holds one design in **frame coordinates**. The frame `(w, h)` (1 to 128 cells a side,
-  `data::validate::MAX_FRAME_SIZE`, the same limit as content frames) is the editing area; every part lies inside
+  `data::content::validate::MAX_FRAME_SIZE`, the same limit as content frames) is the editing area; every part lies inside
   it.
 - `Drydock::open(content, blueprint, frame)` centres the parts' bounding box in the frame (rounded towards the
   top-left) and refuses a design that does not fit, an unknown part, `rot > 3` or overlapping parts. A blueprint
@@ -531,7 +531,7 @@ saved template copy moved to the cruiser frame).
   (`?newgame=1`, a new save slot), is a copy of the career's start ship (`PlayerDesign::starter` with
   `PlayerCareer::start_ship`) named "Rim skiff copy"; a new game saves the last design's unsaved changes to
   BLUEPRINTS first (if that fails, the last design stays). Opening centres the parts in the frame
-  (`data::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept. The
+  (`data::design::edit::Drydock::open`), so an off-centre design comes back centred; the undo history is not kept. The
   document is untrusted (a damaged storage entry, a hand-edited file): a `saved_as` that is no design id is dropped
   (the design comes back unsaved; SAVE gives it a new id), and a document that doesn't read or open (a newer
   build's format, parts this content lacks) is copied to `drydock/working-unread` before the starter's autosave
@@ -594,7 +594,7 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   (`PlayerBehaviors::import`: under its own id when that is free or already holds the same behavior, else under a
   new one) and the design names it; any other unknown behavior is dropped (noted in the status line); a design no
   frame takes is refused; other problems (`behaviors::validate_design`) are named but don't block.
-- **Limits on text from outside** (`data::limits`, added 13 Oct 2026 after the untrusted-input review): reading a
+- **Limits on text from outside** (`data::content::limits`, added 13 Oct 2026 after the untrusted-input review): reading a
   blueprint with the content options (`parse_blueprint`, a share code's payload, a stored document) refuses
   placement coordinates further than `MAX_COORD` (65536) from 0, and RON nested deeper than `RON_RECURSION_LIMIT`
   (32); `parse_blueprint` refuses texts over `MAX_DOCUMENT_BYTES` (4 MiB) and skips a byte order mark. The limits

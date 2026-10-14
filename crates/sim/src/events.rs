@@ -1,15 +1,15 @@
 //! Events the simulation emits for the physics layer and the client. Read them with `Sim::events()` after a
 //! step (they are cleared at the start of the next step).
 
-use crate::collider::ConvexPolygon;
-use crate::design::PartIdx;
+use crate::ship::collider::ConvexPolygon;
+use crate::ship::design::PartIdx;
 use crate::ids::{PieceId, ShipId};
-use crate::mass::MassProps;
+use crate::ship::mass::MassProps;
 use crate::math::Vec2;
-use crate::salvage::{Item, Salvaged};
+use crate::combat::salvage::{Item, Salvaged};
 use crate::ship::Body;
-use crate::vessel::Owner;
-use crate::weapons::{GoneReason, ProjectileId, ShotKind};
+use crate::ship::vessel::Owner;
+use crate::combat::weapons::{GoneReason, ProjectileId, ShotKind};
 use data::WeaponFamily;
 
 /// Everything the physics layer needs to create or update the body of one piece.
@@ -114,7 +114,7 @@ pub enum SimEvent {
     /// sound). Above `PhysicsTuning::ram_threshold` it carries ramming damage (none between vessels of one
     /// owner), already dealt after shields (`ShieldHit` for what bubbles took): to `part_a` and `part_b`, the
     /// excess crushing on inward (destroyed parts follow as `PartDestroyed`).
-    Impact(crate::physics::Contact),
+    Impact(crate::flight::physics::Contact),
     /// A pulse or projectile left a gun (beams are continuous: see `Sim::beams()`). `to` is where a pulse
     /// ended (hit, shield or full range); for projectiles the end of their range if nothing stops them.
     ShotFired {
@@ -189,7 +189,7 @@ pub enum SimEvent {
     /// hold, the lowest-value items first, and spilled as loose items at the lost hold (`salvage.rs`, GDR-0076;
     /// `Sim::loose`, collected again like fragments).
     CargoLost { ship: ShipId, item: Item, count: u32 },
-    /// A voyage site woke (`voyage.rs`): its ships fly their behavior from now on. `site` indexes
+    /// A voyage site woke (`voyage/mod.rs`): its ships fly their behavior from now on. `site` indexes
     /// `Voyage::sites`.
     SiteWoke { site: u32 },
     /// A voyage site was cleared (GDR-0068): each of its ships is destroyed or disarmed, none is a vessel that is

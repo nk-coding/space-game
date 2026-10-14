@@ -4,7 +4,7 @@
 use arena::evolve::{Fitness, Genes, JobResult, Measure, Results};
 use arena::{DesignRef, Run, RunConfig, RunError, VoyageSpec};
 use data::Content;
-use sim::voyage_runner::Outcome;
+use sim::voyage::runner::Outcome;
 
 /// A small, quick run: the skiff's behavior against one raider, 10 s fights.
 const TINY: &str = r#"(

@@ -4,7 +4,7 @@
 //! without Bevy; [`update`] only writes the resources. [`voyage`] adds the career's voyage-ready line after the
 //! status line (`career::voyage_line`).
 //!
-//! * **Labels, units and precision** come from content (`stats.ron`: `data::stats::SHIP_STATS` and the part
+//! * **Labels, units and precision** come from content (`stats.ron`: `data::design::stats::SHIP_STATS` and the part
 //!   stats for mass and build points). Values are shortened to three significant digits (never more decimals
 //!   than the content's) so they fit the mockup's narrow cells; the main grid drops units where they would
 //!   not fit (the power and control pairs, thrust over mass).
@@ -19,7 +19,7 @@
 
 use bevy::prelude::*;
 use data::Content;
-use data::stats::{format_number, with_unit};
+use data::design::stats::{format_number, with_unit};
 use sim::DesignReport;
 use sim::report::{Issue, LoadClass, Severity};
 

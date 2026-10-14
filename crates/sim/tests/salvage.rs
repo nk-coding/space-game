@@ -6,7 +6,7 @@ mod common;
 use std::sync::Arc;
 
 use common::{P, custom, design};
-use sim::scenario::{self, Scenario, ScenarioKind};
+use sim::voyage::scenario::{self, Scenario, ScenarioKind};
 use sim::{
     Body, DamageTarget, Item, Owner, Salvaged, ShipDesign, ShipId, Sim, SimConfig, SimEvent,
     TickInputs, Vec2,
@@ -303,7 +303,7 @@ fn destroyed_cores_leave_fragments_that_drift_and_expire() {
     let core_at = {
         let s = w.ship(raider).unwrap();
         let p = &s.pieces()[0];
-        p.body.to_world(sim::mass::to_piece(
+        p.body.to_world(sim::ship::mass::to_piece(
             s.design().parts[core as usize].centroid,
             p.origin,
         ))

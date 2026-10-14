@@ -34,64 +34,49 @@
 
 #![forbid(unsafe_code)]
 
-pub mod alloc;
 pub mod behavior;
-pub mod breakage;
-pub mod chain;
-pub mod collider;
+pub mod combat;
 pub mod config;
-pub mod control;
-pub mod design;
 pub mod events;
 pub mod flight;
 pub mod hash;
 pub mod ids;
-pub mod maneuver;
-pub mod mass;
 pub mod math;
-pub mod physics;
-mod plume;
-pub mod power;
 pub mod report;
 pub mod rng;
-pub mod salvage;
-pub mod scenario;
 pub mod ship;
-pub mod vessel;
 pub mod voyage;
-pub mod voyage_runner;
-pub mod weapons;
 pub mod world;
 
-pub use alloc::{Actuation, TorqueSource};
 pub use behavior::{BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
-pub use breakage::{DamageOutcome, DamageTarget};
-pub use collider::ConvexPolygon;
+pub use combat::salvage::{Cargo, Item, Loose, LooseId, Salvaged, Stack};
+pub use combat::weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
 pub use config::{FlightTuning, PhysicsTuning, SalvageTuning, SimConfig};
-pub use control::ControlState;
 pub use data::PowerTier;
-pub use design::{BlastTarget, ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
 pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
+pub use flight::maneuver::Maneuver;
+pub use flight::physics::{BodyKey, Contact, Physics, RayHit};
 pub use hash::{StateHash, StateHasher};
 pub use ids::{PieceId, ShipId};
-pub use maneuver::Maneuver;
-pub use mass::MassProps;
 pub use math::{Rot, Vec2};
-pub use physics::{BodyKey, Contact, Physics, RayHit};
-pub use power::{Consumer, PowerSetting};
 pub use report::{DesignReport, design_report};
 pub use rng::{Pcg32, Stream};
-pub use salvage::{Cargo, Item, Loose, LooseId, Salvaged, Stack};
-pub use scenario::ScenarioKind;
 pub use ship::{
     Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,
     Wrench, gun_works, inherited_velocity, producing, rated_falloff,
 };
-pub use vessel::{MAX_OWNERS, Owner, VesselInfo, VesselState, friendly};
+pub use ship::alloc::{Actuation, TorqueSource};
+pub use ship::breakage::{DamageOutcome, DamageTarget};
+pub use ship::collider::ConvexPolygon;
+pub use ship::control::ControlState;
+pub use ship::design::{BlastTarget, ConsumerKind, PartIdx, PartStats, ShipDesign, Stat};
+pub use ship::mass::MassProps;
+pub use ship::power::{Consumer, PowerSetting};
+pub use ship::vessel::{MAX_OWNERS, Owner, VesselInfo, VesselState, friendly};
 pub use voyage::{Site, SitePlan, SiteState, Spawn, Voyage, VoyagePlan, VoyageTuning};
-pub use voyage_runner::{Flagship, VoyageRun, VoyageRunner, closing_reach};
-pub use weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
+pub use voyage::runner::{Flagship, VoyageRun, VoyageRunner, closing_reach};
+pub use voyage::scenario::ScenarioKind;
 pub use world::{DamageCommand, PartHit, ShipCommand, Sim, StepPhase, TickInputs};
 
 /// Fixed simulation rate (settled: 30 Hz).

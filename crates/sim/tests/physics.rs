@@ -6,7 +6,7 @@ mod common;
 use core::f32::consts::PI;
 
 use common::*;
-use sim::mass::to_piece;
+use sim::ship::mass::to_piece;
 use sim::{
     Body, BodyKey, Contact, DamageTarget, Owner, PartIdx, ShipId, SimEvent, TickInputs, Vec2,
     inherited_velocity,
@@ -334,7 +334,7 @@ fn split_pieces_ghost_each_other_then_collide() {
 #[test]
 fn rapier_mass_properties_are_the_pieces() {
     let content = content();
-    let mut sc = sim::scenario::Scenario::new(&content, 9).unwrap();
+    let mut sc = sim::voyage::scenario::Scenario::new(&content, 9).unwrap();
     let mut checked = 0;
     for t in 0..400 {
         sc.step();

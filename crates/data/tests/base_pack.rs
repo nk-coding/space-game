@@ -102,7 +102,7 @@ fn icons_are_embedded_with_the_pack() {
         let svg = c
             .icon_svg(key)
             .unwrap_or_else(|| panic!("no icons/{key}.svg"));
-        assert_eq!(data::svg::check_svg(svg), Ok(()), "{key}");
+        assert_eq!(data::content::svg::check_svg(svg), Ok(()), "{key}");
     }
     for m in c.materials.iter() {
         assert!(c.icon_svg(m.icon.as_deref().unwrap()).is_some(), "{}", m.id);

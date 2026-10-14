@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 use data::behavior::Program;
-use data::behavior_edit::BehaviorEditor;
+use data::behavior::edit::BehaviorEditor;
 use data::{BehaviorNode, Table};
 use sim::RuleStatus;
 
