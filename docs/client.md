@@ -487,43 +487,50 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
   `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
-  now; `HALVEX DRIFT IS NOW OPEN` after a vector tick (Barlow has no ✓; the materials’ ◆ is a vector diamond too) for voyages it opened; the voyage's `cleared` words at the first clear. Then a
+  now; `SIGNAL FOUND · HALVEX DRIFT` after a vector beacon glyph for each voyage it opened (GDR-0078: the name from
+  the content; Barlow has no ◆ either, the materials' diamond is a vector glyph too); the voyage's `cleared` words at
+  the first clear. Then a
   one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
   PARTS → KINETIC WEAPONS +18 · …`). A game loaded with a `last_haul` starts with that line (kills and ships lost are
   not saved).
 
 ## Voyage map
 
-Where voyages are chosen (track 7I, 14 Oct 2026; GDR-0065's star map with the chain inside the rim band, after
-`docs/plans/mockups/map-b.png`; GDR-0071: the gate is where you fly for voyages), `map/`: `AppMode::Map`. Home's gate
-(V, or a click) flies the camera to the gate, then the map opens; Esc or the ring button top left goes back to the
-shipyard (the camera flies out from the gate); `?scene=map` starts here. Screenshots: `docs/results/map-1280.png` (a
-new game), `map-1600.png` (the first voyage cleared, Halvex Drift selected), `map-1600-locked.png` (a locked voyage
-selected, SET COURSE dimmed), `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400).
+Where voyages are chosen (track 7I, 14 Oct 2026; GDR-0065's star map inside the rim band, after
+`docs/plans/mockups/map-b.png`; GDR-0071: the gate is where you fly for voyages; GDR-0078: no route, the voyages are
+found one signal at a time), `map/`: `AppMode::Map`. Home's gate (V, or a click) flies the camera to the gate, then
+the map opens; Esc or the ring button top left goes back to the shipyard (the camera flies out from the gate);
+`?scene=map` starts here. Screenshots: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
+first voyage, nothing else), `map-signals-found.png` (the first voyage cleared: Halvex Drift a new signal). The older
+`map-1280.png`, `map-1600.png`, `map-1600-locked.png`, `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400)
+show the window sizes but still the chain and the locked voyages the map drew before GDR-0078.
 
 | Keys | |
 |---|---|
-| Select a voyage | a click or a tap on its marker or its label; ← → (↑ ↓) step through them |
+| Select a voyage | a click or a tap on its marker or its label; ← → (↑ ↓) step through the known ones |
 | Launch the selected voyage | Enter, or SET COURSE |
 | Back to the shipyard | Esc, or the ring button top left |
 
 - **Layout** (`map::layout`, pure; placeholders): a stage of 1280 × 720 logical px, scaled to the largest size that
   fits the window whole (1 at 1280 × 720, 1.25 at 1600 × 900, any aspect: centred, nothing cut off; 0.3 to 2). The
   map fills the stage left of the panel (904 px); content's `map` coordinates (0 to 1) land in its rect
-  `(28, 64)–(876, 650)`. The shipyard sits at `(0.12, 0.86)` (bottom left; content has no place for home yet). The
-  chain follows `opens_after`: a voyage that opens after others is joined to each of them, one a start opens to the
-  shipyard. **The band**: the galaxy's centre lies off the stage to the right (`(1500, 400)`), so the band edges are
-  arcs; the rim band's outer edge (the galaxy's edge) lies 34 px outside the place farthest from the centre, its
-  inner edge (the gate to the next band) 34 px inside the nearest, the next band's edge as far again in at 0.6 of
-  the depth. The band names come from the voyages' `band` key and the order rim, outer, middle, inner, core.
-- **States** (from the career): **open** (a teal ring with a glow, `OPEN`), **cleared** (a filled teal dot,
-  `CLEARED · BEST 7:42`: the quickest voyage that cleared the goal and came home; it may launch again), **locked**
-  (a dim dotted ring, `LOCKED`), and a **guardian** at the chain's end (a voyage whose goal encounter is tagged
-  `boss`: a coral diamond, `LOCKED · GUARDIAN`). Under an open or cleared voyage's name a dot per site (coral
-  enemies, gold wrecks, a diamond for the goal); routes to open voyages are dotted teal with a soft glow and their
-  time beside them (`≈ 10–15 MIN`), routes to locked ones dashed and dim. The selection is a dotted ring; hover a
-  faint ring and a brighter name. The legend bottom left; top left `RIM · 4 VOYAGES · 1 CLEARED` and "Voyages".
-- **The panel** (the selected voyage): `DESTINATION · VOYAGE 2 OF 4`, the name, chips (the band; the factions of its
+  `(28, 64)–(876, 650)`. The shipyard sits at `(0.12, 0.86)` (bottom left; content has no place for home yet). No
+  route joins the voyages or the shipyard (GDR-0078). **The band**: the galaxy's centre lies off the stage to the
+  right (`(1500, 400)`), so the band edges are arcs; the rim band's outer edge (the galaxy's edge) lies 34 px outside
+  the place farthest from the centre, its inner edge (the gate to the next band) 34 px inside the nearest, the next
+  band's edge as far again in at 0.6 of the depth (placed from every voyage, known or not, so the edges don't move as
+  voyages are found). The band names come from the voyages' `band` key and the order rim, outer, middle, inner, core.
+- **States** (from the career, `map::layout::VoyageState`): **unknown** (not open yet: not drawn at all, no
+  marker, label, beacon or click area, not counted), a **new signal** (open because the voyages it `opens_after` were
+  cleared, and never launched: the open ring and dot with two teal rings pulsing out of it every 1.6 s and a glow,
+  `SIGNAL` in a teal outlined tag; its first launch, the career's launch count, makes it open, nothing else is
+  saved), **open** (a teal ring with a glow, `OPEN`), **cleared** (a filled teal dot, `CLEARED · BEST 7:42`: the
+  quickest voyage that cleared the goal and came home; it may launch again), and a **guardian** (a voyage whose goal
+  encounter is tagged `boss`: a coral diamond, `OPEN · GUARDIAN`, a signal's pulses coral). Under a voyage's name a
+  dot per site (coral enemies, gold wrecks, a diamond for the goal). The selection is a dotted ring; hover a faint
+  ring and a brighter name. The legend bottom left (home, open, cleared, signal; enemies, wrecks, goal site,
+  guardian); top left `RIM · 2 VOYAGES · 1 CLEARED · 1 SIGNAL` (the known voyages) and "Voyages".
+- **The panel** (the selected voyage): `DESTINATION · VOYAGE 2` (no total: the rest is unknown), the name, chips (the band; the factions of its
   ships, coral; `WRECKS` gold when any site holds wrecks; `GUARDIAN`), the summary, `SITES · 5` with a row per site
   entry (`Raider pack ×2`, right `3 SHIPS` / `WRECKS` / `GOAL · 4–5 SHIPS` / `GUARDIAN`, under it what it gives: the
   three best non-hull parts of its wrecks by salvage value, or the ships waiting there), `≈ 10–15 MIN · RECALL WHEN
@@ -531,13 +538,15 @@ selected, SET COURSE dimmed), `map-wide.png` (3440 × 1305) and `map-tall.png` (
   (`ui_icons::UiIcon::Ship`) with their cores and cargo, or `NO ESCORT · YOUR MIND RUNS 2 CORES`; the voyage-ready
   checklist (`VOYAGE-READY` or `NOT VOYAGE-READY`, four lines with a filled dot when they pass: `FLIGHT-READY`,
   `ONLY UNLOCKED PARTS` or the first locked part, `CORES n / m`, `CARGO 8` or `NO CARGO` as a gold warning;
-  `data::career::voyage_ready` and the design report); the status line; SET COURSE.
+  `data::career::voyage_ready` and the design report); the status line (`A NEW SIGNAL · THE GATE IS OPEN` for a
+  signal); SET COURSE.
 - **SET COURSE** (`map::layout::course_blocker`): dimmed while the selected voyage can't launch, the status line says
-  why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST`, `NOT VOYAGE-READY · <the fleet's
+  why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST` (a guard: a voyage not open
+  can't be selected), `NOT VOYAGE-READY · <the fleet's
   first blocker>`, `voyage::fleet_blocker`); a click then repeats it. Else it sends `voyage::StartVoyage { voyage:
   Some(id) }`; a launch `voyage.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
   don't allow flies as a practice run (`PRACTICE RUN, NOT SAVED · …` in gold). Entering the map selects the first
-  open voyage whose goal is not cleared (after a first clear: the voyage it opened).
+  open voyage whose goal is not cleared (after a first clear: the signal it found).
 - **Zoom and pan** (`map::view`, Niklas 14 Oct 2026: "zoom in/out (even see the whole galaxy)"): the wheel or a
   trackpad pinch zooms around the cursor, + / − around the map's centre, 0 or a double click on empty space resets;
   drag empty space (left button), or anywhere on the map with the middle or right button, to pan; on touch two
@@ -545,9 +554,10 @@ selected, SET COURSE dimmed), `map-wide.png` (3440 × 1305) and `map-tall.png` (
   tooltips name the keys). From 200 % out to the whole galaxy fitting the map (about 20 %); entering always starts
   at 100 %, the map as it was. The zoom eases (0.1 s) around its anchor, which stays under the cursor all the way;
   a reset glides back along the same kind of path. The pan keeps the galaxy over the map. The panel, the header and
-  the legend stay fixed. **Level of detail**: the voyages' labels, markers and routes fade out from about 55 % down
+  the legend stay fixed. **Level of detail**: the voyages' labels and markers fade out from about 55 % down
   to 30 % (marker and label sizes stay in screen px at any zoom), the galaxy's band names (`RIM · CHARTED`, `OUTER ·
-  UNCHARTED`, ...), the charted band, the voyages' beacons and the shipyard's diamond fade in from 70 % down to 40 %.
+  UNCHARTED`, ...), the charted band, the known voyages' beacons and the shipyard's diamond fade in from 70 % down
+  to 40 %.
   Zoomed out, a click on a voyage's beacon selects it and zooms in to it; ←/→ bring a voyage off the view into it.
 - **Drawing** (`map::draw`, `map::galaxy`): the star map is four atlas meshes (z 550 and a little above: over the
   world, under the UI icons), placed over the stage node through the camera rig as `ui_icons` places icons, so they
@@ -556,14 +566,15 @@ selected, SET COURSE dimmed), `map-wide.png` (3440 × 1305) and `map-tall.png` (
   the uncharted bands under a faint coral tint inside the gate, seeded star dust with a few faint constellation
   lines in the charted band and a sparse halo past the rim, every band edge as a dotted ring (where the bands past
   the next one end is a placeholder); **the far layer** (the same frame; rebuilt when the states change): the
-  charted band lit, a beacon per voyage (no routes), the shipyard's diamond; **the detail** (rebuilt when the
-  states, the selection, the hover, the glow setting or the view change, a few hundred vertices): the chain and the
-  markers, cut and faded where they reach the panel; **the chrome** (fixed): the legend's symbols, the panel's
+  charted band lit, a beacon per known voyage (a ring around a signal's; no routes), the shipyard's diamond; **the
+  detail** (rebuilt when the states, the selection, the hover, the glow setting, the view or, while a signal shows,
+  its pulse step (32 per pulse) change, a few hundred vertices): the known voyages' markers and the shipyard, faded
+  where they reach the panel; **the chrome** (fixed): the legend's symbols, the panel's
   backing (it runs on past the stage, so wide and tall windows are covered). Everything else is `ui_kit` text and
   nodes, hit-tested by hand, so touch works; the map's labels move with the view (`UiTransform`) and are cut at the
   panel.
-- **The debrief** after a voyage that opened another adds VOYAGE MAP beside DISMISS: it dismisses the panel and home
-  flies to the gate (`map::OpenMap`).
+- **The debrief** after a voyage that found a signal says `SIGNAL FOUND · <its name>` and adds VOYAGE MAP beside
+  DISMISS: it dismisses the panel and home flies to the gate (`map::OpenMap`), where the map selects the signal.
 
 ## FLEET
 
