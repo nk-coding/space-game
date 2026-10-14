@@ -1,6 +1,6 @@
 # GDR-0032: Balance with an AI-vs-AI arena and evolutionary search; enemies are handcrafted plus evolved
 
-- Status: Accepted
+- Status: Accepted; the lab and its configurable runs specified by [GDR-0083](0083-evolution-lab.md) (2026-10-14)
 - Date: concept phase (exact day not recorded; settled by 2026-10-11)
 - Decided by: Niklas
 - Related: [GDR-0015](0015-layered-behavior.md), [GDR-0024](0024-tech-trees-no-mk-levels.md), [GDR-0027](0027-races.md), [GDR-0030](0030-no-economy.md), [ADR-0003](../adr/0003-crate-architecture.md), [ADR-0008](../adr/0008-local-git-only.md), [ADR-0010](../adr/0010-cross-platform-determinism.md)

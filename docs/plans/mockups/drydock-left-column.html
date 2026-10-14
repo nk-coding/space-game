@@ -1,0 +1,260 @@
+<title>Drydock Left Column</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: three left-column variants side by side (the decision), then the bottom bar wide and narrow. One look: the game's dark UI, by choice. */
+:root {
+  color-scheme: dark;
+  --bg: #050b10;          /* backdrop outer */
+  --panel: #0a141c;       /* column ground */
+  --line: #1d2f3c;        /* station structure_hi as hairline */
+  --teal: #8cefdb;
+  --gold: #eed595;
+  --coral: #ec8f7c;
+  --violet: #ae8cec;
+  --label: #869099;
+  --dim: #5d6a74;
+  --number: #ebf5ff;
+  --font: "Barlow", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--number); font-family: var(--font); margin: 0; padding-block: 28px 48px; padding-inline: 16px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 28px; }
+h1 { font-weight: 500; font-size: 22px; margin: 0; letter-spacing: .02em; }
+.eyebrow { text-transform: uppercase; letter-spacing: .3em; font-size: 11px; color: var(--label); }
+p.lead { color: var(--label); max-width: 70ch; line-height: 1.55; margin: 6px 0 0; font-size: 14px; }
+.variants { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.variant { display: grid; gap: 10px; min-width: 0; align-content: start; }
+.vhead { display: flex; gap: 10px; align-items: baseline; }
+.vhead b { font-weight: 600; color: var(--teal); letter-spacing: .25em; font-size: 12px; }
+.vhead span { font-size: 14px; }
+.note { color: var(--label); font-size: 13px; line-height: 1.5; margin: 0; }
+.note em { color: var(--gold); font-style: normal; }
+
+/* the column */
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; height: 560px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.search { border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; color: var(--dim); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.lab { text-transform: uppercase; letter-spacing: .28em; font-size: 10px; color: var(--label); }
+.chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 24px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 10px; letter-spacing: .2em; color: var(--label); background: none; font-family: inherit; cursor: pointer; }
+.chip.on { border-color: var(--teal); color: var(--teal); background: rgba(140, 239, 219, .08); }
+.chip:focus-visible, .sw:focus-visible, .dd:focus-visible, .ib:focus-visible { outline: 1px solid var(--teal); outline-offset: 2px; }
+.list { overflow-y: auto; flex: 1; display: grid; gap: 2px; align-content: start; scrollbar-width: thin; scrollbar-color: var(--line) transparent; padding-right: 4px; }
+.sec { text-transform: uppercase; letter-spacing: .28em; font-size: 10px; color: var(--label); padding: 10px 2px 4px; display: flex; justify-content: space-between; }
+.sec i { font-style: normal; color: var(--dim); }
+.item { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 999px; border: 1px solid transparent; }
+.item.sel { border-color: var(--teal); background: rgba(140, 239, 219, .07); }
+.ic { width: 26px; height: 26px; border-radius: 4px; flex: none; display: grid; place-items: center; }
+.item .nm { font-size: 13px; }
+.item .meta { font-size: 9px; letter-spacing: .18em; color: var(--dim); text-transform: uppercase; }
+.item .cnt { margin-left: auto; font-size: 11px; color: var(--label); font-variant-numeric: tabular-nums; }
+
+/* armour pickers */
+.arm { display: grid; gap: 6px; }
+.armrow { display: flex; justify-content: space-between; align-items: baseline; }
+.armrow .cur { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--number); }
+.strip { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; padding: 2px; mask-image: linear-gradient(90deg, #000 88%, transparent); padding-right: 22px; }
+.strip::-webkit-scrollbar { display: none; }
+.sw { flex: none; width: 30px; height: 30px; border-radius: 6px; border: 1px solid rgba(255,255,255,.14); cursor: pointer; position: relative; padding: 0; }
+.sw.on { outline: 1.5px solid var(--teal); outline-offset: 2px; }
+.sw .k { position: absolute; right: 2px; bottom: 0; font-size: 9px; color: var(--label); }
+.sw.later { opacity: .45; }
+.dd { width: 100%; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; background: none; color: var(--number); font-family: inherit; cursor: pointer; font-size: 13px; }
+.dd .sq { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255,255,255,.14); }
+.dd .st { margin-left: auto; font-size: 10px; letter-spacing: .14em; color: var(--label); }
+.ddlist { border: 1px solid var(--line); border-radius: 10px; background: #0d1a24; padding: 4px; display: grid; gap: 1px; max-height: 210px; overflow-y: auto; }
+.ddlist .row { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: center; padding: 5px 7px; border-radius: 7px; font-size: 12px; }
+.ddlist .row.on { background: rgba(140, 239, 219, .08); color: var(--teal); }
+.ddlist .row .sq { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255,255,255,.14); }
+.ddlist .row small { color: var(--label); font-size: 10px; letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+.ddlist .row.later { opacity: .45; }
+
+/* bottom bar */
+.bars { display: grid; gap: 14px; }
+.bar { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; overflow-x: auto; }
+.ib { flex: none; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); display: grid; place-items: center; color: var(--label); background: none; cursor: pointer; }
+.ib svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pill { flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; font-size: 11px; letter-spacing: .24em; color: var(--label); }
+.pill.on { border-color: var(--teal); color: var(--teal); background: rgba(140, 239, 219, .08); }
+.pill.dd2 { color: var(--teal); border-color: var(--teal); }
+.sep { width: 1px; height: 26px; background: var(--line); flex: none; }
+.status { flex: 1; min-width: 120px; font-size: 10px; letter-spacing: .22em; color: var(--teal); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.go { flex: none; border: 1px solid var(--teal); border-radius: 999px; padding: 10px 18px; font-size: 12px; letter-spacing: .28em; color: var(--teal); background: rgba(140, 239, 219, .12); }
+.narrow { max-width: 760px; }
+.caption { font-size: 12px; color: var(--label); margin: 0 0 4px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Drydock · design draft · 14 Oct 2026</div>
+    <h1>Where armour goes on the left, and the new bottom bar</h1>
+    <p class="lead">Every variant shares the same column: search, one line of category chips that scrolls sideways and jumps to its section, then every part in sections. The armour picker differs. Today there are 4 materials; the swatch rows also show 6 later ones (faded, made-up names) so you can judge how each picker holds about 10. The chips and swatches here are clickable.</p>
+  </header>
+
+  <section class="variants" aria-label="Armour picker variants">
+    <div class="variant">
+      <div class="vhead"><b>A</b><span>Swatch strip + name</span></div>
+      <div class="col" data-col>
+        <div class="search">⌕ <span>Search parts</span></div>
+        <div class="arm">
+          <div class="armrow"><span class="lab">Armor</span><span class="cur" data-cur>Steel</span></div>
+          <div class="strip" data-strip></div>
+        </div>
+        <div class="chips" data-chips></div>
+        <div class="list" data-list></div>
+      </div>
+      <p class="note">Always visible, one click to switch, keys 1–9 too. The current name sits above, so similar dark tones are never guessed. <em>Watch:</em> the armour tones are close (steel, composite and reactive are all near-black), so the swatches lean on their outline and the name.</p>
+    </div>
+
+    <div class="variant">
+      <div class="vhead"><b>B</b><span>Dropdown</span></div>
+      <div class="col" data-col>
+        <div class="search">⌕ <span>Search parts</span></div>
+        <div class="arm">
+          <span class="lab">Armor</span>
+          <button class="dd" type="button" id="dd-btn" aria-expanded="true"><span class="sq" data-ddsq></span><span data-ddname>Steel</span><span class="st" data-ddstat>2 t · 1 HP</span><span aria-hidden="true">▾</span></button>
+          <div class="ddlist" id="dd-list" data-ddlist></div>
+        </div>
+        <div class="chips" data-chips></div>
+        <div class="list" data-list></div>
+      </div>
+      <p class="note">Smallest when closed (one line, shown open here), and the list has room for each material's stats. Costs an extra click per switch, and the list covers the parts while open.</p>
+    </div>
+
+    <div class="variant">
+      <div class="vhead"><b>C</b><span>Materials as a section</span></div>
+      <div class="col" data-col data-matsec>
+        <div class="search">⌕ <span>Search parts</span></div>
+        <div class="chips" data-chips></div>
+        <div class="list" data-list></div>
+      </div>
+      <p class="note">Materials are the first section of the list, picked like parts, with stats on each row. Nothing new to learn, but the current material scrolls away, and ten materials push the hull parts down.</p>
+    </div>
+  </section>
+
+  <section class="bars" aria-label="Bottom bar">
+    <div>
+      <p class="caption">Bottom bar, wide (as decided: tools move here, rare actions become icons and a ⋯ menu; hover shows the name and key)</p>
+      <div class="bar">
+        <button class="ib" type="button" title="Undo · Ctrl+Z"><svg viewBox="0 0 16 16"><path d="M5 4 2 7l3 3"/><path d="M2 7h8a4 4 0 0 1 0 8H7"/></svg></button>
+        <button class="ib" type="button" title="Redo · Ctrl+Shift+Z"><svg viewBox="0 0 16 16"><path d="m11 4 3 3-3 3"/><path d="M14 7H6a4 4 0 0 0 0 8h3"/></svg></button>
+        <span class="sep"></span>
+        <span class="pill on">PAINT</span><span class="pill">FILL</span><span class="pill">ERASE</span><span class="pill">SELECT</span>
+        <span class="sep"></span>
+        <span class="pill on">MIRROR</span><span class="pill">BEVEL</span>
+        <span class="status">Flight-ready · voyage-ready · cores 2 / 2</span>
+        <button class="ib" type="button" title="Save · Ctrl+S"><svg viewBox="0 0 16 16"><path d="M3 2h8l3 3v9H3z"/><path d="M5 2v4h5V2M5 14v-4h6v4"/></svg></button>
+        <button class="ib" type="button" title="Blueprints"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg></button>
+        <button class="ib" type="button" title="Export"><svg viewBox="0 0 16 16"><path d="M8 10V2M5 5l3-3 3 3"/><path d="M3 9v5h10V9"/></svg></button>
+        <button class="ib" type="button" title="More: frame, share code, new design"><svg viewBox="0 0 16 16"><circle cx="3" cy="8" r=".8"/><circle cx="8" cy="8" r=".8"/><circle cx="13" cy="8" r=".8"/></svg></button>
+        <span class="sep"></span>
+        <span class="pill">BEHAVIOR</span>
+        <span class="go">▶ TEST-FLY</span>
+      </div>
+    </div>
+    <div class="narrow">
+      <p class="caption">Bottom bar, narrow: the tools fold into one dropdown, mirror and bevel into icons, the status shortens</p>
+      <div class="bar">
+        <button class="ib" type="button" title="Undo"><svg viewBox="0 0 16 16"><path d="M5 4 2 7l3 3"/><path d="M2 7h8a4 4 0 0 1 0 8H7"/></svg></button>
+        <button class="ib" type="button" title="Redo"><svg viewBox="0 0 16 16"><path d="m11 4 3 3-3 3"/><path d="M14 7H6a4 4 0 0 0 0 8h3"/></svg></button>
+        <span class="pill dd2">PAINT ▾</span>
+        <button class="ib" type="button" title="Mirror · M" style="color:var(--teal);border-color:var(--teal)"><svg viewBox="0 0 16 16"><path d="M8 1v14M3 4l-1 8 4-1zM13 4l1 8-4-1z"/></svg></button>
+        <button class="ib" type="button" title="Bevel · Shift+B"><svg viewBox="0 0 16 16"><path d="M2 14V7l5-5h7v12z"/></svg></button>
+        <span class="status">Ready · 2 / 2</span>
+        <button class="ib" type="button" title="Save"><svg viewBox="0 0 16 16"><path d="M3 2h8l3 3v9H3z"/><path d="M5 2v4h5V2M5 14v-4h6v4"/></svg></button>
+        <button class="ib" type="button" title="More"><svg viewBox="0 0 16 16"><circle cx="3" cy="8" r=".8"/><circle cx="8" cy="8" r=".8"/><circle cx="13" cy="8" r=".8"/></svg></button>
+        <span class="go">▶ FLY</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const MATS = [
+  { id: 'steel', name: 'Steel', c: '#1b2531', st: '2 t · 1 HP' },
+  { id: 'composite', name: 'Composite', c: '#142a2e', st: '1.5 t · 1.4 HP' },
+  { id: 'reactive', name: 'Reactive', c: '#211d2c', st: '2.4 t · 1.2 HP' },
+  { id: 'automaton', name: 'Automaton plate', c: '#2a2224', st: '2.2 t · 1.3 HP' },
+  { id: 'l1', name: 'Grown hide (later)', c: '#1d2a1c', st: 'later', later: true },
+  { id: 'l2', name: 'Swarm chitin (later)', c: '#2b2418', st: 'later', later: true },
+  { id: 'l3', name: 'Lattice prism (later)', c: '#18263a', st: 'later', later: true },
+  { id: 'l4', name: 'Phase glass (later)', c: '#24203a', st: 'later', later: true },
+  { id: 'l5', name: 'Heat-sink alloy (later)', c: '#2c1d1d', st: 'later', later: true },
+  { id: 'l6', name: 'Precursor plate (later)', c: '#1f2e2b', st: 'later', later: true },
+];
+const SECTIONS = [
+  ['HULL', '#5d6a74', ['Armor block', 'Slope 1×1', 'Slope 1×2', 'Slope 1×3']],
+  ['POWER', '#e2b15c', ['Fission reactor', 'Fusion reactor', 'Capacitor']],
+  ['WEAPONS', '#5cc6d6', ['Beam laser', 'Reverse-engineered cannon']],
+  ['DEFENSE', '#8fb0f2', ['Shield emitter']],
+  ['HEAT', '#ec8f7c', ['Radiator', 'Heat sink']],
+  ['PROPULSION', '#8cefdb', ['Ion thruster', 'Torch drive', 'RCS pod', 'Gyro']],
+  ['LOGIC', '#ae8cec', ['Logic core', 'Tamed automaton core']],
+  ['CARGO', '#8d9db4', ['Cargo hold', 'Cargo bay']],
+];
+let mat = 0;
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function buildCol(col) {
+  const chips = col.querySelector('[data-chips]');
+  const list = col.querySelector('[data-list]');
+  const heads = [];
+  const sections = col.hasAttribute('data-matsec') ? [['ARMOR', null, MATS.filter(m => !m.later).map(m => m.name)], ...SECTIONS] : SECTIONS;
+  sections.forEach(([name, colour, items], si) => {
+    const chip = el('button', 'chip' + (si === 0 ? ' on' : ''), name);
+    chip.type = 'button';
+    chips.appendChild(chip);
+    const h = el('div', 'sec'); h.append(el('span', null, name), el('i', null, String(items.length)));
+    list.appendChild(h); heads.push([h, chip]);
+    chip.addEventListener('click', () => list.scrollTo({ top: h.offsetTop - list.offsetTop, behavior: 'smooth' }));
+    items.forEach((n, k) => {
+      const it = el('div', 'item' + (si === 0 && k === 0 ? ' sel' : ''));
+      const ic = el('div', 'ic');
+      if (name === 'ARMOR') { const m = MATS[k]; ic.style.background = m.c; ic.style.border = '1px solid rgba(255,255,255,.14)'; }
+      else { ic.style.border = '1px solid ' + colour; ic.style.background = name === 'HULL' ? MATS[mat].c : 'transparent'; if (name === 'HULL') ic.dataset.hull = '1'; }
+      const txt = el('div'); txt.append(el('div', 'nm', n), el('div', 'meta', name === 'ARMOR' ? MATS[k].st : (name === 'HULL' ? '1×1 · hull' : name.toLowerCase())));
+      it.append(ic, txt, el('span', 'cnt', '∞'));
+      list.appendChild(it);
+    });
+  });
+  list.addEventListener('scroll', () => {
+    let cur = heads[0];
+    for (const p of heads) if (p[0].offsetTop - list.offsetTop <= list.scrollTop + 8) cur = p;
+    heads.forEach(p => p[1].classList.toggle('on', p === cur));
+  });
+}
+
+function setMat(i) {
+  mat = i;
+  document.querySelectorAll('[data-cur]').forEach(e => e.textContent = MATS[i].name);
+  document.querySelectorAll('[data-strip] .sw').forEach((s, k) => s.classList.toggle('on', k === i));
+  document.querySelectorAll('[data-ddsq]').forEach(e => e.style.background = MATS[i].c);
+  document.querySelectorAll('[data-ddname]').forEach(e => e.textContent = MATS[i].name);
+  document.querySelectorAll('[data-ddstat]').forEach(e => e.textContent = MATS[i].st);
+  document.querySelectorAll('[data-ddlist] .row').forEach((r, k) => r.classList.toggle('on', k === i));
+  document.querySelectorAll('[data-hull]').forEach(e => e.style.background = MATS[i].c);
+}
+
+document.querySelectorAll('[data-col]').forEach(buildCol);
+document.querySelectorAll('[data-strip]').forEach(strip => MATS.forEach((m, i) => {
+  const b = el('button', 'sw' + (m.later ? ' later' : ''));
+  b.type = 'button'; b.style.background = m.c; b.title = m.name + (m.later ? '' : ' · ' + m.st + ' · key ' + (i + 1));
+  b.setAttribute('aria-label', m.name);
+  if (i < 9) b.append(el('span', 'k', String(i + 1)));
+  b.addEventListener('click', () => !m.later && setMat(i));
+  strip.appendChild(b);
+}));
+document.querySelectorAll('[data-ddlist]').forEach(list => MATS.forEach((m, i) => {
+  const r = el('div', 'row' + (m.later ? ' later' : ''));
+  const sq = el('span', 'sq'); sq.style.background = m.c;
+  r.append(sq, el('span', null, m.name), el('small', null, m.st));
+  r.addEventListener('click', () => !m.later && setMat(i));
+  list.appendChild(r);
+}));
+const ddBtn = document.getElementById('dd-btn'), ddList = document.getElementById('dd-list');
+ddBtn.addEventListener('click', () => { ddList.hidden = !ddList.hidden; ddBtn.setAttribute('aria-expanded', String(!ddList.hidden)); });
+setMat(0);
+</script>
