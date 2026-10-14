@@ -39,7 +39,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "== build (limit ${BUILD_TIMEOUT}s)"
-cd "$ROOT/crates/game"
+cd "$ROOT/crates/client/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 set +e
 timeout "$BUILD_TIMEOUT" trunk build "${RELEASE[@]}" --dist "$DIST" 2>&1 | tail -25

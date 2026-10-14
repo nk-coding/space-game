@@ -1,6 +1,6 @@
 /target
-/crates/*/target
-/crates/game/dist
+/crates/*/*/target
+/crates/client/game/dist
 *.swp
 .DS_Store
 /.claude/worktrees/

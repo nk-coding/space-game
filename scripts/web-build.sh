@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Web build into crates/game/dist, then report its size (compressed sizes only with --full). Serve it with `scripts/web-serve-dist.sh`.
+# Web build into crates/client/game/dist, then report its size (compressed sizes only with --full). Serve it with `scripts/web-serve-dist.sh`.
 # The web build is the development platform (not shipped to players). By default it is the everyday build (ADR-0034):
 # cargo profile `web-dev` (opt-level 3, no LTO, 16 codegen units, incremental) and no wasm-opt, about 30 s
 # after a change in `game`. `--full` is the optimised build for performance checks: profile `release` (thin LTO,
@@ -7,7 +7,7 @@
 # Other arguments go to trunk.
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
-cd "$(dirname "$0")/../crates/game"
+cd "$(dirname "$0")/../crates/client/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 full=0
 if [[ "${1:-}" == "--full" ]]; then

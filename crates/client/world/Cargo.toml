@@ -1,0 +1,21 @@
+[package]
+name = "world"
+version = "0.1.0"
+description = "The running game (ADR-0038): the sim inside Bevy, the world it draws, flight, voyages, the career and what the player owns. Built on kit."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+data = { path = "../../core/data" }
+sim = { path = "../../core/sim" }
+kit = { path = "../kit" }
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+ron = "=0.12.2"  # format-level: saved documents are RON text
+serde = { version = "1.0.229", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { workspace = true }
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }

@@ -1,0 +1,20 @@
+[package]
+name = "kit"
+version = "0.1.0"
+description = "The client's toolkit (ADR-0038): the runtime atlas, style tokens, mesh building, the bevy_ui widget kit, UI icons, clipboard, launch parameters. Knows nothing about ships or the sim."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+data = { path = "../../core/data" }
+# Vector art: embedded SVG icons + style tokens, rasterised at runtime (no committed raster graphics).
+art = { path = "../art" }
+bevy = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { workspace = true }
+wasm-bindgen = { workspace = true }
+
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+arboard = { workspace = true }
