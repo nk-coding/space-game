@@ -199,7 +199,10 @@ Next session:
   archive, `arena evolve` (identical on 1 or 16 threads; 200–400 generations of 32 per minute). Balance findings:
   automaton parts dominate every design run that may use them (the automaton core: power 6, 2 rule slots and a gyro
   for 5 BP against 11 for reactor + logic core + gyro); the best 60-BP design won while the design report counted
-  none of its guns as clear (being checked). Next: L4, the lab screen.
+  none of its guns as clear. Checked: blocked guns are silent as written (GDR-0004/0070), but the design puts its
+  1-hp reactors and slopes in front of the cannons as shutters that the enemy shoots off, then fires (52 of 60
+  wins against 33–35 with the guns clear; `docs/arena.md`). Whether that is wanted is open (chain reactions,
+  GDR-0019/0020, would punish reactor shutters). Next: L4, the lab screen.
 - **Sim fairness fixed** ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)): ship ids no longer decide a fight.
   Three causes: guns fired and hit in id order (now every shot is traced first, then all hits land), behaviors
   thought on id-staggered ticks (now shared ticks), `orbit(auto)` turned by its own id (now by both ships' ids).
