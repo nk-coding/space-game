@@ -1,8 +1,10 @@
 //! What the pointer would do, drawn in world space over the design: the ghost of the edit under the cursor (the
 //! picked part with the flight tile look, see-through, outlined teal when it can go there and coral when it
-//! can't, its mirror twin too while mirroring), the fill rectangle while dragging, the part a move would put
-//! elsewhere, the pointer's mark ([`hover_mark`]: the cell, or in SELECT and ERASE the whole part under it) and
-//! corner brackets around the selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
+//! can't, its mirror twin too while mirroring), the parts it would replace (a coral wash and outline), the slopes a BEVEL
+//! paint stroke will cut when it ends (teal outlines), a shield part's bubble (placed or selected: the SHIELDS
+//! overlay's look), the fill rectangle while dragging, the part a move would put elsewhere, the pointer's mark
+//! ([`hover_mark`]: the cell, or in SELECT and ERASE the whole part under it) and corner brackets around the
+//! selected part. Why an edit can't happen goes after the grid's info line (coral), next to the last refusal.
 //!
 //! [`update`] works the view out from the previews of `data::edit` (`preview_paint`, `preview_slope`,
 //! `preview_place`, `preview_move`: what the edit would do, planned by the same code as the edit) when its inputs
@@ -24,9 +26,11 @@ use crate::ship_model::{HullTones, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
+use crate::tuning::Tuning;
 use crate::ui_kit::Tone;
 
 use super::PlayerDesign;
+use super::report::DrydockReport;
 use super::state::{DrydockUi, Tool};
 use super::tools::{Brush, DrydockGesture, EditNote, Gesture, Selection, brush_placement, refusal_text};
 use super::view::{DockShip, DrydockCursor};
@@ -35,6 +39,8 @@ use super::view::{DockShip, DrydockCursor};
 const Z_GHOST: f32 = 2.0;
 /// Outlines and brackets: the FX layer above the ships and under the veil outside the grid viewport.
 const Z_LINES: f32 = 300.0;
+/// The ghost's shield bubbles sit with the overlays (relative to the design's mesh).
+const Z_BUBBLES: f32 = 31.0;
 /// Opacity of the ghost tiles.
 const GHOST_ALPHA: f32 = 0.55;
 
@@ -43,6 +49,15 @@ const GHOST_ALPHA: f32 = 0.55;
 pub(super) struct GhostMesh {
     built: Option<(Vec<Placement>, bool)>,
 }
+
+/// The shield bubbles' mesh and the bubbles it shows.
+#[derive(Component)]
+pub(super) struct GhostBubbles {
+    built: Option<Vec<Bubble>>,
+}
+
+/// A shield bubble: centre (frame cells, y down) and radius (m).
+pub type Bubble = ([f32; 2], f32);
 
 /// The coral text after the grid's info line.
 #[derive(Component)]
@@ -62,6 +77,11 @@ pub struct GhostView {
     pub reason: Option<String>,
     /// What marks the pointer: the cell, or the whole part under it ([`hover_mark`]).
     pub hover: Option<HoverMark>,
+    /// The bubbles of the shield part being placed (and its twin), after bonuses, or of the selected one.
+    pub bubbles: Vec<Bubble>,
+    /// The parts the edit would replace: their cells (a coral wash) and outline (coral, drawn just inside, so it
+    /// shows under a new part of the same footprint).
+    pub replaced: Vec<(Vec<Cell>, Vec<Vec2>)>,
 }
 
 /// What marks the cell under the pointer.
@@ -108,7 +128,15 @@ pub(super) fn setup(
             Transform::from_xyz(0.0, 0.0, Z_GHOST),
         ))
         .id();
-    commands.entity(*ship).add_child(ghost);
+    let bubbles = commands
+        .spawn((
+            GhostBubbles { built: None },
+            Mesh2d(meshes.add(crate::meshbuf::MeshBuf::placeholder())),
+            MeshMaterial2d(fade.world.clone()),
+            Transform::from_xyz(0.0, 0.0, Z_BUBBLES),
+        ))
+        .id();
+    commands.entity(*ship).add_children(&[ghost, bubbles]);
 }
 
 /// The coral hint span for the info line (a child of its text).
@@ -131,9 +159,12 @@ pub(super) fn update(
     ui: Res<DrydockUi>,
     cursor: Res<DrydockCursor>,
     g: Res<DrydockGesture>,
+    sel: Res<Selection>,
+    report: Res<DrydockReport>,
+    tuning: Res<Tuning>,
     mut view: ResMut<GhostView>,
 ) {
-    if !(design.is_changed() || ui.is_changed() || cursor.is_changed() || g.is_changed()) {
+    if !(design.is_changed() || ui.is_changed() || cursor.is_changed() || g.is_changed() || sel.is_changed() || report.is_changed()) {
         return;
     }
     let content = &content.0;
@@ -171,15 +202,33 @@ pub(super) fn update(
                 let m = ui.material.as_str();
                 match Brush::of(part) {
                     Brush::Paint => v.show(content, &design, dock.preview_paint(cell, m), None, Some(cell), None),
-                    Brush::Slope => v.show(content, &design, dock.preview_slope(&part.id, cell, m), None, Some(cell), Some(&part.id)),
+                    Brush::Slope => v.show(content, &design, dock.preview_slope(&part.id, cell, m, ui.slope_turn), None, Some(cell), Some(&part.id)),
                     Brush::Place => {
                         let p = brush_placement(part, cell, ui.rot, m);
-                        v.show(content, &design, dock.preview_place(&p), Some(p.clone()), None, Some(&part.id));
+                        let preview = dock.preview_place(&p);
+                        if part.shield.is_some()
+                            && let Ok(after) = &preview
+                        {
+                            v.bubbles = bubbles_after(report.content().unwrap_or(content), &tuning.config(), &design, after);
+                        }
+                        v.show(content, &design, preview, Some(p.clone()), None, Some(&part.id));
                     }
                 }
             }
+            // A paint stroke with BEVEL: the slopes its end will cut.
+            for p in dock.preview_stroke_end() {
+                v.outlines.push((outline(content, &p), Tone::Teal));
+            }
         }
         _ => {}
+    }
+    // The selected shield part's bubble (the report's, after bonuses).
+    if ui.tool == Tool::Select
+        && let Some(k) = sel.part(&design)
+        && report.revision == Some(design.revision())
+        && let Some(r) = report.get()
+    {
+        v.bubbles.extend(r.shields.iter().filter(|s| s.part as usize == k).map(|s| (s.centre, s.radius)));
     }
     v.hover = hover_mark(ui.tool, g.gesture, cursor.cell, |c| {
         let p = &dock.parts()[dock.part_at(c)?];
@@ -191,10 +240,32 @@ pub(super) fn update(
     }
 }
 
+/// The bubbles a shield part placed as `after` previews would make (and its twin), with the radius after bonuses: the
+/// report of the design as the edit would leave it (one `sim::design_report`, made only when the ghost changes; tens
+/// of microseconds for a frigate) with the content and config the drydock's report uses. If that design can't be
+/// compiled, the part's own radius at its centre.
+fn bubbles_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesign, after: &Preview) -> Vec<Bubble> {
+    let bp = design.blueprint();
+    let mut parts: Vec<Placement> = bp.parts.iter().enumerate().filter(|(i, _)| after.removed.binary_search(i).is_err()).map(|(_, p)| p.clone()).collect();
+    let first = parts.len();
+    parts.push(after.placement.clone());
+    parts.extend(after.mirrored.clone());
+    let new = first..parts.len();
+    let own: Vec<Bubble> = parts[new.clone()]
+        .iter()
+        .filter_map(|p| Some((content.placed_shape(p)?.center(), content.parts.get(&p.part)?.shield.as_ref()?.radius)))
+        .collect();
+    let what_if = Blueprint { parts, ..header(bp) };
+    match sim::design_report(content, &what_if, config) {
+        Ok(r) => r.shields.iter().filter(|s| new.contains(&(s.part as usize))).map(|s| (s.centre, s.radius)).collect(),
+        Err(_) => own,
+    }
+}
+
 impl GhostView {
-    /// Shows a preview: its tiles outlined teal, or the attempt (else the cell) outlined coral with the reason;
-    /// a skipped mirror image as a coral outline. `new_part`: the part the edit adds, named when its mirror image
-    /// would overlap it.
+    /// Shows a preview: its tiles outlined teal and the parts it replaces marked coral, or the attempt (else the
+    /// cell) outlined coral with the reason; a skipped mirror image as a coral outline. `new_part`: the part the
+    /// edit adds, named when its mirror image would overlap it.
     #[allow(clippy::too_many_arguments)]
     fn show(
         &mut self,
@@ -208,6 +279,11 @@ impl GhostView {
         let dock = design.dock();
         match preview {
             Ok(p) => {
+                for &k in &p.removed {
+                    let gone = &dock.parts()[k];
+                    let cells = content.placed_shape(gone).map_or_else(Vec::new, |s| s.cells());
+                    self.replaced.push((cells, outline(content, gone)));
+                }
                 self.tile(content, p.placement.clone(), Tone::Teal);
                 if let Some(m) = p.mirrored {
                     self.tile(content, m, Tone::Teal);
@@ -216,6 +292,8 @@ impl GhostView {
                     if *r != Refusal::NoTwin {
                         self.outlines.push((outline(content, &dock.mirror_of(&p.placement)), Tone::Coral));
                     }
+                    // The new part's index after the edit (the replaced parts go first).
+                    let new_part = new_part.map(|id| (dock.parts().len() - p.removed.len(), id));
                     self.reason = Some(format!("MIRROR SKIPPED  ·  {}", refusal_text(content, design, r, new_part)));
                 }
             }
@@ -227,7 +305,7 @@ impl GhostView {
                     let square = vec![Vec2::new(x, y), Vec2::new(x + 1.0, y), Vec2::new(x + 1.0, y + 1.0), Vec2::new(x, y + 1.0)];
                     self.outlines.push((square, Tone::Coral));
                 }
-                self.reason = Some(refusal_text(content, design, &r, new_part));
+                self.reason = Some(refusal_text(content, design, &r, new_part.map(|id| (dock.parts().len(), id))));
             }
         }
     }
@@ -300,6 +378,16 @@ pub(super) fn rebuild(
     let _ = meshes.insert(&mesh.0, body);
 }
 
+/// Rebuilds the shield bubbles' mesh when they change.
+pub(super) fn rebuild_bubbles(view: Res<GhostView>, atlas: Res<Atlas>, style: Res<Style>, mut meshes: ResMut<Assets<Mesh>>, mut ghost: Single<(&mut GhostBubbles, &Mesh2d)>) {
+    let (g, mesh) = &mut *ghost;
+    if g.built.as_ref() == Some(&view.bubbles) {
+        return;
+    }
+    g.built = Some(view.bubbles.clone());
+    let _ = meshes.insert(&mesh.0, super::overlays::bubbles_mesh(&atlas, &style, &view.bubbles));
+}
+
 /// A blueprint's header without its parts (the faction sets the glow).
 fn header(bp: &Blueprint) -> Blueprint {
     Blueprint {
@@ -340,6 +428,18 @@ pub(super) fn draw(
         let c = tone.color(ui).with_alpha((if *tone == Tone::Label { 0.6 } else { 0.95 }) * fa);
         for k in 0..poly.len() {
             queue.line(&r.white, world(poly[k]), world(poly[(k + 1) % poly.len()]), 1.6 * px, c, Z_LINES);
+        }
+    }
+    // What the edit replaces: a coral wash over its cells, its outline pulled in a little towards its centre.
+    for (cells, poly) in &view.replaced {
+        for (x, y) in cells {
+            let c = Vec2::new(*x as f32 + 0.5, *y as f32 + 0.5);
+            queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui.coral.with_alpha(0.16 * fa), z: Z_LINES });
+        }
+        let mid = poly.iter().copied().sum::<Vec2>() / poly.len().max(1) as f32;
+        let inset: Vec<Vec2> = poly.iter().map(|&q| q + (mid - q).normalize_or_zero() * 4.0 * px).collect();
+        for k in 0..inset.len() {
+            queue.line(&r.white, world(inset[k]), world(inset[(k + 1) % inset.len()]), 1.6 * px, ui.coral.with_alpha(0.95 * fa), Z_LINES);
         }
     }
     // The pointer's mark: the cell, or the whole part under it (filled, one outline).
@@ -401,6 +501,28 @@ pub(super) fn sync_hint(view: Res<GhostView>, note: Res<EditNote>, time: Res<Tim
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A shield emitter being placed shows its bubble and its twin's, centred on the parts, with the report's radius;
+    /// one the report can't make (nothing else to fly with) still shows the part's own radius.
+    #[test]
+    fn a_shield_part_shows_the_bubble_it_would_make() {
+        let content = data::base_content();
+        let design = PlayerDesign::starter(&content, "halvex_runner");
+        assert!(design.dock().mirror);
+        let radius = content.parts.get("shield_emitter").unwrap().shield.as_ref().unwrap().radius;
+        let p = Placement { part: "shield_emitter".into(), x: 2, y: 2, rot: 0, flip: false, material: None, power: None };
+        let after = design.dock().preview_place(&p).unwrap();
+        let bubbles = bubbles_after(&content, &sim::SimConfig::default(), &design, &after);
+        assert_eq!(bubbles.len(), 2);
+        let centre = content.placed_shape(&p).unwrap().center();
+        assert_eq!(bubbles[0].0, centre);
+        assert!(bubbles.iter().all(|b| b.1 >= radius * 0.999), "{bubbles:?}");
+        let empty = PlayerDesign::open(&content, &data::Blueprint { parts: Vec::new(), ..design.blueprint().clone() }, (10, 10)).unwrap();
+        let after = empty.dock().preview_place(&p).unwrap();
+        let alone = bubbles_after(&content, &sim::SimConfig::default(), &empty, &after);
+        assert_eq!(alone.len(), 1);
+        assert!((alone[0].1 - radius).abs() < 1e-4);
+    }
 
     /// A 2×2 block at (3, 4)..(4, 5): its cells and its outline.
     fn block(c: Cell) -> Option<(Vec<Cell>, Vec<Vec2>)> {

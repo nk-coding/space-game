@@ -5,10 +5,11 @@
 //! mirror, bevel, rotate, the selected part) by `tools.rs`, saving, export and the blueprint list by
 //! `blueprints.rs`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
 //!
-//! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, Q / E
-//! rotate, F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
+//! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, R / Shift+R
+//! (or Shift+wheel down / up over the grid) and E / Q turn (the selected part, else the brush), F flip, Delete / Backspace delete, Esc deselect, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
 //! undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom, / search.
 
+use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use data::{Content, PowerTier, Unlock};
 
@@ -16,7 +17,7 @@ use crate::career::{Granted, unlocked_by};
 use crate::mode::AppMode;
 use crate::scene::{Launch, Scene};
 use crate::sim_bridge::GameContent;
-use crate::ui_kit::{Pill, TextField, UiClick, UiPointer};
+use crate::ui_kit::{Pill, TextField, UiClick, UiPointer, WHEEL_LINE_PX};
 
 use super::PlayerDesign;
 use super::blueprints::Shelf;
@@ -97,14 +98,18 @@ pub fn locked_research(content: &Content, action: &DrydockAction) -> Option<Stri
     unlocked_by(content, &unlock).map(|n| n.id.clone())
 }
 
-/// The keyboard shortcuts. While BLUEPRINTS or EXPORT covers the design only Ctrl+S acts (the pages handle Esc,
-/// Ctrl+C and Ctrl+V themselves): a key must not edit, select or fly a design nobody sees.
+/// The keyboard shortcuts, and Shift+wheel over the grid (turns, like R / Shift+R; the plain wheel zooms). While
+/// BLUEPRINTS or EXPORT covers the design only Ctrl+S acts (the pages handle Esc, Ctrl+C and Ctrl+V themselves): a
+/// key must not edit, select or fly a design nobody sees.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
+    scroll: Option<Res<AccumulatedMouseScroll>>,
     pointer: Res<UiPointer>,
     content: Res<GameContent>,
     shelf: Res<Shelf>,
     mut search: Query<&mut TextField, With<SearchField>>,
+    mut wheel: Local<f32>,
     mut out: MessageWriter<DrydockAction>,
 ) {
     if pointer.typing {
@@ -116,6 +121,10 @@ pub(super) fn shortcuts(
     let mut send = |a: DrydockAction| {
         out.write(a);
     };
+    let over_grid = shift && !ctrl && !covered && !pointer.blocked;
+    if let Some(forward) = wheel_turn(&mut wheel, scroll.as_deref().filter(|_| over_grid)) {
+        send(if forward { DrydockAction::RotateCw } else { DrydockAction::RotateCcw });
+    }
     // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
     // one frame come in no order).
     if !covered && !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
@@ -138,8 +147,8 @@ pub(super) fn shortcuts(
             (KeyCode::KeyG, ..) => send(DrydockAction::Tool(Tool::Fill)),
             (KeyCode::KeyX, ..) => send(DrydockAction::Tool(Tool::Erase)),
             (KeyCode::KeyV, ..) => send(DrydockAction::Tool(Tool::Select)),
-            (KeyCode::KeyQ, ..) => send(DrydockAction::RotateCcw),
-            (KeyCode::KeyE, ..) => send(DrydockAction::RotateCw),
+            (KeyCode::KeyQ, ..) | (KeyCode::KeyR, _, true) => send(DrydockAction::RotateCcw),
+            (KeyCode::KeyE, ..) | (KeyCode::KeyR, _, false) => send(DrydockAction::RotateCw),
             (KeyCode::KeyM, ..) => send(DrydockAction::Mirror),
             (KeyCode::KeyF, ..) => send(DrydockAction::Flip),
             (KeyCode::Delete | KeyCode::Backspace, ..) => send(DrydockAction::Delete),
@@ -156,6 +165,31 @@ pub(super) fn shortcuts(
             }
         }
     }
+}
+
+/// Shift+wheel turns: `Some(true)` for the wheel turned down (the next orientation, like R), `Some(false)` up (like
+/// Shift+R), at most one turn a frame. Browsers often send Shift+wheel as a sideways scroll, so the sideways delta
+/// counts when there is no vertical one (both negative for down / right). Touchpad pixels add up in `acc` to a turn
+/// every [`WHEEL_LINE_PX`]; `None` (no Shift, or not over the grid) drops what was added up.
+pub fn wheel_turn(acc: &mut f32, scroll: Option<&AccumulatedMouseScroll>) -> Option<bool> {
+    let Some(scroll) = scroll else {
+        *acc = 0.0;
+        return None;
+    };
+    let d = if scroll.delta.y != 0.0 { scroll.delta.y } else { scroll.delta.x };
+    if d == 0.0 {
+        return None;
+    }
+    *acc += match scroll.unit {
+        MouseScrollUnit::Line => d.signum(),
+        MouseScrollUnit::Pixel => d / WHEEL_LINE_PX,
+    };
+    if acc.abs() < 1.0 {
+        return None;
+    }
+    let forward = *acc < 0.0;
+    *acc = 0.0;
+    Some(forward)
 }
 
 /// 0-based index of the digit keys 1–9.
@@ -194,7 +228,11 @@ pub(super) fn apply(
                 ui.category.clone_from(c);
                 ui.search.clear();
             }
-            DrydockAction::PickPart(p) if granted.unlocks.has_part(p) => ui.picked = Some(p.clone()),
+            // A picked slope orients itself to the hull again.
+            DrydockAction::PickPart(p) if granted.unlocks.has_part(p) => {
+                ui.picked = Some(p.clone());
+                ui.slope_turn = None;
+            }
             // Only on a status made for the design as it is now (one changed on the BEHAVIOR screen gets its status
             // in the first drydock frame).
             DrydockAction::TestFly if status.grounded.is_none() && status.revision == Some(design.revision()) => {
@@ -265,6 +303,23 @@ mod tests {
         app.update();
         assert_eq!(app.world().resource::<DrydockUi>().picked.as_deref(), Some("pulse_laser"));
         assert!(pill(&app, pulse).active);
+    }
+
+    /// Shift+wheel down turns forward (like R), up back; a sideways scroll (what browsers make of Shift+wheel) counts
+    /// the same; touchpad pixels add up to a turn; letting go of Shift drops the sum.
+    #[test]
+    fn shift_wheel_turns_one_step_a_notch() {
+        let wheel = |x: f32, y: f32, unit| AccumulatedMouseScroll { unit, delta: Vec2::new(x, y) };
+        let mut acc = 0.0;
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, -3.0, MouseScrollUnit::Line))), Some(true));
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, 1.0, MouseScrollUnit::Line))), Some(false));
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(-100.0, 0.0, MouseScrollUnit::Pixel))), Some(true));
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, 0.0, MouseScrollUnit::Line))), None);
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, 25.0, MouseScrollUnit::Pixel))), None);
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, 25.0, MouseScrollUnit::Pixel))), Some(false));
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, 25.0, MouseScrollUnit::Pixel))), None);
+        assert_eq!(wheel_turn(&mut acc, None), None);
+        assert_eq!(wheel_turn(&mut acc, Some(&wheel(0.0, 25.0, MouseScrollUnit::Pixel))), None, "the sum was dropped");
     }
 
     /// A click on a locked part's row or a locked armour pill asks for the research screen on the node that

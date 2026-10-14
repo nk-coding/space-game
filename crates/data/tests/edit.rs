@@ -140,7 +140,7 @@ fn legality_names_the_reason() {
         Err(Refusal::Overlaps(1))
     );
     assert_eq!(
-        dock.place(any(&c, "fusion_reactor", 2, 2, 0, false)),
+        dock.check(&any(&c, "fusion_reactor", 2, 2, 0, false)),
         Err(Refusal::Overlaps(0))
     );
     assert_eq!(
@@ -372,6 +372,145 @@ fn bevel_paints_outer_corners_as_slopes() {
     assert_eq!(dock.parts()[i].part, "armor_block", "bevel off");
 }
 
+/// Bevel works on the finished stroke: the same shape gives the same slopes whatever order its cells were painted
+/// in, in one undo step, mirror twins included; cells painted before the stroke are left alone.
+#[test]
+fn bevel_cuts_the_corners_a_stroke_painted() {
+    let c = content();
+    // On the finished shape every cell of a 2×2 square is an outer corner; painted one by one, in any order,
+    // only the last cells would be corners at the moment they are painted.
+    let square = [(2, 2), (3, 2), (2, 3), (3, 3)];
+    let shapes: Vec<Vec<Placement>> = [square, [(3, 3), (2, 2), (3, 2), (2, 3)], [(2, 3), (3, 3), (3, 2), (2, 2)]]
+        .iter()
+        .map(|order| {
+            let mut dock = empty(&c, (8, 8));
+            dock.bevel = true;
+            dock.begin_stroke();
+            for &cell in order {
+                dock.paint(cell, "steel").unwrap();
+            }
+            // While the stroke is open the cells are blocks; its end would make four slopes.
+            assert!(dock.parts().iter().all(|p| p.part == "armor_block"));
+            assert_eq!(dock.preview_stroke_end().len(), 4);
+            dock.end_stroke();
+            assert_grid(&dock);
+            let mut parts = dock.parts().to_vec();
+            parts.sort_by_key(|p| (p.y, p.x));
+            // One undo step takes it all away.
+            assert!(dock.undo());
+            assert!(dock.parts().is_empty());
+            assert!(!dock.undo());
+            parts
+        })
+        .collect();
+    assert!(shapes.iter().all(|s| *s == shapes[0]));
+    assert!(shapes[0].iter().all(|p| p.part == "slope_1x1" && p.material.as_deref() == Some("steel")));
+    // Each slope's straight sides face its two neighbours in the square (it links to both).
+    let corner = |p: &Placement| c.placed_shape(p).unwrap().slope_normal().unwrap();
+    let n = corner(&shapes[0][0]);
+    assert!(n[0] < 0.0 && n[1] < 0.0, "top-left faces up-left: {n:?}");
+    // Strokes without bevel, and cells painted before the stroke, stay blocks.
+    let mut dock = empty(&c, (8, 8));
+    dock.begin_stroke();
+    for cell in square {
+        dock.paint(cell, "steel").unwrap();
+    }
+    dock.end_stroke();
+    dock.bevel = true;
+    dock.begin_stroke();
+    dock.paint((4, 2), "steel").unwrap();
+    dock.paint((4, 3), "steel").unwrap();
+    dock.end_stroke();
+    // The new column's ends are outer corners of the 3×2 block; the old square's cells are not touched.
+    let kinds: Vec<(&str, i32, i32)> = dock.parts().iter().map(|p| (p.part.as_str(), p.x, p.y)).collect();
+    assert_eq!(&kinds[..4], &[("armor_block", 2, 2), ("armor_block", 3, 2), ("armor_block", 2, 3), ("armor_block", 3, 3)]);
+    assert_eq!(&kinds[4..], &[("slope_1x1", 4, 2), ("slope_1x1", 4, 3)]);
+    // A click is a stroke of one cell: the corner is cut at once, and the preview shows it.
+    let mut dock = empty(&c, (9, 9));
+    dock.place(any(&c, "armor_block", 3, 4, 0, false)).unwrap();
+    dock.place(any(&c, "armor_block", 4, 5, 0, false)).unwrap();
+    dock.bevel = true;
+    let preview = dock.preview_paint((4, 4), "steel").unwrap();
+    assert_eq!(preview.placement.part, "slope_1x1");
+    let i = dock.paint((4, 4), "steel").unwrap().part.unwrap();
+    assert_eq!(dock.parts()[i], preview.placement);
+    // Mirror: the twins are bevelled the same way, mirror images of each other, and so is a fill.
+    let mut dock = empty(&c, (10, 10));
+    dock.mirror = true;
+    dock.bevel = true;
+    dock.begin_stroke();
+    for cell in [(1, 1), (2, 1), (1, 2), (2, 2)] {
+        dock.paint(cell, "steel").unwrap();
+    }
+    dock.end_stroke();
+    assert_eq!(dock.parts().len(), 8);
+    assert!(dock.parts().iter().all(|p| p.part == "slope_1x1"));
+    assert_symmetric(&c, &dock, "a bevelled stroke");
+    dock.undo();
+    let o = dock.fill((1, 5), (3, 7), "steel").unwrap();
+    assert_eq!(o.twin, Twin::Applied);
+    let slopes: Vec<(i32, i32)> = dock.parts().iter().filter(|p| p.part == "slope_1x1").map(|p| (p.x, p.y)).collect();
+    assert_eq!(slopes, [(1, 5), (3, 5), (1, 7), (3, 7), (6, 5), (8, 5), (6, 7), (8, 7)]);
+    assert_symmetric(&c, &dock, "a bevelled fill");
+    dock.undo();
+    assert!(dock.parts().is_empty(), "the fill and its bevel are one step");
+}
+
+/// Placing a part replaces every part its footprint (and its mirror image's) overlaps, as one undo step.
+#[test]
+fn placing_replaces_what_is_under_it() {
+    let c = content();
+    let mut dock = empty(&c, (10, 10));
+    dock.fill((0, 0), (9, 1), "steel").unwrap();
+    dock.place(any(&c, "pulse_laser", 4, 4, 0, false)).unwrap();
+    let n = dock.parts().len();
+    // A 2×2 reactor over four blocks.
+    let reactor = any(&c, "fusion_reactor", 1, 0, 0, false);
+    let preview = dock.preview_place(&reactor).unwrap();
+    let under: Vec<usize> = [(1, 0), (2, 0), (1, 1), (2, 1)].iter().map(|&cell| dock.part_at(cell).unwrap()).collect();
+    let mut want = under.clone();
+    want.sort_unstable();
+    assert_eq!(preview.removed, want);
+    let o = dock.place(reactor.clone()).unwrap();
+    assert_eq!((o.part, dock.parts().len()), (Some(n - 4), n - 3));
+    assert_eq!(dock.parts()[n - 4], reactor);
+    assert_grid(&dock);
+    // The same part again on itself: nothing to replace, no change, no undo step.
+    assert_eq!(dock.preview_place(&reactor).unwrap().removed, []);
+    let o = dock.place(reactor.clone()).unwrap();
+    assert_eq!((o.changed, o.part), (false, Some(n - 4)));
+    dock.undo();
+    assert_eq!(dock.parts().len(), n);
+    assert_grid(&dock);
+    // Over a machine; the check stays strict.
+    let beam = any(&c, "beam_laser", 4, 3, 0, false);
+    assert!(matches!(dock.check(&beam), Err(Refusal::Overlaps(_))));
+    let o = dock.place(beam).unwrap();
+    assert!(dock.parts().iter().all(|p| p.part != "pulse_laser"));
+    assert_eq!(dock.part_at((4, 4)), o.part);
+    dock.undo();
+    // Mirror: the twin replaces what is under it too; outside the frame is still refused.
+    dock.mirror = true;
+    let o = dock.place(any(&c, "fusion_reactor", 1, 0, 0, false)).unwrap();
+    assert_eq!(o.twin, Twin::Applied);
+    assert_eq!(dock.parts().len(), n - 8 + 2);
+    let i = o.part.unwrap();
+    assert_eq!(dock.parts()[i + 1], dock.mirror_of(&dock.parts()[i]));
+    assert_grid(&dock);
+    assert_eq!(dock.place(any(&c, "fusion_reactor", 9, 0, 0, false)), Err(Refusal::Outside));
+    // Painting over the logic cores leaves a legal design (it just can't fly, as after erasing them).
+    let mut dock = Drydock::open(&c, &runner(&c), (24, 24)).unwrap();
+    dock.mirror = true;
+    let core = dock.parts().iter().position(|p| p.part == "logic_core").unwrap();
+    let cell = (dock.parts()[core].x, dock.parts()[core].y);
+    let o = dock.paint(cell, "steel").unwrap();
+    assert_eq!(o.twin, Twin::Applied);
+    assert!(dock.parts().iter().all(|p| p.part != "logic_core"));
+    assert_symmetric(&c, &dock, "cores painted over");
+    assert_grid(&dock);
+    assert!(Drydock::open(&c, &dock.export(), (24, 24)).is_ok());
+}
+
 #[test]
 fn paint_fills_empty_cells_and_repaints_hull() {
     let c = content();
@@ -394,8 +533,18 @@ fn paint_fills_empty_cells_and_repaints_hull() {
         Some("steel"),
         "slopes are hull"
     );
+    // Any other part is replaced by the block, as one step.
     dock.place(any(&c, "radiator", 4, 4, 0, false)).unwrap();
-    assert_eq!(dock.paint((4, 4), "steel"), Err(Refusal::Overlaps(2)));
+    let preview = dock.preview_paint((4, 4), "steel").unwrap();
+    assert_eq!(preview.removed, [2]);
+    let o = dock.paint((4, 4), "steel").unwrap();
+    assert_eq!(o.part, Some(2));
+    assert_eq!(dock.parts()[2], pl("armor_block", 4, 4, 0, false, Some("steel")));
+    assert_eq!(dock.parts().len(), 3);
+    assert_grid(&dock);
+    dock.undo();
+    assert_eq!(dock.parts()[2].part, "radiator");
+    assert_grid(&dock);
     assert_eq!(dock.paint((6, 0), "steel"), Err(Refusal::Outside));
     assert_eq!(
         dock.paint((0, 0), "titanium"),
@@ -423,7 +572,7 @@ fn slopes_orient_to_the_hull() {
     let mut dock = empty(&c, (12, 12));
     dock.fill((2, 5), (6, 5), "steel").unwrap();
     let i = dock
-        .place_slope("slope_1x1", (7, 5), "steel")
+        .place_slope("slope_1x1", (7, 5), "steel", None)
         .unwrap()
         .part
         .unwrap();
@@ -432,7 +581,7 @@ fn slopes_orient_to_the_hull() {
     assert!(n[0] > 0.0 && n[1] < 0.0, "{n:?}");
     // The left end on the left half faces up and left.
     let i = dock
-        .place_slope("slope_1x1", (1, 5), "steel")
+        .place_slope("slope_1x1", (1, 5), "steel", None)
         .unwrap()
         .part
         .unwrap();
@@ -443,7 +592,7 @@ fn slopes_orient_to_the_hull() {
     dock.place(any(&c, "armor_block", 3, 4, 0, false)).unwrap();
     dock.place(any(&c, "armor_block", 4, 5, 0, false)).unwrap();
     let i = dock
-        .place_slope("slope_1x1", (4, 4), "steel")
+        .place_slope("slope_1x1", (4, 4), "steel", None)
         .unwrap()
         .part
         .unwrap();
@@ -453,7 +602,7 @@ fn slopes_orient_to_the_hull() {
     let mut dock = empty(&c, (12, 12));
     dock.fill((0, 6), (11, 6), "composite").unwrap();
     let i = dock
-        .place_slope("slope_1x3", (2, 5), "composite")
+        .place_slope("slope_1x3", (2, 5), "composite", None)
         .unwrap()
         .part
         .unwrap();
@@ -466,32 +615,88 @@ fn slopes_orient_to_the_hull() {
     let mut dock = empty(&c, (12, 12));
     dock.fill((0, 6), (11, 6), "composite").unwrap();
     let preview = dock
-        .preview_slope("slope_1x3", (9, 5), "composite")
+        .preview_slope("slope_1x3", (9, 5), "composite", None)
         .unwrap()
         .placement;
     let i = dock
-        .place_slope("slope_1x3", (9, 5), "composite")
+        .place_slope("slope_1x3", (9, 5), "composite", None)
         .unwrap()
         .part
         .unwrap();
     assert_eq!(dock.parts()[i], preview);
     assert_eq!(preview, pl("slope_1x3", 8, 5, 0, false, Some("composite")));
     assert_eq!(
-        dock.place_slope("armor_block", (0, 0), "steel"),
+        dock.place_slope("armor_block", (0, 0), "steel", None),
         Err(Refusal::NotSlope)
     );
-    assert_eq!(
-        dock.place_slope("slope_1x1", (0, 6), "steel"),
-        Err(Refusal::Overlaps(0))
-    );
-    // No orientation of a 1×3 fits in a one-cell hole.
+    // On another part the slope replaces it, oriented to the hull without it: the row's left end, open above.
+    let n = dock.parts().len();
+    let o = dock.place_slope("slope_1x1", (0, 6), "steel", None).unwrap();
+    assert_eq!((o.part, dock.parts().len()), (Some(n - 1), n));
+    assert_eq!(dock.part_at((0, 6)), o.part);
+    let n = lean(&dock, o.part.unwrap());
+    assert!(n[0] < 0.0 && n[1] < 0.0, "{n:?}");
+    // A 1×3 in a one-cell hole replaces as few parts as it can (two), and only those.
     let mut dock = empty(&c, (3, 3));
     dock.fill((0, 0), (2, 2), "steel").unwrap();
     dock.erase((1, 1)).unwrap();
+    let preview = dock.preview_slope("slope_1x3", (1, 1), "steel", None).unwrap();
+    assert_eq!(preview.removed.len(), 2);
+    let i = dock.place_slope("slope_1x3", (1, 1), "steel", None).unwrap().part.unwrap();
+    assert_eq!((dock.parts()[i].clone(), dock.parts().len()), (preview.placement, 7));
+    assert_grid(&dock);
+    // Larger than the frame: no room.
+    let mut dock = empty(&c, (2, 2));
     assert_eq!(
-        dock.place_slope("slope_1x3", (1, 1), "steel"),
+        dock.place_slope("slope_1x3", (1, 1), "steel", None),
         Err(Refusal::NoRoom)
     );
+}
+
+#[test]
+fn a_turned_slope_brush_keeps_its_orientation() {
+    let c = content();
+    let mut dock = empty(&c, (12, 12));
+    dock.fill((2, 5), (6, 5), "steel").unwrap();
+    // The turning order: 4 orientations of a 1×1, 8 of the longer ones; next and back are inverse.
+    assert_eq!(dock.slope_orientations("slope_1x1").unwrap().len(), 4);
+    let all = dock.slope_orientations("slope_1x3").unwrap();
+    assert_eq!(all.len(), 8);
+    for (k, &o) in all.iter().enumerate() {
+        assert_eq!(dock.next_orientation("slope_1x3", o, true), Ok(all[(k + 1) % 8]));
+        assert_eq!(dock.next_orientation("slope_1x3", all[(k + 1) % 8], false), Ok(o));
+    }
+    // Matched by shape: a 1×1 slope's flipped orientations are among its unflipped ones.
+    let one = dock.slope_orientations("slope_1x1").unwrap();
+    assert!(one.contains(&dock.next_orientation("slope_1x1", (0, true), true).unwrap()));
+    assert_eq!(dock.slope_orientations("armor_block"), Err(Refusal::NotSlope));
+    // Every orientation goes down as asked, centred on the cell, on the hull end where auto would pick another.
+    let auto = dock.preview_slope("slope_1x1", (7, 5), "steel", None).unwrap().placement;
+    for (rot, flip) in dock.slope_orientations("slope_1x1").unwrap() {
+        let p = dock.preview_slope("slope_1x1", (7, 5), "steel", Some((rot, flip))).unwrap().placement;
+        assert_eq!((p.x, p.y, p.rot, p.flip), (7, 5, rot, flip));
+    }
+    let other = dock.next_orientation("slope_1x1", (auto.rot, auto.flip), true).unwrap();
+    let i = dock.place_slope("slope_1x1", (7, 5), "steel", Some(other)).unwrap().part.unwrap();
+    assert_eq!((dock.parts()[i].rot, dock.parts()[i].flip), other);
+    // A long one is pushed inside the frame like an auto-oriented one; one larger than the frame has no room.
+    let p = dock.preview_slope("slope_1x3", (0, 0), "steel", Some((1, false))).unwrap().placement;
+    assert_eq!((p.x, p.y), (0, 0));
+    assert_eq!(dock.preview_slope("slope_1x3", (0, 0), "steel", Some((4, false))), Err(Refusal::BadRotation));
+    let small = empty(&c, (2, 2));
+    assert_eq!(small.preview_slope("slope_1x3", (0, 0), "steel", Some((0, false))), Err(Refusal::NoRoom));
+    // Over a slope of the same part a click still turns it (or repaints it), whatever the brush says.
+    let before = dock.parts()[i].clone();
+    let o = dock.place_slope("slope_1x1", (7, 5), "steel", Some(other)).unwrap();
+    assert_eq!(o.part, Some(i));
+    assert_ne!((dock.parts()[i].rot, dock.parts()[i].flip), (before.rot, before.flip));
+    // Over a block it replaces it, in the brush orientation; with mirror its twin is the exact mirror image.
+    dock.mirror = true;
+    let o = dock.place_slope("slope_1x1", (3, 5), "steel", Some((2, false))).unwrap();
+    assert_eq!(o.twin, Twin::Applied);
+    assert_eq!(dock.parts()[o.part.unwrap()].rot, 2);
+    assert_eq!(dock.parts()[o.part.unwrap() + 1], dock.mirror_of(&dock.parts()[o.part.unwrap()]));
+    assert_grid(&dock);
 }
 
 #[test]
@@ -500,14 +705,14 @@ fn clicking_a_slope_again_turns_or_repaints_it() {
     for (part, distinct) in [("slope_1x1", 4), ("slope_1x2", 8), ("slope_1x3", 8)] {
         let mut dock = empty(&c, (9, 9));
         let i = dock
-            .place_slope(part, (4, 4), "steel")
+            .place_slope(part, (4, 4), "steel", None)
             .unwrap()
             .part
             .unwrap();
         let first = dock.parts()[i].clone();
         let mut seen = vec![key(&c, &first, None)];
         for _ in 1..distinct {
-            let o = dock.place_slope(part, (4, 4), "steel").unwrap();
+            let o = dock.place_slope(part, (4, 4), "steel", None).unwrap();
             assert!(o.changed);
             assert_eq!(o.part, Some(i));
             let k = key(&c, &dock.parts()[i], None);
@@ -521,7 +726,7 @@ fn clicking_a_slope_again_turns_or_repaints_it() {
             );
             seen.push(k);
         }
-        dock.place_slope(part, (4, 4), "steel").unwrap();
+        dock.place_slope(part, (4, 4), "steel", None).unwrap();
         assert_eq!(
             key(&c, &dock.parts()[i], None),
             seen[0],
@@ -530,7 +735,7 @@ fn clicking_a_slope_again_turns_or_repaints_it() {
         assert_eq!(dock.parts().len(), 1);
         // Another material repaints instead of turning.
         let before = dock.parts()[i].clone();
-        dock.place_slope(part, (4, 4), "reactive").unwrap();
+        dock.place_slope(part, (4, 4), "reactive", None).unwrap();
         assert_eq!(
             dock.parts()[i],
             Placement {
@@ -545,12 +750,12 @@ fn clicking_a_slope_again_turns_or_repaints_it() {
     dock.erase((1, 1)).unwrap();
     dock.erase((2, 1)).unwrap();
     let i = dock
-        .place_slope("slope_1x2", (1, 1), "steel")
+        .place_slope("slope_1x2", (1, 1), "steel", None)
         .unwrap()
         .part
         .unwrap();
     for _ in 0..8 {
-        dock.place_slope("slope_1x2", (1, 1), "steel").unwrap();
+        dock.place_slope("slope_1x2", (1, 1), "steel", None).unwrap();
         assert_eq!(dock.shapes()[i].dims(), (2, 1));
     }
 }
@@ -869,11 +1074,11 @@ fn mirrored_edits_keep_the_runner_symmetric() {
     check(&dock, "power", o.twin);
     let o = dock.fill((0, 0), (3, 2), "reactive").unwrap();
     check(&dock, "fill", o.twin);
-    let o = dock.place_slope("slope_1x2", (8, 7), "composite").unwrap();
+    let o = dock.place_slope("slope_1x2", (8, 7), "composite", None).unwrap();
     check(&dock, "slope", o.twin);
-    let o = dock.place_slope("slope_1x2", (8, 7), "composite").unwrap();
+    let o = dock.place_slope("slope_1x2", (8, 7), "composite", None).unwrap();
     check(&dock, "slope turn", o.twin);
-    let o = dock.place_slope("slope_1x2", (8, 7), "steel").unwrap();
+    let o = dock.place_slope("slope_1x2", (8, 7), "steel", None).unwrap();
     check(&dock, "slope repaint", o.twin);
     dock.begin_stroke();
     for x in 0..3 {
@@ -912,13 +1117,17 @@ fn twins_are_skipped_when_they_cannot_follow() {
     let mut dock = empty(&c, (10, 10));
     dock.place(any(&c, "armor_block", 7, 0, 0, false)).unwrap();
     dock.mirror = true;
-    // The twin's cell is taken: the part is placed alone.
+    // The twin's cell is taken: the twin replaces what is there.
     let o = dock.place(any(&c, "pulse_laser", 2, 0, 0, false)).unwrap();
-    assert_eq!(o.twin, Twin::Skipped(Refusal::Overlaps(0)));
+    assert_eq!(o.twin, Twin::Applied);
     assert_eq!(dock.parts().len(), 2);
-    // The block has no twin of its kind.
+    assert!(dock.parts().iter().all(|p| p.part == "pulse_laser"));
+    // A block has no twin of its kind.
+    dock.mirror = false;
+    dock.place(any(&c, "armor_block", 7, 3, 0, false)).unwrap();
+    dock.mirror = true;
     assert_eq!(
-        dock.rotate(0, true).unwrap().twin,
+        dock.rotate(2, true).unwrap().twin,
         Twin::Skipped(Refusal::NoTwin)
     );
     // Erasing with an empty mirror cell.
@@ -998,7 +1207,7 @@ fn removing_a_part_takes_its_twin_and_nothing_else() {
 }
 
 /// The preview of an edit (the ghost) is what the edit does: the same refusal, the same twin outcome, the edited
-/// part as previewed and the twin where the preview put it.
+/// part as previewed, the twin where the preview put it, and the replaced parts gone.
 fn agree(
     before: &Drydock,
     preview: Result<Preview, Refusal>,
@@ -1009,6 +1218,10 @@ fn agree(
         (Ok(p), Ok(o)) => {
             assert_eq!(p.twin, o.twin, "{p:?}");
             assert_eq!(after.parts()[o.part.unwrap()], p.placement);
+            for &r in &p.removed {
+                let gone = &before.parts()[r];
+                assert!(!after.parts().contains(gone), "{p:?}: {gone:?} stays");
+            }
             match &p.mirrored {
                 Some(m) => assert!(
                     p.twin == Twin::Applied && after.parts().contains(m),
@@ -1035,9 +1248,9 @@ fn previews_match_the_edits() {
                 for m in ["steel", "composite"] {
                     agree(&dock, dock.preview_paint((x, y), m), |d| d.paint((x, y), m));
                 }
-                for slope in ["slope_1x1", "slope_1x2"] {
-                    agree(&dock, dock.preview_slope(slope, (x, y), "steel"), |d| {
-                        d.place_slope(slope, (x, y), "steel")
+                for (slope, turn) in [("slope_1x1", None), ("slope_1x2", None), ("slope_1x1", Some((1, false))), ("slope_1x2", Some((2, true)))] {
+                    agree(&dock, dock.preview_slope(slope, (x, y), "steel", turn), |d| {
+                        d.place_slope(slope, (x, y), "steel", turn)
                     });
                 }
                 for (part, rot) in [("fusion_reactor", 0), ("beam_laser", 1), ("slope_1x3", 3)] {
@@ -1156,7 +1369,7 @@ fn edit_timings_on_a_full_64x64_frame() {
     for _ in 0..runs {
         v.push(t(&mut dock, &mut |d| {
             assert!(
-                d.place_slope("slope_1x1", (10, 10), "steel")
+                d.place_slope("slope_1x1", (10, 10), "steel", None)
                     .unwrap()
                     .changed
             )
@@ -1164,6 +1377,41 @@ fn edit_timings_on_a_full_64x64_frame() {
         dock.undo();
     }
     stats("slope into a hole (auto-orient), mirror", v);
+    let mut v = Vec::new();
+    for _ in 0..runs {
+        v.push(t(&mut dock, &mut |d| {
+            let o = d.place(any(&c, "fusion_reactor", 20, 20, 0, false)).unwrap();
+            assert_eq!(o.twin, Twin::Applied)
+        }));
+        dock.undo();
+    }
+    stats("place a 2×2 over 4 blocks (replace), mirror", v);
+    dock.place(any(&c, "pulse_laser", 30, 30, 0, false)).unwrap();
+    let mut v = Vec::new();
+    for _ in 0..runs {
+        v.push(t(&mut dock, &mut |d| {
+            let o = d.paint((30, 30), "steel").unwrap();
+            assert_eq!(o.twin, Twin::Applied)
+        }));
+        dock.undo();
+    }
+    stats("paint over a machine (replace), mirror", v);
+    dock.mirror = false;
+    dock.bevel = true;
+    let mut v = Vec::new();
+    for _ in 0..runs / 10 {
+        let mut d = empty(&c, (64, 64));
+        d.bevel = true;
+        d.begin_stroke();
+        for x in 0..64 {
+            d.paint((x, 5), "steel").unwrap();
+            d.paint((x, 6), "steel").unwrap();
+        }
+        v.push(t(&mut d, &mut |d| d.end_stroke()));
+        assert_eq!(d.parts().iter().filter(|p| p.part == "slope_1x1").count(), 4);
+    }
+    stats("end a bevel stroke of 128 cells", v);
+    dock.bevel = false;
     let mut v = Vec::new();
     for _ in 0..runs {
         v.push(t(&mut dock, &mut |d| {

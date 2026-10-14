@@ -68,20 +68,30 @@ Tests: `crates/data/tests/edit.rs`.
 A placement is legal when the part exists, `rot` is 0..3, a hull part has an armour material (a material with an
 `armor` block) and other parts have none, a power override sits only on a part that draws power (an override that
 sets nothing counts as none; weights above 0 and at most `MAX_POWER_WEIGHT`), the footprint lies inside the frame
-and it overlaps no part. `check(placement)` says why not (`Refusal::Outside`, `Refusal::Overlaps(k)`, ...). An
+and it overlaps no part. `check(placement)` says why not (`Refusal::Outside`, `Refusal::Overlaps(k)`, ...); it stays
+this strict test, while the place, slope and paint tools replace what is under them instead (below). An
 occupancy grid over the frame (part index and straight-side bits per cell) keeps checks O(footprint). Moves and
-turns ignore the part's own old cells.
+turns ignore the part's own old cells. Legality is per placement: whether the design can fly (a logic core, power,
+...) is the status line's (`docs/sim.md`), so replacing a logic core is as legal as erasing it.
 
 ### Tools
 
 Materials are passed with each edit (the client keeps the current material); mirror and bevel are modes on the
 editor (`dock.mirror`, `dock.bevel`).
 
-- **Place** `place(placement)`: any part at `(x, y, rot, flip)`, appended.
-- **Slope** `place_slope(part, cell, material)` (the paint tool with a slope selected):
-  - On an empty cell the slope **orients itself to the hull**. Each distinct orientation (rot 0..3 unflipped,
+**Placing and painting replace what is under them** ([GDR-0081](gdr/0081-drydock-editing-bevel-rotate-replace.md),
+Niklas 14 Oct 2026): a placed part (slopes too) removes every part its footprint overlaps and then goes down, one
+undo step, its mirror twin the same; paint replaces a non-hull part with the block, and a hull part under it just
+takes the material. The same part put down exactly on itself replaces nothing and changes nothing.
+
+- **Place** `place(placement)`: any part at `(x, y, rot, flip)`, appended after the replaced parts are removed. The
+  footprint must lie inside the frame (`Refusal::Outside`).
+- **Slope** `place_slope(part, cell, material, turn)` (the paint tool with a slope selected):
+  - With `turn = None` the slope **orients itself to the hull**. Each distinct orientation (rot 0..3 unflipped,
     then rot 0..3 flipped; a 1×1 slope has 4, the longer ones 8) is centred on the cell (rounded towards the
-    top-left) and pushed inside the frame; illegal ones drop out. The best wins, compared in this order:
+    top-left) and pushed inside the frame; one larger than the frame drops out. The best wins, compared in this
+    order (the parts a candidate would replace count as gone for 1 to 3):
+    0. fewest **replaced parts** (none where it fits on free cells, so on empty space nothing changes);
     1. most **links**: straight unit sides whose neighbour shows a straight side back (they would join);
     2. fewest **blocked face cells**: occupied cells in front of the sloped face (the face should be open);
     3. **lean**: `2·nx·side − ny` with the face normal `(nx, ny)` and `side` = −1 left of the frame's centre
@@ -89,22 +99,33 @@ editor (`dock.mirror`, `dock.bevel`).
        the concept board's tie-break;
     4. the first in turning order.
 
-    The rules are mirror symmetric off the axis. No legal orientation → `Refusal::NoRoom`.
-  - On a slope of the same part: another material repaints it; the same material **turns** it to the next
-    orientation in turning order that fits, centred on the clicked cell (so a 1×1 slope turns in place, and
-    clicking again and again cycles through all of them).
-  - `preview_slope(part, cell, material)` gives the resulting placement for the ghost (see Previews).
+    The rules are mirror symmetric off the axis. No orientation fits the frame → `Refusal::NoRoom`.
+  - With `turn = Some((rot, flip))` (the brush turned with R, below) the slope goes down in that orientation,
+    centred on the cell and pushed inside the frame; `NoRoom` if it is larger than the frame, `BadRotation` for
+    `rot > 3`. `slope_orientations(part)` lists the turning order, `next_orientation(part, from, forward)` steps
+    through it (`from` is matched by shape, so any `(rot, flip)` of the same geometry works).
+  - On a slope of the same part (whatever `turn` says): another material repaints it; the same material **turns**
+    it to the next orientation in turning order that fits, centred on the clicked cell (so a 1×1 slope turns in
+    place, and clicking again and again cycles through all of them). Turning does not replace.
+  - `preview_slope(part, cell, material, turn)` gives the resulting placement for the ghost (see Previews).
 - **Paint** `paint(cell, material)` (armour): an empty cell gets the 1×1 armour block; a hull part (block or slope)
-  under the cursor takes the material; other parts refuse. The armour block is the first hull part with a 1×1
-  rect footprint in content order (`armor_block`), the bevel slope the first hull part with a 1×1 slope footprint
-  (`slope_1x1`): found from the content, not named in code.
-- **Bevel** mode: painting an empty cell that is an **outer corner** places the 1×1 slope instead of a block.
-  Outer corner: of the cell's four neighbours, exactly two **adjacent** ones touch it (they are occupied and show a
-  straight side towards the cell) and the other two are **open** (empty, or outside the frame). The slope's two
-  straight sides are the touching sides (so it links to both) and its face looks out between the open sides. A
-  neighbour that is occupied but shows a slope face is neither touching nor open, so the cell is no corner.
+  under the cursor takes the material; any other part is replaced by the block. The armour block is the first hull
+  part with a 1×1 rect footprint in content order (`armor_block`), the bevel slope the first hull part with a 1×1
+  slope footprint (`slope_1x1`): found from the content, not named in code.
+- **Bevel** mode, **after the stroke** (GDR-0081): painting puts down blocks as usual; when the stroke ends
+  (`end_stroke`; a paint outside a stroke is a stroke of its own, so a click bevels at once), every **outer corner**
+  among the cells the stroke put a block in becomes the 1×1 slope, in the same undo step, mirror twins included.
+  The corners are all decided on the finished shape before any block changes, so the same shape gives the same
+  slopes whatever order it was painted in. Cells repainted (not newly blocked) and cells painted before the stroke
+  stay as they are. Outer corner: of the cell's four neighbours, exactly two **adjacent** ones touch it (they are
+  occupied and show a straight side towards the cell) and the other two are **open** (empty, or outside the frame).
+  The slope (unflipped) has its two straight sides on the touching sides (so it links to both), its face looks out
+  between the open sides, and it keeps the block's material. A neighbour that is occupied but shows a slope face is
+  neither touching nor open, so the cell is no corner.
 - **Fill** `fill(a, b, material)`: every empty cell of the rectangle spanned by the two corner cells (clipped to the
-  frame) gets an armour block, row by row, as one undo step. Fill never bevels.
+  frame) gets an armour block, row by row, as one undo step. In bevel mode the outer corners among the filled cells
+  become slopes in the same step (a filled rectangle on open space gets its four corners cut); fill never
+  replaces.
 - **Erase** `erase(cell)`: removes the part covering the cell. `remove_part(i)` removes a part by index (Delete on
   the selected part).
 - **Select** tools, on a part index: `move_part(i, dx, dy)`, `rotate(i, clockwise)`, `flip(i)`,
@@ -128,9 +149,11 @@ parity (the client should pick frames accordingly).
 Every edit applies to its mirror image too:
 
 - **Cell tools** act at the mirror location: place puts down the mirror image of the placed part (also for an
-  auto-oriented slope, so the twin is exactly mirrored); paint paints the mirror cell; fill fills the mirrored
-  rectangle; erase erases the part covering the mirror cell. Paint decides both cells (block, bevel slope or
-  repaint) on the design as it was before the call, so painting next to the axis stays symmetric.
+  auto-oriented or turned slope, so the twin is exactly mirrored), replacing what the image overlaps; paint paints
+  the mirror cell; fill fills the mirrored rectangle; erase erases the part covering the mirror cell. Paint decides
+  both cells (block, repaint or replace) on the design as it was before the call, so painting next to the axis
+  stays symmetric; a part covering both cells is replaced once, by a block in each. Bevel then works on both
+  cells' blocks together (the corner rule is mirror symmetric).
 - **Removing a part** (`remove_part`) removes its **twin** (below) too, and nothing else: a part with no twin of
   its kind is removed alone (`Twin::Skipped(NoTwin)`), whatever covers its mirror cells.
 - **Part tools** (move, rotate, flip, material, power, turning or repainting a slope) act on the part's **twin**:
@@ -139,21 +162,25 @@ Every edit applies to its mirror image too:
   the other way, and gets the same flip, material or power.
 - A part (or cell, or rectangle) that is its own mirror image, such as a symmetric part centred on the axis, is
   edited once (`Twin::Itself`).
-- If the mirror edit is impossible (blocked, outside, no twin, nothing at the mirror cell), the primary edit still
-  happens and `Outcome::twin` is `Twin::Skipped(reason)`. If the primary edit is impossible, nothing happens.
+- If the mirror edit is impossible (blocked, outside, no twin, nothing at the mirror cell, or a placed part's image
+  would overlap the part itself), the primary edit still happens and `Outcome::twin` is `Twin::Skipped(reason)`. If
+  the primary edit is impossible, nothing happens.
 
 Mirrored edits keep a symmetric design symmetric (tested on the Halvex Runner, through undo and redo too).
 
 ### Previews
 
 The ghost under the cursor asks what an edit would do without doing it: `preview_place(placement)`,
-`preview_slope(part, cell, material)`, `preview_paint(cell, material)` and `preview_move(part, dx, dy)` return a
-`Preview { placement, twin, mirrored }` (the placement the edit puts down or leaves, the `Twin` outcome the edit
-would report, and the twin's placement when it applies) or the edit's `Refusal`. The edits are planned by the same
-code (`place`, `paint`, the part tools and slope turns carry out their plan), so a preview always matches the edit;
-`previews_match_the_edits` checks it on every cell of the Halvex Runner's frame. A twin that would overlap the
-primary edit's new part is refused with `Overlaps(k)`, `k` the index that part has after the edit (for a new
-part `parts().len()`).
+`preview_slope(part, cell, material, turn)`, `preview_paint(cell, material)` and `preview_move(part, dx, dy)` return a
+`Preview { placement, twin, mirrored, removed }` (the placement the edit puts down or leaves, the `Twin` outcome the
+edit would report, the twin's placement when it applies, and the parts it replaces as indices before the edit) or
+the edit's `Refusal`. The edits are planned by the same code (`place`, `paint`, the part tools and slope turns carry
+out their plan), so a preview always matches the edit; `previews_match_the_edits` checks it on every cell of the
+Halvex Runner's frame, turned slopes included, and that the replaced parts are gone. `preview_paint` shows what a
+click would leave: in bevel mode the slope where the finished one-cell stroke has an outer corner.
+`preview_stroke_end()` gives the slopes ending the open stroke would make (empty without bevel). A twin that would
+overlap the primary edit's new part is refused with `Overlaps(k)`, `k` the index that part has after the edit (for
+a new part `parts().len()` minus the replaced parts).
 
 ### Undo, strokes and revision
 
@@ -162,7 +189,8 @@ part `parts().len()`).
   kept; any new edit clears redo. An edit that changes nothing (painting a cell that already has the material)
   makes no step.
 - **Strokes**: `begin_stroke()` … `end_stroke()` makes every edit in between one undo step (a paint or erase drag).
-  Undo, redo, a frame change or a new `begin_stroke()` close an open stroke.
+  Undo, redo, a frame change or a new `begin_stroke()` close an open stroke. In bevel mode closing it first turns
+  the stroke's outer corners into slopes (one more revision, the same undo step).
 - `revision()` goes up by one with every change (each edit inside a stroke, undo, redo, frame changes); the
   client caches visuals and reports per revision. It starts at 0 for each opened design.
 
@@ -176,7 +204,10 @@ one step) 0.49 ms (0.64 ms), undoing it 0.15 ms (0.19 ms), exporting 4096 parts 
 `cargo test -p data --release --test edit -- --ignored --nocapture`. After the edits moved to plan-then-apply
 (previews, 13 Oct 2026; load average 11–13 with other agents building) the same runs gave repaint 0.24 µs, mirrored
 repaint 0.30 µs, mirrored move 0.33 µs, mirrored place 0.20 µs, mirrored rotate 0.30 µs, auto-oriented slope
-0.58 µs, the 64×64 fill 0.41 ms: the same within the noise.
+0.58 µs, the 64×64 fill 0.41 ms: the same within the noise. With replace and bevel after the stroke (14 Oct 2026,
+load average 0.6–1.6): mirrored place into a hole 0.24 µs, auto-oriented slope 0.63 µs, a 2×2 placed over four
+blocks with its twin (8 parts removed, every later index shifts) 19 µs (p95 30 µs), paint over a machine with its
+twin 0.32 µs, ending a bevel stroke of 128 cells 2.1 µs; the rest unchanged.
 
 ## Client: editing
 
@@ -184,7 +215,11 @@ Wave 2, 13 Oct 2026: editing in the client (`crates/game/src/drydock/tools.rs`, 
 edit goes through `PlayerDesign::edit` and the editing model above; the client keeps no rules of its own.
 Screenshots (headless, 1280 × 720): `docs/results/drydock-editing-ghost.png` (a wing painted with mirror and bevel,
 the ghost of a turned beam laser and its twin), `-refused.png` (a refused ghost and its reason), `-select.png` (a
-selected beam laser on the HIGH tier in the inspector).
+selected beam laser on the HIGH tier in the inspector). GDR-0081 (14 Oct 2026): `drydock-bevel-stroke.png` (a BEVEL
+wing stroke while dragging: the slopes its release will cut outlined teal) and `drydock-bevel-done.png` (after
+release), `drydock-slope-turned.png` (a 1×1 slope brush turned with R at the wing's end, and its twin),
+`drydock-replace.png` (a fusion reactor over the Rim skiff's middle: the replaced parts in coral),
+`drydock-shield-radius.png` (a shield emitter's bubbles while placing it with mirror).
 
 | Input (only while the search field does not have the keyboard) | |
 |---|---|
@@ -192,11 +227,12 @@ selected beam laser on the HIGH tier in the inspector).
 | Right button on the grid | erase (click or drag, one stroke), whatever the tool |
 | Space + left drag, middle drag | pan (never edits) |
 | B / G / X / V | paint / fill / erase / select |
-| Q / E | turn the selected part (select tool), else the part to place (the brush rotation) |
+| R / Shift+R, E / Q | turn the selected part (select tool) clockwise / back, else the brush: the next / previous orientation of a slope (first from the one the ghost shows), a quarter turn of any other part |
+| Shift+wheel down / up (over the grid) | the same as R / Shift+R; the plain wheel zooms. Browsers often send Shift+wheel as a sideways scroll, so a sideways delta counts too; touchpad pixels add up to a turn every 40 px; one turn a frame at most |
 | F | flip the selected part |
 | Delete / Backspace | delete the selected part (and its mirror twin) |
 | Esc | deselect (in the search field it only leaves the field) |
-| M / Shift+B | mirror / bevel mode |
+| M / Shift+B | mirror / bevel mode (bevel cuts a stroke's outer corners when it ends) |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | undo / redo; also the two ring buttons, dimmed when there is nothing to undo or redo |
 
 **Gestures** (`tools::Gesture`, pure and tested): a press, drags and a release on frame cells become edits. It knows
@@ -204,11 +240,14 @@ nothing of the input device: the mouse drives it now; touch will drive the same 
 
 - **Paint** (B), by the picked part (`tools::Brush`): the 1×1 hull block **paints**: a drag paints every cell of
   the straight line between the cells it reached (no gaps on fast drags) and the whole drag is one stroke, one
-  undo step. A **slope** goes down with `place_slope` on each click (oriented to the hull; clicking it again turns
-  or repaints it). **Any other part** is placed once per click, its footprint in the brush rotation centred on
-  the cell (rounded towards the top-left, like a slope); dragging does not place more.
-- **Fill** (G): drag a rectangle; it shows (with its mirror image) while dragging and fills on release; a click fills
-  one cell.
+  undo step; it replaces any machine it crosses, and with BEVEL its outer corners become slopes on release. A
+  **slope** goes down with `place_slope` on each click, oriented to the hull until R / Shift+R (or Shift+wheel)
+  turn the brush (`DrydockUi::slope_turn`; picking a part sets it back to the hull's choice); clicking a slope of
+  the same part turns or repaints it. **Any other part** is placed once per click, its footprint in the brush
+  rotation centred on the cell (rounded towards the top-left, like a slope); dragging does not place more. Slopes
+  and parts replace what their footprint overlaps.
+- **Fill** (G): drag a rectangle; it shows (with its mirror image) while dragging and fills on release (with BEVEL
+  its corners are cut then; the rectangle shows no slopes while dragging); a click fills one cell.
 - **Erase** (X, or the right button): click or drag, one stroke.
 - **Select** (V): a click selects the part under the cursor, a click on an empty cell deselects. The selection is a
   cell (part indices change with every edit), exists only in the select tool and is cleared by another tool, by
@@ -223,7 +262,15 @@ nothing of the input device: the mouse drives it now; touch will drive the same 
 **Ghost** (`ghost.rs`): under the cursor the edit's `Preview` (`preview_paint`, `preview_slope`, `preview_place`,
 `preview_move`): the parts it would put down as flight tiles at 55 % opacity (one mesh, a child of the design's
 mesh, rebuilt only when the tiles change), outlined teal; a refused edit shows the part (or the cell) outlined coral.
-The mirror twin is drawn too; a skipped twin is a coral outline. The pointer's mark (`ghost::hover_mark`, 13 Oct
+The mirror twin is drawn too; a skipped twin is a coral outline. The parts the edit would **replace** get a coral
+wash and a coral outline drawn just inside their footprint (so it shows under a new part of the same size). While a
+paint stroke runs with BEVEL, the slopes its release will cut are outlined teal over the blocks
+(`preview_stroke_end`; the blocks stay solid until then); before a click the paint ghost already shows the slope a
+corner would get. A **shield part** (any part with a `shield`) shows its bubble while it is placed, with its mirror
+twin's: centre and radius after bonuses from one `sim::design_report` of the design as the edit would leave it (the
+drydock report's tuned content and config; made only when the ghost changes, tens of µs for a frigate; the part's
+own radius if that design can't be compiled), drawn like the SHIELDS overlay (faint disc, soft rim,
+`overlays::bubbles_mesh`). The selected shield part shows its bubble from the report in the select tool. The pointer's mark (`ghost::hover_mark`, 13 Oct
 2026, Niklas): the cell under it (a faint teal fill and outline), but in SELECT and ERASE (and a right-button erase
 stroke) over a part the part's whole footprint instead, filled and outlined once (teal to select, coral to erase:
 what a click takes), whichever of its cells is hovered; erase outlines the mirror twin in coral too. The selected

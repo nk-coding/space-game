@@ -393,7 +393,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             ("FILL", "G", DrydockAction::Tool(Tool::Fill)),
                             ("ERASE", "X", DrydockAction::Tool(Tool::Erase)),
                             ("SELECT", "V", DrydockAction::Tool(Tool::Select)),
-                            ("ROTATE", "Q / E", DrydockAction::RotateCw),
+                            ("ROTATE", "R · Q / E", DrydockAction::RotateCw),
                         ] {
                             spawn_pill(tb, fonts, text, 10.0, 30.0, None, pill(Tone::Teal), (ActionButton(action), Tip::key(text, key)));
                         }

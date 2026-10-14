@@ -174,7 +174,7 @@ fn drydock_edits_with_extreme_arguments_are_refused() {
         assert_eq!(dock.place(block(x, y)), Err(Refusal::Outside));
         assert_eq!(dock.paint((x, y), "steel").err(), Some(Refusal::Outside));
         assert_eq!(dock.erase((x, y)).err(), Some(Refusal::Outside));
-        assert_eq!(dock.place_slope("slope_1x1", (x, y), "steel").err(), Some(Refusal::Outside));
+        assert_eq!(dock.place_slope("slope_1x1", (x, y), "steel", None).err(), Some(Refusal::Outside));
         let _ = dock.mirror_cell((x, y));
         let _ = dock.mirror_of(&block(x, y));
         assert_eq!(dock.move_part(0, x, y).err(), Some(Refusal::Outside));

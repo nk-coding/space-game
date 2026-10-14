@@ -136,7 +136,7 @@ fn editing(app: &mut App) {
             (
                 (tools::apply, tools::pointer).chain().after(actions::apply).before(report::update).in_set(DockSet::Apply),
                 inspector::update.after(report::update).in_set(DockSet::Apply),
-                (ghost::update, ghost::rebuild, ghost::sync_hint).chain().before(panels::sync_live).in_set(DockSet::Show),
+                (ghost::update, ghost::rebuild, ghost::rebuild_bubbles, ghost::sync_hint).chain().before(panels::sync_live).in_set(DockSet::Show),
                 (inspector::sync_controls, tools::sync_rings).in_set(DockSet::Show),
             ),
         )
