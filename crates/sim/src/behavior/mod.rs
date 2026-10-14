@@ -13,9 +13,10 @@
 //!   [`BehaviorLibrary::add_text`] adds a player's program. Hand it to the sim with `Sim::set_behaviors`.
 //! * **Commands**: `ShipCommand::Behavior(Some(id))` (overrides the helm), `Behavior(None)`,
 //!   `ShipCommand::Leader(Some(ship))` (whose lock the `locked` selector follows, and whom `escort` keeps near).
-//! * **Cadence**: a ship thinks every [`tuning::THINK_PERIOD`] ticks (10 Hz), staggered by ship id
-//!   (`(tick + id) % period == 0`), and on the first tick after it gets a behavior. Between thinks the chosen
-//!   maneuver is flown every tick (target position, lead and fire-at-will are per tick).
+//! * **Cadence**: every ship thinks on the same ticks, every [`tuning::THINK_PERIOD`] (10 Hz,
+//!   `tick % period == 0`; not staggered by ship id, ADR-0037), and on the first tick after it gets a
+//!   behavior. Between thinks the chosen maneuver is flown every tick (target position, lead and fire-at-will
+//!   are per tick).
 //! * **Debug view**: `Ship::behavior()` → [`BehaviorState`]: active rule, per-rule [`RuleStatus`] (which
 //!   condition failed and what it measured), target, aim part, slots; [`BehaviorState::describe`].
 //! * **Determinism**: ordered containers, index-order loops, one snapshot per pass, integer tick timers,
@@ -40,7 +41,7 @@ use crate::design::ShipDesign;
 
 /// Placeholder numbers of behavior evaluation.
 pub mod tuning {
-    /// Ticks between two thinks of one ship (3 = 10 Hz at 30 Hz), staggered by ship id.
+    /// Ticks between two thinks (3 = 10 Hz at 30 Hz); every ship thinks on the same ticks.
     pub const THINK_PERIOD: u64 = 3;
     /// Fire at will: the target must be within this share of a gun's reach (measured from its muzzle).
     pub const FIRE_RANGE: f32 = 0.933;
