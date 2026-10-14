@@ -195,7 +195,7 @@ pub(super) fn style_widgets(
     style: Res<Style>,
     time: Res<Time<Real>>,
     mut pills: Query<
-        (Ref<Pill>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, &Children, Entity),
+        (Ref<Pill>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, Option<&mut Outline>, &Children, Entity),
         Without<Ring>,
     >,
     mut rings: Query<
@@ -214,7 +214,7 @@ pub(super) fn style_widgets(
 ) {
     let ui = &style.ui;
     let c = ui_color;
-    for (pill, hot, mut border, mut bg, shadow, children, e) in &mut pills {
+    for (pill, hot, mut border, mut bg, shadow, outline, children, e) in &mut pills {
         if !pill.is_changed() && !hot.is_changed() {
             continue;
         }
@@ -237,8 +237,13 @@ pub(super) fn style_widgets(
             };
             (edge, fill, if hot.hovered { c(ui.number, 0.9) } else { c(ui.label, 1.0) }, 0.0)
         };
-        if border.top != b {
-            *border = BorderColor::all(b);
+        // A pill with an `Outline` gets its edge there (a ring around the box, the same on every side at any UI scale,
+        // where a border's sides round to whole pixels on their own); else its border.
+        match outline {
+            Some(mut o) if o.color != b => o.color = b,
+            Some(_) => {}
+            None if border.top != b => *border = BorderColor::all(b),
+            None => {}
         }
         if bg.0 != f {
             bg.0 = f;

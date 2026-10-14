@@ -54,7 +54,7 @@ pub enum UiIcon {
     /// The node filled with a colour around a clear hole: a scrim behind panels that float over the world, under
     /// their icons (a UI background would draw over them, the world draws first) and over the world (the drydock's
     /// frame around its grid). `hole` is the clear rectangle's inset from the node's left, top, right and bottom
-    /// (px); the colour fades out from `out` px outside the hole to `into` px inside it.
+    /// (UI px, like the node's layout); the colour fades out from `out` px outside the hole to `into` px inside it.
     Scrim { color: Color, hole: [f32; 4], out: f32, into: f32 },
 }
 
@@ -211,7 +211,12 @@ fn draw_icons<S: IconShapes>(
             let (mesh, dims) = match icon {
                 UiIcon::Part { .. } | UiIcon::Ship(_) => shapes.shape(icon, &style, &atlas, glow),
                 UiIcon::Glyph { glyph, color } => Some((glyph_mesh(*glyph, *color, side, &atlas), Vec2::ONE)),
-                UiIcon::Scrim { color, hole, out, into } => Some((scrim_mesh(*color, *hole, *out, *into, size, &atlas), Vec2::ONE)),
+                UiIcon::Scrim { color, hole, out, into } => {
+                    // Its insets are UI px, the mesh window px: larger windows scale the UI (`UiScale`), and a hole
+                    // given in window px stopped halfway across the drydock's left column on a big screen.
+                    let ui = 1.0 / (scale * node.inverse_scale_factor);
+                    Some((scrim_mesh(*color, hole.map(|v| v * ui), out * ui, into * ui, size, &atlas), Vec2::ONE))
+                }
             }
             .unwrap_or_else(|| (MeshBuf::placeholder(), Vec2::ONE));
             let _ = meshes.insert(&m.mesh, mesh);

@@ -103,8 +103,11 @@ const SLOTS: usize = 48;
 const ROW_H: f32 = 42.0;
 const HEAD_H: f32 = 26.0;
 const ROW_GAP: f32 = 3.0;
-/// An armour swatch and the gap after it: eight fill the column.
-const SWATCH: f32 = 26.0;
+/// An armour swatch's tile, the room around it for its ring (its margin, out to the ring's outer edge) and the ring's
+/// width, and the gap between two swatches' margins: eight fill the column (26 px each with their margins, as before).
+const SWATCH_TILE: f32 = 20.0;
+const SWATCH_RING: f32 = 3.0;
+const SWATCH_RING_W: f32 = 1.2;
 const SWATCH_GAP: f32 = 5.0;
 /// The least room the status line gets in the bottom bar before the tools fold into their dropdown, and how much
 /// more it needs to unfold them again (so a width near the edge doesn't flip them every frame).

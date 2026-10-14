@@ -112,15 +112,20 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                                     Pill { bare: true, ..pill(Tone::Teal) },
                                     Hot::default(),
                                     tip,
+                                    // The tile's own size; the ring is an outline around it (`Pill` colours an
+                                    // `Outline` when it has one). A border plus padding around the tile came out
+                                    // thicker on one side at a fractional UI scale, as each edge rounds to whole
+                                    // pixels on its own (Niklas, 14 Oct 2026: "the border seems to be off-center");
+                                    // an outline is drawn around the rounded box, the same on every side.
                                     Node {
-                                        width: px(SWATCH),
-                                        height: px(SWATCH),
+                                        width: px(SWATCH_TILE),
+                                        height: px(SWATCH_TILE),
                                         flex_shrink: 0.0,
-                                        padding: UiRect::all(px(2)),
-                                        border: UiRect::all(px(1.2)),
-                                        border_radius: BorderRadius::all(px(7)),
+                                        margin: UiRect::all(px(SWATCH_RING)),
+                                        border_radius: BorderRadius::all(px(4)),
                                         ..default()
                                     },
+                                    Outline { width: px(SWATCH_RING_W), offset: px(SWATCH_RING - SWATCH_RING_W), color: Color::NONE },
                                     BorderColor::all(Color::NONE),
                                     BackgroundColor(Color::NONE),
                                 ))
@@ -129,9 +134,9 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                                     sw.spawn((
                                         SwatchTile(m.id.clone()),
                                         tile,
-                                        Node { width: percent(100), height: percent(100), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(4)), ..default() },
+                                        Node { width: percent(100), height: percent(100), border_radius: BorderRadius::all(px(4)), ..default() },
                                         // A light outline: the near-black armour tones are told apart by it.
-                                        BorderColor::all(c(Tone::Number, 0.22)),
+                                        Outline { width: px(1), offset: px(0), color: c(Tone::Number, 0.22) },
                                     ))
                                     .with_children(|t| {
                                         if let Some(key) = MATERIAL_KEYS.get(k) {
