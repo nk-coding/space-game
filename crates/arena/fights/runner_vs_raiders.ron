@@ -1,0 +1,12 @@
+// The Halvex Runner under its faction's `skirmisher` against a pack of three automaton raiders under
+// `raider_basic`, 100 m apart: the arena's standard measurement fight (docs/arena.md) and one of the fights in
+// the determinism check (`scripts/determinism-check.sh --fight runner_vs_raiders`).
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner"))]),
+        (entries: [(design: Ship("automaton_raider"), count: 3)]),
+    ],
+    start_distance: 100.0,
+    time_limit: 90.0,
+)

@@ -1,0 +1,9 @@
+// The starter ship against itself, both under `skirmisher`: a mirror match (side bias shows up here) and one of
+// the fights in the determinism check (`scripts/determinism-check.sh --fight skiff_mirror`).
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("rim_skiff"))]),
+        (entries: [(design: Ship("rim_skiff"))]),
+    ],
+)

@@ -1,0 +1,374 @@
+//! Building a fight from a spec and running it, in one go ([`run_fight`]) or in slices ([`Fight::step`]).
+
+use std::sync::Arc;
+
+use data::Content;
+use sim::{
+    BehaviorId, BehaviorLibrary, Body, Owner, ShipCommand, ShipDesign, Sim, SimConfig, SimEvent,
+    Stream, TickInputs, Vec2, VesselState,
+};
+
+use crate::error::ArenaError;
+use crate::score::arena_score;
+use crate::spec::{BehaviorRef, DesignRef, FightSpec, Formation};
+
+/// A side is out once it has had no running vessel for this many ticks (5 s), so a short brown-out is not a
+/// loss (coop-arena 3.7). PLACEHOLDER.
+pub const OUT_AFTER: u64 = 5 * sim::TICK_HZ as u64;
+/// Metres between neighbouring ships of a formation, and between one entry's ships and the next entry's.
+/// PLACEHOLDER.
+pub const FORMATION_GAP: f32 = 5.0;
+/// Every ship's spawn position is moved by up to this many metres in x and y, rolled from the seed, so seeds
+/// differ (the sim itself rolls nothing in a plain fight). PLACEHOLDER.
+pub const JITTER: f32 = 2.0;
+/// The sim owners of side 0 and side 1. Neither is the player's `Owner(0)`, so both sides get the same rules
+/// (only the player collects salvage).
+pub const OWNERS: [Owner; 2] = [Owner(1), Owner(2)];
+
+/// How a fight ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    /// The other side had no running vessel for [`OUT_AFTER`] ticks while this one still had one.
+    Won(usize),
+    /// Neither side has a running vessel any more.
+    BothOut,
+    /// The time limit came first.
+    TimeLimit,
+}
+
+/// One side's numbers at the end of a fight.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SideResult {
+    /// Build points of the side's vessels at the start (each part's build points, with its material factor).
+    pub build_points: f32,
+    /// Build points no longer on one of the side's vessels: parts destroyed, and parts on pieces that broke off
+    /// as salvage or lost their last logic core.
+    pub build_points_lost: f32,
+    /// Damage the side's shots and engine plumes did to the other side's ships (after shields).
+    pub damage_dealt: f32,
+    /// Vessels the side has at the end (running, dark or dormant).
+    pub vessels_left: u32,
+    /// The arena score, 0..1 ([`arena_score`]).
+    pub score: f32,
+}
+
+impl SideResult {
+    /// Share of the side's build points lost, 0..1 (0 for a side that started with none).
+    pub fn lost_share(&self) -> f32 {
+        if self.build_points > 0.0 {
+            (self.build_points_lost / self.build_points).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FightResult {
+    pub outcome: Outcome,
+    /// Ticks the fight ran (30 per second).
+    pub ticks: u64,
+    pub sides: [SideResult; 2],
+    /// `Sim::state_hash` at the end: equal specs give equal hashes on every platform.
+    pub state_hash: u64,
+}
+
+impl FightResult {
+    /// The side that won, if one did.
+    pub fn winner(&self) -> Option<usize> {
+        match self.outcome {
+            Outcome::Won(side) => Some(side),
+            Outcome::BothOut | Outcome::TimeLimit => None,
+        }
+    }
+}
+
+/// A fight in progress. Build it with [`Fight::new`], then call [`Fight::step`] until it returns the result: all
+/// at once ([`run_fight`]) or a few ticks per frame in a client.
+pub struct Fight {
+    sim: Sim,
+    limit: u64,
+    build_points: [f32; 2],
+    damage: [f32; 2],
+    /// The first tick of the current stretch without a running vessel, per side.
+    out_since: [Option<u64>; 2],
+    idle: TickInputs,
+    result: Option<FightResult>,
+}
+
+/// One entry resolved against the content: its compiled design and its behavior.
+struct Resolved {
+    design: Arc<ShipDesign>,
+    behavior: BehaviorId,
+}
+
+impl Fight {
+    /// Checks the spec, compiles its designs and behaviors and spawns the ships. Every problem with the spec
+    /// comes back as an [`ArenaError`].
+    pub fn new(content: &Content, spec: &FightSpec) -> Result<Fight, ArenaError> {
+        spec.check()?;
+        let mut lib = BehaviorLibrary::new(content).map_err(|p| {
+            ArenaError::Content(
+                p.iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+        })?;
+        let mut sides: [Vec<Resolved>; 2] = Default::default();
+        for (side, s) in spec.sides.iter().enumerate() {
+            for (entry, e) in s.entries.iter().enumerate() {
+                let design = Arc::new(design(content, &e.design, side, entry)?);
+                let behavior = match &e.behavior {
+                    Some(BehaviorRef::Content(id)) => {
+                        lib.id(id).ok_or_else(|| ArenaError::UnknownBehavior {
+                            side,
+                            entry,
+                            id: id.clone(),
+                        })?
+                    }
+                    Some(BehaviorRef::Text(text)) => lib
+                        .add_text(&format!("arena_{side}_{entry}"), text)
+                        .map_err(|errs| ArenaError::BehaviorText {
+                            side,
+                            entry,
+                            errors: errs.iter().map(|e| e.to_string()).collect(),
+                        })?,
+                    None => lib
+                        .default_for(&design)
+                        .ok_or_else(|| ArenaError::NoBehavior {
+                            side,
+                            entry,
+                            design: design.id.clone(),
+                        })?,
+                };
+                sides[side].push(Resolved { design, behavior });
+            }
+        }
+
+        let mut config = SimConfig::default();
+        for o in OWNERS {
+            config.mind_capacity[o.0 as usize] = u32::MAX; // every core of a side runs
+        }
+        let mut sim = Sim::with_config(spec.seed, config);
+        sim.set_behaviors(lib);
+        // The side spawned first gets the lower ship ids, and the sim favours them (a skiff mirror match: about
+        // 3 to 1, docs/arena.md): odd seeds spawn side 1 first, so seeds in pairs cancel it out.
+        let first = (spec.seed % 2) as usize;
+        for side in [first, 1 - first] {
+            spawn_side(&mut sim, side, spec, &sides[side]);
+        }
+        let build_points = OWNERS.map(|o| kept(&sim, o).0);
+        Ok(Fight {
+            sim,
+            limit: spec.limit_ticks(),
+            build_points,
+            damage: [0.0; 2],
+            out_since: [None; 2],
+            idle: TickInputs::default(),
+            result: None,
+        })
+    }
+
+    /// Runs up to `ticks` more ticks; stops early when the fight ends. `Some` once it has ended (later calls
+    /// step nothing and return the same result).
+    pub fn step(&mut self, ticks: u64) -> Option<FightResult> {
+        for _ in 0..ticks {
+            if self.result.is_some() {
+                break;
+            }
+            self.sim.step(&self.idle);
+            self.tally();
+            self.result = self.end();
+        }
+        self.result
+    }
+
+    /// The world, for drawing a fight or hashing it every tick.
+    pub fn sim(&self) -> &Sim {
+        &self.sim
+    }
+
+    /// Damage dealt by each side's shots and plumes this tick.
+    fn tally(&mut self) {
+        for e in self.sim.events() {
+            let (by, ship, damage) = match *e {
+                SimEvent::Hit {
+                    by, ship, damage, ..
+                } => (by, ship, damage),
+                SimEvent::PlumeHit {
+                    by, ship, damage, ..
+                } => (by, ship, damage),
+                _ => continue,
+            };
+            let owner = |id| self.sim.ship(id).map(|s| s.owner());
+            let (Some(from), Some(to)) = (owner(by), owner(ship)) else {
+                continue;
+            };
+            if let Some(side) = OWNERS.iter().position(|&o| o == from)
+                && to != from
+            {
+                self.damage[side] += damage;
+            }
+        }
+    }
+
+    /// The result, if the fight ended this tick.
+    fn end(&mut self) -> Option<FightResult> {
+        let tick = self.sim.tick();
+        let mut out = [false; 2];
+        for (side, &owner) in OWNERS.iter().enumerate() {
+            let running = self
+                .sim
+                .ships()
+                .iter()
+                .any(|s| s.owner() == owner && s.vessel_state() == Some(VesselState::Running));
+            if running {
+                self.out_since[side] = None;
+            } else {
+                let since = *self.out_since[side].get_or_insert(tick);
+                out[side] = tick - since >= OUT_AFTER;
+            }
+        }
+        let outcome = if out[0] || out[1] {
+            match self.out_since {
+                [Some(_), None] => Outcome::Won(1),
+                [None, Some(_)] => Outcome::Won(0),
+                _ => Outcome::BothOut,
+            }
+        } else if tick >= self.limit {
+            Outcome::TimeLimit
+        } else {
+            return None;
+        };
+        let mut sides = [0, 1].map(|side| {
+            let (left, vessels) = kept(&self.sim, OWNERS[side]);
+            SideResult {
+                build_points: self.build_points[side],
+                build_points_lost: (self.build_points[side] - left).max(0.0),
+                damage_dealt: self.damage[side],
+                vessels_left: vessels,
+                score: 0.0,
+            }
+        });
+        let lost = sides.map(|s| s.lost_share());
+        for (side, s) in sides.iter_mut().enumerate() {
+            s.score = arena_score(outcome, side, lost);
+        }
+        Some(FightResult {
+            outcome,
+            ticks: tick,
+            sides,
+            state_hash: self.sim.state_hash(),
+        })
+    }
+}
+
+/// Builds the fight and runs it to the end.
+pub fn run_fight(content: &Content, spec: &FightSpec) -> Result<FightResult, ArenaError> {
+    let mut fight = Fight::new(content, spec)?;
+    Ok(fight
+        .step(u64::MAX)
+        .expect("a fight ends by its time limit"))
+}
+
+/// Compiles an entry's design: a content ship, or a blueprint text checked against the content first.
+fn design(
+    content: &Content,
+    r: &DesignRef,
+    side: usize,
+    entry: usize,
+) -> Result<ShipDesign, ArenaError> {
+    let bad = |problems: Vec<String>| ArenaError::Blueprint {
+        side,
+        entry,
+        problems,
+    };
+    let bp = match r {
+        DesignRef::Ship(id) => content
+            .ships
+            .get(id)
+            .cloned()
+            .ok_or_else(|| ArenaError::UnknownShip {
+                side,
+                entry,
+                id: id.clone(),
+            })?,
+        DesignRef::Blueprint(text) => {
+            let bp = data::parse_blueprint(text)
+                .map_err(|p| bad(p.iter().map(|p| p.to_string()).collect()))?;
+            let errors: Vec<String> = data::validate_ship(content, &bp)
+                .iter()
+                .filter(|p| p.is_error())
+                .map(|p| p.to_string())
+                .collect();
+            if !errors.is_empty() {
+                return Err(bad(errors));
+            }
+            bp
+        }
+    };
+    ShipDesign::compile(content, &bp).map_err(|e| bad(vec![e]))
+}
+
+/// Spawns one side's entries, one behind the other, each under its behavior. Side 0 stands at the origin with
+/// its noses to +y; side 1 is the same layout turned half a turn about the middle of the field.
+fn spawn_side(sim: &mut Sim, side: usize, spec: &FightSpec, resolved: &[Resolved]) {
+    let owner = OWNERS[side];
+    let mut depth = 0.0;
+    let mut prev_half: Option<f32> = None;
+    for (r, e) in resolved.iter().zip(&spec.sides[side].entries) {
+        let (w, h) = r
+            .design
+            .grid
+            .bounds()
+            .map_or((1.0, 1.0), |b| (b.width() as f32, b.height() as f32));
+        if let Some(p) = prev_half {
+            depth += p + FORMATION_GAP + h / 2.0;
+        }
+        let n = e.count;
+        for k in 0..n {
+            let (x, d) = match e.formation {
+                Formation::Line => ((k as f32 - (n as f32 - 1.0) / 2.0) * (w + FORMATION_GAP), depth),
+                Formation::Column => (0.0, depth + k as f32 * (h + FORMATION_GAP)),
+            };
+            let rng = sim.rng(Stream::Scenario);
+            let jitter = Vec2::new(
+                rng.range_f32(-JITTER, JITTER),
+                rng.range_f32(-JITTER, JITTER),
+            );
+            let body = if side == 0 {
+                Body::at(Vec2::new(x, -d) + jitter, 0.0)
+            } else {
+                Body::at(
+                    Vec2::new(-x, spec.start_distance + d) + jitter,
+                    core::f32::consts::PI,
+                )
+            };
+            let id = sim.spawn_ship(Arc::clone(&r.design), owner, body);
+            sim.command(id, ShipCommand::Behavior(Some(r.behavior)));
+        }
+        if e.formation == Formation::Column {
+            depth += (n as f32 - 1.0) * (h + FORMATION_GAP);
+        }
+        prev_half = Some(h / 2.0);
+    }
+}
+
+/// Build points on the owner's vessels (alive parts of each vessel's controlling piece), and how many vessels.
+fn kept(sim: &Sim, owner: Owner) -> (f32, u32) {
+    let mut points = 0.0;
+    let mut vessels = 0;
+    for s in sim.ships().iter().filter(|s| s.owner() == owner) {
+        let Some(control) = s.control_piece() else {
+            continue;
+        };
+        vessels += 1;
+        for (p, spec) in s.parts().iter().zip(&s.design().parts) {
+            if p.alive && p.piece == control {
+                points += spec.build_points;
+            }
+        }
+    }
+    (points, vessels)
+}

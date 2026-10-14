@@ -17,6 +17,11 @@ half) to what the lab needs first. Numbers marked *(placeholder)* are for feel.
 Order: L1 first (it is useful alone: balance numbers from the CLI); then L2 and L3; L4 once L3 steps; L5 any time
 after L1.
 
+**L1 done** (14 Oct 2026): `crates/arena` and the `arena fight|matrix` CLI, native vs wasm fight hashes identical,
+about 1200 (Runner vs 3 raiders) to 2300 (skiff mirror) fights per second on 16 threads; see [`docs/arena.md`](../arena.md).
+Found on the way: the side spawned first wins a mirror match about 3 to 1 (lower ship ids); the arena alternates the
+spawn order by seed parity.
+
 ## Placeholders
 
 | What | Value |

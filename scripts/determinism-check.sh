@@ -3,11 +3,15 @@
 # WASI) and compares the per-tick state hashes. Reports the first divergent tick; exit 1 on divergence.
 #
 #   scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario NAME] [--package CRATE] [--example NAME]
+#   scripts/determinism-check.sh --fight NAME [--seed N] [--ticks N]   # an arena fight (crates/arena/fights/NAME.ron)
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
 # Scenarios of sim's `determinism` example (sim::scenario): core (default), flight, load (--ships N in the example),
 # behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost ship's cargo), voyage (a voyage directed by
 # sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the recall check).
+# `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/arena/fights/NAME.ron
+# (runner_vs_raiders, skiff_mirror) with the seed replaced, until the fight ends or --ticks have run (default 2700:
+# the 90 s time limit).
 #
 # Hash stream format (what the example prints): one "<tick> <hash>" line per tick; lines starting with '#'
 # are comments (header, summary) and are shown but not compared. Any producer that prints this format can
@@ -47,7 +51,7 @@ if [ "${1:-}" = "--compare" ]; then
   exit $?
 fi
 
-SEED=42; TICKS=900; SCENARIO=core; PACKAGE=sim; EXAMPLE=determinism
+SEED=42; TICKS=; SCENARIO=core; PACKAGE=sim; EXAMPLE=determinism; DEFAULT_TICKS=900
 while [ $# -gt 0 ]; do
   case "$1" in
     --seed) SEED=$2; shift 2 ;;
@@ -55,9 +59,11 @@ while [ $# -gt 0 ]; do
     --scenario) SCENARIO=$2; shift 2 ;;
     --package) PACKAGE=$2; shift 2 ;;
     --example) EXAMPLE=$2; shift 2 ;;
+    --fight) PACKAGE=arena; EXAMPLE=fight_hashes; SCENARIO=$2; DEFAULT_TICKS=2700; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+TICKS=${TICKS:-$DEFAULT_TICKS}
 JOBS=${JOBS:-6}
 PROFILE=${PROFILE:-release}
 TARGET=${CARGO_TARGET_DIR:-target}
