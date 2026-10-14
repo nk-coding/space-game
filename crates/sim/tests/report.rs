@@ -388,6 +388,8 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
     // As built: every cannon blocked, the lasers (facing out sideways) idle.
     let r = report_of(&c, &SHUTTERED);
     assert_eq!(r.firepower, 0.0);
+    // Latent firepower (the evolution archive's): every gun as if clear and powered, four cannons and two lasers.
+    assert!((r.latent_firepower() - (4.0 * 1.2 + 2.0 * 1.0)).abs() < 1e-5, "{}", r.latent_firepower());
     assert_eq!(r.guns.iter().filter(|g| !g.clear).count(), 4);
     assert_eq!((r.control.load, r.control.capacity), (12, 8));
     let (mut w, s) = world_with(d.clone());
@@ -420,6 +422,7 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
     let piece = ship.piece(ship.control_piece().unwrap()).unwrap();
     assert!(r.firepower > 0.0);
     assert_eq!(r.firepower, piece.firepower(ship.parts()));
+    assert_eq!(r.latent_firepower(), r.firepower, "every gun left works");
     let mut working = [0; 2];
     for g in &r.guns {
         let shape = &reduced.parts[g.part as usize].shape;

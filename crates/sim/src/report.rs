@@ -411,6 +411,19 @@ impl DesignReport {
             .iter()
             .all(|i| i.severity() != Severity::Blocker)
     }
+
+    /// Main piece: damage per second of all its guns as if each were clear and powered (blocked and idle guns
+    /// counted, at full power with bonuses): what the design fires once its line of fire is shot clear and its
+    /// control load fits. [`DesignReport::firepower`] is what it fires as built (the drydock's); this one is the
+    /// evolution archive's firepower measure (`docs/arena.md`), so designs that hide their guns behind their own
+    /// parts sit with the other gun-heavy designs.
+    pub fn latent_firepower(&self) -> f32 {
+        self.guns
+            .iter()
+            .filter(|g| Some(g.piece) == self.main)
+            .map(|g| g.dps)
+            .sum()
+    }
 }
 
 /// The design report of a blueprint (see the module docs). Pass the same (tuning-scaled) content and

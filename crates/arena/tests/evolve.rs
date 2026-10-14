@@ -96,6 +96,8 @@ fn design_runs_keep_the_limits() {
         let report = sim::design_report(&c, bp, &sim::SimConfig::default()).unwrap();
         assert!(report.build_points <= 62.0, "{} build points", report.build_points);
         assert!(report.flight_ready() && !report.guns.is_empty());
+        // The default archive: acceleration × latent firepower (blocked and idle guns count).
+        assert_eq!(e.measures[1], report.latent_firepower());
         assert!(bp.size.0 <= 24 && bp.size.1 <= 24, "the frigate frame");
         for p in &bp.parts {
             assert!(allowed.contains(&p.part), "{} is not allowed", p.part);

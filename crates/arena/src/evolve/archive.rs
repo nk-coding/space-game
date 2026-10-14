@@ -25,7 +25,8 @@ pub enum Measure {
     BuildPoints,
     /// Mass of the main piece (t).
     Mass,
-    /// Damage per second of the clear guns at full power.
+    /// Damage per second of all the main piece's guns at full power, as if each were clear and powered
+    /// (`DesignReport::latent_firepower`): blocked and idle guns count.
     Firepower,
     /// Hit points.
     HitPoints,
