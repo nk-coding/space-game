@@ -231,11 +231,9 @@ impl Sim {
     /// parts it destroys join the queue.
     fn blast(&mut self, k: usize, p: PartIdx, sc: &mut ChainScratch) {
         let ship = &self.ships[k];
-        let d = &*ship.design;
-        let Some(e) = d.parts[p as usize].explosion.as_ref() else {
+        let Some(e) = ship.design.parts[p as usize].explosion.as_ref() else {
             return;
         };
-        let (r, base) = (e.radius, e.damage);
         sc.hits.clear();
         sc.own.clear();
         ship.own_blast(p as usize, &mut sc.own);
@@ -246,68 +244,8 @@ impl Sim {
             point: Vec2::ZERO,
             shields: false,
         }));
-        let pid = ship.parts[p as usize].piece;
-        let Some(src) = ship.piece(pid) else {
-            return;
-        };
-        let centre_bp = d.parts[p as usize].shape.center();
-        let src_rot = Rot::from_angle(src.body.angle);
-        let centre = src.body.pos + src_rot.apply(to_piece(centre_bp, src.origin));
-        for (j, s) in self.ships.iter().enumerate() {
-            for q in &s.pieces {
-                if j == k && q.id == pid {
-                    continue;
-                }
-                let reach = q.radius + r + REACH_SLACK;
-                let off = q.body.pos - centre;
-                if off.x.abs() > reach || off.y.abs() > reach || off.length_squared() > reach * reach
-                {
-                    continue;
-                }
-                let rot = Rot::from_angle(q.body.angle);
-                let c = to_blueprint(centre, q.body.pos, rot, q.origin);
-                in_reach(&s.grid, c, r, |o| s.parts[o].piece == q.id, &mut sc.reach);
-                for &(t, cell) in &sc.reach {
-                    let td = &s.design.parts;
-                    let mut damage = base * td[t as usize].blast_factor;
-                    // Armour of the target's piece on the line, then of the exploding piece.
-                    cover(
-                        &s.grid,
-                        c,
-                        cell,
-                        |o| o != t as usize && s.parts[o].piece == q.id && td[o].blast_factor < 1.0,
-                        &mut sc.cover,
-                    );
-                    for &o in &sc.cover {
-                        damage *= td[o as usize].blast_factor;
-                    }
-                    let point = q.body.pos + rot.apply(to_piece(cell, q.origin));
-                    let b = to_blueprint(point, src.body.pos, src_rot, src.origin);
-                    cover(
-                        &ship.grid,
-                        centre_bp,
-                        b,
-                        |o| {
-                            o != p as usize
-                                && ship.parts[o].piece == pid
-                                && d.parts[o].blast_factor < 1.0
-                        },
-                        &mut sc.cover,
-                    );
-                    for &o in &sc.cover {
-                        damage *= d.parts[o as usize].blast_factor;
-                    }
-                    sc.hits.push(Hit {
-                        k: j as u32,
-                        part: t,
-                        damage,
-                        point,
-                        shields: true,
-                    });
-                }
-            }
-        }
-        let by = ship.id();
+        let centre = self.blast_other_pieces(k, p, e.damage, e.radius, sc);
+        let by = self.ships[k].id();
         for n in 0..sc.hits.len() {
             let h = sc.hits[n];
             let mut damage = h.damage;
@@ -320,6 +258,84 @@ impl Sim {
                 target.queue_destroyed(h.k as usize, &mut sc.queue);
             }
         }
+    }
+
+    /// The hits of part `p` of ship `k`'s blast (`damage` within `r` m) on every other piece, appended to
+    /// `sc.hits` in ship and piece order, targets ascending. Returns the blast's centre in the world.
+    fn blast_other_pieces(
+        &self,
+        k: usize,
+        p: PartIdx,
+        damage: f32,
+        r: f32,
+        sc: &mut ChainScratch,
+    ) -> Vec2 {
+        let ship = &self.ships[k];
+        let d = &*ship.design;
+        let pid = ship.parts[p as usize].piece;
+        // The exploding part's piece is still there: pieces are dropped only after the chain.
+        let Some(src) = ship.piece(pid) else {
+            return Vec2::ZERO;
+        };
+        let centre_bp = d.parts[p as usize].shape.center();
+        let src_rot = Rot::from_angle(src.body.angle);
+        let centre = src.body.pos + src_rot.apply(to_piece(centre_bp, src.origin));
+        for (j, s) in self.ships.iter().enumerate() {
+            for q in &s.pieces {
+                if j == k && q.id == pid {
+                    continue;
+                }
+                let reach = q.radius + r + REACH_SLACK;
+                let off = q.body.pos - centre;
+                if off.x.abs() > reach
+                    || off.y.abs() > reach
+                    || off.length_squared() > reach * reach
+                {
+                    continue;
+                }
+                let rot = Rot::from_angle(q.body.angle);
+                let c = to_blueprint(centre, q.body.pos, rot, q.origin);
+                in_reach(&s.grid, c, r, |o| s.parts[o].piece == q.id, &mut sc.reach);
+                for &(t, cell) in &sc.reach {
+                    let td = &s.design.parts;
+                    let mut hit = damage * td[t as usize].blast_factor;
+                    // Armour of the target's piece on the line, then of the exploding piece (the exploding part
+                    // itself is out of the grid already).
+                    cover(
+                        &s.grid,
+                        c,
+                        cell,
+                        |o| {
+                            o != t as usize && s.parts[o].piece == q.id && td[o].blast_factor < 1.0
+                        },
+                        &mut sc.cover,
+                    );
+                    for &o in &sc.cover {
+                        hit *= td[o as usize].blast_factor;
+                    }
+                    let point = q.body.pos + rot.apply(to_piece(cell, q.origin));
+                    let b = to_blueprint(point, src.body.pos, src_rot, src.origin);
+                    cover(
+                        &ship.grid,
+                        centre_bp,
+                        b,
+                        |o| ship.parts[o].piece == pid && d.parts[o].blast_factor < 1.0,
+                        &mut sc.cover,
+                    );
+                    for &o in &sc.cover {
+                        hit *= d.parts[o as usize].blast_factor;
+                    }
+                    sc.hits.push(Hit {
+                        k: j as u32,
+                        part: t,
+                        damage: hit,
+                        point,
+                        shields: true,
+                    });
+                }
+            }
+        }
+        centre
     }
 
     /// The bubbles a blast from `centre` crosses on its way to `point` (they cover the point, not the centre)

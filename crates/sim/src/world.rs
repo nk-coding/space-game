@@ -5,9 +5,9 @@
 //!
 //! 1. Events of the previous step are dropped (events from calls made since then are kept).
 //! 2. Inputs, in list order: raw `controls`, `commands` (pilot input, maneuvers, behaviors), scripted `damage`.
-//! 3. Breakage is resolved (connectivity, splits); bodies are created, updated or removed in the physics;
-//!    split-off pieces with a logic core become vessels of their own, and the mind pass (focus, dormant
-//!    vessels; `vessel.rs`) runs if anything changed.
+//! 3. Breakage is resolved (chain reactions first, `chain.rs`; then connectivity, splits); bodies are created,
+//!    updated or removed in the physics; split-off pieces with a logic core become vessels of their own, and the
+//!    mind pass (focus, dormant vessels; `vessel.rs`) runs if anything changed.
 //! 4. Behaviors think, then flight: every ship is planned from the same snapshot of the world (behaviors,
 //!    maneuvers, pilot input), then the flight computer allocates the actuators of each controlling piece.
 //! 5. Ship systems: per piece the control pass (idle parts), power, shield regeneration, the wrench (engines,

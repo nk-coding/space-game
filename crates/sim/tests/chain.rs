@@ -280,7 +280,11 @@ fn explosions(w: &Sim) -> Vec<(ShipId, PartIdx)> {
 /// ship alongside (`B`: a pulse laser on its left end, then armour, a shield emitter, a reactor and a core), the
 /// laser's centre 1.3 m right of the reactor's (a 0.3 m gap between the hulls). Returns the world, both ships,
 /// both designs.
-fn alongside(c: &data::Content, owner_a: Owner, owner_b: Owner) -> (Sim, ShipId, ShipId, Arc<ShipDesign>, Arc<ShipDesign>) {
+fn alongside(
+    c: &data::Content,
+    owner_a: Owner,
+    owner_b: Owner,
+) -> (Sim, ShipId, ShipId, Arc<ShipDesign>, Arc<ShipDesign>) {
     let da = custom(
         c,
         &[
