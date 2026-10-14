@@ -738,14 +738,14 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 
 | Keys (only while no text field has the keyboard) | |
 |---|---|
-| Tools | B paint, G fill, X erase, V select, Q / E rotate (the selected part, else the part to place) |
+| Tools | B paint, G fill, X erase, V select; R / Shift+R (or E / Q, or Shift+wheel down / up over the grid) turn the selected part, else the part to place (a slope brush steps through its orientations, orienting itself to the hull until turned; picking a part resets it) |
 | Grid (mouse) | left button: the tool (drag: paint and erase strokes, the fill rectangle, moving the selected part); right button: erase |
-| Selected part | F flip, Delete / Backspace delete, Esc deselect (Q / E turn it) |
-| Mirror / bevel | M / Shift+B |
+| Selected part | F flip, Delete / Backspace delete, Esc deselect (R / Shift+R, E / Q turn it) |
+| Mirror / bevel | M / Shift+B (bevel cuts a paint stroke's or fill's outer corners when it ends, GDR-0081) |
 | Armour material | 1–9 (the ARMOR pills in content order; a locked material's key does nothing) |
 | Undo / redo / save | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y / Ctrl+S (the browser's save dialog stays shut) |
 | Search the parts | / (Esc or Enter leaves the field; a click elsewhere too) |
-| Zoom | wheel (around the cursor), + / −, the − / + buttons; 100 % = the whole frame fits |
+| Zoom | wheel (around the cursor; Shift+wheel turns instead), + / −, the − / + buttons; 100 % = the whole frame fits |
 | Pan | Space + drag, or drag with the middle button |
 | Test flight | T or TEST-FLY (disabled, with the reason in the status line, while the design can't fly) |
 | Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
