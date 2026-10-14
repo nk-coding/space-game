@@ -178,11 +178,14 @@ Next session:
   `docs/plans/galaxy-voyages.md` reworked around it (tracks E0–E8). Its eight follow-up questions answered the
   same day ([GDR-0080](gdr/0080-exploration-searching-and-story.md): 2–3 km clusters, a scanner part, scans wake
   enemies, free decoding, story by fragments and cards; [ADR-0035](adr/0035-saves-keep-the-galaxy-skeleton.md)). The
-  slice's map step (no route, unknown until opened, a signal on clearing) is being built.
+  slice's map step is built: no route, voyages unknown until opened, a pulsing signal until the first launch,
+  SIGNAL FOUND in the debrief (`docs/results/map-signals-*.png`).
 - Niklas reviewed the lead defaults ([GDR-0079](gdr/0079-review-of-lead-defaults-14-oct.md)): most confirmed;
-  collecting up to 8 m/s, loose items last the voyage, a speed zoom in flight (being built).
+  collecting up to 8 m/s, loose items last the voyage (the sandbox keeps 60 s), the flight camera widens up to 1.4×
+  at top speed (built; determinism native vs wasm IDENTICAL, hashes changed).
 - Home: the moorings hang off unbroken truss bridges and open up and down; the view centres the whole station at
-  any window shape; BEHAVIOR and RESEARCH let only 3 % of the station show through.
+  any window shape; BEHAVIOR, RESEARCH and FLEET share one veiled backdrop and let only 3 % of the station show
+  through.
 
 ## Phase 4: measurement
 
