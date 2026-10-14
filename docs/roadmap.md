@@ -239,6 +239,12 @@ Next session:
   big files split at their seams. An ADR with the target layout goes to Niklas first; the refactor changes no
   behaviour (tests and determinism hashes identical) and measures build times before and after. Done on a quiet
   tree, after the four agents of 14 Oct merge.
+- **Structure refactor done** ([ADR-0038](adr/0038-workspace-structure-feature-folders-and-client-split.md), 14 Oct
+  2026): `crates/core/{data,sim}`, `crates/client/{art,kit,world,game}`, `crates/tools/{arena,content-tool}`; feature
+  folders in `data` and `sim`; the client's cycles broken (`world::player`, `ViewScale`, `ui_icons::IconShapes`) and
+  split into `kit`, `world`, `game`; the 16 files over 1,100 lines split. Behaviour unchanged (724 tests, every
+  determinism and fight hash, the screens). Build times: the baseline is in `results/`, the after column waits for
+  the VM's memory.
 
 ## Phase 4: measurement
 
