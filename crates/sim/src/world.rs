@@ -530,6 +530,8 @@ impl Sim {
     /// runs the mind pass (`update_minds`).
     pub(crate) fn resolve_ship(&mut self, k: usize) {
         if !self.ships[k].pending_destroyed.is_empty() {
+            // The whole chain first, so every part it destroys leaves its fragment too.
+            self.ships[k].chain_reactions();
             self.spawn_fragments(k);
         }
         let from = self.events.len();

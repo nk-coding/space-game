@@ -35,6 +35,8 @@ pub const BUILTIN_STATS: &[&str] = &[
     "rcs_thrust",
     "rcs_rated_speed",
     "torque",
+    "blast_damage",
+    "blast_radius",
     "shield_radius",
     "shield_capacity",
     "shield_regen",
@@ -44,6 +46,7 @@ pub const BUILTIN_STATS: &[&str] = &[
     "mass_per_cell",
     "hp_per_cell",
     "build_point_factor",
+    "blast_factor",
 ];
 
 /// Stat ids an adjacency bonus may change: the ones the sim applies to a part (`sim::design::Stat`). `fire_rate`
@@ -272,6 +275,10 @@ impl Content {
             v.push(("rule_slots", l.rule_slots as f32));
             v.push(("control_capacity", l.control_capacity as f32));
         }
+        if let Some(x) = &part.explosion {
+            v.push(("blast_damage", x.damage));
+            v.push(("blast_radius", x.radius));
+        }
         let mut lines = self.sorted(
             v.into_iter()
                 .filter_map(|(s, x)| self.stat_line(s, x))
@@ -361,6 +368,7 @@ impl Content {
             ("mass_per_cell", a.mass_per_cell),
             ("hp_per_cell", a.hp_per_cell),
             ("build_point_factor", a.build_point_factor),
+            ("blast_factor", a.blast_factor),
         ];
         self.sorted(
             v.into_iter()

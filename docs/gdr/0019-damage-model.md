@@ -35,3 +35,5 @@ the same team bump without ram damage.
 
 12 Oct 2026: [GDR-0047](0047-ramming-crushes-inward-bumps-free.md): ram damage starts above 100 kN·s and crushes inward
 past destroyed parts.
+
+14 Oct 2026: [GDR-0084](0084-chain-reactions-v1.md): chain reactions v1 are built (numbers in content, lead defaults).

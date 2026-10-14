@@ -28,7 +28,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0017](0017-combat-support-repair-capture-sensors.md) | Repair drones mid-fight, capture by killing all power, moderate sensors, a minimal HUD | Accepted | 2026-10-10 |
 | [0018](0018-weapon-families.md) | All six weapon families; the capacitor bonus is for lasers only; guns fire along their facing | Accepted | concept phase; 2026-10-11 |
 | [0019](0019-damage-model.md) | Damage: outer blocks first, penetration by weapon type, ricochets off slopes, chain reactions, ramming | Accepted | 2026-10-10; 2026-10-11 |
-| [0020](0020-damage-v1-defaults.md) | Damage v1 defaults: hitscan lasers, kinetic projectiles with ricochet, chain reactions later | Accepted (provisional, lead) | 2026-10-11 |
+| [0020](0020-damage-v1-defaults.md) | Damage v1 defaults: hitscan lasers, kinetic projectiles with ricochet, chain reactions later | Accepted (provisional, lead); chain reactions built by [GDR-0084](0084-chain-reactions-v1.md) | 2026-10-11 |
 | [0021](0021-shields.md) | Shields are one bubble per powered emitter; bubbles stack and collapse when emptied | Accepted | 2026-10-10; 2026-10-11 |
 | [0022](0022-heat-per-part.md) | Heat is simulated per part, with shutdown hysteresis | Accepted (provisional, lead) | 2026-10-11 |
 | [0023](0023-shot-leading.md) | AI ships lead their shots; the player's lock aims at the lead point for projectile weapons | Accepted (provisional, lead) | 2026-10-11 |
@@ -92,6 +92,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0081](0081-drydock-editing-bevel-rotate-replace.md) | Drydock editing: bevel after the stroke, R / Shift+wheel turn the brush (slopes auto first), placing and painting replace what is under them, shield parts show their radius while placing | Accepted | 2026-10-14 |
 | [0082](0082-drydock-layout-v2-and-part-availability.md) | Drydock layout v2: every part in sections with scrolling jump chips, an armour swatch strip on the left, tools in the bottom bar (a dropdown when narrow), icons and a ⋯ menu; part availability tracked, unlimited for now | Accepted | 2026-10-14 |
 | [0083](0083-evolution-lab.md) | An evolution lab: configurable evolution of designs and behaviors (fitness and limits per run), a dev-only shipyard place first, a benchmark rating for players later | Accepted | 2026-10-14 |
+| [0084](0084-chain-reactions-v1.md) | Chain reactions v1: destroyed reactors, capacitors and drives explode into their piece (content blast numbers, armour takes a share, same tick, own shields no help) | Accepted (provisional, lead) | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

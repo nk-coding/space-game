@@ -102,7 +102,8 @@ fn collecting_takes_the_best_part_first_with_ties_by_part_index() {
     let c = common::content();
     let mut w = Sim::new(1);
     let me = w.spawn_ship(collector(2), Owner::PLAYER, Body::default());
-    // gyro (4 per unit), steel block (1), fission reactor (4), gyro (4): taken 0, 2, 3, 1.
+    // gyro (4 per unit), steel block (1), fission reactor (4), gyro (4): taken 0, 2, 3, 1. Stripping is no
+    // destruction, so the reactor leaves without its blast (GDR-0084) and the gyro beside it is still there to take.
     let wreck_design = custom(
         &c,
         &[

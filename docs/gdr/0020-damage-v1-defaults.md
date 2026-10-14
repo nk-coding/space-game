@@ -1,6 +1,6 @@
 # GDR-0020: Damage v1 defaults: hitscan lasers, kinetic projectiles with ricochet, chain reactions later
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead); "chain reactions later" superseded by [GDR-0084](0084-chain-reactions-v1.md) (14 Oct 2026)
 - Date: 2026-10-11
 - Decided by: lead session (default for Niklas to review)
 - Related: [GDR-0018](0018-weapon-families.md), [GDR-0019](0019-damage-model.md), [GDR-0021](0021-shields.md), [GDR-0023](0023-shot-leading.md), `docs/sim.md` "Weapons"
@@ -28,3 +28,7 @@ Not recorded; these are the first working defaults.
 
 - All numbers are placeholders (`weapons::tuning` in the sim, weapon stats in content).
 - Chain reactions are not in the game until the `explosion` block exists.
+
+14 Oct 2026: chain reactions are built ([GDR-0084](0084-chain-reactions-v1.md), Niklas's decision of 14 Oct): the
+`explosion` content block on reactors, capacitors and drives, an armour `blast_factor`, resolved at breakage in the
+same tick.

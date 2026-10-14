@@ -45,6 +45,7 @@ pub(crate) struct Stats {
     pub reach: f32,
     pub build_points: f32,
     pub mass: f32,
+    /// Latent: every gun of the main piece as if clear and powered (`DesignReport::latent_firepower`).
     pub firepower: f32,
     pub hit_points: f32,
     pub parts: u32,
@@ -652,7 +653,7 @@ impl Kit {
                 .fold(0.0, f32::max),
             build_points: report.build_points,
             mass: report.mass,
-            firepower: report.firepower,
+            firepower: report.latent_firepower(),
             hit_points: report.hp,
             parts: bp.parts.len() as u32,
             rules: rules.min(report.rule_slots),

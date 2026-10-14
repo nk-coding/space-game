@@ -191,6 +191,7 @@ impl Ship {
             power_settings: self.power_settings.clone(),
             scratch: Scratch::default(),
             pending_destroyed: Vec::new(),
+            chained: 0,
             control: Some(pid),
             helm: self.helm,
             behavior: None,

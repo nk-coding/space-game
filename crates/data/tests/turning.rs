@@ -52,7 +52,7 @@ fn turning_stat_lines() {
     );
     let thruster = lines("thruster");
     let ids: Vec<&str> = thruster.iter().map(|(s, _)| s.as_str()).collect();
-    // stats.ron order: thrust, rated speed, gimbal, then the plume.
+    // stats.ron order: thrust, rated speed, gimbal, then the plume, then the blast (GDR-0084).
     assert_eq!(
         ids,
         [
@@ -67,7 +67,9 @@ fn turning_stat_lines() {
             "gimbal",
             "plume_length",
             "plume_damage",
-            "plume_heat"
+            "plume_heat",
+            "blast_damage",
+            "blast_radius"
         ]
     );
     assert_eq!(thruster[7].1, "20 m/s");

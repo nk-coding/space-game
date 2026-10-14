@@ -750,12 +750,14 @@ fn dark_ships_do_nothing() {
 #[test]
 fn unpowered_piece_goes_dark_and_wakes_up() {
     let c = content();
-    // Core + one reactor + engine; kill the reactor: no power, dark; the core is still there.
+    // Core + one reactor + engine; kill the reactor: no power, dark; the core is still there. An armour block
+    // keeps the reactor's blast off the core and the engine.
     let d = custom(
         &c,
         &[
             ("logic_core", 0, 0, 0, false, None),
-            ("fission_reactor", 1, 0, 0, false, None),
+            ("armor_block", 1, 0, 0, false, Some("steel")),
+            ("fission_reactor", 2, 0, 0, false, None),
             ("thruster", 0, 1, 0, false, None),
         ],
     );
@@ -769,7 +771,7 @@ fn unpowered_piece_goes_dark_and_wakes_up() {
     );
     idle(&mut w, 5);
     assert!(w.ship(s).unwrap().is_active());
-    w.apply_damage(s, DamageTarget::Cell((1, 0)), 100.0);
+    w.apply_damage(s, DamageTarget::Cell((2, 0)), 100.0);
     idle(&mut w, 5);
     let ship = w.ship(s).unwrap();
     assert!(

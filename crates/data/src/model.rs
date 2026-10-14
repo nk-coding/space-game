@@ -186,6 +186,9 @@ pub struct ArmorSpec {
     pub mass_per_cell: f32,
     pub hp_per_cell: f32,
     pub build_point_factor: f32,
+    /// Share of an explosion's damage a hull part of this armour takes (GDR-0084; default 1: no protection).
+    #[serde(default = "one")]
+    pub blast_factor: f32,
 }
 
 /// `materials/*.ron`: materials. For now only armour materials (with an `armor` block); fabrication
@@ -440,6 +443,17 @@ pub struct PlumeSpec {
     pub heat: f32,
 }
 
+/// A chain reaction (GDR-0019, GDR-0084): when the part is destroyed, every other part of its piece with a cell
+/// within `radius` metres of the part's centre takes `damage` at once (its own ship's shields do not help).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExplosionSpec {
+    /// Damage dealt to each part in reach (hit points, once).
+    pub damage: f32,
+    /// Reach from the part's centre to the nearest point of a cell, m (1 = the eight cells around a 1×1 part).
+    pub radius: f32,
+}
+
 /// Pure reaction torque about the centre of mass, in either direction, without thrust: a gyro, or the small
 /// built-in turning help of a logic core.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -601,6 +615,9 @@ pub struct Part {
     pub gyro: Option<GyroSpec>,
     #[serde(default)]
     pub rcs: Option<RcsSpec>,
+    /// Destroyed, it explodes into its neighbours (GDR-0019, GDR-0084).
+    #[serde(default)]
+    pub explosion: Option<ExplosionSpec>,
     #[serde(default)]
     pub bonuses: Vec<Bonus>,
     /// What the part gives when salvaged (non-hull parts; hull parts take it from their material per cell).

@@ -549,7 +549,8 @@ fn vessels_of_one_owner_bump_without_ram_damage() {
 fn a_hard_ram_crushes_inward_past_the_parts_it_destroys() {
     // Head-on at 20 m/s each (about 390 kN·s): ~5.8 hp per side, more than the raider's centre column holds
     // (cannon 1, core 2, thruster 1 hp): the nose is crushed and the damage carries through the core to the
-    // tail (GDR-0047). The side columns are untouched.
+    // tail (GDR-0047). The side columns are untouched but for the crushed thruster's blast (GDR-0084) on the two
+    // tail slopes beside it.
     let (mut w, a, b) = ram(Owner(2), 20.0);
     let mut hit = None;
     for _ in 0..30 {
@@ -573,12 +574,15 @@ fn a_hard_ram_crushes_inward_past_the_parts_it_destroys() {
             column.iter().all(|&p| !ship.part(p).alive),
             "{s:?}: the centre column is crushed"
         );
-        assert!(
-            (0..d.parts.len() as PartIdx)
-                .filter(|p| !column.contains(p))
-                .all(|p| ship.part(p).alive && ship.part(p).hp == d.parts[p as usize].hp),
-            "{s:?}: the sides are untouched"
-        );
+        let thruster = column[2] as usize;
+        let blast = d.blast.get(thruster);
+        assert_eq!(blast.len(), 3, "the core and the two tail slopes");
+        for p in (0..d.parts.len() as PartIdx).filter(|p| !column.contains(p)) {
+            let full = d.parts[p as usize].hp;
+            let lost = blast.iter().find(|b| b.0 == p).map_or(0.0, |b| b.1);
+            assert!(ship.part(p).alive, "{s:?}: part {p} survives");
+            assert!(close(ship.part(p).hp, full - lost, 1e-6), "{s:?}: part {p} lost only the blast");
+        }
         assert!(ship.team().is_none(), "the core went with the column");
     }
     // Below the threshold a bump is free: 4 m/s each is about 80 kN·s.

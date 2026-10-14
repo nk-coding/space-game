@@ -193,12 +193,11 @@ pub struct PartSpec {
     pub power_min_level: f32,
     /// Feeds the power pool.
     pub reactor: bool,
-    /// Candidate for chain reactions when destroyed: for now every part that makes power. Derived, not a
-    /// content field, on purpose: chain reactions are not built (`Ship::chain_reaction` is a hook) and today the
-    /// flag only picks the client's destruction flash (`SimEvent::PartDestroyed`). When they come, the planned
-    /// `explosion` content block (blast numbers per part, `docs/sim.md` "Damage and breakage") replaces this
-    /// rule; a bare `volatile` flag in content now would be a placeholder schema field without numbers.
-    pub volatile: bool,
+    /// Its chain reaction when destroyed (content `explosion`, GDR-0084): damage and radius. Whom it hits is
+    /// [`ShipDesign::blast`].
+    pub explosion: Option<data::ExplosionSpec>,
+    /// Share of an explosion's damage the part takes: a hull part its armour's `blast_factor`, others 1.
+    pub blast_factor: f32,
     /// Heat capacity (heat units per degree); proportional to area.
     pub heat_capacity: f32,
 }
@@ -317,6 +316,10 @@ pub struct ShipDesign {
     /// from the lane's origin to where the plume enters the part's first cell on the lane. A plume burns the
     /// first of them that is alive and in the engine's piece, if it is within its length (`plume.rs`).
     pub plume_path: Csr<(f32, PartIdx)>,
+    /// Per part, whom its explosion hits and how hard (`(part, damage)`, ascending part; empty for parts without
+    /// one): every other part with a cell within the radius of its centre, the damage scaled by the target's
+    /// `blast_factor`. The sim skips targets that are dead or on another piece by then (`breakage.rs`).
+    pub blast: Csr<(PartIdx, f32)>,
     /// Content problems that do not stop the sim (e.g. bonuses on stats the sim does not model yet).
     pub warnings: Vec<String>,
     /// Hit points of the intact ship (sum over all parts): the 100% of the `hull` behavior sensors.
@@ -471,7 +474,14 @@ impl ShipDesign {
                 power_setting,
                 power_min_level: power.min_level,
                 reactor: power.output > 0.0,
-                volatile: power.output > 0.0,
+                explosion: def.explosion.clone(),
+                blast_factor: if def.hull {
+                    content
+                        .placement_armor(pl)
+                        .map_or(1.0, |a| a.blast_factor)
+                } else {
+                    1.0
+                },
                 heat_capacity: HEAT_CAPACITY_PER_CELL * area,
             });
         }
@@ -587,6 +597,12 @@ impl ShipDesign {
             }
         }
 
+        let blast = Csr::from_lists(
+            (0..n)
+                .map(|i| blast_targets(&grid, &parts, i))
+                .collect(),
+        );
+
         let hp_total = parts.iter().map(|p: &PartSpec| p.hp).sum::<f32>();
         Ok(ShipDesign {
             id: ship.id.clone(),
@@ -603,6 +619,7 @@ impl ShipDesign {
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,
             plume_path: Csr::from_lists(plume_path),
+            blast,
             warnings,
             hp_total,
             behavior: content.ship_behavior(ship).map(|b| b.id.clone()),
@@ -612,6 +629,36 @@ impl ShipDesign {
     pub fn part_count(&self) -> usize {
         self.parts.len()
     }
+}
+
+/// Whom part `i`'s explosion hits: every other part with a cell whose nearest point lies within the radius of
+/// `i`'s centre, ascending, with the damage it takes (`damage × blast_factor`). Empty without an explosion.
+fn blast_targets(grid: &ShipGrid, parts: &[PartSpec], i: usize) -> Vec<(PartIdx, f32)> {
+    let Some(e) = &parts[i].explosion else {
+        return Vec::new();
+    };
+    let [cx, cy] = parts[i].shape.center();
+    let r = e.radius;
+    // Distance from the centre to the nearest point of the cell `[a, a + 1]` along one axis.
+    let gap = |a: i32, c: f32| (a as f32 - c).max(c - (a + 1) as f32).max(0.0);
+    let mut out: Vec<PartIdx> = Vec::new();
+    // Cells reach from `floor(c - r) - 1` (one that ends exactly at the radius) to `floor(c + r)`.
+    for y in (cy - r).floor() as i32 - 1..=(cy + r).floor() as i32 {
+        for x in (cx - r).floor() as i32 - 1..=(cx + r).floor() as i32 {
+            let (dx, dy) = (gap(x, cx), gap(y, cy));
+            if dx * dx + dy * dy <= r * r
+                && let Some(o) = grid.occupant((x, y))
+                && o != i
+            {
+                out.push(o as PartIdx);
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out.into_iter()
+        .map(|o| (o, e.damage * parts[o as usize].blast_factor))
+        .collect()
 }
 
 /// Parts in the cells straight ahead of gun `i`'s `dir` side, to the edge of the grid. Same rule as

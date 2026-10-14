@@ -105,6 +105,8 @@ struct Validator<'a> {
 pub const MAX_GIMBAL: f32 = 45.0;
 /// Longest allowed engine plume, in metres (keeps the plume casts short).
 pub const MAX_PLUME_LENGTH: f32 = 50.0;
+/// Largest explosion radius, in metres (keeps the blast lists of a design short; placeholder).
+pub const MAX_BLAST_RADIUS: f32 = 4.0;
 /// Longest allowed side of a drydock frame and of a ship's `size`, in cells (placeholder: twice the capital
 /// frame). The drydock editor uses the same limit.
 pub const MAX_FRAME_SIZE: u32 = 128;
@@ -432,6 +434,7 @@ impl<'a> Validator<'a> {
             self.key_in(m, "armor.tone", &a.tone, ARMOR_TONES, "armour tone");
             self.number(m, "armor.mass_per_cell", a.mass_per_cell, 0.0, true);
             self.number(m, "armor.hp_per_cell", a.hp_per_cell, 0.0, true);
+            self.number(m, "armor.blast_factor", a.blast_factor, 0.0, false);
             self.number(
                 m,
                 "armor.build_point_factor",
@@ -646,6 +649,17 @@ impl<'a> Validator<'a> {
                     p,
                     "engine.plume.length",
                     format!("at most {MAX_PLUME_LENGTH} m, got {}", x.plume.length),
+                );
+            }
+        }
+        if let Some(x) = &p.explosion {
+            self.number(p, "explosion.damage", x.damage, 0.0, true);
+            self.number(p, "explosion.radius", x.radius, 0.0, true);
+            if x.radius > MAX_BLAST_RADIUS {
+                self.err(
+                    p,
+                    "explosion.radius",
+                    format!("at most {MAX_BLAST_RADIUS} m, got {}", x.radius),
                 );
             }
         }
