@@ -111,8 +111,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    /// A storage on one backend (tests).
-    #[cfg(test)]
+    /// A storage on one backend (the tests of the client crates, on a `MemoryBackend`).
     pub fn new(backend: impl Backend) -> Self {
         Self { backend: Box::new(backend), fallback: None }
     }

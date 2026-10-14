@@ -167,7 +167,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub(crate) fn new(kind: SceneKind, seed: u64) -> Self {
+    pub fn new(kind: SceneKind, seed: u64) -> Self {
         Self {
             kind,
             seed,
