@@ -7,7 +7,7 @@ use bevy::text::LetterSpacing;
 use data::{Content, ResearchNode, Unlock};
 
 use crate::career::{Granted, PlayerCareer};
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};

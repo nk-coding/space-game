@@ -24,7 +24,7 @@ use bevy::prelude::*;
 use data::career::{Availability, Readiness, Unlocks, voyage_ready};
 use data::{Blueprint, Career, Content, ResearchNode, Unlock};
 
-use crate::drydock::library::{DesignDoc, problems_text};
+use crate::player::library::{DesignDoc, problems_text};
 use crate::mode::AppMode;
 use crate::params::Params;
 use crate::sim_bridge::GameContent;

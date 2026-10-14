@@ -17,10 +17,10 @@ use bevy::mesh::VertexAttributeValues;
 use data::design::edit::{Preview, Refusal, Twin};
 use data::{Blueprint, Cell, Content, Placement};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::Atlas;
 use crate::camera::CameraRig;
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::fx::{FxQueue, FxRegions, FxSprite};
 use crate::ship_model::{HullTones, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
@@ -29,7 +29,7 @@ use crate::style::{Style, ui_color};
 use crate::tuning::Tuning;
 use crate::ui_kit::Tone;
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::report::DrydockReport;
 use super::state::{DrydockUi, Tool};
 use super::tools::{Brush, DrydockGesture, EditNote, Gesture, Selection, brush_placement, refusal_text};

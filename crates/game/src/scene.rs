@@ -42,16 +42,16 @@ use bevy_egui::input::egui_wants_any_keyboard_input;
 use sim::flight::{PilotAxes, nudge_step, turn_ramp_step};
 use sim::{Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipDesign, ShipId, Target};
 
-use crate::backdrop::Rng;
+use crate::rng::Rng;
 use crate::camera::{CamMode, CameraRig};
 use crate::controls::PlayerInput;
-use crate::drydock::PlayerDesign;
-use crate::drydock::behaviors::{self, PlayerBehaviors};
+use crate::player::PlayerDesign;
+use crate::player::behaviors::{self, PlayerBehaviors};
 use crate::fx::Effects;
 use crate::mode::{AppMode, FlightExit};
 use crate::params::Params;
 use crate::shield::ShieldBubbles;
-use crate::sim_bridge::{GameContent, HashLog, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
+use crate::sim_bridge::{GameContent, HashLog, PilotFocus, SimSet, SimWorld, console_out, despawn_all_views, sv, v2};
 use crate::test_range::{self, BehaviorTest, TestMode};
 use crate::tuning::Tuning;
 use crate::ui_kit::Tone;
@@ -60,11 +60,6 @@ use crate::voyage::VoyageRun;
 /// The player's owner in the sim, and the raiders'.
 pub const PLAYER: Owner = Owner::PLAYER;
 pub const ENEMY: Owner = Owner(1);
-
-/// The vessel the player's input drives: a copy of `Sim::focus(PLAYER)`, refreshed every tick. Camera, HUD and
-/// controls all read this. Every other vessel of the player runs its behaviour.
-#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PilotFocus(pub Option<ShipId>);
 
 /// Content ships with this tag are raiders: the sandbox's waves and the showcase's attackers fly the first one
 /// (content order: the base pack's `automaton_raider`).

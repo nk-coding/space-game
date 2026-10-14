@@ -38,7 +38,7 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, mix, vcol};
 use crate::ui_kit::Tone;
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::report::DrydockReport;
 use super::state::{DrydockUi, Overlay};
 use super::stats::{RUNS_HOT_MAX, yaw_pull};
@@ -473,7 +473,7 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drydock::PlayerDesign;
+    use crate::player::PlayerDesign;
 
     fn palette() -> UiPalette {
         UiPalette {

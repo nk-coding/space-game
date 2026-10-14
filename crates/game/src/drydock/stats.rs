@@ -21,13 +21,14 @@ use bevy::prelude::*;
 use data::Content;
 use data::design::stats::{format_number, with_unit};
 use sim::DesignReport;
-use sim::report::{Issue, LoadClass, Severity};
+use sim::report::{Issue, LoadClass};
 
 use crate::career::{EscortDesigns, Granted, voyage_line};
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::Tone;
+use crate::player::design::flight_ready;
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::report::DrydockReport;
 use super::state::{DrydockStats, DrydockStatus, StatCell};
 
@@ -219,20 +220,10 @@ fn warnings(content: &Content, r: &DesignReport) -> Vec<(u8, Tone, String)> {
 
 /// What the status line says about a report (`Err`: the design doesn't compile).
 pub fn status_line(content: &Content, report: &Result<DesignReport, String>) -> StatusLine {
-    let grounded = |why: String| StatusLine { line: format!("CAN'T FLY{SEP}{}", why.to_uppercase()), grounded: Some(why), tone: Tone::Coral };
-    let r = match report {
-        Err(e) => return grounded(e.clone()),
-        Ok(r) if r.parts.is_empty() => return grounded("empty frame".into()),
+    let r = match flight_ready(report) {
+        Err(why) => return StatusLine { line: format!("CAN'T FLY{SEP}{}", why.to_uppercase()), grounded: Some(why), tone: Tone::Coral },
         Ok(r) => r,
     };
-    if let Some(blocker) = r.issues.iter().find(|i| i.severity() == Severity::Blocker) {
-        let why = match blocker {
-            Issue::NoLogicCore => "no logic core",
-            Issue::CoresUnpowered => "logic cores unpowered",
-            _ => "no thrust",
-        };
-        return grounded(why.into());
-    }
     let w = warnings(content, r);
     let Some((_, tone, first)) = w.first() else {
         return StatusLine { grounded: None, line: "FLIGHT-READY".into(), tone: Tone::Teal };
@@ -287,7 +278,7 @@ pub(super) fn voyage(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drydock::PlayerDesign;
+    use crate::player::PlayerDesign;
 
     fn report_of(content: &Content, design: &PlayerDesign) -> Result<DesignReport, String> {
         sim::design_report(content, design.blueprint(), &sim::SimConfig::default())

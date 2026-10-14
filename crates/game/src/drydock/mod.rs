@@ -2,7 +2,8 @@
 //! `docs/concept/boards/ui-mockups/desktop-drydock.png`): the mode, the view of the player's design, the screen
 //! with its widgets, editing, the live stats, saving and sharing, and the test flight, in the modules below.
 //!
-//! * [`design`]: [`PlayerDesign`], the blueprint every flight of the player flies.
+//! * `player::design`: [`PlayerDesign`], the blueprint every flight of the player flies (it lives in `player`, the
+//!   drydock edits it).
 //! * [`state`]: what the widgets show (`DrydockUi`, `DrydockStatus`, `DrydockStats`).
 //! * [`actions`]: `DrydockAction`, the one message buttons and keys send; the UI-state handler.
 //! * [`view`]: the design drawn with the flight tiles, the frame overlay, the camera, `DrydockCursor`.
@@ -16,15 +17,15 @@
 //! frames offer the unlocked parts, materials and frames and show the rest locked (everything in free mode,
 //! `?unlock=all`). A design that uses locked parts still opens, shows and test-flies; it is only not voyage-ready.
 //! How many of each part the player has (part availability, GDR-0082; every part unlimited for now) reaches the
-//! editing model (`design::sync_available`), which refuses a placement when none is left.
+//! editing model (`player::design::sync_available`), which refuses a placement when none is left.
 //! * [`overlays`]: the HEAT, MASS, BONUS, SHIELDS and ARCS overlays and the issue marks over the design.
 //! * [`tools`]: editing on the grid (paint, fill, erase, select), the selection, undo / redo, mirror, bevel.
 //! * [`ghost`]: the ghost of the edit under the cursor, the fill rectangle, the selection brackets.
 //! * [`inspector`]: the SELECTED PART block (a placed part with the report's numbers, or the palette part).
-//! * [`library`], [`share`], [`blueprints`]: saving and the autosave, the BLUEPRINTS and EXPORT screens, share
-//!   codes and files, the editable name.
-//! * [`behaviors`]: the player's behaviors on the storage layer ([`behaviors::PlayerBehaviors`]), the behavior a
-//!   design names, checks with the player's behaviors known.
+//! * `player::library`, [`share`], [`blueprints`]: saving and the autosave, the BLUEPRINTS and EXPORT screens,
+//!   share codes and files, the editable name.
+//! * `player::behaviors`: the player's behaviors on the storage layer (`PlayerBehaviors`), the behavior a design
+//!   names, checks with the player's behaviors known.
 //!
 //! **For handlers** (the ring menu, later ones): read `MessageReader<DrydockAction>` in a system in
 //! [`DockSet::Apply`]; change [`PlayerDesign`] through `PlayerDesign::edit` (the revision goes up: the view, the
@@ -32,12 +33,9 @@
 //! [`DrydockCursor`] (the cell under the pointer).
 
 pub mod actions;
-pub mod behaviors;
 pub mod blueprints;
-pub mod design;
 pub mod ghost;
 pub mod inspector;
-pub mod library;
 pub mod overlays;
 pub mod panels;
 pub mod report;
@@ -53,10 +51,9 @@ use crate::camera::CameraSet;
 use crate::career::{Granted, PlayerCareer};
 use crate::fx::FxFlush;
 use crate::mode::AppMode;
+use crate::player::{PlayerDesign, behaviors, design};
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::{UiInputSet, UiStyleSet};
-
-pub use design::PlayerDesign;
 
 use actions::DrydockAction;
 use state::{DrydockStats, DrydockStatus, DrydockUi};

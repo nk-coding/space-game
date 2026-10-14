@@ -21,7 +21,7 @@ use bevy::prelude::*;
 use data::{Blueprint, Content};
 use sim::{Owner, PieceId, ShipDesign, ShipId, SimEvent, Stat};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::Atlas;
 use crate::fx::Effects;
 use crate::mode::AppMode;
@@ -96,6 +96,11 @@ impl HashLog {
 /// scenes read it; [`SimWorld::content`] is the copy a running scene compiles from (tuning scales applied).
 #[derive(Resource)]
 pub struct GameContent(pub Content);
+
+/// The vessel the player's input drives: a copy of `Sim::focus(PLAYER)`, refreshed every tick (by the scene). Camera, HUD and
+/// controls all read this. Every other vessel of the player runs its behaviour.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PilotFocus(pub Option<ShipId>);
 
 #[derive(Resource)]
 pub struct SimWorld {
@@ -278,7 +283,7 @@ fn apply_events(
     atlas: Res<Atlas>,
     style: Res<Style>,
     toggles: Res<RenderToggles>,
-    focus: Res<crate::scene::PilotFocus>,
+    focus: Res<PilotFocus>,
     mut fx: ResMut<Effects>,
     mut shields: ResMut<ShieldBubbles>,
     views: Query<(&PieceView, &Transform)>,

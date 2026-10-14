@@ -26,15 +26,16 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
 use sim::{ShipCommand, ShipId, VesselInfo, VesselState};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::camera::CameraRig;
 use crate::controls::ControlsSet;
-use crate::flight_hud::{HudFonts, HudZone};
+use crate::flight_hud::HudZone;
 use crate::mode::{AppMode, FlightUi};
-use crate::scene::{PLAYER, PilotFocus};
+use crate::scene::PLAYER;
+use crate::sim_bridge::PilotFocus;
 use crate::sim_bridge::SimWorld;
 use crate::style::{Style, UiPalette, ui_color};
-use crate::ui_kit;
+use crate::ui_kit::{self, HudFonts};
 
 /// Chips in the pool (more vessels: a window around the focus and a "+N").
 const MAX_CHIPS: usize = 12;

@@ -21,7 +21,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
 use crate::mode::AppMode;
 use bevy::state::state::StateTransitionEvent;
@@ -35,7 +35,7 @@ use crate::style::Style;
 use crate::ui_kit::{UiPointer, ui_scale_for};
 
 use super::actions::DrydockAction;
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 
 /// The design's mesh sits where flight pieces do (above the frame's dots, below the hover cell).
 const Z_SHIP: f32 = 10.0;

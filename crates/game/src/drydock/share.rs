@@ -31,7 +31,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use data::{Behavior, Blueprint, Content};
 use serde::Deserialize;
 
-use super::behaviors::{behavior_to_ron, parse_behavior};
+use crate::player::behaviors::{behavior_to_ron, parse_behavior};
 
 /// The share code's tag; the full prefix is `SGD<version>:`.
 const TAG: &str = "SGD";
@@ -149,7 +149,7 @@ pub fn read(text: &str) -> Result<Shared, ShareError> {
         return decode(&text[TAG.len()..]);
     }
     if text.starts_with('(') || text.starts_with("//") {
-        let ship = data::parse_blueprint(text).map_err(|p| ShareError::Unreadable(super::library::problems_text(&p)))?;
+        let ship = data::parse_blueprint(text).map_err(|p| ShareError::Unreadable(crate::player::library::problems_text(&p)))?;
         let behavior = behavior_block(text)
             .map(|b| parse_behavior(&b))
             .transpose()

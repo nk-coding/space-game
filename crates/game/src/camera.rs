@@ -27,7 +27,7 @@
 //! helpers include it. Flight input (wheel, drag, pinch, F) runs only in flight; the drydock drives the rig
 //! itself (`drydock::view`).
 
-use bevy::camera::ScalingMode;
+use bevy::camera::{CompositingSpace, Hdr, ScalingMode};
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -36,8 +36,11 @@ use sim::Target;
 
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
-use crate::scene::{PilotFocus, Scene};
+use crate::params::Params;
+use crate::scene::Scene;
+use crate::sim_bridge::PilotFocus;
 use crate::sim_bridge::{SimWorld, piece_com, v2};
+use crate::view::{ViewScale, ViewSet};
 
 pub const MIN_PX_PER_M: f32 = 3.0;
 pub const MAX_PX_PER_M: f32 = 160.0;
@@ -144,7 +147,7 @@ struct Glide {
 }
 
 /// Zero speed and acceleration at both ends.
-fn smootherstep(t: f32) -> f32 {
+pub fn smootherstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
@@ -188,6 +191,10 @@ impl CameraRig {
     pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
         let d = screen - self.view_center();
         self.pos + Vec2::new(d.x, -d.y) / self.zoom
+    }
+    /// What the toolkit reads of the view (the atlas's tier, the UI icons' places): [`ViewScale`].
+    pub fn view_scale(&self) -> ViewScale {
+        ViewScale { zoom: self.zoom, zoom_target: self.zoom_target, pos: self.pos, center: self.view_center() }
     }
     /// Logical screen position (y down) of a world point.
     pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
@@ -282,7 +289,9 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CameraRig>()
+        let rig = CameraRig::default();
+        app.insert_resource(rig.view_scale())
+            .insert_resource(rig)
             .add_systems(
                 Update,
                 (wheel_and_drag.run_if(not(egui_wants_any_pointer_input)), pinch).run_if(in_state(AppMode::Flight)),
@@ -291,6 +300,7 @@ impl Plugin for CameraPlugin {
                 PostUpdate,
                 update_camera
                     .in_set(CameraSet)
+                    .in_set(ViewSet)
                     .after(crate::ship_view::sync_piece_views)
                     // The projection (zoom) must reach this frame's camera matrices like the transform does;
                     // otherwise the world draws one frame's zoom behind the UI icons placed for it.
@@ -300,7 +310,7 @@ impl Plugin for CameraPlugin {
     }
 }
 
-/// The camera bundle (spawned by `main`).
+/// The camera bundle (spawned by [`spawn_camera`]).
 pub fn camera_bundle(zoom: f32) -> impl Bundle {
     (
         MainCamera,
@@ -311,6 +321,26 @@ pub fn camera_bundle(zoom: f32) -> impl Bundle {
             ..OrthographicProjection::default_2d()
         }),
     )
+}
+
+/// The main camera, at the zoom of `?zoom=` if given (added by `main` at `Startup`).
+pub fn spawn_camera(mut commands: Commands, params: Res<Params>, mut rig: ResMut<CameraRig>, mut view: ResMut<ViewScale>) {
+    if let Some(z) = params.f32("zoom") {
+        rig.zoom = z.clamp(MIN_PX_PER_M, MAX_PX_PER_M);
+        rig.zoom_target = rig.zoom;
+        rig.user_zoom = true;
+        *view = rig.view_scale();
+    }
+    commands.spawn((
+        camera_bundle(rig.zoom),
+        // Blend in sRGB space like the browser and the concept art (linear blending makes every faint glow
+        // about twice as bright as the reference).
+        CompositingSpace::Srgb,
+        // Bevy 0.20 gives an 8-bit sRGB-composited main texture an `Rgba8UnormSrgb` view format, which
+        // WebGL2 can't create (DownlevelFlags::VIEW_FORMATS). An HDR (Rgba16Float) main texture has no view
+        // formats, so sRGB compositing works on WebGL2 with HDR on. Bloom then only adds the `Bloom` component.
+        Hdr,
+    ));
 }
 
 fn zoom_by(rig: &mut CameraRig, factor: f32, around: Option<Vec2>) {
@@ -398,6 +428,7 @@ fn update_camera(
     scene: Res<Scene>,
     input: Res<PlayerInput>,
     mut rig: ResMut<CameraRig>,
+    mut view: ResMut<ViewScale>,
     camera: Single<(&mut Transform, &mut Projection), With<MainCamera>>,
     app: Res<State<AppMode>>,
 ) {
@@ -491,6 +522,7 @@ fn update_camera(
             o.scale = s;
         }
     }
+    view.set_if_neq(rig.view_scale());
 }
 
 /// Where a locked target is at the render pose: a ship's controlling (else main) piece, a piece, or the point.

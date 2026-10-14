@@ -32,7 +32,7 @@ use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dKey, Material2dPipeline, Material2dPlugin};
 use sim::{PartIdx, ShipId, Stat};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::ship_view::{BUBBLE_DZ, PieceView};
 use crate::sim_bridge::SimWorld;
 use crate::style::{ShieldStyle, Style};

@@ -56,7 +56,7 @@ use bevy_egui::EguiPrimaryContextPass;
 use crate::camera::{CameraRig, CameraSet};
 use crate::shipyard::Yard;
 use crate::shipyard::layout::{Place, fit};
-use crate::drydock::PlayerDesign;
+use crate::player::PlayerDesign;
 use crate::drydock::report::DrydockReport;
 use crate::sim_bridge::GameContent;
 use crate::tuning::Tuning;

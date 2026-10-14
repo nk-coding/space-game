@@ -17,12 +17,13 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_keyboard_input;
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::{Atlas, AtlasStatus};
 use crate::camera::{CameraRig, MainCamera};
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
-use crate::scene::{PilotFocus, Scene, SceneKind};
+use crate::scene::{Scene, SceneKind};
+use crate::sim_bridge::PilotFocus;
 use crate::sim_bridge::{SimWorld, Timings, console_out};
 use crate::style::{Style, ui_color};
 use crate::test_range::BehaviorWatch;

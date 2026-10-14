@@ -39,10 +39,10 @@ use bevy::window::PrimaryWindow;
 
 use crate::camera::{CamMode, CameraRig, CameraSet};
 use crate::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
-use crate::drydock::PlayerDesign;
+use crate::player::PlayerDesign;
 use crate::drydock::view::{DockCamera, GridViewport};
 use crate::fleet::{self, Fleet};
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::fx::{FxFlush, FxQueue, FxRegions};
 use crate::mode::AppMode;
 use crate::research;
@@ -380,7 +380,7 @@ fn put_rig(rig: &mut CameraRig, v: View, viewport: Vec2) {
 #[allow(clippy::too_many_arguments)]
 fn enter(
     mut transitions: MessageReader<StateTransitionEvent<AppMode>>,
-    debrief: Res<crate::debrief::Debrief>,
+    debrief: Res<crate::voyage::debrief::Debrief>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
     viewport: Query<(&ComputedNode, &UiGlobalTransform), With<GridViewport>>,

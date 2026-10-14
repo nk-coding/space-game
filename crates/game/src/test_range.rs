@@ -22,7 +22,7 @@ use data::Content;
 use data::behavior::Program;
 use sim::{BehaviorId, RuleStatus, ShipDesign, ShipId};
 
-use crate::drydock::behaviors::{PlayerBehaviors, errors_note};
+use crate::player::behaviors::{PlayerBehaviors, errors_note};
 use crate::mode::{AppMode, FlightExit};
 use crate::params::Params;
 use crate::scene::{Launch, ResetRequest, Scene};

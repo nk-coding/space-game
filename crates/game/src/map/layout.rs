@@ -17,7 +17,7 @@ use data::career::{Readiness, Unlocks, voyage_ready};
 use data::{Blueprint, Career, Content, Voyage};
 
 use crate::career::{fleet_cores, readiness_words};
-use crate::drydock::stats::status_line;
+use crate::player::design::flight_ready;
 use crate::ui_kit::Tone;
 
 /// The layout's size (logical px).
@@ -346,7 +346,7 @@ impl Check {
 pub fn checklist(content: &Content, unlocks: &Unlocks, mind: u32, flagship: &Blueprint, escorts: &[Blueprint]) -> [Check; 4] {
     let grounded = std::iter::once(flagship).chain(escorts).enumerate().find_map(|(k, bp)| {
         let report = sim::design_report(content, bp, &sim::SimConfig::default());
-        status_line(content, &report).grounded.map(|why| (k, why))
+        flight_ready(&report).err().map(|why| (k, why))
     });
     let flight = match grounded {
         Some((0, why)) => Check::new(format!("CAN'T FLY  ·  {}", why.to_uppercase()), Tone::Coral),

@@ -2,8 +2,9 @@
 //! rectangle every frame.
 //!
 //! How (12 Oct 2026): icons are world-space meshes of the main camera, built by the same code as the ships
-//! (`ship_view::build_body`, the shared atlas material), placed over the node through the camera rig (screen →
-//! world) and scaled by 1 / zoom, at a z above every world layer. So a part icon in the palette is drawn like a
+//! (`ship_view::build_body`, the shared atlas material; parts and whole designs come from [`IconShapes`], which
+//! `part_icons` implements), placed over the node through the camera's view ([`ViewScale`]: screen → world) and
+//! scaled by 1 / zoom, at a z above every world layer. So a part icon in the palette is drawn like a
 //! flight tile: the same seams and glow, composited in sRGB like the ships (no colour shift,
 //! which bevy_ui's own image nodes would give, because bevy_ui does not encode for sRGB compositing), and sharp
 //! at any UI size because the atlas tier follows the icons too ([`UiAtlasNeed`]). A whole design (FLEET's ships)
@@ -21,21 +22,19 @@
 //! 14 Oct 2026: "it is unacceptable that the icon only shows when fully into view").
 
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 
 use bevy::prelude::*;
 use bevy::ui::{CalculatedClip, ComputedNode, UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
-use data::{Blueprint, Placement};
+use data::Blueprint;
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::{Atlas, AtlasMaterial, UiAtlasNeed, set_clip};
-use crate::camera::{CameraRig, CameraSet};
 use crate::meshbuf::MeshBuf;
-use crate::ship_model::{blueprint_visual, design_visual};
-use crate::ship_view::{ShipVisual, build_body};
-use crate::sim_bridge::GameContent;
 use crate::style::{Style, vcol};
 use crate::ui_kit::{IconMaterials, ScrollClipSet};
+use crate::view::{ViewScale, ViewSet};
 
 /// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane.
 const Z_UI_ICON: f32 = 600.0;
@@ -105,30 +104,44 @@ struct IconMeshes(BTreeMap<Entity, IconMesh>);
 #[derive(Component)]
 struct UiIconMesh;
 
-pub struct UiIconsPlugin;
+/// Builds the icons drawn like the ships: a part as one tile ([`UiIcon::Part`]) and a whole design
+/// ([`UiIcon::Ship`]), centred on the origin in cells, with their extent in cells. The app adds
+/// [`UiIconsPlugin`] with the resource that implements it (`part_icons`: the content).
+pub trait IconShapes: Resource {
+    fn shape(&self, icon: &UiIcon, style: &Style, atlas: &Atlas, glow: bool) -> Option<(Mesh, Vec2)>;
+}
 
-impl Plugin for UiIconsPlugin {
+/// Draws every [`UiIcon`], its parts and ships through `S`.
+pub struct UiIconsPlugin<S>(PhantomData<fn() -> S>);
+
+impl<S> Default for UiIconsPlugin<S> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<S: IconShapes> Plugin for UiIconsPlugin<S> {
     fn build(&self, app: &mut App) {
         app.init_resource::<IconMeshes>().add_systems(
             PostUpdate,
-            draw_icons.after(UiSystems::Layout).after(ScrollClipSet).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
+            draw_icons::<S>.after(UiSystems::Layout).after(ScrollClipSet).after(ViewSet).before(bevy::transform::TransformSystems::Propagate),
         );
     }
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn draw_icons(
+fn draw_icons<S: IconShapes>(
     mut commands: Commands,
     mut state: ResMut<IconMeshes>,
     nodes: Query<(Entity, &UiIcon, &ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&CalculatedClip>)>,
     mut placed: Query<(&mut Transform, &mut Visibility), With<UiIconMesh>>,
     mut removed: RemovedComponents<UiIcon>,
     mut meshes: ResMut<Assets<Mesh>>,
-    rig: Res<CameraRig>,
+    view: Res<ViewScale>,
     window: Single<&Window, With<PrimaryWindow>>,
     atlas: Res<Atlas>,
     style: Res<Style>,
-    content: Res<GameContent>,
+    shapes: Res<S>,
     toggles: Res<RenderToggles>,
     mut need: ResMut<UiAtlasNeed>,
     mut faded: ResMut<IconMaterials>,
@@ -190,8 +203,7 @@ fn draw_icons(
         // Compared in place: an icon (a whole ship) is cloned only when it is rebuilt.
         if m.built.as_ref().is_none_or(|(i, s, g)| i != icon || *s != px_side || *g != glow) {
             let (mesh, dims) = match icon {
-                UiIcon::Part { part, material } => part_tile(&content.0, &style, &atlas, part, material.as_deref(), glow),
-                UiIcon::Ship(bp) => ship_icon(&content.0, &style, &atlas, bp, glow),
+                UiIcon::Part { .. } | UiIcon::Ship(_) => shapes.shape(icon, &style, &atlas, glow),
                 UiIcon::Glyph { glyph, color } => Some((glyph_mesh(*glyph, *color, side, &atlas), Vec2::ONE)),
             }
             .unwrap_or_else(|| (MeshBuf::placeholder(), Vec2::ONE));
@@ -211,7 +223,7 @@ fn draw_icons(
             UiIcon::Glyph { .. } => 1.0,
         };
         // Written only when it moves: a written transform is propagated again.
-        let (at, k) = (rig.screen_to_world(tf.translation / scale).extend(Z_UI_ICON), Vec3::new(px / rig.zoom, px / rig.zoom, 1.0));
+        let (at, k) = (view.screen_to_world(tf.translation / scale).extend(Z_UI_ICON), Vec3::new(px / view.zoom, px / view.zoom, 1.0));
         if t.translation != at || t.scale != k {
             t.translation = at;
             t.scale = k;
@@ -235,72 +247,6 @@ fn clip_bounds(clip: &CalculatedClip) -> Option<Rect> {
         out = out.intersect(Rect::from_corners(a, b));
     }
     (!out.is_empty()).then_some(out)
-}
-
-/// One part as a single tile, centred on the origin in cells; and its footprint. No hull edge, aura, barrel or
-/// muzzle: an icon, not a ship. A machine shows its icon on the machine tile colour (on ships it is its drawing on
-/// a hull-toned cell, GDR-0069).
-fn part_tile(
-    content: &data::Content,
-    style: &Style,
-    atlas: &Atlas,
-    part: &str,
-    material: Option<&str>,
-    glow: bool,
-) -> Option<(Mesh, Vec2)> {
-    let def = content.parts.get(part)?;
-    let bp = Blueprint {
-        id: String::new(),
-        name: String::new(),
-        summary: String::new(),
-        description: None,
-        lore: None,
-        tags: Vec::new(),
-        faction: String::new(),
-        size: def.size,
-        parts: vec![Placement {
-            part: part.into(),
-            x: 0,
-            y: 0,
-            rot: 0,
-            flip: false,
-            material: material.filter(|_| def.hull).map(str::to_string),
-            power: None,
-        }],
-        behavior: None,
-        source: Default::default(),
-    };
-    let dv = design_visual(content, &bp, style).ok()?;
-    let mut p = dv.parts.into_iter().next()?;
-    p.gun = None;
-    if !def.hull {
-        (p.fill, p.art, p.overhang) = (style.machine_tile, None, 0.0);
-    }
-    let dims = Vec2::new(def.size.0 as f32, def.size.1 as f32);
-    let v = ShipVisual {
-        parts: vec![p],
-        hull_loops: Vec::new(),
-        pivot: dims / 2.0,
-        bounds_min: Vec2::ZERO,
-        bounds_max: dims,
-        glow: dv.glow,
-        enemy: false,
-        nav_lights: Vec::new(),
-        aura: false,
-    };
-    Some((build_body(&v, atlas, style, glow, true), dims))
-}
-
-/// A whole design as the drydock draws it (`blueprint_visual`), centred on the origin in cells; and its extent.
-fn ship_icon(content: &data::Content, style: &Style, atlas: &Atlas, bp: &Blueprint, glow: bool) -> Option<(Mesh, Vec2)> {
-    let dv = design_visual(content, bp, style).ok()?;
-    let grid = content.ship_grid(bp).ok()?;
-    let mut v = blueprint_visual(&dv, &grid);
-    if v.parts.is_empty() {
-        return None;
-    }
-    v.pivot = (v.bounds_min + v.bounds_max) / 2.0;
-    Some((build_body(&v, atlas, style, glow, true), v.bounds_max - v.bounds_min))
 }
 
 /// The bars of a plus (`plus`) or a minus `side` px across, centred on the origin (the node's centre): the

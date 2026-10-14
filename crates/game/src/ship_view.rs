@@ -19,10 +19,10 @@
 use bevy::prelude::*;
 use sim::{PieceId, ShipId};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::Atlas;
 use crate::meshbuf::{MeshBuf, ensure_ccw, inset_convex};
-use crate::scene::PilotFocus;
+use crate::sim_bridge::PilotFocus;
 use crate::ship_model::DesignVisual;
 use crate::sim_bridge::{SimWorld, v2};
 use crate::style::{Style, vcol};

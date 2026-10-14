@@ -8,6 +8,8 @@
 use bevy::prelude::*;
 use data::design::edit::{Drydock, OpenError};
 use data::{Blueprint, Content};
+use sim::DesignReport;
+use sim::report::{Issue, Severity};
 
 use crate::career::Granted;
 use crate::sim_bridge::GameContent;
@@ -146,8 +148,28 @@ impl PlayerDesign {
     }
 }
 
+/// The report of a design that can fly, or why it can't (lowercase): it doesn't compile (`Err`), its frame is
+/// empty, or a blocker (no logic core, cores unpowered, no thrust). The drydock's status line says it
+/// (`drydock::stats::status_line`); FLEET, the voyage map, a voyage's launch and TEST IN RANGE check it.
+pub fn flight_ready(report: &Result<DesignReport, String>) -> Result<&DesignReport, String> {
+    let r = match report {
+        Err(e) => return Err(e.clone()),
+        Ok(r) if r.parts.is_empty() => return Err("empty frame".into()),
+        Ok(r) => r,
+    };
+    if let Some(blocker) = r.issues.iter().find(|i| i.severity() == Severity::Blocker) {
+        let why = match blocker {
+            Issue::NoLogicCore => "no logic core",
+            Issue::CoresUnpowered => "logic cores unpowered",
+            _ => "no thrust",
+        };
+        return Err(why.into());
+    }
+    Ok(r)
+}
+
 /// Brings the part counts of the editing model up to the career's when they change or another design opens.
-pub(super) fn sync_available(content: Res<GameContent>, granted: Res<Granted>, mut design: ResMut<PlayerDesign>, mut seen: Local<Option<u64>>) {
+pub fn sync_available(content: Res<GameContent>, granted: Res<Granted>, mut design: ResMut<PlayerDesign>, mut seen: Local<Option<u64>>) {
     if granted.is_changed() || *seen != Some(design.generation()) {
         *seen = Some(design.generation());
         design.set_available(&content.0, &granted);

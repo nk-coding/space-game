@@ -22,6 +22,8 @@
 //!   ends the voyage as lost (`Phase::Lost { abandoned: true }`, every hold's cargo stays behind), KEEP FLYING, Esc
 //!   or M again close it. The sim runs on while it is open (a real-time sim, co-op later: nothing pauses).
 
+pub mod debrief;
+
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
@@ -30,15 +32,16 @@ use data::{Blueprint, Career, Content};
 use sim::{Item, Owner, SimConfig, SimEvent, SiteState};
 
 use crate::career::{EscortDesigns, Granted, Note, PlayerCareer, readiness_words};
-use crate::debrief::{Debrief, DebriefData, DebriefStats};
-use crate::drydock::PlayerDesign;
-use crate::drydock::stats::status_line;
+use crate::player::PlayerDesign;
+use crate::player::design::flight_ready;
 use crate::mode::AppMode;
 use crate::params::Params;
 use crate::scene::{ENEMY, Launch, PLAYER, Scene, SceneKind};
 use crate::sim_bridge::{GameContent, SimSet, SimWorld};
 use crate::storage::Storage;
 use crate::ui_kit::Tone;
+
+use debrief::{Debrief, DebriefData, DebriefStats};
 
 /// The warp-out after RECALL, and the time from losing the last vessel to home: 3 s (GDR-0062), in sim ticks.
 pub const HOME_TICKS: u64 = 3 * sim::TICK_HZ as u64;
@@ -194,7 +197,7 @@ pub fn default_voyage<'c>(career: &Career, content: &'c Content) -> Option<&'c s
 pub fn fleet_blocker(content: &Content, unlocks: &Unlocks, mind: u32, flagship: &Blueprint, escorts: &[Blueprint]) -> Option<String> {
     for (k, bp) in std::iter::once(flagship).chain(escorts).enumerate() {
         let report = sim::design_report(content, bp, &SimConfig::default());
-        if let Some(why) = status_line(content, &report).grounded {
+        if let Err(why) = flight_ready(&report) {
             let who = if k == 0 { String::new() } else { format!("ESCORT {k} ") };
             return Some(format!("{who}CAN'T FLY · {}", why.to_uppercase()));
         }

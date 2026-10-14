@@ -154,7 +154,7 @@ fn span_color(s: Span, style: &Style) -> egui::Color32 {
 /// Barlow for the editor, once.
 fn install_font(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(FAMILY.into(), std::sync::Arc::new(egui::FontData::from_static(crate::flight_hud::BARLOW_REGULAR)));
+    fonts.font_data.insert(FAMILY.into(), std::sync::Arc::new(egui::FontData::from_static(crate::ui_kit::BARLOW_REGULAR)));
     let mut family = vec![FAMILY.to_string()];
     family.extend(fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default());
     fonts.families.insert(egui::FontFamily::Name(FAMILY.into()), family);

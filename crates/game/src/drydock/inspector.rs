@@ -21,13 +21,13 @@ use data::design::stats::{format_number, with_unit};
 use data::{Content, Effect, PowerTier, StatDef};
 use sim::{DesignReport, Stat};
 
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{Pill, Tip, Tone, label, number, ring_glyph, ring_node, set_text, spawn_pill};
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::actions::{ActionButton, DrydockAction};
 use super::report::DrydockReport;
 use super::state::{DrydockUi, armor_materials};

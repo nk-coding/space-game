@@ -10,6 +10,8 @@
 
 use bevy::math::Vec2;
 
+use crate::camera::smootherstep;
+
 /// How long a flight takes (seconds).
 pub const SECONDS: f32 = 0.6;
 
@@ -18,12 +20,6 @@ pub const SECONDS: f32 = 0.6;
 pub struct View {
     pub centre: Vec2,
     pub zoom: f32,
-}
-
-/// Zero speed and acceleration at both ends.
-pub fn smootherstep(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
 
 /// A flight in progress.

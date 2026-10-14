@@ -25,7 +25,7 @@ use crate::style::Style;
 use crate::ui_icons::UiIcon;
 use crate::ui_kit::{Ring, UiPointer};
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::actions::{ActionButton, DrydockAction};
 use super::state::{DrydockUi, Tool};
 use super::view::DrydockCursor;

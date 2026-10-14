@@ -28,7 +28,7 @@ use data::{Blueprint, Content};
 
 use crate::career::{Granted, Note, PlayerCareer};
 use crate::clipboard::Clipboard;
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::storage::{Storage, now_unix};
 use crate::style::{Style, ui_color};
@@ -39,13 +39,14 @@ use crate::ui_kit::{
 };
 
 use super::actions::{DrydockAction, Rare};
-use super::behaviors::{PlayerBehaviors, validate_design};
-use super::library::{self, Autosave, DesignSlot, Entry, MAX_NAME};
+use crate::player::behaviors::{PlayerBehaviors, validate_design};
+use crate::player::library::{self, Autosave, DesignSlot, Entry, MAX_NAME};
 use super::panels::PanelText;
 use super::share;
 use super::state::DrydockStatus;
 use super::view::DockCamera;
-use super::{DockSet, PlayerDesign, stats};
+use super::{DockSet, stats};
+use crate::player::PlayerDesign;
 
 /// Rows per list (designs, templates); longer lists scroll (by pixels: the pool has one row more, for a row cut at
 /// an edge).

@@ -31,7 +31,7 @@ use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
 use bevy::window::PrimaryWindow;
 
-use crate::camera::CameraRig;
+use crate::view::ViewScale;
 
 /// Work per frame while re-rasterising (the old atlas stays on screen meanwhile).
 const FRAME_BUDGET_MS: f64 = 6.0;
@@ -361,7 +361,7 @@ fn max_tier(layout: &art::Layout, limit: u32) -> u32 {
 #[allow(clippy::too_many_arguments)]
 fn choose_tier(
     time: Res<Time<Real>>,
-    rig: Res<CameraRig>,
+    view: Res<ViewScale>,
     ui_need: Res<UiAtlasNeed>,
     window: Single<&Window, With<PrimaryWindow>>,
     device: Option<Res<RenderDevice>>,
@@ -378,7 +378,7 @@ fn choose_tier(
         info!("atlas: tiers up to {} px/cell (GPU textures up to {} px)", status.max_tier, device.limits().max_texture_dimension_2d);
     }
     let cap = if status.max_tier > 0 { status.max_tier } else { art::MAX_TIER };
-    let need = rig.zoom_target.max(rig.zoom).max(ui_need.0) * window.scale_factor();
+    let need = view.zoom_target.max(view.zoom).max(ui_need.0) * window.scale_factor();
 
     status.need = need;
     let want = art::tier_for(need).min(cap);

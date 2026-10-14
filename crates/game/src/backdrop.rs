@@ -7,9 +7,10 @@ use bevy::prelude::*;
 use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
 use crate::camera::{CameraRig, CameraSet, MainCamera};
 use crate::meshbuf::MeshBuf;
+use crate::rng::Rng;
 use crate::style::{RadialGradient, Style, vcol};
 use crate::ui_kit::ScreenFx;
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 
 const Z_BACKDROP: f32 = -900.0;
 const Z_DUST: f32 = -800.0;
@@ -62,32 +63,13 @@ impl Plugin for BackdropPlugin {
         // The style exists from the atlas plugin on.
         let clear = app.world().resource::<Style>().background.outer();
         app.insert_resource(ClearColor(clear))
-            .add_systems(Startup, spawn_backdrop.after(crate::spawn_camera))
+            .add_systems(Startup, spawn_backdrop.after(crate::camera::spawn_camera))
             .add_systems(Update, veil)
             // After the camera moved, before the transforms are propagated (else they show last frame's place).
             .add_systems(
                 PostUpdate,
                 (fit_backdrop, place_dust, follow_rings).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
             );
-    }
-}
-
-/// Tiny deterministic generator for decoration (client-only; the sim has its own seeded streams).
-pub struct Rng(u32);
-impl Rng {
-    pub fn new(seed: u32) -> Self {
-        Self(seed.max(1))
-    }
-    pub fn next_f32(&mut self) -> f32 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        (x >> 8) as f32 / (1u32 << 24) as f32
-    }
-    pub fn range(&mut self, a: f32, b: f32) -> f32 {
-        a + (b - a) * self.next_f32()
     }
 }
 

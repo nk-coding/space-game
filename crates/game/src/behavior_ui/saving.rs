@@ -23,11 +23,12 @@ use bevy::prelude::*;
 use data::{Behavior, Content};
 use sim::DesignReport;
 
-use crate::drydock::PlayerDesign;
+use crate::player::PlayerDesign;
+use crate::player::design::flight_ready;
 use crate::drydock::report::DrydockReport;
-use crate::drydock::behaviors::{NEW_SUMMARY, PlayerBehaviors, errors_note, set_program, set_text};
-use crate::drydock::library::{self, Autosave, DesignSlot, MAX_NAME};
-use crate::flight_hud::HudFonts;
+use crate::player::behaviors::{NEW_SUMMARY, PlayerBehaviors, errors_note, set_program, set_text};
+use crate::player::library::{self, Autosave, DesignSlot, MAX_NAME};
+use crate::ui_kit::HudFonts;
 use crate::mode::AppMode;
 use crate::params::Params;
 use crate::sim_bridge::GameContent;
@@ -432,7 +433,7 @@ pub(super) fn apply(
 pub fn test_request(draft: &BehaviorDraft, behaviors: &PlayerBehaviors, content: &Content, report: &Result<DesignReport, String>) -> Result<TestProgram, String> {
     let program = test_program(draft)?;
     test_range::check(content, behaviors, &program)?;
-    if let Some(why) = crate::drydock::stats::status_line(content, report).grounded {
+    if let Err(why) = flight_ready(report) {
         return Err(format!("the design can't fly ({why})"));
     }
     Ok(program)

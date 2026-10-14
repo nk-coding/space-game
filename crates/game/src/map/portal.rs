@@ -34,7 +34,8 @@ use crate::atlas::{APERTURE_EDGE, Aperture, set_aperture};
 use crate::camera::CameraRig;
 use crate::mode::AppMode;
 use crate::shipyard::Yard;
-use crate::shipyard::fly::{Fly, View, smootherstep};
+use crate::shipyard::fly::{Fly, View};
+use crate::camera::smootherstep;
 use crate::shipyard::layout::{GATE_RADIUS, fit};
 
 /// How long the way in and the way out take (seconds).

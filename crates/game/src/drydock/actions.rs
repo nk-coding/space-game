@@ -20,7 +20,7 @@ use crate::scene::{Launch, Scene};
 use crate::sim_bridge::GameContent;
 use crate::ui_kit::{Pill, TextField, UiClick, UiPointer, WHEEL_LINE_PX};
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::blueprints::Shelf;
 use super::state::{BarMenu, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials};
 
@@ -280,7 +280,7 @@ mod tests {
     use data::Career;
 
     use super::*;
-    use crate::drydock::PlayerDesign;
+    use crate::player::PlayerDesign;
     use crate::drydock::panels::sync_pills;
     use crate::scene::SceneKind;
 

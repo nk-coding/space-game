@@ -14,7 +14,7 @@ use bevy::prelude::*;
 
 use super::layout::{BASE_STRIP, BRIDGE, CLAMP_REACH, GATE_RADIUS, Layout, MOORING_DEPTH, MOORING_HALF, MOORING_WALL, TIP, WALL};
 use crate::atlas::{Atlas, Region};
-use crate::backdrop::Rng;
+use crate::rng::Rng;
 use crate::meshbuf::MeshBuf;
 use crate::style::{Style, vcol};
 

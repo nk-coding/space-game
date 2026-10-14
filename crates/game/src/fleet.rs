@@ -27,10 +27,10 @@ use data::career::voyage_ready;
 use data::{Blueprint, Content};
 
 use crate::career::{EscortDesigns, Granted, PlayerCareer, readiness_words, voyage_line};
-use crate::drydock::PlayerDesign;
-use crate::drydock::library::{DesignDoc, parts_size};
-use crate::drydock::stats::status_line;
-use crate::flight_hud::HudFonts;
+use crate::player::PlayerDesign;
+use crate::player::library::{DesignDoc, parts_size};
+use crate::player::design::flight_ready;
+use crate::ui_kit::HudFonts;
 use crate::home::HomeAction;
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
@@ -76,7 +76,7 @@ impl FleetDesign {
     pub fn of(content: &Content, id: String, blueprint: Blueprint) -> Self {
         let t = content.ship_totals(&blueprint);
         let report = sim::design_report(content, &blueprint, &sim::SimConfig::default());
-        let grounded = status_line(content, &report).grounded;
+        let grounded = flight_ready(&report).err();
         Self { id, blueprint, cores: t.logic_cores, cargo: t.cargo_capacity, grounded }
     }
 }

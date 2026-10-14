@@ -429,7 +429,7 @@ pub fn fallback(bp: &Blueprint, flight: &Content, behaviors: &PlayerBehaviors) -
 }
 
 /// Reads the player's behaviors at start (after the storage and the content).
-pub(super) struct BehaviorsPlugin;
+pub struct BehaviorsPlugin;
 
 impl Plugin for BehaviorsPlugin {
     fn build(&self, app: &mut App) {

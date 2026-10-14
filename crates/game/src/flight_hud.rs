@@ -36,24 +36,16 @@ use crate::camera::{CameraRig, CameraSet};
 use crate::controls::PlayerInput;
 use crate::fx::{FxQueue, FxRegions, Z_HUD};
 use crate::mode::{AppMode, FlightUi};
-use crate::scene::{PilotFocus, Scene, SceneKind};
+use crate::scene::{Scene, SceneKind};
+use crate::sim_bridge::PilotFocus;
 use crate::sim_bridge::{SimWorld, piece_com, v2};
 use crate::style::{Style, ui_color};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Edge, Hot, HudFonts, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, load_fonts, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{self, Phase, VoyageRun};
 use crate::warp_fx::Transit;
-use crate::{RenderToggles, ship_view::PieceView};
-
-pub(crate) static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
-static BARLOW_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Barlow-Medium.ttf");
-
-#[derive(Resource, Clone)]
-pub struct HudFonts {
-    pub regular: Handle<Font>,
-    pub medium: Handle<Font>,
-}
+use crate::{params::RenderToggles, ship_view::PieceView};
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum HudText {
@@ -211,7 +203,7 @@ impl Plugin for FlightHudPlugin {
             labels_for: None,
             scratch: String::with_capacity(256),
         })
-        .add_systems(Startup, (spawn_hud, spawn_abandon_panel).chain())
+        .add_systems(Startup, (spawn_hud, spawn_abandon_panel).chain().after(load_fonts))
         .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
         .add_systems(Update, (go_home, recall_click).after(UiInputSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
@@ -221,12 +213,7 @@ impl Plugin for FlightHudPlugin {
     }
 }
 
-pub(crate) fn spawn_hud(mut commands: Commands, mut fonts_assets: ResMut<Assets<Font>>, style: Res<Style>) {
-    let fonts = HudFonts {
-        regular: fonts_assets.add(Font::from_bytes(BARLOW_REGULAR.to_vec())),
-        medium: fonts_assets.add(Font::from_bytes(BARLOW_MEDIUM.to_vec())),
-    };
-    commands.insert_resource(fonts.clone());
+pub(crate) fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     let ui = &style.ui;
     let grey = ui_color(ui.label, 1.0);
     let white = ui_color(ui.number, 1.0);

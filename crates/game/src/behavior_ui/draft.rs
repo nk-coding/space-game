@@ -12,7 +12,7 @@ use data::behavior::{Program, TextError, check_program};
 use data::behavior::edit::BehaviorEditor;
 use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 
-use crate::drydock::behaviors::{PlayerBehaviors, text_of};
+use crate::player::behaviors::{PlayerBehaviors, text_of};
 
 /// The name a new behavior gets ("New behavior", "New behavior 2", ... in the BEHAVIORS list).
 pub const NEW_NAME: &str = "New behavior";

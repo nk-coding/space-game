@@ -11,7 +11,7 @@ use sim::DesignReport;
 use crate::sim_bridge::GameContent;
 use crate::tuning::Tuning;
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 
 /// While a paint or erase drag runs, the report follows at most this often (real seconds); the last one comes when
 /// the stroke ends. A report of a full 64 × 64 frame takes about 5 ms (dev build), too much for every frame.

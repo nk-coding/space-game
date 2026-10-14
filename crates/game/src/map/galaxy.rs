@@ -18,7 +18,7 @@ use bevy::prelude::*;
 use super::draw::Pen;
 use super::layout::{BANDS, Band, Geometry, VoyageState};
 use crate::atlas::Region;
-use crate::backdrop::Rng;
+use crate::rng::Rng;
 use crate::style::{Style, mix, vcol};
 
 /// Spiral arms, and how tightly they wind (radians of turn per e-fold of radius).

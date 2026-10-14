@@ -6,6 +6,8 @@
 //! RANGE), `showcase`, `watch`, `alongside`, `drydock`, `behavior`, `research`, `map` (the voyage map). Without a
 //! `scene`, the parameters that only mean something in flight ([`FLIGHT_ONLY`]) start the sandbox, as before the game
 //! started at home.
+//!
+//! [`RenderToggles`]: the render switches some of them set (`debug`, `bloom`, `glow`, `hud`, `stats`).
 
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -55,6 +57,32 @@ impl Params {
     /// Is any [`FLIGHT_ONLY`] parameter given?
     pub fn wants_flight(&self) -> bool {
         FLIGHT_ONLY.iter().any(|k| self.0.contains_key(*k))
+    }
+}
+
+/// Render switches. The spike measures style 2a vs. debug shapes and pre-blurred glow sprites vs. bloom.
+#[derive(Resource, Debug, Clone)]
+pub struct RenderToggles {
+    /// Plain coloured cells only: no seams, icons, glow, plumes, trails or backdrop.
+    pub debug_shapes: bool,
+    /// Full-screen bloom (HDR camera).
+    pub bloom: bool,
+    /// Pre-blurred glow layers (icon glows, hull halo, aura, soft muzzle glows).
+    pub glow_sprites: bool,
+    pub hud: bool,
+    /// Fps / timings overlay.
+    pub debug_info: bool,
+}
+
+impl RenderToggles {
+    pub fn from_params(p: &Params) -> Self {
+        Self {
+            debug_shapes: p.flag("debug").unwrap_or(false),
+            bloom: p.flag("bloom").unwrap_or(false),
+            glow_sprites: p.flag("glow").unwrap_or(true),
+            hud: p.flag("hud").unwrap_or(true),
+            debug_info: p.flag("stats").unwrap_or(false),
+        }
     }
 }
 

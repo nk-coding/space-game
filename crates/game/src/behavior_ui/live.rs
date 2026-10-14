@@ -14,8 +14,8 @@ use data::behavior::edit::BehaviorEditor;
 use data::{BehaviorNode, Table};
 use sim::RuleStatus;
 
-use crate::RenderToggles;
-use crate::flight_hud::HudFonts;
+use crate::params::RenderToggles;
+use crate::ui_kit::HudFonts;
 use crate::mode::FlightUi;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};

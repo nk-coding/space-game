@@ -26,8 +26,8 @@ use data::NodeRole;
 use data::behavior::edit::RuleId;
 
 use crate::camera::CameraRig;
-use crate::drydock::behaviors::PlayerBehaviors;
-use crate::flight_hud::HudFonts;
+use crate::player::behaviors::PlayerBehaviors;
+use crate::ui_kit::HudFonts;
 use crate::fx::{FxQueue, FxRegions};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};

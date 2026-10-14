@@ -51,7 +51,10 @@ mod map;
 mod meshbuf;
 mod mode;
 mod params;
+mod part_icons;
+mod player;
 mod research;
+mod rng;
 mod scene;
 mod shield;
 mod ship_model;
@@ -64,41 +67,15 @@ mod test_range;
 mod tuning;
 mod ui_icons;
 mod ui_kit;
+mod view;
 mod voyage;
 mod warp_fx;
 
-use bevy::camera::{CompositingSpace, Hdr};
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use bevy_egui::EguiPlugin;
 
-use crate::params::Params;
-
-/// Render switches. The spike measures style 2a vs. debug shapes and pre-blurred glow sprites vs. bloom.
-#[derive(Resource, Debug, Clone)]
-pub struct RenderToggles {
-    /// Plain coloured cells only: no seams, icons, glow, plumes, trails or backdrop.
-    pub debug_shapes: bool,
-    /// Full-screen bloom (HDR camera).
-    pub bloom: bool,
-    /// Pre-blurred glow layers (icon glows, hull halo, aura, soft muzzle glows).
-    pub glow_sprites: bool,
-    pub hud: bool,
-    /// Fps / timings overlay.
-    pub debug_info: bool,
-}
-
-impl RenderToggles {
-    fn from_params(p: &Params) -> Self {
-        Self {
-            debug_shapes: p.flag("debug").unwrap_or(false),
-            bloom: p.flag("bloom").unwrap_or(false),
-            glow_sprites: p.flag("glow").unwrap_or(true),
-            hud: p.flag("hud").unwrap_or(true),
-            debug_info: p.flag("stats").unwrap_or(false),
-        }
-    }
-}
+use crate::params::{Params, RenderToggles};
 
 fn main() {
     let params = Params::load();
@@ -141,7 +118,7 @@ fn main() {
                 debrief::DebriefPlugin,
                 research::ResearchPlugin,
                 ui_kit::UiKitPlugin,
-                ui_icons::UiIconsPlugin,
+                ui_icons::UiIconsPlugin::<sim_bridge::GameContent>::default(),
             ),
             camera::CameraPlugin,
             controls::ControlsPlugin,
@@ -152,24 +129,6 @@ fn main() {
             fleet_bar::FleetBarPlugin,
             hud::HudPlugin,
         ))
-        .add_systems(Startup, spawn_camera);
+        .add_systems(Startup, camera::spawn_camera);
     app.run();
-}
-
-pub fn spawn_camera(mut commands: Commands, params: Res<Params>, mut rig: ResMut<camera::CameraRig>) {
-    if let Some(z) = params.f32("zoom") {
-        rig.zoom = z.clamp(camera::MIN_PX_PER_M, camera::MAX_PX_PER_M);
-        rig.zoom_target = rig.zoom;
-        rig.user_zoom = true;
-    }
-    commands.spawn((
-        camera::camera_bundle(rig.zoom),
-        // Blend in sRGB space like the browser and the concept art (linear blending makes every faint glow
-        // about twice as bright as the reference).
-        CompositingSpace::Srgb,
-        // Bevy 0.20 gives an 8-bit sRGB-composited main texture an `Rgba8UnormSrgb` view format, which
-        // WebGL2 can't create (DownlevelFlags::VIEW_FORMATS). An HDR (Rgba16Float) main texture has no view
-        // formats, so sRGB compositing works on WebGL2 with HDR on. Bloom then only adds the `Bloom` component.
-        Hdr,
-    ));
 }

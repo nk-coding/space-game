@@ -51,14 +51,14 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiSystems, UiTransform};
 use bevy::window::PrimaryWindow;
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
 use bevy::state::state::StateTransitionEvent;
 use crate::camera::{CameraRig, CameraSet};
 use crate::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
-use crate::drydock::PlayerDesign;
+use crate::player::PlayerDesign;
 use crate::fleet::MAX_ESCORTS;
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::meshbuf::MeshBuf;
 use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;

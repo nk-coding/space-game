@@ -7,6 +7,7 @@
 //! * [`layout`]: where everything sits, a pure function of the frame size (a bigger frame, a bigger U).
 //! * [`draw`]: the meshes, flat vector shapes in the style tokens with a few glows.
 //! * [`fly`]: the camera's flight between the yard and a place (home flies it, `home.rs`).
+//! * `gate`: the ring of light at the gate after a recall.
 //!
 //! **Cost**: the station is three static meshes (the yard around the U, the building area's floor, the walls),
 //! rebuilt only when the frame size, the career's lights or the glow setting change; the docked ship is one mesh
@@ -24,18 +25,21 @@
 
 pub mod draw;
 pub mod fly;
+mod gate;
 pub mod layout;
 
 use bevy::prelude::*;
 use data::{Blueprint, Content, career::Career};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::{Atlas, AtlasMaterial, set_alpha, set_aperture};
 use crate::drydock::panels::DrydockRoot;
 use crate::map::portal::Portal;
 use crate::ui_kit::{ScreenFx, WorldCover};
+use crate::camera::CameraSet;
 use crate::career::{EscortDesigns, PlayerCareer};
-use crate::drydock::PlayerDesign;
+use crate::player::PlayerDesign;
+use crate::fx::FxFlush;
 use crate::meshbuf::MeshBuf;
 use crate::mode::AppMode;
 use crate::ship_model::{blueprint_visual, design_visual};
@@ -158,7 +162,9 @@ impl Plugin for ShipyardPlugin {
                     .in_set(ShipyardSet)
                     .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock)).or_eager(in_state(AppMode::Research)).or_eager(in_state(AppMode::Map))),
             )
-            .add_systems(Update, show.after(ShipyardSet).after(crate::map::portal::PortalSet));
+            .add_systems(Update, show.after(ShipyardSet).after(crate::map::portal::PortalSet))
+            .add_systems(PostUpdate, gate::gate_ring.after(CameraSet).before(FxFlush).run_if(in_state(AppMode::Home)))
+            .add_systems(OnExit(AppMode::Home), gate::forget);
     }
 }
 

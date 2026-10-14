@@ -53,7 +53,7 @@ use data::{Content, Part, Shape, Unlock};
 
 use crate::camera::CameraRig;
 use crate::career::{Granted, SeenPart, unlocked_by};
-use crate::flight_hud::HudFonts;
+use crate::ui_kit::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
@@ -63,7 +63,7 @@ use crate::ui_kit::{
     prose, ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, sub_tone, tracked,
 };
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 use super::actions::{ActionButton, DrydockAction, Rare, SearchField};
 use super::inspector::Inspector;
 use super::state::{BarMenu, DrydockStats, DrydockStatus, DrydockUi, Overlay, Tool, armor_materials, palette_sections};

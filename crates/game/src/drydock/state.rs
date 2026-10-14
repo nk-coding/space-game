@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::career::unlocked_by;
 use crate::ui_kit::Tone;
 
-use super::PlayerDesign;
+use crate::player::PlayerDesign;
 
 /// The editing tools (pills in the bottom bar, or its dropdown when the bar is narrow).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

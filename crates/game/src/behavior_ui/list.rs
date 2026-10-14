@@ -15,10 +15,10 @@ use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use data::Content;
 
-use crate::drydock::PlayerDesign;
-use crate::drydock::behaviors::{BehaviorEntry, PlayerBehaviors};
-use crate::drydock::library::{self, MAX_NAME, fresh_name};
-use crate::flight_hud::HudFonts;
+use crate::player::PlayerDesign;
+use crate::player::behaviors::{BehaviorEntry, PlayerBehaviors};
+use crate::player::library::{self, MAX_NAME, fresh_name};
+use crate::ui_kit::HudFonts;
 use crate::sim_bridge::GameContent;
 use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
@@ -715,7 +715,7 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
 
     use super::*;
-    use crate::drydock::library::DesignSlot;
+    use crate::player::library::DesignSlot;
     use crate::storage::{MemoryBackend, Storage};
 
     /// Leaving the screen with the list open (the DRYDOCK pill under it, T) hides its layer: it would cover the

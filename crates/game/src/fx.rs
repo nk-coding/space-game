@@ -17,9 +17,9 @@ use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
 use sim::{PieceId, ShipId};
 
-use crate::RenderToggles;
+use crate::params::RenderToggles;
 use crate::atlas::{Atlas, Region};
-use crate::backdrop::Rng;
+use crate::rng::Rng;
 use crate::camera::CameraSet;
 use crate::ship_view::{PieceView, core_tint, world_of};
 use crate::sim_bridge::{SimWorld, v2};

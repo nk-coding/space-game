@@ -15,7 +15,8 @@
 //! * **The hand-over** (every end of a voyage, and a lost test flight going back to the drydock or the BEHAVIOR
 //!   screen): over the last [`DIP_SECONDS`] the HUD closes with its screen transition (`ui_kit::ScreenFx`) and the
 //!   window dips to the backdrop's darkest colour; the next screen comes up out of it over [`LIFT_SECONDS`]. After a
-//!   recall a ring of light spreads from home's gate while home's camera flies out of it.
+//!   recall a ring of light spreads from home's gate while home's camera flies out of it (drawn by the shipyard,
+//!   `shipyard/gate.rs`).
 //! * **Lost** (`SHIP LOST · RECALLED HOME`, `VOYAGE ABANDONED`, a lost test flight): the world dims behind the
 //!   banner ([`LOST_DIM`]) before the dip.
 //!
@@ -31,15 +32,13 @@ use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 
-use crate::RenderToggles;
-use crate::camera::{CameraRig, CameraSet};
+use crate::params::RenderToggles;
+use crate::camera::{CameraRig, CameraSet, smootherstep};
 use crate::fx::{FxFlush, FxQueue, FxRegions, Z_SPARKS, Z_TRAILS};
 use crate::mode::AppMode;
-use crate::scene::{PLAYER, PilotFocus, Scene};
+use crate::scene::{PLAYER, Scene};
+use crate::sim_bridge::PilotFocus;
 use crate::ship_view::{PieceView, core_tint};
-use crate::shipyard::Yard;
-use crate::shipyard::fly::smootherstep;
-use crate::shipyard::layout::GATE_RADIUS;
 use crate::sim_bridge::SimWorld;
 use crate::style::{Style, UiPalette, mix, ui_color};
 use crate::ui_kit::EXIT_SECONDS;
@@ -108,9 +107,6 @@ const STREAK_TO: f32 = 1.3;
 const DASHES: u32 = 20;
 const SPIN: f32 = 0.35;
 const FLICKER_HZ: f32 = 22.0;
-/// The ring of light at home's gate after a recall (real time), and how far it spreads (gate radii).
-const GATE_SECONDS: f32 = 1.3;
-const GATE_REACH: f32 = 1.6;
 
 // The flagship has left before the dip begins, and the HUD has closed by the cut.
 const _: () = assert!(JUMP_AT + JUMP_SECONDS < WARP_SECONDS - DIP_SECONDS);
@@ -335,8 +331,8 @@ pub struct Transit {
     shown_dip: f32,
     lift: f32,
     lift_from: f32,
-    /// The ring at home's gate after a recall: seconds since it began.
-    gate: Option<f32>,
+    /// The ring at home's gate after a recall: seconds since it began (the shipyard draws it, `shipyard::gate`).
+    pub gate: Option<f32>,
 }
 
 impl Default for Transit {
@@ -391,12 +387,10 @@ impl Plugin for WarpFxPlugin {
                         .before(CameraSet)
                         .run_if(in_state(AppMode::Flight)),
                     draw.after(pose).before(FxFlush).run_if(in_state(AppMode::Flight)),
-                    gate_ring.after(CameraSet).before(FxFlush).run_if(in_state(AppMode::Home)),
                     veils.after(pose),
                 ),
             )
-            .add_systems(OnExit(AppMode::Flight), leave_flight)
-            .add_systems(OnExit(AppMode::Home), |mut t: ResMut<Transit>| t.gate = None);
+            .add_systems(OnExit(AppMode::Flight), leave_flight);
     }
 }
 
@@ -567,7 +561,7 @@ fn draw_vessel(queue: &mut FxQueue, regions: &FxRegions, ui: &UiPalette, v: &War
 }
 
 /// A ring of halo strips around `centre` (`dashes`: its turn and how many dashes, half of it lit).
-fn ring(queue: &mut FxQueue, regions: &FxRegions, centre: Vec2, radius: f32, width: f32, color: Color, dashes: Option<(f32, u32)>) {
+pub fn ring(queue: &mut FxQueue, regions: &FxRegions, centre: Vec2, radius: f32, width: f32, color: Color, dashes: Option<(f32, u32)>) {
     if color.alpha() <= 0.003 || radius <= 0.0 {
         return;
     }
@@ -591,35 +585,6 @@ fn ring(queue: &mut FxQueue, regions: &FxRegions, centre: Vec2, radius: f32, wid
             }
         }
     }
-}
-
-/// After a recall, home: the fleet is back through the gate: a flash and a ring of light spreading from it.
-fn gate_ring(
-    time: Res<Time<Real>>,
-    yard: Res<Yard>,
-    regions: Res<FxRegions>,
-    style: Res<Style>,
-    toggles: Res<RenderToggles>,
-    mut transit: ResMut<Transit>,
-    mut queue: ResMut<FxQueue>,
-) {
-    let Some(age) = transit.gate.as_mut() else { return };
-    *age += time.delta_secs().min(0.1);
-    let k = *age / GATE_SECONDS;
-    if k >= 1.0 {
-        transit.gate = None;
-        return;
-    }
-    if toggles.debug_shapes {
-        return;
-    }
-    let (teal, centre) = (style.ui.teal, yard.layout.gate);
-    let fade = (1.0 - k) * (1.0 - k);
-    let spread = 1.0 - (1.0 - k) * (1.0 - k);
-    queue.dot(&regions.soft, centre, GATE_RADIUS * 2.4, teal.with_alpha(0.35 * fade), Z_SPARKS);
-    let r = GATE_RADIUS * (0.6 + (GATE_REACH - 0.6) * spread);
-    ring(&mut queue, &regions, centre, r, 0.8 * (1.0 - k) + 0.2, teal.with_alpha(0.5 * fade), None);
-    ring(&mut queue, &regions, centre, r, 0.06, core_tint(teal).with_alpha(0.6 * fade), None);
 }
 
 /// The veils every frame, in every mode: in flight what the moment asks for; after a flight the lift.
