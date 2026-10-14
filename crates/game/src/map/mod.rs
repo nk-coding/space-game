@@ -19,21 +19,30 @@
 //!   nothing cut off); the map left of the panel, content's `map` positions in its rect, the shipyard bottom left,
 //!   the rim band's edges as arcs placed from the positions. **States** come from the career: open, cleared (with the
 //!   best time), locked, and a guardian at the chain's end.
-//! * **Drawing** (`draw`): the star map is one atlas mesh under the UI text (the world draws before bevy_ui), placed
-//!   over the stage node through the camera rig like `ui_icons`, rebuilt only when the states, the selection or
-//!   the hover change. The panel's ships are `ui_icons::UiIcon::Ship`.
-//! * **Input**: a click or a tap on a voyage (its marker or its label) selects it; ←/→ (and ↑/↓) step through the
-//!   voyages; Enter or SET COURSE launches; Esc or the ring button goes home (not while the portal is on its way out). SET COURSE is dimmed while the
-//!   selected voyage can't launch (`layout::course_blocker`: locked, another one underway, the fleet not ready); a
-//!   click then says why, as does a launch `voyage.rs` refuses.
+//! * **Drawing** (`draw`, `galaxy`): the star map is four atlas meshes under the UI text (the world draws before
+//!   bevy_ui), placed over the stage node through the camera rig like `ui_icons`, each with its own material for
+//!   its fade: the galaxy and its far layer (moved and scaled with the view), the voyages' detail (placed through
+//!   the view, rebuilt when the states, the selection, the hover or the view change) and the chrome (the legend
+//!   and the panel's backing, fixed). The panel's ships are `ui_icons::UiIcon::Ship`.
+//! * **The view** (`view`): zoom (the wheel or a pinch around the cursor, + / −, the buttons bottom right) from 2×
+//!   out to the whole galaxy, pan (drag), reset (0, a double click on empty space, the reset button); entering
+//!   starts at the default view. The panel, the header and the legend stay fixed.
+//! * **Input**: a click or a tap on a voyage (its marker or its label) selects it (zoomed far out, a click on its
+//!   beacon also zooms in to it); ←/→ (and ↑/↓) step through the voyages (bringing one off the view into it);
+//!   Enter or SET COURSE launches; Esc or the ring button goes home (back out through the gate; not while the portal
+//!   is on its way out). SET COURSE is dimmed while the selected
+//!   voyage can't launch (`layout::course_blocker`: locked, another one underway, the fleet not ready); a click
+//!   then says why, as does a launch `voyage.rs` refuses.
 //! * **Entering** selects the first open voyage whose goal is not cleared (`voyage::default_voyage`): after a voyage
 //!   that opened the next one, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home opens the gate, as V).
 //!
 //! UI words are chrome in code, like home's.
 
 pub mod draw;
+pub mod galaxy;
 pub mod layout;
 pub mod portal;
+pub mod view;
 
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiSystems, UiTransform};
@@ -52,15 +61,17 @@ use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
+use crate::ui_kit::{Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, snap_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, ring_glyph, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{LaunchRefused, StartVoyage, default_voyage, fleet_blocker};
 
 use portal::Portal;
 
 use draw::{LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look};
 use layout::{Geometry, PANEL_X, STAGE, VoyageState, chips, course_blocker, is_guardian, minutes, site_dots, site_rows, state_words};
+use view::{Anchored, Layer, MapView, TOP_Y, ViewButton, ZoomText};
 
-/// Above the world's layers (effects ≤ 400), under the UI icons (600) that draw the panel's ships.
+/// Above the world's layers (effects ≤ 400), under the UI icons (600) that draw the panel's ships; the map's meshes
+/// stack a little apart above it ([`Sheet::z`]).
 const Z_MAP: f32 = 550.0;
 /// The stage's scale against the window: whatever fits (a tall phone-like window shrinks it), at most 2.
 const SCALE: (f32, f32) = (0.3, 2.0);
@@ -97,11 +108,58 @@ struct MapRoot;
 #[derive(Component)]
 struct Stage;
 
-/// The star map's mesh and what it shows.
+/// One of the star map's meshes, its material (for its fade) and what it shows.
 #[derive(Component)]
 struct MapMesh {
+    sheet: Sheet,
     mesh: Handle<Mesh>,
-    built: Option<Look>,
+    material: Handle<AtlasMaterial>,
+    built: Option<Built>,
+}
+
+/// The star map's meshes, bottom to top.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sheet {
+    /// The galaxy (`galaxy::build`), moved and scaled with the view.
+    Galaxy,
+    /// Its far layer (`galaxy::build_far`), likewise.
+    Far,
+    /// The voyages' detail (`draw::build_detail`), placed through the view.
+    Detail,
+    /// The legend and the panel's backing (`draw::build_chrome`), fixed.
+    Chrome,
+}
+
+impl Sheet {
+    const ALL: [Sheet; 4] = [Sheet::Galaxy, Sheet::Far, Sheet::Detail, Sheet::Chrome];
+
+    fn z(self) -> f32 {
+        Z_MAP + 0.1 * self as u8 as f32
+    }
+
+    /// The layer it fades with as the view zooms.
+    fn layer(self) -> Layer {
+        match self {
+            Sheet::Galaxy | Sheet::Chrome => Layer::Always,
+            Sheet::Far => Layer::Far,
+            Sheet::Detail => Layer::Detail,
+        }
+    }
+
+    /// Moved and scaled with the view (else drawn in stage px).
+    fn zooms(self) -> bool {
+        matches!(self, Sheet::Galaxy | Sheet::Far)
+    }
+}
+
+/// What a mesh was built for (its rebuild key).
+#[derive(Clone, Debug, PartialEq)]
+enum Built {
+    /// Built once.
+    Fixed,
+    Far(Look),
+    /// The look and the view (zoom, offset).
+    Detail(Look, f32, Vec2),
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +167,7 @@ enum MapButton {
     Back,
     Voyage(usize),
     SetCourse,
+    View(ViewButton),
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,7 +216,9 @@ pub struct MapPlugin;
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         let geometry = Geometry::new(&app.world().resource::<GameContent>().0);
+        let view = MapView::new(geometry.band.centre, geometry.band.outer);
         app.insert_resource(MapGeometry(geometry))
+            .insert_resource(view)
             .init_resource::<VoyageMap>()
             .add_message::<OpenMap>()
             .add_plugins(portal::plugin)
@@ -167,7 +228,11 @@ impl Plugin for MapPlugin {
             .add_systems(Update, (show, fade_mesh).chain().after(portal::PortalSet))
             .add_systems(
                 Update,
-                (fit, input, refused, sync_map, sync_panel).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Map)),
+                (fit, view::input, input, view::ease, refused, sync_map, sync_panel, view::place_labels)
+                    .chain()
+                    .after(UiInputSet)
+                    .before(UiStyleSet)
+                    .run_if(in_state(AppMode::Map)),
             )
             .add_systems(
                 PostUpdate,
@@ -185,8 +250,9 @@ pub fn stage_scale(window: Vec2) -> f32 {
     (window.x / STAGE.x).min(window.y / STAGE.y).clamp(SCALE.0, SCALE.1)
 }
 
-/// Opening the map: the first open voyage not cleared yet is selected.
-fn enter(career: Res<PlayerCareer>, content: Res<GameContent>, mut map: ResMut<VoyageMap>) {
+/// Opening the map: the default view, the first open voyage not cleared yet selected.
+fn enter(career: Res<PlayerCareer>, content: Res<GameContent>, mut map: ResMut<VoyageMap>, mut view: ResMut<MapView>) {
+    view.snap_default();
     let content = &content.0;
     map.selected = default_voyage(career.career(), content).or(content.voyages.iter().next().map(|v| v.id.as_str())).map(str::to_string);
     map.say = None;
@@ -204,12 +270,21 @@ fn show(mode: Res<State<AppMode>>, portal: Res<Portal>, mut transitions: Message
     }
 }
 
-/// The map's drawing (a world mesh) shows and fades with the portal (and with the screen).
-fn fade_mesh(root: Single<&ScreenFx, With<MapRoot>>, portal: Res<Portal>, fade: Res<MapFade>, mut materials: ResMut<Assets<AtlasMaterial>>, mut mesh: Single<&mut Visibility, With<MapMesh>>) {
-    set_alpha(&mut materials, &fade.0, root.alpha().max(portal.map_alpha()));
-    let want = if root.visible() || portal.shows() { Visibility::Inherited } else { Visibility::Hidden };
-    if **mesh != want {
-        **mesh = want;
+/// The map's drawing (world meshes) shows and fades with the portal and the screen, each mesh also with its layer of
+/// the view; the chrome (the legend and the panel's backing) only with the screen, so it doesn't show through the
+/// opening before the panel slides in.
+fn fade_mesh(root: Single<&ScreenFx, With<MapRoot>>, portal: Res<Portal>, view: Res<MapView>, mut materials: ResMut<Assets<AtlasMaterial>>, mut meshes: Query<(&MapMesh, &mut Visibility)>) {
+    for (m, mut vis) in &mut meshes {
+        let (base, shows) = match m.sheet {
+            Sheet::Chrome => (root.alpha(), root.visible()),
+            _ => (root.alpha().max(portal.map_alpha()), root.visible() || portal.shows()),
+        };
+        let alpha = base * m.sheet.layer().alpha(view.zoom);
+        set_alpha(&mut materials, &m.material, alpha);
+        let want = if shows && alpha > 0.0 { Visibility::Inherited } else { Visibility::Hidden };
+        if *vis != want {
+            *vis = want;
+        }
     }
 }
 
@@ -217,10 +292,6 @@ fn fade_mesh(root: Single<&ScreenFx, With<MapRoot>>, portal: Res<Portal>, fade: 
 fn shown(root: Single<&ScreenFx, With<MapRoot>>, portal: Res<Portal>) -> bool {
     root.visible() || portal.shows()
 }
-
-/// The map drawing's material (its alpha is the screen's).
-#[derive(Resource)]
-struct MapFade(Handle<AtlasMaterial>);
 
 #[allow(clippy::too_many_arguments)]
 fn spawn(
@@ -233,16 +304,24 @@ fn spawn(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<AtlasMaterial>>,
 ) {
-    let mesh = meshes.add(MeshBuf::placeholder());
-    let fade = atlas.group_material(&mut materials);
-    commands.insert_resource(MapFade(fade.clone()));
-    commands.spawn((
-        MapMesh { mesh: mesh.clone(), built: None },
-        Mesh2d(mesh),
-        MeshMaterial2d(fade),
-        Transform::from_xyz(0.0, 0.0, Z_MAP),
-        Visibility::Hidden,
-    ));
+    let (white, soft) = (atlas.region("fx/white"), atlas.region("fx/dot_soft"));
+    for sheet in Sheet::ALL {
+        // The galaxy and the chrome never change: built here.
+        let (mesh, built) = match sheet {
+            Sheet::Galaxy => (galaxy::build(&geo.0, &style, &white, &soft), Some(Built::Fixed)),
+            Sheet::Chrome => (draw::build_chrome(&style, &white, &soft), Some(Built::Fixed)),
+            Sheet::Far | Sheet::Detail => (MeshBuf::placeholder(), None),
+        };
+        let mesh = meshes.add(mesh);
+        let material = atlas.group_material(&mut materials);
+        commands.spawn((
+            MapMesh { sheet, mesh: mesh.clone(), material: material.clone(), built },
+            Mesh2d(mesh),
+            MeshMaterial2d(material),
+            Transform::from_xyz(0.0, 0.0, sheet.z()),
+            Visibility::Hidden,
+        ));
+    }
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
@@ -265,8 +344,28 @@ fn spawn(
     commands.spawn((MapRoot, ScreenFx::closed().covering(), root, Visibility::Hidden)).with_children(|root| {
         root.spawn((Stage, Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() })).with_children(|stage| {
             // ---- The map (everything left of the panel) ----
-            // It fades in place: the map's drawing is placed from the stage.
-            stage.spawn((ScreenPart::new(Edge::Fade, 0), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), ..default() })).with_children(|m| {
+            // It fades in place: the map's drawing is placed from the stage. Labels moved past its edges by the view
+            // are cut there (and can't be clicked).
+            let map = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), overflow: Overflow::clip(), ..default() };
+            stage.spawn((ScreenPart::new(Edge::Fade, 0), map)).with_children(|m| {
+                // Under everything else: the galaxy's band names (seen zoomed out), halfway across each band: this
+                // band (`CHARTED`) and the next (`UNCHARTED`) above the centre, the narrower deeper ones below it.
+                let b = &geo.band;
+                let whole = MapView::new(b.centre, b.outer).whole();
+                for (k, ring) in galaxy::rings(b).iter().enumerate() {
+                    let up = if k < 2 { -1.0 } else { 1.0 };
+                    let at = b.centre + Vec2::new(0.0, up * (ring.outer + ring.inner) / 2.0);
+                    let laid = whole.to_screen(at);
+                    let top = if k < 2 { laid.y - 11.0 } else { laid.y - 6.0 };
+                    let node = Node { position_type: PositionType::Absolute, left: px(laid.x), top: px(top), width: px(0), align_items: AlignItems::Center, ..column(3.0) };
+                    let tone = if ring.charted { Tone::Teal } else { Tone::Label };
+                    m.spawn((Anchored::Far(at), UiTransform::default(), Visibility::Hidden, node)).with_children(|l| {
+                        l.spawn((label(fonts, &ring.key.to_uppercase(), if k == 0 { 10.5 } else { 9.0 }, c(tone, 0.9)), words));
+                        if k < 2 {
+                            l.spawn((label(fonts, if ring.charted { "CHARTED" } else { "UNCHARTED" }, 7.0, c(Tone::Dim, 1.0)), words));
+                        }
+                    });
+                }
                 // Top left: the way back and where we are.
                 m.spawn(Node { position_type: PositionType::Absolute, left: px(22), top: px(14), ..row(14.0) }).with_children(|tl| {
                     tl.spawn((ring_node(40.0), MapButton::Back, Tip::key("SHIPYARD", "ESC")))
@@ -276,33 +375,36 @@ fn spawn(
                         col.spawn(prose(fonts, "Voyages", 22.0, c(Tone::Number, 1.0)));
                     });
                 });
-                // The band names along the top: this band between its edges, the next one past the gate.
-                let b = &geo.band;
-                let y = 30.0;
-                let (outer, inner) = (b.x_at(b.outer, y).unwrap_or(0.0).max(0.0), b.x_at(b.inner, y).unwrap_or(PANEL_X));
-                let centred = |x: f32| Node { position_type: PositionType::Absolute, left: px(x), top: px(y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() };
-                m.spawn(centred(((outer + inner) / 2.0).max(330.0))).with_child((label(fonts, &b.key.replace('_', " ").to_uppercase(), 8.5, c(Tone::Label, 0.8)), words));
-                if let Some(next) = &b.next_key
-                    && inner + 60.0 < PANEL_X
-                {
-                    m.spawn(centred(inner + 34.0)).with_child((label(fonts, &next.replace('_', " ").to_uppercase(), 8.5, c(Tone::Coral, 0.8)), words));
+                // The band names along the top: this band between its edges, the next one past the gate (they slide
+                // along the line with the arcs, `view::MapView::top_band_x`).
+                let top = MapView::new(b.centre, b.outer).top_band_x(b);
+                let centred = |x: f32| Node { position_type: PositionType::Absolute, left: px(x), top: px(TOP_Y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() };
+                let names = [Some((b.key.as_str(), Tone::Label)), b.next_key.as_deref().map(|n| (n, Tone::Coral))];
+                for (k, (x, name)) in top.into_iter().zip(names).enumerate() {
+                    if let (Some(x), Some((name, tone))) = (x, name) {
+                        m.spawn((Anchored::TopBand(k, x), UiTransform::default(), centred(x))).with_child((label(fonts, &name.replace('_', " ").to_uppercase(), 8.5, c(tone, 0.8)), words));
+                    }
                 }
                 // The chain's times.
                 for (k, &route) in geo.routes.iter().enumerate() {
                     let at = geo.route_label(route);
-                    m.spawn((MapNode::Route(k), MapText::Route(k), label(fonts, "", 8.0, c(Tone::Teal, 0.85)), words, abs(at.x, at.y - 5.0)));
+                    let anchor = Anchored::At(geo.ends(route).0.lerp(geo.ends(route).1, 0.5), Layer::Detail);
+                    m.spawn((MapNode::Route(k), MapText::Route(k), anchor, UiTransform::default(), label(fonts, "", 8.0, c(Tone::Teal, 0.85)), words, abs(at.x, at.y - 5.0)));
                 }
                 // The shipyard's label, left of it.
                 let h = geo.home;
-                m.spawn(Node { position_type: PositionType::Absolute, right: px(PANEL_X - h.x + 22.0), top: px(h.y - 10.0), align_items: AlignItems::FlexEnd, ..column(4.0) })
+                let node = Node { position_type: PositionType::Absolute, right: px(PANEL_X - h.x + 22.0), top: px(h.y - 10.0), align_items: AlignItems::FlexEnd, ..column(4.0) };
+                m.spawn((Anchored::At(h, Layer::Always), UiTransform::default(), node))
                     .with_children(|l| {
                         l.spawn((label(fonts, "SHIPYARD", 10.5, c(Tone::Number, 0.9)), words));
                         l.spawn((label(fonts, "HOME  ·  DOCKED", 8.5, c(Tone::Label, 1.0)), words));
                     });
-                // The voyages: a click area on each marker, and its label (a click area too).
+                // The voyages: a click area on each marker (on its beacon zoomed out), and its label (a click area
+                // too, faded out with the detail).
                 for (k, v) in content.voyages.iter().enumerate() {
                     let at = geo.nodes[k];
-                    m.spawn((MapButton::Voyage(k), Hot::default(), Node { position_type: PositionType::Absolute, left: px(at.x - 22.0), top: px(at.y - 22.0), width: px(44), height: px(44), ..default() }));
+                    let marker = Node { position_type: PositionType::Absolute, left: px(at.x - 22.0), top: px(at.y - 22.0), width: px(44), height: px(44), ..default() };
+                    m.spawn((MapButton::Voyage(k), Hot::default(), Anchored::At(at, Layer::Always), UiTransform::default(), marker));
                     let left = geo.label_left(k);
                     let mut node = Node { position_type: PositionType::Absolute, top: px(at.y - 10.0), align_items: if left { AlignItems::FlexEnd } else { AlignItems::FlexStart }, ..column(4.0) };
                     if left {
@@ -310,7 +412,7 @@ fn spawn(
                     } else {
                         node.left = px(at.x + 24.0);
                     }
-                    m.spawn((MapButton::Voyage(k), Hot::default(), node)).with_children(|l| {
+                    m.spawn((MapButton::Voyage(k), Hot::default(), Anchored::At(at, Layer::Detail), UiTransform::default(), node)).with_children(|l| {
                         l.spawn((MapText::Name(k), label(fonts, &v.name.to_uppercase(), 10.5, c(Tone::Number, 1.0)), words));
                         l.spawn((MapText::State(k), label(fonts, "", 8.5, c(Tone::Teal, 1.0)), words));
                         l.spawn((MapNode::Dots(k), Node { margin: UiRect::top(px(2)), ..row(4.0) })).with_children(|d| {
@@ -330,6 +432,14 @@ fn spawn(
                         m.spawn((label(fonts, name, 8.0, c(Tone::Label, 1.0)), words, abs(LEGEND_COLUMNS[k] + LEGEND_GAP, LEGEND_ROWS[r] - 5.5)));
                     }
                 }
+                // The view's buttons, bottom right (as the drydock's zoom).
+                let at = Node { position_type: PositionType::Absolute, right: px(24), top: px((LEGEND_ROWS[0] + LEGEND_ROWS[1]) / 2.0 - 14.0), ..row(10.0) };
+                m.spawn((UiBlock, at)).with_children(|z| {
+                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomOut), Tip::key("ZOOM OUT", "−"))).with_child(ring_glyph(Glyph::Minus, 13.0));
+                    z.spawn((ZoomText, number(fonts, "100 %", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), justify_content: JustifyContent::Center, ..default() }));
+                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomIn), Tip::key("ZOOM IN", "+"))).with_child(ring_glyph(Glyph::Plus, 13.0));
+                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::Reset), Tip::key("RESET VIEW", "0"))).with_child(ring_glyph(Glyph::Fit, 13.0));
+                });
             });
 
             // ---- The panel: the selected voyage, the fleet, SET COURSE ----
@@ -454,6 +564,8 @@ fn input(
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     fleet: FleetNow,
+    geo: Res<MapGeometry>,
+    mut view: ResMut<MapView>,
     mut map: ResMut<VoyageMap>,
     mut portal: ResMut<Portal>,
     mut start: MessageWriter<StartVoyage>,
@@ -476,9 +588,15 @@ fn input(
     for c in clicks.read() {
         match buttons.get(c.0) {
             Ok(MapButton::Back) => portal.leave(),
-            Ok(MapButton::Voyage(k)) => select(&mut map, *k),
+            Ok(MapButton::Voyage(k)) => {
+                select(&mut map, *k);
+                // Zoomed out past the labels: a click on a beacon also zooms in to it.
+                if view::detail_alpha(view.target) < 0.5 {
+                    view.zoom_to(geo.0.nodes[*k]);
+                }
+            }
             Ok(MapButton::SetCourse) => launch = true,
-            Err(_) => {}
+            Ok(MapButton::View(_)) | Err(_) => {}
         }
     }
     if !pointer.typing && n > 0 {
@@ -496,7 +614,9 @@ fn input(
             0
         };
         if step > 0 {
-            select(&mut map, at.map_or(0, |k| (k + step) % n));
+            let k = at.map_or(0, |k| (k + step) % n);
+            select(&mut map, k);
+            view.show(geo.0.nodes[k]);
         }
     }
     if launch && let Some(id) = map.selected.clone() {
@@ -518,7 +638,7 @@ fn refused(mut refusals: MessageReader<LaunchRefused>, mut map: ResMut<VoyageMap
 }
 
 /// The map's words: the header, each voyage's name and state, its dots, the chain's times.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn sync_map(
     map: Res<VoyageMap>,
     career: Res<PlayerCareer>,
@@ -738,14 +858,15 @@ fn sync_panel(
     }
 }
 
-/// The star map's mesh: rebuilt when what it shows changes, placed over the stage (stage px → world through the
-/// camera rig, as `ui_icons` places icons).
+/// The star map's meshes: each rebuilt when what it shows changes, placed over the stage (stage px → world through
+/// the camera rig, as `ui_icons` places icons), the galaxy's moved and scaled with the view.
 #[allow(clippy::too_many_arguments)]
 fn place_mesh(
     stage: Single<(&ComputedNode, &UiGlobalTransform), With<Stage>>,
     window: Single<&Window, With<PrimaryWindow>>,
     rig: Res<CameraRig>,
-    mesh: Single<(&mut MapMesh, &mut Transform)>,
+    view: Res<MapView>,
+    mut sheets: Query<(&mut MapMesh, &mut Transform)>,
     geo: Res<MapGeometry>,
     map: Res<VoyageMap>,
     career: Res<PlayerCareer>,
@@ -757,37 +878,64 @@ fn place_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let content = &content.0;
-    let look = Look {
+    let far = Look {
         states: VoyageState::all(content, career.career()),
         guardian: content.voyages.iter().map(|v| is_guardian(content, v)).collect(),
+        selected: None,
+        hovered: None,
+        glow: toggles.glow_sprites,
+    };
+    let look = Look {
         selected: map.selected.as_deref().and_then(|id| content.voyages.position(id)),
         hovered: hots.iter().find_map(|(b, h)| match b {
             MapButton::Voyage(k) if h.hovered => Some(*k),
             _ => None,
         }),
-        glow: toggles.glow_sprites,
+        ..far.clone()
     };
-    let (mut m, mut tf) = mesh.into_inner();
-    if m.built.as_ref() != Some(&look) {
-        let built = draw::build(&geo.0, &look, &style, &atlas.region("fx/white"), &atlas.region("fx/dot_soft"));
-        let _ = meshes.insert(&m.mesh, built);
-        m.built = Some(look);
-    }
     let (node, at) = *stage;
     let scale = window.scale_factor();
     let k = node.size.x / scale / STAGE.x;
     if k <= 0.0 {
         return;
     }
-    let want = Transform {
-        translation: rig.screen_to_world(at.translation / scale).extend(Z_MAP),
-        scale: Vec3::new(k / rig.zoom, k / rig.zoom, 1.0),
-        ..default()
-    };
-    if *tf != want {
-        *tf = want;
+    // World units per stage px, and where the stage's centre is.
+    let unit = k / rig.zoom;
+    let centre = rig.screen_to_world(at.translation / scale);
+    let (white, soft) = (atlas.region("fx/white"), atlas.region("fx/dot_soft"));
+    for (mut m, mut tf) in &mut sheets {
+        let want = match m.sheet {
+            Sheet::Far => Some(Built::Far(far.clone())),
+            Sheet::Detail => Some(Built::Detail(look.clone(), view.zoom, view.offset)),
+            Sheet::Galaxy | Sheet::Chrome => None,
+        };
+        if let Some(want) = want.filter(|w| m.built.as_ref() != Some(w)) {
+            let mesh = match m.sheet {
+                Sheet::Far => galaxy::build_far(&geo.0, &far.states, &far.guardian, far.glow, &style, &white, &soft),
+                _ => draw::build_detail(&geo.0, &look, |g| view.to_screen(g), &style, &white, &soft),
+            };
+            let _ = meshes.insert(&m.mesh, mesh);
+            m.built = Some(want);
+        }
+        // A zooming sheet: galaxy px → stage px on screen is `g × zoom + offset` (`view::MapView`); in the mesh's
+        // frame (origin at the stage's centre, y up) that is a scale by the zoom and this shift.
+        let (shift, s) = if m.sheet.zooms() {
+            let z = view.zoom;
+            (Vec2::new((z - 1.0) * STAGE.x / 2.0 + view.offset.x, (1.0 - z) * STAGE.y / 2.0 - view.offset.y), z)
+        } else {
+            (Vec2::ZERO, 1.0)
+        };
+        let want = Transform {
+            translation: (centre + shift * unit).extend(m.sheet.z()),
+            scale: Vec3::new(s * unit, s * unit, 1.0),
+            ..default()
+        };
+        if *tf != want {
+            *tf = want;
+        }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

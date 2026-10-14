@@ -31,7 +31,7 @@ use bevy::prelude::*;
 use bevy::state::state::StateTransitionEvent;
 use bevy::window::PrimaryWindow;
 
-use super::{MapFade, MapMesh};
+use super::{MapMesh, Sheet};
 use crate::RenderToggles;
 use crate::atlas::{Aperture, Atlas, Region, set_aperture};
 use crate::camera::CameraRig;
@@ -188,10 +188,13 @@ pub(super) fn plugin(app: &mut App) {
         .add_systems(PostUpdate, remember.after(crate::camera::CameraSet).run_if(in_state(AppMode::Home)));
 }
 
-/// The map's drawing goes under its pivot; the ring's mesh.
-fn spawn(mut commands: Commands, mesh: Single<Entity, With<MapMesh>>, atlas: Res<Atlas>, mut meshes: ResMut<Assets<Mesh>>) {
+/// The map's drawings go under its pivot (not the chrome: the legend and the panel's backing open with the screen,
+/// fixed); the ring's mesh.
+fn spawn(mut commands: Commands, sheets: Query<(Entity, &MapMesh)>, atlas: Res<Atlas>, mut meshes: ResMut<Assets<Mesh>>) {
     let pivot = commands.spawn((MapPivot, Transform::default(), Visibility::default())).id();
-    commands.entity(*mesh).insert(ChildOf(pivot));
+    for (e, _) in sheets.iter().filter(|(_, m)| m.sheet != Sheet::Chrome) {
+        commands.entity(e).insert(ChildOf(pivot));
+    }
     let ring = meshes.add(MeshBuf::placeholder());
     commands.spawn((PortalRing(ring.clone()), Mesh2d(ring), MeshMaterial2d(atlas.material.clone()), Transform::from_xyz(0.0, 0.0, Z_RING), Visibility::Hidden));
 }
@@ -228,7 +231,7 @@ fn animate(
     time: Res<Time<Real>>,
     window: Single<&Window, With<PrimaryWindow>>,
     yard: Res<Yard>,
-    fade: Res<MapFade>,
+    sheets: Query<&MapMesh>,
     style: Res<Style>,
     atlas: Res<Atlas>,
     toggles: Res<RenderToggles>,
@@ -269,7 +272,9 @@ fn animate(
     });
     portal.aperture = aperture;
     let cut = aperture.map(|(c, r)| Aperture { centre: c * portal.scale, radius: r * portal.scale, inside: true });
-    set_aperture(&mut materials, &fade.0, cut);
+    for m in sheets.iter().filter(|m| m.sheet != Sheet::Chrome) {
+        set_aperture(&mut materials, &m.material, cut);
+    }
     // The map's depth: scaled around the window's centre, which follows the aperture's until it settles.
     let s = settle(t);
     let want = match aperture {
