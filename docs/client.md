@@ -172,9 +172,9 @@ names in this document are found in the crate that holds them:
 
 | Crate | Modules |
 |---|---|
-| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `fonts`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
-| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud`, `fleet_bar`, `test_range`, `tuning`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
-| `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `research`, `map`, `debrief` (the panel), `drydock`, `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
+| `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
+| `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`), `fleet_bar`, `test_range`, `tuning`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
+| `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `research`, `map`, `debrief` (the panel), `drydock` (`panels/`: `spawn`, `sync`; `blueprints/`: `autosave`, `title`, `screens`, `handlers`, `sync`), `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
 
 ```
 RunFixedMainLoop      flight, before the ticks: fleet bar clicks → controls (keys, mouse, touch → PlayerInput, latched
@@ -313,7 +313,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   [`results/chain-blast.png`](results/chain-blast.png) (a fission reactor's chain: its ring growing over
   the flash, a capacitor's at full reach, a thruster's starting; a thruster's ring fading on the right),
   [`results/chain-blast-later.png`](results/chain-blast-later.png) (a moment later).
-- **HUD** (`flight_hud.rs`, Barlow from `assets/fonts`, OFL): the home ring top left (what M does, for touch; its
+- **HUD** (`flight_hud/`, Barlow from `assets/fonts`, OFL): the home ring top left (what M does, for touch; its
   clicks never reach the world: `HudButton`), hull %, hull map (one cell per part of the shown ship's design,
   rebuilt when the ship or its compiled design changes: every new sim numbers its ships from 0, so the id alone
   can't tell a test flight of an edited design from the last flight), the hold (`CARGO 3 / 8`: cargo units
@@ -471,7 +471,7 @@ game keeps the save".
 
 Track 7H of the first playable loop, 14 Oct 2026 (GDR-0062, GDR-0065, GDR-0068, ADR-0033; the sim's side is
 `docs/sim.md` "Voyages", the career's `docs/career.md` "Voyages"). Code: `voyage/mod.rs` (launch, run, end),
-`scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `voyage/debrief.rs` and `debrief.rs` (the debrief's data and its panel).
+`scene.rs` (`SceneKind::Voyage`: the world), `flight_hud/` (the voyage HUD), `voyage/debrief.rs` and `debrief.rs` (the debrief's data and its panel).
 Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (the start: sites, cargo, RECALL),
 `voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png` (before the
 transitions), `voyage-warp-out-1.png` (the fleet charging), `voyage-warp-out-2.png` (the jump: stretched, darting
@@ -515,7 +515,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
 - **Lost**: when the player has no vessel left, `SHIP LOST` / `RECALLED HOME` / `THE HAUL STAYS IN THE WRECK · 5
   PARTS LOST · YOUR SHIPS RE-FORM AT HOME` with a 3 s countdown (`voyage-hud-lost.png`), the cargo block says
   `LEFT IN THE WRECK`; then `VoyageEnd::Lost { ticks }`, the save, home. **Abandoning** (GDR-0077): M opens the ABANDON
-  VOYAGE? panel (`flight_hud.rs`; centred low over the help line, so the ship stays in sight; it slides up from
+  VOYAGE? panel (`flight_hud/`; centred low over the help line, so the ship stays in sight; it slides up from
   the bottom and back): `THE HAUL IS LOST · 5 PARTS STAY BEHIND` (every hold's items), `The voyage counts as lost.
   Your ships re-form at home.`, `THE FLIGHT GOES ON WHILE YOU DECIDE`, and the pills ABANDON VOYAGE (coral, tooltip
   `ENTER`) and KEEP FLYING (tooltip `ESC / M`). The sim keeps running while it is open (a real-time sim, co-op
@@ -854,7 +854,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   `?fleet=` wingmen, re-forms and test flights fly it; raiders stay content ships.
 - **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or tuning
   change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
-  5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels.rs`): the screen's nodes, spawned once and updated in place from the resources (the
+  5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels/`): the screen's nodes, spawned once and updated in place from the resources (the
   palette list and its key stat). **Behaviors** (`player/behaviors.rs`): `PlayerBehaviors`, the player's saved behaviors
   on the storage layer, the behavior a design names and its fallback with a banner ([drydock.md](drydock.md#behaviors-storage-designs-and-tests)).
 - **Stats and status** (`stats.rs`): whenever `report::DrydockReport` is recomputed, `stats::update` fills
@@ -887,7 +887,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   Material, Overlay, Category, PickPart, ZoomIn, ZoomOut, Flip, Delete, Deselect, PartMaterial, PartTier,
   PartWeight}`. Handled here: the UI state and TestFly (when the design can fly: `Scene::launch` +
   `NextState(Flight)`); the camera handles the zoom, `tools::apply` the editing (undo, redo, mirror, bevel, rotate,
-  the selected part), `blueprints.rs` save, export and the blueprint list (below), `behavior_ui` the BEHAVIOR
+  the selected part), `blueprints/` save, export and the blueprint list (below), `behavior_ui` the BEHAVIOR
   button; Menu (the ring button) goes home. New handlers read the message in a system in
   `DockSet::Apply` (`Input → Apply → Show`, drydock only), change `PlayerDesign` through `PlayerDesign::edit` (the revision goes up by itself), and
   write `DrydockStats` / `DrydockStatus`; `DrydockCursor::cell` is the frame cell under the pointer.
@@ -902,7 +902,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   centres the rig on the grid viewport between the panels while the camera still covers the window, and the
   screen ↔ world helpers include it. Opening the drydock remembers the flight zoom; leaving restores it and keeps
   the drydock's view for the next visit.
-- **Storage and sharing** (`storage.rs`, `clipboard.rs`, `player/library.rs`, `share.rs`, `blueprints.rs`;
+- **Storage and sharing** (`storage.rs`, `clipboard.rs`, `player/library.rs`, `share.rs`, `blueprints/`;
   [drydock.md "Storage and sharing"](drydock.md#storage-and-sharing)): `Storage` (named RON documents per
   namespace with a format version; the browser's local storage on the web, files in the user's data directory on
   desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the
@@ -912,7 +912,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   before the editing tools and the report, so a design opened, renamed or moved to another frame gets its report
   and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
   status for the current revision (`blueprints::announce`).
-- **Widgets** (`ui_kit.rs`): labels (tracked uppercase), numbers, prose, pills (Barlow medium, as the mockup's
+- **Widgets** (`ui_kit/`): labels (tracked uppercase), numbers, prose, pills (Barlow medium, as the mockup's
   semi-bold pills; plain, active teal, active gold, the glowing primary, disabled, bare list rows; `PillLock`: a lock
   icon shown only while the pill is disabled, for locked armour and frames), ring buttons, value bars, corner
   brackets and a one-line
@@ -1399,7 +1399,7 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 - **A new FX texture**: add it to `Layout::new` in `crates/client/art` (as SVG: a blurred `soft` document under a `crisp`
   one, either optional, so no step blurs a large region; or a `Proc` function of `(u, v)`; with a size in atlas
   units), look it up once in `fx::FxRegions`.
-- **HUD text**: add a `HudText` variant in `flight_hud.rs` and fill it in `update_text` (8 Hz, re-laid out only
+- **HUD text**: add a `HudText` variant in `flight_hud/` and fill it in `update_text` (8 Hz, re-laid out only
   when the text changes). UI colours go through `style::ui_color` (the world composites in sRGB space and
   bevy_ui does not encode for it).
 

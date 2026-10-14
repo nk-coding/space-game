@@ -201,7 +201,7 @@ names).
 
 ## Editing model
 
-`data::behavior::edit::BehaviorEditor` (`crates/core/data/src/behavior/edit.rs`, added 13 Oct 2026) is the editing model
+`data::behavior::edit::BehaviorEditor` (`crates/core/data/src/behavior/edit/`, added 13 Oct 2026) is the editing model
 of the BEHAVIOR screen (GDR-0057), the counterpart of the drydock's `data::design::edit::Drydock`: no Bevy, no threads, no
 filesystem, so it builds for wasm32. Both views edit through it: the graph view and the inspector call its
 operations, the text view replaces the program with `set_text`. Tests: `crates/core/data/tests/behavior_edit.rs`.

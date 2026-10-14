@@ -13,7 +13,7 @@
 //! * **A palette part**: icon, name, footprint, category (and the armour of hull parts), its summary, its stat
 //!   lines from content and the bonuses it gives.
 //!
-//! The widgets are the panel's (`panels.rs` shows the texts and icon from [`Inspector`]); the controls below
+//! The widgets are the panel's (`panels/` shows the texts and icon from [`Inspector`]); the controls below
 //! are spawned and kept here.
 
 use bevy::prelude::*;

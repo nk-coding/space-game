@@ -53,7 +53,7 @@ credits, no trading.
 
 ### What the code has today
 
-- `locked: bool` on `data::model::Part` and `Material` (`crates/core/data/src/content/model.rs`); set on `automaton_core` and
+- `locked: bool` on `data::model::Part` and `Material` (`crates/core/data/src/content/model/`); set on `automaton_core` and
   `automaton_cannon` (`content/base/parts/automatons.ron`) and `automaton_plate` (`content/base/materials/armor.ron`).
   The drydock filters on it in `palette_parts` and `armor_materials` (`crates/client/game/src/drydock/state.rs`).
   Validation makes a locked paint block or bevel slope, or every armour material locked, an error.
@@ -290,7 +290,7 @@ and Niklas.
 | Progression rules and the profile type | `data::progress` (new module, pure) | no I/O, integer amounts, `BTreeMap`/`Vec` only; used by `game`, later `net` and `arena` |
 | Holds, stripping, fragments | `sim::salvage` (new module), `world.rs`, `events.rs`, `config.rs`, `hash` | deterministic, hashed |
 | Owner-wide refinements | `sim::design` (`ShipDesign::compile` gains modifiers), `sim::report` | later track |
-| Runs, HUD, FX, screens, the save document | `game` (`scene.rs`, `flight_hud.rs`, `fx.rs`, new `shipyard/` screens, `storage.rs` namespace `saves`) | |
+| Runs, HUD, FX, screens, the save document | `game` (`scene.rs`, `flight_hud/`, `fx.rs`, new `shipyard/` screens, `storage.rs` namespace `saves`) | |
 
 A new crate (`campaign`) was considered for the rules. It would keep `data` about content, but today the rules
 are small, pure and content-shaped, like `data::edit`. Proposed ADR: start in `data::progress`, move to a crate
@@ -500,7 +500,7 @@ Pure, integer amounts, ordered containers, errors as values with words for the s
 
 ### 5.5 Client
 
-Flight (`scene.rs`, `flight_hud.rs`, `fx.rs`):
+Flight (`scene.rs`, `flight_hud/`, `fx.rs`):
 - A **salvage run** scene next to the test flight: started by LAUNCH (bottom bar of the drydock), raider waves on,
   the dock ring at the start point (a dotted ring, `docs/style-guide.md`), `DOCK · H` when inside and safe.
 - HUD: `HOLD 6/8` beside the hull map; strippable wreck pieces outlined gold, too-big ones coral `TOO BIG`;

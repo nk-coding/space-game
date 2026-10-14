@@ -1,6 +1,6 @@
 //! The player's design library on top of the storage layer (`crate::storage`): saved designs, the working
 //! design, ids from names, fresh names for copies, the autosave timer. Plain functions over [`Storage`],
-//! `Content` and [`PlayerDesign`], so they are tested without an app; `blueprints.rs` calls them from the UI.
+//! `Content` and [`PlayerDesign`], so they are tested without an app; `blueprints/` calls them from the UI.
 //!
 //! * **Saved designs** ([`DesignDoc`], `designs/<id>`): the content ship format (`data::blueprint_to_ron`) in
 //!   the design's drydock frame: `size` = the frame, parts in frame coordinates, `id` = the design's id. Opening

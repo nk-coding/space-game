@@ -8,7 +8,7 @@
 //!   along its heading and darts ahead out of sight (the escorts a moment before the flagship, [`ESCORT_LEAD`]); a
 //!   flash and a ring stay where it left, a streak along its way fades. The emergency recall (no working gun,
 //!   GDR-0074) charges unstable: amber and coral instead of teal, flickering, its rings and its jump shaking; the
-//!   banner says `EMERGENCY WARP` in gold (`flight_hud.rs`).
+//!   banner says `EMERGENCY WARP` in gold (`flight_hud/`).
 //! * **Arrival** (a voyage's first [`ARRIVE_SECONDS`]): the reverse. The world comes up out of the dark while the HUD
 //!   slides in; each vessel streaks in from behind, settles onto its place with a flash and a ring, and its glow
 //!   fades; the camera eases back out.

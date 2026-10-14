@@ -12,7 +12,7 @@ starts, salvage blocks, `locked`) is described in `content-model.md`.
 
 | Piece | Where | Doc |
 |---|---|---|
-| The model: the save's facts, the rules, unloading, voyage seeds, readiness | `data::career` (`crates/core/data/src/career.rs`), tests `crates/core/data/tests/career.rs` | below |
+| The model: the save's facts, the rules, unloading, voyage seeds, readiness | `data::career` (`crates/core/data/src/career/`), tests `crates/core/data/tests/career.rs` | below |
 | The content it reads | `Content.families`, `.research`, `.starts`, `Part::salvage`, `Material::salvage`, `locked` | `content-model.md` "Salvage", "Research families", "Research nodes", "Starts" |
 | Cargo and collecting (the items a haul is made of) | `sim::combat::salvage` (track 7B) | `sim.md` "Salvage" |
 | Voyages as content, rolling and running them | `Content.voyages`, `.encounters`; `sim::voyage` (track 7E) | `content-model.md` "Voyages", "Encounters"; `sim.md` "Voyages" |

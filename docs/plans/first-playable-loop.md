@@ -39,7 +39,7 @@ escort a behavior, and fly further. Four voyages end at the Warden, an automaton
 | Death | The sandbox re-forms the ship in place; a test flight returns to the drydock | Mild death per GDR-0029: recalled home, the haul stays with the wreck |
 | Fleet and mind capacity | Vessels, focus, dormant vessels, fleet bar (`fleet_bar.rs`, GDR-0050); `SimConfig::mind_capacity` (player 24, `?mind=N`); wingmen via `?fleet=N` | Mind capacity as a progression number; escorts chosen at home |
 | Storage | `game::storage` (ADR-0031): named, versioned RON documents; `designs/`, `drydock/`, `behaviors/` in use, `saves/` and `settings/` planned | The player's save (progress, unlocks, research data, fleet) |
-| HUD | Hull, speed, target panel, warnings, fleet bar (`flight_hud.rs`) | Cargo, site markers, voyage title, recall |
+| HUD | Hull, speed, target panel, warnings, fleet bar (`flight_hud/`) | Cargo, site markers, voyage title, recall |
 | Determinism | Native vs wasm IDENTICAL on `core`, `flight`, `load`, `behavior` scenarios (`sim::scenario`) | A `voyage` scenario covering salvage and the encounter logic |
 | Content | 20 parts, 4 materials, 3 frames, 4 ships, 2 behaviors (`content/base`) | The slice's content (section 3) |
 
@@ -590,7 +590,7 @@ director's maneuver, awake ones fly their faction's behavior.
   recall a 3 s warp-out, then Home with the haul.
 - **`sim_bridge::apply_events`**: `Collected` → a small effect (the part's tile flies into the ship, `fx.rs`);
   `SiteWoke` / `SiteCleared` → banners.
-- **`flight_hud.rs`**: cargo, voyage title and site counts, site markers (the off-screen marker code exists), RECALL.
+- **`flight_hud/`**: cargo, voyage title and site counts, site markers (the off-screen marker code exists), RECALL.
 - **A `career` module** (Bevy side): `CareerPlugin` holds the save (`Career` resource), loads it at start (or starts a
   new game), writes it at the moments above, and provides `Unlocks` to the drydock, the map and the research screen.
 - **The drydock**: palette, armour pills and frame pills read `Unlocks` instead of only the content flag; the status

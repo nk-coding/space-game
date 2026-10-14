@@ -1,6 +1,6 @@
 //! Voyages in flight (track 7H; GDR-0062, GDR-0065, GDR-0068, ADR-0033; `docs/client.md` "Voyages"): launching
 //! one, what happens while it runs, and how it ends. The scene builds the voyage's world (`scene.rs`,
-//! `SceneKind::Voyage`), the HUD shows it (`flight_hud.rs`), the debrief reports it at home (`debrief.rs`).
+//! `SceneKind::Voyage`), the HUD shows it (`flight_hud/`), the debrief reports it at home (`debrief.rs`).
 //!
 //! * **Launch** ([`StartVoyage`], or `?scene=voyage&voyage=<id>` at start): the career records the launch
 //!   (`Career::voyage_launched`: the voyage's seed, `underway`) and the save is written at once, so closing or
@@ -18,7 +18,7 @@
 //!   (`VoyageEnd::Recalled`, the goal cleared or not); losing every vessel shows `SHIP LOST · RECALLED HOME` and
 //!   ends 3 s later (`VoyageEnd::Lost`: the haul stays in the wrecks). Either way the save is written and the
 //!   debrief opens at home. Leaving flight any other way while a recorded voyage runs counts as lost too.
-//! * **Abandoning** (GDR-0077): M opens the ABANDON VOYAGE? panel (`flight_hud.rs`); its ABANDON VOYAGE (or Enter)
+//! * **Abandoning** (GDR-0077): M opens the ABANDON VOYAGE? panel (`flight_hud/`); its ABANDON VOYAGE (or Enter)
 //!   ends the voyage as lost (`Phase::Lost { abandoned: true }`, every hold's cargo stays behind), KEEP FLYING, Esc
 //!   or M again close it. The sim runs on while it is open (a real-time sim, co-op later: nothing pauses).
 
@@ -91,7 +91,7 @@ pub struct VoyageRun {
     pub phase: Phase,
     /// R or the RECALL pill asked for the recall; the next tick takes it.
     pub recall: bool,
-    /// The ABANDON VOYAGE? panel is open (M opens it; `flight_hud.rs` shows it).
+    /// The ABANDON VOYAGE? panel is open (M opens it; `flight_hud/` shows it).
     pub asking: bool,
     /// The panel's ABANDON VOYAGE (or Enter): the next tick abandons the voyage (it is lost).
     pub abandon: bool,
@@ -277,7 +277,7 @@ fn start(
     }
 }
 
-/// R asks for the recall (the RECALL pill does the same, `flight_hud.rs`). M opens the ABANDON VOYAGE? panel and
+/// R asks for the recall (the RECALL pill does the same, `flight_hud/`). M opens the ABANDON VOYAGE? panel and
 /// closes it again, Esc closes it, Enter abandons the voyage (like the panel's button; it counts as lost, like
 /// closing the game: the way out of a stalemate).
 fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>, scene: Res<Scene>) {

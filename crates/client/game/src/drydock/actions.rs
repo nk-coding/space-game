@@ -3,7 +3,7 @@
 //! never touch widget code; this module handles the UI state (tool, material, overlays, category, picked part),
 //! the test flight and the ring menu (home). Zoom is handled by the camera (`view.rs`), editing (undo / redo,
 //! mirror, bevel, rotate, the selected part) by `tools.rs`, saving, export and the blueprint list by
-//! `blueprints.rs`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
+//! `blueprints/`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
 //!
 //! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, R / Shift+R
 //! (or Shift+wheel down / up over the grid) and E / Q turn (the selected part, else the brush), F flip, Delete /
@@ -64,12 +64,12 @@ pub enum DrydockAction {
     OpenMenu(BarMenu),
     /// Closes the open menu (Esc, a click outside it).
     CloseMenu,
-    /// One of the ⋯ menu's rarer actions (`blueprints.rs`).
+    /// One of the ⋯ menu's rarer actions (`blueprints/`).
     Rare(Rare),
 }
 
 /// The ⋯ menu's rarer actions (GDR-0082): shortcuts to what BLUEPRINTS and EXPORT offer, carried out the same way
-/// (`blueprints.rs`).
+/// (`blueprints/`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Rare {
     /// An empty design in the frame of the one in the drydock (that one is saved first when it has changes).
@@ -267,7 +267,7 @@ pub(super) fn apply(
             }
             DrydockAction::Menu => next.set(AppMode::Home),
             // Editing (tools.rs), zoom (the camera), save / export / blueprints and the ⋯ menu's actions
-            // (blueprints.rs), the BEHAVIOR screen (`behavior_ui`).
+            // (blueprints/), the BEHAVIOR screen (`behavior_ui`).
             _ => {}
         }
     }

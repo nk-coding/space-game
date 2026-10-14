@@ -8,7 +8,7 @@
 //! **T** switches between flight and the editors: in flight it opens the drydock (the design is untouched), or the
 //! screen a behavior test was started from ([`FlightExit`], `test_range.rs`); in the drydock it launches a test
 //! flight (`drydock::actions`, the TEST-FLY button does the same). Losing every vessel in a test flight returns
-//! there too (`scene.rs`). **M** in flight goes home (so does the HUD's ring top left, `flight_hud.rs`); the ring
+//! there too (`scene.rs`). **M** in flight goes home (so does the HUD's ring top left, `flight_hud/`); the ring
 //! button top left of the drydock and the BEHAVIOR screen does the same there. Home's camera flies onto a place
 //! before its screen opens and back out when the screen goes home (`home.rs`); the drydock and home share the frame
 //! (`shipyard`).

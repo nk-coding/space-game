@@ -21,7 +21,7 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [GDR-0054](gd
 | Editing model (legality, tools, mirror, undo) | `data::design::edit::Drydock` | below |
 | One-blueprint validation, RON writer/reader, frames, ship totals, ship stat labels | `data::validate_ship`, `data::design::blueprint`, `Content.frames`, `Content::ship_totals`, `data::design::stats::SHIP_STATS` | `content-model.md` |
 | Live stats and per-part flags | `sim::design_report` → `DesignReport` | `sim.md` "Design report (drydock)" |
-| The screen: app mode, view, panels, widgets, test flight | `crates/client/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
+| The screen: app mode, view, panels, widgets, test flight | `crates/client/game/src/drydock/`, `mode.rs`, `ui_kit/`, `ui_icons.rs` | `client.md` "Drydock" |
 | What the career unlocks: locked rows, NEW tags, the voyage-ready line | `crates/client/world/src/career.rs`, `drydock/{state,panels,stats}.rs`, `data::career` | [below](#locked-parts-new-and-voyage-ready), `career.md` |
 | Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/client/world/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
 | The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/client/world/src/player/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
@@ -37,7 +37,7 @@ and variants, thumbnails, a native file dialog, Android storage.
 
 ## Editing model
 
-`data::design::edit::Drydock` (`crates/core/data/src/design/edit.rs`) is the editing model: no Bevy, no threads, no filesystem, so it
+`data::design::edit::Drydock` (`crates/core/data/src/design/edit/`) is the editing model: no Bevy, no threads, no filesystem, so it
 builds for wasm32. The client's drydock uses it for every edit, and the arena's evolution operators will too.
 Tests: `crates/core/data/tests/edit.rs`.
 
@@ -250,7 +250,7 @@ release), `drydock-slope-turned.png` (a 1×1 slope brush turned with R at the wi
 | 1–9 | armour material (the swatches in content order) |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | undo / redo; also the two ring buttons, dimmed when there is nothing to undo or redo |
 
-**Layout v2** (GDR-0082, 14 Oct 2026; `panels.rs`, the draft `docs/plans/mockups/drydock-left-column.html`, variant
+**Layout v2** (GDR-0082, 14 Oct 2026; `panels/`, the draft `docs/plans/mockups/drydock-left-column.html`, variant
 A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (the ⋯ menu open),
 `-1280x720-armor-tip.png` (a swatch's tooltip), `-1920x1080.png`, `-3440x1305.png`, `-1080x1350.png`,
 `-600x960-tools.png` (folded, the tools dropdown open), `-search.png`.
@@ -281,7 +281,7 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
   scale keeps the layout at least 1280 logical px wide (`ui_kit::ui_scale`), so at 1280 × 720, 1920 × 1080,
   3440 × 1305 and 1080 × 1350 the tools stay pills; they fold in windows under about 640 px wide (the scale's
   floor, 0.5), and wherever the bar gets more crowded.
-- **The ⋯ menu** (opens upward, right-aligned; `actions::Rare`, carried out by `blueprints.rs` exactly as the
+- **The ⋯ menu** (opens upward, right-aligned; `actions::Rare`, carried out by `blueprints/` exactly as the
   BLUEPRINTS and EXPORT buttons are): NEW DESIGN (an empty design in this frame; unsaved changes are saved first),
   FRAME (the content frames as pills, the current one lit, locked ones dimmed), COPY SHARE CODE, DOWNLOAD .RON FILE
   (desktop: WRITE .RON FILE), IMPORT .RON FILE. The screens themselves stay as they were.
@@ -482,7 +482,7 @@ overlay opacities and sizes.
 
 Written 13 Oct 2026 (Niklas: "a player storage layer, but a sharable format in addition"). Code:
 `crates/client/world/src/storage.rs` (the layer), `clipboard.rs` (copy and paste), `player/library.rs` (designs on the
-layer), `drydock/share.rs` (files and share codes), `drydock/blueprints.rs` (the screens and handlers). Tests:
+layer), `drydock/share.rs` (files and share codes), `drydock/blueprints/` (the screens and handlers). Tests:
 `cargo test -p game -- storage library share`. Screenshots (1280 × 720): `docs/results/drydock-blueprints-list.png`
 (BLUEPRINTS), `drydock-blueprints-export.png` (EXPORT, the code selected), `drydock-blueprints-cruiser.png` (a
 saved template copy moved to the cruiser frame).
