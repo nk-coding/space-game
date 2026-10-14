@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use data::Content;
+use data::{Blueprint, Content};
 use sim::{
     BehaviorId, BehaviorLibrary, Body, Owner, ShipCommand, ShipDesign, Sim, SimConfig, SimEvent,
     Stream, TickInputs, Vec2, VesselState,
@@ -118,7 +118,19 @@ impl Fight {
         let mut sides: [Vec<Resolved>; 2] = Default::default();
         for (side, s) in spec.sides.iter().enumerate() {
             for (entry, e) in s.entries.iter().enumerate() {
-                let design = Arc::new(design(content, &e.design, side, entry)?);
+                let design = match resolve_design(content, &e.design) {
+                    Ok((_, d)) => Arc::new(d),
+                    Err(DesignProblem::UnknownShip(id)) => {
+                        return Err(ArenaError::UnknownShip { side, entry, id });
+                    }
+                    Err(DesignProblem::Blueprint(problems)) => {
+                        return Err(ArenaError::Blueprint {
+                            side,
+                            entry,
+                            problems,
+                        });
+                    }
+                };
                 let behavior = match &e.behavior {
                     Some(BehaviorRef::Content(id)) => {
                         lib.id(id).ok_or_else(|| ArenaError::UnknownBehavior {
@@ -269,28 +281,26 @@ pub fn run_fight(content: &Content, spec: &FightSpec) -> Result<FightResult, Are
         .expect("a fight ends by its time limit"))
 }
 
-/// Compiles an entry's design: a content ship, or a blueprint text checked against the content first.
-fn design(
+/// Why a design reference is not usable.
+pub(crate) enum DesignProblem {
+    UnknownShip(String),
+    /// The blueprint text does not read, fails the content's checks or does not compile.
+    Blueprint(Vec<String>),
+}
+
+/// A design reference resolved: its blueprint (a content ship, or a blueprint text checked against the content
+/// first) and the compiled design.
+pub(crate) fn resolve_design(
     content: &Content,
     r: &DesignRef,
-    side: usize,
-    entry: usize,
-) -> Result<ShipDesign, ArenaError> {
-    let bad = |problems: Vec<String>| ArenaError::Blueprint {
-        side,
-        entry,
-        problems,
-    };
+) -> Result<(Blueprint, ShipDesign), DesignProblem> {
+    let bad = DesignProblem::Blueprint;
     let bp = match r {
         DesignRef::Ship(id) => content
             .ships
             .get(id)
             .cloned()
-            .ok_or_else(|| ArenaError::UnknownShip {
-                side,
-                entry,
-                id: id.clone(),
-            })?,
+            .ok_or_else(|| DesignProblem::UnknownShip(id.clone()))?,
         DesignRef::Blueprint(text) => {
             let bp = data::parse_blueprint(text)
                 .map_err(|p| bad(p.iter().map(|p| p.to_string()).collect()))?;
@@ -305,7 +315,8 @@ fn design(
             bp
         }
     };
-    ShipDesign::compile(content, &bp).map_err(|e| bad(vec![e]))
+    let design = ShipDesign::compile(content, &bp).map_err(|e| bad(vec![e]))?;
+    Ok((bp, design))
 }
 
 /// Spawns one side's entries, one behind the other, each under its behavior. Side 0 stands at the origin with

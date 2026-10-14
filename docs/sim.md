@@ -68,6 +68,7 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome`, chain-reaction hook |
 | `salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
 | `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `fleet_disarmed`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
+| `voyage_runner` | the headless voyage runner's scripted pilot as a library: `VoyageRunner` (steppable), `Flagship`, `VoyageRun`, `closing_reach` (see [The headless voyage runner](#the-headless-voyage-runner)) |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
 | `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
@@ -1945,7 +1946,7 @@ bit-identical to before. Seed 42: 2 sites woken and 2 cleared, 6 items, recall 1
 `cargo run --release -p sim --example voyage -- --voyage <id> --design <ship> --seeds 1..20 [--escort <ship>[,...]]
 [--behavior <id>] [--minutes 30]`: the balance tool of track 7K. It rolls the voyage per seed, puts the design at the
 entry (and the escorts behind it, under the `escort` template with the flagship as leader) and flies it with a
-scripted pilot (see the example's doc: in fights the balance study's *closing* stand-in, or a content behavior with
+scripted pilot (see the docs of `sim::voyage_runner`: in fights the balance study's *closing* stand-in, or a content behavior with
 `--behavior`; salvage it can catch; the sites in turn, the goal last; home once the goal and the sites are done or
 the hold is full, when it is disarmed (`Ship::is_armed`; an overheated or idle gun still counts), or after 3 minutes
 without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and prints per seed the outcome
@@ -1953,6 +1954,15 @@ without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and p
 haul items and research data per family (`data::career::unload`; every player vessel's hold), then medians, p95 and
 the step time. `--design` and `--escort` also take a blueprint file (`*.ron`, a saved or exported drydock design),
 for ships a player would build that are not content.
+
+The pilot and the run are a library since 14 Oct 2026 (`sim::voyage_runner`, for the evolution lab's voyage fitness,
+`arena::voyage`): `VoyageRunner::new(content, voyage, Flagship { design, reach, behavior }, behaviors, escorts,
+seed, max_ticks)` sets the run up (`behaviors` is the library the world flies with, so a behavior text that is not
+content can fly the fights; `reach` is `closing_reach(&report)`), `step(ticks)` runs a slice and returns the
+`VoyageRun` once it has ended, `run()` runs it to the end. The example only parses, runs the seeds and prints; its
+step time now times each tick of a run (the pilot's decision and the sim step). Moving it changed no number: the
+example's output before and after is identical (`halvex_drift` with an escort, seeds 1–12; `yard_approach` with
+`--behavior skirmisher`, seeds 1–8). `tests/voyage.rs` checks that a run stepped in slices equals one in one go.
 
 First numbers (13 Oct 2026, content and sim of `dev` after the 7C merge and the sim review fixes, before the GDR-0064
 flight fixes; 20 seeds each, closing pilot):

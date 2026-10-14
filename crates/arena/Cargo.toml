@@ -1,7 +1,7 @@
 [package]
 name = "arena"
 version = "0.1.0"
-description = "Headless, deterministic fights between designs on the sim: fight specs, results and the arena score (later evolution). No Bevy, no I/O, no threads in the library; builds for wasm32. The `arena` binary runs batches on every core."
+description = "Headless, deterministic fights between designs on the sim: fight specs, results and the arena score, voyage fitness and the evolution of designs and behaviors. No Bevy, no I/O, no threads in the library; builds for wasm32. The `arena` binary runs batches on every core."
 edition.workspace = true
 license.workspace = true
 publish.workspace = true

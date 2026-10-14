@@ -776,3 +776,36 @@ fn a_shot_into_a_bubble_or_a_ram_wakes_a_sleeping_site() {
         Some(sim::VesselState::Running)
     );
 }
+
+/// The voyage runner (`sim::voyage_runner`): the same seed gives the same run, stepped in slices or in one go,
+/// and a run ends within its time limit.
+#[test]
+fn the_voyage_runner_is_deterministic_in_slices() {
+    let c = content();
+    let voyage = c.voyages.get("yard_approach").unwrap();
+    let report = design_report(&c, c.ships.get("rim_skiff").unwrap(), &SimConfig::default()).unwrap();
+    let flagship = sim::Flagship {
+        design: design(&c, "rim_skiff"),
+        reach: sim::closing_reach(&report),
+        behavior: None,
+    };
+    let lib = sim::BehaviorLibrary::new(&c).unwrap();
+    let limit = 3 * 60 * 30;
+    let start = || {
+        sim::VoyageRunner::new(&c, voyage, flagship.clone(), lib.clone(), &[], 3, limit).unwrap()
+    };
+    let whole = start().run();
+    let mut sliced = start();
+    let r = loop {
+        if let Some(r) = sliced.step(97) {
+            break r.clone();
+        }
+    };
+    assert!(whole.ticks <= limit && whole.ticks > 0);
+    assert_eq!(
+        (r.outcome, r.ticks, r.goal, r.kills, r.sites_cleared),
+        (whole.outcome, whole.ticks, whole.goal, whole.kills, whole.sites_cleared)
+    );
+    assert_eq!(r.hp_lost.to_bits(), whole.hp_lost.to_bits());
+    assert!(whole.sites_with_ships >= 1 && whole.sites_with_ships <= whole.sites);
+}

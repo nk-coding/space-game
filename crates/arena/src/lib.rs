@@ -8,6 +8,9 @@
 //! left, the arena score ([`arena_score`]) and the final state hash. [`run_seeds`] and [`Summary`] average over
 //! seeds.
 //!
+//! [`VoyageSpec`], [`run_voyage`] and [`voyage_score`] score a design by the slice's voyages (the headless voyage
+//! runner, `sim::voyage_runner`). [`evolve`] breeds designs and behaviors ([`Run`], configured by a [`RunConfig`]).
+//!
 //! No Bevy, no I/O, no threads, no wall clock; builds for wasm32. The same spec gives the same result and hash
 //! on every platform (the sim's determinism rules apply here too: ordered containers, `sim::math` for any
 //! transcendental function). The native `arena` binary (`src/bin/arena.rs`) runs batches on every core.
@@ -27,9 +30,11 @@
 #![forbid(unsafe_code)]
 
 mod error;
+pub mod evolve;
 mod fight;
 mod score;
 mod spec;
+mod voyage;
 
 pub use error::ArenaError;
 pub use fight::{
@@ -39,4 +44,9 @@ pub use score::{Summary, arena_score, run_seeds};
 pub use spec::{
     BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec,
     Formation, MAX_SHIPS_PER_SIDE, MAX_START_DISTANCE, MAX_TIME_LIMIT, Side,
+};
+pub use evolve::{Genome, Run, RunConfig, RunError};
+pub use voyage::{
+    DEFAULT_VOYAGE_MINUTES, MAX_VOYAGE_MINUTES, VoyageSpec, run_voyage, start_voyage,
+    voyage_fitness, voyage_score,
 };

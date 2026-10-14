@@ -1,0 +1,22 @@
+// Evolve the starter ship for the first voyage in stages: its behavior first, then its design (the starter's parts
+// only, the parts a new game has), then both; scored by the headless voyage runner (goal cleared, time, hull lost).
+// `cargo run --release -p arena -- evolve crates/arena/runs/skiff_voyage_stages.ron --out /tmp/skiff_voyage`
+// The archive is the default (acceleration × firepower): a design's measures, so the behavior stage keeps one cell
+// (a plain hill climb) and the later stages spread. PLACEHOLDER numbers.
+(
+    seed: 1,
+    evolve: Stages([
+        (evolve: Behavior, generations: 10),
+        (evolve: Design, generations: 10),
+        (evolve: Both, generations: 10),
+    ]),
+    population: 32,
+    fitness: Voyages(ids: ["yard_approach"], seeds: 4, minutes: 8),
+    limits: (
+        frame: "frigate",
+        parts: ["armor_block", "slope_1x1", "pulse_laser", "radiator", "capacitor", "fission_reactor", "cargo_bay",
+            "logic_core", "thruster", "shield_emitter", "gyro", "rcs_pod"],
+        mirror: true,
+    ),
+    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),
+)
