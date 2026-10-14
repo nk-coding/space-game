@@ -383,6 +383,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     commands
         .spawn((
             FleetRoot,
+            crate::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
             Visibility::Hidden,

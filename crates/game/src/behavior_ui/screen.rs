@@ -195,7 +195,9 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
     commands
         .spawn((
             BehaviorRoot,
-            // Opens and closes with a transition (`ui_kit::ScreenFx`); the station fades out behind it.
+            // Opens and closes with a transition (`ui_kit::ScreenFx`); the station fades out behind it, on the
+            // veiled backdrop the other screens over the station share.
+            crate::backdrop::VeilsBackdrop,
             ScreenFx::closed().dimming(),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() },
             Visibility::Hidden,

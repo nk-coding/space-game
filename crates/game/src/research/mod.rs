@@ -23,7 +23,7 @@
 //!   runs) and kept in step with the career.
 //!
 //! **Getting there**: home's research building (R, or a click on it) flies the camera onto the lab, then this
-//! screen opens over it (a veil dims the station); Esc, the ring button and `‹ HOME` go back (home flies out from
+//! screen opens over it (the backdrop veiled, the station all but hidden, `backdrop::VeilsBackdrop`); Esc, the ring button and `‹ HOME` go back (home flies out from
 //! the lab), DRYDOCK (D) opens the drydock. A LOCKED row of the drydock's palette (or a locked armour pill) opens
 //! this screen on the node that unlocks it ([`DrydockAction::Research`]). `?scene=research` starts here.
 //!
@@ -37,11 +37,10 @@ use bevy::prelude::*;
 use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
 
-use crate::camera::{CamMode, CameraRig, CameraSet};
+use crate::camera::{CamMode, CameraRig};
 use crate::career::PlayerCareer;
 use crate::drydock::DockSet;
 use crate::drydock::actions::DrydockAction;
-use crate::fx::{FxFlush, FxQueue, FxRegions, FxSprite};
 use crate::mode::AppMode;
 use crate::shipyard::Yard;
 use crate::shipyard::layout::{Place, fit};
@@ -51,10 +50,6 @@ use crate::ui_kit::{Tone, UiInputSet, UiPointer, UiStyleSet, ui_scale_for};
 
 use tree::{CardState, Tree};
 
-/// How much the veil over the station darkens it (the lab shows faintly behind the tree).
-const VEIL: f32 = 0.92;
-/// The veil's layer: over the station and its ships, under the UI icons (z 600).
-const Z_VEIL: f32 = 405.0;
 
 /// What the research screen's buttons and keys do.
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -128,9 +123,7 @@ impl Plugin for ResearchPlugin {
                 ),
             )
             // The drydock's LOCKED rows (a handler in the drydock's Apply set, as its own handlers).
-            .add_systems(Update, from_drydock.in_set(DockSet::Apply))
-            // While the screen shows (it closes after the mode is left), fading with it.
-            .add_systems(PostUpdate, draw_veil.after(CameraSet).before(FxFlush));
+            .add_systems(Update, from_drydock.in_set(DockSet::Apply));
     }
 }
 
@@ -274,23 +267,6 @@ fn from_drydock(mut actions: MessageReader<DrydockAction>, mut view: ResMut<Rese
             next.set(AppMode::Research);
         }
     }
-}
-
-/// The veil over the station: one quad over the whole view, in the backdrop's darkest colour, fading with the
-/// screen (`ui_kit::ScreenFx`).
-fn draw_veil(
-    rig: Res<CameraRig>,
-    clear: Res<ClearColor>,
-    root: Single<&crate::ui_kit::ScreenFx, With<screen::ResearchRoot>>,
-    regions: Option<Res<FxRegions>>,
-    mut queue: ResMut<FxQueue>,
-) {
-    let Some(r) = regions else { return };
-    if !root.visible() {
-        return;
-    }
-    let view = Rect::from_corners(rig.screen_to_world(Vec2::ZERO), rig.screen_to_world(rig.viewport));
-    queue.push(FxSprite { rect: r.white.uv, pos: view.center(), angle: 0.0, size: view.size() * 1.02, anchor: Vec2::ZERO, color: clear.0.with_alpha(VEIL * root.alpha()), z: Z_VEIL });
 }
 
 #[cfg(test)]

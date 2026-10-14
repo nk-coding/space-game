@@ -232,6 +232,7 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
     commands
         .spawn((
             ResearchRoot,
+            crate::backdrop::VeilsBackdrop,
             CardStates::default(),
             // Opens and closes with a transition (`ui_kit::ScreenFx`): the four roots slide in from their edges; the
             // lab behind it shows only faintly.

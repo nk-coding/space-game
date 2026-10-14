@@ -1,17 +1,23 @@
 //! The space backdrop: the radial gradient from the style guide stretched over the viewport, two parallax
-//! layers of faint dust particles and dotted range rings around the followed ship.
+//! layers of faint dust particles and dotted range rings around the followed ship; and the veil the screens over
+//! the station (BEHAVIOR, RESEARCH, FLEET) lay over all of it, so they share one dark ground.
 
 use bevy::prelude::*;
 
-use crate::atlas::Atlas;
+use crate::atlas::{Atlas, AtlasMaterial, set_alpha};
 use crate::camera::{CameraRig, CameraSet, MainCamera};
 use crate::meshbuf::MeshBuf;
 use crate::style::{RadialGradient, Style, vcol};
+use crate::ui_kit::ScreenFx;
 use crate::RenderToggles;
 
 const Z_BACKDROP: f32 = -900.0;
 const Z_DUST: f32 = -800.0;
 const Z_RINGS: f32 = -700.0;
+/// The veil: over the gradient, the dust and the rings, under the station and everything else in the world.
+const Z_VEIL: f32 = -650.0;
+/// How much the veil hides of the backdrop (in its outer, darkest colour).
+const VEIL: f32 = 0.92;
 
 /// Dust tiles repeat every this many metres (in layer space).
 const TILE: f32 = 240.0;
@@ -30,6 +36,17 @@ struct DustCopy {
 #[derive(Component)]
 pub struct RangeRings;
 
+/// A screen that veils the backdrop while it shows (fading with its `ScreenFx`): BEHAVIOR, RESEARCH and FLEET sit
+/// on the same dark ground, the gradient's outer colour, and the station behind them shows only as much as
+/// `ui_kit::BEHIND` lets it (Niklas, 14 Oct 2026: the screens had different backgrounds).
+#[derive(Component)]
+pub struct VeilsBackdrop;
+
+/// The veil: a quad in the gradient's outer colour over the backdrop (a child of it, so it fits the view too), with
+/// its own material for the fade.
+#[derive(Component)]
+struct Veil(Handle<AtlasMaterial>);
+
 struct DustLayer {
     /// How much of the camera motion the layer follows on screen (1 = like the ships).
     parallax: f32,
@@ -46,6 +63,7 @@ impl Plugin for BackdropPlugin {
         let clear = app.world().resource::<Style>().background.outer();
         app.insert_resource(ClearColor(clear))
             .add_systems(Startup, spawn_backdrop.after(crate::spawn_camera))
+            .add_systems(Update, veil)
             // After the camera moved, before the transforms are propagated (else they show last frame's place).
             .add_systems(
                 PostUpdate,
@@ -78,6 +96,7 @@ fn spawn_backdrop(
     atlas: Res<Atlas>,
     style: Res<Style>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
     camera: Single<Entity, With<MainCamera>>,
 ) {
     // The style-guide gradient (`ui.background`, a CSS radial gradient) as a mesh with vertex colours
@@ -93,6 +112,16 @@ fn spawn_backdrop(
         ))
         .id();
     commands.entity(*camera).add_child(backdrop);
+    let mut quad = MeshBuf::default();
+    // The unit square the backdrop is scaled from, a little larger, so no edge shows.
+    let (h, white) = (0.55, atlas.region("fx/white").uv_center());
+    quad.quad_uv([Vec2::new(-h, -h), Vec2::new(h, -h), Vec2::new(h, h), Vec2::new(-h, h)], [white; 4], vcol(style.background.outer(), 1.0));
+    let material = atlas.group_material(&mut materials);
+    set_alpha(&mut materials, &material, 0.0);
+    let veil = commands
+        .spawn((Veil(material.clone()), Mesh2d(meshes.add(quad.into_mesh())), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, Z_VEIL - Z_BACKDROP), Visibility::Hidden))
+        .id();
+    commands.entity(backdrop).add_child(veil);
 
     // Dust: far layer = many tiny faint dots, near layer = fewer, slightly larger ones.
     let soft = atlas.region("fx/dot_soft");
@@ -158,6 +187,17 @@ fn fit_backdrop(
     let v = if toggles.debug_shapes { Visibility::Hidden } else { Visibility::Inherited };
     if **vis != v {
         **vis = v;
+    }
+}
+
+/// The veil follows the screens that veil the backdrop: as strong as the most open of them.
+fn veil(screens: Query<&ScreenFx, With<VeilsBackdrop>>, veil: Single<(&Veil, &mut Visibility)>, mut materials: ResMut<Assets<AtlasMaterial>>) {
+    let open = screens.iter().map(ScreenFx::alpha).fold(0.0, f32::max);
+    let (v, mut vis) = veil.into_inner();
+    set_alpha(&mut materials, &v.0, VEIL * open);
+    let want = if open > 0.0 { Visibility::Inherited } else { Visibility::Hidden };
+    if *vis != want {
+        *vis = want;
     }
 }
 

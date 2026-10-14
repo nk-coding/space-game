@@ -629,12 +629,13 @@ Who uses it: the drydock (top bars from the top, the palette from the left, stat
 tools from the top and the info line and bottom bar from the bottom; the frame's dots, brackets, veil, the pointer's
 mark, the ghost and the overlays fade; the design fades too unless it comes from or goes home, where the docked ship
 is the same picture; going to the BEHAVIOR screen the camera stays on the drydock's view, `DockCamera::parked`, so
-the design fades in place), the BEHAVIOR screen (covering; its dot grid fades), the research screen (its four roots;
-its veil fades), the voyage map (covering: the panel from the right, the map and its drawing fade; SET COURSE
-snaps it), FLEET (covering), the debrief, home's words and labels, and the flight HUD (slides in when flight
+the design fades in place), the BEHAVIOR screen (dimming; its dot grid fades), the research screen (dimming; its four
+roots), the voyage map (covering: the panel from the right, the map and its drawing fade; SET COURSE
+snaps it), FLEET (dimming), the debrief, home's words and labels, and the flight HUD (slides in when flight
 starts; H hides it the same way; leaving flight snaps it shut). The station fades as a whole under covering screens
 (`shipyard::station_alpha`, two group materials: the U with its rigging and the docked ship, and what is home's
-alone). Not faded yet: the BEHAVIOR screen's dashed outlines (a UI material), the BLUEPRINTS / BEHAVIORS layers
+alone). A dimming screen (BEHAVIOR, RESEARCH, FLEET) leaves `ui_kit::BEHIND` (3 %) of the station showing and
+veils the space backdrop to its darkest colour (`backdrop::VeilsBackdrop`), so the three share one ground. Not faded yet: the BEHAVIOR screen's dashed outlines (a UI material), the BLUEPRINTS / BEHAVIORS layers
 (hidden at once when their screen is left), the TEXT view's egui editor, and the flight world itself (a scene cut).
 
 ## Research
@@ -654,8 +655,9 @@ from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's cam
 | The drydock | D, or `DRYDOCK` |
 
 - **Getting there**: home's lab (R, or a click on it; it works dark or lit) flies the camera onto the lab, then the
-  screen opens over it: the station stays drawn (`shipyard::show`) under a veil in the backdrop's darkest colour
-  (92 %, a world-space FX quad at z 405, so the UI icons at z 600 stay above it), and the camera rests exactly
+  screen opens over it: the station stays drawn (`shipyard::show`), all but 3 % hidden (`ui_kit::BEHIND`), on the
+  veiled backdrop BEHAVIOR and FLEET share (`backdrop::VeilsBackdrop`: a quad in the gradient's outer colour at
+  92 %, over the backdrop and under the station), and the camera rests exactly
   where home's flight ended. A LOCKED row of the drydock's palette or a locked armour pill
   (`DrydockAction::Research(node)`, `drydock::actions::locked_research`) opens the screen on the node that unlocks
   it (no camera flight from the drydock: the screen is just there). `?scene=research` starts here.
