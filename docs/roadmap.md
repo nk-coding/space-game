@@ -217,6 +217,13 @@ Next session:
 - **Letting go coasts** ([GDR-0086](gdr/0086-letting-go-coasts.md)): no braking and no flip-and-burn on release. Pilot
   assists (auto-brake and more) as configurable behavior-like profiles for the piloted ship, weapon groups and key
   bindings: to discuss with Niklas while the structure refactor runs.
+- **Voyage transitions** ([GDR-0087](gdr/0087-voyage-transitions.md)): the recall warp-out (charge, stretch, flash;
+  amber and flickering for the emergency recall), the arrival, the loss dim and a dip to dark between screens.
+- **Chain-reaction blasts in the client** (`fx/blast.rs`): a flash, glow and a ring out to the blast radius; chains
+  step 40 ms apart.
+- **Smooth scrolling** (`docs/client.md` "Smooth scrolling"): wheel notches glide (100 px, 0.18 s, ease-out,
+  accumulating), touchpads move 1:1; the row lists scroll by pixels; the debrief scrolls with fixed buttons; the
+  wheel hints are gone.
 - **Scrollbars and glow room** (`docs/client.md` UI kit): every scrolling list has an overlay scrollbar (shows while
   scrolling or hovered, draggable), and lists let glows fade past their edges instead of clipping them.
 - **Sim fairness fixed** ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)): ship ids no longer decide a fight.
