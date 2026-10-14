@@ -1621,8 +1621,8 @@ were set by the salvage agent for Niklas to review.
 
 Every `interval` ticks (10, so at most 3 items a second per vessel), right after the weapons phase's breakage, each
 running vessel (`VesselState::Running`: not dormant, not dark) of an owner that collects (`collects`: the player
-only) with free units takes one item, in ship order, from salvage that moves at most `max_speed` (4 m/s) relative
-to it (GDR-0063's "fly slowly over a wreck": the velocities of the two centres of mass, a fragment's own; checked
+only) with free units takes one item, in ship order, from salvage that moves at most `max_speed` (8 m/s since
+GDR-0079, 14 Oct 2026; 4 m/s before) relative to it (GDR-0063's "fly slowly over a wreck": the velocities of the two centres of mass, a fragment's own; checked
 before the distance, two subtractions per candidate):
 
 1. the nearest loose item (a fragment or spilled cargo) that fits, within `reach` (5 m) of its hull (ties: the
@@ -1659,9 +1659,11 @@ smaller parts go first; a full hold takes nothing; only salvageable parts count 
   `expires`) at the part's centroid with the velocity of that point of its piece (`v + ω × r`), made in
   `Sim::resolve_breakage` before the piece is rebuilt.
 - **The cheapest representation**: a point in `Sim::loose()` (ascending `LooseId`, monotonic), no Rapier body, no
-  collisions, moved after the physics step by `pos += vel × DT` (exact IEEE operations), gone after
-  `fragment_ticks` (1800 = 60 s) if nobody collects it. Parts stripped by collectors and parts removed when a wreck
-  spawns leave none.
+  collisions, moved after the physics step by `pos += vel × DT` (exact IEEE operations), until it is collected or
+  the sim ends (GDR-0079, 14 Oct 2026: loose items last until the voyage ends; 60 s before). A config with a
+  `fragment_ticks` lifetime ends it after that many ticks (`expires`: the tick it is gone at, `None` without
+  one); the client's endless sandbox keeps the old 60 s so they cannot pile up there (`docs/client.md`). Parts
+  stripped by collectors and parts removed when a wreck spawns leave none.
 - **Spilled cargo** (GDR-0076): each item a shrinking hold drops becomes a `Loose` of that item (a whole part stays a
   whole part, with its cargo units and value per unit), at the lost hold, the centroid of the first cargo part
   destroyed in that breakage (`Ship::part_world`, the pose of the piece it was on; else, when the hold only split
@@ -1683,14 +1685,14 @@ in `spawn_ship`. Events:
 A derelict's core shot later leaves a fragment like any other. `owner` is kept (`Ship::owner`) for salvage rights
 later; the wreck counts for nobody. Used by the salvage scenario and the voyage director ([Voyages](#voyages)).
 
-### Settings (`SimConfig::salvage`: `SalvageTuning`, placeholders, lead 13 Oct 2026)
+### Settings (`SimConfig::salvage`: `SalvageTuning`, placeholders, lead 13 Oct 2026; Niklas's review 14 Oct 2026, GDR-0079)
 
 | Field | Default | What |
 |---|---|---|
 | `interval` | 10 ticks | one item per collecting vessel per pass; 0 turns collecting off |
 | `reach` | 5 m | hull to hull |
-| `max_speed` | 4 m/s | relative speed of the salvage to the collector (centres of mass; a fragment's velocity) above which it is passed by (GDR-0063 "fly slowly"; 13 Oct 2026 review) |
-| `fragment_ticks` | 1800 (60 s) | how long an uncollected fragment (or spilled item) drifts |
+| `max_speed` | 8 m/s | relative speed of the salvage to the collector (centres of mass; a fragment's velocity) above which it is passed by (GDR-0063 "fly slowly"; 13 Oct 2026 review; 4 m/s until GDR-0079) |
+| `fragment_ticks` | `None` | how long an uncollected fragment (or spilled item) drifts, in ticks; `None`: until the sim ends (GDR-0079; 1800 = 60 s before, which the sandbox keeps) |
 | `spill_speed` | 1.5 m/s | spilled cargo's push away from the lost hold: half to all of this, a random direction (GDR-0076) |
 | `collects` | owner 0 only | owners whose running vessels collect (by `Owner.0`; owners beyond the table never) |
 
@@ -1698,7 +1700,8 @@ later; the wreck counts for nobody. Used by the salvage scenario and the voyage 
 
 Per ship the burned-out flag and the cargo (units in use; per item its kind, its content ids as bytes, count, units
 and value bits); after the projectiles the loose items (the id counter, then per item id, item, units, value,
-position, previous position, velocity and expiry tick); the salvage settings with the config.
+position, previous position, velocity, and whether it expires and when: a flag, then the tick or 0); the salvage
+settings with the config (`fragment_ticks` the same way).
 
 ### Cost
 
@@ -1758,6 +1761,14 @@ x86_64 vs wasm32-wasip1 under Node 24: **identical**. Every stream differs from 
 hashed with the settings). Salvage: 19 loose items instead of 8 (the bay shot at 450 spills 11; its collector's hold
 stays full, so none is scooped again), the same 21 items collected, final hash `920a76757615f4e4` → `5e5f19c9f6a52559`.
 Voyage: no hold shrinks, every counter as before, `c4decb04b0dde2e8` → `e51add61e9e4465f`.
+
+**After Niklas's review of the lead defaults (GDR-0079, 14 Oct 2026**: `max_speed` 8 m/s, loose items without a
+lifetime; release builds, 1800 ticks, seeds 1 and 42): salvage, voyage and core, native x86_64 vs wasm32-wasip1
+under Node 24: **identical** (6 runs). Every stream differs from before from tick 1 (`max_speed` and the new
+`fragment_ticks` encoding are hashed with the settings), and the faster pass changes what is collected (before →
+after): salvage seed 1 21 → 26 items (`5e5f19c9f6a52559` → `4aa1e9d8e9089bd6`), seed 42 28 → 32
+(`b27b59cd96f41f17` → `e3c6d1d7df8e6ff4`); voyage seed 1 7 → 8 (`e51add61e9e4465f` → `1af36d348b10dac0`), seed 42
+12 → 13 (`708bc0c46ea3bb53` → `ec9d31c4fda326d7`); core seed 1 17 → 14, seed 42 23 → 27.
 
 ## Voyages
 

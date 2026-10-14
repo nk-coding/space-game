@@ -288,7 +288,7 @@ fn a_lost_ship_keeps_its_cargo_and_its_wreck_gives_fragments_and_cargo_first() {
 fn destroyed_cores_leave_fragments_that_drift_and_expire() {
     let c = common::content();
     let mut config = SimConfig::default();
-    config.salvage.fragment_ticks = 30;
+    config.salvage.fragment_ticks = Some(30);
     let mut w = Sim::with_config(1, config);
     let raider = w.spawn_ship(
         design(&c, "automaton_raider"),
@@ -337,6 +337,32 @@ fn destroyed_cores_leave_fragments_that_drift_and_expire() {
     w.apply_damage(raider, DamageTarget::Part(thruster), 1000.0);
     w.step(&TickInputs::default());
     assert!(w.loose().is_empty());
+}
+
+/// By default (GDR-0079) a loose item lasts until the sim ends: still there long after the old 60 s, drifting on.
+#[test]
+fn loose_items_last_until_the_sim_ends_by_default() {
+    let c = common::content();
+    let mut w = Sim::new(1);
+    let raider = w.spawn_ship(
+        design(&c, "automaton_raider"),
+        Owner(1),
+        Body {
+            linvel: Vec2::new(1.0, 0.0),
+            ..Body::at(Vec2::new(50.0, 0.0), 0.0)
+        },
+    );
+    let core = common::find(w.ship(raider).unwrap().design(), "automaton_core", 1, 1);
+    w.apply_damage(raider, DamageTarget::Part(core), 1000.0);
+    w.step(&TickInputs::default());
+    assert_eq!(w.loose().len(), 1);
+    let f = w.loose()[0].clone();
+    assert_eq!(f.expires, None);
+    for _ in 0..2400 {
+        w.step(&TickInputs::default());
+    }
+    assert_eq!(w.loose().len(), 1, "80 s later");
+    assert!(w.loose()[0].pos.x > f.pos.x + 70.0);
 }
 
 #[test]
@@ -555,12 +581,12 @@ fn collecting_needs_a_slow_pass() {
             ],
         )
     };
-    assert_eq!(SimConfig::default().salvage.max_speed, 4.0);
+    assert_eq!(SimConfig::default().salvage.max_speed, 8.0);
     let cases = [
-        (0.0, 6.0, false),
-        (6.0, 6.0, true),
-        (0.0, 3.0, true),
-        (-3.0, 3.0, false),
+        (0.0, 10.0, false),
+        (10.0, 10.0, true),
+        (0.0, 7.0, true),
+        (-4.5, 4.5, false),
     ];
     for (mine, theirs, taken) in cases {
         let mut w = Sim::new(1);
@@ -574,7 +600,7 @@ fn collecting_needs_a_slow_pass() {
         assert_eq!(!got.is_empty(), taken, "{mine} vs {theirs} m/s: {got:?}");
     }
     let mut config = SimConfig::default();
-    config.salvage.max_speed = 5.0;
+    config.salvage.max_speed = 5.5;
     let (a, b) = (Sim::new(1), Sim::with_config(1, config));
     assert_ne!(a.state_hash(), b.state_hash());
     config.salvage.max_speed = f32::NAN;

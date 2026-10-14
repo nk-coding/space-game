@@ -7,7 +7,8 @@
 //!   ([`wave_size`], GDR-0074) unless the tuning panel sets it by hand; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
-//!   far from the player; when the player has no vessel left, a new one re-forms.
+//!   far from the player, loose items after 60 s ([`SANDBOX_LOOSE_TICKS`]); when the player has no vessel left, a
+//!   new one re-forms.
 //! * **test flight**: the sandbox launched from the drydock (T). Losing every vessel returns to the drydock
 //!   after the same 3 s instead of re-forming; T returns at any time. The design itself is never touched.
 //! * **TEST IN RANGE** (`test_range.rs`; `?scene=watch|alongside&behavior=<id>`): a test flight that flies a
@@ -68,6 +69,12 @@ pub struct PilotFocus(pub Option<ShipId>);
 /// Content ships with this tag are raiders: the sandbox's waves and the showcase's attackers fly the first one
 /// (content order: the base pack's `automaton_raider`).
 const RAIDER_TAG: &str = "enemy";
+
+/// How long a loose item (a core fragment, spilled cargo) drifts in the sandbox and the showcase before it is gone
+/// (ticks; 1800 = 60 s, the sim's default until GDR-0079). The sim keeps loose items until it ends (a voyage does),
+/// but the sandbox's waves never end, so without a lifetime they would pile up as wrecks would without their
+/// clean-up.
+const SANDBOX_LOOSE_TICKS: u32 = 1800;
 
 /// The design the raiders fly, compiled for [`ENEMY`].
 fn raider_design(world: &mut SimWorld) -> Option<Arc<ShipDesign>> {
@@ -340,7 +347,9 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
             let mut content = tuning.scaled_content(base, true);
             inputs.behaviors.add_to(&mut content);
             let others = tuning.scaled_content(base, false);
-            let mut sim = sim::Sim::with_config(scene.seed, tuning.config());
+            let mut config = tuning.config();
+            config.salvage.fragment_ticks = Some(SANDBOX_LOOSE_TICKS);
+            let mut sim = sim::Sim::with_config(scene.seed, config);
             match BehaviorLibrary::new(&content) {
                 Ok(lib) => sim.set_behaviors(lib),
                 Err(problems) => error!("behavior library: {} problems, first: {:?}", problems.len(), problems.first()),

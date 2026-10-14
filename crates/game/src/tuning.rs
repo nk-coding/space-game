@@ -234,7 +234,8 @@ fn panel(
     }
     t.open = open;
     if *t != before {
-        let cfg = t.config();
+        // The panel does not tune salvage: the scene's settings stay (the sandbox's loose-item lifetime).
+        let cfg = SimConfig { salvage: world.sim.config().salvage, ..t.config() };
         if *world.sim.config() != cfg {
             world.sim.set_config(cfg);
         }

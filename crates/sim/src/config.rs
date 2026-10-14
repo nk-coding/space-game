@@ -91,7 +91,7 @@ impl Default for PhysicsTuning {
 }
 
 /// Salvage (GDR-0063; see `salvage.rs` and `docs/sim.md` "Salvage"). All numbers are **placeholders** (lead,
-/// 13 Oct 2026).
+/// 13 Oct 2026; `max_speed` and `fragment_ticks` from Niklas's review, GDR-0079, 14 Oct 2026).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SalvageTuning {
     /// Collecting runs every this many ticks (10 = 3 parts per second at most per vessel); 0 = never.
@@ -99,10 +99,12 @@ pub struct SalvageTuning {
     /// A collecting vessel strips salvage whose hull is at most this far from its own hull (m).
     pub reach: f32,
     /// ... and that moves at most this fast relative to it (m/s, centre of mass to centre of mass; a fragment by
-    /// its velocity): GDR-0063's "fly slowly over a wreck".
+    /// its velocity): GDR-0063's "fly slowly over a wreck" (8 since GDR-0079; 4 before).
     pub max_speed: f32,
-    /// Ticks a loose item (a fragment, or cargo a shrinking hold spilled) drifts before it is gone (1800 = 60 s).
-    pub fragment_ticks: u32,
+    /// Ticks a loose item (a fragment, or cargo a shrinking hold spilled) drifts before it is gone; `None` (the
+    /// default, GDR-0079): it stays until it is collected or the sim ends (the voyage, the scene). The client's
+    /// endless sandbox sets a lifetime.
+    pub fragment_ticks: Option<u32>,
     /// Cargo a shrinking hold spills (GDR-0076) leaves the lost hold with that point's velocity plus a push of
     /// half to all of this, in a random direction (m/s; well below `max_speed`, so it can be scooped again).
     pub spill_speed: f32,
@@ -128,8 +130,8 @@ impl Default for SalvageTuning {
         SalvageTuning {
             interval: 10,
             reach: 5.0,
-            max_speed: 4.0,
-            fragment_ticks: 1800,
+            max_speed: 8.0,
+            fragment_ticks: None,
             spill_speed: 1.5,
             collects,
         }
@@ -265,7 +267,8 @@ impl StateHash for SimConfig {
         h.u32(s.interval);
         h.f32(s.reach);
         h.f32(s.max_speed);
-        h.u32(s.fragment_ticks);
+        h.bool(s.fragment_ticks.is_some());
+        h.u32(s.fragment_ticks.unwrap_or(0));
         h.f32(s.spill_speed);
         for &c in &s.collects {
             h.bool(c);
