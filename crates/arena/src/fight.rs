@@ -164,11 +164,8 @@ impl Fight {
         }
         let mut sim = Sim::with_config(spec.seed, config);
         sim.set_behaviors(lib);
-        // The side spawned first gets the lower ship ids, and the sim favours them (a skiff mirror match: about
-        // 3 to 1, docs/arena.md): odd seeds spawn side 1 first, so seeds in pairs cancel it out.
-        let first = (spec.seed % 2) as usize;
-        for side in [first, 1 - first] {
-            spawn_side(&mut sim, side, spec, &sides[side]);
+        for (side, resolved) in sides.iter().enumerate() {
+            spawn_side(&mut sim, side, spec, resolved);
         }
         let build_points = OWNERS.map(|o| kept(&sim, o).0);
         Ok(Fight {

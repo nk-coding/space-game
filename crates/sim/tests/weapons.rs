@@ -583,3 +583,54 @@ fn a_second_hit_in_the_same_tick_reaches_the_part_behind() {
     let hits = w.events().iter().filter(|e| matches!(e, SimEvent::Hit { .. })).count();
     assert_eq!(hits, 2);
 }
+
+/// Fire within a tick is mutual (ADR-0037): two gunboats whose pulse lasers each die to one pulse both fire on
+/// the same tick, and both lose their gun, whichever has the lower id. (Before, the lower id's pulse destroyed
+/// the other gun before it fired.)
+#[test]
+fn guns_firing_in_one_tick_all_fire() {
+    let c = content();
+    let d = custom(&c, &gunboat("pulse_laser"));
+    let gun = find(&d, "pulse_laser", 0, 0);
+    let mut w = sim::Sim::new(1);
+    let a = w.spawn_ship(d.clone(), sim::Owner(1), Body::default());
+    let b = w.spawn_ship(d, sim::Owner(2), Body::at(Vec2::new(0.0, 20.0), core::f32::consts::PI));
+    let both = |fire: bool| TickInputs {
+        controls: [a, b].iter().map(|&s| (s, controls(0, 0.0, fire, true))).collect(),
+        ..Default::default()
+    };
+    for _ in 0..10 {
+        w.step(&both(false)); // the guns reload to ready
+    }
+    for s in [a, b] {
+        w.apply_damage(s, sim::DamageTarget::Part(gun), 0.9);
+    }
+    w.step(&both(true));
+    let fired = w.events().iter().filter(|e| matches!(e, SimEvent::ShotFired { .. })).count();
+    assert_eq!(fired, 2, "both guns fire");
+    for s in [a, b] {
+        assert!(!w.ship(s).unwrap().part(gun).alive, "and both are shot off");
+    }
+}
+
+/// Two pulses on one block in the same fire pass: the first destroys it, the second goes on to the block behind.
+#[test]
+fn a_second_pulse_of_the_pass_reaches_the_part_behind() {
+    let c = content();
+    let (mut w, s, t, d) = range(&c, "pulse_laser");
+    // A second gunboat right behind the first (shots pass friendly vessels): both pulses run down column 2.
+    let s2 = w.spawn_ship(custom(&c, &gunboat("pulse_laser")), sim::Owner::PLAYER, Body::at(Vec2::new(0.0, -5.0), 0.0));
+    let both = |fire: bool| TickInputs {
+        controls: [s, s2].iter().map(|&s| (s, controls(0, 0.0, fire, true))).collect(),
+        ..Default::default()
+    };
+    for _ in 0..10 {
+        w.step(&both(false));
+    }
+    let near = find(&d, "armor_block", 2, 3);
+    w.apply_damage(t, sim::DamageTarget::Part(near), 0.9);
+    w.step(&both(true));
+    let per_pulse = w.ship(s).unwrap().pieces()[0].guns[0].shot_damage;
+    assert_eq!(hp(&w, t, &d, 2, 3), 0.0);
+    assert!((hp(&w, t, &d, 2, 2) - (1.0 - per_pulse)).abs() < 1e-5, "the second pulse hits the block behind");
+}

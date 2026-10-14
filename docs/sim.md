@@ -112,8 +112,9 @@ balance tool of track 7K: [Voyages](#the-headless-voyage-runner)).
    are updated, created and removed in the physics, and split pieces ghost each other for a few ticks. Cored
    pieces of a split become vessels of their own, and the mind pass runs if anything changed (see
    [Vessels](#vessels)).
-4. **Behaviors think**: every ship with a behavior whose turn it is (every 3 ticks, staggered) picks its target
-   and rule from one snapshot of the world; the decisions are applied afterwards (see [Behaviors](#behaviors)).
+4. **Behaviors think**: every ship with a behavior thinks on the same ticks (every 3; not staggered by id,
+   ADR-0037) and picks its target and rule from one snapshot of the world; the decisions are applied afterwards
+   (see [Behaviors](#behaviors)).
 5. **Flight**: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input →
    `FlightGoal` and what the guns do), then the flight computer allocates the actuators of each controlling
    piece and fire at will picks the guns that fire (per gun facing).
@@ -121,8 +122,10 @@ balance tool of track 7K: [Voyages](#the-headless-voyage-runner)).
    (engines, RCS, gimbals, gyros, cores) and gun output; then heat (ship-wide); then each piece's authority (what
    can push and turn, for the next plan).
 7. **Weapons**: shield bubbles are collected, live projectiles fly (ray-cast segment), then every gun fires
-   (beams and pulses hit at once, projectiles spawn, recoil adds to the wrench), then every firing engine's plume
-   burns the first part in its path ([Engine plumes](#engine-plumes)); breakage is resolved again. Every
+   **at once** (beams and pulses are traced against the state at the start of the fire pass and their hits
+   applied after the last gun, so fire is mutual: no ship shoots an enemy's gun off before it fires in the same
+   tick, ADR-0037; projectiles spawn, recoil adds to the wrench), then every firing engine's plume burns the
+   first part in its path ([Engine plumes](#engine-plumes)); breakage is resolved again. Every
    `SalvageTuning::interval` ticks collecting vessels take salvage, and what they stripped breaks up
    ([Salvage](#salvage)).
 8. **Physics**: expired ghosts are cleared, this tick's wrenches replace the last ones (force rotated to world,
@@ -255,6 +258,23 @@ the fade one multiplication and a `min`. Counters with seed 42 (collected = salv
 | load (20) | 92 | 5 | 138 | 787 | 13 | 104 / 2 | 23 | 0 |
 | behavior | 123 | 22 | 431 | 84 | 5 | 106 / 0 | 12 | 0 |
 | salvage | 85 | 26 | 15 | 13 | 15 | 196 / 12 | 132 | 0 |
+
+**With simultaneous fire, shared think ticks and auto orbits by both ids** (ADR-0037, 14 Oct 2026, release builds,
+1800 ticks): core, flight, load (20 ships), behavior, salvage and voyage, seeds 42 and 7: native x86_64 vs
+wasm32-wasip1 under Node 24 **identical** (12 runs). Every stream differs from the last recorded ones (the fights
+changed; no new state is hashed, the weapons roll nothing). Last ticks, seed 42 / 7: core `10817d0eb6e4971b` /
+`0536f58db7b5841e`, flight `51b15d9f74e6ddc6` / `c0a61a9d5fd02065`, load `40715855bc7f3a44` / `32e271f92923a209`,
+behavior `93f2a77c360d022d` / `1bcaed90dd071046`, salvage `fae5854d5ad5af30` / `4ff6be9d0e5cceb0`, voyage
+`c426696903caa92a` / `1403ed03ee22045d`. Counters with seed 42 (voyage: 2 sites woken and cleared, recall 1755 ticks):
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Shield hits | Impacts / rams | Burns | Overheated part-ticks |
+|---|---|---|---|---|---|---|---|---|
+| core | 418 | 70 | 1290 | 141 | 7 | 36 / 3 | 265 | 248 |
+| flight | 228 | 32 | 1013 | 478 | 77 | 160 / 2 | 50 | 0 |
+| load (20) | 83 | 2 | 98 | 867 | 14 | 142 / 0 | 0 | 0 |
+| behavior | 188 | 23 | 239 | 197 | 77 | 32 / 2 | 57 | 0 |
+| salvage | 94 | 31 | 13 | 11 | 9 | 317 / 13 | 65 | 0 |
+| voyage | 48 | 6 | 40 | 0 | 0 | 682 / 0 | 0 | 0 |
 
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -851,8 +871,11 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
 
 ### Evaluation
 
-- **Cadence**: a ship thinks when `(tick + ship_id) % 3 == 0` (`tuning::THINK_PERIOD`, 10 Hz, staggered so a
-  fleet spreads its thinks) and on the first tick after it gets a behavior. Dark and dormant ships do not think.
+- **Cadence**: every ship thinks when `tick % 3 == 0` (`tuning::THINK_PERIOD`, 10 Hz) and on the first tick
+  after it gets a behavior. Dark and dormant ships do not think. Until 14 Oct 2026 the thinks were staggered by
+  ship id (`(tick + ship_id) % 3`, GDR-0034) to spread a fleet's thinks over the ticks; but then of two enemies
+  one always reacted a tick sooner, and in mirror fights that decided the winner (ADR-0037). Thinking costs
+  little next to the rest of a tick (the 200-ship load test: median step the same, p95 within noise).
 - **Two phases** (order-free, like the flight plan): every due ship decides from the same snapshot (the state
   after this tick's input breakage) into a per-ship scratch slot; then all decisions are applied. Per-pass
   caches: each ship's centre (one sin/cos per ship per pass instead of per candidate) and hull share (lazy).
@@ -887,8 +910,9 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   (served / demand), `target_in_range(d)`, `target_hull`, `target_on_me` (its behavior target, or its pilot
   lock, is me), `under_attack`, `enemies_near(r)`, `cycle(p)` and `target_time` (integer ticks since the
   target was picked; both need a target). Target conditions without a target fail with `NoTarget`, regardless of `not`.
-- **Actions** → maneuvers: `approach(r)` → `Approach`, `orbit(r, dir)` → `Orbit` (`auto` = by ship id
-  parity), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`,
+- **Actions** → maneuvers: `approach(r)` → `Approach`, `orbit(r, dir)` → `Orbit` (`auto` = by the parity of
+  the ship's and its target's ids together: half of a fleet circles a target each way, and two ships circling each
+  other go the same way, whichever has the lower id; ADR-0037), `kite(r)` → `KeepRange`, `face` → `FaceTarget`, `flee` → `Flee`, `hold` → `Brake`,
   `escort(d)` → `Escort` (GDR-0065, below). All aim with `AimMode::Auto` (lead for projectile ships).
 - **`escort(d)`** (GDR-0065, 13 Oct 2026; default 30 m): keep within `d` of the leader (`ShipCommand::Leader`, the
   vessel whose lock `locked` follows: for the sandbox's `?fleet=` wingmen and TEST IN RANGE's wingman the
@@ -1264,6 +1288,16 @@ behavior each gun fires when the target crosses its own facing.
 | `Projectile(rate, speed, penetration, recoil)` | same cooldown; a `Projectile` entity at the muzzle with the muzzle's velocity (`v + ω × r`) plus `speed`, living `range / speed` s |
 
 - **Lasers** (beam, pulse) burn the first block only.
+- **Simultaneous fire** (ADR-0037, 14 Oct 2026): the guns of all ships fire at once within a tick. Every beam
+  and pulse is traced (ray cast, shield bubbles along the path) against the state at the start of the fire
+  pass: which guns fire, where they point, which parts are alive. The hits (`weapons::GunHit`) are applied after
+  the last gun has fired, in firing order (ship, piece, gun); a hit whose part an earlier hit of the pass
+  destroyed goes on along its shot to the part behind (one more ray cast, no second shield pass). So two ships
+  that open fire on the same tick both fire, whatever their ids. Before, ships fired one after another in id
+  order and each hit landed at once: a lower-id ship could shoot an enemy's gun or reactor off before it fired,
+  and the side spawned first won 1173 of 2000 starter mirror matches to 378. Projectiles in flight move before
+  the guns fire (their impacts are part of the state the guns see) and engine plumes burn after the hits are
+  applied, both for every ship alike. Events: a pulse's `ShotFired` now comes before its `Hit`.
 - **Projectiles**: each tick the segment they travel is ray-cast. On a hull hit the block takes the damage; if
   it breaks, the excess carries on along the shot through the next blocks of the same piece (grid walk) until
   `penetration` blocks are used up, the damage runs out or the shot leaves the hull (it does not fly on to
@@ -2013,6 +2047,23 @@ changed together. Goal cleared and home of 60 (seeds 1–60), emergency recall i
 | corran_reach | 9 → 10 | 5 → 21 | 27 → 40 | 39 → 43 |
 | wardens_gate | 2 → 2 | 1 → 11 | 12 → 17 | 24 → 41 |
 
+**ADR-0037** (14 Oct 2026: simultaneous fire, shared think ticks, auto orbits by both ids). The `dev` build before and
+after (`6bffe58` and this change, the same content and pilot), goal cleared and home of 120 (seeds 1–60 + 61–120), lost
+in brackets:
+
+| Voyage | `rim_skiff` | Halvex Runner |
+|---|---|---|
+| yard_approach | 66 (0) → 67 (0) | 79 (2) → 84 (3) |
+| halvex_drift | 43 (6) → 37 (2) | 94 (1) → 83 (4) |
+| corran_reach | 24 (3) → 21 (8) | 80 (5) → 89 (2) |
+| wardens_gate | 3 (0) → 8 (0) | 42 (0) → 43 (3) |
+
+As clear rates: the starter 55 / 36 / 20 / 3 % → 56 / 31 / 18 / 7 %, the Runner 66 / 78 / 67 / 35 % → 70 / 69 / 74 / 36 %.
+The player's ship usually spawns before the enemies (lower id), but the scripted pilot fires and flies by its own
+inputs, not by a behavior, so only the fire order helped it before; the enemies' behaviors now think on shared ticks
+and orbit by both ids. Most changes are within the noise of 60 seeds (about ±5); `halvex_drift` got a little harder
+for both (−6 and −11 of 120), the Warden's gate a little easier for the starter.
+
 ## Driving the sim from the client
 
 ```rust
@@ -2242,6 +2293,13 @@ the old VM, an Intel Core Ultra 7 155H), medians over 15 runs at load average 0.
 mean; lose one part 0.051 ms; cut a row and split 0.105 ms (Rapier 0.04 ms). That is about 1.8× faster than the
 old VM idle on the same sim code (raw 0.398 / 0.645, pilot 0.435 / 0.747, combat 0.749 / 2.507 median / p95, see
 [Engine plumes](#engine-plumes)). During a 6-job cargo build (load 9–11, 10 runs) the medians rose by 9–15 %.
+
+**Simultaneous fire and shared think ticks** (ADR-0037, 14 Oct 2026; the `dev` build before and after, run
+alternately, 7 runs each, load average 14–18 from other agents' builds; medians of the per-run median / p95, ms):
+`sim_perf` raw throttles 0.247 / 0.364 → 0.236 / 0.294, pilot + lock 0.285 / 0.412 → 0.271 / 0.361, combat 0.857 /
+1.678 → 0.750 / 1.636; `load_test` 20 ships 0.020 / 0.042 → 0.017 / 0.039, 200 ships 0.160 / 0.236 → 0.163 / 0.223.
+No cost beyond the noise: the fire pass keeps its hits in a reused buffer, and thinking on shared ticks moves the
+same work onto every third tick.
 
 **Combat** (same tool): 20 gunboats (50×40 slabs, 17 pulse lasers + 17 cannons each, shield emitters inside) in
 two lines 60 m apart, every gun firing for 150 ticks; about 90 live projectiles on average, 340 at most. The slow

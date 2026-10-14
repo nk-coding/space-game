@@ -53,14 +53,29 @@ so without the jitter every seed would give the same fight.
 sides play by the same rules (only the player collects salvage). Both get unlimited mind capacity: every core runs.
 Every ship flies its behavior from the first tick; nobody pilots.
 
-**Spawn order.** The side spawned first gets the lower ship ids, and the sim favours them: in a mirror match of two
-`rim_skiff`s the first-spawned side won 1173 of 2000 fights and the other 378 (449 undecided); spawning side 1 first
-turned it round (425 / 1141), so it is the order, not the geometry. The cause lies in the sim's id-ordered passes
-(not investigated further: behaviors think on a cadence staggered by ship id, and the ships are processed in id
-order within a tick); first strikes decide skiff fights, which magnifies it. The arena cancels it rather than
-changing the sim: **odd seeds spawn side 1 first**, so seeds in pairs
-balance out (the same mirror match: 1607 / 1555 / 838 of 4000). A single fight still carries the bias of its seed's
-parity; average over an even number of seeds.
+**Spawn order.** Side 0 spawns first, so its ships get the lower ids; the sim gives lower ids no edge
+([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)). Until 14 Oct 2026 it did: in a mirror match of two
+`rim_skiff`s the side spawned first won 1173 of 2000 fights and the other 378 (449 undecided), and spawning side 1
+first turned it round (425 / 1141), so the arena alternated the spawn order by seed parity. Three id-order effects in
+the sim caused it, measured one at a time (2000 skiff mirrors and 1000 `automaton_hunter` mirrors, side 0 spawned
+first / side 1 spawned first; won by side 0 / side 1 / undecided):
+
+| Sim | Skiff mirror, side 0 first | Side 1 first | Hunter mirror, side 0 first | Side 1 first |
+|---|---|---|---|---|
+| Before | 1173 / 378 / 449 | 425 / 1141 / 434 | 286 / 81 / 633 | 77 / 282 / 641 |
+| Simultaneous fire (hits applied after every gun has fired) | 863 / 392 / 745 | 450 / 835 / 715 | | |
+| Shared think ticks alone (fire still in id order) | 1181 / 0 / 819 | 0 / 1167 / 833 | | |
+| Both | 0 / 0 / 2000 | 0 / 0 / 2000 | 353 / 49 / 598 | 46 / 344 / 610 |
+| All three (`orbit(auto)` by both ids) | 0 / 0 / 2000 | 0 / 0 / 1000 * | 0 / 0 / 1000 | 1 / 0 / 999 * |
+
+(\* 1000 seeds, the spawn jitter rolled per side so that both orders place the ships alike; side 0 first gave
+0 / 0 / 1000 and 1 / 0 / 999 that way. The rows above it roll the jitter in spawn order, as the arena did.)
+With all three, a fight with the same placement gives each side the same end in either spawn order (1000 of 1000
+seeds for the skiff, hunter and raider mirrors; `tests/fights.rs` checks it). Equal ships now open fire on the same
+tick and shoot each other's nose guns off together: every skiff mirror is a draw at 0.500 / 0.500. Left over is the
+physics: Rapier's contact solver resolves a collision a little differently depending on the bodies' order, so
+head-on rams can still tip a fight (`sample_mid` mirror: 37 of 1000 seeds end differently with the spawn order
+swapped, 22 / 4 against 3 / 16 wins; the Runner mirror 4 of 1000).
 
 ## A fight
 
@@ -123,14 +138,19 @@ cargo run --release -p arena -- matrix halvex_runner automaton_raider rim_skiff 
 ```text
 | vs | halvex_runner | automaton_raider | rim_skiff | sample_mid | automaton_hunter |
 |---|---|---|---|---|---|
-| halvex_runner | 21% (0.52) | 100% (1.00) | 100% (1.00) | 74% (0.82) | 100% (0.99) |
-| automaton_raider | 0% (0.00) | 17% (0.48) | 2% (0.06) | 2% (0.15) | 22% (0.22) |
-| rim_skiff | 0% (0.00) | 92% (0.94) | 36% (0.47) | 0% (0.24) | 84% (0.85) |
-| sample_mid | 10% (0.18) | 71% (0.85) | 27% (0.76) | 0% (0.48) | 52% (0.64) |
-| automaton_hunter | 0% (0.01) | 78% (0.78) | 14% (0.15) | 18% (0.36) | 9% (0.45) |
+| halvex_runner | 0% (0.50) | 100% (1.00) | 100% (1.00) | 64% (0.79) | 100% (1.00) |
+| automaton_raider | 0% (0.00) | 0% (0.50) | 3% (0.05) | 4% (0.18) | 60% (0.64) |
+| rim_skiff | 0% (0.00) | 92% (0.95) | 0% (0.50) | 0% (0.22) | 92% (0.94) |
+| sample_mid | 9% (0.21) | 68% (0.82) | 33% (0.78) | 1% (0.50) | 66% (0.77) |
+| automaton_hunter | 0% (0.00) | 27% (0.36) | 5% (0.06) | 6% (0.23) | 0% (0.50) |
 ```
 
-(`--seeds 100`, 2500 fights, 14 Oct 2026 content; 1v1 at 100 m, 90 s.)
+(`--seeds 100`, 2500 fights, 14 Oct 2026 content with ADR-0037; 1v1 at 100 m, 90 s.) Before ADR-0037 the diagonal
+was 21 / 17 / 36 / 0 / 9 % (mean scores 0.45–0.52, the spawn order alternating by seed); now every mirror ends at
+0.50 (`sample_mid` wins one fight in a hundred by a ram, see the spawn order above). Fights with the hunter moved
+most (it orbits under `raider_basic`, and `orbit(auto)` now goes by both ids): the raider against it 22 → 60 %,
+`sample_mid` 52 → 66 %, the starter 84 → 92 %; the Runner against `sample_mid` 74 → 64 %; the rest within a few
+fights in a hundred.
 
 ## Determinism
 
@@ -144,15 +164,22 @@ until the fight ends and compares the per-tick hashes.
 `skiff_mirror` seeds 3 and 42 (wins, 551–552 ticks); also before the spawn-order change, `runner_vs_raiders` seeds
 1, 5, 6 and `skiff_mirror` 1, 7. The final hashes equal the CLI's for the same seeds.
 
+**With ADR-0037** (14 Oct 2026, release builds; simultaneous fire, shared think ticks, auto orbits by both ids, side 0
+spawned first): **identical** for `runner_vs_raiders` seeds 1 (the time limit, 2700 ticks, `21a0ee0c17aa5233`), 2 (a
+loss, 2661, `3d1b0698c87bd461`), 11 (a loss, 1738, `293ae01a0f0b6d2a`) and `skiff_mirror` seeds 3 (the time limit,
+2700, `988f8d8fc87fa72e`) and 42 (the time limit, 2700, `57cb79ccd322c539`), the same final hashes as the CLI's.
+
 `tests/fights.rs`: the same spec twice gives the same result and hash, another seed another hash; stepping in slices
 gives the same result as one go; the starter against one raider ends; a short time limit ends undecided at 0.5 each;
 the score's edge cases; seeds averaged; the spec's RON round trip (blueprint and behavior texts included); every
-error kind; the spawn order by seed parity.
+error kind; the sides' placement; and mirror fights (the starter's and the hunter's, 4 seeds each, 30 s) ending the
+same for each side when the ships are spawned again in the opposite order (the swap shows any id-order effect
+exactly, in a debug build in well under a second, so it runs with every `cargo test`).
 
 ## Performance
 
 Native release, `arena fight --seeds 4000` on all 16 threads (AMD Ryzen 9 9950X3D, 16 vCPUs), 7 runs each, load
-average 6–12 (other agents building, and the runs themselves), 14 Oct 2026:
+average 6–12 (other agents building, and the runs themselves), 14 Oct 2026, before ADR-0037:
 
 | Fight | Mean length | Fights/s (16 threads), median (range) | M ticks/s | Fights/s (1 thread) |
 |---|---|---|---|---|
@@ -167,6 +194,15 @@ threads scale about 12×. Building a fight (`Fight::new`: the behavior library, 
 What the 4000-seed runs say about the content (side 0 won / side 1 won / undecided): the Runner beats three raiders
 in 56 % (2227 / 543 / 1230, mean score 0.73); almost a third end undecided (the time limit or both out). The skiff
 mirror: 1607 / 1555 / 838 (mean score 0.507 / 0.493).
+
+**With ADR-0037** (14 Oct 2026; simultaneous fire, shared think ticks; load average 5–8; the build before, run
+alternately, in brackets): `runner_vs_raiders` 1398 fights/s on 16 threads, median of 5 (1374–1406; before 1433),
+2.53 M ticks/s (2.51), one thread 114 fights/s (119): the fights last a little longer (60.4 s mean), the cost per
+tick is the same. `skiff_mirror` now always runs to the time limit (90 s, 2700 ticks: both lose their lasers on the
+same tick and drift), so it gives fewer fights per second for cheaper ticks: 1261 fights/s on 16 threads, median of 5
+(973–1338), 3.4 M ticks/s; one thread 113 fights/s (233), 0.31 M ticks/s (0.28). The 4000-seed runs now: the Runner
+against three raiders 2076 / 590 / 1334 (mean score 0.708 / 0.292, mean 60.4 s), the skiff mirror 0 / 0 / 4000
+(0.500 / 0.500).
 
 ## Voyage fitness
 
@@ -190,8 +226,8 @@ the game share one pilot.
 - `voyage_fitness(&content, &spec, voyages, seeds)`: the mean score over every voyage and seed, in order.
 
 Errors are `ArenaError` values (`UnknownVoyage`, `Voyage` for a design, behavior or roll that does not work, `Number`
-for the minutes). The starter on `yard_approach` with the skirmisher behavior in fights scores 0.115 over seeds 1–4
-(8-minute limit); 30 generations of evolution reach 0.916 (below).
+for the minutes). The starter on `yard_approach` with the skirmisher behavior in fights scores 0.156 over seeds 1–4
+(8-minute limit); 30 generations of evolution reach 0.897 (below).
 
 ## Evolution
 
@@ -217,7 +253,7 @@ unknown fields are errors, comments are fine). Examples in `crates/arena/runs/`:
             (design: Ship("automaton_raider"), count: 3),
             (design: Ship("automaton_hunter")),
         ],
-        seeds: 4,                     // seeds 1..=4 against each opponent (default 4; keep it even)
+        seeds: 4,                     // seeds 1..=4 against each opponent (default 4)
         time_limit: 60,               // optional: start_distance, time_limit (fight defaults), count (1),
                                       // hall_of_fame (0)
     ),
@@ -322,7 +358,7 @@ let (blueprint, behavior) = (r.elites[0].genome.blueprint_text(), r.elites[0].ge
 
 - `Run::step(budget)`: breeds the next generation when none is open, then runs its jobs for up to `budget` sim ticks
   (a fight or voyage is stepped in slices, `Fight::step` / `VoyageRunner::step`), and closes the generation after its
-  last job. Breeding is not counted against the budget: 4–8 ms per generation of 32 (native release, below).
+  last job. Breeding is not counted against the budget: 4–10 ms per generation of 32 (native release, below).
 - `Run::jobs()` / `Run::submit(results)`: a generation's `Job`s (a `FightSpec` or `VoyageSpec` each, plain data) and
   their `JobResult`s in the same order; `Job::run(&content)` runs one anywhere. The CLI uses these; don't mix them
   with `step` within a generation.
@@ -333,7 +369,7 @@ let (blueprint, behavior) = (r.elites[0].genome.blueprint_text(), r.elites[0].ge
 every platform), results are applied in job order, the archive is a `BTreeMap`. `tests/evolve.rs` checks that the
 same config and seed give the same results run twice, stepped in slices of 97 ticks, and on 1 and 4 threads; another
 seed gives another run. The CLI on 1 and on 16 threads printed identical tables and wrote identical files
-(`skiff_behavior.ron`, 14 Oct 2026).
+(`skiff_behavior.ron`, 14 Oct 2026, before and after ADR-0037).
 
 ### The CLI: `arena evolve`
 
@@ -349,30 +385,33 @@ generation, parts). With `--out DIR` it writes the best `--best` (8) elites: `el
 
 ### What the example runs found
 
-`crates/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` (before the sim's spawn-order fix, which will move
-the fight numbers):
+`crates/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` with ADR-0037 (simultaneous fire, shared think
+ticks, no spawn-order stopgap); the archive's best after generations 0, 10, 20 and 29:
 
-| Run | Start's score | Best after gen 0 / 10 / 20 / 29 | Cells | Best elite |
+| Run | Start's score | Archive best, gen 0 / 10 / 20 / 29 | Cells | Best elite |
 |---|---|---|---|---|
-| `skiff_behavior.ron`: the skiff's behavior against 2 and 3 raiders and a hunter (archive `EngageDistance` × `Rules`) | 0.577 (skirmisher) | 0.683 / 0.962 / 0.966 / **0.981** | 40 of 48 | `target threat(weapons)`, `when cycle(6s) < 5s -> face`: one rule, face the most dangerous enemy's guns 5 s in 6, idle (hold) the sixth |
-| `skiff_design_60bp.ron`: the skiff's design, 60 build points, mirror lock, frigate, all parts | 0.577 | 0.796 / 0.860 / 0.960 / **1.000** | 28 of 64 | 22 parts: the twin pulse lasers, four **automaton cores** and no reactor, logic core or thruster, two RCS pods for thrust, two gyros, two shield emitters, capacitors, composite blocks and automaton-plate slopes |
-| `skiff_voyage_stages.ron`: behavior 10, design 10, both 10, starter parts, mirror lock, `yard_approach` × 4 seeds | 0.115 | 0.432 / 0.753 / 0.755 / **0.916** | 22 of 64 | the starter's slopes, cores, thrusters and gyros; its radiators, capacitors, cargo bays and armour blocks traded for two more reactors, four more shield emitters and two more forward pulse lasers on the flanks; behavior `target threat(weapons)`, below 25 % hull `escort` (no leader: it holds), else `face` (three rules below that never run) |
+| `skiff_behavior.ron`: the skiff's behavior against 2 and 3 raiders and a hunter (archive `EngageDistance` × `Rules`) | 0.643 (skirmisher) | 0.726 / 0.896 / 0.980 / **0.980** | 38 of 48 | `target threat(weapons)`, `when power < 28% -> approach(81%)`, `always -> face` (a third rule below never runs): nose on the most dangerous enemy's guns |
+| `skiff_design_60bp.ron`: the skiff's design, 60 build points, mirror lock, frigate, all parts | 0.643 | 0.758 / 0.758 / 0.989 / **1.000** | 24 of 64 | 20 parts in the starter's 8 × 4: four **automaton cannons** and two **automaton cores** (in place of the logic cores and gyros), the reactors moved to the nose in front of the centre cannons, the pulse lasers turned to the sides, no capacitors, cargo or armour blocks; the report counts none of its guns as clear (firepower 0) |
+| `skiff_voyage_stages.ron`: behavior 10, design 10, both 10, starter parts, mirror lock, `yard_approach` × 4 seeds | 0.156 | 0.479 / 0.884 / 0.884 / **0.897** | 25 of 64 | 28 parts: the starter with its cargo bays traded for two more shield emitters and two more pulse lasers; behavior `target nearest(weapons)`, flee below 25 % hull, else `face` (three rules below never run) |
 
-Balance findings for the lead: the automaton core is a power plant (6), a logic core (2 slots) and a gyro (300) in one
-5-build-point cell, while the starter's reactor, logic core and gyro cost 11; locked for players, but a design run
-with every part finds it at once. Facing the enemy's guns (`threat(weapons)`) beats the skirmisher's orbit against
-raiders.
+Findings for the lead: the automaton parts win every 60-build-point design run that may use them (an earlier run on
+the sim before ADR-0037 kept four automaton cores and no reactor or thruster at all): the automaton core is a power
+plant (6), a logic core (2 slots) and a gyro (300) in one 5-build-point cell, where the starter's reactor, logic core
+and gyro cost 11; locked for players, but a balance question once research unlocks them. The best design wins every
+fight with every gun blocked by its own parts in the report: worth a look whether blocked guns stay silent (or whether
+the reactors in front of its cannons are shot away first). Facing the enemy (`face`, aiming at its guns) beats the
+skirmisher's orbit against raiders, in fights and on the voyage.
 
 ### Performance
 
-Native release on all 16 threads (`arena evolve`, 3 runs each, load average 7–14 from other agents' builds),
-14 Oct 2026:
+Native release on all 16 threads (`arena evolve`, 3 runs each, load average 7–13 from other agents' builds),
+14 Oct 2026, with ADR-0037:
 
 | Run | Generations per minute, median (range) | Fights or voyages per generation | Breeding ms per generation, median (p95) |
 |---|---|---|---|
-| `skiff_behavior.ron` | **326** (313–366) | 384 fights | 3.9 (4.4) |
-| `skiff_design_60bp.ron` | **335** (306–345) | 384 fights | 5.5 (7.7) |
-| `skiff_voyage_stages.ron` | **187** (178–192) | 128 voyage runs | 5.0 (6.2) |
+| `skiff_behavior.ron` | **339** (312–345) | 384 fights | 4.0 (5.0) |
+| `skiff_design_60bp.ron` | **386** (386–430) | 384 fights | 6.5 (9.0) |
+| `skiff_voyage_stages.ron` | **211** (209–214) | 128 voyage runs | 4.8 (6.9) |
 
-`skiff_behavior.ron` on one thread: 32.7 generations per minute (16 threads: 11×). A generation is 0.4–0.7 million
-ticks; the generation wall clock is 0.15–0.4 s.
+`skiff_behavior.ron` on one thread (before ADR-0037): 32.7 generations per minute (16 threads about 11× that). A generation is 0.4–0.75
+million ticks; the generation wall clock is 0.15–0.4 s.

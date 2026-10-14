@@ -154,6 +154,8 @@ pub struct Sim {
     /// Shield bubbles this tick.
     pub(crate) bubbles: Vec<Bubble>,
     pub(crate) shield_scratch: Vec<(f32, u32)>,
+    /// The fire pass's hits, applied once every gun has fired (scratch, reused; `weapons.rs`).
+    pub(crate) gun_hits: Vec<crate::weapons::GunHit>,
     pub(crate) plume_scratch: crate::plume::PlumeScratch,
     /// Behavior programs (shared; ships refer to them by `BehaviorId`).
     behaviors: BehaviorLibrary,
@@ -199,6 +201,7 @@ impl Sim {
             beams: Vec::new(),
             bubbles: Vec::new(),
             shield_scratch: Vec::new(),
+            gun_hits: Vec::new(),
             plume_scratch: Default::default(),
             behaviors: BehaviorLibrary::default(),
             behavior_scratch: behavior::Scratch::default(),

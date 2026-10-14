@@ -1,9 +1,12 @@
 //! Fights: determinism, ending, scoring, the spec's text form and errors for bad specs.
 
+use std::sync::Arc;
+
 use arena::{
     ArenaError, BehaviorRef, DesignRef, Entry, Fight, FightSpec, Formation, Outcome, Summary,
     arena_score, run_fight, run_seeds,
 };
+use sim::{BehaviorLibrary, ShipCommand, Sim, SimConfig, TickInputs};
 
 fn runner_vs_raiders(seed: u64) -> FightSpec {
     FightSpec::new(
@@ -47,24 +50,86 @@ fn stepping_in_slices_gives_the_same_result() {
 }
 
 #[test]
-fn odd_seeds_spawn_side_one_first() {
+fn sides_spawn_in_order_facing_each_other() {
     let content = data::base_content();
-    for seed in [6, 7] {
-        let fight = Fight::new(&content, &runner_vs_raiders(seed)).unwrap();
-        let ships = fight.sim().ships();
-        assert_eq!(ships.len(), 4);
-        let first = (seed % 2) as usize;
-        assert_eq!(ships[0].owner(), arena::OWNERS[first]);
-        assert_eq!(ships[3].owner(), arena::OWNERS[1 - first]);
-        // Side 0 faces +y from the origin, side 1 faces it from `start_distance` ahead.
-        for s in ships {
-            let y = s.pieces()[0].body.pos.y;
-            if s.owner() == arena::OWNERS[0] {
-                assert!(y.abs() <= arena::JITTER, "{y}");
-            } else {
-                assert!((y - 100.0).abs() <= arena::JITTER, "{y}");
-            }
+    let fight = Fight::new(&content, &runner_vs_raiders(6)).unwrap();
+    let ships = fight.sim().ships();
+    assert_eq!(ships.len(), 4);
+    assert_eq!(ships[0].owner(), arena::OWNERS[0]);
+    assert!(ships[1..].iter().all(|s| s.owner() == arena::OWNERS[1]));
+    // Side 0 faces +y from the origin, side 1 faces it from `start_distance` ahead.
+    for s in ships {
+        let y = s.pieces()[0].body.pos.y;
+        if s.owner() == arena::OWNERS[0] {
+            assert!(y.abs() <= arena::JITTER, "{y}");
+        } else {
+            assert!((y - 100.0).abs() <= arena::JITTER, "{y}");
         }
+    }
+}
+
+/// The ships of a fight spawned again at the same places in the opposite order (side 1's first, so they get the
+/// lower ids), each under its design's default behavior (what the fight gave them).
+fn respawned_in_reverse(content: &data::Content, fight: &Fight) -> Sim {
+    let mut config = SimConfig::default();
+    for o in arena::OWNERS {
+        config.mind_capacity[o.0 as usize] = u32::MAX;
+    }
+    let mut sim = Sim::with_config(fight.sim().seed(), config);
+    let lib = BehaviorLibrary::new(content).unwrap();
+    let behaviors: Vec<_> = fight.sim().ships().iter().map(|s| lib.default_for(s.design())).collect();
+    sim.set_behaviors(lib);
+    for (s, behavior) in fight.sim().ships().iter().zip(behaviors).rev() {
+        let id = sim.spawn_ship(Arc::clone(s.design()), s.owner(), s.pieces()[0].body);
+        sim.command(id, ShipCommand::Behavior(behavior));
+    }
+    sim
+}
+
+/// Each side's ships: the hit points of every part (0 for a destroyed one), per ship, sorted.
+fn side_states(sim: &Sim) -> [Vec<Vec<u32>>; 2] {
+    arena::OWNERS.map(|o| {
+        let mut ships: Vec<Vec<u32>> = sim
+            .ships()
+            .iter()
+            .filter(|s| s.owner() == o)
+            .map(|s| {
+                s.parts()
+                    .iter()
+                    .map(|p| if p.alive { p.hp.to_bits() } else { 0 })
+                    .collect()
+            })
+            .collect();
+        ships.sort();
+        ships
+    })
+}
+
+/// Mirror fights end the same for each side whichever side spawns first (and gets the lower ship ids): fire
+/// within a tick is mutual, every ship thinks on the same ticks, and an `auto` orbit does not depend on which
+/// ship has the lower id (ADR-0037; before, the side spawned first won the starter mirror about 3 : 1). The
+/// starter under `skirmisher` (pulse lasers, shields) and the automaton hunter under `raider_basic` (cannons,
+/// orbits), four seeds each, 30 s: the first exchanges decide these fights, and it stays fast in a debug build.
+#[test]
+fn a_mirror_fight_ends_the_same_in_either_spawn_order() {
+    let content = data::base_content();
+    let ticks = 30 * sim::TICK_HZ as u64;
+    for design in ["rim_skiff", "automaton_hunter"] {
+        let mut damaged = false;
+        for seed in 1..=4 {
+            let spec = FightSpec::new(seed, vec![Entry::ship(design)], vec![Entry::ship(design)]);
+            let mut fight = Fight::new(&content, &spec).unwrap();
+            let mut swapped = respawned_in_reverse(&content, &fight);
+            assert_ne!(fight.sim().ships()[0].owner(), swapped.ships()[0].owner());
+            assert_eq!(fight.step(ticks), None, "{design} seed {seed}: still fighting");
+            for _ in 0..ticks {
+                swapped.step(&TickInputs::default());
+            }
+            let ends = side_states(fight.sim());
+            assert_eq!(ends, side_states(&swapped), "{design} seed {seed}: each side ends the same");
+            damaged |= ends.iter().flatten().flatten().any(|&hp| hp == 0);
+        }
+        assert!(damaged, "{design}: the mirrors fight");
     }
 }
 

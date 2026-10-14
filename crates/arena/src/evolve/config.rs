@@ -82,7 +82,7 @@ pub struct Stage {
 #[serde(deny_unknown_fields)]
 pub enum Fitness {
     /// Fights against a pool: the fixed opponents (archetypes) plus the best `hall_of_fame` elites so far, each
-    /// over `seeds` seeds (1, 2, ...; use an even number: the arena alternates the spawn order by seed parity).
+    /// over `seeds` seeds (1, 2, ...).
     /// The score is the mean arena score of the genome's side.
     ArenaPool {
         opponents: Vec<Entry>,

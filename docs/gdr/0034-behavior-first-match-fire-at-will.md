@@ -1,6 +1,6 @@
 # GDR-0034: Behaviors pick the first matching rule about ten times a second; each gun fires at will along its facing; no match means hold
 
-- Status: Accepted
+- Status: Accepted; the think cadence's stagger by ship id replaced by [ADR-0037](../adr/0037-simultaneous-fire-within-a-tick.md) (14 Oct 2026: every ship thinks on the same ticks)
 - Date: 2026-10-11 (proposal); 2026-10-12 (Niklas: per-gun facing; accepted)
 - Decided by: Niklas (fire at will per gun facing); behavior agent (first match, hold, cadence; proposal accepted 2026-10-12)
 - Related: [GDR-0015](0015-layered-behavior.md), [GDR-0018](0018-weapon-families.md), [GDR-0023](0023-shot-leading.md), [GDR-0035](0035-rule-slots-per-core.md), [GDR-0036](0036-behavior-text-format.md), [GDR-0037](0037-behavior-vocabulary-as-content.md), [ADR-0026](../adr/0026-behavior-programs-text-in-content.md), `docs/behavior-format.md`, `docs/sim.md` "Behaviors"
