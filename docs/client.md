@@ -112,8 +112,11 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   carried, is removed then).
 - **Salvage in the sandbox** (GDR-0063, 13 Oct 2026; the first feel check of track 7B): every running vessel of
   the player collects (`SimConfig::salvage`, the sim's defaults): fly within 5 m of a wreck (raiders shot down,
-  their split-off pieces) or a loose core fragment, and one part every 1/3 s goes into the hold, best first
-  (`docs/sim.md` "Salvage"). The HUD shows `CARGO n / m` under the hull; nothing is done with the haul yet.
+  their split-off pieces) or a loose core fragment, no faster than 8 m/s relative to it (GDR-0079, 14 Oct 2026; 4
+  m/s before), and one part every 1/3 s goes into the hold, best first (`docs/sim.md` "Salvage"). The HUD shows
+  `CARGO n / m` under the hull; nothing is done with the haul yet. Loose items (core fragments, spilled cargo) last
+  60 s here (`scene::SANDBOX_LOOSE_TICKS`; the sim's default keeps them until it ends, as in a voyage, but the
+  sandbox's waves never end, so they would pile up); the tuning panel keeps the scene's salvage settings.
 - **Test flight**: the sandbox launched from the drydock (T or TEST-FLY), waves on, title `TEST FLIGHT`. Losing
   every vessel returns to the drydock after the same 3 s (`SHIP LOST · BACK TO THE DRYDOCK`) instead of
   re-forming; T returns at any time. Shift+R restarts the test flight.
