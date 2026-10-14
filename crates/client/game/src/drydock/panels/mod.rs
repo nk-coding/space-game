@@ -98,10 +98,11 @@ pub(in crate::drydock) struct GridScrim;
 
 /// The scrim around the grid: its alpha, the same all round (Niklas, 14 Oct 2026: "I still want them to be a bit
 /// transparent (just everywhere the same)"; half a column looked darker only while the scrim's hole ignored the UI
-/// scale), solid up to this far outside the grid (12 px past the side columns), gone this far inside it.
+/// scale), even right up to the grid's edge and fading out only inside the grid, over this far. A fade that began
+/// outside the grid let the dock's lit wall show through more in a strip beside the left column, which stopped where
+/// the solid bottom band began (Niklas, 15 Oct 2026: "at the border it is slightly more see through").
 const SCRIM_ALPHA: f32 = 0.85;
-const SCRIM_OUT: f32 = 10.0;
-const SCRIM_INTO: f32 = 10.0;
+const SCRIM_INTO: f32 = 16.0;
 /// List entries in the pool (headings and part rows; the list scrolls by pixels). More than the content has, so
 /// the pool never shows other entries while it scrolls (that rebuilt the part icons, a blink).
 const SLOTS: usize = 48;

@@ -258,7 +258,7 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
 - **Scrims and the column's end** (14 Oct 2026; Niklas: "with the ship in the background the side panels stuff is
   still barely readable", "the parts list spills into that bottom area", "I can still see a difference in
   background visibility between the side and bottom thing"): one scrim frames the grid on every side, the backdrop
-  colour at 85 %, the same all round (Niklas: "a bit transparent (just everywhere the same)"), up to 10 px outside the grid, fading out to 10 px inside it, so the
+  colour at 85 %, the same all round (Niklas: "a bit transparent (just everywhere the same)"), right up to the grid's edge, fading out only inside the grid over 16 px (a fade that began outside showed the dock's wall in a strip beside the left column), so the
   columns, the top line, the info line and the bottom bar all sit on the same dark. It is one world mesh
   (`UiIcon::Scrim`, a frame with a hole, so its corners are not doubled; the hole is the grid viewport's laid-out
   rectangle, `sync_scrim`, not copied numbers) just under the UI icons, so it covers the

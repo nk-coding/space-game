@@ -39,7 +39,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             // side and bottom thing"; the BEHAVIOR screen covers the world instead, which the drydock cannot: its
             // ship is the world). A world mesh (`UiIcon::Scrim`), so it lies under the panels' icons too.
             // Its hole comes from the grid viewport's laid-out rectangle (`sync_scrim`), not from copied numbers.
-            let scrim = UiIcon::Scrim { color: back.with_alpha(SCRIM_ALPHA), hole: [0.0; 4], out: SCRIM_OUT, into: SCRIM_INTO };
+            let scrim = UiIcon::Scrim { color: back.with_alpha(SCRIM_ALPHA), hole: [0.0; 4], out: 0.0, into: SCRIM_INTO };
             root.spawn((GridScrim, ScreenPart::new(Edge::Fade, 1), Node { width: percent(100), height: percent(100), ..abs(Some(0.0), None, Some(0.0), None) }, scrim));
 
             // Top left: the ring menu, the breadcrumb and the design's name.
