@@ -92,7 +92,8 @@ the game requires these ids: `build_points mass hp power_output power_draw power
 damage range shot_rate shot_speed penetration recoil thrust rated_speed gimbal plume_length plume_damage plume_heat
 rcs_thrust rcs_rated_speed torque
 shield_radius shield_capacity shield_regen cargo_capacity rule_slots control_cost control_capacity mass_per_cell
-hp_per_cell build_point_factor`. `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
+hp_per_cell build_point_factor blast_damage blast_radius blast_factor` (the last three since 14 Oct 2026,
+GDR-0084). `fire_rate` is a bonus-only stat. Units (`t`, `kN`, `kN·m`, `MW`, `°`) are
 placeholders except that the sim reads mass in t, thrust in kN, torque in kN·m (so kN / t = m/s²) and rated
 speeds in m/s; 1 cell = 1 m.
 
@@ -133,11 +134,13 @@ Materials with an optional component block. For now only armor:
 
 ```ron
 (id: "composite", name: "Composite", summary: "...", icon: "armor-composite",
- armor: (tone: "composite", mass_per_cell: 1.5, hp_per_cell: 1.4, build_point_factor: 1.5))
+ armor: (tone: "composite", mass_per_cell: 1.5, hp_per_cell: 1.4, build_point_factor: 1.5, blast_factor: 0.5))
 ```
 
 A hull part placed in a material gets `mass = mass_per_cell × area`, `hp = hp_per_cell × area` and
-`build_points × build_point_factor`; slopes have half the area of their footprint. Fabrication resources
+`build_points × build_point_factor`; slopes have half the area of their footprint. `blast_factor` (optional, default
+1, at least 0; added 14 Oct 2026, GDR-0084) is the share of a chain reaction's damage the hull part takes (base: 0.5,
+reactive 0.25); stat line `blast_factor` ("Blast damage taken", ×). Fabrication resources
 (He-3, chitin, ...) will be materials without an `armor` block, which is why the kind is not called "armor".
 The first one is **programmable matter** (`materials/precursor.ron`, added 13 Oct 2026): research costs it, and
 cores give it when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A material without `armor` never shows in
@@ -205,6 +208,7 @@ Optional component blocks (a part has any combination):
 | `shield` | `radius` (m), `capacity` (damage), `regen` (per second while powered), `absorb` (share of damage per family, e.g. `{Energy: 1.0, Kinetic: 0.5}`; missing = passes through) | bubble around the emitter that soaks shots entering it |
 | `cargo` | `capacity` | salvage units |
 | `logic` | `rule_slots`, `control_capacity` | hosts a mind, runs behavior rules and up to `control_capacity` of control cost (GDR-0038 "N") |
+| `explosion` | `damage`, `radius` (m, at most 4, `data::validate::MAX_BLAST_RADIUS`) | a chain reaction (GDR-0019, GDR-0084, added 14 Oct 2026): when damage destroys the part, every other part of its piece with a cell within `radius` m of its centre takes `damage` once (hull parts times their armour's `blast_factor`); parts it destroys explode in turn, in the same tick. Own shields do not help. Stat lines `blast_damage` (HP) and `blast_radius` (m). Base values (placeholders, lead, 14 Oct 2026): fission reactor 1.5 / 1, fusion reactor 2.5 / 1.5, torch drive 1.2 / 1.5, capacitor and thruster 0.5 / 0.6; the sim's rule is in `docs/sim.md` "Damage and breakage" |
 | `bonuses` | list, see below | adjacency bonuses this part grants |
 
 **Weapon delivery** (`weapon.delivery`, added 11 Oct 2026):

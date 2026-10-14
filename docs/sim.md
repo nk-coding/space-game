@@ -276,6 +276,24 @@ behavior `93f2a77c360d022d` / `1bcaed90dd071046`, salvage `fae5854d5ad5af30` / `
 | salvage | 94 | 31 | 13 | 11 | 9 | 317 / 13 | 65 | 0 |
 | voyage | 48 | 6 | 40 | 0 | 0 | 682 / 0 | 0 | 0 |
 
+**With chain reactions** (GDR-0084, 14 Oct 2026, release builds, 1800 ticks): core, flight, load (20 ships), behavior,
+salvage and voyage, seeds 42 and 7: native x86_64 vs wasm32-wasip1 under Node 24 **identical** (12 runs). Every stream
+differs from the ADR-0037 ones (blasts destroy more parts; no new state is hashed: the chain resolves within the
+breakage and the target lists are part of the design). The `determinism` example now counts `explosions`
+(`SimEvent::Explosion`). Last ticks, seed 42 / 7: core `04ce4f42d8de5acf` / `73268639788b929a`, flight
+`4bc8860035bb02f2` / `941ab112a90c9970`, load `6453618e3f9be298` / `86aa82a090628845`, behavior `c089c009baa0f1aa` /
+`090c65cf387057c3`, salvage `c79c3ec6c24dd137` / `d59fdca46779669e`, voyage `c54f1d7317fa892d` / `18e3fa300f587056`.
+Counters with seed 42 (voyage: 2 sites woken and cleared, recall 1755 ticks):
+
+| Scenario | Parts destroyed | Splits | Shots | Hits | Shield hits | Impacts / rams | Burns | Explosions | Overheated part-ticks |
+|---|---|---|---|---|---|---|---|---|---|
+| core | 433 | 67 | 1132 | 114 | 6 | 46 / 5 | 227 | 71 | 248 |
+| flight | 282 | 21 | 960 | 484 | 84 | 99 / 1 | 40 | 52 | 0 |
+| load (20) | 78 | 2 | 94 | 818 | 12 | 163 / 1 | 0 | 5 | 0 |
+| behavior | 220 | 25 | 261 | 155 | 78 | 47 / 8 | 81 | 35 | 0 |
+| salvage | 104 | 29 | 13 | 11 | 8 | 398 / 11 | 124 | 14 | 0 |
+| voyage | 53 | 4 | 44 | 0 | 0 | 634 / 0 | 0 | 5 | 0 |
+
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
@@ -1330,6 +1348,7 @@ Events (in `Sim::events()`, for visuals and sound):
 | `Ricochet { id, point, normal, vel }` | a kinetic shot glanced off a slope |
 | `ShieldHit { by, ship, piece, part, point, absorbed, left, depleted }` | a shot entered a bubble (`point` = entry), or a bubble covering a plume's hit point or a ram's contact point took its share; `depleted` = it collapsed |
 | `PlumeHit { by, engine, ship, piece, part, point, damage, heat, absorbed }` | an engine plume burned a part, one per lane and part per tick ([Engine plumes](#engine-plumes)) |
+| `Explosion { ship, piece, part, at, radius, damage }` | a destroyed part exploded (a chain reaction, after its `PartDestroyed`; [Damage and breakage](#damage-and-breakage)) |
 
 ### Aiming and leading
 
@@ -1605,9 +1624,11 @@ GDR-0047).
   the grid at once; its collider stays until breakage is resolved (shots pass through it, see [Ray casts](#ray-casts)).
 - Damage comes from scripted commands, weapons, engine plumes ([Engine plumes](#engine-plumes)) and rams
   ([Collisions](#collisions-impacts-and-ramming-v1)).
-- `Sim::resolve_breakage()` (steps 3, 7 and 9 of every tick) processes each damaged piece once: drop dead parts,
-  flood-fill the rest; one component → `SimEvent::PieceChanged`; several → `SimEvent::Split`; none →
-  `SimEvent::PieceDestroyed`. Every destroyed part emits `SimEvent::PartDestroyed { volatile }`.
+- `Sim::resolve_breakage()` (steps 3, 7 and 9 of every tick) first sets off the chain reactions (below), then
+  processes each damaged piece once: drop dead parts, flood-fill the rest; one component → `SimEvent::PieceChanged`;
+  several → `SimEvent::Split`; none → `SimEvent::PieceDestroyed`. Every destroyed part emits
+  `SimEvent::PartDestroyed { volatile }` (in the order the parts died; `volatile` = it has an explosion), an exploding
+  one followed by its `SimEvent::Explosion`.
 - On a split the main component keeps the piece id, frame and body. Every other component gets a new
   `PieceId`, a frame on its own centre of mass, the parent's angle and angular velocity, and
   `linvel = v + ω × (com_new − com_old)` (`ship::inherited_velocity`). The kept piece's `linvel` is corrected
@@ -1615,8 +1636,25 @@ GDR-0047).
   component that has a logic core then moves to a ship of its own, a vessel (`SimEvent::VesselFormed` after the
   `Split`; see [Vessels](#vessels)).
 - `Sim::raycast(origin, dir, max, exclude)` → `PartHit { ship, piece, part, hit }`.
-- Chain reactions: `Ship::chain_reaction(part)` is the hook (does nothing yet); the plan is an `explosion`
-  block in content.
+- **Chain reactions** (GDR-0019, [GDR-0084](gdr/0084-chain-reactions-v1.md), 14 Oct 2026; numbers are lead
+  placeholders in content). A part with an `explosion: (damage, radius)` block that damage destroys (shots, plumes,
+  rams, blasts, scripted damage; never salvage stripping or a spawned wreck's pre-breaking, which use
+  `Ship::remove_part`) deals `damage` once to every other alive part of its piece with a cell whose nearest point
+  lies within `radius` m of the part's centre (blueprint frame), times the target's `PartSpec::blast_factor` (a hull
+  part: its armour's `blast_factor`; others 1). Nothing blocks a blast, it does not fall off, and the ship's own
+  shields take none of it (it goes off inside them). Other pieces (the piece as it was before this resolution) and
+  other ships are not hit.
+  - The design compiles each part's targets once (`ShipDesign::blast`: `(part, damage)` in ascending part order).
+  - `Ship::chain_reactions` runs at the start of every breakage resolution (`Sim::resolve_ship` calls it before the
+    fragments, so parts a blast destroys leave theirs too): a queue over `pending_destroyed`, **first destroyed
+    first**; each blast hits its targets in ascending part order through `apply_damage`, and what it destroys joins
+    the end of the queue. So a whole chain resolves **in the same tick**, in a fixed order, before splits and events.
+  - `SimEvent::Explosion { ship, piece, part, at, radius, damage }`: `at` is the part's centre in the world as the
+    piece was before the breakage. The client draws nothing for it yet (a follow-up).
+  - Base content: fission reactor 1.5 within 1 m (the 8 cells around it), fusion reactor 2.5 within 1.5 m (the 12
+    cells around its 2 × 2), torch drive 1.2 within 1.5 m, capacitor and thruster 0.5 within 0.6 m (the 4 cells
+    beside them); armour `blast_factor` 0.5 (reactive 0.25). A fission reactor takes every 1-hit-point machine
+    around it, another fission reactor included (a chain), and leaves armour blocks standing.
 
 ## Salvage
 
@@ -2067,6 +2105,23 @@ The player's ship usually spawns before the enemies (lower id), but the scripted
 inputs, not by a behavior, so only the fire order helped it before; the enemies' behaviors now think on shared ticks
 and orbit by both ids. Most changes are within the noise of 60 seeds (about ±5); `halvex_drift` got a little harder
 for both (−6 and −11 of 120), the Warden's gate a little easier for the starter.
+
+**Chain reactions** ([GDR-0084](gdr/0084-chain-reactions-v1.md), 14 Oct 2026). The `dev` build before (`95cfcc9`) and
+after (the same pilot; the content gains the blast numbers), goal cleared and home of 120 (seeds 1–120), lost in
+brackets; the before column equals the ADR-0037 one above:
+
+| Voyage | `rim_skiff` | Halvex Runner |
+|---|---|---|
+| yard_approach | 67 (0) → 59 (0) | 84 (3) → 83 (0) |
+| halvex_drift | 37 (2) → 36 (4) | 83 (4) → 91 (0) |
+| corran_reach | 21 (8) → 15 (7) | 89 (2) → 70 (1) |
+| wardens_gate | 8 (0) → 4 (0) | 43 (3) → 38 (3) |
+
+As clear rates: the starter 56 / 31 / 18 / 7 % → 49 / 30 / 13 / 3 %, the Runner 70 / 69 / 74 / 36 % → 69 / 76 / 58 / 32 %.
+No run ran out of time. The starter's two fission reactors sit beside its radiators, cargo bays, thrusters and shield
+emitters, so a reactor shot off now can take a corner of the ship with it; the raiders' thrusters (and the Warden's)
+explode too. Within the noise of 120 seeds (about ±7) except the starter on
+`yard_approach` (−8) and the Runner on `corran_reach` (−19).
 
 ## Driving the sim from the client
 

@@ -169,6 +169,11 @@ spawned first): **identical** for `runner_vs_raiders` seeds 1 (the time limit, 2
 loss, 2661, `3d1b0698c87bd461`), 11 (a loss, 1738, `293ae01a0f0b6d2a`) and `skiff_mirror` seeds 3 (the time limit,
 2700, `988f8d8fc87fa72e`) and 42 (the time limit, 2700, `57cb79ccd322c539`), the same final hashes as the CLI's.
 
+**With chain reactions** (GDR-0084, 14 Oct 2026, release builds): **identical** for `runner_vs_raiders` seeds 1 (the
+time limit, 2700 ticks, `bd3e258ebfe888fd`), 2 (a loss, 1554, `8b08eb23b1973618`), 11 (the time limit, 2700,
+`5dc38c6c72ed573a`) and `skiff_mirror` seeds 3 (the time limit, 2700, `b8c97bc4f43ddc20`) and 42 (the time limit,
+2700, `573b7d11e6fd6c6f`), the same final hashes as the CLI's.
+
 `tests/fights.rs`: the same spec twice gives the same result and hash, another seed another hash; stepping in slices
 gives the same result as one go; the starter against one raider ends; a short time limit ends undecided at 0.5 each;
 the score's edge cases; seeds averaged; the spec's RON round trip (blueprint and behavior texts included); every
@@ -331,7 +336,12 @@ sampled every half second; arena pool only). An axis has `cells` equal bins from
 the end bins); each cell keeps its best elite (genome, score, measures, generation); a child takes a cell when it is
 empty or the child scores higher (ties keep the elite).
 
-The default axes are **acceleration (0–24 m/s²) × firepower (0–16 damage per second), 8 × 8** (*placeholders*), not
+`Firepower` is **latent firepower** (Niklas, 14 Oct 2026; `sim::DesignReport::latent_firepower`): the damage per
+second of every gun of the main piece as if each were clear and powered, at full power with bonuses, so blocked and
+idle guns count. Designs that hide their guns behind their own parts then sit with the other gun-heavy designs
+instead of under "no firepower". The drydock keeps the report's `firepower` (the guns that work as built).
+
+The default axes are **acceleration (0–24 m/s²) × (latent) firepower (0–16 damage per second), 8 × 8** (*placeholders*), not
 coop-arena 3.8's top speed × weapon reach: those are ratings of the part types (every base ship flies 20–22 m/s and
 reaches 45–75 m), so with the starter's parts every design sat in one or two cells (the first design run filled 2
 cells in 3 generations). Behavior runs want behavior measures (`EngageDistance` × `Rules`, as
@@ -413,10 +423,43 @@ The shutters win: 52 of 60 fights (19 / 15 / 18 of 20 against 2 raiders / 3 raid
 with the two centre cannons moved in front of the reactors and 35 of 60 with all four cannons in front (every gun
 clear; firepower 2.4, as the two outer cannons still idle). An automaton cannon has 1 hit point and the raiders' shots
 take a gun off in one hit (GDR-0074), so a part in front buys time, and a reactor there costs nothing extra because
-reactors do not explode yet (GDR-0019 decided chain reactions, GDR-0020 deferred them). All 8 elites have blocked guns
-(3 of them firepower 0). The archive's firepower axis is the design report's, as built, so it files these designs
+reactors did not explode yet (GDR-0019 decided chain reactions, GDR-0020 deferred them; built since, see below). All 8 elites have blocked guns
+(3 of them firepower 0). The archive's firepower axis was then the design report's, as built, so it filed these designs
 under little or no firepower. `sim/tests/weapons.rs` (`a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off`)
 and `sim/tests/report.rs` (`report_counts_blocked_and_idle_guns_as_the_sim_fires_them`, this design) hold the rule.
+
+**With chain reactions and latent firepower** (14 Oct 2026, [GDR-0084](gdr/0084-chain-reactions-v1.md): destroyed
+reactors, capacitors and drives explode into their piece; the archive's firepower axis counts every gun as if clear and
+powered). The same three runs, same seeds, on 10 threads; the `dev` build before reproduces the table above exactly:
+
+| Run | Archive best, gen 0 / 10 / 20 / 29 | Cells | Best elite |
+|---|---|---|---|
+| `skiff_behavior.ron` | 0.726 / 0.917 / 0.980 / **0.980** | 37 of 48 | the same play as before: `target threat(weapons)`, `when shield_down -> orbit(80%, ccw)`, else `face`, at about 75 m (the starter's guns are all clear, so neither change touches it) |
+| `skiff_design_60bp.ron` | 0.732 / 0.895 / 1.000 / **1.000** | 32 of 64 | 20 parts, latent firepower 9.1 (2.4 as built): two automaton cannons clear in the nose with two pulse lasers (and two capacitors) right behind them, two more lasers on the outer edges facing forward, two cannons low on the sides facing each other, the two fission reactors and two automaton cores on the shoulders beside the outer lasers, shields and RCS pods inboard; control load 14 on 8, so all but the two nose cannons idle at the start |
+| `skiff_voyage_stages.ron` | 0.229 / 0.925 / 0.925 / **0.926** | 45 of 64 | 34 parts: the starter's two pulse lasers with four reactors, four capacitors, six radiators, four logic cores and RCS pods in place of the cargo bays; every gun clear (latent 2.3 = as built); behavior `target threat(weapons)`, flee below 18 % hull under attack, `face` when closing in, else `approach` |
+
+**Reactor shutters are gone.** None of the best 8 design elites has a reactor (or any part that explodes) in a gun's
+line of fire. Five have blocked guns, all of them **reserve guns** behind their own guns (lasers or cannons behind
+the nose cannons, sometimes with a logic core or gyro between; one also has two lasers facing backwards through its
+hull), which fire when the front gun is shot off; the best one also runs more guns than its control capacity, so the
+idle ones wake as parts are lost (GDR-0044). The front guns are 1-hit-point cannons, so it is the same ablative idea
+with guns in place of reactors, and nothing in it explodes.
+
+Fights of 60 s, seeds 1–20 against each pool opponent (2 raiders / 3 raiders / the hunter):
+
+| Design | Rules | Won | Lost | Undecided |
+|---|---|---|---|---|
+| Last run's best (reactor and slope shutters) | before | **52** (19 / 15 / 18) | 1 | 7 |
+| Last run's best (reactor and slope shutters) | with chain reactions | **12** (3 / 1 / 8) | 16 | 32 |
+| This run's best (reserve guns) | before | 60 (20 / 20 / 20) | 0 | 0 |
+| This run's best (reserve guns) | with chain reactions | **59** (20 / 19 / 20) | 1 | 0 |
+
+A reactor shot off now takes the cannon it covers and, since the two reactors sit side by side, the other reactor,
+the second centre cannon and both slopes with it (`sim/tests/report.rs`). The new best design wins its fights in 12–22 s
+(mean per opponent), the old one took 31–40 s. It also wins all 60 under the old rules, so the old run had not found
+it; with latent firepower the archive files designs with reserve guns by all their guns (32 cells filled against 24).
+Open for Niklas: whether reserve guns behind guns and a control load above the capacity are wanted (both follow the
+rules as decided).
 
 ### Performance
 
