@@ -18,6 +18,8 @@
 //! * [`ScreenFx`] / [`ScreenPart`] (`transition`): a screen's enter / exit transition, its panels sliding in from
 //!   their edges while they fade in; every screen opened from the shipyard uses it.
 
+use std::borrow::Cow;
+
 use bevy::input::ButtonState;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::keyboard::{Key, KeyboardInput};
@@ -279,19 +281,20 @@ fn hit_test(
 /// it until the pointer leaves the node. Touch has no hover, so no tooltips.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Tip {
-    pub name: &'static str,
+    /// The name, or what the control picks with a few key numbers (an armour swatch: `STEEL  ·  MASS 2 T`).
+    pub name: Cow<'static, str>,
     pub key: Option<&'static str>,
 }
 
 impl Tip {
     /// A name only (an icon button without a key).
-    pub fn new(name: &'static str) -> Self {
-        Self { name, key: None }
+    pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
+        Self { name: name.into(), key: None }
     }
 
     /// A name and its key (`"B"`, `"CTRL+S"`, `"Q / E"`).
-    pub fn key(name: &'static str, key: &'static str) -> Self {
-        Self { name, key: Some(key) }
+    pub fn key(name: impl Into<Cow<'static, str>>, key: &'static str) -> Self {
+        Self { name: name.into(), key: Some(key) }
     }
 }
 
@@ -402,7 +405,7 @@ fn show_tip(
     if state.shown != Some(e) {
         // New texts: laid out this frame, placed and shown from the next.
         state.shown = Some(e);
-        set_text(&mut name.0, tip.name);
+        set_text(&mut name.0, &tip.name);
         set_text(&mut key.0, tip.key.unwrap_or(""));
         let d = if tip.key.is_some() { Display::Flex } else { Display::None };
         if key.1.display != d {
@@ -456,10 +459,12 @@ pub struct PillText;
 #[derive(Component)]
 pub struct PillLock;
 
-/// A round ring button (menus, undo / redo, zoom).
+/// A round ring button (menus, undo / redo, zoom, icon buttons); `active` lights it teal like an active pill (a
+/// mode that is on).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Default)]
 pub struct Ring {
     pub disabled: bool,
+    pub active: bool,
 }
 
 /// A vector glyph inside a [`Ring`] coloured with the ring's state, like a [`PillText`] (the zoom's and the
@@ -1044,6 +1049,9 @@ fn style_widgets(
         // The text colour as a palette colour and its opacity (glyphs are world meshes: no `ui_color`).
         let (b, f, (ink, k)) = if ring.disabled {
             (c(ui.dim, 0.3), Color::NONE, (ui.dim, 0.75))
+        } else if ring.active {
+            let k = if hot.pressed { 0.2 } else if hot.hovered { 0.14 } else { 0.08 };
+            (c(ui.teal, 0.85), c(ui.teal, k), (ui.teal, 1.0))
         } else if hot.pressed {
             (c(ui.teal, 0.8), c(ui.teal, 0.12), (ui.number, 1.0))
         } else if hot.hovered {

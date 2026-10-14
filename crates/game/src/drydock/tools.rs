@@ -335,6 +335,7 @@ pub fn refusal_text(content: &Content, design: &PlayerDesign, r: &Refusal, new_p
         Refusal::NoBlockPart => "NO ARMOR BLOCK IN THE CONTENT".into(),
         Refusal::BadFrame => "BAD FRAME SIZE".into(),
         Refusal::NoTwin => "NO MIRROR TWIN".into(),
+        Refusal::NoneLeft(id) => format!("NO {} LEFT", name(id)),
     }
 }
 

@@ -73,6 +73,16 @@ pub enum Glyph {
     Fit,
     /// A beacon sending: a dot between two pairs of arcs (a signal found, the debrief).
     Signal,
+    /// The drydock's bottom bar (GDR-0082): a floppy disk (save), four tiles (blueprints), an arrow up out of a
+    /// tray (export), three dots (the ⋯ menu), two triangles across an axis (mirror), a cell with a cut corner
+    /// (bevel), and a small triangle pointing down (a dropdown).
+    Save,
+    Blueprints,
+    Export,
+    More,
+    Mirror,
+    Bevel,
+    Caret,
 }
 
 /// The mesh drawing one node's icon.
@@ -351,6 +361,44 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
                     m.strip(&arc(Vec2::ZERO, r * s, side - 0.75, side + 0.75, 10), false, w, &white, col);
                 }
             }
+        }
+        Glyph::Save => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            m.strip(&[p(-0.32, 0.32), p(0.18, 0.32), p(0.32, 0.18), p(0.32, -0.32), p(-0.32, -0.32)], true, w, &white, col);
+            m.strip(&[p(-0.17, 0.32), p(-0.17, 0.12), p(0.11, 0.12), p(0.11, 0.32)], false, w, &white, col);
+            m.strip(&[p(-0.19, -0.32), p(-0.19, -0.06), p(0.19, -0.06), p(0.19, -0.32)], false, w, &white, col);
+        }
+        Glyph::Blueprints => {
+            for (x, y) in [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+                let p = |a: f32, b: f32| Vec2::new(x * a * s, y * b * s);
+                m.strip(&[p(0.05, 0.05), p(0.33, 0.05), p(0.33, 0.33), p(0.05, 0.33)], true, w, &white, col);
+            }
+        }
+        Glyph::Export => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            m.strip(&[p(-0.32, 0.02), p(-0.32, -0.32), p(0.32, -0.32), p(0.32, 0.02)], false, w, &white, col);
+            m.strip(&[p(0.0, -0.14), p(0.0, 0.36)], false, w, &white, col);
+            m.strip(&[p(-0.16, 0.2), p(0.0, 0.36), p(0.16, 0.2)], false, w, &white, col);
+        }
+        Glyph::More => {
+            for x in [-0.3, 0.0, 0.3] {
+                m.polygon(&arc(Vec2::new(x * s, 0.0), (0.055 * s).max(1.1), 0.0, std::f32::consts::TAU, 10)[..10], uv, col);
+            }
+        }
+        Glyph::Mirror => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            for (a, b) in [(0.36, 0.26), (0.18, 0.08), (-0.0, -0.1), (-0.18, -0.28)] {
+                m.strip(&[p(0.0, a), p(0.0, b)], false, w, &white, col);
+            }
+            m.strip(&[p(-0.1, 0.24), p(-0.38, -0.24), p(-0.1, -0.24)], true, w, &white, col);
+            m.polygon(&[p(0.1, 0.24), p(0.1, -0.24), p(0.38, -0.24)], uv, col);
+        }
+        Glyph::Bevel => {
+            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
+            m.strip(&[p(-0.32, -0.32), p(-0.32, 0.02), p(0.02, 0.32), p(0.32, 0.32), p(0.32, -0.32)], true, w, &white, col);
+        }
+        Glyph::Caret => {
+            m.polygon(&[Vec2::new(-0.3 * s, 0.14 * s), Vec2::new(0.0, -0.18 * s), Vec2::new(0.3 * s, 0.14 * s)], uv, col);
         }
         Glyph::Lock => {
             let p = |x: f32, y: f32| Vec2::new(x * s, y * s);

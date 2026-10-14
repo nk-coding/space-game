@@ -134,7 +134,7 @@ fn spawn_stepper(p: &mut ChildSpawnerCommands, sign: Glyph, action: &Option<Beha
     let mut e = p.spawn(ring_node(STEPPER));
     match action {
         Some(a) => e.insert(BehaviorButton(a.clone())),
-        None => e.insert(Ring { disabled: true }),
+        None => e.insert(Ring { disabled: true, ..default() }),
     };
     e.with_child(ring_glyph(sign, (STEPPER * 0.45).round()));
 }

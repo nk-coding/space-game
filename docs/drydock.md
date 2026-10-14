@@ -3,7 +3,9 @@
 The ship editor: Drydock v1 (decided by Niklas, 12 Oct 2026) follows the desktop mockup
 (`docs/concept/boards/ui-mockups/desktop-drydock.png`: tools PAINT B, FILL G, ERASE X, SELECT V, ROTATE Q E,
 MIRROR M, BEVEL Shift+B, undo/redo) and the concept board (`docs/concept/boards/concept-board/02-drydock.png`).
-Parts are unlimited in v1.
+Layout v2 (14 Oct 2026, [GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md)): every part in sections
+on the left with the armour swatches, the tools in the bottom bar, icon buttons and a ⋯ menu. Parts are unlimited
+for now; the plumbing for counts is in ([Part availability](#part-availability)).
 
 ## Where the pieces live
 
@@ -137,6 +139,18 @@ takes the material. The same part put down exactly on itself replaces nothing an
     placement exactly; four turns are the identity.
   - **Flip** mirrors the part left-right on screen, in place (same cells): `rot' = (4 − rot) % 4`, flip toggled.
 
+### Part availability
+
+GDR-0082, 14 Oct 2026. `set_available(part, Availability)` tells the editor how many of a part the player has
+(`data::career::Availability`: `Unlimited`, or `Count(n)` in all, the design's own parts included; the client passes
+`Career::available`, every part unlimited for now). Not an edit: no undo step, no revision change. `left(part)` is
+what remains (`Count(n − parts placed)`, never below 0). An edit that would put down a part with none left is
+refused with `Refusal::NoneLeft(part)` ("NO BEAM LASER LEFT" on the info line): `check`, `place` and its preview,
+a new slope, painting or bevelling an empty cell; turning, repainting, moving and erasing never are. A mirror image
+that would need one more than is left is skipped (`Twin::Skipped(NoneLeft)`, the primary edit happens); fill fills
+as many cells as are left, row by row (none left: refused). Parts already in the design stay when a count drops
+below them, and undo and redo always restore their step. Tests: `crates/data/tests/edit_availability.rs`.
+
 ### Mirror mode
 
 The axis is the frame's vertical centre line. The mirror image of a placement: cells reflected
@@ -231,9 +245,45 @@ release), `drydock-slope-turned.png` (a 1×1 slope brush turned with R at the wi
 | Shift+wheel down / up (over the grid) | the same as R / Shift+R; the plain wheel zooms. Browsers often send Shift+wheel as a sideways scroll, so a sideways delta counts too; touchpad pixels add up to a turn every 40 px; one turn a frame at most |
 | F | flip the selected part |
 | Delete / Backspace | delete the selected part (and its mirror twin) |
-| Esc | deselect (in the search field it only leaves the field) |
+| Esc | close the open bottom bar menu, else deselect (in the search field it only leaves the field) |
 | M / Shift+B | mirror / bevel mode (bevel cuts a stroke's outer corners when it ends) |
+| 1–9 | armour material (the swatches in content order) |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | undo / redo; also the two ring buttons, dimmed when there is nothing to undo or redo |
+
+**Layout v2** (GDR-0082, 14 Oct 2026; `panels.rs`, the draft `docs/plans/mockups/drydock-left-column.html`, variant
+A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (the ⋯ menu open),
+`-1280x720-armor-tip.png` (a swatch's tooltip), `-1920x1080.png`, `-3440x1305.png`, `-1080x1350.png`,
+`-600x960-tools.png` (folded, the tools dropdown open), `-search.png`.
+
+- **Left column**, top to bottom: the search; `ARMOR · <name>` and the armour swatches (every armour material
+  research can unlock, in content order: the armour block's tile in that material, a light outline so the
+  near-black tones are told apart, the picked one outlined teal, a locked one a lock that leads to its research;
+  the tooltip names it with its build points, mass and hit points from content and the key 1–9; the wheel scrolls
+  the strip past eight); one line of category chips (the wheel or a drag scrolls it sideways, a fade shows over an
+  edge with more behind it; a click jumps the list to the section; the chip of the section at the top of the list is
+  lit, the clicked one while its heading is in view, and the lit chip scrolls into view); then **every part in
+  sections** (`state::palette_sections`): a heading per category with its count (`WEAPONS 1 · 2 LOCKED`), the
+  unlocked parts, then the locked ones. Rows: icon, name, footprint and key stat, the NEW tag, and how many are left
+  (`∞`, a number once counts exist, coral at 0). The wheel scrolls the list by entries (headings and rows, so icons
+  are never cut). The search filters the whole list; empty sections and their chips go.
+- **Top bar**: the breadcrumb and name left, the OVERLAY pills right (the armour moved to the left column).
+- **Bottom bar**: undo and redo; PAINT, FILL, ERASE, SELECT, ROTATE; MIRROR and BEVEL; the status line over the
+  voyage-ready line; SAVE, BLUEPRINTS, EXPORT and ⋯ as icon rings (tooltips with name and key); BEHAVIOR and
+  TEST-FLY as words. Each status line is shortened to its room when it doesn't fit (whole parts dropped from the
+  end, `FLIGHT-READY  ·  …`, else cut with `…`; the tooltip then shows both in full). When the status line would
+  get less than `panels::MIN_STATUS` (120 px) the tools **fold**: the five pills become one dropdown showing the
+  current tool (`PAINT ▾`, its menu opens upward with each tool and its key) and MIRROR and BEVEL become icon
+  toggles (teal when on); they unfold when there is room again (measured from the layout, with a margin). The UI
+  scale keeps the layout at least 1280 logical px wide (`ui_kit::ui_scale`), so at 1280 × 720, 1920 × 1080,
+  3440 × 1305 and 1080 × 1350 the tools stay pills; they fold in windows under about 640 px wide (the scale's
+  floor, 0.5), and wherever the bar gets more crowded.
+- **The ⋯ menu** (opens upward, right-aligned; `actions::Rare`, carried out by `blueprints.rs` exactly as the
+  BLUEPRINTS and EXPORT buttons are): NEW DESIGN (an empty design in this frame; unsaved changes are saved first),
+  FRAME (the content frames as pills, the current one lit, locked ones dimmed), COPY SHARE CODE, DOWNLOAD .RON FILE
+  (desktop: WRITE .RON FILE), IMPORT .RON FILE. The screens themselves stay as they were.
+- **Menus** (`DrydockUi::menu`): one open at a time; Esc, a click outside (a veil under the menu takes it, so it
+  reaches nothing else) and any action close it. The menus hold text only: part icons are world meshes drawn under
+  bevy_ui (`ui_icons`).
 
 **Gestures** (`tools::Gesture`, pure and tested): a press, drags and a release on frame cells become edits. It knows
 nothing of the input device: the mouse drives it now; touch will drive the same gestures with the phone layout.
@@ -300,25 +350,24 @@ mockup `docs/plans/mockups/drydock-locked.png`). What the player may build with 
 unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked or NEW. Screenshots:
 `docs/results/career-drydock*.png`.
 
-- **Locked parts are shown, not hidden** (GDR-0065 replaces GDR-0054's hiding for the career's drydock): the
-  palette lists a category's unlocked parts, then its locked ones, each in content order (`state::palette_list`;
-  a search the same over every category). A locked row is dimmed, has a lock in place of its icon and says
-  `LOCKED · <the research node that unlocks it>` (`career::unlocked_by`, the first node in content order). The
-  section line counts them: `WEAPONS · 1 · 2 LOCKED`. A locked row is a disabled pill: a click sends nothing, and
+- **Locked parts are shown, not hidden** (GDR-0065 replaces GDR-0054's hiding for the career's drydock): each
+  section of the palette lists its category's unlocked parts, then its locked ones, each in content order
+  (`state::palette_sections`, filtered by the search). A locked row is dimmed, has a lock in place of its icon and
+  says `LOCKED · <the research node that unlocks it>` (`career::unlocked_by`, the first node in content order). The
+  section heading counts them: `WEAPONS 1 · 2 LOCKED`. A locked row is a disabled pill: a click sends nothing, and
   `actions::apply` refuses a locked `PickPart` anyway, so it is never picked or placed.
 - **What no research unlocks stays hidden** (default, track 7F: GDR-0065's "the career's drydock shows what research
   gives"): a locked part or armour material no research node unlocks (in the base pack: reactive armour and the
-  automaton plate) is not shown at all, as before; free mode shows it. Four armour pills with locks also don't fit
-  the top bar at 1280 px.
-- **Locked materials and frames**: every armour material research can unlock has an ARMOR pill (the 1–9 keys count
-  every armour material, hidden ones too); a locked one is dimmed with a lock (`ui_kit::PillLock`) and refused, and
-  so are its pills in the inspector (`state::material_shown`). BLUEPRINTS' NEW and FRAME pills of a locked frame
+  automaton plate) is not shown at all, as before; free mode shows it.
+- **Locked materials and frames**: every armour material research can unlock has a swatch (the 1–9 keys count
+  every armour material, hidden ones too); a locked one shows a lock instead of its tile and is refused, and so are
+  its pills in the inspector (`state::material_shown`). The ⋯ menu's FRAME pills of a locked frame are dimmed. BLUEPRINTS' NEW and FRAME pills of a locked frame
   (the cruiser and the capital) are dimmed with a lock.
 - **NEW**: a part research unlocked carries a gold NEW tag in the palette until it is picked there or a placed one
   is selected (whatever the SELECTED PART block shows: `panels::see_fresh` sends `career::SeenPart`). The career
   keeps what was seen in the save (`seen`, written at once), so a tag goes for good and a new game shows them again.
   (Default, track 7F: the save rather than settings, because NEW belongs to one career.)
-- The first category's first unlocked part is picked at start, and the starting armour is the design's if it is
+- The palette's first unlocked part is picked at start, and the starting armour is the design's if it is
   unlocked, else the first unlocked one.
 - **Designs that use locked parts** (the Halvex Runner template, an import, the automaton raider) still open, show
   and test-fly (GDR-0062 plan 3.1 step 11); they are only not voyage-ready.
@@ -489,7 +538,7 @@ saved template copy moved to the cruiser frame).
 
 ### BLUEPRINTS
 
-The BLUEPRINTS button opens a screen over everything above the bottom bar (the bar stays usable; Esc or CLOSE
+The BLUEPRINTS button (an icon ring in the bottom bar since layout v2) opens a screen over everything above the bottom bar (the bar stays usable; Esc or CLOSE
 closes it; Esc first leaves a rename, a delete question or a selected box):
 
 - **Your designs** (most recently saved first: name; frame, parts' size, part count, when saved; "IN THE
