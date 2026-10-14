@@ -143,6 +143,8 @@ pub struct ScenarioStats {
     pub rams: u32,
     /// Engine plume hits (`SimEvent::PlumeHit`, one per lane and tick).
     pub burns: u32,
+    /// Chain reactions (`SimEvent::Explosion`, GDR-0084).
+    pub explosions: u32,
     /// Vessels formed by splits (`VesselFormed` with a parent) and vessels lost (`VesselLost`).
     pub split_vessels: u32,
     pub vessels_lost: u32,
@@ -281,6 +283,7 @@ impl Scenario {
                     self.stats.rams += (c.damage > 0.0) as u32;
                 }
                 SimEvent::PlumeHit { .. } => self.stats.burns += 1,
+                SimEvent::Explosion { .. } => self.stats.explosions += 1,
                 SimEvent::VesselFormed { from: Some(_), .. } => self.stats.split_vessels += 1,
                 SimEvent::VesselLost { .. } => self.stats.vessels_lost += 1,
                 SimEvent::VesselDormant { .. } => self.stats.dormant += 1,
