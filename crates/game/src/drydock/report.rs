@@ -35,6 +35,12 @@ impl DrydockReport {
     pub fn get(&self) -> Option<&DesignReport> {
         self.report.as_ref().and_then(|r| r.as_ref().ok())
     }
+
+    /// The content the report is made with (the tuning's scales applied), for a report of the design as an edit
+    /// would leave it (the ghost's shield bubble).
+    pub fn content(&self) -> Option<&Content> {
+        self.scaled.as_ref()
+    }
 }
 
 /// Recomputes the report when the design or the tuning changes (about 25 µs for the Halvex Runner); during a paint

@@ -15,7 +15,8 @@
 //!   disc), the forward thrust line through the thrust's centre, and when it misses the centre of mass a curved
 //!   arrow showing which way full thrust turns the ship (gold if the gyros and gimbals hold it, coral if not).
 //! * **Bonus**: a gold link across the shared side of every source and target pair, a diamond on the side.
-//! * **Shields**: each bubble (centre, radius after bonuses) as a faint disc with a soft rim in the shield colour.
+//! * **Shields**: each bubble (centre, radius after bonuses) as a faint disc with a soft rim in the shield colour
+//!   (the ghost draws the same for a shield part being placed or selected: [`bubbles_mesh`]).
 //! * **Arcs**: each gun's line of fire to its range (clear: dashed, weapons cyan; blocked: coral up to the first
 //!   blocker, a cross there, blockers outlined); each engine's plume lanes to their reach (propulsion teal; a lane
 //!   that burns an own part: coral, the part outlined). The lines end at the grid viewport's edge.
@@ -322,6 +323,27 @@ fn first_block(shapes: &[PlacedShape], muzzle: Vec2, dir: Vec2, blockers: &[sim:
         .min_by(f32::total_cmp)
 }
 
+/// A shield bubble (centre in blueprint frame, radius in m): a faint disc with a soft rim, the emitter's centre
+/// dotted.
+fn bubble(m: &mut MeshBuf, pen: &Pen, centre: [f32; 2], radius: f32) {
+    let c = world(centre);
+    let ring = circle(c, radius);
+    pen.fill(m, &ring, pen.shield.with_alpha(0.04));
+    m.strip(&ring, true, 0.22, &pen.halo, vcol(pen.shield, 0.3));
+    pen.outline(m, &ring, 0.025, mix(pen.shield, pen.shield_core, 0.4).with_alpha(0.6));
+    pen.fill(m, &circle(c, 0.09), pen.shield.with_alpha(0.8));
+}
+
+/// The SHIELDS overlay's bubbles alone (the ghost's: what a shield part would make where it is placed or selected).
+pub(super) fn bubbles_mesh(atlas: &Atlas, style: &Style, bubbles: &[([f32; 2], f32)]) -> Mesh {
+    let pen = Pen::new(atlas, style);
+    let mut m = MeshBuf::default();
+    for &(c, r) in bubbles {
+        bubble(&mut m, &pen, c, r);
+    }
+    if m.is_empty() { MeshBuf::placeholder() } else { m.into_mesh() }
+}
+
 /// Everything the overlays `on` show, plus the issue marks, bottom to top. `frame` is the frame in world space,
 /// `view` what the grid viewport shows of the world (the lines end at its edge).
 #[allow(clippy::too_many_arguments)]
@@ -345,12 +367,7 @@ fn draw(m: &mut MeshBuf, pen: &Pen, r: &DesignReport, shapes: &[PlacedShape], ma
     }
     if on(Overlay::Shields) {
         for s in &r.shields {
-            let c = world(s.centre);
-            let ring = circle(c, s.radius);
-            pen.fill(m, &ring, pen.shield.with_alpha(0.04));
-            m.strip(&ring, true, 0.22, &pen.halo, vcol(pen.shield, 0.3));
-            pen.outline(m, &ring, 0.025, mix(pen.shield, pen.shield_core, 0.4).with_alpha(0.6));
-            pen.fill(m, &circle(c, 0.09), pen.shield.with_alpha(0.8));
+            bubble(m, pen, s.centre, s.radius);
         }
     }
     if on(Overlay::Arcs) {

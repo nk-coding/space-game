@@ -319,7 +319,8 @@ pub(super) fn camera(
             _ => {}
         }
     }
-    if scroll.delta.y != 0.0 && !pointer.blocked {
+    // Shift+wheel turns the part (`actions::shortcuts`), so only the plain wheel zooms.
+    if scroll.delta.y != 0.0 && !pointer.blocked && !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]) {
         let steps = match scroll.unit {
             MouseScrollUnit::Line => scroll.delta.y,
             MouseScrollUnit::Pixel => scroll.delta.y / 100.0,

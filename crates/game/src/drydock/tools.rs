@@ -11,8 +11,10 @@
 //! * Refusals (and skipped mirror edits) go to [`EditNote`], shown after the grid's info line.
 //!
 //! What the paint tool does depends on the picked part ([`Brush`]): the 1×1 hull block paints (a drag paints
-//! every cell it crosses), a slope orients itself on a click (clicking it again turns it), any other part is
-//! placed on a click with its footprint centred on the cell in the brush rotation (Q / E).
+//! every cell it crosses; with BEVEL the stroke's outer corners become slopes when it ends), a slope orients itself
+//! on a click (clicking it again turns it) unless R / Shift+R turned the brush, any other part is placed on a click
+//! with its footprint centred on the cell in the brush rotation (R / Shift+R, Q / E). Painting and placing replace
+//! what is under them (the editing model's rule).
 
 use bevy::prelude::*;
 use data::edit::{Outcome, Refusal, Twin};
@@ -68,7 +70,7 @@ impl EditNote {
 pub enum Brush {
     /// The 1×1 hull block: paints cells (and repaints hull parts) in the armour material.
     Paint,
-    /// A slope: placed oriented to the hull; clicking it again turns it.
+    /// A slope: placed oriented to the hull (or as R / Shift+R turned it); clicking it again turns it.
     Slope,
     /// Any other part: placed on a click, centred on the cell, in the brush rotation.
     Place,
@@ -279,7 +281,7 @@ fn run(op: Op, content: &Content, ui: &DrydockUi, design: &mut PlayerDesign, sel
         Op::Paint(cell) => design.edit(|d| d.paint(cell, m)),
         Op::Slope(cell) => {
             let part = picked?.id.as_str();
-            design.edit(|d| d.place_slope(part, cell, m))
+            design.edit(|d| d.place_slope(part, cell, m, ui.slope_turn))
         }
         Op::Place(cell) => {
             let p = brush_placement(picked?, cell, ui.rot, m);
@@ -308,13 +310,14 @@ fn outcome_note(content: &Content, design: &PlayerDesign, result: &Result<Outcom
     }
 }
 
-/// Why an edit can't happen, in the UI's words (part names from content). `new_part`: the part an edit would
-/// add, named when a mirror image would overlap it (`Refusal::Overlaps` past the last index).
-pub fn refusal_text(content: &Content, design: &PlayerDesign, r: &Refusal, new_part: Option<&str>) -> String {
+/// Why an edit can't happen, in the UI's words (part names from content). `new_part`: the index a part an edit
+/// would add gets after the edit, and its id, named when a mirror image would overlap it (a preview's
+/// `Refusal::Overlaps` of that index).
+pub fn refusal_text(content: &Content, design: &PlayerDesign, r: &Refusal, new_part: Option<(usize, &str)>) -> String {
     let name = |id: &str| content.parts.get(id).map_or(id.to_uppercase(), |p| p.name.to_uppercase());
     match r {
         Refusal::Outside => "OUTSIDE THE FRAME".into(),
-        Refusal::Overlaps(k) => match design.dock().parts().get(*k).map(|p| p.part.as_str()).or(new_part) {
+        Refusal::Overlaps(k) => match new_part.filter(|n| n.0 == *k).map(|n| n.1).or_else(|| design.dock().parts().get(*k).map(|p| p.part.as_str())) {
             Some(id) => format!("OVERLAPS {}", name(id)),
             None => "OVERLAPS A PART".into(),
         },
@@ -342,6 +345,7 @@ pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     content: Res<GameContent>,
     time: Res<Time<Real>>,
+    cursor: Res<DrydockCursor>,
     mut design: ResMut<PlayerDesign>,
     mut ui: ResMut<DrydockUi>,
     mut sel: ResMut<Selection>,
@@ -399,7 +403,11 @@ pub(super) fn apply(
                 continue;
             }
             (DrydockAction::RotateCcw | DrydockAction::RotateCw, None) => {
-                ui.rot = (ui.rot + if *a == DrydockAction::RotateCw { 1 } else { 3 }) % 4;
+                let cw = *a == DrydockAction::RotateCw;
+                match ui.picked.as_deref().and_then(|p| content.parts.get(p)).filter(|p| Brush::of(p) == Brush::Slope) {
+                    Some(part) => ui.slope_turn = turn_slope(&design, part, ui.slope_turn, cursor.cell, &ui.material, cw),
+                    None => ui.rot = (ui.rot + if cw { 1 } else { 3 }) % 4,
+                }
                 continue;
             }
             (DrydockAction::RotateCcw | DrydockAction::RotateCw, Some(i)) => design.edit(|d| d.rotate(i, *a == DrydockAction::RotateCw)),
@@ -440,6 +448,18 @@ pub(super) fn apply(
     // An undo can take the selected part away.
     if sel.cell.is_some() && sel.part(&design).is_none() {
         sel.cell = None;
+    }
+}
+
+/// A slope brush's next orientation in turning order (back with `cw` false): from the one it was turned to, else
+/// (on auto) from the one the hull gives it under the cursor, so the first turn starts from what the ghost shows.
+/// With neither, the first orientation.
+fn turn_slope(design: &PlayerDesign, part: &Part, turned: Option<(u8, bool)>, cell: Option<Cell>, material: &str, cw: bool) -> Option<(u8, bool)> {
+    let dock = design.dock();
+    let auto = || cell.and_then(|c| dock.preview_slope(&part.id, c, material, None).ok()).map(|p| (p.placement.rot, p.placement.flip));
+    match turned.or_else(auto) {
+        Some(from) => dock.next_orientation(&part.id, from, cw).ok(),
+        None => dock.slope_orientations(&part.id).ok()?.first().copied(),
     }
 }
 
@@ -607,6 +627,7 @@ mod tests {
         world.init_resource::<Messages<DrydockAction>>();
         world.init_resource::<Time<Real>>();
         world.init_resource::<EditNote>();
+        world.init_resource::<DrydockCursor>();
         world.init_resource::<DrydockGesture>();
         world.insert_resource(Selection { cell: Some((2, 2)) });
         world.insert_resource(design);
@@ -618,6 +639,42 @@ mod tests {
         assert_eq!(design.dock().parts().iter().map(|p| p.part.as_str()).collect::<Vec<_>>(), ["armor_block"]);
         assert_eq!(world.resource::<Selection>().cell, None);
         assert_eq!(world.resource::<EditNote>().text.as_deref(), Some("MIRROR SKIPPED  ·  NO MIRROR TWIN"));
+    }
+
+    /// R (RotateCw) on a slope brush turns it from the orientation the hull gives it under the cursor to the next one
+    /// in turning order, and Shift+R back; other brushes keep their quarter turns.
+    #[test]
+    fn a_slope_brush_turns_from_what_the_ghost_shows() {
+        let content = data::base_content();
+        let design = PlayerDesign::starter(&content, "halvex_runner");
+        let mut ui = DrydockUi::new(&content, &design, &data::career::Unlocks::all(&content));
+        ui.picked = Some("slope_1x1".into());
+        let cell = (2, 2);
+        let auto = design.dock().preview_slope("slope_1x1", cell, &ui.material, None).unwrap().placement;
+        let next = design.dock().next_orientation("slope_1x1", (auto.rot, auto.flip), true).unwrap();
+        let mut world = World::new();
+        world.init_resource::<Messages<DrydockAction>>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<EditNote>();
+        world.init_resource::<DrydockGesture>();
+        world.init_resource::<Selection>();
+        world.insert_resource(DrydockCursor { cell: Some(cell) });
+        world.insert_resource(ui);
+        world.insert_resource(design);
+        world.insert_resource(GameContent(content.clone()));
+        let apply = world.register_system(apply);
+        world.write_message(DrydockAction::RotateCw);
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<DrydockUi>().slope_turn, Some(next));
+        world.write_message(DrydockAction::RotateCcw);
+        world.run_system(apply).unwrap();
+        let back = world.resource::<DrydockUi>().slope_turn.unwrap();
+        assert_eq!(world.resource::<PlayerDesign>().dock().next_orientation("slope_1x1", back, true), Ok(next));
+        // A machine's brush turns a quarter.
+        world.resource_mut::<DrydockUi>().picked = Some("beam_laser".into());
+        world.write_message(DrydockAction::RotateCw);
+        world.run_system(apply).unwrap();
+        assert_eq!(world.resource::<DrydockUi>().rot, 1);
     }
 
     /// The selection is a cell: after another design opens, or the frame changes (FRAME re-centres every part, and
@@ -632,6 +689,7 @@ mod tests {
         world.init_resource::<Messages<DrydockAction>>();
         world.init_resource::<Time<Real>>();
         world.init_resource::<EditNote>();
+        world.init_resource::<DrydockCursor>();
         world.init_resource::<DrydockGesture>();
         world.init_resource::<Selection>();
         world.insert_resource(DrydockUi::new(&content, &design, &data::career::Unlocks::all(&content)));

@@ -47,9 +47,12 @@ pub struct DrydockUi {
     /// The armour material hull parts are placed in (content id; the ARMOR pills).
     pub material: String,
     overlays: u8,
-    /// Quarter turns clockwise of the part being placed (Q / E). The mirror and bevel modes are the editor's
-    /// (`PlayerDesign::dock().mirror`, `.bevel`).
+    /// Quarter turns clockwise of the part being placed (R / Shift+R, Q / E, Shift+wheel). The mirror and bevel
+    /// modes are the editor's (`PlayerDesign::dock().mirror`, `.bevel`).
     pub rot: u8,
+    /// A slope brush's orientation `(rot, flip)` once turned (the same keys step through `slope_orientations`);
+    /// `None`: the slope orients itself to the hull. Picking a part sets it back to `None`.
+    pub slope_turn: Option<(u8, bool)>,
     /// The part picked in the palette (content id).
     pub picked: Option<String>,
     /// The palette's category (content id).
@@ -74,7 +77,7 @@ impl DrydockUi {
             .map(str::to_string)
             .or_else(|| armor_materials(content).find(|m| unlocks.has_material(&m.id)).map(|m| m.id.clone()))
             .unwrap_or_default();
-        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, picked, category, search: String::new() }
+        Self { tool: Tool::Paint, material, overlays: 0, rot: 0, slope_turn: None, picked, category, search: String::new() }
     }
 
     pub fn overlay(&self, o: Overlay) -> bool {
