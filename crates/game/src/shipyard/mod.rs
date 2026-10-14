@@ -324,7 +324,7 @@ fn rebuild_escorts(
             let _ = meshes.insert(&mesh.0, MeshBuf::placeholder());
             continue;
         };
-        let room = Vec2::new(MOORING_DEPTH, 2.0 * MOORING_HALF) - 0.6;
+        let room = Vec2::new(2.0 * MOORING_HALF, MOORING_DEPTH) - 0.6;
         let s = MOORED_SCALE.min(room.x / bounds.width()).min(room.y / bounds.height());
         *tf = Transform::from_translation((at - bounds.center() * s).extend(Z_SHIP)).with_scale(Vec3::new(s, s, 1.0));
         let _ = meshes.insert(&mesh.0, body);

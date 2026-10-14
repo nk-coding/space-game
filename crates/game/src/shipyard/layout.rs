@@ -20,7 +20,10 @@ pub const BASE_STRIP: f32 = 1.1;
 /// The gate's ring radius and how far its centre lies past the arm tips.
 pub const GATE_RADIUS: f32 = 7.5;
 const GATE_GAP: f32 = 13.0;
-/// Escort moorings: how many, their inner half height, depth (base to tips) and wall.
+/// The truss bridges' width.
+pub const BRIDGE: f32 = 0.8;
+/// Escort moorings: how many, their inner half width, depth (base to tips) and wall. Each hangs off a bridge,
+/// its base on the bridge's outer edge and its mouth away from it, so the bridge runs past unbroken.
 pub const MOORINGS: usize = 4;
 pub const MOORING_HALF: f32 = 2.6;
 pub const MOORING_DEPTH: f32 = 5.0;
@@ -102,7 +105,8 @@ pub struct Layout {
     pub chevrons: Vec<Vec2>,
     /// The two gate pylons' ends at the arm tips and at the gate.
     pub pylons: [(Vec2, Vec2); 2],
-    /// Mooring centres (their interior's centre), escort 1 first: the near two, then two past the edge.
+    /// Mooring centres (their interior's centre), escort 1 first: the near two, then two past the edge; the upper
+    /// ones open up, the lower ones down.
     pub moorings: [Vec2; MOORINGS],
     /// The truss bridges' y and their x span (from past the left edge to the mind's back).
     pub bridges: [f32; 2],
@@ -149,9 +153,10 @@ impl Layout {
         let pylons = [-1.0f32, 1.0].map(|s| (Vec2::new(tip_x + TIP, mid + s * (h + WALL) / 2.0), Vec2::new(gate.x - 3.0, mid + s * 8.0)));
 
         let near = mind.rect().min.x - 5.05;
-        let far = near - 11.0;
-        let moorings = [Vec2::new(near, mid + 7.5), Vec2::new(near, mid - 7.5), Vec2::new(far, mid + 7.5), Vec2::new(far, mid - 7.5)];
-        let bridges = [mid + 7.5, mid - 7.5];
+        let far = near - 12.5;
+        let bridges = [mid + 6.5, mid - 6.5];
+        let off = BRIDGE / 2.0 + MOORING_WALL + MOORING_DEPTH / 2.0;
+        let moorings = [Vec2::new(near, bridges[0] + off), Vec2::new(near, bridges[1] - off), Vec2::new(far, bridges[0] + off), Vec2::new(far, bridges[1] - off)];
         let bridge_x = (far - MOORING_DEPTH - 8.0, mind.rect().min.x);
 
         let cranes = CRANES.map(|f| f * w);
@@ -189,8 +194,8 @@ impl Layout {
     /// The near moorings and their bridge: FLEET's place.
     fn fleet_rect(&self) -> Rect {
         let near = self.moorings[0].x;
-        let reach = MOORING_HALF + MOORING_WALL;
-        Rect::new(near - MOORING_DEPTH / 2.0 - MOORING_WALL - 0.6, self.bridges[1] - reach, self.mind.rect().min.x, self.bridges[0] + reach)
+        let reach = MOORING_DEPTH / 2.0;
+        Rect::new(near - MOORING_HALF - MOORING_WALL - 0.6, self.moorings[1].y - reach, self.mind.rect().min.x, self.moorings[0].y + reach)
     }
 
     /// Where a click or a tap finds the place.
@@ -216,7 +221,7 @@ impl Layout {
             Place::Research => focus_box(self.research.centre + Vec2::Y * 0.5, 28.0),
             Place::Voyages => focus_box(self.gate - Vec2::X * 2.0, 32.0),
             Place::TestRange => focus_box(self.range.centre + Vec2::X * 2.0, 30.0),
-            Place::Fleet => focus_box(Vec2::new(self.moorings[0].x + 1.5, self.area.center().y), 38.0),
+            Place::Fleet => focus_box(Vec2::new(self.moorings[0].x + 1.5, self.area.center().y), 50.0),
             Place::Fabricator => focus_box(self.fabricator.centre, 24.0),
             Place::SalvageBay => focus_box(self.salvage.centre, 23.0),
         }
@@ -230,7 +235,7 @@ impl Layout {
             Place::Research => (self.research.centre + Vec2::new(-5.4, 2.2), Align::End),
             Place::Voyages => (self.gate - Vec2::Y * (GATE_RADIUS + 2.6), Align::Middle),
             Place::TestRange => (Vec2::new((self.lane.0.x + self.lane.1.x) / 2.0, self.range.centre.y - 1.6), Align::Middle),
-            Place::Fleet => (Vec2::new(self.moorings[0].x - 1.5, self.bridges[1] - 7.0), Align::Start),
+            Place::Fleet => (Vec2::new(self.moorings[0].x - MOORING_HALF - MOORING_WALL, self.moorings[1].y - MOORING_DEPTH / 2.0 - 0.8), Align::Start),
             Place::Fabricator => (self.fabricator.centre + Vec2::Y * 3.8, Align::Middle),
             Place::SalvageBay => (self.salvage.centre - Vec2::Y * 2.0, Align::Middle),
         }
@@ -338,7 +343,14 @@ mod tests {
             }
             // The near moorings are on screen, the far ones past the left edge.
             assert!(l.overview.contains(l.moorings[0]) && l.overview.contains(l.moorings[1]));
-            assert!(l.moorings[2].x + MOORING_DEPTH < l.overview.min.x && l.moorings[3].x + MOORING_DEPTH < l.overview.min.x);
+            let reach = MOORING_HALF + MOORING_WALL;
+            assert!(l.moorings[2].x + reach < l.overview.min.x && l.moorings[3].x + reach < l.overview.min.x);
+            // The berths sit off their bridges, clear of the bridge they hang from.
+            for (k, m) in l.moorings.iter().enumerate() {
+                let b = l.bridges[k % 2];
+                assert!((m.y - b).abs() - MOORING_DEPTH / 2.0 - MOORING_WALL >= BRIDGE / 2.0 - 1e-4, "{k} {frame:?}");
+                assert!(l.overview.min.y < m.y - MOORING_DEPTH / 2.0 && m.y + MOORING_DEPTH / 2.0 < l.overview.max.y, "{k} {frame:?}");
+            }
             assert!(l.bridge_x.0 < l.overview.min.x, "the bridge runs off the edge");
             // The cranes park at the mouth, past the frame and inside the arms.
             for (x, p) in l.cranes.iter().zip(l.crane_park) {

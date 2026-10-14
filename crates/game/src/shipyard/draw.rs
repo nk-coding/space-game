@@ -12,7 +12,7 @@ use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 
-use super::layout::{BASE_STRIP, CLAMP_REACH, GATE_RADIUS, Layout, MOORING_DEPTH, MOORING_HALF, MOORING_WALL, TIP, WALL};
+use super::layout::{BASE_STRIP, BRIDGE, CLAMP_REACH, GATE_RADIUS, Layout, MOORING_DEPTH, MOORING_HALF, MOORING_WALL, TIP, WALL};
 use crate::atlas::{Atlas, Region};
 use crate::backdrop::Rng;
 use crate::meshbuf::MeshBuf;
@@ -453,46 +453,49 @@ fn lane(pen: &mut Pen, pal: &Palette, a: Vec2, b: Vec2) {
     }
 }
 
-/// A mooring: a small U, its mouth towards the station, lit while an escort lies in it. `c` is its interior's
-/// centre.
-fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, lit: bool) {
+/// A mooring: a small U hanging off a bridge, its mouth away from it (`open` +1 up, −1 down), lit while an escort
+/// lies in it. `c` is its interior's centre.
+fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, open: f32, lit: bool) {
     let (hw, d, t) = (MOORING_HALF, MOORING_DEPTH / 2.0, MOORING_WALL);
     let ch = t * 0.45;
-    let (x0, x1) = (c.x - d, c.x + d); // base inner face, tips
-    let (back, y0, y1) = (x0 - t, c.y - hw - t, c.y + hw + t);
-    // The berth's floor (it hides the bridge's truss under the berth).
-    pen.rect(Rect::new(x0, c.y - hw, x1, c.y + hw), vcol(pal.floor, 1.0));
+    // The berth's own frame: `u` from the base towards the mouth, `v` across it.
+    let p = |u: f32, v: f32| c + Vec2::new(v, open * u);
+    let (x0, x1) = (-d, d); // base inner face, tips
+    let (back, y0, y1) = (x0 - t, -hw - t, hw + t);
+    let quad = |a: (f32, f32), b: (f32, f32)| Rect::from_corners(p(a.0, a.1), p(b.0, b.1));
+    pen.rect(quad((x0, -hw), (x1, hw)), vcol(pal.floor, 1.0));
     let fill = vcol(pal.hull, 1.0);
-    pen.poly(&[Vec2::new(back, y0 + ch), Vec2::new(back + ch, y0), Vec2::new(x0, y0), Vec2::new(x0, y1), Vec2::new(back + ch, y1), Vec2::new(back, y1 - ch)], fill);
-    pen.poly(&[Vec2::new(x0, c.y + hw), Vec2::new(x1, c.y + hw), Vec2::new(x1, y1 - ch), Vec2::new(x1 - ch, y1), Vec2::new(x0, y1)], fill);
-    pen.poly(&[Vec2::new(x0, c.y - hw), Vec2::new(x0, y0), Vec2::new(x1 - ch, y0), Vec2::new(x1, y0 + ch), Vec2::new(x1, c.y - hw)], fill);
-    let outline = [
-        Vec2::new(x1, c.y + hw),
-        Vec2::new(x0, c.y + hw),
-        Vec2::new(x0, c.y - hw),
-        Vec2::new(x1, c.y - hw),
-        Vec2::new(x1, y0 + ch),
-        Vec2::new(x1 - ch, y0),
-        Vec2::new(back + ch, y0),
-        Vec2::new(back, y0 + ch),
-        Vec2::new(back, y1 - ch),
-        Vec2::new(back + ch, y1),
-        Vec2::new(x1 - ch, y1),
-        Vec2::new(x1, y1 - ch),
-    ];
+    let pts = |q: &[(f32, f32)]| q.iter().map(|&(u, v)| p(u, v)).collect::<Vec<_>>();
+    pen.poly(&pts(&[(back, y0 + ch), (back + ch, y0), (x0, y0), (x0, y1), (back + ch, y1), (back, y1 - ch)]), fill);
+    pen.poly(&pts(&[(x0, hw), (x1, hw), (x1, y1 - ch), (x1 - ch, y1), (x0, y1)]), fill);
+    pen.poly(&pts(&[(x0, -hw), (x0, y0), (x1 - ch, y0), (x1, y0 + ch), (x1, -hw)]), fill);
+    let outline = pts(&[
+        (x1, hw),
+        (x0, hw),
+        (x0, -hw),
+        (x1, -hw),
+        (x1, y0 + ch),
+        (x1 - ch, y0),
+        (back + ch, y0),
+        (back, y0 + ch),
+        (back, y1 - ch),
+        (back + ch, y1),
+        (x1 - ch, y1),
+        (x1, y1 - ch),
+    ]);
     pen.path(&outline, true, 0.15, vcol(pal.hull_hi, 1.0));
     // Spines along the walls.
     let hi = vcol(pal.hull_hi, 1.0);
-    pen.rect(Rect::new(x0 - 0.48, c.y + hw + 0.46, x1 - 1.0, c.y + hw + 0.74), hi);
-    pen.rect(Rect::new(x0 - 0.48, c.y - hw - 0.74, x1 - 1.0, c.y - hw - 0.46), hi);
-    pen.rect(Rect::new(x0 - 0.74, c.y - hw - 0.46, x0 - 0.46, c.y + hw + 0.46), hi);
+    pen.rect(quad((x0 - 0.48, hw + 0.46), (x1 - 1.0, hw + 0.74)), hi);
+    pen.rect(quad((x0 - 0.48, -hw - 0.74), (x1 - 1.0, -hw - 0.46)), hi);
+    pen.rect(quad((x0 - 0.74, -hw - 0.46), (x0 - 0.46, hw + 0.46)), hi);
     // Windows on the outer faces.
     let share = if lit { 0.55 } else { 0.08 };
-    windows(pen, pal, rng, Vec2::new(x1 - 1.5, y1 - 0.3), Vec2::new(back + 1.0, y1 - 0.3), 10, share, pal.gold, false);
-    windows(pen, pal, rng, Vec2::new(x1 - 1.5, y0 + 0.3), Vec2::new(back + 1.0, y0 + 0.3), 10, share, pal.gold, false);
-    windows(pen, pal, rng, Vec2::new(back + 0.3, c.y - hw), Vec2::new(back + 0.3, c.y + hw), 9, share, pal.gold, true);
+    windows(pen, pal, rng, p(x1 - 1.5, y1 - 0.3), p(back + 1.0, y1 - 0.3), 10, share, pal.gold, true);
+    windows(pen, pal, rng, p(x1 - 1.5, y0 + 0.3), p(back + 1.0, y0 + 0.3), 10, share, pal.gold, true);
+    windows(pen, pal, rng, p(back + 0.3, -hw), p(back + 0.3, hw), 9, share, pal.gold, false);
     // The lit inner edge and small clamps.
-    let inner = [Vec2::new(x1, c.y + hw), Vec2::new(x0, c.y + hw), Vec2::new(x0, c.y - hw), Vec2::new(x1, c.y - hw)];
+    let inner = pts(&[(x1, hw), (x0, hw), (x0, -hw), (x1, -hw)]);
     if lit {
         pen.halo(&inner, false, 0.3, vcol(pal.teal, 0.3));
     }
@@ -500,13 +503,13 @@ fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, lit: bool) {
     for f in [0.3, 0.7] {
         let x = x1 - f * 2.0 * d;
         for s in [-1.0, 1.0] {
-            pen.rect(Rect::from_corners(Vec2::new(x - 0.2, c.y + s * hw), Vec2::new(x + 0.2, c.y + s * (hw - 0.6))), hi);
+            pen.rect(quad((x - 0.2, s * hw), (x + 0.2, s * (hw - 0.6))), hi);
         }
     }
-    pen.nav(Vec2::new(x1 - 0.4, c.y + hw + t / 2.0), pal.port, pal.lamp);
-    pen.nav(Vec2::new(x1 - 0.4, c.y - hw - t / 2.0), pal.starboard, pal.lamp);
-    pen.nav(Vec2::new(back + 0.4, y1 - 0.4), pal.port, pal.lamp);
-    pen.nav(Vec2::new(back + 0.4, y0 + 0.4), pal.starboard, pal.lamp);
+    pen.nav(p(x1 - 0.4, hw + t / 2.0), pal.port, pal.lamp);
+    pen.nav(p(x1 - 0.4, -hw - t / 2.0), pal.starboard, pal.lamp);
+    pen.nav(p(back + 0.4, y1 - 0.4), pal.port, pal.lamp);
+    pen.nav(p(back + 0.4, y0 + 0.4), pal.starboard, pal.lamp);
 }
 
 /// Everything around the U: struts, buildings, the gate with its pylons and approach path, the bridges and the
@@ -516,11 +519,11 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     // The truss bridges to the moorings, off the left edge, and the cross bar behind the mind.
     let (bx0, bx1) = l.bridge_x;
     for y in l.bridges {
-        truss(pen, pal, Vec2::new(bx0, y), Vec2::new(bx1, y), 0.8, ((bx1 - bx0) / 1.1) as usize);
+        truss(pen, pal, Vec2::new(bx0, y), Vec2::new(bx1, y), BRIDGE, ((bx1 - bx0) / 1.1) as usize);
     }
     pen.line(Vec2::new(bx1, l.bridges[0]), Vec2::new(bx1, l.bridges[1]), 0.5, vcol(pal.hull_hi, 1.0));
     for (k, c) in l.moorings.iter().enumerate() {
-        mooring(pen, pal, &mut rng, *c, k < lights.moored);
+        mooring(pen, pal, &mut rng, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }
     // Struts under the buildings; violet conduits from the mind into the base.
     for b in [&l.research, &l.fabricator, &l.mind, &l.range, &l.salvage] {
