@@ -11,10 +11,8 @@
 //! * **NEW BEHAVIOR**: a new draft with one rule (`always -> ` the vocabulary's first action), not saved until SAVE.
 //! * Opening, USE and NEW replace the draft on the screen; unsaved edits are saved first (`saving.rs`).
 
-use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, UiGlobalTransform};
-use bevy::window::PrimaryWindow;
+use bevy::ui::ComputedNode;
 use data::Content;
 
 use crate::drydock::PlayerDesign;
@@ -26,17 +24,19 @@ use crate::storage::now_unix;
 use crate::style::{Style, ui_color};
 use crate::ui_kit::{
     Hot, Pill, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, UiClick, UiPointer, field_text, label, number, prose, set_color, set_text, spawn_pill,
-    sub_tone, tracked, wheel_rows,
+    sub_tone, tracked,
 };
 
 use super::draft::{BehaviorDraft, design_behavior};
 use super::saving::{Lib, opened_note};
 use super::{BehaviorAction, BehaviorUi, BehaviorView};
 
-/// Rows per list; the wheel scrolls longer lists.
+/// Rows per list; longer lists scroll (by pixels: the pool has one row more, for a row cut at an edge).
 const LIST_ROWS: usize = 7;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
+/// A list's height: [`LIST_ROWS`] rows.
+const LIST_H: f32 = LIST_ROWS as f32 * (ROW_H + ROW_GAP) - ROW_GAP;
 
 /// What the action bar shows.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -208,14 +208,22 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             ListNode(list),
                             Scrollbar::vertical(),
                             ScrollRows::default(),
-                            Node { flex_direction: FlexDirection::Column, row_gap: px(ROW_GAP), flex_grow: 1.0, min_height: px(0), overflow: Overflow::clip(), ..default() },
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(ROW_GAP),
+                                flex_grow: 1.0,
+                                min_height: px(0),
+                                max_height: px(LIST_H),
+                                overflow: Overflow::scroll_y(),
+                                ..default()
+                            },
                         ))
                         .with_children(|l| {
                             if list == 0 {
                                 let hint = "NOTHING SAVED YET  ·  SAVE KEEPS THE BEHAVIOR ON THE SCREEN";
                                 l.spawn((EmptyHint, label(fonts, hint, 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::new(px(12), px(0), px(14), px(0)), ..default() }));
                             }
-                            for k in 0..LIST_ROWS {
+                            for k in 0..=LIST_ROWS {
                                 spawn_row(l, fonts, &c, list, k);
                             }
                         });
@@ -538,30 +546,22 @@ fn press(b: ListButton, list: &mut BehaviorList, ui: &mut BehaviorUi, lib: &mut 
     }
 }
 
-/// The wheel over a list scrolls it, and so does a drag on its scrollbar (which learns the rows shown).
-pub(super) fn scroll(
-    window: Single<&Window, With<PrimaryWindow>>,
-    wheel: Res<AccumulatedMouseScroll>,
-    mut lists: Query<(&ListNode, &ComputedNode, &UiGlobalTransform, &mut ScrollRows)>,
-    mut list: ResMut<BehaviorList>,
-) {
+/// Lays each list out from its scroll (the kit's wheel and scrollbar move it): the first row its pool shows. A first
+/// row set here (a new behavior at the top) scrolls the list there.
+pub(super) fn scroll(mut lists: Query<(&ListNode, &ComputedNode, &mut ScrollRows)>, mut list: ResMut<BehaviorList>, mut laid: Local<[usize; 2]>) {
     if !list.open {
         return;
     }
-    let cursor = window.physical_cursor_position();
-    for (node, computed, tf, mut rows) in &mut lists {
+    for (node, computed, mut rows) in &mut lists {
         let len = if node.0 == 0 { list.mine.len() } else { list.templates.len() };
-        let max = len.saturating_sub(LIST_ROWS);
-        let mut offset = list.offset[node.0];
-        if let Some(first) = rows.take_want() {
-            offset = first.min(max);
-        } else if wheel.delta.y != 0.0 && cursor.is_some_and(|c| computed.contains_point(*tf, c)) {
-            offset = (offset as f32 - wheel_rows(&wheel)).clamp(0.0, max as f32) as usize;
+        if list.offset[node.0] != laid[node.0] {
+            rows.scroll = list.offset[node.0] as f32 * (ROW_H + ROW_GAP);
         }
-        if offset != list.offset[node.0] {
-            list.offset[node.0] = offset;
+        let w = ScrollRows::lay(&mut rows, &vec![ROW_H; len], ROW_GAP, computed.size.y * computed.inverse_scale_factor);
+        laid[node.0] = w.first;
+        if list.offset[node.0] != w.first {
+            list.offset[node.0] = w.first;
         }
-        ScrollRows::show(&mut rows, offset, LIST_ROWS.min(len), len);
     }
 }
 

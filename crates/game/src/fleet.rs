@@ -21,10 +21,8 @@
 //! slot. Shown slots: the escorts and one more while there is room ([`MAX_ESCORTS`]). UI words are chrome in code,
 //! like home's.
 
-use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, UiGlobalTransform};
-use bevy::window::PrimaryWindow;
+use bevy::ui::ComputedNode;
 use data::career::voyage_ready;
 use data::{Blueprint, Content};
 
@@ -41,13 +39,16 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, ring_node, set_color, set_text,
-    spawn_brackets, spawn_pill, tracked, wheel_rows,
+    spawn_brackets, spawn_pill, tracked,
 };
 
 /// Escort slots the layout has (placeholder: the slice's mind grows to 4 cores, so at most 3 escorts fly).
 pub const MAX_ESCORTS: usize = 4;
-/// Design cards shown at once (the wheel scrolls the rest).
+/// Design cards shown at once (the rest scroll by; the pool has one card more, for a card cut at an edge).
 const CARDS: usize = 4;
+/// A design card's width and the gap after it (logical px).
+const CARD_W: f32 = 292.0;
+const CARD_GAP: f32 = 14.0;
 /// The layout's size (logical px), like home's.
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
 /// The flagship's box (centre and size) and the escort slots' boxes (centres, one size).
@@ -242,15 +243,14 @@ fn open(
     fleet.open = true;
 }
 
-/// Clicks, Esc and the wheel.
+/// Clicks, Esc, and the cards the row shows (from its scroll: the kit's wheel and scrollbar move it).
 #[allow(clippy::too_many_arguments)]
 fn input(
     mut clicks: MessageReader<UiClick>,
     buttons: Query<(&FleetButton, Option<&Pill>)>,
     keys: Res<ButtonInput<KeyCode>>,
-    scroll: Res<AccumulatedMouseScroll>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    row: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollRows), With<CardRow>>,
+    row: Single<(&ComputedNode, &mut ScrollRows), With<CardRow>>,
+    mut laid: Local<usize>,
     mut fleet: ResMut<Fleet>,
     mut career: ResMut<PlayerCareer>,
     mut storage: ResMut<Storage>,
@@ -266,21 +266,16 @@ fn input(
         fleet.open = false;
         return;
     }
-    let (node, tf, mut rows) = row.into_inner();
-    let max = fleet.designs.len().saturating_sub(CARDS);
-    let mut offset = fleet.offset;
-    if let Some(first) = rows.take_want() {
-        offset = first.min(max);
-    } else if scroll.delta.y != 0.0
-        && let Some(c) = window.physical_cursor_position()
-        && node.contains_point(*tf, c)
-    {
-        offset = (offset as f32 - wheel_rows(&scroll)).clamp(0.0, max as f32) as usize;
+    let (node, mut rows) = row.into_inner();
+    // A first card set elsewhere (opening starts at the first) scrolls the row there.
+    if fleet.offset != *laid {
+        rows.scroll = fleet.offset as f32 * (CARD_W + CARD_GAP);
     }
-    if offset != fleet.offset {
-        fleet.offset = offset;
+    let w = ScrollRows::lay(&mut rows, &vec![CARD_W; fleet.designs.len()], CARD_GAP, node.size.x * node.inverse_scale_factor);
+    *laid = w.first;
+    if fleet.offset != w.first {
+        fleet.offset = w.first;
     }
-    ScrollRows::show(&mut rows, offset, CARDS.min(fleet.designs.len()), fleet.designs.len());
     let content = &content.0;
     for c in clicks.read() {
         let Ok((b, pill)) = buttons.get(c.0) else { continue };
@@ -512,17 +507,22 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                             Scrollbar::horizontal().outside(),
                             ScrollRows::default(),
                             ScreenPart::new(Edge::Bottom, 3),
-                            Node { flex_direction: FlexDirection::Row, column_gap: px(14), ..abs(Vec2::new(36.0, 562.0), Some(Vec2::new(1208.0, 94.0))) },
+                            Node {
+                                flex_direction: FlexDirection::Row,
+                                column_gap: px(CARD_GAP),
+                                overflow: Overflow::scroll_x(),
+                                ..abs(Vec2::new(36.0, 562.0), Some(Vec2::new(CARDS as f32 * (CARD_W + CARD_GAP) - CARD_GAP, 94.0)))
+                            },
                         ))
                         .with_children(|row| {
-                            for k in 0..CARDS {
+                            for k in 0..=CARDS {
                                 row.spawn((
                                     FleetNode::Card(k),
                                     FleetButton::Card(k),
                                     boxed(Tone::Teal),
                                     Hot::default(),
                                     Node {
-                                        width: px(292),
+                                        width: px(CARD_W),
                                         height: px(94),
                                         flex_shrink: 0.0,
                                         flex_direction: FlexDirection::Row,
@@ -622,7 +622,7 @@ fn sync(
             FleetText::ListHead => {
                 let mut s = format!("YOUR DESIGNS  ·  PICK ONE FOR ESCORT {}", picked + 1);
                 if fleet.designs.len() > CARDS {
-                    s.push_str(&format!("  ·  {} OF {}  ·  THE WHEEL SCROLLS", (fleet.offset + CARDS).min(fleet.designs.len()), fleet.designs.len()));
+                    s.push_str(&format!("  ·  {} OF {}", (fleet.offset + CARDS).min(fleet.designs.len()), fleet.designs.len()));
                 }
                 (s, Tone::Dim)
             }

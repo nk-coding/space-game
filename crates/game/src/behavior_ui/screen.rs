@@ -19,7 +19,6 @@
 //! are chrome in code (like the drydock); node names, summaries and parameter names come from content. The
 //! inspector's controls are spawned by `controls.rs`.
 
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
@@ -34,8 +33,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill,
-    spawn_scroll_cue, tracked,
+    Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill,
+    tracked,
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
@@ -47,7 +46,6 @@ use super::draft::BehaviorDraft;
 use super::edit::EditState;
 use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, never_reached, slot_line_label, slots_pill};
 use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
-use super::list::BehaviorList;
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
 use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
@@ -277,7 +275,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // The divider and the right column: the inspector, ADD NODE with its search and the palette.
             root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
             root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) })).with_children(|rp| {
-                let body = rp.spawn((InspectorBody, ScrollPosition::default(), Scrollbar::vertical(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() })).id();
+                rp.spawn((InspectorBody, ScrollPosition::default(), Scrollbar::vertical(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() }));
                 rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
                 rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
                 rp.spawn((
@@ -303,29 +301,24 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     f.spawn((UiIcon::Glyph { glyph: Glyph::Search, color: kit.ui.label }, Node { width: px(13), height: px(13), flex_shrink: 0.0, ..default() }));
                     f.spawn((field_text(fonts, 12.0), Node { flex_grow: 1.0, ..default() }));
                 });
-                let palette = rp
-                    .spawn((
-                        PaletteList,
-                        ScrollPosition::default(),
-                        // No glow room: its pills don't glow, and the search field is just above.
-                        Scrollbar::vertical().room(0),
-                        Node {
-                            flex_direction: FlexDirection::Row,
-                            flex_wrap: FlexWrap::Wrap,
-                            align_content: AlignContent::FlexStart,
-                            column_gap: px(6),
-                            row_gap: px(7),
-                            flex_grow: 1.0,
-                            flex_basis: px(0),
-                            min_height: px(PALETTE_MIN),
-                            overflow: Overflow::scroll_y(),
-                            ..default()
-                        },
-                    ))
-                    .id();
-                // A cut inspector (the NOTE field) or palette says that the wheel shows more.
-                spawn_scroll_cue(rp, fonts, &style, body);
-                spawn_scroll_cue(rp, fonts, &style, palette);
+                rp.spawn((
+                    PaletteList,
+                    ScrollPosition::default(),
+                    // No glow room: its pills don't glow, and the search field is just above.
+                    Scrollbar::vertical().room(0),
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        align_content: AlignContent::FlexStart,
+                        column_gap: px(6),
+                        row_gap: px(7),
+                        flex_grow: 1.0,
+                        flex_basis: px(0),
+                        min_height: px(PALETTE_MIN),
+                        overflow: Overflow::scroll_y(),
+                        ..default()
+                    },
+                ));
             });
 
             // Bottom: back to the drydock, undo / redo, the status line (and a refusal after it); the behavior list
@@ -979,47 +972,6 @@ pub(super) fn draw_dots(
         for x in 0..=nx {
             let at = area.min + Vec2::new(x as f32, y as f32) * step;
             queue.dot(&r.hard, rig.screen_to_world(at), size, color, Z_DOTS);
-        }
-    }
-}
-
-/// The wheel scrolls the graph or the palette under the pointer (not under the BEHAVIORS list, which scrolls its
-/// own rows).
-#[allow(clippy::type_complexity)]
-pub(super) fn scroll(
-    window: Single<&Window, With<PrimaryWindow>>,
-    wheel: Res<AccumulatedMouseScroll>,
-    ui: Res<BehaviorUi>,
-    list: Res<BehaviorList>,
-    mut areas: Query<
-        (&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children, Has<GraphViewport>),
-        Or<(With<GraphViewport>, With<PaletteList>, With<InspectorBody>)>,
-    >,
-    contents: Query<&ComputedNode>,
-) {
-    if wheel.delta.y == 0.0 || list.is_open() {
-        return;
-    }
-    let Some(cursor) = window.physical_cursor_position() else { return };
-    let dy = match wheel.unit {
-        MouseScrollUnit::Line => wheel.delta.y * WHEEL_LINE_PX,
-        MouseScrollUnit::Pixel => wheel.delta.y,
-    };
-    for (node, tf, mut pos, children, is_graph) in &mut areas {
-        if (is_graph && ui.view != BehaviorView::Graph) || !node.contains_point(*tf, cursor) {
-            continue;
-        }
-        // The content's height: the graph has one content node; the palette's pills and the inspector's blocks are
-        // laid out inside their node.
-        let content_h = if is_graph {
-            children.iter().filter_map(|c| contents.get(c).ok()).map(|c| c.size.y).sum::<f32>()
-        } else {
-            node.content_size.y
-        };
-        let max = ((content_h - node.size.y) * node.inverse_scale_factor).max(0.0);
-        let y = (pos.0.y - dy).clamp(0.0, max);
-        if pos.0.y != y {
-            pos.0.y = y;
         }
     }
 }

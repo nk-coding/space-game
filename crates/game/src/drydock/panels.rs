@@ -44,8 +44,6 @@
 
 use std::fmt::Write as _;
 
-use bevy::input::mouse::AccumulatedMouseScroll;
-
 use bevy::prelude::*;
 use bevy::text::LetterSpacing;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -60,9 +58,9 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, FADE_DEPTH, Hot, Pill, PillText, Ring, ScreenFx, ScreenPart, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, ValueBar, WHEEL_LINE_PX,
+    Edge, FADE_DEPTH, Hot, Pill, PillText, Ring, ScreenFx, ScreenPart, ScrollRows, Scrollbar, SmoothScroll, TextField, Tip, Tone, UiBlock, ValueBar,
     field_text, label, number,
-    prose, ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
+    prose, ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, sub_tone, tracked,
 };
 
 use super::PlayerDesign;
@@ -77,7 +75,7 @@ const MATERIAL_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
 /// The left column's width.
 const LEFT_W: f32 = 248.0;
-/// List entries in the pool (headings and part rows; as many show as fit, the wheel scrolls).
+/// List entries in the pool (headings and part rows; as many show as fit, the list scrolls by pixels).
 const SLOTS: usize = 48;
 const ROW_H: f32 = 42.0;
 const HEAD_H: f32 = 26.0;
@@ -242,36 +240,6 @@ impl Palette {
     }
 }
 
-/// How many entries from `from` fit into `height` px (at most [`SLOTS`]).
-fn fitting(entries: &[Entry], height: f32) -> usize {
-    let mut used = 0.0;
-    let mut n = 0;
-    for e in entries.iter().take(SLOTS) {
-        let h = e.height() + if n > 0 { ROW_GAP } else { 0.0 };
-        if used + h > height + 0.5 {
-            break;
-        }
-        used += h;
-        n += 1;
-    }
-    n
-}
-
-/// The last first entry that still fills the list: the smallest offset from which every entry after it fits.
-fn max_offset(entries: &[Entry], height: f32) -> usize {
-    let mut used = 0.0;
-    let mut i = entries.len();
-    while i > 0 {
-        let h = entries[i - 1].height() + if used > 0.0 { ROW_GAP } else { 0.0 };
-        if used + h > height + 0.5 || entries.len() - (i - 1) > SLOTS {
-            break;
-        }
-        used += h;
-        i -= 1;
-    }
-    i
-}
-
 pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
@@ -424,7 +392,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             flex_basis: px(0),
                             min_height: px(0),
                             row_gap: px(ROW_GAP),
-                            overflow: Overflow::clip(),
+                            overflow: Overflow::scroll_y(),
                             ..default()
                         },
                     ))
@@ -506,9 +474,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                             t.spawn((PanelText::SelSub, label(fonts, "", 8.5, c(Tone::Dim, 1.0))));
                         });
                     });
-                    // The rest scrolls (the wheel) when a part has more lines and controls than the column has room
-                    // for; the cue says so.
-                    let body = rp
+                    // The rest scrolls when a part has more lines and controls than the column has room for.
+                    rp
                         .spawn((
                             SelScroll,
                             ScrollPosition::default(),
@@ -544,9 +511,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 }
                             });
                             super::inspector::spawn_controls(sb, fonts, &style, content);
-                        })
-                        .id();
-                    spawn_scroll_cue(rp, fonts, &style, body);
+                        });
                 });
 
             // Centre: the grid viewport; the info line and the zoom.
@@ -904,9 +869,9 @@ pub(super) fn sync_pills(
     }
 }
 
-/// The part list: its entries (sections of the search's parts, the locked ones last in each), how many fit, the
-/// wheel over the list scrolls it and a chip jumps it to its section; the lit chip; the slots' headings and rows,
-/// the rows' icons (a lock for a locked part) and NEW tags.
+/// The part list: its entries (sections of the search's parts, the locked ones last in each), which show from its
+/// scroll (the kit's wheel and scrollbar move it; a chip glides it to its section); the lit chip; the slots'
+/// headings and rows, the rows' icons (a lock for a locked part) and NEW tags.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn sync_palette(
     mut ui: ResMut<DrydockUi>,
@@ -914,9 +879,7 @@ pub(super) fn sync_palette(
     granted: Res<Granted>,
     style: Res<Style>,
     mut pal: ResMut<Palette>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    list: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollRows), With<PaletteList>>,
-    scroll: Res<AccumulatedMouseScroll>,
+    list: Single<(&ComputedNode, &mut ScrollRows, &mut SmoothScroll), With<PaletteList>>,
     mut slots: Query<(&Slot, &mut Node), (Without<SlotHead>, Without<PaletteRow>, Without<RowNew>)>,
     mut heads: Query<(&SlotHead, &mut Node), (Without<Slot>, Without<PaletteRow>, Without<RowNew>)>,
     mut rows: Query<(&PaletteRow, &mut Node, &mut ActionButton), (Without<Slot>, Without<SlotHead>, Without<RowNew>)>,
@@ -927,6 +890,7 @@ pub(super) fn sync_palette(
     let made_from = (ui.is_changed() || granted.is_changed() || pal.made_from.is_none())
         .then(|| (ui.search.to_lowercase(), ui.material.clone()))
         .filter(|m| granted.is_changed() || pal.made_from.as_ref() != Some(m));
+    let (node, mut bar, mut smooth) = list.into_inner();
     if let Some(made_from) = made_from {
         let mut entries = Vec::new();
         for s in palette_sections(content, &granted.unlocks, &made_from.0) {
@@ -935,38 +899,29 @@ pub(super) fn sync_palette(
         }
         // Another search starts at the top; a new material only recolours the list.
         if pal.made_from.as_ref().is_none_or(|m| m.0 != made_from.0) {
-            pal.offset = 0;
+            bar.scroll = 0.0;
             pal.jumped = None;
         }
         pal.entries = entries;
         pal.made_from = Some(made_from);
     }
-    let (node, tf, mut bar) = list.into_inner();
-    let height = node.size.y * node.inverse_scale_factor;
-    let max = max_offset(&pal.entries, height);
-    let mut offset = pal.offset.min(max);
+    let lengths: Vec<f32> = pal.entries.iter().map(Entry::height).collect();
     let mut jumped = pal.jumped.clone();
     let jump = if ui.jump.is_some() { ui.jump.take() } else { None };
-    if let Some(cat) = jump {
-        if let Some(i) = pal.entries.iter().position(|e| matches!(e, Entry::Head { category, .. } if *category == cat)) {
-            offset = i.min(max);
-            jumped = Some(cat);
-        }
-    } else if let Some(first) = bar.take_want() {
-        offset = first.min(max);
-        jumped = None;
-    } else if scroll.delta.y != 0.0
-        && let Some(c) = window.physical_cursor_position()
-        && node.contains_point(*tf, c)
+    if let Some(cat) = jump
+        && let Some(i) = pal.entries.iter().position(|e| matches!(e, Entry::Head { category, .. } if *category == cat))
     {
-        offset = (offset as f32 - wheel_rows(&scroll)).clamp(0.0, max as f32) as usize;
-        jumped = None;
+        // Its heading's top: the entries above it and their gaps.
+        smooth.to(lengths[..i].iter().sum::<f32>() + ROW_GAP * i as f32);
+        jumped = Some(cat);
     }
-    let visible = fitting(&pal.entries[offset.min(pal.entries.len())..], height);
-    ScrollRows::show(&mut bar, offset, visible, pal.entries.len());
-    // The lit chip: the one clicked while its heading is in view, else the section at the top.
+    let w = ScrollRows::lay(&mut bar, &lengths, ROW_GAP, node.size.y * node.inverse_scale_factor);
+    let (offset, visible) = (w.first, w.count.min(SLOTS));
+    // The lit chip: the one clicked while the list glides to it and while its heading is in view, else the section
+    // at the top.
     let in_view = |cat: &str| pal.entries[offset.min(pal.entries.len())..].iter().take(visible).any(|e| matches!(e, Entry::Head { category, .. } if category == cat));
-    let lit = jumped.clone().filter(|c| in_view(c)).or_else(|| {
+    let jumped = jumped.filter(|c| smooth.gliding() || in_view(c));
+    let lit = jumped.clone().or_else(|| {
         pal.entries[..(offset + 1).min(pal.entries.len())].iter().rev().find_map(|e| match e {
             Entry::Head { category, .. } => Some(category.clone()),
             Entry::Part(_) => None,
@@ -1012,17 +967,8 @@ pub(super) fn sync_palette(
     }
 }
 
-/// The armour swatches: a locked material's tile is a lock; the wheel over the strip scrolls it by whole swatches.
-#[allow(clippy::type_complexity)]
-pub(super) fn sync_swatches(
-    granted: Res<Granted>,
-    style: Res<Style>,
-    content: Res<GameContent>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    scroll: Res<AccumulatedMouseScroll>,
-    strip: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition), With<SwatchStrip>>,
-    mut tiles: Query<(&SwatchTile, &mut UiIcon)>,
-) {
+/// The armour swatches: a locked material's tile is a lock (the strip scrolls through the kit's [`Scrollbar`]).
+pub(super) fn sync_swatches(granted: Res<Granted>, style: Res<Style>, content: Res<GameContent>, mut tiles: Query<(&SwatchTile, &mut UiIcon)>) {
     if granted.is_changed() {
         let block = content.0.unit_hull_part(Shape::Rect).map_or(String::new(), |b| b.id.clone());
         for (tile, mut icon) in &mut tiles {
@@ -1036,38 +982,25 @@ pub(super) fn sync_swatches(
             }
         }
     }
-    let (node, tf, mut pos) = strip.into_inner();
-    if scroll.delta.y == 0.0 || !window.physical_cursor_position().is_some_and(|c| node.contains_point(*tf, c)) {
-        return;
-    }
-    let k = node.inverse_scale_factor;
-    let max = ((node.content_size.x - node.size.x) * k).max(0.0);
-    let step = SWATCH + SWATCH_GAP;
-    let x = ((pos.0.x / step).round() - wheel_rows(&scroll)) * step;
-    let x = x.clamp(0.0, (max / step).ceil() * step);
-    if pos.0.x != x {
-        pos.0.x = x;
-    }
 }
 
-/// The category chips' line: the wheel or a drag over it scrolls it sideways, a lit chip is scrolled into view, and
-/// the kit's fades show over an edge with more chips behind it.
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+/// The category chips' line: a drag over it scrolls it sideways (at once; the wheel is the kit's), a lit chip
+/// glides into view, and the kit's fades show over an edge with more chips behind it.
+#[allow(clippy::type_complexity)]
 pub(super) fn scroll_chips(
     pal: Res<Palette>,
     window: Single<&Window, With<PrimaryWindow>>,
-    scroll: Res<AccumulatedMouseScroll>,
     buttons: Res<ButtonInput<MouseButton>>,
-    line: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children), With<ChipLine>>,
+    line: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &mut SmoothScroll, &Children), With<ChipLine>>,
     chips: Query<(&ComputedNode, &UiGlobalTransform, &ActionButton)>,
     mut drag: Local<Option<(f32, f32)>>,
 ) {
-    let (node, tf, mut pos, children) = line.into_inner();
+    let (node, tf, mut pos, mut smooth, children) = line.into_inner();
     let k = node.inverse_scale_factor;
     let max = ((node.content_size.x - node.size.x) * k).max(0.0);
     let cursor = window.physical_cursor_position();
     let over = cursor.is_some_and(|c| node.contains_point(*tf, c));
-    let mut x = pos.0.x;
+    let x = pos.0.x;
     if buttons.just_pressed(MouseButton::Left) && over {
         *drag = cursor.map(|c| (c.x, x));
     }
@@ -1075,9 +1008,10 @@ pub(super) fn scroll_chips(
         *drag = None;
     }
     if let (Some((from, start)), Some(c)) = (*drag, cursor) {
-        x = start - (c.x - from) * k;
-    } else if scroll.delta.y != 0.0 && over {
-        x -= wheel_rows(&scroll) * WHEEL_LINE_PX;
+        let x = (start - (c.x - from) * k).clamp(0.0, max);
+        if pos.0.x != x {
+            pos.0.x = x;
+        }
     } else if pal.is_changed()
         && let Some(lit) = &pal.lit
         && let Some((chip, at, _)) = children.iter().filter_map(|e| chips.get(e).ok()).find(|(_, _, b)| b.0 == DrydockAction::Category(lit.clone()))
@@ -1087,14 +1021,10 @@ pub(super) fn scroll_chips(
         let right = left + chip.size.x * k;
         let width = node.size.x * k;
         if left < x {
-            x = left;
+            smooth.to(left);
         } else if right > x + width {
-            x = right - width + FADE_DEPTH;
+            smooth.to(right - width + FADE_DEPTH);
         }
-    }
-    let x = x.clamp(0.0, max);
-    if pos.0.x != x {
-        pos.0.x = x;
     }
 }
 
@@ -1230,29 +1160,13 @@ fn part_icon(content: &Content, part: &str, material: &str) -> UiIcon {
     UiIcon::Part { part: part.to_string(), material: hull.then(|| material.to_string()) }
 }
 
-/// The wheel over the selected part's lines scrolls them; another kind of part (or a palette part instead of a
-/// placed one) starts at the top.
-pub(super) fn scroll_selected(
-    insp: Res<Inspector>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    wheel: Res<AccumulatedMouseScroll>,
-    area: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition), With<SelScroll>>,
-    mut shown: Local<(String, bool)>,
-) {
-    let (node, tf, mut pos) = area.into_inner();
+/// Another kind of part (or a palette part instead of a placed one) shows its lines from the top (they scroll
+/// through the kit's [`Scrollbar`]).
+pub(super) fn scroll_selected(insp: Res<Inspector>, mut area: Single<&mut ScrollPosition, With<SelScroll>>, mut shown: Local<(String, bool)>) {
     let kind = (insp.part.clone(), insp.installed.is_some());
     if insp.is_changed() && *shown != kind {
         *shown = kind;
-        pos.0.y = 0.0;
-        return;
-    }
-    if wheel.delta.y == 0.0 || !window.physical_cursor_position().is_some_and(|c| node.contains_point(*tf, c)) {
-        return;
-    }
-    let max = ((node.content_size.y - node.size.y) * node.inverse_scale_factor).max(0.0);
-    let y = (pos.0.y - wheel_rows(&wheel) * WHEEL_LINE_PX).clamp(0.0, max);
-    if pos.0.y != y {
-        pos.0.y = y;
+        area.0.y = 0.0;
     }
 }
 
@@ -1529,18 +1443,4 @@ mod tests {
         assert!(shorten(line, 0.0).ends_with('…'));
     }
 
-    /// The list shows the entries that fit from its first one, and scrolls no further than the last screenful.
-    #[test]
-    fn the_list_fits_headings_and_rows() {
-        let head = || Entry::Head { category: "hull".into(), open: 2, locked: 0 };
-        let part = || Entry::Part("armor_block".into());
-        let entries = vec![head(), part(), part(), head(), part()];
-        let all = 3.0 * ROW_H + 2.0 * HEAD_H + 4.0 * ROW_GAP;
-        assert_eq!(fitting(&entries, all), 5);
-        assert_eq!(fitting(&entries, all - 1.0), 4);
-        assert_eq!(max_offset(&entries, all), 0);
-        // Room for a heading and a row: the last screenful starts at the second heading.
-        assert_eq!(max_offset(&entries, HEAD_H + ROW_H + ROW_GAP), 3);
-        assert_eq!((fitting(&[], 100.0), max_offset(&[], 100.0)), (0, 0));
-    }
 }

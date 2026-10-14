@@ -21,11 +21,9 @@
 //!   there: a new design in this frame, the frame, copying the share code, the `.ron` file, importing one.
 
 use bevy::ecs::system::SystemParam;
-use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::text::{Justify, LineBreak};
-use bevy::ui::{ComputedNode, UiGlobalTransform};
-use bevy::window::PrimaryWindow;
+use bevy::ui::ComputedNode;
 use data::{Blueprint, Content};
 
 use crate::career::{Granted, Note, PlayerCareer};
@@ -37,7 +35,7 @@ use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
     Hot, Pill, PillLock, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, UiClick, field_text, label, name_in_place, number, prose,
-    set_color, set_text, spawn_pill, sub_tone, tracked, wheel_rows,
+    set_color, set_text, spawn_pill, sub_tone, tracked,
 };
 
 use super::actions::{DrydockAction, Rare};
@@ -49,10 +47,13 @@ use super::state::DrydockStatus;
 use super::view::DockCamera;
 use super::{DockSet, PlayerDesign, stats};
 
-/// Rows per list (designs, templates); the wheel scrolls longer lists.
+/// Rows per list (designs, templates); longer lists scroll (by pixels: the pool has one row more, for a row cut at
+/// an edge).
 const LIST_ROWS: usize = 6;
 const ROW_H: f32 = 46.0;
 const ROW_GAP: f32 = 4.0;
+/// A list's height: [`LIST_ROWS`] rows.
+const LIST_H: f32 = LIST_ROWS as f32 * (ROW_H + ROW_GAP) - ROW_GAP;
 /// The width of the heads before the NEW, FRAME and IMPORT rows (their pills line up).
 const HEAD_W: f32 = 176.0;
 
@@ -646,13 +647,21 @@ fn spawn_shelf(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, 
                                     ListNode(list),
                                     Scrollbar::vertical(),
                                     ScrollRows::default(),
-                                    Node { flex_direction: FlexDirection::Column, row_gap: px(ROW_GAP), flex_grow: 1.0, min_height: px(0), overflow: Overflow::clip(), ..default() },
+                                    Node {
+                                        flex_direction: FlexDirection::Column,
+                                        row_gap: px(ROW_GAP),
+                                        flex_grow: 1.0,
+                                        min_height: px(0),
+                                        max_height: px(LIST_H),
+                                        overflow: Overflow::scroll_y(),
+                                        ..default()
+                                    },
                                 ))
                                 .with_children(|l| {
                                     if list == 0 {
                                         l.spawn((EmptyHint, label(fonts, "NOTHING SAVED YET  ·  SAVE KEEPS THE DESIGN IN THE DRYDOCK", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::new(px(12), px(0), px(14), px(0)), ..default() }));
                                     }
-                                    for k in 0..LIST_ROWS {
+                                    for k in 0..=LIST_ROWS {
                                         spawn_row(l, fonts, &c, list, k);
                                     }
                                 });
@@ -1138,30 +1147,22 @@ fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &Content, re
     }
 }
 
-/// The wheel over a list scrolls it, and so does a drag on its scrollbar (which learns the rows shown).
-fn scroll_lists(
-    window: Single<&Window, With<PrimaryWindow>>,
-    scroll: Res<AccumulatedMouseScroll>,
-    mut lists: Query<(&ListNode, &ComputedNode, &UiGlobalTransform, &mut ScrollRows)>,
-    mut shelf: ResMut<Shelf>,
-) {
+/// Lays each list out from its scroll (the kit's wheel and scrollbar move it): the first row its pool shows. A first
+/// row set here (a copy saved at the top) scrolls the list there.
+fn scroll_lists(mut lists: Query<(&ListNode, &ComputedNode, &mut ScrollRows)>, mut shelf: ResMut<Shelf>, mut laid: Local<[usize; 2]>) {
     if shelf.page != Some(Page::Blueprints) {
         return;
     }
-    let cursor = window.physical_cursor_position();
-    for (list, node, tf, mut rows) in &mut lists {
+    for (list, node, mut rows) in &mut lists {
         let len = if list.0 == 0 { shelf.designs.len() } else { shelf.templates.len() };
-        let max = len.saturating_sub(LIST_ROWS);
-        let mut offset = shelf.offset[list.0];
-        if let Some(first) = rows.take_want() {
-            offset = first.min(max);
-        } else if scroll.delta.y != 0.0 && cursor.is_some_and(|c| node.contains_point(*tf, c)) {
-            offset = (offset as f32 - wheel_rows(&scroll)).clamp(0.0, max as f32) as usize;
+        if shelf.offset[list.0] != laid[list.0] {
+            rows.scroll = shelf.offset[list.0] as f32 * (ROW_H + ROW_GAP);
         }
-        if offset != shelf.offset[list.0] {
-            shelf.offset[list.0] = offset;
+        let w = ScrollRows::lay(&mut rows, &vec![ROW_H; len], ROW_GAP, node.size.y * node.inverse_scale_factor);
+        laid[list.0] = w.first;
+        if shelf.offset[list.0] != w.first {
+            shelf.offset[list.0] = w.first;
         }
-        ScrollRows::show(&mut rows, offset, LIST_ROWS.min(len), len);
     }
 }
 

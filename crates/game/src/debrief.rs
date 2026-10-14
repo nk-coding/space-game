@@ -23,6 +23,9 @@
 //!   and what the flight counted ([`DebriefStats`]: sites, kills, ships lost). Kills and ships lost are not in the
 //!   save, so a game loaded with a `last_haul` shows only the one-line summary of it.
 //! * Dismissed is not saved: the next start shows the summary.
+//! * The report scrolls when it is longer than the panel (a long haul, a low window; Niklas, 14 Oct 2026: "the
+//!   voyage report is not scrollable, and thus can cut things off"): everything above the buttons is one area with
+//!   the kit's [`Scrollbar`] (smooth wheel, the overlay bar, edge fades); the buttons stay put at the bottom.
 //! * A voyage its first clear opened is a signal found (GDR-0078): the panel names it (from the content) above the
 //!   voyage's `cleared` words, and adds VOYAGE MAP beside DISMISS: it dismisses the panel and flies to the gate
 //!   (`map::OpenMap`), where the map selects the new signal.
@@ -41,13 +44,17 @@ use crate::mode::AppMode;
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
-use crate::ui_kit::{Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked};
+use crate::ui_kit::{
+    Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
+};
 use crate::voyage::clock;
 
 /// Rows of parts shown (the rest are counted in one line).
 const MAX_ROWS: usize = 6;
 /// The panel's width (logical px).
 const WIDTH: f32 = 420.0;
+/// The gap between the report's lines, and between the report and the buttons (logical px).
+const GAP: f32 = 14.0;
 
 /// What one part's items gave: how many, research data per family, materials per id.
 type Gave = (u32, BTreeMap<String, f32>, BTreeMap<String, u32>);
@@ -311,7 +318,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
             border: UiRect::left(px(1)),
             flex_direction: FlexDirection::Column,
             padding: UiRect::new(px(30), px(30), px(26), px(24)),
-            row_gap: px(14),
+            row_gap: px(GAP),
             overflow: Overflow::clip(),
             ..default()
         },
@@ -385,15 +392,26 @@ fn rebuild(
     let Some(d) = &debrief.data else { return };
     crate::ui_kit::set_text(&mut summary, &d.summary());
     commands.entity(*panel).despawn_children();
-    commands.entity(*panel).with_children(|p| fill(p, &fonts, &style, d));
+    commands.entity(*panel).with_children(|p| {
+        // The report (it scrolls when it is longer than the panel; a new one starts at the top), the buttons under
+        // it.
+        p.spawn((
+            ScrollPosition::default(),
+            // Less glow room than the gap above the buttons, so the end's fade never covers them.
+            Scrollbar::vertical().room(GAP as u8 - 2),
+            Node { flex_direction: FlexDirection::Column, row_gap: px(GAP), flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
+        ))
+        .with_children(|body| fill(body, &fonts, &style, d));
+        buttons(p, &fonts, d);
+    });
 }
 
-/// The panel's content.
+/// The report's lines.
 fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &DebriefData) {
     let ui = style.ui;
     let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
     let fam = |key: &Option<String>| key.as_deref().map_or(ui_color(ui.label, 1.0), |k| ui_color(style.system_color(k), 1.0));
-    let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
+    let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), flex_shrink: 0.0, ..default() };
     let rule = |p: &mut ChildSpawnerCommands| {
         p.spawn((Node { height: px(1), flex_shrink: 0.0, ..default() }, BackgroundColor(ui_color(ui.dim, 0.35))));
     };
@@ -505,9 +523,11 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
     if let Some(why) = &d.practice {
         p.spawn(label(fonts, why, 9.0, c(Tone::Gold)));
     }
-    // DISMISS at the bottom.
-    p.spawn(Node { flex_grow: 1.0, ..default() });
-    p.spawn(Node { justify_content: JustifyContent::FlexEnd, ..row(10.0) }).with_children(|r| {
+}
+
+/// VOYAGE MAP (after a voyage that found a signal) and DISMISS, at the panel's bottom.
+fn buttons(p: &mut ChildSpawnerCommands, fonts: &HudFonts, d: &DebriefData) {
+    p.spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::FlexEnd, column_gap: px(10), flex_shrink: 0.0, ..default() }).with_children(|r| {
         if !d.opened.is_empty() {
             spawn_pill(r, fonts, "VOYAGE MAP", 10.0, 36.0, None, Pill::new(Tone::Teal), MapButton);
         }

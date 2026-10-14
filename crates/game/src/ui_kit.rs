@@ -19,22 +19,22 @@
 //!   their edges while they fade in; every screen opened from the shipyard uses it.
 //! * [`Scrollbar`] (`scrollbar`): the overlay scrollbar of every area that scrolls (shown while it scrolls or is
 //!   hovered, draggable), with room past its edges for the glow of a lit row and fades over the edges it scrolls
-//!   past; [`ScrollRows`] for a list that pages a pool of row nodes.
+//!   past, and its smooth scrolling ([`SmoothScroll`]: the kit takes the wheel, a notch glides like Chrome's);
+//!   [`ScrollRows`] for a list that shows a pool of row nodes, scrolled by pixels too.
 
 use std::borrow::Cow;
 
 use bevy::input::ButtonState;
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use bevy::text::{LetterSpacing, TextBackgroundColor};
-use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, UiGlobalTransform, UiScale, UiTransform, Val2};
+use bevy::ui::{CalculatedClip, ComputedNode, ComputedStackIndex, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 
 mod scrollbar;
 mod transition;
 
-pub use scrollbar::{FADE_DEPTH, ScrollRows, Scrollbar};
+pub use scrollbar::{FADE_DEPTH, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
 };
@@ -164,6 +164,8 @@ pub struct UiPointer {
     /// A text field has the keyboard: shortcuts are off.
     pub typing: bool,
     pressed: Option<(Entity, PressSource)>,
+    /// The topmost [`Hot`] node under the mouse (the scrollbars' wheel looks whether it covers an area).
+    over: Option<Entity>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -190,7 +192,7 @@ impl Plugin for UiKitPlugin {
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
             .add_systems(Startup, spawn_tip.after(crate::flight_hud::spawn_hud))
             .add_systems(Update, (hit_test, type_into_fields).chain().in_set(UiInputSet))
-            .add_systems(Update, (style_widgets, show_locks, place_scroll_cues, show_tip).in_set(UiStyleSet));
+            .add_systems(Update, (style_widgets, show_locks, show_tip).in_set(UiStyleSet));
         transition::plugin(app);
         scrollbar::plugin(app);
     }
@@ -274,6 +276,7 @@ fn hit_test(
         blocks.iter().any(|(node, tf, vis)| vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, c))
     });
     pointer.blocked = over.is_some() || on_block || pressed.is_some();
+    pointer.over = over;
     pointer.typing = fields.iter().any(|(_, f)| f.focused);
 }
 
@@ -605,67 +608,6 @@ pub fn spawn_brackets(parent: &mut ChildSpawnerCommands, arm: f32, width: f32, c
     }
 }
 
-/// A scroll cue: over the bottom edge of a scrolled area (the entity: a node with a [`ScrollPosition`]) while more
-/// of its content lies below, a fade into the backdrop with `MORE BELOW · WHEEL` on it. The kit places it every
-/// frame ([`place_scroll_cues`]); it takes no clicks.
-#[derive(Component)]
-pub struct ScrollCue(pub Entity);
-
-/// The cue's height (logical px).
-const CUE_H: f32 = 24.0;
-
-/// Spawns the [`ScrollCue`] of `area` into `parent`, the area's own parent (it must have no padding or border:
-/// the cue is placed from the corners). Spawn it after the area, so it draws over it.
-pub fn spawn_scroll_cue(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, area: Entity) {
-    let back = style.background.outer();
-    let fade = LinearGradient::to_bottom(vec![ColorStop::percent(ui_color(back, 0.0), 0), ColorStop::percent(ui_color(back, 0.88), 80)]);
-    parent
-        .spawn((
-            ScrollCue(area),
-            Node {
-                display: Display::None,
-                position_type: PositionType::Absolute,
-                height: px(CUE_H),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::FlexEnd,
-                padding: UiRect::bottom(px(1)),
-                ..default()
-            },
-            BackgroundGradient::from(fade),
-        ))
-        .with_child(tracked(fonts, "MORE BELOW  ·  WHEEL", 8.0, ui_color(style.ui.label, 1.0), 0.3));
-}
-
-/// Shows each [`ScrollCue`] while its area has more below and puts it over the area's bottom edge (from last
-/// frame's layout).
-#[allow(clippy::type_complexity)]
-fn place_scroll_cues(
-    mut cues: Query<(&ScrollCue, &ChildOf, &mut Node)>,
-    areas: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility, &ScrollPosition), Without<ScrollCue>>,
-    parents: Query<(&ComputedNode, &UiGlobalTransform), Without<ScrollCue>>,
-) {
-    for (cue, parent, mut node) in &mut cues {
-        let (Ok((area, at, vis, scroll)), Ok((p, p_at))) = (areas.get(cue.0), parents.get(parent.parent())) else { continue };
-        let k = area.inverse_scale_factor;
-        let more = vis.get() && (area.content_size.y - area.size.y) * k - scroll.0.y > 1.0;
-        let display = if more { Display::Flex } else { Display::None };
-        if node.display != display {
-            node.display = display;
-        }
-        if !more {
-            continue;
-        }
-        // Corners in physical px, the offsets in logical px.
-        let (a, b) = (at.translation - area.size / 2.0, p_at.translation - p.size / 2.0);
-        let (left, top, width) = (px((a.x - b.x) * k), px((a.y + area.size.y - b.y) * k - CUE_H), px(area.size.x * k));
-        if node.left != left || node.top != top || node.width != width {
-            node.left = left;
-            node.top = top;
-            node.width = width;
-        }
-    }
-}
-
 /// The screens (the drydock, the BEHAVIOR screen, home, FLEET) are laid out for 1280 × 720 logical px; larger
 /// windows scale them up to this.
 const MAX_UI_SCALE: f32 = 2.0;
@@ -685,17 +627,9 @@ pub fn ui_scale(size: Vec2) -> f32 {
     (size.x / 1280.0).min(size.y / 720.0).clamp(MIN_UI_SCALE, MAX_UI_SCALE)
 }
 
-/// Pixels of a touchpad's wheel that count as one line (one list row, 40 px of a scrolled area).
+/// Pixels of a touchpad's wheel that count as one line (one step of a wheel-driven control such as the drydock's
+/// Shift + wheel turn; scrolling areas take the wheel through [`Scrollbar`]).
 pub const WHEEL_LINE_PX: f32 = 40.0;
-
-/// The wheel's turn this frame in list rows: whole rows, at least one per turn, signed (positive: up).
-pub fn wheel_rows(scroll: &AccumulatedMouseScroll) -> f32 {
-    let steps = match scroll.unit {
-        MouseScrollUnit::Line => scroll.delta.y,
-        MouseScrollUnit::Pixel => scroll.delta.y / WHEEL_LINE_PX,
-    };
-    steps.signum() * steps.abs().max(1.0).round()
-}
 
 /// A name edited in place (the drydock's design, the BEHAVIOR screen's behavior): a click on the name opens the
 /// field with it; when the field lets go of the keyboard, Esc keeps the old name, else a changed, non-empty one is
