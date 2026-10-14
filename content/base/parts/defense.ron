@@ -1,5 +1,5 @@
 // Defense. PLACEHOLDER NUMBERS (concept-board drydock values, for feel only; the shield radius matches the
-// rings in art/ships/halvex-runner.svg; capacity, regen, absorb and the minimum power level are invented).
+// rings of the concept art; capacity, regen, absorb and the minimum power level are invented).
 // Power tier (lead default): shields before engines and guns. Below a quarter of its draw the bubble cannot hold.
 // `salvage`: what the part gives when salvaged and dismantled at home (research data about its build points;
 // PLACEHOLDER, lead defaults of 13 Oct 2026 after docs/plans/first-playable-loop.md 3.2).

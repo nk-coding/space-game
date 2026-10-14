@@ -1,5 +1,5 @@
 //! The drydock: the ship editor of the client (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
-//! `docs/concept/boards/ui-mockups/desktop-drydock.png`): the mode, the view of the player's design, the screen
+//! the concept's desktop drydock mockup): the mode, the view of the player's design, the screen
 //! with its widgets, editing, the live stats, saving and sharing, and the test flight, in the modules below.
 //!
 //! * `player::design`: [`PlayerDesign`], the blueprint every flight of the player flies (it lives in `player`, the

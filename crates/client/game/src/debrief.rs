@@ -1,4 +1,4 @@
-//! The debrief (GDR-0065, after `docs/plans/mockups/home-b.png`): after a voyage, a full panel over home's right
+//! The debrief (GDR-0065): after a voyage, a full panel over home's right
 //! side until it is dismissed (DISMISS, Esc or Enter), then a one-line summary top left. A layer of its own over
 //! [`AppMode::Home`] (the shipyard), independent of home's layout; hidden while FLEET is open.
 //!

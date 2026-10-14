@@ -216,14 +216,6 @@ fn text_keys_and_plain_rendering() {
         .unwrap();
     assert!(c.render_plain(&logic).contains("salvaged automaton cores"));
     assert_eq!(c.render_plain("x [[part:radiator]] y"), "x Radiator y");
-
-    let mut c2 = c.clone();
-    let mut tr = std::collections::BTreeMap::new();
-    tr.insert("part.radiator.name".to_string(), "Kühler".to_string());
-    tr.insert("part.nope.name".to_string(), "?".to_string());
-    let unused = c2.apply_texts(&tr);
-    assert_eq!(unused, ["part.nope.name"]);
-    assert_eq!(c2.parts.get("radiator").unwrap().name, "Kühler");
 }
 
 #[test]

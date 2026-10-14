@@ -1,7 +1,7 @@
 // Automaton hunter: a heavier raider that leads the packs deeper in the rim (the voyage Corran Reach). Two cannons
 // on forward prongs, the core buried in the middle. One automaton core powers exactly two cannons and one thruster
-// (6 MW) and runs three of its four control. PLACEHOLDER layout and numbers (docs/plans/slice-content.md 2.1, track
-// 7J draft of 13 Oct 2026; tuned in track 7K).
+// (6 MW) and runs three of its four control. PLACEHOLDER layout and numbers (track 7J
+// draft of 13 Oct 2026; tuned in track 7K).
 (
     id: "automaton_hunter",
     name: "Automaton hunter",

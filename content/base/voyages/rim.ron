@@ -1,7 +1,7 @@
 // The voyages of the first playable loop (GDR-0062): four small rim clusters in a chain, each opened by clearing the
 // goal of the one before it (the first is open at the start, `starts.ron`). The order here is the voyage map's.
 // Radius and spacing in metres, `map` a place on the voyage map (0 to 1), `minutes` the expected length.
-// PLACEHOLDER NUMBERS (docs/plans/slice-content.md 3.3, track 7J draft of 13 Oct 2026; sites tuned with the headless
+// PLACEHOLDER NUMBERS (track 7J draft of 13 Oct 2026; sites tuned with the headless
 // voyage runner the same day, GDR-0073 and docs/results/slice-balance-2026-10-13.md).
 [
     (

@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use data::{Content, Dir, Footprint, GridPoint, Pack, PlacedShape, Severity, ShipGrid};
+use data::{Content, Dir, Footprint, Pack, PlacedShape, Severity, ShipGrid};
 
 #[test]
 fn turning_components_in_base_content() {
@@ -140,16 +140,6 @@ fn side_helpers() {
     assert_eq!(Dir::Up.normal(), [0.0, -1.0]);
     assert_eq!(Dir::Left.side_center((2, 3)), [2.0, 3.5]);
     assert_eq!(Dir::Down.side_center((2, 3)), [2.5, 4.0]);
-    assert_eq!(
-        Dir::Right.side_segment((2, 3)),
-        (GridPoint::new(3, 3), GridPoint::new(3, 4))
-    );
-    // Every side segment keeps its cell on the right, like the hull edges.
-    for d in Dir::ALL {
-        let (a, b) = d.side_segment((0, 0));
-        let (dx, dy) = ((b.x - a.x) as f32, (b.y - a.y) as f32);
-        assert_eq!([dy, -dx], d.normal(), "{d:?}");
-    }
 }
 
 const MOD: &str = r#"(id: "m", name: "M", version: "1", schema_version: 1, depends: ["base"])"#;

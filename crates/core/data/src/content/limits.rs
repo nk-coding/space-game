@@ -18,10 +18,6 @@ pub const RON_RECURSION_LIMIT: usize = 32;
 /// document, the unpacked payload of a share code. A full 128 × 128 frame of 1×1 blocks is about 1.2 MB.
 pub const MAX_DOCUMENT_BYTES: usize = 4 << 20;
 
-/// Longest share code read, in bytes (before base64 and zlib); its payload is at most
-/// [`MAX_DOCUMENT_BYTES`] unpacked. A full 128 × 128 frame needs about 200 kB.
-pub const MAX_SHARE_CODE_BYTES: usize = 1 << 20;
-
 /// A placement coordinate within ±[`MAX_COORD`] (serde `deserialize_with`).
 pub(crate) fn coord<'de, D: Deserializer<'de>>(d: D) -> Result<i32, D::Error> {
     let v = i32::deserialize(d)?;

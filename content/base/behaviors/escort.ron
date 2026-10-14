@@ -1,4 +1,4 @@
-// The ship-mind's escort template (GDR-0065; drafted in docs/plans/slice-content.md section 6): fight what the
+// The ship-mind's escort template (GDR-0065): fight what the
 // leader has locked, back off when badly hurt, and keep near the leader between fights. Three rules, so it fits a
 // logic core; a tamed automaton core (two rule slots) runs only the first two. Written because the `skirmisher`
 // picks its own fights (`nearest` sends it at any active enemy, including a pack the player meant to sneak past),

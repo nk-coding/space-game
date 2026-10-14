@@ -1,4 +1,4 @@
-//! The shipyard: home's world scene (GDR-0071, after `docs/plans/mockups/shipyard-long-u.png`). A long U-shaped
+//! The shipyard: home's world scene (GDR-0071). A long U-shaped
 //! dock lies on its side, its inside the building area (the working design's drydock frame, the ship docked in it
 //! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes and
 //! the dark fabricator on the top wall, the test range's tower and lane and the dark salvage bay under the bottom

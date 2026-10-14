@@ -1,4 +1,4 @@
-//! The BEHAVIOR screen's nodes, laid out after the mockup (`docs/concept/boards/ui-mockups/phone-behavior-editor.png`)
+//! The BEHAVIOR screen's nodes, laid out after the concept's phone mockup
 //! for 1280 × 720 logical pixels and up (larger windows scale it):
 //!
 //! ```text

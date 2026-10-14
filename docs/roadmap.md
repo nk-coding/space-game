@@ -115,7 +115,7 @@ work headless. Still open: Niklas tries it; then his review of GDR-0053, 0056, 0
 ## Phase 7: the first playable loop (started 13 Oct 2026, GDR-0062, GDR-0063, ADR-0033)
 
 Niklas chose the first playable loop as the next phase (plan: `plans/first-playable-loop.md`; the deeper plans
-`plans/salvage-research.md`, `plans/galaxy-voyages.md`, `plans/coop-arena.md` hold what waits). Decided 13 Oct: start
+`../space-game-archive/plans/salvage-research.md`, `plans/galaxy-voyages.md`, `plans/coop-arena.md` hold what waits). Decided 13 Oct: start
 at home with the early-game kit, unlocks only (unlimited once researched), fly over wrecks to salvage, the haul stays
 in a lost ship's wreck, auto-dismantle into research data, four small hand-made rim clusters, recall in 3 s when no
 awake enemy is near, closing mid-voyage loses that voyage, mind capacity 2 → 4, destroyed cores leave a
@@ -247,6 +247,12 @@ Next session:
   split into `kit`, `world`, `game`; the 16 files over 1,100 lines split. Behaviour unchanged (724 tests, every
   determinism and fight hash, the screens). Build times: the baseline is in `results/`, the after column waits for
   the VM's memory.
+- **Dead stuff removed** (14 Oct 2026; Niklas: "in general check for such dead stuff and get rid of what you can get
+  rid of"): the concept bundle, the concept ship art, the screen mockups, two superseded plans and 54 uncited
+  screenshots moved to the local repo `../space-game-archive` (comments citing them reworded, living docs point
+  there); the tests pinning the base ships to the concept art, unused code (`apply_texts`, `palette_tags`,
+  `is_present`, `side_segment`, `outward_normal`, `part_count`, `MAX_SHARE_CODE_BYTES`, the arena's job counts),
+  unused style tokens, Bevy's `png` feature and stale comments gone.
 
 ## Phase 4: measurement
 

@@ -1,7 +1,7 @@
 //! Text keys, the wiki link syntax and locale overrides.
 //!
 //! Every text field has a key `<kind>.<id>.<field>` (e.g. `part.fission_reactor.name`). The English text
-//! lives inline in the RON files; a later locale layer can replace it by key ([`Content::apply_texts`]).
+//! lives inline in the RON files.
 //!
 //! Text may link to other entries with `[[kind:id]]` or `[[kind:id|label]]`, e.g. `[[part:radiator]]`.
 //! The game shows links as plain names ([`Content::render_plain`]); the wiki turns them into hyperlinks.
@@ -125,55 +125,6 @@ impl Content {
         each(self.encounters.as_slice(), &mut f);
     }
 
-    /// Replaces texts by key (a locale table). Returns the keys that matched nothing.
-    pub fn apply_texts(&mut self, overrides: &BTreeMap<String, String>) -> Vec<String> {
-        fn each<T: Entry>(
-            items: std::slice::IterMut<'_, T>,
-            o: &BTreeMap<String, String>,
-            used: &mut Vec<String>,
-        ) {
-            for e in items {
-                let id = e.id().to_string();
-                for (field, text) in e.text_fields_mut() {
-                    let key = text_key(T::KIND, &id, field);
-                    if let Some(t) = o.get(&key) {
-                        *text = t.clone();
-                        used.push(key);
-                    }
-                }
-            }
-        }
-        let mut used = Vec::new();
-        each(self.stats.iter_mut(), overrides, &mut used);
-        each(self.categories.iter_mut(), overrides, &mut used);
-        each(self.factions.iter_mut(), overrides, &mut used);
-        each(self.materials.iter_mut(), overrides, &mut used);
-        each(self.parts.iter_mut(), overrides, &mut used);
-        each(self.frames.iter_mut(), overrides, &mut used);
-        each(self.ships.iter_mut(), overrides, &mut used);
-        each(self.behavior_nodes.iter_mut(), overrides, &mut used);
-        each(self.behaviors.iter_mut(), overrides, &mut used);
-        each(self.families.iter_mut(), overrides, &mut used);
-        each(self.research.iter_mut(), overrides, &mut used);
-        each(self.starts.iter_mut(), overrides, &mut used);
-        each(self.voyages.iter_mut(), overrides, &mut used);
-        each(self.encounters.iter_mut(), overrides, &mut used);
-        for n in self.behavior_nodes.iter_mut() {
-            let id = n.id.clone();
-            for (field, text) in n.param_texts_mut() {
-                let key = text_key(Kind::BehaviorNode, &id, &field);
-                if let Some(t) = overrides.get(&key) {
-                    *text = t.clone();
-                    used.push(key);
-                }
-            }
-        }
-        overrides
-            .keys()
-            .filter(|k| !used.contains(k))
-            .cloned()
-            .collect()
-    }
 }
 
 #[cfg(test)]

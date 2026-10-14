@@ -483,7 +483,7 @@ impl Career {
 
     /// How many of a part the player has to build with (GDR-0082). Derived like the unlocks, so the save holds no
     /// counts: every part is [`Availability::Unlimited`] until fabrication, spares and bonding fill the counts in
-    /// (GDR-0029, GDR-0031, GDR-0063; `docs/plans/salvage-research.md`). The drydock shows it on each palette row,
+    /// (GDR-0029, GDR-0031, GDR-0063). The drydock shows it on each palette row,
     /// and its editing model refuses a placement when none is left ([`crate::design::edit::Drydock::set_available`]).
     pub fn available(&self, _part: &str) -> Availability {
         Availability::Unlimited

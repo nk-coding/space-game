@@ -281,7 +281,7 @@ never changes the program; moving a rule up is how the player keeps it.
   `not`, `compare`, `written` (false for the implicit target), and a `ParamView` per parameter: the value in effect,
   whether it is written and whether it equals the default, `range()` for the value's unit (0–1000% for a share of
   the weapon reach), and the `NodeParam` (name, type with its choices, `min`, `max`).
-- `palette(role)` lists the vocabulary of a role in content order, `palette_tags(role)` its tags (palette filters).
+- `palette(role)` lists the vocabulary of a role in content order.
 
 ### Undo
 

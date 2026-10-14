@@ -1,4 +1,4 @@
-> Started as an export of the project notes (11 Oct 2026). The claude.ai artifact links below are Niklas's private pages; everything they show is also in the archived concept bundle under [`concept/boards/`](concept/boards/). The generator scripts are in [`concept/reference/generators/`](concept/reference/generators/).
+> Started as an export of the project notes (11 Oct 2026). The claude.ai artifact links below are Niklas's private pages; everything they show is also in the archived concept bundle under [`../space-game-archive/concept/boards/`](../../space-game-archive/concept/boards/). The generator scripts are in `../space-game-archive/concept/reference/generators/`.
 
 # Space Game: Concept Notes
 
@@ -84,7 +84,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 
 ## Development start (11 Oct 2026)
 
-- Work started in the VM repo `space-game` (branch `dev`, local git only). The concept bundle lives under `docs/concept/`, art sources under `art/`. → [ADR-0008](adr/0008-local-git-only.md)
+- Work started in the VM repo `space-game` (branch `dev`, local git only). The concept bundle lives under `../space-game-archive/concept/`, art sources under `art/`. → [ADR-0008](adr/0008-local-git-only.md)
 - **Web first** (Niklas, 11 Oct 2026): the web build is what matters now. Android comes later, so the phone parts of the spike (APK, phone timings, temperature, phone hash) are deferred. Everything stays Android-compatible. → [ADR-0006](adr/0006-web-as-development-platform.md)
 - **The web build is a development platform, not an end-user platform** (Niklas, 11 Oct 2026, later the same day). He develops and views the game in the browser; end users get Android and desktop. Consequences: wasm size doesn't matter; browser performance only needs to be comfortable for development; native performance weighs most in engine/tech choices. This relaxes the earlier "web is a FULL platform" decision (Technical decisions above): browser-only end-user features (IndexedDB saves, mods from a zip/URL, WebRTC co-op transport) are no longer requirements unless Niklas brings them back. Everything still compiles to wasm32 and stays deterministic across native, wasm and Android. → [ADR-0006](adr/0006-web-as-development-platform.md) (supersedes [ADR-0005](adr/0005-web-as-full-end-user-platform.md))
 - **Minimal content at the start**: build the systems first, content later. → [ADR-0009](adr/0009-spike-first-systems-before-content.md)
@@ -115,7 +115,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
   - dedicated parts: gyros (pure torque) and RCS thrusters (small, multi-directional);
   - regular engines contribute too: off-axis engines through differential thrust, and every engine through a small gimbal angle (lead's interpretation, a per-engine placeholder that can be 0).
   The flight computer allocates across all of them. (Thrusters-only gave the Halvex Runner ~9 s per 90° turn, and the raider couldn't turn at all.)
-- **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `art/ships/halvex-runner.*` stays as the original concept art. → [GDR-0012](gdr/0012-halvex-runner-follows-rules.md)
+- **Halvex Runner layout (decided by Niklas, 11 Oct 2026):** adjust it so the ship works under the drydock rules (radiators vent, wing-tip lasers have a clear line of fire, no part overheats at normal load), keeping the silhouette and the symmetry. The content blueprint is the source of truth; `../space-game-archive/ships/halvex-runner.*` stays as the original concept art. → [GDR-0012](gdr/0012-halvex-runner-follows-rules.md)
 - **No fixed raster graphics** (Niklas, 11 Oct 2026): all game art is vector (SVG icons, meshes, procedural shapes, vector fonts). Raster textures are generated in memory at runtime at the resolution the display needs and regenerated when zoom or DPI changes. Icons will move into the content pack (`content/base/icons/`), so mods can bring their own and the wiki can show the SVGs directly. → [ADR-0021](adr/0021-no-fixed-raster-graphics.md)
 - **Physics engine: Rapier2D** (Niklas, 11 Oct 2026, from `docs/results/physics-benchmark.md`): Rapier2D 0.36 with `enhanced-determinism`, one compound collider per ship piece (greedy-merged rectangles plus slope triangles). Avian 2D and box2d-rust lost; Box2D C was a reference number only. → [ADR-0014](adr/0014-physics-engine-by-benchmark.md)
 - **The main repo holds only chosen code** (Niklas, 11 Oct 2026): experiments and benchmarks live in separate local repos. The physics benchmark harness moves out of `crates/bench` into its own local repo `space-game-physics-bench` next to `space-game`; only the report stays here. The `PhysicsBackend` trait and the `FreeFlight` stand-in are removed once Rapier is integrated (no dead code). → [ADR-0025](adr/0025-main-repo-holds-only-chosen-code.md) (supersedes [ADR-0013](adr/0013-physics-backend-trait.md))
@@ -310,7 +310,7 @@ Mockups: Design canvas "Space Game UI Mockups", https://claude.ai/artifact/T3u2B
     - Icons are the exact style 2a glyphs embedded as SVG images. The hull glow follows the outer edges of the main piece, so split-off pieces lose it.
     - Shields in the sandbox are dotted rings.
     - Art direction text, the Hull/Art decisions and a new UI decision row were updated. Page accents moved to teal #8cefdb, coral #ec8f7c and shield #8fb0f2.
-- Generator scripts lived in the session scratchpad (gen2/style2a.py, frag.py, rollout.py, rollout2.py). `frag.py`, `rollout.py` and `rollout2.py` are archived in [`concept/reference/generators/`](concept/reference/generators/README.md); `style2a.py` is not. A future session should rebuild from the artboards.
+- Generator scripts lived in the session scratchpad (gen2/style2a.py, frag.py, rollout.py, rollout2.py). `frag.py`, `rollout.py` and `rollout2.py` are archived in `../space-game-archive/concept/reference/generators/`; `style2a.py` is not. A future session should rebuild from the artboards.
 
 ## Drydock sketch (in the artifact, placeholder numbers)
 

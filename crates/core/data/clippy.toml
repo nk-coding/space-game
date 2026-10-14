@@ -8,7 +8,7 @@ disallowed-methods = [
     { path = "f32::asin", reason = "platform libm; use libm" },
     { path = "f32::acos", reason = "platform libm; use libm" },
     { path = "f32::atan", reason = "platform libm; use libm" },
-    { path = "f32::atan2", reason = "platform libm; use libm2" },
+    { path = "f32::atan2", reason = "platform libm; use libm" },
     { path = "f32::exp", reason = "platform libm; use libm" },
     { path = "f32::exp2", reason = "platform libm; use libm" },
     { path = "f32::ln", reason = "platform libm; use libm" },

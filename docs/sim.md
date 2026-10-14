@@ -977,7 +977,7 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
 - **Targets**: `nearest` (distance), `weakest` (hull share, ties by distance), `threat` ((d + 50) / firepower,
   firepower × 2 if it aims at me), `attacker` (nearest enemy aiming at me), `locked` (the lock of
   `Ship::leader()`: its pilot lock or behavior target).
-- **`escort`** (the ship-mind's escort template, GDR-0065, from `docs/plans/slice-content.md` section 6): `target
+- **`escort`** (the ship-mind's escort template, GDR-0065, from `../space-game-archive/plans/slice-content.md` section 6): `target
   locked(core)`; kite to 150% of its reach when below 30% hull with the target aiming at it; approach to 70%
   (every gun within reach, nose on the target); `escort(30m)` when the leader has nothing locked. It never picks
   its own fights. Not the default of any design yet (the BEHAVIOR screen lists it as a template); measured as

@@ -34,7 +34,7 @@ Today the game does not build for Android at all (2, "Current state"), so the sl
 | Renderer: one atlas mesh per piece, glow sprites, bloom as a toggle, sRGB compositing on an HDR camera (the HDR part is a WebGL2 workaround) | [ADR-0020](../adr/0020-style-2a-renderer.md), `crates/client/game/src/main.rs` `spawn_camera` |
 | Raster textures are made at runtime at zoom × DPI | [ADR-0021](../adr/0021-no-fixed-raster-graphics.md) |
 | Storage layer of named RON documents; on Android "the same files backend on the app's internal data path, later"; Android clipboard not built | [ADR-0031](../adr/0031-player-storage-and-design-sharing.md) |
-| Landscape only on the phone; floating HUD (hull map top left, target panel top right, stick bottom left, fire and abilities bottom right); the drydock and the behavior editor exist on all platforms; HUD customisable later | [GDR-0008](../gdr/0008-ui-ship-mind-interface.md), mockups in `docs/concept/boards/ui-mockups/` |
+| Landscape only on the phone; floating HUD (hull map top left, target panel top right, stick bottom left, fire and abilities bottom right); the drydock and the behavior editor exist on all platforms; HUD customisable later | [GDR-0008](../gdr/0008-ui-ship-mind-interface.md), mockups in `../space-game-archive/concept/boards/ui-mockups/` |
 | Touch: stick = "fly that way", push = speed, letting go brakes, drift toggle, tap a ship to lock it, the stick strafes under a lock | [GDR-0009](../gdr/0009-stick-and-lock-controls.md); PC keys changed by [GDR-0040](../gdr/0040-keyboard-flight-and-smart-lock-aim.md), touch unchanged |
 | Fleet bar chips: a tap focuses, a tap on a dormant vessel wakes it | [GDR-0050](../gdr/0050-fleet-bar.md) (provisional) |
 

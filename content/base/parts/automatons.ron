@@ -36,7 +36,7 @@
         category: "weapons",
         icon: "automaton-cannon",
         color: "enemy",
-        barrel: (width: 0.2, length: 0.6, muzzle: 0.15), // as in art/ships/automaton-raider.svg
+        barrel: (width: 0.2, length: 0.6, muzzle: 0.15), // as in the concept art
         size: (1, 1),
         build_points: 3,
         mass: 2,

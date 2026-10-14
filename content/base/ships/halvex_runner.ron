@@ -1,7 +1,7 @@
 // Halvex Runner: the style 2a reference frigate. x right, y down, forward = up (-y); rot = quarter turns
 // clockwise; flip = mirror before rotating.
-// Layout adjusted 11 Oct 2026 (decided by Niklas) so the ship works under the drydock rules, from the concept art in
-// art/ships/halvex-runner.* (kept untouched; this blueprint is the source of truth now):
+// Layout adjusted 11 Oct 2026 (decided by Niklas) so the ship works under the drydock rules, from the concept art
+// (this blueprint is the source of truth now):
 // - the wing-tip pulse lasers moved up one cell into the wing shoulders (replacing two 1×1 slopes), so nothing
 //   blocks their line of fire; the silhouette changes only there;
 // - all four radiators vent: two at the wing tips (each beside a fission reactor, +2 power) and two in the tail row;

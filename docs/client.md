@@ -342,7 +342,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 
 The start screen ([GDR-0062](gdr/0062-first-playable-loop.md)) is the shipyard itself
 ([GDR-0071](gdr/0071-shipyard-home-long-u.md), 13 Oct 2026; it replaced the ring menu of track 7D): a top-down world
-scene after `docs/plans/mockups/shipyard-long-u.png`, drawn by the game's camera. The game opens here (`/`,
+scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the game's camera. The game opens here (`/`,
 `?scene=home`). The station is `shipyard/`, the screen over it and the camera's flights `home.rs`. Screenshots:
 `docs/results/home-shipyard-1280.png`, `home-shipyard-1600.png` (1280 × 720 and 1600 × 900) and
 `home-shipyard-to-drydock.png` (mid-flight into the drydock).
@@ -495,7 +495,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   design) enters at the plan's entry as the focus; the FLEET escorts take `?fleet=` wingman slots behind it (turned
   with the entry), fly the behavior their design names and follow the flagship (`Leader`). No raider waves (C does
   nothing), no re-form, no wreck clean-up; Shift+R and T do nothing, M asks in a panel whether to abandon the voyage.
-- **The HUD** (after `docs/plans/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
+- **The HUD** (after `../space-game-archive/mockups/voyage-hud-b.png`): the title `SHIPYARD APPROACH · RIM` (name and band),
   the subtitle `SITES 1 / 4 · 2:05` (sites cleared, and wreck-only sites once they spawned, of all; the sim time);
   under the hull the cargo block: `SALVAGE`, the shown ship's `5 / 8` in gold with one pip per cargo unit (20 at
   most, then shares), the name of its biggest cargo part (`CARGO HOLD`); right under it the RECALL pill (its tooltip names R) and
@@ -572,7 +572,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
 ## Voyage map
 
 Where voyages are chosen (track 7I, 14 Oct 2026; GDR-0065's star map inside the rim band, after
-`docs/plans/mockups/map-b.png`; GDR-0071: the gate is where you fly for voyages; GDR-0078: no route, the voyages are
+`../space-game-archive/mockups/map-b.png`; GDR-0071: the gate is where you fly for voyages; GDR-0078: no route, the voyages are
 found one signal at a time), `map/`: `AppMode::Map`. Home's gate (V, or a click) flies the camera to the gate, then
 the map opens; Esc or the ring button top left goes back to the shipyard (the camera flies out from the gate);
 `?scene=map` starts here. Screenshots: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
@@ -654,7 +654,7 @@ show the window sizes but still the chain and the locked voyages the map drew be
 ## FLEET
 
 The fleet on the dock ([GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md), after
-`docs/plans/mockups/fleet-b.png`), `fleet.rs`, a layer over home (F or the moorings, once the camera has flown
+`../space-game-archive/mockups/fleet-b.png`), `fleet.rs`, a layer over home (F or the moorings, once the camera has flown
 there). Screenshots:
 `docs/results/career-fleet*.png`.
 
@@ -730,7 +730,7 @@ comes up again on the next screen ([Voyages](#voyages), `warp_fx.rs`).
 ## Research
 
 The research building's screen (track 7G, 13 Oct 2026; [GDR-0063](gdr/0063-salvage-and-research-v1.md), the tree with
-lanes of [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md) after `docs/plans/mockups/research-b.png`),
+lanes of [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md) after `../space-game-archive/mockups/research-b.png`),
 `research/`: research data from salvage becomes parts, materials, frames and mind capacity. Screenshots:
 `docs/results/research-1280.png`, `research-1600.png` (1280 × 720 and 1600 × 900), `research-unlocked.png` (after an
 UNLOCK), `research-drydock-new.png` (the part NEW in the drydock afterwards), `research-from-locked-row.png` (opened
@@ -791,7 +791,7 @@ from the drydock's LOCKED fusion reactor row), `research-flight.png` (home's cam
 ## Drydock
 
 The ship editor (Drydock v1, decided by Niklas on 12 Oct 2026; the look follows
-`docs/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 and 13 Oct 2026: the mode, the view
+`../space-game-archive/concept/boards/ui-mockups/desktop-drydock.png`), `drydock/`, written 12 and 13 Oct 2026: the mode, the view
 of the player's design, the screen with its widgets, editing (`data::design::edit`), the live stats, status line and
 overlays from `sim::report`, saving (SAVE, the autosave), the BLUEPRINTS and EXPORT screens, share codes and files
 (Storage and sharing below), the BEHAVIOR button and the test flight ([GDR-0056](gdr/0056-drydock-wave-2-defaults.md)).
@@ -1018,7 +1018,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
 
 How the design on the drydock's grid thinks (Behavior editor v1, [GDR-0057](gdr/0057-behavior-editor-v1.md); lead
 defaults [GDR-0059](gdr/0059-behavior-editor-wave-a-defaults.md), [GDR-0060](gdr/0060-behavior-editor-wave-b-defaults.md); the
-look follows `docs/concept/boards/ui-mockups/phone-behavior-editor.png`, laid out for the desktop), `behavior_ui/`,
+look follows `../space-game-archive/concept/boards/ui-mockups/phone-behavior-editor.png`, laid out for the desktop), `behavior_ui/`,
 written 13 Oct 2026: the mode, the screen, the graph and text views, the inspector and the palette; behaviors as
 saved documents (the name and SAVE, the BEHAVIORS list, the design's behavior) and TEST IN RANGE with a live rule
 panel in flight. Both views edit through the editing model `data::behavior::edit` (`docs/behavior-format.md`

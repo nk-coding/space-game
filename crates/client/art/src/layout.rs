@@ -121,8 +121,7 @@ impl Layout {
         add("fx/halo".into(), [0.5, 0.0625], [2.0 * half, 2.0 * half / 8.0], [half, 0.0], Source::Proc(Proc::Halo { hw, sigma, half }));
 
         // Engine plumes: gradient triangle over a blurred copy, nozzle at the origin, pointing down (+y). Shapes
-        // and lengths follow drawFlame() in docs/concept/reference/concept-board-script.js at full thrust.
-        // `(colour, opacity, offset)` per stop; the enemy plume is gPlR in art/ships/automaton-raider.svg.
+        // and lengths follow the concept board's flames at full thrust. `(colour, opacity, offset)` per stop.
         let stops = |gradient: &str| -> Vec<(String, String, String)> {
             let stop = |i: usize, j: usize| t.must(&format!("ship.plume.{gradient}.{i}.{j}")).to_string();
             (0..3).map(|i| (stop(i, 0), stop(i, 1), stop(i, 2))).collect()
@@ -165,7 +164,7 @@ impl Layout {
             }
         }
 
-        // Gun barrel (halvex-runner.svg): 5 x 16 units, metal gradient, dark rim. Origin = muzzle end.
+        // Gun barrel (as in the concept art): 5 x 16 units, metal gradient, dark rim. Origin = muzzle end.
         let offsets = [0.0, 0.45, 0.7, 1.0];
         let mut stop_xml = String::new();
         for (i, o) in offsets.iter().enumerate() {

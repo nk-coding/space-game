@@ -1,5 +1,5 @@
-//! The drydock's screen, laid out after the mockup (`docs/concept/boards/ui-mockups/desktop-drydock.png`) and layout
-//! v2 (GDR-0082, the draft `docs/plans/mockups/drydock-left-column.html`, variant A) for 1280 × 720 logical pixels
+//! The drydock's screen, laid out after the concept's desktop mockup and layout
+//! v2 (GDR-0082, variant A) for 1280 × 720 logical pixels
 //! and up (larger windows scale it: `view::ui_scale`):
 //!
 //! ```text

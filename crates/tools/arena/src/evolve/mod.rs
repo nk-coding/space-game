@@ -113,9 +113,6 @@ pub struct Progress {
     /// The generation in progress (or the number done, once finished).
     pub generation: u32,
     pub generations: u32,
-    /// Jobs of the current generation done, and how many it has.
-    pub jobs_done: usize,
-    pub jobs: usize,
     pub finished: bool,
 }
 
@@ -389,14 +386,9 @@ impl Run {
     }
 
     pub fn progress(&self) -> Progress {
-        let (done, jobs) = self.batch.as_ref().map_or((0, 0), |b| {
-            (b.results.iter().filter(|r| r.is_some()).count(), b.jobs.len())
-        });
         Progress {
             generation: self.generation(),
             generations: self.generations,
-            jobs_done: done,
-            jobs,
             finished: self.finished(),
         }
     }

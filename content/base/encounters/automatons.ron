@@ -1,8 +1,8 @@
 // What waits at a voyage site (GDR-0062). Ships hold until a player vessel comes within `wake_radius` (metres of the
 // site), then fly their faction's behavior; wrecks spawn as salvage with `damage` (a share of their parts) already
 // gone, rolled on the sim's encounter stream. Counts are `(min, max)`, both included, rolled per launch. The
-// variants by count (a pair, a pack, a den) are entries of their own. PLACEHOLDER NUMBERS (docs/plans/slice-content.md
-// 3.2, track 7J draft of 13 Oct 2026; counts tuned with the headless voyage runner the same day, GDR-0073 and
+// variants by count (a pair, a pack, a den) are entries of their own. PLACEHOLDER NUMBERS (track 7J
+// draft of 13 Oct 2026; counts tuned with the headless voyage runner the same day, GDR-0073 and
 // docs/results/slice-balance-2026-10-13.md: no single ship of the slice wins against three raiders at once often).
 [
     (

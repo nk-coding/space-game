@@ -46,8 +46,6 @@ pub trait Entry {
     fn set_source(&mut self, source: Source);
     /// Every translatable text field as `(field, text)`; the text key is `<kind>.<id>.<field>`.
     fn text_fields(&self) -> Vec<(&'static str, &str)>;
-    /// Mutable access to the same fields, for locale overrides.
-    fn text_fields_mut(&mut self) -> Vec<(&'static str, &mut String)>;
 }
 
 /// `entry!(Type, Kind, extra_text...; optional_text...)`: the [`Entry`] impl of a kind with the common header,
@@ -70,14 +68,6 @@ macro_rules! entry {
                 if let Some(d) = &self.description { v.push(("description", d.as_str())); }
                 if let Some(l) = &self.lore { v.push(("lore", l.as_str())); }
                 $( if let Some(t) = &self.$opt { v.push((stringify!($opt), t.as_str())); } )*
-                v
-            }
-            fn text_fields_mut(&mut self) -> Vec<(&'static str, &mut String)> {
-                let mut v: Vec<(&'static str, &mut String)> = vec![("name", &mut self.name), ("summary", &mut self.summary)];
-                $( v.push((stringify!($extra), &mut self.$extra)); )*
-                if let Some(d) = &mut self.description { v.push(("description", d)); }
-                if let Some(l) = &mut self.lore { v.push(("lore", l)); }
-                $( if let Some(t) = &mut self.$opt { v.push((stringify!($opt), t)); } )*
                 v
             }
         }

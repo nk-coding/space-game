@@ -55,7 +55,7 @@ space-game/
 
 ## Step 2: Core sim
 
-- One cell = 1 m. A ship is a grid of parts, each part with a footprint, rotation and flip. See `reference/drydock-model.js` for the rules and `reference/data-draft/` for parts and sample ships.
+- One cell = 1 m. A ship is a grid of parts, each part with a footprint, rotation and flip. See the concept's drydock model (`../space-game-archive/concept/reference/drydock-model.js`) for the rules.
 - Each connected piece is one rigid body with a compound collider (one shape per cell, or merged rectangles plus the slope triangles). Mass and centre of mass come from the parts.
 - Slopes connect only through their straight sides. When a part is destroyed, recompute connectivity. Split pieces into new bodies that keep their linear and angular velocity. Each piece keeps only its own reactors.
 - Damage per part. Power pool per piece. Heat can stay simple in the spike.
@@ -77,7 +77,7 @@ space-game/
 - **PC controls**: WASD acts as the stick; the mouse locks onto targets and fires.
 - **Timing**: 30 Hz simulation, 60 fps rendering with interpolation between sim states.
 - **Builds**: the web build is served from the VM and opened in the host browser; the APK is installed over adb Wi-Fi.
-- **Ships**: the Halvex Runner (`assets/ships/halvex-runner.layout.json`) as the player ship, automaton raiders as targets.
+- **Ships**: the Halvex Runner (`content/base/ships/halvex_runner.ron`) as the player ship, automaton raiders as targets.
 
 ## Step 4: Load test
 

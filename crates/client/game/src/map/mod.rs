@@ -1,4 +1,4 @@
-//! The voyage map ([`AppMode::Map`], track 7I; GDR-0065's star map, after `docs/plans/mockups/map-b.png`): where
+//! The voyage map ([`AppMode::Map`], track 7I; GDR-0065's star map): where
 //! voyages are chosen. Home's gate (V, or a click) opens it through the gate ([`portal`]: the camera dives into the
 //! gate and the map shows through it); Esc or the ring button top left goes back to the shipyard (the same way
 //! out); SET COURSE launches the selected voyage (`voyage::StartVoyage`).

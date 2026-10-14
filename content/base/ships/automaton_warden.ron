@@ -4,7 +4,7 @@
 // the fists fly on as vessels of their own (GDR-0013) and the heart fights on until its core or its cannon is
 // gone. The heart's cannon (GDR-0068: a site clears when its enemies are destroyed or disarmed) took the place of
 // its second shield emitter, so each section still runs on its own 6 MW. PLACEHOLDER layout and numbers
-// (docs/plans/slice-content.md 2.2, track 7J draft of 13 Oct 2026; tuned in track 7K).
+// (track 7J draft of 13 Oct 2026; tuned in track 7K).
 (
     id: "automaton_warden",
     name: "Automaton warden",

@@ -40,8 +40,7 @@ pub use piece::{GunMount, Piece, ThrustAuthority, Thruster, gun_works, producing
 pub(crate) use piece::{HeatK, refresh_authority};
 pub(crate) use systems::{applied_bonuses, gun_blockers, power_pass, reactor_supply};
 
-/// Heat model constants. **PLACEHOLDERS** for feel; the steady state matches the concept-board drydock
-/// (`docs/concept/reference/drydock-model.js`): `loss · T = gen − Σ K (T − T_neighbour)`.
+/// Heat model constants. **PLACEHOLDERS** for feel; the steady state matches the concept-board drydock: `loss · T = gen − Σ K (T − T_neighbour)`.
 pub mod tuning {
     /// Heat flowing per second per shared cell edge per unit of heat difference (drydock: 1).
     pub const HEAT_CONDUCTANCE: f32 = 1.0;

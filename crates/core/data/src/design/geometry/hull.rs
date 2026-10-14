@@ -14,15 +14,6 @@ pub struct HullSegment {
     pub slope: bool,
 }
 
-impl HullSegment {
-    /// Unit normal pointing away from the solid.
-    pub fn outward_normal(&self) -> [f32; 2] {
-        let (dx, dy) = ((self.b.x - self.a.x) as f32, (self.b.y - self.a.y) as f32);
-        let len = (dx * dx + dy * dy).sqrt();
-        [dy / len, -dx / len]
-    }
-}
-
 /// A chained hull outline: the vertices of a polyline, collinear points merged.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HullLoop {

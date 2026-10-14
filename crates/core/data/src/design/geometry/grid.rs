@@ -57,7 +57,7 @@ pub struct ShipGrid {
 
 impl ShipGrid {
     /// Builds the grid. Overlapping parts are invalid content; if they occur anyway the later part wins
-    /// the shared cells (as in `drydock-model.js`). `None` when the parts lie further than
+    /// the shared cells (as in the concept board's drydock rules). `None` when the parts lie further than
     /// [`crate::content::limits::MAX_COORD`] from 0 or span more than [`crate::content::validate::MAX_FRAME_SIZE`] cells in either
     /// direction: no ship fits a frame like that.
     pub fn new(shapes: Vec<PlacedShape>) -> Option<Self> {
@@ -146,10 +146,6 @@ impl ShipGrid {
 
     pub fn is_empty(&self) -> bool {
         self.shapes.is_empty()
-    }
-
-    pub fn is_present(&self, i: usize) -> bool {
-        self.present[i]
     }
 
     /// The part occupying a cell.

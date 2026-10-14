@@ -264,7 +264,7 @@ pub fn blueprint_visual(dv: &DesignVisual, grid: &ShipGrid) -> ShipVisual {
     }
 }
 
-/// Navigation lights of player ships (halvex-runner.svg): coral on the port wing tip, teal on starboard, at the
+/// Navigation lights of player ships (as in the concept art): coral on the port wing tip, teal on starboard, at the
 /// outer bottom corner of the outermost full cell of `parts`.
 fn nav_lights(dv: &DesignVisual, grid: &ShipGrid, parts: &[u32]) -> Vec<(Vec2, Color)> {
     if dv.enemy {

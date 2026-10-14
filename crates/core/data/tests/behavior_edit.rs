@@ -569,18 +569,9 @@ fn inspector_and_palette_queries() {
             .map(|n| n.id.as_str())
             .collect();
         assert_eq!(palette, content_order);
-        let tags = ed.palette_tags(role);
-        let mut unique = tags.clone();
-        unique.sort_unstable();
-        unique.dedup();
-        assert_eq!(unique.len(), tags.len(), "{tags:?}");
     }
     assert!(ed.palette(NodeRole::Action).any(|n| n.id == "orbit"));
     assert!(ed.palette(NodeRole::Condition).any(|n| n.script.is_some()));
-    let tags = ed.palette_tags(NodeRole::Condition);
-    for t in ["self", "target", "rhai"] {
-        assert!(tags.contains(&t), "{tags:?}");
-    }
 }
 
 #[test]

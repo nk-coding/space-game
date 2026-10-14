@@ -1,4 +1,4 @@
-//! RESEARCH (track 7G; GDR-0063, GDR-0065: the tree with lanes, `docs/plans/mockups/research-b.png`): the
+//! RESEARCH (track 7G; GDR-0063, GDR-0065: the tree with lanes): the
 //! research building's screen. One lane per research family that has nodes, the nodes as cards in columns by
 //! requirement depth with connectors from each requirement, the data pools in the lanes' heads and the materials
 //! on top, the selected node's detail on the right (what it unlocks, a part preview like the drydock's, its cost

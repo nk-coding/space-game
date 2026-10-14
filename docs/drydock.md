@@ -1,8 +1,8 @@
 # Drydock
 
 The ship editor: Drydock v1 (decided by Niklas, 12 Oct 2026) follows the desktop mockup
-(`docs/concept/boards/ui-mockups/desktop-drydock.png`: tools PAINT B, FILL G, ERASE X, SELECT V, ROTATE Q E,
-MIRROR M, BEVEL Shift+B, undo/redo) and the concept board (`docs/concept/boards/concept-board/02-drydock.png`).
+(`../space-game-archive/concept/boards/ui-mockups/desktop-drydock.png`: tools PAINT B, FILL G, ERASE X, SELECT V, ROTATE Q E,
+MIRROR M, BEVEL Shift+B, undo/redo) and the concept board (`../space-game-archive/concept/boards/concept-board/02-drydock.png`).
 Layout v2 (14 Oct 2026, [GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md)): every part in sections
 on the left with the armour swatches, the tools in the bottom bar, icon buttons and a ⋯ menu. Parts are unlimited
 for now; the plumbing for counts is in ([Part availability](#part-availability)).
@@ -250,7 +250,7 @@ release), `drydock-slope-turned.png` (a 1×1 slope brush turned with R at the wi
 | 1–9 | armour material (the swatches in content order) |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | undo / redo; also the two ring buttons, dimmed when there is nothing to undo or redo |
 
-**Layout v2** (GDR-0082, 14 Oct 2026; `panels/`, the draft `docs/plans/mockups/drydock-left-column.html`, variant
+**Layout v2** (GDR-0082, 14 Oct 2026; `panels/`, the draft `../space-game-archive/mockups/drydock-left-column.html`, variant
 A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (the ⋯ menu open),
 `-1280x720-armor-tip.png` (a swatch's tooltip), `-1920x1080.png`, `-3440x1305.png`, `-1080x1350.png`,
 `-600x960-tools.png` (folded, the tools dropdown open), `-search.png`.
@@ -349,7 +349,7 @@ too. With nothing selected it shows the part picked in the palette (content numb
 ### Locked parts, NEW and voyage-ready
 
 Track 7F, 13 Oct 2026 ([GDR-0063](gdr/0063-salvage-and-research-v1.md), [GDR-0065](gdr/0065-phase-7-screens-and-escort-action.md),
-mockup `docs/plans/mockups/drydock-locked.png`). What the player may build with is the career's
+mockup `../space-game-archive/mockups/drydock-locked.png`). What the player may build with is the career's
 (`career::Granted::unlocks`, `docs/career.md`): the content's entries that are not `locked`, plus what research
 unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked or NEW. Screenshots:
 `docs/results/career-drydock*.png`.
@@ -599,7 +599,7 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   placement coordinates further than `MAX_COORD` (65536) from 0, and RON nested deeper than `RON_RECURSION_LIMIT`
   (32); `parse_blueprint` refuses texts over `MAX_DOCUMENT_BYTES` (4 MiB) and skips a byte order mark. The limits
   for the readers outside `data` are constants there too: `MAX_DOCUMENT_BYTES` for a stored document, a pasted or
-  dropped file and a code's unpacked payload, `MAX_SHARE_CODE_BYTES` (1 MiB) for a code before it is decoded. A
+  dropped file and a code's unpacked payload (a code itself is capped by the drydock's own share limits). A
   blueprint built in code may still hold any `i32`: `Drydock::open`, `validate_ship` and `Content::ship_grid`
   compute in `i64` and refuse what doesn't fit.
 - **Copy and paste** (`clipboard.rs`): screens set `Clipboard::offer` (the text Ctrl+C copies), `accept` (Ctrl+V

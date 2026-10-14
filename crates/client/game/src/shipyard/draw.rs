@@ -65,7 +65,7 @@ impl Palette {
     }
 }
 
-/// What lights the yard (from the career, `super::YardState`).
+/// What lights the yard (from the career, `super::Yard`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Lights {
     pub research: bool,

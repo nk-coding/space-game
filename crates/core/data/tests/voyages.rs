@@ -121,13 +121,6 @@ fn voyages_and_encounters_load_with_texts_links_and_wiki() {
     );
     assert!(!texts.contains_key("voyage.yard_approach.lore"));
     assert!(c.wiki_page(Kind::Voyage, "deep").is_some());
-    let mut c2 = c.clone();
-    let tr = [("voyage.deep.cleared".to_string(), "Frei.".to_string())].into();
-    assert!(c2.apply_texts(&tr).is_empty());
-    assert_eq!(
-        c2.voyages.get("deep").unwrap().cleared.as_deref(),
-        Some("Frei.")
-    );
     // A link to nothing is an error in the new kinds' texts too.
     let p = problems_with(&[(
         "voyages/v.ron",

@@ -394,8 +394,8 @@ fn node_definitions_are_checked() {
 }
 
 #[test]
-fn param_texts_are_keyed_and_translatable() {
-    let mut c = content();
+fn param_texts_are_keyed() {
+    let c = content();
     let texts = c.texts();
     assert_eq!(texts["behavior_node.orbit.params.radius.name"], "Radius");
     assert_eq!(
@@ -403,16 +403,6 @@ fn param_texts_are_keyed_and_translatable() {
         "Clockwise"
     );
     assert_eq!(texts["behavior.raider_basic.name"], "Raider pack");
-    let mut locale = std::collections::BTreeMap::new();
-    locale.insert(
-        "behavior_node.orbit.params.radius.name".to_string(),
-        "Radius (de)".to_string(),
-    );
-    assert!(c.apply_texts(&locale).is_empty());
-    assert_eq!(
-        c.behavior_nodes.get("orbit").unwrap().params[0].name,
-        "Radius (de)"
-    );
 }
 
 #[test]

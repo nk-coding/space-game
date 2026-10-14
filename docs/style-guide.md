@@ -1,6 +1,6 @@
 # Style guide: ship style 2a and the UI look
 
-Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-2a.md)). Pictures: [`concept/boards/ship-style/chosen-2a.png`](concept/boards/ship-style/chosen-2a.png), `concept/boards/ui-mockups/*.png`, [`../art/overview.png`](../art/overview.png). Exact values: [`../art/tokens.json`](../art/tokens.json); the client embeds them through the `art` crate (typed view: `crates/client/kit/src/style.rs`).
+Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-2a.md)). Pictures: [`../space-game-archive/concept/boards/ship-style/chosen-2a.png`](../../space-game-archive/concept/boards/ship-style/chosen-2a.png), `../space-game-archive/concept/boards/ui-mockups/*.png`. Exact values: [`../art/tokens.json`](../art/tokens.json); the client embeds them through the `art` crate (typed view: `crates/client/kit/src/style.rs`).
 
 ## Ships
 
@@ -16,7 +16,7 @@ Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-
   Superseded on the ship on 13 Oct 2026 by [GDR-0069](gdr/0069-machines-drawn-as-components.md) (Niklas): see
   **Machines** below. The dark tile with its icon stays for the part tiles in the UI (the drydock's palette and
   inspector); never put a dark inner square behind an icon.
-- **Machines** (GDR-0069, 13 Oct 2026; sketch: [`plans/mockups/ship-part-looks.png`](plans/mockups/ship-part-looks.png),
+- **Machines** (GDR-0069, 13 Oct 2026; sketch: [`../space-game-archive/mockups/ship-part-looks.png`](../../space-game-archive/mockups/ship-part-looks.png),
   options C and D) are drawn as housings: the machine's own flat vector shape (`content/base/icons/<key>.ship.svg`)
   on a cell in the hull's armour tone, with seams like every tile.
   - **The cell's tone**: the armour tone that most of the hull touching the machine has (counted per touching cell

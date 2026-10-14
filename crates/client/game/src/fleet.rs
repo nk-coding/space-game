@@ -1,4 +1,4 @@
-//! FLEET (GDR-0065, `docs/plans/mockups/fleet-b.png`): a layer over home that shows the fleet on the dock. The
+//! FLEET (GDR-0065): a layer over home that shows the fleet on the dock. The
 //! flagship is the drydock's working design; around it are the escort slots, each a saved design (`designs/`)
 //! picked from the list at the bottom. The fleet's logic cores must fit the ship-mind's capacity: a pick that
 //! would exceed it is refused (`CORES n / m` top right). Every change is written into the career's save

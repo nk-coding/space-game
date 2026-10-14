@@ -1,4 +1,4 @@
-//! Geometry cases from the drydock rules (`docs/concept/reference/drydock-model.js`).
+//! Geometry cases from the concept board's drydock rules.
 
 use data::design::geometry::{hull_loops, transform_cell};
 use data::{Dir, Footprint, GridPoint, PlacedShape, ShipGrid};
@@ -210,18 +210,6 @@ fn hull_edges_and_loops() {
             GridPoint::new(0, 1)
         ]
     );
-    // Outward normals point away from the solid.
-    for s in g.hull_edges(|_| true) {
-        let n = s.outward_normal();
-        let mid = [
-            (s.a.x + s.b.x) as f32 / 2.0 + n[0] * 0.1,
-            (s.a.y + s.b.y) as f32 / 2.0 + n[1] * 0.1,
-        ];
-        let cell = (mid[0].floor() as i32, mid[1].floor() as i32);
-        if !s.slope {
-            assert_eq!(g.occupant(cell), None, "{s:?}");
-        }
-    }
 }
 
 #[test]

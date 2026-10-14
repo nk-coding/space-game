@@ -125,7 +125,7 @@ below) is never written over: the game keeps it as it is ("How the game uses it"
 - **Part availability** (`available(part) -> Availability`, [GDR-0082](gdr/0082-drydock-layout-v2-and-part-availability.md),
   14 Oct 2026): how many of a part the player has to build with, `Availability::Unlimited` or `Count(n)` (the parts
   in a design use them up). Every part is `Unlimited` for now: GDR-0063 left parts unlimited until fabrication,
-  spares and bonding exist (GDR-0029, GDR-0031; their open questions stay in `docs/plans/salvage-research.md`), and
+  spares and bonding exist (GDR-0029, GDR-0031; their open questions stay in `../space-game-archive/plans/salvage-research.md`), and
   this is the one place they will fill the counts in. Derived, so the save holds no counts and its format is
   unchanged; a stored count would need a new format with a migration.
 - **Fresh parts** (`fresh_parts(&content)`): `locked` parts a researched node unlocked that are not in `seen` (the

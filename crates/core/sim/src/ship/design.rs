@@ -638,9 +638,6 @@ impl ShipDesign {
         })
     }
 
-    pub fn part_count(&self) -> usize {
-        self.parts.len()
-    }
 }
 
 /// Whom each part's explosion hits on its own piece ([`ShipDesign::blast`]): every other part with a cell whose

@@ -1,5 +1,5 @@
 //! The BEHAVIOR screen (GDR-0057): how the design on the drydock's grid thinks, in the look of
-//! `docs/concept/boards/ui-mockups/phone-behavior-editor.png` (laid out for desktop, 1280 × 720 and up). Opened
+//! the concept's phone behavior-editor mockup (laid out for desktop, 1280 × 720 and up). Opened
 //! with the drydock's BEHAVIOR button or from home ([`AppMode::Behavior`]); Esc goes back the way it came, the
 //! DRYDOCK pill to the drydock, the design untouched. `?scene=behavior` starts here; `?behavior=<id>` opens a content or saved behavior instead of the
 //! design's.

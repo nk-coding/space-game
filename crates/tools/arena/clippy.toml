@@ -1,4 +1,4 @@
-# Determinism rule (see src/math.rs): std's transcendental float functions may differ per platform, and
+# Determinism rule (see sim's src/math.rs): std's transcendental float functions may differ per platform, and
 # fused multiply-add changes rounding. Use `sim::math` (libm, pure Rust) instead.
 disallowed-methods = [
     { path = "f32::sin", reason = "platform libm; use sim::math::sin" },

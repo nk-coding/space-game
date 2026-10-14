@@ -444,17 +444,6 @@ impl BehaviorEditor {
         self.nodes.iter().filter(move |n| n.role == role)
     }
 
-    /// The tags of one role's vocabulary, each once, in content order (palette filters).
-    pub fn palette_tags(&self, role: NodeRole) -> Vec<&str> {
-        let mut tags: Vec<&str> = Vec::new();
-        for t in self.palette(role).flat_map(|n| &n.tags) {
-            if !tags.contains(&t.as_str()) {
-                tags.push(t);
-            }
-        }
-        tags
-    }
-
     /// Parses and checks a text against the vocabulary without changing anything (the text view's live
     /// errors). Every error has its line and column.
     pub fn check_text(&self, text: &str) -> Result<Program, Vec<TextError>> {

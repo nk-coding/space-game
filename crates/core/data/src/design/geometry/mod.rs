@@ -1,6 +1,5 @@
-//! Blueprint geometry shared by the sim, the renderer and wiki diagrams. A port of the drydock rules in
-//! `docs/concept/reference/drydock-model.js` (`xfCell`, `xfDir`, `xfPoint`, `fullEdges`, `polygon`, `linked`,
-//! `exposure`, the piece flood fill of `analyze`) and of `hullPath` in `concept-board-script.js`.
+//! Blueprint geometry shared by the sim, the renderer and wiki diagrams. A port of the concept board's drydock
+//! rules (transforms, edges, polygons, links, exposure, the piece flood fill, the hull path).
 //!
 //! # Conventions
 //!
@@ -80,16 +79,6 @@ impl Dir {
     pub fn normal(self) -> [f32; 2] {
         let (x, y) = self.delta();
         [x as f32, y as f32]
-    }
-
-    /// The two corners of this side of `cell`, ordered so the cell is on the right (screen view).
-    pub fn side_segment(self, (x, y): Cell) -> (GridPoint, GridPoint) {
-        match self {
-            Dir::Up => (GridPoint::new(x, y), GridPoint::new(x + 1, y)),
-            Dir::Right => (GridPoint::new(x + 1, y), GridPoint::new(x + 1, y + 1)),
-            Dir::Down => (GridPoint::new(x + 1, y + 1), GridPoint::new(x, y + 1)),
-            Dir::Left => (GridPoint::new(x, y + 1), GridPoint::new(x, y)),
-        }
     }
 
     /// Midpoint of this side of `cell` in metres (where an RCS nozzle sits).
@@ -206,7 +195,7 @@ impl Footprint {
         }
     }
 
-    /// Polygon corners of the unrotated footprint, in the order of `drydock-model.js`.
+    /// Polygon corners of the unrotated footprint, in the concept model's order.
     fn local_polygon(&self) -> Vec<(i32, i32)> {
         let (w, h) = (self.w as i32, self.h as i32);
         match self.shape {

@@ -1,4 +1,4 @@
-// Converted from docs/concept/reference/data-draft/ships/sample-early.ron (concept-board drydock, 16×12 grid).
+// Converted from the concept board's sample ship (concept-board drydock, 16×12 grid).
 // Placement order kept from the draft (mirrored pairs next to each other).
 (
     id: "sample_early",

@@ -3,7 +3,7 @@
 //! `(x, y)` sits at world `(x, −y)`, so the building area spans `0..w × −h..0` exactly where the drydock draws its
 //! grid, and the docked ship sits in it where it was built.
 //!
-//! The numbers are the chosen sketch's (`docs/plans/mockups/shipyard-long-u.html`, drawn at 20 px per cell for the
+//! The numbers are the chosen sketch's (GDR-0071, drawn at 20 px per cell for the
 //! 24 × 24 frigate frame): walls, buildings and the gate keep their size, and everything is placed relative to the
 //! building area, so a bigger frame makes a bigger U with the buildings moved along. Placeholders (GDR-0071).
 

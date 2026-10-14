@@ -123,10 +123,6 @@ fn new_kinds_load_from_their_dirs_with_texts_links_and_wiki() {
     );
     assert!(texts.contains_key("start.alt.summary"));
     assert!(c.wiki_page(Kind::Research, "seeker").is_some());
-    let mut c2 = c.clone();
-    let tr = [("research.seeker.name".to_string(), "Sucher".to_string())].into();
-    assert!(c2.apply_texts(&tr).is_empty());
-    assert_eq!(c2.research.get("seeker").unwrap().name, "Sucher");
 }
 
 #[test]

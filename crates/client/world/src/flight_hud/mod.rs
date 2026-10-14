@@ -1,4 +1,4 @@
-//! The flight HUD in the reference look (`docs/concept/boards/ui-mockups/phone-flight-hud.png`): floating text,
+//! The flight HUD in the reference look (the concept's phone HUD mockup): floating text,
 //! wide-tracked uppercase labels in Barlow, white numbers, no boxes.
 //!
 //! * top left: the home ring (what M does: home, for touch), hull % and a tiny hull map of the player's ship (in a
@@ -11,7 +11,7 @@
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
 //!   clear of the HUD's texts and widgets).
-//! * **voyages** (GDR-0065, `docs/plans/mockups/voyage-hud-b.png`): the title is the voyage and its band, the
+//! * **voyages** (GDR-0065): the title is the voyage and its band, the
 //!   subtitle `SITES 2 / 5 · 7:05`; under the hull the cargo block (`SALVAGE`, `5 / 8` with one pip per cargo unit,
 //!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
 //!   what it does; markers at the screen edge for the sites off screen (name and distance: raiders coral, wrecks

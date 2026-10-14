@@ -1,5 +1,5 @@
-// Automaton raider: derived from art/ships/automaton-raider.svg (cells of 20 px centred on 0,0, as in
-// docs/concept/reference/generators/frag.py RT and RSL). Its hull edge is the octagon in the SVG.
+// Automaton raider: derived from the original concept art (cells of 20 px centred on 0,0); its hull edge is an
+// octagon.
 (
     id: "automaton_raider",
     name: "Automaton raider",

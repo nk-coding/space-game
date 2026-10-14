@@ -365,13 +365,13 @@ inside. It does not refer to a `frames` entry (v1). Placement coordinates are re
 may be left out. The index of a placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
 ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`).
 
-Base ships: `halvex_runner`, `automaton_raider` (from `art/ships/automaton-raider.svg`), `sample_early` and
+Base ships: `halvex_runner`, `automaton_raider` (from `../space-game-archive/ships/automaton-raider.svg`), `sample_early` and
 `sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
 `sample_early` with a gyro pair in place of its two rear armour blocks and radiators on the shoulders in place of
 two slopes, so it turns 90° in about 0.67 s by the design report instead of 1.6 s and its reactors feed the gyros;
 early-game kit only; a lead placeholder), and the voyages' enemies `automaton_hunter` (5×4, two cannons on forward
 prongs, one core) and `automaton_warden` (9×7, the boss of `wardens_gate`: a shielded heart and two armed fists,
-three cores, so it fights on in pieces), both from `docs/plans/slice-content.md` 2 (placeholders). Since GDR-0068
+three cores, so it fights on in pieces), both from `../space-game-archive/plans/slice-content.md` 2 (placeholders). Since GDR-0068
 (a site clears when its enemies are destroyed or disarmed) the Warden's heart has a cannon in its nose in place of
 its second shield emitter, so the heart must be beaten too and each section still runs on its own core's 6 MW.
 
@@ -400,12 +400,12 @@ numbers (net power, heat, thrust per direction) are not in it; the main piece's 
 `ship_rule_slots` and `ship_control`. It works on invalid designs too (unknown parts are skipped). The export's
 ship `totals` come from it.
 
-The Halvex Runner started as an exact conversion of `art/ships/halvex-runner.layout.json`. On 11 Oct 2026 Niklas
+The Halvex Runner started as an exact conversion of `../space-game-archive/ships/halvex-runner.layout.json`. On 11 Oct 2026 Niklas
 decided that its layout must work under the drydock rules. The **content blueprint is now the source of truth**
-and `art/ships/halvex-runner.*` stays the original concept art. The adjusted layout keeps the occupied cells, the
+and the original concept art is archived (`../space-game-archive/ships/`). The adjusted layout keeps the occupied cells, the
 spine (beams, fusion reactor, torch drive, thrusters), the slopes and the left/right symmetry. The wing-tip pulse
 lasers moved up into the wing shoulders, replacing the two 1×1 slopes that blocked their line of fire, so the
-outline differs from the art's `outline_path` only there. The radiators now vent (wing tips and tail row), the
+outline differs from the concept art only there. The radiators now vent (wing tips and tail row), the
 logic cores and shield emitters moved away from the fusion reactor's heat, and two gyros were added. The tests
 check exactly that: same cells, outline = art outline except the two shoulder vertices, unchanged spine, mirror
 symmetry, and no rule warnings. Every base ship validates without warnings.
@@ -625,7 +625,7 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
 | `cleared` | optional text (a text key `voyage.<id>.cleared`): the debrief's line the first time the goal falls |
 | `sites` | at least one; `encounter` a known encounter, `count` (default 1) at least 1, at most 64 sites in all (`MAX_VOYAGE_SITES`). Exactly one entry is the goal (`goal: true`), with count 1 and an encounter whose ships' minimum counts are not all 0 (a goal must always have ships to clear), one of them armed (`Content::ship_armed`: a weapon and power on its main piece; GDR-0068) |
 
-Base voyages (placeholders, `docs/plans/slice-content.md` 3.3), in one file in chain order: `yard_approach` (open at
+Base voyages (placeholders, `../space-game-archive/plans/slice-content.md` 3.3), in one file in chain order: `yard_approach` (open at
 the start; 600 m, raider pair ×2, derelict field, **raider pack**), `halvex_drift` (900 m, raider pack ×2, precursor
 wrecks, core graveyard, **raider den**), `corran_reach` (1000 m, hunter pack ×2, raider pack, precursor wrecks,
 **hunter den**), `wardens_gate` (900 m, raider pack ×2, core graveyard, **the Warden**).
@@ -656,7 +656,7 @@ gone (`Sim::spawn_wreck`). Variants by count (a pair, a pack, a den) are entries
 | `wrecks` | optional: any known ship, `count` as above, `damage` 0 to below 1 (default 0) |
 | `wake_radius` | m, above 0 and at most 20000 |
 
-An encounter needs ships or wrecks. Base encounters (placeholders, `docs/plans/slice-content.md` 3.2, counts tuned
+An encounter needs ships or wrecks. Base encounters (placeholders, `../space-game-archive/plans/slice-content.md` 3.2, counts tuned
 by GDR-0073): `raider_pair` (2 raiders), `raider_pack` (3), `raider_den` (2–3, wakes at 300 m), `hunter_pack` (1
 hunter, 1 raider), `hunter_den` (2–3 hunters), `derelict_field` (0–1 raider; a `sample_early` and 2–3 raider wrecks,
 half their parts gone), `precursor_wrecks` (0–1 raider; 1–2 `sample_mid` wrecks), `core_graveyard` (0–1 raider; 4–6
@@ -697,10 +697,10 @@ All in the **blueprint frame**, 1 cell = 1 m:
   local x applied before the rotation. Draw an icon centred on `PlacedShape::center()` at the unrotated
   footprint size, mirrored if `flip`, then turned.
 
-These rules are a port of `docs/concept/reference/drydock-model.js` and `drawHullGlow` in
-`concept-board-script.js`; the tests check the raider's hull edge against its SVG outline, the Halvex Runner's
-against the concept art's `outline_path` (except the two adjusted wing shoulders), and the drydock-model cases
-(slope links, mirroring, rotation).
+These rules are a port of `../space-game-archive/concept/reference/drydock-model.js` and `drawHullGlow` in
+`concept-board-script.js`; the tests check the drydock-model cases (slope links, mirroring, rotation). The checks
+of the base ships against the concept art went with the art (14 Oct 2026, archived): the blueprints are the source
+of truth.
 
 ## References and links
 
@@ -714,8 +714,8 @@ against the concept art's `outline_path` (except the two adjusted wing shoulders
 
 - Keys: `<kind>.<id>.<field>` for `name`, `summary`, `description`, `lore`, and `stat.<id>.unit`.
 - `Content::texts()` lists every key with its English text (the template for a translation).
-- `Content::apply_texts(&map)` replaces texts by key and returns unknown keys. A later locale file
-  (e.g. `locale/de.ron` in a pack, a map key → text) only needs a loader hook calling this.
+- A later locale file (e.g. `locale/de.ron` in a pack, a map key → text) replaces texts by these keys; the hook
+  that applies it comes with the first locale (an unused one was removed on 14 Oct 2026).
 - English only at launch (decided). Wiki prose is English-only for now.
 
 ## Mods
@@ -922,7 +922,7 @@ let edges = grid.piece_hull_edges(&pieces, main.unwrap()); // Vec<HullSegment>, 
 let loops = data::design::geometry::hull_loops(&edges);          // closed outlines, collinear points merged
 grid.bounds(); grid.line_of_fire_clear(i); grid.remove(i); grid.shape(i).centroid();
 grid.open_sides(i);                                      // Vec<((x, y), Dir)>: RCS nozzles of part i
-dir.normal(); dir.side_center((x, y)); dir.side_segment((x, y));  // nozzle point/direction, side corners
+dir.normal(); dir.side_center((x, y));  // nozzle point/direction
 content.part_stats(part, material) / content.material_stats(m);  // Vec<StatLine>
 content.stat_line("top_speed", 21.5);                    // Option<StatLine>: any stat value, labelled and formatted
 content.part_color(part); content.placement_material(&p); content.placement_mass(&p); content.placement_hp(&p);
@@ -930,7 +930,7 @@ part.build_points_in(armor); part.mass_in(armor); part.hp_in(armor);  // a part'
 let t = content.ship_totals(ship);   // ShipTotals: sums over every placement (build points with material factor,
                                      // mass, hp, power output/draw, thrust, cargo, logic cores, rule slots, control)
 content.icon_svg("pulse-laser");                         // Option<&str>: SVG text of icons/pulse-laser.svg
-content.render_plain(text); content.texts(); content.apply_texts(&locale_map);
+content.render_plain(text); content.texts();
 content.families / content.research / content.starts;      // Table<Family>, Table<ResearchNode>, Table<Start>
 content.voyages / content.encounters;                      // Table<Voyage> (map order), Table<Encounter>
 voyage.goal(); voyage.site_count(); encounter.always_has_ships();

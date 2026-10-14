@@ -13,12 +13,12 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 | `docs/spike-plan.md` | The original first-work plan (physics benchmark → core sim → web/feel → load test → cross-device hash). |
 | `docs/style-guide.md` | Ship style 2a and the UI look, exact colours, rendering suggestions. |
 | `docs/roadmap.md` | Current phase plan and status (kept up to date by the lead session). |
-| `docs/plans/` | Proposals for future phases (first playable loop, salvage and research, galaxy, Android, co-op and arena); not decisions. |
+| `docs/plans/` | Proposals for future phases (first playable loop, galaxy, Android, co-op and arena, the evolution lab); not decisions. |
 | `docs/content-model.md` | How game content is organised so both the game and the future wiki use it. |
 | `docs/sim.md`, `docs/client.md`, `docs/behavior-format.md`, `docs/drydock.md`, `docs/career.md`, `docs/wiki.md` | How the simulation, the Bevy client, the behavior rule format, the drydock (ship editor), the career (progression and its save) and the content wiki work. |
 | `docs/results/` | Benchmark and spike results (the physics benchmark harness itself lives in the separate local repo `../space-game-physics-bench`). |
-| `docs/concept/` | The archived concept bundle: `boards/` (concept board HTML + screenshots, UI mockups PNG + source), `reference/` (`drydock-model.js` = drydock rules in plain JS, `concept-board-script.js`, `data-draft/*.ron`, Python generators), `CLAUDE.original.md`. Paths inside the old docs that say `reference/…` or `boards/…` now live under `docs/concept/`; `assets/…` now lives under `art/`. |
-| `art/` | Art sources outside the content: `ships/` (Halvex Runner SVG + `halvex-runner.layout.json`, automaton raider SVG: the original concept art), `tokens.json` (all colours/style constants), `overview.png`. Part icons live in the content pack: `content/base/icons/<key>.svg` (ADR-0028). |
+| `art/tokens.json` | All colours and style constants (compiled into the `art` crate and the wiki). Part icons live in the content pack: `content/base/icons/<key>.svg` (ADR-0028). |
+| `../space-game-archive/` | A separate local repo (14 Oct 2026) with what the game no longer uses but older records link to: the concept bundle (`concept/`: boards, UI mockups, the drydock rules in plain JS, data drafts, generators, the original CLAUDE.md; old paths `docs/concept/…`, `reference/…`, `boards/…`), the concept ship art (`ships/`, was `art/ships/`), the phase 7 screen mockups (`mockups/`, was `docs/plans/mockups/`), superseded plans and uncited screenshots. Nothing in this repo may depend on it. |
 | `content/base/` | The base game content pack (RON). Loaded exactly like a mod. |
 | `crates/` | Cargo workspace members, grouped (ADR-0038): `core/` (`data`, `sim`: engine-free, deterministic), `client/` (`art`, `kit`, `world`, `game`: the Bevy client), `tools/` (`arena`, `content-tool`). Every `crates/<group>/<crate>` with a `Cargo.toml` is a member. |
 
@@ -40,7 +40,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - `content-tool`: CLI over `data` (validate, export-json, list, and `wiki`: a static HTML wiki from the content).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
 - `arena`: headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage::runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`) and the native `arena` CLI (`fight`, `matrix`, `evolve`) on every core (ADR-0036, `docs/arena.md`). No Bevy, no I/O or threads in the library.
-- Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023), a wiki generator built on `data`.
+- Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023).
 
 ## Hard rules
 
