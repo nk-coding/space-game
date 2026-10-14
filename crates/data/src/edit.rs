@@ -1,6 +1,7 @@
 //! The drydock's editing model: a ship design held in frame coordinates, with the drydock tools (place,
 //! slope, paint, fill, erase, move, rotate, flip, material, power), mirror and bevel modes, strokes and
-//! undo/redo. Engine-free and wasm-safe; the client's drydock and the arena's evolution operators both edit
+//! undo/redo. Placing a part or painting armour replaces what is under it; bevel cuts the outer corners of what a
+//! stroke painted when the stroke ends. Engine-free and wasm-safe; the client's drydock and the arena's evolution operators both edit
 //! designs through it. The rules are documented in `docs/drydock.md` ("Editing model").
 //!
 //! Coordinates follow [`crate::geometry`]: x right, y down, forward = −y, `rot` = quarter turns clockwise, flip
@@ -110,6 +111,9 @@ pub struct Preview {
     pub twin: Twin,
     /// The mirror image's placement after the edit, when `twin` is [`Twin::Applied`].
     pub mirrored: Option<Placement>,
+    /// The parts the edit replaces (indices into [`Drydock::parts`] before the edit, ascending): what a placed
+    /// part's footprint, or its mirror image's, overlaps; the non-hull part under a paint.
+    pub removed: Vec<usize>,
 }
 
 /// Why a blueprint cannot be opened.
@@ -237,14 +241,24 @@ enum PaintAction {
     /// The cell already has a hull part of this material.
     Nothing(usize),
     Recolor(usize),
+    /// A block goes in (the cell is empty, or the part on it is replaced).
     Insert(Placement),
 }
 
-/// What [`Drydock::paint`] does: the cell, its mirror cell, and what that means for the twin.
+/// What [`Drydock::paint`] does: the cell, its mirror cell, what that means for the twin, and the non-hull parts
+/// the blocks replace (ascending).
 struct PaintPlan {
     first: PaintAction,
     second: Option<PaintAction>,
     twin: Twin,
+    removed: Vec<usize>,
+}
+
+/// An open stroke: its changes (one undo step) and the cells its paints put a block in (bevelled when it ends).
+#[derive(Clone, Debug, Default)]
+struct Stroke {
+    changes: Vec<Change>,
+    painted: Vec<Cell>,
 }
 
 /// What [`Drydock::place_slope`] does.
@@ -261,7 +275,8 @@ enum SlopePlan {
 pub struct Drydock {
     /// Mirror mode: every edit also applies to its mirror image across the frame's vertical centre line.
     pub mirror: bool,
-    /// Bevel mode: painting an outer corner of the hull places a 1×1 slope instead of a block.
+    /// Bevel mode: when a paint stroke (or a fill) ends, every outer corner among the cells it put a block in
+    /// becomes the 1×1 slope.
     pub bevel: bool,
     catalog: Catalog,
     /// The opened blueprint without its parts (id, name, faction, ...), for [`Drydock::export`].
@@ -275,8 +290,8 @@ pub struct Drydock {
     sides: Vec<u8>,
     undo: VecDeque<Vec<Change>>,
     redo: Vec<Vec<Change>>,
-    /// The open stroke's changes (one undo step), if a stroke is open.
-    stroke: Option<Vec<Change>>,
+    /// The open stroke, if any.
+    stroke: Option<Stroke>,
     revision: u64,
 }
 
@@ -433,9 +448,9 @@ impl Drydock {
         self.revision
     }
 
-    /// Could [`Drydock::place`] place this? Checks the part, rotation, material and power override, then that
+    /// Is this placement legal on free cells? Checks the part, rotation, material and power override, then that
     /// the footprint lies inside the frame and overlaps no part (the first overlapped part in the footprint's
-    /// cell order is named).
+    /// cell order is named). [`Drydock::place`] replaces the parts under the footprint instead.
     pub fn check(&self, p: &Placement) -> Result<(), Refusal> {
         let s = self.validate(p)?;
         self.fits(&s, &[])
@@ -454,44 +469,123 @@ impl Drydock {
         ((self.frame.0 - 1).saturating_sub(x), y)
     }
 
-    /// What [`Drydock::place`] would do: the placement (an empty power override dropped) and its mirror image.
+    /// What [`Drydock::place`] would do: the placement (an empty power override dropped), its mirror image and
+    /// the parts they replace.
     pub fn preview_place(&self, p: &Placement) -> Result<Preview, Refusal> {
         let p = Placement {
             power: nonempty(p.power),
             ..p.clone()
         };
         let s = self.validate(&p)?;
-        self.fits(&s, &[])?;
-        Ok(self.new_part_preview(p, &s))
+        self.inside(&s)?;
+        Ok(self.new_part_plan(p, &s))
     }
 
-    /// What [`Drydock::place_slope`] would do at this cell: the new, repainted or turned slope, and its mirror
-    /// image.
+    /// What [`Drydock::place_slope`] would do at this cell: the new, repainted or turned slope, its mirror image
+    /// and the parts a new one replaces.
     pub fn preview_slope(
         &self,
         part: &str,
         cell: Cell,
         material: &str,
+        turn: Option<(u8, bool)>,
     ) -> Result<Preview, Refusal> {
-        match self.slope_plan(part, cell, material)? {
+        match self.slope_plan(part, cell, material, turn)? {
             SlopePlan::New(p) => {
                 let s = self.shape_of(&p);
-                Ok(self.new_part_preview(p, &s))
+                Ok(self.new_part_plan(p, &s))
             }
             SlopePlan::Recolor(k) => Ok(self.recolor_plan(k, material)?.0),
             SlopePlan::Turn(k, s) => Ok(self.turn_plan(k, s)?.0),
         }
     }
 
-    /// What [`Drydock::paint`] would do at this cell: the block, bevel slope or repainted hull part left there,
-    /// and at the mirror cell.
+    /// What a click of [`Drydock::paint`] would do at this cell (a stroke of one cell): the block (in bevel mode
+    /// the slope, where the finished shape has an outer corner) or repainted hull part left there, at the mirror
+    /// cell, and the parts the blocks replace.
     pub fn preview_paint(&self, cell: Cell, material: &str) -> Result<Preview, Refusal> {
         let plan = self.paint_plan(cell, material)?;
+        let inserted: Vec<Cell> = [Some(&plan.first), plan.second.as_ref()]
+            .into_iter()
+            .flatten()
+            .filter_map(|a| match a {
+                PaintAction::Insert(p) => Some((p.x, p.y)),
+                _ => None,
+            })
+            .collect();
+        let left = |a: &PaintAction| {
+            let p = self.painted(a, material);
+            match (a, self.bevel, &self.catalog.corner) {
+                (PaintAction::Insert(_), true, Some(slope)) => self
+                    .corner_rot_with((p.x, p.y), &inserted, &plan.removed)
+                    .map_or_else(
+                        || p.clone(),
+                        |rot| Placement {
+                            part: slope.clone(),
+                            rot,
+                            ..p.clone()
+                        },
+                    ),
+                _ => p,
+            }
+        };
         Ok(Preview {
-            placement: self.painted(&plan.first, material),
-            mirrored: plan.second.as_ref().map(|a| self.painted(a, material)),
+            placement: left(&plan.first),
+            mirrored: plan.second.as_ref().map(left),
             twin: plan.twin,
+            removed: plan.removed,
         })
+    }
+
+    /// What ending the open stroke would do in bevel mode: the slopes the outer corners among the cells it
+    /// painted become. Empty without bevel or an open stroke.
+    pub fn preview_stroke_end(&self) -> Vec<Placement> {
+        match (&self.stroke, self.bevel) {
+            (Some(stroke), true) => self
+                .bevel_plan(&stroke.painted)
+                .into_iter()
+                .map(|(_, p)| p)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// A slope's orientations `(rot, flip)` in turning order (rot 0..3 unflipped, then rot 0..3 flipped, without
+    /// repeats: a 1×1 slope has 4, the longer ones 8).
+    pub fn slope_orientations(&self, part: &str) -> Result<Vec<(u8, bool)>, Refusal> {
+        let info = self
+            .catalog
+            .parts
+            .get(part)
+            .ok_or_else(|| Refusal::UnknownPart(part.to_string()))?;
+        match info.footprint.shape {
+            Shape::Slope => Ok(orientations(info.footprint)),
+            Shape::Rect => Err(Refusal::NotSlope),
+        }
+    }
+
+    /// The orientation after (`forward`) or before `from` in the slope's turning order. `from` may be any
+    /// `(rot, flip)` with that geometry (it is matched by shape, not by number).
+    pub fn next_orientation(
+        &self,
+        part: &str,
+        from: (u8, bool),
+        forward: bool,
+    ) -> Result<(u8, bool), Refusal> {
+        let all = self.slope_orientations(part)?;
+        let probe = PlacedShape {
+            footprint: self.catalog.parts[part].footprint,
+            x: 0,
+            y: 0,
+            rot: from.0 % 4,
+            flip: from.1,
+        };
+        let at = all
+            .iter()
+            .position(|&(r, f)| same_orientation(&probe, r, f))
+            .unwrap_or(0);
+        let n = all.len();
+        Ok(all[(at + if forward { 1 } else { n - 1 }) % n])
     }
 
     /// What [`Drydock::move_part`] would do: the part at its new place, and its twin's.
@@ -499,43 +593,33 @@ impl Drydock {
         Ok(self.part_plan(i, move_by(dx, dy))?.0)
     }
 
-    /// Places any part (appended to the parts). A hull part needs an armour material, other parts none; a
-    /// power override only goes on parts that draw power (an empty override is dropped). Mirror mode also
-    /// places the mirror image, unless it is the same shape (a symmetric part centred on the axis).
+    /// Places any part (appended to the parts), replacing every part its footprint overlaps, as one step. A hull
+    /// part needs an armour material, other parts none; a power override only goes on parts that draw power (an
+    /// empty override is dropped); the footprint must lie inside the frame. Mirror mode also places the mirror
+    /// image (replacing what it overlaps), unless it is the same shape (a symmetric part centred on the axis) or
+    /// would overlap the placed part.
     pub fn place(&mut self, p: Placement) -> Result<Outcome, Refusal> {
         let plan = self.preview_place(&p)?;
-        let index = self.parts.len();
-        let mut log = Vec::new();
-        self.exec(
-            Change::Insert {
-                index,
-                placement: plan.placement,
-            },
-            &mut log,
-        );
-        if let Some(placement) = plan.mirrored {
-            self.exec(
-                Change::Insert {
-                    index: index + 1,
-                    placement,
-                },
-                &mut log,
-            );
-        }
-        Ok(self.finish(log, Some(index), plan.twin))
+        Ok(self.apply_new_part(plan))
     }
 
-    /// The slope tool. On an empty cell it places the slope oriented to the hull (see `docs/drydock.md`). On a
-    /// slope of the same part it repaints it if the material differs, else turns it to its next orientation
-    /// that fits. Mirror mode places, repaints or turns the mirror image too.
+    /// The slope tool. On a slope of the same part it repaints it if the material differs, else turns it to its
+    /// next orientation that fits. Anywhere else it places the slope, replacing what its footprint overlaps:
+    /// oriented to the hull (`turn` = `None`, see `docs/drydock.md`), or in the orientation `turn` =
+    /// `(rot, flip)`, centred on the cell. Mirror mode places, repaints or turns the mirror image too.
     pub fn place_slope(
         &mut self,
         part: &str,
         cell: Cell,
         material: &str,
+        turn: Option<(u8, bool)>,
     ) -> Result<Outcome, Refusal> {
-        match self.slope_plan(part, cell, material)? {
-            SlopePlan::New(p) => self.place(p),
+        match self.slope_plan(part, cell, material, turn)? {
+            SlopePlan::New(p) => {
+                let s = self.shape_of(&p);
+                let plan = self.new_part_plan(p, &s);
+                Ok(self.apply_new_part(plan))
+            }
             SlopePlan::Recolor(k) => self.set_material(k, material),
             SlopePlan::Turn(k, s) => {
                 let plan = self.turn_plan(k, s)?;
@@ -544,22 +628,38 @@ impl Drydock {
         }
     }
 
-    /// The armour paint tool: an empty cell gets the 1×1 block (in bevel mode an outer corner gets the 1×1
-    /// slope, oriented to the hull); a hull part under the cursor takes the material. Refused on other
-    /// parts. Mirror mode paints the mirror cell too, decided on the design as it was before this call, so a
-    /// symmetric design stays symmetric.
+    /// The armour paint tool: an empty cell gets the 1×1 block, a hull part under the cursor takes the material,
+    /// any other part is replaced by the block. Mirror mode paints the mirror cell too, decided on the design as
+    /// it was before this call, so a symmetric design stays symmetric. Bevel mode cuts the outer corners among the
+    /// painted cells when the stroke ends (at once outside a stroke: a click is a stroke of one cell).
     pub fn paint(&mut self, cell: Cell, material: &str) -> Result<Outcome, Refusal> {
         let plan = self.paint_plan(cell, material)?;
         let mut log = Vec::new();
-        let part = self.do_paint(plan.first, material, &mut log);
-        if let Some(second) = plan.second {
-            self.do_paint(second, material, &mut log);
+        for a in [Some(&plan.first), plan.second.as_ref()].into_iter().flatten() {
+            if let PaintAction::Recolor(k) = a {
+                self.recolor(*k, material, &mut log);
+            }
         }
-        Ok(self.finish(log, Some(part), plan.twin))
+        for &index in plan.removed.iter().rev() {
+            let placement = self.parts[index].clone();
+            self.exec(Change::Remove { index, placement }, &mut log);
+        }
+        let mut inserted = Vec::new();
+        for a in [Some(plan.first), plan.second].into_iter().flatten() {
+            if let PaintAction::Insert(placement) = a {
+                inserted.push((placement.x, placement.y));
+                let index = self.parts.len();
+                self.exec(Change::Insert { index, placement }, &mut log);
+            }
+        }
+        self.blocks_in(&inserted, &mut log);
+        let part = self.part_at(cell);
+        Ok(self.finish(log, part, plan.twin))
     }
 
     /// The fill tool: every empty cell of the rectangle spanned by two corner cells (clipped to the frame) gets
-    /// the 1×1 block in this material, row by row, as one step. Mirror mode fills the mirrored rectangle too.
+    /// the 1×1 block in this material, row by row, as one step. Mirror mode fills the mirrored rectangle too. In
+    /// bevel mode the outer corners among the filled cells become slopes, in the same step.
     pub fn fill(&mut self, a: Cell, b: Cell, material: &str) -> Result<Outcome, Refusal> {
         self.armor(material)?;
         let block = self.catalog.block.clone().ok_or(Refusal::NoBlockPart)?;
@@ -569,7 +669,9 @@ impl Drydock {
             return Err(Refusal::Outside);
         }
         let mut log = Vec::new();
-        self.fill_rect((x0, x1), (y0, y1), &block, material, &mut log);
+        let mut filled = Vec::new();
+        let mut fill = |dock: &mut Self, xs| dock.fill_rect(xs, (y0, y1), &block, material, &mut log, &mut filled);
+        fill(self, (x0, x1));
         let twin = if !self.mirror {
             Twin::Off
         } else {
@@ -577,10 +679,11 @@ impl Drydock {
             if (m0, m1) == (x0, x1) {
                 Twin::Itself
             } else {
-                self.fill_rect((m0, m1), (y0, y1), &block, material, &mut log);
+                fill(self, (m0, m1));
                 Twin::Applied
             }
         };
+        self.blocks_in(&filled, &mut log);
         Ok(self.finish(log, None, twin))
     }
 
@@ -687,15 +790,30 @@ impl Drydock {
     /// An open stroke is closed first; undo, redo and frame changes close it too.
     pub fn begin_stroke(&mut self) {
         self.end_stroke();
-        self.stroke = Some(Vec::new());
+        self.stroke = Some(Stroke::default());
     }
 
-    /// Closes the open stroke, if any.
+    /// Closes the open stroke, if any. In bevel mode the outer corners among the cells it painted become slopes
+    /// first (in the same undo step), decided on the finished shape, so the result does not depend on the order
+    /// the cells were painted in.
     pub fn end_stroke(&mut self) {
-        if let Some(step) = self.stroke.take()
-            && !step.is_empty()
-        {
-            self.push_undo(step);
+        let Some(Stroke {
+            mut changes,
+            painted,
+        }) = self.stroke.take()
+        else {
+            return;
+        };
+        if self.bevel {
+            let mut log = Vec::new();
+            self.bevel_cells(&painted, &mut log);
+            if !log.is_empty() {
+                self.revision += 1;
+                changes.extend(log);
+            }
+        }
+        if !changes.is_empty() {
+            self.push_undo(changes);
         }
     }
 
@@ -728,7 +846,7 @@ impl Drydock {
     }
 
     pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty() || self.stroke.as_ref().is_some_and(|s| !s.is_empty())
+        !self.undo.is_empty() || self.stroke.as_ref().is_some_and(|s| !s.changes.is_empty())
     }
 
     pub fn can_redo(&self) -> bool {
@@ -777,6 +895,7 @@ impl Drydock {
             placement: new,
             twin,
             mirrored,
+            removed: Vec::new(),
         };
         Ok((plan, j))
     }
@@ -816,37 +935,82 @@ impl Drydock {
         })
     }
 
-    /// The preview of putting down a new part `p` with the shape `s` that fits: in mirror mode also its mirror
-    /// image, unless that is the same shape, if it fits beside `p` (which gets the index `parts.len()`).
-    fn new_part_preview(&self, p: Placement, s: &PlacedShape) -> Preview {
+    /// The plan of putting down a new part `p` with the shape `s` (inside the frame): it replaces every part its
+    /// footprint overlaps. In mirror mode also its mirror image, unless that is the same shape, replacing what it
+    /// overlaps, if it keeps clear of `p` (else `Skipped(Overlaps(k))`, `k` the index `p` gets).
+    fn new_part_plan(&self, p: Placement, s: &PlacedShape) -> Preview {
+        let mut removed = self.under(s);
         let (twin, image) = if !self.mirror {
             (Twin::Off, None)
         } else {
             let m = mirrored(s, self.frame.0);
+            let cells = s.cells();
             if same_shape(&m, s) {
                 (Twin::Itself, None)
+            } else if m.cells().iter().any(|c| cells.contains(c)) {
+                let k = self.parts.len() - removed.len();
+                (Twin::Skipped(Refusal::Overlaps(k)), None)
             } else {
-                match self.fits_beside(&m, &[], Some((s, self.parts.len()))) {
-                    Ok(()) => (Twin::Applied, Some(with_pose(&p, &m))),
-                    Err(r) => (Twin::Skipped(r), None),
-                }
+                removed.extend(self.under(&m));
+                removed.sort_unstable();
+                removed.dedup();
+                (Twin::Applied, Some(with_pose(&p, &m)))
             }
         };
+        // The very same parts already there: nothing is replaced, nothing changes.
+        let news = [Some(&p), image.as_ref()];
+        let count = news.iter().flatten().count();
+        if removed.len() == count && removed.iter().all(|&r| news.contains(&Some(&self.parts[r]))) {
+            removed.clear();
+        }
         Preview {
             placement: p,
             twin,
             mirrored: image,
+            removed,
         }
     }
 
-    /// The plan of [`Drydock::paint`]: both cells are decided on the design as it is.
+    /// Carries out a [`Drydock::new_part_plan`]: removes the replaced parts, then appends the part and its mirror
+    /// image. A plan that replaces nothing on an occupied footprint puts down what is already there: no change.
+    fn apply_new_part(&mut self, plan: Preview) -> Outcome {
+        if plan.removed.is_empty()
+            && let Some(&k) = self.under(&self.shape_of(&plan.placement)).first()
+        {
+            return self.finish(Vec::new(), Some(k), plan.twin);
+        }
+        let mut log = Vec::new();
+        for &index in plan.removed.iter().rev() {
+            let placement = self.parts[index].clone();
+            self.exec(Change::Remove { index, placement }, &mut log);
+        }
+        let index = self.parts.len();
+        let news = std::iter::once(plan.placement).chain(plan.mirrored);
+        for (k, placement) in news.enumerate() {
+            let at = index + k;
+            self.exec(Change::Insert { index: at, placement }, &mut log);
+        }
+        self.finish(log, Some(index), plan.twin)
+    }
+
+    /// The parts a shape overlaps, ascending.
+    fn under(&self, s: &PlacedShape) -> Vec<usize> {
+        let mut out: Vec<usize> = s.cells().into_iter().filter_map(|c| self.part_at(c)).collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// The plan of [`Drydock::paint`]: both cells are decided on the design as it is. A non-hull part covering
+    /// both cells is replaced once, by a block in each.
     fn paint_plan(&self, cell: Cell, material: &str) -> Result<PaintPlan, Refusal> {
         self.armor(material)?;
-        let first = self.paint_action(cell, material)?;
+        let (first, gone) = self.paint_action(cell, material)?;
         let first_part = match first {
             PaintAction::Nothing(k) | PaintAction::Recolor(k) => Some(k),
             PaintAction::Insert(_) => None,
         };
+        let mut removed: Vec<usize> = gone.into_iter().collect();
         let mirror_cell = self.mirror_cell(cell);
         let (second, twin) = if !self.mirror {
             (None, Twin::Off)
@@ -855,33 +1019,23 @@ impl Drydock {
         } else {
             match self.paint_action(mirror_cell, material) {
                 Err(r) => (None, Twin::Skipped(r)),
-                Ok(PaintAction::Nothing(j) | PaintAction::Recolor(j)) if Some(j) == first_part => {
+                Ok((PaintAction::Nothing(j) | PaintAction::Recolor(j), _)) if Some(j) == first_part => {
                     (None, Twin::Itself)
                 }
-                Ok(a) => (Some(a), Twin::Applied),
+                Ok((a, gone)) => {
+                    removed.extend(gone);
+                    (Some(a), Twin::Applied)
+                }
             }
         };
+        removed.sort_unstable();
+        removed.dedup();
         Ok(PaintPlan {
             first,
             second,
             twin,
+            removed,
         })
-    }
-
-    /// Paints one cell as planned; returns the index of the part in it.
-    fn do_paint(&mut self, a: PaintAction, material: &str, log: &mut Vec<Change>) -> usize {
-        match a {
-            PaintAction::Nothing(k) => k,
-            PaintAction::Recolor(k) => {
-                self.recolor(k, material, log);
-                k
-            }
-            PaintAction::Insert(placement) => {
-                let index = self.parts.len();
-                self.exec(Change::Insert { index, placement }, log);
-                index
-            }
-        }
     }
 
     /// What a planned paint leaves in its cell.
@@ -912,6 +1066,7 @@ impl Drydock {
         block: &str,
         material: &str,
         log: &mut Vec<Change>,
+        filled: &mut Vec<Cell>,
     ) {
         for y in y0..=y1 {
             for x in x0..=x1 {
@@ -919,45 +1074,91 @@ impl Drydock {
                     let placement = unit_placement(block, (x, y), 0, material);
                     let index = self.parts.len();
                     self.exec(Change::Insert { index, placement }, log);
+                    filled.push((x, y));
                 }
             }
         }
     }
 
-    fn paint_action(&self, cell: Cell, material: &str) -> Result<PaintAction, Refusal> {
+    /// What painting one cell does, and the non-hull part it replaces.
+    fn paint_action(
+        &self,
+        cell: Cell,
+        material: &str,
+    ) -> Result<(PaintAction, Option<usize>), Refusal> {
         if self.slot(cell).is_none() {
             return Err(Refusal::Outside);
         }
-        if let Some(k) = self.part_at(cell) {
-            return match self.catalog.parts[&self.parts[k].part].hull {
-                false => Err(Refusal::Overlaps(k)),
-                true if self.parts[k].material.as_deref() == Some(material) => {
-                    Ok(PaintAction::Nothing(k))
-                }
-                true => Ok(PaintAction::Recolor(k)),
-            };
+        let under = self.part_at(cell);
+        if let Some(k) = under
+            && self.catalog.parts[&self.parts[k].part].hull
+        {
+            return Ok(match self.parts[k].material.as_deref() == Some(material) {
+                true => (PaintAction::Nothing(k), None),
+                false => (PaintAction::Recolor(k), None),
+            });
         }
-        let corner = match (&self.catalog.corner, self.bevel) {
-            (Some(slope), true) => self.corner_rot(cell).map(|r| (slope, r)),
-            _ => None,
-        };
-        let (part, rot) = match corner {
-            Some(c) => c,
-            None => (self.catalog.block.as_ref().ok_or(Refusal::NoBlockPart)?, 0),
-        };
-        Ok(PaintAction::Insert(unit_placement(
-            part, cell, rot, material,
-        )))
+        let block = self.catalog.block.as_ref().ok_or(Refusal::NoBlockPart)?;
+        let placement = unit_placement(block, cell, 0, material);
+        Ok((PaintAction::Insert(placement), under))
     }
 
-    /// Bevel: if the empty `cell` is an outer corner of the hull (two adjacent sides touch a part's straight
-    /// side, the other two are open), the `rot` of the 1×1 slope (unflipped) whose straight sides are the
-    /// touching sides.
-    fn corner_rot(&self, cell: Cell) -> Option<u8> {
+    /// Blocks went into these cells: an open stroke keeps them for its end, else bevel mode cuts their corners
+    /// now (a single edit is a stroke of its own).
+    fn blocks_in(&mut self, cells: &[Cell], log: &mut Vec<Change>) {
+        match &mut self.stroke {
+            Some(stroke) => stroke.painted.extend_from_slice(cells),
+            None if self.bevel => self.bevel_cells(cells, log),
+            None => {}
+        }
+    }
+
+    /// Bevel: which of these cells hold a 1×1 block on an outer corner of the design as it is, and the slope each
+    /// becomes (same material, oriented by [`Drydock::corner_rot_with`]). All are decided before any change.
+    fn bevel_plan(&self, cells: &[Cell]) -> Vec<(usize, Placement)> {
+        let (Some(block), Some(slope)) = (&self.catalog.block, &self.catalog.corner) else {
+            return Vec::new();
+        };
+        let mut out: Vec<(usize, Placement)> = Vec::new();
+        for &cell in cells {
+            let Some(k) = self.part_at(cell) else { continue };
+            let p = &self.parts[k];
+            if p.part != *block || out.iter().any(|(j, _)| *j == k) {
+                continue;
+            }
+            if let Some(rot) = self.corner_rot_with(cell, &[], &[]) {
+                let slope = Placement {
+                    part: slope.clone(),
+                    rot,
+                    flip: false,
+                    ..p.clone()
+                };
+                out.push((k, slope));
+            }
+        }
+        out
+    }
+
+    /// Turns the blocks of [`Drydock::bevel_plan`] into their slopes.
+    fn bevel_cells(&mut self, cells: &[Cell], log: &mut Vec<Change>) {
+        for (index, new) in self.bevel_plan(cells) {
+            let old = self.parts[index].clone();
+            self.exec(Change::Set { index, old, new }, log);
+        }
+    }
+
+    /// Bevel: if `cell` is an outer corner (two adjacent sides touch a part's straight side, the other two are
+    /// open), the `rot` of the 1×1 slope (unflipped) whose straight sides are the touching sides. Only the
+    /// neighbours count, as the design would be with blocks in the cells `extra` and without the parts `gone`.
+    fn corner_rot_with(&self, cell: Cell, extra: &[Cell], gone: &[usize]) -> Option<u8> {
         let (mut touch, mut open) = (0u8, 0u8);
         for d in Dir::ALL {
             let n = step(cell, d);
-            match self.part_at(n) {
+            if extra.contains(&n) {
+                touch |= d.bit();
+                continue;
+            }
+            match self.part_at(n).filter(|k| !gone.contains(k)) {
                 None => open |= d.bit(),
                 Some(_) if self.straight(n, d.opposite()) => touch |= d.bit(),
                 Some(_) => {}
@@ -971,7 +1172,13 @@ impl Drydock {
         })
     }
 
-    fn slope_plan(&self, part: &str, cell: Cell, material: &str) -> Result<SlopePlan, Refusal> {
+    fn slope_plan(
+        &self,
+        part: &str,
+        cell: Cell,
+        material: &str,
+        turn: Option<(u8, bool)>,
+    ) -> Result<SlopePlan, Refusal> {
         let info = self
             .catalog
             .parts
@@ -987,10 +1194,7 @@ impl Drydock {
             return Err(Refusal::Outside);
         }
         let orientations = orientations(fp);
-        if let Some(k) = self.part_at(cell) {
-            if self.parts[k].part != part {
-                return Err(Refusal::Overlaps(k));
-            }
+        if let Some(k) = self.part_at(cell).filter(|&k| self.parts[k].part == part) {
             if self.parts[k].material.as_deref() != Some(material) {
                 return Ok(SlopePlan::Recolor(k));
             }
@@ -1007,30 +1211,39 @@ impl Drydock {
                 .map(|s| SlopePlan::Turn(k, s))
                 .ok_or(Refusal::NoRoom);
         }
+        if let Some((rot, flip)) = turn {
+            if rot > 3 {
+                return Err(Refusal::BadRotation);
+            }
+            let s = self.anchored(fp, cell, rot, flip).ok_or(Refusal::NoRoom)?;
+            return Ok(SlopePlan::New(with_pose(&new, &s)));
+        }
+        // Fewest replaced parts first (none where it fits), then the hull rules on the design without them.
         // `max_by_key` keeps the last of equal maxima; reversed, ties go to the first in turning order.
         let best = orientations
             .iter()
             .filter_map(|&(rot, flip)| self.anchored(fp, cell, rot, flip))
-            .filter(|s| self.fits(s, &[]).is_ok())
             .rev()
             .max_by_key(|s| {
-                let (links, blocked) = self.slope_contacts(s);
-                (links, std::cmp::Reverse(blocked), self.lean(s))
+                let gone = self.under(s);
+                let (links, blocked) = self.slope_contacts(s, &gone);
+                let fewest = std::cmp::Reverse(gone.len());
+                (fewest, links, std::cmp::Reverse(blocked), self.lean(s))
             })
             .ok_or(Refusal::NoRoom)?;
         Ok(SlopePlan::New(with_pose(&new, &best)))
     }
 
     /// `(links, blocked)` of a slope candidate: its straight unit sides that meet a neighbour's straight side,
-    /// and the occupied cells in front of its sloped face.
-    fn slope_contacts(&self, s: &PlacedShape) -> (u32, u32) {
+    /// and the occupied cells in front of its sloped face; the parts `gone` (which it replaces) do not count.
+    fn slope_contacts(&self, s: &PlacedShape, gone: &[usize]) -> (u32, u32) {
         let cells = s.cells();
         let sides = s.connectable_sides();
         let (mut links, mut blocked) = (0, 0);
         for &c in &cells {
             for d in Dir::ALL {
                 let n = step(c, d);
-                if cells.contains(&n) || self.part_at(n).is_none() {
+                if cells.contains(&n) || self.part_at(n).is_none_or(|k| gone.contains(&k)) {
                     continue;
                 }
                 if !sides.contains(&(c, d)) {
@@ -1107,6 +1320,16 @@ impl Drydock {
         Ok(self.shape_of(p))
     }
 
+    /// Inside the frame.
+    fn inside(&self, s: &PlacedShape) -> Result<(), Refusal> {
+        let (w, h) = s.dims();
+        let (x, y) = (s.x as i64, s.y as i64);
+        match x >= 0 && y >= 0 && x + w as i64 <= self.frame.0 as i64 && y + h as i64 <= self.frame.1 as i64 {
+            true => Ok(()),
+            false => Err(Refusal::Outside),
+        }
+    }
+
     /// Inside the frame and on free cells (parts in `ignore` do not count).
     fn fits(&self, s: &PlacedShape, ignore: &[usize]) -> Result<(), Refusal> {
         self.fits_beside(s, ignore, None)
@@ -1120,11 +1343,7 @@ impl Drydock {
         ignore: &[usize],
         other: Option<(&PlacedShape, usize)>,
     ) -> Result<(), Refusal> {
-        let (w, h) = s.dims();
-        let (x, y) = (s.x as i64, s.y as i64);
-        if x < 0 || y < 0 || x + w as i64 > self.frame.0 as i64 || y + h as i64 > self.frame.1 as i64 {
-            return Err(Refusal::Outside);
-        }
+        self.inside(s)?;
         let other = other.map(|(o, k)| (o.cells(), k));
         for c in s.cells() {
             if let Some((cells, k)) = &other
@@ -1165,7 +1384,7 @@ impl Drydock {
             self.revision += 1;
             self.redo.clear();
             match &mut self.stroke {
-                Some(stroke) => stroke.extend(log),
+                Some(stroke) => stroke.changes.extend(log),
                 None => self.push_undo(log),
             }
         }
