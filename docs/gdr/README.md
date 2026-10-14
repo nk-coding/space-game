@@ -34,9 +34,9 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0023](0023-shot-leading.md) | AI ships lead their shots; the player's lock aims at the lead point for projectile weapons | Accepted (provisional, lead) | 2026-10-11 |
 | [0024](0024-tech-trees-no-mk-levels.md) | Big tech trees per family, with node kinds instead of Mk levels | Accepted | concept phase |
 | [0025](0025-research-from-salvage.md) | Research comes from salvage and scans, and only counts once brought home | Accepted | 2026-10-10 |
-| [0026](0026-procedural-galaxy-and-bands.md) | One procedural galaxy, five bands from rim to core, gated by guardians | Accepted | 2026-10-10 |
+| [0026](0026-procedural-galaxy-and-bands.md) | One procedural galaxy, five bands from rim to core, gated by guardians | Accepted; lanes superseded by [GDR-0078](0078-galaxy-exploration-v1.md) | 2026-10-10 |
 | [0027](0027-races.md) | Rogue automatons and four alien races, one per band, mainly for variety and tech | Accepted | 2026-10-10 |
-| [0028](0028-clusters-and-voyages.md) | Clusters are large; a default voyage covers one cluster in 15–30 minutes | Accepted | 2026-10-10 |
+| [0028](0028-clusters-and-voyages.md) | Clusters are large; a default voyage covers one cluster in 15–30 minutes | Accepted; lanes superseded by [GDR-0078](0078-galaxy-exploration-v1.md) | 2026-10-10 |
 | [0029](0029-mild-death-bonded-matter.md) | Death is mild: bonded matter re-forms your ship at home; the unbonded haul stays as a wreck | Accepted | 2026-10-10 |
 | [0030](0030-no-economy.md) | No economy: no credits, no trading; parts keep build-point costs for balance | Accepted | concept phase |
 | [0031](0031-materials-and-fabrication.md) | No generic scrap: materials come from places, and the fabricator resolves recipe chains without factory logistics | Accepted | 2026-10-10 |
@@ -61,31 +61,33 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0050](0050-fleet-bar.md) | The fleet bar: a strip at the top centre, shown with two or more vessels or a dormant one; a tap focuses, a tap on a dormant vessel wakes it | Accepted (provisional, lead) | 2026-10-12 |
 | [0051](0051-drydock-v1.md) | Drydock v1 comes next: unlimited parts, stats as information, test-fly into the sandbox, the mockup's look | Accepted | 2026-10-12 |
 | [0052](0052-drydock-stats-full-use.md) | Drydock stats show the ship at full use and full power; up to ~120 % heat reads "runs hot" | Accepted | 2026-10-12 |
-| [0053](0053-drydock-v1-lead-defaults.md) | Drydock v1 defaults: frames, tools, mirror, keys and test flight | Accepted (provisional, lead); palette rule superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md) | 2026-10-13 |
+| [0053](0053-drydock-v1-lead-defaults.md) | Drydock v1 defaults: frames, tools, mirror, keys and test flight | Accepted (provisional, lead); palette rule superseded by [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0054](0054-drydock-locked-parts-tools-saving-sharing.md) | Drydock: enemy parts locked until unlocked; fill and bevel confirmed; the working design autosaves; designs are stored and can be shared | Accepted; hiding locked parts superseded for the career by [GDR-0065](0065-phase-7-screens-and-escort-action.md) | 2026-10-13 |
 | [0055](0055-slower-crisper-turning.md) | Turning is slower and crisper; RCS pods are the strong turners; top speed is capped by the whole speed | Accepted | 2026-10-13 |
-| [0056](0056-drydock-wave-2-defaults.md) | Drydock wave 2 defaults: editing gestures, stats wording, saving behaviour | Accepted (provisional, lead) | 2026-10-13 |
+| [0056](0056-drydock-wave-2-defaults.md) | Drydock wave 2 defaults: editing gestures, stats wording, saving behaviour | Accepted (provisional, lead); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0057](0057-behavior-editor-v1.md) | Behavior editor v1: its own screen from the drydock; behaviors are saved on their own and designs pick one; test by watching or flying alongside; graph and text views | Accepted | 2026-10-13 |
-| [0058](0058-turning-v2-defaults.md) | Turning v2 defaults: the numbers, RCS couples and when engines help turning | Accepted (provisional, lead) | 2026-10-13 |
-| [0059](0059-behavior-editor-wave-a-defaults.md) | Behavior editor wave A defaults: editing rules, storage and tests, the screen | Accepted (provisional, lead) | 2026-10-13 |
-| [0060](0060-behavior-editor-wave-b-defaults.md) | Behavior editor wave B defaults: editing gestures, saving and linking, the live panel | Accepted (provisional, lead) | 2026-10-13 |
+| [0058](0058-turning-v2-defaults.md) | Turning v2 defaults: the numbers, RCS couples and when engines help turning | Accepted (provisional, lead); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
+| [0059](0059-behavior-editor-wave-a-defaults.md) | Behavior editor wave A defaults: editing rules, storage and tests, the screen | Accepted (provisional, lead); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
+| [0060](0060-behavior-editor-wave-b-defaults.md) | Behavior editor wave B defaults: editing gestures, saving and linking, the live panel | Accepted (provisional, lead); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0061](0061-fight-balance-after-turning-v2.md) | Fight balance after turning v2: raiders orbit inside the beams, the skirmisher keeps its nose on the target, shields can collapse | Accepted | 2026-10-13 |
 | [0062](0062-first-playable-loop.md) | The first playable loop: start at home, short hand-made rim voyages, mind capacity 2 → 4 | Accepted | 2026-10-13 |
 | [0064](0064-lock-feed-forward-and-ai-flight-fixes.md) | The lock and `face` lead a moving target's turn; AI flight fixes from the balance study | Accepted | 2026-10-13 |
 | [0063](0063-salvage-and-research-v1.md) | Salvage and research v1: fly over wrecks, the haul is dismantled at home into research data, unlocks are unlimited | Accepted | 2026-10-13 |
 | [0065](0065-phase-7-screens-and-escort-action.md) | Phase 7 screens: debrief panel, research tree, star map, recall under the cargo, fleet formation, locked parts shown dimmed; an `escort` action | Accepted | 2026-10-13 |
-| [0066](0066-phase-7-wave-1-defaults.md) | Phase 7 wave 1 defaults: salvage values and fragments, cargo and collecting, the career model, the home screen | Accepted (provisional, lead); vanishing cargo superseded by [GDR-0076](0076-spilled-cargo-becomes-fragments.md) | 2026-10-13 |
+| [0066](0066-phase-7-wave-1-defaults.md) | Phase 7 wave 1 defaults: salvage values and fragments, cargo and collecting, the career model, the home screen | Accepted (provisional, lead); vanishing cargo superseded by [GDR-0076](0076-spilled-cargo-becomes-fragments.md); collecting speed and loose-item lifetime by [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0067](0067-rams-pass-friendly-bubbles.md) | Rams pass friendly shield bubbles, like shots and plumes | Accepted | 2026-10-13 |
 | [0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md) | A voyage site clears when its enemies are destroyed or disarmed; only armed enemies block recall | Accepted | 2026-10-13 |
 | [0069](0069-machines-drawn-as-components.md) | Machines are drawn as their own components; engine nozzles reach past the hull | Accepted | 2026-10-13 |
-| [0070](0070-phase-7-wave-2-defaults.md) | Phase 7 wave 2 defaults: flight and AI numbers, voyage clearing details, the career save, the drydock gating | Accepted (provisional, lead) | 2026-10-13 |
+| [0070](0070-phase-7-wave-2-defaults.md) | Phase 7 wave 2 defaults: flight and AI numbers, voyage clearing details, the career save, the drydock gating | Accepted (provisional, lead); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0071](0071-shipyard-home-long-u.md) | The home screen is the shipyard: a long U-shaped dock, the building area fills the U, the gate at the open side | Accepted | 2026-10-13 |
-| [0072](0072-shipyard-parts-voyage-flight-defaults.md) | Defaults of the shipyard home, the machine drawings and voyage flight | Accepted (provisional, lead); abandon superseded by [GDR-0077](0077-abandon-voyage-asks-in-a-panel.md) | 2026-10-13 |
+| [0072](0072-shipyard-parts-voyage-flight-defaults.md) | Defaults of the shipyard home, the machine drawings and voyage flight | Accepted (provisional, lead); abandon superseded by [GDR-0077](0077-abandon-voyage-asks-in-a-panel.md); reviewed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0073](0073-slice-tuning-v1.md) | Slice tuning v1: smaller packs, a gentler first voyage, research costs about halved | Accepted | 2026-10-13 |
 | [0074](0074-test-range-waves-emergency-recall-cannon.md) | Test-range waves follow the flown ship; recall also works when the fleet is disarmed; the cannon becomes an upgrade | Accepted | 2026-10-13 |
-| [0075](0075-voyages-feel-like-exploration.md) | Voyages should feel like exploring a galaxy and following hints, not a fixed path (direction) | Accepted | 2026-10-14 |
+| [0075](0075-voyages-feel-like-exploration.md) | Voyages should feel like exploring a galaxy and following hints, not a fixed path (direction) | Accepted; first design [GDR-0078](0078-galaxy-exploration-v1.md) | 2026-10-14 |
 | [0076](0076-spilled-cargo-becomes-fragments.md) | Cargo that no longer fits a shrinking hold spills as loose items that can be collected again | Accepted | 2026-10-14 |
 | [0077](0077-abandon-voyage-asks-in-a-panel.md) | Abandoning a voyage asks in a panel (M opens it) instead of M twice | Accepted | 2026-10-14 |
+| [0078](0078-galaxy-exploration-v1.md) | Galaxy exploration v1: signals that narrow as you search, blind jumps, jump range instead of lanes, hidden gates, scanning inside clusters | Accepted | 2026-10-14 |
+| [0079](0079-review-of-lead-defaults-14-oct.md) | Review of the lead defaults: most confirmed; collecting up to 8 m/s, loose items last the voyage, a speed zoom in flight | Accepted | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

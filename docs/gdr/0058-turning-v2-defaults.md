@@ -1,6 +1,6 @@
 # GDR-0058: Turning v2 defaults: the numbers, RCS couples and when engines help turning
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead); RCS 200 kN, the soft aim nudge and no differential thrust on A/D confirmed by Niklas in [GDR-0079](0079-review-of-lead-defaults-14-oct.md); the raider's turn left for play
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); numbers and details by the turning agent
 - Related: [GDR-0055](0055-slower-crisper-turning.md) (the decision these implement), [GDR-0040](0040-keyboard-flight-and-smart-lock-aim.md), [GDR-0042](0042-agility-target.md), `docs/sim.md` "Flight" and "Turning and speed of the base ships"

@@ -1,6 +1,6 @@
 # GDR-0072: Defaults of the shipyard home, the machine drawings and voyage flight
 
-- Status: Accepted (provisional, lead); RCS pods inside their cells confirmed by Niklas 2026-10-14; abandon superseded by [GDR-0077](0077-abandon-voyage-asks-in-a-panel.md)
+- Status: Accepted (provisional, lead); RCS pods inside their cells confirmed by Niklas 2026-10-14; abandon superseded by [GDR-0077](0077-abandon-voyage-asks-in-a-panel.md); the committed recall and the machine cell tone confirmed in [GDR-0079](0079-review-of-lead-defaults-14-oct.md)
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the agents that built GDR-0069, GDR-0071 and track 7H
 - Related: [GDR-0062](0062-first-playable-loop.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), [GDR-0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md), [GDR-0069](0069-machines-drawn-as-components.md), [GDR-0071](0071-shipyard-home-long-u.md), `docs/client.md`, `docs/style-guide.md`, `docs/career.md`

@@ -1,6 +1,6 @@
 # GDR-0070: Phase 7 wave 2 defaults: flight and AI numbers, voyage clearing details, the career save, the drydock gating
 
-- Status: Accepted (provisional, lead); FLEET's four slots and the 30 m escort default confirmed by Niklas 2026-10-14
+- Status: Accepted (provisional, lead); FLEET's four slots and the 30 m escort default confirmed by Niklas 2026-10-14; collecting speed superseded and the lock framing confirmed (plus a speed zoom) by [GDR-0079](0079-review-of-lead-defaults-14-oct.md); "armed" confirmed there
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-2 agents
 - Related: [GDR-0061](0061-fight-balance-after-turning-v2.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), [GDR-0066](0066-phase-7-wave-1-defaults.md), [GDR-0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md), `docs/sim.md`, `docs/career.md`, `docs/client.md`, `docs/drydock.md`

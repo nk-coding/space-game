@@ -1,6 +1,6 @@
 # GDR-0075: Voyages should feel like exploring a galaxy and following hints, not a fixed path
 
-- Status: Accepted (direction; the design is open)
+- Status: Accepted (direction); the first design is [GDR-0078](0078-galaxy-exploration-v1.md) (2026-10-14)
 - Date: 2026-10-14
 - Decided by: Niklas (in chat, while the voyage map got zoom and a portal transition)
 - Related: [GDR-0026](0026-procedural-galaxy-and-bands.md), [GDR-0028](0028-clusters-and-voyages.md), [GDR-0062](0062-first-playable-loop.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), `docs/plans/galaxy-voyages.md`
