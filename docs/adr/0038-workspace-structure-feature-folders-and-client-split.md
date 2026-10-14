@@ -1,8 +1,8 @@
 # ADR-0038: Workspace structure: grouped crate folders, the client split into three crates, feature folders inside
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-14
-- Decided by: lead session (proposal for Niklas; the direction "folders + split game" is his, 14 Oct 2026)
+- Decided by: Niklas (approved the lead's proposal as written, 14 Oct 2026; to run right after the chain-reaction work)
 - Related: [ADR-0003](0003-crate-architecture.md), [ADR-0034](0034-fast-everyday-web-builds-and-shared-compile-cache.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0036](0036-arena-crate.md), `CLAUDE.md` "Crates"
 
 ## Context

@@ -41,3 +41,5 @@ on 11 Oct.
 - Physics is Rapier2D inside `sim` (ADR-0014); the client never talks to the engine directly. Avian, which ties
   the core to Bevy's ECS, would have conflicted with this split.
 - Only chosen code lives in this repo (ADR-0025).
+
+14 Oct 2026: the crate layout (folders, the client in three crates) is refined by [ADR-0038](0038-workspace-structure-feature-folders-and-client-split.md); the engine-free split here stands.
