@@ -54,6 +54,8 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::camera::{CameraRig, CameraSet};
+use crate::shipyard::Yard;
+use crate::shipyard::layout::{Place, fit};
 use crate::drydock::PlayerDesign;
 use crate::drydock::report::DrydockReport;
 use crate::sim_bridge::GameContent;
@@ -110,6 +112,12 @@ pub struct EditorContext {
     pub slots: u32,
 }
 
+/// The flight zoom to give back when the screen, opened from home, closes (the camera rests on the mind meanwhile).
+#[derive(Resource, Debug, Default)]
+struct BehaviorCamera {
+    flight_zoom: f32,
+}
+
 pub struct BehaviorPlugin;
 
 impl Plugin for BehaviorPlugin {
@@ -118,6 +126,7 @@ impl Plugin for BehaviorPlugin {
         app.init_resource::<BehaviorDraft>()
             .init_resource::<BehaviorUi>()
             .init_resource::<EditorContext>()
+            .init_resource::<BehaviorCamera>()
             .init_resource::<screen::GraphBuilt>()
             .init_resource::<edit::EditState>()
             .init_resource::<controls::SliderDrag>()
@@ -139,8 +148,8 @@ impl Plugin for BehaviorPlugin {
 
             // The design report (the drydock's, `drydock::report`) is brought up to date first: the reach and TEST IN
             // RANGE read it.
-            .add_systems(OnEnter(AppMode::Behavior), (actions::way_in, design_report, (saving::open, controls::measure_reach)).chain())
-            .add_systems(OnExit(AppMode::Behavior), (controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
+            .add_systems(OnEnter(AppMode::Behavior), (actions::way_in, remember_flight_zoom, design_report, (saving::open, controls::measure_reach)).chain())
+            .add_systems(OnExit(AppMode::Behavior), (give_back_zoom, controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(PostUpdate, screen::draw_dots.after(CameraSet).before(FxFlush))
@@ -153,6 +162,7 @@ impl Plugin for BehaviorPlugin {
                     // so leaving the screen in the same frame keeps it).
                     (
                         fit_window,
+                        hold_camera,
                         actions::apply,
                         design_report,
                         (saving::title, saving::apply, list::apply, list::scroll).chain(),
@@ -186,6 +196,40 @@ impl Plugin for BehaviorPlugin {
             .add_systems(PostUpdate, reorder::draw_drop_line.run_if(in_state(AppMode::Behavior)).after(CameraSet).before(FxFlush));
         // Opening the screen from the drydock.
         app.add_systems(Update, actions::open_from_drydock.in_set(crate::drydock::DockSet::Apply));
+    }
+}
+
+/// Opened from home: the flight zoom to give back on leaving (home's exit has just given it back).
+fn remember_flight_zoom(ui: Res<BehaviorUi>, rig: Res<CameraRig>, mut cam: ResMut<BehaviorCamera>) {
+    if ui.from_home {
+        cam.flight_zoom = rig.zoom_target;
+    }
+}
+
+/// Opened from home, the camera rests on the mind (the shipyard's behavior building), exactly where home's flight
+/// there ended, so it shows faintly behind the screen as the lab behind research; refitted when the window changes.
+/// From the drydock the drydock's parked view stays.
+fn hold_camera(ui: Res<BehaviorUi>, window: Single<&Window, With<PrimaryWindow>>, yard: Res<Yard>, mut rig: ResMut<CameraRig>) {
+    if !ui.from_home {
+        return;
+    }
+    let size = window.size();
+    let (centre, zoom) = fit(yard.layout.focus(Place::Behavior), size);
+    if rig.pos != centre || rig.zoom != zoom || rig.view_offset != Vec2::ZERO {
+        rig.view_offset = Vec2::ZERO;
+        rig.end_zoom_anchor();
+        rig.pos = centre;
+        rig.zoom = zoom;
+        rig.zoom_target = zoom;
+    }
+}
+
+/// Leaving a screen opened from home: flight (TEST IN RANGE), the drydock and home get the flight zoom back.
+fn give_back_zoom(ui: Res<BehaviorUi>, cam: Res<BehaviorCamera>, mut rig: ResMut<CameraRig>) {
+    if ui.from_home {
+        rig.view_offset = Vec2::ZERO;
+        rig.zoom = cam.flight_zoom;
+        rig.zoom_target = cam.flight_zoom;
     }
 }
 

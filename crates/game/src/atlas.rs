@@ -148,8 +148,9 @@ pub struct Aperture {
     pub inside: bool,
 }
 
-/// The aperture's soft edge (framebuffer px).
-const APERTURE_EDGE: f32 = 2.0;
+/// The aperture's soft edge (px): wide enough that the map's opening reads as a soft iris with nothing drawn along
+/// it (the portal, `map::portal`).
+pub const APERTURE_EDGE: f32 = 18.0;
 
 /// Cuts a group material to an aperture, or not (`None`) (written only when it changes).
 pub fn set_aperture(materials: &mut Assets<AtlasMaterial>, material: &Handle<AtlasMaterial>, aperture: Option<Aperture>) {
