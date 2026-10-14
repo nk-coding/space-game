@@ -114,7 +114,8 @@ pub struct Layout {
     /// Crane rails' x in the yard, and where they park at the mouth while the drydock is open.
     pub cranes: [f32; 3],
     pub crane_park: [f32; 3],
-    /// What home shows: the station from the moorings to past the gate.
+    /// What home shows: the station from the near moorings to the gate, the same margin past each (Niklas, 14 Oct
+    /// 2026: the whole station centred, not the U).
     pub overview: Rect,
 }
 
@@ -162,7 +163,8 @@ impl Layout {
         let cranes = CRANES.map(|f| f * w);
         let crane_park = [0.7, 1.6, 2.5].map(|d| w + d);
 
-        let overview = Rect::new(near - 4.5, range_c.y - 3.5, gate.x + GATE_RADIUS + 8.5, research.rect().max.y + 0.75);
+        let side = 1.4;
+        let overview = Rect::new(near - MOORING_HALF - MOORING_WALL - side, range_c.y - 3.5, gate.x + GATE_RADIUS + side, research.rect().max.y + 0.75);
         Self {
             frame,
             area: Rect::new(0.0, -h, w, 0.0),
@@ -321,8 +323,12 @@ mod tests {
         assert_eq!(small.mind.size, big.mind.size);
         assert!(grew(small.gate.x, big.gate.x));
         assert!(big.overview.width() > small.overview.width() && big.overview.height() > small.overview.height());
-        // The frigate's overview is the sketch's 1600 x 900 px at 20 px per cell: 80 x 45 m, 16:9.
-        assert!((small.overview.width() - 80.0).abs() < 1e-3 && (small.overview.height() - 45.0).abs() < 1e-3, "{:?}", small.overview);
+        // The overview is centred on the whole station: as much room past the near moorings as past the gate.
+        for l in [&small, &big] {
+            let left = l.moorings[0].x - MOORING_HALF - MOORING_WALL - l.overview.min.x;
+            let right = l.overview.max.x - (l.gate.x + GATE_RADIUS);
+            assert!(left > 0.0 && (left - right).abs() < 1e-4, "{left} {right}");
+        }
     }
 
     /// Every place is on the station and none sits on another; the overview shows all of them but the moorings past
@@ -412,6 +418,6 @@ mod tests {
         assert_eq!(c, l.overview.center());
         assert!((z - 16.0).abs() < 1e-3);
         let (_, tall) = fit(l.overview, Vec2::new(800.0, 900.0));
-        assert!((tall - 10.0).abs() < 1e-3, "a narrow window fits the width");
+        assert!((tall - 800.0 / l.overview.width()).abs() < 1e-3, "a narrow window fits the width");
     }
 }
