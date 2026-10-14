@@ -643,14 +643,12 @@ fn an_escort_keeps_near_its_leader_and_fights_its_lock() {
     println!("escort while the leader flies at 13 m/s: farthest {worst:.1} m over the last 10 s");
     assert!(centre(&w, leader).x > 200.0, "the leader went somewhere");
     assert!(worst < 33.0, "the escort keeps within 30 m (and a little): {worst}");
-    // The leader stops: so does the escort, near it.
+    // The leader lets go and coasts (GDR-0086): the escort stays with it.
     w.command(leader, ShipCommand::Pilot(PilotInput::default()));
     run(&mut w, 450);
-    let ship = w.ship(escort).unwrap();
-    let v = ship.piece(ship.control_piece().unwrap()).unwrap().body.linvel.length();
     let d = (centre(&w, escort) - centre(&w, leader)).length();
-    println!("the leader stopped: escort at {d:.1} m, {v:.2} m/s");
-    assert!(v < 0.5 && d < 33.0, "stopped near the leader: {v} m/s, {d} m");
+    println!("the leader coasts: escort at {d:.1} m");
+    assert!(d < 33.0, "still near the leader: {d} m");
     // The leader locks a raider: the escort attacks it.
     let raider = w.spawn_ship(
         design(&c, "automaton_raider"),

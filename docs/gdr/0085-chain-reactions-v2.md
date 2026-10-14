@@ -109,3 +109,5 @@ GDR-0084 built chain reactions inside one piece and left four questions open. Ni
 - Blast and shields: the missile share (a bubble absorbs it whole) or the kinetic one (half passes)?
 - Should a shield emitter's blast scale with the charge it holds, and should the automaton core's be smaller than a
   fission reactor's (it makes 6 power, the reactor 10)?
+
+14 Oct 2026: Niklas confirmed two of the lead defaults: reactors and drives keep their two-cells-deep reach, and blasts keep hurting friendly vessels.

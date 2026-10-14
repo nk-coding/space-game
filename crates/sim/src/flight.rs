@@ -82,7 +82,7 @@ pub struct PilotInput {
     pub stick: Vec2,
     /// Keep the nose on this target.
     pub lock: Option<Target>,
-    /// Released stick coasts instead of braking.
+    /// Pure thrust while pushing: no drift cancellation, momentum kept (released input always coasts, GDR-0086).
     pub drift: bool,
     pub fire: bool,
     /// Under a lock: which way to aim (`Auto`: bring the strongest working guns to bear, GDR-0040).
@@ -759,7 +759,6 @@ pub fn pilot_goal(
         stick = stick * (1.0 / len);
     }
     let pushed = len > tuning.stick_deadzone;
-    let released_velocity = if input.drift { None } else { Some(Vec2::ZERO) };
     if let Some(t) = lock {
         // Strafe: the heading belongs to the lock, so the full stick is the top speed the thrusters reach
         // along the stick from this heading.
@@ -768,19 +767,13 @@ pub fn pilot_goal(
             let u = kin.rot.apply_inverse(stick) * (1.0 / stick.length());
             Some(stick * kin.top_along(u))
         } else {
-            released_velocity
+            None
         };
         return FlightGoal { heading, velocity };
     }
+    // A released stick coasts and keeps the heading (GDR-0086: no braking on release, no flip-and-burn).
     if !pushed {
-        return FlightGoal {
-            heading: if input.drift {
-                HeadingGoal::Keep
-            } else {
-                HeadingGoal::Auto
-            },
-            velocity: released_velocity,
-        };
+        return FlightGoal { heading: HeadingGoal::Keep, velocity: None };
     }
     // Fly that way: the ship turns its best axis onto the stick, so the full stick is that axis's top speed.
     // For choosing the heading, a small overspeed along the stick (up to 10% of top speed, e.g. after a push)
@@ -816,8 +809,8 @@ pub fn pilot_goal(
 }
 
 /// Keyboard axes → goal (GDR-0040). W/S thrust along the nose and Q/E strafe; without drift the flight
-/// computer flies the ship where it points (sideways drift is cancelled) and brakes when the keys are released;
-/// with drift every key is pure thrust (momentum is kept). A/D rotate, or, under a lock (`locked` = the lock
+/// computer flies the ship where it points (sideways drift is cancelled) while keys are held; released keys
+/// coast with the heading kept (GDR-0086); with drift every key is pure thrust (momentum is kept). A/D rotate, or, under a lock (`locked` = the lock
 /// heading), the aim is the lock's and A/D only nudge it (`aim_offset`).
 fn keyboard_goal(
     input: &PilotInput,
@@ -863,9 +856,12 @@ fn keyboard_goal(
         } else {
             None
         }
-    } else {
-        // Go where it points: the velocity goal lies along the pressed axes only (zero = brake).
+    } else if moving {
+        // Go where it points: the velocity goal lies along the pressed axes only.
         Some(nose * (thrust * along) + side * (strafe * across))
+    } else {
+        // Released keys coast (GDR-0086).
+        None
     };
     let heading = match locked {
         Some(h) => h,
@@ -876,8 +872,6 @@ fn keyboard_goal(
             let rate = tuning.key_turn_rate.min(sqrt(tuning.turn_margin * kin.alpha * PI));
             HeadingGoal::Rate(turn * rate)
         }
-        // Nothing pressed and not drifting: brake as with a released stick (flip-and-burn if needed).
-        None if !moving && !input.drift => HeadingGoal::Auto,
         None => HeadingGoal::Keep,
     };
     FlightGoal { heading, velocity }

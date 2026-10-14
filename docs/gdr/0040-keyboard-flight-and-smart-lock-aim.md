@@ -1,6 +1,6 @@
 # GDR-0040: PC keyboard flight controls: rotate + thrust + strafe, smart lock aim with A/D nudge
 
-- Status: Accepted; note 2026-10-12: the soft top speed it mentions ("The soft top speed still applies") is replaced by each engine's rated speed, [GDR-0041](0041-engine-rated-speed.md)
+- Status: Accepted; note 2026-10-12: the soft top speed it mentions ("The soft top speed still applies") is replaced by each engine's rated speed, [GDR-0041](0041-engine-rated-speed.md); 2026-10-14: "brakes when the keys are released" superseded by [GDR-0086](0086-letting-go-coasts.md) (released keys coast)
 - Date: 2026-10-12
 - Decided by: Niklas
 - Supersedes: GDR-0009 (only its PC/WASD part: "WASD acts as the stick")

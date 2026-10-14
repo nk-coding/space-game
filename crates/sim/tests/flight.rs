@@ -84,7 +84,7 @@ fn quarter_turn(w: &mut sim::Sim, s: sim::ShipId) -> (f32, f32) {
 /// (GDR-0044: idle parts do nothing), so the 90° turn takes longer but does not overshoot, and a stop from speed
 /// (flip and burn: engines only at the back) neither overshoots the flip nor flies backwards.
 #[test]
-fn a_runner_with_idle_actuators_turns_and_brakes_cleanly() {
+fn a_runner_with_idle_actuators_turns_cleanly_and_coasts() {
     let c = content();
     let d = design(&c, "halvex_runner");
     let (mut w, s) = world_with(d.clone());
@@ -111,37 +111,23 @@ fn a_runner_with_idle_actuators_turns_and_brakes_cleanly() {
     println!("runner, one core and one gyro idle: 90° in {turn:.2} s, overshoot {overshoot:.2}°");
     assert!(turn < 2.5 && overshoot < 2.0, "90° in {turn} s, overshoot {overshoot}°");
 
-    // Up to speed along the nose (world −x after the turn), then release the stick: flip and burn.
+    // Up to speed along the nose (world −x after the turn), then release the stick: it coasts, nose kept
+    // (GDR-0086: no braking on release, no flip-and-burn), however few actuators work.
     let nose = Vec2::new(-1.0, 0.0);
     w.command(s, ShipCommand::Pilot(PilotInput { stick: nose, ..Default::default() }));
     idle(&mut w, 75);
-    let v0 = piece(&w, s).body.linvel;
-    assert!(v0.dot(nose) > 10.0, "{v0:?}");
+    let b0 = piece(&w, s).body;
+    assert!(b0.linvel.dot(nose) > 10.0, "{:?}", b0.linvel);
     w.command(s, ShipCommand::Pilot(PilotInput::default()));
-    let (mut backwards, mut stopped, mut spin_after) = (0.0f32, None, 0.0f32);
-    for t in 1..=300 {
-        w.step(&TickInputs::default());
-        let b = piece(&w, s).body;
-        backwards = backwards.max(-b.linvel.dot(nose));
-        if stopped.is_none() && b.linvel.length() < 0.05 {
-            stopped = Some(t as f32 / 30.0);
-        }
-        if stopped.is_some() {
-            spin_after = spin_after.max(b.angvel.abs());
-        }
-    }
-    let stopped = stopped.unwrap_or(f32::INFINITY);
-    println!(
-        "  stop from {:.1} m/s: {stopped:.2} s, flew backwards at up to {backwards:.2} m/s, spin after {spin_after:.3} rad/s",
-        v0.length()
-    );
-    assert!(stopped < 6.0, "stopped after {stopped} s");
-    assert!(backwards < 0.2, "flew backwards at {backwards} m/s");
-    assert!(spin_after < 0.05, "still spinning at {spin_after} rad/s");
+    idle(&mut w, 300);
+    let b = piece(&w, s).body;
+    println!("  released at {:.1} m/s: {:.2} m/s after 10 s, turned {:.2}°", b0.linvel.length(), b.linvel.length(), (b.angle - b0.angle).to_degrees());
+    assert!((b.linvel - b0.linvel).length() < 0.05, "coasts: {:?} → {:?}", b0.linvel, b.linvel);
+    assert!((b.angle - b0.angle).abs() < 2f32.to_radians() && b.angvel.abs() < 0.01, "keeps its nose: {} rad/s", b.angvel);
 }
 
 #[test]
-fn stick_sets_course_and_speed_and_release_brakes() {
+fn stick_sets_course_and_speed_and_release_coasts() {
     let c = content();
     for id in SHIPS {
         let (mut w, s) = world_with(design(&c, id));
@@ -193,35 +179,15 @@ fn stick_sets_course_and_speed_and_release_brakes() {
             "{id}: half stick gave {v} of {top}"
         );
 
-        // Drift: let go and coast.
-        w.command(
-            s,
-            ShipCommand::Pilot(PilotInput {
-                drift: true,
-                ..Default::default()
-            }),
-        );
-        let v0 = piece(&w, s).body.linvel;
-        idle(&mut w, 300);
-        assert!(
-            (piece(&w, s).body.linvel - v0).length() < 1e-3,
-            "{id}: drift must coast"
-        );
-
-        // Release without drift: brake to a full stop, not spinning.
-        w.command(s, ShipCommand::Pilot(PilotInput::default()));
-        idle(&mut w, 2400);
-        let p = piece(&w, s);
-        assert!(
-            p.body.linvel.length() < 0.06,
-            "{id}: still moving at {:?}",
-            p.body.linvel
-        );
-        assert!(
-            p.body.angvel.abs() < 0.01,
-            "{id}: still spinning at {}",
-            p.body.angvel
-        );
+        // Let go, with drift or without: coast, not turning (GDR-0086).
+        for drift in [true, false] {
+            w.command(s, ShipCommand::Pilot(PilotInput { drift, ..Default::default() }));
+            let v0 = piece(&w, s).body.linvel;
+            idle(&mut w, 300);
+            let p = piece(&w, s);
+            assert!((p.body.linvel - v0).length() < 1e-3, "{id}: a release (drift {drift}) must coast");
+            assert!(p.body.angvel.abs() < 0.01, "{id}: still spinning at {}", p.body.angvel);
+        }
     }
 }
 

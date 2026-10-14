@@ -314,6 +314,12 @@ salvage `9216af47e53a36f6` / `6084ef2acac986d8`, voyage `a2397a3937187f33` / `21
 | salvage | 125 | 31 | 13 | 11 | 8 | 165 / 8 | 64 | 28 | 0 |
 | voyage | 84 | 6 | 89 | 0 | 0 | 562 / 0 | 0 | 17 | 0 |
 
+**Letting go coasts** ([GDR-0086](gdr/0086-letting-go-coasts.md), 14 Oct 2026, release builds, 1800 ticks: a released
+stick or released keys no longer brake): core, flight, load (20 ships), behavior, salvage and voyage, seeds 42 and 7:
+native x86_64 vs wasm32-wasip1 **identical** (12 runs). Only the streams with a released player input change: flight
+`742c08eaaa2fabdb` / `051ce217c6f12e12`, behavior `a2589d01b5eff9b7` / `2df82abadfeb7fcc` (last ticks, seed 42 / 7);
+core, load, salvage and voyage are unchanged from chain reactions v2.
+
 Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
@@ -590,8 +596,9 @@ Pilot input (concept: touch controls):
   the stick; the thrust points along the needed change of velocity while it is large and blends back to the
   stick direction as it shrinks, so the nose settles on the stick. For the heading, an overspeed of up to 10%
   along the stick (after a push) is ignored (no flip for it); the velocity goal stays exact.
-- **Released stick**: brakes to a stop (`Auto` heading: flip-and-burn if needed), unless `drift` is set
-  (coast, keep the heading).
+- **Released stick or keys**: coast and keep the heading (no velocity goal), with or without `drift`
+  ([GDR-0086](gdr/0086-letting-go-coasts.md), 14 Oct 2026; until then a release braked to a stop, flipping and
+  burning if needed). `Auto` headings now only come from behaviors' maneuvers.
 - **Lock** (`Target::Ship / Piece / Point`): by default (`AimMode::Auto`, GDR-0040, `flight::smart_aim`) the ship
   turns its strongest working guns onto the target (the side with the most damage per second, front first on
   ties; their lead point if that side's strongest gun fires projectiles); `AimMode::Target` / `Lead` point the
@@ -599,7 +606,7 @@ Pilot input (concept: touch controls):
   forward ([Feed-forward](#feed-forward-the-lock-and-face-lead-a-moving-target)); A/D add the nudge (`aim_offset`); the
   stick strafes with whatever thrusters push that
   way (RCS), the full stick being the top speed reachable along the stick from this heading
-  (`Kin::top_along`); released = brake. A ship with engines only at the back cannot brake or strafe while locked.
+  (`Kin::top_along`); released = coast (GDR-0086). A ship with engines only at the back cannot brake or strafe while locked.
 - **Keyboard** (GDR-0040): a full W, S, Q or E is the top speed of the thrusters pushing that way; W with Q or E
   asks for both (with the whole-speed fade the side push stops once the speed passes the side thrusters'
   rating). A/D: [Keyboard rotation](#keyboard-rotation).
@@ -720,7 +727,7 @@ dark or dormant vessel does not fly at all. Code: `ship::refresh_authority`, the
   couples, two `alloc::couples` calls (one per sense, each two `couple_fill` passes per group pair to size the
   couple and two to fill it); while translation lasts (a group pushing flat out) the flight computer runs one
   more translation fill and one `couples` call per sense. No allocation.
-- Test `a_runner_with_idle_actuators_turns_and_brakes_cleanly` (`tests/flight.rs`): a Halvex Runner that lost a
+- Test `a_runner_with_idle_actuators_turns_cleanly_and_coasts` (`tests/flight.rs`; until GDR-0086 it also braked): a Halvex Runner that lost a
   logic core, one gyro set to the lowest power priority, so it idles together with a pulse laser (load 18,
   capacity 16): 90° in 1.97 s with 0.06° overshoot, and a stop from 21 m/s (flip and burn) in 4.5 s without
   flying backwards (13 Oct 2026 content; 1.07 s and 3.3 s with the turning of 12 Oct). Planned with the idle

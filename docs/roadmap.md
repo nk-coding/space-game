@@ -210,6 +210,13 @@ Next session:
   native vs wasm IDENTICAL. Voyage clear rates: the starter a little harder, the Runner's Corran Reach 89 → 70 of
   120. Follow-ups: an explosion visual in the client, blast reach and warnings in the drydock, and the rule
   questions listed in GDR-0084.
+- **Chain reactions v2** ([GDR-0085](gdr/0085-chain-reactions-v2.md)): blasts reach every piece and ship (other ships'
+  shields absorb, friends are hit), intact armour on the line shields, reactors and drives reach two cells deep, the
+  automaton core, shield emitter and RCS pod explode. Niklas confirmed the reach and friendly damage. The automaton
+  core no longer dominates the design runs (2 of 5 best designs, from 4); voyages a little harder.
+- **Letting go coasts** ([GDR-0086](gdr/0086-letting-go-coasts.md)): no braking and no flip-and-burn on release. Pilot
+  assists (auto-brake and more) as configurable behavior-like profiles for the piloted ship, weapon groups and key
+  bindings: to discuss with Niklas while the structure refactor runs.
 - **Scrollbars and glow room** (`docs/client.md` UI kit): every scrolling list has an overlay scrollbar (shows while
   scrolling or hovered, draggable), and lists let glows fade past their edges instead of clipping them.
 - **Sim fairness fixed** ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)): ship ids no longer decide a fight.
