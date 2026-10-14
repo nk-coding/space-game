@@ -493,10 +493,15 @@ pub(super) struct TitleField;
 #[derive(Component)]
 pub(super) struct TitleNote;
 
+/// The name field's height, and so the name line's.
+const FIELD_H: f32 = 30.0;
+
 /// The behavior's name (the `ScreenText::Name` text), the field that replaces it while it is edited, and the
 /// saved state after it.
 pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, name: Color, dim: Color, edge: Color) {
-    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|t| {
+    // As tall as the field in both states, so opening it does not move the ring button beside the block (as in the
+    // drydock's title).
+    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), height: px(FIELD_H), ..default() }).with_children(|t| {
         t.spawn((TitleButton, Hot::default(), Node::default())).with_child((ScreenText::Name, prose(fonts, "", 21.0, name)));
         t.spawn((
             TitleField,
@@ -505,7 +510,7 @@ pub(super) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, n
             Node {
                 display: Display::None,
                 width: px(280),
-                height: px(30),
+                height: px(FIELD_H),
                 align_items: AlignItems::Center,
                 padding: UiRect::horizontal(px(12)),
                 border: UiRect::all(px(1.2)),

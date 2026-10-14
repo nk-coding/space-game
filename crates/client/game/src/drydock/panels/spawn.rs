@@ -32,19 +32,15 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             Visibility::Hidden,
         ))
         .with_children(|root| {
-            // Scrims behind the side columns, first so everything draws over them: the backdrop colour, solid to just
-            // past the panel and gone at the grid's edge, so the panels read over a ship or the yard behind them
-            // (Niklas, 14 Oct 2026: "with the ship in the background the side panels stuff is still barely
-            // readable"; the BEHAVIOR screen covers the world instead, which the drydock cannot: its ship is the
-            // world).
-            // A world mesh (`UiIcon::Scrim`), so it lies under the panels' icons too.
-            for (edge, width, solid) in [(Edge::Left, GRID_LEFT + SCRIM_INTO_GRID, LEFT_PANEL_END), (Edge::Right, GRID_RIGHT + SCRIM_INTO_GRID, RIGHT_PANEL_END)] {
-                let left = edge == Edge::Left;
-                let at = if left { abs(Some(0.0), None, Some(0.0), Some(0.0)) } else { abs(None, Some(0.0), Some(0.0), Some(0.0)) };
-                let fade = width - solid - SCRIM_SOLID_PAST;
-                let scrim = UiIcon::Scrim { color: back.with_alpha(SCRIM_ALPHA), fade, fade_left: !left };
-                root.spawn((ScreenPart::new(edge, 1), Node { width: px(width), ..at }, scrim));
-            }
+            // A scrim around the grid, first so everything draws over it: the backdrop colour on every side, fading
+            // out at the grid's edge, so the panels and bars read over a ship or the yard behind them and the frame
+            // looks the same all round (Niklas, 14 Oct 2026: "with the ship in the background the side panels stuff
+            // is still barely readable", then "I can still see a difference in background visibility between the
+            // side and bottom thing"; the BEHAVIOR screen covers the world instead, which the drydock cannot: its
+            // ship is the world). A world mesh (`UiIcon::Scrim`), so it lies under the panels' icons too.
+            let hole = [GRID_LEFT, GRID_TOP, GRID_RIGHT, GRID_BOTTOM + INFO_H];
+            let scrim = UiIcon::Scrim { color: back.with_alpha(SCRIM_ALPHA), hole, out: SCRIM_OUT, into: SCRIM_INTO };
+            root.spawn((ScreenPart::new(Edge::Fade, 1), Node { width: percent(100), height: percent(100), ..abs(Some(0.0), None, Some(0.0), None) }, scrim));
 
             // Top left: the ring menu, the breadcrumb and the design's name.
             root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
@@ -292,7 +288,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Centre: the grid viewport; the info line and the zoom.
-            root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(GRID_LEFT), Some(GRID_RIGHT), Some(84.0), Some(GRID_BOTTOM)) }).with_children(|ga| {
+            root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(GRID_LEFT), Some(GRID_RIGHT), Some(GRID_TOP), Some(GRID_BOTTOM)) }).with_children(|ga| {
                 // The info line moves, the grid viewport never (the camera centres on it).
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
                 ga.spawn((ScreenPart::new(Edge::Bottom, 2), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(INFO_H), flex_shrink: 0.0, ..default() }))
@@ -300,7 +296,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                         b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(crate::drydock::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
                             z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut), Tip::key("ZOOM OUT", "−"))).with_child(ring_glyph(Glyph::Minus, 13.0));
-                            z.spawn((PanelText::Zoom, number(fonts, "", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), ..default() }));
+                            // A fixed width with the value centred in it, so the rings stay put and "58 %" sits as centred as "100 %".
+                            z.spawn(Node { width: px(46), justify_content: JustifyContent::Center, ..default() }).with_child((PanelText::Zoom, number(fonts, "", 13.0, c(Tone::Number, 1.0))));
                             z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn), Tip::key("ZOOM IN", "+"))).with_child(ring_glyph(Glyph::Plus, 13.0));
                         });
                     });

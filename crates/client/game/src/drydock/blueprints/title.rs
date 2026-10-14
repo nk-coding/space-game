@@ -8,6 +8,9 @@ use super::*;
 #[derive(Component)]
 pub(super) struct TitleButton;
 
+/// The name field's height, and so the name line's.
+const FIELD_H: f32 = 30.0;
+
 #[derive(Component)]
 pub(super) struct TitleField;
 
@@ -19,7 +22,10 @@ pub(super) struct TitleNote;
 /// edited, and the saved state after it.
 pub(in crate::drydock) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: &HudFonts, name: Color, dim: Color, edge: Color) {
     parent
-        .spawn((TitleButton, Hot::default(), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }))
+        // As tall as the field in both states: the name line is shorter, so opening the field grew the block and moved
+        // the ring button beside it (Niklas, 14 Oct 2026: "going into edit mode for the name of the ship moves the top
+        // left back button which is incredibly weird").
+        .spawn((TitleButton, Hot::default(), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), height: px(FIELD_H), ..default() }))
         .with_children(|t| {
             t.spawn((PanelText::Name, number(fonts, "", 20.0, name)));
             t.spawn((
@@ -29,7 +35,7 @@ pub(in crate::drydock) fn spawn_title(parent: &mut ChildSpawnerCommands, fonts: 
                 Node {
                     display: Display::None,
                     width: px(300),
-                    height: px(30),
+                    height: px(FIELD_H),
                     align_items: AlignItems::Center,
                     padding: UiRect::horizontal(px(12)),
                     border: UiRect::all(px(1.2)),

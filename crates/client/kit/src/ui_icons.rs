@@ -51,10 +51,11 @@ pub enum UiIcon {
     Ship(Box<Blueprint>),
     /// A vector glyph in a colour, fitted into the node.
     Glyph { glyph: Glyph, color: Color },
-    /// The node filled with a colour that fades out over its last `fade` px towards its right side (or its left,
-    /// `fade_left`): a scrim behind a panel that floats over the world, under the panel's icons (a UI background
-    /// would draw over them, the world draws first) and over the world (the drydock's side columns).
-    Scrim { color: Color, fade: f32, fade_left: bool },
+    /// The node filled with a colour around a clear hole: a scrim behind panels that float over the world, under
+    /// their icons (a UI background would draw over them, the world draws first) and over the world (the drydock's
+    /// frame around its grid). `hole` is the clear rectangle's inset from the node's left, top, right and bottom
+    /// (px); the colour fades out from `out` px outside the hole to `into` px inside it.
+    Scrim { color: Color, hole: [f32; 4], out: f32, into: f32 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -210,7 +211,7 @@ fn draw_icons<S: IconShapes>(
             let (mesh, dims) = match icon {
                 UiIcon::Part { .. } | UiIcon::Ship(_) => shapes.shape(icon, &style, &atlas, glow),
                 UiIcon::Glyph { glyph, color } => Some((glyph_mesh(*glyph, *color, side, &atlas), Vec2::ONE)),
-                UiIcon::Scrim { color, fade, fade_left } => Some((scrim_mesh(*color, *fade, *fade_left, size, &atlas), Vec2::ONE)),
+                UiIcon::Scrim { color, hole, out, into } => Some((scrim_mesh(*color, *hole, *out, *into, size, &atlas), Vec2::ONE)),
             }
             .unwrap_or_else(|| (MeshBuf::placeholder(), Vec2::ONE));
             let _ = meshes.insert(&m.mesh, mesh);
@@ -268,20 +269,32 @@ fn sign_bars(plus: bool, side: f32) -> Vec<Rect> {
     bars
 }
 
-/// A scrim `size` px large, centred on the origin, in pixels (y up): solid, then fading out over `fade` px at its
-/// right side (or its left).
-fn scrim_mesh(color: Color, fade: f32, fade_left: bool, size: Vec2, atlas: &Atlas) -> Mesh {
+/// A scrim `size` px large, centred on the origin, in pixels (y up): solid up to `out` px outside the hole (insets
+/// left, top, right, bottom), fading out to `into` px inside it, clear in the middle. One mesh, so the corners are
+/// not darker where two bands would overlap.
+fn scrim_mesh(color: Color, hole: [f32; 4], out: f32, into: f32, size: Vec2, atlas: &Atlas) -> Mesh {
     let uv = atlas.region("fx/white").uv_center();
     let (solid, clear) = (vcol(color, 1.0), vcol(color, 0.0));
     let h = size / 2.0;
-    let fade = fade.min(size.x);
+    let [l, t, r, b] = hole;
+    // The hole's edges (y up), the solid region's inner edge outside them and the clear region's edge inside them.
+    let (x0, x1, y0, y1) = (-h.x + l, h.x - r, -h.y + b, h.y - t);
+    let s = Rect::new((x0 - out).max(-h.x), (y0 - out).max(-h.y), (x1 + out).min(h.x), (y1 + out).min(h.y));
+    let c = Rect::new(x0 + into, y0 + into, (x1 - into).max(x0 + into), (y1 - into).max(y0 + into));
+    let p = Vec2::new;
     let mut m = MeshBuf::default();
-    // x from the solid side's edge to where the fade starts and to the clear edge; mirrored for a left fade.
-    let s = if fade_left { -1.0 } else { 1.0 };
-    let (a, b, c) = (-h.x * s, (h.x - fade) * s, h.x * s);
-    let p = |x: f32, y: f32| Vec2::new(x, y);
-    m.gradient_quad([p(a, -h.y), p(b, -h.y), p(b, h.y), p(a, h.y)], uv, [solid; 4]);
-    m.gradient_quad([p(b, -h.y), p(c, -h.y), p(c, h.y), p(b, h.y)], uv, [solid, clear, clear, solid]);
+    // Solid: the bands above and below the fade, then left and right of it.
+    m.gradient_quad([p(-h.x, s.max.y), p(h.x, s.max.y), p(h.x, h.y), p(-h.x, h.y)], uv, [solid; 4]);
+    m.gradient_quad([p(-h.x, -h.y), p(h.x, -h.y), p(h.x, s.min.y), p(-h.x, s.min.y)], uv, [solid; 4]);
+    m.gradient_quad([p(-h.x, s.min.y), p(s.min.x, s.min.y), p(s.min.x, s.max.y), p(-h.x, s.max.y)], uv, [solid; 4]);
+    m.gradient_quad([p(s.max.x, s.min.y), p(h.x, s.min.y), p(h.x, s.max.y), p(s.max.x, s.max.y)], uv, [solid; 4]);
+    // The fade: four trapezoids from the solid edge to the clear one, mitred at the corners.
+    let outer = [p(s.min.x, s.min.y), p(s.max.x, s.min.y), p(s.max.x, s.max.y), p(s.min.x, s.max.y)];
+    let inner = [p(c.min.x, c.min.y), p(c.max.x, c.min.y), p(c.max.x, c.max.y), p(c.min.x, c.max.y)];
+    for k in 0..4 {
+        let n = (k + 1) % 4;
+        m.gradient_quad([outer[k], outer[n], inner[n], inner[k]], uv, [solid, solid, clear, clear]);
+    }
     m.into_mesh()
 }
 

@@ -256,10 +256,15 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
 `-600x960-tools.png` (folded, the tools dropdown open), `-search.png`.
 
 - **Scrims and the column's end** (14 Oct 2026; Niklas: "with the ship in the background the side panels stuff is
-  still barely readable", "the parts list spills into that bottom area"): both side columns sit on a scrim, the
-  backdrop colour at 90 % from the window's edge to 4 px past the column, fading out to 10 px into the grid. It is
-  a world mesh (`UiIcon::Scrim`) just under the UI icons, so it covers the ship and the yard but not the panels'
-  icons (a UI background draws over every icon). The left column ends where the grid does, above the info line.
+  still barely readable", "the parts list spills into that bottom area", "I can still see a difference in
+  background visibility between the side and bottom thing"): one scrim frames the grid on every side, the backdrop
+  colour at 90 % up to 10 px outside the grid, fading out to 10 px inside it, so the
+  columns, the top line, the info line and the bottom bar all sit on the same dark. It is one world mesh
+  (`UiIcon::Scrim`, a frame with a hole, so its corners are not doubled) just under the UI icons, so it covers the
+  ship and the yard but not the panels' icons (a UI background draws over every icon). The left column ends where
+  the grid does, above the info line. The grid area runs from 66 px under the top (just under the overlay pills)
+  to 58 px over the bottom (2 px over the bottom bar), its info line 28 px (they were 84 and 66 + 30: Niklas, "both
+  the top and bottom panel take too much space"); the zoom value sits centred in a fixed 46 px between its rings.
 - **Left column**, top to bottom: the search; `ARMOR · <name>` and the armour swatches (every armour material
   research can unlock, in content order: the armour block's tile in that material, a light outline so the
   near-black tones are told apart, the picked one outlined teal, a locked one a lock that leads to its research;

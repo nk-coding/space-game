@@ -80,21 +80,23 @@ const MATERIAL_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 /// The left column's width.
 const LEFT_W: f32 = 248.0;
 const RIGHT_W: f32 = 292.0;
-/// The side columns' distance from the window's edges, and the grid viewport's (logical px).
+/// The side columns' distance from the window's edges, and the grid area's (logical px).
 const SIDE: f32 = 20.0;
 const GRID_LEFT: f32 = 290.0;
 const GRID_RIGHT: f32 = 332.0;
-/// The grid area's distance from the window's bottom, and its info line under the grid: the left column ends where
-/// the grid does, above that line (Niklas, 14 Oct 2026: "the parts list spills into that bottom area").
-const GRID_BOTTOM: f32 = 66.0;
-const INFO_H: f32 = 30.0;
-/// Where the side columns end, from their window edge.
-const LEFT_PANEL_END: f32 = SIDE + LEFT_W;
-const RIGHT_PANEL_END: f32 = SIDE + RIGHT_W;
-/// The scrims behind the side columns: their alpha, solid this far past the column, gone this far into the grid.
+/// The grid area's distance from the window's bottom (2 px above the bottom bar), and its info line under the grid
+/// (as tall as its zoom rings): the left column ends where the grid does, above that line (Niklas, 14 Oct 2026:
+/// "the parts list spills into that bottom area"). Tight on the bars, top and bottom (Niklas: "both the top and
+/// bottom panel take too much space"; they were 84 and 96 px).
+const GRID_BOTTOM: f32 = 58.0;
+const INFO_H: f32 = 28.0;
+/// The grid area's distance from the window's top (just under the overlay pills).
+const GRID_TOP: f32 = 66.0;
+/// The scrim around the grid: its alpha, solid up to this far outside the grid (12 px past the side columns), gone
+/// this far inside it.
 const SCRIM_ALPHA: f32 = 0.9;
-const SCRIM_SOLID_PAST: f32 = 4.0;
-const SCRIM_INTO_GRID: f32 = 10.0;
+const SCRIM_OUT: f32 = 10.0;
+const SCRIM_INTO: f32 = 10.0;
 /// List entries in the pool (headings and part rows; the list scrolls by pixels). More than the content has, so
 /// the pool never shows other entries while it scrolls (that rebuilt the part icons, a blink).
 const SLOTS: usize = 48;
