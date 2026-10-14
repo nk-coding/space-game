@@ -48,7 +48,7 @@ use bevy::input::mouse::AccumulatedMouseScroll;
 
 use bevy::prelude::*;
 use bevy::text::LetterSpacing;
-use bevy::ui::{BackgroundGradient, ColorStop, ComputedNode, LinearGradient, UiGlobalTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 use data::career::Availability;
 use data::{Content, Part, Shape, Unlock};
@@ -60,7 +60,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, Hot, Pill, PillText, Ring, ScreenFx, ScreenPart, TextField, Tip, Tone, UiBlock, ValueBar, WHEEL_LINE_PX, field_text, label, number,
+    Edge, FADE_DEPTH, Hot, Pill, PillText, Ring, ScreenFx, ScreenPart, ScrollRows, Scrollbar, TextField, Tip, Tone, UiBlock, ValueBar, WHEEL_LINE_PX,
+    field_text, label, number,
     prose, ring_glyph, ring_node, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, spawn_scroll_cue, sub_tone, tracked, wheel_rows,
 };
 
@@ -84,8 +85,6 @@ const ROW_GAP: f32 = 3.0;
 /// An armour swatch and the gap after it: eight fill the column.
 const SWATCH: f32 = 26.0;
 const SWATCH_GAP: f32 = 5.0;
-/// The fade over a scrolled edge of the chip line.
-const FADE_W: f32 = 28.0;
 /// The least room the status line gets in the bottom bar before the tools fold into their dropdown, and how much
 /// more it needs to unfold them again (so a width near the edge doesn't flip them every frame).
 pub const MIN_STATUS: f32 = 120.0;
@@ -129,12 +128,9 @@ pub(super) struct SwatchStrip;
 #[derive(Component)]
 pub(super) struct SwatchTile(String);
 
-/// The category chips' line (scrolls sideways) and the fades over its edges (false: left).
+/// The category chips' line (scrolls sideways; the kit's fades show over an edge with more chips past it).
 #[derive(Component)]
 pub(super) struct ChipLine;
-
-#[derive(Component)]
-pub(super) struct ChipFade(bool);
 
 /// The bottom bar's tool pills with mirror and bevel (wide), and the dropdown with the two icon toggles (folded).
 #[derive(Component)]
@@ -363,6 +359,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     lp.spawn((
                         SwatchStrip,
                         ScrollPosition::default(),
+                        Scrollbar::horizontal().outside().room(12),
                         Node { flex_direction: FlexDirection::Row, column_gap: px(SWATCH_GAP), width: percent(100), flex_shrink: 0.0, overflow: Overflow::scroll_x(), ..default() },
                     ))
                     .with_children(|strip| {
@@ -408,6 +405,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         w.spawn((
                             ChipLine,
                             ScrollPosition::default(),
+                            Scrollbar::horizontal().outside(),
                             Node { flex_direction: FlexDirection::Row, column_gap: px(6), width: percent(100), height: percent(100), overflow: Overflow::scroll_x(), ..default() },
                         ))
                         .with_children(|cats| {
@@ -415,15 +413,11 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                                 spawn_pill(cats, fonts, &cat.name.to_uppercase(), 8.5, 24.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Category(cat.id.clone())));
                             }
                         });
-                        for right in [false, true] {
-                            let (from, to) = if right { (0.0, 0.95) } else { (0.95, 0.0) };
-                            let fade = LinearGradient::to_right(vec![ColorStop::percent(ui_color(back, from), 0), ColorStop::percent(ui_color(back, to), 100)]);
-                            let at = if right { abs(None, Some(0.0), Some(0.0), Some(0.0)) } else { abs(Some(0.0), None, Some(0.0), Some(0.0)) };
-                            w.spawn((ChipFade(right), Node { display: Display::None, width: px(FADE_W), ..at }, BackgroundGradient::from(fade)));
-                        }
                     });
                     lp.spawn((
                         PaletteList,
+                        Scrollbar::vertical(),
+                        ScrollRows::default(),
                         Node {
                             flex_direction: FlexDirection::Column,
                             flex_grow: 1.0,
@@ -518,6 +512,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         .spawn((
                             SelScroll,
                             ScrollPosition::default(),
+                            Scrollbar::vertical().room(0),
                             Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
                         ))
                         .with_children(|sb| {
@@ -919,7 +914,7 @@ pub(super) fn sync_palette(
     style: Res<Style>,
     mut pal: ResMut<Palette>,
     window: Single<&Window, With<PrimaryWindow>>,
-    list: Single<(&ComputedNode, &UiGlobalTransform), With<PaletteList>>,
+    list: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollRows), With<PaletteList>>,
     scroll: Res<AccumulatedMouseScroll>,
     mut slots: Query<(&Slot, &mut Node), (Without<SlotHead>, Without<PaletteRow>, Without<RowNew>)>,
     mut heads: Query<(&SlotHead, &mut Node), (Without<Slot>, Without<PaletteRow>, Without<RowNew>)>,
@@ -945,7 +940,7 @@ pub(super) fn sync_palette(
         pal.entries = entries;
         pal.made_from = Some(made_from);
     }
-    let (node, tf) = *list;
+    let (node, tf, mut bar) = list.into_inner();
     let height = node.size.y * node.inverse_scale_factor;
     let max = max_offset(&pal.entries, height);
     let mut offset = pal.offset.min(max);
@@ -956,6 +951,9 @@ pub(super) fn sync_palette(
             offset = i.min(max);
             jumped = Some(cat);
         }
+    } else if let Some(first) = bar.take_want() {
+        offset = first.min(max);
+        jumped = None;
     } else if scroll.delta.y != 0.0
         && let Some(c) = window.physical_cursor_position()
         && node.contains_point(*tf, c)
@@ -964,6 +962,7 @@ pub(super) fn sync_palette(
         jumped = None;
     }
     let visible = fitting(&pal.entries[offset.min(pal.entries.len())..], height);
+    ScrollRows::show(&mut bar, offset, visible, pal.entries.len());
     // The lit chip: the one clicked while its heading is in view, else the section at the top.
     let in_view = |cat: &str| pal.entries[offset.min(pal.entries.len())..].iter().take(visible).any(|e| matches!(e, Entry::Head { category, .. } if category == cat));
     let lit = jumped.clone().filter(|c| in_view(c)).or_else(|| {
@@ -1051,7 +1050,7 @@ pub(super) fn sync_swatches(
 }
 
 /// The category chips' line: the wheel or a drag over it scrolls it sideways, a lit chip is scrolled into view, and
-/// the fades show over an edge with more chips behind it.
+/// the kit's fades show over an edge with more chips behind it.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn scroll_chips(
     pal: Res<Palette>,
@@ -1060,7 +1059,6 @@ pub(super) fn scroll_chips(
     buttons: Res<ButtonInput<MouseButton>>,
     line: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition, &Children), With<ChipLine>>,
     chips: Query<(&ComputedNode, &UiGlobalTransform, &ActionButton)>,
-    mut fades: Query<(&ChipFade, &mut Node)>,
     mut drag: Local<Option<(f32, f32)>>,
 ) {
     let (node, tf, mut pos, children) = line.into_inner();
@@ -1090,15 +1088,12 @@ pub(super) fn scroll_chips(
         if left < x {
             x = left;
         } else if right > x + width {
-            x = right - width + FADE_W;
+            x = right - width + FADE_DEPTH;
         }
     }
     let x = x.clamp(0.0, max);
     if pos.0.x != x {
         pos.0.x = x;
-    }
-    for (fade, mut n) in &mut fades {
-        set_display(&mut n, if fade.0 { x < max - 1.0 } else { x > 1.0 });
     }
 }
 

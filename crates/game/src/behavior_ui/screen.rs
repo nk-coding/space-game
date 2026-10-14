@@ -34,7 +34,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, UiPalette, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, Hot, Pill, ScreenFx, ScreenPart, TextField, Tip, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill, spawn_scroll_cue, tracked,
+    Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, TextField, Tip, Tone, WHEEL_LINE_PX, field_text, glow, label, prose, ring_node, set_color, set_text, spawn_pill,
+    spawn_scroll_cue, tracked,
 };
 
 use super::actions::{BehaviorAction, BehaviorButton};
@@ -261,6 +262,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 Hot::default(),
                 BehaviorButton(BehaviorAction::Deselect),
                 ScrollPosition::default(),
+                Scrollbar::vertical(),
                 // Long rules are clipped at the right edge, not drawn over the inspector.
                 Node {
                     overflow: Overflow { x: OverflowAxis::Clip, y: OverflowAxis::Scroll },
@@ -275,7 +277,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
             // The divider and the right column: the inspector, ADD NODE with its search and the palette.
             root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(1), ..abs(None, Some(SIDE + RIGHT_W + 16.0), Some(TOP), Some(BOTTOM)) }, BackgroundColor(kit.c(Tone::Label, 0.14))));
             root.spawn((ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(TOP), Some(BOTTOM)) })).with_children(|rp| {
-                let body = rp.spawn((InspectorBody, ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() })).id();
+                let body = rp.spawn((InspectorBody, ScrollPosition::default(), Scrollbar::vertical(), Node { flex_direction: FlexDirection::Column, min_height: px(0), overflow: Overflow::scroll_y(), ..default() })).id();
                 rp.spawn((Node { height: px(1), margin: UiRect::vertical(px(18)), flex_shrink: 0.0, ..default() }, BackgroundColor(kit.c(Tone::Label, 0.14))));
                 rp.spawn((ScreenText::AddNode, label(fonts, "ADD NODE", 9.0, kit.c(Tone::Label, 1.0)), Node { margin: UiRect::bottom(px(10)), flex_shrink: 0.0, ..default() }));
                 rp.spawn((
@@ -305,6 +307,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     .spawn((
                         PaletteList,
                         ScrollPosition::default(),
+                        // No glow room: its pills don't glow, and the search field is just above.
+                        Scrollbar::vertical().room(0),
                         Node {
                             flex_direction: FlexDirection::Row,
                             flex_wrap: FlexWrap::Wrap,

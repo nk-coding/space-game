@@ -40,8 +40,8 @@ use crate::storage::{Document, Storage};
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, Hot, Pill, ScreenFx, ScreenPart, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill, tracked,
-    wheel_rows,
+    Edge, Hot, Pill, ScreenFx, ScreenPart, ScrollRows, Scrollbar, Tip, Tone, UiClick, UiInputSet, show_screen, UiStyleSet, label, number, prose, ring_node, set_color, set_text,
+    spawn_brackets, spawn_pill, tracked, wheel_rows,
 };
 
 /// Escort slots the layout has (placeholder: the slice's mind grows to 4 cores, so at most 3 escorts fly).
@@ -186,7 +186,7 @@ enum FleetIcon {
     Card(usize),
 }
 
-/// The card row (the wheel over it scrolls).
+/// The card row (the wheel over it scrolls, and a drag on its scrollbar).
 #[derive(Component)]
 struct CardRow;
 
@@ -250,7 +250,7 @@ fn input(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
     window: Single<&Window, With<PrimaryWindow>>,
-    row: Single<(&ComputedNode, &UiGlobalTransform), With<CardRow>>,
+    row: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollRows), With<CardRow>>,
     mut fleet: ResMut<Fleet>,
     mut career: ResMut<PlayerCareer>,
     mut storage: ResMut<Storage>,
@@ -266,17 +266,21 @@ fn input(
         fleet.open = false;
         return;
     }
-    let (node, tf) = *row;
-    if scroll.delta.y != 0.0
+    let (node, tf, mut rows) = row.into_inner();
+    let max = fleet.designs.len().saturating_sub(CARDS);
+    let mut offset = fleet.offset;
+    if let Some(first) = rows.take_want() {
+        offset = first.min(max);
+    } else if scroll.delta.y != 0.0
         && let Some(c) = window.physical_cursor_position()
         && node.contains_point(*tf, c)
     {
-        let max = fleet.designs.len().saturating_sub(CARDS);
-        let offset = (fleet.offset as f32 - wheel_rows(&scroll)).clamp(0.0, max as f32) as usize;
-        if offset != fleet.offset {
-            fleet.offset = offset;
-        }
+        offset = (offset as f32 - wheel_rows(&scroll)).clamp(0.0, max as f32) as usize;
     }
+    if offset != fleet.offset {
+        fleet.offset = offset;
+    }
+    ScrollRows::show(&mut rows, offset, CARDS.min(fleet.designs.len()), fleet.designs.len());
     let content = &content.0;
     for c in clicks.read() {
         let Ok((b, pill)) = buttons.get(c.0) else { continue };
@@ -505,6 +509,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     stage
                         .spawn((
                             CardRow,
+                            Scrollbar::horizontal().outside(),
+                            ScrollRows::default(),
                             ScreenPart::new(Edge::Bottom, 3),
                             Node { flex_direction: FlexDirection::Row, column_gap: px(14), ..abs(Vec2::new(36.0, 562.0), Some(Vec2::new(1208.0, 94.0))) },
                         ))
