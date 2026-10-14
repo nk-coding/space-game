@@ -13,6 +13,12 @@
 //! (`zoom_target`, what the wheel, + / − and a pinch set) is untouched; zooming by hand during a lock starts
 //! from what is on screen and ends the framing until the lock does.
 //!
+//! **Speed widening** (GDR-0079, 14 Oct 2026, placeholders): in flight, while the camera follows a vessel, the view
+//! widens as it goes faster, so the player sees further ahead at speed: by its speed's share of the vessel's top
+//! speed, up to [`SPEED_WIDEN_MAX`] times wider at top speed (none at rest), eased with the time constant
+//! [`SPEED_WIDEN_TAU`] so it never jumps. It sits on top of the chosen zoom (a hand zoom changes the base, the
+//! widening stays) and composes with the lock framing by taking whichever is further out: the two never stack.
+//!
 //! The camera always covers the whole window. [`CameraRig::view_offset`] moves the point the rig centres on
 //! away from the window centre (the drydock centres its grid between the side panels); the screen ↔ world
 //! helpers include it. Flight input (wheel, drag, pinch, F) runs only in flight; the drydock drives the rig
@@ -41,6 +47,10 @@ const GLIDE_FAR: f32 = 150.0;
 /// share of the chosen zoom it zooms out to.
 pub const LOCK_MARGIN: f32 = 90.0;
 pub const LOCK_MIN_SHARE: f32 = 0.35;
+/// Speed widening: how much wider the view is at the followed vessel's top speed (zoom ÷ this), and the time
+/// constant it eases with (s).
+const SPEED_WIDEN_MAX: f32 = 1.4;
+const SPEED_WIDEN_TAU: f32 = 0.8;
 
 #[derive(Component)]
 pub struct MainCamera;
@@ -71,6 +81,8 @@ pub struct CameraRig {
     framed: bool,
     /// The user zoomed by hand during this lock: no lock framing until it ends.
     unframed: bool,
+    /// The speed widening now (eased; 1 = none): the view is this many times wider than the chosen zoom shows.
+    widen: f32,
     /// Where the focused vessel is (for the range rings), if any.
     pub focus: Option<Vec2>,
     /// The vessel followed last frame; a change starts a glide.
@@ -101,6 +113,7 @@ impl Default for CameraRig {
             user_zoom: false,
             framed: false,
             unframed: false,
+            widen: 1.0,
             focus: None,
             followed: None,
             follow_pos: Vec2::ZERO,
@@ -202,7 +215,8 @@ impl CameraRig {
         self.zoom_anchor = None;
     }
     /// One frame of the zoom easing towards `target` (time constant 0.1 s; `zoom_target`, or less while lock
-    /// framing keeps a target on screen); a zoom around a point moves the camera with it.
+    /// framing keeps a target on screen or the speed widening shows more); a zoom around a point moves the camera
+    /// with it.
     fn ease_zoom(&mut self, dt: f32, target: f32) {
         let k = 1.0 - (-dt / 0.1).exp();
         let z = self.zoom + (target - self.zoom) * k;
@@ -222,11 +236,11 @@ impl CameraRig {
     pub fn half_extent(&self) -> Vec2 {
         self.viewport / (2.0 * self.zoom)
     }
-    /// A zoom by hand: while the lock framing zooms out, what is on screen becomes the chosen zoom, and the
-    /// framing stops until the lock ends.
+    /// A zoom by hand: while the lock framing zooms out, what is on screen (less the speed widening, which stays on
+    /// top) becomes the chosen zoom, and the framing stops until the lock ends.
     fn hand_zoom(&mut self) {
         if self.framed {
-            self.zoom_target = self.zoom;
+            self.zoom_target = self.zoom * self.widen;
             self.framed = false;
         }
         self.unframed = true;
@@ -239,6 +253,22 @@ fn lock_fit(viewport: Vec2, d: Vec2, chosen: f32) -> f32 {
     let room = (viewport / 2.0 - Vec2::splat(LOCK_MARGIN)).max(Vec2::ONE);
     let fit = (room.x / d.x.abs().max(1e-3)).min(room.y / d.y.abs().max(1e-3));
     fit.max(chosen * LOCK_MIN_SHARE).max(MIN_PX_PER_M).min(chosen)
+}
+
+/// Speed widening, where it is going: 1 at rest, growing with the share of the top speed `top` (m/s) the vessel
+/// flies at `speed` (m/s), to [`SPEED_WIDEN_MAX`] at top speed and beyond. A vessel without a top speed (no thrust
+/// along any axis) gets none.
+fn speed_widen(speed: f32, top: f32) -> f32 {
+    if top <= 0.0 || !speed.is_finite() {
+        return 1.0;
+    }
+    1.0 + (SPEED_WIDEN_MAX - 1.0) * (speed / top).clamp(0.0, 1.0)
+}
+
+/// One frame (`dt` s) of the speed widening easing from `now` towards `to` (exponential, time constant
+/// [`SPEED_WIDEN_TAU`]: the same path at any frame rate).
+fn ease_widen(now: f32, to: f32, dt: f32) -> f32 {
+    to + (now - to) * (-dt / SPEED_WIDEN_TAU).exp()
 }
 
 pub struct CameraPlugin;
@@ -362,16 +392,18 @@ fn update_camera(
     input: Res<PlayerInput>,
     mut rig: ResMut<CameraRig>,
     camera: Single<(&mut Transform, &mut Projection), With<MainCamera>>,
+    app: Res<State<AppMode>>,
 ) {
     let dt = time.delta_secs().min(0.1);
     let alpha = fixed.overstep_fraction().clamp(0.0, 1.0);
 
     // The focused vessel, else the watched one of a behavior test (controlling piece, else the main piece).
     let followed = focus.0.or(scene.watched());
-    rig.focus = followed.and_then(|id| world.sim.ship(id)).and_then(|s| {
+    let followed_piece = followed.and_then(|id| world.sim.ship(id)).and_then(|s| {
         let pid = s.control_piece().or_else(|| s.main_piece())?;
-        s.piece(pid).map(|p| piece_com(p, alpha))
+        s.piece(pid).map(|p| (s, p))
     });
+    rig.focus = followed_piece.map(|(_, p)| piece_com(p, alpha));
     // A new focus: glide over from where the camera is.
     if followed != rig.followed {
         rig.followed = followed;
@@ -417,17 +449,28 @@ fn update_camera(
         }
         CamMode::Free => {}
     }
-    // Lock framing: zoom out enough to keep the locked target on screen (see the module doc).
+    // Speed widening (see the module doc): only in flight, eased back to none when the camera stops following;
+    // the other screens set their own zoom, so it is gone at once there.
+    rig.widen = match (*app.get(), rig.mode, followed_piece) {
+        (AppMode::Flight, CamMode::Follow, Some((s, p))) => {
+            ease_widen(rig.widen, speed_widen(v2(p.body.linvel).length(), s.telemetry().top_speed), dt)
+        }
+        (AppMode::Flight, ..) => ease_widen(rig.widen, 1.0, dt),
+        _ => 1.0,
+    };
+    let wide = rig.zoom_target / rig.widen;
+    // Lock framing: zoom out enough to keep the locked target on screen (see the module doc); with the speed
+    // widening, whichever is further out.
     let lock = input.lock.and_then(|t| target_point(&world, t, alpha));
     if input.lock.is_none() {
         rig.unframed = false;
     }
-    let want = match (rig.mode, rig.focus, lock) {
-        (CamMode::Follow, Some(f), Some(t)) if !rig.unframed => lock_fit(rig.viewport, t - f, rig.zoom_target),
-        _ => rig.zoom_target,
+    let framing = match (rig.mode, rig.focus, lock) {
+        (CamMode::Follow, Some(f), Some(t)) if !rig.unframed => Some(lock_fit(rig.viewport, t - f, rig.zoom_target)),
+        _ => None,
     };
-    rig.framed = want < rig.zoom_target;
-    rig.ease_zoom(dt, want);
+    rig.framed = framing.is_some_and(|z| z < wide);
+    rig.ease_zoom(dt, framing.map_or(wide, |z| z.min(wide)));
 
     let (mut tf, mut proj) = camera.into_inner();
     // The camera covers the whole window; `pos` sits at the view centre.
@@ -484,6 +527,60 @@ mod tests {
         zoom_by(&mut rig, 1.25, None);
         assert!((rig.zoom_target - 9.0 * 1.25).abs() < 1e-4, "{}", rig.zoom_target);
         assert!(rig.unframed && !rig.framed);
+    }
+
+    /// Speed widening: none at rest, wider the faster (by the share of the top speed), capped at the top speed;
+    /// nothing for a vessel without one.
+    #[test]
+    fn speed_widening_grows_with_speed_up_to_its_cap() {
+        assert_eq!(speed_widen(0.0, 20.0), 1.0);
+        let mut last = 1.0;
+        for v in 1..=20 {
+            let w = speed_widen(v as f32, 20.0);
+            assert!(w > last, "{v} m/s: {w}");
+            last = w;
+        }
+        assert!((speed_widen(10.0, 20.0) - (1.0 + (SPEED_WIDEN_MAX - 1.0) / 2.0)).abs() < 1e-6);
+        assert_eq!(speed_widen(20.0, 20.0), SPEED_WIDEN_MAX);
+        assert_eq!(speed_widen(55.0, 20.0), SPEED_WIDEN_MAX);
+        assert_eq!(speed_widen(5.0, 0.0), 1.0);
+        assert_eq!(speed_widen(f32::NAN, 20.0), 1.0);
+    }
+
+    /// The widening eases in (no jump), takes about the time constant to get most of the way, and follows the same
+    /// path at 30 and 150 fps.
+    #[test]
+    fn speed_widening_eases_the_same_at_any_frame_rate() {
+        let run = |fps: u32, seconds: f32| {
+            let dt = 1.0 / fps as f32;
+            let mut w = 1.0;
+            let mut step = 0.0f32;
+            for _ in 0..(seconds * fps as f32).round() as u32 {
+                let next = ease_widen(w, SPEED_WIDEN_MAX, dt);
+                step = step.max(next - w);
+                w = next;
+            }
+            (w, step)
+        };
+        let (a, step_a) = run(30, 0.8);
+        let (b, step_b) = run(150, 0.8);
+        assert!((a - b).abs() < 1e-4, "{a} vs {b}");
+        // One time constant: 1 − 1/e of the way.
+        let share = (a - 1.0) / (SPEED_WIDEN_MAX - 1.0);
+        assert!((share - (1.0 - (-1.0f32).exp())).abs() < 1e-3, "{share}");
+        // No frame moves it more than a small fraction of the way (a 30 fps frame: 1 − e^(−1/24) ≈ 4 %).
+        assert!(step_a < 0.02 && step_b < 0.005, "{step_a} {step_b}");
+        let (c, _) = run(60, 6.0);
+        assert!((c - SPEED_WIDEN_MAX).abs() < 1e-3, "{c}");
+    }
+
+    /// A hand zoom while the lock framing is further out than the speed widening: what is on screen becomes the
+    /// chosen zoom with the widening still on top, so the view does not jump.
+    #[test]
+    fn a_hand_zoom_during_a_lock_at_speed_keeps_the_view() {
+        let mut rig = CameraRig { zoom: 6.0, zoom_target: 18.0, widen: 1.2, framed: true, ..default() };
+        rig.hand_zoom();
+        assert!((rig.zoom_target / rig.widen - 6.0).abs() < 1e-4, "{}", rig.zoom_target);
     }
 
     /// Glides a camera from the origin to a vessel 100 m away that flies at 20 m/s, at `fps` (a multiple of 10);

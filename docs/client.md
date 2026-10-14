@@ -36,7 +36,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
-| Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view: "Lock framing" under [Structure](#structure)) | wheel, + / − | pinch |
+| Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view, and it widens up to 1.4 × at top speed: "Lock framing" and "Speed widening" under [Structure](#structure)) | wheel, + / − | pinch |
 | Camera | F: follow (load test: frame) ↔ free; drag with the middle button (the left button too while nobody is piloted: showcase, load test, watch) | – |
 | Drydock (back to the ship editor; the design is untouched); in TEST IN RANGE back to where the test started; nothing in a voyage | T | – |
 | Home (the shipyard; the flight ends); in a voyage M opens the ABANDON VOYAGE? panel instead (GDR-0077: Enter abandons the voyage, lost; Esc or M again close it) | M, or the ring top left (not in a voyage) | the ring top left |
@@ -253,6 +253,17 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   zoom stays the choice (`CameraRig::zoom_target`, what the drydock and home remember); a zoom by hand during a
   lock starts from what is on screen and ends the framing until the lock ends. Not in a free camera, the load
   test's frame or watch mode (nobody locks there).
+- **Speed widening** (`camera.rs`, GDR-0079, 14 Oct 2026, placeholders; Niklas: "there should also be some auto
+  zoom based on speed"): while the camera follows a vessel in flight (the focus, or the watched ship), the view
+  widens with its speed's share of its top speed (`FlightTelemetry::top_speed`, the HUD's `TOP`): linear, none at
+  rest, up to 1.4 × wider at top speed (`SPEED_WIDEN_MAX`; zoom ÷ 1.4), eased in and out with a time constant of
+  0.8 s (`SPEED_WIDEN_TAU`, real time, the same at any frame rate; unit-tested), so the player sees further ahead
+  at speed and the view never jumps. It sits on top of the chosen zoom: a zoom by hand changes the base, the
+  widening stays. With the lock framing the camera takes **whichever is further out** (not the product): the
+  locked target stays exactly 90 px inside the edge when the framing needs more room, and the two never stack
+  into a view wider than either asks for (the framing's 35 % floor stays a share of the chosen zoom). A free
+  camera or the load test's frame eases back to none; the drydock, home, the map and the other screens drop it
+  at once (they set their own zoom, and remember the chosen one).
 - **Draw order**: every piece view draws on its own layer, `ship_view::draw_layer`: its ship's layer
   (`10 + ship id mod 80`) plus an eighth per piece id mod 8, so z 10..90, fixed for the ship's whole life
   (13 Oct 2026; before, every rebuild took the next layer of a round robin, so a ship that lost a part could pop
