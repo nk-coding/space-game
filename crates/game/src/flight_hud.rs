@@ -948,6 +948,7 @@ fn update_hull_map(
 }
 
 /// A dotted ring around the locked target (world space).
+#[allow(clippy::too_many_arguments)]
 fn lock_ring(
     time: Res<Time>,
     world: Res<SimWorld>,
