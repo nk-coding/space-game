@@ -6,7 +6,8 @@
 //! sprites, `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene (`scene.rs`).
 //!
 //! In the load test the overlay also logs a one-line summary to the browser console after 60 s
-//! (`LOADTEST ...`).
+//! (`LOADTEST ...`). `?slowmo=N` runs the game's clock N times slower (1 to 50; for looking at animations such as
+//! the voyage's warp in headless screenshots; the sim steps the same ticks, only later).
 
 use std::fmt::Write as _;
 
@@ -50,7 +51,7 @@ impl Plugin for HudPlugin {
                 summary_done: false,
                 scratch: String::with_capacity(512),
             })
-            .add_systems(Startup, spawn_debug)
+            .add_systems(Startup, (spawn_debug, slow_motion))
             .add_systems(
                 Update,
                 (
@@ -60,6 +61,13 @@ impl Plugin for HudPlugin {
                     update_debug,
                 ),
             );
+    }
+}
+
+/// `?slowmo=N`: the virtual clock (the sim's steps, flight's effects) runs N times slower.
+fn slow_motion(params: Res<crate::params::Params>, mut time: ResMut<Time<Virtual>>) {
+    if let Some(n) = params.f32("slowmo").filter(|n| *n > 1.0) {
+        time.set_relative_speed(1.0 / n.min(50.0));
     }
 }
 

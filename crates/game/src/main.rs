@@ -15,7 +15,8 @@
 //! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
 //! - `map`: the voyage map (a star map of the voyages, their states from the career, SET COURSE).
 //! - `voyage`: launching a voyage (the career's seed and save), its run (recall, losing it) and its end;
-//!   `debrief`: the panel and the summary line over home after a voyage.
+//!   `debrief`: the panel and the summary line over home after a voyage; `warp_fx`: the voyage's transitions (the
+//!   warp-out, the arrival, the dip to dark and the lift at the next screen).
 //! - `drydock`: the ship editor (the player's design, its view, the screen, the test flight).
 //! - `behavior_ui`: the BEHAVIOR screen (how the design thinks: graph and text views of its rules), opened from
 //!   the drydock.
@@ -64,6 +65,7 @@ mod tuning;
 mod ui_icons;
 mod ui_kit;
 mod voyage;
+mod warp_fx;
 
 use bevy::camera::{CompositingSpace, Hdr};
 use bevy::prelude::*;
@@ -146,7 +148,7 @@ fn main() {
             fx::FxPlugin,
             shield::ShieldPlugin,
             backdrop::BackdropPlugin,
-            flight_hud::FlightHudPlugin,
+            (flight_hud::FlightHudPlugin, warp_fx::WarpFxPlugin),
             fleet_bar::FleetBarPlugin,
             hud::HudPlugin,
         ))

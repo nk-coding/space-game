@@ -84,6 +84,7 @@ Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHA
 | `debug=1`, `glow=0`, `bloom=1`, `hud=0`, `stats=1` | render toggles, HUD, debug overlay |
 | `zoom=N` | start zoom in px per metre (3–160) |
 | `touch=1` | show the touch widgets without a touch first |
+| `slowmo=N` | the game's clock runs N times slower (1–50; the sim steps the same ticks, only later): for looking at animations such as the voyage's warp in headless screenshots. Real-time parts (screen transitions, the lift after a voyage) keep their speed |
 
 Natively the same `key=value&…` string comes from the `GAME_PARAMS` environment variable (`params.rs`). A bare
 key means 1; `0`, `false`, `off` and `no` turn a flag off.
@@ -199,7 +200,8 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Voyage map** (`map/`): `AppMode::Map`, the star map of the voyages and SET COURSE. See [Voyage map](#voyage-map).
 - **Voyages** (`voyage.rs`, `debrief.rs`): the `StartVoyage` message and the URL launch, the run (`VoyageRun`:
   FixedUpdate after the events), its end through the career, and the debrief over home. `scene.rs` builds the
-  voyage's world (`SceneKind::Voyage`). See [Voyages](#voyages).
+  voyage's world (`SceneKind::Voyage`); `warp_fx.rs` draws its transitions (PostUpdate, after the piece views are
+  posed). See [Voyages](#voyages).
 - **TEST IN RANGE** (`test_range.rs`): the `StartTest` message (handled in every mode: from another mode it launches
   a flight, in flight it rebuilds the scene), `check` / `resolve` of the tested program, and `BehaviorWatch`
   (FixedUpdate, after the events: the tested ship's behavior state after each think). `scene.rs` builds the test
@@ -445,7 +447,10 @@ Track 7H of the first playable loop, 14 Oct 2026 (GDR-0062, GDR-0065, GDR-0068, 
 `docs/sim.md` "Voyages", the career's `docs/career.md` "Voyages"). Code: `voyage.rs` (launch, run, end),
 `scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `debrief.rs` (the debrief).
 Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (the start: sites, cargo, RECALL),
-`voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png`,
+`voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png` (before the
+transitions), `voyage-warp-out-1.png` (the fleet charging), `voyage-warp-out-2.png` (the jump: stretched, darting
+off, the flash and its ring where it left), `voyage-warp-emergency.png` (the emergency recall mid-jump, amber),
+`voyage-warp-in.png` (the arrival: streaking in from behind towards its place),
 `voyage-abandon-panel.png` (M: the ABANDON VOYAGE? panel), `voyage-abandoned.png` (the lost banner after abandoning), `voyage-debrief.png`, `voyage-debrief-lost.png`,
 `voyage-summary.png` (home after DISMISS).
 
@@ -477,7 +482,7 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
   · R` (gold). The home ring top left is hidden. The help line names R RECALL and M ABANDON.
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
-  RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`); losing every vessel
+  RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`, for the emergency recall `EMERGENCY WARP · 2` in gold); what it looks like: **Transitions** below; losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones
   too, `voyage::fleet_haul`; sim items become `data::career::HaulItem`s one to one), the career unloads it
   (`VoyageEnd::Recalled { haul, cleared: goal cleared, ticks }`), the save is written, home opens with the debrief.
@@ -493,6 +498,32 @@ Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (
   ABANDONED`, every hold's items lost), as closing the game would: the way out when a dark ship is stuck near an
   armed enemy. The panel closes by itself when the voyage is lost another way. Leaving flight
   any other way while a recorded voyage runs ends it as lost too (a guard; nothing in the game does it).
+- **Transitions** (`warp_fx.rs`, [GDR-0087](gdr/0087-voyage-transitions.md); timings and looks are placeholders
+  in its tuning block). Client visuals only, read from the sim's tick (plus the fixed step's
+  overstep) and the voyage's phase: they pause with P, look the same at any frame rate and never touch the sim.
+  - **Warp-out** (the 3 s of `Phase::Warping`): each vessel charges for 2.25 s: a soft glow under it, a ring around
+    it that tightens and brightens, a dashed ring inside that spins up, faint streaks drawn in towards it. Then it
+    stretches along its heading (5 × long, half as wide) and darts ahead out of sight in 0.3 s; a flash and a ring
+    stay where it left, a streak along its way fades. The escorts jump a moment before the flagship (0.06 s each, at
+    most 0.24 s). The camera eases in by 12 % over the charge and holds (`CameraRig::warp_zoom`, on top of the
+    chosen zoom like the speed widening). The banner and the countdown stay. The emergency recall (no working gun,
+    GDR-0074) charges unstable: its light amber (gold into coral), its rings gold, its streaks coral, all flickering,
+    the rings and the jump shaking. The vessels are stretched and moved through their piece views' transforms after
+    `ship_view::sync_piece_views` posed them, so their shield bubbles follow; the light is FX sprites (the atlas's
+    glow dot and halo strip). Engine plumes stay with the sim's pose: they show for a moment under the flash.
+  - **Arrival** (a voyage's first 1.8 s, counted from its first frame so the hitch of building the world doesn't
+    eat it): the reverse. The world comes up out of the dark (0.45 s) while the HUD slides in; each vessel streaks
+    in from behind, shrinks onto its place with a flash and a ring, and its glow fades; the camera eases back out
+    from 12 % in.
+  - **The hand-over** (every end: recalled, lost, abandoned; and a lost test flight going back to the drydock or the
+    BEHAVIOR screen): over the last 0.36 s the HUD closes with its screen transition (its world markers, the lock
+    ring and the enemy and site arrows, fade with it) and a veil over all the UI dips to the backdrop's darkest
+    colour (`#010409`); the frame where the mode changes holds it, so the cut is never seen. The next screen comes up
+    out of it in 0.5 s (real time). After a recall a ring of light spreads from home's gate while home's camera flies
+    out of it. A loss (`SHIP LOST`, `VOYAGE ABANDONED`, a lost test flight) first dims the world behind its banner to
+    40 % with a veil under the UI.
+  - Checked (14 Oct 2026, headless 1600 × 900 with `?slowmo=`): the frames above, the abandon flow (the dim behind
+    the banner, the dip, home coming up out of it at the gate) and the gate's ring at home.
 - **Counts** for the debrief: kills are the enemy's `VesselLost` events (a split-off half counts on its own), ships
   lost the player's.
 - **The debrief** (`debrief.rs`, after `home-b.png`): after a voyage, a panel over home's right side (420 px, on a
@@ -661,7 +692,9 @@ starts; H hides it the same way; leaving flight snaps it shut). The station fade
 (`shipyard::station_alpha`, two group materials: the U with its rigging and the docked ship, and what is home's
 alone). A dimming screen (BEHAVIOR, RESEARCH, FLEET) leaves `ui_kit::BEHIND` (3 %) of the station showing and
 veils the space backdrop to its darkest colour (`backdrop::VeilsBackdrop`), so the three share one ground. Not faded yet: the BEHAVIOR screen's dashed outlines (a UI material), the BLUEPRINTS / BEHAVIORS layers
-(hidden at once when their screen is left), the TEXT view's egui editor, and the flight world itself (a scene cut).
+(hidden at once when their screen is left), the TEXT view's egui editor, and the flight world itself (a scene cut),
+except where a voyage ends or a lost test flight goes back: there the HUD closes and the window dips to dark and
+comes up again on the next screen ([Voyages](#voyages), `warp_fx.rs`).
 
 ## Research
 

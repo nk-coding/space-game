@@ -16,10 +16,11 @@
 //!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
 //!   what it does; markers at the screen edge for the sites off screen (name and distance: raiders coral, wrecks
 //!   gold, the goal brighter, cleared ones dim); banners for sites waking and cleared and for the goal; the
-//!   warp-out's countdown; `SHIP LOST · RECALLED HOME` with its countdown (`voyage-hud-lost.png`; `VOYAGE
-//!   ABANDONED` after abandoning). No home ring: M opens the ABANDON VOYAGE? panel instead (GDR-0077), a root of
-//!   its own low under the ship (the flight goes on while it is open), that slides up from the bottom: what
-//!   stays behind, ABANDON VOYAGE (coral; Enter) and KEEP FLYING (Esc or M again).
+//!   warp-out's countdown (`EMERGENCY WARP · 2` in gold for the emergency recall); `SHIP LOST · RECALLED HOME` with
+//!   its countdown (`voyage-hud-lost.png`; `VOYAGE ABANDONED` after abandoning). No home ring: M opens the ABANDON
+//!   VOYAGE? panel instead (GDR-0077), a root of its own low under the ship (the flight goes on while it is open),
+//!   that slides up from the bottom: what stays behind, ABANDON VOYAGE (coral; Enter) and KEEP FLYING (Esc or M
+//!   again). At a voyage's end the HUD closes with its transition, its world markers fading with it (`warp_fx.rs`).
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
@@ -42,6 +43,7 @@ use crate::test_range::{BehaviorWatch, TestMode};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Tip, Tone, show_screen, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, set_color, set_text, spawn_pill, tracked};
 use crate::voyage::{self, Phase, VoyageRun};
+use crate::warp_fx::Transit;
 use crate::{RenderToggles, ship_view::PieceView};
 
 pub(crate) static BARLOW_REGULAR: &[u8] = include_bytes!("../assets/fonts/Barlow-Regular.ttf");
@@ -515,11 +517,13 @@ fn update_text(
     fixed: Res<Time<Fixed>>,
     run: Res<VoyageRun>,
     style: Res<Style>,
+    transit: Res<Transit>,
     mut texts: Query<(&HudText, &mut Text, &mut TextColor)>,
     mut root: Query<&mut ScreenFx, With<HudRoot>>,
 ) {
+    // The HUD closes for the hand-over at the end of a voyage or a lost test flight (`warp_fx.rs`).
     for mut fx in &mut root {
-        show_screen(&mut fx, toggles.hud);
+        show_screen(&mut fx, toggles.hud && !transit.hud_out());
     }
     if !state.timer.tick(time.delta()).just_finished() {
         return;
@@ -651,14 +655,20 @@ fn update_text(
                 if virtual_time.is_paused() {
                     s.push_str("PAUSED");
                 } else if let Phase::Warping { home_at } = run.phase {
-                    let _ = write!(s, "WARPING HOME  ·  {}", voyage::seconds_left(home_at, tick));
+                    let what = if transit.emergency() { "EMERGENCY WARP" } else { "WARPING HOME" };
+                    let _ = write!(s, "{what}  ·  {}", voyage::seconds_left(home_at, tick));
                 } else if let Some((b, until)) = &scene.banner
                     && world.sim.time_seconds() < *until
                     && !lost
                 {
                     s.push_str(b);
                 }
-                let tone = if warping { Tone::Teal } else { scene.banner_tone };
+                // The emergency recall's warp is amber (GDR-0074, `warp_fx.rs`).
+                let tone = match (warping, transit.emergency()) {
+                    (true, true) => Tone::Gold,
+                    (true, false) => Tone::Teal,
+                    _ => scene.banner_tone,
+                };
                 set_color(&mut color, ui_color(tone.color(&ui), 1.0));
             }
             HudText::BannerSub => {
@@ -958,11 +968,12 @@ fn lock_ring(
     regions: Option<Res<FxRegions>>,
     style: Res<Style>,
     views: Query<&PieceView>,
-    toggles: Res<RenderToggles>,
+    hud: Query<&ScreenFx, With<HudRoot>>,
     mut queue: ResMut<FxQueue>,
 ) {
     let (Some(regions), Some(lock)) = (regions, input.lock) else { return };
-    if !toggles.hud {
+    let fade = hud_fade(&hud);
+    if fade <= 0.0 {
         return;
     }
     let alpha = fixed.overstep_fraction();
@@ -981,13 +992,19 @@ fn lock_ring(
     let n = 36;
     for k in 0..n {
         let a = spin + k as f32 / n as f32 * std::f32::consts::TAU;
-        queue.dot(&regions.hard, centre + Vec2::new(a.cos(), a.sin()) * r, 3.0 * px, c.with_alpha(0.7), Z_HUD);
+        queue.dot(&regions.hard, centre + Vec2::new(a.cos(), a.sin()) * r, 3.0 * px, c.with_alpha(0.7 * fade), Z_HUD);
     }
     for k in 0..4 {
         let a = -spin * 0.5 + k as f32 * std::f32::consts::FRAC_PI_2;
         let d = Vec2::new(a.cos(), a.sin());
-        queue.line(&regions.white, centre + d * (r + 3.0 * px), centre + d * (r + 14.0 * px), 2.0 * px, c.with_alpha(0.9), Z_HUD);
+        queue.line(&regions.white, centre + d * (r + 3.0 * px), centre + d * (r + 14.0 * px), 2.0 * px, c.with_alpha(0.9 * fade), Z_HUD);
     }
+}
+
+/// How much the HUD shows (its screen transition, `ui_kit::ScreenFx`): its markers in the world fade with it (H, and
+/// the hand-over at the end of a voyage, `warp_fx.rs`).
+fn hud_fade(hud: &Query<&ScreenFx, With<HudRoot>>) -> f32 {
+    hud.iter().next().map_or(1.0, ScreenFx::alpha)
 }
 
 /// Markers at the screen edge pointing at active enemies (of the focus; in watch mode of the watched ship) outside
@@ -1002,7 +1019,7 @@ fn offscreen_markers(
     rig: Res<CameraRig>,
     regions: Option<Res<FxRegions>>,
     style: Res<Style>,
-    toggles: Res<RenderToggles>,
+    hud: Query<&ScreenFx, With<HudRoot>>,
     zones: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), Or<(With<HudText>, With<HudZone>)>>,
     mut rects: Local<Vec<Rect>>,
     mut queue: ResMut<FxQueue>,
@@ -1010,7 +1027,8 @@ fn offscreen_markers(
     let Some(regions) = regions else { return };
     // The focus, else (watch) the watched ship.
     let Some(me) = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id)) else { return };
-    if !toggles.hud {
+    let fade = hud_fade(&hud);
+    if fade <= 0.0 {
         return;
     }
     rects.clear();
@@ -1039,11 +1057,11 @@ fn offscreen_markers(
         let dir = Vec2::new(ray.x, -ray.y).normalize_or_zero();
         let side = Vec2::new(-dir.y, dir.x);
         let locked = input.locked_ship() == Some(s.id());
-        let c = style.glow_enemy.with_alpha(if locked { 1.0 } else { 0.75 });
+        let c = style.glow_enemy.with_alpha(if locked { 1.0 } else { 0.75 } * fade);
         let tip = pos + dir * 9.0 * px;
         queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * px, 2.0 * px, c, Z_HUD);
-        queue.dot(&regions.soft, pos, 18.0 * px, c.with_alpha(0.25), Z_HUD - 0.1);
+        queue.dot(&regions.soft, pos, 18.0 * px, c.with_alpha(0.25 * fade), Z_HUD - 0.1);
     }
 }
 
@@ -1072,7 +1090,7 @@ fn site_markers(
     rig: Res<CameraRig>,
     regions: Option<Res<FxRegions>>,
     style: Res<Style>,
-    toggles: Res<RenderToggles>,
+    hud: Query<&ScreenFx, With<HudRoot>>,
     fixed: Res<Time<Fixed>>,
     zones: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), Or<(With<HudText>, With<HudZone>)>>,
     mut labels: Query<(&SiteLabel, &mut Node, &ComputedNode, &mut Visibility)>,
@@ -1080,7 +1098,9 @@ fn site_markers(
     mut rects: Local<Vec<Rect>>,
     mut queue: ResMut<FxQueue>,
 ) {
-    let voyage = world.sim.voyage().filter(|_| scene.voyage().is_some() && toggles.hud);
+    // The arrows fade with the HUD (its labels are in it).
+    let fade = hud_fade(&hud);
+    let voyage = world.sim.voyage().filter(|_| scene.voyage().is_some() && fade > 0.0);
     let mut spots: [Option<(Vec2, Vec2)>; SITE_LABELS] = [None; SITE_LABELS];
     if let (Some(v), Some(regions)) = (voyage, regions) {
         rects.clear();
@@ -1104,12 +1124,13 @@ fn site_markers(
             let side = Vec2::new(-dir.y, dir.x);
             let pos = rig.screen_to_world(spot);
             let c = c.with_alpha(a);
+            let arrow = c.with_alpha(a * fade);
             let size = if site.goal() { 1.25 } else { 1.0 };
             let tip = pos + dir * 9.0 * size * px;
-            queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * size * px, 2.0 * px, c, Z_HUD);
-            queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * size * px, 2.0 * px, c, Z_HUD);
+            queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * size * px, 2.0 * px, arrow, Z_HUD);
+            queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * size * px, 2.0 * px, arrow, Z_HUD);
             if site.goal() {
-                queue.dot(&regions.soft, pos, 26.0 * px, c.with_alpha(0.3), Z_HUD - 0.1);
+                queue.dot(&regions.soft, pos, 26.0 * px, c.with_alpha(0.3 * fade), Z_HUD - 0.1);
             }
             let dist = at.distance(from);
             for (t, mut text, mut color) in &mut texts {
