@@ -516,12 +516,14 @@ fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, open: f32, lit:
 /// moorings.
 pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     let mut rng = Rng::new(7);
-    // The truss bridges to the moorings, off the left edge, and the cross bar behind the mind.
+    // The truss bridges to the moorings, and the cross bars at their far end and behind the mind.
     let (bx0, bx1) = l.bridge_x;
     for y in l.bridges {
         truss(pen, pal, Vec2::new(bx0, y), Vec2::new(bx1, y), BRIDGE, ((bx1 - bx0) / 1.1) as usize);
     }
-    pen.line(Vec2::new(bx1, l.bridges[0]), Vec2::new(bx1, l.bridges[1]), 0.5, vcol(pal.hull_hi, 1.0));
+    for x in [bx0, bx1] {
+        pen.line(Vec2::new(x, l.bridges[0]), Vec2::new(x, l.bridges[1]), 0.5, vcol(pal.hull_hi, 1.0));
+    }
     for (k, c) in l.moorings.iter().enumerate() {
         mooring(pen, pal, &mut rng, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }

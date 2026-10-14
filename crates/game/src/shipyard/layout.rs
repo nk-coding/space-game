@@ -47,7 +47,7 @@ pub enum Place {
     Voyages,
     /// The tower and target lane under the bottom wall.
     TestRange,
-    /// The moorings on the truss bridge off the left edge: FLEET.
+    /// The moorings on the truss bridges left of the mind: FLEET.
     Fleet,
     /// Dark until it has a screen.
     Fabricator,
@@ -105,17 +105,17 @@ pub struct Layout {
     pub chevrons: Vec<Vec2>,
     /// The two gate pylons' ends at the arm tips and at the gate.
     pub pylons: [(Vec2, Vec2); 2],
-    /// Mooring centres (their interior's centre), escort 1 first: the near two, then two past the edge; the upper
-    /// ones open up, the lower ones down.
+    /// Mooring centres (their interior's centre), escort 1 first: the near two, then the far two; the upper ones
+    /// open up, the lower ones down.
     pub moorings: [Vec2; MOORINGS],
-    /// The truss bridges' y and their x span (from past the left edge to the mind's back).
+    /// The truss bridges' y and their x span (from just past the far moorings to the mind's back).
     pub bridges: [f32; 2],
     pub bridge_x: (f32, f32),
     /// Crane rails' x in the yard, and where they park at the mouth while the drydock is open.
     pub cranes: [f32; 3],
     pub crane_park: [f32; 3],
-    /// What home shows: the station from the near moorings to the gate, the same margin past each (Niklas, 14 Oct
-    /// 2026: the whole station centred, not the U).
+    /// What home shows: the whole station, from the far moorings to the gate, the same margin past each (Niklas,
+    /// 14 Oct 2026: the whole station centred, not the U; at any window shape).
     pub overview: Rect,
 }
 
@@ -154,17 +154,17 @@ impl Layout {
         let pylons = [-1.0f32, 1.0].map(|s| (Vec2::new(tip_x + TIP, mid + s * (h + WALL) / 2.0), Vec2::new(gate.x - 3.0, mid + s * 8.0)));
 
         let near = mind.rect().min.x - 5.05;
-        let far = near - 12.5;
+        let far = near - 2.0 * (MOORING_HALF + MOORING_WALL) - 2.0;
         let bridges = [mid + 6.5, mid - 6.5];
         let off = BRIDGE / 2.0 + MOORING_WALL + MOORING_DEPTH / 2.0;
         let moorings = [Vec2::new(near, bridges[0] + off), Vec2::new(near, bridges[1] - off), Vec2::new(far, bridges[0] + off), Vec2::new(far, bridges[1] - off)];
-        let bridge_x = (far - MOORING_DEPTH - 8.0, mind.rect().min.x);
+        let bridge_x = (far - MOORING_HALF - MOORING_WALL - 1.0, mind.rect().min.x);
 
         let cranes = CRANES.map(|f| f * w);
         let crane_park = [0.7, 1.6, 2.5].map(|d| w + d);
 
         let side = 1.4;
-        let overview = Rect::new(near - MOORING_HALF - MOORING_WALL - side, range_c.y - 3.5, gate.x + GATE_RADIUS + side, research.rect().max.y + 0.75);
+        let overview = Rect::new(far - MOORING_HALF - MOORING_WALL - side, range_c.y - 3.5, gate.x + GATE_RADIUS + side, research.rect().max.y + 0.75);
         Self {
             frame,
             area: Rect::new(0.0, -h, w, 0.0),
@@ -323,16 +323,15 @@ mod tests {
         assert_eq!(small.mind.size, big.mind.size);
         assert!(grew(small.gate.x, big.gate.x));
         assert!(big.overview.width() > small.overview.width() && big.overview.height() > small.overview.height());
-        // The overview is centred on the whole station: as much room past the near moorings as past the gate.
+        // The overview is centred on the whole station: as much room past the far moorings as past the gate.
         for l in [&small, &big] {
-            let left = l.moorings[0].x - MOORING_HALF - MOORING_WALL - l.overview.min.x;
+            let left = l.moorings[2].x - MOORING_HALF - MOORING_WALL - l.overview.min.x;
             let right = l.overview.max.x - (l.gate.x + GATE_RADIUS);
             assert!(left > 0.0 && (left - right).abs() < 1e-4, "{left} {right}");
         }
     }
 
-    /// Every place is on the station and none sits on another; the overview shows all of them but the moorings past
-    /// the edge, and a place's close-up is closer than the overview.
+    /// Every place is on the station and none sits on another; the overview shows all of them and every mooring, and a place's close-up is closer than the overview.
     #[test]
     fn places_are_apart_and_in_view() {
         for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
@@ -347,17 +346,17 @@ mod tests {
                     assert!(r.intersect(l.hit(*b)).is_empty(), "{a:?} overlaps {b:?} at {frame:?}");
                 }
             }
-            // The near moorings are on screen, the far ones past the left edge.
-            assert!(l.overview.contains(l.moorings[0]) && l.overview.contains(l.moorings[1]));
+            // Every mooring and the whole bridge are in view; the far moorings sit apart from the near ones.
             let reach = MOORING_HALF + MOORING_WALL;
-            assert!(l.moorings[2].x + reach < l.overview.min.x && l.moorings[3].x + reach < l.overview.min.x);
+            assert!(l.moorings.iter().all(|m| l.overview.contains(*m - Vec2::X * reach)));
+            assert!(l.moorings[2].x + reach < l.moorings[0].x - reach);
             // The berths sit off their bridges, clear of the bridge they hang from.
             for (k, m) in l.moorings.iter().enumerate() {
                 let b = l.bridges[k % 2];
                 assert!((m.y - b).abs() - MOORING_DEPTH / 2.0 - MOORING_WALL >= BRIDGE / 2.0 - 1e-4, "{k} {frame:?}");
                 assert!(l.overview.min.y < m.y - MOORING_DEPTH / 2.0 && m.y + MOORING_DEPTH / 2.0 < l.overview.max.y, "{k} {frame:?}");
             }
-            assert!(l.bridge_x.0 < l.overview.min.x, "the bridge runs off the edge");
+            assert!(l.bridge_x.0 > l.overview.min.x && l.bridge_x.0 < l.moorings[2].x - reach, "the bridge ends past the far moorings");
             // The cranes park at the mouth, past the frame and inside the arms.
             for (x, p) in l.cranes.iter().zip(l.crane_park) {
                 assert!(*x > 0.0 && *x < l.area.max.x && p > l.area.max.x && p < l.tip_x);
@@ -407,7 +406,7 @@ mod tests {
         }
         // Without tags it is the plain fit inside the margin.
         let (_, z) = fit_tagged(l.overview, &[], Vec2::new(1280.0, 720.0), 0.0);
-        assert!((z - 16.0).abs() < 1e-3);
+        assert!((z - fit(l.overview, Vec2::new(1280.0, 720.0)).1).abs() < 1e-3);
     }
 
     /// The overview fits any window: the whole station shows, centred.
@@ -416,7 +415,7 @@ mod tests {
         let l = Layout::new((24, 24));
         let (c, z) = fit(l.overview, Vec2::new(1280.0, 720.0));
         assert_eq!(c, l.overview.center());
-        assert!((z - 16.0).abs() < 1e-3);
+        assert!((z - (1280.0 / l.overview.width()).min(720.0 / l.overview.height())).abs() < 1e-3);
         let (_, tall) = fit(l.overview, Vec2::new(800.0, 900.0));
         assert!((tall - 800.0 / l.overview.width()).abs() < 1e-3, "a narrow window fits the width");
     }

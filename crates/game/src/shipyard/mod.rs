@@ -2,7 +2,7 @@
 //! dock lies on its side, its inside the building area (the working design's drydock frame, the ship docked in it
 //! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes and
 //! the dark fabricator on the top wall, the test range's tower and lane and the dark salvage bay under the bottom
-//! wall, the mind behind the base, the escorts' moorings on a truss bridge off the left edge.
+//! wall, the mind behind the base, the escorts' moorings on two truss bridges left of the mind.
 //!
 //! * [`layout`]: where everything sits, a pure function of the frame size (a bigger frame, a bigger U).
 //! * [`draw`]: the meshes, flat vector shapes in the style tokens with a few glows.
