@@ -46,6 +46,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0035](0035-saves-keep-the-galaxy-skeleton.md) | Saves keep the galaxy skeleton (clusters, gates, trails) next to the seed; interiors are still generated | Accepted | 2026-10-14 |
 | [0036](0036-arena-crate.md) | An engine-free `arena` crate for headless fights, evolution and benchmarks, used by the game (time-sliced) and a native CLI | Accepted | 2026-10-14 |
 | [0037](0037-simultaneous-fire-within-a-tick.md) | Ship ids decide nothing in a fight: simultaneous fire within a tick, shared think ticks, auto orbits by both ids | Accepted (provisional, lead) | 2026-10-14 |
+| [0038](0038-workspace-structure-feature-folders-and-client-split.md) | Workspace structure: crates grouped in `core/`, `client/`, `tools/`; the client split into `kit`, `world`, `game`; feature folders inside every crate | Proposed | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
