@@ -92,9 +92,9 @@ const GRID_BOTTOM: f32 = 58.0;
 const INFO_H: f32 = 28.0;
 /// The grid area's distance from the window's top (just under the overlay pills).
 const GRID_TOP: f32 = 66.0;
-/// The scrim around the grid: its alpha, solid up to this far outside the grid (12 px past the side columns), gone
-/// this far inside it.
-const SCRIM_ALPHA: f32 = 0.9;
+/// The scrim around the grid: opaque up to this far outside the grid (12 px past the side columns), gone this far
+/// inside it. Opaque: at 90 % the yard's lit walls behind a column showed through, so half a column looked darker
+/// than the other (Niklas, 14 Oct 2026).
 const SCRIM_OUT: f32 = 10.0;
 const SCRIM_INTO: f32 = 10.0;
 /// List entries in the pool (headings and part rows; the list scrolls by pixels). More than the content has, so

@@ -930,7 +930,9 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   across with the thumb inside) and, for an area with its own `ScrollPosition`, two edge fades as the area's next
   siblings, and places them every frame from the area's layout (the parent must have no border on that side). The
   thumb is the visible share of the track (at least 24 px) and follows the scroll (`thumb`, `scroll_for`, tested);
-  4 px wide, 6 px while the pointer is on it or drags it, label grey at 38 % (62 % then), fully rounded, 2 px in
+  An area with its bar inside keeps a 10 px gutter for it (right or bottom padding, whether or not it scrolls, so
+  the layout never shifts; Niklas: "the scrollbar overlaps with the content"). 4 px wide, 6 px while the pointer is
+  on it or drags it, label grey at 38 % (62 % then), fully rounded, 2 px in
   from the edge. It shows while the area scrolls (any change of its place, so touch shows it too) and while the
   pointer is over the area, stays 1 s and fades out over 0.35 s (`bar_alpha`, tested); never while the content
   fits. A press on the thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on.

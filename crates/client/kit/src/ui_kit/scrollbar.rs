@@ -275,7 +275,8 @@ const FADE_IN_SECONDS: f32 = 0.1;
 /// The thumb's width at rest and while the pointer is on the bar or drags it (UI px).
 const THIN: f32 = 4.0;
 const WIDE: f32 = 6.0;
-/// The bar's hit area across (the thumb sits at its side next to the area's edge).
+/// The bar's hit area across (the thumb sits at its side next to the area's edge), and the gutter an area keeps for
+/// it.
 const HIT: f32 = 10.0;
 /// The thumb's distance from the area's edge, and the track's from the area's ends.
 pub const EDGE_INSET: f32 = 2.0;
@@ -380,6 +381,19 @@ fn cut_scrolled_edges(
 fn attach(mut commands: Commands, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node), Added<Scrollbar>>) {
     for (area, bar, parent, mut node) in &mut areas {
         node.overflow_clip_margin = OverflowClipMargin::padding_box().with_margin(f32::from(bar.room));
+        // A gutter for a bar inside the area, kept whether or not the content scrolls (the layout never shifts):
+        // the content ends where the bar's hit area starts (Niklas, 14 Oct 2026: "the scrollbar overlaps with the
+        // content").
+        if !bar.outside {
+            let side = match bar.axis {
+                BarAxis::Vertical => &mut node.padding.right,
+                BarAxis::Horizontal => &mut node.padding.bottom,
+            };
+            *side = match *side {
+                Val::Px(p) => Val::Px(p + HIT),
+                _ => Val::Px(HIT),
+            };
+        }
         commands.spawn((
             Track { area, bar: *bar, idle: HOLD_SECONDS + FADE_OUT_SECONDS, alpha: 0.0, seen: None, grab: None },
             Hot::default(),
