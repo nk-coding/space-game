@@ -20,7 +20,8 @@
 //!   (`Ship::remove_part`: no `PartDestroyed`, no fragment); the wreck may split as in any breakage. `SimEvent::Collected` tells the client.
 //! * **Fragments** ([`Loose`]): a part whose salvage block names a fragment, destroyed by damage, leaves one at its
 //!   centroid with its velocity: a point the sim moves every tick (no body, no collisions) until it is collected
-//!   or its `SalvageTuning::fragment_ticks` are over. Cargo a shrinking hold spills drifts the same way.
+//!   or its `SalvageTuning::fragment_ticks` are over (by default never: it lasts as long as the sim, GDR-0079).
+//!   Cargo a shrinking hold spills drifts the same way.
 //! * **Wrecks spawned as wrecks** ([`Sim::spawn_wreck`]): burned out (no vessel ever forms from their cores),
 //!   a share of their parts already gone (rolled from the wreck's own seed).
 //!
@@ -216,8 +217,8 @@ pub struct Loose {
     /// Position at the end of the previous tick (render at `prev_pos + (pos − prev_pos) × alpha`).
     pub prev_pos: Vec2,
     pub vel: Vec2,
-    /// The tick it is gone at, if nobody collects it.
-    pub expires: u64,
+    /// The tick it is gone at, if nobody collects it (`None`: it stays).
+    pub expires: Option<u64>,
 }
 
 impl StateHash for Loose {
@@ -229,7 +230,8 @@ impl StateHash for Loose {
         h.vec2(self.pos);
         h.vec2(self.prev_pos);
         h.vec2(self.vel);
-        h.u64(self.expires);
+        h.bool(self.expires.is_some());
+        h.u64(self.expires.unwrap_or(0));
     }
 }
 
@@ -614,7 +616,7 @@ impl Sim {
     /// Fragments for ship `k`'s parts that leave one (`PartSpec::fragment`) destroyed by damage since its last
     /// breakage resolution (call before it): at each part's centroid, with the velocity of that point of its piece.
     pub(crate) fn spawn_fragments(&mut self, k: usize) {
-        let expires = self.tick() + self.config().salvage.fragment_ticks as u64;
+        let expires = self.loose_expiry();
         let s = &self.ships[k];
         let st = &mut self.salvage;
         for &p in &s.pending_destroyed {
@@ -667,7 +669,7 @@ impl Sim {
         let ship = s.id;
         let gone = self.ships[k].cargo.shed(capacity);
         let t = self.config().salvage;
-        let expires = self.tick() + t.fragment_ticks as u64;
+        let expires = self.loose_expiry();
         for (item, stack) in gone {
             for _ in 0..stack.count {
                 let rng = self.rng(Stream::Debris);
@@ -694,11 +696,19 @@ impl Sim {
         }
     }
 
+    /// When a loose item made now is gone (`SalvageTuning::fragment_ticks`; `None`: never).
+    fn loose_expiry(&self) -> Option<u64> {
+        self.config()
+            .salvage
+            .fragment_ticks
+            .map(|t| self.tick() + t as u64)
+    }
+
     /// Moves the loose items one tick (after the physics step, like the bodies); expired ones are gone.
     pub(crate) fn drift_loose(&mut self) {
         let tick = self.tick();
         let loose = &mut self.salvage.loose;
-        loose.retain(|l| l.expires > tick);
+        loose.retain(|l| l.expires.is_none_or(|e| e > tick));
         for l in loose.iter_mut() {
             l.prev_pos = l.pos;
             l.pos += l.vel * DT;
@@ -860,9 +870,12 @@ mod tests {
             pos: Vec2::ZERO,
             prev_pos: Vec2::ZERO,
             vel: Vec2::X,
-            expires: 100,
+            expires: Some(100),
         });
         assert_ne!(f.state_hash(), h0);
+        let mut g = f.clone();
+        g.salvage.loose[0].expires = None;
+        assert_ne!(g.state_hash(), f.state_hash(), "the lifetime counts too");
 
         let mut c = w.clone();
         let mut config = *c.config();
