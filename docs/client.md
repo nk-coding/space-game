@@ -97,7 +97,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 
 ## Scenes (`scene.rs`)
 
-- **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`drydock::PlayerDesign`; at the first start and a new game
+- **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`player::PlayerDesign`; at the first start and a new game
   a copy of the career's start ship, the Rim skiff; after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
   the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
   raider vessel goes dark (a raider shot in half can be two raiders). **A wave follows the flown design** (GDR-0074, `scene::wave_size`, a placeholder rule):
@@ -131,7 +131,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   HUD shows them (right, under the target panel; the rule that decides in teal, why the rules above don't match;
   `behavior_ui/live.rs`), F3 every rule with why.
 - Every sandbox flight flies the **player's saved behaviors**: they join the player's content, so the library has
-  them and a design naming one flies it (`drydock::behaviors`).
+  them and a design naming one flies it (`player::behaviors`).
 - **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
   raiders per wave set by hand, `raiders=N`, else 3) start 46 m out and attack the design, which holds still and doesn't fire back:
   its bubbles take hits at once. Cannon shots pass half their damage to the hull, so the Runner breaks up after
@@ -198,7 +198,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Career** (`career.rs`): the player's career save, loaded before the first frame (`CareerPlugin`, after the
   storage and before the drydock), and what it grants the screens. See [Career](#career).
 - **Voyage map** (`map/`): `AppMode::Map`, the star map of the voyages and SET COURSE. See [Voyage map](#voyage-map).
-- **Voyages** (`voyage.rs`, `debrief.rs`): the `StartVoyage` message and the URL launch, the run (`VoyageRun`:
+- **Voyages** (`voyage/`, `debrief.rs`): the `StartVoyage` message and the URL launch, the run (`VoyageRun`:
   FixedUpdate after the events), its end through the career, and the debrief over home. `scene.rs` builds the
   voyage's world (`SceneKind::Voyage`); `warp_fx.rs` draws its transitions (PostUpdate, after the piece views are
   posed). See [Voyages](#voyages).
@@ -231,7 +231,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   used tone by hull area, else steel. Computed once per design (`design_visual`), so a piece that breaks off
   keeps its tones; the drydock's ghost asks the design for the spot under the cursor. The same tiles show in
   flight, the drydock and its ghost, the home screen's ship and FLEET's ship icons; only the UI's part tiles
-  (palette, inspector) keep the icon on the dark machine tile (`ui_icons::part_tile`).
+  (palette, inspector) keep the icon on the dark machine tile (`part_icons::part_tile`).
 - **Events** (`apply_events`): `ShipSpawned` / `PieceChanged` / `Split` (re)build views, `VesselFormed` with a
   parent moves a split-off piece's view to its new ship, `PieceDestroyed` / `ShipRemoved` despawn them;
   `PartDestroyed`, `Explosion`, `ShotFired`, `Hit`, `Ricochet` become effects; `ShieldHit` starts a ripple in the
@@ -460,8 +460,8 @@ game keeps the save".
 ## Voyages
 
 Track 7H of the first playable loop, 14 Oct 2026 (GDR-0062, GDR-0065, GDR-0068, ADR-0033; the sim's side is
-`docs/sim.md` "Voyages", the career's `docs/career.md` "Voyages"). Code: `voyage.rs` (launch, run, end),
-`scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `debrief.rs` (the debrief).
+`docs/sim.md` "Voyages", the career's `docs/career.md` "Voyages"). Code: `voyage/mod.rs` (launch, run, end),
+`scene.rs` (`SceneKind::Voyage`: the world), `flight_hud.rs` (the voyage HUD), `voyage/debrief.rs` and `debrief.rs` (the debrief's data and its panel).
 Screenshots (14 Oct 2026, headless 1600 × 900): `docs/results/voyage-hud.png` (the start: sites, cargo, RECALL),
 `voyage-recall-blocked.png` (after a fight: salvage in the hold, RECALL dimmed), `voyage-warp.png` (before the
 transitions), `voyage-warp-out-1.png` (the fleet charging), `voyage-warp-out-2.png` (the jump: stretched, darting
@@ -542,7 +542,7 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
     the banner, the dip, home coming up out of it at the gate) and the gate's ring at home.
 - **Counts** for the debrief: kills are the enemy's `VesselLost` events (a split-off half counts on its own), ships
   lost the player's.
-- **The debrief** (`debrief.rs`, after `home-b.png`): after a voyage, a panel over home's right side (420 px, on a
+- **The debrief** (`debrief.rs`, its data `voyage/debrief.rs`, after `home-b.png`): after a voyage, a panel over home's right side (420 px, on a
   veil, above home's layout and independent of it; hidden while FLEET is open) until DISMISS, Esc or Enter: `VOYAGE
   HOME · HAUL UNLOADED` (or `SHIP LOST · RECALLED HOME`, `PRACTICE RUN · NOT SAVED`), the voyage's name, chips for
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
@@ -609,7 +609,7 @@ show the window sizes but still the chain and the locked voyages the map drew be
   why (in order: another voyage still underway, `LOCKED · CLEAR HALVEX DRIFT FIRST` (a guard: a voyage not open
   can't be selected), `NOT VOYAGE-READY · <the fleet's
   first blocker>`, `voyage::fleet_blocker`); a click then repeats it. Else it sends `voyage::StartVoyage { voyage:
-  Some(id) }`; a launch `voyage.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
+  Some(id) }`; a launch `voyage/mod.rs` still refuses shows its reason. With `?unlock=all` a fleet the career's own unlocks
   don't allow flies as a practice run (`PRACTICE RUN, NOT SAVED · …` in gold). Entering the map selects the first
   open voyage whose goal is not cleared (after a first clear: the signal it found).
 - **Zoom and pan** (`map::view`, Niklas 14 Oct 2026: "zoom in/out (even see the whole galaxy)"): the wheel or a
@@ -833,7 +833,7 @@ keeps 1). So the layout always fits: a window narrower or lower than 1280 × 720
 scale stopped at 1 and a centred layout such as FLEET's lost its left and top edges), a wider aspect leaves room at
 the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every play-test size). The phone layout comes later.
 
-- **Design** (`design.rs`): `PlayerDesign` holds the editing model (`data::design::edit::Drydock`) and the blueprint built
+- **Design** (`player/design.rs`, outside the drydock since ADR-0038): `PlayerDesign` holds the editing model (`data::design::edit::Drydock`) and the blueprint built
   from it in frame coordinates (`size` = the frame), plus `revision` and `generation`; every change goes through
   `PlayerDesign::edit`, which bumps `revision`; `replace` (another design opened) bumps both (cells of the old
   design, the selection, mean nothing in the new one). At start it is the last session's working design
@@ -845,7 +845,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
 - **Report** (`report.rs`): `DrydockReport`, the design's `sim::report`, recomputed once per revision or tuning
   change (during a paint or erase drag at most every 0.1 s, and once when it ends: a full 64 × 64 frame takes about
   5 ms). The BEHAVIOR screen reads the same report (the weapon reach, whether TEST IN RANGE can fly the design). **Panels** (`panels.rs`): the screen's nodes, spawned once and updated in place from the resources (the
-  palette list and its key stat). **Behaviors** (`behaviors.rs`): `PlayerBehaviors`, the player's saved behaviors
+  palette list and its key stat). **Behaviors** (`player/behaviors.rs`): `PlayerBehaviors`, the player's saved behaviors
   on the storage layer, the behavior a design names and its fallback with a banner ([drydock.md](drydock.md#behaviors-storage-designs-and-tests)).
 - **Stats and status** (`stats.rs`): whenever `report::DrydockReport` is recomputed, `stats::update` fills
   `DrydockStats` and `DrydockStatus` from it (`CAN'T FLY` for blockers, an empty frame or a design that doesn't
@@ -892,7 +892,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   centres the rig on the grid viewport between the panels while the camera still covers the window, and the
   screen ↔ world helpers include it. Opening the drydock remembers the flight zoom; leaving restores it and keeps
   the drydock's view for the next visit.
-- **Storage and sharing** (`storage.rs`, `clipboard.rs`, `drydock/library.rs`, `share.rs`, `blueprints.rs`;
+- **Storage and sharing** (`storage.rs`, `clipboard.rs`, `player/library.rs`, `share.rs`, `blueprints.rs`;
   [drydock.md "Storage and sharing"](drydock.md#storage-and-sharing)): `Storage` (named RON documents per
   namespace with a format version; the browser's local storage on the web, files in the user's data directory on
   desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the

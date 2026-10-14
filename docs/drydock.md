@@ -24,7 +24,7 @@ use), [GDR-0053](gdr/0053-drydock-v1-lead-defaults.md) (defaults), [GDR-0054](gd
 | The screen: app mode, view, panels, widgets, test flight | `crates/game/src/drydock/`, `mode.rs`, `ui_kit.rs`, `ui_icons.rs` | `client.md` "Drydock" |
 | What the career unlocks: locked rows, NEW tags, the voyage-ready line | `crates/game/src/career.rs`, `drydock/{state,panels,stats}.rs`, `data::career` | [below](#locked-parts-new-and-voyage-ready), `career.md` |
 | Saving, autosave, BLUEPRINTS, EXPORT, share codes, copy / paste | `crates/game/src/storage.rs`, `clipboard.rs`, `drydock/{library,share,blueprints}.rs` | [below](#storage-and-sharing) |
-| The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/drydock/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
+| The player's behaviors (saved, named by designs, flown), TEST IN RANGE | `crates/game/src/player/behaviors.rs`, `test_range.rs`, `scene.rs` | [below](#behaviors-storage-designs-and-tests) |
 | The BEHAVIOR screen (graph, text, inspector, saving, the live panel) | `crates/game/src/behavior_ui/`, `data::behavior::edit` | `client.md` "Behavior screen", `behavior-format.md` "Editing model" |
 
 Status (13 Oct 2026): waves 1 and 2 are merged. The drydock edits (paint, fill, erase, select, rotate, flip,
@@ -481,7 +481,7 @@ overlay opacities and sizes.
 ## Storage and sharing
 
 Written 13 Oct 2026 (Niklas: "a player storage layer, but a sharable format in addition"). Code:
-`crates/game/src/storage.rs` (the layer), `clipboard.rs` (copy and paste), `drydock/library.rs` (designs on the
+`crates/game/src/storage.rs` (the layer), `clipboard.rs` (copy and paste), `player/library.rs` (designs on the
 layer), `drydock/share.rs` (files and share codes), `drydock/blueprints.rs` (the screens and handlers). Tests:
 `cargo test -p game -- storage library share`. Screenshots (1280 × 720): `docs/results/drydock-blueprints-list.png`
 (BLUEPRINTS), `drydock-blueprints-export.png` (EXPORT, the code selected), `drydock-blueprints-cruiser.png` (a
@@ -613,7 +613,7 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
 
 Written 13 Oct 2026 for the behavior editor ([GDR-0057](gdr/0057-behavior-editor-v1.md): behaviors are saved on
 their own, a design names one, TEST IN RANGE watches it or flies alongside it). The plumbing under the BEHAVIOR
-screen: `crates/game/src/drydock/behaviors.rs` (behaviors on the storage layer, the checks, flights),
+screen: `crates/game/src/player/behaviors.rs` (behaviors on the storage layer, the checks, flights),
 `drydock/share.rs` (they travel with designs, [above](#sharing-export-files-and-share-codes)), `test_range.rs` and
 `scene.rs` (TEST IN RANGE); on the screen `behavior_ui/saving.rs` (SAVE, the working draft, the design's behavior,
 starting a test), `behavior_ui/list.rs` (BEHAVIORS) and `behavior_ui/live.rs` (the live panel in flight). Tests:
