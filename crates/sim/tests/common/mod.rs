@@ -9,6 +9,16 @@ pub fn content() -> Content {
     data::base_content()
 }
 
+/// The base content without chain reactions (no part has an `explosion`): for tests of other rules that destroy
+/// parts next to reactors, capacitors or drives.
+pub fn content_without_explosions() -> Content {
+    let mut c = data::base_content();
+    for p in c.parts.iter_mut() {
+        p.explosion = None;
+    }
+    c
+}
+
 pub fn design(c: &Content, id: &str) -> Arc<ShipDesign> {
     let bp = c.ships.get(id).unwrap_or_else(|| panic!("no ship {id}"));
     Arc::new(ShipDesign::compile(c, bp).unwrap())

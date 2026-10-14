@@ -376,9 +376,10 @@ const SHUTTERED: [P; 20] = [
 ];
 
 /// The report counts guns as the sim fires them, also for blocked and idle guns (no base ship has either): the
-/// evolved design above has firepower 0 and fires nothing, and after the sim shoots a reactor and a slope off, the
-/// report of the blueprint without them counts exactly the guns that then fire. (The design won its fights because
-/// the enemies shoot its line of fire clear, not because blocked guns fire.)
+/// evolved design above has firepower 0 and fires nothing, and after the sim shoots a reactor off (its chain
+/// reaction takes more, GDR-0084), the report of the blueprint without the destroyed parts counts exactly the guns
+/// that then fire. (The design won its fights because the enemies shoot its line of fire clear, not because
+/// blocked guns fire.)
 #[test]
 fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
     let c = content();
@@ -399,19 +400,23 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
     assert!(ship.pieces()[0].guns.iter().all(|g| g.output == 0.0));
     assert!(!w.events().iter().any(|e| matches!(e, sim::SimEvent::ShotFired { .. })));
 
-    // The left reactor and the right slope shot off in the sim; the report of the blueprint without them.
-    for cell in [(3, 0), (5, 1)] {
-        w.apply_damage(s, sim::DamageTarget::Cell(cell), 10.0);
-    }
+    // The left reactor shot off in the sim: its blast sets off the right one, and the two take both centre cannons
+    // and both slopes with them (1 hit point each; the steel slopes take half the blast, still more than their 0.5).
+    w.apply_damage(s, sim::DamageTarget::Cell((3, 0)), 10.0);
     w.step(&fire(s));
+    let ship = w.ship(s).unwrap();
+    let gone: Vec<(i32, i32)> = (0..d.parts.len())
+        .filter(|&i| !ship.part(i as sim::PartIdx).alive)
+        .map(|i| (d.parts[i].shape.x, d.parts[i].shape.y))
+        .collect();
+    assert_eq!(gone, [(2, 1), (5, 1), (3, 1), (4, 1), (3, 0), (4, 0)]);
     let rest: Vec<P> = SHUTTERED
         .iter()
         .copied()
-        .filter(|p| ![(3, 0), (5, 1)].contains(&(p.1, p.2)))
+        .filter(|p| !gone.contains(&(p.1, p.2)))
         .collect();
     let r = report_of(&c, &rest);
     let reduced = custom(&c, &rest);
-    let ship = w.ship(s).unwrap();
     let piece = ship.piece(ship.control_piece().unwrap()).unwrap();
     assert!(r.firepower > 0.0);
     assert_eq!(r.firepower, piece.firepower(ship.parts()));
@@ -424,8 +429,9 @@ fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
         assert_eq!(works, fires, "gun at {},{}", shape.x, shape.y);
         working[works as usize] += 1;
     }
-    // The cannon behind the reactor works; the one behind the slope is clear now but idles (control capacity).
-    assert_eq!(working, [5, 1]);
+    // The two outer cannons are clear now, and with four parts fewer the control load (8) fits the capacity: every
+    // gun left works.
+    assert_eq!(working, [0, 4]);
 }
 
 #[test]

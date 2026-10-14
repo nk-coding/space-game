@@ -639,7 +639,8 @@ fn a_second_pulse_of_the_pass_reaches_the_part_behind() {
 /// guns need a clear line of fire; GDR-0048: shots fly through the own vessel); it fires once the blocker is shot
 /// off (GDR-0070: "the blocker can be shot off"). The layout of the evolved designs that put reactors and slopes in
 /// front of their cannons (`docs/arena.md` "Evolution"): two automaton cores power the cannons, a reactor shutters
-/// one and a slope the other.
+/// one and a slope the other. Since chain reactions (GDR-0084) only the slope is a shutter: the reactor shot off
+/// takes its cannon with it, while the slope's cannon (out of the blast's reach) fires once the slope is gone.
 #[test]
 fn a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off() {
     let c = content();
@@ -647,16 +648,17 @@ fn a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off() {
         &c,
         &[
             ("fission_reactor", 0, 0, 0, false, None),
-            ("slope_1x1", 1, 0, 0, false, Some("steel")),
+            ("slope_1x1", 2, 0, 0, false, Some("steel")),
             ("automaton_cannon", 0, 1, 0, false, None),
-            ("automaton_cannon", 1, 1, 0, false, None),
+            ("automaton_cannon", 2, 1, 0, false, None),
             ("automaton_core", 0, 2, 0, false, None),
-            ("automaton_core", 1, 2, 0, false, None),
+            ("armor_block", 1, 2, 0, false, Some("steel")),
+            ("automaton_core", 2, 2, 0, false, None),
         ],
     );
     let (mut w, s) = world_with(d.clone());
     let behind_reactor = find(&d, "automaton_cannon", 0, 1);
-    let behind_slope = find(&d, "automaton_cannon", 1, 1);
+    let behind_slope = find(&d, "automaton_cannon", 2, 1);
     let shots = |w: &sim::Sim| -> Vec<u32> {
         w.events()
             .iter()
@@ -676,20 +678,22 @@ fn a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off() {
     assert!(piece.active && piece.power.supply > 0.0);
     assert!(piece.guns.iter().all(|g| !g.clear && g.output == 0.0));
     assert_eq!(piece.power.demand, 0.0, "a blocked gun asks for nothing");
-    // The reactor is shot off: its cannon fires, the one behind the slope still does not.
+    // The reactor is shot off: its blast destroys the cannon behind it; the one behind the slope still does not
+    // fire.
     w.apply_damage(s, sim::DamageTarget::Cell((0, 0)), 10.0);
     let mut fired = Vec::new();
     for _ in 0..30 {
         w.step(&fire(s));
         fired.extend(shots(&w));
     }
-    assert!(!fired.is_empty() && fired.iter().all(|&g| g == behind_reactor), "{fired:?}");
-    // Then the slope: both fire.
-    w.apply_damage(s, sim::DamageTarget::Cell((1, 0)), 10.0);
+    assert!(!w.ship(s).unwrap().part(behind_reactor).alive);
+    assert!(fired.is_empty(), "{fired:?}");
+    // Then the slope: its cannon fires.
+    w.apply_damage(s, sim::DamageTarget::Cell((2, 0)), 10.0);
     let mut fired = Vec::new();
     for _ in 0..30 {
         w.step(&fire(s));
         fired.extend(shots(&w));
     }
-    assert!(fired.contains(&behind_reactor) && fired.contains(&behind_slope), "{fired:?}");
+    assert!(!fired.is_empty() && fired.iter().all(|&g| g == behind_slope), "{fired:?}");
 }

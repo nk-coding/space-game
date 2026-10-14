@@ -149,9 +149,13 @@ fn stat_lines_follow_stats_ron() {
             "hp",
             "power_output",
             "heat_output",
-            "heat_limit"
+            "heat_limit",
+            "blast_damage",
+            "blast_radius"
         ]
     );
+    assert_eq!(lines[7].text, "1.5 HP");
+    assert_eq!(lines[8].text, "1 m");
     assert_eq!(lines[1].text, "1");
     assert_eq!(lines[1].label, "Control cost");
     assert_eq!(lines[4].text, "10 MW");
@@ -187,7 +191,7 @@ fn stat_lines_follow_stats_ron() {
     let steel = c.material_stats(c.materials.get("steel").unwrap());
     assert_eq!(
         steel.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
-        ["2 t", "1 HP", "1×"]
+        ["2 t", "1 HP", "1×", "0.5×"]
     );
 }
 

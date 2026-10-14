@@ -754,9 +754,9 @@ fn a_shot_into_a_bubble_or_a_ram_wakes_a_sleeping_site() {
     w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, Body::at(Vec2::new(0.0, -400.0), 0.0));
     step(&mut w);
     let id = w.voyage().unwrap().sites()[0].ships()[0];
-    // From behind, on its armour and thruster.
+    // From behind, on its armour and thruster, slowly enough that its core outlives the crushed thruster's blast.
     let ram = Body {
-        linvel: Vec2::new(0.0, 25.0),
+        linvel: Vec2::new(0.0, 20.0),
         ..Body::at(Vec2::new(0.0, -6.0), 0.0)
     };
     w.spawn_wreck(design(&c, "automaton_raider"), Owner(2), ram, 0.0, 0);

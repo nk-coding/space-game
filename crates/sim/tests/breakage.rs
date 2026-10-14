@@ -63,7 +63,9 @@ fn inherited_velocity_is_rigid_body_motion() {
 
 #[test]
 fn runner_splits_down_the_middle() {
-    let c = content();
+    // Without chain reactions, so exactly the centre column goes (the fusion reactor's and the torch drive's
+    // blasts would take more).
+    let c = content_without_explosions();
     let d = design(&c, "halvex_runner");
     let mut w = sim::Sim::new(1);
     let body = Body {

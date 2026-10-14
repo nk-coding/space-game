@@ -51,13 +51,25 @@ pub struct SplitEvent {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SimEvent {
-    /// A part reached 0 hit points and was removed. `volatile` parts (reactors) will cause chain reactions
-    /// later (hook in `Ship::chain_reaction`).
+    /// A part reached 0 hit points and was removed. `volatile`: it has an `explosion` (GDR-0084), so an
+    /// `Explosion` follows right after.
     PartDestroyed {
         ship: ShipId,
         piece: PieceId,
         part: PartIdx,
         volatile: bool,
+    },
+    /// A destroyed part exploded (a chain reaction, GDR-0084): every part of its piece within `radius` m of its
+    /// centre took `damage` (times its armour's `blast_factor`) at once, before the breakage was resolved; parts
+    /// that died of it follow as `PartDestroyed` (and explode in turn). `at`: the part's centre (world), as the
+    /// piece was before the breakage.
+    Explosion {
+        ship: ShipId,
+        piece: PieceId,
+        part: PartIdx,
+        at: Vec2,
+        radius: f32,
+        damage: f32,
     },
     /// A piece lost parts but stayed in one piece: replace its colliders and mass properties, set
     /// `piece.body.linvel` (its centre of mass moved).

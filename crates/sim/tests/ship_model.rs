@@ -377,7 +377,9 @@ fn capacitors_speed_up_lasers_up_to_max_stacks() {
             1e-6
         ));
     }
-    // A pulse laser with four capacitors around it counts three.
+    // A pulse laser with four capacitors around it counts three. (Without chain reactions: two capacitor blasts
+    // would take the 1-hit-point laser too.)
+    let c = content_without_explosions();
     let d4 = custom(
         &c,
         &[

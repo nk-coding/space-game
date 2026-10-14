@@ -598,8 +598,10 @@ pub struct Ship {
     /// `set_power_setting`).
     pub(crate) power_settings: Vec<PowerSetting>,
     pub(crate) scratch: Scratch,
-    /// Parts destroyed since the last breakage resolution.
+    /// Parts destroyed since the last breakage resolution, in the order they died.
     pub(crate) pending_destroyed: Vec<PartIdx>,
+    /// How many of `pending_destroyed` have set off their chain reactions (`breakage.rs`).
+    pub(crate) chained: usize,
     /// The controlling piece; `None` = the ship is dark for good (lost every core of that piece).
     pub(crate) control: Option<PieceId>,
     pub(crate) helm: HelmMode,
@@ -678,6 +680,7 @@ impl Ship {
             power_settings: design.parts.iter().map(|s| s.power_setting).collect(),
             scratch: Scratch::default(),
             pending_destroyed: Vec::new(),
+            chained: 0,
             control: None,
             helm: HelmMode::Raw,
             behavior: None,

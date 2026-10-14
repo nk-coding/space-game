@@ -116,29 +116,58 @@ impl Ship {
         false
     }
 
-    /// Chain-reaction hook (later): called for every destroyed part during breakage resolution. Volatile parts
-    /// (reactors now; the rule should move into content as an `explosion` block) will queue blast damage on
-    /// nearby parts here, rolled on `Stream::Damage`, and resolution will loop until nothing else breaks.
-    /// Does nothing yet.
-    pub fn chain_reaction(&self, _part: PartIdx) {}
+    /// Chain reactions (GDR-0019, GDR-0084): every destroyed part with an `explosion` deals its blast damage to
+    /// the parts in reach ([`ShipDesign::blast`](crate::ShipDesign::blast)) that are still alive and on its piece
+    /// (the piece as it was before this resolution: splits come after). Parts the blasts destroy join the queue and
+    /// explode in turn, so the whole chain resolves now, in the same tick, first destroyed first (a queue over
+    /// `pending_destroyed`; each blast hits its targets in ascending part order). Shields play no part: the
+    /// blast goes off inside the ship's own bubbles. Idempotent: parts already blasted are skipped.
+    pub(crate) fn chain_reactions(&mut self) {
+        let design = Arc::clone(&self.design);
+        while self.chained < self.pending_destroyed.len() {
+            let p = self.pending_destroyed[self.chained] as usize;
+            self.chained += 1;
+            let piece = self.parts[p].piece;
+            for &(t, damage) in design.blast.get(p) {
+                let ts = &self.parts[t as usize];
+                if ts.alive && ts.piece == piece {
+                    self.apply_damage(DamageTarget::Part(t), damage);
+                }
+            }
+        }
+    }
 
-    /// Processes all pieces that lost parts: drops empty pieces, recomputes connectivity, rebuilds cached
-    /// data and splits pieces that came apart. Emits events in a deterministic order (destroyed parts, then
-    /// pieces by ascending id).
+    /// Processes all pieces that lost parts: sets off the chain reactions ([`Ship::chain_reactions`]), drops
+    /// empty pieces, recomputes connectivity, rebuilds cached data and splits pieces that came apart. Emits events
+    /// in a deterministic order (destroyed parts in the order they died, each exploding one followed by its
+    /// `Explosion`, then pieces by ascending id).
     pub fn resolve_breakage(&mut self, ids: &mut IdAlloc, events: &mut Vec<SimEvent>) {
+        self.chain_reactions();
         let ship = self.id;
         let destroyed = std::mem::take(&mut self.pending_destroyed);
         for &p in &destroyed {
+            let piece = self.parts[p as usize].piece;
+            let explosion = self.design.parts[p as usize].explosion.as_ref();
             events.push(SimEvent::PartDestroyed {
                 ship,
-                piece: self.parts[p as usize].piece,
+                piece,
                 part: p,
-                volatile: self.design.parts[p as usize].volatile,
+                volatile: explosion.is_some(),
             });
-            self.chain_reaction(p);
+            if let (Some(e), Some((at, _))) = (explosion, self.part_world(p)) {
+                events.push(SimEvent::Explosion {
+                    ship,
+                    piece,
+                    part: p,
+                    at,
+                    radius: e.radius,
+                    damage: e.damage,
+                });
+            }
         }
         self.pending_destroyed = destroyed;
         self.pending_destroyed.clear();
+        self.chained = 0;
 
         let mut k = 0;
         while k < self.pieces.len() {

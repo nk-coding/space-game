@@ -13,4 +13,11 @@ A radiator buried inside the hull does neither.
 If the reactor ends up in a piece that has broken away from the ship, that piece keeps its own pool. Parts
 left behind without a reactor go dark.
 
+## When it is destroyed
+
+A destroyed reactor explodes. Every part of its piece in the eight cells around it takes the blast at once:
+machines with one hit point, such as a gun or a [[part:logic_core]] right beside it, go with it, and a reactor
+beside it goes off in turn. Armor takes only part of a blast, so plating around a reactor usually survives it.
+A reactor in front of a gun is no shield for it.
+
 See also: [[part:fusion_reactor]], [[part:capacitor]], [[category:power]].
