@@ -34,7 +34,7 @@ use bevy::window::PrimaryWindow;
 mod scrollbar;
 mod transition;
 
-pub use scrollbar::{FADE_DEPTH, ScrollRows, Scrollbar, SmoothScroll};
+pub use scrollbar::{FADE_DEPTH, ScrollClipSet, ScrollRows, Scrollbar, SmoothScroll};
 pub use transition::{
     EXIT_SECONDS, Edge, IconMaterials, ScreenFx, ScreenPart, WorldCover, show_screen, snap_screen,
 };

@@ -15,8 +15,10 @@
 //! runs, fades with its part ([`IconMaterials`]: the part's own atlas material).
 //!
 //! The world draws before bevy_ui, so UI nodes are drawn over icons: give the nodes behind an icon at most a
-//! faint background. Icons follow their node's visibility, and hide when a scrolled parent clips them (an icon
-//! is a world mesh: bevy_ui's clipping does not reach it).
+//! faint background. Icons follow their node's visibility, and a parent that clips them (a list that scrolls) cuts
+//! them where it cuts the rest of the row: an icon is a world mesh that bevy_ui's clipping does not reach, so it
+//! draws with a material of its own cut to the clip's rectangle ([`clip_bounds`], `atlas::set_clip`; Niklas,
+//! 14 Oct 2026: "it is unacceptable that the icon only shows when fully into view").
 
 use std::collections::BTreeMap;
 
@@ -26,14 +28,14 @@ use bevy::window::PrimaryWindow;
 use data::{Blueprint, Placement};
 
 use crate::RenderToggles;
-use crate::atlas::{Atlas, AtlasMaterial, UiAtlasNeed};
+use crate::atlas::{Atlas, AtlasMaterial, UiAtlasNeed, set_clip};
 use crate::camera::{CameraRig, CameraSet};
 use crate::meshbuf::MeshBuf;
 use crate::ship_model::{blueprint_visual, design_visual};
 use crate::ship_view::{ShipVisual, build_body};
 use crate::sim_bridge::GameContent;
 use crate::style::{Style, vcol};
-use crate::ui_kit::IconMaterials;
+use crate::ui_kit::{IconMaterials, ScrollClipSet};
 
 /// Above every world layer (ships ≤ 100, effects ≤ 400), below the camera's far plane.
 const Z_UI_ICON: f32 = 600.0;
@@ -93,6 +95,8 @@ struct IconMesh {
     /// glow setting; and for parts the footprint in cells.
     built: Option<(UiIcon, u32, bool)>,
     dims: Vec2,
+    /// Its own material while a parent clips it (made the first time one does).
+    clipped: Option<Handle<AtlasMaterial>>,
 }
 
 #[derive(Resource, Default)]
@@ -107,7 +111,7 @@ impl Plugin for UiIconsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<IconMeshes>().add_systems(
             PostUpdate,
-            draw_icons.after(UiSystems::Layout).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
+            draw_icons.after(UiSystems::Layout).after(ScrollClipSet).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
         );
     }
 }
@@ -129,6 +133,7 @@ fn draw_icons(
     mut need: ResMut<UiAtlasNeed>,
     mut faded: ResMut<IconMaterials>,
     mut mats: Query<&mut MeshMaterial2d<AtlasMaterial>, With<UiIconMesh>>,
+    mut materials: ResMut<Assets<AtlasMaterial>>,
 ) {
     for node in removed.read() {
         if let Some(m) = state.0.remove(&node) {
@@ -150,23 +155,29 @@ fn draw_icons(
                     Visibility::Hidden,
                 ))
                 .id();
-            IconMesh { entity, mesh, built: None, dims: Vec2::ONE }
+            IconMesh { entity, mesh, built: None, dims: Vec2::ONE, clipped: None }
         });
         let Ok((mut t, mut v)) = placed.get_mut(m.entity) else { continue };
-        // A screen's transition fades the icon with its part (`ui_kit::ScreenPart`'s material).
+        let size = node.size / scale;
+        let bounds = clip.map(clip_bounds);
+        let own = Rect::from_center_size(tf.translation, node.size);
+        let show = vis.get() && size.cmpgt(Vec2::splat(1.0)).all() && bounds.is_none_or(|b| b.is_some_and(|b| !b.intersect(own).is_empty()));
+        // A screen's transition fades the icon with its part (`ui_kit::ScreenPart`'s material); a clipping parent
+        // cuts it on its own material that follows that fade.
         if let Ok(mut mat) = mats.get_mut(m.entity) {
-            let want = faded.0.get(&node_e).unwrap_or(&atlas.material);
+            let base = faded.0.get(&node_e).unwrap_or(&atlas.material);
+            let want = match bounds.flatten().filter(|_| show) {
+                Some(b) => {
+                    let own = m.clipped.get_or_insert_with(|| atlas.group_material(&mut materials));
+                    set_clip(&mut materials, base, own, Some(b));
+                    own
+                }
+                None => base,
+            };
             if mat.0 != *want {
                 mat.0 = want.clone();
             }
         }
-        let size = node.size / scale;
-        // Shown only whole: an icon a scrolled parent cuts would draw over its neighbours.
-        let inside = |c: &CalculatedClip| {
-            let half = node.size / 2.0 - 1.0;
-            [tf.translation - half, tf.translation + half].iter().all(|p| c.contains_point(*p))
-        };
-        let show = vis.get() && size.cmpgt(Vec2::splat(1.0)).all() && clip.is_none_or(inside);
         let want = if show { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {
             *v = want;
@@ -209,6 +220,21 @@ fn draw_icons(
     if need.0 != px_per_cell {
         need.0 = px_per_cell;
     }
+}
+
+/// Where a clip lets a node draw, in framebuffer px (y down): its rectangles (axis-aligned in the UI) intersected;
+/// `None` when it hides everything.
+fn clip_bounds(clip: &CalculatedClip) -> Option<Rect> {
+    let mut out = Rect { min: Vec2::NEG_INFINITY, max: Vec2::INFINITY };
+    for c in clip.rects()? {
+        // An open side is infinite: kept finite so the transform does not turn it into NaN.
+        let r = Rect { min: c.rect.min.max(Vec2::splat(-1e7)), max: c.rect.max.min(Vec2::splat(1e7)) };
+        let to_screen = c.world_to_clip_local.inverse();
+        let a = to_screen.transform_point2(r.min);
+        let b = to_screen.transform_point2(r.max);
+        out = out.intersect(Rect::from_corners(a, b));
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 /// One part as a single tile, centred on the origin in cells; and its footprint. No hull edge, aura, barrel or

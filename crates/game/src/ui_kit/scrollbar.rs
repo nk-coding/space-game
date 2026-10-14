@@ -8,10 +8,12 @@
 //!   the bar as the area's next sibling (its parent must have no border on the bar's side: the bar is placed from
 //!   the corners) and places it every frame from the area's layout.
 //! * **Glow room**: the kit lets the area show its content [`Scrollbar::room`] px past its edges (its
-//!   `overflow_clip_margin`), so a glow at an edge fades out on its own instead of ending in a straight line. Where
-//!   content scrolls past an edge, a fade into the backdrop covers that room and [`FADE_DEPTH`] px inside the edge
-//!   while there is more past it (Niklas, 14 Oct 2026: "there is no need for the UI to say that you can scroll via
-//!   wheel": the bar and these fades are all that say an area scrolls; the `MORE BELOW · WHEEL` cue is gone).
+//!   `overflow_clip_margin`), so a glow at an edge fades out on its own instead of ending in a straight line. An
+//!   edge the content is scrolled past cuts it right there instead ([`cut_scrolled_edges`]; Niklas, 14 Oct 2026:
+//!   "the parts list overlaps this categories thingy": rows scrolled out of view showed in the room over the
+//!   category tabs), and a fade into the backdrop covers [`FADE_DEPTH`] px inside it while there is more past it
+//!   (Niklas, 14 Oct 2026: "there is no need for the UI to say that you can scroll via wheel": the bar and these
+//!   fades are all that say an area scrolls; the `MORE BELOW · WHEEL` cue is gone).
 //! * **What scrolls**: the area's own [`ScrollPosition`] (its content size from the layout), or, for a list that
 //!   shows a window of its rows in a fixed pool of row nodes, [`ScrollRows`]: the screen lays its rows out from the
 //!   list's scroll in UI px ([`ScrollRows::lay`]: which rows the pool shows; it keeps its rows while the view stays
@@ -36,7 +38,7 @@
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, OverflowClipMargin, UiGlobalTransform};
+use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, OverflowClipMargin, UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use super::{Hot, UiPointer};
@@ -342,7 +344,43 @@ struct EdgeFade;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_systems(Update, (attach, (wheel, drag, glide).chain().after(super::hit_test)).in_set(super::UiInputSet))
-        .add_systems(Update, (shift_rows, show).in_set(super::UiStyleSet));
+        .add_systems(Update, (shift_rows, show).in_set(super::UiStyleSet))
+        .add_systems(PostUpdate, cut_scrolled_edges.in_set(ScrollClipSet).after(UiSystems::PostLayout));
+}
+
+/// After this the clips of scrolled content are final (UI icons read them).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ScrollClipSet;
+
+/// Cuts an area's content at an edge it is scrolled past (its glow room stays at the other edges): every node
+/// inside gets one more clip rect, after bevy_ui has worked out the clips of the frame.
+fn cut_scrolled_edges(
+    tracks: Query<&Track>,
+    areas: Query<(&ComputedNode, &UiGlobalTransform, &ScrollPosition, Option<&ScrollRows>, &Children)>,
+    children: Query<&Children>,
+    mut clips: Query<&mut CalculatedClip>,
+) {
+    for track in &tracks {
+        let Ok((node, at, pos, rows, kids)) = areas.get(track.area) else { continue };
+        let axis = track.bar.axis;
+        let (view, content, scroll) = extent(axis, node, pos, rows);
+        let (before, after) = (content - view > 0.5 && scroll > 0.5, content - view > 0.5 && scroll < content - view - 0.5);
+        let Some(to_area) = at.try_inverse().filter(|_| before || after) else { continue };
+        // In the area's own space (physical px about its centre): open across, cut along where it is scrolled.
+        let half = node.size / 2.0;
+        let (lo, hi) = (if before { -axis.of(half) } else { f32::NEG_INFINITY }, if after { axis.of(half) } else { f32::INFINITY });
+        let cut = match axis {
+            BarAxis::Vertical => Rect { min: Vec2::new(f32::NEG_INFINITY, lo), max: Vec2::new(f32::INFINITY, hi) },
+            BarAxis::Horizontal => Rect { min: Vec2::new(lo, f32::NEG_INFINITY), max: Vec2::new(hi, f32::INFINITY) },
+        };
+        let mut stack: Vec<Entity> = kids.iter().collect();
+        while let Some(e) = stack.pop() {
+            if let Ok(mut clip) = clips.get_mut(e) {
+                clip.push_rect(cut, to_area);
+            }
+            stack.extend(children.get(e).into_iter().flatten());
+        }
+    }
 }
 
 /// Gives every new [`Scrollbar`] area its glow room and spawns its fades and its bar as its next siblings (they draw
@@ -615,18 +653,12 @@ fn show(
         let min = ((at.translation - area.size / 2.0) - (p_at.translation - p.size / 2.0)) * k - p.border().min_inset * k;
         let r = Rect::from_corners(min, min + area.size * k);
 
-        // The fades: over the start edge while scrolled from it, over the end edge while more lies past it.
-        let room = f32::from(track.bar.room);
+        // The fades: inside the start edge while scrolled from it, inside the end edge while more lies past it
+        // (the content is cut at such an edge, [`cut_scrolled_edges`]).
         let (more_before, more_after) = (bar.is_some() && scroll > 0.5, bar.is_some() && scroll < content - view - 0.5);
         let (start_rect, end_rect) = match axis {
-            BarAxis::Vertical => (
-                Rect::new(r.min.x, r.min.y - room, r.max.x, r.min.y + FADE_DEPTH),
-                Rect::new(r.min.x, r.max.y - FADE_DEPTH, r.max.x, r.max.y + room),
-            ),
-            BarAxis::Horizontal => (
-                Rect::new(r.min.x - room, r.min.y, r.min.x + FADE_DEPTH, r.max.y),
-                Rect::new(r.max.x - FADE_DEPTH, r.min.y, r.max.x + room, r.max.y),
-            ),
+            BarAxis::Vertical => (Rect::new(r.min.x, r.min.y, r.max.x, r.min.y + FADE_DEPTH), Rect::new(r.min.x, r.max.y - FADE_DEPTH, r.max.x, r.max.y)),
+            BarAxis::Horizontal => (Rect::new(r.min.x, r.min.y, r.min.x + FADE_DEPTH, r.max.y), Rect::new(r.max.x - FADE_DEPTH, r.min.y, r.max.x, r.max.y)),
         };
         let [start_fade, end_fade] = track.fades;
         for (e, show, rect) in [(start_fade, more_before, start_rect), (end_fade, more_after, end_rect)] {

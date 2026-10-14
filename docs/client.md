@@ -937,8 +937,15 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   where a new entry lands at the top). The kit also sets the area's
   `overflow_clip_margin` to `Scrollbar::room` px past its padding box (default 16: the kit's glow, a 10 px blur, is
   gone by then), so the glow of a lit row, chip, swatch or card at an edge fades out instead of ending in a straight
-  line; an edge that content scrolls past gets a fade into the backdrop over that room and 26 px inside it while
-  there is more past it (every edge, lists of rows too; the drydock's chip line lost its own fades to these). The
+  line. An edge that content is scrolled past cuts it right at the edge instead (`cut_scrolled_edges`, after
+  bevy_ui's clipping: every node inside gets one more clip rect, open across; 14 Oct 2026, Niklas: "the parts list
+  overlaps this categories thingy", rows scrolled out showed in the room over the category chips) and gets a fade
+  into the backdrop 26 px inside it while there is more past it (every edge, lists of rows too; the drydock's chip
+  line lost its own fades to these). Part and ship icons are world meshes that bevy_ui's clip does not reach, so an
+  icon under a clip draws with an atlas material of its own cut to the clip's rectangle (`AtlasMaterial::clip`,
+  `atlas::set_clip`, following its screen part's fade): a row half out of view shows half its icon (it hid the
+  whole icon until fully in view before; Niklas: "it is unacceptable that the icon only shows when fully into
+  view"). The
   bar and these fades are all that say an area scrolls: the `MORE BELOW · WHEEL` cue (`ScrollCue`) and FLEET's
   `THE WHEEL SCROLLS` are gone (14 Oct 2026; Niklas: "there is no need for the UI to say that you can scroll via
   wheel"). Every scrolling area has one: the drydock's part list (`ScrollRows`), armour swatches and

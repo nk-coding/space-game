@@ -116,7 +116,8 @@ pub fn parse_hex(s: &str) -> Option<Color> {
 /// ([`Atlas::group_material`], [`set_alpha`]), so a fade writes one uniform per frame and no mesh.
 ///
 /// `aperture` cuts a group to a circle on screen ([`set_aperture`], the portal into the voyage map, `map::portal`):
-/// the group draws only inside it, or only outside it.
+/// the group draws only inside it, or only outside it. `clip` cuts it to a rectangle on screen ([`set_clip`]: a UI
+/// icon in a list that scrolls, cut where the list cuts its row).
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct AtlasMaterial {
     #[texture(0)]
@@ -128,6 +129,9 @@ pub struct AtlasMaterial {
     /// outside shows, 0: no cut).
     #[uniform(3)]
     aperture: Vec4,
+    /// The rectangle in framebuffer px: min x, min y, max x, max y (all 0: no cut).
+    #[uniform(4)]
+    clip: Vec4,
     opaque: bool,
 }
 
@@ -136,7 +140,7 @@ impl Atlas {
     /// group of meshes that fades as one ([`set_alpha`]).
     pub fn group_material(&self, materials: &mut Assets<AtlasMaterial>) -> Handle<AtlasMaterial> {
         let texture = materials.get(&self.material).map(|m| m.texture.clone()).unwrap_or_default();
-        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, aperture: Vec4::ZERO, opaque: false })
+        materials.add(AtlasMaterial { texture, tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: false })
     }
 }
 
@@ -159,6 +163,18 @@ pub fn set_aperture(materials: &mut Assets<AtlasMaterial>, material: &Handle<Atl
         && let Some(mut m) = materials.get_mut(material)
     {
         m.aperture = want;
+    }
+}
+
+/// Makes `material` draw like `base` (its fade) cut to `clip` (framebuffer px, y down), or uncut (`None`); written
+/// only when it changes.
+pub fn set_clip(materials: &mut Assets<AtlasMaterial>, base: &Handle<AtlasMaterial>, material: &Handle<AtlasMaterial>, clip: Option<Rect>) {
+    let clip = clip.map_or(Vec4::ZERO, |r| Vec4::new(r.min.x, r.min.y, r.max.x, r.max.y));
+    let Some(tint) = materials.get(base).map(|m| m.tint) else { return };
+    if materials.get(material).is_some_and(|m| m.tint != tint || m.clip != clip)
+        && let Some(mut m) = materials.get_mut(material)
+    {
+        (m.tint, m.clip) = (tint, clip);
     }
 }
 
@@ -310,8 +326,8 @@ impl Plugin for AtlasPlugin {
         let world = app.world_mut();
         let image = world.resource_mut::<Assets<Image>>().add(image);
         let mut materials = world.resource_mut::<Assets<AtlasMaterial>>();
-        let material = materials.add(AtlasMaterial { texture: image.clone(), tint: Vec4::ONE, aperture: Vec4::ZERO, opaque: false });
-        let opaque = materials.add(AtlasMaterial { texture: image, tint: Vec4::ONE, aperture: Vec4::ZERO, opaque: true });
+        let material = materials.add(AtlasMaterial { texture: image.clone(), tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: false });
+        let opaque = materials.add(AtlasMaterial { texture: image, tint: Vec4::ONE, aperture: Vec4::ZERO, clip: Vec4::ZERO, opaque: true });
         let atlas = Atlas { material, opaque, regions, tokens: art::tokens(), layout, tier };
         world.insert_resource(crate::style::Style::from_atlas(&atlas));
         world.insert_resource(atlas);
