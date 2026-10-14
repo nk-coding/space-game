@@ -318,6 +318,9 @@ fn apply_events(
             SimEvent::VesselFormed { ship, from: Some((old, piece)), .. } => Act::Moved(*ship, *old, *piece),
             SimEvent::ShipRemoved { ship } => Act::ShipGone(*ship),
             SimEvent::PartDestroyed { ship, piece, part, volatile } => Act::PartGone(*ship, *piece, *part, *volatile),
+            SimEvent::Explosion { ship, piece, part, at, radius, damage } => {
+                Act::Blast(*ship, *piece, *part, v2(*at), *radius, *damage)
+            }
             SimEvent::ShotFired { ship, kind, from, to, .. } => Act::Shot(*ship, *kind, v2(*from), v2(*to)),
             SimEvent::Hit { point, normal, family, damage, .. } => Act::Hit(v2(*point), v2(*normal), *family, *damage),
             SimEvent::Ricochet { point, vel, .. } => Act::Ricochet(v2(*point), v2(*vel)),
@@ -391,17 +394,19 @@ fn apply_events(
                     commands.entity(e).despawn();
                 }
             }
-            Act::PartGone(ship, piece, part, volatile) => {
-                // Where the part was: its blueprint centroid through the last view transform.
-                if let (Some(&e), Some(s)) = (world.views.get(&(ship, piece)), world.sim.ship(ship))
-                    && let Ok((v, tf)) = views.get(e)
-                {
-                    let [bx, by] = s.design().parts[part as usize].centroid;
-                    let local = v.visual.to_local(Vec2::new(bx, by));
-                    let at = tf.transform_point(local.extend(0.0)).truncate();
-                    let (c, size) = if volatile { (Color::srgb(1.0, 0.85, 0.55), 1.2) } else { (v.glow, 0.7) };
-                    fx.burst(at, c, size);
+            // A part that explodes bursts as its blast (`SimEvent::Explosion`, next).
+            Act::PartGone(_, _, _, true) => {}
+            Act::PartGone(ship, piece, part, false) => {
+                if let Some((at, glow)) = drawn_part(world, &views, ship, piece, part) {
+                    fx.burst(at, glow, 0.7);
                 }
+            }
+            Act::Blast(ship, piece, part, at, radius, damage) => {
+                // Where the part is drawn (the sim's point is a tick ahead of the render pose), carried with its
+                // piece.
+                let at = drawn_part(world, &views, ship, piece, part).map_or(at, |(p, _)| p);
+                let vel = world.sim.ship(ship).and_then(|s| s.piece(piece)).map_or(Vec2::ZERO, |p| v2(p.body.linvel));
+                fx.blast(at, vel, radius, damage, style.system_color("power"), style.ui.coral);
             }
             Act::Shot(ship, kind, from, to) => {
                 let color = weapon_color(world, ship, &style);
@@ -457,7 +462,10 @@ enum Act {
     Split(ShipId, [PieceId; 8], usize),
     PieceGone(ShipId, PieceId),
     ShipGone(ShipId),
+    /// A part destroyed; `true`: it explodes (a `Blast` follows).
     PartGone(ShipId, PieceId, sim::PartIdx, bool),
+    /// A destroyed part exploded at a world point: radius, damage.
+    Blast(ShipId, PieceId, sim::PartIdx, Vec2, f32, f32),
     Shot(ShipId, sim::ShotKind, Vec2, Vec2),
     Hit(Vec2, Vec2, data::WeaponFamily, f32),
     Ricochet(Vec2, Vec2),
@@ -466,6 +474,20 @@ enum Act {
     /// An engine's plume (ship, engine part) burns a part at a point.
     Burn(ShipId, sim::PartIdx, Vec2),
     Shield(ShipId, PieceId, sim::PartIdx, Vec2, f32, bool),
+}
+
+/// Where a part of a piece is drawn (its blueprint centroid through the last view transform) and its piece's glow.
+fn drawn_part(
+    world: &SimWorld,
+    views: &Query<(&PieceView, &Transform)>,
+    ship: ShipId,
+    piece: PieceId,
+    part: sim::PartIdx,
+) -> Option<(Vec2, Color)> {
+    let (v, tf) = views.get(*world.views.get(&(ship, piece))?).ok()?;
+    let [bx, by] = world.sim.ship(ship)?.design().parts[part as usize].centroid;
+    let local = v.visual.to_local(Vec2::new(bx, by));
+    Some((tf.transform_point(local.extend(0.0)).truncate(), v.glow))
 }
 
 fn weapon_color(world: &mut SimWorld, ship: ShipId, style: &Style) -> Color {

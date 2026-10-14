@@ -72,6 +72,8 @@ if clear and powered (latent firepower), so shuttered designs sit with the other
 - Every hash stream changed; native and wasm32 stay identical.
 - Follow-ups: a blast visual in the client (`SimEvent::Explosion`); the drydock could show blast reach and warn about
   a reactor next to a logic core or a gun.
+  - 14 Oct 2026: the blast visual is in: a flash and a ring out to the blast's radius, a chain playing link by link
+    (`docs/client.md` "Chain-reaction blasts", [`results/chain-blast.png`](../results/chain-blast.png)).
 
 ## Open (for Niklas)
 
