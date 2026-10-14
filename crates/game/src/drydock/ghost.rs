@@ -1,6 +1,6 @@
 //! What the pointer would do, drawn in world space over the design: the ghost of the edit under the cursor (the
 //! picked part with the flight tile look, see-through, outlined teal when it can go there and coral when it
-//! can't, its mirror twin too while mirroring), the parts it would replace (coral outlines), the slopes a BEVEL
+//! can't, its mirror twin too while mirroring), the parts it would replace (a coral wash and outline), the slopes a BEVEL
 //! paint stroke will cut when it ends (teal outlines), a shield part's bubble (placed or selected: the SHIELDS
 //! overlay's look), the fill rectangle while dragging, the part a move would put elsewhere, the pointer's mark
 //! ([`hover_mark`]: the cell, or in SELECT and ERASE the whole part under it) and corner brackets around the
@@ -79,6 +79,9 @@ pub struct GhostView {
     pub hover: Option<HoverMark>,
     /// The bubbles of the shield part being placed (and its twin), after bonuses, or of the selected one.
     pub bubbles: Vec<Bubble>,
+    /// The parts the edit would replace: their cells (a coral wash) and outline (coral, drawn just inside, so it
+    /// shows under a new part of the same footprint).
+    pub replaced: Vec<(Vec<Cell>, Vec<Vec2>)>,
 }
 
 /// What marks the cell under the pointer.
@@ -260,7 +263,7 @@ fn bubbles_after(content: &Content, config: &sim::SimConfig, design: &PlayerDesi
 }
 
 impl GhostView {
-    /// Shows a preview: its tiles outlined teal and the parts it replaces outlined coral, or the attempt (else the
+    /// Shows a preview: its tiles outlined teal and the parts it replaces marked coral, or the attempt (else the
     /// cell) outlined coral with the reason; a skipped mirror image as a coral outline. `new_part`: the part the
     /// edit adds, named when its mirror image would overlap it.
     #[allow(clippy::too_many_arguments)]
@@ -277,7 +280,9 @@ impl GhostView {
         match preview {
             Ok(p) => {
                 for &k in &p.removed {
-                    self.outlines.push((outline(content, &dock.parts()[k]), Tone::Coral));
+                    let gone = &dock.parts()[k];
+                    let cells = content.placed_shape(gone).map_or_else(Vec::new, |s| s.cells());
+                    self.replaced.push((cells, outline(content, gone)));
                 }
                 self.tile(content, p.placement.clone(), Tone::Teal);
                 if let Some(m) = p.mirrored {
@@ -423,6 +428,18 @@ pub(super) fn draw(
         let c = tone.color(ui).with_alpha((if *tone == Tone::Label { 0.6 } else { 0.95 }) * fa);
         for k in 0..poly.len() {
             queue.line(&r.white, world(poly[k]), world(poly[(k + 1) % poly.len()]), 1.6 * px, c, Z_LINES);
+        }
+    }
+    // What the edit replaces: a coral wash over its cells, its outline pulled in a little towards its centre.
+    for (cells, poly) in &view.replaced {
+        for (x, y) in cells {
+            let c = Vec2::new(*x as f32 + 0.5, *y as f32 + 0.5);
+            queue.push(FxSprite { rect: r.white.uv, pos: world(c), angle: 0.0, size: Vec2::ONE, anchor: Vec2::ZERO, color: ui.coral.with_alpha(0.16 * fa), z: Z_LINES });
+        }
+        let mid = poly.iter().copied().sum::<Vec2>() / poly.len().max(1) as f32;
+        let inset: Vec<Vec2> = poly.iter().map(|&q| q + (mid - q).normalize_or_zero() * 4.0 * px).collect();
+        for k in 0..inset.len() {
+            queue.line(&r.white, world(inset[k]), world(inset[(k + 1) % inset.len()]), 1.6 * px, ui.coral.with_alpha(0.95 * fa), Z_LINES);
         }
     }
     // The pointer's mark: the cell, or the whole part under it (filled, one outline).
