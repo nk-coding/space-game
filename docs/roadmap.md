@@ -194,11 +194,12 @@ Next session:
 - Evolution lab decided ([GDR-0083](gdr/0083-evolution-lab.md), [ADR-0036](adr/0036-arena-crate.md),
   `docs/plans/evolution-lab.md` tracks L1–L5). L1 is built (`docs/arena.md`: fight specs, the score, the `arena`
   CLI; native vs wasm IDENTICAL; about 1200 Runner-vs-3-raiders fights/s and 2300 starter mirrors/s on 16 threads).
-- **Open, sim fairness**: in a mirror fight the side spawned first (lower ship ids) wins about 3 : 1 (2000 rim-skiff
-  mirrors: 1173 / 378; flipping the spawn order flips it). Likely cause: the weapons step fires and applies damage
-  ship by ship in id order, so lower ids strike first within a tick. The arena alternates spawn order by seed
-  parity as a stopgap; the sim fix (resolve shots against the tick's starting state, then apply) changes hashes
-  and is next once disk allows another agent build.
+- **Sim fairness fixed** ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)): ship ids no longer decide a fight.
+  Three causes: guns fired and hit in id order (now every shot is traced first, then all hits land), behaviors
+  thought on id-staggered ticks (now shared ticks), `orbit(auto)` turned by its own id (now by both ships' ids).
+  Mirror fights end the same in either spawn order (a test checks it exactly); a small physics effect remains in
+  head-on rams (Rapier's body order; up to 37 of 1000 seeds). Hashes changed, native vs wasm IDENTICAL; voyage clear
+  rates moved within noise (Halvex Drift a little harder).
 - **Next after the running work merges: a structure refactor** (Niklas, 14 Oct 2026: "these rust crates seem to lack
   some structure"). Chosen: feature folders and one plugin per feature in every crate, and `game` (37k lines, 33 flat
   top-level modules) split into a few crates (shared render and UI infrastructure, flight, the screens) for clearer
