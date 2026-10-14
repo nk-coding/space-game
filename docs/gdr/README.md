@@ -96,6 +96,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0085](0085-chain-reactions-v2.md) | Chain reactions v2: blasts reach every piece and ship (other ships' shields absorb, friends are hit), intact armour on the line lets only its share through, reactors reach two cells deep, automaton cores, shield emitters and RCS pods explode; reserve guns stay | Accepted (rules Niklas; numbers and details lead defaults) | 2026-10-14 |
 | [0086](0086-letting-go-coasts.md) | Letting go coasts: no braking and no flip-and-burn on release (keys and stick); auto-braking to come back later as a configurable assist | Accepted | 2026-10-14 |
 | [0087](0087-voyage-transitions.md) | Voyage transitions: the fleet visibly warps out (charge, stretch, flash) and in, the camera eases in 12 % during the charge, the emergency recall looks unstable, every end dips to dark and the next screen comes up out of it | Accepted (provisional, lead) | 2026-10-14 |
+| [0088](0088-pilot-assists-weapon-groups-and-key-bindings.md) | Pilot assists as rules per design (fill idle channels, switchable in flight by key and condition), weapon groups 1–3 set in the drydock, an action map with a settings screen | Accepted | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

@@ -216,7 +216,9 @@ Next session:
   core no longer dominates the design runs (2 of 5 best designs, from 4); voyages a little harder.
 - **Letting go coasts** ([GDR-0086](gdr/0086-letting-go-coasts.md)): no braking and no flip-and-burn on release. Pilot
   assists (auto-brake and more) as configurable behavior-like profiles for the piloted ship, weapon groups and key
-  bindings: to discuss with Niklas while the structure refactor runs.
+  bindings: to discuss with Niklas while the structure refactor runs. Decided the same day:
+  [GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) (assist rules per design, switchable in
+  flight; weapon groups 1–3; an action map with a settings screen), built after the refactor in four steps.
 - **Voyage transitions** ([GDR-0087](gdr/0087-voyage-transitions.md)): the recall warp-out (charge, stretch, flash;
   amber and flickering for the emergency recall), the arrival, the loss dim and a dip to dark between screens.
 - **Chain-reaction blasts in the client** (`fx/blast.rs`): a flash, glow and a ring out to the blast radius; chains
