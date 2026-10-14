@@ -560,7 +560,7 @@ pub fn preview(content: &Content, style: &Style, node: &ResearchNode, capacity: 
             (head, icon, stats, Vec::new())
         }
         Some(Unlock::MindCapacity(n)) => {
-            let stats = vec![Stat { label: "MIND CAPACITY".into(), value: format!("{capacity} → {} cores", capacity + n) }];
+            let stats = vec![Stat { label: "MIND CAPACITY".into(), value: format!("{capacity} » {} cores", capacity + n) }];
             ("THE SHIP-MIND".into(), icon, stats, Vec::new())
         }
         None => (String::new(), icon, Vec::new(), Vec::new()),

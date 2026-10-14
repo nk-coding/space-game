@@ -76,7 +76,7 @@ Decided 10 Oct 2026 after two rounds of options ([GDR-0007](gdr/0007-ship-style-
 - **Backdrop**: a dark blue-black radial gradient (`#0a1820` → `#050e15` → `#010409`) with faint particles (`#6c9b95`) and dotted rings (`#414c52`).
   - Later (Niklas, 12 Oct 2026): a fancier background (planets, nebulas and the like). The current backdrop is
     sufficient for now.
-- **Text**: Barlow. Labels are uppercase with wide letter-spacing (0.2–0.38em) in grey `#869099` or dim `#5d6a74`. Numbers are white `#ebf5ff` with a slight glow.
+- **Text**: Barlow. Labels are uppercase with wide letter-spacing (0.2–0.38em) in grey `#869099` or dim `#5d6a74`. Numbers are white `#ebf5ff` with a slight glow. Barlow has no arrows (`→`, `▸`) and no `★`, and bevy_ui has no font fallback, so such a character shows as a box: write "turned into" as `»` and breadcrumbs as `›`.
 - **Accents**: teal `#8cefdb` (primary), gold `#eed595`, coral `#ec8f7c` (danger and enemies), violet `#ae8cec` (logic and conditions).
 - **Controls**: pill buttons. The primary action is a glowing teal pill. Round glowing ring buttons for menus and tools.
   Labels name the action only, never its key (Niklas, 13 Oct 2026: no `SAVE CTRL S`, `PAINT B`).

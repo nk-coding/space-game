@@ -227,13 +227,14 @@ impl DebriefData {
             return s;
         }
         let _ = write!(s, "  ·  {} {}", self.items, if self.items == 1 { "PART" } else { "PARTS" });
+        // `»` for "turned into": Barlow has no arrows (an `→` showed as a box).
         let mut first = true;
         for f in &self.families {
-            let _ = write!(s, "{}{} +{}", if first { " → " } else { "  ·  " }, f.name, amount(f.gained));
+            let _ = write!(s, "{}{} +{}", if first { "  »  " } else { "  ·  " }, f.name, amount(f.gained));
             first = false;
         }
         for (m, n) in &self.materials {
-            let _ = write!(s, "{}{} +{n}", if first { " → " } else { "  ·  " }, m.to_uppercase());
+            let _ = write!(s, "{}{} +{n}", if first { "  »  " } else { "  ·  " }, m.to_uppercase());
             first = false;
         }
         s
@@ -559,7 +560,7 @@ mod tests {
         assert!(d.cleared_text.as_deref().is_some_and(|t| t.contains("Halvex Drift") && !t.contains("[[")), "{:?}", d.cleared_text);
         assert!(!d.ready.is_empty(), "the cannon data pays for the cannon node");
         let line = d.summary();
-        assert!(line.starts_with("LAST VOYAGE  ·  SHIPYARD APPROACH  ·  GOAL CLEARED  ·  7:42  ·  10 PARTS → KINETIC WEAPONS +"), "{line}");
+        assert!(line.starts_with("LAST VOYAGE  ·  SHIPYARD APPROACH  ·  GOAL CLEARED  ·  7:42  ·  10 PARTS  »  KINETIC WEAPONS +"), "{line}");
         // From the save alone (no rows, no counts): the same summary.
         let loaded = DebriefData::build(&content, &after, &after, &last, &Haul::default(), DebriefStats::default());
         assert!(loaded.rows.is_empty() && !loaded.first_clear && loaded.stats.kills.is_none());
