@@ -349,6 +349,85 @@ fn blocked_guns_and_burning_plumes_name_the_parts() {
     assert_eq!(gun.want, 0.0);
 }
 
+/// The best design of the 60-point skiff evolution (`crates/arena/runs/skiff_design_60bp.ron`, 14 Oct 2026):
+/// reactors in front of two cannons, slopes in front of two more, lasers facing sideways, two automaton cores
+/// (control load 12 on a capacity of 8, so two cannons and the lasers idle).
+const SHUTTERED: [P; 20] = [
+    ("slope_1x1", 2, 1, 0, true, Some("steel")),
+    ("slope_1x1", 5, 1, 0, false, Some("steel")),
+    ("automaton_cannon", 3, 1, 0, false, None),
+    ("automaton_cannon", 4, 1, 0, true, None),
+    ("automaton_cannon", 2, 2, 0, true, None),
+    ("automaton_cannon", 5, 2, 0, false, None),
+    ("shield_emitter", 4, 2, 3, true, None),
+    ("shield_emitter", 3, 2, 1, false, None),
+    ("pulse_laser", 6, 2, 1, true, None),
+    ("pulse_laser", 1, 2, 3, false, None),
+    ("slope_1x1", 0, 3, 2, false, Some("steel")),
+    ("slope_1x1", 7, 3, 2, true, Some("steel")),
+    ("thruster", 1, 3, 0, false, None),
+    ("thruster", 6, 3, 0, true, None),
+    ("automaton_core", 4, 3, 0, true, None),
+    ("automaton_core", 3, 3, 0, false, None),
+    ("fission_reactor", 3, 0, 0, false, None),
+    ("fission_reactor", 4, 0, 0, true, None),
+    ("radiator", 2, 3, 0, false, None),
+    ("radiator", 5, 3, 0, true, None),
+];
+
+/// The report counts guns as the sim fires them, also for blocked and idle guns (no base ship has either): the
+/// evolved design above has firepower 0 and fires nothing, and after the sim shoots a reactor and a slope off, the
+/// report of the blueprint without them counts exactly the guns that then fire. (The design won its fights because
+/// the enemies shoot its line of fire clear, not because blocked guns fire.)
+#[test]
+fn report_counts_blocked_and_idle_guns_as_the_sim_fires_them() {
+    let c = content();
+    let fire = |s| inputs(s, controls(2, 0.0, true, true));
+    let d = custom(&c, &SHUTTERED);
+    // As built: every cannon blocked, the lasers (facing out sideways) idle.
+    let r = report_of(&c, &SHUTTERED);
+    assert_eq!(r.firepower, 0.0);
+    assert_eq!(r.guns.iter().filter(|g| !g.clear).count(), 4);
+    assert_eq!((r.control.load, r.control.capacity), (12, 8));
+    let (mut w, s) = world_with(d.clone());
+    w.step(&fire(s));
+    let ship = w.ship(s).unwrap();
+    for g in &r.guns {
+        assert_eq!(g.clear, ship.part(g.part).clear, "gun {}", g.part);
+        assert_eq!(r.control.idle.contains(&g.part), ship.part(g.part).idle, "gun {}", g.part);
+    }
+    assert!(ship.pieces()[0].guns.iter().all(|g| g.output == 0.0));
+    assert!(!w.events().iter().any(|e| matches!(e, sim::SimEvent::ShotFired { .. })));
+
+    // The left reactor and the right slope shot off in the sim; the report of the blueprint without them.
+    for cell in [(3, 0), (5, 1)] {
+        w.apply_damage(s, sim::DamageTarget::Cell(cell), 10.0);
+    }
+    w.step(&fire(s));
+    let rest: Vec<P> = SHUTTERED
+        .iter()
+        .copied()
+        .filter(|p| ![(3, 0), (5, 1)].contains(&(p.1, p.2)))
+        .collect();
+    let r = report_of(&c, &rest);
+    let reduced = custom(&c, &rest);
+    let ship = w.ship(s).unwrap();
+    let piece = ship.piece(ship.control_piece().unwrap()).unwrap();
+    assert!(r.firepower > 0.0);
+    assert_eq!(r.firepower, piece.firepower(ship.parts()));
+    let mut working = [0; 2];
+    for g in &r.guns {
+        let shape = &reduced.parts[g.part as usize].shape;
+        let part = find(&d, &reduced.parts[g.part as usize].id, shape.x, shape.y);
+        let works = g.clear && !r.control.idle.contains(&g.part);
+        let fires = piece.guns.iter().find(|m| m.part == part).unwrap().output > 0.0;
+        assert_eq!(works, fires, "gun at {},{}", shape.x, shape.y);
+        working[works as usize] += 1;
+    }
+    // The cannon behind the reactor works; the one behind the slope is clear now but idles (control capacity).
+    assert_eq!(working, [5, 1]);
+}
+
 #[test]
 fn parts_that_fall_off_and_split_vessels() {
     let c = content();

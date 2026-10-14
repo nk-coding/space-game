@@ -397,10 +397,26 @@ ticks, no spawn-order stopgap); the archive's best after generations 0, 10, 20 a
 Findings for the lead: the automaton parts win every 60-build-point design run that may use them (an earlier run on
 the sim before ADR-0037 kept four automaton cores and no reactor or thruster at all): the automaton core is a power
 plant (6), a logic core (2 slots) and a gyro (300) in one 5-build-point cell, where the starter's reactor, logic core
-and gyro cost 11; locked for players, but a balance question once research unlocks them. The best design wins every
-fight with every gun blocked by its own parts in the report: worth a look whether blocked guns stay silent (or whether
-the reactors in front of its cannons are shot away first). Facing the enemy (`face`, aiming at its guns) beats the
-skirmisher's orbit against raiders, in fights and on the voyage.
+and gyro cost 11; locked for players, but a balance question once research unlocks them. Facing the enemy (`face`,
+aiming at its guns) beats the skirmisher's orbit against raiders, in fights and on the voyage.
+
+**The best design's blocked guns** (checked 14 Oct 2026): they stay silent; the enemies shoot them clear. Its four
+cannons sit behind its own parts (the two reactors and two slopes) and its control load is 12 on a capacity of 8, so
+the two outer cannons and both lasers idle: as built nothing can fire, and the report's firepower 0 is right
+(GDR-0004: guns need a clear line of fire). A blocker that is destroyed clears the gun from the next tick (GDR-0070:
+"the blocker can be shot off"), and lost parts lower the control load, so idle guns wake. Counting every `ShotFired`
+of the best 8 elites over 20 seeds against each pool opponent (480 fights), no shot came from a gun whose blocker was
+still on its piece or that idled. The best design's first shot comes at tick 324 (median of its 60 fights,
+about 11 s), when a raider's 1-damage shot has taken off a 1-hit-point reactor; with the cannons in front it fires
+at tick 76.
+The shutters win: 52 of 60 fights (19 / 15 / 18 of 20 against 2 raiders / 3 raiders / the hunter), against 33 of 60
+with the two centre cannons moved in front of the reactors and 35 of 60 with all four cannons in front (every gun
+clear; firepower 2.4, as the two outer cannons still idle). An automaton cannon has 1 hit point and the raiders' shots
+take a gun off in one hit (GDR-0074), so a part in front buys time, and a reactor there costs nothing extra because
+reactors do not explode yet (GDR-0019 decided chain reactions, GDR-0020 deferred them). All 8 elites have blocked guns
+(3 of them firepower 0). The archive's firepower axis is the design report's, as built, so it files these designs
+under little or no firepower. `sim/tests/weapons.rs` (`a_gun_behind_its_own_parts_fires_only_once_they_are_shot_off`)
+and `sim/tests/report.rs` (`report_counts_blocked_and_idle_guns_as_the_sim_fires_them`, this design) hold the rule.
 
 ### Performance
 

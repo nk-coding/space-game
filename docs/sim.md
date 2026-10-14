@@ -1279,7 +1279,11 @@ lies behind; salvage (no owner) and other owners are hit as before. A projectile
 since. A gun fires while `output > 0`: firing commanded
 (`PilotInput.fire`, `ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of
 fire, powered, not overheated, not idle (over the control capacity), piece active. Guns are fixed: the pilot aims by turning the ship; under a
-behavior each gun fires when the target crosses its own facing.
+behavior each gun fires when the target crosses its own facing. A blocked gun (a part of its own piece in its line of
+fire, GDR-0004) fires nothing, although its shots would pass through its own hull; when the blocker is destroyed or
+breaks off, the piece's rebuild clears the gun and it fires from the next tick (GDR-0070: "the blocker can be shot
+off"). The design report counts guns the same way (`tests/weapons.rs`, `tests/report.rs`; `docs/arena.md` "What the
+example runs found": evolved designs shutter their cannons behind reactors that the enemy shoots off).
 
 | Delivery (content) | Behaviour |
 |---|---|
