@@ -192,7 +192,13 @@ Next session:
   swatches on the left, tools in the bottom bar, icons and a ⋯ menu; part availability tracked, unlimited for now).
   Both being built.
 - Evolution lab decided ([GDR-0083](gdr/0083-evolution-lab.md), [ADR-0036](adr/0036-arena-crate.md),
-  `docs/plans/evolution-lab.md` tracks L1–L5); L1 (the `arena` crate: headless fights, score, CLI) being built.
+  `docs/plans/evolution-lab.md` tracks L1–L5). L1 is built (`docs/arena.md`: fight specs, the score, the `arena`
+  CLI; native vs wasm IDENTICAL; about 1200 Runner-vs-3-raiders fights/s and 2300 starter mirrors/s on 16 threads).
+- **Open, sim fairness**: in a mirror fight the side spawned first (lower ship ids) wins about 3 : 1 (2000 rim-skiff
+  mirrors: 1173 / 378; flipping the spawn order flips it). Likely cause: the weapons step fires and applies damage
+  ship by ship in id order, so lower ids strike first within a tick. The arena alternates spawn order by seed
+  parity as a stopgap; the sim fix (resolve shots against the tick's starting state, then apply) changes hashes
+  and is next once disk allows another agent build.
 
 ## Phase 4: measurement
 
