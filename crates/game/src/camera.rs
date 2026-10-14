@@ -19,6 +19,9 @@
 //! [`SPEED_WIDEN_TAU`] so it never jumps. It sits on top of the chosen zoom (a hand zoom changes the base, the
 //! widening stays) and composes with the lock framing by taking whichever is further out: the two never stack.
 //!
+//! **The warp** (`warp_fx.rs`, GDR-0085): a voyage's warp-out eases the zoom in a little ([`CameraRig::warp_zoom`],
+//! on top of the rest) and holds it; the arrival eases it back out.
+//!
 //! The camera always covers the whole window. [`CameraRig::view_offset`] moves the point the rig centres on
 //! away from the window centre (the drydock centres its grid between the side panels); the screen ↔ world
 //! helpers include it. Flight input (wheel, drag, pinch, F) runs only in flight; the drydock drives the rig
@@ -83,6 +86,9 @@ pub struct CameraRig {
     unframed: bool,
     /// The speed widening now (eased; 1 = none): the view is this many times wider than the chosen zoom shows.
     widen: f32,
+    /// A voyage's warp eases the zoom in by this factor (1 = none; `warp_fx.rs` sets it in flight, leaving flight
+    /// gives it back). On top of everything else, like the widening; the chosen zoom is untouched.
+    pub warp_zoom: f32,
     /// Where the focused vessel is (for the range rings), if any.
     pub focus: Option<Vec2>,
     /// The vessel followed last frame; a change starts a glide.
@@ -114,6 +120,7 @@ impl Default for CameraRig {
             framed: false,
             unframed: false,
             widen: 1.0,
+            warp_zoom: 1.0,
             focus: None,
             followed: None,
             follow_pos: Vec2::ZERO,
@@ -470,7 +477,8 @@ fn update_camera(
         _ => None,
     };
     rig.framed = framing.is_some_and(|z| z < wide);
-    rig.ease_zoom(dt, framing.map_or(wide, |z| z.min(wide)));
+    let warp = rig.warp_zoom;
+    rig.ease_zoom(dt, framing.map_or(wide, |z| z.min(wide)) * warp);
 
     let (mut tf, mut proj) = camera.into_inner();
     // The camera covers the whole window; `pos` sits at the view centre.

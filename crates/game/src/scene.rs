@@ -230,6 +230,12 @@ impl Scene {
         self.test_ship.filter(|_| self.test_mode() == Some(TestMode::Watch))
     }
 
+    /// A lost test flight going back (to the drydock, or the screen a behavior test started from): the tick it
+    /// leaves at (`warp_fx.rs` dips the view to dark before it).
+    pub fn leaving_at(&self) -> Option<u64> {
+        self.respawn_tick.filter(|_| self.test_flight)
+    }
+
     /// The voyage this scene flies, if it is one.
     pub fn voyage(&self) -> Option<&str> {
         match &self.kind {

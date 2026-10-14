@@ -314,7 +314,7 @@ fn put4(mesh: &mut Mesh, attr: MeshVertexAttribute, data: &[[f32; 4]]) {
 
 /// The bubble mesh.
 #[derive(Resource)]
-struct BubbleMesh(Handle<Mesh>);
+pub(crate) struct BubbleMesh(Handle<Mesh>);
 
 pub struct ShieldPlugin;
 
@@ -353,7 +353,7 @@ fn setup(
 
 /// Every frame: follows each emitter's state in the sim, ages the animations and writes the bubble mesh.
 #[allow(clippy::too_many_arguments)]
-fn draw_bubbles(
+pub(crate) fn draw_bubbles(
     world: Res<SimWorld>,
     time: Res<Time>,
     toggles: Res<RenderToggles>,

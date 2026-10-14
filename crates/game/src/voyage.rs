@@ -12,7 +12,8 @@
 //! * **Running** ([`VoyageRun`]): kills and ships lost are counted from the sim's `VesselLost` events, site events
 //!   become banners, R or the RECALL pill asks for the recall, which starts a 3 s warp-out only when the sim allows
 //!   it (`Sim::can_recall`: no armed awake enemy within 200 m, or no working gun left in the fleet: the emergency
-//!   recall, GDR-0074, which the hint names).
+//!   recall, GDR-0074, which the hint names). `warp_fx.rs` shows the warp-out, the arrival and the dip to dark at
+//!   every end (GDR-0085).
 //! * **Endings**: the warp-out ends at home with every surviving vessel's cargo as the haul
 //!   (`VoyageEnd::Recalled`, the goal cleared or not); losing every vessel shows `SHIP LOST · RECALLED HOME` and
 //!   ends 3 s later (`VoyageEnd::Lost`: the haul stays in the wrecks). Either way the save is written and the
