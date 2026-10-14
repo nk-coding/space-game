@@ -88,6 +88,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0077](0077-abandon-voyage-asks-in-a-panel.md) | Abandoning a voyage asks in a panel (M opens it) instead of M twice | Accepted | 2026-10-14 |
 | [0078](0078-galaxy-exploration-v1.md) | Galaxy exploration v1: signals that narrow as you search, blind jumps, jump range instead of lanes, hidden gates, scanning inside clusters | Accepted | 2026-10-14 |
 | [0079](0079-review-of-lead-defaults-14-oct.md) | Review of the lead defaults: most confirmed; collecting up to 8 m/s, loose items last the voyage, a speed zoom in flight | Accepted | 2026-10-14 |
+| [0080](0080-exploration-searching-and-story.md) | Exploration details: 2–3 km clusters, a scanner part, scans wake enemies, about two steps to locate, free decoding, blind jumps sometimes start a trail, story by fragments and milestone cards | Accepted | 2026-10-14 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

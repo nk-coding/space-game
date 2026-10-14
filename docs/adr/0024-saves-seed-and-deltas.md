@@ -1,6 +1,6 @@
 # ADR-0024: Saves store seed, generator version and deltas, versioned with migrations
 
-- Status: Accepted
+- Status: Accepted; refined by [ADR-0035](0035-saves-keep-the-galaxy-skeleton.md) (the save also keeps the galaxy skeleton; 2026-10-14)
 - Date: 2026-10-10
 - Decided by: Niklas
 - Related: [ADR-0010](0010-cross-platform-determinism.md), [ADR-0015](0015-ron-content-packs-and-mods.md), [ADR-0016](0016-wiki-ready-content-model.md), [GDR-0026](../gdr/0026-procedural-galaxy-and-bands.md)
