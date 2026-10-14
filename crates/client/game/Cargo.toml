@@ -1,0 +1,26 @@
+[package]
+name = "game"
+version = "0.1.0"
+description = "The Bevy client's screens and app (ADR-0038; the running game is world, the toolkit kit): web (wasm32 + WebGL2) first, desktop and Android later."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+data = { path = "../../core/data" }
+sim = { path = "../../core/sim" }
+kit = { path = "../kit" }
+world = { path = "../world" }
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+
+# Share codes (drydock/share.rs): base64url of the zlib-compressed design; the payload is RON.
+base64 = "=0.22.1"
+miniz_oxide = "=0.8.9"
+ron = "=0.12.2"  # format-level: share codes and saved documents are RON text
+serde = { version = "1.0.229", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { workspace = true }
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }

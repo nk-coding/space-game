@@ -25,9 +25,9 @@ escort a behavior, and fly further. Four voyages end at the Warden, an automaton
 
 | Area | Today | Missing for a loop |
 |---|---|---|
-| App start and modes | `AppMode::{Flight, Drydock, Behavior}` (`crates/game/src/mode.rs`); starts in the sandbox; `?scene=` picks another | A home screen, a research screen, a voyage picker; a start that isn't the sandbox |
+| App start and modes | `AppMode::{Flight, Drydock, Behavior}` (`crates/client/world/src/mode.rs`); starts in the sandbox; `?scene=` picks another | A home screen, a research screen, a voyage picker; a start that isn't the sandbox |
 | Home shipyard | Nothing. The drydock and behavior screens have a ring-menu button (`DrydockAction::Menu`, `BehaviorAction::Menu`) with no handler | The ring menu of `ui-mockups/phone-home-ring-menu.png` (GDR-0008) |
-| Flight and combat | Complete for the slice: physics, breakage, weapons, shields, plumes, vessels, focus, behaviors (`crates/sim`) | Nothing new for combat itself; balance is open (see risks) |
+| Flight and combat | Complete for the slice: physics, breakage, weapons, shields, plumes, vessels, focus, behaviors (`crates/core/sim`) | Nothing new for combat itself; balance is open (see risks) |
 | Enemies | `automaton_raider` (3×3, one core) and `raider_basic`; waves spawned by `scene.rs` with a client RNG (`backdrop::Rng`) | A few more enemy ships (a hunter, a boss), encounters placed in a world, spawning from the sim's seeded streams |
 | Scenes | `SceneKind::{Sandbox, Showcase, Load}` and test flights / TEST IN RANGE (`scene.rs`, `test_range.rs`). Wrecks are removed after 75 s dark or 320 m away; a lost ship re-forms in place after 3 s | A voyage scene: sites, wrecks that stay, recall home, death sends you home |
 | Wrecks and salvage | Pieces without a working core are salvage (`Piece::salvage()`, GDR-0013). `Stream::Debris` exists ("debris and salvage generation") but nothing uses salvage | Collecting parts from wrecks; wrecks spawned as wrecks (derelicts) |
@@ -39,7 +39,7 @@ escort a behavior, and fly further. Four voyages end at the Warden, an automaton
 | Death | The sandbox re-forms the ship in place; a test flight returns to the drydock | Mild death per GDR-0029: recalled home, the haul stays with the wreck |
 | Fleet and mind capacity | Vessels, focus, dormant vessels, fleet bar (`fleet_bar.rs`, GDR-0050); `SimConfig::mind_capacity` (player 24, `?mind=N`); wingmen via `?fleet=N` | Mind capacity as a progression number; escorts chosen at home |
 | Storage | `game::storage` (ADR-0031): named, versioned RON documents; `designs/`, `drydock/`, `behaviors/` in use, `saves/` and `settings/` planned | The player's save (progress, unlocks, research data, fleet) |
-| HUD | Hull, speed, target panel, warnings, fleet bar (`flight_hud.rs`) | Cargo, site markers, voyage title, recall |
+| HUD | Hull, speed, target panel, warnings, fleet bar (`flight_hud/`) | Cargo, site markers, voyage title, recall |
 | Determinism | Native vs wasm IDENTICAL on `core`, `flight`, `load`, `behavior` scenarios (`sim::scenario`) | A `voyage` scenario covering salvage and the encounter logic |
 | Content | 20 parts, 4 materials, 3 frames, 4 ships, 2 behaviors (`content/base`) | The slice's content (section 3) |
 
@@ -549,7 +549,7 @@ It holds the save's facts as serde types and answers every rule question:
 ### 5.5 Sim changes (determinism kept)
 
 - **A new RNG stream**, appended: `Stream::Encounter = 5` (site placement, counts, wreck damage). `Stream` is append
-  only (`crates/sim/src/rng.rs`).
+  only (`crates/core/sim/src/rng.rs`).
 - **Wrecks from the start**: `Sim::spawn_wreck(design, owner, body, damage)`: the ship spawns as salvage (no
   controlled piece; a `burned_out` flag keeps `form_vessels` from making its cores vessels), then `damage` of its
   parts are destroyed (rolled on `Stream::Encounter`) and breakage splits it into pieces as usual.
@@ -590,7 +590,7 @@ director's maneuver, awake ones fly their faction's behavior.
   recall a 3 s warp-out, then Home with the haul.
 - **`sim_bridge::apply_events`**: `Collected` → a small effect (the part's tile flies into the ship, `fx.rs`);
   `SiteWoke` / `SiteCleared` → banners.
-- **`flight_hud.rs`**: cargo, voyage title and site counts, site markers (the off-screen marker code exists), RECALL.
+- **`flight_hud/`**: cargo, voyage title and site counts, site markers (the off-screen marker code exists), RECALL.
 - **A `career` module** (Bevy side): `CareerPlugin` holds the save (`Career` resource), loads it at start (or starts a
   new game), writes it at the moments above, and provides `Unlocks` to the drydock, the map and the research screen.
 - **The drydock**: palette, armour pills and frame pills read `Unlocks` instead of only the content flag; the status

@@ -1,6 +1,10 @@
 # ADR-0038: Workspace structure: grouped crate folders, the client split into three crates, feature folders inside
 
-- Status: Accepted
+- Status: Accepted. Implemented 2026-10-14 in four stages: (1) `data` and `sim` folders `56a14c9`, `b9a6d37`; (2) the
+  `game` cycles broken `342c0ee`, `d9fb748`, `7cfb729`; (3) the crates and folders `9dc4ee0`, `c2ae09b`, `2c628aa`;
+  (4) the big files split `d4dc265`, `70a0a59`, `815393b`, `5cd0db3`, `7a7c20b`, `31cae25`. Tests, clippy, every
+  determinism and fight hash and the screens unchanged. Build times (before; the after column waits for the VM's
+  memory): [`docs/results/2026-10-14-workspace-structure-build-times.md`](../results/2026-10-14-workspace-structure-build-times.md).
 - Date: 2026-10-14
 - Decided by: Niklas (approved the lead's proposal as written, 14 Oct 2026; to run right after the chain-reaction work)
 - Related: [ADR-0003](0003-crate-architecture.md), [ADR-0034](0034-fast-everyday-web-builds-and-shared-compile-cache.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0036](0036-arena-crate.md), `CLAUDE.md` "Crates"

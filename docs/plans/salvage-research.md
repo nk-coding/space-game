@@ -53,26 +53,26 @@ credits, no trading.
 
 ### What the code has today
 
-- `locked: bool` on `data::model::Part` and `Material` (`crates/data/src/model.rs`); set on `automaton_core` and
+- `locked: bool` on `data::model::Part` and `Material` (`crates/core/data/src/content/model/`); set on `automaton_core` and
   `automaton_cannon` (`content/base/parts/automatons.ron`) and `automaton_plate` (`content/base/materials/armor.ron`).
-  The drydock filters on it in `palette_parts` and `armor_materials` (`crates/game/src/drydock/state.rs`).
+  The drydock filters on it in `palette_parts` and `armor_materials` (`crates/client/game/src/drydock/state.rs`).
   Validation makes a locked paint block or bevel slope, or every armour material locked, an error.
 - Salvage exists as a state, not as a resource: `Piece::salvage()` (= not the controlling piece,
-  `crates/sim/src/ship.rs`), `Ship::control: Option<PieceId>` (`None` = a wreck for good), `Ship::team()` is `None`
-  for salvage while `Ship::owner()` is kept "for later salvage rights" (`crates/sim/src/vessel.rs`, `docs/sim.md`
+  `crates/core/sim/src/ship/mod.rs`), `Ship::control: Option<PieceId>` (`None` = a wreck for good), `Ship::team()` is `None`
+  for salvage while `Ship::owner()` is kept "for later salvage rights" (`crates/core/sim/src/ship/vessel.rs`, `docs/sim.md`
   "Owners"). Events: `PieceSnapshot::salvage`, `SimEvent::ControlLost`, `VesselLost`, `PartDestroyed { volatile }`
-  (`crates/sim/src/events.rs`).
-- `Stream::Debris = 2` ("debris and salvage generation", `crates/sim/src/rng.rs`) exists and is unused so far.
-- Cargo capacity is compiled per part (`crates/sim/src/design.rs`, `PartSpec` cargo) and shown by the drydock
-  (`DesignReport::cargo`, `crates/sim/src/report.rs`). Nothing fills it.
-- Wrecks are cleaned up by the client, not the sim: `crates/game/src/scene.rs` removes dark ships more than 320 m
+  (`crates/core/sim/src/events.rs`).
+- `Stream::Debris = 2` ("debris and salvage generation", `crates/core/sim/src/rng.rs`) exists and is unused so far.
+- Cargo capacity is compiled per part (`crates/core/sim/src/ship/design.rs`, `PartSpec` cargo) and shown by the drydock
+  (`DesignReport::cargo`, `crates/core/sim/src/report.rs`). Nothing fills it.
+- Wrecks are cleaned up by the client, not the sim: `crates/client/world/src/scene.rs` removes dark ships more than 320 m
   from the player or dark for 75 s; C removes raider vessels but their wrecks stay.
-- Player data: `crates/game/src/storage.rs` (`Storage`, `Backend`, `Document { NAMESPACE, FORMAT, to_ron,
+- Player data: `crates/client/world/src/storage.rs` (`Storage`, `Backend`, `Document { NAMESPACE, FORMAT, to_ron,
   from_ron(text, format) }`, header line `// space-game: <ns>, format N, saved T`). Namespaces in use:
   `designs/` (`DesignDoc`), `drydock/` (`WorkingDoc`, `WorkingBehavior`), `behaviors/` (`BehaviorDoc`). No save
   game, no inventory, no unlock state.
-- `AppMode { Flight, Drydock, Behavior }` (`crates/game/src/mode.rs`); no home screen yet.
-- Content kinds (`crates/data/src/kind.rs`): stat, category, faction, material, part, frame, ship, behavior_node,
+- `AppMode { Flight, Drydock, Behavior }` (`crates/client/world/src/mode.rs`); no home screen yet.
+- Content kinds (`crates/core/data/src/content/kind.rs`): stat, category, faction, material, part, frame, ship, behavior_node,
   behavior, page. No tech, recipe or facility kind. `data::SCHEMA_VERSION` is 1.
 
 ### Records that look wrong or need care
@@ -290,7 +290,7 @@ and Niklas.
 | Progression rules and the profile type | `data::progress` (new module, pure) | no I/O, integer amounts, `BTreeMap`/`Vec` only; used by `game`, later `net` and `arena` |
 | Holds, stripping, fragments | `sim::salvage` (new module), `world.rs`, `events.rs`, `config.rs`, `hash` | deterministic, hashed |
 | Owner-wide refinements | `sim::design` (`ShipDesign::compile` gains modifiers), `sim::report` | later track |
-| Runs, HUD, FX, screens, the save document | `game` (`scene.rs`, `flight_hud.rs`, `fx.rs`, new `shipyard/` screens, `storage.rs` namespace `saves`) | |
+| Runs, HUD, FX, screens, the save document | `game` (`scene.rs`, `flight_hud/`, `fx.rs`, new `shipyard/` screens, `storage.rs` namespace `saves`) | |
 
 A new crate (`campaign`) was considered for the rules. It would keep `data` about content, but today the rules
 are small, pure and content-shaped, like `data::edit`. Proposed ADR: start in `data::progress`, move to a crate
@@ -500,7 +500,7 @@ Pure, integer amounts, ordered containers, errors as values with words for the s
 
 ### 5.5 Client
 
-Flight (`scene.rs`, `flight_hud.rs`, `fx.rs`):
+Flight (`scene.rs`, `flight_hud/`, `fx.rs`):
 - A **salvage run** scene next to the test flight: started by LAUNCH (bottom bar of the drydock), raider waves on,
   the dock ring at the start point (a dotted ring, `docs/style-guide.md`), `DOCK · H` when inside and safe.
 - HUD: `HOLD 6/8` beside the hull map; strippable wreck pieces outlined gold, too-big ones coral `TOO BIG`;

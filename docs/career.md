@@ -12,13 +12,13 @@ starts, salvage blocks, `locked`) is described in `content-model.md`.
 
 | Piece | Where | Doc |
 |---|---|---|
-| The model: the save's facts, the rules, unloading, voyage seeds, readiness | `data::career` (`crates/data/src/career.rs`), tests `crates/data/tests/career.rs` | below |
+| The model: the save's facts, the rules, unloading, voyage seeds, readiness | `data::career` (`crates/core/data/src/career/`), tests `crates/core/data/tests/career.rs` | below |
 | The content it reads | `Content.families`, `.research`, `.starts`, `Part::salvage`, `Material::salvage`, `locked` | `content-model.md` "Salvage", "Research families", "Research nodes", "Starts" |
-| Cargo and collecting (the items a haul is made of) | `sim::salvage` (track 7B) | `sim.md` "Salvage" |
+| Cargo and collecting (the items a haul is made of) | `sim::combat::salvage` (track 7B) | `sim.md` "Salvage" |
 | Voyages as content, rolling and running them | `Content.voyages`, `.encounters`; `sim::voyage` (track 7E) | `content-model.md` "Voyages", "Encounters"; `sim.md` "Voyages" |
-| The save document, new game, the switches, gating the drydock, FLEET | `game::career` (`crates/game/src/career.rs`), `saves/<slot>` in `game::storage`; `drydock/`, `fleet.rs` (track 7F) | [below](#where-the-game-keeps-the-save), `client.md` "Career", "FLEET", `drydock.md` |
+| The save document, new game, the switches, gating the drydock, FLEET | `game::career` (`crates/client/world/src/career.rs`), `saves/<slot>` in `game::storage`; `drydock/`, `fleet.rs` (track 7F) | [below](#where-the-game-keeps-the-save), `client.md` "Career", "FLEET", `drydock.md` |
 
-The model is pure, like `data::edit` for the drydock (ADR-0030): no Bevy, no I/O, wasm-safe, ordered containers
+The model is pure, like `data::design::edit` for the drydock (ADR-0030): no Bevy, no I/O, wasm-safe, ordered containers
 only. Every question takes the `Content` it should be answered against.
 
 ## The save (format 1)
@@ -256,7 +256,7 @@ storage).
 
 ## Where the game keeps the save
 
-Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there, `cargo test -p game career`).
+Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; tests there, `cargo test -p game career`).
 
 - **The document**: `saves/<slot>` in the player storage (ADR-0031: the browser's local storage on the web, key
   `space-game/saves/career`; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
@@ -291,7 +291,7 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/game/src/career.rs`; tests there,
   start, seed)` with the content's first start.
 - **Drydock**: `unlocks` gates the palette, armour and frames (locked ones shown dimmed); `available` gives each
   palette row's count (`∞` today) and reaches the editing model (`Granted::counts` → `PlayerDesign::set_available` →
-  `data::edit::Drydock::set_available`), which refuses a placement with none left; `fresh_parts` gives the NEW tags
+  `data::design::edit::Drydock::set_available`), which refuses a placement with none left; `fresh_parts` gives the NEW tags
   and `mark_seen` ends them; `voyage_ready` gives the status line's voyage-ready line.
 - **FLEET**: `escorts` and `set_escorts`; `mind_capacity` limits the picks; `voyage_ready` for the fleet.
 - **Research screen**: `data()` and `materials()` on top, `can_pay` per node (the refusal says why not),

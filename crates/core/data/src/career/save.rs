@@ -1,0 +1,223 @@
+//! The career as a save: a new game, reading and writing its RON, and reconciling it with the content it is loaded
+//! with (unknown ids dropped, numbers clamped).
+
+use super::*;
+
+impl Career {
+    /// A new game from the content's start `start`, with the game seed `seed`.
+    pub fn new(content: &Content, start: &str, seed: u64) -> Result<Career, Refusal> {
+        if !content.starts.contains(start) {
+            return Err(Refusal::UnknownStart(start.to_string()));
+        }
+        Ok(Career {
+            packs: packs_of(content),
+            start: start.to_string(),
+            seed,
+            generator: GENERATOR,
+            researched: Vec::new(),
+            data: BTreeMap::new(),
+            materials: BTreeMap::new(),
+            escorts: Vec::new(),
+            seen: BTreeSet::new(),
+            voyages: BTreeMap::new(),
+            underway: None,
+            log: Log::default(),
+            last_haul: None,
+        })
+    }
+
+    /// Reads a career written by [`Career::to_ron`] (or by hand) with the pack loader's options: `Some(..)` may
+    /// be left out, unknown fields are errors. Only the syntax and the schema are checked; call
+    /// [`Career::reconcile`] next. Text from outside has a blueprint's limits: at most
+    /// [`crate::content::limits::MAX_DOCUMENT_BYTES`], a leading byte order mark skipped. `Err` holds the parse error with its line and column (one problem, in a list
+    /// like [`crate::parse_blueprint`]'s).
+    ///
+    /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
+    /// roll its voyages differently. The game keeps such a save aside and never writes over it.
+    pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
+        if text.len() > MAX_DOCUMENT_BYTES {
+            return Err(vec![Problem::error(format!(
+                "the text is too long for a save ({} bytes, at most {MAX_DOCUMENT_BYTES})",
+                text.len()
+            ))]);
+        }
+        let career: Career = ron_options()
+            .from_str(strip_bom(text))
+            .map_err(|e| vec![parse_error(&e)])?;
+        if career.generator > GENERATOR {
+            return Err(vec![
+                Problem::error(format!(
+                    "the save was written by a newer build (voyage roller version {}, this build knows up to \
+                     {GENERATOR}): it is kept as it is; open it with that build",
+                    career.generator
+                ))
+                .field("generator"),
+            ]);
+        }
+        Ok(career)
+    }
+
+    /// The career as RON: deterministic, four-space indent, ending in a newline (like
+    /// [`crate::blueprint_to_ron`]); reads back with [`Career::from_ron`] to an equal career.
+    pub fn to_ron(&self) -> String {
+        let pretty = ron::ser::PrettyConfig::new()
+            .indentor("    ")
+            .new_line("\n");
+        let mut text = ron_options()
+            .to_string_pretty(self, pretty)
+            .expect("a career is plain data and always serializes");
+        text.push('\n');
+        text
+    }
+
+    /// Brings a loaded career in line with the current content (it may have changed since the save was
+    /// written): ids the content no longer has are dropped (researched nodes, families and materials in store
+    /// and in the last haul, voyage records), an unknown start is replaced by the content's first start, numbers
+    /// are made finite, non-negative and bounded ([`MAX_DATA`], [`MAX_MATERIALS`]), a voyage still underway
+    /// counts as lost (the game was closed mid-voyage, GDR-0062), and the pack list is updated. Returns a
+    /// warning for each change, for the status line. Never fails.
+    pub fn reconcile(&mut self, content: &Content) -> Vec<Problem> {
+        let mut notes = Vec::new();
+        let now = packs_of(content);
+        for (id, version) in &self.packs {
+            if !now.iter().any(|(n, _)| n == id) {
+                notes.push(
+                    Problem::warning(format!(
+                        "pack `{id}` {version} was used by this career and is not loaded now"
+                    ))
+                    .field("packs"),
+                );
+            }
+        }
+        self.packs = now;
+
+        if !content.starts.contains(&self.start) {
+            let old = std::mem::take(&mut self.start);
+            let note = Problem::warning(match content.starts.iter().next() {
+                Some(s) => {
+                    self.start = s.id.clone();
+                    format!(
+                        "the content has no start `{old}` any more: the career continues from `{}`",
+                        s.id
+                    )
+                }
+                None => {
+                    self.start = old.clone();
+                    format!("the content has no start `{old}` and no other start")
+                }
+            });
+            notes.push(note.entry(Kind::Start, &old).field("start"));
+        }
+
+        let mut kept: Vec<String> = Vec::new();
+        for (k, id) in std::mem::take(&mut self.researched).into_iter().enumerate() {
+            let field = format!("researched[{k}]");
+            if !content.research.contains(&id) {
+                notes.push(
+                    Problem::warning(format!(
+                        "the content has no research node `{id}` any more: dropped with its unlocks"
+                    ))
+                    .entry(Kind::Research, &id)
+                    .field(field),
+                );
+            } else if kept.contains(&id) {
+                notes.push(
+                    Problem::warning(format!("`{id}` is listed twice: dropped"))
+                        .entry(Kind::Research, &id)
+                        .field(field),
+                );
+            } else {
+                kept.push(id);
+            }
+        }
+        self.researched = kept;
+        // What the drydock has shown is no fact worth a note: parts the content no longer has just go.
+        self.seen.retain(|id| content.parts.contains(id));
+
+        clean_data(&mut self.data, content, "data", &mut notes);
+        clean_materials(&mut self.materials, content, "materials", &mut notes);
+
+        self.voyages.retain(|id, _| {
+            let known = content.voyages.contains(id);
+            if !known {
+                notes.push(
+                    Problem::warning(format!(
+                        "the content has no voyage `{id}` any more: its record is dropped"
+                    ))
+                    .field(format!("voyages.{id}")),
+                );
+            }
+            known
+        });
+
+        if let Some(id) = self.underway.clone() {
+            if self.voyages.get(&id).is_some_and(|r| r.launched > 0) {
+                notes.push(
+                    Problem::warning(format!(
+                        "the game was closed during voyage `{id}`: it counts as lost"
+                    ))
+                    .field("underway"),
+                );
+                // Underway with a launch on record, so it ends.
+                let _ = self.voyage_ended(content, &id, VoyageEnd::Lost { ticks: 0 });
+            } else {
+                notes.push(
+                    Problem::warning(format!(
+                        "voyage `{id}` was underway but has no launch on record: dropped"
+                    ))
+                    .field("underway"),
+                );
+                self.underway = None;
+            }
+        }
+
+        if let Some(last) = &mut self.last_haul {
+            if content.voyages.contains(&last.voyage) {
+                clean_data(
+                    &mut last.report.data,
+                    content,
+                    "last_haul.report.data",
+                    &mut notes,
+                );
+                clean_materials(
+                    &mut last.report.materials,
+                    content,
+                    "last_haul.report.materials",
+                    &mut notes,
+                );
+            } else {
+                notes.push(
+                    Problem::warning(format!(
+                        "the content has no voyage `{}` any more: the last haul's report is dropped",
+                        last.voyage
+                    ))
+                    .field("last_haul"),
+                );
+                self.last_haul = None;
+            }
+        }
+
+        // Last: the least interesting change for the status line, which shows the first.
+        if self.generator == 0 {
+            notes.push(
+                Problem::warning(format!(
+                    "unknown voyage roller version 0: voyages roll with version {GENERATOR}"
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
+        } else if self.generator < GENERATOR {
+            // No stored fact refers to a rolled voyage, so the migration loses nothing (see `GENERATOR`).
+            notes.push(
+                Problem::warning(format!(
+                    "voyages were rolled with version {} of the roller: from now on they roll with version \
+                     {GENERATOR}",
+                    self.generator
+                ))
+                .field("generator"),
+            );
+            self.generator = GENERATOR;
+        }
+        notes
+    }
+}

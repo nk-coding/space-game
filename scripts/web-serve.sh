@@ -4,7 +4,7 @@
 # Usage: scripts/web-serve.sh [--release] [extra trunk args]
 set -euo pipefail
 source "$HOME/.cargo/env" 2>/dev/null || true
-cd "$(dirname "$0")/../crates/game"
+cd "$(dirname "$0")/../crates/client/game"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 if [[ "${1:-}" == "--release" ]]; then
   shift

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native load test: the shared load scenario (sim::scenario::load_test, also used by the browser client) with
+# Native load test: the shared load scenario (sim::voyage::scenario::load_test, also used by the browser client) with
 # n = 1, 5 and 20 ships for 1800 ticks each; prints a markdown table of step times and counts plus the load
 # average before and after (VM timings are noisy: repeat and report medians).
 #

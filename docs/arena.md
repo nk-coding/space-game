@@ -1,4 +1,4 @@
-# Arena (`crates/arena`)
+# Arena (`crates/tools/arena`)
 
 Headless, deterministic fights between designs on the real simulation: track **L1** of the evolution lab
 (`docs/plans/evolution-lab.md`), written 14 Oct 2026; the voyage fitness (**L2**) and the evolution (**L3**) the same
@@ -8,7 +8,7 @@ and evolution); the fight spec and the score follow `docs/plans/coop-arena.md` 3
 *placeholder* is for feel.
 
 The crate depends on `data` and `sim` (plus `serde` and `ron`, already used by `data`); no Bevy, no I/O, no threads,
-no wall clock in the library; it builds for `wasm32-unknown-unknown`. `crates/arena/clippy.toml` carries the sim's
+no wall clock in the library; it builds for `wasm32-unknown-unknown`. `crates/tools/arena/clippy.toml` carries the sim's
 bans on std's transcendental float functions. The native CLI is the crate's binary (`src/bin/arena.rs`, below).
 
 ## The fight spec
@@ -18,7 +18,7 @@ options: `Some(..)` may be left out, unknown fields are errors, comments are fin
 and what a fight code will carry later.
 
 ```ron
-// crates/arena/fights/runner_vs_raiders.ron
+// crates/tools/arena/fights/runner_vs_raiders.ron
 (
     seed: 1,
     sides: [
@@ -80,7 +80,7 @@ swapped, 22 / 4 against 3 / 16 wins; the Runner mirror 4 of 1000).
 ## A fight
 
 `Fight::new(&content, &spec)` checks the spec and builds the world as the load test does
-(`sim::scenario::load_test_with`): the content's `BehaviorLibrary` plus the spec's behavior texts, each entry's design
+(`sim::voyage::scenario::load_test_with`): the content's `BehaviorLibrary` plus the spec's behavior texts, each entry's design
 compiled once (`Arc<ShipDesign>`), ships spawned and commanded. `fight.step(ticks)` runs up to that many ticks and
 returns `Some(FightResult)` once the fight has ended (later calls step nothing and return the same result), so a
 client can run a slice per frame; `fight.sim()` is the world for drawing. `run_fight(&content, &spec)` does it in one
@@ -121,7 +121,7 @@ The crate's binary (`src/bin/arena.rs`), not an example: it is the arena's tool 
 hold checks (`fight_hashes`).
 
 ```sh
-cargo run --release -p arena -- fight crates/arena/fights/runner_vs_raiders.ron --seeds 200
+cargo run --release -p arena -- fight crates/tools/arena/fights/runner_vs_raiders.ron --seeds 200
 cargo run --release -p arena -- matrix halvex_runner automaton_raider rim_skiff my_design.ron --seeds 50
 ```
 
@@ -156,7 +156,7 @@ fights in a hundred.
 
 The same spec gives the same result and hash on every platform: the arena adds only spawn positions (`+ − × ÷` on
 the sim's PCG stream) and reads the sim. `scripts/determinism-check.sh --fight NAME [--seed N]` builds the
-`fight_hashes` example (the specs of `crates/arena/fights/`, compiled in) natively and for `wasm32-wasip1`, runs both
+`fight_hashes` example (the specs of `crates/tools/arena/fights/`, compiled in) natively and for `wasm32-wasip1`, runs both
 until the fight ends and compares the per-tick hashes.
 
 **Result (14 Oct 2026, release builds, `dev` with the arena):** native x86_64 vs wasm32-wasip1 under Node 24
@@ -217,7 +217,7 @@ against three raiders 2076 / 590 / 1334 (mean score 0.708 / 0.292, mean 60.4 s),
 ## Voyage fitness
 
 Track L2 (`src/voyage.rs`): a design and a behavior flown through a content voyage by the headless voyage runner,
-scored 0..1. The runner's pilot moved out of the `voyage` example into the sim as a library, `sim::voyage_runner`
+scored 0..1. The runner's pilot moved out of the `voyage` example into the sim as a library, `sim::voyage::runner`
 (`docs/sim.md` "The headless voyage runner"; the example's output is unchanged), so the example, the arena and later
 the game share one pilot.
 
@@ -248,10 +248,10 @@ the voyages, kept in a MAP-Elites archive (GDR-0032, GDR-0083; the method of `do
 ### A run is a text file
 
 `RunConfig` has a RON form (`RunConfig::from_ron`, `to_ron`; the content's RON options: `Some(..)` may be left out,
-unknown fields are errors, comments are fine). Examples in `crates/arena/runs/`:
+unknown fields are errors, comments are fine). Examples in `crates/tools/arena/runs/`:
 
 ```ron
-// crates/arena/runs/skiff_design_60bp.ron
+// crates/tools/arena/runs/skiff_design_60bp.ron
 (
     seed: 1,                          // the run's own random stream
     evolve: Design,                   // Behavior | Design | Both | Stages([...]), below
@@ -294,7 +294,7 @@ A `Genome` is a blueprint (trimmed, as the drydock exports it; named "<start> (e
 behavior field) and a behavior text (canonical, without the start's notes). `genome.blueprint_text()` is the content
 RON form and `genome.behavior_text()` the text form, so the game can SAVE AS DESIGN.
 
-Designs change only through `data::edit::Drydock` (opened in the run's frame, one column narrower under the mirror
+Designs change only through `data::design::edit::Drydock` (opened in the run's frame, one column narrower under the mirror
 lock when the design's width has the other parity), so every child is a legal placement; under the mirror lock an
 edit whose mirror image is impossible (`Twin::Skipped`) is undone. One mutation is one of (weights are
 *placeholders*):
@@ -308,7 +308,7 @@ edit whose mirror image is impossible (`Twin::Skipped`) is undone. One mutation 
 | swap a part | 15 | another allowed part of the same footprint and shape in its place and pose: `place`, accepted only when it replaces just that part (and its twin) |
 | material | 10 | another allowed armour material on a hull part |
 
-Behaviors change only through `data::behavior_edit::BehaviorEditor`, so every program is legal; rules are added only
+Behaviors change only through `data::behavior::edit::BehaviorEditor`, so every program is legal; rules are added only
 below the design's rule slots:
 
 | Behavior operator | Weight | How |
@@ -389,7 +389,7 @@ seed gives another run. The CLI on 1 and on 16 threads printed identical tables 
 ### The CLI: `arena evolve`
 
 ```sh
-cargo run --release -p arena -- evolve crates/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design [--best 8] [--threads N]
+cargo run --release -p arena -- evolve crates/tools/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design [--best 8] [--threads N]
 ```
 
 Breeds on the main thread and runs each generation's jobs on every core (`--threads`, default all), prints a
@@ -400,7 +400,7 @@ generation, parts). With `--out DIR` it writes the best `--best` (8) elites: `el
 
 ### What the example runs found
 
-`crates/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` with ADR-0037 (simultaneous fire, shared think
+`crates/tools/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` with ADR-0037 (simultaneous fire, shared think
 ticks, no spawn-order stopgap); the archive's best after generations 0, 10, 20 and 29:
 
 | Run | Start's score | Archive best, gen 0 / 10 / 20 / 29 | Cells | Best elite |

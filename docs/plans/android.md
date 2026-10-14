@@ -30,8 +30,8 @@ Today the game does not build for Android at all (2, "Current state"), so the sl
 | APKs reach the flagship phone over adb Wireless debugging; the VM network must reach the phone | [ADR-0007](../adr/0007-development-setup-vm-and-host-browser.md) |
 | No hosted CI: checks are local scripts | [ADR-0008](../adr/0008-local-git-only.md) |
 | The sim must give the same per-tick hashes on the phone as natively and in the browser | [ADR-0010](../adr/0010-cross-platform-determinism.md) |
-| Content, icons, fonts and shaders are embedded in the binary (no asset files to ship) | [ADR-0017](../adr/0017-embedded-content-in-memory-loader.md), [ADR-0028](../adr/0028-icons-in-the-content-pack.md); fonts `include_bytes!` in `crates/game/src/flight_hud.rs`, shaders `embedded_asset!` |
-| Renderer: one atlas mesh per piece, glow sprites, bloom as a toggle, sRGB compositing on an HDR camera (the HDR part is a WebGL2 workaround) | [ADR-0020](../adr/0020-style-2a-renderer.md), `crates/game/src/main.rs` `spawn_camera` |
+| Content, icons, fonts and shaders are embedded in the binary (no asset files to ship) | [ADR-0017](../adr/0017-embedded-content-in-memory-loader.md), [ADR-0028](../adr/0028-icons-in-the-content-pack.md); fonts `include_bytes!` in `crates/client/world/src/flight_hud/`, shaders `embedded_asset!` |
+| Renderer: one atlas mesh per piece, glow sprites, bloom as a toggle, sRGB compositing on an HDR camera (the HDR part is a WebGL2 workaround) | [ADR-0020](../adr/0020-style-2a-renderer.md), `crates/client/game/src/main.rs` `spawn_camera` |
 | Raster textures are made at runtime at zoom × DPI | [ADR-0021](../adr/0021-no-fixed-raster-graphics.md) |
 | Storage layer of named RON documents; on Android "the same files backend on the app's internal data path, later"; Android clipboard not built | [ADR-0031](../adr/0031-player-storage-and-design-sharing.md) |
 | Landscape only on the phone; floating HUD (hull map top left, target panel top right, stick bottom left, fire and abilities bottom right); the drydock and the behavior editor exist on all platforms; HUD customisable later | [GDR-0008](../gdr/0008-ui-ship-mind-interface.md), mockups in `docs/concept/boards/ui-mockups/` |
@@ -39,8 +39,8 @@ Today the game does not build for Android at all (2, "Current state"), so the sl
 | Fleet bar chips: a tap focuses, a tap on a dormant vessel wakes it | [GDR-0050](../gdr/0050-fleet-bar.md) (provisional) |
 
 What already exists in the code (`docs/client.md` "Controls"): a fixed touch stick bottom left and a FIRE button
-bottom right (`crates/game/src/controls.rs`, shown after the first touch or with `?touch=1`), tap to lock or
-unlock, taps on fleet-bar chips, pinch zoom (`camera.rs`), and touch presses in the widget kit (`ui_kit.rs`).
+bottom right (`crates/client/world/src/controls.rs`, shown after the first touch or with `?touch=1`), tap to lock or
+unlock, taps on fleet-bar chips, pinch zoom (`camera.rs`), and touch presses in the widget kit (`ui_kit/`).
 
 ### Current state of the Android build (audit, 13 Oct 2026)
 
@@ -203,7 +203,7 @@ needs Android 11+ and the same network; discovery is mDNS, which doesn't cross r
   which is in 0.20.0: [view/window/mod.rs](https://docs.rs/crate/bevy_render/0.20.0/source/src/view/window/mod.rs)),
   but can't run in the background ([#9057](https://github.com/bevyengine/bevy/issues/9057)). So on
   `AppLifecycle::WillSuspend` the game pauses the sim and writes pending autosaves. Today they are flushed only on
-  `AppExit` (`drydock/blueprints.rs` `save_on_exit`), which a phone rarely sends: Android usually kills a
+  `AppExit` (`drydock/blueprints/` `save_on_exit`), which a phone rarely sends: Android usually kills a
   backgrounded app without warning.
 - **Frame rate**: 90/120 Hz phones run Fifo at the panel rate unless told otherwise; ask for 60 with
   `ANativeWindow_setFrameRate` after each surface creation ([frame rate](https://developer.android.com/media/optimize/performance/frame-rate);
@@ -286,7 +286,7 @@ From `phone-flight-hud.png` (positions from `Flight.dc.html`) and GDR-0008:
 
 Behaviour: the touch widgets are on from the start on Android (today they wait for the first touch,
 `controls.rs` `spawn_touch_ui`). A touch that starts on a widget or a panel never reaches the world
-(`UiPointer::blocked` in `ui_kit.rs` checks only the mouse cursor today). Tap slack for locking grows with the
+(`UiPointer::blocked` in `ui_kit/` checks only the mouse cursor today). Tap slack for locking grows with the
 finger (24 dp instead of the mouse's 20 px + 2 m).
 
 ### 4.3 Drydock (phone)
@@ -357,7 +357,7 @@ Total about 5–7 GB (*estimate*), the NDK and the target dir the bulk; Gradle (
 
 ### 5.2 Cargo and cfg gates
 
-- `crates/game/Cargo.toml`:
+- `crates/client/game/Cargo.toml`:
   - Bevy feature `android-native-activity` in the main list (audit R2; if the lead applies R1/R2 earlier, this is
     already done). It changes nothing on wasm or desktop.
   - `blake3` with `pure` for non-wasm targets (audit R11), so the aarch64 build compiles no C.
@@ -385,22 +385,22 @@ Total about 5–7 GB (*estimate*), the NDK and the target dir the bulk; Gradle (
 
 | File | Change |
 |---|---|
-| `crates/game/Cargo.toml` | `android-native-activity` (R2), blake3 `pure` (R11), Android-only `jni` and `ndk` (5.2) |
-| `crates/game/src/main.rs` → new `lib.rs` | App setup moves to `pub fn run()`; Android `#[bevy_main]`; window mode fullscreen on Android; `Hdr` and MSAA become measurable switches (`hdr=0`, `msaa=0`), Hdr stays on for WebGL2 |
-| `crates/game/src/params.rs` | Android: parameters from the intent extra `params` (JNI) |
-| `crates/game/src/storage.rs` | `data_dir()` on Android: `ANDROID_APP.internal_data_path()`; the rest of `FileBackend` stays |
-| `crates/game/src/clipboard.rs` | Android `platform` module: `ClipboardManager` through JNI (copy and a PASTE button; Android 10+ reads the clipboard only while the app has focus); with R10, egui's pastes come from here too |
-| `crates/game/src/drydock/share.rs` | `write_export` on Android: share sheet; file import becomes paste |
-| `crates/game/src/drydock/blueprints.rs`, `behavior_ui/saving.rs` | Flush autosaves on `AppLifecycle::WillSuspend`, not only on `AppExit` |
-| new `crates/game/src/platform/android.rs` (*name placeholder*) | Lifecycle (pause and resume the sim's clock), `SafeArea` (placeholder margins, then JNI insets), 60 Hz frame-rate hint after each resume, thermal headroom (`AThermal_*` from `libandroid` through `extern "C"` declarations in Rust, API 31), Back key (`NamedKey::BrowserBack` in winit 0.30.13) mapped to the game's Esc |
-| `crates/game/src/sim_bridge.rs` | `console_out` on Android: logcat plus the measurement file |
-| `crates/game/src/controls.rs` | Floating stick, FIRE in dp from the safe area, tap slack, next target from the target panel, touch widgets on from the start on Android |
-| `crates/game/src/flight_hud.rs`, `hud.rs` | Phone HUD positions inside the safe area, pause ring and menu, help line off on touch; F3 overlay gains thermal headroom and the atlas tier |
-| `crates/game/src/ui_kit.rs` | `UiPointer::blocked` also for touches; hit slop to 48 dp; drag-to-scroll; soft keyboard on focus (`Window::ime_enabled`) |
-| `crates/game/src/drydock/{view,tools,panels,inspector}.rs` | Compact layout; touch gestures (one finger tool, two fingers pan and zoom, drag from the palette, cancel on a second finger); default zoom for touch |
-| `crates/game/src/behavior_ui/{mod,screen,reorder,controls,text_view,list}.rs` | Compact layout; drag scroll; long-press reorder; slider hit areas; TEXT read-only on the phone |
-| `crates/game/src/atlas.rs` | Nothing at first; log tier and need on the phone. At a phone's 2.6–3.5 scale factor tier 512 (84 MB, plus a second copy during the switch) comes quickly; cap it if memory or rebuild time hurts (5.5) |
-| new `crates/game/android/` | `AndroidManifest.xml` (NativeActivity, `hasCode="false"`, `lib_name` = game, sensorLandscape, configChanges, `isGame`, Vulkan 1.1 feature, profileable), `res/` (theme with the cutout mode, adaptive vector icon) |
+| `crates/client/game/Cargo.toml` | `android-native-activity` (R2), blake3 `pure` (R11), Android-only `jni` and `ndk` (5.2) |
+| `crates/client/game/src/main.rs` → new `lib.rs` | App setup moves to `pub fn run()`; Android `#[bevy_main]`; window mode fullscreen on Android; `Hdr` and MSAA become measurable switches (`hdr=0`, `msaa=0`), Hdr stays on for WebGL2 |
+| `crates/client/kit/src/params.rs` | Android: parameters from the intent extra `params` (JNI) |
+| `crates/client/world/src/storage.rs` | `data_dir()` on Android: `ANDROID_APP.internal_data_path()`; the rest of `FileBackend` stays |
+| `crates/client/kit/src/clipboard.rs` | Android `platform` module: `ClipboardManager` through JNI (copy and a PASTE button; Android 10+ reads the clipboard only while the app has focus); with R10, egui's pastes come from here too |
+| `crates/client/game/src/drydock/share.rs` | `write_export` on Android: share sheet; file import becomes paste |
+| `crates/client/game/src/drydock/blueprints/`, `behavior_ui/saving.rs` | Flush autosaves on `AppLifecycle::WillSuspend`, not only on `AppExit` |
+| new `crates/client/game/src/platform/android.rs` (*name placeholder*) | Lifecycle (pause and resume the sim's clock), `SafeArea` (placeholder margins, then JNI insets), 60 Hz frame-rate hint after each resume, thermal headroom (`AThermal_*` from `libandroid` through `extern "C"` declarations in Rust, API 31), Back key (`NamedKey::BrowserBack` in winit 0.30.13) mapped to the game's Esc |
+| `crates/client/world/src/sim_bridge.rs` | `console_out` on Android: logcat plus the measurement file |
+| `crates/client/world/src/controls.rs` | Floating stick, FIRE in dp from the safe area, tap slack, next target from the target panel, touch widgets on from the start on Android |
+| `crates/client/world/src/flight_hud/`, `hud.rs` | Phone HUD positions inside the safe area, pause ring and menu, help line off on touch; F3 overlay gains thermal headroom and the atlas tier |
+| `crates/client/kit/src/ui_kit/` | `UiPointer::blocked` also for touches; hit slop to 48 dp; drag-to-scroll; soft keyboard on focus (`Window::ime_enabled`) |
+| `crates/client/game/src/drydock/{view,tools,panels,inspector}.rs` | Compact layout; touch gestures (one finger tool, two fingers pan and zoom, drag from the palette, cancel on a second finger); default zoom for touch |
+| `crates/client/game/src/behavior_ui/{mod,screen,reorder,controls,text_view,list}.rs` | Compact layout; drag scroll; long-press reorder; slider hit areas; TEXT read-only on the phone |
+| `crates/client/kit/src/atlas.rs` | Nothing at first; log tier and need on the phone. At a phone's 2.6–3.5 scale factor tier 512 (84 MB, plus a second copy during the switch) comes quickly; cap it if memory or rebuild time hurts (5.5) |
+| new `crates/client/game/android/` | `AndroidManifest.xml` (NativeActivity, `hasCode="false"`, `lib_name` = game, sensorLandscape, configChanges, `isGame`, Vulkan 1.1 feature, profileable), `res/` (theme with the cutout mode, adaptive vector icon) |
 
 ### 5.4 Scripts (local only, ADR-0008; every wait bounded with `timeout`)
 
@@ -467,7 +467,7 @@ follows the window size.
 | aarch64 hashes differ | A2 first, before any UI work; the hash tools name the first divergent tick |
 | Hand-made APK packaging (alignment, signing, uncompressed libs) | Checks inside `android-build.sh`; cargo-apk2 or Gradle as fallback |
 | Soft keyboard: only ASCII through key events; accents can drop | Names and search are ASCII anyway; TEXT view read-only on the phone; GameActivity's IME only if Niklas wants rich text later |
-| Touches on panels leak into the world (`UiPointer::blocked` is mouse-only) | Fix in `ui_kit.rs` early in A5/A7 |
+| Touches on panels leak into the world (`UiPointer::blocked` is mouse-only) | Fix in `ui_kit/` early in A5/A7 |
 | Thermal throttling in the 10-minute run | Measure headroom; a step-down (lower frame rate or glow) is A9's job, only with numbers |
 | Disk: 17 GB free, the Android setup takes 5–7 GB (*estimate*) | One shared `target/android`; delete zips; `df -h /home` in the setup script |
 | Single-threaded Bevy on slower phone cores | Measure with and without `multi_threaded` in A6 (audit R6 recommends it for native); the default follows the numbers in A9 |

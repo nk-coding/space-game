@@ -1,0 +1,45 @@
+//! The running game (ADR-0038): the sim inside Bevy, the world it draws, flight and voyages, and what the player
+//! owns. Built on `kit`; the screens (`game`) build on it. What two screens share lives here.
+//!
+//! - `mode`: the app mode (home, flight, drydock, the BEHAVIOR screen, research, the map) and what runs in which.
+//! - `career`: the player's career save (`saves/<slot>`), a new game, what the career unlocks for the drydock.
+//! - `player`: what the player owns: the design every flight flies, the player's behaviors, the saved designs.
+//! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
+//! - `scene`: sandbox (player + raider waves; home's TEST RANGE), test flight, showcase, load test; writes the
+//!   player's pilot input.
+//! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
+//! - `voyage`: launching a voyage (the career's seed and save), its run (recall, losing it), its end and its
+//!   debrief's data; `warp_fx`: the voyage's transitions (the warp-out, the arrival, the dip to dark and the lift
+//!   at the next screen).
+//! - `storage`: the player's documents (designs and behaviors now; saves, settings later), per platform.
+//! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame;
+//!   `part_icons`: part and ship icons in the UI, drawn the same way.
+//! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes, blasts).
+//! - `shield`: shield bubbles (one batched mesh, each quad at its ship's depth against the opaque ship tiles,
+//!   procedural shader `shield.wesl`).
+//! - `controls`, `camera`: keyboard / mouse / touch input, follow / frame / free camera.
+//! - `flight_hud`, `fleet_bar`, `hud`, `tuning`: flight HUD, fleet bar (the player's vessels), debug overlay and
+//!   toggles, live tuning panel (egui).
+//! - `backdrop`: gradient, parallax dust, range rings.
+
+pub mod backdrop;
+pub mod camera;
+pub mod career;
+pub mod controls;
+pub mod fleet_bar;
+pub mod flight_hud;
+pub mod fx;
+pub mod hud;
+pub mod mode;
+pub mod part_icons;
+pub mod player;
+pub mod scene;
+pub mod shield;
+pub mod ship_model;
+pub mod ship_view;
+pub mod sim_bridge;
+pub mod storage;
+pub mod test_range;
+pub mod tuning;
+pub mod voyage;
+pub mod warp_fx;

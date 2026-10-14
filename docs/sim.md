@@ -1,4 +1,4 @@
-# Simulation core (`crates/sim`)
+# Simulation core (`crates/core/sim`)
 
 Written 11 Oct 2026, updated the same evening (phase 3a: physics seam, flight computer, maneuvers; then
 weapons v1 and shields). All numbers in the heat, power, flight, weapon and ramming models are **placeholders**
@@ -44,6 +44,10 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 
 ## Module map
 
+Feature folders (ADR-0038, 14 Oct 2026): `ship/` (the ship and its parts), `flight/` (the flight computer,
+maneuvers, physics), `combat/` (weapons, plumes, chain reactions, salvage), `behavior/`, `voyage/` (the director,
+the runner, the scenarios); at the root what everything uses.
+
 | Module | What it holds |
 |---|---|
 | `math` | `Vec2`, `Rot`, and the only allowed transcendental functions (`sin`, `cos`, `atan2`, `exp` via libm) |
@@ -51,29 +55,29 @@ No Bevy, no graphics, no threads, no filesystem, no wall-clock. Builds for `wasm
 | `hash` | `StateHasher` (FNV-1a 64 over 32-bit words, `str` for content ids), `StateHash` trait, `fnv1a64` (from `data::hash`, where both save-format hashes are defined once and pinned) |
 | `ids` | `ShipId`, `PieceId` (monotonic `u32`, never reused), `IdAlloc` |
 | `config` | `SimConfig` (thrust/torque/speed scales, split ghost ticks, `FlightTuning`, `PhysicsTuning`, mind capacity per owner, `SalvageTuning`, `VoyageTuning`) |
-| `control` | `ControlState`, the per-piece control capacity and idle pass (GDR-0044) |
-| `design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun mounts and their blockers, engine mounts with their plume lanes and paths), shared by `Arc` |
-| `mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
-| `collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
-| `ship` | `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `gun_works`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
-| `power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
+| `ship::control` | `ControlState`, the per-piece control capacity and idle pass (GDR-0044) |
+| `ship::design` | `ShipDesign::compile(content, blueprint)`: the blueprint compiled once (part specs, links, bonus links, gun mounts and their blockers, engine mounts with their plume lanes and paths), shared by `Arc` |
+| `ship::mass` | `MassProps`, `polygon_mass`, `combine`, `to_piece` (blueprint → piece frame) |
+| `ship::collider` | `ConvexPolygon`, greedy rectangle merge + slope triangles |
+| `ship` | (`piece.rs`: a piece, its thrusters and guns; `caches.rs`: rebuilding a piece's rows; `systems.rs`: the per-tick systems) `Ship`, `Piece`, `PartState`, `Body`, `ShipControls`, systems (`update_systems`), `Thruster`, `GunMount`, `Wrench`, `ThrustAuthority` (what the actuators that can produce do now), `producing`, `gun_works`, `rated_falloff`, `inherited_velocity`, heat and falloff `tuning` constants |
+| `ship::power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
-| `alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
-| `flight` | flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
-| `maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee, Escort), goals capped at the top speed |
+| `ship::alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
+| `flight` | (`pilot.rs`: the pilot's input and goal; `aim.rs`: leads and smart aim; `controllers.rs`: the plan into actuator commands) flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
+| `flight::maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee, Escort), goals capped at the top speed |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
-| `weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
-| `physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
-| `plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
-| `breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome` |
-| `chain` | chain reactions (GDR-0084, GDR-0085): the world's blast queue, the reach scan of other pieces and ships, armour cover (`cover`, `in_reach`, shared with the design's compiled lists), shields (`BLAST_FAMILY`) |
-| `salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
+| `combat::weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
+| `flight::physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
+| `combat::plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
+| `ship::breakage` | `Ship::apply_damage`, `Ship::remove_part` (the destroy path without the destruction), `Ship::resolve_breakage`, `DamageTarget`, `DamageOutcome` |
+| `combat::chain` | chain reactions (GDR-0084, GDR-0085): the world's blast queue, the reach scan of other pieces and ships, armour cover (`cover`, `in_reach`, shared with the design's compiled lists), shields (`BLAST_FAMILY`) |
+| `combat::salvage` | `Item`, `Cargo`, `Stack`, `Loose`, `LooseId`, `Salvaged`; the collect pass, fragments, `Sim::spawn_wreck`, `Sim::loose` (see [Salvage](#salvage)) |
 | `voyage` | `VoyagePlan` (`roll`), `SitePlan`, `Spawn`, `Voyage`, `Site`, `SiteState`, `VoyageTuning`, `PLAN_STREAM`; `Sim::start_voyage`, `voyage`, `can_recall`, `fleet_disarmed`, `awake_enemy`, `armed_enemy` and the director's pass (see [Voyages](#voyages)) |
-| `voyage_runner` | the headless voyage runner's scripted pilot as a library: `VoyageRunner` (steppable), `Flagship`, `VoyageRun`, `closing_reach` (see [The headless voyage runner](#the-headless-voyage-runner)) |
+| `voyage::runner` | the headless voyage runner's scripted pilot as a library: `VoyageRunner` (steppable), `Flagship`, `VoyageRun`, `closing_reach` (see [The headless voyage runner](#the-headless-voyage-runner)) |
 | `events` | `SimEvent`, `SplitEvent`, `PieceSnapshot` |
-| `vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
+| `ship::vessel` | `Owner`, `friendly`, `VesselState`, `VesselInfo`; the vessel split, focus and mind pass (`Sim::focus`, `vessels`, `mind_load`) |
 | `world` | `Sim` (tick, config, RNG, ships, physics, events, impacts and ramming, state hash), `TickInputs`, `ShipCommand`, `DamageCommand`, `PartHit`, `StepPhase` |
-| `scenario` | the deterministic `core`, `flight`, `load`, `behavior`, `salvage` and `voyage` scenarios |
+| `voyage::scenario` | (`salvage.rs`, `voyage.rs`: those two scenarios; `fixtures.rs`: the behaviors and ships they add) the deterministic `core`, `flight`, `load`, `behavior`, `salvage` and `voyage` scenarios |
 
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
 numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` measures its device-load model),
@@ -156,7 +160,7 @@ The rules (also in `src/math.rs`, enforced where possible):
   Stream ids are part of the save/replay format: append only, never renumber. (Behaviors use no
   randomness.)
 - **Math**: `f32` everywhere. `+ − × ÷`, `sqrt`, `abs`, `floor`, `min/max`, comparisons and casts are exact
-  IEEE operations. Transcendentals go through `sim::math` (libm, pure Rust). `crates/sim/clippy.toml` bans
+  IEEE operations. Transcendentals go through `sim::math` (libm, pure Rust). `crates/core/sim/clippy.toml` bans
   std's `sin/cos/tan/atan2/exp/ln/powf/powi/hypot/mul_add/...` in the crate (`cargo clippy -p sim` warns). Rust
   never fuses `a*b+c` by itself. `libm_values_are_pinned` pins exact bit patterns.
 - **Containers**: `Vec` and `BTreeMap` only; every loop runs in index order. Ids are monotonic counters.
@@ -320,7 +324,7 @@ native x86_64 vs wasm32-wasip1 **identical** (12 runs). Only the streams with a 
 `742c08eaaa2fabdb` / `051ce217c6f12e12`, behavior `a2589d01b5eff9b7` / `2df82abadfeb7fcc` (last ticks, seed 42 / 7);
 core, load, salvage and voyage are unchanged from chain reactions v2.
 
-Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
+Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
   run every 600 ticks (a ship-mind vessel and an automaton or wreck launched head-on at 20 m/s each, away from the
@@ -356,7 +360,7 @@ Scenarios (`sim::scenario`); `core` and `flight` spawn two copies of every bluep
 - `salvage`: wrecks spawned as wrecks, collectors, core fragments, a shrinking hold and a lost ship's cargo; see
   [Salvage](#determinism-and-scenarios-1).
 
-For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::scenario::run_kind(kind, seed, ticks)`
+For the browser: the game build (`wasm32-unknown-unknown`) can call `sim::voyage::scenario::run_kind(kind, seed, ticks)`
 and log the same `<tick> <hash>` lines to the console; capture them with `tools/headless/shot.mjs` and run
 `--compare` against the native stream.
 
@@ -402,7 +406,7 @@ links. So "static lists filtered by alive" is always the current topology, and n
 ### Control, salvage and dark pieces
 
 - The **controlling piece** (`Ship::control_piece()`, `Piece::controlled`) is the blueprint's main piece if it
-  has a logic core: the ship's vessel. One rule, `data::geometry::main_of`, picks the main piece for the drydock
+  has a logic core: the ship's vessel. One rule, `data::design::geometry::main_of`, picks the main piece for the drydock
   (`ShipGrid::main_piece`), at spawn, on splits and in `Ship::main_piece`: a piece with a core first, then the
   most parts, then the earlier one (at spawn the pieces are in the drydock's row-major order, so a blueprint of
   equal pieces gets the vessel the drydock describes; 13 Oct 2026 review fix). On a split it stays with the part
@@ -432,7 +436,7 @@ links. So "static lists filtered by alive" is always the current topology, and n
 ### Power
 
 Tiers and weights with partial output (GDR-0014, decided by Niklas; implemented 12 Oct 2026). Code:
-`src/power.rs`.
+`src/ship/power.rs`.
 
 Per piece and tick:
 
@@ -552,7 +556,7 @@ RCS rated speed and plume length, damage and heat (others are reported in `ShipD
 
 ## Flight
 
-### The flight computer (`flight.rs`)
+### The flight computer (`flight/mod.rs`)
 
 Every tick, for the controlling piece of every active ship:
 
@@ -820,7 +824,7 @@ lines at the end of `flight::execute`.
 `SimConfig::thrust_scale`, `torque_scale` and `speed_scale` (default 1) scale the content's thrust, torque and
 rated speeds for feel tests; `split_ghost_ticks` (10) is the collision grace after a split. `SimConfig` also holds `physics` (`PhysicsTuning`,
 see [Physics](#physics-rapier2d)) and `mind_capacity` (player 24 cores, other owners 1000, see [Vessels](#vessels)). Client-side input
-constants (placeholders, `flight.rs`): the keyboard ramp `KEY_TURN_START` 0.2 and `KEY_TURN_GROWTH` 1.0 /s
+constants (placeholders, `flight/mod.rs`): the keyboard ramp `KEY_TURN_START` 0.2 and `KEY_TURN_GROWTH` 1.0 /s
 (GDR-0055, GDR-0058), the lock nudge `NUDGE_MAX` 0.6 rad, `NUDGE_RATE` 1.2 rad/s, `NUDGE_RETURN` 5 /s (GDR-0040).
 
 Why the turn defaults changed (GDR-0042): with 3 rad/s and a gain of 8 /s no ship could turn 90° faster than
@@ -1100,8 +1104,8 @@ allocation inside Rhai. Fire at will costs one `atan2` per clear gun per tick.
 
 ## Vessels
 
-The vessel model (12 Oct 2026; GDR-0013, GDR-0038, GDR-0044 and GDR-0045, decided by Niklas). Code: `src/vessel.rs`
-(owners, vessels, focus, mind capacity), `src/control.rs` (control capacity, idle parts), the ram rules in
+The vessel model (12 Oct 2026; GDR-0013, GDR-0038, GDR-0044 and GDR-0045, decided by Niklas). Code: `src/ship/vessel.rs`
+(owners, vessels, focus, mind capacity), `src/ship/control.rs` (control capacity, idle parts), the ram rules in
 `world.rs` and `weapons.rs`. Every number is a **placeholder**. Rules marked *lead default* were set by the
 vessel agent for Niklas to review.
 
@@ -1405,7 +1409,7 @@ Engines may sit anywhere (GDR-0039, decided by Niklas); the clear-exhaust rule (
 piece right behind it gave no thrust) was removed on 12 Oct 2026. Instead each firing engine's exhaust plume
 burns the first part in its path: the ship's own (the layout rule), enemy vessels, salvage and debris, never
 other vessels of the same owner (GDR-0046). Rules marked *lead default* are [GDR-0049](gdr/0049-engine-plume-v1.md)
-(Accepted, provisional) for Niklas to review. Code: `src/plume.rs`; numbers are **placeholders**.
+(Accepted, provisional) for Niklas to review. Code: `src/combat/plume.rs`; numbers are **placeholders**.
 
 - **Content**: `engine.plume: (length, damage, heat)`, metres behind the engine's back side, damage and heat per
   second at full thrust (stats `plume_length`, `plume_damage`, `plume_heat`; bonuses can change them). Base:
@@ -1664,7 +1668,7 @@ GDR-0047).
   `Split`; see [Vessels](#vessels)).
 - `Sim::raycast(origin, dir, max, exclude)` → `PartHit { ship, piece, part, hit }`.
 - **Chain reactions** (GDR-0019, [GDR-0084](gdr/0084-chain-reactions-v1.md), [GDR-0085](gdr/0085-chain-reactions-v2.md),
-  14 Oct 2026; the rules decided by Niklas, the details and numbers lead placeholders in content; code: `src/chain.rs`).
+  14 Oct 2026; the rules decided by Niklas, the details and numbers lead placeholders in content; code: `src/combat/chain.rs`).
   A part with an `explosion: (damage, radius)` block that damage destroys (shots, plumes, rams, blasts, scripted
   damage; never salvage stripping or a spawned wreck's pre-breaking, which use `Ship::remove_part`) blasts every
   other alive part with a cell whose nearest point lies within `radius` m of the part's centre, **on any piece of
@@ -1712,7 +1716,7 @@ GDR-0047).
 ## Salvage
 
 Salvage v1 (13 Oct 2026; GDR-0063, track 7B of the first playable loop, `docs/plans/first-playable-loop.md` 3.4 and
-5.5). Code: `src/salvage.rs`. Every number is a **placeholder** (`SimConfig::salvage`); rules marked *lead default*
+5.5). Code: `src/combat/salvage.rs`. Every number is a **placeholder** (`SimConfig::salvage`); rules marked *lead default*
 were set by the salvage agent for Niklas to review.
 
 ### Items and cargo
@@ -1903,7 +1907,7 @@ after): salvage seed 1 21 → 26 items (`5e5f19c9f6a52559` → `4aa1e9d8e9089bd6
 ## Voyages
 
 The voyage director (13 Oct 2026; GDR-0062, ADR-0033, track 7E of the first playable loop,
-`docs/plans/first-playable-loop.md` 3.3, 3.4 and 5.5). Code: `src/voyage.rs`, tests `tests/voyage.rs`. A voyage is one
+`docs/plans/first-playable-loop.md` 3.3, 3.4 and 5.5). Code: `src/voyage/mod.rs`, tests `tests/voyage.rs`. A voyage is one
 small cluster, one `Sim` (ADR-0022). Every number is a **placeholder**; rules marked *lead default* were set by the
 voyage agent for Niklas to review. The content side (`voyages`, `encounters`) is in `docs/content-model.md`, the
 career side (open voyages, voyage seeds, unloading the haul) in `docs/career.md`.
@@ -1992,7 +1996,7 @@ ids; some may be gone or salvage by now), `plan()`.
 | `spawn_radius` | 600 m | a site spawns when a player vessel comes this close (the plan's lazy spawning) |
 | `recall_radius` | 200 m | no armed awake enemy vessel this close to recall (GDR-0062, GDR-0068), unless the fleet is disarmed (GDR-0074) |
 
-The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) are constants in `voyage.rs`.
+The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) are constants in `voyage/mod.rs`.
 
 ### State hash
 
@@ -2041,7 +2045,7 @@ bit-identical to before. Seed 42: 2 sites woken and 2 cleared, 6 items, recall 1
 `cargo run --release -p sim --example voyage -- --voyage <id> --design <ship> --seeds 1..20 [--escort <ship>[,...]]
 [--behavior <id>] [--minutes 30]`: the balance tool of track 7K. It rolls the voyage per seed, puts the design at the
 entry (and the escorts behind it, under the `escort` template with the flagship as leader) and flies it with a
-scripted pilot (see the docs of `sim::voyage_runner`: in fights the balance study's *closing* stand-in, or a content behavior with
+scripted pilot (see the docs of `sim::voyage::runner`: in fights the balance study's *closing* stand-in, or a content behavior with
 `--behavior`; salvage it can catch; the sites in turn, the goal last; home once the goal and the sites are done or
 the hold is full, when it is disarmed (`Ship::is_armed`; an overheated or idle gun still counts), or after 3 minutes
 without progress; it fights armed awake enemies only, `Sim::armed_enemy`), and prints per seed the outcome
@@ -2050,7 +2054,7 @@ haul items and research data per family (`data::career::unload`; every player ve
 the step time. `--design` and `--escort` also take a blueprint file (`*.ron`, a saved or exported drydock design),
 for ships a player would build that are not content.
 
-The pilot and the run are a library since 14 Oct 2026 (`sim::voyage_runner`, for the evolution lab's voyage fitness,
+The pilot and the run are a library since 14 Oct 2026 (`sim::voyage::runner`, for the evolution lab's voyage fitness,
 `arena::voyage`): `VoyageRunner::new(content, voyage, Flagship { design, reach, behavior }, behaviors, escorts,
 seed, max_ticks)` sets the run up (`behaviors` is the library the world flies with, so a behavior text that is not
 content can fly the fights; `reach` is `closing_reach(&report)`), `step(ticks)` runs a slice and returns the
@@ -2271,7 +2275,7 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 
 | Field | What |
 |---|---|
-| `pieces`, `main`, `falls_off` | the connected pieces (parts, `vessel` = has a logic core, `powered`), the main piece (`data::geometry::main_of`: cored first, then most parts, then earlier in row-major order), the parts not on it |
+| `pieces`, `main`, `falls_off` | the connected pieces (parts, `vessel` = has a logic core, `powered`), the main piece (`data::design::geometry::main_of`: cored first, then most parts, then earlier in row-major order), the parts not on it |
 | `parts[i]` | stats after bonuses, open (venting) sides, steady-state heat and `heat / limit`, power level at full use, idle |
 | `bonuses` | every bonus that applies (target, source, stat, effect), for the bonus overlay |
 | `mass`, `centre_of_mass`, `inertia`, `hp`, `cargo`, `rule_slots` | main piece |
@@ -2454,7 +2458,7 @@ only on the big combined scenes (several ms) and hurt small ones. Revisit when a
 
 ## The load test
 
-`sim::scenario::load_test(n, seed) -> Sim` (and `load_test_with(&content, n, seed)`): `n` ships on the base
+`sim::voyage::scenario::load_test(n, seed) -> Sim` (and `load_test_with(&content, n, seed)`): `n` ships on the base
 content, ⌈n/2⌉ Halvex Runners in a line facing ⌊n/2⌋ automaton raiders 80 m away, every ship under the content
 behavior `raider_basic` (the raider brain until 12 Oct), so they engage at once and produce projectiles, hits
 and (eventually) debris. With `n = 1` the lone runner orbits a point and fires into space. The browser client

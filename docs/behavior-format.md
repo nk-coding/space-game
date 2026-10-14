@@ -201,10 +201,10 @@ names).
 
 ## Editing model
 
-`data::behavior_edit::BehaviorEditor` (`crates/data/src/behavior_edit.rs`, added 13 Oct 2026) is the editing model
-of the BEHAVIOR screen (GDR-0057), the counterpart of the drydock's `data::edit::Drydock`: no Bevy, no threads, no
+`data::behavior::edit::BehaviorEditor` (`crates/core/data/src/behavior/edit/`, added 13 Oct 2026) is the editing model
+of the BEHAVIOR screen (GDR-0057), the counterpart of the drydock's `data::design::edit::Drydock`: no Bevy, no threads, no
 filesystem, so it builds for wasm32. Both views edit through it: the graph view and the inspector call its
-operations, the text view replaces the program with `set_text`. Tests: `crates/data/tests/behavior_edit.rs`.
+operations, the text view replaces the program with `set_text`. Tests: `crates/core/data/tests/behavior_edit.rs`.
 
 ### Program, ids and results
 
@@ -285,5 +285,5 @@ never changes the program; moving a rule up is how the player keeps it.
 
 ### Undo
 
-Undo and redo keep the last 256 steps (`data::edit::UNDO_STEPS`, as in the drydock); `begin_stroke` /
+Undo and redo keep the last 256 steps (`data::design::edit::UNDO_STEPS`, as in the drydock); `begin_stroke` /
 `end_stroke` make a slider drag one step. Every change, undo and redo bumps `revision()`.
