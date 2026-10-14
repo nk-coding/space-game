@@ -14,16 +14,18 @@
 //! ◆ PROGRAMMABLE MATTER +1
 //! RESEARCH READY · 1
 //!   Reverse-engineered cannon
-//!   ✓ HALVEX DRIFT IS NOW OPEN
-//!                                            [DISMISS ESC]
+//! ((·)) SIGNAL FOUND · HALVEX DRIFT
+//! The lanes around the shipyard are quiet again. Further out, ...
+//!                               [VOYAGE MAP] [DISMISS ESC]
 //! ```
 //!
 //! * [`DebriefData`] is built from the career before and after the voyage's end (`voyage.rs`), the voyage's haul
 //!   and what the flight counted ([`DebriefStats`]: sites, kills, ships lost). Kills and ships lost are not in the
 //!   save, so a game loaded with a `last_haul` shows only the one-line summary of it.
 //! * Dismissed is not saved: the next start shows the summary.
-//! * A voyage it opened adds VOYAGE MAP beside DISMISS: it dismisses the panel and flies to the gate
-//!   (`map::OpenMap`), where the map selects the newly open voyage.
+//! * A voyage its first clear opened is a signal found (GDR-0078): the panel names it (from the content) above the
+//!   voyage's `cleared` words, and adds VOYAGE MAP beside DISMISS: it dismisses the panel and flies to the gate
+//!   (`map::OpenMap`), where the map selects the new signal.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -103,7 +105,7 @@ pub struct DebriefData {
     pub materials: Vec<(String, u32)>,
     /// Research nodes that can be paid now (names, content order).
     pub ready: Vec<String>,
-    /// Voyages this one opened (names).
+    /// Voyages this one opened: the signals it found (names).
     pub opened: Vec<String>,
     pub practice: Option<String>,
 }
@@ -208,6 +210,11 @@ impl DebriefData {
             Outcome::Recalled => ("RECALLED", Tone::Label),
             Outcome::Lost => ("LOST", Tone::Coral),
         }
+    }
+
+    /// One line per signal found: `SIGNAL FOUND · HALVEX DRIFT`.
+    pub fn signals(&self) -> Vec<String> {
+        self.opened.iter().map(|v| format!("SIGNAL FOUND  ·  {}", v.to_uppercase())).collect()
     }
 
     /// The one line home shows once the panel is dismissed: `LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42
@@ -467,7 +474,7 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
                     });
                 });
             }
-            // Barlow has neither ◆ nor ✓: they are vector glyphs.
+            // Barlow has no ◆: it is a vector glyph.
             for (m, n) in &d.materials {
                 p.spawn(row(7.0)).with_children(|l| {
                     l.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(8), height: px(8), flex_shrink: 0.0, ..default() }));
@@ -485,10 +492,10 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
             p.spawn(prose(fonts, name, 15.0, c(Tone::Number)));
         }
     }
-    for v in &d.opened {
+    for line in d.signals() {
         p.spawn(row(7.0)).with_children(|l| {
-            l.spawn((UiIcon::Glyph { glyph: Glyph::Check, color: ui.teal }, Node { width: px(11), height: px(11), flex_shrink: 0.0, ..default() }));
-            l.spawn(label(fonts, &format!("{} IS NOW OPEN", v.to_uppercase()), 9.5, c(Tone::Teal)));
+            l.spawn((UiIcon::Glyph { glyph: Glyph::Signal, color: ui.teal }, Node { width: px(16), height: px(16), flex_shrink: 0.0, ..default() }));
+            l.spawn(label(fonts, &line, 10.5, c(Tone::Teal)));
         });
     }
     if let Some(t) = &d.cleared_text {
@@ -548,6 +555,7 @@ mod tests {
         let kinetic = d.families.iter().find(|f| f.name == "KINETIC WEAPONS").unwrap();
         assert_eq!(kinetic.gained, kinetic.store);
         assert_eq!(d.opened, ["Halvex Drift"]);
+        assert_eq!(d.signals(), ["SIGNAL FOUND  ·  HALVEX DRIFT"]);
         assert!(d.cleared_text.as_deref().is_some_and(|t| t.contains("Halvex Drift") && !t.contains("[[")), "{:?}", d.cleared_text);
         assert!(!d.ready.is_empty(), "the cannon data pays for the cannon node");
         let line = d.summary();
@@ -568,7 +576,7 @@ mod tests {
         let d = DebriefData::build(&content, &before, &after, &last, &Haul::default(), DebriefStats { left: 5, ..default() });
         assert_eq!(d.head(), ("SHIP LOST  ·  RECALLED HOME", Tone::Coral));
         assert_eq!(d.summary(), "LAST VOYAGE  ·  SHIPYARD APPROACH  ·  LOST  ·  1:01  ·  THE HAUL STAYED BEHIND");
-        assert!(d.opened.is_empty() && !d.first_clear);
+        assert!(d.opened.is_empty() && d.signals().is_empty() && !d.first_clear);
         assert_eq!((amount(18.0), amount(4.5), amount(0.04)), ("18".into(), "4.5".into(), "0".into()));
     }
 }

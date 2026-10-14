@@ -15,7 +15,7 @@
 //!   click on empty map space resets; a drag on empty map space (left), or anywhere on the map with the middle or
 //!   right button, pans; on touch two fingers pinch and pan, one finger on empty space pans. The zoom buttons
 //!   bottom right of the map (−, the zoom in %, +, reset) do the same; their tooltips name the keys.
-//! * **Level of detail**: the voyages' labels, markers and routes fade out as the view zooms out
+//! * **Level of detail**: the voyages' labels and markers fade out as the view zooms out
 //!   ([`detail_alpha`]); the galaxy's band names, the charted rim and the shipyard's beacon fade in
 //!   ([`far_alpha`]). Labels keep their size; marker sizes stay in screen px (the detail mesh is rebuilt while
 //!   the zoom changes). [`Anchored`] UI nodes are laid out for the default view and moved by a `UiTransform`.
@@ -60,7 +60,7 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// How much of the voyages' detail (labels, markers, routes) shows at a zoom: 1 from the default view in to
+/// How much of the voyages' detail (labels, markers) shows at a zoom: 1 from the default view in to
 /// about half of it, 0 once the galaxy is most of the view.
 pub fn detail_alpha(zoom: f32) -> f32 {
     smoothstep(DETAIL_FADE.0, DETAIL_FADE.1, zoom)

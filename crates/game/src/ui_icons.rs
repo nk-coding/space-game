@@ -69,10 +69,10 @@ pub enum Glyph {
     /// box's centre and with side bearings).
     Plus,
     Minus,
-    /// A tick (Barlow has no ✓).
-    Check,
     /// Four corner brackets (a view back to its default: the voyage map's reset).
     Fit,
+    /// A beacon sending: a dot between two pairs of arcs (a signal found, the debrief).
+    Signal,
 }
 
 /// The mesh drawing one node's icon.
@@ -344,9 +344,13 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
                 m.strip(&[p(0.34, 0.14), p(0.34, 0.34), p(0.14, 0.34)], false, w, &white, col);
             }
         }
-        Glyph::Check => {
-            let p = |x: f32, y: f32| Vec2::new(x * s, y * s);
-            m.strip(&[p(-0.3, 0.02), p(-0.09, -0.2), p(0.32, 0.24)], false, (s * 0.06).max(0.8), &white, col);
+        Glyph::Signal => {
+            m.polygon(&arc(Vec2::ZERO, 0.09 * s, 0.0, std::f32::consts::TAU, 12)[..12], uv, col);
+            for side in [0.0, std::f32::consts::PI] {
+                for r in [0.22, 0.4] {
+                    m.strip(&arc(Vec2::ZERO, r * s, side - 0.75, side + 0.75, 10), false, w, &white, col);
+                }
+            }
         }
         Glyph::Lock => {
             let p = |x: f32, y: f32| Vec2::new(x * s, y * s);

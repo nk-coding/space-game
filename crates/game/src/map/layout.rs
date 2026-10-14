@@ -1,6 +1,10 @@
 //! The voyage map's pure side: where everything sits (from the content's `map` positions), what state each voyage
 //! is in (from the career), the panel's words, and whether SET COURSE may launch. No Bevy systems here.
 //!
+//! There is no route between voyages (GDR-0078): the map shows the shipyard and the voyages found so far, each a
+//! place of its own. A voyage not open yet is unknown space ([`VoyageState::Unknown`]), not drawn at all; one just
+//! found by clearing the voyages it opens after, and not launched yet, is a new signal ([`VoyageState::Signal`]).
+//!
 //! The map is laid out on a stage of [`STAGE`] logical px (the UI scale grows it with the window, as home's and
 //! FLEET's layouts). Content's `map` coordinates (0 to 1, x right, y down) land in [`MAP_RECT`], left of the panel.
 //! The galaxy's centre lies off the stage to the right ([`CENTRE`]), so the band edges are arcs across the map: the
@@ -71,11 +75,9 @@ impl Band {
 pub struct Geometry {
     /// The shipyard.
     pub home: Vec2,
-    /// Each voyage, in content order (the career's and the map's order).
+    /// Each voyage, in content order (the career's and the map's order), known or not: the band's edges are placed
+    /// from all of them, so they don't move as voyages are found.
     pub nodes: Vec<Vec2>,
-    /// The chain: `(from, to)`, `None` being the shipyard: a voyage that opens after others comes from each of them,
-    /// one that opens after nothing (a start opens it) from the shipyard.
-    pub routes: Vec<(Option<usize>, usize)>,
     pub band: Band,
 }
 
@@ -83,17 +85,6 @@ impl Geometry {
     pub fn new(content: &Content) -> Self {
         let home = to_stage(HOME_AT);
         let nodes: Vec<Vec2> = content.voyages.iter().map(|v| to_stage(v.map)).collect();
-        let mut routes = Vec::new();
-        for (k, v) in content.voyages.iter().enumerate() {
-            if v.opens_after.is_empty() {
-                routes.push((None, k));
-            }
-            for a in &v.opens_after {
-                if let Some(from) = content.voyages.position(a) {
-                    routes.push((Some(from), k));
-                }
-            }
-        }
         let dist = |p: &Vec2| p.distance(CENTRE);
         let far = nodes.iter().chain([&home]).map(dist).fold(0.0f32, f32::max);
         let near = nodes.iter().map(dist).fold(far, f32::min);
@@ -103,7 +94,7 @@ impl Geometry {
         let next = (inner - (outer - inner) * NEXT_DEPTH).max(0.0);
         let key = content.voyages.iter().next().map_or(BANDS[0], |v| v.band.as_str()).to_string();
         let next_key = BANDS.iter().position(|b| *b == key).and_then(|k| BANDS.get(k + 1)).map(|b| b.to_string());
-        Self { home, nodes, routes, band: Band { centre: CENTRE, outer, inner, next, key, next_key } }
+        Self { home, nodes, band: Band { centre: CENTRE, outer, inner, next, key, next_key } }
     }
 
     /// Does voyage `k`'s label go on its left (near the right edge of the map)?
@@ -111,47 +102,43 @@ impl Geometry {
         self.nodes.get(k).is_some_and(|p| p.x > MAP_RECT.min.x + MAP_RECT.width() * LABEL_LEFT_FROM)
     }
 
-    /// A route's two ends.
-    pub fn ends(&self, route: (Option<usize>, usize)) -> (Vec2, Vec2) {
-        (route.0.map_or(self.home, |k| self.nodes[k]), self.nodes[route.1])
-    }
-
-    /// Where a route's time label starts (it runs to the right from there): beside the line's middle, on its right
-    /// (above a level one).
-    pub fn route_label(&self, route: (Option<usize>, usize)) -> Vec2 {
-        let (a, b) = self.ends(route);
-        let d = (b - a).normalize_or_zero();
-        let mut n = Vec2::new(-d.y, d.x);
-        if n.x < -1e-3 || (n.x.abs() <= 1e-3 && n.y > 0.0) {
-            n = -n;
-        }
-        (a + b) / 2.0 + n * 14.0
-    }
 }
 
 /// A voyage's state on the map.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VoyageState {
+    /// Found by clearing the voyages it opens after, and never launched: a new signal. Its first launch makes it
+    /// [`VoyageState::Open`] (the career's launch count; nothing else is saved for it).
+    Signal,
     /// It may launch and its goal has not been cleared yet.
     Open,
     /// Its goal was cleared on a voyage that came home (it may launch again); the quickest such voyage in ticks.
     Cleared { best: Option<u64> },
-    /// Not open yet.
-    Locked,
+    /// Not open yet: unknown space, not on the map.
+    Unknown,
 }
 
 impl VoyageState {
     pub fn of(content: &Content, career: &Career, voyage: &str) -> VoyageState {
-        match career.voyage(voyage) {
+        let record = career.voyage(voyage);
+        let cleared = |id: &String| career.voyage(id).is_some_and(|r| r.cleared);
+        let found = content.voyages.get(voyage).is_some_and(|v| !v.opens_after.is_empty() && v.opens_after.iter().all(cleared));
+        match record {
             Some(r) if r.cleared => VoyageState::Cleared { best: r.best_ticks },
-            _ if career.is_open(content, voyage) => VoyageState::Open,
-            _ => VoyageState::Locked,
+            _ if !career.is_open(content, voyage) => VoyageState::Unknown,
+            _ if found && record.is_none_or(|r| r.launched == 0) => VoyageState::Signal,
+            _ => VoyageState::Open,
         }
     }
 
     /// Every voyage's, in content order.
     pub fn all(content: &Content, career: &Career) -> Vec<VoyageState> {
         content.voyages.iter().map(|v| VoyageState::of(content, career, &v.id)).collect()
+    }
+
+    /// Is it on the map (found)?
+    pub fn known(self) -> bool {
+        self != VoyageState::Unknown
     }
 }
 
@@ -160,13 +147,15 @@ pub fn is_guardian(content: &Content, voyage: &Voyage) -> bool {
     voyage.goal().and_then(|g| content.encounters.get(&g.encounter)).is_some_and(|e| e.tags.iter().any(|t| t == GUARDIAN_TAG))
 }
 
-/// A voyage's state in words under its name: `OPEN`, `CLEARED · BEST 7:42`, `LOCKED`, `LOCKED · GUARDIAN`.
+/// A voyage's state in words under its name: `SIGNAL`, `OPEN`, `CLEARED · BEST 7:42`, `OPEN · GUARDIAN`; nothing for
+/// an unknown one (it isn't drawn).
 pub fn state_words(state: VoyageState, guardian: bool) -> (String, Tone) {
     let (words, tone) = match state {
+        VoyageState::Signal => ("SIGNAL".to_string(), Tone::Teal),
         VoyageState::Open => ("OPEN".to_string(), Tone::Teal),
         VoyageState::Cleared { best: Some(t) } => (format!("CLEARED  ·  BEST {}", crate::voyage::clock(t)), Tone::Teal),
         VoyageState::Cleared { best: None } => ("CLEARED".to_string(), Tone::Teal),
-        VoyageState::Locked => ("LOCKED".to_string(), Tone::Dim),
+        VoyageState::Unknown => return (String::new(), Tone::Dim),
     };
     match (guardian, state) {
         (true, VoyageState::Cleared { .. }) => (words, tone),
@@ -391,8 +380,8 @@ mod tests {
         c.voyage_ended(content, voyage, VoyageEnd::Recalled { haul: Haul::default(), cleared: true, ticks }).unwrap();
     }
 
-    /// Every voyage sits at its content position inside the map rect, the shipyard bottom left; the chain follows
-    /// `opens_after`; every place lies inside the rim band, whose edges are arcs left of the panel.
+    /// Every voyage sits at its content position inside the map rect, the shipyard bottom left; every place lies
+    /// inside the rim band, whose edges are arcs left of the panel.
     #[test]
     fn the_layout_comes_from_the_content_positions() {
         let content = data::base_content();
@@ -405,12 +394,7 @@ mod tests {
         let at = |id: &str| g.nodes[content.voyages.position(id).unwrap()];
         assert_eq!(at("yard_approach"), Vec2::new(28.0 + 0.28 * 848.0, 64.0 + 0.66 * 586.0));
         assert!(g.home.x < at("yard_approach").x && g.home.y > at("yard_approach").y, "the shipyard is bottom left");
-        // The chain: the shipyard opens the first voyage, each next one comes from the one before it.
         let k = |id: &str| content.voyages.position(id).unwrap();
-        assert_eq!(
-            g.routes,
-            [(None, k("yard_approach")), (Some(k("yard_approach")), k("halvex_drift")), (Some(k("halvex_drift")), k("corran_reach")), (Some(k("corran_reach")), k("wardens_gate"))]
-        );
         // The band holds every place with room to spare; the next band's edge lies further in.
         let b = &g.band;
         assert_eq!((b.key.as_str(), b.next_key.as_deref()), ("rim", Some("outer")));
@@ -424,31 +408,37 @@ mod tests {
         assert!(x < PANEL_X && x > at("wardens_gate").x, "{x}");
         // Labels go left near the right edge only.
         assert!(g.label_left(k("wardens_gate")) && !g.label_left(k("yard_approach")));
-        // A route's time label sits beside it, never on it.
-        let r = g.routes[1];
-        let (a, z) = g.ends(r);
-        assert!((g.route_label(r) - (a + z) / 2.0).length() > 10.0 && g.route_label(r).x > (a.x + z.x) / 2.0);
     }
 
-    /// A new game: the first voyage open, the rest locked; clearing it opens the next and shows its best time;
-    /// the Warden's gate is the guardian.
+    /// A new game: only the first voyage is known (the rest are unknown space, not on the map); clearing it finds the
+    /// next as a signal, which its first launch makes an ordinary open voyage (a loss doesn't take that back); the
+    /// cleared one shows its best time; the Warden's gate is the guardian.
     #[test]
     fn each_voyage_takes_its_state_from_the_career() {
+        use VoyageState::{Open, Signal, Unknown};
         let content = data::base_content();
         let mut c = career(&content);
-        assert_eq!(VoyageState::all(&content, &c), [VoyageState::Open, VoyageState::Locked, VoyageState::Locked, VoyageState::Locked]);
+        assert_eq!(VoyageState::all(&content, &c), [Open, Unknown, Unknown, Unknown]);
+        assert_eq!(VoyageState::all(&content, &c).iter().filter(|s| s.known()).count(), 1, "no locked voyage is on the map");
         clear(&content, &mut c, "yard_approach", 30 * 462);
-        assert_eq!(VoyageState::all(&content, &c), [VoyageState::Cleared { best: Some(30 * 462) }, VoyageState::Open, VoyageState::Locked, VoyageState::Locked]);
+        let cleared = VoyageState::Cleared { best: Some(30 * 462) };
+        assert_eq!(VoyageState::all(&content, &c), [cleared, Signal, Unknown, Unknown]);
+        assert_eq!(state_words(Signal, false), ("SIGNAL".into(), Tone::Teal));
         assert_eq!(state_words(VoyageState::of(&content, &c, "yard_approach"), false), ("CLEARED  ·  BEST 7:42".into(), Tone::Teal));
+        c.voyage_launched(&content, "halvex_drift").unwrap();
+        assert_eq!(VoyageState::of(&content, &c, "halvex_drift"), Open, "launched: no longer new");
+        c.voyage_ended(&content, "halvex_drift", VoyageEnd::Lost { ticks: 10 }).unwrap();
+        assert_eq!(VoyageState::all(&content, &c), [cleared, Open, Unknown, Unknown]);
         let guardian: Vec<bool> = content.voyages.iter().map(|v| is_guardian(&content, v)).collect();
         assert_eq!(guardian, [false, false, false, true]);
-        assert_eq!(state_words(VoyageState::Locked, true), ("LOCKED  ·  GUARDIAN".into(), Tone::Coral));
-        assert_eq!(state_words(VoyageState::Open, false), ("OPEN".into(), Tone::Teal));
+        assert_eq!(state_words(Signal, true), ("SIGNAL  ·  GUARDIAN".into(), Tone::Coral));
+        assert_eq!(state_words(Open, false), ("OPEN".into(), Tone::Teal));
+        assert_eq!(state_words(Unknown, false).0, "");
         // A loss doesn't clear; a recall without the goal doesn't either.
         let mut d = career(&content);
         d.voyage_launched(&content, "yard_approach").unwrap();
         d.voyage_ended(&content, "yard_approach", VoyageEnd::Lost { ticks: 10 }).unwrap();
-        assert_eq!(VoyageState::of(&content, &d, "yard_approach"), VoyageState::Open);
+        assert_eq!(VoyageState::all(&content, &d), [Open, Unknown, Unknown, Unknown]);
     }
 
     /// SET COURSE launches only an open voyage with a ready fleet, and one voyage at a time.

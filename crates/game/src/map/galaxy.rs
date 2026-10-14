@@ -6,9 +6,10 @@
 //!   constellation lines) only in the charted band, uncharted bands veiled and fogged (soft smudges, no stars, the
 //!   faint coral tint inside the gate), a sparse halo outside the rim, and every band edge as a dotted ring. Built
 //!   once.
-//! * **The far layer** (fades in as the view zooms out, `view::far_alpha`): the charted band lit, each voyage a
-//!   soft beacon (no route between them: from afar the rim is a place to explore, not a path), and the shipyard a
-//!   large diamond. Rebuilt when the voyages' states change.
+//! * **The far layer** (fades in as the view zooms out, `view::far_alpha`): the charted band lit, each voyage found
+//!   so far a soft beacon (a new signal with a ring around it; unknown voyages show nothing, and no route joins
+//!   them: the rim is a place to explore, not a path, GDR-0078), and the shipyard a large diamond. Rebuilt when the
+//!   voyages' states change.
 //!
 //! Where the bands past the next one end is a placeholder: content has no bands yet (`layout::BANDS` are keys).
 
@@ -153,17 +154,19 @@ pub fn build_far(geo: &Geometry, states: &[VoyageState], guardian: &[bool], glow
     let b = &geo.band;
     // The charted band, lit.
     pen.ring(b.centre, (b.outer + b.inner) / 2.0, (b.outer - b.inner) / 2.0, vcol(ui.teal, 0.07));
-    // The voyages: beacons, no routes.
+    // The voyages found so far: beacons, no routes.
     for (k, at) in geo.nodes.iter().copied().enumerate() {
-        let lit = states.get(k).is_some_and(|s| *s != VoyageState::Locked);
-        let tone = if guardian.get(k).copied().unwrap_or(false) && states.get(k).is_none_or(|s| !matches!(s, VoyageState::Cleared { .. })) { ui.coral } else { ui.teal };
-        if glow {
-            pen.glow(at, 130.0, vcol(tone, if lit { 0.4 } else { 0.16 }));
+        let state = states.get(k).copied().unwrap_or(VoyageState::Unknown);
+        if !state.known() {
+            continue;
         }
-        if lit {
-            pen.disc(at, 11.0, vcol(tone, 1.0));
-        } else {
-            pen.ring(at, 11.0, 2.2, vcol(mix(ui.label, tone, 0.4), 0.6));
+        let tone = if guardian.get(k).copied().unwrap_or(false) && !matches!(state, VoyageState::Cleared { .. }) { ui.coral } else { ui.teal };
+        if glow {
+            pen.glow(at, 130.0, vcol(tone, 0.4));
+        }
+        pen.disc(at, 11.0, vcol(tone, 1.0));
+        if state == VoyageState::Signal {
+            pen.ring(at, 26.0, 2.2, vcol(tone, 0.7));
         }
     }
     // The shipyard.

@@ -613,7 +613,7 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
 |---|---|
 | `band` | snake_case key; text only until bands are content |
 | `map` | each coordinate 0 to 1 |
-| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning, and so is one that opens only after voyages that can never open) |
+| `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning, and so is one that opens only after voyages that can never open). The voyage map draws no route along it and doesn't show a voyage before it opens; one opened this way shows as a new signal until its first launch, and the debrief that opened it says `SIGNAL FOUND · <name>` (GDR-0078) |
 | `radius` | m, above 0 and at most 20000 (`data::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
 | `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |
 | `minutes` | `(min, max)`, `1 ≤ min ≤ max ≤ 600` |
