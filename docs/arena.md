@@ -52,14 +52,29 @@ so without the jitter every seed would give the same fight.
 sides play by the same rules (only the player collects salvage). Both get unlimited mind capacity: every core runs.
 Every ship flies its behavior from the first tick; nobody pilots.
 
-**Spawn order.** The side spawned first gets the lower ship ids, and the sim favours them: in a mirror match of two
-`rim_skiff`s the first-spawned side won 1173 of 2000 fights and the other 378 (449 undecided); spawning side 1 first
-turned it round (425 / 1141), so it is the order, not the geometry. The cause lies in the sim's id-ordered passes
-(not investigated further: behaviors think on a cadence staggered by ship id, and the ships are processed in id
-order within a tick); first strikes decide skiff fights, which magnifies it. The arena cancels it rather than
-changing the sim: **odd seeds spawn side 1 first**, so seeds in pairs
-balance out (the same mirror match: 1607 / 1555 / 838 of 4000). A single fight still carries the bias of its seed's
-parity; average over an even number of seeds.
+**Spawn order.** Side 0 spawns first, so its ships get the lower ids; the sim gives lower ids no edge
+([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)). Until 14 Oct 2026 it did: in a mirror match of two
+`rim_skiff`s the side spawned first won 1173 of 2000 fights and the other 378 (449 undecided), and spawning side 1
+first turned it round (425 / 1141), so the arena alternated the spawn order by seed parity. Three id-order effects in
+the sim caused it, measured one at a time (2000 skiff mirrors and 1000 `automaton_hunter` mirrors, side 0 spawned
+first / side 1 spawned first; won by side 0 / side 1 / undecided):
+
+| Sim | Skiff mirror, side 0 first | Side 1 first | Hunter mirror, side 0 first | Side 1 first |
+|---|---|---|---|---|
+| Before | 1173 / 378 / 449 | 425 / 1141 / 434 | 286 / 81 / 633 | 77 / 282 / 641 |
+| Simultaneous fire (hits applied after every gun has fired) | 863 / 392 / 745 | 450 / 835 / 715 | | |
+| Shared think ticks alone (fire still in id order) | 1181 / 0 / 819 | 0 / 1167 / 833 | | |
+| Both | 0 / 0 / 2000 | 0 / 0 / 2000 | 353 / 49 / 598 | 46 / 344 / 610 |
+| All three (`orbit(auto)` by both ids) | 0 / 0 / 2000 | 0 / 0 / 1000 * | 0 / 0 / 1000 | 1 / 0 / 999 * |
+
+(\* 1000 seeds, the spawn jitter rolled per side so that both orders place the ships alike; side 0 first gave
+0 / 0 / 1000 and 1 / 0 / 999 that way. The rows above it roll the jitter in spawn order, as the arena did.)
+With all three, a fight with the same placement gives each side the same end in either spawn order (1000 of 1000
+seeds for the skiff, hunter and raider mirrors; `tests/fights.rs` checks it). Equal ships now open fire on the same
+tick and shoot each other's nose guns off together: every skiff mirror is a draw at 0.500 / 0.500. Left over is the
+physics: Rapier's contact solver resolves a collision a little differently depending on the bodies' order, so
+head-on rams can still tip a fight (`sample_mid` mirror: 37 of 1000 seeds end differently with the spawn order
+swapped, 22 / 4 against 3 / 16 wins; the Runner mirror 4 of 1000).
 
 ## A fight
 
@@ -121,14 +136,19 @@ cargo run --release -p arena -- matrix halvex_runner automaton_raider rim_skiff 
 ```text
 | vs | halvex_runner | automaton_raider | rim_skiff | sample_mid | automaton_hunter |
 |---|---|---|---|---|---|
-| halvex_runner | 21% (0.52) | 100% (1.00) | 100% (1.00) | 74% (0.82) | 100% (0.99) |
-| automaton_raider | 0% (0.00) | 17% (0.48) | 2% (0.06) | 2% (0.15) | 22% (0.22) |
-| rim_skiff | 0% (0.00) | 92% (0.94) | 36% (0.47) | 0% (0.24) | 84% (0.85) |
-| sample_mid | 10% (0.18) | 71% (0.85) | 27% (0.76) | 0% (0.48) | 52% (0.64) |
-| automaton_hunter | 0% (0.01) | 78% (0.78) | 14% (0.15) | 18% (0.36) | 9% (0.45) |
+| halvex_runner | 0% (0.50) | 100% (1.00) | 100% (1.00) | 64% (0.79) | 100% (1.00) |
+| automaton_raider | 0% (0.00) | 0% (0.50) | 3% (0.05) | 4% (0.18) | 60% (0.64) |
+| rim_skiff | 0% (0.00) | 92% (0.95) | 0% (0.50) | 0% (0.22) | 92% (0.94) |
+| sample_mid | 9% (0.21) | 68% (0.82) | 33% (0.78) | 1% (0.50) | 66% (0.77) |
+| automaton_hunter | 0% (0.00) | 27% (0.36) | 5% (0.06) | 6% (0.23) | 0% (0.50) |
 ```
 
-(`--seeds 100`, 2500 fights, 14 Oct 2026 content; 1v1 at 100 m, 90 s.)
+(`--seeds 100`, 2500 fights, 14 Oct 2026 content with ADR-0037; 1v1 at 100 m, 90 s.) Before ADR-0037 the diagonal
+was 21 / 17 / 36 / 0 / 9 % (mean scores 0.45–0.52, the spawn order alternating by seed); now every mirror ends at
+0.50 (`sample_mid` wins one fight in a hundred by a ram, see the spawn order above). Fights with the hunter moved
+most (it orbits under `raider_basic`, and `orbit(auto)` now goes by both ids): the raider against it 22 → 60 %,
+`sample_mid` 52 → 66 %, the starter 84 → 92 %; the Runner against `sample_mid` 74 → 64 %; the rest within a few
+fights in a hundred.
 
 ## Determinism
 
@@ -142,15 +162,22 @@ until the fight ends and compares the per-tick hashes.
 `skiff_mirror` seeds 3 and 42 (wins, 551–552 ticks); also before the spawn-order change, `runner_vs_raiders` seeds
 1, 5, 6 and `skiff_mirror` 1, 7. The final hashes equal the CLI's for the same seeds.
 
+**With ADR-0037** (14 Oct 2026, release builds; simultaneous fire, shared think ticks, auto orbits by both ids, side 0
+spawned first): **identical** for `runner_vs_raiders` seeds 1 (the time limit, 2700 ticks, `21a0ee0c17aa5233`), 2 (a
+loss, 2661, `3d1b0698c87bd461`), 11 (a loss, 1738, `293ae01a0f0b6d2a`) and `skiff_mirror` seeds 3 (the time limit,
+2700, `988f8d8fc87fa72e`) and 42 (the time limit, 2700, `57cb79ccd322c539`), the same final hashes as the CLI's.
+
 `tests/fights.rs`: the same spec twice gives the same result and hash, another seed another hash; stepping in slices
 gives the same result as one go; the starter against one raider ends; a short time limit ends undecided at 0.5 each;
 the score's edge cases; seeds averaged; the spec's RON round trip (blueprint and behavior texts included); every
-error kind; the spawn order by seed parity.
+error kind; the sides' placement; and mirror fights (the starter's and the hunter's, 4 seeds each, 30 s) ending the
+same for each side when the ships are spawned again in the opposite order (the swap shows any id-order effect
+exactly, in a debug build in well under a second, so it runs with every `cargo test`).
 
 ## Performance
 
 Native release, `arena fight --seeds 4000` on all 16 threads (AMD Ryzen 9 9950X3D, 16 vCPUs), 7 runs each, load
-average 6–12 (other agents building, and the runs themselves), 14 Oct 2026:
+average 6–12 (other agents building, and the runs themselves), 14 Oct 2026, before ADR-0037:
 
 | Fight | Mean length | Fights/s (16 threads), median (range) | M ticks/s | Fights/s (1 thread) |
 |---|---|---|---|---|
@@ -165,3 +192,12 @@ threads scale about 12×. Building a fight (`Fight::new`: the behavior library, 
 What the 4000-seed runs say about the content (side 0 won / side 1 won / undecided): the Runner beats three raiders
 in 56 % (2227 / 543 / 1230, mean score 0.73); almost a third end undecided (the time limit or both out). The skiff
 mirror: 1607 / 1555 / 838 (mean score 0.507 / 0.493).
+
+**With ADR-0037** (14 Oct 2026; simultaneous fire, shared think ticks; load average 5–8; the build before, run
+alternately, in brackets): `runner_vs_raiders` 1398 fights/s on 16 threads, median of 5 (1374–1406; before 1433),
+2.53 M ticks/s (2.51), one thread 114 fights/s (119): the fights last a little longer (60.4 s mean), the cost per
+tick is the same. `skiff_mirror` now always runs to the time limit (90 s, 2700 ticks: both lose their lasers on the
+same tick and drift), so it gives fewer fights per second for cheaper ticks: 1261 fights/s on 16 threads, median of 5
+(973–1338), 3.4 M ticks/s; one thread 113 fights/s (233), 0.31 M ticks/s (0.28). The 4000-seed runs now: the Runner
+against three raiders 2076 / 590 / 1334 (mean score 0.708 / 0.292, mean 60.4 s), the skiff mirror 0 / 0 / 4000
+(0.500 / 0.500).

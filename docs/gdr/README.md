@@ -42,7 +42,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0031](0031-materials-and-fabrication.md) | No generic scrap: materials come from places, and the fabricator resolves recipe chains without factory logistics | Accepted | 2026-10-10 |
 | [0032](0032-balancing-arena-evolution.md) | Balance with an AI-vs-AI arena and evolutionary search; enemies are handcrafted plus evolved | Accepted | concept phase |
 | [0033](0033-multiplayer-coop-and-arena.md) | Multiplayer later: co-op voyages in the host's galaxy and arena PvP with your own ships | Accepted | 2026-10-10 |
-| [0034](0034-behavior-first-match-fire-at-will.md) | Behaviors pick the first matching rule about ten times a second; each gun fires at will along its facing; no match means hold | Accepted | 2026-10-11; 2026-10-12 |
+| [0034](0034-behavior-first-match-fire-at-will.md) | Behaviors pick the first matching rule about ten times a second; each gun fires at will along its facing; no match means hold | Accepted; think stagger replaced by [ADR-0037](../adr/0037-simultaneous-fire-within-a-tick.md) | 2026-10-11; 2026-10-12 |
 | [0035](0035-rule-slots-per-core.md) | Rule slots: six per logic core, two per automaton core; the lowest rules switch off first | Accepted | 2026-10-11; 2026-10-12 |
 | [0036](0036-behavior-text-format.md) | The behavior text format: one line per rule, `when ... and ... -> action`, no `end`, no `or` | Accepted | 2026-10-11; 2026-10-12 |
 | [0037](0037-behavior-vocabulary-as-content.md) | The behavior vocabulary is content; v1 has 24 nodes, one target line with aim priorities, and the raider pack as data | Accepted | 2026-10-11; 2026-10-12 |
