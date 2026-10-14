@@ -190,13 +190,27 @@ fn enter(mut transitions: MessageReader<StateTransitionEvent<AppMode>>, rig: Res
     portal.aperture = None;
 }
 
-/// The map closes: shut, and the flight's zoom back (home keeps it, flight uses it).
-fn exit(mut rig: ResMut<CameraRig>, mut portal: ResMut<Portal>) {
+/// The map closes: shut, and the flight's zoom back (home keeps it, flight uses it). Left on the way (a voyage
+/// launched mid-dive), the drawing would keep its cut and its depth; the map opens next time without the portal (at
+/// once, from elsewhere than home) and would never clear them, so both go now.
+fn exit(
+    mut rig: ResMut<CameraRig>,
+    mut portal: ResMut<Portal>,
+    sheets: Query<&MapMesh>,
+    mut materials: ResMut<Assets<crate::atlas::AtlasMaterial>>,
+    mut pivot: Single<&mut Transform, With<MapPivot>>,
+) {
     rig.zoom = portal.flight_zoom;
     rig.zoom_target = portal.flight_zoom;
     portal.open = false;
     portal.t = 0.0;
     portal.aperture = None;
+    for m in &sheets {
+        set_aperture(&mut materials, &m.material, None);
+    }
+    if **pivot != Transform::default() {
+        **pivot = Transform::default();
+    }
 }
 
 /// The way in or out, one frame: the camera, the aperture, the map's depth; home once it is back out.

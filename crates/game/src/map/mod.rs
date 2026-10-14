@@ -624,7 +624,8 @@ fn input(
             view.show(geo.0.nodes[k]);
         }
     }
-    if launch && let Some(id) = map.selected.clone() {
+    // Only once the screen is open: SET COURSE shows from then on, and Enter mid-dive would leave the portal half way.
+    if launch && portal.screen_open() && let Some(id) = map.selected.clone() {
         match fleet.blocker(&id) {
             None => {
                 map.say = None;
