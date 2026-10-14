@@ -1,11 +1,12 @@
 # Plan: exploring the galaxy
 
 Status: **proposal, reworked 14 Oct 2026** around [GDR-0075](../gdr/0075-voyages-feel-like-exploration.md) (the
-direction) and [GDR-0078](../gdr/0078-galaxy-exploration-v1.md) (Niklas's answers on discovery, hints, travel and
-gates). The first version (13 Oct, written before phase 7 was built) laid out lanes, routes and visible gates; it is
+direction), [GDR-0078](../gdr/0078-galaxy-exploration-v1.md) (Niklas's answers on discovery, hints, travel and
+gates) and [GDR-0080](../gdr/0080-exploration-searching-and-story.md) / [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md)
+(searching, the scanner part, the story, the skeleton in the save). The first version (13 Oct, written before phase 7 was built) laid out lanes, routes and visible gates; it is
 in git history (commit `e1f3d67`) for its technical detail. Every number marked *(placeholder)* is for feel, not a
-spec. The questions in [section 9](#9-questions-for-niklas) go to Niklas interactively; the roadmap and the record
-indexes are the lead's to update.
+spec. Niklas answered the questions of [section 9](#9-questions-for-niklas) the same day; the roadmap and the
+record indexes are the lead's to update.
 
 ## 1. Summary
 
@@ -99,7 +100,7 @@ A signal is a pointer from a **source** to a **target**, stored in the save.
 ### 4.2 Where signals come from (GDR-0078: derelicts and in-cluster signals)
 
 - **Logs in wrecks**: some wrecks carry a **data core** (a salvage item, like a core fragment). Brought home, it
-  is decoded in the research screen (a small cost in research data, or free; question 5) into a signal. The
+  is decoded in the research screen, free (GDR-0080), into a signal. The
   debrief lists it as "1 LOG TO DECODE".
 - **Signals heard in a cluster**: a beacon, a distress call or an odd reading is a site with no enemies. Flying close
   and scanning it turns it into a signal at once, during the voyage.
@@ -140,13 +141,15 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
 
 ### 4.6 Inside a cluster: scanning
 
-- **Clusters grow** for searching to have room: *(placeholder: 2–3 km radius, against the slice's 0.6–1 km)*.
+- **Clusters grow** for searching to have room: 2–3 km radius (GDR-0080), against the slice's 0.6–1 km.
   Bigger needs the old plan's work on sensor range and freezing far sites (section 6.3); `f32` holds fine within
   8 km of the origin.
 - **Visible on arrival**: the star, lane-less edge markers, large wreck fields and anything within sensor range.
-- **A scan** (question 2 decides its form): reveals sites within a scan radius *(placeholder: 1.2 km)* and gives
-  each active signal it can hear a bearing. Scans cost time (a charge) and may wake sleeping enemies nearby
-  *(placeholder: within 300 m)*, so where you scan matters.
+- **A scan needs a scanner part** built into the ship (GDR-0080): a ship without one cannot scan, so scanning is
+  a drydock trade-off (room, power, mass); better scanners come by research. A scan is an action with a short
+  charge *(lead default)*, then a sweep that reveals sites within the scanner's range *(placeholder: 1.2 km)* and
+  gives each active signal it can hear a bearing. It wakes sleeping enemies nearby *(placeholder: within 300 m)*,
+  so where you scan matters. The starter or an early research node must give a scanner (E8).
 - **Bearings** show in flight as a line from the scan spot and on the cluster map overlay; two crossing lines mark
   the place.
 
@@ -192,8 +195,8 @@ containers, ascending ids (ADR-0010). A generation hash is checked native vs was
 6. **Interiors** are generated on demand at warp time from the cluster's seed and type, with the trail places the
    cluster holds put in as fixed sites.
 
-Whether the save stores this skeleton (about 80 clusters and the trails, a few KB) or regenerates it from the seed
-is question 7; storing it keeps updates and mods from reshuffling a running galaxy.
+The save stores this skeleton (about 80 clusters and the trails, a few KB; ADR-0035), so updates and mods never
+reshuffle a running galaxy; interiors are still generated from each cluster's seed.
 
 ## 6. Technical plan
 
@@ -258,24 +261,12 @@ Order: E0, E1 first; then E2, E3, E4 side by side; then E5; then E6; E7 and E8 l
 
 ## 9. Questions for Niklas
 
-Asked interactively; each stands on its own.
+Answered on 14 Oct 2026 ([GDR-0080](../gdr/0080-exploration-searching-and-story.md),
+[ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md)): clusters of 2–3 km; scanning needs a **scanner part**
+(Niklas's choice over a plain key); a scan wakes sleeping enemies nearby; about two steps locate a signal; decoding a
+log is free; a blind jump finds an ordinary cluster, sometimes a trail's start; saves keep the skeleton; the story is
+lore fragments in a memory log plus milestone cards.
 
-1. **How big is a cluster now that you search it?** (Recommended) 2–3 km across *(placeholder)*: a few minutes of
-   flying between finds; or keep the slice's ~1 km and search only on the galaxy map; or 6–8 km with a cruise
-   speed.
-2. **How does a scan work?** (Recommended) A key or button, a short charge (a few seconds) during which you hold
-   still, then a ring sweeps out; or a passive sensor that reveals as you fly (no action, less deciding); or a
-   scanner part you build in (ships without one cannot scan).
-3. **What does a scan risk?** (Recommended) It can wake sleeping enemies near you; or nothing; or it also tells
-   enemies where you are for a while.
-4. **How quickly do signals narrow?** (Recommended) Two scans or one second source usually locate a cluster; or one
-   scan points straight at it; or three to four, a real hunt.
-5. **Does decoding a log cost anything?** (Recommended) It is free; or it costs a little research data of its
-   family; or it takes a while (a timer between voyages).
-6. **What does a blind jump find?** (Recommended) An ordinary cluster of the band, sometimes (1 in 3) with the
-   start of a short trail; or always something small; or occasionally danger above the band (an ambush, a boss).
-7. **Should a save keep the galaxy's layout?** (Recommended) Yes, the small skeleton (about 80 clusters and the
-   trails) next to the seed, so updates never reshuffle a running galaxy; or rebuild from the seed each load.
-8. **How is the light story told?** (Recommended) Lore fragments at the ends of lore trails, kept in a memory log,
-   plus short cards at milestones (each gate, each new band); or fragments only; or also short inner-voice lines
-   in flight.
+Still open, for later rounds: the scanner part's numbers and how the first one is obtained (the starter or an early
+node); the jump range numbers and their research; how a signal is drawn and worded on the map (a visual question,
+best shown side by side).
