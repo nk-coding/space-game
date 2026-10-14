@@ -330,18 +330,20 @@ fn evolve(o: &Opts) -> Result<(), String> {
         o.threads
     );
     println!(
-        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | s |"
+        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | breed ms | s |"
     );
-    println!("|---|---|---|---|---|---|---|---|---|---|---|");
+    println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
     let start = Instant::now();
     while !run.finished() {
         let t0 = Instant::now();
+        // Breeding (mutation, crossover, the pre-filter) runs on this thread; the jobs on all of them.
         let jobs = run.jobs().to_vec();
+        let breed = t0.elapsed().as_secs_f64() * 1e3;
         let results = par_map(&jobs, o.threads, |j| j.run(&content));
         run.submit(results);
         let g = run.state().history.last().cloned().expect("a generation is done");
         println!(
-            "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {:.2} |",
+            "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {breed:.1} | {:.2} |",
             g.generation,
             g.genes,
             g.evaluated,
@@ -374,7 +376,7 @@ fn evolve(o: &Opts) -> Result<(), String> {
     println!("| rank | cell | score | {} | generation | parts |", axes.join(" | "));
     println!("|---|---|---|{}---|---|", "---|".repeat(axes.len()));
     for (k, e) in results.elites.iter().take(o.best).enumerate() {
-        let measures: Vec<String> = e.measures.iter().map(|m| format!("{m:.1}")).collect();
+        let measures: Vec<String> = e.measures.iter().map(|m| format!("{:.1}", m + 0.0)).collect();
         println!(
             "| {} | {} | {:.3} | {} | {} | {} |",
             k + 1,

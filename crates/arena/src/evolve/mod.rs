@@ -184,6 +184,19 @@ fn default_behavior(content: &Content, bp: &Blueprint) -> Result<String, String>
     content_behavior(content, &id)
 }
 
+/// A behavior text in its canonical form without its notes: a note describes a rule as written, and evolution
+/// rewrites the rules.
+fn without_notes(content: &Content, text: &str) -> Result<String, String> {
+    let mut ed = BehaviorEditor::from_text(&content.behavior_nodes, text)
+        .map_err(|e| format!("the behavior text does not read: {e:?}"))?;
+    let rules: Vec<_> = ed.rules().map(|r| r.id).collect();
+    for id in rules {
+        ed.set_rule_note(id, None).map_err(|e| e.to_string())?;
+    }
+    ed.set_target_note(None).map_err(|e| e.to_string())?;
+    Ok(ed.text())
+}
+
 fn content_behavior(content: &Content, id: &str) -> Result<String, String> {
     let b = content
         .behaviors
@@ -255,6 +268,7 @@ impl Run {
                 (header, content_behavior(content, &id).map_err(start_err)?, None)
             }
         };
+        let behavior = without_notes(content, &behavior).map_err(start_err)?;
         // The frame: the configured one, else the smallest content frame the start fits.
         let frame = match &config.limits.frame {
             Some(id) => content
@@ -278,6 +292,10 @@ impl Run {
         let header = Blueprint {
             id: "evolved".into(),
             name: format!("{} (evolved)", header.name),
+            summary: format!("Evolved from {} in the evolution lab.", header.name),
+            description: None,
+            lore: None,
+            tags: vec!["evolved".into()],
             behavior: None,
             source: Default::default(),
             ..header
