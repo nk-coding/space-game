@@ -168,7 +168,6 @@ impl Plugin for BehaviorPlugin {
                         (saving::title, saving::apply, list::apply, list::scroll).chain(),
                         edit::apply,
                         controls::drag_sliders,
-                        screen::scroll,
                         saving::autosave,
                     )
                         .chain()

@@ -6,28 +6,40 @@
 //!   over its right edge ([`Scrollbar::vertical`]) or along its bottom ([`Scrollbar::horizontal`];
 //!   [`Scrollbar::outside`] puts it just under a strip, in the gap below it, so it covers nothing). The kit spawns
 //!   the bar as the area's next sibling (its parent must have no border on the bar's side: the bar is placed from
-//!   the corners, like [`super::ScrollCue`]) and places it every frame from the area's layout.
+//!   the corners) and places it every frame from the area's layout.
 //! * **Glow room**: the kit lets the area show its content [`Scrollbar::room`] px past its edges (its
 //!   `overflow_clip_margin`), so a glow at an edge fades out on its own instead of ending in a straight line. Where
-//!   content scrolls past an edge (a node's own [`ScrollPosition`]), a fade into the backdrop covers that room and
-//!   [`FADE_DEPTH`] px inside the edge while there is more past it (the end's fade is left to a [`super::ScrollCue`]
-//!   when the area has one).
+//!   content scrolls past an edge, a fade into the backdrop covers that room and [`FADE_DEPTH`] px inside the edge
+//!   while there is more past it (Niklas, 14 Oct 2026: "there is no need for the UI to say that you can scroll via
+//!   wheel": the bar and these fades are all that say an area scrolls; the `MORE BELOW · WHEEL` cue is gone).
 //! * **What scrolls**: the area's own [`ScrollPosition`] (its content size from the layout), or, for a list that
-//!   shows a window of its rows in a fixed pool of row nodes, [`ScrollRows`]: the screen writes which rows show,
-//!   and takes the first row a drag asks for (no fades: such a list shows whole rows only).
+//!   shows a window of its rows in a fixed pool of row nodes, [`ScrollRows`]: the screen lays its rows out from the
+//!   list's scroll in UI px ([`ScrollRows::lay`]: which rows the pool shows; it keeps its rows while the view stays
+//!   inside them, see [`row_window`]) and the kit shifts the pool by the rest (the node's own [`ScrollPosition`]),
+//!   so such a list scrolls by pixels too.
+//! * **Smooth scrolling** (Niklas, 14 Oct 2026: "I want smooth scrolling like in chrome"): the kit owns the wheel
+//!   for every [`Scrollbar`] area (the topmost one under the pointer that has more to show, unless another layer
+//!   covers it; over a bar, its area). A wheel's notch glides ([`Glide`]): [`WHEEL_STEP`] UI px (at most
+//!   [`PAGE_SHARE`] of the view) over [`GLIDE_SECONDS`] on an ease-out curve, and notches in quick succession move
+//!   the running glide's target on instead of starting again. A touchpad's small pixel steps move the area at
+//!   once, 1:1 under the fingers ([`wheel_move`]). A screen can glide an area somewhere with
+//!   [`SmoothScroll::to`]; a place written directly (a drag on the bar, a list starting at the top) stops a glide.
+//!   Always within the content: a glide ends at an end, never past it.
 //! * **When it shows**: while the area scrolls (any change of its place: the wheel, a drag, a jump; touch has no
 //!   hover, so this is what shows it there) and while the pointer is over the area, then [`HOLD_SECONDS`] more,
 //!   then it fades out over [`FADE_OUT_SECONDS`] ([`bar_alpha`]). Never while the content fits.
 //! * **Mouse and touch**: the bar is a [`Hot`] node (it takes the pointer from the rows under it); a press on the
-//!   thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on from there.
+//!   thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on from there (at
+//!   once: no glide).
 //! * **Look** (style guide "UI"): the label grey at low alpha, 4 px wide, 6 px while the pointer is on it or it is
 //!   dragged, fully rounded, [`EDGE_INSET`] px in from the area's edge.
 
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::{BackgroundGradient, ColorStop, ComputedNode, LinearGradient, OverflowClipMargin, UiGlobalTransform};
+use bevy::ui::{BackgroundGradient, CalculatedClip, ColorStop, ComputedNode, ComputedStackIndex, LinearGradient, OverflowClipMargin, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
-use super::{Hot, ScrollCue};
+use super::{Hot, UiPointer};
 use crate::style::{Style, ui_color};
 
 /// Which way an area scrolls.
@@ -46,8 +58,9 @@ impl BarAxis {
     }
 }
 
-/// An overlay scrollbar for the scrolling node it is on (see the module doc).
+/// An overlay scrollbar for the scrolling node it is on, and its smooth scrolling (see the module doc).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[require(SmoothScroll)]
 pub struct Scrollbar {
     pub axis: BarAxis,
     /// Under the area (a sideways strip with room below it), not over its content.
@@ -79,28 +92,170 @@ impl Scrollbar {
     }
 }
 
-/// A list that pages a fixed pool of row nodes (the drydock's palette, the BLUEPRINTS and BEHAVIORS lists, FLEET's
-/// cards): which rows show (the first, how many, of how many), written by the screen; `want` is the first row a
-/// drag on the bar asks for ([`ScrollRows::take_want`], before the screen's own wheel).
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// A list that shows a window of its rows in a fixed pool of row nodes (the drydock's palette, the BLUEPRINTS and
+/// BEHAVIORS lists, FLEET's cards): how long its content is and how far it is scrolled (UI px). The kit's wheel,
+/// glide and bar drag write `scroll`; the screen may write it too (to start at the top); [`ScrollRows::lay`] keeps
+/// both in range and says which rows the pool shows; the kit shifts the pool by `shift` (the node's own
+/// [`ScrollPosition`], so the node needs `Overflow::scroll_*` on its axis, and one row node more than fit).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ScrollRows {
+    pub content: f32,
+    pub scroll: f32,
+    pub shift: f32,
+    /// The pool's first row (kept while the view stays inside the pool).
     pub first: usize,
-    pub shown: usize,
-    pub total: usize,
-    pub want: Option<usize>,
+}
+
+/// Which rows of a pooled list show: the pool holds `count` rows from `first` (every row in view, and as many past
+/// it as the pool has room for) and is shifted back by `shift` px (the part above or before the view); `seen` are
+/// the rows at least partly in view (from, to); the content's length and the scroll kept within it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RowWindow {
+    pub first: usize,
+    pub count: usize,
+    pub shift: f32,
+    pub seen: (usize, usize),
+    pub content: f32,
+    pub scroll: f32,
+}
+
+/// The [`RowWindow`] of rows `lengths` long (UI px, along the list) with `gap` between them, scrolled by `scroll` in
+/// a view `view` long, for a pool of `pool` row nodes that held rows from `held` last frame. The pool keeps its
+/// rows while the view stays inside them: a row node that shows another row redraws it (a part icon is a mesh
+/// built again, which showed as a blink while a list glided), so with a pool as long as the list nothing changes
+/// rows while it scrolls, and a shorter pool moves on by as many rows as it can at once.
+pub fn row_window(lengths: &[f32], gap: f32, scroll: f32, view: f32, pool: usize, held: usize) -> RowWindow {
+    let total = lengths.len();
+    let content = lengths.iter().sum::<f32>() + gap * total.saturating_sub(1) as f32;
+    let scroll = scroll.clamp(0.0, (content - view).max(0.0));
+    let tops: Vec<f32> = lengths.iter().scan(0.0, |top, h| Some(std::mem::replace(top, *top + h + gap))).collect();
+    // In view: from the first row whose gap after it reaches the view, to the first row that starts below it.
+    let from = tops.iter().zip(lengths).take_while(|(t, h)| *t + *h + gap <= scroll).count();
+    let to = tops.iter().take_while(|t| **t < scroll + view).count().max(from);
+    let pool = pool.max(to - from);
+    let first = if held <= from && held + pool >= to {
+        held
+    } else if held > from {
+        // Up: the pool reaches as far above as it can.
+        to.saturating_sub(pool)
+    } else {
+        // Down: as far below.
+        from.min(total.saturating_sub(pool))
+    };
+    let shift = scroll - tops.get(first).copied().unwrap_or(0.0);
+    RowWindow { first, count: pool.min(total - first.min(total)), shift, seen: (from, to), content, scroll }
 }
 
 impl ScrollRows {
-    /// The first row a drag asks for, once.
-    pub fn take_want(&mut self) -> Option<usize> {
-        self.want.take()
+    /// Lays the list out from its rows' lengths (UI px) with `gap` between them in a view `view` long, for a pool of
+    /// `pool` row nodes: keeps the content's length, the scroll within it, the pool's first row and its shift
+    /// (written only when they change), and returns which rows show.
+    pub fn lay(rows: &mut Mut<ScrollRows>, lengths: &[f32], gap: f32, view: f32, pool: usize) -> RowWindow {
+        let w = row_window(lengths, gap, rows.scroll, view, pool, rows.first);
+        let want = ScrollRows { content: w.content, scroll: w.scroll, shift: w.shift, first: w.first };
+        if **rows != want {
+            **rows = want;
+        }
+        w
+    }
+}
+
+/// How far a wheel's notch scrolls (UI px; Chrome's step: 100 px at a scale of 1).
+pub const WHEEL_STEP: f32 = 100.0;
+/// A notch scrolls at most this share of the view (a small area doesn't jump past what it showed).
+pub const PAGE_SHARE: f32 = 0.875;
+/// A notch's glide (seconds; Chrome's smooth scrolling takes about as long).
+pub const GLIDE_SECONDS: f32 = 0.18;
+/// A pixel step of at least this many CSS px is a wheel's notch (browsers report a mouse wheel's notch in pixels,
+/// 100 or 120 a notch); smaller ones are a touchpad's own smooth stream and move the area at once.
+pub const PIXEL_NOTCH: f32 = 40.0;
+/// Lines a notch reports: one natively, three in a browser that reports lines.
+const LINES_PER_NOTCH: f32 = if cfg!(target_arch = "wasm32") { 3.0 } else { 1.0 };
+
+/// What one wheel event does to an area.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WheelMove {
+    /// A notch: glide this far (UI px).
+    Glide(f32),
+    /// A touchpad's step: move this far at once (UI px).
+    Direct(f32),
+}
+
+/// The move a wheel event of `delta` along the area's axis asks for (Bevy's sign: positive is up or left; in lines,
+/// or physical px), with `css` physical px per CSS px (the window's scale factor), `ui` physical px per UI px and a
+/// view `view` UI px long.
+pub fn wheel_move(unit: MouseScrollUnit, delta: f32, css: f32, ui: f32, view: f32) -> WheelMove {
+    let step = WHEEL_STEP.min(view * PAGE_SHARE).max(1.0);
+    match unit {
+        MouseScrollUnit::Line => WheelMove::Glide(-delta / LINES_PER_NOTCH * step),
+        MouseScrollUnit::Pixel if (delta / css).abs() >= PIXEL_NOTCH => WheelMove::Glide(-delta / css / WHEEL_STEP * step),
+        MouseScrollUnit::Pixel => WheelMove::Direct(-delta / ui),
+    }
+}
+
+/// Chrome-like ease-out (cubic): fast at first, settling softly.
+fn ease_out(t: f32) -> f32 {
+    let u = 1.0 - t.clamp(0.0, 1.0);
+    1.0 - u * u * u
+}
+
+/// A smooth scroll from one place to another over [`GLIDE_SECONDS`] (UI px along the area's axis).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Glide {
+    from: f32,
+    to: f32,
+    /// Seconds since it started.
+    t: f32,
+}
+
+impl Glide {
+    /// A glide from `at` to `target`, kept within `0..=max`; none when it is there already.
+    pub fn new(at: f32, target: f32, max: f32) -> Option<Glide> {
+        let to = target.clamp(0.0, max.max(0.0));
+        ((to - at).abs() > 0.01).then_some(Glide { from: at, to, t: 0.0 })
     }
 
-    /// Says which rows show (written only when it changes).
-    pub fn show(rows: &mut Mut<ScrollRows>, first: usize, shown: usize, total: usize) {
-        if (rows.first, rows.shown, rows.total) != (first, shown, total) {
-            (rows.first, rows.shown, rows.total) = (first, shown, total);
-        }
+    /// A notch: `by` further on from the `running` glide's target (notches in quick succession add up), or from
+    /// `at`; it starts from `at` again, so it runs on without a stop.
+    pub fn by(running: Option<Glide>, at: f32, by: f32, max: f32) -> Option<Glide> {
+        Glide::new(at, running.map_or(at, |g| g.to) + by, max)
+    }
+
+    /// Moves the whole glide by `by` (a touchpad's step during it), within `0..=max`.
+    pub fn shift(&mut self, by: f32, max: f32) {
+        self.from += by;
+        self.to = (self.to + by).clamp(0.0, max.max(0.0));
+    }
+
+    /// `dt` seconds on (the content allowing `max` now): the place, and whether the glide is over.
+    pub fn step(&mut self, dt: f32, max: f32) -> (f32, bool) {
+        self.t += dt;
+        self.to = self.to.clamp(0.0, max.max(0.0));
+        let k = self.t / GLIDE_SECONDS;
+        let at = self.from + (self.to - self.from) * ease_out(k);
+        (at.clamp(0.0, max.max(0.0)), k >= 1.0)
+    }
+}
+
+/// The smooth scrolling of a [`Scrollbar`] area (every one has it): the glide under way.
+#[derive(Component, Debug, Default)]
+pub struct SmoothScroll {
+    glide: Option<Glide>,
+    /// The place the glide wrote last: a different one means something else moved the area (the glide stops).
+    wrote: Option<f32>,
+    /// A place the screen asked to glide to.
+    want: Option<f32>,
+}
+
+impl SmoothScroll {
+    /// Glides the area to `target` (UI px; kept within its content), from the next frame.
+    pub fn to(&mut self, target: f32) {
+        self.want = Some(target);
+    }
+
+    /// A glide is under way (or asked for).
+    pub fn gliding(&self) -> bool {
+        self.glide.is_some() || self.want.is_some()
     }
 }
 
@@ -166,8 +321,8 @@ pub fn bar_alpha(alpha: f32, idle: f32, dt: f32) -> f32 {
 struct Track {
     area: Entity,
     bar: Scrollbar,
-    /// The fades over the area's start and end edges (areas with their own [`ScrollPosition`]).
-    fades: Option<[Entity; 2]>,
+    /// The fades over the area's start and end edges.
+    fades: [Entity; 2],
     /// Seconds since the area last scrolled or was hovered.
     idle: f32,
     alpha: f32,
@@ -186,29 +341,26 @@ struct Thumb;
 struct EdgeFade;
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(Update, (attach, drag.after(super::hit_test)).in_set(super::UiInputSet))
-        .add_systems(Update, show.in_set(super::UiStyleSet));
+    app.add_systems(Update, (attach, (wheel, drag, glide).chain().after(super::hit_test)).in_set(super::UiInputSet))
+        .add_systems(Update, (shift_rows, show).in_set(super::UiStyleSet));
 }
 
 /// Gives every new [`Scrollbar`] area its glow room and spawns its fades and its bar as its next siblings (they draw
 /// over it, the bar over the fades).
-#[allow(clippy::type_complexity)]
-fn attach(mut commands: Commands, style: Res<Style>, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node, Has<ScrollRows>), Added<Scrollbar>>) {
+fn attach(mut commands: Commands, style: Res<Style>, mut areas: Query<(Entity, &Scrollbar, &ChildOf, &mut Node), Added<Scrollbar>>) {
     let back = style.background.outer();
-    for (area, bar, parent, mut node, rows) in &mut areas {
+    for (area, bar, parent, mut node) in &mut areas {
         node.overflow_clip_margin = OverflowClipMargin::padding_box().with_margin(f32::from(bar.room));
-        let fades = (!rows).then(|| {
-            [false, true].map(|end| {
-                // Opaque at the outer end, clear inside the area.
-                let (from, to) = if end { (0.0, FADE_ALPHA) } else { (FADE_ALPHA, 0.0) };
-                let stops = vec![ColorStop::percent(ui_color(back, from), 0), ColorStop::percent(ui_color(back, to), 100)];
-                let gradient = match bar.axis {
-                    BarAxis::Vertical => LinearGradient::to_bottom(stops),
-                    BarAxis::Horizontal => LinearGradient::to_right(stops),
-                };
-                let node = Node { display: Display::None, position_type: PositionType::Absolute, ..default() };
-                commands.spawn((EdgeFade, node, BackgroundGradient::from(gradient), ChildOf(parent.parent()))).id()
-            })
+        let fades = [false, true].map(|end| {
+            // Opaque at the outer end, clear inside the area.
+            let (from, to) = if end { (0.0, FADE_ALPHA) } else { (FADE_ALPHA, 0.0) };
+            let stops = vec![ColorStop::percent(ui_color(back, from), 0), ColorStop::percent(ui_color(back, to), 100)];
+            let gradient = match bar.axis {
+                BarAxis::Vertical => LinearGradient::to_bottom(stops),
+                BarAxis::Horizontal => LinearGradient::to_right(stops),
+            };
+            let node = Node { display: Display::None, position_type: PositionType::Absolute, ..default() };
+            commands.spawn((EdgeFade, node, BackgroundGradient::from(gradient), ChildOf(parent.parent()))).id()
         });
         commands.spawn((
             Track { area, bar: *bar, fades, idle: HOLD_SECONDS + FADE_OUT_SECONDS, alpha: 0.0, seen: None, grab: None },
@@ -220,13 +372,161 @@ fn attach(mut commands: Commands, style: Res<Style>, mut areas: Query<(Entity, &
     }
 }
 
-/// An area's view, content and scroll along the bar (logical px, or rows for [`ScrollRows`]).
-fn extent(axis: BarAxis, node: &ComputedNode, pos: Option<&ScrollPosition>, rows: Option<&ScrollRows>) -> (f32, f32, f32) {
-    if let Some(r) = rows {
-        return (r.shown as f32, r.total as f32, r.first as f32);
-    }
+/// An area's view, content and scroll along the bar (UI px): its [`ScrollRows`], else its own layout and
+/// [`ScrollPosition`].
+fn extent(axis: BarAxis, node: &ComputedNode, pos: &ScrollPosition, rows: Option<&ScrollRows>) -> (f32, f32, f32) {
     let k = node.inverse_scale_factor;
-    (axis.of(node.size) * k, axis.of(node.content_size) * k, pos.map_or(0.0, |p| axis.of(p.0)))
+    let view = axis.of(node.size) * k;
+    match rows {
+        Some(r) => (view, r.content, r.scroll),
+        None => (view, axis.of(node.content_size) * k, axis.of(pos.0)),
+    }
+}
+
+/// Puts an area's scroll at `at` (its [`ScrollRows`], else its [`ScrollPosition`]), written only when it changes.
+fn set_scroll(axis: BarAxis, pos: &mut Mut<ScrollPosition>, rows: Option<&mut Mut<ScrollRows>>, at: f32) {
+    if let Some(rows) = rows {
+        if rows.scroll != at {
+            rows.scroll = at;
+        }
+        return;
+    }
+    set_axis(axis, pos, at);
+}
+
+/// Writes one axis of a [`ScrollPosition`] when it changes.
+fn set_axis(axis: BarAxis, pos: &mut Mut<ScrollPosition>, at: f32) {
+    let mut v = pos.0;
+    match axis {
+        BarAxis::Vertical => v.y = at,
+        BarAxis::Horizontal => v.x = at,
+    }
+    if pos.0 != v {
+        pos.0 = v;
+    }
+}
+
+/// Is `e` the node `area` or inside it?
+fn within(mut e: Entity, area: Entity, parents: &Query<&ChildOf>) -> bool {
+    loop {
+        if e == area {
+            return true;
+        }
+        match parents.get(e) {
+            Ok(p) => e = p.parent(),
+            Err(_) => return false,
+        }
+    }
+}
+
+/// The wheel scrolls one [`Scrollbar`] area: the one whose bar is under the pointer, else the topmost one under it
+/// with more to show than fits, unless a layer above it (a screen opened over it) has the pointer. A notch glides,
+/// a touchpad's step moves at once ([`wheel_move`]); an area that scrolls sideways takes the wheel's up and down too.
+#[allow(clippy::type_complexity)]
+fn wheel(
+    window: Single<&Window, With<PrimaryWindow>>,
+    mut wheels: MessageReader<MouseWheel>,
+    pointer: Res<UiPointer>,
+    tracks: Query<&Track>,
+    stacks: Query<&ComputedStackIndex>,
+    parents: Query<&ChildOf>,
+    mut areas: Query<
+        (
+            Entity,
+            &Scrollbar,
+            &mut SmoothScroll,
+            &ComputedNode,
+            &UiGlobalTransform,
+            &InheritedVisibility,
+            &ComputedStackIndex,
+            Option<&CalculatedClip>,
+            &mut ScrollPosition,
+            Option<&mut ScrollRows>,
+        ),
+        Without<Track>,
+    >,
+) {
+    let events: Vec<MouseWheel> = wheels.read().copied().collect();
+    let Some(cursor) = window.physical_cursor_position().filter(|_| !events.is_empty()) else { return };
+    let over = pointer.over;
+    let target = over.and_then(|e| tracks.get(e).ok()).map(|t| t.area).or_else(|| {
+        let mut best: Option<(u32, Entity)> = None;
+        for (e, bar, _, node, tf, vis, z, clip, pos, rows) in &areas {
+            let under = vis.get() && node.size.cmpgt(Vec2::ZERO).all() && node.contains_point(*tf, cursor) && clip.is_none_or(|c| c.contains_point(cursor));
+            let (view, content, _) = extent(bar.axis, node, pos, rows);
+            if under && content - view > 0.5 && best.is_none_or(|b| z.0 >= b.0) {
+                best = Some((z.0, e));
+            }
+        }
+        let (z, area) = best?;
+        let covered = over.is_some_and(|h| stacks.get(h).is_ok_and(|s| s.0 > z) && !within(h, area, &parents));
+        (!covered).then_some(area)
+    });
+    let Some(Ok((_, bar, mut smooth, node, _, _, _, _, mut pos, mut rows))) = target.map(|a| areas.get_mut(a)) else { return };
+    let axis = bar.axis;
+    let (view, content, start) = extent(axis, node, &pos, rows.as_deref());
+    let max = (content - view).max(0.0);
+    if smooth.wrote != Some(start) {
+        smooth.glide = None;
+    }
+    let mut at = start;
+    for ev in events {
+        let d = match axis {
+            BarAxis::Vertical => ev.y,
+            BarAxis::Horizontal if ev.x.abs() > ev.y.abs() => ev.x,
+            BarAxis::Horizontal => ev.y,
+        };
+        if d == 0.0 {
+            continue;
+        }
+        match wheel_move(ev.unit, d, window.scale_factor(), node.inverse_scale_factor.recip(), view) {
+            WheelMove::Glide(by) => smooth.glide = Glide::by(smooth.glide, at, by, max),
+            WheelMove::Direct(by) => {
+                at = (at + by).clamp(0.0, max);
+                if let Some(g) = &mut smooth.glide {
+                    g.shift(by, max);
+                }
+            }
+        }
+    }
+    if at != start {
+        set_scroll(axis, &mut pos, rows.as_mut(), at);
+    }
+    smooth.wrote = Some(at);
+}
+
+/// Runs every glide a frame on: one the screen asked for starts, one whose area something else moved stops.
+#[allow(clippy::type_complexity)]
+fn glide(time: Res<Time<Real>>, mut areas: Query<(&Scrollbar, &mut SmoothScroll, &ComputedNode, &mut ScrollPosition, Option<&mut ScrollRows>)>) {
+    let dt = time.delta_secs();
+    for (bar, mut smooth, node, mut pos, mut rows) in &mut areas {
+        if !smooth.gliding() {
+            continue;
+        }
+        let (view, content, at) = extent(bar.axis, node, &pos, rows.as_deref());
+        let max = (content - view).max(0.0);
+        if smooth.wrote != Some(at) {
+            smooth.glide = None;
+        }
+        // A glide already on its way there runs on (asked again each frame, it would never get there).
+        if let Some(target) = smooth.want.take()
+            && smooth.glide.is_none_or(|g| (g.to - target.clamp(0.0, max)).abs() > 0.01)
+        {
+            smooth.glide = Glide::new(at, target, max);
+        }
+        let Some(mut g) = smooth.glide else { continue };
+        let (now, done) = g.step(dt, max);
+        smooth.glide = (!done).then_some(g);
+        set_scroll(bar.axis, &mut pos, rows.as_mut(), now);
+        smooth.wrote = Some(now);
+    }
+}
+
+/// Shifts a pooled list's rows by what [`ScrollRows::lay`] left over (the part of its first row out of view).
+fn shift_rows(mut lists: Query<(&Scrollbar, &ScrollRows, &mut ScrollPosition), Changed<ScrollRows>>) {
+    for (bar, rows, mut pos) in &mut lists {
+        set_axis(bar.axis, &mut pos, rows.shift);
+    }
 }
 
 /// The track's length along the area (logical px).
@@ -239,14 +539,14 @@ fn pointer(window: &Window, touches: &Touches) -> Option<Vec2> {
     window.physical_cursor_position().or_else(|| touches.iter().next().map(|t| t.position() * window.scale_factor()))
 }
 
-/// A press on a bar drags its thumb (on the track beside it: jumps its middle there first): the area's
-/// [`ScrollPosition`], or the first row its [`ScrollRows`] asks for.
+/// A press on a bar drags its thumb (on the track beside it: jumps its middle there first), at once (a glide
+/// stops).
 #[allow(clippy::type_complexity)]
 fn drag(
     window: Single<&Window, With<PrimaryWindow>>,
     touches: Res<Touches>,
     mut tracks: Query<(&mut Track, &Hot, &ComputedNode, &UiGlobalTransform)>,
-    mut areas: Query<(&ComputedNode, Option<&mut ScrollPosition>, Option<&mut ScrollRows>), Without<Track>>,
+    mut areas: Query<(&ComputedNode, &mut SmoothScroll, &mut ScrollPosition, Option<&mut ScrollRows>), Without<Track>>,
 ) {
     let at = pointer(&window, &touches);
     for (mut track, hot, tnode, ttf) in &mut tracks {
@@ -256,34 +556,19 @@ fn drag(
             }
             continue;
         }
-        let (Some(at), Ok((node, pos, rows))) = (at, areas.get_mut(track.area)) else { continue };
+        let (Some(at), Ok((node, mut smooth, mut pos, mut rows))) = (at, areas.get_mut(track.area)) else { continue };
         let axis = track.bar.axis;
-        let (view, content, scroll) = extent(axis, node, pos.as_deref(), rows.as_deref());
+        let (view, content, scroll) = extent(axis, node, &pos, rows.as_deref());
         let len = track_len(axis, node);
         let Some((start, thumb_len)) = thumb(view, content, scroll, len) else { continue };
         // The pointer along the track from its start (logical px).
         let p = axis.of((at - (ttf.translation - tnode.size / 2.0)) * tnode.inverse_scale_factor);
         let grab = *track.grab.get_or_insert(if (start..=start + thumb_len).contains(&p) { p - start } else { thumb_len / 2.0 });
         let want = scroll_for(p - grab, view, content, len);
-        match (pos, rows) {
-            (_, Some(mut rows)) => {
-                let first = want.round() as usize;
-                if first != rows.first && rows.want != Some(first) {
-                    rows.want = Some(first);
-                }
-            }
-            (Some(mut pos), None) => {
-                let mut v = pos.0;
-                match axis {
-                    BarAxis::Vertical => v.y = want,
-                    BarAxis::Horizontal => v.x = want,
-                }
-                if pos.0 != v {
-                    pos.0 = v;
-                }
-            }
-            (None, None) => {}
+        if smooth.gliding() {
+            (smooth.glide, smooth.want) = (None, None);
         }
+        set_scroll(axis, &mut pos, rows.as_mut(), want);
     }
 }
 
@@ -312,11 +597,10 @@ fn show(
     style: Res<Style>,
     window: Single<&Window, With<PrimaryWindow>>,
     mut tracks: Query<(&mut Track, &Hot, &mut Node, &ChildOf, &Children)>,
-    areas: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility, Option<&ScrollPosition>, Option<&ScrollRows>), Without<Track>>,
+    areas: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility, &ScrollPosition, Option<&ScrollRows>), Without<Track>>,
     parents: Query<(&ComputedNode, &UiGlobalTransform), Without<Track>>,
     mut thumbs: Query<(&mut Node, &mut BackgroundColor), (With<Thumb>, Without<Track>, Without<EdgeFade>)>,
     mut fades: Query<&mut Node, (With<EdgeFade>, Without<Track>, Without<Thumb>)>,
-    cues: Query<&ScrollCue>,
 ) {
     let dt = time.delta_secs();
     let cursor = window.physical_cursor_position();
@@ -332,24 +616,22 @@ fn show(
         let r = Rect::from_corners(min, min + area.size * k);
 
         // The fades: over the start edge while scrolled from it, over the end edge while more lies past it.
-        if let Some([start_fade, end_fade]) = track.fades {
-            let room = f32::from(track.bar.room);
-            let (more_before, more_after) = (bar.is_some() && scroll > 0.5, bar.is_some() && scroll < content - view - 0.5);
-            let cue = cues.iter().any(|c| c.0 == track.area);
-            let (start_rect, end_rect) = match axis {
-                BarAxis::Vertical => (
-                    Rect::new(r.min.x, r.min.y - room, r.max.x, r.min.y + FADE_DEPTH),
-                    Rect::new(r.min.x, r.max.y - FADE_DEPTH, r.max.x, r.max.y + room),
-                ),
-                BarAxis::Horizontal => (
-                    Rect::new(r.min.x - room, r.min.y, r.min.x + FADE_DEPTH, r.max.y),
-                    Rect::new(r.max.x - FADE_DEPTH, r.min.y, r.max.x + room, r.max.y),
-                ),
-            };
-            for (e, show, rect) in [(start_fade, more_before, start_rect), (end_fade, more_after && !cue, end_rect)] {
-                if let Ok(mut n) = fades.get_mut(e) {
-                    place(&mut n, show, rect);
-                }
+        let room = f32::from(track.bar.room);
+        let (more_before, more_after) = (bar.is_some() && scroll > 0.5, bar.is_some() && scroll < content - view - 0.5);
+        let (start_rect, end_rect) = match axis {
+            BarAxis::Vertical => (
+                Rect::new(r.min.x, r.min.y - room, r.max.x, r.min.y + FADE_DEPTH),
+                Rect::new(r.min.x, r.max.y - FADE_DEPTH, r.max.x, r.max.y + room),
+            ),
+            BarAxis::Horizontal => (
+                Rect::new(r.min.x - room, r.min.y, r.min.x + FADE_DEPTH, r.max.y),
+                Rect::new(r.max.x - FADE_DEPTH, r.min.y, r.max.x + room, r.max.y),
+            ),
+        };
+        let [start_fade, end_fade] = track.fades;
+        for (e, show, rect) in [(start_fade, more_before, start_rect), (end_fade, more_after, end_rect)] {
+            if let Ok(mut n) = fades.get_mut(e) {
+                place(&mut n, show, rect);
             }
         }
 
@@ -435,6 +717,137 @@ mod tests {
         assert_eq!(scroll_for(50.0, 100.0, 80.0, 200.0), 0.0);
         // Rows: the thumb two thirds along its room shows from the third row.
         assert_eq!(scroll_for(67.0, 6.0, 9.0, 300.0).round(), 2.0);
+    }
+
+    /// Runs a glide in steps of `dt` until it ends: the places it went through.
+    fn run(mut g: Glide, dt: f32, max: f32) -> Vec<f32> {
+        let mut out = Vec::new();
+        loop {
+            let (at, done) = g.step(dt, max);
+            out.push(at);
+            if done {
+                return out;
+            }
+        }
+    }
+
+    /// A notch glides to its target in [`GLIDE_SECONDS`], fast at first and settling softly (ease-out), never
+    /// going back or past.
+    #[test]
+    fn a_notch_glides_with_an_ease_out() {
+        let dt = 1.0 / 60.0;
+        let g = Glide::by(None, 0.0, WHEEL_STEP, 1000.0).unwrap();
+        let path = run(g, dt, 1000.0);
+        // About 0.18 s at 60 fps, ending on the target.
+        assert_eq!(path.len(), (GLIDE_SECONDS / dt).ceil() as usize);
+        assert_eq!(*path.last().unwrap(), WHEEL_STEP);
+        // Between places on the way (the screenshots at 60 and 120 ms see it moving), always forward.
+        assert!(path.windows(2).all(|w| w[1] >= w[0]), "{path:?}");
+        assert!(path.iter().all(|&y| (0.0..=WHEEL_STEP).contains(&y)));
+        // Ease-out: more than half way after a third of the time, the first step the longest.
+        let third = path[(path.len() / 3) - 1];
+        assert!(third > 0.5 * WHEEL_STEP && third < WHEEL_STEP, "{third}");
+        let steps: Vec<f32> = std::iter::once(path[0]).chain(path.windows(2).map(|w| w[1] - w[0])).collect();
+        assert!(steps.windows(2).all(|s| s[1] <= s[0] + 1e-4), "{steps:?}");
+        assert!((ease_out(0.0), ease_out(1.0), ease_out(2.0)) == (0.0, 1.0, 1.0));
+    }
+
+    /// Notches in quick succession add up: the next one moves the running glide's target on, from where it is, so
+    /// it never stops or starts again from zero speed.
+    #[test]
+    fn quick_notches_add_up() {
+        let dt = 1.0 / 60.0;
+        let mut g = Glide::by(None, 0.0, 100.0, 1000.0).unwrap();
+        let mut path = vec![0.0];
+        for _ in 0..3 {
+            path.push(g.step(dt, 1000.0).0);
+        }
+        let (at, speed) = (path[3], path[3] - path[2]);
+        let mut next = Glide::by(Some(g), at, 100.0, 1000.0).unwrap();
+        assert_eq!(next.to, 200.0, "on from the running target, not from where it is");
+        let (after, _) = next.step(dt, 1000.0);
+        assert!(after - at >= speed, "it speeds up ({} after {speed})", after - at);
+        let path = run(next, dt, 1000.0);
+        assert_eq!(*path.last().unwrap(), 200.0);
+        assert!(path.windows(2).all(|w| w[1] >= w[0]));
+        // A notch the other way turns it around from its target.
+        assert_eq!(Glide::by(Some(Glide::new(0.0, 200.0, 1000.0).unwrap()), 50.0, -100.0, 1000.0).unwrap().to, 100.0);
+    }
+
+    /// Glides stay within the content: they end at an end, not past it, and none starts at an end going out.
+    #[test]
+    fn glides_stop_at_the_ends() {
+        let dt = 1.0 / 60.0;
+        let g = Glide::by(None, 250.0, 100.0, 300.0).unwrap();
+        let path = run(g, dt, 300.0);
+        assert!(path.iter().all(|&y| y <= 300.0) && *path.last().unwrap() == 300.0, "{path:?}");
+        assert_eq!(Glide::by(None, 300.0, 100.0, 300.0), None);
+        assert_eq!(Glide::by(None, 0.0, -100.0, 300.0), None);
+        assert_eq!(Glide::new(10.0, -50.0, 300.0).unwrap().to, 0.0);
+        // Content that shrinks while it glides: kept inside the new end.
+        let mut g = Glide::new(0.0, 300.0, 300.0).unwrap();
+        g.step(dt, 300.0);
+        let (at, _) = g.step(dt, 20.0);
+        assert!(at <= 20.0);
+        assert_eq!(run(g, dt, 20.0).last(), Some(&20.0));
+        // A touchpad's step during a glide moves the whole glide, within the content.
+        let mut g = Glide::new(0.0, 100.0, 300.0).unwrap();
+        g.shift(250.0, 300.0);
+        assert_eq!((g.from, g.to), (250.0, 300.0));
+    }
+
+    /// A wheel's notch glides by Chrome's step (less in a small area), a touchpad's small pixel steps move at once,
+    /// 1:1 on the screen.
+    #[test]
+    fn notches_glide_and_touchpads_move_at_once() {
+        // A notch down (Bevy: negative y) scrolls down by the step; a line per notch natively.
+        assert_eq!(wheel_move(MouseScrollUnit::Line, -LINES_PER_NOTCH, 1.0, 1.0, 600.0), WheelMove::Glide(WHEEL_STEP));
+        // Two notches in one frame: twice as far.
+        assert_eq!(wheel_move(MouseScrollUnit::Line, 2.0 * LINES_PER_NOTCH, 1.0, 1.0, 600.0), WheelMove::Glide(-2.0 * WHEEL_STEP));
+        // A small area: a notch moves less than it shows.
+        assert_eq!(wheel_move(MouseScrollUnit::Line, -LINES_PER_NOTCH, 1.0, 1.0, 80.0), WheelMove::Glide(80.0 * PAGE_SHARE));
+        // A browser's notch (100 CSS px, here at a scale factor of 2): one step, whatever the UI scale.
+        assert_eq!(wheel_move(MouseScrollUnit::Pixel, -200.0, 2.0, 1.5, 600.0), WheelMove::Glide(WHEEL_STEP));
+        assert_eq!(wheel_move(MouseScrollUnit::Pixel, 120.0, 1.0, 0.7, 600.0), WheelMove::Glide(-1.2 * WHEEL_STEP));
+        // A touchpad's step: physical px to UI px, at once.
+        assert_eq!(wheel_move(MouseScrollUnit::Pixel, -12.0, 1.0, 1.5, 600.0), WheelMove::Direct(8.0));
+        assert_eq!(wheel_move(MouseScrollUnit::Pixel, 30.0, 2.0, 2.0, 600.0), WheelMove::Direct(-15.0));
+    }
+
+    /// A pooled list shows the rows in view from its scroll in pixels, one cut at each edge, and shifts the pool by
+    /// what lies above the view.
+    #[test]
+    fn a_pooled_list_scrolls_by_pixels() {
+        // Ten rows of 46 px with 4 px gaps (a pitch of 50) in a view of six rows (296 px), a pool of seven.
+        let rows = [46.0; 10];
+        let at = |scroll: f32, held: usize| row_window(&rows, 4.0, scroll, 296.0, 7, held);
+        assert_eq!(at(0.0, 0), RowWindow { first: 0, count: 7, shift: 0.0, seen: (0, 6), content: 496.0, scroll: 0.0 });
+        // 30 px down: the first row partly in view, a seventh cut at the bottom.
+        assert_eq!(at(30.0, 0), RowWindow { first: 0, count: 7, shift: 30.0, seen: (0, 7), content: 496.0, scroll: 30.0 });
+        // 48 px: the first row is gone, only its gap is above the view.
+        assert_eq!((at(48.0, 0).first, at(48.0, 0).shift, at(48.0, 0).seen), (0, 48.0, (0, 7)));
+        assert_eq!(at(50.0, 0).seen, (1, 7));
+        // The pool keeps its rows while the view is inside them, then moves on as far as it can.
+        assert_eq!((at(50.0, 0).first, at(50.0, 0).shift), (0, 50.0));
+        let down = at(175.0, 0);
+        assert_eq!((down.first, down.count, down.shift, down.seen), (3, 7, 25.0, (3, 10)));
+        // Back up: the pool ends where the view does.
+        let up = at(60.0, 3);
+        assert_eq!((up.first, up.count, up.shift, up.seen), (1, 7, 10.0, (1, 8)));
+        // Past the end: the last screenful.
+        assert_eq!(at(900.0, 0), RowWindow { first: 3, count: 7, shift: 50.0, seen: (4, 10), content: 496.0, scroll: 200.0 });
+        // A pool as long as the list never moves.
+        assert_eq!(row_window(&rows, 4.0, 200.0, 296.0, 48, 0).first, 0);
+        assert_eq!(row_window(&rows, 4.0, 200.0, 296.0, 48, 0).shift, 200.0);
+        // Headings and rows of other heights (the drydock's palette).
+        let mixed = [26.0, 42.0, 42.0, 26.0, 42.0];
+        let w = row_window(&mixed, 3.0, 40.0, 60.0, 2, 0);
+        assert_eq!((w.first, w.count, w.shift, w.seen, w.content), (1, 2, 11.0, (1, 3), 190.0));
+        // A pool shorter than the view asks for: as many rows as are in view.
+        assert_eq!(row_window(&rows, 4.0, 30.0, 296.0, 2, 0).count, 7);
+        // Fewer rows than fit, or none: no scroll.
+        assert_eq!(row_window(&rows[..3], 4.0, 80.0, 296.0, 7, 0), RowWindow { first: 0, count: 3, shift: 0.0, seen: (0, 3), content: 146.0, scroll: 0.0 });
+        assert_eq!(row_window(&[], 4.0, 10.0, 296.0, 7, 4), RowWindow::default());
     }
 
     /// In fast, held for a second after the last scroll or hover, then out; gone [`FADE_OUT_SECONDS`] later.

@@ -264,8 +264,9 @@ needs Android 11+ and the same network; discovery is mDNS, which doesn't cross r
   844 × 390 (headless, with `--force-device-scale-factor 3`, `docs/client.md` "Headless HiDPI").
 - **Safe area**: every screen's edge widgets sit inside `SafeArea` (3.7).
 - **No hover on touch**: everything a hover shows on desktop (ghosts, highlights) shows while the finger is down.
-- **Lists scroll by dragging** (today only the wheel scrolls: `drydock/panels.rs`, `drydock/blueprints.rs`,
-  `behavior_ui/list.rs`, `behavior_ui/screen.rs`).
+- **Lists scroll by dragging** (today only the wheel and the scrollbars' thumbs scroll; since 14 Oct 2026 the kit
+  owns the wheel for every scrolling area in `ui_kit/scrollbar.rs`, so a touch drag belongs there too: at once under
+  the finger, a fling could reuse its `Glide`).
 
 ### 4.2 Flight HUD and touch flight
 

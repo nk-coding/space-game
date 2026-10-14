@@ -259,13 +259,15 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
   research can unlock, in content order: the armour block's tile in that material, a light outline so the
   near-black tones are told apart, the picked one outlined teal, a locked one a lock that leads to its research;
   the tooltip names it with its build points, mass and hit points from content and the key 1–9; the wheel scrolls
-  the strip past eight); one line of category chips (the wheel or a drag scrolls it sideways, a fade shows over an
-  edge with more behind it; a click jumps the list to the section; the chip of the section at the top of the list is
-  lit, the clicked one while its heading is in view, and the lit chip scrolls into view); then **every part in
+  the strip past eight, by pixels since 14 Oct 2026, it snapped to whole swatches before); one line of category chips
+  (the wheel or a drag scrolls it sideways, a fade shows over an edge with more behind it; a click glides the list to
+  the section; the chip of the section at the top of the list is lit, the clicked one while the list glides there and
+  while its heading is in view, and the lit chip glides into view); then **every part in
   sections** (`state::palette_sections`): a heading per category with its count (`WEAPONS 1 · 2 LOCKED`), the
   unlocked parts, then the locked ones. Rows: icon, name, footprint and key stat, the NEW tag, and how many are left
-  (`∞`, a number once counts exist, coral at 0). The wheel scrolls the list by entries (headings and rows, so icons
-  are never cut). The search filters the whole list; empty sections and their chips go. The list, the swatches and
+  (`∞`, a number once counts exist, coral at 0). The wheel scrolls the list smoothly by pixels (14 Oct 2026; until
+  then it scrolled by whole entries, headings and rows, so icons were never cut; now a row cut at an edge hides its
+  icon until it is whole, under the edge's fade). See [client](client.md) "Smooth scrolling". The search filters the whole list; empty sections and their chips go. The list, the swatches and
   the chips have the kit's overlay scrollbars (draggable; the strips' under them), and a lit row's, chip's or
   swatch's glow fades out past their edges (`ui_kit::Scrollbar`, [client](client.md)).
 - **Top bar**: the breadcrumb and name left, the OVERLAY pills right (the armour moved to the left column).
@@ -546,7 +548,8 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
 - **Your designs** (most recently saved first: name; frame, parts' size, part count, when saved; "IN THE
   DRYDOCK" for the open one, "· UNSAVED" when it changed since) and **templates**, the content ships, opened as
   copies with a fresh name ("Sample mid copy", "Sample mid copy 2", ...) and not saved until they change or SAVE.
-  The wheel scrolls a list. An unreadable document is listed with the reason, so it can be deleted.
+  The wheel scrolls a list (smoothly, by pixels since 14 Oct 2026; whole rows before). An unreadable document is
+  listed with the reason, so it can be deleted.
 - On the picked row: **OPEN** (a template: as a copy), **DUPLICATE** (a saved copy with a fresh name; for a
   template, its copy saved as a design), **RENAME** (a field; Enter renames, Esc cancels; the open design follows),
   **DELETE** (asks first: DELETE / KEEP; deleting the open design leaves it in the drydock, unsaved).

@@ -1,12 +1,9 @@
 //! The research screen's widgets: built once from the content's tree ([`spawn`]), then kept in step with the
 //! career and the selection ([`sync`], [`style_cards`]). Laid out for 1280 × 720 logical px (the UI scale grows it
-//! with the window, as the drydock's); the lanes scroll with the wheel when the content has more than fit.
+//! with the window, as the drydock's); the lanes scroll (the kit's [`Scrollbar`]) when the content has more than fit.
 
-use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::text::LetterSpacing;
-use bevy::ui::{ComputedNode, UiGlobalTransform};
-use bevy::window::PrimaryWindow;
 use data::{Content, ResearchNode, Unlock};
 
 use crate::career::{Granted, PlayerCareer};
@@ -16,8 +13,8 @@ use crate::sim_bridge::GameContent;
 use crate::style::{Style, ui_color};
 use crate::ui_icons::{Glyph, UiIcon};
 use crate::ui_kit::{
-    Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, WHEEL_LINE_PX, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
-    spawn_scroll_cue, tracked, wheel_rows,
+    Edge, Hot, Pill, PillText, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiBlock, show_screen, UiClick, glow, label, number, prose, ring_node, set_color, set_text, spawn_brackets, spawn_pill,
+    tracked,
 };
 
 use super::tree::{self, CardState, Metrics, Tree, family_label, kind_words};
@@ -60,10 +57,6 @@ pub struct ResearchRoot;
 /// A widget that sends an action when clicked.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct ResearchButton(pub ResearchAction);
-
-/// The lanes' scrolled area.
-#[derive(Component)]
-pub struct TreeArea;
 
 /// Texts the screen writes.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -272,21 +265,17 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                             for col in 0..tree.columns {
                                 left.spawn((label(fonts, &format!("TIER {}", roman(col + 1)), 8.5, c(Tone::Dim, 1.0)), abs(Vec2::new(COLUMNS_X + col as f32 * m.column_pitch + 14.0, 0.0), None)));
                             }
-                            let area = left
-                                .spawn((
-                                    TreeArea,
-                                    ScrollPosition::default(),
-                                    // Less glow room: the tier heads are 10 px above the lanes.
-                                    Scrollbar::vertical().room(10),
-                                    Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP - TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
-                                ))
-                                .with_children(|area| {
-                                    area.spawn(Node { width: percent(100), height: px(inner_h), flex_shrink: 0.0, ..default() }).with_children(|lanes| {
-                                        spawn_lanes(lanes, fonts, style, content, tree, &m, &placed);
-                                    });
-                                })
-                                .id();
-                            spawn_scroll_cue(left, fonts, style, area);
+                            left.spawn((
+                                ScrollPosition::default(),
+                                // Less glow room: the tier heads are 10 px above the lanes.
+                                Scrollbar::vertical().room(10),
+                                Node { overflow: Overflow::scroll_y(), ..abs(Vec2::new(0.0, TREE_TOP - TIER_Y), Some(Vec2::new(TREE_RIGHT + 8.0, TREE_BOTTOM - TREE_TOP))) },
+                            ))
+                            .with_children(|area| {
+                                area.spawn(Node { width: percent(100), height: px(inner_h), flex_shrink: 0.0, ..default() }).with_children(|lanes| {
+                                    spawn_lanes(lanes, fonts, style, content, tree, &m, &placed);
+                                });
+                            });
                         });
 
                         spawn_detail(stage, fonts, style);
@@ -493,19 +482,6 @@ pub fn clicks(mut clicks: MessageReader<UiClick>, buttons: Query<(&ResearchButto
         {
             out.write(b.0.clone());
         }
-    }
-}
-
-/// The wheel over the lanes scrolls them (when the content has more lanes than fit).
-pub fn scroll(window: Single<&Window, With<PrimaryWindow>>, wheel: Res<AccumulatedMouseScroll>, area: Single<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition), With<TreeArea>>) {
-    let (node, tf, mut pos) = area.into_inner();
-    if wheel.delta.y == 0.0 || !window.physical_cursor_position().is_some_and(|c| node.contains_point(*tf, c)) {
-        return;
-    }
-    let max = ((node.content_size.y - node.size.y) * node.inverse_scale_factor).max(0.0);
-    let y = (pos.0.y - wheel_rows(&wheel) * WHEEL_LINE_PX).clamp(0.0, max);
-    if pos.0.y != y {
-        pos.0.y = y;
     }
 }
 

@@ -119,7 +119,7 @@ impl Plugin for ResearchPlugin {
                 (
                     (screen::clicks, keys).in_set(ResearchSet::Input),
                     (ui_scale, hold_camera, apply).chain().in_set(ResearchSet::Apply),
-                    (screen::sync, screen::style_cards, screen::scroll).chain().in_set(ResearchSet::Show),
+                    (screen::sync, screen::style_cards).chain().in_set(ResearchSet::Show),
                 ),
             )
             // The drydock's LOCKED rows (a handler in the drydock's Apply set, as its own handlers).

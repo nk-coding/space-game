@@ -550,7 +550,11 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
   now; `SIGNAL FOUND · HALVEX DRIFT` after a vector beacon glyph for each voyage it opened (GDR-0078: the name from
   the content; Barlow has no ◆ either, the materials' diamond is a vector glyph too); the voyage's `cleared` words at
-  the first clear. Then a
+  the first clear. The report scrolls when it is longer than the panel (14 Oct 2026; Niklas: "the voyage report is
+  not scrollable, and thus can cut things off"): everything above the buttons is one area with the kit's
+  `Scrollbar` (smooth wheel, overlay bar, edge fades; 12 px glow room, less than the 14 px gap above the buttons),
+  and VOYAGE MAP and DISMISS stay at the bottom (`docs/results/debrief-scroll.png`: 1280 × 600 with a padded
+  report). Then a
   one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
   PARTS → KINETIC WEAPONS +18 · …`). A game loaded with a `last_haul` starts with that line (kills and ships lost are
   not saved).
@@ -651,7 +655,8 @@ there). Screenshots:
   line. Around it the escort slots (`MAX_ESCORTS` = 4 places: left and right, upper and lower): each filled slot
   shows its design, `ESCORT n`, name, cores and cargo, and REMOVE; one empty slot more while there is room says how
   many cores are free for it. At the bottom `YOUR DESIGNS · PICK ONE FOR ESCORT n` and four cards of the saved designs
-  (most recently saved first; the wheel scrolls): the ship, name, size, cores, cargo, and what a pick would do
+  (most recently saved first; the row scrolls sideways by pixels, `N OF M` says how far; a pool of 12 card nodes, so
+  scrolling rarely gives a card node another design and builds its ship again): the ship, name, size, cores, cargo, and what a pick would do
   (`FITS · 1 CORE` teal, `IN THE FLEET · 1 CORE`, `USES BEAM LASER` gold: it may fly but the fleet is not voyage-ready,
   `NEEDS 2 CORES · 1 FREE`, `CAN'T FLY · NO THRUST`, `NO LOGIC CORE` coral). The last line says what happened.
 - **Picking** (`fleet::pick`): a click on a slot picks it (teal outline); a click on a card puts that design into the
@@ -813,11 +818,11 @@ list to a section) and every part in sections (a heading per category with its c
 unlocked parts: icon, name, footprint and one key stat from
 `Content::part_stats`: the first stat after build points, control, mass, hit points, power draw and heat, else the
 bonus it gives, else its hit points; a gold NEW tag on fresh ones; how many are left, `∞`; then the locked parts research can unlock, dimmed with a lock and
-`LOCKED · <research node>`, not pickable, GDR-0065; the wheel scrolls the list; the search filters it); right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
+`LOCKED · <research node>`, not pickable, GDR-0065; the list scrolls by pixels since 14 Oct 2026, it paged whole entries before; the search filters it); right the stats grid (POWER, PEAK HEAT, THRUST/MASS, YAW,
 FIREPOWER, CARGO, CONTROL, DEVICE LOAD, then a compact TOP SPEED, TURN 90°, MASS, BUILD POINTS block, all from
 `sim::report`) and SELECTED PART (the selected placed part with the report's numbers and its controls, else the
 picked part: icon, name, footprint and category, summary, stat lines and bonus lines; what is under the name
-scrolls with the wheel when it doesn't fit above the bottom bar, with a `MORE BELOW · WHEEL` cue); below the grid the hover
+scrolls when it doesn't fit above the bottom bar; its bottom edge fades while more lies below); below the grid the hover
 cell, mirror and axis, why the edit under the cursor can't happen (coral), and the zoom; at the bottom undo / redo,
 the tools (PAINT, FILL, ERASE, SELECT, ROTATE), MIRROR, BEVEL, the status line over the voyage-ready line (each
 shortened with `…` when it doesn't fit), SAVE, BLUEPRINTS and EXPORT as icons, the ⋯ menu (NEW DESIGN, FRAME,
@@ -905,8 +910,7 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   place as text spans of `field_text`; Left / Right / Home / End move the caret, with Shift they select, Backspace
   / Delete work at the caret, Ctrl+A selects all, Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste through
   `Clipboard::field`; a press on the field puts the caret at the end; the editing itself is the pure
-  `ui_kit::edit_line`, 13 Oct 2026), a scroll cue (`ScrollCue`: a fade into the backdrop with `MORE BELOW ·
-  WHEEL` over a scrolled area's bottom edge while more of it lies below); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
+  `ui_kit::edit_line`, 13 Oct 2026); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
 - **Scrollbars and glow room** (`ui_kit::Scrollbar`, `ui_kit/scrollbar.rs`, 14 Oct 2026; Niklas: "the system is
@@ -921,17 +925,51 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   pointer is over the area, stays 1 s and fades out over 0.35 s (`bar_alpha`, tested); never while the content
   fits. A press on the thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on.
   What scrolls is the area's `ScrollPosition` (its content size from the layout), or `ScrollRows` for a list that
-  pages a fixed pool of row nodes: the screen writes the first row, how many show and how many there are, and takes
-  the first row a drag asks for (`take_want`) before its own wheel. The kit also sets the area's
+  shows a fixed pool of row nodes: since 14 Oct 2026 such a list scrolls by pixels too (it paged whole rows
+  before): its scroll is in UI px, the screen lays its rows out from it each frame (`ScrollRows::lay` over
+  `row_window`: the rows' lengths and gap, the view, the pool's size; it returns the pool's first row, how many it
+  holds, the rows in view and the shift) and the kit shifts the pool by the part above the view (the node's own
+  `ScrollPosition`, so the node has `Overflow::scroll_*`). The pool keeps its rows while the view stays inside
+  them and otherwise moves on as far as it can: a row node that shows another row builds its part or ship icon
+  again, and that mesh missed a frame, so gliding past rows blinked the icons; the drydock's palette (48 nodes)
+  holds the whole list, FLEET has 12 card nodes, the text-only BLUEPRINTS and BEHAVIORS lists one more than fit. A
+  screen that starts a list at the top writes its scroll (BLUEPRINTS and BEHAVIORS through a `top` request, set
+  where a new entry lands at the top). The kit also sets the area's
   `overflow_clip_margin` to `Scrollbar::room` px past its padding box (default 16: the kit's glow, a 10 px blur, is
   gone by then), so the glow of a lit row, chip, swatch or card at an edge fades out instead of ending in a straight
   line; an edge that content scrolls past gets a fade into the backdrop over that room and 26 px inside it while
-  there is more past it (the bottom's is left to a `ScrollCue` where the area has one; the drydock's chip line lost
-  its own fades to these). Every scrolling area has one: the drydock's part list (`ScrollRows`), armour swatches and
+  there is more past it (every edge, lists of rows too; the drydock's chip line lost its own fades to these). The
+  bar and these fades are all that say an area scrolls: the `MORE BELOW · WHEEL` cue (`ScrollCue`) and FLEET's
+  `THE WHEEL SCROLLS` are gone (14 Oct 2026; Niklas: "there is no need for the UI to say that you can scroll via
+  wheel"). Every scrolling area has one: the drydock's part list (`ScrollRows`), armour swatches and
   category chips (outside, below them), the SELECTED PART lines (room 0: the name block is right above); research's
   lanes (room 10: the tier heads are 10 px above); the BEHAVIOR screen's graph, inspector and ADD NODE palette (room
-  0: its pills don't glow, the search is right above); the BLUEPRINTS and BEHAVIORS lists (`ScrollRows`); FLEET's
-  design cards (`ScrollRows`, outside). The egui TEXT editor keeps its own scrollbars.
+  0: its pills don't glow, the search is right above); the BLUEPRINTS and BEHAVIORS lists (`ScrollRows`, room 8:
+  their section label is 10 px above); FLEET's design cards (`ScrollRows`, outside); the debrief's report (room
+  12). The egui TEXT editor keeps its own scrollbars.
+- **Smooth scrolling** (`ui_kit::SmoothScroll`, `ui_kit/scrollbar.rs`, 14 Oct 2026; Niklas: "I want smooth
+  scrolling like in chrome, not whatever the current thing is"). Every `Scrollbar` area has it (`Scrollbar` requires
+  it), and the kit owns the wheel for all of them (the screens' own wheel systems are gone): a wheel event goes to
+  the area whose bar is under the pointer, else to the topmost area under it that has more to show than fits,
+  unless a layer above it has the pointer (the topmost `Hot` node under the pointer, `UiPointer`'s `over`, is above
+  the area and not inside it: BLUEPRINTS over the drydock, the BEHAVIORS list over the graph). A sideways area takes
+  the wheel's up and down too. What one event does (`wheel_move`, tested): a **notch glides** (`Glide`, tested):
+  `WHEEL_STEP` = 100 UI px a notch (Chrome's step at a scale of 1; on screen it scales with the UI), at most
+  `PAGE_SHARE` = 7/8 of the view, over `GLIDE_SECONDS` = 0.18 s on an ease-out cubic (`1 − (1 − t)³`: half way after
+  about a fifth of the time, settling softly); a notch while a glide runs moves the running glide's target on by
+  another step and starts the curve again from where the area is, so quick notches add up and speed it up, never
+  stop it. A notch is a `Line` delta (one line natively, three in a browser that reports lines) or a `Pixel` delta
+  of at least `PIXEL_NOTCH` = 40 CSS px: browsers report a mouse wheel's notch in pixels (100 in Chrome on Windows,
+  120 on Linux), so in the web build that is what tells a wheel from a touchpad; smaller pixel deltas are a
+  touchpad's own smooth stream and **move the area at once**, 1:1 with the fingers (a running glide moves along
+  with them). Every glide ends inside the content: its target is clamped to the ends, a notch at an end does
+  nothing, a list that gets shorter while it glides keeps it inside. Dragging the bar's thumb is direct and stops a
+  glide; so does any place a screen writes itself (the system notes what it wrote last, a different place means
+  someone else moved the area). A screen can glide an area somewhere with `SmoothScroll::to` (the drydock's lit
+  chip into view, a category chip's jump to its section); asked again for the same place, the running glide runs
+  on. There is no keyboard paging in the lists, and no touch drag on them (the chip line's mouse drag stays
+  direct). Headless check at 8 fps (SwiftShader): a notch's glide takes two frames there, the first at 48–57 px of
+  100, so `docs/results/smooth-scroll-glide.png` shows frames captured in the page (before, the first frame, settled).
 - **Tooltips** (`ui_kit::Tip`, 13 Oct 2026; Niklas: labels carry no key letters, the tooltip names the key): a
   `Tip { name, key }` on any `Hot` node (pills, rings, fields, and home's invisible click areas over the world's
   places, so the shipyard's places get them too). Resting the mouse on it for 0.5 s (`TIP_DELAY`) shows one shared
@@ -1018,8 +1056,8 @@ drydock's info line), BEHAVIORS and SAVE (as in the drydock). Larger windows
 scale the screen like the drydock. The phone layout and touch come later.
 
 The inspector shows the selection with its kicker (`ACTION · MANEUVER`), its name in its role's colour and its
-summary, then its controls (a tall inspector scrolls with the wheel; the palette under it keeps about three rows;
-while either has more below, a `MORE BELOW · WHEEL` cue fades its bottom edge).
+summary, then its controls (a tall inspector scrolls; the palette under it keeps about three rows; while either
+has more below, its bottom edge fades).
 Screenshots: `docs/results/behavior-editing-condition.png` (a condition with `not`, its comparison and its
 threshold), `docs/results/behavior-editing-rule.png` (a rule added with `+ RULE` and a palette condition, its
 action selected).
