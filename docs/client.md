@@ -860,6 +860,29 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   WHEEL` over a scrolled area's bottom edge while more of it lies below); hit testing by hand from the laid-out rectangles (`Hot`, `UiClick`; the topmost node wins; mouse and
   touch), `UiPointer::blocked` keeps the pointer over panels (`UiBlock`) and widgets out of the grid and the
   camera, `UiPointer::typing` turns the shortcuts off.
+- **Scrollbars and glow room** (`ui_kit::Scrollbar`, `ui_kit/scrollbar.rs`, 14 Oct 2026; Niklas: "the system is
+  missing scroll bars in general" and "the cut of glow looks weird"). One component on a node that scrolls gives it
+  an overlay scrollbar: `Scrollbar::vertical()` over its right edge, `Scrollbar::horizontal()` along its bottom,
+  `.outside()` just under a sideways strip (in the gap below it). The kit spawns the bar (a `Hot` hit area 10 px
+  across with the thumb inside) and, for an area with its own `ScrollPosition`, two edge fades as the area's next
+  siblings, and places them every frame from the area's layout (the parent must have no border on that side). The
+  thumb is the visible share of the track (at least 24 px) and follows the scroll (`thumb`, `scroll_for`, tested);
+  4 px wide, 6 px while the pointer is on it or drags it, label grey at 38 % (62 % then), fully rounded, 2 px in
+  from the edge. It shows while the area scrolls (any change of its place, so touch shows it too) and while the
+  pointer is over the area, stays 1 s and fades out over 0.35 s (`bar_alpha`, tested); never while the content
+  fits. A press on the thumb drags it, a press on the track beside it jumps the thumb's middle there and drags on.
+  What scrolls is the area's `ScrollPosition` (its content size from the layout), or `ScrollRows` for a list that
+  pages a fixed pool of row nodes: the screen writes the first row, how many show and how many there are, and takes
+  the first row a drag asks for (`take_want`) before its own wheel. The kit also sets the area's
+  `overflow_clip_margin` to `Scrollbar::room` px past its padding box (default 16: the kit's glow, a 10 px blur, is
+  gone by then), so the glow of a lit row, chip, swatch or card at an edge fades out instead of ending in a straight
+  line; an edge that content scrolls past gets a fade into the backdrop over that room and 26 px inside it while
+  there is more past it (the bottom's is left to a `ScrollCue` where the area has one; the drydock's chip line lost
+  its own fades to these). Every scrolling area has one: the drydock's part list (`ScrollRows`), armour swatches and
+  category chips (outside, below them), the SELECTED PART lines (room 0: the name block is right above); research's
+  lanes (room 10: the tier heads are 10 px above); the BEHAVIOR screen's graph, inspector and ADD NODE palette (room
+  0: its pills don't glow, the search is right above); the BLUEPRINTS and BEHAVIORS lists (`ScrollRows`); FLEET's
+  design cards (`ScrollRows`, outside). The egui TEXT editor keeps its own scrollbars.
 - **Tooltips** (`ui_kit::Tip`, 13 Oct 2026; Niklas: labels carry no key letters, the tooltip names the key): a
   `Tip { name, key }` on any `Hot` node (pills, rings, fields, and home's invisible click areas over the world's
   places, so the shipyard's places get them too). Resting the mouse on it for 0.5 s (`TIP_DELAY`) shows one shared
