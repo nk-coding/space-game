@@ -8,7 +8,7 @@
         id: "shield_emitter",
         name: "Shield emitter",
         summary: "Projects a shield bubble over the hull around it.",
-        description: "Overlapping bubbles stack. Energy shots are absorbed well, kinetic shots partly pass and missiles detonate on the bubble.",
+        description: "Overlapping bubbles stack. Energy shots are absorbed well, kinetic shots partly pass.",
         tags: ["shield"],
         category: "defense",
         icon: "shield-emitter",

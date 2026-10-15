@@ -54,7 +54,7 @@
         tags: ["target"],
         role: Condition,
         params: [
-            (id: "range", name: "Range", summary: "Metres, or a share of your weapon reach (100% = the reach of your longest clear gun).", type: Distance, default: "100%", min: 0, max: 5000),
+            (id: "range", name: "Range", summary: "Metres, or a share of your weapon reach (100% = the reach of your longest working gun).", type: Distance, default: "100%", min: 0, max: 5000),
         ],
     ),
     (
@@ -140,7 +140,7 @@
         id: "idle",
         name: "Idle",
         summary: "Seconds since you last used a control: turning, thrust, the triggers, or any of them.",
-        description: "Counts from the start of the mission while you haven't. Under a lock the aim nudge counts as turning.",
+        description: "Counts from the start of the mission while you haven't. Under a lock the turn keys only nudge the aim, which doesn't count as turning.",
         tags: ["pilot", "timer"],
         role: Condition,
         value: Seconds,

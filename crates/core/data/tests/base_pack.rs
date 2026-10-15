@@ -214,7 +214,7 @@ fn text_keys_and_plain_rendering() {
         .description
         .clone()
         .unwrap();
-    assert!(c.render_plain(&logic).contains("salvaged automaton cores"));
+    assert!(c.render_plain(&logic).contains("Salvaged cores give programmable matter"));
     assert_eq!(c.render_plain("x [[part:radiator]] y"), "x Radiator y");
 }
 

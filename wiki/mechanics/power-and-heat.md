@@ -111,7 +111,8 @@ Heat then moves:
   straight side with no linked neighbour (empty space, or the face of a slope next to it). Loss grows with the
   part's heat, so a hot part sheds heat faster than a cool one. An ordinary open side lets out
   [[sim:heat_loss_open_side]] per unit of heat each second.
-- **Radiators** vent [[part:radiator.heat_vent]] through each open side instead, far more. A
+- **Radiators** vent [[part:radiator.heat_vent]] per unit of heat each second through each open side instead, far
+  more. A
   [[part:radiator]] buried inside the hull vents almost nothing: it only soaks up heat from its neighbours.
 - **Engine plumes** put heat into the part they burn, yours or an enemy's (see
   [engine plumes](/mechanics/damage#engine-plumes)).

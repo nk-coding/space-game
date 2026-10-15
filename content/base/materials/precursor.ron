@@ -5,7 +5,7 @@
         id: "programmable_matter",
         name: "Programmable matter",
         summary: "Precursor matter that can host a copy of the ship-mind.",
-        description: "Every [[part:logic_core|logic core]] is made of it, and room for one more core in the mind costs some. Destroyed cores leave a small fragment of it; salvaged [[part:automaton_core|automaton cores]] give more.",
+        description: "Building a [[part:logic_core|logic core]] costs none of it. Research spends it, such as each [[research:mind_expansion_1|mind expansion]] that lets the mind run one more core at once. Salvaged cores give it, [[part:automaton_core|automaton cores]] the most, and destroyed cores leave a small fragment of it.",
         icon: "programmable-matter",
     ),
 ]

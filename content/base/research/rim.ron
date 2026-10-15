@@ -18,7 +18,7 @@
         name: "Composite plating",
         summary: "Plating that is lighter and tougher than steel.",
         family: "hull",
-        kind: NewPart,
+        kind: Variant, // a sidegrade of steel plating: lighter and tougher, more build points
         cost: (data: {"hull": 8}),
         unlocks: [Material("composite")],
     ),

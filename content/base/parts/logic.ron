@@ -9,7 +9,7 @@
         id: "logic_core",
         name: "Logic core",
         summary: "Hosts a copy of the ship-mind and runs its behavior rules.",
-        description: "Its built-in reaction wheel gives a little turning help. Every logic core needs [[material:programmable_matter|programmable matter]]; salvaged [[part:automaton_core|automaton cores]] are the first source.",
+        description: "A piece is a vessel only while one of its cores works; their rule slots and control capacity add up. Its built-in reaction wheel gives a little turning help. Salvaged cores give [[material:programmable_matter|programmable matter]], and a destroyed one leaves a fragment of it.",
         tags: ["core"],
         category: "logic",
         icon: "logic-core",

@@ -1,6 +1,6 @@
 // Behavior actions (teal in the editor): the maneuver a ship flies while its rule is active. Built into the
-// sim (`sim::behavior`); the flight computer turns them into thrust. Whatever the action, guns fire at will:
-// whenever the target (or its lead point) is in front of the nose and within reach.
+// sim (`sim::behavior`); the flight computer turns them into thrust. Whatever the action, guns fire at will: each
+// gun whenever the target (or its lead point) is in front of that gun and within its reach.
 // An action that needs a target fails while there is none, and the next rule gets its turn.
 // PLACEHOLDER defaults and ranges (for feel).
 [
@@ -19,7 +19,7 @@
         id: "orbit",
         name: "Orbit",
         summary: "Circle the target at the given radius.",
-        description: "As fast as the ship can hold the turn. Guns fire whenever the target crosses the nose.",
+        description: "As fast as the ship can hold the turn. Each gun fires whenever the target passes in front of it, within its reach.",
         tags: ["move"],
         role: Action,
         params: [
@@ -60,7 +60,7 @@
         id: "hold",
         name: "Hold",
         summary: "Stop and stay put.",
-        description: "Guns still fire if the target crosses the nose.",
+        description: "Needs no target. Each gun still fires if the target passes in front of it, within its reach.",
         tags: ["move"],
         role: Action,
     ),

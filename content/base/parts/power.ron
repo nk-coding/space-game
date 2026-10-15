@@ -44,7 +44,7 @@
     (
         id: "capacitor",
         name: "Capacitor",
-        summary: "Stores charge so that lasers beside it fire faster.",
+        summary: "Makes the lasers beside it fire faster. It takes no power from the pool and holds none.",
         description: "Each laser counts at most three capacitors.",
         tags: ["capacitor"],
         category: "power",

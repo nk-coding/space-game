@@ -51,7 +51,7 @@
     (
         id: "derelict_field",
         name: "Derelict field",
-        summary: "Old shipyard hulls, long dead, with a raider or two picking at them.",
+        summary: "Old shipyard hulls, long dead, among wrecked raiders; sometimes a live one is still picking at them.",
         lore: "Hulls from the shipyard's last launch. Not one of them got past the rim.",
         tags: ["wrecks"],
         ships: [(ship: "automaton_raider", count: (0, 1))],
