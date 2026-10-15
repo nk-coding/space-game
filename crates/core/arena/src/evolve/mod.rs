@@ -668,6 +668,29 @@ impl Run {
         self.progress()
     }
 
+    /// Breeds the current generation's children within `budget` ticks ([`BREED_COST`] a child) and fights none of
+    /// them: `true` once every child is bred, and [`Run::jobs`] then hands their jobs out without breeding more. A
+    /// client that runs the jobs on threads breeds on its frame budget with it (GDR-0092: the native executor). A
+    /// finished or stale run has nothing to breed.
+    pub fn breed(&mut self, budget: u64) -> bool {
+        if self.finished() || self.stale {
+            return true;
+        }
+        let mut b = match self.batch.take() {
+            Some(b) => b,
+            None => self.open(),
+        };
+        let mut left = budget;
+        while left > 0 && !self.bred(&b) {
+            self.breed_child(&mut b);
+            left = left.saturating_sub(BREED_COST);
+        }
+        self.worked += budget - left;
+        let bred = self.bred(&b);
+        self.batch = Some(b);
+        bred
+    }
+
     /// The current generation's jobs, breeding it first if needed (empty once the run is finished, or stale). Run
     /// them anywhere ([`Job::run`]) and hand the results back with [`Run::submit`], in the same order. Don't mix
     /// with [`Run::step`] within a generation.

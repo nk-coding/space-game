@@ -91,6 +91,19 @@ fn any_slicing_gives_the_same_run() {
         run.submit(results.into_iter().rev().collect());
     }
     assert_eq!(text(&run), whole);
+    // The threads' way in a client: each generation bred in slices of its frame budget, then its jobs handed out.
+    let mut run = Run::new(&c, config(BOTH)).unwrap();
+    while !run.finished() {
+        let mut slices = 0;
+        while !run.breed(arena::evolve::BREED_COST * 2) {
+            slices += 1;
+        }
+        assert!(slices >= 1, "a generation of six breeds in more than one slice of two");
+        let jobs = run.jobs().to_vec();
+        let results: Vec<JobResult> = jobs.iter().map(|j| j.run(&c)).collect();
+        run.submit(results);
+    }
+    assert_eq!(text(&run), whole);
     // Breeding is budgeted: a small slice breeds a child or two and fights nothing yet.
     let mut run = Run::new(&c, config(BOTH)).unwrap();
     let p = run.step(arena::evolve::BREED_COST * 2);
