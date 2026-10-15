@@ -17,6 +17,28 @@
   by index in the start, cells in the start's own coordinates; `arena lineage` is new; step 1's `Run::champion` gave way
 to `Run::best_child` and the records (`Run::job`, `Run::fight_code`), and the CLI's codes come from the records without
 running the fight again.
+  Step 4 built 2026-10-16 (`docs/client.md` "Evolution", behind `?lab=1`): the EVOLUTION building above the mind (its
+  states, a ring of 16 segments that fills with the generations, its label on the run), the layer with RUNS, SETUP
+  and the run's page, both executors (slices on the web, compute threads natively, the same run), computing at home
+  and on every screen and waiting in flight, `lab/<id>` written after every generation and resumed after a reload,
+  the stale mark, WATCH (M comes back to the lab), SAVE AS DESIGN with its behavior and `origin` (designs format 2,
+  share codes `SGD3:`). Where building found otherwise: taken forward from step 6, several starts (one to four), the
+  locks in lists (KEEP ALL of a category, parts, rules, the target line, LOCK ORDER; KEEP EMPTY and the on-ship
+  painting stay with step 6), LINEAGE and COMPARE, EVOLVE THIS DESIGN (in the ⋯ menu) and the EVOLVED tag in YOUR
+  DESIGNS (with `FROM … · G37` in the row's line; the preview card's ORIGIN line and a click on the origin opening the
+  run stay with step 6); the trials are ENEMY SHIPS (content ships tagged `enemy`, a count each) and the run's own
+  HALL OF FAME, which the arena had; the lab's words, its size presets (QUICK, STANDARD, DEEP) and budgets are code
+  constants until `lab.ron` (step 8), and the measures' names come from `stats.ron` where it has them; the head's
+  `name`, `created` and `status` (`Running`, `Paused`) are optional fields a snapshot leaves out, so run files read and
+  write as before; MIRROR's default is the first start's symmetry as the drydock sees it (the arena checks again); a
+  run file is written after every generation and on pause, resume and make (2–11 ms for 3–32 kB measured); at most 8
+  runs; one run computes at a time (making or resuming one pauses the other), and a finished run glows gold until it
+  is opened; the setup's estimate uses the measured cost per tick; COPY FIGHT CODE is a CODE pill on each fight; the
+  run's page shows the archive's first two measures (a third folded in); the screens reach the arena through `world`
+  (no new dependency). Measured: a tick of work 4.7–7.9 µs in wasm, so a STANDARD generation of the starter takes
+  about 5–6 s at 60 fps with the layer open and 13–15 s elsewhere (estimates from the measured cost; the headless
+  browser's frames are too slow to time it directly). Not yet: VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME
+  (step 5), GENERATION n, the chip on every layer (step 8), the `visibilitychange` pause (a hidden tab gets no frames).
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

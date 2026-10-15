@@ -88,7 +88,9 @@ Hover a place to highlight it; its tooltip names the key.
 | Records mast | on the tip of the top arm, by the gate | the LOG | [[control:open_log.keys]] |
 | Gear ring | top right of the screen | SETTINGS: controls and display | [[control:open_settings.keys]] |
 
-The fabricator and the salvage bay stay dark and say LATER: they have no screens yet.
+The fabricator and the salvage bay stay dark and say LATER: they have no screens yet. So does the compute stack
+above the mind, the EVOLUTION lab ([[control:open_evolution.keys]]), until its research comes: it breeds your
+designs against enemies and keeps the best of each kind, every fight to watch again.
 
 The labels on the yard tell you the state of things at a glance. The building area shows the frame and its grid
 size. FLEET counts the cores your fleet uses against your mind (coral when it is over). RESEARCH says how many

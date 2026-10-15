@@ -301,7 +301,10 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
 - **The ⋯ menu** (opens upward, right-aligned; `actions::Rare`, carried out by `blueprints/` exactly as the
   BLUEPRINTS and EXPORT buttons are): NEW DESIGN (an empty design in this frame; unsaved changes are saved first),
   FRAME (the content frames as pills, the current one lit, locked ones dimmed), COPY SHARE CODE, DOWNLOAD .RON FILE
-  (desktop: WRITE .RON FILE), IMPORT .RON FILE. The screens themselves stay as they were.
+  (desktop: WRITE .RON FILE), IMPORT .RON FILE, and with the evolution lab open (`?lab=1` until its research node,
+  GDR-0092 step 4) EVOLVE THIS DESIGN: home's camera flies from the drydock to the EVOLUTION lab and its setup opens
+  with the design in the drydock as the start (`world::evolution::StartPick::Working`, `docs/client.md` "Evolution").
+  The screens themselves stay as they were.
 - **Menus** (`DrydockUi::menu`): one open at a time; Esc, a click outside (a veil under the menu takes it, so it
   reaches nothing else) and any action close it. The menus hold text only: part icons are world meshes drawn under
   bevy_ui (`ui_icons`).
@@ -516,7 +519,7 @@ saved template copy moved to the cruiser frame).
   `write(namespace, name, text)`, `delete(namespace, name)`, `location()`) and stores **named RON documents in
   namespaces**: `designs/<id>`, `drydock/working`, `drydock/behavior` (the BEHAVIOR screen's working draft) and
   `behaviors/<id>` (see
-  [Behaviors](#behaviors-storage-designs-and-tests)) now, `saves/<slot>` (the career) and `settings/controls` and `settings/display` (GDR-0090) since. Names are `a-z 0-9 _ -`
+  [Behaviors](#behaviors-storage-designs-and-tests)) now, `saves/<slot>` (the career), `settings/controls` and `settings/display` (GDR-0090) and `lab/<id>` (the evolution lab's runs, GDR-0092) since. Names are `a-z 0-9 _ -`
   (at most 64), safe as file names and keys everywhere.
 - A document type implements `Document` (`NAMESPACE`, `FORMAT`, `to_ron`, `from_ron(text, format)`).
   `Storage::write` puts one header line before the RON, a comment, so the document stays valid RON:
@@ -538,7 +541,11 @@ saved template copy moved to the cruiser frame).
 ### Designs
 
 - **SAVE** (the button, Ctrl+S) writes `designs/<id>`: the content ship format (`data::blueprint_to_ron`) in the
-  design's frame (`size` = the frame, parts in frame coordinates), so opening it brings the frame back. The id
+  design's frame (`size` = the frame, parts in frame coordinates), so opening it brings the frame back. Designs are
+  format 2 since GDR-0092 step 4 (16 Oct 2026): a blueprint may carry an `origin` (an evolved design's: the lab's
+  run, the genome, its generation, the designs it descends from, its score; one line after the assists, left out when
+  none), which the drydock keeps through edits and saves; format 1 reads as it is (no origin), and an older build
+  calls a format 2 design newer instead of failing on the field. The id
   comes from the name on the first save (`library::slug`: lowercase ASCII, umlauts spelled out, `_` between
   words, at most 40 characters, starting with a letter), unique among saved designs and never a content ship's
   id (`_2`, `_3`, ...); renaming keeps it. A design with problems still saves; the status line says
@@ -569,7 +576,9 @@ The BLUEPRINTS button (an icon ring in the bottom bar since layout v2) opens a s
 closes it; Esc first leaves a rename, a delete question or a selected box):
 
 - **Your designs** (most recently saved first: name; frame, parts' size, part count, when saved; "IN THE
-  DRYDOCK" for the open one, "· UNSAVED" when it changed since) and **templates**, the content ships, opened as
+  DRYDOCK" for the open one, "· UNSAVED" when it changed since; a design the evolution lab saved is tagged EVOLVED
+  in gold and its line starts with where it came from, `FROM RIM SKIFF COPY · G37`, its `origin`, GDR-0092) and
+  **templates**, the content ships, opened as
   copies with a fresh name ("Sample mid copy", "Sample mid copy 2", ...) and not saved until they change or SAVE.
   The wheel scrolls a list (smoothly, by pixels since 14 Oct 2026; whole rows before). An unreadable document is
   listed with the reason, so it can be deleted.
@@ -608,12 +617,13 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   of the player's behaviors carries it after the ship as a comment block (`share::export_text`): a line
   `// behavior: behaviors/<id>.ron`, then that behavior file with every line commented out. Pack loaders skip it
   (it is the file to put into the pack's `behaviors/` folder); an import reads it.
-- **Share code** (share format 2 since 13 Oct 2026, GDR-0057): `SGD2:` + base64url (no padding) of the
+- **Share code** (share format 3 since 16 Oct 2026, GDR-0092: the ship may carry its `origin`, so an older build
+  refuses it as newer; format 2 since 13 Oct 2026, GDR-0057): `SGD3:` + base64url (no padding) of the
   zlib-compressed payload, a RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))` with the content
   packs (id, version) the design was made with and, when the design names one of the player's behaviors, that
   behavior in the content format (a content behavior goes by its id in the ship only). The Halvex Runner is 955
-  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1429. Format 1
-  codes (`SGD1:`, no behavior) still import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
+  characters; with a copy of the skirmisher (six rules with notes, its summary and description) 1429. Format 2
+  (`SGD2:`, the same without an origin) and format 1 codes (`SGD1:`, no behavior) still import. zlib's checksum catches damaged codes; whitespace inside a code (a chat program's line breaks), a
   lower-case tag and `=` padding are ignored. The code shows in a box: click it (it turns teal) and press Ctrl+C,
   or COPY.
 - **Imports are bounded**: `share::read` takes at most 1 MB of text (a pasted code, RON text, a file: files are

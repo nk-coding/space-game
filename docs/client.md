@@ -91,6 +91,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
+| `lab=1` | opens the EVOLUTION lab at home and EVOLVE THIS DESIGN in the drydock ([Evolution](#evolution); until its research node comes, GDR-0092 step 8, it is dark without) |
 | `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
@@ -431,6 +432,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
 | LOG: the last voyages ([LOG](#log)) at the records mast; Esc, CLOSE or its ring button closes it | L, or a click on the mast |
+| EVOLUTION: the evolution lab ([Evolution](#evolution)) at the compute stack above the mind, with `?lab=1` until its research node comes; Esc, CLOSE or its ring button go back a page and close it from RUNS | E, or a click on the stack |
 | Voyages: the voyage map opens at once through the gate, the camera diving at it while the map opens inside its ring ([Voyage map](#voyage-map)); coming back runs the same way backwards | V, or a click on the gate |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
 | Research: the lab ([Research](#research); Esc, `‹ HOME` or its ring button come back) | R, or a click on the lab |
@@ -809,6 +811,101 @@ the records mast by the gate, once the camera has flown there).
 - **The mast's tooltip** is the last voyage in one line (`LogRow::line`: `LAST VOYAGE · THE WARDEN'S GATE · GOAL
   CLEARED · 8:15 · 7 PARTS » HULL AND ARMOUR +1 · …`) with its key; `LOG` before the first voyage.
 - A practice run is not in the history (it is not saved); kills and ships lost are not either (the debrief has them).
+
+## Evolution
+
+The evolution lab ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026): runs that breed the
+player's designs against enemies and keep the best of each kind, every fight to watch again, any result saved as a
+design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
+the building `shipyard`. Until its research node comes (step 8) it opens with `?lab=1`; without it the building is
+dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
+
+- **The building** (`shipyard::layout`, `draw`, `life`): a compute stack on the base's outer face above the mind,
+  between the upper truss bridge and the top arm's corner (lower in a taller frame, higher in a very short one); its
+  strut lands on the base and the mind's violet conduit runs down from it onto the mind's top face. A chamfered block
+  with window rows, the stack's rings seen from above, a rack either side. Its states (`draw::Evo`, from the lab:
+  `evolution::light`): dark without `?lab=1`; dim (`NO RUN`); busy while a run computes (the racks' windows flicker,
+  a switch every 0.08–0.35 s; the label `12 / 50 · BEST 0.81` in teal); `PAUSED · 12 / 50`; `DONE · BEST 0.91` in
+  gold with a gold glow breathing once a run has finished, until it is opened. A ring of 16 segments on the stack
+  fills with the run's generations (the open one counted in), drawn again only when a segment lights. Its label
+  hangs over it, right-aligned short of the station's corner; the layout test keeps it and the building clear of
+  every place, the moorings, the bridges, the station and the other labels at the three UI check sizes.
+- **Opening it**: E (`open_evolution`, context `home`), a click, or EVOLVE THIS DESIGN in the drydock's ⋯ menu (the
+  camera flies from the drydock straight to the lab, and the setup opens with the working design as its start). A
+  layer over home like FLEET and the LOG: home's words, FLEET, SETTINGS, the LOG and the debrief step aside under it.
+  The ring top left, CLOSE and Esc go back a page, and close the layer from RUNS (the camera flies back out).
+- **RUNS**: every run, newest first (at most `MAX_RUNS`, 8: the web's local storage holds about 5 MB per origin):
+  its name, its starts, its status (`RUNNING` teal, `PAUSED`, `DONE` gold, `RULES CHANGED` and `DOESN'T READ` coral),
+  generation n / N, `START 0.42 » BEST 0.81` (generation 0's best, the archive's best), when it was made; PAUSE or
+  RESUME, OPEN (or a click on the row) and DELETE, which asks in the row (`DELETE IT? THERE IS NO UNDO`, DELETE /
+  KEEP). NEW RUN top right. One run computes at a time: making or resuming one pauses the one that computed.
+- **SETUP** (NEW RUN): START FROM, one to four starts picked from YOUR DESIGNS and the templates (the content ships of
+  the player's faction), each a chip (a click shows its locks); LOCKS in lists until the on-ship painting of step 6:
+  KEEP ALL of a category (gold pills, `categories.ron`), each part of the start (a part kept with its category shows
+  so), each rule of its behavior, the target line and LOCK ORDER; LIMITS: BUILD POINTS at most the start's (the
+  default), a number (steps of 5) or NO CAP, HOLD at least the start's or any, VOYAGE-READY (logic cores within the
+  mind capacity less FLEET's escorts'), MIRROR (on when the first start looks symmetric; the arena checks), only the
+  career's parts and materials (`?unlock=all`: every part); MAY CHANGE: design and behavior (the default until step
+  6), design only, behavior only (then the archive spreads by engage distance × rules); TRIALS: ENEMY SHIPS (each
+  content ship tagged `enemy` with a count, 0 = not fought; two raiders and a hunter by default) and the HALL OF FAME
+  (the run's best so far, 2); SIZE: QUICK (16 children, 20 generations, 2 seeds), STANDARD (32, 50, 4), DEEP (64, 100,
+  6), or steppers; SEED (steppers and DICE); NAME (`Evolving <start>`); the fights a child and a generation has and
+  the time it takes with the layer open, from the measured rate (estimated before a run measured this device). START
+  RUN builds the run (`Lab::create`): a setup the arena refuses says why in the status line.
+- **THE RUN**: its status and seed, GENERATION n / N with a bar inside the open generation (`Run::generation_done`),
+  fights per second, the time left and the last generation's time (measured), `START » BEST`; PAUSE or RESUME top
+  right; a coral line for a stale run (`THE RULES HAVE CHANGED SINCE THIS RUN · IT IS KEPT READ-ONLY`). SCORES BY
+  GENERATION: three lines over the run's generations (the archive's best gold, each generation's best teal, its mean
+  grey; thin rotated nodes) over bars of the children that took a cell, and the last generation in numbers. THE
+  ARCHIVE: a cell per bin of the run's first two measures (a third folded in), each occupied cell a ship card
+  (`UiIcon::Ship`, as FLEET and BLUEPRINTS draw them) tinted by its score, the best with a gold edge, a start with a
+  teal corner; its axes in words under it (the content's stat names and units where there are some). THE PICKED
+  DESIGN (the best until one is clicked): its drawing, score, generation and genome number, its measures, its start;
+  FIGHTS (WATCH BEST, WATCH WORST, then a row per fight: `WON 0:23`, `LOST 1:02`, `DRAW 1:30 · 0.62` against `2 ×
+  AUTOMATON RAIDER` or the run's best, the seed, build points lost on both sides and damage dealt; CODE copies the
+  fight's code, WATCH plays it), LINEAGE (the start and the last ancestors as cards with generation, score and what
+  changed; a click picks one), COMPARE (the start and the design side by side, the parts gained and lost by name, the
+  behavior), and SAVE AS DESIGN (a name, `<start> · evolved g<generation>`, then SAVE).
+- **WATCH** queues the fight's code in the fight viewer (`replay::Replay::queue`, `scene::Launch::Fight`) and flies; the
+  run pauses meanwhile (flight). M, the HUD's ring or the flight menu's way out come home onto the lab with the
+  layer open on the same page and pick (`Lab::watching`, `home::enter`).
+- **SAVE AS DESIGN** (`world::evolution::save_as_design`): the genome in its start's frame (`Genome::placed`), as the
+  drydock saves designs, into `designs/<id>` (format 2) with its name, the `evolved` tag, the summary "Evolved from …",
+  and `origin` (the run's id, the genome, its generation, the designs it descends from, its score). Its behavior: the
+  start's when it didn't change (a content behavior by id, a template's own, the player's that it flew); else saved
+  beside it as a player behavior `<behavior> (evolved)` that the design names. Its assists and weapon groups are the
+  start's. YOUR DESIGNS tags it EVOLVED and its line reads `FROM RIM SKIFF COPY · G37` ([Drydock](#drydock)); it opens
+  in the drydock like any design.
+- **Computing** (`world::evolution::compute`, every frame in every mode): the run that computes gets 10 ms of the
+  frame with the layer open and 4 ms anywhere else at home and on the screens (the drydock, BEHAVIOR, research, the
+  map, the LOG, SETTINGS; `BUDGET_OPEN_MS`, `BUDGET_MS`, placeholders), none in flight (the test range, test flights,
+  replays, voyages: it waits where it was). The budget becomes ticks of work from the measured cost per tick (a
+  running mean, `Rate`; 9 µs assumed before the first measure), and `arena::Run::step` breeds and fights within it,
+  so a frame keeps its time whatever the fight; every slicing gives the same run (the web's executor,
+  `Lab::compute`). Natively the frame's budget only breeds (`arena::Run::breed`) and the fights go to Bevy's compute
+  threads four at a time, as many tasks as cores less one (`Lab::compute_threads`); the results go back in job order
+  once all are in, which makes the same run file (tested); in flight no fight starts and the generation waits to
+  close. **Measured** (16 Oct 2026, web-dev build in headless Chromium, load low): a tick of work costs 4.7–7.9 µs in
+  wasm (natively 5–6 µs, `docs/arena.md`); a QUICK generation of the starter (16 children, 128 fights, about 125 000
+  ticks) took 15–25 s there, where SwiftShader's slow frames gave the run about 5 frames a second; at 60 frames a
+  second that is about 90 000 ticks a second with the layer open (10 ms a frame) and 36 000 at 4 ms, so a QUICK
+  generation in about 1.5 s and a STANDARD one (512 fights, about 0.5 M ticks) in about 5–6 s with the layer open,
+  13–15 s elsewhere. Writing the run after a generation took 2–11 ms for 3–32 kB (it grows with the run: a STANDARD run
+  of 50 generations is about 0.7 MB, so its last writes may take some tens of ms, GDR-0092's "cost of the snapshot").
+- **Storage**: each run is `lab/<id>` (`RunDoc`, format 1; the id a slug of its name): the run file
+  (`arena::RunSave`, `docs/arena.md` "What a run keeps") with its head's `name`, `created` and `status`, written
+  after every generation (its checkpoint: a reload breeds the open generation again from the same random state, the
+  same run), when it is made, paused or resumed. At start the lab lists `lab/` and restores the run that was
+  computing, so it goes on; a stored run that doesn't read is listed with why (so it can be deleted), one whose
+  rules' fingerprint differs from today's is stale and read-only. A failed write (the storage full) pauses the run
+  and says so. The CLI reads the same file (`arena evolve --resume`, `arena replay`), header comment and all. Old
+  storage without `lab/` reads as no runs.
+- **Tests**: `world::evolution` (a frame's work stays within its budget's ticks; the run waits in flight and
+  computes on the screens; a run reloaded mid-way goes on to the same run file byte for byte as one that ran
+  through; pause, resume, delete, old storage; SAVE AS DESIGN validates, opens in the drydock and keeps its origin;
+  starts resolve self-contained), `game::evolution` (the building's words; the setup pre-filled by EVOLVE THIS
+  DESIGN; changes and endings in words), `drydock::actions` (EVOLVE THIS DESIGN asks the lab and goes home),
+  `drydock::blueprints` (the EVOLVED tag), `shipyard::layout` (the building and its label apart).
 
 ## Screen transitions
 

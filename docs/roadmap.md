@@ -335,15 +335,25 @@ Next session:
      cells, categories, rules, target, LOCK ORDER), the pre-filter (the genome's own rule slots with the repair,
      `max_cores`, `min_hold`, part counts), up to four starts (taken forward from step 6) and the start's build points
      as the default cap; `arena evolve --from/--lock`;
-  4. the lab v1 in the game (the EVOLUTION building and layer, one start, threads natively and slices on the web,
-     persistence, SAVE AS DESIGN), behind `?lab=1`;
+  4. **Built 16 Oct 2026** (behind `?lab=1`): the lab v1 in the game (`docs/client.md` "Evolution"): the EVOLUTION
+     building above the mind (states, a ring that fills with the generations, its label on the run) and its layer:
+     RUNS (pause, resume, delete asked in the row), SETUP (one to four starts from YOUR DESIGNS and the templates,
+     locks in lists: categories, parts, rules, the target line, LOCK ORDER; build points, hold, voyage-ready, mirror,
+     the career's parts; design / behavior / both; ENEMY SHIPS and the hall of fame; QUICK / STANDARD / DEEP; seed),
+     the run's page (progress as measured, scores by generation, the archive as ship cards, the picked design's fights
+     with WATCH and its code, lineage, compare, SAVE AS DESIGN); runs compute at home and on every screen within 4–10
+     ms a frame and pause in flight (natively the fights on the compute threads), persist as `lab/<id>` after every
+     generation and resume after a reload; designs format 2 with an `origin` (the EVOLVED tag in BLUEPRINTS), share
+     codes SGD3; EVOLVE THIS DESIGN in the drydock (taken forward from step 6, like several starts and the locks in
+     lists);
   5. trials (the `TrialKind` abstraction, the test-range waves in shared code, goals, VALIDATE);
   6. everything mutates (behavior structure, assists with a stand-in pilot, the LOCKS UI);
   7. co-evolution (the ARMS RACE);
   8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
   9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab, GDR-0092 step 4 (the lab v1 in the game, on `arena::Run`'s API, `docs/arena.md` "The API").
+  1. The evolution lab, GDR-0092 step 5 (trials: the `TrialKind` abstraction, the test-range waves in shared code,
+     goals, VALIDATE, RE-SCORE, IMPORT RUN); `lab.ron` and the Simulation vault with step 8.
 
 ## Phase 4: measurement
 

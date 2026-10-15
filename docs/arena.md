@@ -476,12 +476,15 @@ let run = arena::Run::restore(&content, &arena::RunSave::from_ron(&save)?)?;  //
 let code = run.fight_code(generation, child, job);  // any fight of any child, to re-watch (`?scene=fight&fight=`)
 ```
 
-What the lab (step 4) builds on:
+What the lab builds on (the game's EVOLUTION lab since GDR-0092 step 4, 16 Oct 2026: `world::evolution`, `docs/client.md`
+"Evolution"; it keeps each run as `lab/<id>`, this run file with its head's name, creation time and status):
 
 | Call | What |
 |---|---|
 | `Run::step(budget)` | Breeds the next generation child by child when none is open (each child counts `BREED_COST` = 60 ticks, *placeholder*: about 0.3 ms natively, below), then runs its jobs for the rest of `budget` sim ticks (a fight or voyage is stepped in slices, `Fight::step` / `VoyageRunner::step`), and closes the generation after its last job. The client converts its 4–10 ms frame budget to ticks from the measured cost per tick (GDR-0092). Every slicing gives the same run. A stale run doesn't step (`Progress::stale`) |
 | `Run::jobs()` / `Run::submit(results)` | A generation's `Job`s (a `FightSpec` or `VoyageSpec` each, plain data; breeding the rest of it first) and their `JobResult`s in the same order; `Job::run(&content)` runs one anywhere (the native executor's threads). Don't mix them with `step` within a generation |
+| `Run::breed(budget)` | Breeds the open generation within `budget` ticks (`BREED_COST` a child) and fights nothing: `true` once every child is bred, and `jobs()` then hands them out without more breeding (the game's native executor breeds on its frame budget with it, GDR-0092 step 4) |
+| `Run::worked()`, `Run::generation_done()` | The ticks of work `step` and `breed` have done since the run was built or restored (the client measures its cost per tick against it); how far the open generation is, 0..1 (its jobs done of those it will have) |
 | `Run::state()` | Generations done and in all, the stage, the history (`GenerationStats`: stage and genes, children evaluated, refused, best and mean score, the archive's best, occupied cells, children that took a cell, ticks), the records (`GenerationRecord` per generation: the hall of fame its children fought, each child's genome number, score, measures, whether it took a cell and its job records) and the archive |
 | `Run::best_child(generation)` | Its best child (the first of equal scores) |
 | `Run::child_jobs(generation, child)`, `Run::job(generation, child, job)` | A child's jobs rebuilt (the same jobs it ran), one with its `JobRecord` |
@@ -515,7 +518,9 @@ ended, and rebuilds any job's spec from them.
   table rebuild every job (`Run::job`), so `Run::fight_code(generation, child, job)` is any fight as a code; a test
   replays every fight of a run to its recorded result.
 - **The run file** (`Run::snapshot()` → `RunSave`, `to_ron`): the state between two generations. A readable RON head
-  (`format: 1`, the rules' fingerprint when the run started, the `RunConfig`, the `GenerationStats` per generation, the
+  (`format: 1`; the game's optional `name`, `created` (Unix seconds) and `status` (`Running`, `Paused`: whether it
+  computes when it may), left out by a snapshot and by the CLI, so files without them read and write as before, GDR-0092
+  step 4; the rules' fingerprint when the run started, the `RunConfig`, the `GenerationStats` per generation, the
   best genome) and `payload: "SGL1:…"`, the base64url text (no padding) of the zlib-compressed RON of the rest: the
   run's random stream (`Pcg32::raw`), the genome table, the records and the archive's elites (genome numbers; their
   scores and measures come from the records). A snapshot taken during a generation is the state before it: a restored

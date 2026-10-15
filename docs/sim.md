@@ -395,6 +395,12 @@ wasm. An evolution run is checked the same way: `scripts/determinism-check.sh --
 seed 7 at K = 3, **identical** native against wasm and resumed against straight (last line `4f126e780aff05c0` and
 `887374c2560c32e7`).
 
+**The evolution lab in the game** ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026): no sim
+change; the blueprint's optional `origin` is left out of the content's serde form when none, so the rules fingerprint
+stays `87f8e44db8186359`. Core, flight, assists, behavior, salvage and voyage (seed 42, 900 ticks), `runner_vs_raiders`,
+the probe `close_quarters`, the Runner's code against three raiders (as recorded) and `--run two_starts_locked` (seeds 1
+and 7): native x86_64 vs wasm32-wasip1 **identical**, every last hash as above.
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
