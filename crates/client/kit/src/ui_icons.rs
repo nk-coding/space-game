@@ -80,8 +80,6 @@ pub enum Glyph {
     Minus,
     /// Four corner brackets (a view back to its default: the voyage map's reset).
     Fit,
-    /// A beacon sending: a dot between two pairs of arcs (a signal found, the debrief).
-    Signal,
     /// The drydock's bottom bar (GDR-0082): a floppy disk (save), four tiles (blueprints), an arrow up out of a
     /// tray (export), three dots (the ⋯ menu), two triangles across an axis (mirror), a cell with a cut corner
     /// (bevel), and a small triangle pointing down (a dropdown).
@@ -167,6 +165,9 @@ fn draw_icons<S: IconShapes>(
     let scale = window.scale_factor();
     let mut px_per_cell = 0.0f32;
     for (node_e, icon, node, tf, vis, clip) in &nodes {
+        // A new icon's mesh is spawned now and placed by commands in this frame too (they apply before the transforms
+        // propagate), so an icon that appears with its node draws in the same frame, not one later.
+        let fresh = !state.0.contains_key(&node_e);
         let m = state.0.entry(node_e).or_insert_with(|| {
             let mesh = meshes.add(MeshBuf::placeholder());
             let entity = commands
@@ -180,30 +181,36 @@ fn draw_icons<S: IconShapes>(
                 .id();
             IconMesh { entity, mesh, built: None, dims: Vec2::ONE, clipped: None }
         });
-        let Ok((mut t, mut v)) = placed.get_mut(m.entity) else { continue };
         let size = node.size / scale;
         let bounds = clip.map(clip_bounds);
         let own = Rect::from_center_size(tf.translation, node.size);
         let show = vis.get() && size.cmpgt(Vec2::splat(1.0)).all() && bounds.is_none_or(|b| b.is_some_and(|b| !b.intersect(own).is_empty()));
         // A screen's transition fades the icon with its part (`ui_kit::ScreenPart`'s material); a clipping parent
         // cuts it on its own material that follows that fade.
-        if let Ok(mut mat) = mats.get_mut(m.entity) {
-            let base = faded.0.get(&node_e).unwrap_or(&atlas.material);
-            let want = match bounds.flatten().filter(|_| show) {
-                Some(b) => {
-                    let own = m.clipped.get_or_insert_with(|| atlas.group_material(&mut materials));
-                    set_clip(&mut materials, base, own, Some(b));
-                    own
-                }
-                None => base,
-            };
-            if mat.0 != *want {
-                mat.0 = want.clone();
+        let base = faded.0.get(&node_e).unwrap_or(&atlas.material);
+        let material = match bounds.flatten().filter(|_| show) {
+            Some(b) => {
+                let own = m.clipped.get_or_insert_with(|| atlas.group_material(&mut materials));
+                set_clip(&mut materials, base, own, Some(b));
+                &*own
             }
+            None => base,
+        };
+        let fresh_material = fresh.then(|| material.clone());
+        if !fresh
+            && let Ok(mut mat) = mats.get_mut(m.entity)
+            && mat.0 != *material
+        {
+            mat.0 = material.clone();
         }
-        let want = if show { Visibility::Inherited } else { Visibility::Hidden };
-        if *v != want {
-            *v = want;
+        let mut placed_mesh = None;
+        if !fresh {
+            let Ok((t, mut v)) = placed.get_mut(m.entity) else { continue };
+            let want = if show { Visibility::Inherited } else { Visibility::Hidden };
+            if *v != want {
+                *v = want;
+            }
+            placed_mesh = Some(t);
         }
         if !show {
             continue;
@@ -241,9 +248,17 @@ fn draw_icons<S: IconShapes>(
         let z = if matches!(icon, UiIcon::Scrim { .. }) { Z_UI_SCRIM } else { Z_UI_ICON };
         // Written only when it moves: a written transform is propagated again.
         let (at, k) = (view.screen_to_world(tf.translation / scale).extend(z), Vec3::new(px / view.zoom, px / view.zoom, 1.0));
-        if t.translation != at || t.scale != k {
-            t.translation = at;
-            t.scale = k;
+        match (placed_mesh, fresh_material) {
+            (Some(mut t), _) => {
+                if t.translation != at || t.scale != k {
+                    t.translation = at;
+                    t.scale = k;
+                }
+            }
+            (None, Some(material)) => {
+                commands.entity(m.entity).insert((Transform { translation: at, scale: k, ..default() }, Visibility::Inherited, MeshMaterial2d(material)));
+            }
+            (None, None) => {}
         }
     }
     if need.0 != px_per_cell {
@@ -372,14 +387,6 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
             for (x, y) in [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
                 let p = |a: f32, b: f32| Vec2::new(x * a * s, y * b * s);
                 m.strip(&[p(0.34, 0.14), p(0.34, 0.34), p(0.14, 0.34)], false, w, &white, col);
-            }
-        }
-        Glyph::Signal => {
-            m.polygon(&arc(Vec2::ZERO, 0.09 * s, 0.0, std::f32::consts::TAU, 12)[..12], uv, col);
-            for side in [0.0, std::f32::consts::PI] {
-                for r in [0.22, 0.4] {
-                    m.strip(&arc(Vec2::ZERO, r * s, side - 0.75, side + 0.75, 10), false, w, &white, col);
-                }
             }
         }
         Glyph::Save => {

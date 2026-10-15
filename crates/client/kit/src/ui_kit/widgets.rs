@@ -25,7 +25,8 @@ impl Pill {
     }
 }
 
-/// Text inside a [`Pill`] or a [`Ring`]: coloured with its state.
+/// Text inside a [`Pill`] (also in a group inside it, not in a pill inside it) or a [`Ring`] (a child): coloured with
+/// its state.
 #[derive(Component)]
 pub struct PillText;
 
@@ -201,9 +202,11 @@ pub(super) fn style_widgets(
     style: Res<Style>,
     time: Res<Time<Real>>,
     mut pills: Query<
-        (Ref<Pill>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, Option<&mut Outline>, &Children, Entity),
+        (Ref<Pill>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, Option<&mut BoxShadow>, Option<&mut Outline>, Entity),
         Without<Ring>,
     >,
+    tree: Query<&Children>,
+    nested: Query<(), With<Pill>>,
     mut rings: Query<
         (Ref<Ring>, Ref<Hot>, &mut BorderColor, &mut BackgroundColor, &Children),
         Without<Pill>,
@@ -220,7 +223,7 @@ pub(super) fn style_widgets(
 ) {
     let ui = &style.ui;
     let c = ui_color;
-    for (pill, hot, mut border, mut bg, shadow, outline, children, e) in &mut pills {
+    for (pill, hot, mut border, mut bg, shadow, outline, e) in &mut pills {
         if !pill.is_changed() && !hot.is_changed() {
             continue;
         }
@@ -265,9 +268,16 @@ pub(super) fn style_widgets(
             }
             (None, false) => {}
         }
-        for child in children {
-            if let Ok(mut tc) = texts.get_mut(*child) {
+        // Its texts, also in a group inside it (UNLOCK's materials after their diamond), not a pill's inside it.
+        let mut stack = vec![e];
+        while let Some(n) = stack.pop() {
+            if let Ok(mut tc) = texts.get_mut(n) {
                 set_color(&mut tc, t);
+            }
+            if (n == e || !nested.contains(n))
+                && let Ok(c) = tree.get(n)
+            {
+                stack.extend(c.iter());
             }
         }
     }
