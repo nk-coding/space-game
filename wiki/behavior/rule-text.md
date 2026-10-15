@@ -21,7 +21,7 @@ always -> approach(85%)
 
 | Line | Meaning |
 |---|---|
-| `target <selector>` | Optional, and only as the first line: who the rules are about. Without it, the behavior targets the nearest enemy. |
+| `target <selector>` | Optional, and only as the first line: who the rules are about. Without it, the behavior targets the nearest enemy. [Pilot assists](/behavior/pilot-assists) have none: they act on your lock. |
 | `when <condition> and <condition> -> <action>` | A rule: every condition must hold for the action to run. |
 | `always -> <action>` | A rule without conditions. It matches every time, so it is usually the last one. |
 | `... # note` | A note at the end of a line. It belongs to that rule (or to the target line) and survives the GRAPH view. |

@@ -75,7 +75,7 @@ You aim by turning the ship. Two things help:
   projectiles, the ship aims at the **lead point**, where the target will be when the shot gets there.
   [[control:turn_left]] and [[control:turn_right]] nudge the aim, and it springs back when you let go. See
   [flight](/mechanics/flight).
-- **Pilot assists** can turn the ship onto the target for you and fire groups by themselves (below).
+- **Pilot assists** can lock an enemy for you and fire groups at your lock by themselves (below).
 
 The lead point assumes the target keeps its course. A target that turns or brakes makes a projectile miss; lasers
 always hit where they point.
@@ -141,7 +141,8 @@ guns fire whenever the target crosses their line.
 own piece and never fires until that block is gone.*
 
 The [[behavior_node:auto_fire]] pilot assist uses the same test for one group while you fly: the guns of that group
-fire by themselves whenever they bear on the target. Holding that group's trigger fires it as usual. See
+fire by themselves whenever they bear on your lock (and never without one). Holding that group's trigger fires it
+as usual. See
 [pilot assists](/behavior/pilot-assists).
 
 ## Power, heat and control

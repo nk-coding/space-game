@@ -1,14 +1,14 @@
 ---
 title: "Pilot assists"
-description: "A design's second rule list that helps you fly it: facing, braking, holding station, avoiding collisions and auto-fire, each on its own control channel, with toggles in flight."
+description: "A design's second rule list that helps you fly it: locking, braking, holding station, avoiding collisions and auto-fire, each on its own control channel, with toggles in flight."
 ---
 
 # Pilot assists
 
 A behavior flies a ship when nobody pilots it. **Pilot assists** are the other way round: a second rule list per
-design that helps **you** while you fly it. They face the enemy while you don't steer, brake when you let go, keep
-your place beside a wingman, sidestep a wreck, or fire a weapon group whenever it bears. You stay in charge: an
-assist only ever works a control you aren't using right now.
+design that helps **you** while you fly it. They lock an enemy when you have none, brake when you let go, keep
+your place beside a wingman, sidestep a wreck, or fire a weapon group whenever it bears on your lock. You stay in
+charge: an assist only ever works a control you aren't using right now, and it never picks a target you can't see.
 
 Every one of your vessels carries its design's list, but only the ship you fly (the focus) runs it. Your other
 vessels fly their behaviors as usual.
@@ -24,22 +24,24 @@ Each assist is an action, written like a behavior's action:
 
 <NodeTable role="action" pilot />
 
-- [[behavior_node:face_target]] turns your strongest guns onto the target, the way a lock aims the ship. While you
-  hold a lock the lock aims by itself, so the assist waits.
+- [[behavior_node:auto_lock]] locks an enemy by itself while you have nothing locked, picked like a behavior's
+  target: [[behavior_node:nearest]] (the default), [[behavior_node:weakest]], [[behavior_node:threat]] or
+  [[behavior_node:attacker]]. The lock is your own (see [below](#your-lock)), so the ship aims at it as at any lock.
 - [[behavior_node:brake]] asks the flight computer to stop the ship.
 - [[behavior_node:hold_station]] keeps you where the assist took over (`point`, the default), or with `ally` at
   your place beside the nearest of your other vessels, moving with it.
 - [[behavior_node:avoid_collisions]] sidesteps a ship, wreck or piece of debris on a collision course.
-- [[behavior_node:auto_fire]] fires one weapon group by itself whenever its guns bear on the target, with the same
-  test as a behavior's fire at will: a gun fires when the target (its lead point, for projectile guns) is within
-  [[sim:fire_cone]] of where that gun points and within [[sim:fire_range]] of its reach.
+- [[behavior_node:auto_fire]] fires one weapon group by itself whenever its guns bear on your lock, with the same
+  test as a behavior's fire at will: a gun fires when the locked ship (its lead point, for projectile guns) is within
+  [[sim:fire_cone]] of where that gun points and within [[sim:fire_range]] of its reach. Without a lock it holds
+  fire.
 
 Every assist ends with two values of its own: **toggle** (none, or toggle1 to toggle4: which ASSIST TOGGLE key
 switches it in flight) and **start** (on or off: whether each mission starts with it on). On the BEHAVIOR screen
 these are the inspector's TOGGLE and AT START pills. Left out, toggle is [[behavior_node:brake.default.toggle]]
 and start is [[behavior_node:brake.default.start]]. [[behavior_node:auto_fire]] is written
 [[behavior_node:auto_fire.signature]], so `auto_fire(2, toggle3, off)` fires group 2, sits on toggle 3 and stays
-off until you press that toggle.
+off until you press that toggle; [[behavior_node:auto_lock]] is written [[behavior_node:auto_lock.signature]].
 
 ## Conditions
 
@@ -54,26 +56,37 @@ An assist rule may use every behavior condition, plus two that only exist here:
 
 Two conditions are made for assists but work in behaviors too: [[behavior_node:speed]] (how fast you fly, as a
 share of your top speed) and [[behavior_node:can_stop_straight]] (thrusters already push against your motion, so
-the ship can stop without turning). Conditions about the target are false while there is none.
+the ship can stop without turning). Conditions about the target are about your lock, and false while you hold none.
 
-**The target** is your lock while you hold one. Without a lock it is the list's target line, by default
-[[behavior_node:nearest]]: so face target and auto-fire work on the nearest enemy until you lock something else.
-`locked` (a leader's lock) finds nothing here: the ship you fly has no leader.
+## Your lock {#your-lock}
+
+An assist list has **no target line**. What needs a target acts on your lock, the one the HUD shows: the target
+panel names it and a marker rings it. Without a lock, auto-fire holds fire.
+
+You lock a ship by clicking it or with [[control:lock_next]] ([[control:lock_next.keys]]: the nearest enemy, then
+the next by distance), and [[behavior_node:auto_lock]] locks one for you while you have none. Its lock is the same
+lock: you drop it with Esc or a click on empty space, and change it with a click or [[control:lock_next.keys]].
+
+- **Dropping a lock pauses auto-lock.** Otherwise it would lock again at once. It waits, and the HUD says PAUSED
+  after its name, until you lock something yourself or switch it (its toggle, or ALL ASSISTS).
+- **A destroyed target doesn't.** When the locked ship is destroyed or goes dark, auto-lock locks the next one.
+- **Several auto-lock rules** make a priority list: `auto_lock(attacker)` above `auto_lock(nearest)` locks a ship
+  that aims at you, and the nearest one while none does.
 
 ## Channels: you always win {#channels}
 
 Each assist works one control **channel**:
 
-- **Turning**: face target.
+- **The lock**: auto-lock.
 - **Thrust**: brake, hold station, avoid collisions.
 - **Each weapon group's trigger**: auto-fire for that group.
 
-<svg class="diagram" viewBox="0 0 600 270" role="img" aria-label="Each channel takes your input when you use it, else the first matching assist rule on that channel; turning, thrust and the three weapon groups are decided separately and go to the flight computer together.">
+<svg class="diagram" viewBox="0 0 600 270" role="img" aria-label="Each channel takes your input when you use it, else the first matching assist rule on that channel; the lock, thrust and the three weapon groups are decided separately and go to the flight computer together.">
   <text x="70" y="24" text-anchor="middle">CHANNEL</text>
   <text class="t-teal" x="215" y="24" text-anchor="middle">YOU</text>
   <text class="t-violet" x="215" y="262" text-anchor="middle">FIRST MATCHING RULE</text>
   <text x="520" y="24" text-anchor="middle">SHIP</text>
-  <text x="70" y="60" text-anchor="middle">TURNING</text>
+  <text x="70" y="60" text-anchor="middle">LOCK</text>
   <text x="70" y="105" text-anchor="middle">THRUST</text>
   <text x="70" y="150" text-anchor="middle">FIRE 1</text>
   <text x="70" y="195" text-anchor="middle">FIRE 2</text>
@@ -112,16 +125,17 @@ Each assist works one control **channel**:
 *Each channel is decided on its own: your input if you use it this tick, else the first matching assist rule for
 that channel. The five results fly the ship together.*
 
-- **The pilot always wins.** A channel you use this tick is yours: the turning keys, or the touch stick without a
-  lock, take turning, and so does holding a lock (a lock aims the ship by itself). The thrust keys or the stick
-  take thrust. A group's trigger takes that group, and [[control:fire]] takes every group.
+- **The pilot always wins.** A channel you use this tick is yours: a lock you hold takes the lock channel, so
+  auto-lock never replaces it. The thrust keys or the stick take thrust. A group's trigger takes that group, and
+  [[control:fire]] takes every group.
 - **Letting go hands the channel back** on the very next tick.
 - **Per channel, the first rule that matches decides.** The rules are read from the top at [[sim:think_hz]],
   together with the behaviors. For each channel, the first rule that is switched on, whose conditions all hold, and that has a
-  target if it needs one (face target, auto-fire) decides that channel. Avoid collisions decides only while
-  something is on a collision course; the rest of the time the rule below keeps thrust.
+  target if it needs one (auto-fire: your lock) decides that channel. Avoid collisions decides only while
+  something is on a collision course, auto-lock only while its pick finds a ship; the rest of the time the rule
+  below keeps the channel.
 - **Rules on different channels run together.** An `always` rule doesn't stop the rules below it, as it would in a
-  behavior: "face the target", "brake when I let go" and "fire group 2 when it bears" all act at once. Two rules on
+  behavior: "lock the nearest", "brake when I let go" and "fire group 2 when it bears" all act at once. Two rules on
   the same channel make a priority list of their own.
 
 Assists need no rule slots; a list holds up to [[sim:max_rules]] rules, and may be empty.
@@ -129,7 +143,7 @@ Assists need no rule slots; a list holds up to [[sim:max_rules]] rules, and may 
 ## How the thrust assists fly
 
 Brake, hold station and avoid collisions set the velocity the flight computer flies to. How they push depends on
-whether **turning is free**: you don't steer, you hold no lock, and no rule (face target) decides turning.
+whether **turning is free**: you don't steer and you hold no lock (a lock aims the ship).
 
 - **Turning free**: the assist may turn the ship to bring its engines to bear, the flip and burn behaviors use. It
   keeps the heading if the thrusters already facing the needed way give at least [[sim:keep_heading_fraction]] of
@@ -180,7 +194,7 @@ if it has one, then its name (BRAKE; auto-fire with its group, AUTO-FIRE 2). The
 - **white**: switched on, but not deciding (its conditions don't hold, or a rule above has the channel);
 - **dim**: switched off.
 
-While ALL ASSISTS is off, the title reads ASSISTS OFF with its key, in gold. A long list ends in `+ N MORE`; a ship
+An auto-lock you paused by dropping a lock reads `AUTO-LOCK · PAUSED`. While ALL ASSISTS is off, the title reads ASSISTS OFF with its key, in gold. A long list ends in `+ N MORE`; a ship
 without assists shows no block. Each switch also says what it did in a banner: BRAKE ON · AUTO-FIRE 2 OFF, ALL
 ASSISTS OFF, or that a toggle has no assist on it.
 
@@ -188,27 +202,28 @@ ASSISTS OFF, or that a toggle has no assist on it.
 
 Open the BEHAVIOR screen and pick the PILOT ASSISTS tab. It edits the design's assists with the same GRAPH and
 TEXT views, inspector and palette as its behavior; the palette offers only the assists and the conditions they may
-use. The assists are part of the design: every change goes into it at once, and you save it in the drydock like
-the rest of the design. TEST IN RANGE flies the design with its assists.
+use. The graph's TARGET row reads YOUR LOCK: there is no target line to set. The assists are part of the design:
+every change goes into it at once, and you save it in the drydock like the rest of the design. TEST IN RANGE flies
+the design with its assists.
 
 ## Examples
 
-Stop when you let go, but only when no turn is needed; keep the guns on the nearest enemy once you switch it on:
+Stop when you let go, but only when no turn is needed; lock the nearest enemy once you switch it on:
 
 ```assists
 when idle(thrust) >= 1s and can_stop_straight -> brake(toggle1) # stop on release, no flip
-always -> face_target(toggle2, off) # guns on the nearest enemy, from toggle 2 on
+always -> auto_lock(nearest, toggle2, off) # lock the nearest enemy, from toggle 2 on
 ```
 
-A fighting list, for a design with its front guns in group 1 and its side guns in group 2. Group 1 fires by itself
-while you hold a lock and leave the triggers alone; group 2 whenever it bears on the target in reach (your lock, or
-without one the weakest enemy, aimed at its guns):
+A fighting list, for a design with its front guns in group 1 and its side guns in group 2. It locks a ship that
+aims at you, else the weakest; group 1 fires by itself once you leave the triggers alone for two seconds, group 2
+whenever it bears on the lock in reach:
 
 ```assists
-target weakest(weapons)
-when lock_held and idle(fire) >= 2s -> auto_fire(1, toggle3)
+always -> auto_lock(attacker, toggle1)
+always -> auto_lock(weakest, toggle1)
+when idle(fire) >= 2s -> auto_fire(1, toggle3)
 when target_in_range(90%) -> auto_fire(2)
-always -> face_target(toggle1)
 ```
 
 A wingman's list: dodge first, keep your place beside your nearest ship while no enemy is near, else brake when

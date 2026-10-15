@@ -212,7 +212,9 @@ the waves, and [[control:hide_hud.keys]] hides the HUD with the panel.
 ## The PILOT ASSISTS tab
 
 PILOT ASSISTS edits the design's second rule list in the same GRAPH and TEXT views, inspector and palette.
-Assists need no rule slots, so there is no slot line; the root reads `Assists · EACH CHANNEL`, the pill
+Assists have no target line: the graph's TARGET row reads `YOUR LOCK`, as they act on the ship you lock, and the
+palette has no target selectors. Assists need no rule slots, so there is no slot line; the root reads
+`Assists · EACH CHANNEL`, the pill
 `3 ASSISTS · WHILE YOU FLY IT`, `+ ASSIST` adds one, and the list may be empty. Assists are saved with the
 design, not on their own: SAVE in the drydock keeps them. What assists do is on
 [Pilot assists](/behavior/pilot-assists).

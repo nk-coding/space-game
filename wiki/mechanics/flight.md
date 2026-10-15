@@ -187,7 +187,7 @@ stick's length setting the speed as a share of the top speed. A released stick c
 
 ### Target lock
 
-Lock a ship (click or tap it, or [[control:lock_next.keys]] for the next enemy, nearest first) and the flight
+Lock a ship (click or tap it, or [[control:lock_next.keys]]: the nearest enemy, then the next by distance) and the flight
 computer turns your **strongest guns** onto it: the side of the ship whose working guns deal the most damage per
 second faces the target. If that side's strongest gun fires projectiles, it aims at the **lead point**, where the
 target will be when the shot gets there. A ship without working guns points its nose at the target. The nose

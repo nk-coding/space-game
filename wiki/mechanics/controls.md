@@ -5,8 +5,8 @@ description: "Every action and its default inputs, what you can rebind in SETTIN
 
 # Controls and settings
 
-Everything you do with a key or a mouse button is a named **action**: Thrust forward, Fire group 2, Lock next
-target, Undo. Each action has up to two inputs, and you can change them in SETTINGS. The game's tooltips, key
+Everything you do with a key or a mouse button is a named **action**: [[control:thrust_forward]],
+[[control:fire_group_2]], [[control:lock_next]], [[control:undo]]. Each action has up to two inputs, and you can change them in SETTINGS. The game's tooltips, key
 badges and the flight help line always show what you have bound, not the defaults.
 
 ## Flying
@@ -28,8 +28,12 @@ with them.
 
 - **Click a ship** (or a broken-off piece) to lock it. The ship then turns its strongest guns onto it, leading a
   moving target with projectile guns.
-- [[control:lock_next.keys]] locks the next enemy, nearest first; pressed again it moves on down the list.
+- [[control:lock_next]] ([[control:lock_next.keys]]) locks the nearest enemy. Pressed again while one is locked,
+  it moves on to the next one by distance, and after the farthest back to the nearest.
 - **Click empty space**, or press Esc, to unlock.
+- The [[behavior_node:auto_lock]] [pilot assist](/behavior/pilot-assists) locks an enemy by itself while you have
+  nothing locked. Its lock is your own, so all of the above works on it; after you unlock, it waits until you lock
+  something again or switch it.
 
 A lock is dropped when its target goes dark or is destroyed, and when you switch to another vessel.
 
