@@ -35,6 +35,8 @@ pub const CRANES: [f32; 3] = [0.18, 0.5, 0.82];
 /// Docking clamps: fractions along the arms (one on each arm at each), how far they reach in.
 pub const CLAMPS: [f32; 2] = [0.3, 0.7];
 pub const CLAMP_REACH: f32 = 1.3;
+/// The EVOLUTION lab's label's two lines (logical px): its top stands this much over the building, and a gap.
+pub const EVOLUTION_LABEL_PX: f32 = 32.0;
 /// How many places the shuttles fly between ([`Layout::shuttle_stops`]).
 pub const SHUTTLE_STOPS: usize = 13;
 
@@ -55,6 +57,8 @@ pub enum Place {
     Fleet,
     /// The records mast on the top arm's tip, by the gate: the LOG.
     Log,
+    /// The compute stack above the mind, on the base's outer face: the EVOLUTION lab (GDR-0092).
+    Evolution,
     /// Dark until it has a screen.
     Fabricator,
     /// Dark until it has a screen.
@@ -62,7 +66,7 @@ pub enum Place {
 }
 
 impl Place {
-    pub const ALL: [Place; 9] = [
+    pub const ALL: [Place; 10] = [
         Place::Drydock,
         Place::Behavior,
         Place::Research,
@@ -70,6 +74,7 @@ impl Place {
         Place::TestRange,
         Place::Fleet,
         Place::Log,
+        Place::Evolution,
         Place::Fabricator,
         Place::SalvageBay,
     ];
@@ -124,6 +129,10 @@ pub struct Layout {
     /// glows while a voyage's result waits.
     pub log: Building,
     pub log_beacon: Vec2,
+    /// The EVOLUTION lab's compute stack (GDR-0092) above the mind, its strut onto the base's outer face, and the
+    /// mind's violet conduit down to it (from its foot to the mind's top face).
+    pub evolution: Building,
+    pub evolution_conduit: (Vec2, Vec2),
     pub gate: Vec2,
     /// The approach path: chevron tips from the mouth towards the gate.
     pub chevrons: Vec<Vec2>,
@@ -183,6 +192,17 @@ impl Layout {
         let log = Building { centre: log_c, size: Vec2::new(2.4, 1.8), strut: (log_c - Vec2::Y * 0.9, Vec2::new(log_c.x.min(tip_x), top)) };
         let log_beacon = log_c + Vec2::Y * 4.6;
 
+        // The EVOLUTION lab sits on the base's outer face above the mind, between the upper truss bridge and the top
+        // arm's corner (GDR-0092): under the arm's level, lower as a taller frame drops the mind and opens the gap
+        // (its label grows in metres as the yard's view zooms out), higher when the frame is so short that the mind
+        // would be in the way. Its conduit drops onto the mind's top face right of the heat sinks.
+        let evo_size = Vec2::new(6.0, 4.8);
+        let evo_y = top - 5.1 - (h - 24.0).max(0.0) * 0.25;
+        let evo_c = Vec2::new(mind_c.x + 0.8, evo_y.max(mind.rect().max.y + 1.2 + evo_size.y / 2.0));
+        let evolution = Building { centre: evo_c, size: evo_size, strut: (evo_c + Vec2::X * evo_size.x / 2.0, Vec2::new(back, evo_c.y)) };
+        let conduit_x = evo_c.x + 1.2;
+        let evolution_conduit = (Vec2::new(conduit_x, evo_c.y - evo_size.y / 2.0), Vec2::new(conduit_x, mind.rect().max.y));
+
         let gate = Vec2::new(tip_x + GATE_GAP, mid);
         let chevrons = (0..7).map(|k| Vec2::new(tip_x + 2.0 + 1.3 * k as f32, mid)).collect();
         // From the arm tips' faces to the gate's pods facing the station.
@@ -221,6 +241,8 @@ impl Layout {
             salvage,
             log,
             log_beacon,
+            evolution,
+            evolution_conduit,
             gate,
             chevrons,
             pylons,
@@ -283,6 +305,7 @@ impl Layout {
             Place::TestRange => self.range.rect().union(Rect::from_corners(self.lane.0 - Vec2::Y * 1.1, self.lane.1 + Vec2::new(1.1, 1.1))),
             Place::Fleet => self.fleet_rect(),
             Place::Log => self.log_rect(),
+            Place::Evolution => self.evolution.rect(),
             Place::Fabricator => self.fabricator.rect(),
             Place::SalvageBay => self.salvage.rect(),
         }
@@ -305,6 +328,7 @@ impl Layout {
             Place::TestRange => focus_box(self.range.centre + Vec2::X * 2.0, 30.0),
             Place::Fleet => focus_box(Vec2::new(self.moorings[0].x + 1.5, self.area.center().y), 50.0),
             Place::Log => focus_box(self.log_rect().center(), 20.0),
+            Place::Evolution => focus_box(self.evolution.centre - Vec2::Y * 1.5, 22.0),
             Place::Fabricator => focus_box(self.fabricator.centre, 24.0),
             Place::SalvageBay => focus_box(self.salvage.centre, 23.0),
         }
@@ -321,9 +345,21 @@ impl Layout {
             Place::Fleet => (Vec2::new(self.moorings[0].x - MOORING_HALF - MOORING_WALL, self.moorings[1].y - MOORING_DEPTH / 2.0 - 0.8), Align::Start),
             // Right of the mast's top, over the open space above the gate.
             Place::Log => (self.log_beacon + Vec2::new(2.2, 0.4), Align::Start),
+            // Over the stack, its right edge short of the station's corner, as high as its two lines are at the yard's
+            // view, clear of the moorings.
+            Place::Evolution => {
+                let up = self.evolution.rect().max.y + 0.6 + EVOLUTION_LABEL_PX * self.metres_per_px();
+                (Vec2::new(self.base_x - BASE_STRIP - 0.4, up), Align::End)
+            }
             Place::Fabricator => (self.fabricator.centre + Vec2::Y * 3.8, Align::Middle),
             Place::SalvageBay => (self.salvage.centre - Vec2::Y * 2.0, Align::Middle),
         }
+    }
+
+    /// About how many metres a logical pixel is at the yard's view of a 16:9 window (the overview fitted inside the
+    /// labels' margin): what a label of fixed pixels takes of the station.
+    pub fn metres_per_px(&self) -> f32 {
+        (self.overview.width() / 1244.0).max(self.overview.height() / 684.0)
     }
 
     /// The name plate on the base: its centre and size (the name runs up it).
@@ -477,12 +513,72 @@ mod tests {
         }
     }
 
+    /// The EVOLUTION lab (GDR-0092) stands above the mind on the base's outer face, clear of every other place, of
+    /// the buildings' bodies, the station, the moorings and the bridges; its strut lands on the base and its conduit
+    /// on the mind's top face. Its label sits over it inside the view, clear of the station, the moorings and the
+    /// other labels at the three sizes the UI is checked at (its two lines at most 160 × 30 logical px, the
+    /// research's and the mind's 130 px wide).
+    #[test]
+    fn the_evolution_lab_stands_apart_above_the_mind() {
+        for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
+            let l = Layout::new(frame);
+            let evo = l.hit(Place::Evolution);
+            for p in Place::ALL.into_iter().filter(|p| *p != Place::Evolution) {
+                assert!(evo.inflate(0.5).intersect(l.hit(p)).is_empty(), "{frame:?}: the lab touches {p:?}");
+            }
+            for b in [l.station(), l.research.rect(), l.mind.rect(), l.log_rect()] {
+                assert!(evo.inflate(0.6).intersect(b).is_empty(), "{frame:?}: the lab touches {b:?}");
+            }
+            let reach = MOORING_HALF + MOORING_WALL;
+            for (k, m) in l.moorings.iter().enumerate() {
+                let berth = Rect::from_center_half_size(*m, Vec2::new(reach, MOORING_DEPTH / 2.0 + MOORING_WALL));
+                assert!(evo.inflate(1.0).intersect(berth).is_empty(), "{frame:?}: mooring {k}");
+            }
+            for (bend, end) in l.mind_joints {
+                assert!(!evo.inflate(0.5).contains(bend) && !evo.inflate(0.5).contains(end), "{frame:?}: the bridge");
+            }
+            assert_eq!(l.evolution.strut.1.x, l.base_x - BASE_STRIP, "{frame:?}: the strut lands on the base");
+            let (a, b) = l.evolution_conduit;
+            assert!(a.y == evo.min.y && b.y == l.mind.rect().max.y && a.x > l.mind.rect().min.x + 4.5 && a.x < l.mind.rect().max.x - chamfer(l.mind.rect()), "{frame:?}: the conduit");
+            if frame.1 < 24 {
+                continue;
+            }
+            for (w, h) in [(1280.0, 720.0), (1600.0, 900.0), (2560.0, 1440.0)] {
+                let viewport = Vec2::new(w, h);
+                let k = (w / 1280.0f32).min(h / 720.0);
+                let (_, zoom) = fit(l.overview, viewport - Vec2::splat(36.0));
+                // A label's box in metres: hung from its anchor, as wide and high as its pixels at this zoom.
+                let label = |p: Place, width: f32| {
+                    let (at, align) = l.label(p);
+                    let (wm, hm) = (width * k / zoom, 30.0 * k / zoom);
+                    let x = match align {
+                        Align::Start => (at.x, at.x + wm),
+                        Align::Middle => (at.x - wm / 2.0, at.x + wm / 2.0),
+                        Align::End => (at.x - wm, at.x),
+                    };
+                    Rect::new(x.0, at.y - hm, x.1, at.y)
+                };
+                let me = label(Place::Evolution, 160.0);
+                assert!(l.overview.contains(me.min) && l.overview.contains(me.max), "{frame:?} {w}x{h}: out of view");
+                assert!(me.min.y > evo.max.y, "{frame:?} {w}x{h}: over the lab");
+                assert!(me.intersect(l.station()).is_empty(), "{frame:?} {w}x{h}: on the station");
+                for (k, m) in l.moorings.iter().enumerate() {
+                    let berth = Rect::from_center_half_size(*m, Vec2::new(reach, MOORING_DEPTH / 2.0 + MOORING_WALL));
+                    assert!(me.intersect(berth).is_empty(), "{frame:?} {w}x{h}: on mooring {k}");
+                }
+                for p in [Place::Research, Place::Behavior, Place::Fleet] {
+                    assert!(me.intersect(label(p, 130.0)).is_empty(), "{frame:?} {w}x{h}: on {p:?}'s label");
+                }
+            }
+        }
+    }
+
     /// The shuttles' stops are in view and clear of every hull: the U, the buildings, the moorings and the bridges.
     #[test]
     fn shuttle_stops_are_in_view_and_clear_of_the_hulls() {
         for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
             let l = Layout::new(frame);
-            let mut hulls = vec![l.station(), l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect(), l.log_rect()];
+            let mut hulls = vec![l.station(), l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect(), l.log_rect(), l.evolution.rect()];
             for (k, m) in l.moorings.iter().enumerate() {
                 // From the base behind the bridge side to the tips at the mouth.
                 let open = if k % 2 == 0 { 1.0 } else { -1.0 };

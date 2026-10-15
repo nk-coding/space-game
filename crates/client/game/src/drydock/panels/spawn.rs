@@ -5,7 +5,7 @@ use super::*;
 use data::input::Action;
 use world::settings::{ActionLabel, ActionTip};
 
-pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>) {
+pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>, lab: Res<world::evolution::Lab>) {
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let content = &content.0;
@@ -432,6 +432,10 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                             let file = if cfg!(target_arch = "wasm32") { "DOWNLOAD .RON FILE" } else { "WRITE .RON FILE" };
                             menu_item(m, fonts, &c, file, None, DrydockAction::Rare(Rare::Download));
                             menu_item(m, fonts, &c, "IMPORT .RON FILE", None, DrydockAction::Rare(Rare::ImportFile));
+                            // The evolution lab's setup with this design as its start (GDR-0092), while the lab is open.
+                            if lab.enabled {
+                                menu_item(m, fonts, &c, "EVOLVE THIS DESIGN", None, DrydockAction::Rare(Rare::Evolve));
+                            }
                         });
                     });
                     bb.spawn(sep());

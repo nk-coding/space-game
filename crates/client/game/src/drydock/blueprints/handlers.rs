@@ -91,6 +91,8 @@ pub(in crate::drydock) fn apply(
                         shelf.export = Export::of(&lib, content);
                         if *r == Rare::CopyCode { ShelfButton::Copy } else { ShelfButton::Download }
                     }
+                    // It goes home (`actions::apply`).
+                    Rare::Evolve => continue,
                 };
                 press(b, &mut shelf, &mut lib, content, &mut rename, &mut clip);
             }

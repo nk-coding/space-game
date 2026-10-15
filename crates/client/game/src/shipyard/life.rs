@@ -1,14 +1,17 @@
 //! What keeps the yard alive at home (Niklas, 15 Oct 2026: "the station should feel a bit more alive"): beacons
 //! that breathe and flash, the gate's ring turning and a wave of light running up its approach while it is awake,
 //! the mind's spokes turning around its beating core, research's dishes sweeping and its orbit turning while
-//! research runs, two shuttles roaming the station's left end, windows going on and off, a few in a minute, and the
-//! LOG's mast glowing while a voyage's result waits there (GDR-0091).
+//! research runs, two shuttles roaming the station's left end, windows going on and off, a few in a minute, the
+//! LOG's mast glowing while a voyage's result waits there (GDR-0091), and the EVOLUTION lab (GDR-0092): its racks'
+//! windows flickering while a run computes, its ring of segments filling with the run's generations, its gold glow
+//! once a run has finished.
 //!
 //! Each is a small mesh of its own, built with the yard (`super::rebuild`) and then only moved, turned or scaled by
 //! its transform, so nothing is rebuilt while it moves. The beacons' white cores stay in the static meshes; only
 //! their glows blink. The approach's lit chevrons and each building's or wall's window lights are drawn again only
 //! while one of them fades ([`relight`]): the wave for about a second in five, a building's windows for a few
-//! seconds about once a minute.
+//! seconds about once a minute (the lab's busy racks a few times a second). The lab's ring is drawn again when a
+//! segment lights ([`evolution_ring`]).
 
 use std::f32::consts::{PI, TAU};
 
@@ -18,7 +21,7 @@ use kit::meshbuf::MeshBuf;
 use kit::params::RenderToggles;
 use kit::rng::Rng;
 
-use super::draw::{self, Beacon, Lights, Palette, Pen, Windows};
+use super::draw::{self, Beacon, EVO_SEGMENTS, Evo, Lights, Palette, Pen, Windows};
 use super::layout::Layout;
 
 /// Depths: the gate's ring and approach lights, the mind's and research's moving parts just over the yard (under the
@@ -61,6 +64,12 @@ const LIT_SHARE: (f32, f32) = (0.35, 0.75);
 const DARK_SHARE: (f32, f32) = (0.0, 0.12);
 const SWITCH_EVERY: (f32, f32) = (20.0, 60.0);
 const WINDOW_FADE: f32 = 4.0;
+/// The EVOLUTION lab's racks while a run computes (GDR-0092: "the window bands flicker as fights run"): a switch
+/// every so often, and a quick fade.
+const BUSY_EVERY: (f32, f32) = (0.08, 0.35);
+const BUSY_FADE: f32 = 0.2;
+/// The lab's glow once a run has finished: one breath (s), slower than the LOG's.
+const EVO_BREATH: f32 = 3.2;
 
 /// A moving part of the yard.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,12 +83,27 @@ pub enum Part {
     Orbit,
     /// The LOG's glow (none while nothing waits there).
     LogGlow,
+    /// The EVOLUTION lab's ring of segments ([`evolution_ring`] draws it) and its glow once a run has finished.
+    EvoRing,
+    EvoGlow,
     Shuttle(usize),
 }
 
 impl Part {
-    const ALL: [Part; 10] =
-        [Part::GateRing, Part::Approach, Part::MindRotor, Part::MindCore, Part::Dish(0), Part::Dish(1), Part::Orbit, Part::LogGlow, Part::Shuttle(0), Part::Shuttle(1)];
+    const ALL: [Part; 12] = [
+        Part::GateRing,
+        Part::Approach,
+        Part::MindRotor,
+        Part::MindCore,
+        Part::Dish(0),
+        Part::Dish(1),
+        Part::Orbit,
+        Part::LogGlow,
+        Part::EvoRing,
+        Part::EvoGlow,
+        Part::Shuttle(0),
+        Part::Shuttle(1),
+    ];
 
     fn z(self) -> f32 {
         match self {
@@ -100,6 +124,10 @@ impl Part {
             Part::Orbit => draw::orbit(pen, lab),
             Part::LogGlow if lights.log => draw::log_glow(pen, pal),
             Part::LogGlow => {}
+            // Drawn with the run's progress.
+            Part::EvoRing => {}
+            Part::EvoGlow if lights.evolution == Evo::Done => draw::evolution_glow(pen, pal),
+            Part::EvoGlow => {}
             Part::Shuttle(_) => draw::shuttle(pen, pal),
         }
     }
@@ -215,7 +243,16 @@ impl Lit {
             }
         }
         self.glow = self.on.iter().map(|on| if *on { 1.0 } else { 0.0 }).collect();
-        self.next = rng.range(0.0, SWITCH_EVERY.1);
+        self.next = rng.range(0.0, self.every().1);
+    }
+
+    /// The wait between two switches (s), slow or fast while busy, and how long a window fades.
+    fn every(&self) -> (f32, f32) {
+        if self.windows.busy { BUSY_EVERY } else { SWITCH_EVERY }
+    }
+
+    fn fade(&self) -> f32 {
+        if self.windows.busy { BUSY_FADE } else { WINDOW_FADE }
     }
 
     /// A random window that is on (or off).
@@ -246,13 +283,15 @@ impl Lit {
         self.next -= dt;
         if self.next <= 0.0 {
             self.switch(rng);
-            self.next = rng.range(SWITCH_EVERY.0, SWITCH_EVERY.1);
+            let (lo, hi) = self.every();
+            self.next = rng.range(lo, hi);
         }
         let mut changed = false;
+        let fade = self.fade();
         for (g, on) in self.glow.iter_mut().zip(&self.on) {
             let want = if *on { 1.0 } else { 0.0 };
             if *g != want {
-                *g = if *on { (*g + dt / WINDOW_FADE).min(1.0) } else { (*g - dt / WINDOW_FADE).max(0.0) };
+                *g = if *on { (*g + dt / fade).min(1.0) } else { (*g - dt / fade).max(0.0) };
                 changed = true;
             }
         }
@@ -399,6 +438,8 @@ pub fn animate(
             }
             Part::Orbit => set(&mut tf, l.research.centre, if lights.research { t / ORBIT_TURN * TAU } else { 0.0 }, 1.0),
             Part::LogGlow => set(&mut tf, l.log_beacon, 0.0, breath(t)),
+            Part::EvoRing => set(&mut tf, l.evolution.centre, 0.0, 1.0),
+            Part::EvoGlow => set(&mut tf, l.evolution.centre, 0.0, breath(t * LOG_BREATH / EVO_BREATH)),
             Part::Shuttle(_) => {
                 if let Some(mut pilot) = pilot {
                     let f = pilot.0.get_or_insert_with(|| Flight::new(&stops, rng));
@@ -458,6 +499,44 @@ pub fn relight(
     }
 }
 
+/// The lab's ring of segments: lit as far as the run that computes (else the newest run) has come; drawn again only
+/// when a segment lights or goes, or when the yard was built again.
+#[allow(clippy::too_many_arguments)]
+pub fn evolution_ring(
+    yard: Res<super::Yard>,
+    station: Res<super::Station>,
+    atlas: Res<Atlas>,
+    toggles: Res<RenderToggles>,
+    lab: Res<world::evolution::Lab>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut drawn: Local<Option<(usize, bool)>>,
+    parts: Query<(&Part, &Mesh2d)>,
+) {
+    let on = yard.lights.evolution != Evo::Dark && !lab.runs().is_empty();
+    let lit = (ring_share(&lab) * EVO_SEGMENTS as f32).floor() as usize;
+    if *drawn == Some((lit, on)) && !yard.is_changed() {
+        return;
+    }
+    *drawn = Some((lit, on));
+    for (part, mesh) in &parts {
+        if *part == Part::EvoRing {
+            let mut pen = Pen::new(&atlas, toggles.glow_sprites);
+            draw::evolution_ring(&mut pen, &station.palette, lit, on);
+            let _ = meshes.insert(&mesh.0, pen.into_mesh());
+        }
+    }
+}
+
+/// How far the run the ring shows has come, 0..1: the one that computes (its open generation counted in), else the
+/// newest.
+fn ring_share(lab: &world::evolution::Lab) -> f32 {
+    if let Some(l) = lab.running() {
+        let state = l.run.state();
+        return ((state.generation as f32 + l.run.generation_done()) / state.generations.max(1) as f32).min(1.0);
+    }
+    lab.runs().first().map_or(0.0, |e| e.generation as f32 / e.generations.max(1) as f32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,7 +592,7 @@ mod tests {
         let mut rng = Rng::new(9);
         for (n, lit) in [(34, true), (12, true), (12, false), (29, false), (3, true)] {
             let panes = (0..n).map(|k| Rect::from_center_size(Vec2::new(k as f32, 0.0), Vec2::splat(0.2))).collect();
-            let mut w = Lit::new(Windows { panes, color: Color::WHITE, lit }, false);
+            let mut w = Lit::new(Windows { panes, color: Color::WHITE, lit, busy: false }, false);
             w.start(&mut rng);
             let (lo, hi) = w.band();
             let dt = 0.1;

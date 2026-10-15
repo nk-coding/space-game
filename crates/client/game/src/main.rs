@@ -8,7 +8,8 @@
 //!   range and fleet); `shipyard`: the station itself, a world scene built around the drydock frame; `fleet`: the
 //!   FLEET layer over home (escorts picked from saved designs, against the mind capacity); `research`: the research
 //!   screen over the lab (the tree of research nodes, UNLOCK); `voyage_log`: the LOG layer over home (the last
-//!   voyages, newest first); `settings`: the SETTINGS layer over home and flight.
+//!   voyages, newest first); `evolution`: the EVOLUTION layer over home (the evolution lab's runs, their setup and
+//!   progress, re-watching their fights, saving results); `settings`: the SETTINGS layer over home and flight.
 //! - `map`: the voyage map (a star map of the voyages, their states from the career, SET COURSE).
 //! - `debrief`: the panel over home after a voyage.
 //! - `drydock`: the ship editor (the view of the player's design, the screen, editing, saving and sharing, the
@@ -19,6 +20,7 @@
 mod behavior_ui;
 mod debrief;
 mod drydock;
+mod evolution;
 mod fleet;
 mod home;
 mod map;
@@ -61,7 +63,7 @@ fn main() {
             world::mode::ModePlugin,
             (world::scene::ScenePlugin, world::replay::ReplayPlugin, world::test_range::TestRangePlugin, world::voyage::VoyagePlugin),
             world::sim_bridge::SimBridgePlugin,
-            (world::storage::StoragePlugin, kit::clipboard::ClipboardPlugin, world::career::CareerPlugin, world::settings::SettingsPlugin),
+            (world::storage::StoragePlugin, kit::clipboard::ClipboardPlugin, world::career::CareerPlugin, world::settings::SettingsPlugin, world::evolution::EvolutionPlugin),
             // After the bridge (it reads the content the bridge loads), the storage and the career.
             (
                 drydock::DrydockPlugin,
@@ -70,6 +72,7 @@ fn main() {
                 home::HomePlugin,
                 fleet::FleetPlugin,
                 voyage_log::VoyageLogPlugin,
+                evolution::EvolutionPlugin,
                 settings::SettingsPlugin,
                 map::MapPlugin,
                 debrief::DebriefPlugin,

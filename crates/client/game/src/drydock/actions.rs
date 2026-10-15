@@ -87,6 +87,9 @@ pub enum Rare {
     Download,
     /// Imports a `.ron` file (web: the file chooser).
     ImportFile,
+    /// EVOLVE THIS DESIGN: home's EVOLUTION lab opens its setup with the design in the drydock as the start
+    /// (GDR-0092; the camera flies there from the drydock).
+    Evolve,
 }
 
 /// A widget that sends an action when clicked (pills, rings, palette rows).
@@ -225,9 +228,11 @@ pub fn wheel_turn(acc: &mut f32, scroll: Option<&AccumulatedMouseScroll>) -> Opt
     Some(forward)
 }
 
-/// The UI-state actions, the menus, the test flight (only a design that can fly takes off) and the way home.
+/// The UI-state actions, the menus, the test flight (only a design that can fly takes off), the way home and EVOLVE
+/// THIS DESIGN (home, on to the lab's setup).
 /// Locked parts and materials are never picked (their rows and swatches are disabled; the keys 1–9 reach locked ones
 /// too). Any action but opening a menu closes the open menu (its own items' actions too).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply(
     mut actions: MessageReader<DrydockAction>,
     mut ui: ResMut<DrydockUi>,
@@ -235,6 +240,7 @@ pub(super) fn apply(
     granted: Res<Granted>,
     design: Res<PlayerDesign>,
     mut scene: ResMut<Scene>,
+    mut lab: ResMut<world::evolution::Lab>,
     mut next: ResMut<NextState<AppMode>>,
 ) {
     for a in actions.read() {
@@ -259,6 +265,10 @@ pub(super) fn apply(
                 next.set(AppMode::Flight);
             }
             DrydockAction::Menu => next.set(AppMode::Home),
+            DrydockAction::Rare(Rare::Evolve) if lab.enabled => {
+                lab.request = Some(world::evolution::StartPick::Working);
+                next.set(AppMode::Home);
+            }
             // Editing (tools.rs), zoom (the camera), save / export / blueprints and the ⋯ menu's actions
             // (blueprints/), the BEHAVIOR screen (`behavior_ui`).
             _ => {}
@@ -290,11 +300,13 @@ mod tests {
             .insert_resource(design)
             .insert_resource(granted)
             .init_resource::<DrydockStatus>()
+            .insert_resource(world::evolution::Lab::default())
             .init_resource::<crate::drydock::panels::Palette>()
             .insert_resource(GameContent(content))
             .add_message::<DrydockAction>()
             .add_message::<UiClick>()
             .add_systems(Update, (clicks, apply, sync_pills).chain());
+        app.world_mut().resource_mut::<world::evolution::Lab>().enabled = true;
         app
     }
 
@@ -323,6 +335,26 @@ mod tests {
         app.update();
         assert_eq!(app.world().resource::<DrydockUi>().picked.as_deref(), Some("pulse_laser"));
         assert!(pill(&app, pulse).active);
+    }
+
+    /// EVOLVE THIS DESIGN (the ⋯ menu, with the lab open) asks the lab for a setup with the working design as its start
+    /// and goes home, where the camera flies on to the lab and the setup opens (`home::enter`, `evolution::open`).
+    #[test]
+    fn evolve_this_design_asks_the_lab_for_the_working_design() {
+        let mut app = app();
+        app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));
+        app.update();
+        app.update();
+        assert_eq!(app.world().resource::<world::evolution::Lab>().request, Some(world::evolution::StartPick::Working));
+        assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Home);
+        // A dark lab (no `?lab=1`) has no such item, and the action does nothing.
+        let mut app = self::app();
+        app.world_mut().resource_mut::<world::evolution::Lab>().enabled = false;
+        app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));
+        app.update();
+        app.update();
+        assert_eq!(app.world().resource::<world::evolution::Lab>().request, None);
+        assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Drydock);
     }
 
     /// Shift+wheel down turns forward (like R), up back; a sideways scroll (what browsers make of Shift+wheel) counts

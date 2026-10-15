@@ -17,18 +17,21 @@
 //!   `DockCamera::opening_view`, so only its panels appear), the mind the BEHAVIOR screen (B), the tower and lane the
 //!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the lab RESEARCH (R,
 //!   `research/`), the records mast by the gate the LOG (L, a layer over home, `voyage_log.rs`; its tooltip is the
-//!   last voyage in one line, and it glows while a result waits there). The gate opens the voyage map at once (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
+//!   last voyage in one line, and it glows while a result waits there), the compute stack above the mind the
+//!   EVOLUTION lab (E, a layer over home, `evolution/`, GDR-0092; with `?lab=1` until its research node comes, dark
+//!   without; its label says how far its run is). The gate opens the voyage map at once (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
 //!   its portal takes the camera through the gate and back out (`map::portal`). The fabricator and the salvage bay
 //!   are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
 //!   place (corner brackets, a brighter title).
 //! * **Coming back** from a screen the camera starts on its place (the drydock's last view, the mind, the test
-//!   range, the lab; FLEET's moorings and the LOG's mast when they close) and flies back out to the yard; from the
-//!   map it is back out already.
+//!   range, the lab; FLEET's moorings, the LOG's mast and the EVOLUTION lab when they close) and flies back out to
+//!   the yard; from the map it is back out already. From a fight the lab's WATCH opened it lands on the lab with the
+//!   layer open again; the drydock's EVOLVE THIS DESIGN flies straight from the drydock to the lab.
 //! * **Labels** are small UI text placed over the world (the sketch's), shown while the camera rests on the yard.
 //! * **Notes** bottom right: what the career has to say (a new game, a save kept as it is, content that changed,
 //!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
-//! * **The layers over home** (FLEET, SETTINGS, the LOG) leave the station barely showing: home's words, labels and
+//! * **The layers over home** (FLEET, SETTINGS, the LOG, EVOLUTION) leave the station barely showing: home's words, labels and
 //!   click areas, and the debrief's panel, step aside while one is open, so nothing reads through it.
 //!
 //! Entering home keeps the flight camera's zoom and leaving gives it back with the normal UI scale, so the drydock
@@ -48,14 +51,17 @@ use world::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use world::fx::{FxFlush, FxQueue, FxRegions};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
+use world::evolution::Lab;
 use world::scene::{Launch, Scene};
 use world::sim_bridge::GameContent;
 
 use crate::drydock::view::{DockCamera, GridViewport};
+use crate::evolution::{self, EvolutionLayer};
 use crate::fleet::{self, Fleet};
 use crate::research;
 use crate::shipyard::fly::{Fly, View};
 use crate::voyage_log::{self, LogRow, VoyageLog};
+use crate::shipyard::draw::Evo;
 use crate::shipyard::layout::{Align, Layout, Place, Tag, fit, fit_tagged};
 use crate::shipyard::{ShipyardSet, Yard};
 
@@ -92,6 +98,8 @@ pub enum HomeAction {
     Research,
     /// The records mast: the LOG layer over home (`voyage_log.rs` opens it).
     Log,
+    /// The compute stack: the EVOLUTION layer over home (`evolution/` opens it).
+    Evolution,
 }
 
 /// A place's action in the action map, if it has one (its tooltip names the bound keys while it works).
@@ -104,6 +112,7 @@ pub fn key_of(place: Place) -> Option<Action> {
         Place::TestRange => Some(Action::OpenTestRange),
         Place::Fleet => Some(Action::OpenFleet),
         Place::Log => Some(Action::OpenLog),
+        Place::Evolution => Some(Action::OpenEvolution),
         Place::Fabricator | Place::SalvageBay => None,
     }
 }
@@ -118,6 +127,7 @@ pub fn action_of(place: Place) -> Option<HomeAction> {
         Place::Voyages => Some(HomeAction::Voyages),
         Place::Research => Some(HomeAction::Research),
         Place::Log => Some(HomeAction::Log),
+        Place::Evolution => Some(HomeAction::Evolution),
         Place::Fabricator | Place::SalvageBay => None,
     }
 }
@@ -133,6 +143,7 @@ fn tip_of(place: Place) -> Option<Tip> {
         HomeAction::Research => "RESEARCH",
         // Until a voyage has ended (then the last one in one line, `log_tip`).
         HomeAction::Log => "LOG",
+        HomeAction::Evolution => "EVOLUTION",
     };
     Some(Tip::new(name))
 }
@@ -231,10 +242,10 @@ impl Plugin for HomePlugin {
                 Update,
                 (
                     ui_scale,
-                    (clicks, keys).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open))),
+                    (clicks, keys).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open)).and_eager(not(evolution::is_open))),
                     fly,
                     apply,
-                    (place_labels, sync_titles, sync_name, sync_notes, log_tip).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open))),
+                    (place_labels, sync_titles, sync_name, sync_notes, log_tip).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open)).and_eager(not(evolution::is_open))),
                     measure_labels,
                     show,
                 )
@@ -244,7 +255,7 @@ impl Plugin for HomePlugin {
                     .before(ShipyardSet)
                     .run_if(in_state(AppMode::Home)),
             )
-            .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>).or_eager(resource_changed::<VoyageLog>)))
+            .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>).or_eager(resource_changed::<VoyageLog>).or_eager(resource_changed::<EvolutionLayer>)))
             .add_systems(PostUpdate, draw_hover.run_if(in_state(AppMode::Home)).after(CameraSet).before(FxFlush));
     }
 }
@@ -260,6 +271,12 @@ fn title_tone(place: Place, yard: &Yard) -> Tone {
         Place::Voyages if yard.lights.gate => Tone::Teal,
         Place::Log if yard.lights.log => Tone::Gold,
         Place::Log => Tone::Label,
+        Place::Evolution => match yard.lights.evolution {
+            Evo::Dark => Tone::Dim,
+            Evo::Running => Tone::Teal,
+            Evo::Done => Tone::Gold,
+            Evo::Idle | Evo::Paused => Tone::Violet,
+        },
         Place::Research | Place::Voyages | Place::Fabricator | Place::SalvageBay => Tone::Dim,
     }
 }
@@ -394,10 +411,14 @@ fn put_rig(rig: &mut CameraRig, v: View, viewport: Vec2) {
     rig.zoom_target = v.zoom;
 }
 
-/// Coming home: keep the flight zoom; the camera starts on the place of the screen we came from and flies out.
+/// Coming home: keep the flight zoom; the camera starts on the place of the screen we came from and flies out. Back
+/// from a fight the lab's WATCH opened, it rests on the lab and the layer opens again; the drydock's EVOLVE THIS
+/// DESIGN flies on to the lab.
 #[allow(clippy::too_many_arguments)]
 fn enter(
     mut transitions: MessageReader<StateTransitionEvent<AppMode>>,
+    lab: Res<Lab>,
+    mut out: MessageWriter<HomeAction>,
     debrief: Res<world::voyage::debrief::Debrief>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
@@ -416,6 +437,20 @@ fn enter(
     // From the map the portal has brought the camera back out to the yard.
     let from = if exited == Some(AppMode::Flight) && debrief.open { Some(Place::Voyages) } else { exited.filter(|m| *m != AppMode::Map).and_then(place_of) };
     let yard_view = overview(&yard.layout, &window, &tags);
+    let lab_view = || place_view(Place::Evolution, &yard.layout, &window, &dock, None);
+    if exited == Some(AppMode::Flight) && lab.watching {
+        let at = lab_view();
+        put_rig(&mut rig, at, window.size());
+        visit.phase = Phase::At(Place::Evolution, at);
+        out.write(HomeAction::Evolution);
+        return;
+    }
+    if exited == Some(AppMode::Drydock) && lab.request.is_some() {
+        let start = place_view(Place::Drydock, &yard.layout, &window, &dock, viewport.single().ok());
+        put_rig(&mut rig, start, window.size());
+        visit.phase = Phase::Flying { fly: Fly::new(start, lab_view()).after(EXIT_SECONDS), to: Some(Place::Evolution), from: Some(Place::Drydock) };
+        return;
+    }
     visit.phase = match from {
         Some(place) => {
             let start = place_view(place, &yard.layout, &window, &dock, viewport.single().ok());
@@ -466,10 +501,11 @@ fn go(place: Place, visit: &mut Visit, yard: &Yard, window: &Window, rig: &Camer
     visit.phase = Phase::Flying { fly: Fly::new(from, to), to: Some(place), from: None };
 }
 
-/// Clicks and taps on the places.
+/// Clicks and taps on the places (the EVOLUTION lab only while it is open, `?lab=1`).
 #[allow(clippy::too_many_arguments)]
 fn clicks(
     mut clicks: MessageReader<UiClick>,
+    lab: Res<Lab>,
     spots: Query<&Spot>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
@@ -479,18 +515,21 @@ fn clicks(
     mut visit: ResMut<Visit>,
 ) {
     for c in clicks.read() {
-        if let Ok(spot) = spots.get(c.0) {
+        if let Ok(spot) = spots.get(c.0)
+            && (spot.0 != Place::Evolution || lab.enabled)
+        {
             go(spot.0, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
         }
     }
 }
 
-/// The places' actions (D, B, T, F, R, V, L by default): not while a text field has the keyboard (the action map keeps
-/// them apart from Ctrl and Cmd combinations: Ctrl+D is the browser's bookmark key). The debrief's VOYAGE MAP acts
-/// as the voyages' key.
+/// The places' actions (D, B, T, F, R, V, L, E by default; E only while the lab is open): not while a text field has
+/// the keyboard (the action map keeps them apart from Ctrl and Cmd combinations: Ctrl+D is the browser's bookmark
+/// key). The debrief's VOYAGE MAP acts as the voyages' key.
 #[allow(clippy::too_many_arguments)]
 fn keys(
     act: Act,
+    lab: Res<Lab>,
     pointer: Res<UiPointer>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
@@ -506,7 +545,7 @@ fn keys(
     if pointer.typing {
         return;
     }
-    for place in Place::ALL {
+    for place in Place::ALL.into_iter().filter(|p| *p != Place::Evolution || lab.enabled) {
         if key_of(place).is_some_and(|a| act.just_pressed(a)) {
             go(place, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
         }
@@ -520,7 +559,7 @@ fn keys(
 fn fly(
     time: Res<Time<Real>>,
     window: Single<&Window, With<PrimaryWindow>>,
-    (fleet, log): (Res<Fleet>, Res<VoyageLog>),
+    (fleet, log, evo): (Res<Fleet>, Res<VoyageLog>, Res<EvolutionLayer>),
     tags: Res<LabelTags>,
     mut yard: ResMut<Yard>,
     mut rig: ResMut<CameraRig>,
@@ -560,6 +599,7 @@ fn fly(
             let closed = match *place {
                 Place::Fleet => !fleet.open,
                 Place::Log => !log.open,
+                Place::Evolution => !evo.open,
                 _ => false,
             };
             if closed {
@@ -593,25 +633,25 @@ fn apply(
                 scene.launch = Some(Launch::Range);
                 next.set(AppMode::Flight);
             }
-            // Layers over home, not modes: `fleet::open` and `voyage_log::open` read the same message.
-            HomeAction::Fleet | HomeAction::Log => {}
+            // Layers over home, not modes: `fleet::open`, `voyage_log::open` and `evolution::open` read the same message.
+            HomeAction::Fleet | HomeAction::Log | HomeAction::Evolution => {}
             HomeAction::Voyages => next.set(AppMode::Map),
         }
     }
 }
 
-/// Home's screen shows at home while no layer is over it (FLEET, SETTINGS, the LOG); the labels while the camera
-/// rests on the yard.
+/// Home's screen shows at home while no layer is over it (FLEET, SETTINGS, the LOG, EVOLUTION); the labels while the
+/// camera rests on the yard.
 #[allow(clippy::type_complexity)]
 fn show(
     mode: Res<State<AppMode>>,
-    (fleet, log): (Res<Fleet>, Res<VoyageLog>),
+    (fleet, log, evo): (Res<Fleet>, Res<VoyageLog>, Res<EvolutionLayer>),
     settings: Res<world::settings::SettingsLayer>,
     visit: Res<Visit>,
     mut screens: Query<&mut ScreenFx, Or<(With<HomeRoot>, With<LabelRoot>)>>,
     mut spots: Single<&mut Visibility, With<SpotRoot>>,
 ) {
-    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open;
+    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open && !evo.open;
     let resting = home && matches!(visit.phase, Phase::Yard);
     for mut fx in &mut screens {
         show_screen(&mut fx, resting);
@@ -627,6 +667,7 @@ fn show(
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn place_labels(
     yard: Res<Yard>,
+    lab: Res<Lab>,
     rig: Res<CameraRig>,
     ui_scale: Res<UiScale>,
     visit: Res<Visit>,
@@ -683,6 +724,11 @@ fn place_labels(
         }
     };
     for (spot, mut node) in &mut spots {
+        // The lab is no place to go while it is dark.
+        let display = if spot.0 != Place::Evolution || lab.enabled { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
         let r = l.hit(spot.0);
         let (a, b) = (at(Vec2::new(r.min.x, r.max.y)), at(Vec2::new(r.max.x, r.min.y)));
         set(&mut node, px(a.x), px(a.y), b - a);
@@ -698,6 +744,7 @@ fn sync_titles(
     escorts: Res<EscortDesigns>,
     granted: Res<Granted>,
     career: Res<PlayerCareer>,
+    lab: Res<Lab>,
     content: Res<GameContent>,
     style: Res<Style>,
     spots: Query<(&Spot, Ref<Hot>)>,
@@ -705,7 +752,7 @@ fn sync_titles(
     mut subs: Query<(&LabelSub, &mut Text, &mut TextColor, &mut Node), Without<LabelTitle>>,
 ) {
     let hover = spots.iter().any(|(_, h)| h.is_changed());
-    if !(hover || yard.is_changed() || design.is_changed() || escorts.is_changed() || granted.is_changed() || career.is_changed()) {
+    if !(hover || yard.is_changed() || design.is_changed() || escorts.is_changed() || granted.is_changed() || career.is_changed() || lab.is_changed()) {
         return;
     }
     let ui = &style.ui;
@@ -723,6 +770,7 @@ fn sync_titles(
             Place::TestRange => "TEST RANGE".into(),
             Place::Fleet => "FLEET".into(),
             Place::Log => "LOG".into(),
+            Place::Evolution => "EVOLUTION".into(),
             Place::Fabricator => "FABRICATOR".into(),
             Place::SalvageBay => "SALVAGE BAY".into(),
         };
@@ -760,6 +808,7 @@ fn sync_titles(
                     (n, Some(_)) => (format!("{n} NEW"), Tone::Gold),
                 }
             }
+            Place::Evolution => evolution::building_line(&lab),
             Place::Fabricator | Place::SalvageBay => ("LATER".into(), Tone::Dim),
         };
         set_text(&mut text, &words);
@@ -894,8 +943,8 @@ mod tests {
         }
     }
 
-    /// D, B, T, F, R, V and L lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research, the voyage
-    /// map and the LOG; every key is one place's, every action one place's.
+    /// D, B, T, F, R, V, L and E lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research, the voyage
+    /// map, the LOG and the EVOLUTION lab; every key is one place's, every action one place's.
     #[test]
     fn keys_and_places_map_to_screens() {
         let by_key = |k: Action| Place::ALL.into_iter().find(|p| key_of(*p) == Some(k));
@@ -906,6 +955,7 @@ mod tests {
         assert_eq!(screen(Action::OpenFleet), Some(HomeAction::Fleet));
         assert_eq!(screen(Action::OpenVoyages), Some(HomeAction::Voyages));
         assert_eq!(screen(Action::OpenLog), Some(HomeAction::Log));
+        assert_eq!(screen(Action::OpenEvolution), Some(HomeAction::Evolution));
         assert_eq!((by_key(Action::OpenResearch), screen(Action::OpenResearch)), (Some(Place::Research), Some(HomeAction::Research)));
         for p in Place::ALL {
             if let Some(k) = key_of(p) {

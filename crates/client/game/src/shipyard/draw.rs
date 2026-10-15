@@ -65,7 +65,7 @@ impl Palette {
     }
 }
 
-/// What lights the yard (from the career, `super::Yard`).
+/// What lights the yard (from the career and the lab, `super::Yard`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Lights {
     pub research: bool,
@@ -74,6 +74,19 @@ pub struct Lights {
     pub moored: usize,
     /// A voyage's result waits in the LOG: its mast glows.
     pub log: bool,
+    pub evolution: Evo,
+}
+
+/// The EVOLUTION lab's state (GDR-0092 "Its states"): dark until it opens (`?lab=1` until its research node comes),
+/// dim without a run, its racks flickering while a run computes, gold once a run has finished until it is opened.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Evo {
+    #[default]
+    Dark,
+    Idle,
+    Running,
+    Paused,
+    Done,
 }
 
 /// A light that blinks (`super::life`): where it is, its colour and how it blinks.
@@ -87,12 +100,14 @@ pub struct Beacon {
 }
 
 /// The windows of one building or wall: their panes, the colour they light in, and whether the building is lit (most
-/// of them on) or dark (hardly any). Here they are drawn dark; `super::life` lights them, a few at a time.
+/// of them on) or dark (hardly any). Here they are drawn dark; `super::life` lights them, a few at a time, and fast
+/// while the building is `busy` (the EVOLUTION lab's racks while its run computes).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Windows {
     pub panes: Vec<Rect>,
     pub color: Color,
     pub lit: bool,
+    pub busy: bool,
 }
 
 /// A mesh being drawn: flat shapes sample the atlas's white texel, glows its soft dot and halo strip. Blinking
@@ -272,7 +287,14 @@ fn windows(pen: &mut Pen, pal: &Palette, rows: &[(Vec2, Vec2, usize)], col: Colo
             panes.push(pane);
         }
     }
-    pen.windows.push(Windows { panes, color: col, lit });
+    pen.windows.push(Windows { panes, color: col, lit, busy: false });
+}
+
+/// The windows drawn last flicker while `busy`.
+fn busy(pen: &mut Pen, busy: bool) {
+    if let Some(w) = pen.windows.last_mut() {
+        w.busy = busy;
+    }
 }
 
 /// Windows' lights over their dark panes, each as bright as its `glow` (0: off, 1: on).
@@ -461,6 +483,59 @@ fn log_mast(pen: &mut Pen, l: &Layout, pal: &Palette) {
 pub fn log_glow(pen: &mut Pen, pal: &Palette) {
     pen.glow(Vec2::ZERO, 4.2, vcol(pal.gold, 0.55));
     pen.circle(Vec2::ZERO, 0.62, 0.06, vcol(pal.gold, 0.85));
+}
+
+/// The EVOLUTION lab (GDR-0092): a chamfered block with window rows, the stack of compute rings seen from above (the
+/// ring of segments on it that fills with the run's generations is `super::life`'s), a rack either side whose
+/// windows flicker while a run computes, and the mind's violet conduit running down from it to the mind (the lab
+/// is the mind's own simulation).
+fn evolution_lab(pen: &mut Pen, l: &Layout, pal: &Palette, evo: Evo) {
+    let (r, c) = (l.evolution.rect(), l.evolution.centre);
+    let lit = evo != Evo::Dark;
+    let col = if lit { pal.violet } else { pal.dim };
+    let (a, z) = l.evolution_conduit;
+    pen.line(a, z, 0.34, vcol(pal.hull_hi, 1.0));
+    for dx in [-0.08, 0.08] {
+        pen.line(a + Vec2::X * dx, z + Vec2::X * dx, 0.05, vcol(pal.violet, if lit { 0.6 } else { 0.3 }));
+    }
+    block(pen, pal, r, lit, pal.violet);
+    busy(pen, evo == Evo::Running);
+    for x in [c.x - 2.35, c.x + 2.35] {
+        pen.boxed(Rect::from_center_size(Vec2::new(x, c.y), Vec2::new(0.7, 2.6)), vcol(pal.dark, 1.0), vcol(col, 0.4), 0.05);
+        windows(pen, pal, &[(Vec2::new(x, c.y - 1.0), Vec2::new(x, c.y + 1.0), 4)], pal.violet, lit);
+        busy(pen, evo == Evo::Running);
+    }
+    pen.disc(c, EVO_STACK, vcol(pal.structure, 1.0));
+    pen.circle(c, EVO_STACK, 0.1, vcol(pal.structure_hi, 1.0));
+    pen.circle(c, 1.3, 0.08, vcol(pal.hull_hi, 1.0));
+    pen.circle(c, 0.9, 0.06, vcol(col, 0.6));
+    pen.circle(c, 0.5, 0.06, vcol(col, 0.85));
+    pen.disc(c, 0.16, vcol(col, 0.9));
+}
+
+/// The compute stack's radius and its ring of segments (between its edge and its outer ring): how many, how far
+/// out and how wide.
+const EVO_STACK: f32 = 1.78;
+pub const EVO_SEGMENTS: usize = 16;
+const EVO_RING: (f32, f32) = (1.55, 0.14);
+
+/// The lab's ring of segments around the origin: the first `lit` of [`EVO_SEGMENTS`] lit teal (the run's generations
+/// done, clockwise from the top), the rest dim; all dim while `on` is false (no run).
+pub fn evolution_ring(pen: &mut Pen, pal: &Palette, lit: usize, on: bool) {
+    let (r, w) = EVO_RING;
+    let step = TAU / EVO_SEGMENTS as f32;
+    for k in 0..EVO_SEGMENTS {
+        let a0 = PI / 2.0 - k as f32 * step - 0.12 * step;
+        let arc: Vec<Vec2> = (0..=3).map(|j| Vec2::from_angle(a0 - j as f32 * 0.25 * step) * r).collect();
+        let (c, a) = if on && k < lit { (pal.teal, 0.95) } else { (pal.dim, if on { 0.55 } else { 0.3 }) };
+        pen.path(&arc, false, w, vcol(c, a));
+    }
+}
+
+/// The lab's glow once a run has finished, around the origin (`super::life` breathes it): soft gold and a ring.
+pub fn evolution_glow(pen: &mut Pen, pal: &Palette) {
+    pen.glow(Vec2::ZERO, 6.5, vcol(pal.gold, 0.5));
+    pen.circle(Vec2::ZERO, 2.05, 0.07, vcol(pal.gold, 0.85));
 }
 
 /// Three dark bays: a building waiting for its screen (the fabricator, the salvage bay).
@@ -719,7 +794,7 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
         mooring(pen, pal, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }
     // Struts under the buildings (the mind's collar is its own), and the one from the range's tower to its lane.
-    for b in [&l.research, &l.fabricator, &l.range, &l.salvage, &l.log] {
+    for b in [&l.research, &l.fabricator, &l.range, &l.salvage, &l.log, &l.evolution] {
         strut(pen, pal, b.strut.0, b.strut.1);
     }
     let t = l.range.rect();
@@ -732,6 +807,7 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     bays(pen, pal, l.salvage.centre, 0.0233);
     mind_house(pen, l, pal);
     log_mast(pen, l, pal);
+    evolution_lab(pen, l, pal, lights.evolution);
     // The test range: its control tower and the target lane.
     block(pen, pal, t, true, pal.teal);
     pen.boxed(Rect::from_center_size(t.center(), t.size() * Vec2::new(0.64, 0.44)), vcol(pal.dark, 1.0), vcol(pal.teal, 0.5), 0.06);

@@ -2,14 +2,15 @@
 //! dock lies on its side, its inside the building area (the working design's drydock frame, the ship docked in it
 //! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes, the
 //! dark fabricator and the LOG's records mast on the top wall, the test range's tower and lane and the dark salvage
-//! bay under the bottom wall, the mind behind the base, the escorts' moorings on two truss bridges left of the mind.
+//! bay under the bottom wall, the mind behind the base with the EVOLUTION lab's compute stack above it, the escorts'
+//! moorings on two truss bridges left of the mind.
 //!
 //! * [`layout`]: where everything sits, a pure function of the frame size (a bigger frame, a bigger U).
 //! * [`draw`]: the meshes, flat vector shapes in the style tokens with a few glows.
 //! * [`fly`]: the camera's flight between the yard and a place (home flies it, `home.rs`).
 //! * `gate`: the ring of light at the gate after a recall.
 //! * `life`: what moves at home besides the rigging (beacons, the gate's ring and the wave up its approach, the
-//!   mind, research's dishes, the LOG's glow, shuttles, the windows' lights).
+//!   mind, research's dishes, the LOG's glow, the lab's ring and glow, shuttles, the windows' lights).
 //!
 //! **Cost**: the station is three static meshes (the yard around the U, the building area's floor, the walls),
 //! rebuilt only when the frame size, the career's lights or the glow setting change; the docked ship is one mesh
@@ -21,7 +22,9 @@
 //! **States** (from the career, [`lights`]): research is lit once anything has been researched or any research
 //! node can be paid now; the gate is awake while any voyage is open (a new game opens its first one, so it is
 //! awake from the start); the moorings hold the FLEET's escorts; the LOG's mast glows while a voyage's result waits
-//! there unread; the fabricator and the salvage bay stay dark until they have screens.
+//! there unread; the EVOLUTION lab ([`draw::Evo`], from `world::evolution::Lab`) is dark without `?lab=1` (its
+//! research node comes with GDR-0092 step 8), dim without a run, busy while one computes, gold once one has
+//! finished until it is opened; the fabricator and the salvage bay stay dark until they have screens.
 //!
 //! **In the drydock** the walls and the parked cranes stay around the frame (the drydock's veil dims them outside
 //! its grid viewport); the floor, the yard and the drones are home's alone. **On the research screen** the whole
@@ -52,7 +55,7 @@ use world::sim_bridge::GameContent;
 use crate::drydock::panels::DrydockRoot;
 use crate::map::portal::Portal;
 
-use draw::{Lights, Palette, Pen};
+use draw::{Evo, Lights, Palette, Pen};
 use layout::{CLAMPS, CLAMP_REACH, Layout, MOORING_DEPTH, MOORING_HALF, MOORINGS};
 
 /// Depths: the yard under the floor under the walls (clamps slide under them), the ships, then the cranes over
@@ -70,13 +73,14 @@ const DRONES: usize = 6;
 /// when it would not fit.
 const MOORED_SCALE: f32 = 0.45;
 
-/// What lights the yard, by the career's rules (see the module doc).
-pub fn lights(content: &Content, career: &Career, escorts: usize) -> Lights {
+/// What lights the yard, by the career's rules and the lab's state (see the module doc).
+pub fn lights(content: &Content, career: &Career, escorts: usize, evolution: Evo) -> Lights {
     Lights {
         research: !career.researched().is_empty() || content.research.iter().any(|n| career.can_pay(content, &n.id).is_ok()),
         gate: !career.open_voyages(content).is_empty(),
         moored: escorts.min(MOORINGS),
         log: career.unread() > 0,
+        evolution,
     }
 }
 
@@ -163,7 +167,7 @@ impl Plugin for ShipyardPlugin {
             .add_systems(Startup, setup)
             .add_systems(
                 Update,
-                (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Research))), animate, life::animate, life::relight)
+                (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Research))), animate, life::animate, life::relight, life::evolution_ring)
                     .chain()
                     .in_set(ShipyardSet)
                     .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock)).or_eager(in_state(AppMode::Research)).or_eager(in_state(AppMode::Map))),
@@ -226,13 +230,13 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     commands.insert_resource(Station { palette, core, outer });
 }
 
-/// The layout follows the design's frame, the lights the career and the fleet.
-fn follow(design: Res<PlayerDesign>, career: Res<PlayerCareer>, escorts: Res<EscortDesigns>, content: Res<GameContent>, mut yard: ResMut<Yard>) {
+/// The layout follows the design's frame, the lights the career, the fleet and the lab.
+fn follow(design: Res<PlayerDesign>, career: Res<PlayerCareer>, escorts: Res<EscortDesigns>, lab: Res<world::evolution::Lab>, content: Res<GameContent>, mut yard: ResMut<Yard>) {
     if yard.layout.frame != design.frame() {
         yard.layout = Layout::new(design.frame());
     }
-    if career.is_changed() || escorts.is_changed() || yard.built.is_none() {
-        let want = lights(&content.0, career.career(), escorts.0.len());
+    if career.is_changed() || escorts.is_changed() || lab.is_changed() || yard.built.is_none() {
+        let want = lights(&content.0, career.career(), escorts.0.len(), crate::evolution::light(&lab));
         if yard.lights != want {
             yard.lights = want;
         }
@@ -542,7 +546,7 @@ mod tests {
     #[test]
     fn a_new_game_has_research_dark_and_the_gate_awake() {
         let (content, c) = career("");
-        assert_eq!(lights(&content, &c, 0), Lights { research: false, gate: true, moored: 0, log: false });
+        assert_eq!(lights(&content, &c, 0, Evo::Dark), Lights { research: false, gate: true, moored: 0, log: false, evolution: Evo::Dark });
     }
 
     /// The LOG's mast glows from a voyage's end until the LOG has been opened.
@@ -550,22 +554,22 @@ mod tests {
     fn the_log_glows_until_read() {
         let (content, mut c) = career("");
         c.voyage_launched(&content, "yard_approach").unwrap();
-        assert!(!lights(&content, &c, 0).log);
+        assert!(!lights(&content, &c, 0, Evo::Dark).log);
         c.voyage_ended(&content, "yard_approach", data::career::VoyageEnd::Lost { ticks: 30 }).unwrap();
-        assert!(lights(&content, &c, 0).log);
+        assert!(lights(&content, &c, 0, Evo::Dark).log);
         c.read_log();
-        assert!(!lights(&content, &c, 0).log);
+        assert!(!lights(&content, &c, 0, Evo::Dark).log);
     }
 
     /// Research lights up as soon as a node can be paid, and stays lit once anything is researched.
     #[test]
     fn research_lights_when_it_can_run() {
         let (content, c) = career(", data: {\"kinetic\": 12.0}");
-        assert!(lights(&content, &c, 0).research);
+        assert!(lights(&content, &c, 0, Evo::Dark).research);
         let (content, c) = career(", researched: [\"automaton_cannon\"]");
-        assert!(lights(&content, &c, 0).research);
+        assert!(lights(&content, &c, 0, Evo::Dark).research);
         let (content, c) = career(", data: {\"kinetic\": 2.0}");
-        assert!(!lights(&content, &c, 0).research, "not enough data for any node");
+        assert!(!lights(&content, &c, 0, Evo::Dark).research, "not enough data for any node");
     }
 
     /// Without an open voyage the gate is dormant; escorts fill the moorings, at most four.
@@ -573,9 +577,9 @@ mod tests {
     fn the_gate_sleeps_without_voyages_and_moorings_fill_with_escorts() {
         let content = data::base_content();
         let c = Career::from_ron(&format!("(start: \"\", seed: 1, generator: {})", data::career::GENERATOR)).unwrap();
-        assert!(!lights(&content, &c, 0).gate);
+        assert!(!lights(&content, &c, 0, Evo::Dark).gate);
         let (content, c) = career("");
-        assert_eq!(lights(&content, &c, 2).moored, 2);
-        assert_eq!(lights(&content, &c, 9).moored, MOORINGS);
+        assert_eq!(lights(&content, &c, 2, Evo::Dark).moored, 2);
+        assert_eq!(lights(&content, &c, 9, Evo::Dark).moored, MOORINGS);
     }
 }
