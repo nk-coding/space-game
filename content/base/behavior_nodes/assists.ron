@@ -31,8 +31,8 @@
     (
         id: "brake",
         name: "Brake",
-        summary: "Stop the ship while you don't thrust, with the thrusters that push against the motion; it never turns the ship.",
-        description: "A ship with engines only at the back can't brake without turning: give the rule `can_stop_straight`, or let Face target point it.",
+        summary: "Stop the ship while you don't thrust; while you don't steer either, it turns the ship to brake with its main engines.",
+        description: "While you steer, hold a lock or Face target points the ship, it brakes only with the thrusters that push against the motion: a ship with engines only at the back can't then. Otherwise it flips and burns when those thrusters give less than half its best push (never for a slight drift, so it doesn't spin around). `can_stop_straight` keeps it to stops without a turn.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,
@@ -53,8 +53,8 @@
     (
         id: "hold_station",
         name: "Hold station",
-        summary: "Keep the ship where you let it go, or at its place beside an ally, with the thrusters that push the needed way; it never turns the ship.",
-        description: "The station is taken when the assist takes thrust over: where you let go of the thrust keys (or the stick), or with Ally your place beside the nearest of your other vessels, kept as that ship moves. A push drifts the ship off and it flies back; thrusting yourself moves the station, and letting go holds the new spot.",
+        summary: "Keep the ship where you let it go, or at its place beside an ally; while you don't steer, it turns the ship to bring its engines to bear.",
+        description: "The station is taken when the assist takes thrust over: where you let go of the thrust keys (or the stick), or with Ally your place beside the nearest of your other vessels, kept as that ship moves. A push drifts the ship off and it flies back; thrusting yourself moves the station, and letting go holds the new spot. While you steer, hold a lock or Face target points the ship, only the thrusters that push the needed way fly it back.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,
@@ -79,8 +79,8 @@
     (
         id: "avoid_collisions",
         name: "Avoid collisions",
-        summary: "Sidestep a ship, wreck or piece of debris on a collision course, with the thrusters that push that way; it never turns the ship.",
-        description: "It looks a few seconds ahead and takes thrust only while something is on a collision course, so put it above Brake or Hold station: the rule below keeps thrust the rest of the time. A ship that can only push forward can't sidestep.",
+        summary: "Sidestep a ship, wreck or piece of debris on a collision course; while you don't steer, it turns the ship to sidestep with its engines.",
+        description: "It looks a few seconds ahead and takes thrust only while something is on a collision course, so put it above Brake or Hold station: the rule below keeps thrust the rest of the time. While you steer, hold a lock or Face target points the ship, it sidesteps only with the thrusters that push that way.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,

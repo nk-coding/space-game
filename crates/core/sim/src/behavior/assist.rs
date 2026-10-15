@@ -17,9 +17,13 @@
 //!   rules of a toggle slot (`toggle1`..`toggle4`) or the master switch, ALL ASSISTS (off: no assist acts; on: they
 //!   are back as their toggles left them). The state lives on the ship for the mission.
 //! * **Per tick** ([`assist_plan`]): the deciding rules shape the pilot's goal: face turns the strongest guns onto the
-//!   target (smart aim, as a lock does), brake asks for zero velocity without touching the heading (only thrusters
-//!   that push against the motion brake), auto-fire fires the group's guns that bear, with fire at will's per-gun
-//!   test.
+//!   target (smart aim, as a lock does), brake asks for zero velocity, auto-fire fires the group's guns that bear,
+//!   with fire at will's per-gun test.
+//! * **Thrust assists turn while turning is free** (brake, hold station, avoid collisions; Niklas, 15 Oct 2026, as
+//!   no base ship has RCS): while neither the pilot (steering, a lock) nor a rule (face target) has the turning
+//!   channel, and the velocity change asked is at least [`tuning::ASSIST_TURN_DV`], the heading becomes
+//!   `HeadingGoal::Auto` (the behaviors' flip and burn: kept while the thrusters facing the needed way give half the
+//!   best axis). Otherwise the heading stays the pilot's and only the thrusters pushing the needed way act.
 //! * **Hold station** (GDR-0088 step 4): the station is taken on the first tick the rule has thrust while the pilot
 //!   doesn't thrust: the ship's centre of mass, or its offset from the nearest other active vessel of its owner (with
 //!   `ally`; a point without one). The pilot's thrust drops it, so thrusting moves the station; a rule above that
@@ -33,6 +37,7 @@
 //! * **Determinism**: integer tick counters, index-order loops, one snapshot per think; the state is hashed with the
 //!   ship's, and only when a ship has a list, so worlds without assists keep their hashes.
 
+use core::f32::consts::PI;
 use std::sync::Arc;
 
 use data::MAX_WEAPON_GROUP;
@@ -44,12 +49,12 @@ use crate::DT;
 use crate::config::FlightTuning;
 use crate::flight::maneuver::Maneuver;
 use crate::flight::{
-    AimMode, FIRE_ALL, Fire, FlightGoal, HelmMode, Kin, PilotInput, Target, TargetState, find_ship, resolve_target,
+    AimMode, FIRE_ALL, Fire, FlightGoal, HeadingGoal, HelmMode, Kin, PilotInput, Target, TargetState, find_ship, resolve_target,
     smart_aim,
 };
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
-use crate::math::Vec2;
+use crate::math::{Vec2, sqrt};
 use crate::ship::design::PartIdx;
 use crate::ship::vessel::friendly;
 use crate::ship::{Piece, Ship};
@@ -578,20 +583,23 @@ pub(crate) fn assist_plan(
     {
         goal.heading = h;
     }
-    if !thrust {
-        match st.decider(Channel::Thrust) {
-            Some((_, AssistAction::Brake)) => goal.velocity = Some(Vec2::ZERO),
-            Some((_, AssistAction::HoldStation(_))) => {
-                if let Some(v) = st.station.and_then(|s| station_goal(&s, kin, ships, flight)) {
-                    goal.velocity = Some(v);
-                }
-            }
-            Some((_, AssistAction::AvoidCollisions)) => {
-                if let Some(v) = st.avoid.and_then(|a| evade(piece, a, ships)) {
-                    goal.velocity = Some(cap(v, kin.top_speed));
-                }
-            }
-            _ => {}
+    // Turning left free: the pilot doesn't steer or hold a lock, no rule decides it.
+    let turn_free = !turning && input.lock.is_none() && st.decides[Channel::Turning.index()].is_none();
+    let pushed = match st.decider(Channel::Thrust) {
+        _ if thrust => None,
+        Some((_, AssistAction::Brake)) => Some(Vec2::ZERO),
+        Some((_, AssistAction::HoldStation(_))) => st.station.and_then(|s| station_goal(&s, kin, ships, flight, turn_free)),
+        Some((_, AssistAction::AvoidCollisions)) => st.avoid.and_then(|a| evade(piece, a, ships)).map(|v| cap(v, kin.top_speed)),
+        _ => None,
+    };
+    if let Some(v) = pushed {
+        goal.velocity = Some(v);
+        // With turning free the thrust assist may turn the ship to bring its thrust to bear, as the behaviors'
+        // maneuvers do (`HeadingGoal::Auto`: only when the thrusters facing the needed way give less than half the
+        // best axis). Only for a change of at least `ASSIST_TURN_DV`, so small corrections the ship can't push never
+        // spin it around.
+        if turn_free && (v - kin.vel).length() >= tuning::ASSIST_TURN_DV {
+            goal.heading = HeadingGoal::Auto;
         }
     }
     let held = input.fire & FIRE_ALL;
@@ -607,8 +615,12 @@ pub(crate) fn assist_plan(
 }
 
 /// The velocity back to the station and with it: an escort of the station point at distance 0 (capped at the top
-/// speed). `None` while its ally can't be found.
-fn station_goal(s: &StationPoint, kin: &Kin, ships: &[Ship], flight: &FlightTuning) -> Option<Vec2> {
+/// speed). With turning free (`turn`) a ship that must turn around to stop (`Kin::stop_accel` plans with half its best
+/// axis then) comes back no faster than it can still turn around in and stop from: the half turn, at its planning
+/// angular acceleration, takes `2·√(π / α)`, and the escort's arrival speed alone overshot the station by about the
+/// distance flown meanwhile; and within [`tuning::STATION_SLACK`] of the station it only stops (matches the station's
+/// velocity), as every small correction there meant two half turns. `None` while its ally can't be found.
+fn station_goal(s: &StationPoint, kin: &Kin, ships: &[Ship], flight: &FlightTuning, turn: bool) -> Option<Vec2> {
     let at = match s.ally {
         Some(a) => {
             let ts = resolve_target(ships, &Target::Ship(a))?;
@@ -617,7 +629,22 @@ fn station_goal(s: &StationPoint, kin: &Kin, ships: &[Ship], flight: &FlightTuni
         None => TargetState { pos: s.at, vel: Vec2::ZERO },
     };
     let escort = Maneuver::Escort { leader: Target::Point(at.pos), distance: 0.0 };
-    escort.goal_for(kin, Some(at), flight).velocity
+    let v = escort.goal_for(kin, Some(at), flight).velocity?;
+    let opposite = [1, 0, 3, 2][kin.best];
+    if !turn || kin.caps[opposite] >= 0.5 * kin.caps[kin.best] || kin.alpha <= 0.0 {
+        return Some(v);
+    }
+    // Near the station it only stops: chasing the last metre turned it around and back for good.
+    let d = (at.pos - kin.pos).length();
+    if d < tuning::STATION_SLACK {
+        return Some(at.vel);
+    }
+    let t = 2.0 * sqrt(PI / kin.alpha);
+    let a = flight.stop_margin * kin.stop_accel();
+    let most = a * (sqrt(t * t + 2.0 * d / a) - t);
+    let back = v - at.vel;
+    let speed = back.length();
+    Some(if speed > most { at.vel + back * (most / speed) } else { v })
 }
 
 /// `v`, scaled down to `top` if faster (as maneuvers cap their goals, GDR-0064).

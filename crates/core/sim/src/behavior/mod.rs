@@ -61,6 +61,12 @@ pub mod tuning {
     pub const THREAT_DISTANCE: f32 = 50.0;
     /// `threat`: firepower counts this much more if the ship aims at me.
     pub const THREAT_AIMING: f32 = 2.0;
+    /// A thrust assist turns the ship (while turning is free) only for a velocity change of at least this (m/s): small
+    /// corrections never spin it around.
+    pub const ASSIST_TURN_DV: f32 = 0.5;
+    /// `hold_station` on a ship that must turn around to stop (turning free): within this distance (m) of the station
+    /// it only stops.
+    pub const STATION_SLACK: f32 = 1.0;
     /// `avoid_collisions` looks this far ahead (s): a closest approach later than that is no threat yet.
     pub const AVOID_AHEAD: f32 = 6.0;
     /// `avoid_collisions` keeps this gap (m) between the bounding circles of the two pieces.

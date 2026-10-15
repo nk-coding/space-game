@@ -168,13 +168,14 @@ pub struct Code {
 pub enum AssistAction {
     /// Turning: the strongest guns onto the target.
     FaceTarget,
-    /// Thrust: stop, without turning.
+    /// Thrust: stop (turning too while turning is free).
     Brake,
     /// The trigger of this weapon group (1 to `data::MAX_WEAPON_GROUP`): fire when its guns bear.
     AutoFire(u8),
-    /// Thrust: back to the station taken when it took thrust over, without turning.
+    /// Thrust: back to the station taken when it took thrust over (turning too while turning is free).
     HoldStation(Station),
-    /// Thrust: sidestep whatever is on a collision course, without turning; decides only while something is.
+    /// Thrust: sidestep whatever is on a collision course (turning too while turning is free); decides only while
+    /// something is.
     AvoidCollisions,
 }
 

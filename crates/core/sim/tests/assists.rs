@@ -445,3 +445,88 @@ fn hold_station_waits_while_avoid_collisions_dodges() {
     assert!(!touched && dodged > 1.0, "dodged by {dodged} m");
     assert!((com(&w, me) - home).length() < 0.2, "back at the station: {:?} of {home:?}", com(&w, me));
 }
+
+/// The heading goal the flight computer was given this tick.
+fn heading_goal(w: &Sim, s: ShipId) -> sim::HeadingGoal {
+    w.ship(s).unwrap().telemetry().goal.unwrap().heading
+}
+
+/// The Rim Skiff: two thrusters at the back, nothing else to push with (no base ship has RCS pods).
+#[test]
+fn with_turning_free_thrust_assists_turn_a_ship_with_rear_thrusters_only() {
+    let c = content();
+    let skiff = || design(&c, "rim_skiff");
+    // Brake: a forward drift its thrusters can't push against; it flips and burns, then stops.
+    let (mut w, me, _) = piloted(skiff(), &[]);
+    assists(&mut w, me, &["always -> brake"]);
+    drift(&mut w, me, Vec2::new(0.0, 4.0));
+    fly(&mut w, me, keys(0.0, 0.0), 10);
+    assert_eq!(heading_goal(&w, me), sim::HeadingGoal::Auto, "turning is free: it may turn");
+    fly(&mut w, me, keys(0.0, 0.0), 300);
+    assert!(speed(&w, me) < 0.05, "stopped: {}", speed(&w, me));
+    assert!(wrap(body(&w, me).angle).abs() > 2.5, "by turning around: {}", body(&w, me).angle);
+
+    // Hold station: pushed off forward, it turns and flies back.
+    let (mut w, me, _) = piloted(skiff(), &[]);
+    assists(&mut w, me, &["always -> hold_station"]);
+    fly(&mut w, me, keys(0.0, 0.0), 3);
+    let home = com(&w, me);
+    drift(&mut w, me, Vec2::new(1.0, 4.0));
+    fly(&mut w, me, keys(0.0, 0.0), 300);
+    // Then it stays near (within the slack it only stops, and drifts that it can't push against without turning
+    // around are slower than `ASSIST_TURN_DV`).
+    let (mut off, mut fastest) = (0.0f32, 0.0f32);
+    for _ in 0..900 {
+        fly(&mut w, me, keys(0.0, 0.0), 1);
+        off = off.max((com(&w, me) - home).length());
+        fastest = fastest.max(speed(&w, me));
+    }
+    assert!(off < 1.3 && fastest < 1.5, "holds near the station: {off} m off at most, {fastest} m/s at most");
+
+    // Avoid collisions: coasting straight at a raider, it turns to sidestep and passes clear.
+    let (mut w, me, rs) = piloted(skiff(), &[(0.0, 60.0)]);
+    let (_, touched) = pass(&mut w, me, rs[0], keys(0.0, 0.0), 1);
+    assert!(!touched);
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    let mut control = w.clone();
+    let (_, hit) = pass(&mut control, me, rs[0], keys(0.0, 0.0), 600);
+    assert!(hit, "no assist: they collide");
+    assists(&mut w, me, &["always -> avoid_collisions"]);
+    let (closest, touched) = pass(&mut w, me, rs[0], keys(0.0, 0.0), 600);
+    assert!(!touched, "dodged: {closest} m apart at the closest");
+    assert!(wrap(body(&w, me).angle).abs() > 0.3, "by turning its thrusters sideways: {}", body(&w, me).angle);
+}
+
+#[test]
+fn thrust_assists_leave_the_heading_alone_while_turning_is_taken() {
+    let c = content();
+    // Face target has the turning channel: brake keeps its thrust-only stop, the nose stays on the raider.
+    let (mut w, me, _) = piloted(design(&c, "rim_skiff"), &[(45.0, 0.0)]);
+    assists(&mut w, me, &["always -> brake", "always -> face_target"]);
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    fly(&mut w, me, keys(0.0, 0.0), 120);
+    assert!(matches!(heading_goal(&w, me), sim::HeadingGoal::Track { .. }), "{:?}", heading_goal(&w, me));
+    assert!(speed(&w, me) > 2.5, "facing the raider it can't brake the drift: {}", speed(&w, me));
+    // The pilot steers (A held): the heading is the pilot's.
+    let (mut w, me, _) = piloted(design(&c, "rim_skiff"), &[]);
+    assists(&mut w, me, &["always -> brake"]);
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    let mut level = 0.0;
+    for _ in 0..20 {
+        level = turn_ramp_step(level, 1.0);
+        fly(&mut w, me, keys(level, 0.0), 1);
+        assert!(matches!(heading_goal(&w, me), sim::HeadingGoal::Rate(_)), "{:?}", heading_goal(&w, me));
+    }
+    // A held lock aims the ship: the same.
+    let (mut w, me, rs) = piloted(design(&c, "rim_skiff"), &[(45.0, 0.0)]);
+    assists(&mut w, me, &["always -> brake"]);
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    fly(&mut w, me, PilotInput { lock: Some(Target::Ship(rs[0])), ..keys(0.0, 0.0) }, 30);
+    assert!(matches!(heading_goal(&w, me), sim::HeadingGoal::Track { .. }), "{:?}", heading_goal(&w, me));
+    // A slight drift (under `ASSIST_TURN_DV`) never spins it around.
+    let (mut w, me, _) = piloted(design(&c, "rim_skiff"), &[]);
+    assists(&mut w, me, &["always -> brake"]);
+    drift(&mut w, me, Vec2::new(0.0, 0.3));
+    fly(&mut w, me, keys(0.0, 0.0), 60);
+    assert!(wrap(body(&w, me).angle).abs() < 0.02, "no turn for 0.3 m/s: {}", body(&w, me).angle);
+}
