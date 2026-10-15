@@ -31,6 +31,7 @@ pub(super) fn sync_shelf(
     granted: Res<Granted>,
     style: Res<Style>,
     mut root: Single<&mut Visibility, With<ShelfRoot>>,
+    mut covered: Query<&mut Visibility, (With<UnderShelf>, Without<ShelfRoot>)>,
     mut nodes: Query<
         (&mut Node, Option<&PageNode>, Option<&BarNode>, Option<&RowNode>, Has<EmptyHint>),
         (Without<TextField>, Or<(With<PageNode>, With<BarNode>, With<RowNode>, With<EmptyHint>)>),
@@ -42,6 +43,12 @@ pub(super) fn sync_shelf(
     let want = if shelf.page.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     if **root != want {
         **root = want;
+    }
+    let under = if shelf.page.is_some() { Visibility::Hidden } else { Visibility::Inherited };
+    for mut v in &mut covered {
+        if *v != under {
+            *v = under;
+        }
     }
     let Some(page) = shelf.page else { return };
     let ui = &style.ui;
@@ -207,4 +214,88 @@ pub(super) fn sync_shelf(
         set_text(&mut text, &s);
         set_color(&mut color, c(tone, if matches!(t, ShelfText::Code) { 0.9 } else { 1.0 }));
     }
+}
+
+/// The preview follows the hovered row: built once per entry (the ship and its numbers, from a `sim::design_report`
+/// made with the drydock's content and config, about 25 µs), gone when no row is hovered, and kept level with the
+/// row (from the laid-out nodes, so it follows a scrolling list) inside its column.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn sync_preview(
+    mut commands: Commands,
+    shelf: Res<Shelf>,
+    storage: Res<Storage>,
+    content: Res<GameContent>,
+    report: Res<DrydockReport>,
+    rows: Query<(&RowNode, &Hot, &ComputedNode, &UiGlobalTransform)>,
+    column: Single<(&ComputedNode, &UiGlobalTransform), With<PreviewColumn>>,
+    card: Single<(&mut PreviewCard, &mut Node, &ComputedNode)>,
+    ship: Single<Entity, With<PreviewShip>>,
+    mut values: Query<(&PreviewStat, &mut Text)>,
+) {
+    let hovered = rows.iter().find(|(_, hot, ..)| hot.hovered).filter(|_| shelf.page == Some(Page::Blueprints));
+    let pick = hovered.and_then(|(r, ..)| {
+        let i = shelf.offset[r.0] + r.1;
+        match r.0 {
+            0 => shelf.designs.get(i).filter(|e| e.problem.is_none()).map(|e| Pick::Design(e.id.clone())),
+            _ => shelf.templates.get(i).map(|id| Pick::Template(id.clone())),
+        }
+    });
+    let (mut card, mut node, laid) = card.into_inner();
+    if card.shown != pick {
+        let shown = pick.as_ref().and_then(|p| preview_of(&content.0, &storage, &report, p));
+        let display = if shown.is_some() { Display::Flex } else { Display::None };
+        match shown {
+            Some((bp, texts)) => {
+                commands.entity(*ship).insert(UiIcon::Ship(Box::new(bp)));
+                for (k, mut text) in &mut values {
+                    set_text(&mut text, &texts[k.0]);
+                }
+            }
+            None => {
+                commands.entity(*ship).remove::<UiIcon>();
+            }
+        }
+        if node.display != display {
+            node.display = display;
+        }
+        card.shown = pick;
+    }
+    let (Some(_), Some((.., row_at))) = (&card.shown, hovered) else { return };
+    let (col, col_at) = *column;
+    let k = col.inverse_scale_factor;
+    let top = (row_at.translation.y - (col_at.translation.y - col.size.y / 2.0) - laid.size.y / 2.0) * k;
+    let top = px(top.clamp(0.0, ((col.size.y - laid.size.y) * k).max(0.0)).round());
+    if node.top != top {
+        node.top = top;
+    }
+}
+
+/// What the preview shows of an entry: its blueprint and the values of its numbers (the size class: the frame a
+/// saved design is in, the first one a template fits, as OPEN opens it; mass, top speed and weapons from the
+/// design report, dashes when it doesn't compile). `None` when a saved design can't be read.
+fn preview_of(content: &Content, storage: &Storage, report: &DrydockReport, pick: &Pick) -> Option<(Blueprint, [String; 4])> {
+    let (bp, frame) = match pick {
+        Pick::Design(id) => {
+            let bp = storage.read::<DesignDoc>(id).ok()??.doc.0;
+            let frame = bp.size;
+            (bp, frame)
+        }
+        Pick::Template(id) => {
+            let bp = content.ships.get(id)?.clone();
+            let frame = library::open_in_first_frame(content, &bp).map_or(bp.size, |d| d.frame());
+            (bp, frame)
+        }
+    };
+    let class = content.frames.iter().find(|f| f.size == frame).map_or_else(|| format!("{}×{}", frame.0, frame.1), |f| f.name.clone());
+    let dash = || "—".to_string();
+    let [mass, speed, guns] = match sim::design_report(report.content().unwrap_or(content), &bp, report.config()) {
+        Ok(r) => {
+            let f = &r.flight;
+            let moves = f.thrust.iter().any(|&t| t > 0.0);
+            let speed = if moves { stats::stat_value(content, "top_speed", f.top_speed[f.best]) } else { dash() };
+            [stats::stat_value(content, "mass", r.mass), speed, r.guns.len().to_string()]
+        }
+        Err(_) => [dash(), dash(), dash()],
+    };
+    Some((bp, [class, mass, speed, guns]))
 }

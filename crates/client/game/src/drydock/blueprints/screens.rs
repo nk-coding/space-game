@@ -34,6 +34,24 @@ pub(in crate::drydock) struct CodeBox;
 #[derive(Component)]
 pub(in crate::drydock) struct PasteBox;
 
+/// The preview's column between the two lists (so it sits next to either), and its card: the ship of the hovered
+/// row drawn with the flight tiles ([`PreviewShip`], a `UiIcon::Ship` like FLEET's) over a few numbers
+/// ([`PreviewStat`]), built once per hovered entry (`shown`) and moved along with the row.
+#[derive(Component)]
+pub(in crate::drydock) struct PreviewColumn;
+
+#[derive(Component, Default)]
+pub(in crate::drydock) struct PreviewCard {
+    pub(super) shown: Option<Pick>,
+}
+
+#[derive(Component)]
+pub(in crate::drydock) struct PreviewShip;
+
+/// The preview's values: the size class, mass, top speed, weapons.
+#[derive(Component)]
+pub(in crate::drydock) struct PreviewStat(pub(super) usize);
+
 /// Every button of the screens.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub(in crate::drydock) enum ShelfButton {
@@ -88,7 +106,11 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
             Hot::default(),
             GlobalZIndex(20),
             Visibility::Hidden,
-            BackgroundColor(ui_color(clear.0, 0.985)),
+            // The backing covers the design as a world mesh, so the screen's own icons (the frames' locks, the
+            // preview's ship) draw over it: under an opaque UI background they were hidden, and a lock's empty
+            // room pushed its pill's label right of centre. The drydock's parts it covers hide meanwhile
+            // (`UnderShelf`): they would draw over it.
+            UiIcon::Scrim { color: clear.0.with_alpha(0.985), hole: [f32::INFINITY; 4], out: 0.0, into: 0.0 },
             Node {
                 position_type: PositionType::Absolute,
                 left: px(0),
@@ -114,8 +136,11 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
             // BLUEPRINTS: the two lists, the action bar, NEW and FRAME, IMPORT.
             root.spawn((PageNode(Page::Blueprints), Node { flex_direction: FlexDirection::Column, row_gap: px(16), flex_grow: 1.0, min_height: px(0), ..default() }))
                 .with_children(|page| {
-                    page.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(48), flex_grow: 1.0, min_height: px(0), ..default() }).with_children(|lists| {
-                        for (list, width) in [(0, 600.0), (1, 432.0)] {
+                    page.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(LISTS_GAP), flex_grow: 1.0, min_height: px(0), ..default() }).with_children(|lists| {
+                        for (list, width) in [(0, DESIGNS_W), (1, TEMPLATES_W)] {
+                            if list == 1 {
+                                spawn_preview(lists, fonts, &c, content);
+                            }
                             lists.spawn(Node { width: px(width), flex_direction: FlexDirection::Column, row_gap: px(10), min_height: px(0), ..default() }).with_children(|col| {
                                 col.spawn((ShelfText::Section(list), label(fonts, "", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(12)), ..default() }));
                                 col.spawn((
@@ -204,11 +229,12 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
                             PasteBox,
                             ShelfButton::PasteBox,
                             Hot::default(),
+                            // As tall as the pill beside it, the text inset like a pill's label.
                             Node {
                                 width: px(520),
-                                height: px(32),
+                                height: px(30),
                                 align_items: AlignItems::Center,
-                                padding: UiRect::horizontal(px(14)),
+                                padding: UiRect::horizontal(px(16)),
                                 border: UiRect::all(px(1.2)),
                                 border_radius: BorderRadius::MAX,
                                 overflow: Overflow::clip(),
@@ -255,6 +281,39 @@ pub(in crate::drydock) fn spawn_shelf(mut commands: Commands, fonts: Res<HudFont
                     page.spawn((ShelfText::CodeNote, label(fonts, "", 8.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(122)), ..default() }));
                 });
         });
+}
+
+/// The preview's column and its card (hidden until a row is hovered).
+fn spawn_preview(lists: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content) {
+    let names = ["CLASS".to_string(), stats::stat_label(content, "mass"), stats::stat_label(content, "top_speed"), "WEAPONS".to_string()];
+    lists.spawn((PreviewColumn, Node { width: px(PREVIEW_W), flex_shrink: 0.0, ..default() })).with_children(|col| {
+        col.spawn((
+            PreviewCard::default(),
+            Node {
+                display: Display::None,
+                position_type: PositionType::Absolute,
+                left: px(0),
+                right: px(0),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(6),
+                padding: UiRect::new(px(14), px(14), px(12), px(14)),
+                border: UiRect::all(px(1.2)),
+                border_radius: BorderRadius::all(px(16)),
+                ..default()
+            },
+            BorderColor::all(c(Tone::Label, 0.3)),
+        ))
+        .with_children(|card| {
+            // Inset from the card's edge: a ship's glow, plumes and beacons reach past its cells.
+            card.spawn((PreviewShip, Node { height: px(PREVIEW_SHIP_H), margin: UiRect::new(px(14), px(14), px(14), px(18)), flex_shrink: 0.0, ..default() }));
+            for (k, name) in names.iter().enumerate() {
+                card.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, ..default() }).with_children(|r| {
+                    r.spawn(label(fonts, name, 8.5, c(Tone::Dim, 1.0)));
+                    r.spawn((PreviewStat(k), number(fonts, "", 12.0, c(Tone::Number, 1.0))));
+                });
+            }
+        });
+    });
 }
 
 pub(in crate::drydock) fn spawn_row(l: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, list: usize, k: usize) {

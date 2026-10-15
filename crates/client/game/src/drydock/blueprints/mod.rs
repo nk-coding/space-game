@@ -29,7 +29,7 @@ mod title;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::text::{Justify, LineBreak};
-use bevy::ui::ComputedNode;
+use bevy::ui::{ComputedNode, UiGlobalTransform};
 use data::{Blueprint, Content};
 use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
@@ -41,12 +41,13 @@ use kit::ui_kit::{
 use world::career::{Granted, Note, PlayerCareer};
 use world::player::PlayerDesign;
 use world::player::behaviors::{PlayerBehaviors, validate_design};
-use world::player::library::{self, Autosave, DesignSlot, Entry, MAX_NAME};
+use world::player::library::{self, Autosave, DesignDoc, DesignSlot, Entry, MAX_NAME};
 use world::sim_bridge::GameContent;
 use world::storage::{Storage, now_unix};
 
 use super::actions::{DrydockAction, Rare};
-use super::panels::PanelText;
+use super::panels::{PanelText, UnderShelf};
+use super::report::DrydockReport;
 use super::share;
 use super::state::DrydockStatus;
 use super::view::DockCamera;
@@ -55,8 +56,11 @@ use super::{DockSet, stats};
 use autosave::{announce, autosave, leave, restore, save_on_exit};
 #[cfg(not(target_arch = "wasm32"))]
 use autosave::dropped_files;
-use screens::{BarNode, CodeBox, EmptyHint, ListNode, PageNode, PasteBox, RenameField, RowNode, ShelfButton, ShelfRoot, ShelfText, spawn_shelf};
-use sync::{scroll_lists, sync_shelf};
+use screens::{
+    BarNode, CodeBox, EmptyHint, ListNode, PageNode, PasteBox, PreviewCard, PreviewColumn, PreviewShip, PreviewStat, RenameField, RowNode, ShelfButton, ShelfRoot,
+    ShelfText, spawn_shelf,
+};
+use sync::{scroll_lists, sync_preview, sync_shelf};
 use title::{sync_title, title};
 pub(in crate::drydock) use handlers::apply;
 pub(in crate::drydock) use title::spawn_title;
@@ -70,6 +74,13 @@ const ROW_GAP: f32 = 4.0;
 const LIST_H: f32 = LIST_ROWS as f32 * (ROW_H + ROW_GAP) - ROW_GAP;
 /// The width of the heads before the NEW, FRAME and IMPORT rows (their pills line up).
 const HEAD_W: f32 = 176.0;
+/// The lists' widths, the preview's column between them and the gaps (1080 px with the screen's margins in 1280).
+const DESIGNS_W: f32 = 480.0;
+const TEMPLATES_W: f32 = 344.0;
+const PREVIEW_W: f32 = 208.0;
+const LISTS_GAP: f32 = 24.0;
+/// The preview's ship drawing's height (it is fitted into the card's width and this).
+const PREVIEW_SHIP_H: f32 = 96.0;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -92,7 +103,7 @@ impl Plugin for BlueprintsPlugin {
                 )
                     .in_set(DockSet::Apply),
             )
-            .add_systems(Update, (scroll_lists, sync_shelf, sync_title).in_set(DockSet::Show))
+            .add_systems(Update, (scroll_lists, sync_shelf, sync_preview, sync_title).in_set(DockSet::Show))
             .add_systems(OnExit(world::mode::AppMode::Drydock), leave)
             .add_systems(Last, save_on_exit);
         #[cfg(not(target_arch = "wasm32"))]
@@ -461,6 +472,47 @@ mod tests {
         world.run_system_once(super::super::actions::shortcuts).unwrap();
         assert!(world.resource::<Messages<DrydockAction>>().is_empty());
         assert!(world.get::<TextField>(search).unwrap().focused);
+    }
+
+    /// Hovering a row builds the preview of its entry (the ship and its numbers) once; leaving the row takes it
+    /// away again.
+    #[test]
+    fn the_preview_shows_the_hovered_entry_and_goes_on_leave() {
+        let mut world = world();
+        world.init_resource::<DrydockReport>();
+        {
+            let mut shelf = world.resource_mut::<Shelf>();
+            shelf.page = Some(Page::Blueprints);
+            shelf.templates = vec!["rim_skiff".into(), "halvex_runner".into()];
+            shelf.offset = [0, 1];
+        }
+        let row = world.spawn((RowNode(1, 0), Hot { hovered: true, pressed: false }, Node::default())).id();
+        world.spawn((PreviewColumn, Node::default()));
+        let card = world.spawn((PreviewCard::default(), Node { display: Display::None, ..default() })).id();
+        let ship = world.spawn(PreviewShip).id();
+        let stats: Vec<Entity> = (0..4).map(|k| world.spawn((PreviewStat(k), Text::new(""))).id()).collect();
+        let preview = world.register_system(sync_preview);
+        world.run_system(preview).unwrap();
+
+        let runner = world.resource::<GameContent>().0.ships.get("halvex_runner").unwrap().clone();
+        assert_eq!(world.get::<UiIcon>(ship), Some(&UiIcon::Ship(Box::new(runner))));
+        assert_eq!(world.get::<Node>(card).unwrap().display, Display::Flex);
+        let text = |world: &World, k: usize| world.get::<Text>(stats[k]).unwrap().0.clone();
+        assert_eq!(text(&world, 0), "Frigate");
+        assert!(text(&world, 1).ends_with(" t") && text(&world, 2).ends_with("m/s"), "{} {}", text(&world, 1), text(&world, 2));
+        assert_ne!(text(&world, 3), "0");
+        assert_eq!(world.get::<PreviewCard>(card).unwrap().shown, Some(Pick::Template("halvex_runner".into())));
+
+        // Built once: another frame on the same row leaves the icon untouched.
+        let tick = world.change_tick();
+        world.run_system(preview).unwrap();
+        assert!(!world.entity(ship).get_ref::<UiIcon>().unwrap().last_changed().is_newer_than(tick, world.change_tick()));
+
+        world.get_mut::<Hot>(row).unwrap().hovered = false;
+        world.run_system(preview).unwrap();
+        assert!(world.get::<UiIcon>(ship).is_none());
+        assert_eq!(world.get::<Node>(card).unwrap().display, Display::None);
+        assert!(world.get::<PreviewCard>(card).unwrap().shown.is_none());
     }
 
     /// Leaving the drydock with BLUEPRINTS open (BEHAVIOR or TEST-FLY in the bottom bar, T) hides the layer and lets

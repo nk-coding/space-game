@@ -90,6 +90,17 @@ fn def(content: &Content, stat: &str) -> (String, u8, String) {
     }
 }
 
+/// A stat's label from content, as the stats grid shows it.
+pub fn stat_label(content: &Content, stat: &str) -> String {
+    def(content, stat).0
+}
+
+/// A stat's value as the stats grid shows it: shortened, with its unit.
+pub fn stat_value(content: &Content, stat: &str, v: f32) -> String {
+    let (_, decimals, unit) = def(content, stat);
+    with_unit(&short(v, decimals), &unit)
+}
+
 /// `share` for a bar of `used` against `cap`: over 1 when used exceeds it (the notch marks 100 %).
 fn share(used: f32, cap: f32) -> f32 {
     if cap > 0.0 {
@@ -103,13 +114,9 @@ fn share(used: f32, cap: f32) -> f32 {
 
 /// The stats grid from a report; `None` (the design doesn't compile) shows labels and "—".
 pub fn stat_cells(content: &Content, report: Option<&DesignReport>) -> Vec<StatCell> {
-    let cell = |stat: &str, value: String, tone: Tone, bar: Option<(f32, Tone)>| StatCell { label: def(content, stat).0, value, tone, bar };
+    let cell = |stat: &str, value: String, tone: Tone, bar: Option<(f32, Tone)>| StatCell { label: stat_label(content, stat), value, tone, bar };
     // The value of a stat: shortened, with or without its unit.
-    let val = |stat: &str, v: f32, unit: bool| {
-        let (_, decimals, u) = def(content, stat);
-        let n = short(v, decimals);
-        if unit { with_unit(&n, &u) } else { n }
-    };
+    let val = |stat: &str, v: f32, unit: bool| if unit { stat_value(content, stat, v) } else { short(v, def(content, stat).1) };
     let pair = |stat: &str, a: f32, b: f32| format!("{} / {}", val(stat, a, false), val(stat, b, false));
     let dash = || "—".to_string();
 

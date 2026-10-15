@@ -45,7 +45,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             root.spawn((GridScrim, ScreenPart::new(Edge::Fade, 1), Node { width: percent(100), height: percent(100), ..abs(Some(0.0), None, Some(0.0), None) }, scrim));
 
             // Top left: the ring menu, the breadcrumb and the design's name.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..abs(Some(22.0), None, Some(14.0), None) }))
                 .with_children(|tl| {
                     tl.spawn((ring_node(40.0), ActionButton(DrydockAction::Menu), Tip::new("SHIPYARD"))).with_children(|r| {
                         r.spawn(glyph(Glyph::Menu, Tone::Violet, 22.0));
@@ -57,7 +57,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Top right: the overlays.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(5), ..abs(None, Some(20.0), Some(19.0), None) }))
                 .with_children(|tr| {
                     tr.spawn((label(fonts, "OVERLAY", 9.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::right(px(5)), ..default() }));
                     for o in Overlay::ALL {
@@ -67,7 +67,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Left: search, armour, category chips, every part in sections.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Left, 1), Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(SIDE), None, Some(74.0), Some(GRID_BOTTOM + INFO_H)) }))
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Left, 1), Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(10), ..abs(Some(SIDE), None, Some(74.0), Some(GRID_BOTTOM + INFO_H)) }))
                 .with_children(|lp| {
                     lp.spawn((
                         SearchField,
@@ -204,7 +204,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Right: the stats grid and the selected part.
-            root.spawn((UiBlock, ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(78.0), Some(70.0)) }))
+            root.spawn((UiBlock, UnderShelf, ScreenPart::new(Edge::Right, 1), Node { width: px(RIGHT_W), flex_direction: FlexDirection::Column, ..abs(None, Some(SIDE), Some(78.0), Some(70.0)) }))
                 .with_children(|rp| {
                     rp.spawn(Node {
                         display: Display::Grid,
@@ -298,7 +298,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                 });
 
             // Centre: the grid viewport; the info line and the zoom.
-            root.spawn(Node { flex_direction: FlexDirection::Column, ..abs(Some(GRID_LEFT), Some(GRID_RIGHT), Some(GRID_TOP), Some(GRID_BOTTOM)) }).with_children(|ga| {
+            root.spawn((UnderShelf, Node { flex_direction: FlexDirection::Column, ..abs(Some(GRID_LEFT), Some(GRID_RIGHT), Some(GRID_TOP), Some(GRID_BOTTOM)) })).with_children(|ga| {
                 // The info line moves, the grid viewport never (the camera centres on it).
                 ga.spawn((GridViewport, Node { flex_grow: 1.0, ..default() }));
                 ga.spawn((ScreenPart::new(Edge::Bottom, 2), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, height: px(INFO_H), flex_shrink: 0.0, ..default() }))

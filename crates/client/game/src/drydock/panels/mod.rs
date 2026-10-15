@@ -127,6 +127,12 @@ const SEL_BONUSES: usize = 3;
 #[derive(Component)]
 pub struct DrydockRoot;
 
+/// A part of the screen BLUEPRINTS and EXPORT cover (all but the bottom bar and the grid's scrim): hidden while they
+/// are open, since their backing is a world mesh (so their own icons show) and these parts would draw over it. The
+/// scrim stays: it is a world mesh too, and it keeps the world from showing between their edge and the bottom bar.
+#[derive(Component)]
+pub(in crate::drydock) struct UnderShelf;
+
 #[derive(Component)]
 pub(super) struct PaletteList;
 

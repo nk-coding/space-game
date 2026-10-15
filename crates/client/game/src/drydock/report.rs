@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 use data::Content;
-use sim::DesignReport;
+use sim::{DesignReport, SimConfig};
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
 use world::tuning::Tuning;
@@ -22,8 +22,10 @@ pub struct DrydockReport {
     pub report: Option<Result<DesignReport, String>>,
     /// The [`PlayerDesign::revision`] the report belongs to.
     pub revision: Option<u64>,
-    /// The content the report is made with (the tuning's scales applied), made again when the tuning changes.
+    /// The content the report is made with (the tuning's scales applied), made again when the tuning changes, and
+    /// the tuning's sim config.
     scaled: Option<Content>,
+    config: SimConfig,
     /// When it was made (real seconds).
     made_at: f64,
 }
@@ -39,6 +41,11 @@ impl DrydockReport {
     pub fn content(&self) -> Option<&Content> {
         self.scaled.as_ref()
     }
+
+    /// The sim config the report is made with (BLUEPRINTS' preview reports other designs with it).
+    pub fn config(&self) -> &SimConfig {
+        &self.config
+    }
 }
 
 /// Recomputes the report when the design or the tuning changes (about 25 µs for the Halvex Runner); during a paint
@@ -52,6 +59,7 @@ pub(crate) fn update(
 ) {
     if tuning.is_changed() || out.scaled.is_none() {
         out.scaled = Some(tuning.scaled_content(&content.0, true));
+        out.config = tuning.config();
         out.revision = None;
     }
     let now = time.elapsed_secs_f64();
@@ -62,5 +70,5 @@ pub(crate) fn update(
     let Some(content) = out.scaled.as_ref() else { return };
     out.revision = Some(design.revision());
     out.made_at = now;
-    out.report = Some(sim::design_report(content, design.blueprint(), &tuning.config()));
+    out.report = Some(sim::design_report(content, design.blueprint(), &out.config));
 }
