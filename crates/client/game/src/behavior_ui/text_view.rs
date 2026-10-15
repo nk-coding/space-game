@@ -24,7 +24,7 @@ use kit::style::Style;
 use world::sim_bridge::GameContent;
 
 use super::draft::BehaviorDraft;
-use super::graph::never_reached;
+use super::graph::{always_decides, never_reached};
 use super::{BehaviorUi, BehaviorView, EditorContext};
 
 /// The egui font family of the editor (Barlow, egui's own fonts as fallback for arrows and the like).
@@ -235,11 +235,11 @@ pub(super) fn editor(
     let nodes = &content.0.behavior_nodes;
     let ui_c = &style.ui;
 
-    // Which lines hold rules and which rules are `always` (to mark those without a rule slot and those an `always`
-    // rule above never lets run), from the last valid text.
+    // Which lines hold rules and which rules always decide (to mark those without a rule slot and those such an
+    // `always` rule above never lets run, `graph::always_decides`), from the last valid text.
     if rule_lines.0 != draft.text {
         (rule_lines.1, rule_lines.2) = Program::parse_with_lines(&draft.text)
-            .map(|(p, m)| (m.rules, p.rules.iter().map(|r| r.when.is_empty()).collect()))
+            .map(|(p, m)| (m.rules, always_decides(&p)))
             .unwrap_or_default();
         rule_lines.0.clone_from(&draft.text);
     }

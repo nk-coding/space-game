@@ -57,8 +57,10 @@ vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what e
 
 `escort(distance)` (added 13 Oct 2026, GDR-0065; default `30m`) keeps the ship within that distance of its
 **leader**, the ship it escorts (for wingmen: the player's flagship): it closes in when farther and keeps pace
-when near. It is the one action that needs no target, so a rule with it always runs when its conditions hold;
-put it last, below the rules that fight, and it runs between fights. Without a leader the ship holds where it is.
+when near. It and `hold` are the actions that need no target, so a rule with either always runs when its
+conditions hold (an `always` rule with one of them is the last that can run: the BEHAVIOR screen marks the rules
+below it as never reached); put it last, below the rules that fight, and it runs between fights. Without a leader
+the ship holds where it is.
 
 ### Target selectors
 
@@ -75,7 +77,7 @@ out take the node's default: `orbit` = `orbit(60%, auto)`.
 | Kind | Write | Notes |
 |---|---|---|
 | Distance | `45m` or `45` | metres |
-| Distance | `60%` | a share of **your weapon reach** (the range of your longest clear gun), so one behavior fits ships with different guns |
+| Distance | `60%` | a share of **your weapon reach** (the range of your longest working gun: a clear line of fire, intact, not overheated or idle), so one behavior fits ships with different guns |
 | Percentage | `30%` | always with `%` (`hull < 30` is an error, to avoid mixing up 30% and 0.3) |
 | Time | `5s` or `5` | seconds |
 | Count | `3` | whole numbers |

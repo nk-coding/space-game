@@ -722,7 +722,7 @@ impl Ctx<'_> {
             }
             out.status[i] = match failed {
                 Some((j, why)) => RuleStatus::Failed { cond: j as u8, why },
-                None if rule.action.needs_target() && focus.is_none() => RuleStatus::NoTarget,
+                None if rule.needs_target && focus.is_none() => RuleStatus::NoTarget,
                 None => {
                     active = Some(i);
                     RuleStatus::Active

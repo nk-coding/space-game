@@ -45,15 +45,15 @@ The graph reads like the text, top to bottom:
 - **The slot line:** a dashed coral line above the first rule your design has no slot for,
   `<SLOTS> RULE SLOTS · THE RULES BELOW DO NOT RUN`. The rules below it are dimmed. They are kept, not deleted:
   moving a rule up is how it gets a slot.
-- **The never-reached line:** under an `always` rule that has rules below it,
-  `ALWAYS MATCHES · THE RULES BELOW ARE NEVER REACHED`, and those rules dimmed.
+- **The never-reached line:** under an `always` rule whose action needs no target ([[behavior_node:hold]],
+  [[behavior_node:escort]]) that has rules below it, `ALWAYS MATCHES · THE RULES BELOW ARE NEVER REACHED`, and those
+  rules dimmed.
 - **`+ RULE · N SLOTS LEFT`** at the bottom, a dashed pill.
 
-::: warning Never reached, or not?
-The never-reached line counts every rule below an `always` rule. But an `always` rule whose action needs a target
-steps aside while there is none, and the rules below it do run then. The [[behavior:escort]] template relies on
-this: its last rule, the one that keeps near the leader, is marked as never reached, yet it runs whenever the
-leader has nothing locked.
+::: tip An `always` rule that needs a target
+An `always` rule whose action needs a target steps aside while there is none, so the rules below it still run and
+the editor doesn't mark them. The [[behavior:escort]] template relies on this: its last rule, the one that keeps near
+the leader, runs whenever the leader has nothing locked.
 :::
 
 ### Selecting
@@ -131,7 +131,7 @@ Every change is checked at once:
 - A valid text becomes the behavior at once, as one undo step, and the graph follows. The status line says
   `VALID · 4 RULES`.
 - Rules beyond your slots carry `no rule slot: this rule does not run`, rules below an `always` rule
-  `never reached: an always rule above matches first`.
+  `never reached: an always rule above matches first` (an `always` rule whose action needs no target).
 
 While the text has errors, the GRAPH view shows the last valid rules, read-only, and the status line says so; an
 edit there is refused with "fix the text first". Leaving the TEXT view tidies a valid text into the canonical form.

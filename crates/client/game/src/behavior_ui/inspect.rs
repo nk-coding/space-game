@@ -18,7 +18,7 @@ use kit::ui_kit::Tone;
 
 use super::actions::BehaviorAction;
 use super::edit::Edit;
-use super::graph::never_reached;
+use super::graph::{always_decides, never_reached};
 use super::values::{Kind, Scale, reach_hint, switch_unit};
 
 /// What the inspector shows.
@@ -351,14 +351,13 @@ fn rule_inspection(ed: &BehaviorEditor, rule: RuleId, cx: &Context) -> Option<In
     })
 }
 
-/// The rules of the program that have a slot but sit below an `always` rule (`graph::never_reached`); none in pilot
-/// assists, where each rule decides its own channel.
+/// The rules of the program that have a slot but sit below an `always` rule that always decides
+/// (`graph::never_reached`); none in pilot assists, where each rule decides its own channel.
 fn never_reached_in(ed: &BehaviorEditor, cx: &Context) -> std::ops::Range<usize> {
     if ed.kind() == ListKind::Assists {
         return 0..0;
     }
-    let always: Vec<bool> = ed.program().rules.iter().map(|r| r.when.is_empty()).collect();
-    never_reached(&always, cx.slots)
+    never_reached(&always_decides(ed.program()), cx.slots)
 }
 
 /// A rule's block: its place, UP / DOWN / DUPLICATE / DELETE (the last rule cannot go: the hint says why), its
@@ -621,7 +620,7 @@ mod tests {
 
     #[test]
     fn the_target_line_and_a_rule() {
-        let ed = BehaviorEditor::from_text(&data::base_content().behavior_nodes, "when hull < 30% -> flee\nalways -> approach").unwrap();
+        let ed = BehaviorEditor::from_text(&data::base_content().behavior_nodes, "when hull < 30% -> flee\nalways -> hold").unwrap();
         // No target line: `nearest` by default, every selector a pill.
         let t = inspect(&ed, &Selection::Node(NodeRef::Target), &cx()).unwrap();
         assert_eq!((t.kicker.as_str(), t.name.as_str()), ("TARGET  ·  SELECTOR", "Nearest"));
@@ -637,12 +636,12 @@ mod tests {
         // A rule: its line, the hint, its block.
         let r = ed.rule_at(1).unwrap().id;
         let i = inspect(&ed, &Selection::Rule(r), &Context { slots: 1, ..cx() }).unwrap();
-        assert_eq!((i.name.as_str(), i.summary.as_str()), ("Rule 2", "always -> approach"));
+        assert_eq!((i.name.as_str(), i.summary.as_str()), ("Rule 2", "always -> hold"));
         assert_eq!(i.kicker, "RULE  ·  NO RULE SLOT: DOES NOT RUN");
         let Control::Buttons { label, buttons } = &i.controls[1] else { panic!() };
         assert_eq!(label, "RULE 2 OF 2  ·  NO SLOT");
         assert_eq!((buttons[0].action.is_some(), buttons[1].action.is_some()), (true, false));
-        // Below an `always` rule: never reached.
+        // Below an `always` rule whose action needs no target: never reached.
         let mut shadowed = ed.clone();
         shadowed.move_rule(r, 0).unwrap();
         let below = shadowed.rule_at(1).unwrap().id;

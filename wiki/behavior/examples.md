@@ -207,6 +207,4 @@ the target's logic core, which leaves more of the wreck to salvage. Its rules:
 3. `always ->` [[behavior_node:escort]], to keep near the leader.
 
 The second rule is an `always` rule, yet the third still runs: approach needs a target and steps aside while the
-leader has nothing locked. (The BEHAVIOR screen marks that third rule as never reached; it isn't.) On a tamed
-automaton core with only two slots, the escort rule would not run; the wingman example above avoids two
-`always` rules by asking `target_in_range` instead, which reads the same in the editor as in flight.
+leader has nothing locked. On a tamed automaton core with only two slots, the escort rule would not run.

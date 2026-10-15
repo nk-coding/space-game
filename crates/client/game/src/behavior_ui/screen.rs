@@ -45,7 +45,7 @@ use super::controls::{DesignReach, SliderDrag, spawn_inspection};
 use super::dashed::{DashedOutline, outline_color};
 use super::draft::BehaviorDraft;
 use super::edit::EditState;
-use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, assists_pill, never_reached, slot_line_label, slots_pill};
+use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, always_decides, assists_pill, never_reached, slot_line_label, slots_pill};
 use super::inspect::{self, Selection, assists_inspection, behavior_inspection, inspect, palette, palette_hint};
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
@@ -816,8 +816,7 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
         let s = if over == 1 { "" } else { "S" };
         return (format!("{over} RULE{s} WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS"), Tone::Gold);
     }
-    let always: Vec<bool> = draft.program().rules.iter().map(|r| r.when.is_empty()).collect();
-    let never = never_reached(&always, slots).len();
+    let never = never_reached(&always_decides(draft.program()), slots).len();
     if never > 0 {
         let (s, are) = if never == 1 { ("", "IS") } else { ("S", "ARE") };
         return (format!("{never} RULE{s} {are} NEVER REACHED  ·  AN ALWAYS RULE ABOVE MATCHES FIRST"), Tone::Gold);
@@ -1007,6 +1006,7 @@ pub(super) fn draw_dots(
 mod tests {
     use super::*;
     use data::behavior::TextError;
+    use data::behavior::edit::NodeRef;
 
     #[test]
     fn the_status_line_says_what_matters_most() {
@@ -1016,10 +1016,13 @@ mod tests {
         assert_eq!(status_line(&d, BehaviorView::Text, 12), ("VALID  ·  4 RULES".into(), Tone::Teal));
         assert_eq!(status_line(&d, BehaviorView::Graph, 2), ("2 RULES WITHOUT A SLOT  ·  LOGIC CORES GIVE RULE SLOTS".into(), Tone::Gold));
         assert_eq!(status_line(&d, BehaviorView::Graph, 0).1, Tone::Coral);
-        // An `always` rule above others (the skirmisher's fallback moved to the top).
+        // The skirmisher's fallback, `always -> approach`, moved to the top: it steps aside without a target, so the
+        // rules below still run. As `always -> hold` it decides every time: they never do.
         let mut never = d.clone();
         let fallback = never.editor().unwrap().rule_at(3).unwrap().id;
         never.edit(|e| e.move_rule(fallback, 0)).unwrap().unwrap();
+        assert_eq!(status_line(&never, BehaviorView::Graph, 12).1, Tone::Label);
+        never.edit(|e| e.replace_node(NodeRef::Action(fallback), "hold")).unwrap().unwrap();
         assert_eq!(
             status_line(&never, BehaviorView::Graph, 12),
             ("3 RULES ARE NEVER REACHED  ·  AN ALWAYS RULE ABOVE MATCHES FIRST".into(), Tone::Gold)

@@ -140,11 +140,11 @@ pub enum Action {
     Escort(Dist),
 }
 
-impl Action {
-    /// Needs a target to fly (else the rule fails with `NoTarget`). `escort` flies relative to the leader.
-    pub fn needs_target(self) -> bool {
-        !matches!(self, Action::Hold | Action::Escort(_))
-    }
+/// Whether the behavior action `id` needs a target to fly: all but `hold`, and `escort` (it flies relative to the
+/// leader). Without a target such a rule steps aside and the next rule gets its turn (`RuleStatus::NoTarget`), so
+/// only an `always` rule whose action needs none ends the list; the BEHAVIOR screen marks the rules below that one.
+pub fn action_needs_target(id: &str) -> bool {
+    !matches!(id, "hold" | "escort")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -153,6 +153,8 @@ pub struct Rule {
     pub start: u32,
     pub len: u32,
     pub action: Action,
+    /// The action needs a target ([`action_needs_target`]).
+    pub needs_target: bool,
 }
 
 /// The compiled program.
@@ -402,6 +404,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             start,
             len: code.conds.len() as u32 - start,
             action,
+            needs_target: action_needs_target(&node.id),
         });
     }
     Ok(code)

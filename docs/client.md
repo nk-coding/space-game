@@ -1154,8 +1154,10 @@ near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit
 rule's note dim after it; Rhai conditions dashed with a gold RHAI tag; `always` as a plain chip; the dashed coral
 slot line above the first rule without a slot (`6 RULE SLOTS · THE RULES BELOW DO NOT RUN`) and those rules
 dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); likewise a never-reached line under
-an `always` rule that has rules with a slot below it (`ALWAYS MATCHES · THE RULES BELOW ARE NEVER REACHED`: the
-first match decides, and `always` always matches) and those rules dimmed (`graph::never_reached`, 13 Oct 2026); the dashed `+ RULE · N SLOTS LEFT`
+an `always` rule whose action needs no target (`hold`, `escort`) that has rules with a slot below it (`ALWAYS
+MATCHES · THE RULES BELOW ARE NEVER REACHED`: the first match decides, and that rule always matches; an `always` rule
+whose action needs a target steps aside without one, as in the sim, so the rules below it run: `graph::always_decides`,
+`sim::behavior::action_needs_target`, 15 Oct 2026) and those rules dimmed (`graph::never_reached`); the dashed `+ RULE · N SLOTS LEFT`
 pill; a dot grid behind (immediate-mode FX dots). The selected rule's row is lit faintly, the selected chip glows.
 Right the inspector (below), ADD NODE (its line says where a pick goes: `ADD NODE · TO RULE 3`, `REPLACE HULL ·
 PICK A CONDITION`) with its search and the palette (the content vocabulary: conditions violet, actions teal, Rhai
@@ -1212,7 +1214,7 @@ target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 �
   REMOVE; then its rule's block.
 - **An action**: its values and its rule's block (a palette action replaces it).
 - **A rule's block** (also for a selected rule, with the rule as text): `RULE 2 OF 6` (`· NO SLOT` below the slot
-  line, `· NEVER REACHED` below an `always` rule, also in the kicker), UP, DOWN, DUPLICATE (a copy right below) and DELETE (off for the last rule, with the reason), and the
+  line, `· NEVER REACHED` below an `always` rule that always decides, also in the kicker), UP, DOWN, DUPLICATE (a copy right below) and DELETE (off for the last rule, with the reason), and the
   NOTE field.
 - **The target line**: the selector pills, `AIM AT` (centre, engines, weapons, power, core), USE THE DEFAULT TARGET
   when the program has a target line, and the target line's note.
@@ -1297,8 +1299,8 @@ target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 �
   the graph area's node, styled to the look: Barlow (added to egui as the `barlow` family, egui's fonts as fallback),
   no frame, the names coloured like the graph (`highlight`), dim line numbers in a gutter, each error in coral
   after its line (wrapped to the room there, or over the line's end on the backdrop's colour) with the column
-  underlined, `no rule slot` after rules beyond the slots and `never reached` after rules below an `always` rule
-  (both in the label grey). egui's shader linearises its colours but the main pass
+  underlined, `no rule slot` after rules beyond the slots and `never reached` after rules below an `always` rule that
+  always decides (both in the label grey). egui's shader linearises its colours but the main pass
   composites in sRGB, so `egui_color` pre-encodes them (they match bevy_ui's). Switching to TEXT puts the caret in.
   While the editor has the keyboard, the game's `Clipboard` offers the selection (Ctrl+C) and accepts pastes
   (Ctrl+V), which lets the keys through to the browser on the web; egui inserts the text itself. egui keeps the

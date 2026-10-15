@@ -4,7 +4,7 @@
 //! the model's stable ids ([`NodeRef`], [`RuleId`]), so a selection keeps naming the same node while rules move.
 //! The screen (`screen.rs`) turns this into nodes; the tests below pin the mapping.
 
-use data::behavior::{Call, Cond, ListKind};
+use data::behavior::{Call, Cond, ListKind, Program};
 use data::behavior::edit::{BehaviorEditor, DEFAULT_TARGET, NodeRef, RuleId};
 use data::{BehaviorNode, NodeRole, Table};
 
@@ -26,7 +26,7 @@ pub struct Chip {
 }
 
 /// One rule: its conditions (none for `always`), its action, its note, whether it has a rule slot and whether it
-/// can ever run (not below an `always` rule).
+/// can ever run (not below an `always` rule that always decides, [`always_decides`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuleRow {
     pub id: RuleId,
@@ -65,8 +65,7 @@ impl GraphView {
             }
         };
         let active = ed.active_rules(slots);
-        let always: Vec<bool> = program.rules.iter().map(|r| r.when.is_empty()).collect();
-        let never = if assists { 0..0 } else { never_reached(&always, slots) };
+        let never = if assists { 0..0 } else { never_reached(&always_decides(program), slots) };
         let rules = ed
             .rules()
             .map(|r| RuleRow {
@@ -87,17 +86,25 @@ impl GraphView {
         (self.rules.len() > slots).then_some(slots)
     }
 
-    /// Where the never-reached line goes: the index of the first rule with a slot below an `always` rule.
+    /// Where the never-reached line goes: the index of the first rule with a slot below an `always` rule that
+    /// always decides.
     pub fn never_line(&self) -> Option<usize> {
         self.rules.iter().position(|r| !r.reached)
     }
 }
 
-/// The rules that have a slot but never run, by index: those below the first `always` rule (`always[i]`: rule `i`
-/// has no conditions). It matches every time, and the first rule that matches decides.
-pub fn never_reached(always: &[bool], slots: u32) -> std::ops::Range<usize> {
-    let with_slot = always.len().min(slots as usize);
-    match always[..with_slot].iter().position(|a| *a) {
+/// Per rule: does it decide whenever its turn comes? An `always` rule does if its action needs no target (`hold`,
+/// `escort`); one whose action needs a target steps aside while there is none and the next rule gets its turn, as
+/// the sim walks the rules (`sim::behavior::action_needs_target`), so the escort template's last rule runs.
+pub fn always_decides(program: &Program) -> Vec<bool> {
+    program.rules.iter().map(|r| r.when.is_empty() && !sim::behavior::action_needs_target(&r.action.name)).collect()
+}
+
+/// The rules that have a slot but never run, by index: those below the first rule that always decides
+/// (`decides[i]`, [`always_decides`]). The first rule that matches decides, and that one matches every time.
+pub fn never_reached(decides: &[bool], slots: u32) -> std::ops::Range<usize> {
+    let with_slot = decides.len().min(slots as usize);
+    match decides[..with_slot].iter().position(|a| *a) {
         Some(i) => i + 1..with_slot,
         None => with_slot..with_slot,
     }
@@ -154,7 +161,7 @@ pub fn slot_line_label(slots: u32) -> String {
     }
 }
 
-/// The label on the never-reached line, under an `always` rule with rules below it.
+/// The label on the never-reached line, under an `always` rule that always decides, with rules below it.
 pub const NEVER_LINE_LABEL: &str = "ALWAYS MATCHES  ·  THE RULES BELOW ARE NEVER REACHED";
 
 #[cfg(test)]
@@ -256,8 +263,8 @@ mod tests {
         let g = GraphView::of(&skirmisher(&content), 12);
         assert!(g.rules.iter().all(|r| r.reached));
         assert_eq!(g.never_line(), None);
-        // `always -> approach` above two rules (what + RULE or a drag makes): those two never run.
-        let ed = editor(&content, "when hull < 30% -> flee\nalways -> approach\nwhen shield_down -> face\nalways -> hold");
+        // `always -> hold` above two rules (what + RULE or a drag makes): those two never run.
+        let ed = editor(&content, "when hull < 30% -> flee\nalways -> hold\nwhen shield_down -> face\nalways -> approach");
         let g = GraphView::of(&ed, 6);
         assert_eq!(g.rules.iter().map(|r| r.reached).collect::<Vec<_>>(), [true, true, false, false]);
         assert_eq!(g.never_line(), Some(2));
@@ -267,6 +274,24 @@ mod tests {
         assert_eq!(never_reached(&[false, true, false], 1), 1..1);
         assert_eq!(never_reached(&[true, false, false], 0), 0..0);
         assert_eq!(never_reached(&[true, false, false], 12), 1..3);
+    }
+
+    /// An `always` rule whose action needs a target steps aside without one, as the sim does: the escort template's
+    /// `always -> approach(70%)` lets its last rule, `always -> escort(30m)`, run while nothing is locked, as in the
+    /// sim (its test `an_escort_keeps_near_its_leader_and_fights_its_lock`: rule 3 decides while nothing is locked).
+    #[test]
+    fn an_always_rule_that_needs_a_target_lets_the_rules_below_run() {
+        let content = data::base_content();
+        let escort = content.behaviors.get("escort").unwrap();
+        let ed = BehaviorEditor::open(&content.behavior_nodes, &escort.program().unwrap()).unwrap();
+        let g = GraphView::of(&ed, 6);
+        assert!(g.rules.iter().all(|r| r.reached));
+        assert_eq!(g.never_line(), None);
+        assert_eq!(always_decides(ed.program()), [false, false, true]);
+        // `hold` needs no target either: below it nothing runs; above an `approach` everything does.
+        let g = GraphView::of(&editor(&content, "always -> approach\nalways -> hold\nwhen hull < 30% -> flee"), 6);
+        assert_eq!(g.rules.iter().map(|r| r.reached).collect::<Vec<_>>(), [true, true, false]);
+        assert_eq!(g.never_line(), Some(2));
     }
 
     #[test]
