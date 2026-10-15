@@ -4,7 +4,8 @@
 //! * top left: the home ring (what M does: home, for touch), hull % and a tiny hull map of the player's ship (in a
 //!   behavior test's watch mode: the watched one), and its hold (`CARGO 3 / 8`, salvage collected / cargo units;
 //!   hidden for a ship without a hold);
-//! * left: speed (m/s), the top speed and the drift state;
+//! * left: speed (m/s), the top speed and the drift state; under it the pilot assists of the ship flown, with their
+//!   toggle keys and state (`assists.rs`, GDR-0088);
 //! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target);
 //! * top centre: scene / wave line and whether raider waves come, centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
@@ -24,6 +25,7 @@
 //!
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
+mod assists;
 mod markers;
 mod menu;
 mod text;
@@ -54,6 +56,7 @@ use crate::warp_fx::Transit;
 use crate::ship_view::PieceView;
 
 use markers::{lock_ring, offscreen_markers, site_markers};
+pub use assists::{assist_name, switch_note};
 pub use menu::FlightMenu;
 pub use text::hull_fraction;
 use text::update_text;
@@ -218,7 +221,7 @@ impl Plugin for FlightHudPlugin {
         .add_systems(Startup, (spawn_hud, spawn_abandon_panel, menu::spawn_menu).chain().after(load_fonts))
         .add_systems(Update, menu::flight_menu.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), menu::close_menu)
-        .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
+        .add_systems(Update, (update_text, update_hull_map, assists::update).chain().run_if(in_state(AppMode::Flight)))
         .add_systems(Update, (go_home, recall_click).after(UiInputSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
@@ -291,6 +294,8 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                 c.spawn((HudText::SpeedValue, number(&fonts, "0", 34.0, white)));
                 c.spawn((HudText::SpeedSub, label(&fonts, "M/S", 11.0, dim)));
             });
+            // Left, under the speed: the pilot assists.
+            assists::spawn(root, &fonts, grey, dim);
             // Top right: target.
             root.spawn((ScreenPart::new(Edge::Right, 0), Node { align_items: AlignItems::FlexEnd, ..abs(None, Some(28.0), Some(18.0), None) }))
                 .with_children(|c| {

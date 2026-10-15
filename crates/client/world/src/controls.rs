@@ -8,7 +8,9 @@
 //!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. Tab = next target, Esc = unlock (not while
 //!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle. V / Shift+V = next / previous
 //!   vessel of the player (the sim's vessel list); clicking a friendly vessel switches to it. Both send
-//!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and
+//!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. F1–F4 (ASSIST
+//!   TOGGLE 1–4) and Z (ALL ASSISTS) switch the flown ship's pilot assists for the mission
+//!   (`ShipCommand::SwitchAssists`, GDR-0088); the HUD's banner says what changed ([`assist_switches`]). Clicks and
 //!   taps on the fleet bar (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring, RECALL,
 //!   the ABANDON VOYAGE? panel) are theirs, never the world's.
 //! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button (every group)
@@ -25,14 +27,14 @@ use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::{egui_wants_any_keyboard_input, egui_wants_any_pointer_input};
-use sim::{FIRE_ALL, ShipCommand, ShipId, Target};
+use sim::{AssistSwitch, FIRE_ALL, ShipCommand, ShipId, Target};
 use kit::style::{Style, ui_color};
 
 use crate::camera::CameraRig;
 use crate::fleet_bar::FleetBar;
-use crate::flight_hud::{HudButtons, HudZone, on_hud_button};
+use crate::flight_hud::{HudButtons, HudZone, on_hud_button, switch_note};
 use crate::mode::{AppMode, FlightUi};
-use crate::scene::{is_friendly, player_vessels};
+use crate::scene::{Scene, is_friendly, player_vessels};
 use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, sv, v2};
 use crate::flight_hud::FlightMenu;
 use crate::settings::{Act, SettingsLayer};
@@ -46,6 +48,17 @@ const FIRE_RADIUS: f32 = 56.0;
 const TAP_TIME: f32 = 0.3;
 /// The weapon group the held left button fires (GDR-0088).
 const LMB_GROUP: u8 = 1;
+/// How long the banner says what an assist switch did (sim seconds).
+const SWITCH_BANNER: f64 = 1.5;
+
+/// The pilot-assist switches whose action `pressed` says was pressed (GDR-0088): ASSIST TOGGLE 1–4, then ALL
+/// ASSISTS, each with its action (for its key's label).
+pub fn assist_switches(pressed: impl Fn(Action) -> bool) -> impl Iterator<Item = (AssistSwitch, Action)> {
+    (1..=data::MAX_ASSIST_TOGGLES)
+        .filter_map(|k| Action::assist_toggle(k).map(|a| (AssistSwitch::Toggle(k), a)))
+        .chain([(AssistSwitch::All, Action::AllAssists)])
+        .filter(move |(_, a)| pressed(*a))
+}
 
 #[derive(Resource, Default)]
 pub struct PlayerInput {
@@ -199,6 +212,7 @@ fn keyboard(
     rig: Res<CameraRig>,
     run: Res<VoyageRun>,
     mut menu: ResMut<FlightMenu>,
+    mut scene: ResMut<Scene>,
 ) {
     // Held this frame, or pressed and released within it (a quick tap).
     let down = |a: Action| act.pressed(a) || act.just_pressed(a);
@@ -217,6 +231,16 @@ fn keyboard(
     }
     if act.just_pressed(Action::Drift) {
         input.drift = !input.drift;
+    }
+    if let Some(me) = focus.0 {
+        for (switch, action) in assist_switches(|a| act.just_pressed(a)) {
+            // Said from the state before the switch (the sim flips it at the next tick).
+            let assists = world.sim.ship(me).and_then(|s| s.assists());
+            let (line, tone) = switch_note(&world.content, assists, switch, &act.label(action));
+            let until = world.sim.time_seconds() + SWITCH_BANNER;
+            scene.say(line, String::new(), tone, until);
+            world.inputs.commands.push((me, ShipCommand::SwitchAssists(switch)));
+        }
     }
     // Esc (fixed, GDR-0090): closes the menu; else unlocks; else opens the menu. The input runs before
     // `voyage_keys` in the frame: an Esc that closes the ABANDON VOYAGE? panel does neither.
@@ -593,6 +617,7 @@ mod tests {
             .init_resource::<SettingsLayer>()
             .init_resource::<FlightMenu>()
             .insert_resource(crate::settings::Controls::defaults(&data::base_content()))
+            .insert_resource(Scene::new(crate::scene::SceneKind::Sandbox, 1))
             .insert_resource(SimWorld::new(sim::Sim::new(1), data::Content::default()));
         add_input_systems(&mut app);
         app.add_systems(FixedUpdate, |mut input: ResMut<PlayerInput>, mut ticks: ResMut<Ticks>| {
@@ -670,5 +695,60 @@ mod tests {
             k.press(KeyCode::KeyW);
         });
         assert!(ticks.iter().all(|t| t.0.y == 0.0), "{ticks:?}");
+    }
+
+    /// The assist toggles (GDR-0088): F1–F4 switch their slot's assists and Z all of them, each a command for the
+    /// flown ship, and the banner says what changed (from the state before the switch); a rebound toggle works on
+    /// its new key.
+    #[test]
+    fn the_assist_toggles_switch_the_flown_ships_assists_and_say_so() {
+        let pressed = [Action::AssistToggle2, Action::AllAssists, Action::Fire];
+        let switches: Vec<_> = assist_switches(|a| pressed.contains(&a)).collect();
+        assert_eq!(switches, [(AssistSwitch::Toggle(2), Action::AssistToggle2), (AssistSwitch::All, Action::AllAssists)]);
+
+        let mut app = app(40.0);
+        let content = data::base_content();
+        let mut w = sim::Sim::new(1);
+        w.set_behaviors(sim::BehaviorLibrary::new(&content).unwrap());
+        let me = w.spawn_ship(sim::ShipDesign::compile(&content, content.ships.get("halvex_runner").unwrap()).unwrap().into(), sim::Owner::PLAYER, sim::Body::default());
+        let list = data::AssistList { target: None, rules: vec!["always -> brake(toggle2, off)".into(), "always -> auto_fire(2, toggle2)".into()] };
+        let id = w.behaviors_mut().add_assists(&list).unwrap();
+        w.command(me, ShipCommand::Assists(Some(id)));
+        app.insert_resource(SimWorld::new(w, content));
+        app.world_mut().resource_mut::<PilotFocus>().0 = Some(me);
+        let switched = |app: &App| -> Vec<AssistSwitch> {
+            let w = app.world().resource::<SimWorld>();
+            w.inputs.commands.iter().filter_map(|(s, c)| match c {
+                ShipCommand::SwitchAssists(x) if *s == me => Some(*x),
+                _ => None,
+            }).collect()
+        };
+        let banner = |app: &App| app.world().resource::<Scene>().banner.clone().map(|b| b.0);
+        frame(&mut app, |k| k.press(KeyCode::F2));
+        assert_eq!(switched(&app), [AssistSwitch::Toggle(2)]);
+        assert_eq!(banner(&app).as_deref(), Some("BRAKE ON  ·  AUTO-FIRE 2 OFF"));
+        frame(&mut app, |k| {
+            k.release(KeyCode::F2);
+            k.press(KeyCode::KeyZ);
+        });
+        assert_eq!(switched(&app), [AssistSwitch::Toggle(2), AssistSwitch::All]);
+        assert_eq!(banner(&app).as_deref(), Some("ALL ASSISTS OFF"));
+        frame(&mut app, |k| {
+            k.release(KeyCode::KeyZ);
+            k.press(KeyCode::F3);
+        });
+        assert_eq!(banner(&app).as_deref(), Some("F3  ·  NO ASSIST ON TOGGLE 3"));
+        // Toggle 2 moved to K.
+        let chord: data::input::Chord = "KeyK".parse().unwrap();
+        app.world_mut().resource_mut::<crate::settings::Controls>().0.set(Action::AssistToggle2, 0, chord);
+        frame(&mut app, |k| {
+            k.release(KeyCode::F3);
+            k.press(KeyCode::F2);
+        });
+        frame(&mut app, |k| {
+            k.release(KeyCode::F2);
+            k.press(KeyCode::KeyK);
+        });
+        assert_eq!(switched(&app), [AssistSwitch::Toggle(2), AssistSwitch::All, AssistSwitch::Toggle(3), AssistSwitch::Toggle(2)]);
     }
 }

@@ -40,7 +40,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
 use sim::flight::{PilotAxes, nudge_step, turn_ramp_step};
-use sim::{Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipDesign, ShipId, Target};
+use sim::{AssistsId, Body, BehaviorLibrary, Maneuver, Owner, PilotInput, ShipCommand, ShipDesign, ShipId, Target};
 use kit::params::Params;
 use kit::rng::Rng;
 use kit::ui_kit::Tone;
@@ -160,6 +160,8 @@ pub struct Scene {
     pub launch: Option<Launch>,
     /// The player's design as compiled for this scene (the player, the wingmen and re-forms fly it).
     player_design: Option<Arc<ShipDesign>>,
+    /// Its pilot assists in the sim's library (GDR-0088), for the re-forms.
+    player_assists: Option<AssistsId>,
     /// The last vessel the player flew (where a new one re-forms; its wreck is removed then).
     last_focus: Option<ShipId>,
     /// Extra copies of the design flying with the player (`?fleet=N`).
@@ -191,6 +193,7 @@ impl Scene {
             waves: true,
             launch: None,
             player_design: None,
+            player_assists: None,
             last_focus: None,
             wingmen: 0,
             wave: 0,
@@ -385,13 +388,16 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
             if scene.kind == SceneKind::Sandbox {
                 // Every vessel flies the behavior its design names; the focus parks it while piloted. Wingmen
-                // follow the player's lock (`target locked`).
+                // follow the player's lock (`target locked`). Each gets the design's assists, for when it is flown.
                 let behavior = world.sim.behaviors().default_for(&runner);
+                scene.player_assists = add_assists(&mut world, bp);
                 world.sim.command(me, ShipCommand::Behavior(behavior));
+                world.sim.command(me, ShipCommand::Assists(scene.player_assists));
                 let wingmen = if scene.test.is_some() { 0 } else { scene.wingmen };
                 for k in 0..wingmen {
                     let id = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(wing_slot(k), 0.0));
                     world.sim.command(id, ShipCommand::Behavior(behavior));
+                    world.sim.command(id, ShipCommand::Assists(scene.player_assists));
                     world.sim.command(id, ShipCommand::Leader(Some(me)));
                 }
                 if scene.test_mode() != Some(TestMode::Watch) {
@@ -495,6 +501,8 @@ fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs,
         let id = world.sim.spawn_ship(design.clone(), PLAYER, Body::at(at, entry.angle));
         let behavior = world.sim.behaviors().default_for(&design);
         world.sim.command(id, ShipCommand::Behavior(behavior));
+        let assists = add_assists(&mut world, bp);
+        world.sim.command(id, ShipCommand::Assists(assists));
         match flagship {
             None => {
                 flagship = Some(id);
@@ -508,6 +516,18 @@ fn build_voyage(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs,
     scene.last_focus = flagship;
     info!("voyage {id}: seed {}, mind {}, {} escorts", launched.seed, launched.mind, launched.escorts.len());
     world
+}
+
+/// A design's pilot assists (GDR-0088), added to the sim's library for its ships (they run while one is the focus).
+/// A list that no longer checks (content changed since it was saved) flies without, with a warning.
+fn add_assists(world: &mut SimWorld, bp: &data::Blueprint) -> Option<AssistsId> {
+    let list = bp.assists.as_ref()?;
+    world
+        .sim
+        .behaviors_mut()
+        .add_assists(list)
+        .inspect_err(|e| warn!("the pilot assists of {} don't check: {}", bp.name, e.first().map_or(String::new(), |e| e.to_string())))
+        .ok()
 }
 
 /// "BACK TO THE DRYDOCK", or to the screen a behavior test was started from.
@@ -721,6 +741,7 @@ fn scene_tick(
             let me = world.sim.spawn_ship(runner.clone(), PLAYER, Body::at(at, 0.0));
             let behavior = world.sim.behaviors().default_for(&runner);
             world.sim.command(me, ShipCommand::Behavior(behavior));
+            world.sim.command(me, ShipCommand::Assists(scene.player_assists));
             world.sim.command(me, ShipCommand::Focus);
             focus.0 = world.sim.focus(PLAYER);
             scene.last_focus = focus.0;
