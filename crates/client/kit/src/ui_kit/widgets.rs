@@ -29,7 +29,7 @@ impl Pill {
 #[derive(Component)]
 pub struct PillText;
 
-/// A pill for a choice that may be locked (an armour material, a frame): its lead icon (a lock) shows only while
+/// A pill for a choice that may be locked (a frame): its lead icon (a lock) shows only while
 /// the pill is disabled.
 #[derive(Component)]
 pub struct PillLock;
@@ -54,6 +54,11 @@ pub fn ring_glyph(glyph: Glyph, size: f32) -> impl Bundle {
 
 /// Spawns a pill with a text in Barlow medium (the mockup's pills are semi-bold) and an optional icon before it,
 /// and returns it; `extra` goes on the pill (an action, a marker).
+///
+/// The letter spacing also follows the last letter, so the text's own left margin adds as much again: the label
+/// alone sits centred. With an icon, the icon's ink starts about as far into its node (a glyph's side bearing is
+/// about a quarter of its size, like the spacing), so icon and label sit centred as one group whether the icon
+/// shows or not (a [`PillLock`]'s lock comes and goes); the gap gives back that margin.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_pill(
     parent: &mut ChildSpawnerCommands,
@@ -72,12 +77,12 @@ pub fn spawn_pill(
             Hot::default(),
             Node {
                 height: px(height),
-                padding: UiRect::new(px(height * 0.38 + spacing), px(height * 0.38), px(0), px(0)),
+                padding: UiRect::horizontal(px(height * 0.38)),
                 border: UiRect::all(px(1.2)),
                 border_radius: BorderRadius::MAX,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                column_gap: px(height * 0.3),
+                column_gap: px(height * 0.3 - spacing),
                 flex_shrink: 0.0,
                 ..default()
             },
@@ -95,6 +100,7 @@ pub fn spawn_pill(
                 TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(size), ..default() },
                 TextColor(Color::NONE),
                 LetterSpacing::Px(spacing),
+                Node { margin: UiRect::left(px(spacing)), ..default() },
             ));
         })
         .id()

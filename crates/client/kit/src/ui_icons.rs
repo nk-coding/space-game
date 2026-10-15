@@ -55,6 +55,8 @@ pub enum UiIcon {
     /// their icons (a UI background would draw over them, the world draws first) and over the world (the drydock's
     /// frame around its grid). `hole` is the clear rectangle's inset from the node's left, top, right and bottom
     /// (UI px, like the node's layout); the colour fades out from `out` px outside the hole to `into` px inside it.
+    /// Insets that meet close the hole: `[f32::INFINITY; 4]` fills the node (a screen over the world whose own
+    /// icons must show, which an opaque UI background would cover: BLUEPRINTS).
     Scrim { color: Color, hole: [f32; 4], out: f32, into: f32 },
 }
 
@@ -284,8 +286,10 @@ fn scrim_mesh(color: Color, hole: [f32; 4], out: f32, into: f32, size: Vec2, atl
     let (solid, clear) = (vcol(color, 1.0), vcol(color, 0.0));
     let h = size / 2.0;
     let [l, t, r, b] = hole;
-    // The hole's edges (y up), the solid region's inner edge outside them and the clear region's edge inside them.
-    let (x0, x1, y0, y1) = (-h.x + l, h.x - r, -h.y + b, h.y - t);
+    // The hole's edges (y up), kept inside the node and never inverted (insets that meet close it), the solid
+    // region's inner edge outside them and the clear region's edge inside them.
+    let (x0, y0) = ((-h.x + l).min(h.x), (-h.y + b).min(h.y));
+    let (x1, y1) = ((h.x - r).max(x0), (h.y - t).max(y0));
     let s = Rect::new((x0 - out).max(-h.x), (y0 - out).max(-h.y), (x1 + out).min(h.x), (y1 + out).min(h.y));
     let c = Rect::new(x0 + into, y0 + into, (x1 - into).max(x0 + into), (y1 - into).max(y0 + into));
     let p = Vec2::new;
