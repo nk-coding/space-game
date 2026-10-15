@@ -320,3 +320,31 @@ fn a_changed_rule_makes_a_run_stale() {
     let code = stale.fight_code(0, 0, 0).unwrap();
     assert_ne!(code.rules, arena::rules_fingerprint(&changed));
 }
+
+/// The head's name, creation time and status are the game's (GDR-0092 step 4): a snapshot leaves them out, so a run
+/// file reads as before; set, they round-trip and the run restores the same. `worked` counts the step budget used,
+/// and the open generation's share done grows to the close.
+#[test]
+fn the_head_keeps_name_time_and_status() {
+    let c = data::base_content();
+    let mut run = Run::new(&c, config(BOTH)).unwrap();
+    assert_eq!((run.worked(), run.generation_done()), (0, 0.0));
+    let slice = arena::evolve::BREED_COST * 4 + 1200;
+    run.step(slice);
+    assert_eq!(run.worked(), slice, "a slice of a generation uses all of its budget");
+    let mid = run.generation_done();
+    assert!(mid > 0.0 && mid < 1.0, "{mid}");
+    while run.generation() < 1 {
+        run.step(400);
+    }
+    assert_eq!(run.generation_done(), 0.0, "closed");
+    let plain = run.snapshot();
+    assert_eq!((plain.name.as_deref(), plain.created, plain.status), (None, None, None));
+    let file = plain.to_ron();
+    assert!(!file.contains("name:") && !file.contains("created:") && !file.contains("status:"), "{}", &file[..200]);
+    let named = RunSave { name: Some("Evolving the skiff".into()), created: Some(1_760_000_000), status: Some(arena::evolve::RunStatus::Paused), ..plain.clone() };
+    let back = RunSave::from_ron(&named.to_ron()).unwrap();
+    assert_eq!(back, named);
+    assert!(named.to_ron().starts_with("(\n    format: 1,\n    name: \"Evolving the skiff\",\n    created: 1760000000,\n    status: Paused,\n"));
+    assert_eq!(text(&Run::restore(&c, &back).unwrap()), file);
+}

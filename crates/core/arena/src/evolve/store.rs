@@ -30,6 +30,14 @@ pub const MAX_SAVE_PAYLOAD: usize = 128 << 20;
 #[serde(deny_unknown_fields)]
 pub struct RunSave {
     pub format: u32,
+    /// The run's name, when it was made (Unix seconds) and whether it computes or waits: the game's (its RUNS list,
+    /// GDR-0092 step 4); a snapshot leaves them out, and a file without them reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<RunStatus>,
     /// The rules' fingerprint when the run started (`rules_fingerprint`).
     pub rules: u64,
     pub config: RunConfig,
@@ -39,6 +47,14 @@ pub struct RunSave {
     pub best: Option<u32>,
     /// `SGL1:` and the rest of the run, packed.
     pub payload: String,
+}
+
+/// Whether a run computes when it can or waits for RESUME. A finished run is done whatever it says (its history
+/// is as long as its generations), a stale one is read-only ([`Run::stale`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RunStatus {
+    Running,
+    Paused,
 }
 
 /// What the payload holds.
@@ -125,6 +141,9 @@ impl Run {
         };
         RunSave {
             format: SAVE_FORMAT,
+            name: None,
+            created: None,
+            status: None,
             rules: self.rules,
             config: self.config.clone(),
             history: self.history.clone(),

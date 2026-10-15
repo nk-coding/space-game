@@ -67,7 +67,7 @@ pub use config::{
 pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
 pub use genome::Genome;
 pub use lineage::Bred;
-pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunSave, SAVE_FORMAT, SAVE_TAG};
+pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
 
 use eval::Active;
 use genome::{Kit, Locked, Root, Stats};
@@ -242,6 +242,8 @@ pub struct Run {
     /// Every genome bred, numbered in breeding order (the starts first).
     table: Vec<Bred>,
     batch: Option<Batch>,
+    /// The ticks of work [`Run::step`] has done since the run was built or restored.
+    worked: u64,
 }
 
 /// The behavior a design flies by default: its own, else its faction's; as text.
@@ -343,6 +345,7 @@ fn resolve_start(content: &Content, start: &Start) -> Result<StartText, String> 
                 parts: Vec::new(),
                 behavior: None,
                 assists: None,
+                origin: None,
                 source: Default::default(),
             };
             Ok(StartText {
@@ -409,6 +412,8 @@ impl Run {
                 lore: None,
                 tags: vec!["evolved".into()],
                 behavior: None,
+                // A start that was evolved before is a start like any other here.
+                origin: None,
                 source: Default::default(),
                 ..t.header
             };
@@ -486,6 +491,7 @@ impl Run {
             records: Vec::new(),
             table,
             batch: None,
+            worked: 0,
         };
         // One job of every opponent or voyage with every start: the references resolve.
         for g in &run.starts {
@@ -577,6 +583,26 @@ impl Run {
         }
     }
 
+    /// The ticks of work [`Run::step`] has done since the run was built or restored, breeding counted at
+    /// [`BREED_COST`] a child: a client measures its cost per tick against it (GDR-0092: the frame budget is
+    /// converted to ticks with it).
+    pub fn worked(&self) -> u64 {
+        self.worked
+    }
+
+    /// How far the open generation is, 0..1: its jobs done of the jobs it will have (estimated from the children
+    /// bred so far while it is still breeding). 0 between generations.
+    pub fn generation_done(&self) -> f32 {
+        let Some(b) = &self.batch else { return 0.0 };
+        let made = b.candidates.len() + b.failed;
+        if made == 0 {
+            return 0.0;
+        }
+        let expected = b.jobs.len() as f32 * self.config.population as f32 / made as f32;
+        let done = b.results.iter().filter(|r| r.is_some()).count() as f32;
+        (done / expected.max(1.0)).clamp(0.0, 1.0)
+    }
+
     /// The genome table: how every genome so far was bred (the starts first; the open generation's children too).
     pub fn table(&self) -> &[Bred] {
         &self.table
@@ -633,6 +659,7 @@ impl Run {
                 b.active = None;
             }
         }
+        self.worked += budget - left;
         if self.bred(&b) && b.active.is_none() && b.next >= b.jobs.len() {
             self.close(b);
         } else {
