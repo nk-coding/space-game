@@ -131,8 +131,9 @@ takes the material. The same part put down exactly on itself replaces nothing an
 - **Erase** `erase(cell)`: removes the part covering the cell. `remove_part(i)` removes a part by index (Delete on
   the selected part).
 - **Select** tools, on a part index: `move_part(i, dx, dy)`, `rotate(i, clockwise)`, `flip(i)`,
-  `set_material(i, material)` (hull parts), `set_power(i, override)` (parts that draw power), each only if the
-  result is legal.
+  `set_material(i, material)` (hull parts), `set_power(i, override)` (parts that draw power), `set_group(i, group)`
+  (weapons: the weapon group 1 to 3, GDR-0088; group 1 is stored as none; `NotWeapon`, `BadGroup` otherwise), each
+  only if the result is legal.
   - **Rotate** turns about a pivot fixed in the part's own frame: its centre when the footprint's `w + h` is even
     (the footprint stays in place), else the point half a cell from the centre towards the part's front (the centre
     moves by half a cell in x and y, the least possible; a beam keeps its muzzle cell). Turning back restores the
@@ -354,8 +355,12 @@ minimum power stay with the palette part), and one gold line per bonus it receiv
 amount and part (`◆ +15% FIRE RATE FROM CAPACITOR`, `◆ +2 MW POWER OUTPUT TO FISSION REACTOR ×2`). Below: the armor
 pills of a hull part (`set_material`), the power tier pills (CRITICAL to OFF) and weight stepper (steps of 0.5 from
 0.5 to 10, UI placeholders) of a part that draws power (`set_power`; a tier or weight equal to the part's default is
-no override, so going back leaves the blueprint clean), and rotate, flip and delete. Mirror mode changes the twin
-too. With nothing selected it shows the part picked in the palette (content numbers, as before).
+no override, so going back leaves the blueprint clean), the **GROUP** row of a gun (GDR-0088 step 2, 15 Oct 2026:
+pills 1 / 2 / 3, the gun's weapon group lit; a click calls `set_group` through `PlayerDesign::edit` like every other
+edit, so it is one undo step and a refusal shows in the status note; each pill's tooltip reads `WEAPON GROUP n:
+FIRES WITH` and the group's bound keys, e.g. `2 / RMB`; hidden for parts that are not weapons), and rotate, flip and
+delete. Mirror mode changes the twin too. The rows scroll with the stat lines when the column is short (at 1280 × 720
+with a gun selected, rotate / flip / delete sit below the fold). The groups are not drawn on the ship view. With nothing selected it shows the part picked in the palette (content numbers, as before).
 
 ### Locked parts, NEW and voyage-ready
 

@@ -363,7 +363,9 @@ inside. It does not refer to a `frames` entry (v1). Placement coordinates are re
 (default 0), `flip` (default false), `material` (required for hull parts, forbidden otherwise) and `power`
 (optional, parts that draw power only): the player's override of the part's power tier and weight, e.g.
 `(part: "shield_emitter", x: 2, y: 6, power: (tier: Low))` or `power: (tier: High, weight: 2)`; either field
-may be left out. The index of a placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
+may be left out; and `group` (optional, weapons only, 1 to `MAX_WEAPON_GROUP` = 3; none is group 1, and the writer
+leaves group 1 out): the gun's weapon group, which of the pilot's fire triggers fires it (GDR-0088, e.g.
+`(part: "pulse_laser", x: 4, y: 0, group: 2)`; behaviors fire every gun at will). The index of a placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
 ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`).
 
 Base ships: `halvex_runner`, `automaton_raider` (from `../space-game-archive/ships/automaton-raider.svg`), `sample_early` and
@@ -682,6 +684,11 @@ section.
 Fixed and never listed: Esc, Enter, text fields, the clipboard, the left mouse button as the pointer, middle-drag,
 the wheel, touch. The player's changes are not content: the client saves them (`settings/controls`). A mod rebinds a
 default by replacing the entry. The wiki lists the controls with their default inputs.
+
+The fire actions (GDR-0088 step 2, 15 Oct 2026): `fire` (FIRE ALL, Space: every gun) and `fire_group_1` (Digit1),
+`fire_group_2` (Digit2 and `MouseRight`, which `fire` held until then) and `fire_group_3` (Digit3), each firing the
+guns of its weapon group (placement `group`). The held left button on empty space fires group 1 (the pointer is not
+in the map).
 
 ## Coordinates and geometry
 

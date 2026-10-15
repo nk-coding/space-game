@@ -1,6 +1,6 @@
 # GDR-0088: Pilot assists as rules, weapon groups, and an action map for key bindings
 
-- Status: Accepted (the choices below by Niklas; details marked "lead default" for him to review); step 1 (the action map, SETTINGS) built 2026-10-15, its open points decided in [GDR-0090](0090-action-map-settings-and-pause-menu.md)
+- Status: Accepted (the choices below by Niklas; details marked "lead default" for him to review); step 1 (the action map, SETTINGS) built 2026-10-15, its open points decided in [GDR-0090](0090-action-map-settings-and-pause-menu.md); step 2 (weapon groups: the drydock's GROUP pills, FIRE GROUP 1–3 on 1 / 2 + right button / 3, Space fires all, the pilot's fire mask in the sim) built 2026-10-15
 - Date: 2026-10-14
 - Decided by: Niklas (assist model, scope, first actions, override, default, weapon groups, fire keys, bindings);
   lead defaults where marked

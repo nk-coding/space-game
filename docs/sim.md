@@ -324,6 +324,15 @@ native x86_64 vs wasm32-wasip1 **identical** (12 runs). Only the streams with a 
 `742c08eaaa2fabdb` / `051ce217c6f12e12`, behavior `a2589d01b5eff9b7` / `2df82abadfeb7fcc` (last ticks, seed 42 / 7);
 core, load, salvage and voyage are unchanged from chain reactions v2.
 
+**Weapon groups** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 2, 15 Oct 2026, release
+builds, seed 42, 900 ticks: `PilotInput::fire` became the weapon-group mask): flight, behavior and voyage, and the
+arena fight `runner_vs_raiders`: native x86_64 vs wasm32-wasip1 **identical**. The flight, behavior and voyage
+streams change, from the first tick a scenario pilot fires, only because the helm hashes the pilot's mask (7 for
+every group) where it hashed a bool (1): hashed as the bool, all seven streams (core, flight, behavior, salvage, voyage,
+`runner_vs_raiders`, `skiff_mirror`) stay byte-identical to the build before, so no ship flies or fires differently.
+Last ticks: flight `2a51382797b4736b`, behavior `1b84c5d19d5d393d`, voyage `58c3b65781708409`; core, salvage and both
+arena fights unchanged.
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
@@ -553,6 +562,14 @@ RCS rated speed and plume length, damage and heat (others are reported in `ShipD
 `Piece::guns` (`GunMount`): muzzle (centre of the facing side), unit direction, `clear`, `fire_rate`
 (bonus multiplier), `dps = damage × fire_rate`, `output` (dps this tick), `family`, `delivery`, `range`,
 `rate` (shots/s with the bonus), `shot_damage` (`damage / base rate`). Firing: see [Weapons](#weapons).
+
+**Weapon groups** (GDR-0088): every gun slot's `GunSpec::group` (1 to `data::MAX_WEAPON_GROUP` = 3) comes from its
+placement's `group` (none = 1; an out-of-range group in an unvalidated blueprint counts as the nearest). The pilot's
+`PilotInput::fire` is a mask, bit g−1 for group g, `sim::FIRE_ALL` (0b111) for every gun. The plan turns it into
+`Fire::Groups(mask)` (0 = `Fire::Hold`); the flight computer sets `ShipControls::fire` with an empty per-gun mask for
+`FIRE_ALL` (as before), else fills `ShipControls::guns` per slot from the gun's group. Helm commands
+(`ShipCommand::Goal`/`Maneuver { fire: true }`) fire every group; behaviors keep firing each gun at will (groups are
+for the pilot and, later, the pilot's assists). Test `the_fire_mask_fires_only_its_groups` (`tests/keyboard.rs`).
 
 ## Flight
 
@@ -953,7 +970,8 @@ handles keep working. `default_for(&design)` = the blueprint's or faction's beha
   facing. The result is the per-slot mask `ShipControls::guns` (weapon power demand reads
   `ShipControls::gun_fires(slot)`, so a gun that holds draws no power and does not fire). Broadside and rear
   guns fire whenever the target crosses their line, e.g. while orbiting. One `atan2` per clear gun per tick;
-  no allocation once warmed up. Pilot and helm fire set `fire` with an empty mask (all guns).
+  no allocation once warmed up. Helm fire and the pilot's `FIRE_ALL` set `fire` with an empty mask (all guns); a
+  pilot mask of fewer weapon groups fills the per-slot mask by each gun's group ([Guns](#guns)).
 - **Slots**: `Ship::rule_slots()` = `rule_slots_of(control piece)`: the sum of `rule_slots` of the piece's
   working logic cores (GDR-0035: alive, not overheated, powered, and not idle: `ship::producing`; a woken
   vessel's cores count from its first power pass), 0 while the piece is dark. Rules beyond are `NoSlot`.
@@ -1330,7 +1348,7 @@ a shooter never hits any piece of its own ship, nor any vessel of its owner: **n
 lies behind; salvage (no owner) and other owners are hit as before. A projectile keeps the owner it was fired for
 (`Projectile::team`, hashed; GDR-0048's lead default), also after ricochets and when its ship has become salvage
 since. A gun fires while `output > 0`: firing commanded
-(`PilotInput.fire`, `ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of
+(`PilotInput.fire`, a weapon-group mask; `ShipControls.fire` and its per-gun mask, or fire at will under a behavior), clear line of
 fire, powered, not overheated, not idle (over the control capacity), piece active. Guns are fixed: the pilot aims by turning the ship; under a
 behavior each gun fires when the target crosses its own facing. A blocked gun (a part of its own piece in its line of
 fire, GDR-0004) fires nothing, although its shots would pass through its own hull; when the blocker is destroyed or
@@ -2215,6 +2233,7 @@ let me = world.spawn_ship(runner, sim::Owner::PLAYER, sim::Body::at(Vec2::ZERO, 
 world.command(me, sim::ShipCommand::Focus);                         // the vessel the player pilots
 // every FixedUpdate (30 Hz):
 let input = sim::PilotInput { stick, lock, drift, fire, ..Default::default() }; // stick in world terms, |stick| ≤ 1;
+// fire: the weapon groups held, bit g-1 for group g (sim::FIRE_ALL: every gun)
 // PC keyboard: axes: Some(PilotAxes { turn, thrust, strafe }) (turn ramped with flight::turn_ramp_step),
 // aim_offset: the A/D nudge under a lock (flight::nudge_step)
 world.step(&sim::TickInputs { commands: vec![(me, sim::ShipCommand::Pilot(input))], ..Default::default() });

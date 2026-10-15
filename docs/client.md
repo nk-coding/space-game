@@ -38,7 +38,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
 | Next target (nearest first) | Tab | – |
-| Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
+| Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the help line shows `SPACE FIRE · 1/2/3 GROUPS` from the bindings | fire button bottom right: every group |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
 | Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view, and it widens up to 1.4 × at top speed: "Lock framing" and "Speed widening" under [Structure](#structure)) | wheel, + / − | pinch |
@@ -49,14 +49,15 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
-| Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys next) | – |
+| Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys now) | – |
 | Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
 
 The keys reach the sim tick of the frame they are pressed in, and a tap shorter than a tick (33 ms, even a press
 and release within one frame) still reaches one tick: the controls run before the frame's ticks and latch the
-keys and fire buttons until the next tick takes them (`controls::PlayerInput::for_tick`, 13 Oct 2026).
+keys and fire buttons until the next tick takes them (`controls::PlayerInput::for_tick`, 13 Oct 2026; since GDR-0088
+step 2 the latch ORs the weapon groups held at any frame since the last tick).
 Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHAVIOR screen's in
 [Behavior screen](#behavior-screen), a voyage's in [Voyages](#voyages).
 
