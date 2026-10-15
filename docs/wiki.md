@@ -98,11 +98,13 @@ defining file, text keys, prose file).
   swing, the plume behind (length labelled), the line of fire, RCS nozzles and radiator vents on the open sides,
   torque, the cells its blast reaches (each cell whose nearest point is within the blast radius of the part's centre),
   the shield's reach.
-- Ships are drawn from the blueprint geometry with the hull glow of their faction. Machines are drawn as the
-  palette's tiles with their icons, not yet as the flight view's housings on hull-toned cells (GDR-0069): that rule
-  (`world::ship_model::hull_tone`) lives in the client and would have to move to `data` first.
-- Colours come from `art/tokens.json` (`gen/tokens.css`), the icons from the pack (`gen/sprite.svg`, inlined once per
-  page), the font is Barlow from `crates/client/kit/assets/fonts` (with its licence).
+- Ships are drawn from the blueprint geometry with the hull glow of their faction, as the flight view draws them
+  (GDR-0069): armour tiles, and machines as their housings (the pack's `icons/<key>.ship.svg`, an engine's nozzle
+  reaching past its stern) on a cell in the hull's tone, by the game's own rule (`data::design::tone`, 15 Oct 2026).
+  Part pages and tables keep the palette's tiles with their icons. Barrels, muzzle glows and nav lights are not
+  drawn.
+- Colours come from `art/tokens.json` (`gen/tokens.css`), the icons and ship drawings from the pack (`gen/sprite.svg`,
+  inlined once per page), the font is Barlow from `crates/client/kit/assets/fonts` (with its licence).
 
 ## The look
 
@@ -136,5 +138,5 @@ pages). A global rule hides any other native bar.
 
 ## Not yet
 
-Translated wikis (prose is English only, ADR-0018), a tag index, pictures of research trees and the voyage map,
-ships drawn with the flight view's machine housings (above), and screenshots of the game (they would be raster).
+Translated wikis (prose is English only, ADR-0018), a tag index, pictures of research trees and the voyage map, and
+screenshots of the game (they would be raster).

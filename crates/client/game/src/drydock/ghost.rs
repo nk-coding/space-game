@@ -15,6 +15,7 @@
 use bevy::prelude::*;
 use bevy::mesh::VertexAttributeValues;
 use data::design::edit::{Preview, Refusal, Twin};
+use data::design::tone::HullTones;
 use data::{Blueprint, Cell, Content, Placement};
 use kit::atlas::Atlas;
 use kit::params::RenderToggles;
@@ -23,7 +24,7 @@ use kit::ui_kit::{HudFonts, Tone};
 use world::camera::CameraRig;
 use world::fx::{FxQueue, FxRegions, FxSprite};
 use world::player::PlayerDesign;
-use world::ship_model::{HullTones, design_visual};
+use world::ship_model::design_visual;
 use world::ship_view::{ShipVisual, build_body};
 use world::sim_bridge::GameContent;
 use world::tuning::Tuning;

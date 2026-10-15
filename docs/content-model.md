@@ -932,7 +932,8 @@ resolution it needs; the wiki can show the SVG as is or composite it on a tile).
 
 On a ship a machine is drawn as its housing, not as its icon. Every machine (a part without `hull: true`) has a
 second SVG next to its icon: `icons/<icon key>.ship.svg` (the thruster: `icons/thruster.ship.svg`). The icon stays
-for the drydock's palette and inspector and for the wiki.
+for the drydock's palette and inspector and for the wiki's part drawings; the wiki's ship drawings use the housings, on
+the hull-toned cells of `data::design::tone`, as the game does.
 
 - Found by the part's `icon` key, so a part needs no new field and parts sharing an icon share the drawing.
   `Content::ship_svg(key)` returns it (last loaded pack wins, like icons); `Content::ship_art` lists them all.

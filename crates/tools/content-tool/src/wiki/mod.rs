@@ -38,6 +38,7 @@ use std::path::Path;
 
 use data::design::geometry::hull_loops;
 use data::design::stats::{SHIP_STATS, format_number, with_unit};
+use data::design::tone::{HullTones, armor_tone};
 use data::{
     Behavior, BehaviorNode, Better, Blueprint, Content, Delivery, Encounter, Entry, Family, Kind,
     Material, NodeRole, ParamType, Part, PlacedShape, ResearchKind, ResearchNode, Selector, Start,
@@ -46,7 +47,7 @@ use data::{
 use serde_json::{Value, json};
 use sim::DesignReport;
 
-use draw::{Glow, Style, Tile};
+use draw::{Art, Glow, Style, Tile};
 use markup::{esc, inline, markdown};
 
 /// The generated files: path (relative to `wiki/gen/`, `/`-separated) → contents, sorted by path.
@@ -420,7 +421,7 @@ fn tidy(html: &str) -> String {
 struct Wiki<'a> {
     c: &'a Content,
     style: Style,
-    /// Icon key → `<symbol>` for the site's sprite.
+    /// Symbol id → `<symbol>` for the site's sprite: every icon and every machine's ship drawing.
     symbols: BTreeMap<String, String>,
     /// The sim's design report of every ship (the drydock's numbers), in ship order.
     reports: Vec<Option<DesignReport>>,
@@ -432,13 +433,14 @@ struct Wiki<'a> {
 impl<'a> Wiki<'a> {
     fn new(c: &'a Content) -> Wiki<'a> {
         let mut warnings = Vec::new();
-        let symbols = c
-            .icons
-            .values()
-            .filter_map(|i| match draw::icon_symbol(&i.key, &i.svg) {
-                Ok(s) => Some((i.key.clone(), s)),
+        let icons = c.icons.values().map(|i| (i, draw::icon_id(&i.key)));
+        let ship_art = c.ship_art.values().map(|i| (i, draw::ship_art_id(&i.key)));
+        let symbols = icons
+            .chain(ship_art)
+            .filter_map(|(i, id)| match draw::symbol(&id, &i.svg) {
+                Ok(s) => Some((id, s)),
                 Err(e) => {
-                    warnings.push(format!("icon `{}` ({}): {e}", i.key, i.source));
+                    warnings.push(format!("icon `{id}` ({}): {e}", i.source));
                     None
                 }
             })
@@ -492,7 +494,7 @@ impl<'a> Wiki<'a> {
         self.warnings.borrow_mut().push(message);
     }
 
-    /// Every icon as a `<symbol>`, plus the shared filter: the site puts this once into every page.
+    /// Every icon and ship drawing as a `<symbol>`, plus the shared filter: the site puts this once into every page.
     fn sprite(&self) -> String {
         let symbols: Vec<String> = self.symbols.values().cloned().collect();
         draw::sprite(&self.style, &symbols)
@@ -655,7 +657,7 @@ impl<'a> Wiki<'a> {
                 flip: false,
             },
             fill,
-            icon: if p.hull { None } else { p.icon.clone() },
+            art: p.icon.as_ref().filter(|_| !p.hull).map(|k| Art { symbol: draw::icon_id(k), overhang: 0.0 }),
         }
     }
 
@@ -709,26 +711,35 @@ impl<'a> Wiki<'a> {
         )
     }
 
-    /// A ship in style 2a: tiles, icons and the hull glow of its main piece in its faction's colour.
+    /// A ship in style 2a, as the flight view draws it: armour tiles, machines as their housings (ship drawings) on a
+    /// cell in the hull's tone (GDR-0069, `data::design::tone`), and the hull glow of its main piece in its faction's
+    /// colour. A machine without a ship drawing shows its icon, as in the game.
     fn ship_svg(&self, s: &Blueprint, px: f32, class: &str) -> String {
         let Ok(grid) = self.c.ship_grid(s) else {
             return String::new();
         };
+        let tones = HullTones::new(self.c, s, &grid);
+        let armor = |tone: &str| self.style.get(&format!("ship.armor.{tone}"));
         let tiles: Vec<Tile> = s
             .parts
             .iter()
             .enumerate()
             .filter_map(|(i, pl)| {
                 let part = self.c.parts.get(&pl.part)?;
-                Some(Tile {
-                    shape: *grid.shape(i),
-                    fill: if part.hull {
-                        self.tone(self.c.placement_material(pl))
-                    } else {
-                        self.tone(None)
+                let shape = *grid.shape(i);
+                if part.hull {
+                    return Some(Tile { shape, fill: armor(armor_tone(self.c, pl)), art: None });
+                }
+                let art = part.icon.as_ref().map(|k| match self.c.ship_svg(k) {
+                    Some(svg) => Art {
+                        symbol: draw::ship_art_id(k),
+                        overhang: data::content::svg::view_box(svg)
+                            .and_then(|vb| data::content::svg::ship_overhang(vb, part.size).ok())
+                            .unwrap_or(0.0),
                     },
-                    icon: if part.hull { None } else { part.icon.clone() },
-                })
+                    None => Art { symbol: draw::icon_id(k), overhang: 0.0 },
+                });
+                Some(Tile { shape, fill: armor(tones.under(&grid, &shape.cells())), art })
             })
             .collect();
         let pieces = grid.pieces();

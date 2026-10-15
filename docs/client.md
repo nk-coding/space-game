@@ -252,7 +252,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   drawing fills the part's rotated footprint (`region_box` with `rot` and `flip`, as icons did) and, for an engine,
   reaches its overhang past the stern (`PartVisual::overhang`, from the drawing's viewBox through
   `data::content::svg::ship_overhang`), over the hull line; plumes start at the nozzle's mouth (`fx.rs`). The cell's tone
-  (`ship_model::HullTones`, the pure rule `hull_tone`, tested): the armour tone with the most hull cell sides
+  (`data::design::tone::HullTones`, the pure rule `hull_tone`, tested; the wiki's ship drawings use it too): the armour tone with the most hull cell sides
   touching the machine (a tie goes to the tone the design uses more, then name order), else the design's most
   used tone by hull area, else steel. Computed once per design (`design_visual`), so a piece that breaks off
   keeps its tones; the drydock's ghost asks the design for the spot under the cursor. The same tiles show in

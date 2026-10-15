@@ -94,12 +94,17 @@ pub fn icon_id(key: &str) -> String {
     format!("icon-{key}")
 }
 
-/// An icon SVG as a `<symbol id="icon-<key>">` for the page's sprite. The root's `viewBox` (and
-/// `preserveAspectRatio`) move to the symbol; every id inside gets the prefix `icon-<key>-` and every reference
+/// The symbol id of a machine's ship drawing (`icons/<key>.ship.svg`, its housing in flight; GDR-0069).
+pub fn ship_art_id(key: &str) -> String {
+    format!("ship-{key}")
+}
+
+/// An icon or ship drawing SVG as a `<symbol id="<id>">` for the page's sprite. The root's `viewBox` (and
+/// `preserveAspectRatio`) move to the symbol; every id inside gets the prefix `<id>-` and every reference
 /// (`url(#..)`, `href="#.."`) follows, because all icons use the same ids (`gl`, `gCore`, ...) and share a page.
 /// The rest of the file is kept as it is (`data::content::svg::check_svg` has vetted it). `Err` for a file without a
 /// usable root.
-pub fn icon_symbol(key: &str, svg: &str) -> Result<String, String> {
+pub fn symbol(id: &str, svg: &str) -> Result<String, String> {
     let mut start = 0;
     let open = loop {
         let lt = svg[start..].find('<').ok_or("no <svg> element")? + start;
@@ -128,9 +133,9 @@ pub fn icon_symbol(key: &str, svg: &str) -> Result<String, String> {
         .unwrap_or_default();
     Ok(format!(
         "<symbol id=\"{}\" viewBox=\"{}\"{aspect}>{}</symbol>",
-        icon_id(key),
+        esc(id),
         esc(view_box),
-        prefix_ids(inner.trim(), &format!("icon-{key}-"))
+        prefix_ids(inner.trim(), &format!("{id}-"))
     ))
 }
 
@@ -190,7 +195,7 @@ fn prefix_tag(tag: &str, prefix: &str, out: &mut String) {
     out.push_str(s);
 }
 
-/// The page sprite: shared filters plus one symbol per icon the page shows.
+/// The page sprite: shared filters plus one symbol per icon and ship drawing.
 pub fn sprite(style: &Style, symbols: &[String]) -> String {
     let mut s = String::from(
         "<svg class=\"sprite\" xmlns=\"http://www.w3.org/2000/svg\" width=\"0\" height=\"0\" aria-hidden=\"true\"><defs>",
@@ -208,11 +213,18 @@ pub fn sprite(style: &Style, symbols: &[String]) -> String {
     s
 }
 
-/// One tile of a layout: a placed footprint, its fill colour and the icon drawn on it.
+/// One tile of a layout: a placed footprint, its fill colour and what is drawn on it.
 pub struct Tile {
     pub shape: PlacedShape,
     pub fill: String,
-    pub icon: Option<String>,
+    pub art: Option<Art>,
+}
+
+/// What a tile shows over its fill: a symbol of the sprite (an icon, or a machine's ship drawing), over the part's
+/// unrotated footprint and, for an engine's drawing, `overhang` cells past its stern (+y unrotated).
+pub struct Art {
+    pub symbol: String,
+    pub overhang: f32,
 }
 
 /// The hull glow along a ship's outline: chained loops and their colour.
@@ -230,8 +242,8 @@ fn path_of(points: &[GridPoint], closed: bool, d: &mut String) {
     }
 }
 
-/// A style-2a drawing: flat tiles (armour tones, machine tiles), dark seams, glowing icons turned and mirrored like
-/// the placements, and the faint hull glow (halo plus crisp line) when given. 1 SVG unit = 1 cell; the drawing is
+/// A style-2a drawing: flat tiles (armour tones, machine tiles), dark seams, the tiles' art (icons or ship drawings)
+/// turned and mirrored like the placements, and the faint hull glow (halo plus crisp line) when given. 1 SVG unit = 1 cell; the drawing is
 /// `px_per_cell` pixels per cell, with `margin` cells around the tiles (room for the glow).
 pub fn layout(
     style: &Style,
@@ -288,9 +300,10 @@ pub fn layout(
         n(2.0 * style.num("ship.seam_width_cells"))
     )
     .unwrap();
-    // Icons at the unrotated footprint size, centred, mirrored first if flipped, then turned clockwise.
+    // The art at the unrotated footprint size (plus an engine's overhang at the stern), centred on the footprint,
+    // mirrored first if flipped, then turned clockwise.
     for t in tiles {
-        let Some(key) = &t.icon else { continue };
+        let Some(art) = &t.art else { continue };
         let (fw, fh) = (t.shape.footprint.w as f32, t.shape.footprint.h as f32);
         let [cx, cy] = t.shape.center();
         let mut xf = format!("translate({} {})", n(cx), n(cy));
@@ -303,11 +316,11 @@ pub fn layout(
         write!(
             s,
             "<use href=\"#{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" transform=\"{xf}\"/>",
-            icon_id(key),
+            esc(&art.symbol),
             n(-fw / 2.0),
             n(-fh / 2.0),
             n(fw),
-            n(fh)
+            n(fh + art.overhang)
         )
         .unwrap();
     }
@@ -446,13 +459,13 @@ pub fn blueprint(style: &Style, tile: &Tile, marks: &Marks, max_px: f32, label: 
         n(2.0 * style.num("ship.seam_width_cells"))
     )
     .unwrap();
-    if let Some(key) = &tile.icon {
+    if let Some(art) = &tile.art {
         write!(
             s,
             "<use href=\"#{}\" x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>",
-            icon_id(key),
+            esc(&art.symbol),
             n(w),
-            n(h)
+            n(h + art.overhang)
         )
         .unwrap();
     }
@@ -596,13 +609,13 @@ mod tests {
     #[test]
     fn icon_ids_get_a_prefix_and_references_follow() {
         let svg = r##"<?xml version="1.0"?><!-- an <svg> comment --><svg xmlns="http://www.w3.org/2000/svg" width="80" viewBox="0 0 20 20"><defs><filter id="gl"><feGaussianBlur stdDeviation="1"/></filter><radialGradient id="g"/></defs><g filter="url(#gl)" opacity="0.5"><circle fill="url(#g)" r="2"/></g><use xlink:href="#g" href="#gl"/><path d="M0 0" data-x="a>b"/></svg>"##;
-        let sym = icon_symbol("pulse-laser", svg).unwrap();
+        let sym = symbol(&icon_id("pulse-laser"), svg).unwrap();
         assert_eq!(
             sym,
             r##"<symbol id="icon-pulse-laser" viewBox="0 0 20 20"><defs><filter id="icon-pulse-laser-gl"><feGaussianBlur stdDeviation="1"/></filter><radialGradient id="icon-pulse-laser-g"/></defs><g filter="url(#icon-pulse-laser-gl)" opacity="0.5"><circle fill="url(#icon-pulse-laser-g)" r="2"/></g><use xlink:href="#icon-pulse-laser-g" href="#icon-pulse-laser-gl"/><path d="M0 0" data-x="a>b"/></symbol>"##
         );
-        assert!(icon_symbol("x", "<g/>").is_err());
-        assert!(icon_symbol("x", r#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#).is_err());
+        assert!(symbol("x", "<g/>").is_err());
+        assert!(symbol("x", r#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#).is_err());
     }
 
     #[test]

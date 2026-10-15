@@ -758,6 +758,10 @@ fn drawings_are_vector_with_the_pack_icons() {
     assert!(sprite.contains("filter=\"url(#icon-pulse-laser-gl)\""));
     let ship = page(&site, "ships/halvex_runner.html");
     assert!(ship.contains("<use href=\"#icon-torch-drive\""));
+    // Ships are drawn as in flight (GDR-0069): machines as their housings, the ship drawings, on hull-toned cells;
+    // an engine's drawing reaches past its stern (the torch drive's half a cell: 2 × 2 cells, 2.5 drawn).
+    assert!(sprite.contains("<symbol id=\"ship-torch-drive\" viewBox="));
+    assert!(ship.contains("<use href=\"#ship-torch-drive\" x=\"-1\" y=\"-1\" width=\"2\" height=\"2.5\""));
     // The hull glow uses the faction's colour: the player's teal, the enemies' coral.
     let glow = |key: &str| {
         format!(

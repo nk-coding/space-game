@@ -52,7 +52,7 @@ pub struct PartVisual {
     pub index: u32,
     pub polygon: Vec<Vec2>,
     /// The tile's colour: a hull part's armour tone; under a machine the hull's tone (GDR-0069,
-    /// `ship_model::HullTones`), on UI tiles the machine tile colour.
+    /// `data::design::tone::HullTones`), on UI tiles the machine tile colour.
     pub fill: Color,
     pub debug_color: Color,
     /// The machine's ship drawing (atlas `ship/<key>`, GDR-0069); drawn instead of the icon.
