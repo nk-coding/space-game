@@ -1,0 +1,21 @@
+[
+  { "text": "Guide", "items": ["guide/getting-started"] },
+  {
+    "text": "Mechanics",
+    "items": [
+      "mechanics/flight",
+      "mechanics/power-and-heat",
+      "mechanics/damage",
+      "mechanics/weapons",
+      "mechanics/salvage-and-cargo",
+      "mechanics/drydock",
+      "mechanics/voyages",
+      "mechanics/career",
+      "mechanics/controls"
+    ]
+  },
+  {
+    "text": "Behavior",
+    "items": ["behavior/index", "behavior/rule-text", "behavior/editor", "behavior/pilot-assists", "behavior/examples"]
+  }
+]

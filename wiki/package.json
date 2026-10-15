@@ -1,0 +1,20 @@
+{
+  "name": "space-game-wiki",
+  "private": true,
+  "type": "module",
+  "description": "The Space Game wiki: VitePress with the game's own theme; the content pages come from `content-tool wiki-data` (docs/wiki.md).",
+  "scripts": {
+    "gen": "cargo run --quiet -p content-tool -- wiki-data .",
+    "dev": "npm run gen && vitepress dev",
+    "build": "npm run gen && vitepress build",
+    "preview": "vitepress preview",
+    "check": "node scripts/check.mjs",
+    "deploy": "npm run build && npm run check && node scripts/deploy.mjs"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  },
+  "dependencies": {
+    "reka-ui": "2.10.5"
+  }
+}
