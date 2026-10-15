@@ -355,7 +355,7 @@ impl Wiki<'_> {
     pub(crate) fn control_page(&self, e: &data::Control) -> String {
         let contexts: Vec<&str> = e.contexts.iter().map(|&c| context_name(c)).collect();
         let facts = vec![
-            ("Section".to_string(), esc(section_title(e.section))),
+            ("Section".to_string(), esc(e.section.title())),
             ("Acts on".into(), esc(&contexts.join(", "))),
             ("Default".into(), default_inputs(e)),
         ];
@@ -367,7 +367,7 @@ impl Wiki<'_> {
             .filter(|o| o.section == e.section && o.id != e.id)
             .map(|o| format!("{}: {}", self.a(UP, Kind::Control, &o.id), default_inputs(o)))
             .collect();
-        let sections = vec![(format!("More {}", section_title(e.section).to_lowercase()), list_or_none(&others))];
+        let sections = vec![(format!("More {}", e.section.title().to_lowercase()), list_or_none(&others))];
         self.entry(
             e,
             EntryParts {
@@ -717,20 +717,6 @@ impl Wiki<'_> {
             &self.data_details(Kind::Page, id, &p.source, &[]),
         ));
         s
-    }
-}
-
-/// The SETTINGS screen's name of a controls section.
-pub(crate) fn section_title(s: data::input::Section) -> &'static str {
-    use data::input::Section;
-    match s {
-        Section::Flight => "Flight",
-        Section::Mission => "Missions",
-        Section::Camera => "Camera and views",
-        Section::Shipyard => "The shipyard",
-        Section::Drydock => "The drydock and the behavior editor",
-        Section::Map => "The voyage map",
-        Section::Debug => "Debug and display",
     }
 }
 

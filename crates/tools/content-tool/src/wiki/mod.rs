@@ -1089,7 +1089,7 @@ impl<'a> Wiki<'a> {
                             .filter(|e| e.section == section)
                             .map(|e| item(Kind::Control, &e.id, &e.name))
                             .collect();
-                        (!controls.is_empty()).then(|| group(pages::section_title(section), controls))
+                        (!controls.is_empty()).then(|| group(section.title(), controls))
                     })
                     .collect(),
                 Kind::Stat => flat(kind, c.stats.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),

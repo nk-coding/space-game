@@ -52,6 +52,19 @@ pub enum Section {
 
 impl Section {
     pub const ALL: [Section; 7] = [Section::Flight, Section::Mission, Section::Camera, Section::Shipyard, Section::Drydock, Section::Map, Section::Debug];
+
+    /// The section's title: the settings screen shows it in capitals, the wiki as it is.
+    pub fn title(self) -> &'static str {
+        match self {
+            Section::Flight => "Flight",
+            Section::Mission => "Missions",
+            Section::Camera => "Camera and views",
+            Section::Shipyard => "The shipyard",
+            Section::Drydock => "The drydock and the behavior editor",
+            Section::Map => "The voyage map",
+            Section::Debug => "Debug and display",
+        }
+    }
 }
 
 macro_rules! actions {

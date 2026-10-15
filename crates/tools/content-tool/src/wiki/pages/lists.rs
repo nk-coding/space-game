@@ -392,7 +392,7 @@ impl Wiki<'_> {
                     if controls.is_empty() {
                         continue;
                     }
-                    let title = super::section_title(section_id);
+                    let title = section_id.title();
                     section(
                         &mut s,
                         title,

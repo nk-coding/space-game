@@ -481,7 +481,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                                 if entries.is_empty() {
                                     continue;
                                 }
-                                list.spawn((label(fonts, section_title(section), 10.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::new(px(0), px(0), px(14), px(6)), flex_shrink: 0.0, ..default() }));
+                                list.spawn((label(fonts, &section.title().to_uppercase(), 10.0, c(Tone::Gold, 1.0)), Node { margin: UiRect::new(px(0), px(0), px(14), px(6)), flex_shrink: 0.0, ..default() }));
                                 for e in entries {
                                     let Some(action) = Action::from_id(&e.id) else { continue };
                                     list.spawn(Node { height: px(ROW), flex_shrink: 0.0, ..row(16.0) }).with_children(|r| {
@@ -530,18 +530,6 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                 });
             });
         });
-}
-
-fn section_title(s: Section) -> &'static str {
-    match s {
-        Section::Flight => "FLIGHT",
-        Section::Mission => "MISSIONS",
-        Section::Camera => "CAMERA AND VIEWS",
-        Section::Shipyard => "THE SHIPYARD",
-        Section::Drydock => "THE DRYDOCK AND THE BEHAVIOR EDITOR",
-        Section::Map => "THE VOYAGE MAP",
-        Section::Debug => "DEBUG AND DISPLAY",
-    }
 }
 
 /// Spawns the gear ring for home's top right (home calls this into its screen root).

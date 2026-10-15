@@ -121,7 +121,7 @@ impl Wiki<'_> {
             .collect();
         let sections: Vec<Value> = data::input::Section::ALL
             .iter()
-            .map(|&s| json!({ "id": hand::section_key(s), "title": pages::section_title(s) }))
+            .map(|&s| json!({ "id": hand::section_key(s), "title": s.title() }))
             .collect();
         let nodes: Vec<Value> = c
             .behavior_nodes
