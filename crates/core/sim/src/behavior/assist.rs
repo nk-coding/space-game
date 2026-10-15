@@ -2,14 +2,15 @@
 //! fly the ship they pilot. They run only on a piloted ship (the focus: `HelmMode::Pilot`, no behavior) that was
 //! given a list (`ShipCommand::Assists`); every other ship, and a piloted one without a list, flies as before.
 //!
-//! * **Channels**: each assist acts on one control channel: turning (`face_target`), thrust (`brake`) or the trigger
-//!   of one weapon group (`auto_fire(g)`). The pilot always wins: a channel the player uses this tick (A/D or the
-//!   stick, or a held lock, which aims by itself; W/S/Q/E or the stick; a group's trigger) is the player's, and
-//!   letting go hands it back on the next tick.
+//! * **Channels**: each assist acts on one control channel: turning (`face_target`), thrust (`brake`, `hold_station`,
+//!   `avoid_collisions`) or the trigger of one weapon group (`auto_fire(g)`). The pilot always wins: a channel the
+//!   player uses this tick (A/D or the stick, or a held lock, which aims by itself; W/S/Q/E or the stick; a group's
+//!   trigger) is the player's, and letting go hands it back on the next tick.
 //! * **Rules**: at every think (with the behaviors, every [`tuning::THINK_PERIOD`] ticks, and on the tick after the
 //!   list is set or switched) the rules are read from the top; a rule that is switched on, whose conditions all hold
-//!   (and that has a target, if it needs one) decides its channel unless a rule above it already does. So "face" and
-//!   "fire group 2" run together, and two brakes with different conditions are a priority list of their own.
+//!   (and that has a target, if it needs one; for `avoid_collisions`, something on a collision course) decides its
+//!   channel unless a rule above it already does. So "face" and "fire group 2" run together, and two brakes with
+//!   different conditions are a priority list of their own.
 //! * **Target**: the pilot's lock while one is held, else the list's target line (default `nearest`; `locked`, the
 //!   leader's lock, finds nothing for the focus, which has no leader).
 //! * **Switches**: each rule starts a mission on or off (its `start` value); `ShipCommand::SwitchAssists` flips the
@@ -19,6 +20,16 @@
 //!   target (smart aim, as a lock does), brake asks for zero velocity without touching the heading (only thrusters
 //!   that push against the motion brake), auto-fire fires the group's guns that bear, with fire at will's per-gun
 //!   test.
+//! * **Hold station** (GDR-0088 step 4): the station is taken on the first tick the rule has thrust while the pilot
+//!   doesn't thrust: the ship's centre of mass, or its offset from the nearest other active vessel of its owner (with
+//!   `ally`; a point without one). The pilot's thrust drops it, so thrusting moves the station; a rule above that
+//!   takes thrust for a while (a dodge, a brake) leaves it waiting, unless the rule that took it is switched off; an
+//!   ally that is no vessel any more is replaced. Per tick the velocity goal flies back to the station and keeps pace
+//!   with it (an escort at distance 0).
+//! * **Avoid collisions** (step 4): at the think, the piece (of any ship, wrecks and the ship's own debris included)
+//!   whose bounding circle the ship's would meet first within [`tuning::AVOID_AHEAD`] seconds, on straight lines and
+//!   with [`tuning::AVOID_CLEARANCE`] to spare; per tick the velocity goal adds the sidestep that makes the closest
+//!   approach that clearance (along the miss, or to the left of the relative motion head-on), until it is clear.
 //! * **Determinism**: integer tick counters, index-order loops, one snapshot per think; the state is hashed with the
 //!   ship's, and only when a ship has a list, so worlds without assists keep their hashes.
 
@@ -26,16 +37,21 @@ use std::sync::Arc;
 
 use data::MAX_WEAPON_GROUP;
 
-use super::compile::{AssistAction, SelectorKind};
+use super::compile::{AssistAction, SelectorKind, Station};
 use super::eval::{Ctx, Lazy, Pilot, aim_state, pick_part, snapshot};
 use super::{Assists, AssistsId, BehaviorLibrary, Scratch, tuning};
 use crate::DT;
 use crate::config::FlightTuning;
-use crate::flight::{AimMode, FIRE_ALL, Fire, FlightGoal, HelmMode, Kin, PilotInput, Target, resolve_target, smart_aim};
+use crate::flight::maneuver::Maneuver;
+use crate::flight::{
+    AimMode, FIRE_ALL, Fire, FlightGoal, HelmMode, Kin, PilotInput, Target, TargetState, find_ship, resolve_target,
+    smart_aim,
+};
 use crate::hash::{StateHash, StateHasher};
-use crate::ids::ShipId;
+use crate::ids::{PieceId, ShipId};
 use crate::math::Vec2;
 use crate::ship::design::PartIdx;
+use crate::ship::vessel::friendly;
 use crate::ship::{Piece, Ship};
 
 /// A control channel an assist acts on.
@@ -51,7 +67,7 @@ impl Channel {
     fn of(a: AssistAction) -> Channel {
         match a {
             AssistAction::FaceTarget => Channel::Turning,
-            AssistAction::Brake => Channel::Thrust,
+            AssistAction::Brake | AssistAction::HoldStation(_) | AssistAction::AvoidCollisions => Channel::Thrust,
             AssistAction::AutoFire(g) => Channel::Fire(g),
         }
     }
@@ -77,6 +93,16 @@ pub enum AssistSwitch {
     All,
 }
 
+/// Where `hold_station` keeps the ship: a world point, or an offset from an ally's centre of mass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StationPoint {
+    /// The rule that took it.
+    pub rule: u16,
+    pub ally: Option<ShipId>,
+    /// The point, or with an ally the offset from its centre of mass (world frame).
+    pub at: Vec2,
+}
+
 /// A piloted ship's assists for the mission: the list, the switches, the pilot's last use of each control and what
 /// the last think decided.
 #[derive(Clone, Debug)]
@@ -98,6 +124,10 @@ pub struct AssistState {
     pub(crate) decides: [Option<u16>; CHANNELS],
     /// Tick of the last think (`None`: thinks on the next tick).
     pub(crate) thought: Option<u64>,
+    /// The station `hold_station` keeps (taken and dropped tick by tick, [`keep_stations`]).
+    pub(crate) station: Option<StationPoint>,
+    /// The piece `avoid_collisions` steers clear of (from the last think).
+    pub(crate) avoid: Option<(ShipId, PieceId)>,
 }
 
 impl AssistState {
@@ -119,6 +149,8 @@ impl AssistState {
             acquired: tick,
             decides: [None; CHANNELS],
             thought: None,
+            station: None,
+            avoid: None,
         }
     }
 
@@ -127,6 +159,8 @@ impl AssistState {
         AssistState {
             decides: [None; CHANNELS],
             thought: None,
+            station: None,
+            avoid: None,
             ..self.clone()
         }
     }
@@ -184,6 +218,22 @@ impl AssistState {
     pub fn target(&self) -> Option<ShipId> {
         self.focus
     }
+
+    /// The station `hold_station` keeps now, if it has one.
+    pub fn station(&self) -> Option<StationPoint> {
+        self.station
+    }
+
+    /// The ship and piece `avoid_collisions` steers clear of (at the last think).
+    pub fn avoiding(&self) -> Option<(ShipId, PieceId)> {
+        self.avoid
+    }
+
+    /// The rule that decides `c` (at the last think), with its action.
+    fn decider(&self, c: Channel) -> Option<(u16, AssistAction)> {
+        let i = self.decides[c.index()]?;
+        Some((i, self.program.code.rules[i as usize].action))
+    }
 }
 
 impl StateHash for AssistState {
@@ -202,6 +252,18 @@ impl StateHash for AssistState {
             h.u32(d.map_or(u32::MAX, u32::from));
         }
         h.u64(self.thought.unwrap_or(u64::MAX));
+        match &self.station {
+            Some(s) => {
+                h.u8(1);
+                h.u32(u32::from(s.rule));
+                h.u32(s.ally.map_or(u32::MAX, |a| a.0));
+                h.vec2(s.at);
+            }
+            None => h.u8(0),
+        }
+        let (ship, piece) = self.avoid.map_or((u32::MAX, u32::MAX), |(s, p)| (s.0, p.0));
+        h.u32(ship);
+        h.u32(piece);
     }
 }
 
@@ -235,10 +297,12 @@ pub(crate) struct AssistOut {
     aim_part: Option<PartIdx>,
     acquired: u64,
     decides: [Option<u16>; CHANNELS],
+    avoid: Option<(ShipId, PieceId)>,
 }
 
 /// The assist pass, every tick after the behaviors' think: each piloted ship with assists notes which controls its
-/// pilot uses; on think ticks (or right after a switch) its rules decide the channels, all from one snapshot.
+/// pilot uses; on think ticks (or right after a switch) its rules decide the channels, all from one snapshot; then
+/// the stations are kept.
 pub(crate) fn assist_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64, flight: &FlightTuning) {
     let mut any_due = false;
     for s in ships.iter_mut() {
@@ -253,9 +317,14 @@ pub(crate) fn assist_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mu
         }
         any_due |= st.thought.is_none() || tick.is_multiple_of(tuning::THINK_PERIOD);
     }
-    if !any_due {
-        return;
+    if any_due {
+        think_all(ships, lib, scratch, tick);
     }
+    keep_stations(ships, flight);
+}
+
+/// The think part of [`assist_all`]: every due piloted ship's rules, from one snapshot.
+fn think_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64) {
     let n = ships.len();
     if scratch.assist_outs.len() < n {
         scratch.assist_outs.resize_with(n, AssistOut::default);
@@ -316,9 +385,111 @@ pub(crate) fn assist_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mu
             st.aim_part = out.aim_part;
             st.acquired = out.acquired;
             st.decides = out.decides;
+            st.avoid = out.avoid;
             st.thought = Some(tick);
         }
     }
+}
+
+/// Every tick after the thinks, for each piloted ship: the pilot's thrust drops the station; else a `hold_station`
+/// rule that decides thrust keeps the one it took (its ally still a vessel) or takes one, and while another rule (or
+/// none) has thrust the station waits as long as the rule that took it is switched on.
+fn keep_stations(ships: &mut [Ship], flight: &FlightTuning) {
+    for k in 0..ships.len() {
+        let me = &ships[k];
+        let Some(input) = piloted(me) else {
+            continue;
+        };
+        let st = me.assists.as_ref().expect("piloted() checked it");
+        let kept = st.station.filter(|s| s.ally.is_none_or(|a| find_ship(ships, a).is_some_and(Ship::is_vessel)));
+        let station = if controls_used(input, flight.stick_deadzone)[1] {
+            None
+        } else {
+            match st.decider(Channel::Thrust) {
+                Some((rule, AssistAction::HoldStation(kind))) => match kept {
+                    Some(s) if s.rule == rule => Some(s),
+                    _ => take_station(me, ships, rule, kind),
+                },
+                _ => kept.filter(|s| st.all && st.is_on(s.rule as usize)),
+            }
+        };
+        ships[k].assists.as_mut().expect("piloted() checked it").station = station;
+    }
+}
+
+/// The station `me` takes now for rule `rule`: its centre of mass, or with `Station::Ally` its offset from the
+/// nearest other active vessel of its owner (the first in id order on a tie).
+fn take_station(me: &Ship, ships: &[Ship], rule: u16, kind: Station) -> Option<StationPoint> {
+    let pos = me.piece(me.control_piece()?)?.com_world();
+    let ally = match kind {
+        Station::Point => None,
+        Station::Ally => ships
+            .iter()
+            .filter(|s| s.id() != me.id() && s.is_active() && friendly(me.team(), s.team()))
+            .filter_map(|s| Some((s.id(), resolve_target(ships, &Target::Ship(s.id()))?.pos)))
+            .fold(None, |best: Option<(ShipId, Vec2, f32)>, (id, p)| {
+                let d = (p - pos).length_squared();
+                if best.is_none_or(|b| d < b.2) { Some((id, p, d)) } else { best }
+            }),
+    };
+    Some(match ally {
+        Some((id, p, _)) => StationPoint { rule, ally: Some(id), at: pos - p },
+        None => StationPoint { rule, ally: None, at: pos },
+    })
+}
+
+/// Bounding circle of a piece: its frame origin, its radius about it, its velocity.
+fn circle(p: &Piece) -> (Vec2, f32, Vec2) {
+    (p.body.pos, p.radius, p.body.linvel)
+}
+
+/// The closest approach of two circles moving in straight lines, if they would come within
+/// [`tuning::AVOID_CLEARANCE`] of touching within [`tuning::AVOID_AHEAD`] seconds: its time (s) and the miss vector
+/// (from `other`'s centre to `me`'s then), with the distance it must be at least.
+fn course(me: (Vec2, f32, Vec2), other: (Vec2, f32, Vec2)) -> Option<(f32, Vec2, f32)> {
+    let d = other.0 - me.0;
+    let w = me.2 - other.2;
+    let ww = w.length_squared();
+    if ww < 1e-6 {
+        return None;
+    }
+    let t = d.dot(w) / ww;
+    let reach = me.1 + other.1 + tuning::AVOID_CLEARANCE;
+    let miss = w * t - d;
+    (t > 0.0 && t <= tuning::AVOID_AHEAD && miss.length_squared() < reach * reach).then_some((t, miss, reach))
+}
+
+/// The piece the ship would meet first (`avoid_collisions`): of every ship, its own other pieces included.
+fn threat(me: &Ship, world: &[Ship]) -> Option<(ShipId, PieceId)> {
+    let mine = me.control_piece()?;
+    let from = circle(me.piece(mine)?);
+    let mut first: Option<(f32, ShipId, PieceId)> = None;
+    for s in world {
+        for p in s.pieces() {
+            if s.id() == me.id() && p.id == mine {
+                continue;
+            }
+            if let Some((t, _, _)) = course(from, circle(p))
+                && first.is_none_or(|f| t < f.0)
+            {
+                first = Some((t, s.id(), p.id));
+            }
+        }
+    }
+    first.map(|(_, s, p)| (s, p))
+}
+
+/// The velocity that steers `piece` clear of the piece `avoid`: its own plus the sidestep that makes the closest
+/// approach the clearance, along the miss (to the left of the relative motion when head-on). `None` once clear.
+fn evade(piece: &Piece, avoid: (ShipId, PieceId), ships: &[Ship]) -> Option<Vec2> {
+    let other = find_ship(ships, avoid.0)?.piece(avoid.1)?;
+    let me = circle(piece);
+    let (t, miss, reach) = course(me, circle(other))?;
+    let len = miss.length();
+    // Head-on: to the left of the relative motion (never zero: `course` needs some).
+    let side = (me.2 - other.body.linvel).perp();
+    let away = if len > 1e-3 { miss * (1.0 / len) } else { side * (1.0 / side.length()) };
+    Some(me.2 + away * ((reach - len) / t.max(DT)))
 }
 
 /// One ship's think: the target (the lock first), then the rules in order, each deciding its channel if it is
@@ -349,6 +520,9 @@ fn think(cx: &mut Ctx, st: &AssistState, input: &PilotInput, out: &mut AssistOut
         None => focus.and_then(|(k, _, _)| pick_part(&cx.world[k], code.target.aim, kin.pos)),
     };
     out.decides = [None; CHANNELS];
+    out.avoid = None;
+    // What `avoid_collisions` would steer clear of, looked for once.
+    let mut threat_of: Option<Option<(ShipId, PieceId)>> = None;
     if st.all {
         for (i, rule) in code.rules.iter().enumerate() {
             let ch = Channel::of(rule.action).index();
@@ -356,9 +530,17 @@ fn think(cx: &mut Ctx, st: &AssistState, input: &PilotInput, out: &mut AssistOut
                 continue;
             }
             let conds = &code.conds[rule.start as usize..(rule.start + rule.len) as usize];
-            if conds.iter().all(|c| matches!(cx.cond(c), Ok((true, _)))) {
-                out.decides[ch] = Some(i as u16);
+            if !conds.iter().all(|c| matches!(cx.cond(c), Ok((true, _)))) {
+                continue;
             }
+            if rule.action == AssistAction::AvoidCollisions {
+                // Nothing on a collision course: the rules below keep the channel.
+                let Some(t) = *threat_of.get_or_insert_with(|| threat(cx.me, cx.world)) else {
+                    continue;
+                };
+                out.avoid = Some(t);
+            }
+            out.decides[ch] = Some(i as u16);
         }
     }
     out.valid = true;
@@ -396,8 +578,21 @@ pub(crate) fn assist_plan(
     {
         goal.heading = h;
     }
-    if st.decides[Channel::Thrust.index()].is_some() && !thrust {
-        goal.velocity = Some(Vec2::ZERO);
+    if !thrust {
+        match st.decider(Channel::Thrust) {
+            Some((_, AssistAction::Brake)) => goal.velocity = Some(Vec2::ZERO),
+            Some((_, AssistAction::HoldStation(_))) => {
+                if let Some(v) = st.station.and_then(|s| station_goal(&s, kin, ships, flight)) {
+                    goal.velocity = Some(v);
+                }
+            }
+            Some((_, AssistAction::AvoidCollisions)) => {
+                if let Some(v) = st.avoid.and_then(|a| evade(piece, a, ships)) {
+                    goal.velocity = Some(cap(v, kin.top_speed));
+                }
+            }
+            _ => {}
+        }
     }
     let held = input.fire & FIRE_ALL;
     let auto = (1..=MAX_WEAPON_GROUP)
@@ -409,4 +604,24 @@ pub(crate) fn assist_plan(
     {
         *fire = Fire::Assisted { held, auto, at: t };
     }
+}
+
+/// The velocity back to the station and with it: an escort of the station point at distance 0 (capped at the top
+/// speed). `None` while its ally can't be found.
+fn station_goal(s: &StationPoint, kin: &Kin, ships: &[Ship], flight: &FlightTuning) -> Option<Vec2> {
+    let at = match s.ally {
+        Some(a) => {
+            let ts = resolve_target(ships, &Target::Ship(a))?;
+            TargetState { pos: ts.pos + s.at, vel: ts.vel }
+        }
+        None => TargetState { pos: s.at, vel: Vec2::ZERO },
+    };
+    let escort = Maneuver::Escort { leader: Target::Point(at.pos), distance: 0.0 };
+    escort.goal_for(kin, Some(at), flight).velocity
+}
+
+/// `v`, scaled down to `top` if faster (as maneuvers cap their goals, GDR-0064).
+fn cap(v: Vec2, top: f32) -> Vec2 {
+    let speed = v.length();
+    if speed > top && top > 0.0 { v * (top / speed) } else { v }
 }

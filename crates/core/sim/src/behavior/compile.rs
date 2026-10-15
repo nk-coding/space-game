@@ -172,12 +172,25 @@ pub enum AssistAction {
     Brake,
     /// The trigger of this weapon group (1 to `data::MAX_WEAPON_GROUP`): fire when its guns bear.
     AutoFire(u8),
+    /// Thrust: back to the station taken when it took thrust over, without turning.
+    HoldStation(Station),
+    /// Thrust: sidestep whatever is on a collision course, without turning; decides only while something is.
+    AvoidCollisions,
+}
+
+/// What `hold_station` keeps the ship at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Station {
+    /// The point where it took over.
+    Point,
+    /// The place it had then beside the nearest of its owner's other vessels (a point without one).
+    Ally,
 }
 
 impl AssistAction {
     /// Needs a target to act (else the rule claims nothing).
     pub fn needs_target(self) -> bool {
-        self != AssistAction::Brake
+        matches!(self, AssistAction::FaceTarget | AssistAction::AutoFire(_))
     }
 }
 
@@ -413,6 +426,11 @@ pub(crate) fn compile_assists(program: &Program, vocab: &Vocab) -> Result<Assist
         let action = match node.id.as_str() {
             "face_target" => AssistAction::FaceTarget,
             "brake" => AssistAction::Brake,
+            "hold_station" => AssistAction::HoldStation(match choice_id(node, 0, args[0]) {
+                "ally" => Station::Ally,
+                _ => Station::Point,
+            }),
+            "avoid_collisions" => AssistAction::AvoidCollisions,
             "auto_fire" => match args[0] {
                 Amount::Count(g) => AssistAction::AutoFire(g.clamp(1, data::MAX_WEAPON_GROUP as u32) as u8),
                 _ => return Err(fail(line, &r.action, "bad arguments")),

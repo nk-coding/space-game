@@ -992,10 +992,10 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     let orbit = Program::parse("always -> orbit").unwrap();
     let errors = check_assists(&orbit, nodes);
     assert_eq!(errors.len(), 1);
-    assert_eq!(errors[0].message, "`orbit` is a behavior's maneuver; pilot assists use face_target, brake, auto_fire");
+    assert_eq!(errors[0].message, "`orbit` is a behavior's maneuver; pilot assists use face_target, brake, hold_station, avoid_collisions, auto_fire");
     // The palette offers the assists' actions and every condition (the pilot's too); edits keep to the list.
     let actions: Vec<&str> = ed.palette(NodeRole::Action).map(|n| n.id.as_str()).collect();
-    assert_eq!(actions, ["face_target", "brake", "auto_fire"]);
+    assert_eq!(actions, ["face_target", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
     assert!(ed.palette(NodeRole::Condition).any(|n| n.id == "hull"));
     assert!(ed.palette(NodeRole::Condition).any(|n| n.id == "idle"));
     let face = ids(&ed)[2];
@@ -1004,6 +1004,12 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     // The toggle and the start are values of the action, set like any other.
     ed.set_param(NodeRef::Action(face), 0, word("toggle1")).unwrap();
     assert_eq!(line(&ed, 2), "always -> face_target(toggle1)");
+    // Hold station's first value is what it keeps its place at, before the toggle and the start.
+    let hold = ed.add_rule(3, "hold_station").unwrap();
+    ed.set_param(NodeRef::Action(hold), 0, word("ally")).unwrap();
+    ed.set_param(NodeRef::Action(hold), 2, word("off")).unwrap();
+    assert_eq!(line(&ed, 3), "always -> hold_station(ally, none, off)");
+    assert!(check_assists(&Program::parse("when idle(thrust) >= 1s -> avoid_collisions(toggle4)").unwrap(), nodes).is_empty());
     // Every rule can go: no assists, the ship coasts. A behavior keeps its last rule.
     for id in ids(&ed) {
         ed.delete_rule(id).unwrap();

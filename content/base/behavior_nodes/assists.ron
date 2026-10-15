@@ -1,10 +1,10 @@
 // Pilot assists (GDR-0088): the actions of a design's PILOT ASSISTS list (the BEHAVIOR screen's PILOT ASSISTS tab;
 // `pilot: true`, so behaviors can't use them and an assist list has no others). They run only on the ship the player
-// flies, each on one control channel: turning (`face_target`), thrust (`brake`) or one weapon group's trigger
-// (`auto_fire`). The pilot always wins: a channel the player uses is the player's, and letting go hands it back. For
-// each channel the first rule that matches decides, so assists on different channels run together. `toggle` names
-// the ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when a mission starts.
-// Built into the sim (`sim::behavior`). PLACEHOLDER defaults.
+// flies, each on one control channel: turning (`face_target`), thrust (`brake`, `hold_station`, `avoid_collisions`)
+// or one weapon group's trigger (`auto_fire`). The pilot always wins: a channel the player uses is the player's, and
+// letting go hands it back. For each channel the first rule that matches decides, so assists on different channels
+// run together. `toggle` names the ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when
+// a mission starts. Built into the sim (`sim::behavior`). PLACEHOLDER defaults.
 [
     (
         id: "face_target",
@@ -33,6 +33,54 @@
         name: "Brake",
         summary: "Stop the ship while you don't thrust, with the thrusters that push against the motion; it never turns the ship.",
         description: "A ship with engines only at the back can't brake without turning: give the rule `can_stop_straight`, or let Face target point it.",
+        tags: ["assist", "thrust"],
+        role: Action,
+        pilot: true,
+        params: [
+            (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
+                (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
+                (id: "toggle1", name: "1"),
+                (id: "toggle2", name: "2"),
+                (id: "toggle3", name: "3"),
+                (id: "toggle4", name: "4"),
+            ]), default: "none"),
+            (id: "start", name: "At start", summary: "On or off when a mission starts.", type: Choice([
+                (id: "on", name: "On"),
+                (id: "off", name: "Off"),
+            ]), default: "on"),
+        ],
+    ),
+    (
+        id: "hold_station",
+        name: "Hold station",
+        summary: "Keep the ship where you let it go, or at its place beside an ally, with the thrusters that push the needed way; it never turns the ship.",
+        description: "The station is taken when the assist takes thrust over: where you let go of the thrust keys (or the stick), or with Ally your place beside the nearest of your other vessels, kept as that ship moves. A push drifts the ship off and it flies back; thrusting yourself moves the station, and letting go holds the new spot.",
+        tags: ["assist", "thrust"],
+        role: Action,
+        pilot: true,
+        params: [
+            (id: "at", name: "Station", summary: "What the ship keeps its place at.", type: Choice([
+                (id: "point", name: "Point", summary: "The point where the assist took thrust over."),
+                (id: "ally", name: "Ally", summary: "Its place beside the nearest of your other vessels, moving with it; a point while you have none."),
+            ]), default: "point"),
+            (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
+                (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
+                (id: "toggle1", name: "1"),
+                (id: "toggle2", name: "2"),
+                (id: "toggle3", name: "3"),
+                (id: "toggle4", name: "4"),
+            ]), default: "none"),
+            (id: "start", name: "At start", summary: "On or off when a mission starts.", type: Choice([
+                (id: "on", name: "On"),
+                (id: "off", name: "Off"),
+            ]), default: "on"),
+        ],
+    ),
+    (
+        id: "avoid_collisions",
+        name: "Avoid collisions",
+        summary: "Sidestep a ship, wreck or piece of debris on a collision course, with the thrusters that push that way; it never turns the ship.",
+        description: "It looks a few seconds ahead and takes thrust only while something is on a collision course, so put it above Brake or Hold station: the rule below keeps thrust the rest of the time. A ship that can only push forward can't sidestep.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,

@@ -35,7 +35,7 @@ use std::sync::Arc;
 use data::behavior::{LineError, Program, TextError};
 use data::{AssistList, BehaviorNode, Content, Kind, NodeRole, ParamType, Problem, Quantity, Table};
 
-pub use assist::{AssistState, AssistSwitch, Channel};
+pub use assist::{AssistState, AssistSwitch, Channel, StationPoint};
 pub(crate) use assist::{assist_all, assist_plan};
 pub use compile::AimAt;
 pub use eval::{BehaviorState, RuleStatus, Why};
@@ -61,6 +61,10 @@ pub mod tuning {
     pub const THREAT_DISTANCE: f32 = 50.0;
     /// `threat`: firepower counts this much more if the ship aims at me.
     pub const THREAT_AIMING: f32 = 2.0;
+    /// `avoid_collisions` looks this far ahead (s): a closest approach later than that is no threat yet.
+    pub const AVOID_AHEAD: f32 = 6.0;
+    /// `avoid_collisions` keeps this gap (m) between the bounding circles of the two pieces.
+    pub const AVOID_CLEARANCE: f32 = 2.0;
     /// Operation budget of one Rhai condition evaluation.
     pub const SCRIPT_MAX_OPS: u64 = 2_000;
 }
@@ -172,6 +176,13 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("escort", Action, None, DIST),
         pilot("face_target", Action, None, &[TOGGLE, START]),
         pilot("brake", Action, None, &[TOGGLE, START]),
+        pilot(
+            "hold_station",
+            Action,
+            None,
+            &[ParamSig::Choice(&["point", "ally"]), TOGGLE, START],
+        ),
+        pilot("avoid_collisions", Action, None, &[TOGGLE, START]),
         pilot(
             "auto_fire",
             Action,

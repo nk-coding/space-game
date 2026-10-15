@@ -1,6 +1,6 @@
-//! Pilot assists (GDR-0088 step 3): face target, brake and auto-fire on their channels, the pilot winning each
-//! channel while using it, the pilot's conditions, the toggle slots and ALL ASSISTS, and that only the piloted ship
-//! runs them.
+//! Pilot assists (GDR-0088 steps 3 and 4): face target, brake, auto-fire, hold station and avoid collisions on their
+//! channels, the pilot winning each channel while using it, the pilot's conditions, the toggle slots and ALL ASSISTS,
+//! and that only the piloted ship runs them.
 
 mod common;
 
@@ -285,4 +285,163 @@ fn only_the_piloted_ship_runs_its_assists() {
     assists(&mut w, me, &["always -> brake"]);
     w.command(me, ShipCommand::Assists(None));
     assert!(w.ship(me).unwrap().assists().is_none());
+}
+
+fn com(w: &Sim, s: ShipId) -> Vec2 {
+    let ship = w.ship(s).unwrap();
+    ship.piece(ship.control_piece().unwrap()).unwrap().com_world()
+}
+
+#[test]
+fn hold_station_flies_back_after_a_push_and_thrust_moves_the_station() {
+    let c = content();
+    let (mut w, me, _) = piloted(rcs_ship(&c), &[]);
+    assists(&mut w, me, &["always -> hold_station"]);
+    fly(&mut w, me, keys(0.0, 0.0), 3);
+    let home = com(&w, me);
+    let station = w.ship(me).unwrap().assists().unwrap().station().expect("taken where the ship was let go");
+    assert!((station.at - home).length() < 1e-3 && station.ally.is_none(), "{station:?} at {home:?}");
+    // A push: it brakes, flies back and stays, without turning.
+    drift(&mut w, me, Vec2::new(3.0, 1.0));
+    fly(&mut w, me, keys(0.0, 0.0), 10);
+    assert!((com(&w, me) - home).length() > 0.1, "pushed off: {:?}", com(&w, me));
+    fly(&mut w, me, keys(0.0, 0.0), 300);
+    assert!((com(&w, me) - home).length() < 0.2, "back at the station: {:?} of {home:?}", com(&w, me));
+    assert!(speed(&w, me) < 0.05, "and holding: {}", speed(&w, me));
+    assert!(wrap(body(&w, me).angle).abs() < 0.02, "it never turns: {}", body(&w, me).angle);
+    // W held: thrust is the pilot's, the ship leaves (and the station goes with it).
+    fly(&mut w, me, keys(0.0, 1.0), 45);
+    assert!(w.ship(me).unwrap().assists().unwrap().station().is_none(), "no station while thrusting");
+    // Let go: the station is where W was released; the ship comes back to it.
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    let moved = w.ship(me).unwrap().assists().unwrap().station().unwrap().at;
+    assert!((moved - home).length() > 3.0, "the new station: {moved:?}");
+    fly(&mut w, me, keys(0.0, 0.0), 300);
+    assert!((com(&w, me) - moved).length() < 0.2, "holds the new spot: {:?} of {moved:?}", com(&w, me));
+}
+
+#[test]
+fn hold_station_beside_an_ally_keeps_its_place_as_the_ally_moves() {
+    let c = content();
+    let (mut w, me, _) = piloted(rcs_ship(&c), &[]);
+    let ally = w.spawn_ship(rcs_ship(&c), sim::Owner::PLAYER, Body::at(Vec2::new(20.0, 0.0), 0.0));
+    w.command(ally, ShipCommand::Goal { goal: sim::FlightGoal { heading: sim::HeadingGoal::Keep, velocity: None }, fire: false });
+    assists(&mut w, me, &["always -> hold_station(ally)"]);
+    fly(&mut w, me, keys(0.0, 0.0), 3);
+    let offset = com(&w, me) - com(&w, ally);
+    let station = w.ship(me).unwrap().assists().unwrap().station().unwrap();
+    assert_eq!(station.ally, Some(ally));
+    assert!((station.at - offset).length() < 1e-3);
+    // The ally drifts off: the ship keeps its place beside it.
+    drift(&mut w, ally, Vec2::new(1.0, 1.5));
+    fly(&mut w, me, keys(0.0, 0.0), 300);
+    let off = com(&w, me) - com(&w, ally) - offset;
+    assert!(off.length() < 0.3, "beside the ally: off by {off:?}");
+    let v = body(&w, me).linvel - body(&w, ally).linvel;
+    assert!(v.length() < 0.05, "with its velocity: {v:?}");
+}
+
+/// The closest the two ships' control pieces came (frame origins) over `ticks` of coasting, and whether they touched.
+fn pass(w: &mut Sim, me: ShipId, other: ShipId, input: PilotInput, ticks: usize) -> (f32, bool) {
+    let (mut closest, mut touched) = (f32::MAX, false);
+    for _ in 0..ticks {
+        fly(w, me, input, 1);
+        closest = closest.min((body(w, me).pos - body(w, other).pos).length());
+        touched |= w.events().iter().any(|e| matches!(e, SimEvent::Impact(_)));
+    }
+    (closest, touched)
+}
+
+#[test]
+fn avoid_collisions_sidesteps_a_ship_on_a_collision_course_and_only_then() {
+    let c = content();
+    let radius = |w: &Sim, s: ShipId| {
+        let ship = w.ship(s).unwrap();
+        ship.piece(ship.control_piece().unwrap()).unwrap().radius
+    };
+    // Drifting straight at an idle raider: without the assist they collide.
+    let (mut w, me, rs) = piloted(rcs_ship(&c), &[(0.0, 45.0)]);
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    let (_, touched) = pass(&mut w, me, rs[0], keys(0.0, 0.0), 450);
+    assert!(touched, "no assist: they collide");
+    // With it, the ship sidesteps (without turning) and passes clear.
+    let (mut w, me, rs) = piloted(rcs_ship(&c), &[(0.0, 45.0)]);
+    let reach = radius(&w, me) + radius(&w, rs[0]);
+    assists(&mut w, me, &["always -> avoid_collisions"]);
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    let (closest, touched) = pass(&mut w, me, rs[0], keys(0.0, 0.0), 600);
+    assert!(!touched && closest > reach, "passes clear: {closest} m apart, {reach} m to touch");
+    let v = body(&w, me).linvel;
+    assert!(v.x.abs() > 0.3 && v.y > 2.5, "by a sidestep, flying on: {v:?}");
+    assert!(wrap(body(&w, me).angle).abs() < 0.02, "it never turns: {}", body(&w, me).angle);
+    assert!(body(&w, me).pos.y > 55.0, "past the raider: {:?}", body(&w, me).pos);
+    assert!(!w.ship(me).unwrap().assists().unwrap().decides(0), "clear: it hands thrust back");
+
+    // A clear path: it never decides and the drift is untouched; a rule below has thrust.
+    let (mut w, me, _) = piloted(rcs_ship(&c), &[(0.0, 45.0)]);
+    assists(&mut w, me, &["always -> avoid_collisions"]);
+    drift(&mut w, me, Vec2::new(3.0, 0.0));
+    fly(&mut w, me, keys(0.0, 0.0), 120);
+    assert!(!w.ship(me).unwrap().assists().unwrap().decides(0));
+    assert!((body(&w, me).linvel - Vec2::new(3.0, 0.0)).length() < 1e-3, "{:?}", body(&w, me).linvel);
+    let (mut w, me, rs) = piloted(rcs_ship(&c), &[(0.0, 15.0)]);
+    assists(&mut w, me, &["always -> avoid_collisions", "always -> brake"]);
+    drift(&mut w, me, Vec2::new(3.0, 0.0));
+    fly(&mut w, me, keys(0.0, 0.0), 120);
+    let st = w.ship(me).unwrap().assists().unwrap().clone();
+    assert!(!st.decides(0) && st.decides(1) && st.avoiding().is_none(), "brake has thrust");
+    assert!(speed(&w, me) < 0.05);
+    // On a collision course avoidance takes thrust over from the brake below it.
+    drift(&mut w, me, Vec2::new(0.0, 3.0));
+    fly(&mut w, me, keys(0.0, 0.0), 3);
+    let st = w.ship(me).unwrap().assists().unwrap().clone();
+    assert!(st.decides(0) && !st.decides(1));
+    assert_eq!(st.avoiding().map(|a| a.0), Some(rs[0]));
+}
+
+#[test]
+fn the_pilots_thrust_wins_over_avoid_collisions() {
+    let c = content();
+    let (mut w, me, rs) = piloted(rcs_ship(&c), &[(0.0, 45.0)]);
+    assists(&mut w, me, &["always -> avoid_collisions"]);
+    // W held straight at the raider: the assist sees the collision course, but thrust is the pilot's, so the ship
+    // flies on straight.
+    let w_held = keys(0.0, 0.5);
+    let mut seen = 0;
+    for _ in 0..300 {
+        fly(&mut w, me, w_held, 1);
+        if w.ship(me).unwrap().assists().unwrap().avoiding() == Some((rs[0], w.ship(rs[0]).unwrap().control_piece().unwrap())) {
+            seen += 1;
+            assert!(body(&w, me).linvel.x.abs() < 0.01, "no sidestep: {:?}", body(&w, me).linvel);
+        }
+        if (body(&w, me).pos - body(&w, rs[0]).pos).length() < 20.0 {
+            break;
+        }
+    }
+    assert!(seen > 10, "on a collision course for {seen} ticks");
+    // Let go: the sidestep starts.
+    fly(&mut w, me, keys(0.0, 0.0), 10);
+    assert!(body(&w, me).linvel.x.abs() > 0.1, "{:?}", body(&w, me).linvel);
+}
+
+#[test]
+fn hold_station_waits_while_avoid_collisions_dodges() {
+    let c = content();
+    let (mut w, me, rs) = piloted(rcs_ship(&c), &[(0.0, 30.0)]);
+    w.command(rs[0], ShipCommand::Goal { goal: sim::FlightGoal { heading: sim::HeadingGoal::Keep, velocity: None }, fire: false });
+    assists(&mut w, me, &["always -> avoid_collisions", "always -> hold_station"]);
+    fly(&mut w, me, keys(0.0, 0.0), 3);
+    let home = com(&w, me);
+    // The raider drifts straight through the station: the ship dodges, then comes back to it.
+    drift(&mut w, rs[0], Vec2::new(0.0, -3.0));
+    let (mut dodged, mut touched) = (0.0f32, false);
+    for _ in 0..720 {
+        fly(&mut w, me, keys(0.0, 0.0), 1);
+        dodged = dodged.max((com(&w, me) - home).length());
+        touched |= w.events().iter().any(|e| matches!(e, SimEvent::Impact(_)));
+        let st = w.ship(me).unwrap().assists().unwrap();
+        assert!(st.station().is_some_and(|s| (s.at - home).length() < 1e-3), "the station waits");
+    }
+    assert!(!touched && dodged > 1.0, "dodged by {dodged} m");
+    assert!((com(&w, me) - home).length() < 0.2, "back at the station: {:?} of {home:?}", com(&w, me));
 }
