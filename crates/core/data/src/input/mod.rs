@@ -80,6 +80,9 @@ actions! {
     StrafeLeft = "strafe_left",
     StrafeRight = "strafe_right",
     Fire = "fire",
+    FireGroup1 = "fire_group_1",
+    FireGroup2 = "fire_group_2",
+    FireGroup3 = "fire_group_3",
     LockNext = "lock_next",
     Drift = "drift",
     FocusNext = "focus_next",
@@ -138,6 +141,12 @@ actions! {
 impl Action {
     pub fn from_id(id: &str) -> Option<Action> {
         Action::ALL.iter().copied().find(|a| a.id() == id)
+    }
+
+    /// The trigger of weapon group `g` (1-based, GDR-0088), if there is one.
+    pub fn fire_group(g: u8) -> Option<Action> {
+        const GROUPS: [Action; crate::MAX_WEAPON_GROUP as usize] = [Action::FireGroup1, Action::FireGroup2, Action::FireGroup3];
+        g.checked_sub(1).and_then(|k| GROUPS.get(k as usize).copied())
     }
 
     /// The drydock's armour shortcut for material `n` (1-based), if there is one.

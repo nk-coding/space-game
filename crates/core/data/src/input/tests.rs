@@ -49,7 +49,8 @@ fn the_base_pack_binds_every_action() {
     assert!(clashes(c.controls.as_slice()).is_empty(), "{:?}", clashes(c.controls.as_slice()));
     let b = base();
     assert_eq!(b.label(Action::ThrustForward), "W / UP");
-    assert_eq!(b.label(Action::Fire), "SPACE / RMB");
+    assert_eq!(b.label(Action::Fire), "SPACE");
+    assert_eq!(b.label(Action::FireGroup2), "2 / RMB");
     assert_eq!(b.label(Action::Redo), "CTRL+SHIFT+Z / CTRL+Y");
     assert!(b.changed().is_empty());
 }
@@ -73,7 +74,7 @@ fn modifiers_match_like_the_module_says() {
     assert!(fires(&b, Action::Redo, "KeyZ", Mods { shift: true, ..CTRL }));
     assert!(!fires(&b, Action::Undo, "KeyZ", NONE));
     // A mouse button.
-    assert!(fires(&b, Action::Fire, "MouseRight", NONE));
+    assert!(fires(&b, Action::FireGroup2, "MouseRight", NONE));
 }
 
 /// Rebinding takes the input away from an action sharing a screen, not from one elsewhere; the change is saved as
@@ -91,9 +92,9 @@ fn rebinding_moves_a_taken_input_and_saves_the_changes() {
     // The same chord in the other slot moves over.
     assert_eq!(b.set(Action::Drift, 0, chord("KeyF")), None);
     assert_eq!(b.label(Action::Drift), "F");
-    b.clear(Action::Fire, 1);
+    b.clear(Action::FireGroup2, 1);
     let saved = b.changed();
-    assert_eq!(saved.keys().collect::<Vec<_>>(), ["camera_follow", "drift", "fire"]);
+    assert_eq!(saved.keys().collect::<Vec<_>>(), ["camera_follow", "drift", "fire_group_2"]);
     assert_eq!(saved["drift"], ["KeyF"]);
     let c = crate::base_content();
     let (back, notes) = Bindings::new(c.controls.as_slice(), &saved);
@@ -114,7 +115,7 @@ fn unreadable_saved_controls_are_skipped() {
     ]);
     let (b, notes) = Bindings::new(c.controls.as_slice(), &saved);
     assert_eq!(notes.len(), 2, "{notes:?}");
-    assert_eq!(b.label(Action::Fire), "SPACE / RMB");
+    assert_eq!(b.label(Action::Fire), "SPACE");
     assert_eq!(b.label(Action::Drift), "J");
 }
 
