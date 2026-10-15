@@ -32,7 +32,7 @@ pub use content::model::*;
 pub use content::problem::{Problem, Severity};
 pub use content::table::Table;
 pub use content::text::{Link, parse_links, text_key};
-pub use content::validate::{validate, validate_ship};
+pub use content::validate::{validate, validate_ship, validate_ship_flying};
 pub use design::blueprint::{blueprint_to_ron, parse_blueprint};
 pub use design::edit::Drydock;
 pub use design::geometry::{

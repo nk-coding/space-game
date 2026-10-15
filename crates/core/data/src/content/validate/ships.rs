@@ -140,21 +140,23 @@ impl<'a> Validator<'a> {
             return;
         }
         // The behavior it flies under must fit its rule slots (a ship without cores cannot think at all).
-        if let Some(b) = self.c.ship_behavior(s) {
-            let slots = self.c.ship_rule_slots(s);
-            if slots > 0 && b.rules.len() > slots as usize {
+        let flies = match self.flies {
+            Some(p) => Some(("behavior", "its behavior".to_string(), p.rules.len())),
+            None => self.c.ship_behavior(s).map(|b| {
                 let (field, whose) = match &s.behavior {
-                    Some(_) => ("behavior", "its behavior".to_string()),
-                    None => ("faction", "its faction's default behavior".to_string()),
+                    Some(_) => ("behavior", "its behavior"),
+                    None => ("faction", "its faction's default behavior"),
                 };
+                (field, format!("{whose} `{}`", b.id), b.rules.len())
+            }),
+        };
+        if let Some((field, whose, rules)) = flies {
+            let slots = self.c.ship_rule_slots(s);
+            if slots > 0 && rules > slots as usize {
                 self.err(
                     s,
                     field,
-                    format!(
-                        "{whose} `{}` has {} rules, but the ship's logic cores give only {slots} rule slots",
-                        b.id,
-                        b.rules.len()
-                    ),
+                    format!("{whose} has {rules} rules, but the ship's logic cores give only {slots} rule slots"),
                 );
             }
         }

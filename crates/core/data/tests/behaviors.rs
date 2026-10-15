@@ -365,6 +365,27 @@ fn too_many_rules_for_the_slots() {
     assert_eq!(c.ship_rule_slots(c.ships.get("halvex_runner").unwrap()), 12);
 }
 
+/// A ship checked as it flies a program of its own (an arena entry, an evolved genome, GDR-0092): its rule slots
+/// count that program's rules, not its faction's default behavior's.
+#[test]
+fn a_ship_flying_its_own_program_counts_its_rules() {
+    let c = content();
+    let raider = c.ships.get("automaton_raider").unwrap();
+    let errors = |text: &str| -> Vec<String> {
+        let program = data::behavior::Program::parse(text).unwrap();
+        data::validate_ship_flying(&c, raider, &program)
+            .into_iter()
+            .filter(|p| p.is_error())
+            .map(|p| format!("{}: {}", p.field.as_deref().unwrap_or_default(), p.message))
+            .collect()
+    };
+    assert!(errors("always -> approach\nwhen hull < 30% -> flee\n").is_empty());
+    assert_eq!(
+        errors("when hull < 30% -> flee\nwhen shield_down -> hold\nalways -> approach\n"),
+        ["behavior: its behavior has 3 rules, but the ship's logic cores give only 2 rule slots"]
+    );
+}
+
 #[test]
 fn node_definitions_are_checked() {
     let p = errors_with(&[(

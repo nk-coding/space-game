@@ -14,6 +14,7 @@ mod voyages;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::behavior::Program;
 use crate::content::art_keys::{ARMOR_TONES, GLOWS, SYSTEM_COLORS, is_icon_key};
 use crate::content::kind::Kind;
 use crate::content::load::{Content, SCHEMA_VERSION};
@@ -29,7 +30,7 @@ use crate::content::text::parse_links;
 /// with no control capacity, an icon or ship drawing nothing uses, research that unlocks what is already open, an encounter ship
 /// without a behavior, a voyage nothing can open, a start ship without a hold).
 pub fn validate(c: &Content) -> Vec<Problem> {
-    let mut v = Validator { c, out: Vec::new() };
+    let mut v = Validator { c, flies: None, out: Vec::new() };
     v.packs();
     v.stats();
     v.entries(c.categories.as_slice(), |v, e| {
@@ -103,7 +104,17 @@ pub fn validate(c: &Content) -> Vec<Problem> {
 /// fire, RCS and radiator exposure) need a well-formed grid, so they report nothing until the placements are
 /// clean. A blueprint without parts stops at that error too.
 pub fn validate_ship(c: &Content, bp: &Blueprint) -> Vec<Problem> {
-    let mut v = Validator { c, out: Vec::new() };
+    let mut v = Validator { c, flies: None, out: Vec::new() };
+    v.header(bp);
+    v.ship(bp);
+    v.out
+}
+
+/// [`validate_ship`] for a ship that flies `program` whatever behavior its blueprint names (an arena entry with its
+/// own behavior text, an evolved genome, GDR-0092): the rule-slot check counts that program's rules instead of the
+/// blueprint's or its faction's behavior.
+pub fn validate_ship_flying(c: &Content, bp: &Blueprint, program: &Program) -> Vec<Problem> {
+    let mut v = Validator { c, flies: Some(program), out: Vec::new() };
     v.header(bp);
     v.ship(bp);
     v.out
@@ -111,6 +122,8 @@ pub fn validate_ship(c: &Content, bp: &Blueprint) -> Vec<Problem> {
 
 struct Validator<'a> {
     c: &'a Content,
+    /// The program the ship flies, when it is not the one its blueprint names ([`validate_ship_flying`]).
+    flies: Option<&'a Program>,
     out: Vec<Problem>,
 }
 

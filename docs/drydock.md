@@ -54,6 +54,11 @@ Tests: `crates/core/data/tests/edit.rs`.
   `i64`, parts too far apart give `DoesNotFit` (its size saturated at `u32::MAX`), a lone far part is centred. The
   editor copies what it needs from `Content` (footprints, the hull flag, which parts draw power, the armour
   materials), so it owns its data.
+- `Drydock::open_placed(content, blueprint, frame)` (GDR-0092, 15 Oct 2026) opens a blueprint whose placements are
+  already in frame coordinates (as `parts()` gives them, or a design saved in its frame) and keeps every part where it
+  is: the evolution lab's genomes keep their cells from generation to generation, so its locks never drift. A part
+  outside the frame gives `DoesNotFit` with the size of the box from the frame's corner the parts would need; the other
+  refusals are `open`'s.
 - `export()` trims to the bounding box: `size` = its size, parts shifted so the smallest `x` and `y` are 0, in part
   index order; every other blueprint field is kept from `open`, except `source` (cleared: a design comes from no
   pack, so a template copy's problems are not located in the template's file). Opening the Halvex Runner in a

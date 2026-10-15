@@ -974,6 +974,43 @@ fn opening_centres_and_export_trims() {
     assert_eq!(dock.export().size, (1, 1));
 }
 
+/// GDR-0092: a design opened placed keeps every cell, so a run's locks (frame cells) never drift; one that grows on
+/// one side and is opened again stays where it was, where `open` would centre it again.
+#[test]
+fn opening_placed_keeps_positions() {
+    let c = content();
+    let ship = c.ships.get("sample_early").unwrap();
+    let dock = Drydock::open(&c, ship, (20, 20)).unwrap();
+    let mut placed = dock.export();
+    placed.parts = dock.parts().to_vec();
+    placed.size = dock.frame();
+    let mut again = Drydock::open_placed(&c, &placed, (20, 20)).unwrap();
+    assert_eq!(again.parts(), dock.parts());
+    assert_eq!(again.export(), dock.export());
+    assert_grid(&again);
+    // Grow it by two columns on the right, open both ways: placed keeps the old cells, centred moves them.
+    let b = again.bounds().unwrap();
+    again.paint((b.max_x, b.min_y), "steel").unwrap();
+    again.paint((b.max_x + 1, b.min_y), "steel").unwrap();
+    placed.parts = again.parts().to_vec();
+    let kept = Drydock::open_placed(&c, &placed, (20, 20)).unwrap();
+    assert_eq!(kept.parts(), again.parts());
+    let centred = Drydock::open(&c, &placed, (20, 20)).unwrap();
+    assert_ne!(centred.parts()[0], again.parts()[0]);
+    // A part outside the frame: the box from the frame's corner it would need.
+    let mut out = placed.clone();
+    out.parts[0].x = -2;
+    assert!(matches!(
+        Drydock::open_placed(&c, &out, (20, 20)).unwrap_err(),
+        OpenError::DoesNotFit { design: (w, 20) } if w >= 22
+    ));
+    out.parts[0].x = 20;
+    assert!(matches!(
+        Drydock::open_placed(&c, &out, (20, 20)).unwrap_err(),
+        OpenError::DoesNotFit { design: (w, 20) } if w > 20
+    ));
+}
+
 #[test]
 fn open_refuses_broken_blueprints() {
     let c = content();

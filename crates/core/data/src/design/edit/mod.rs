@@ -148,7 +148,8 @@ pub enum OpenError {
         index: usize,
         other: usize,
     },
-    /// The design's bounding box (`w`, `h`, saturated at `u32::MAX`) is larger than the frame.
+    /// The design's bounding box (`w`, `h`, saturated at `u32::MAX`) is larger than the frame; for
+    /// [`Drydock::open_placed`], the box from the frame's corner that its parts need.
     DoesNotFit {
         design: (u32, u32),
     },
@@ -324,6 +325,27 @@ impl Drydock {
         blueprint: &Blueprint,
         frame: (u32, u32),
     ) -> Result<Drydock, OpenError> {
+        Drydock::open_with(content, blueprint, frame, true)
+    }
+
+    /// Opens a blueprint whose placements are already in frame coordinates (as [`Drydock::parts`] gives them),
+    /// keeping every part where it is: the evolution lab's genomes keep their cells from generation to generation,
+    /// so its locks (cells, parts) never drift (GDR-0092). A part outside the frame gives
+    /// [`OpenError::DoesNotFit`] with the size of the box from the frame's corner that the parts would need.
+    pub fn open_placed(
+        content: &Content,
+        blueprint: &Blueprint,
+        frame: (u32, u32),
+    ) -> Result<Drydock, OpenError> {
+        Drydock::open_with(content, blueprint, frame, false)
+    }
+
+    fn open_with(
+        content: &Content,
+        blueprint: &Blueprint,
+        frame: (u32, u32),
+        centre: bool,
+    ) -> Result<Drydock, OpenError> {
         let frame = frame_dims(frame).ok_or(OpenError::BadFrame)?;
         let catalog = Catalog::new(content);
         let mut shapes = Vec::with_capacity(blueprint.parts.len());
@@ -366,15 +388,24 @@ impl Drydock {
             revision: 0,
             limits: BTreeMap::new(),
         };
-        let shift = dock.centring(frame).ok_or_else(|| {
-            let [x0, y0, x1, y1] = span(&dock.shapes).unwrap_or_default();
-            let side = |n: i64| u32::try_from(n).unwrap_or(u32::MAX);
-            OpenError::DoesNotFit {
-                design: (side(x1 - x0), side(y1 - y0)),
+        let side = |n: i64| u32::try_from(n).unwrap_or(u32::MAX);
+        if centre {
+            let shift = dock.centring(frame).ok_or_else(|| {
+                let [x0, y0, x1, y1] = span(&dock.shapes).unwrap_or_default();
+                OpenError::DoesNotFit {
+                    design: (side(x1 - x0), side(y1 - y0)),
+                }
+            })?;
+            dock.shift_parts(shift);
+        } else if let Some([x0, y0, x1, y1]) = span(&dock.shapes) {
+            let (fw, fh) = (frame.0 as i64, frame.1 as i64);
+            if x0 < 0 || y0 < 0 || x1 > fw || y1 > fh {
+                return Err(OpenError::DoesNotFit {
+                    design: (side(x1.max(fw) - x0.min(0)), side(y1.max(fh) - y0.min(0))),
+                });
             }
-        })?;
+        }
         dock.frame = frame;
-        dock.shift_parts(shift);
         dock.rebuild()
             .map_err(|(index, other)| OpenError::Overlap { index, other })?;
         Ok(dock)
