@@ -63,7 +63,7 @@ the runner, the scenarios); at the root what everything uses.
 | `ship::power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
 | `ship::alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
-| `flight` | (`pilot.rs`: the pilot's input and goal; `aim.rs`: leads and smart aim; `controllers.rs`: the plan into actuator commands) flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
+| `flight` | (`pilot.rs`: the pilot's input and goal; `aim.rs`: leads and smart aim; `controllers.rs`: the plan into actuator commands) flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step`, `next_lock` (LOCK TARGET's order) |
 | `flight::maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee, Escort), goals capped at the top speed |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host), `assist.rs` (pilot assists: `AssistsId`, `Assists`, `AssistState`, `AssistSwitch`, `Channel`) |
 | `combat::weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
@@ -354,6 +354,19 @@ rule decides at times (`assists_scenario_is_deterministic_and_the_assists_act`).
 With the thrust assists turning while turning is free (same day, after step 4): the six streams above again
 byte-identical and native = wasm32-wasip1; only `assists` changes (no AI ship has assists), last tick
 `a8562be7b6064c01`, identical.
+
+**The assists act on the lock only** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md), dated
+line of 15 Oct 2026: no target line, `face_target` removed, `auto_lock` and its pause, LOCK TARGET's order in the sim;
+release builds, seed 42, 900 ticks; `runner_vs_raiders` to its end at 1273): core `04c38a80a753f50f`, flight
+`2a51382797b4736b`, behavior `1b84c5d19d5d393d`, salvage `d53cf56822803318`, voyage `58c3b65781708409` and
+`runner_vs_raiders` `8d5b00d21e45e771`: native x86_64 vs wasm32-wasip1 **identical** and byte-identical to the build
+before (no AI ship has assists; the flight scenario's pilots draw their locks as before). `assists` changes, last tick
+`ab49d109c0b68d3f`, identical: its list swaps face target for two auto-locks (`attacker` above `nearest`, on toggle 3),
+its pilots keep their lock as a player does (each reroll: 1 in 8 drops it, Esc, which pauses auto-lock; 1 in 8 presses
+LOCK TARGET, `flight::next_lock`; else the lock held, or with none the one auto-lock asks for, as the client locks it),
+and the assist state hashes the lock, the pause and the ask instead of the target line's aim part; the test
+`assists_scenario_is_deterministic_and_the_assists_act` checks that auto-lock asks and pauses at times and that every
+rule decides.
 
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -1129,26 +1142,40 @@ as before.
 
 - **State** (`Ship::assists()` → `AssistState`): per rule whether it is switched on (bit `i`, starting as its
   `start` value), the master switch, the tick the pilot last used each control (turning, thrust, a trigger), the
-  target, per channel the rule that decides it, the station `hold_station` keeps (`station()`) and the piece
+  target (the ship of the pilot's lock), the pilot's lock and the last tick it was held, auto-lock's pause
+  (`lock_paused()`) and the ship it asks for (`auto_lock()`), per channel the rule that decides it, the station `hold_station` keeps (`station()`) and the piece
   `avoid_collisions` steers clear of (`avoiding()`). It lasts for the ship's life (a mission); a vessel split off
   inherits it.
 - **The pass** (`assist_all`, after the behaviors' think): every tick each piloted ship with assists notes the
   controls its pilot uses (`PilotInput`: A/D or the stick without a lock = turning; W/S/Q/E or the stick = thrust;
-  any fire bit; a key counts from `FlightTuning::stick_deadzone`, as the flight computer reads it). On think ticks
-  (every 3) and on the tick after a list is set or switched, the rules decide from one snapshot: the target is the
-  pilot's lock while one is held, else the list's target line (`locked` finds nothing for the focus); then for each
-  rule in order, if it is on (and ALL ASSISTS is on), its channel not yet decided, it has a target if it needs one
-  (face, auto-fire) and its conditions hold, it decides its channel. Channels: turning, thrust, one per weapon group.
+  any fire bit; a key counts from `FlightTuning::stick_deadzone`, as the flight computer reads it) and its lock (see
+  auto-lock below). On think ticks (every 3), on the tick after a list is set or switched and on the tick auto-lock
+  pauses or resumes, the rules decide from one snapshot: the target is the pilot's lock and nothing else (no target
+  line, GDR-0088's dated line of 15 Oct 2026); then for each rule in order, if it is on (and ALL ASSISTS is on), its
+  channel not yet decided, it has a target if it needs one (auto-fire: the lock) and its conditions hold, it decides
+  its channel (avoid collisions only with something on a collision course, auto-lock only while not paused and its
+  pick finds a ship). Channels: the lock, thrust, one per weapon group.
+- **Auto-lock** (`auto_lock(pick)`, the lock channel; picks `nearest`, `weakest`, `threat`, `attacker`, run by the
+  behaviors' `Ctx::select` with no current target): a deciding rule, while the pilot holds no lock, sets
+  `AssistState::auto_lock()` to the ship it picks; the client makes that the pilot's lock on its next tick, as a click
+  would (`world::scene::tick_lock`), so `PilotInput::lock` carries it from then on and the HUD, the target panel and
+  every assist see one lock. A held lock clears the ask (auto-lock never replaces a lock). The pause: a lock held on
+  the tick before and gone now while its ship is still there (`lock_there`: a ship still active, a piece not gone)
+  was dropped by the pilot (Esc, a click on empty space), and auto-lock waits (`paused`, no rule decides the lock
+  channel) until the pilot holds a lock again or a switch touches an auto-lock rule (its toggle slot, ALL ASSISTS);
+  a lock gone with its ship (the client drops a lock on a ship no longer active) is no drop, so it locks the next.
 - **Per tick** (`assist_plan`, in the pilot's plan after `pilot_goal`): a decided channel the pilot doesn't use this
-  tick is the assist's. `face_target`: the heading becomes smart aim at the target (as a lock aims; a held lock
-  holds the turning channel); `brake`: the velocity goal becomes zero (the heading: see below); `auto_fire(g)`: `Fire::Assisted { held, auto, at }`: guns of held
-  groups fire, guns of auto groups fire at will at the target (`guns_at_will`, per gun cone and reach).
+  tick is the assist's. `brake`: the velocity goal becomes zero (the heading: see below); `auto_fire(g)`:
+  `Fire::Assisted { held, auto, at }` with `at` the pilot's lock: guns of held groups fire, guns of auto groups fire
+  at will at the lock (`guns_at_will`, per gun cone and reach); without a lock nothing. The lock aims the ship by
+  itself (`pilot_goal`), which is why there is no `face_target` any more (it acted only without a lock, on the
+  target line's pick; on the lock alone it would never act).
 - **Conditions**: every behavior condition, plus `speed` (share of `Kin::top_speed`; no value without thrust) and
   `can_stop_straight` (for each body axis carrying at least 25% of the motion a thrust group pushes against it;
   true below 0.1 m/s), which behaviors may use too, and the pilot's own `lock_held` and `idle(any|turn|thrust|fire)`
   (seconds since the last use; `Why::NoValue` outside an assist list, which the checks never let happen).
-- **State hash**: the assist state (id, program fingerprint, switches, last uses, target, aim part, acquisition
-  tick, decisions, last think, station, the piece avoided) after the ship's behavior, and nothing at all for a ship without assists, so worlds
+- **State hash**: the assist state (id, program fingerprint, switches, last uses, target, acquisition tick, the
+  held lock and its tick, the pause, the ship auto-lock asks for, decisions, last think, station, the piece avoided) after the ship's behavior, and nothing at all for a ship without assists, so worlds
   without assists hash as before.
 - **Hold station** (step 4, 15 Oct 2026; `hold_station(point|ally)`, thrust): the station is taken on the first tick
   the rule has thrust while the pilot doesn't thrust (`keep_stations`, every tick after the thinks): the ship's centre
@@ -1169,8 +1196,8 @@ as before.
   open; it would change every AI stream).
 - **Thrust assists turn while turning is free** (Niklas, 15 Oct 2026, after step 4: no base ship has RCS pods, so the
   Rim Skiff, two rear thrusters, could neither brake nor hold station nor sidestep): when brake, hold station or avoid
-  collisions sets the velocity goal, the pilot doesn't steer (A/D, the stick without a lock) or hold a lock, no rule
-  decides turning (face target) and the velocity change asked is at least `tuning::ASSIST_TURN_DV` (0.5 m/s), the
+  collisions sets the velocity goal, the pilot doesn't steer (A/D, the stick without a lock) or hold a lock and the
+  velocity change asked is at least `tuning::ASSIST_TURN_DV` (0.5 m/s), the
   heading becomes `HeadingGoal::Auto`: the behaviors' flip and burn (kept while the thrusters facing the needed way
   give `keep_heading_fraction` of the best axis, else the best axis turned that way, the force faded in from 25° to
   8°). Otherwise the heading stays the pilot's and only the thrusters pushing the needed way act, as before. The
@@ -1180,16 +1207,19 @@ as before.
   planning angular acceleration and `a = stop_margin · stop_accel`, and within `tuning::STATION_SLACK` (1 m) of the
   station it only stops (matches the station's velocity): without both the Skiff circled its station at about 1 m and
   1–2 m/s for good, a half turn for every correction; with them it stays within about 1 m, slower than 1.2 m/s.
-- Tests: `tests/assists.rs` (face turns to the target and the pilot's A wins the turn; brake kills drift without
-  turning and W wins; auto-fire fires only its group's guns that bear, never out of reach, and a held trigger wins;
+- Tests: `tests/assists.rs` (auto-lock asks for the nearest while nothing is locked, never replaces a lock, and a
+  pick that finds nobody leaves the channel to the rule below; a lock the pilot drops pauses it until they lock again
+  or switch it, a lock gone with its ship doesn't, toggles and ALL ASSISTS switch it; LOCK TARGET's order, nearest
+  first and round again; brake kills drift without turning and W wins; auto-fire does nothing without a lock, fires
+  only its group's guns that bear on the lock (not on a nearer raider), never out of reach, and a held trigger wins;
   `lock_held`, `idle(thrust)`, `speed`, `can_stop_straight` gate rules; toggles and ALL ASSISTS; only the piloted ship;
   hold station flies back after a push and W moves the station; beside an ally it keeps its place as the ally drifts;
   avoidance sidesteps a raider on a collision course (without it they collide), does nothing on a clear path (a brake
   below keeps thrust) and takes thrust over from it on a collision course; the pilot's W wins over it; the station
   waits while avoidance dodges a raider drifting through it, and the ship comes back; on the Rim Skiff with turning
   free, brake stops a 4 m/s forward drift by turning around, hold station comes back and stays within 1.3 m, and
-  avoidance turns and passes a raider it otherwise hits; with face target, a held lock or the pilot steering the
-  heading goal stays theirs, and a 0.3 m/s drift never turns the ship).
+  avoidance turns and passes a raider it otherwise hits; with a held lock or the pilot steering the heading goal
+  stays theirs, and a 0.3 m/s drift never turns the ship).
 
 ### Rhai conditions
 

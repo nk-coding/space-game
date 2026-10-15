@@ -88,7 +88,8 @@ SVG (VitePress's link prefetching cannot read one). No raster images anywhere: S
 The same as ADR-0032's pages, now as VitePress pages: every entry's texts (with its links and the pack's prose for
 it), an infobox with its drawing, facts and stats, and sections that link both ways (a part's ships, bonuses given and
 received, research that unlocks it, salvage; a material's parts, ships and salvage; a ship's parts, design report,
-pilot assists and encounters; a behavior's rules as graph and text, its nodes, ships and factions; a node's
+pilot assists (as graph and text, without a target line: the graph's TARGET reads YOUR LOCK) and encounters; a
+behavior's rules as graph and text, its nodes, ships and factions; a node's
 parameters, Rhai script and behaviors; research costs, requirements and unlocks; voyages, sites, encounters and what
 opens what; a control's keys and its section), "Mentioned on" back-links and the data details for modders (id,
 defining file, text keys, prose file).

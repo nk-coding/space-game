@@ -37,7 +37,8 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
-| Next target (nearest first) | Tab | – |
+| LOCK TARGET (`lock_next`, GDR-0088): the first press locks the nearest enemy, each next press the next one by distance, round to the nearest again; the order is the sim's (`sim::flight::next_lock`: from the flown ship's position, ties by id), the lock the one a click sets (`PlayerInput::lock`) | Tab | – |
+| Auto-lock (the `auto_lock` pilot assist): while nothing is locked, the ship it asks for (`AssistState::auto_lock`) becomes the lock at the scene's tick (`scene::tick_lock`), the same lock as a click's (HUD, target panel, lock ring, sim). Esc or a click on empty space drops it and pauses auto-lock until you lock again or switch it (`AUTO-LOCK · PAUSED` in the HUD) | – | – |
 | Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the help line shows `SPACE FIRE · 1/2/3 GROUPS` from the bindings | fire button bottom right: every group |
 | Pilot assists (GDR-0088; the design's PILOT ASSISTS, set on the BEHAVIOR screen): switch the assists on toggle 1–4 on and off for the mission / switch every assist off and back on (as the toggles left them). Each switch is a `ShipCommand::SwitchAssists` for the flown ship; the banner says what changed (`BRAKE ON · AUTO-FIRE 2 OFF`, `ALL ASSISTS OFF`, `F3 · NO ASSIST ON TOGGLE 3`) | F1–F4 / Z | – |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
@@ -266,7 +267,8 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   The player is `scene::PLAYER` (`Owner(0)`), the raiders `scene::ENEMY` (`Owner(1)`). The sandbox gives every
   vessel its default behavior and sends `ShipCommand::Focus` for the runner; `PilotFocus` mirrors
   `Sim::focus(PLAYER)` at the start of every tick (so a switch shows one tick later), and V / clicks / the fleet
-  bar send `Focus` commands. Friendly checks, Tab targets and off-screen markers use owners (`Ship::team`).
+  bar send `Focus` commands. Friendly checks, LOCK TARGET's order (`sim::flight::next_lock`) and off-screen markers use
+  owners (`Ship::team`).
 - **Fleet bar** (`fleet_bar.rs`, [GDR-0050](gdr/0050-fleet-bar.md)): see below.
 - **Camera glide** (`camera.rs`): when the focus changes (V, a click, the fleet bar, or the sim moving a lost
   focus), the follow point snaps to the new vessel and the camera eases from where it was onto it with a
@@ -338,10 +340,14 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
   hull block and the touch stick on a phone), under it the **pilot assists** of the ship flown (`flight_hud/assists.rs`,
   GDR-0088; hidden without any): `ASSISTS`, then one line per assist with its toggle key, `F2 · BRAKE`, teal while it
-  decides its channel, white while on, dim while off; `ASSISTS OFF · Z` in gold while ALL ASSISTS has them off
-  (`docs/results/flight-assists-hud.png`: F3 just switched auto-fire on; face target keeps the guns on the raider off screen top right;
+  decides its channel, white while on, dim while off, an auto-lock paused by a dropped lock `F1 · AUTO-LOCK · PAUSED`;
+  `ASSISTS OFF · Z` in gold while ALL ASSISTS has them off
+  (`docs/results/flight-assists-hud.png`: F3 just switched auto-fire on; the face target it shows was removed later the same day;
   `docs/results/flight-assists-hold-station.png`, step 4: hold station and face target deciding, avoid collisions on
-  and waiting for something on a collision course, auto-fire off at start),
+  and waiting for something on a collision course, auto-fire off at start; `docs/results/flight-auto-lock.png`
+  (15 Oct 2026, after the assists lost their target line): auto-lock deciding and its lock in the target panel and
+  ring; `docs/results/flight-auto-lock-paused.png`: Esc dropped it, `AUTO-LOCK · PAUSED`;
+  `docs/results/flight-lock-target.png`: a raider locked with Tab; all checked at 1280 × 720 and 2560 × 1440 too),
   target panel (in watch mode the watched ship's behavior target),
   wave line, banners (`PAUSED · P` while paused), warnings, help; lock ring and off-screen markers are world-space
   FX (the markers in watch mode too). A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
@@ -1191,15 +1197,19 @@ the way back; the design keeps the last valid list, and leaving the screen drops
 name reads `Pilot assists · SAVED WITH THE DESIGN` (no rename), the pill `3 ASSISTS · WHILE YOU FLY IT`, the root
 `Assists · each channel`, no slot line and no never-reached line (each rule decides its own channel), `+ ASSIST`
 (also into an empty list), the palette lists the assists' actions and every condition (the pilot's `lock_held` and
-`idle` too), and the last rule can be deleted. An assist's inspector has its values as pills: TOGGLE (NONE, 1–4: the
-ASSIST TOGGLE key that switches it in flight) and AT START (ON, OFF), auto-fire's GROUP and hold station's STATION (POINT, ALLY). Every change goes into
+`idle` too) but no target selector, the TARGET row reads `YOUR LOCK` (no target line: the assists act on the pilot's
+lock, `GraphView::target` is `None`), and the last rule can be deleted. An assist's inspector has its values as pills:
+TOGGLE (NONE, 1–4: the ASSIST TOGGLE key that switches it in flight) and AT START (ON, OFF), auto-fire's GROUP, hold
+station's STATION (POINT, ALLY) and auto-lock's PICKS (NEAREST, WEAKEST, BIGGEST THREAT, ATTACKER). Every change goes into
 the working design at once (`PlayerDesign::edit_header`, written to the storage when no slider is held; the drydock
 shows the design UNSAVED until it is saved); SAVE says so, TEST IN RANGE tests the behavior (the design flies with
 its assists). A list line that no longer checks is left out, with a note. Screenshot
 `docs/results/behavior-pilot-assists.png` (step 3: three assists: face target on toggle 1, brake when it can stop straight on
 toggle 2, auto-fire on toggle 3 starting off, selected; the old tab arrangement), `docs/results/behavior-pilot-assists-tabs.png` and
 `docs/results/behavior-pilot-assists-text.png` (step 4, 1600 × 900: the tabs, avoid collisions, hold station, face
-target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 × 1440 too).
+target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 × 1440 too; face target is gone since),
+`docs/results/behavior-pilot-assists-auto-lock.png` and `docs/results/behavior-pilot-assists-auto-lock-text.png`
+(15 Oct 2026, after the assists lost their target line: TARGET · YOUR LOCK, two auto-locks, the inspector's PICKS).
 
 - **Numbers** (`RANGE · 67%  ≈ 100 M`): a −/+ ring on each side of a slider. Steps are round numbers that grow
   with the value and land on multiples (5 m below 50 m, 10 m below 200 m, 50 m below 1000 m; 5 % of the weapon

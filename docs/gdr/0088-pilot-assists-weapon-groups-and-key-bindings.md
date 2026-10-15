@@ -6,6 +6,28 @@
     while the pilot or a rule has the turning channel; a matching rule decides its channel only when no rule above
     it already does (two brakes are a priority list of their own); group 1 also fires while the left button is held
     on empty space.
+  - 2026-10-15, the assists act on the lock only (Niklas: "an auto target would be an assist in itself (which
+    chooses the target automatically, e.g. on a button press), but the assists should not by default just target
+    sth which is then not even communicated to the user"; he chose both, a lock key and an auto-lock assist): this
+    replaces the lead default above that gave a list a target line (default nearest). An assist list has no target
+    line; what needs a target (auto-fire) acts on the pilot's lock, the one the HUD shows, and without one does
+    nothing. `face_target` is removed (lead): acting on the lock only, it would never act, as a held lock already
+    turns the strongest guns onto its ship by itself (`pilot_goal`'s lock heading, smart aim, GDR-0040) and holds
+    the turning channel, so no part was left for it; the turning channel goes with it. New assist
+    `auto_lock(pick, toggle, start)` on a new lock channel, its pick one of the behaviors' target selectors that
+    suit a pilot (`nearest`, the default, `weakest`, `threat`, `attacker`; not `locked`): while the pilot holds no
+    lock it asks for the ship its pick finds, and the client locks it as a click would (one lock for the HUD, the
+    target panel and the sim; the rules below get the channel while its pick finds nobody). Lead default for the
+    re-lock guard: a lock the pilot drops while its ship is still there (Esc, a click on empty space) pauses
+    auto-lock until the pilot locks again or switches an auto-lock rule (its toggle, ALL ASSISTS), and the HUD shows
+    it PAUSED; a lock lost with its ship (destroyed, gone dark) is no drop, so auto-lock moves on to the next.
+    LOCK TARGET is the existing `lock_next` action on Tab (free in flight; renamed "Lock target", its id kept for
+    saved bindings): the first press locks the nearest enemy, each next press the next by distance, round again;
+    the order now comes from the sim (`sim::flight::next_lock`, the ship's own position, ties by id), not the
+    interpolated camera. Old blueprints and saves: an assist list's target line and its `face_target` rules are read
+    and left out, and written back without them (no format version change: the new text reads in older builds).
+    Every AI stream unchanged; the `assists` scenario changes (it now exercises auto-lock, dropping a lock and LOCK
+    TARGET).
 - Date: 2026-10-14
 - Decided by: Niklas (assist model, scope, first actions, override, default, weapon groups, fire keys, bindings);
   lead defaults where marked

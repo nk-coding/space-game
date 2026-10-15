@@ -113,10 +113,9 @@ what it shows and what the blueprint stores). Assists help the player fly the sh
 ship the player flies (the focus), never on an unpiloted one, whose behavior flies it.
 
 ```text
-target nearest
 when idle(thrust) >= 1s and can_stop_straight -> brake(toggle2)   # stop when I let go, if no turn is needed
-always -> face_target(toggle1)                                     # guns on the nearest enemy while I don't steer
-when target_in_range(90%) -> auto_fire(2, toggle3, off)           # group 2 fires by itself once F3 is pressed
+always -> auto_lock(nearest, toggle1)                              # lock the nearest enemy while nothing is locked
+when target_in_range(90%) -> auto_fire(2, toggle3, off)           # group 2 fires at the lock once F3 is pressed
 ```
 
 With step 4 (15 Oct 2026), steering clear and keeping a place:
@@ -126,47 +125,55 @@ when idle(thrust) >= 1s -> avoid_collisions(toggle1)   # sidestep what I'm coast
 always -> hold_station(ally, toggle2)                  # else keep my place beside my nearest ship
 ```
 
-- **Actions**: the assists, and only they: `face_target` (turning: the strongest guns onto the target, as a lock
-  aims), `brake` (thrust: zero velocity), `hold_station(at)` (thrust: back to the station and keep it; `point`, the
+- **Actions**: the assists, and only they: `auto_lock(pick)` (the lock: while you hold none, it locks the ship its
+  pick finds, `nearest` (the default), `weakest`, `threat` or `attacker`, the target selectors that suit a pilot;
+  the lock is your own, see Target below), `brake` (thrust: zero velocity), `hold_station(at)` (thrust: back to the station and keep it; `point`, the
   default: where the assist took thrust over, e.g. where you let go of W; `ally`: your place then beside the nearest
   of your other vessels, moving with it; thrusting moves the station), `avoid_collisions` (thrust: sidestep a ship,
   wreck or piece of debris on a collision course within a few seconds; it decides only while something is, so the rule
   below it keeps thrust the rest of the time) and `auto_fire(group)` (that weapon group's trigger: each of its guns
-  fires when it bears, the test of fire at will). The behaviors' maneuvers are refused in an assist list, and the
-  assists in a behavior.
-- **Thrust assists turn while turning is free** (Niklas, 15 Oct 2026; no base ship has RCS): while you don't steer
-  or hold a lock and no rule (face target) decides turning, brake, hold station and avoid collisions turn the ship
+  fires when it bears on the lock, the test of fire at will). The behaviors' maneuvers are refused in an assist
+  list, and the assists in a behavior. `face_target` (15 Oct 2026, step 3) is gone: on the lock alone it would never
+  act, as a held lock already aims the strongest guns (GDR-0088, dated line of 15 Oct 2026).
+- **Thrust assists turn while turning is free** (Niklas, 15 Oct 2026; no base ship has RCS): while you neither
+  steer nor hold a lock, brake, hold station and avoid collisions turn the ship
   to bring its engines to bear (flip and burn, as behaviors' maneuvers do), but only when the thrusters already facing
   the needed way give less than half its best push, and never for a slight drift (under 0.5 m/s), so it doesn't spin
   around. While turning is taken they use only the thrusters that push the needed way: a ship with engines only at the
   back then can't brake, hold station or sidestep. A ship that must turn around to stop holds station within about
   1 m (inside it, it only stops).
-- **Channels, the player wins**: each assist works one channel: turning, thrust, or one weapon group's trigger. A
-  channel the player uses this tick (A/D or the stick, or a held lock, which aims by itself; W/S/Q/E or the stick;
-  the group's trigger) is the player's; letting go hands it back at once.
+- **Channels, the player wins**: each assist works one channel: the lock, thrust, or one weapon group's trigger. A
+  channel the player uses this tick (a held lock; W/S/Q/E or the stick; the group's trigger) is the player's;
+  letting go hands it back at once.
 - **Which rule decides**: the rules are read from the top at every think (10 Hz, with the behaviors); for each
-  channel the first rule that is switched on, whose conditions hold (and that has a target, if it needs one;
-  `avoid_collisions`: something on a collision course) decides. So an `always` rule doesn't stop the rules below it: they may decide other channels. A list may be
+  channel the first rule that is switched on, whose conditions hold (and that has a target, if it needs one:
+  `auto_fire`, your lock; `avoid_collisions`: something on a collision course; `auto_lock`: a ship its pick finds)
+  decides. So an `always` rule doesn't stop the rules below it: they may decide other channels. A list may be
   empty (no assists: the ship coasts when let go, GDR-0086). Assists need no rule slots.
 - **Toggles**: the last two values of every assist: `toggle` (`none`, `toggle1` to `toggle4`: the ASSIST TOGGLE key
   that switches it on and off in flight, F1 to F4 by default) and `start` (`on`, `off`: how each mission starts).
   ALL ASSISTS (Z) switches every assist off and back as the toggles left them. The switches last for the mission.
-- **Target**: the player's lock while one is held; else the target line (default `nearest`). `locked` (the leader's
-  lock) finds nothing for the ship the player flies.
+- **Target**: the player's lock, the one the HUD shows, and nothing else (Niklas, 15 Oct 2026: no target the
+  assists pick unseen). An assist list has **no target line** (one is refused: "pilot assists have no target line:
+  they act on the ship you lock"); without a lock, `auto_fire` does nothing. `auto_lock` sets the lock as a click
+  does, so Esc drops it and a click or LOCK TARGET (Tab) changes it. A lock the player drops while its ship is still
+  there pauses auto-lock until they lock again or switch an auto-lock rule (its toggle, ALL ASSISTS); the HUD shows
+  it PAUSED. A lock lost with its ship (destroyed, dark) doesn't pause: auto-lock locks the next.
 - **The pilot's conditions** (assists only): `lock_held` (a lock is held) and `idle(control)` (seconds since the
   player last used `turn`, `thrust`, `fire` or `any` of them; from the start of the mission if not yet). Every
   behavior condition works too, and two new ones work in both lists: `speed` (a share of the top speed) and
   `can_stop_straight` (thrusters already push against the motion, so the ship can stop without turning).
-- **Stored** in the design's blueprint, beside the behavior it names: `assists: (target: "nearest", rules: [...])`
-  (`docs/content-model.md`). Checked with `data::behavior::check_assists`; the vocabulary marks the assists' nodes
-  `pilot: true`.
+- **Stored** in the design's blueprint, beside the behavior it names: `assists: (rules: [...])`
+  (`docs/content-model.md`). Lists written before 15 Oct 2026's change had a `target` and could hold `face_target`
+  rules: both are read and left out, and the list is written back without them. Checked with
+  `data::behavior::check_assists`; the vocabulary marks the assists' nodes `pilot: true`.
 
 ## Grammar
 
 ```text
 program   = { line "\n" }                         blank lines are ignored
 line      = target-line | rule
-target-line = "target" call [ note ]              at most one, before the rules
+target-line = "target" call [ note ]              at most one, before the rules (behaviors only)
 rule      = ( "when" | "if" ) cond { "and" cond } arrow call [ note ]
           | "always" arrow call [ note ]
 cond      = [ "not" ] call [ cmp number ]
@@ -270,7 +277,8 @@ operations, the text view replaces the program with `set_text`. Tests: `crates/c
 - `BehaviorEditor::open(nodes, &program)` (e.g. a content behavior's `program()`, used as a template) or
   `from_text(nodes, text)`; `open_as` / `from_text_as` with a `ListKind` open a design's pilot assists
   (`ListKind::Assists`): the list may have no rule, the palette and every edit keep to the assists' nodes
-  (`Refusal::NotInList` otherwise), and `kind()` says which list it is. The editor copies the vocabulary (`Content.behavior_nodes`), so it owns its data.
+  (`Refusal::NotInList` otherwise; it has no target node either, `NodeRef::Target` is `NotInList("target")`), and
+  `kind()` says which list it is. The editor copies the vocabulary (`Content.behavior_nodes`), so it owns its data.
   `open` reads the program through its printed text, so its errors locate lines of `Program::to_text`.
 - **The program is always legal**: it passes `check_program` against the vocabulary, has 1 to 64 rules, at most 8
   conditions per rule and at most 240 characters per line, and its canonical text gives it back (model → text →

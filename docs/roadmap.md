@@ -307,6 +307,15 @@ Next session:
   - a new determinism scenario `assists` (the flight scenario with every assist): native and wasm32-wasip1 identical;
   - the BEHAVIOR screen's tabs are now BEHAVIOR | PILOT ASSISTS, each with GRAPH / TEXT (Niklas); the assists' TEXT
     view edits the list as the blueprint's rule text.
+- **Assists on the lock only** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md), dated line of
+  15 Oct 2026; Niklas: no target the assists pick unseen, and both a lock key and an auto-lock assist):
+  - an assist list has no target line; auto-fire acts on the pilot's lock (nothing without one); `face_target` is
+    removed (a held lock already aims the guns); old designs load with both left out;
+  - `auto_lock(pick)` on a new lock channel locks the ship its pick (nearest, weakest, threat, attacker) finds while
+    nothing is locked, as a click would; a lock the pilot drops pauses it (PAUSED in the HUD) until they lock again or
+    switch it;
+  - LOCK TARGET (Tab, the old "lock next"): the nearest enemy, then the next by distance, ordered in the sim;
+  - every AI determinism stream byte-identical; the `assists` stream changes (it exercises both).
 - **Next** (Niklas, 15 Oct 2026):
   1. The evolution lab's screen (track L4), dev-only.
 

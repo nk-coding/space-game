@@ -710,6 +710,10 @@ watch: the live panel, the last rule deciding, why the five above don't match).
   behavior id or one of the player's; none (the default, as before) means the faction's (`skirmisher` for the
   ship-mind). It is part of the design's header, so it stays through edits, saves, the working design and exports;
   the BEHAVIOR screen sets it with `PlayerDesign::edit_header(|h| h.behavior = Some(id))`.
+- Its `assists` (GDR-0088) are part of the header the same way (the BEHAVIOR screen's PILOT ASSISTS tab writes them).
+  A design saved on 15 Oct 2026 before the assists lost their target line can hold `assists: (target: ..., rules:
+  [...])` and `face_target` rules: `designs/<id>` and `drydock/working` stay format 1, as the blueprint reader leaves
+  both out (`data::AssistList`, `docs/content-model.md`) and the next save writes the list without them.
 - `behaviors::validate_design(&content, &behaviors, &blueprint)` is `data::validate_ship` with the player's
   behaviors known: a design naming one has no "unknown behavior" problem, its rules must fit the design's rule
   slots like a content behavior's, and one with errors is a problem of its own. SAVE and IMPORT use it.

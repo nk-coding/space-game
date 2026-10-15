@@ -368,9 +368,13 @@ leaves group 1 out): the gun's weapon group, which of the pilot's fire triggers 
 `(part: "pulse_laser", x: 4, y: 0, group: 2)`; behaviors fire every gun at will). The index of a placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
 ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`). `assists` (optional, GDR-0088
 step 3, 15 Oct 2026; `AssistList`) holds the design's **pilot assists**: rules in the behavior format that help the
-player fly it, `target` (optional, a target line without its keyword) and `rules` (one line each), checked as an assist
-list (`data::behavior::check_assists`; errors at `assists.rules[i]`), e.g.
-`assists: (rules: ["when idle(thrust) >= 1s -> brake(toggle2)", "always -> face_target(toggle1)"])`. None (the
+player fly it, `rules` (one line each), checked as an assist list (`data::behavior::check_assists`; errors at
+`assists.rules[i]`), e.g. `assists: (rules: ["when idle(thrust) >= 1s -> brake(toggle2)", "always -> auto_lock(nearest,
+toggle1)"])`. An assist list has no target: its assists act on the pilot's lock (GDR-0088, dated line of 15 Oct 2026).
+Older lists (step 3, the same day) had a `target` field (a target line without its keyword) and could hold
+`face_target` rules: reading leaves both out (`AssistList` reads through `AssistListText`, which still refuses any
+other unknown field) and the writer never writes them, so those designs load and are saved back without them; the
+blueprint format keeps its version, as the new text reads in older builds. None (the
 default) is no assists: the ship coasts when let go. The drydock writes it with the design; the BEHAVIOR screen's
 PILOT ASSISTS tab edits it (its graph, or its TEXT view in exactly this rule text) (`docs/behavior-format.md` "Pilot assists").
 
@@ -450,11 +454,14 @@ an error), so text, wiki and code cannot drift apart. The grammar is in `docs/be
 | `params[].default` | written as in a rule (`"67%"`, `"45m"`, `"cw"`); parameters without a default come first and are required |
 | `params[].min`, `max` | range of the number as written in the parameter's unit (m, %, s, count); reach-relative distances are checked against 0–1000% |
 | `script` | Rhai source: makes the node a custom (flag) condition, tagged "Rhai" in the editor; see `docs/behavior-format.md` |
-| `pilot` | default false; true: the node belongs to pilot assists only (GDR-0088, 15 Oct 2026): an action marked so is an assist (`assists.ron`: `face_target`, `brake`, `hold_station`, `avoid_collisions`, `auto_fire`; an assist list takes no other action), a condition marked so is about the pilot's own input (`lock_held`, `idle`); behaviors refuse them. Not on target selectors or scripted conditions (validation); the sim's `BUILTIN_NODES` must agree |
+| `pilot` | default false; true: the node belongs to pilot assists only (GDR-0088, 15 Oct 2026): an action marked so is an assist (`assists.ron`: `auto_lock`, `brake`, `hold_station`, `avoid_collisions`, `auto_fire`; an assist list takes no other action, and no target selector: it has no target line), a condition marked so is about the pilot's own input (`lock_held`, `idle`); behaviors refuse them. Not on target selectors or scripted conditions (validation); the sim's `BUILTIN_NODES` must agree |
 
 The assists' actions end in two choices, `toggle` (`none`, `toggle1`..`toggle4`: the ASSIST TOGGLE that switches the
 rule in flight) and `start` (`on`, `off`); `auto_fire` takes its weapon `group` (Count, 1–3) first, `hold_station`
-(step 4, 15 Oct 2026) its station `at` (`point`, `ally`) first; `avoid_collisions` takes only the two. `speed` (Percent)
+(step 4, 15 Oct 2026) its station `at` (`point`, `ally`) first, `auto_lock` its `pick` first (a choice of the target
+selectors that suit a pilot, `nearest`, `weakest`, `threat`, `attacker`, each with its name and summary in
+`assists.ron`; the sim's `BUILTIN_NODES` pins the ids and runs them as the target selectors); `avoid_collisions` takes
+only the two. `speed` (Percent)
 and `can_stop_straight` (flag), added with them, are conditions of both lists.
 
 Text keys: the header fields as usual, plus `behavior_node.<id>.params.<param>.name` / `.summary` and
@@ -704,7 +711,8 @@ in the map).
 
 The assist actions (GDR-0088 step 3, 15 Oct 2026): `assist_toggle_1` to `assist_toggle_4` (F1–F4) switch the pilot
 assists on that toggle slot (which ones is set per design in their `toggle` value), `all_assists` (Z) all of them. The
-debug overlay moved from F3 to F8 for them.
+debug overlay moved from F3 to F8 for them. `lock_next` (Tab) is LOCK TARGET (named "Lock target" since 15 Oct 2026,
+the id kept for saved bindings): the nearest enemy, then the next by distance (`sim::flight::next_lock`).
 
 ## Coordinates and geometry
 
