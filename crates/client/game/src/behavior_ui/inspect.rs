@@ -708,7 +708,7 @@ mod tests {
         // Pilot assists (GDR-0088): the assists' actions only, every condition (the pilot's too).
         let assists = palette(&content.behavior_nodes, ListKind::Assists, "");
         let actions: Vec<&str> = assists.iter().filter(|e| e.role == NodeRole::Action).map(|e| e.id.as_str()).collect();
-        assert_eq!(actions, ["face_target", "brake", "auto_fire"]);
+        assert_eq!(actions, ["face_target", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
         assert!(assists.iter().any(|e| e.id == "idle") && assists.iter().any(|e| e.id == "hull"));
         assert!(!all.iter().any(|e| e.id == "idle"));
     }
@@ -734,5 +734,20 @@ mod tests {
             _ => None,
         });
         assert!(toggle.is_some_and(|t| t.options.len() == 5), "{:?}", face.controls);
+        // Hold station (step 4): what it keeps its place at is a pill pair of its own, before the toggle and the start.
+        let program = data::behavior::Program::parse("always -> hold_station(ally)\n").unwrap();
+        let ed = BehaviorEditor::open_as(&content.behavior_nodes, &program, ListKind::Assists).unwrap();
+        let hold = inspect(&ed, &Selection::Node(NodeRef::Action(ed.rule_at(0).unwrap().id)), &cx()).unwrap();
+        let rows: Vec<(&str, Vec<&str>)> = hold
+            .controls
+            .iter()
+            .filter_map(|c| match c {
+                Control::Choice(ch) => Some((ch.label.as_str(), ch.options.iter().filter(|o| o.active).map(|o| o.text.as_str()).collect())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows.len(), 3, "{rows:?}");
+        assert!(rows[0].0.starts_with("STATION") && rows[0].1 == ["ALLY"], "{rows:?}");
+        assert!(rows[1].0.starts_with("TOGGLE") && rows[2].0.starts_with("AT START"), "{rows:?}");
     }
 }

@@ -25,13 +25,13 @@
 //!   and reloading), linking a behavior to the design, TEST IN RANGE.
 //! * [`list`]: the BEHAVIORS list (the player's behaviors and the templates: open, use for this design, duplicate,
 //!   rename, delete, new).
-//! * [`assists`]: the PILOT ASSISTS tab (GDR-0088): the design's pilot assists in the same graph, inspector and
-//!   palette, saved with the design.
+//! * [`assists`]: the PILOT ASSISTS tab (GDR-0088): the design's pilot assists in the same graph and text views,
+//!   inspector and palette, saved with the design.
 //! * [`live`]: the live rule panel in the flight HUD while a test runs.
 //!
 //! **For handlers** (the ring menu, later ones): read `MessageReader<BehaviorAction>` in a system in
 //! [`BehaviorSet::Apply`]; change the program through [`BehaviorDraft::edit`] (the graph and the text
-//! follow its `revision`), read [`BehaviorUi`] (the view, the selected node, the test mode) and
+//! follow its `revision`), read [`BehaviorUi`] (the tab, the view, the selected node, the test mode) and
 //! [`EditorContext`] (the design's name and rule slots).
 
 pub mod actions;
@@ -81,13 +81,20 @@ pub enum BehaviorSet {
     Show,
 }
 
-/// GRAPH or TEXT (the behavior), or PILOT ASSISTS (the design's assists, in the graph).
+/// BEHAVIOR or PILOT ASSISTS: which of the design's two rule lists the screen edits (GDR-0088).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BehaviorTab {
+    #[default]
+    Behavior,
+    Assists,
+}
+
+/// GRAPH or TEXT: how the open list is shown, one choice for both tabs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum BehaviorView {
     #[default]
     Graph,
     Text,
-    Assists,
 }
 
 /// The two modes of TEST IN RANGE (GDR-0057): WATCH and FLY ALONGSIDE.
@@ -96,6 +103,7 @@ pub use world::test_range::TestMode;
 /// The screen's UI state.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct BehaviorUi {
+    pub tab: BehaviorTab,
     pub view: BehaviorView,
     /// What the inspector shows (`None`: the behavior itself).
     pub selected: Option<Selection>,

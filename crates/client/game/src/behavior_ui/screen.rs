@@ -49,10 +49,12 @@ use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, assists_pi
 use super::inspect::{self, Selection, assists_inspection, behavior_inspection, inspect, palette, palette_hint};
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
-use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
+use super::{BehaviorTab, BehaviorUi, BehaviorView, EditorContext, TestMode};
 
 /// Where the columns sit (logical px at 1280 × 720).
 const TOP: f32 = 104.0;
+/// The tabs BEHAVIOR / PILOT ASSISTS, between the header and the graph area.
+const TABS_TOP: f32 = 64.0;
 const BOTTOM: f32 = 66.0;
 const SIDE: f32 = 22.0;
 const RIGHT_W: f32 = 296.0;
@@ -232,6 +234,12 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     });
                 });
 
+            // Over the graph area: the design's two rule lists (GDR-0088), each shown as GRAPH or TEXT (top right).
+            root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..abs(Some(SIDE), None, Some(TABS_TOP), None) })).with_children(|t| {
+                spawn_pill(t, fonts, "BEHAVIOR", 10.0, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Tab(BehaviorTab::Behavior)), Tip::new("BEHAVIOR: HOW THE DESIGN FLIES WHEN NOBODY PILOTS IT")));
+                spawn_pill(t, fonts, "PILOT ASSISTS", 10.0, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Tab(BehaviorTab::Assists)), Tip::new("PILOT ASSISTS: HELP WHILE YOU FLY THIS DESIGN")));
+            });
+
             // Top right: GRAPH / TEXT, TEST IN RANGE and its two modes under it.
             root.spawn((ScreenPart::new(Edge::Top, 0), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexStart, column_gap: px(28), ..abs(None, Some(20.0), Some(16.0), None) }))
                 .with_children(|tr| {
@@ -239,9 +247,6 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         for (text, view) in [("GRAPH", BehaviorView::Graph), ("TEXT", BehaviorView::Text)] {
                             spawn_pill(v, fonts, text, 10.0, 34.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::View(view)));
                         }
-                        // The design's pilot assists (GDR-0088), a tab of their own after a gap.
-                        v.spawn(Node { width: px(6), ..default() });
-                        spawn_pill(v, fonts, "PILOT ASSISTS", 10.0, 34.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::View(BehaviorView::Assists)), Tip::new("PILOT ASSISTS: HELP WHILE YOU FLY THIS DESIGN")));
                     });
                     tr.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), ..default() }).with_children(|t| {
                         let play = UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
@@ -777,7 +782,7 @@ pub(super) fn sync_search(mut ui: ResMut<BehaviorUi>, mut field: Single<&mut Tex
     }
 }
 
-/// GRAPH and PILOT ASSISTS show the graph; TEXT hides it (the editor draws over its rectangle).
+/// GRAPH shows the graph; TEXT hides it (the editor draws over its rectangle).
 pub(super) fn show_view(ui: Res<BehaviorUi>, mut graph: Single<&mut Visibility, With<GraphViewport>>) {
     let want = if ui.view == BehaviorView::Text { Visibility::Hidden } else { Visibility::Inherited };
     if **graph != want {
@@ -785,20 +790,24 @@ pub(super) fn show_view(ui: Res<BehaviorUi>, mut graph: Single<&mut Visibility, 
     }
 }
 
-/// The status line under the screen: errors in the text, rules without a slot, else how the rules run.
+/// The status line under the screen: errors in the text, rules without a slot, else how the rules run (for pilot
+/// assists, which need no slots: how they take their channels).
 pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (String, Tone) {
-    if view == BehaviorView::Assists {
-        return ("AN ASSIST TAKES ITS CHANNEL ONLY WHILE YOU LEAVE IT FREE  ·  A TOGGLE SWITCHES IT IN FLIGHT".into(), Tone::Label);
-    }
     let errors = draft.errors.len();
     let s = if errors == 1 { "" } else { "S" };
     if let Some(e) = draft.errors.first() {
         return match view {
             BehaviorView::Text => (format!("{errors} ERROR{s}  ·  FIRST ON LINE {}, COLUMN {}", e.line, e.col), Tone::Coral),
-            _ => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES, READ-ONLY UNTIL IT IS FIXED"), Tone::Gold),
+            BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES, READ-ONLY UNTIL IT IS FIXED"), Tone::Gold),
         };
     }
     let rules = draft.program().rules.len();
+    if draft.editor().is_some_and(|e| e.kind() == ListKind::Assists) {
+        return match view {
+            BehaviorView::Text => (format!("VALID  ·  {rules} ASSIST{}", if rules == 1 { "" } else { "S" }), Tone::Teal),
+            BehaviorView::Graph => ("AN ASSIST TAKES ITS CHANNEL ONLY WHILE YOU LEAVE IT FREE  ·  A TOGGLE SWITCHES IT IN FLIGHT".into(), Tone::Label),
+        };
+    }
     if slots == 0 && rules > 0 {
         return ("NO LOGIC CORE  ·  THIS DESIGN CANNOT RUN RULES".into(), Tone::Coral);
     }
@@ -815,7 +824,7 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
     }
     match view {
         BehaviorView::Text => (format!("VALID  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }), Tone::Teal),
-        _ => ("THE FIRST RULE THAT MATCHES DECIDES  ·  GUNS FIRE AT WILL".into(), Tone::Label),
+        BehaviorView::Graph => ("THE FIRST RULE THAT MATCHES DECIDES  ·  GUNS FIRE AT WILL".into(), Tone::Label),
     }
 }
 
@@ -836,7 +845,7 @@ pub(super) fn sync_texts(
         let (s, tone) = match t {
             ScreenText::Breadcrumb => (format!("BEHAVIOR  ·  {}", context.design_name.to_uppercase()), Tone::Label),
             ScreenText::Name => (draft.name.clone(), Tone::Number),
-            ScreenText::Slots if ui.view == BehaviorView::Assists => (assists_pill(draft.program().rules.len()), Tone::Violet),
+            ScreenText::Slots if ui.tab == BehaviorTab::Assists => (assists_pill(draft.program().rules.len()), Tone::Violet),
             ScreenText::Slots => (slots_pill(draft.program().rules.len(), context.slots), Tone::Violet),
             ScreenText::Status => note.show(&draft).unwrap_or_else(|| status_line(&draft, ui.view, context.slots)),
             ScreenText::AddNode => match draft.editor() {
@@ -857,13 +866,14 @@ pub(super) fn sync_note(edit: Res<EditState>, time: Res<Time<Real>>, mut span: S
     }
 }
 
-/// Active states of the view and test mode pills.
+/// Active states of the tab, view and test mode pills.
 pub(super) fn sync_pills(ui: Res<BehaviorUi>, mut pills: Query<(&BehaviorButton, &mut Pill)>) {
     if !ui.is_changed() {
         return;
     }
     for (b, mut pill) in &mut pills {
         let active = match &b.0 {
+            BehaviorAction::Tab(t) => ui.tab == *t,
             BehaviorAction::View(v) => ui.view == *v,
             BehaviorAction::TestMode(m) => ui.test_mode == *m,
             _ => continue,
@@ -1017,5 +1027,13 @@ mod tests {
         d.errors = vec![TextError { line: 4, col: 6, message: "x".into() }];
         assert_eq!(status_line(&d, BehaviorView::Text, 12), ("1 ERROR  ·  FIRST ON LINE 4, COLUMN 6".into(), Tone::Coral));
         assert_eq!(status_line(&d, BehaviorView::Graph, 12).1, Tone::Gold);
+        // Pilot assists need no slots (none at all is fine): how they take their channels, or the text's count.
+        let mut bp = content.ships.get("halvex_runner").unwrap().clone();
+        bp.assists = Some(data::AssistList { target: None, rules: vec!["always -> brake".into(), "always -> face_target".into()] });
+        let (mut a, _) = BehaviorDraft::assists(&bp, &content.behavior_nodes);
+        assert_eq!(status_line(&a, BehaviorView::Graph, 0).0, "AN ASSIST TAKES ITS CHANNEL ONLY WHILE YOU LEAVE IT FREE  ·  A TOGGLE SWITCHES IT IN FLIGHT");
+        assert_eq!(status_line(&a, BehaviorView::Text, 0), ("VALID  ·  2 ASSISTS".into(), Tone::Teal));
+        a.set_text("always -> orbit\n");
+        assert_eq!(status_line(&a, BehaviorView::Text, 0), ("1 ERROR  ·  FIRST ON LINE 1, COLUMN 11".into(), Tone::Coral));
     }
 }

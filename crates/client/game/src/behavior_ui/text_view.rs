@@ -1,4 +1,5 @@
-//! The TEXT view: the behavior as editable text (`docs/behavior-format.md`), one line per rule, with live errors.
+//! The TEXT view: the behavior, or on the PILOT ASSISTS tab the design's assists, as editable text
+//! (`docs/behavior-format.md`), one line per rule, with live errors.
 //!
 //! bevy_ui has no text input, so the editor is an egui multi-line `TextEdit` (egui is already in the build for
 //! the tuning panel), placed over the graph area's node and styled to the look: Barlow, no frame or box, the
@@ -16,7 +17,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, egui};
-use data::behavior::{KEYWORDS, Program};
+use data::behavior::{KEYWORDS, ListKind, Program};
 use data::{BehaviorNode, NodeRole, Table};
 use kit::clipboard::Clipboard;
 use kit::style::Style;
@@ -242,8 +243,13 @@ pub(super) fn editor(
             .unwrap_or_default();
         rule_lines.0.clone_from(&draft.text);
     }
-    let no_slot: Vec<u32> = rule_lines.1.iter().skip(context.slots as usize).copied().collect();
-    let never: Vec<u32> = rule_lines.1.get(never_reached(&rule_lines.2, context.slots)).map_or_else(Vec::new, <[u32]>::to_vec);
+    // Pilot assists need no slots and every one decides its own channel: nothing to mark there.
+    let (no_slot, never) = if draft.editor().is_some_and(|e| e.kind() == ListKind::Assists) {
+        (Vec::new(), Vec::new())
+    } else {
+        let no_slot: Vec<u32> = rule_lines.1.iter().skip(context.slots as usize).copied().collect();
+        (no_slot, rule_lines.1.get(never_reached(&rule_lines.2, context.slots)).map_or_else(Vec::new, <[u32]>::to_vec))
+    };
 
     let id = egui::Id::new(EDITOR_ID);
     forget_outside_history(ctx, id, &mut seen, &draft.text);

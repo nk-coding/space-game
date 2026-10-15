@@ -23,7 +23,7 @@ use super::edit::{Edit, EditState};
 use super::inspect::Selection;
 use super::list::BehaviorList;
 use super::screen::SearchField;
-use super::{BehaviorDraft, BehaviorUi, BehaviorView, TestMode};
+use super::{BehaviorDraft, BehaviorTab, BehaviorUi, BehaviorView, TestMode};
 
 #[derive(Message, Clone, Debug, PartialEq)]
 pub enum BehaviorAction {
@@ -31,7 +31,9 @@ pub enum BehaviorAction {
     Back,
     /// The ring button top left: home (the ring menu).
     Menu,
-    /// GRAPH or TEXT (the behavior), or PILOT ASSISTS.
+    /// BEHAVIOR or PILOT ASSISTS.
+    Tab(BehaviorTab),
+    /// GRAPH or TEXT.
     View(BehaviorView),
     /// A click on a node of the graph: the inspector shows it.
     Select(NodeRef),
@@ -148,8 +150,16 @@ pub(super) fn apply(
                 }
                 ui.view = *v;
             }
+            // The other list comes in (`assists::switch`); the one going out keeps its text as typed only if it has
+            // errors, as on leaving the TEXT view.
+            BehaviorAction::Tab(t) => {
+                if ui.tab != *t {
+                    draft.tidy_text();
+                    ui.tab = *t;
+                }
+            }
             // The list opens and replaces behaviors: the behavior's draft comes back first (`assists::switch`).
-            BehaviorAction::Behaviors if ui.view == BehaviorView::Assists => ui.view = BehaviorView::Graph,
+            BehaviorAction::Behaviors if ui.tab == BehaviorTab::Assists => ui.tab = BehaviorTab::Behavior,
             BehaviorAction::Select(n) => ui.selected = Some(Selection::Node(*n)),
             BehaviorAction::Deselect => ui.selected = None,
             BehaviorAction::TestMode(m) => ui.test_mode = *m,

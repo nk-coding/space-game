@@ -701,13 +701,14 @@ mod tests {
         use bevy::ecs::system::RunSystemOnce;
         use data::behavior::ListKind;
         use super::super::assists::{leave as leave_tab, switch, write};
+        use super::super::BehaviorTab;
         use super::super::controls::SliderDrag;
         let mut world = world(Storage::new(MemoryBackend::default()));
         world.init_resource::<SliderDrag>();
         world.run_system_once(open).unwrap();
         world.run_system_once(autosave).unwrap();
         let behavior = world.resource::<BehaviorDraft>().text.clone();
-        world.resource_mut::<BehaviorUi>().view = BehaviorView::Assists;
+        world.resource_mut::<BehaviorUi>().tab = BehaviorTab::Assists;
         world.run_system_once(switch).unwrap();
         let draft = world.resource::<BehaviorDraft>();
         assert_eq!((draft.editor().unwrap().kind(), draft.program().rules.len(), draft.name.as_str()), (ListKind::Assists, 0, "Pilot assists"));
@@ -739,9 +740,33 @@ mod tests {
         assert_eq!(world.resource::<BehaviorDraft>().text, behavior);
         world.run_system_once(switch).unwrap();
         assert_eq!(world.resource::<BehaviorDraft>().text, "always -> brake(toggle2)\n");
-        world.resource_mut::<BehaviorUi>().view = BehaviorView::Graph;
+        world.resource_mut::<BehaviorUi>().tab = BehaviorTab::Behavior;
         world.run_system_once(switch).unwrap();
         assert_eq!(world.resource::<BehaviorDraft>().text, behavior);
+        // The TEXT view edits the list as the blueprint's rule text.
+        world.resource_mut::<BehaviorUi>().tab = BehaviorTab::Assists;
+        world.run_system_once(switch).unwrap();
+        let typed = "always -> brake(toggle2, off)\nwhen lock_held -> hold_station(ally)\n";
+        assert!(world.resource_mut::<BehaviorDraft>().set_text(typed));
+        world.run_system_once(write).unwrap();
+        let want = Some(data::AssistList { target: None, rules: vec!["always -> brake(toggle2, off)".into(), "when lock_held -> hold_station(ally)".into()] });
+        assert_eq!(world.resource::<PlayerDesign>().blueprint().assists, want);
+        // A typed error: the design keeps the last valid list, and the text as typed survives a trip to BEHAVIOR.
+        assert!(!world.resource_mut::<BehaviorDraft>().set_text("always -> orbit\n"));
+        world.run_system_once(write).unwrap();
+        assert_eq!(world.resource::<PlayerDesign>().blueprint().assists, want);
+        world.resource_mut::<BehaviorUi>().tab = BehaviorTab::Behavior;
+        world.run_system_once(switch).unwrap();
+        assert_eq!(world.resource::<BehaviorDraft>().text, behavior);
+        world.resource_mut::<BehaviorUi>().tab = BehaviorTab::Assists;
+        world.run_system_once(switch).unwrap();
+        let draft = world.resource::<BehaviorDraft>();
+        assert_eq!((draft.text.as_str(), draft.errors.len()), ("always -> orbit\n", 1));
+        assert_eq!(draft.program().rules.len(), 2);
+        // Leaving the screen ends the visit: next time the tab reads the design again.
+        world.run_system_once(leave_tab).unwrap();
+        world.run_system_once(switch).unwrap();
+        assert_eq!(world.resource::<BehaviorDraft>().text, typed);
     }
 
     #[test]
