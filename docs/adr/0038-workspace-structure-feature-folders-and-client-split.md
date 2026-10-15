@@ -5,6 +5,8 @@
   (4) the big files split `d4dc265`, `70a0a59`, `815393b`, `5cd0db3`, `7a7c20b`, `31cae25`. Tests, clippy, every
   determinism and fight hash and the screens unchanged. Build times (before; the after column waits for the VM's
   memory): [`docs/results/2026-10-14-workspace-structure-build-times.md`](../results/2026-10-14-workspace-structure-build-times.md).
+  Amended 2026-10-15 by [ADR-0040](0040-arena-library-in-core.md): `arena` moved to `core/` (the client uses it), its
+  CLI is `tools/arena-cli`.
 - Date: 2026-10-14
 - Decided by: Niklas (approved the lead's proposal as written, 14 Oct 2026; to run right after the chain-reaction work)
 - Related: [ADR-0003](0003-crate-architecture.md), [ADR-0034](0034-fast-everyday-web-builds-and-shared-compile-cache.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0036](0036-arena-crate.md), `CLAUDE.md` "Crates"

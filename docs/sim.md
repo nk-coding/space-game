@@ -368,6 +368,21 @@ and the assist state hashes the lock, the pause and the ask instead of the targe
 `assists_scenario_is_deterministic_and_the_assists_act` checks that auto-lock asks and pauses at times and that every
 rule decides.
 
+**Fight codes and the rules probes** ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 1, 15 Oct 2026,
+release builds; `docs/arena.md` "Fight codes"): no sim change, and every stream above byte-identical (core, flight,
+behavior, salvage, voyage, assists at seed 42 and 900 ticks, `runner_vs_raiders` to its end at 1273), native x86_64 vs
+wasm32-wasip1 **identical**. A fight is re-watched by simulating its spec again, so a fight code (`SGF1:…`) is checked
+the same way: `scripts/determinism-check.sh --fight SGF1:…` runs the code's fight native and in wasm to its end and
+says whether it ends as recorded. Three codes printed by the native CLI: the Runner against three raiders (seed 3, won
+at 1711 ticks, `afa541fe50b16945`), an automaton hunter against two raiders (seed 3, won at 830, `920793be9270f63e`)
+and an evolved skiff from `arena evolve` against two raiders (won at 641, `09b55f03c07161da`): **identical**, and both
+sides `as recorded`, with today's rules fingerprint equal in wasm (`rules=same`). The two rules probes
+(`crates/core/arena/probes/`, pinned here like the streams; `--fight close_quarters --seed 1`, `--fight warden --seed
+2`): `close_quarters` 300 ticks `dcd603e2f48f8a88`, `warden` 300 ticks `bcda68d2360256f4`, **identical**; the base
+pack's rules fingerprint with them is `87f8e44db8186359`. The browser's fight viewer replays the same codes to the
+same final hashes (`docs/client.md` "Fight viewer"). A change to the sim changes the probes' hashes and with them
+every code's fingerprint: write the new values here.
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram

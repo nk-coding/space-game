@@ -316,8 +316,27 @@ Next session:
     switch it;
   - LOCK TARGET (Tab, the old "lock next"): the nearest enemy, then the next by distance, ordered in the sim;
   - every AI determinism stream byte-identical; the `assists` stream changes (it exercises both).
+- **The evolution lab, widened** ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md), 15 Oct 2026; Niklas: re-watch
+  any fight, save evolved designs, an end-user feature like a building, start from his own ships). Track L4 of
+  `docs/plans/evolution-lab.md` is now GDR-0092's plan, in nine steps:
+  1. **Built 15 Oct 2026**: the arena library moved to `crates/core/arena`, the CLI to `crates/tools/arena-cli`
+     ([ADR-0040](adr/0040-arena-library-in-core.md); same commands and output); fight codes (`SGF1:`, the spec, the packs,
+     the rules fingerprint over the content and two 300-tick probes, the record) printed by `arena fight` and per
+     generation by `arena evolve`; the fight viewer `?scene=fight&fight=<code>` (`docs/client.md` "Fight viewer":
+     no pilot, pause, 0.25–8×, 1 s back and forward through keyframes, from the start, follow a clicked ship,
+     `AS RECORDED` or the changed rules at the end); side looks by owner (side 0 teal, side 1 coral whatever the
+     faction); `determinism-check.sh --fight <code>`; every determinism stream byte-identical.
+  2. every fight of a run kept (lineage, per-job records, snapshot and resume, budgeted breeding; `arena replay`);
+  3. results that can launch (frame coordinates, locks, the pre-filter with mind capacity and the hold);
+  4. the lab v1 in the game (the EVOLUTION building and layer, one start, threads natively and slices on the web,
+     persistence, SAVE AS DESIGN), behind `?lab=1`;
+  5. trials (the `TrialKind` abstraction, the test-range waves in shared code, goals, VALIDATE);
+  6. everything mutates (behavior structure, assists with a stand-in pilot, several starts, the LOCKS UI);
+  7. co-evolution (the ARMS RACE);
+  8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
+  9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab's screen (track L4), dev-only.
+  1. The evolution lab, GDR-0092 step 2 (every fight of a run kept).
 
 ## Phase 4: measurement
 

@@ -87,6 +87,7 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `scene=watch&behavior=<id>` | TEST IN RANGE, watch: the player's design flies unpiloted on the behavior (a content or saved one; without `behavior` the design's own) against raider waves, the camera follows it; T returns to the drydock |
 | `scene=alongside&behavior=<id>` | TEST IN RANGE, fly alongside: you fly the design, a second copy is a wingman on the behavior |
 | `scene=voyage&voyage=<id>` | launch that voyage at once (without `voyage`: the one the voyage map selects when it opens), for development: recorded in the career when it may launch, else a practice run that is never saved ([Voyages](#voyages)) |
+| `scene=fight&fight=<code>` | the fight viewer: an arena fight replayed from its fight code (`SGF1:…`, printed by `arena fight` and `arena evolve`; [Fight viewer](#fight-viewer)) |
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
@@ -156,7 +157,51 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   about half a minute (Shift+R starts over), and with the base numbers (regen 1.5/s against about 0.4 per
   hit) the bubbles rarely empty; collapses need concentrated fire.
 - **Voyage** (`?scene=voyage&voyage=<id>`, home's V): see [Voyages](#voyages).
+- **Fight viewer** (`?scene=fight&fight=<code>`): see [Fight viewer](#fight-viewer).
 - **Load test**: see below.
+
+## Fight viewer
+
+(`replay.rs`, [GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 1, 15 Oct 2026.) `?scene=fight&fight=<code>`
+re-simulates an arena fight from its fight code (`arena::FightCode`, `docs/arena.md` "Fight codes") in the flight
+view, as a spectator. `arena fight` prints a code for every fight after its table and `arena evolve` one per
+generation (its best child's hardest fight); paste one after `fight=`, e.g.
+`http://10.77.9.2:8080/?scene=fight&fight=SGF1:eNp1…` (base64url needs no escaping in a URL).
+
+- **The world** is the arena's (`arena::FightSetup`): the packs' content only (no tuning scales, no player
+  behaviors), owners 1 and 2, every core running. The scene (`SceneKind::Fight`) steps it with no inputs: what the
+  controls and the fleet bar queue for a tick is dropped (`replay::drop_inputs`), and the tuning panel doesn't touch
+  it. After every tick the fight's `arena::Referee` looks, as `arena::Fight` does, so the replay ends on the tick the
+  record does; then the world holds (`SimWorld::hold`: no more steps or events) and the clock pauses.
+- **Looks**: side 0 is drawn teal and side 1 coral whatever their designs' faction (`SimWorld::looks`, an owner →
+  `ship_model::Look` map; elsewhere a ship looks as its faction does), so an automaton against an automaton shows
+  which is which. Ships whose design is a blueprint text are drawn from the setup's blueprints (`SimWorld::adopt`).
+- **Camera**: frames both sides (as the load test; framing keeps 70 px at the top and bottom clear for the HUD and
+  eases faster when the replay plays faster). A click on a ship follows it (zoomed in to at least 18 px per metre;
+  the HUD then shows its hull, speed and what its behavior targets, as in watch mode); a click on empty space frames
+  again; F frees the camera; drag pans, the wheel zooms. Off-screen markers point at every ship of the other side
+  (of all sides while framing), in its side's colour.
+- **Playback** (the `replay` actions of the action map, context `replay`, so they share keys with flying, which a
+  replay doesn't use): **Space** or K pause and play (at the end: play again from the start), **,** and **.** slower
+  and faster (0.25×, 0.5×, 1×, 2×, 4×, 8×; `Time<Virtual>`'s speed, back to 1× when flight ends), **←** / **→** (or J
+  / L) one second back and forward, **R** (or Home) from the start. The flight menu (Esc) pauses too; M goes home.
+- **Seeking**: the first pass keeps a copy of the `Sim` and the referee every 10 s (`replay::KEYFRAME_TICKS`).
+  Back restores the keyframe before the target and runs on; forward runs ahead; both within the frame, then every
+  piece view is rebuilt (`SimWorld::rebuild_views`) and effects and shield ripples are cleared.
+- **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`; subtitle `0:23 / 1:30 · 2× · BUILD POINTS
+  120 / 132 VS 12 / 47`; a timeline under the view (how far the fight is in teal, how far it has been simulated in
+  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the help line lists the replay keys.
+- **Checks**: today's rules fingerprint is computed once (`arena::rules_fingerprint`, about 5 ms natively); a code
+  fought under other rules shows `THE RULES HAVE CHANGED SINCE THIS FIGHT` for its first 6 s and plays anyway. At the
+  end the result is compared with the record: `AS RECORDED · WON AT 0:57 · HASH afa541fe50b16945` in teal, or `THE
+  RULES HAVE CHANGED SINCE THIS FIGHT` / `NOW LOST AT 0:41 (RECORDED: WON AT 0:23)` in coral. A code that doesn't read
+  or build shows `THIS FIGHT CODE DOESN'T PLAY` and why, over an empty world.
+- **Checked** (15 Oct 2026, web-dev build in headless Chromium): the Runner against three raiders (seed 3, from
+  `arena fight`) and an automaton hunter against two raiders (two non-player factions: the hunter teal) both end
+  `AS RECORDED` with the CLI's final hashes (`afa541fe50b16945`, `920793be9270f63e`), so the browser's wasm replays
+  the native fight tick for tick; speeds, back, forward, from the start and following a clicked ship at 1280×720,
+  1600×900 and 2560×1440; a code with another fingerprint shows the changed-rules banner and plays on. Tests: `world::replay` (stepped and seeked through keyframes the world ends as recorded; changed rules
+  and bad codes are told).
 
 ## Load test and determinism in the browser
 

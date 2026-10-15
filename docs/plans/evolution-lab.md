@@ -11,8 +11,8 @@ half) to what the lab needs first. Numbers marked *(placeholder)* are for feel.
 | L1 Fights | `crates/tools/arena`: `FightSpec` (seed, two sides of entries: a design as content id or blueprint text, a behavior as content id or text, count, formation; start distance; time limit), `run_fight` → `FightResult` (winner, time, build points lost per side, damage dealt), the arena score (win 1 / loss 0; at the time limit 0.5 + 0.5 × (share of the enemy's build points destroyed − share of own lost)); a native CLI `arena fight|matrix` on every core; a determinism test (native vs wasm hash of a fight) | — | M |
 | L2 Voyage fitness | Score a design by the headless voyage runner (clear rate, time, damage taken over seeds), as a library call | L1 | S |
 | L3 Evolution core | Run configuration (what evolves: behavior / design / both / a sequence of stages; fitness: arena pool or voyages; limits: frame, build-point budget, unlocked parts, mirror lock; start design; population, generations, seed); genomes; mutation and crossover through `data::edit` and `data::behavior_edit` (every mutant legal); a quick pre-filter with `sim::design_report`; the archive (a small grid of niches, e.g. top speed × weapon reach, so results differ); a pool of the best so far plus archetypes; `Run::step(budget)` that does a slice of work and can be called every frame; CLI `arena evolve` | L1, L2 | L |
-| L4 Lab screen | A dev-only station place (behind a dev switch); set up a run, watch it (best per generation, the archive as ship cards), replay a card's fight in the client, SAVE AS DESIGN to the blueprints | L3 | M |
-| L5 Benchmark rating | In the test range: a fixed ladder of benchmark opponents over seeds → a rating, win rates per opponent, what killed you (player-facing) | L1 | M |
+| L4 Lab screen | *Widened by [GDR-0092](../gdr/0092-evolution-lab-for-your-own-ships.md) (15 Oct 2026): a player-facing EVOLUTION building in nine steps; step 1, the fight viewer, built.* Was: a dev-only station place (behind a dev switch); set up a run, watch it (best per generation, the archive as ship cards), replay a card's fight in the client, SAVE AS DESIGN to the blueprints | L3 | M |
+| L5 Benchmark rating | *Now THE LADDER, one trial of [GDR-0092](../gdr/0092-evolution-lab-for-your-own-ships.md) (later).* Was: in the test range: a fixed ladder of benchmark opponents over seeds → a rating, win rates per opponent, what killed you (player-facing) | L1 | M |
 
 Order: L1 first (it is useful alone: balance numbers from the CLI); then L2 and L3; L4 once L3 steps; L5 any time
 after L1.
@@ -63,5 +63,6 @@ Open after L3 (for the lead):
 
 - The archive's two axes (what makes designs "different").
 - How a lab card's fight is replayed in the client (a fight code in the URL like `?scene=fight&fight=<code>`, or
-  directly from the lab).
+  directly from the lab). *Decided 15 Oct 2026 ([GDR-0092](../gdr/0092-evolution-lab-for-your-own-ships.md)): both;
+  the URL form is built.*
 - How many fights per frame the browser can afford while the lab is open.

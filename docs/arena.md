@@ -208,7 +208,9 @@ fights in a hundred.
 The same spec gives the same result and hash on every platform: the arena adds only spawn positions (`+ − × ÷` on
 the sim's PCG stream) and reads the sim. `scripts/determinism-check.sh --fight NAME [--seed N]` builds the
 `fight_hashes` example (the specs of `crates/core/arena/fights/`, compiled in) natively and for `wasm32-wasip1`, runs both
-until the fight ends and compares the per-tick hashes.
+until the fight ends and compares the per-tick hashes. It also runs the rules probes (`--fight close_quarters --seed 1`,
+`--fight warden --seed 2`) and fight codes (`--fight SGF1:…`: the code's own spec and seed to its end, then
+`# record=as recorded` or `DIFFERS`); results in `docs/sim.md` "Fight codes and the rules probes".
 
 **Result (14 Oct 2026, release builds, `dev` with the arena):** native x86_64 vs wasm32-wasip1 under Node 24
 **identical** for `runner_vs_raiders` seeds 1 (a loss, 2624 ticks), 2 (a loss, 1855), 11 (the time limit, 2700) and

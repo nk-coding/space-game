@@ -1,6 +1,7 @@
 # ADR-0036: An engine-free `arena` crate for headless fights, evolution and benchmarks
 
-- Status: Accepted
+- Status: Accepted. Amended 2026-10-15 by [ADR-0040](0040-arena-library-in-core.md): the library lives in
+  `crates/core/arena`, the CLI is the package `arena-cli` in `crates/tools/`.
 - Date: 2026-10-14
 - Decided by: Niklas (GDR-0083's "engine-free crate, both")
 - Related: [ADR-0003](0003-crate-architecture.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0025](0025-main-repo-holds-only-chosen-code.md), [GDR-0032](../gdr/0032-balancing-arena-evolution.md), [GDR-0083](../gdr/0083-evolution-lab.md), `docs/plans/coop-arena.md` 5.7

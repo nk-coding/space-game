@@ -1,6 +1,9 @@
 # GDR-0083: An evolution lab: configurable evolution of designs and behaviors, a dev-only place in the shipyard first, a benchmark rating for players later
 
-- Status: Accepted
+- Status: Accepted. Superseded in part on 2026-10-15 by [GDR-0092](0092-evolution-lab-for-your-own-ships.md): the lab is
+  player-facing (a station building unlocked by research), not a dev-only place, and its purpose is improving your
+  own ships, with GDR-0083's benchmark rating one trial among several; its configurable runs, the engine-free crate
+  and SAVE AS DESIGN stay.
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions, interactively)
 - Related: [GDR-0032](0032-balancing-arena-evolution.md), [GDR-0030](0030-no-economy.md), [GDR-0033](0033-multiplayer-coop-and-arena.md), [ADR-0036](../adr/0036-arena-crate.md), `docs/plans/coop-arena.md`, `docs/plans/evolution-lab.md`

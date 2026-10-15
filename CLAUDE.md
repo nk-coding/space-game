@@ -30,7 +30,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - The Bevy client (web first, later desktop and Android; rendering at 60 fps with interpolation, UI, input) is three
   crates, each using only the ones below it (ADR-0038): `kit` (the toolkit: runtime atlas and its shader, style
   tokens, mesh building, the bevy_ui widget kit and fonts, UI icons, clipboard, launch parameters; knows nothing about
-  ships or the sim), `world` (the running game: the sim bridge, scenes, ship views, effects, shields, camera,
+  ships or the sim), `world` (the running game: the sim bridge, scenes and the fight viewer, ship views, effects, shields, camera,
   controls, the flight HUD and fleet bar, test range, voyages and their transitions, storage, the career and what
   the player owns, `world::player`, the player's settings and the action map's input, `world::settings`) and `game` (the screens and `main`: drydock, BEHAVIOR screen, research, FLEET,
   voyage map, shipyard, home, debrief). What two screens share moves down into `world`.
@@ -41,7 +41,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - `content-tool`: CLI over `data` (validate, export-json, list, and `wiki-data`: the wiki's generated pages and data, checking its hand-written pages).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
 - `arena` (`crates/core/arena`, ADR-0040): headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage::runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`). No Bevy, no I/O or threads; builds for wasm32, used by the game and the CLI (ADR-0036, `docs/arena.md`).
-- `arena-cli` (`crates/tools/arena-cli`): the native `arena` binary (`fight`, `matrix`, `evolve`) on every core, a thin layer of arguments, threads, tables and files over `arena`: `cargo run --release -p arena-cli -- fight crates/core/arena/fights/runner_vs_raiders.ron --seeds 50`.
+- `arena-cli` (`crates/tools/arena-cli`): the native `arena` binary (`fight`, `matrix`, `evolve`) on every core, a thin layer of arguments, threads, tables and files over `arena`: `cargo run --release -p arena-cli -- fight crates/core/arena/fights/runner_vs_raiders.ron --seeds 50`. It prints fight codes (`SGF1:…`, GDR-0092): the game replays one at `?scene=fight&fight=<code>` (`docs/client.md` "Fight viewer"), and `scripts/determinism-check.sh --fight <code>` checks it native against wasm.
 - Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023).
 
 ## Hard rules
