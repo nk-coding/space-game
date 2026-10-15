@@ -349,7 +349,7 @@ fn blocked_guns_and_burning_plumes_name_the_parts() {
     assert_eq!(gun.want, 0.0);
 }
 
-/// The best design of the 60-point skiff evolution (`crates/tools/arena/runs/skiff_design_60bp.ron`, 14 Oct 2026):
+/// The best design of the 60-point skiff evolution (`crates/core/arena/runs/skiff_design_60bp.ron`, 14 Oct 2026):
 /// reactors in front of two cannons, slopes in front of two more, lasers facing sideways, two automaton cores
 /// (control load 12 on a capacity of 8, so two cannons and the lasers idle).
 const SHUTTERED: [P; 20] = [

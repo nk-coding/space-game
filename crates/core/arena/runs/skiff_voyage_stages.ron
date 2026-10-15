@@ -1,6 +1,6 @@
 // Evolve the starter ship for the first voyage in stages: its behavior first, then its design (the starter's parts
 // only, the parts a new game has), then both; scored by the headless voyage runner (goal cleared, time, hull lost).
-// `cargo run --release -p arena -- evolve crates/tools/arena/runs/skiff_voyage_stages.ron --out /tmp/skiff_voyage`
+// `cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_voyage_stages.ron --out /tmp/skiff_voyage`
 // The archive is the default (acceleration × firepower): a design's measures, so the behavior stage keeps one cell
 // (a plain hill climb) and the later stages spread. PLACEHOLDER numbers.
 (

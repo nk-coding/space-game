@@ -21,7 +21,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 | `art/tokens.json` | All colours and style constants (compiled into the `art` crate and the wiki). Part icons live in the content pack: `content/base/icons/<key>.svg` (ADR-0028). |
 | `../space-game-archive/` | A separate local repo (14 Oct 2026) with what the game no longer uses but older records link to: the concept bundle (`concept/`: boards, UI mockups, the drydock rules in plain JS, data drafts, generators, the original CLAUDE.md; old paths `docs/concept/…`, `reference/…`, `boards/…`), the concept ship art (`ships/`, was `art/ships/`), the phase 7 screen mockups (`mockups/`, was `docs/plans/mockups/`), superseded plans and uncited screenshots. Nothing in this repo may depend on it. |
 | `content/base/` | The base game content pack (RON). Loaded exactly like a mod. |
-| `crates/` | Cargo workspace members, grouped (ADR-0038): `core/` (`data`, `sim`: engine-free, deterministic), `client/` (`art`, `kit`, `world`, `game`: the Bevy client), `tools/` (`arena`, `content-tool`). Every `crates/<group>/<crate>` with a `Cargo.toml` is a member. |
+| `crates/` | Cargo workspace members, grouped (ADR-0038): `core/` (`data`, `sim`, `arena`: engine-free, deterministic), `client/` (`art`, `kit`, `world`, `game`: the Bevy client), `tools/` (`arena-cli`, `content-tool`; ADR-0040). Every `crates/<group>/<crate>` with a `Cargo.toml` is a member. |
 
 ## Crates (ADR-0003, folders and the client split ADR-0038)
 
@@ -40,7 +40,8 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - `art`: style tokens (embedded), effect textures and the runtime SVG rasteriser. No Bevy.
 - `content-tool`: CLI over `data` (validate, export-json, list, and `wiki-data`: the wiki's generated pages and data, checking its hand-written pages).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.
-- `arena`: headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage::runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`) and the native `arena` CLI (`fight`, `matrix`, `evolve`) on every core (ADR-0036, `docs/arena.md`). No Bevy, no I/O or threads in the library.
+- `arena` (`crates/core/arena`, ADR-0040): headless, deterministic fights on `sim` (fight specs with a RON text form, results, the arena score, a steppable `Fight`), the voyage fitness (`arena::voyage` over `sim::voyage::runner`), the evolution (`arena::evolve`: run files in RON, mutation and crossover through the editing models, a MAP-Elites archive, a steppable `Run`). No Bevy, no I/O or threads; builds for wasm32, used by the game and the CLI (ADR-0036, `docs/arena.md`).
+- `arena-cli` (`crates/tools/arena-cli`): the native `arena` binary (`fight`, `matrix`, `evolve`) on every core, a thin layer of arguments, threads, tables and files over `arena`: `cargo run --release -p arena-cli -- fight crates/core/arena/fights/runner_vs_raiders.ron --seeds 50`.
 - Later: `net` (host-authoritative co-op, join codes, a tiny relay; browser transports are no longer required, ADR-0006/ADR-0023).
 
 ## Hard rules

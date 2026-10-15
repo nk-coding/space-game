@@ -1,4 +1,4 @@
-# Arena (`crates/tools/arena`)
+# Arena (`crates/core/arena`)
 
 Headless, deterministic fights between designs on the real simulation: track **L1** of the evolution lab
 (`docs/plans/evolution-lab.md`), written 14 Oct 2026; the voyage fitness (**L2**) and the evolution (**L3**) the same
@@ -8,8 +8,10 @@ and evolution); the fight spec and the score follow `docs/plans/coop-arena.md` 3
 *placeholder* is for feel.
 
 The crate depends on `data` and `sim` (plus `serde` and `ron`, already used by `data`); no Bevy, no I/O, no threads,
-no wall clock in the library; it builds for `wasm32-unknown-unknown`. `crates/tools/arena/clippy.toml` carries the sim's
-bans on std's transcendental float functions. The native CLI is the crate's binary (`src/bin/arena.rs`, below).
+no wall clock in the library; it builds for `wasm32-unknown-unknown`. `crates/core/arena/clippy.toml` carries the sim's
+bans on std's transcendental float functions. It lives in `crates/core/` since 15 Oct 2026 (it was `crates/tools/arena`,
+[ADR-0040](adr/0040-arena-library-in-core.md)), so the game can use it; the native CLI is the binary `arena` of its own
+package `arena-cli` (`crates/tools/arena-cli`, below).
 
 ## The fight spec
 
@@ -18,7 +20,7 @@ options: `Some(..)` may be left out, unknown fields are errors, comments are fin
 and what a fight code will carry later.
 
 ```ron
-// crates/tools/arena/fights/runner_vs_raiders.ron
+// crates/core/arena/fights/runner_vs_raiders.ron
 (
     seed: 1,
     sides: [
@@ -116,13 +118,14 @@ behavior, content behaviors that do not compile. Errors name the side and entry.
 
 ## The CLI
 
-The crate's binary (`src/bin/arena.rs`), not an example: it is the arena's tool for balance numbers and
-`arena evolve` ([Evolution](#the-cli-arena-evolve)) (like `content-tool`), not a one-off measurement; the examples
-hold checks (`fight_hashes`).
+The binary `arena` of the package `arena-cli` (`crates/tools/arena-cli/src/main.rs`), not an example: it is the arena's
+tool for balance numbers and `arena evolve` ([Evolution](#the-cli-arena-evolve)) (like `content-tool`), not a one-off
+measurement; the library's examples hold checks (`fight_hashes`). It keeps only arguments, its thread pool, tables and
+files; everything else is the library's.
 
 ```sh
-cargo run --release -p arena -- fight crates/tools/arena/fights/runner_vs_raiders.ron --seeds 200
-cargo run --release -p arena -- matrix halvex_runner automaton_raider rim_skiff my_design.ron --seeds 50
+cargo run --release -p arena-cli -- fight crates/core/arena/fights/runner_vs_raiders.ron --seeds 200
+cargo run --release -p arena-cli -- matrix halvex_runner automaton_raider rim_skiff my_design.ron --seeds 50
 ```
 
 - `arena fight <spec.ron> [--seeds N] [--threads N]`: runs the spec with its seed and the N − 1 after it, prints a
@@ -156,7 +159,7 @@ fights in a hundred.
 
 The same spec gives the same result and hash on every platform: the arena adds only spawn positions (`+ − × ÷` on
 the sim's PCG stream) and reads the sim. `scripts/determinism-check.sh --fight NAME [--seed N]` builds the
-`fight_hashes` example (the specs of `crates/tools/arena/fights/`, compiled in) natively and for `wasm32-wasip1`, runs both
+`fight_hashes` example (the specs of `crates/core/arena/fights/`, compiled in) natively and for `wasm32-wasip1`, runs both
 until the fight ends and compares the per-tick hashes.
 
 **Result (14 Oct 2026, release builds, `dev` with the arena):** native x86_64 vs wasm32-wasip1 under Node 24
@@ -248,10 +251,10 @@ the voyages, kept in a MAP-Elites archive (GDR-0032, GDR-0083; the method of `do
 ### A run is a text file
 
 `RunConfig` has a RON form (`RunConfig::from_ron`, `to_ron`; the content's RON options: `Some(..)` may be left out,
-unknown fields are errors, comments are fine). Examples in `crates/tools/arena/runs/`:
+unknown fields are errors, comments are fine). Examples in `crates/core/arena/runs/`:
 
 ```ron
-// crates/tools/arena/runs/skiff_design_60bp.ron
+// crates/core/arena/runs/skiff_design_60bp.ron
 (
     seed: 1,                          // the run's own random stream
     evolve: Design,                   // Behavior | Design | Both | Stages([...]), below
@@ -389,7 +392,7 @@ seed gives another run. The CLI on 1 and on 16 threads printed identical tables 
 ### The CLI: `arena evolve`
 
 ```sh
-cargo run --release -p arena -- evolve crates/tools/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design [--best 8] [--threads N]
+cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design [--best 8] [--threads N]
 ```
 
 Breeds on the main thread and runs each generation's jobs on every core (`--threads`, default all), prints a
@@ -400,7 +403,7 @@ generation, parts). With `--out DIR` it writes the best `--best` (8) elites: `el
 
 ### What the example runs found
 
-`crates/tools/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` with ADR-0037 (simultaneous fire, shared think
+`crates/core/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` with ADR-0037 (simultaneous fire, shared think
 ticks, no spawn-order stopgap); the archive's best after generations 0, 10, 20 and 29:
 
 | Run | Start's score | Archive best, gen 0 / 10 / 20 / 29 | Cells | Best elite |

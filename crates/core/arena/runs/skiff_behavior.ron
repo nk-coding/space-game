@@ -1,6 +1,6 @@
 // Evolve a behavior for the starter ship (the rim skiff) against two and three raiders and a hunter; the design
 // stays as it is.
-// `cargo run --release -p arena -- evolve crates/tools/arena/runs/skiff_behavior.ron --out /tmp/skiff_behavior`
+// `cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_behavior.ron --out /tmp/skiff_behavior`
 // The archive spreads behaviors by how far from the enemy they fight and how many rules they run (`docs/arena.md`
 // "Evolution"). PLACEHOLDER numbers.
 (

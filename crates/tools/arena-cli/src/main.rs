@@ -1,4 +1,5 @@
-//! The arena's native CLI (`docs/arena.md`): runs fights on every core and prints Markdown tables.
+//! The arena's native CLI (`docs/arena.md`, ADR-0040): runs fights on every core and prints Markdown tables. A thin
+//! binary over the `arena` library (`crates/core/arena`): arguments, the thread pool, tables and files.
 //!
 //! ```text
 //! arena fight <spec.ron> [--seeds N] [--threads N]

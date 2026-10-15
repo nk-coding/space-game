@@ -3,7 +3,7 @@
 //! both and compares.
 //!
 //! Usage: `fight_hashes [--scenario runner_vs_raiders|skiff_mirror] [--seed N] [--ticks N]`: the fight specs of
-//! `crates/tools/arena/fights/` (compiled in: the WASI run has no filesystem), with the seed replaced.
+//! `crates/core/arena/fights/` (compiled in: the WASI run has no filesystem), with the seed replaced.
 
 const FIGHTS: [(&str, &str); 2] = [
     ("runner_vs_raiders", include_str!("../fights/runner_vs_raiders.ron")),

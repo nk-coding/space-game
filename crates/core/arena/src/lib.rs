@@ -13,7 +13,7 @@
 //!
 //! No Bevy, no I/O, no threads, no wall clock; builds for wasm32. The same spec gives the same result and hash
 //! on every platform (the sim's determinism rules apply here too: ordered containers, `sim::math` for any
-//! transcendental function). The native `arena` binary (`src/bin/arena.rs`) runs batches on every core.
+//! transcendental function). The native `arena` CLI (`crates/tools/arena-cli`, ADR-0040) runs batches on every core.
 //!
 //! ```
 //! let content = data::base_content();

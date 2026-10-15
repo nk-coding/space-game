@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-# Every crate under crates/<group>/ is a member (ADR-0038): core/ (data, sim: engine-free), client/ (art, kit, world,
-# game), tools/ (arena, content-tool). Experiments and benchmarks live in separate local repos (ADR-0025), e.g.
+# Every crate under crates/<group>/ is a member (ADR-0038): core/ (data, sim, arena: engine-free), client/ (art, kit,
+# world, game), tools/ (arena-cli, content-tool; ADR-0040). Experiments and benchmarks live in separate local repos (ADR-0025), e.g.
 # ../space-game-physics-bench.
 members = ["crates/*/*"]
 

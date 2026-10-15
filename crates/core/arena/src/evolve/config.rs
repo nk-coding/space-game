@@ -1,5 +1,5 @@
 //! The run configuration: what evolves, how it is scored, the limits, where it starts, how big it is. Plain data
-//! with a RON text form, so a run is a text file (`crates/tools/arena/runs/`, `docs/arena.md` "Evolution").
+//! with a RON text form, so a run is a text file (`crates/core/arena/runs/`, `docs/arena.md` "Evolution").
 
 use std::collections::BTreeSet;
 
