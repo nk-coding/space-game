@@ -73,7 +73,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0062](0062-first-playable-loop.md) | The first playable loop: start at home, short hand-made rim voyages, mind capacity 2 → 4 | Accepted | 2026-10-13 |
 | [0064](0064-lock-feed-forward-and-ai-flight-fixes.md) | The lock and `face` lead a moving target's turn; AI flight fixes from the balance study | Accepted | 2026-10-13 |
 | [0063](0063-salvage-and-research-v1.md) | Salvage and research v1: fly over wrecks, the haul is dismantled at home into research data, unlocks are unlimited | Accepted | 2026-10-13 |
-| [0065](0065-phase-7-screens-and-escort-action.md) | Phase 7 screens: debrief panel, research tree, star map, recall under the cargo, fleet formation, locked parts shown dimmed; an `escort` action | Accepted | 2026-10-13 |
+| [0065](0065-phase-7-screens-and-escort-action.md) | Phase 7 screens: debrief panel, research tree, star map, recall under the cargo, fleet formation, locked parts shown dimmed; an `escort` action | Accepted; the debrief's one-line summary replaced by the LOG ([GDR-0091](0091-log-building-and-voyage-history.md)) | 2026-10-13 |
 | [0066](0066-phase-7-wave-1-defaults.md) | Phase 7 wave 1 defaults: salvage values and fragments, cargo and collecting, the career model, the home screen | Accepted (provisional, lead); vanishing cargo superseded by [GDR-0076](0076-spilled-cargo-becomes-fragments.md); collecting speed and loose-item lifetime by [GDR-0079](0079-review-of-lead-defaults-14-oct.md) | 2026-10-13 |
 | [0067](0067-rams-pass-friendly-bubbles.md) | Rams pass friendly shield bubbles, like shots and plumes | Accepted | 2026-10-13 |
 | [0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md) | A voyage site clears when its enemies are destroyed or disarmed; only armed enemies block recall | Accepted | 2026-10-13 |
@@ -99,6 +99,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0088](0088-pilot-assists-weapon-groups-and-key-bindings.md) | Pilot assists as rules per design (fill idle channels, switchable in flight by key and condition), weapon groups 1–3 set in the drydock, an action map with a settings screen | Accepted | 2026-10-14 |
 | [0089](0089-play-test-15-oct-speed-salvage-waves-station.md) | Play-test of 15 Oct: at the top speed the velocity follows the push (the fade weighted by the push angle, a governor on the ship's own thrust), salvage settles to a slow drift, test-range waves bring the biggest enemies first, the station comes alive | Accepted (provisional, lead) | 2026-10-15 |
 | [0090](0090-action-map-settings-and-pause-menu.md) | The action map (every key an action with up to two inputs, defaults in `controls.ron`), SETTINGS with controls and display over home and flight, Esc in flight unlocks else opens the flight menu (pauses the test range only), assist toggle slots | Accepted | 2026-10-15 |
+| [0091](0091-log-building-and-voyage-history.md) | The LOG: a records mast by the gate that glows while a voyage's result is new, its tooltip the last voyage, its screen the last 50 voyages newest first; it replaces the one-line summary over home | Accepted | 2026-10-15 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

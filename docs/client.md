@@ -189,7 +189,7 @@ names in this document are found in the crate that holds them:
 |---|---|
 | `crates/client/kit` (the toolkit: knows nothing about ships or the sim) | `atlas` (+ `atlas.wesl`), `style`, `meshbuf`, `ui_kit` (+ `widgets`, `field`, `tip`, `fonts`, `transition`, `scrollbar`), `ui_icons`, `clipboard`, `params` (+ `RenderToggles`), `view` (`ViewScale`: the camera's zoom and place as the atlas and the icons read them, written by `world::camera`), `rng`; the fonts in `assets/fonts` |
 | `crates/client/world` (the running game) | `sim_bridge` (+ `PilotFocus`), `scene`, `ship_model`, `ship_view`, `part_icons` (part and ship icons: `ui_icons::IconShapes` for the content), `fx` (+ `blast`), `shield` (+ `shield.wesl`), `backdrop`, `camera` (+ `spawn_camera`), `controls`, `hud`, `flight_hud` (+ `text`, `markers`), `fleet_bar`, `test_range`, `tuning`, `mode`, `voyage` (+ `debrief`: the debrief's data), `warp_fx`, `storage`, `career`, `player` (`design`, `behaviors`, `library`: what the player owns) |
-| `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `research`, `map`, `debrief` (the panel), `drydock` (`panels/`: `spawn`, `sync`; `blueprints/`: `autosave`, `title`, `screens`, `handlers`, `sync`), `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
+| `crates/client/game` (the screens and `main.rs`) | `home`, `shipyard` (+ `gate`: the ring after a recall), `fleet`, `voyage_log` (the LOG), `settings`, `research`, `map`, `debrief` (the panel), `drydock` (`panels/`: `spawn`, `sync`; `blueprints/`: `autosave`, `title`, `screens`, `handlers`, `sync`), `behavior_ui`; `index.html` and `Trunk.toml` for the web build |
 
 ```
 RunFixedMainLoop      flight, before the ticks: fleet bar clicks → controls (keys, mouse, touch → PlayerInput, latched
@@ -372,6 +372,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
 | BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock): the mind | B, or a click on the mind |
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
+| LOG: the last voyages ([LOG](#log)) at the records mast; Esc, CLOSE or its ring button closes it | L, or a click on the mast |
 | Voyages: the camera flies to the gate, then the voyage map opens ([Voyage map](#voyage-map)); coming back the camera flies out from the gate | V, or a click on the gate |
 | Research: inert until its screen exists (track 7G) | R (nothing yet) |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
@@ -385,8 +386,9 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   drydock draws its grid, so the building area spans `0..w × −h..0` and the ship is docked where it was built (nose
   up). A bigger frame (cruiser 40 × 40) makes a bigger U and moves the buildings along; their sizes stay. The arms
   reach 3.5 m past the area, the gate's ring (7.5 m) stands 13 m beyond the tips with chevrons leading to it.
-  Research (with two dishes and an antenna) and the fabricator sit on the top wall, the test range's tower and its
-  target lane and the salvage bay under the bottom wall, the mind behind the base (joined by violet conduits), four
+  Research (with two dishes and an antenna), the fabricator and the LOG's records mast (on the arm's tip, the end
+  nearest the gate; GDR-0091) sit on the top wall, the test range's tower and its target lane and the salvage bay
+  under the bottom wall, the mind behind the base (joined by violet conduits), four
   escort moorings on two truss bridges running off the left edge (two in view, two past it).
 - **Detail** (`shipyard::draw`): plate runs in four tones with dark seams, a lattice truss along each outer face,
   three conduits (teal, gold, violet) along the inner faces, window rows (mostly lit or mostly dark by state), radiator fins,
@@ -395,7 +397,8 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   corner, work lights pooling from the walls, gold corner brackets, a teal light strip with lamps around the inside.
   Three gantry cranes span the arms with carriages riding them and hoist lines to the ship; four docking clamps
   reach in from the arms; six drones circle the ship. The mind has cognition banks, heat sinks, coolant runs and a
-  collar into the base; research a dome, server racks either side of its emblem and mounts for its dishes. The
+  collar into the base; research a dome, server racks either side of its emblem and mounts for its dishes; the LOG a
+  small house with windows, a lattice mast with two signal yards and teal lamps, and a teal beacon at its top. The
   bridges bend 45° into the mind's corner chamfers, the gate pylons are trusses from the arm tips to the gate's
   pods, the target lane hangs off its tower on a strut (GDR-0089).
 - **Life** (`shipyard::life`, GDR-0089; Niklas, 15 Oct 2026: "very static"): beacons (the navigation lights
@@ -404,7 +407,8 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   up its approach every 5 s (the fixed chevrons light one after another towards the gate, 0.11 s apart, each rising
   and falling in 0.45 s, so a wave takes about a second; Niklas, 15 Oct 2026: the moving arrows ran "way too
   fast"), the mind's spokes turning around a beating core, research's dishes sweeping and its orbit turning while
-  research runs. **Two shuttles** roam the station's left end on their own (Niklas, 15 Oct 2026: "roam more
+  research runs, and the LOG's mast glowing gold while a voyage's result is new (a soft glow and a thin ring at its
+  top, breathing between 0.7 and 1.15 of its size every 2.8 s; GDR-0091). **Two shuttles** roam the station's left end on their own (Niklas, 15 Oct 2026: "roam more
   freely ... not teleport"): each flies between 13 stops clear of the hulls (`Layout::shuttle_stops`: berths off
   the four moorings' mouths, beside the mind, research and the salvage bay, and open points between the bridges,
   past the gaps between the moorings and beside the mind), picking the nearest of three random stops next; it turns
@@ -435,8 +439,8 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   awake from the start, and only a career without voyages (no start) shows it dormant. **The moorings** hold FLEET's
   escorts (`EscortDesigns`; escort 1 top near, 2 bottom near, 3 and 4 past the edge), drawn as the drydock draws
   them, nose up, at most 0.45 × the drydock's scale and smaller when they would not fit (5 × 5.2 m); an occupied
-  mooring's windows and inner edge light up. **The fabricator and the salvage bay** stay dark (`LATER`) until they
-  have screens.
+  mooring's windows and inner edge light up. **The LOG** glows while the career has a voyage's result the LOG has not
+  shown (`Career::unread`). **The fabricator and the salvage bay** stay dark (`LATER`) until they have screens.
 - **Places and flights** (`shipyard::layout::Place`, `shipyard::fly`): a click or a tap on a place (an invisible UI
   node over it, hit-tested by `ui_kit` like any button, so touch works) or its key flies the camera there in 0.6 s
   (a smootherstep of the time since it began, so the same at any frame rate) around the flight's zoom anchor: the one
@@ -456,7 +460,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   and its world fades, home's camera waits on the drydock's last view for that (`EXIT_SECONDS`, `Fly::after`) and then
   flies out while the cranes return and the yard fades back in. The other screens go back the same way from their
   place (the mind, the lab, the test range for any flight, the gate after a voyage while its debrief is open); when
-  FLEET closes the camera flies back out from the moorings once it has closed. Home's words and labels fade out
+  FLEET or the LOG closes the camera flies back out from the moorings or the mast once it has closed. Home's words and labels fade out
   when the camera leaves the yard and fade in when it rests there again; the labels follow the camera meanwhile
   (moved by their transforms), the invisible click areas come and go at once.
 - **Labels** are small UI text over the world (titles 11 px, the line under them 8.5 px, at the 1280 × 720 layout),
@@ -465,12 +469,13 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   HAUL` (coral), `FLEET` / `MOORINGS · CORES 2 / 2` (the fleet's logic cores against the mind, coral when over),
   `RESEARCH` / `2 READY` (gold while lit, else dim; `NOTHING READY` while lit with nothing to pay, `NO DATA YET`
   while dark), `VOYAGES` / `THE GATE · HALVEX DRIFT` (teal: the voyage the map will select; `DORMANT` while no
-  voyage is open), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
+  voyage is open), `LOG` / `NO VOYAGES YET` (dim), `NEW · SHIPYARD APPROACH` or `2 NEW` (gold while a result is new),
+  `3 VOYAGES` (grey), `FABRICATOR` and `SALVAGE BAY` / `LATER`. Top left `THE SHIPYARD · RIM` and the working design's name;
   bottom right the career's notes (a head and a line each; the two most serious, coral before gold, and how many
   more the console has): a new game and its start's summary, a save kept as it is, content that changed under the
   save, `?save=`, `?unlock=all`, an escort whose design is gone, a refused launch ([Career](#career)). After a voyage
-  the debrief covers the right side until dismissed, then its one-line summary sits top left under the design's
-  name ([Voyages](#voyages)). The place names are UI chrome in code until content has places.
+  the debrief covers the right side until dismissed ([Voyages](#voyages)); the LOG keeps the result (its tooltip is
+  the last voyage in one line). The place names are UI chrome in code until content has places.
 - **The camera**: on the yard it shows the station's overview (from the near moorings to past the gate, 80 × 45 m
   for the frigate frame) and every place's label, all at least 18 px inside the window (`MARGIN`) at any aspect
   (`shipyard::layout::fit_tagged`, tested at 1280 × 720, 1600 × 900, 4:3, 5:4, 3440 × 1305 and 1080 × 1350; 13 Oct
@@ -482,7 +487,9 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   find the camera as they left it.
 - **Modes**: the station and the screen are spawned once and shown only at home (the walls and cranes in the
   drydock too), and fade out while FLEET opens (a covering screen, [Screen transitions](#screen-transitions)) (it stays a layer for now; the moorings view can take its place
-  later). Coming back: the ring button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`,
+  later). **The layers over home** (FLEET, SETTINGS, the LOG) leave the station barely showing, so home's words,
+  labels and click areas and the debrief's panel step aside while one is open (15 Oct 2026, Niklas: the summary
+  line showed on top of SETTINGS), and home's places and keys wait. Coming back: the ring button top left of the drydock and the BEHAVIOR screen (`DrydockAction::Menu`,
   `BehaviorAction::Menu`), and in any flight M or the ring top left of the HUD.
 
 ## Career
@@ -597,7 +604,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
 - **Counts** for the debrief: kills are the enemy's `VesselLost` events (a split-off half counts on its own), ships
   lost the player's.
 - **The debrief** (`debrief.rs`, its data `voyage/debrief.rs`, after `home-b.png`): after a voyage, a panel over home's right side (420 px, on a
-  veil, above home's layout and independent of it; hidden while FLEET is open) until DISMISS, Esc or Enter: `VOYAGE
+  veil, above home's layout and independent of it; hidden while FLEET, SETTINGS or the LOG is open, whose Esc is
+  theirs) until DISMISS, Esc or Enter: `VOYAGE
   HOME · HAUL UNLOADED` (or `SHIP LOST · RECALLED HOME`, `PRACTICE RUN · NOT SAVED`), the voyage's name, chips for
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
   `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
@@ -608,10 +616,8 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   not scrollable, and thus can cut things off"): everything above the buttons is one area with the kit's
   `Scrollbar` (smooth wheel, overlay bar),
   and VOYAGE MAP and DISMISS stay at the bottom (`docs/results/debrief-scroll.png`: 1280 × 600 with a padded
-  report). Then a
-  one-line summary top left under the design's name (`LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42 · 14
-  PARTS → KINETIC WEAPONS +18 · …`). A game loaded with a `last_haul` starts with that line (kills and ships lost are
-  not saved).
+  report). Once dismissed the result stays in the [LOG](#log) (GDR-0091; until 15 Oct 2026 a one-line summary sat
+  over home instead). The panel is not saved: a game loaded after a voyage shows none.
 
 ## Voyage map
 
@@ -721,6 +727,24 @@ there). Screenshots:
 - **Ships** are `ui_icons::UiIcon::Ship`: the design drawn as the drydock draws it, fitted into the node.
 - Not yet: the mockup's preview of a picked card before ENTER adds it (one click adds), the dotted formation ring
   and the lines to the flagship, the escort's behavior name.
+
+## LOG
+
+The last voyages ([GDR-0091](gdr/0091-log-building-and-voyage-history.md)), `voyage_log.rs`, a layer over home (L or
+the records mast by the gate, once the camera has flown there).
+
+- **The layer**: top left the ring button (closes it), `SHIPYARD › LOG` and "Log"; top right the career's counts
+  (`VOYAGES`, `HOME`, `LOST`, `SALVAGED`: `Career::log`, every voyage ever) and CLOSE (Esc). The list (it scrolls)
+  starts with `THE LAST n VOYAGES · NEWEST FIRST`, then one row per voyage of the career's history
+  (`Career::history`, the last 50): `NEW` (gold) for a result not shown before, the voyage's name, the outcome
+  (`GOAL CLEARED` teal, `RECALLED`, `LOST` coral), the time, and what came home (`7 PARTS » HULL AND ARMOUR +1 ·
+  PROGRAMMABLE MATTER +6`, or `THE HAUL STAYED BEHIND` in coral). Without a voyage: `NO VOYAGES YET` and a line about
+  what it will hold.
+- **Seen**: opening it marks every result seen (`Career::read_log`) and writes the save; the mast stops glowing.
+  The rows are built when it opens.
+- **The mast's tooltip** is the last voyage in one line (`LogRow::line`: `LAST VOYAGE · THE WARDEN'S GATE · GOAL
+  CLEARED · 8:15 · 7 PARTS » HULL AND ARMOUR +1 · …`) with its key; `LOG` before the first voyage.
+- A practice run is not in the history (it is not saved); kills and ships lost are not either (the debrief has them).
 
 ## Screen transitions
 

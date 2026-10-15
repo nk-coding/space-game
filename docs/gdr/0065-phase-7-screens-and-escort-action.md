@@ -1,6 +1,7 @@
 # GDR-0065: Phase 7 screens: debrief panel, research tree, star map, recall under the cargo, fleet formation, locked parts shown dimmed; an `escort` action
 
-- Status: Accepted
+- Status: Accepted. 2026-10-15: the one-line summary over home after the debrief is replaced by the LOG building
+  and screen ([GDR-0091](0091-log-building-and-voyage-history.md)).
 - Date: 2026-10-13
 - Decided by: Niklas (interactively, from the mockups in `docs/plans/mockups/`)
 - Supersedes: the hiding of locked parts in [GDR-0054](0054-drydock-locked-parts-tools-saving-sharing.md), for the career's drydock

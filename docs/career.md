@@ -30,7 +30,7 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 (at most `limits::MAX_DOCUMENT_BYTES`, a leading byte order mark skipped).
 
 ```ron
-// space-game: saves, format 1, saved 1760351234
+// space-game: saves, format 2, saved 1760351234
 (
     packs: [
         ("base", "0.1.0"),
@@ -68,22 +68,38 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
         lost: 0,
         salvaged: 21,
     ),
-    last_haul: (
-        voyage: "yard_approach",
-        outcome: Cleared,
-        ticks: 12000,
-        report: (
-            parts: {
-                "automaton_core": 5,
-            },
-            data: {
-                "logic": 20.0,
-            },
-            materials: {
-                "programmable_matter": 5,
-            },
+    history: [
+        (
+            voyage: "yard_approach",
+            outcome: Recalled,
+            ticks: 9000,
+            report: (
+                parts: {
+                    "automaton_cannon": 4,
+                },
+                data: {
+                    "kinetic": 12.0,
+                },
+            ),
         ),
-    ),
+        (
+            voyage: "yard_approach",
+            outcome: Cleared,
+            ticks: 12000,
+            report: (
+                parts: {
+                    "automaton_core": 5,
+                },
+                data: {
+                    "logic": 20.0,
+                },
+                materials: {
+                    "programmable_matter": 5,
+                },
+            ),
+            new: true,
+        ),
+    ],
 )
 ```
 
@@ -101,14 +117,15 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 | `voyages` | per voyage ever launched: `launched` (count), `cleared` (the goal was cleared on a voyage that came home), `best_ticks` (the quickest such voyage, sim ticks at 30 per second) |
 | `underway` | the voyage launched and not ended; left out when none |
 | `log` | voyages launched, recalled, lost; items salvaged (parts and fragments unloaded) |
-| `last_haul` | the debrief of the last voyage: `voyage`, `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` and `fragments` by part id, `data`, `materials`) |
+| `history` | the last voyages, oldest first, at most `MAX_HISTORY` (50; GDR-0091, home's LOG): per voyage `voyage`, `outcome` (`Recalled`, `Cleared` or `Lost`), `ticks`, `report` (`parts` and `fragments` by part id, `data`, `materials`) and `new` (not shown in the LOG yet; left out when false); left out when empty. A voyage past 50 drops the oldest |
 
 The text is written with the pack loader's options (`Some(..)` left out, four-space indent) and is deterministic;
-unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (1) is the format the game's
+unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (2) is the format the game's
 document header carries: raise it when a field is added or its meaning changes, and migrate older formats when
-reading. Unknown fields are errors, so a field added without a new format would make an older build call a newer
-save damaged instead of newer; with the format raised, its storage reports `Newer`. The last haul's report is
-history (what was credited), not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
+reading. Format 1 (until 15 Oct 2026) kept only the last voyage as `last_haul` (the same fields as a history entry):
+`from_ron` still reads it and makes it the history's first entry (not new), and it is never written again. Unknown fields are errors, so a field added without a new format would make an older build call a newer
+save damaged instead of newer; with the format raised, its storage reports `Newer`. The history's reports are
+what was credited, not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
 below) is never written over: the game keeps it as it is ("How the game uses it" below).
 
 ## Derived values
@@ -180,7 +197,10 @@ family and `materials`; `items()` counts both kinds.
     recall and the items.
   - `VoyageEnd::Lost { ticks }`: the haul stays behind (there is none to pass), the goal does not count; outcome
     `Lost`.
-  - Either way the debrief becomes `last_haul`, which is returned. Cleared voyages stay launchable for more haul.
+  - Either way the voyage's result joins the history, new, and is returned (`last_voyage()`). Cleared voyages stay
+    launchable for more haul.
+- **The LOG** (GDR-0091): `history()`, `unread()` (results not shown yet: the mast glows) and `read_log()` (all shown;
+  true when one was not, then the game writes the save).
 
 ## Voyage-readiness
 
@@ -211,10 +231,11 @@ path such as `researched[1]` or `data.lasers`) for the status line:
 - a pack of `packs` that is not loaded now is noted; `packs` becomes the current list;
 - an unknown `start` is replaced by the content's first start;
 - researched nodes the content doesn't have, or listed twice, are dropped (their unlocks go with them);
-- data of unknown families and materials the content doesn't have are dropped, in the stores and in the last haul's
-  report; data that is not finite or below 0 is dropped; amounts above `MAX_DATA` or `MAX_MATERIALS` are lowered to
+- data of unknown families and materials the content doesn't have are dropped, in the stores and in the history's
+  reports (`history[3].report.data.lasers`); data that is not finite or below 0 is dropped; amounts above `MAX_DATA` or `MAX_MATERIALS` are lowered to
   it; zero amounts are dropped silently;
-- records of voyages the content doesn't know are dropped, and so is a last haul from one;
+- records of voyages the content doesn't know are dropped, and so are the history's entries of them (`history[k]`);
+  a history longer than `MAX_HISTORY` (written by hand) loses its oldest;
 - a voyage still `underway` was interrupted: it ends as `Lost` (ticks 0) when its launch is on record, else the
   mark is dropped;
 - last (the least interesting note, so the status line shows another first): a `generator` below `GENERATOR` is
@@ -299,5 +320,5 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
 - **Map**: `open_voyages`, `voyage(id)` for cleared and best time, `voyage_ready` for SET COURSE.
 - **Launch**: `voyage_launched` → write the save → roll the voyage with the returned seed and `mind_capacity`.
 - **End**: convert the surviving vessels' cargo to a `Haul` (`game::voyage::fleet_haul`), `voyage_ended`, write the
-  save, show the debrief (built from `last_haul`, the career before and after, and the flight's kills and losses,
+  save, show the debrief (built from the voyage's result, the career before and after, and the flight's kills and losses,
   which the model doesn't keep).
