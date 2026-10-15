@@ -39,6 +39,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
 | Next target (nearest first) | Tab | – |
 | Fire (by weapon group, GDR-0088: each gun's group is set in the drydock, a gun without one is group 1) | Space: every group; 1 / 2 / 3: that group; hold the left button on empty space: group 1; hold the right button: group 2. The held triggers OR into the pilot's fire mask (`PlayerInput::fire`, `sim::PilotInput::fire`); the help line shows `SPACE FIRE · 1/2/3 GROUPS` from the bindings | fire button bottom right: every group |
+| Pilot assists (GDR-0088; the design's PILOT ASSISTS, set on the BEHAVIOR screen): switch the assists on toggle 1–4 on and off for the mission / switch every assist off and back on (as the toggles left them). Each switch is a `ShipCommand::SwitchAssists` for the flown ship; the banner says what changed (`BRAKE ON · AUTO-FIRE 2 OFF`, `ALL ASSISTS OFF`, `F3 · NO ASSIST ON TOGGLE 3`) | F1–F4 / Z | – |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
 | Wake a dormant vessel (swap) | click its chip in the fleet bar | tap its chip |
 | Zoom (3–160 px per metre; while a target is locked the camera zooms out enough to keep it in view, and it widens up to 1.4 × at top speed: "Lock framing" and "Speed widening" under [Structure](#structure)) | wheel, + / − | pinch |
@@ -48,7 +49,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Recall home from a voyage (when no armed awake enemy is within 200 m, or the fleet has no working gun left: the emergency recall; a 3 s warp-out) | R, or the RECALL pill | the RECALL pill |
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
-| Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
+| Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F8 (F3 until 15 Oct 2026: the assist toggles took F1–F4) | – |
 | Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys now) | – |
 | Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – |
 
@@ -145,7 +146,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
   lost test return to where the test started (`mode::FlightExit`: the screen that sent it, the drydock for the
   URL); Shift+R starts over. `test_range::BehaviorWatch` has the tested ship's rules live: a compact panel in the
   HUD shows them (right, under the target panel; the rule that decides in teal, why the rules above don't match;
-  `behavior_ui/live.rs`), F3 every rule with why.
+  `behavior_ui/live.rs`), the debug overlay (F8) every rule with why.
 - Every sandbox flight flies the **player's saved behaviors**: they join the player's content, so the library has
   them and a design naming one flies it (`player::behaviors`).
 - **Showcase**: no combat, free camera; for looking at the renderer. With `fire=1` the raiders (the tuning's
@@ -335,7 +336,11 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   in use / the alive cargo parts of the controlling piece, `Ship::cargo` and `cargo_capacity`; empty for a ship
   without a hold), speed with the top speed of the
   best axis (`TOP 22`, from `ship.telemetry().top_speed`; the block ends at mid-height so it stays between the
-  hull block and the touch stick on a phone), target panel (in watch mode the watched ship's behavior target),
+  hull block and the touch stick on a phone), under it the **pilot assists** of the ship flown (`flight_hud/assists.rs`,
+  GDR-0088; hidden without any): `ASSISTS`, then one line per assist with its toggle key, `F2 · BRAKE`, teal while it
+  decides its channel, white while on, dim while off; `ASSISTS OFF · Z` in gold while ALL ASSISTS has them off
+  (`docs/results/flight-assists-hud.png`: F3 just switched auto-fire on; face target keeps the guns on the raider off screen top right),
+  target panel (in watch mode the watched ship's behavior target),
   wave line, banners (`PAUSED · P` while paused), warnings, help; lock ring and off-screen markers are world-space
   FX (the markers in watch mode too). A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
   every HUD text and widget (`HudZone`: hull map, fleet bar, home ring, touch widgets). HUD colours are the
@@ -378,7 +383,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
 | Research: the lab ([Research](#research); Esc, `‹ HOME` or its ring button come back) | R, or a click on the lab |
 | Voyages: inert until its screen exists (tracks 7H/7I) | V (nothing yet) |
-| Debug overlay | F3 |
+| Debug overlay | F8 |
 
 - **The station** (`shipyard::layout`, a pure function of the frame; sizes are the sketch's at 20 px per cell,
   placeholders): a long U on its side, walls 3.1 m thick, its base on the left, its mouth to the right. **The inside
@@ -882,7 +887,7 @@ Open it with DRYDOCK at home, `?scene=drydock`, or T in flight; the ring button 
 | Zoom | wheel (around the cursor; Shift+wheel turns instead), + / −, the − / + buttons; 100 % = the whole frame fits |
 | Pan | Space + drag, or drag with the middle button |
 | Test flight | T or TEST-FLY (disabled, with the reason in the status line, while the design can't fly) |
-| Debug overlay | F3 (1/2/3/H/P/Shift+R are flight keys) |
+| Debug overlay | F8 (H/P/Shift+R are flight keys) |
 | Rename the design | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |
 | BLUEPRINTS / EXPORT screens | the buttons; Esc or CLOSE closes them (Esc first leaves a rename, a delete question or a selected box); Ctrl+C copies the selected share code, Ctrl+V pastes into the paste box. While a screen covers the design the other keys do nothing (Ctrl+S still saves; the bottom bar's buttons work) |
 
@@ -1118,13 +1123,13 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 | Undo / redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y, or the two ring buttons after DRYDOCK (dim when there is nothing) |
 | A note | click the NOTE field, type, Enter (or click elsewhere) |
 | TEXT view | type; Ctrl+C / Ctrl+V copy and paste (through `clipboard.rs` on the web); Ctrl+Z is egui's undo while the text has the keyboard |
-| Debug overlay | F3 (in every mode) |
+| Debug overlay | F8 (in every mode) |
 
 The screen, top to bottom: the ring menu button, the breadcrumb `BEHAVIOR · HALVEX RUNNER` (the design's name) and
 the behavior's name (a click renames it) with its saved state after it (TEMPLATE, SAVED, UNSAVED or NOT SAVED YET,
 and `THE DESIGN FLIES <NAME>` when the open behavior is not the design's), the `6 / 12 RULE SLOTS` pill (rules / the
 design's slots, `Content::ship_rule_slots`, from its logic cores); GRAPH / TEXT; TEST IN RANGE with WATCH and FLY
-ALONGSIDE under it. Left the graph: the `TARGET` line
+ALONGSIDE under it (PILOT ASSISTS, the third tab, below). Left the graph: the `TARGET` line
 on top (`Nearest` and `DEFAULT` when the program has none), the `Priority · first match` root, the trunk with a
 dot per rule, each rule as violet condition chips (content name, values grey (white while the chip is selected), the comparison as written: `Enemies
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
@@ -1148,6 +1153,21 @@ has more below, its bottom edge fades).
 Screenshots: `docs/results/behavior-editing-condition.png` (a condition with `not`, its comparison and its
 threshold), `docs/results/behavior-editing-rule.png` (a rule added with `+ RULE` and a palette condition, its
 action selected).
+
+**PILOT ASSISTS** (the third tab after GRAPH and TEXT; GDR-0088 step 3, 15 Oct 2026, `behavior_ui/assists.rs`;
+`docs/behavior-format.md` "Pilot assists"): the design's pilot assists in the same graph, inspector and palette. The
+screen's draft becomes the assist list (`BehaviorDraft::assists`, a `ListKind::Assists` editor; the behavior's draft
+waits in `AssistTab` and comes back with GRAPH, TEXT, BEHAVIORS or on leaving the screen). What changes there: the
+name reads `Pilot assists · SAVED WITH THE DESIGN` (no rename), the pill `3 ASSISTS · WHILE YOU FLY IT`, the root
+`Assists · each channel`, no slot line and no never-reached line (each rule decides its own channel), `+ ASSIST`
+(also into an empty list), the palette lists the assists' actions and every condition (the pilot's `lock_held` and
+`idle` too), and the last rule can be deleted. An assist's inspector has its values as pills: TOGGLE (NONE, 1–4: the
+ASSIST TOGGLE key that switches it in flight) and AT START (ON, OFF), and auto-fire's GROUP. Every change goes into
+the working design at once (`PlayerDesign::edit_header`, written to the storage when no slider is held; the drydock
+shows the design UNSAVED until it is saved); SAVE says so, TEST IN RANGE tests the behavior (the design flies with
+its assists). A list line that no longer checks is left out, with a note. Screenshot
+`docs/results/behavior-pilot-assists.png` (three assists: face target on toggle 1, brake when it can stop straight on
+toggle 2, auto-fire on toggle 3 starting off, selected).
 
 - **Numbers** (`RANGE · 67%  ≈ 100 M`): a −/+ ring on each side of a slider. Steps are round numbers that grow
   with the value and land on multiples (5 m below 50 m, 10 m below 200 m, 50 m below 1000 m; 5 % of the weapon
@@ -1444,7 +1464,7 @@ Icons, glows, plumes and the FX dots come from one texture atlas that `atlas.rs`
 - **Soft by design**: glows and plumes are stored at half density (they are blurred; above tier 128 their
   blurred layers are resampled from it); at the highest zoom a plume's edge is about 1.5 px soft. Everything else (drawings, barrel) is 1:1 with the tier; tiles, seams, hull lines
   and shield bubbles are geometry or shaders and stay sharp at any zoom.
-- **Checking blur**: F3 shows `atlas <tier> px/cell  need <px> (zoom x scale)  max <tier>  window <physical size>`
+- **Checking blur**: the debug overlay (F8; F3 until 15 Oct 2026) shows `atlas <tier> px/cell  need <px> (zoom x scale)  max <tier>  window <physical size>`
   and the last rebuild; the tier is the one the material samples (it changes with the switch). If the tier stays
   below `need` the rebuild is slow or capped; if `window` is not the CSS size × the device pixel ratio, the canvas
   renders at a lower resolution than the screen. Icons that look stretched while the tier is at or above `need`

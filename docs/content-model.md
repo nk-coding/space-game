@@ -366,7 +366,13 @@ inside. It does not refer to a `frames` entry (v1). Placement coordinates are re
 may be left out; and `group` (optional, weapons only, 1 to `MAX_WEAPON_GROUP` = 3; none is group 1, and the writer
 leaves group 1 out): the gun's weapon group, which of the pilot's fire triggers fires it (GDR-0088, e.g.
 `(part: "pulse_laser", x: 4, y: 0, group: 2)`; behaviors fire every gun at will). The index of a placement in `parts` is the part index used by the geometry API. `behavior` (optional) names the behavior the
-ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`).
+ship flies when nobody pilots it; default: its faction's (`Content::ship_behavior`). `assists` (optional, GDR-0088
+step 3, 15 Oct 2026; `AssistList`) holds the design's **pilot assists**: rules in the behavior format that help the
+player fly it, `target` (optional, a target line without its keyword) and `rules` (one line each), checked as an assist
+list (`data::behavior::check_assists`; errors at `assists.rules[i]`), e.g.
+`assists: (rules: ["when idle(thrust) >= 1s -> brake(toggle2)", "always -> face_target(toggle1)"])`. None (the
+default) is no assists: the ship coasts when let go. The drydock writes it with the design; the BEHAVIOR screen's
+PILOT ASSISTS tab edits it (`docs/behavior-format.md` "Pilot assists").
 
 Base ships: `halvex_runner`, `automaton_raider` (from `../space-game-archive/ships/automaton-raider.svg`), `sample_early` and
 `sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
@@ -444,6 +450,11 @@ an error), so text, wiki and code cannot drift apart. The grammar is in `docs/be
 | `params[].default` | written as in a rule (`"67%"`, `"45m"`, `"cw"`); parameters without a default come first and are required |
 | `params[].min`, `max` | range of the number as written in the parameter's unit (m, %, s, count); reach-relative distances are checked against 0–1000% |
 | `script` | Rhai source: makes the node a custom (flag) condition, tagged "Rhai" in the editor; see `docs/behavior-format.md` |
+| `pilot` | default false; true: the node belongs to pilot assists only (GDR-0088, 15 Oct 2026): an action marked so is an assist (`assists.ron`: `face_target`, `brake`, `auto_fire`; an assist list takes no other action), a condition marked so is about the pilot's own input (`lock_held`, `idle`); behaviors refuse them. Not on target selectors or scripted conditions (validation); the sim's `BUILTIN_NODES` must agree |
+
+The assists' actions end in two choices, `toggle` (`none`, `toggle1`..`toggle4`: the ASSIST TOGGLE that switches the
+rule in flight) and `start` (`on`, `off`); `auto_fire` takes its weapon `group` (Count, 1–3) first. `speed` (Percent)
+and `can_stop_straight` (flag), added with them, are conditions of both lists.
 
 Text keys: the header fields as usual, plus `behavior_node.<id>.params.<param>.name` / `.summary` and
 `behavior_node.<id>.params.<param>.options.<option>.name` / `.summary`.
@@ -689,6 +700,10 @@ The fire actions (GDR-0088 step 2, 15 Oct 2026): `fire` (FIRE ALL, Space: every 
 `fire_group_2` (Digit2 and `MouseRight`, which `fire` held until then) and `fire_group_3` (Digit3), each firing the
 guns of its weapon group (placement `group`). The held left button on empty space fires group 1 (the pointer is not
 in the map).
+
+The assist actions (GDR-0088 step 3, 15 Oct 2026): `assist_toggle_1` to `assist_toggle_4` (F1–F4) switch the pilot
+assists on that toggle slot (which ones is set per design in their `toggle` value), `all_assists` (Z) all of them. The
+debug overlay moved from F3 to F8 for them.
 
 ## Coordinates and geometry
 
@@ -968,6 +983,7 @@ let program = data::behavior::Program::parse(text)?;         // text form (or be
 program.to_text(); program.to_parts();                       // canonical print
 data::behavior::check_program(&program, &content.behavior_nodes); // Vec<LineError { line, col, message }>
 data::behavior::check_text(text, &content.behavior_nodes);    // Result<Program, Vec<TextError>>: parse + check, by text line
+data::behavior::check_assists(&program, &content.behavior_nodes); // a design's pilot assists (ListKind::Assists)
 // Editing models: data::design::edit::Drydock (docs/drydock.md), data::behavior::edit::BehaviorEditor (docs/behavior-format.md)
 // The career (docs/career.md): the save's facts and the progression rules
 let mut career = data::Career::new(&content, "rim_awakening", seed)?; // or Career::from_ron(text)? + .reconcile(&content)

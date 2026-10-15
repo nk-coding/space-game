@@ -102,6 +102,44 @@ line 3, column 17: expected `and` or `->`, found `flee`
 line 5, column 29: `sideways` is not an option; choose one of: auto, ccw, cw
 ```
 
+## Pilot assists
+
+Added 15 Oct 2026 ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 3). A design can carry
+a second rule list, its **PILOT ASSISTS**, written in exactly this format and edited on the BEHAVIOR screen's PILOT
+ASSISTS tab with the same graph, inspector and palette. Assists help the player fly the ship; they run only on the
+ship the player flies (the focus), never on an unpiloted one, whose behavior flies it.
+
+```text
+target nearest
+when idle(thrust) >= 1s and can_stop_straight -> brake(toggle2)   # stop when I let go, if no turn is needed
+always -> face_target(toggle1)                                     # guns on the nearest enemy while I don't steer
+when target_in_range(90%) -> auto_fire(2, toggle3, off)           # group 2 fires by itself once F3 is pressed
+```
+
+- **Actions**: the assists, and only they: `face_target` (turning: the strongest guns onto the target, as a lock
+  aims), `brake` (thrust: zero velocity with the thrusters that push against the motion; it never turns the ship)
+  and `auto_fire(group)` (that weapon group's trigger: each of its guns fires when it bears, the test of fire at
+  will). The behaviors' maneuvers are refused in an assist list, and the assists in a behavior.
+- **Channels, the player wins**: each assist works one channel: turning, thrust, or one weapon group's trigger. A
+  channel the player uses this tick (A/D or the stick, or a held lock, which aims by itself; W/S/Q/E or the stick;
+  the group's trigger) is the player's; letting go hands it back at once.
+- **Which rule decides**: the rules are read from the top at every think (10 Hz, with the behaviors); for each
+  channel the first rule that is switched on, whose conditions hold (and that has a target, if it needs one)
+  decides. So an `always` rule doesn't stop the rules below it: they may decide other channels. A list may be
+  empty (no assists: the ship coasts when let go, GDR-0086). Assists need no rule slots.
+- **Toggles**: the last two values of every assist: `toggle` (`none`, `toggle1` to `toggle4`: the ASSIST TOGGLE key
+  that switches it on and off in flight, F1 to F4 by default) and `start` (`on`, `off`: how each mission starts).
+  ALL ASSISTS (Z) switches every assist off and back as the toggles left them. The switches last for the mission.
+- **Target**: the player's lock while one is held; else the target line (default `nearest`). `locked` (the leader's
+  lock) finds nothing for the ship the player flies.
+- **The pilot's conditions** (assists only): `lock_held` (a lock is held) and `idle(control)` (seconds since the
+  player last used `turn`, `thrust`, `fire` or `any` of them; from the start of the mission if not yet). Every
+  behavior condition works too, and two new ones work in both lists: `speed` (a share of the top speed) and
+  `can_stop_straight` (thrusters already push against the motion, so the ship can stop without turning).
+- **Stored** in the design's blueprint, beside the behavior it names: `assists: (target: "nearest", rules: [...])`
+  (`docs/content-model.md`). Checked with `data::behavior::check_assists`; the vocabulary marks the assists' nodes
+  `pilot: true`.
+
 ## Grammar
 
 ```text
@@ -209,7 +247,9 @@ operations, the text view replaces the program with `set_text`. Tests: `crates/c
 ### Program, ids and results
 
 - `BehaviorEditor::open(nodes, &program)` (e.g. a content behavior's `program()`, used as a template) or
-  `from_text(nodes, text)`. The editor copies the vocabulary (`Content.behavior_nodes`), so it owns its data.
+  `from_text(nodes, text)`; `open_as` / `from_text_as` with a `ListKind` open a design's pilot assists
+  (`ListKind::Assists`): the list may have no rule, the palette and every edit keep to the assists' nodes
+  (`Refusal::NotInList` otherwise), and `kind()` says which list it is. The editor copies the vocabulary (`Content.behavior_nodes`), so it owns its data.
   `open` reads the program through its printed text, so its errors locate lines of `Program::to_text`.
 - **The program is always legal**: it passes `check_program` against the vocabulary, has 1 to 64 rules, at most 8
   conditions per rule and at most 240 characters per line, and its canonical text gives it back (model → text →
@@ -227,7 +267,7 @@ operations, the text view replaces the program with `set_text`. Tests: `crates/c
 | Operation | What it does | Refused when |
 |---|---|---|
 | `add_rule(index, action)` | `always -> action` at a position (0 = top) | `BadIndex`, `TooManyRules`, `UnknownNode`, `WrongRole` |
-| `delete_rule(rule)` | | `LastRule` (a behavior keeps one rule) |
+| `delete_rule(rule)` | | `LastRule` (a behavior keeps one rule; pilot assists may have none) |
 | `duplicate_rule(rule)` | a copy (with its note) right below, new ids | `TooManyRules` |
 | `move_rule(rule, to)` | to a position; up = `index - 1`, down = `index + 1` | `BadIndex` |
 | `set_rule_note`, `set_target_note` | trimmed; empty clears it | `BadNote` (line breaks, control characters), `LineTooLong` |

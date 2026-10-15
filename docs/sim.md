@@ -65,7 +65,7 @@ the runner, the scenarios); at the root what everything uses.
 | `ship::alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
 | `flight` | (`pilot.rs`: the pilot's input and goal; `aim.rs`: leads and smart aim; `controllers.rs`: the plan into actuator commands) flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step` |
 | `flight::maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee, Escort), goals capped at the top speed |
-| `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host) |
+| `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host), `assist.rs` (pilot assists: `AssistsId`, `Assists`, `AssistState`, `AssistSwitch`, `Channel`) |
 | `combat::weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
 | `flight::physics` | `Physics` (Rapier2D: one body per piece, compound colliders, ghost filter, ray casts, contacts), `BodyKey`, `RayHit`, `Contact`, `wrap_angle` |
 | `combat::plume` | engine exhaust plumes (crate-private): lanes, the own-hull path, ray casts against other bodies, shields, `SimEvent::PlumeHit` |
@@ -108,7 +108,7 @@ balance tool of track 7K: [Voyages](#the-headless-voyage-runner)).
 1. Events of the previous step are dropped (events from calls made since, such as `spawn_ship` or a direct
    `resolve_breakage`, are kept).
 2. Inputs in list order: raw `controls` (switch the ship to `HelmMode::Raw`), `commands` (pilot input,
-   maneuver, goal, behavior, leader, power setting, focus, wake), scripted `damage`. No NaN or infinity from
+   maneuver, goal, behavior, leader, pilot assists and their switches, power setting, focus, wake), scripted `damage`. No NaN or infinity from
    outside reaches the state (13 Oct 2026 review fix): a pilot input, maneuver or goal with one is ignored, a raw
    throttle counts it as 0, damage ignores it; so do `spawn_ship`, `teleport` and `spawn_projectile` (as 0),
    and `with_config`, `set_config` and `design_report` replace it with the default
@@ -119,7 +119,8 @@ balance tool of track 7K: [Voyages](#the-headless-voyage-runner)).
    [Vessels](#vessels)).
 4. **Behaviors think**: every ship with a behavior thinks on the same ticks (every 3; not staggered by id,
    ADR-0037) and picks its target and rule from one snapshot of the world; the decisions are applied afterwards
-   (see [Behaviors](#behaviors)).
+   (see [Behaviors](#behaviors)). Then the **pilot assists**: a piloted ship with assists notes which controls
+   its pilot uses and, on the same ticks, decides which assist takes each channel ([Pilot assists](#pilot-assists)).
 5. **Flight**: every ship is planned from the same snapshot of the world (behaviors, maneuvers, pilot input →
    `FlightGoal` and what the guns do), then the flight computer allocates the actuators of each controlling
    piece and fire at will picks the guns that fire (per gun facing).
@@ -332,6 +333,14 @@ every group) where it hashed a bool (1): hashed as the bool, all seven streams (
 `runner_vs_raiders`, `skiff_mirror`) stay byte-identical to the build before, so no ship flies or fires differently.
 Last ticks: flight `2a51382797b4736b`, behavior `1b84c5d19d5d393d`, voyage `58c3b65781708409`; core, salvage and both
 arena fights unchanged.
+
+**Pilot assists** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 3, 15 Oct 2026, release
+builds, seed 42, 900 ticks; `runner_vs_raiders` to its end at 1273): core, flight, behavior, salvage, voyage and
+`runner_vs_raiders`: native x86_64 vs wasm32-wasip1 **identical**, and every stream byte-identical to the build
+before: no scenario ship has assists, the assist state is hashed only for a ship that has some, and the behavior
+compile was only reorganised. Last ticks: core `04c38a80a753f50f`, flight `2a51382797b4736b`, behavior
+`1b84c5d19d5d393d`, salvage `d53cf56822803318`, voyage `58c3b65781708409`, `runner_vs_raiders` `8d5b00d21e45e771`.
+No determinism scenario flies with assists yet (`tests/assists.rs` covers them natively).
 
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -569,7 +578,7 @@ placement's `group` (none = 1; an out-of-range group in an unvalidated blueprint
 `Fire::Groups(mask)` (0 = `Fire::Hold`); the flight computer sets `ShipControls::fire` with an empty per-gun mask for
 `FIRE_ALL` (as before), else fills `ShipControls::guns` per slot from the gun's group. Helm commands
 (`ShipCommand::Goal`/`Maneuver { fire: true }`) fire every group; behaviors keep firing each gun at will (groups are
-for the pilot and, later, the pilot's assists). Test `the_fire_mask_fires_only_its_groups` (`tests/keyboard.rs`).
+for the pilot and the pilot's auto-fire assist, [Pilot assists](#pilot-assists)). Test `the_fire_mask_fires_only_its_groups` (`tests/keyboard.rs`).
 
 ## Flight
 
@@ -1072,6 +1081,9 @@ let mine = world.behaviors_mut().add_text("my_escort", "target locked\nalways ->
 // or add_program(id, name, program) for a parsed program (TEST IN RANGE's unsaved text); get(id), iter(), nodes()
 world.command(escort, ShipCommand::Behavior(Some(mine)));
 world.command(escort, ShipCommand::Leader(Some(player_ship)));     // `locked` follows the player's lock
+let assists = world.behaviors_mut().add_assists(&blueprint.assists.unwrap())?; // a design's pilot assists
+world.command(player_ship, ShipCommand::Assists(Some(assists)));   // run while it is piloted
+world.command(player_ship, ShipCommand::SwitchAssists(sim::AssistSwitch::Toggle(2))); // ASSIST TOGGLE 2
 // debug view / "test in range":
 let st = world.ship(escort).unwrap().behavior().unwrap();
 st.active_rule(); st.rules();          // [RuleStatus]: Active, Skipped, NoSlot, NoTarget, Failed { cond, why }
@@ -1090,6 +1102,43 @@ st.program().program.to_text();       // the source, e.g. for a scan report
   [Vessels](#vessels)).
 - State hash: each ship's behavior state (id, program fingerprint, target, aim part, acquisition tick, active
   rule, maneuver, slots, last think) and its leader. Per-rule statuses are debug data and not hashed.
+
+### Pilot assists
+
+Code: `src/behavior/assist.rs` (GDR-0088 step 3, 15 Oct 2026). A design's PILOT ASSISTS list
+(`docs/behavior-format.md` "Pilot assists") is compiled like a behavior: `BehaviorLibrary::add_assists(&list)`
+(`data::AssistList`, checked with `data::behavior::check_assists`) → `AssistsId`; `ShipCommand::Assists(Some(id))`
+gives it to a ship (`None` takes it away; unknown ids are ignored), `ShipCommand::SwitchAssists(AssistSwitch)` flips
+a toggle slot's rules (`Toggle(1..=4)`) or ALL ASSISTS (`All`). The game gives every player vessel its design's list;
+only a **piloted** ship runs it (`HelmMode::Pilot`, no behavior: the focus), so behaviors and AI ships fly exactly
+as before.
+
+- **State** (`Ship::assists()` → `AssistState`): per rule whether it is switched on (bit `i`, starting as its
+  `start` value), the master switch, the tick the pilot last used each control (turning, thrust, a trigger), the
+  target, and per channel the rule that decides it. It lasts for the ship's life (a mission); a vessel split off
+  inherits it.
+- **The pass** (`assist_all`, after the behaviors' think): every tick each piloted ship with assists notes the
+  controls its pilot uses (`PilotInput`: A/D or the stick without a lock = turning; W/S/Q/E or the stick = thrust;
+  any fire bit; a key counts from `FlightTuning::stick_deadzone`, as the flight computer reads it). On think ticks
+  (every 3) and on the tick after a list is set or switched, the rules decide from one snapshot: the target is the
+  pilot's lock while one is held, else the list's target line (`locked` finds nothing for the focus); then for each
+  rule in order, if it is on (and ALL ASSISTS is on), its channel not yet decided, it has a target if it needs one
+  (face, auto-fire) and its conditions hold, it decides its channel. Channels: turning, thrust, one per weapon group.
+- **Per tick** (`assist_plan`, in the pilot's plan after `pilot_goal`): a decided channel the pilot doesn't use this
+  tick is the assist's. `face_target`: the heading becomes smart aim at the target (as a lock aims; a held lock
+  holds the turning channel); `brake`: the velocity goal becomes zero, the heading stays the pilot's (only
+  thrusters that push against the motion brake); `auto_fire(g)`: `Fire::Assisted { held, auto, at }`: guns of held
+  groups fire, guns of auto groups fire at will at the target (`guns_at_will`, per gun cone and reach).
+- **Conditions**: every behavior condition, plus `speed` (share of `Kin::top_speed`; no value without thrust) and
+  `can_stop_straight` (for each body axis carrying at least 25% of the motion a thrust group pushes against it;
+  true below 0.1 m/s), which behaviors may use too, and the pilot's own `lock_held` and `idle(any|turn|thrust|fire)`
+  (seconds since the last use; `Why::NoValue` outside an assist list, which the checks never let happen).
+- **State hash**: the assist state (id, program fingerprint, switches, last uses, target, aim part, acquisition
+  tick, decisions, last think) after the ship's behavior, and nothing at all for a ship without assists, so worlds
+  without assists hash as before.
+- Tests: `tests/assists.rs` (face turns to the target and the pilot's A wins the turn; brake kills drift without
+  turning and W wins; auto-fire fires only its group's guns that bear, never out of reach, and a held trigger wins;
+  `lock_held`, `idle(thrust)`, `speed`, `can_stop_straight` gate rules; toggles and ALL ASSISTS; only the piloted ship).
 
 ### Rhai conditions
 
