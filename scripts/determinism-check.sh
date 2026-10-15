@@ -5,6 +5,7 @@
 #   scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario NAME] [--package CRATE] [--example NAME]
 #   scripts/determinism-check.sh --fight NAME [--seed N] [--ticks N]   # an arena fight (crates/core/arena/fights/NAME.ron)
 #   scripts/determinism-check.sh --fight SGF1:…            # a fight code (GDR-0092: `arena fight|evolve` print them)
+#   scripts/determinism-check.sh --run NAME [--seed N] [--resume-at K]   # an evolution run (crates/core/arena/runs/NAME.ron)
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
 # Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, assists (flight with pilot
@@ -16,6 +17,11 @@
 # fingerprint seeds are 1 and 2) with the seed replaced, until the fight ends or --ticks have run (default 2700:
 # the 90 s time limit). A fight code (`--fight SGF1:…`) runs its own spec and seed to its end and says whether it
 # ends as recorded (`# record=as recorded`); its files are named after a short hash of the code.
+#
+# `--run NAME` runs arena's `run_hashes` example: the run file crates/core/arena/runs/NAME.ron (two_starts_locked)
+# with its seed replaced (default 1), one line per generation (the hash of the run file after it), straight through in
+# slices; the example also interrupts it after --resume-at generations (default 3), writes and reads the run file,
+# restores it, runs on and fails unless every later generation hashes the same (GDR-0092).
 #
 # Hash stream format (what the example prints): one "<tick> <hash>" line per tick; lines starting with '#'
 # are comments (header, summary) and are shown but not compared. Any producer that prints this format can
@@ -55,7 +61,7 @@ if [ "${1:-}" = "--compare" ]; then
   exit $?
 fi
 
-SEED=42; TICKS=; SCENARIO=core; PACKAGE=sim; EXAMPLE=determinism; DEFAULT_TICKS=900
+SEED=; TICKS=; SCENARIO=core; PACKAGE=sim; EXAMPLE=determinism; DEFAULT_TICKS=900; RESUME_AT=3; RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --seed) SEED=$2; shift 2 ;;
@@ -64,6 +70,8 @@ while [ $# -gt 0 ]; do
     --package) PACKAGE=$2; shift 2 ;;
     --example) EXAMPLE=$2; shift 2 ;;
     --fight) PACKAGE=arena; EXAMPLE=fight_hashes; SCENARIO=$2; DEFAULT_TICKS=2700; shift 2 ;;
+    --run) PACKAGE=arena; EXAMPLE=run_hashes; SCENARIO=$2; RUN=1; shift 2 ;;
+    --resume-at) RESUME_AT=$2; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -71,6 +79,8 @@ done
 CODE=0
 case "$SCENARIO" in SGF*) CODE=1; DEFAULT_TICKS=54000 ;; esac
 TICKS=${TICKS:-$DEFAULT_TICKS}
+# A run's seed is its own stream (its run file's is 1); every other check defaults to 42.
+if [ $RUN = 1 ]; then SEED=${SEED:-1}; else SEED=${SEED:-42}; fi
 JOBS=${JOBS:-6}
 PROFILE=${PROFILE:-release}
 TARGET=${CARGO_TARGET_DIR:-target}
@@ -89,6 +99,10 @@ LABEL="$SCENARIO-$SEED"
 if [ $CODE = 1 ]; then
   ARGS=(--ticks "$TICKS" --scenario "$SCENARIO")
   LABEL="code-$(printf %s "$SCENARIO" | md5sum | cut -c1-12)"
+fi
+if [ $RUN = 1 ]; then
+  ARGS=(--seed "$SEED" --scenario "$SCENARIO" --resume-at "$RESUME_AT")
+  LABEL="$SCENARIO-$SEED-at$RESUME_AT"
 fi
 NATIVE_OUT="$OUT/$EXAMPLE-$LABEL-native.txt"
 WASM_OUT="$OUT/$EXAMPLE-$LABEL-wasm.txt"
