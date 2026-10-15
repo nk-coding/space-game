@@ -275,8 +275,21 @@ Next session:
     saved on this device;
   - Esc in flight unlocks, else opens the flight menu (it pauses the test range);
   - tooltips and the help line show the bound keys; the debug toggles moved to F5–F7.
+- **Weapon groups** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 2):
+  - every gun has a group 1–3 (`Placement::group`), set with the drydock's GROUP pills 1 / 2 / 3 (the twin of a
+    mirrored gun follows);
+  - the pilot fires by a per-group fire mask in the sim (`PilotInput::fire`, `FIRE_ALL`);
+  - keys: 1, 2, 3 fire their group (the right mouse button is group 2 too, the held left button group 1), Space
+    fires all, touch fires all; all of them rebindable in SETTINGS.
+- **The LOG** ([GDR-0091](gdr/0091-log-building-and-voyage-history.md); Niklas: the summary line showed over SETTINGS
+  and ran into research):
+  - a records mast on the top arm by the gate replaces the one-line summary over home; it glows while a voyage's
+    result is new, its tooltip is the last voyage;
+  - L or a click opens the LOG, a layer with the last 50 voyages, newest first;
+  - the save keeps them (`history`, format 2; an old save's `last_haul` starts it);
+  - home's words and the debrief's panel step aside under every layer over home.
 - **Next** (Niklas, 15 Oct 2026):
-  1. GDR-0088 in its own order (step 1 done above): the action map with a settings screen, then weapon groups, then the pilot assists
+  1. GDR-0088 in its own order (steps 1 and 2 done above): the action map with a settings screen, then weapon groups, then the pilot assists
      as a PILOT ASSISTS tab next to BEHAVIOR on the behavior screen (chosen interactively), then hold station and
      collision avoidance.
   2. The evolution lab's screen (track L4), dev-only.
