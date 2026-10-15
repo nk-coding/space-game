@@ -288,8 +288,17 @@ Next session:
   - L or a click opens the LOG, a layer with the last 50 voyages, newest first;
   - the save keeps them (`history`, format 2; an old save's `last_haul` starts it);
   - home's words and the debrief's panel step aside under every layer over home.
+- **Pilot assists** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 3):
+  - a PILOT ASSISTS tab next to GRAPH and TEXT on the BEHAVIOR screen edits the design's assist list (blueprint
+    `assists`, saved with the design) in the same graph, inspector and palette;
+  - assists `face_target`, `brake` and `auto_fire(group)`, each on one channel (turning, thrust, a group's trigger);
+    the pilot's use of a channel wins it at once; every matching rule decides its own channel (in the sim, 10 Hz,
+    hashed only for ships with assists: every determinism stream unchanged);
+  - conditions `lock_held`, `idle(...)` (pilot), `speed`, `can_stop_straight`;
+  - in flight F1–F4 (ASSIST TOGGLE 1–4) and Z (ALL ASSISTS) switch them for the mission, with a banner; the HUD lists
+    them under the speed; the debug overlay moved to F8.
 - **Next** (Niklas, 15 Oct 2026):
-  1. GDR-0088 in its own order (steps 1 and 2 done above): the action map with a settings screen, then weapon groups, then the pilot assists
+  1. GDR-0088 in its own order (steps 1 to 3 done above): the action map with a settings screen, then weapon groups, then the pilot assists
      as a PILOT ASSISTS tab next to BEHAVIOR on the behavior screen (chosen interactively), then hold station and
      collision avoidance.
   2. The evolution lab's screen (track L4), dev-only.
