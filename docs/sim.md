@@ -351,6 +351,9 @@ player's ships, `scenario::fixtures::ASSISTS`; the pilots let go more often (50%
 channels, and 15% of the rerolls flip a toggle slot or ALL ASSISTS) is **identical** too, last tick
 `ff0c7503bceb7356`; over the run a station is held for 2478 ship-ticks, something is dodged for 465, and every
 rule decides at times (`assists_scenario_is_deterministic_and_the_assists_act`).
+With the thrust assists turning while turning is free (same day, after step 4): the six streams above again
+byte-identical and native = wasm32-wasip1; only `assists` changes (no AI ship has assists), last tick
+`a8562be7b6064c01`, identical.
 
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -1137,8 +1140,7 @@ as before.
   (face, auto-fire) and its conditions hold, it decides its channel. Channels: turning, thrust, one per weapon group.
 - **Per tick** (`assist_plan`, in the pilot's plan after `pilot_goal`): a decided channel the pilot doesn't use this
   tick is the assist's. `face_target`: the heading becomes smart aim at the target (as a lock aims; a held lock
-  holds the turning channel); `brake`: the velocity goal becomes zero, the heading stays the pilot's (only
-  thrusters that push against the motion brake); `auto_fire(g)`: `Fire::Assisted { held, auto, at }`: guns of held
+  holds the turning channel); `brake`: the velocity goal becomes zero (the heading: see below); `auto_fire(g)`: `Fire::Assisted { held, auto, at }`: guns of held
   groups fire, guns of auto groups fire at will at the target (`guns_at_will`, per gun cone and reach).
 - **Conditions**: every behavior condition, plus `speed` (share of `Kin::top_speed`; no value without thrust) and
   `can_stop_straight` (for each body axis carrying at least 25% of the motion a thrust group pushes against it;
@@ -1154,7 +1156,7 @@ as before.
   has thrust (a dodge, a brake) it waits, unless the rule that took it is switched off; an ally that is no vessel any
   more is replaced on the next tick. Per tick the velocity goal is an escort of the station point at distance 0
   (`Maneuver::Escort::goal_for`: back at the speed it can still stop from, then the station's velocity; capped at
-  the top speed); the heading stays the pilot's, so only thrusters that push the needed way fly it back.
+  the top speed); the heading: see below.
 - **Avoid collisions** (step 4; `avoid_collisions`, thrust): at each think, if its conditions hold, it looks for the
   piece it would meet first: of every ship (vessels of any owner, wrecks, the ship's own broken-off pieces), the
   bounding circles (`Piece::radius` about the frame origin) on straight lines, the first closest approach within
@@ -1162,15 +1164,31 @@ as before.
   does it decide thrust (else the rules below keep it). Per tick the velocity goal is the ship's own velocity plus the
   sidestep that makes that closest approach the clearance: along the miss vector (to the left of the relative motion
   when head-on), `(reach − miss) / t`, capped at the top speed; once clear (or the piece is gone) it asks nothing
-  until the next think hands thrust down again. It never turns the ship. Behaviors don't get it (GDR-0088 left that
+  until the next think hands thrust down again (the heading: see below). Behaviors don't get it (GDR-0088 left that
   open; it would change every AI stream).
+- **Thrust assists turn while turning is free** (Niklas, 15 Oct 2026, after step 4: no base ship has RCS pods, so the
+  Rim Skiff, two rear thrusters, could neither brake nor hold station nor sidestep): when brake, hold station or avoid
+  collisions sets the velocity goal, the pilot doesn't steer (A/D, the stick without a lock) or hold a lock, no rule
+  decides turning (face target) and the velocity change asked is at least `tuning::ASSIST_TURN_DV` (0.5 m/s), the
+  heading becomes `HeadingGoal::Auto`: the behaviors' flip and burn (kept while the thrusters facing the needed way
+  give `keep_heading_fraction` of the best axis, else the best axis turned that way, the force faded in from 25° to
+  8°). Otherwise the heading stays the pilot's and only the thrusters pushing the needed way act, as before. The
+  threshold keeps small corrections from spinning the ship around. Hold station, on a ship that must turn around to
+  stop (opposite axis under half the best, `Kin::stop_accel` plans with half the best then), also comes back no faster
+  than it can still turn around and stop from, `a·(√(t² + 2d/a) − t)` with the half turn `t = 2·√(π / α)` at the
+  planning angular acceleration and `a = stop_margin · stop_accel`, and within `tuning::STATION_SLACK` (1 m) of the
+  station it only stops (matches the station's velocity): without both the Skiff circled its station at about 1 m and
+  1–2 m/s for good, a half turn for every correction; with them it stays within about 1 m, slower than 1.2 m/s.
 - Tests: `tests/assists.rs` (face turns to the target and the pilot's A wins the turn; brake kills drift without
   turning and W wins; auto-fire fires only its group's guns that bear, never out of reach, and a held trigger wins;
   `lock_held`, `idle(thrust)`, `speed`, `can_stop_straight` gate rules; toggles and ALL ASSISTS; only the piloted ship;
   hold station flies back after a push and W moves the station; beside an ally it keeps its place as the ally drifts;
   avoidance sidesteps a raider on a collision course (without it they collide), does nothing on a clear path (a brake
   below keeps thrust) and takes thrust over from it on a collision course; the pilot's W wins over it; the station
-  waits while avoidance dodges a raider drifting through it, and the ship comes back).
+  waits while avoidance dodges a raider drifting through it, and the ship comes back; on the Rim Skiff with turning
+  free, brake stops a 4 m/s forward drift by turning around, hold station comes back and stays within 1.3 m, and
+  avoidance turns and passes a raider it otherwise hits; with face target, a held lock or the pilot steering the
+  heading goal stays theirs, and a 0.3 m/s drift never turns the ship).
 
 ### Rhai conditions
 

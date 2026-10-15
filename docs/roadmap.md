@@ -301,7 +301,8 @@ Next session:
   15 Oct 2026; GDR-0088 is now built in full):
   - assists `hold_station(point|ally)` (back to where the assist took thrust over, or to the place beside the nearest
     own vessel; the pilot's thrust moves the station) and `avoid_collisions` (sidesteps a piece of any ship on a
-    collision course within 6 s, deciding thrust only meanwhile), both on the thrust channel and never turning the ship;
+    collision course within 6 s, deciding thrust only meanwhile), both on the thrust channel; with brake they turn the ship (flip and burn) only while
+    neither the pilot nor face target has turning (Niklas: no base ship has RCS);
     behaviors don't get them (every AI determinism stream byte-identical);
   - a new determinism scenario `assists` (the flight scenario with every assist): native and wasm32-wasip1 identical;
   - the BEHAVIOR screen's tabs are now BEHAVIOR | PILOT ASSISTS, each with GRAPH / TEXT (Niklas); the assists' TEXT

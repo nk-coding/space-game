@@ -125,15 +125,20 @@ always -> hold_station(ally, toggle2)                  # else keep my place besi
 ```
 
 - **Actions**: the assists, and only they: `face_target` (turning: the strongest guns onto the target, as a lock
-  aims), `brake` (thrust: zero velocity with the thrusters that push against the motion; it never turns the ship),
-  `hold_station(at)` (thrust: back to the station and keep it; `point`, the default: where the assist took thrust
-  over, e.g. where you let go of W; `ally`: your place then beside the nearest of your other vessels, moving with
-  it; thrusting moves the station; it never turns the ship), `avoid_collisions` (thrust: sidestep a ship, wreck or
-  piece of debris on a collision course within a few seconds; it decides only while something is, so the rule below
-  it keeps thrust the rest of the time; it never turns the ship) and `auto_fire(group)` (that weapon group's trigger:
-  each of its guns fires when it bears, the test of fire at will). The thrust assists work with the thrusters that
-  push the needed way: a ship with engines only at the back can't brake, hold station or sidestep without turning.
-  The behaviors' maneuvers are refused in an assist list, and the assists in a behavior.
+  aims), `brake` (thrust: zero velocity), `hold_station(at)` (thrust: back to the station and keep it; `point`, the
+  default: where the assist took thrust over, e.g. where you let go of W; `ally`: your place then beside the nearest
+  of your other vessels, moving with it; thrusting moves the station), `avoid_collisions` (thrust: sidestep a ship,
+  wreck or piece of debris on a collision course within a few seconds; it decides only while something is, so the rule
+  below it keeps thrust the rest of the time) and `auto_fire(group)` (that weapon group's trigger: each of its guns
+  fires when it bears, the test of fire at will). The behaviors' maneuvers are refused in an assist list, and the
+  assists in a behavior.
+- **Thrust assists turn while turning is free** (Niklas, 15 Oct 2026; no base ship has RCS): while you don't steer
+  or hold a lock and no rule (face target) decides turning, brake, hold station and avoid collisions turn the ship
+  to bring its engines to bear (flip and burn, as behaviors' maneuvers do), but only when the thrusters already facing
+  the needed way give less than half its best push, and never for a slight drift (under 0.5 m/s), so it doesn't spin
+  around. While turning is taken they use only the thrusters that push the needed way: a ship with engines only at the
+  back then can't brake, hold station or sidestep. A ship that must turn around to stop holds station within about
+  1 m (inside it, it only stops).
 - **Channels, the player wins**: each assist works one channel: turning, thrust, or one weapon group's trigger. A
   channel the player uses this tick (A/D or the stick, or a held lock, which aims by itself; W/S/Q/E or the stick;
   the group's trigger) is the player's; letting go hands it back at once.
