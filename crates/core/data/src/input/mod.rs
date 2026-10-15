@@ -127,6 +127,7 @@ actions! {
     OpenTestRange = "open_test_range",
     OpenFleet = "open_fleet",
     OpenLog = "open_log",
+    OpenEvolution = "open_evolution",
     OpenSettings = "open_settings",
     ToolPaint = "tool_paint",
     ToolBevel = "tool_bevel",
