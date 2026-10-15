@@ -197,7 +197,7 @@ pub fn assists_inspection(rules: usize) -> Inspection {
         name: super::draft::ASSISTS_NAME.into(),
         role: None,
         rhai: false,
-        summary: "They help you fly this design. Each assist works one channel (turning, thrust or a weapon group's trigger) whenever its rule matches and you leave that channel free; the first matching rule per channel decides. Its TOGGLE key switches it on and off in flight, ALL ASSISTS every one.".into(),
+        summary: "They help you fly this design. Each assist works one channel (your lock, thrust or a weapon group's trigger) whenever its rule matches and you leave that channel free; the first matching rule per channel decides. What needs a target acts on your lock. Its TOGGLE key switches it on and off in flight, ALL ASSISTS every one.".into(),
         controls: vec![Control::Hint("CLICK A NODE OR A RULE TO EDIT IT  ·  + ASSIST ADDS ONE  ·  SAVED WITH THE DESIGN".into())],
         script: None,
     }
