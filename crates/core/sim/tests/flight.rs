@@ -9,7 +9,7 @@ use sim::ship::alloc::{Actuation, AllocTable, allocate, assist, wrench_of};
 use sim::flight::Kin;
 use sim::flight::physics::wrap_angle;
 use sim::{
-    Body, DamageTarget, FlightGoal, HeadingGoal, Maneuver, PilotInput, ShipCommand, SimEvent,
+    Body, DamageTarget, FIRE_ALL, FlightGoal, HeadingGoal, Maneuver, PilotInput, ShipCommand, SimEvent,
     Target, TickInputs, Vec2,
 };
 
@@ -689,7 +689,7 @@ fn dark_ships_do_nothing() {
         s,
         ShipCommand::Pilot(PilotInput {
             stick: Vec2::new(0.0, 1.0),
-            fire: true,
+            fire: FIRE_ALL,
             ..Default::default()
         }),
     );
@@ -877,7 +877,7 @@ fn crossing_hits(aim: sim::flight::AimMode) -> usize {
     );
     let input = PilotInput {
         lock: Some(Target::Ship(target)),
-        fire: true,
+        fire: FIRE_ALL,
         drift: true,
         aim,
         ..Default::default()

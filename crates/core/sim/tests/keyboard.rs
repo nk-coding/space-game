@@ -331,3 +331,41 @@ fn a_one_sided_couple_never_opens_the_last_resort() {
 fn control_design(w: &sim::Sim, s: sim::ShipId) -> std::sync::Arc<sim::ShipDesign> {
     w.ship(s).unwrap().design().clone()
 }
+
+/// Weapon groups (GDR-0088): the pilot's fire mask fires only the guns of the groups whose bits are set.
+#[test]
+fn the_fire_mask_fires_only_its_groups() {
+    let c = content();
+    // A pulse laser ahead in group 1 (the default), one left and one right in group 2.
+    let mut bp = blueprint(&[
+        ("pulse_laser", 1, 0, 0, false, None),
+        ("fission_reactor", 1, 1, 0, false, None),
+        ("pulse_laser", 0, 1, 3, false, None),
+        ("pulse_laser", 2, 1, 1, false, None),
+        ("thruster", 0, 2, 0, false, None),
+        ("logic_core", 1, 2, 0, false, None),
+    ]);
+    bp.parts[2].group = Some(2);
+    bp.parts[3].group = Some(2);
+    let d = std::sync::Arc::new(sim::ShipDesign::compile(&c, &bp).unwrap());
+    let groups: Vec<u8> = d.guns.iter().map(|g| g.group).collect();
+    assert_eq!(groups, [1, 2, 2]);
+    for (mask, want) in [(0b010, vec![2, 3]), (0b001, vec![0]), (sim::FIRE_ALL, vec![0, 2, 3])] {
+        let (mut w, s) = world_with(d.clone());
+        let mut shots = std::collections::BTreeSet::new();
+        for _ in 0..30 {
+            w.step(&TickInputs {
+                commands: vec![(s, ShipCommand::Pilot(PilotInput { fire: mask, ..Default::default() }))],
+                ..Default::default()
+            });
+            for e in w.events() {
+                if let sim::SimEvent::ShotFired { ship, gun, .. } = e
+                    && *ship == s
+                {
+                    shots.insert(*gun);
+                }
+            }
+        }
+        assert_eq!(shots.into_iter().collect::<Vec<_>>(), want, "mask {mask:#b}");
+    }
+}

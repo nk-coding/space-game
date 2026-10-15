@@ -427,7 +427,7 @@ impl Scenario {
                         stick: Vec2::new(cos(a), sin(a)) * len,
                         lock,
                         drift: rng.chance(0.2),
-                        fire: rng.chance(0.7),
+                        fire: if rng.chance(0.7) { crate::flight::FIRE_ALL } else { 0 },
                         aim: crate::flight::AimMode::Auto,
                         ..Default::default()
                     };

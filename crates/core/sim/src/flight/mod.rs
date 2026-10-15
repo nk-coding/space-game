@@ -44,7 +44,7 @@ use crate::ship::{PartState, Piece, Ship, Wrench, gun_works, producing};
 pub use aim::{intercept_time, lead_point, resolve_target, smart_aim};
 pub use controllers::turn_rate;
 pub(crate) use controllers::execute;
-pub use pilot::{KEY_TURN_GROWTH, KEY_TURN_START, NUDGE_MAX, NUDGE_RATE, NUDGE_RETURN, PilotAxes, PilotInput, nudge_step, pilot_goal, turn_ramp_step};
+pub use pilot::{FIRE_ALL, KEY_TURN_GROWTH, KEY_TURN_START, NUDGE_MAX, NUDGE_RATE, NUDGE_RETURN, PilotAxes, PilotInput, nudge_step, pilot_goal, turn_ramp_step};
 
 /// What a lock or a maneuver points at.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -444,8 +444,9 @@ pub(crate) fn find_ship(ships: &[Ship], id: ShipId) -> Option<&Ship> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Fire {
     Hold,
-    /// Every gun fires (pilot trigger, helm `fire: true`).
-    All,
+    /// The guns of these weapon groups fire (bit g-1 for group g, never 0): the pilot's triggers, or
+    /// [`FIRE_ALL`] for a helm with `fire: true`.
+    Groups(u8),
     /// Fire at will at a target (behaviors): each gun fires when the target is inside its own cone along its
     /// facing and within its reach (`behavior::guns_at_will`).
     AtWill(TargetState),
@@ -453,7 +454,14 @@ pub(crate) enum Fire {
 
 impl Fire {
     fn all_if(fire: bool) -> Fire {
-        if fire { Fire::All } else { Fire::Hold }
+        Fire::groups(if fire { FIRE_ALL } else { 0 })
+    }
+
+    fn groups(mask: u8) -> Fire {
+        match mask & FIRE_ALL {
+            0 => Fire::Hold,
+            m => Fire::Groups(m),
+        }
     }
 }
 
@@ -518,7 +526,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
         },
         HelmMode::Pilot(input) => Plan {
             goal: Some(pilot_goal(input, &kin, ship, piece, ships, tuning)),
-            fire: Fire::all_if(input.fire),
+            fire: Fire::groups(input.fire),
             raw: false,
         },
     }
@@ -600,7 +608,7 @@ impl StateHash for HelmMode {
                     None => h.u8(0),
                 }
                 h.bool(p.drift);
-                h.bool(p.fire);
+                h.u8(p.fire);
                 h.u8(p.aim as u8);
                 match &p.axes {
                     Some(a) => {

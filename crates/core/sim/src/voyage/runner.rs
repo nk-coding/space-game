@@ -38,7 +38,7 @@ use data::career::{Haul, HaulItem};
 use crate::behavior::{BehaviorId, BehaviorLibrary};
 use crate::config::SimConfig;
 use crate::events::SimEvent;
-use crate::flight::{AimMode, PilotInput, Target};
+use crate::flight::{AimMode, FIRE_ALL, PilotInput, Target};
 use crate::ids::{PieceId, ShipId};
 use crate::flight::maneuver::Maneuver;
 use crate::math::Vec2;
@@ -495,7 +495,7 @@ impl VoyageRunner {
                         stick,
                         lock: Some(Target::Ship(foe)),
                         drift: false,
-                        fire: true,
+                        fire: FIRE_ALL,
                         aim: AimMode::Auto,
                         ..Default::default()
                     };

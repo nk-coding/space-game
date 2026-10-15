@@ -126,7 +126,7 @@ impl Scenario {
                         stick: Vec2::new(cos(a), sin(a)) * rng.range_f32(0.3, 1.0),
                         lock: Some(Target::Ship(foe)),
                         drift: rng.chance(0.2),
-                        fire: true,
+                        fire: crate::flight::FIRE_ALL,
                         aim: crate::flight::AimMode::Auto,
                         ..Default::default()
                     })

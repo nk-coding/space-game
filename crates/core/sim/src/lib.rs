@@ -54,7 +54,7 @@ pub use combat::weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileI
 pub use config::{FlightTuning, PhysicsTuning, SalvageTuning, SimConfig};
 pub use data::PowerTier;
 pub use events::{PieceSnapshot, SimEvent, SplitEvent};
-pub use flight::{FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
+pub use flight::{FIRE_ALL, FlightGoal, FlightTelemetry, HeadingGoal, HelmMode, PilotInput, Target};
 pub use flight::maneuver::Maneuver;
 pub use flight::physics::{BodyKey, Contact, Physics, RayHit};
 pub use hash::{StateHash, StateHasher};

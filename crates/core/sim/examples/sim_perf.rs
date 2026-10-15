@@ -14,7 +14,7 @@ use std::time::Instant;
 use data::{Blueprint, Placement};
 use sim::ship::alloc::{Actuation, AllocTable, allocate, assist};
 use sim::{
-    Body, DamageTarget, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, StepPhase, Target,
+    Body, DamageTarget, FIRE_ALL, PilotInput, ShipCommand, ShipControls, ShipDesign, Sim, StepPhase, Target,
     TickInputs, Vec2,
 };
 
@@ -252,7 +252,7 @@ fn calibrate(content: &data::Content, copies: usize, ticks: usize) {
                         id,
                         ShipCommand::Pilot(PilotInput {
                             stick: Vec2::new(0.0, 1.0),
-                            fire: true,
+                            fire: FIRE_ALL,
                             ..Default::default()
                         }),
                     )
@@ -414,7 +414,7 @@ fn main() {
                         stick: Vec2::new(0.6, 0.8),
                         lock,
                         drift: false,
-                        fire: true,
+                        fire: FIRE_ALL,
                         ..Default::default()
                     }),
                 )

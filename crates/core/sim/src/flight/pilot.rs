@@ -156,7 +156,7 @@ pub(super) fn keyboard_goal(
 }
 
 /// Pilot input: the touch stick (world terms) or the PC keyboard axes (ship terms), target lock, drift toggle,
-/// fire.
+/// the fire groups.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PilotInput {
     /// Touch stick, world direction, length 0..1 (longer is clamped). Without a lock: "fly that way", the length
@@ -167,7 +167,8 @@ pub struct PilotInput {
     pub lock: Option<Target>,
     /// Pure thrust while pushing: no drift cancellation, momentum kept (released input always coasts, GDR-0086).
     pub drift: bool,
-    pub fire: bool,
+    /// The weapon groups whose triggers are held (GDR-0088): bit g-1 for group g, [`FIRE_ALL`] for every gun.
+    pub fire: u8,
     /// Under a lock: which way to aim (`Auto`: bring the strongest working guns to bear, GDR-0040).
     pub aim: AimMode,
     /// PC keyboard (GDR-0040): ship-relative rotate / thrust / strafe. `Some` replaces the stick.
@@ -188,6 +189,9 @@ impl PilotInput {
             })
     }
 }
+
+/// Every weapon group's trigger ([`PilotInput::fire`]).
+pub const FIRE_ALL: u8 = (1 << data::MAX_WEAPON_GROUP) - 1;
 
 /// Ship-relative pilot axes (PC keyboard), each -1..1.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

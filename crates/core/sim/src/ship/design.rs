@@ -275,6 +275,8 @@ pub struct GunSpec {
     /// Centre of the facing side, blueprint frame.
     pub muzzle: [f32; 2],
     pub facing: Dir,
+    /// Its weapon group, 1 to `data::MAX_WEAPON_GROUP` (GDR-0088): which of the pilot's triggers fires it.
+    pub group: u8,
 }
 
 /// An engine's static mount.
@@ -607,6 +609,8 @@ impl ShipDesign {
                     part: i as u32,
                     muzzle,
                     facing,
+                    // Out of range only in unvalidated blueprints (tests, tools): the nearest group.
+                    group: ship.parts[i].group.unwrap_or(1).clamp(1, data::MAX_WEAPON_GROUP),
                 });
                 gun_blockers.push(line_of_fire_blockers(&grid, i, facing, bounds));
             }

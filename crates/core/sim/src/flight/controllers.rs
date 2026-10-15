@@ -95,9 +95,21 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
             continue;
         }
         match plan.fire {
-            Fire::Hold | Fire::All => {
-                controls.fire = plan.fire == Fire::All;
+            Fire::Hold => {
+                controls.fire = false;
                 controls.guns.clear();
+            }
+            // Every group: the trigger alone, no per-gun mask.
+            Fire::Groups(FIRE_ALL) => {
+                controls.fire = true;
+                controls.guns.clear();
+            }
+            Fire::Groups(mask) => {
+                controls.guns.clear();
+                controls
+                    .guns
+                    .extend(design.guns.iter().map(|g| mask & 1 << (g.group - 1) != 0));
+                controls.fire = controls.guns.contains(&true);
             }
             Fire::AtWill(ts) => {
                 controls.fire = crate::behavior::guns_at_will(
