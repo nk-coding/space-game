@@ -84,16 +84,29 @@ pub struct Beacon {
     pub strobe: bool,
 }
 
+/// The windows of one building or wall: their panes, the colour they light in, and whether the building is lit (most
+/// of them on) or dark (hardly any). Here they are drawn dark; `super::life` lights them, a few at a time.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Windows {
+    pub panes: Vec<Rect>,
+    pub color: Color,
+    pub lit: bool,
+}
+
 /// A mesh being drawn: flat shapes sample the atlas's white texel, glows its soft dot and halo strip. Blinking
-/// lights are collected, not drawn (their glows are small meshes of their own, `super::life`).
+/// lights and windows are collected, not drawn (their glows and lights are small meshes of their own, `super::life`).
 pub struct Pen {
     pub m: MeshBuf,
     pub beacons: Vec<Beacon>,
+    pub windows: Vec<Windows>,
     white: Region,
     soft: Region,
     halo: Region,
     glow: bool,
 }
+
+/// The approach path's chevrons' half height (m).
+const CHEVRON: f32 = 0.4;
 
 /// Points around a circle (closed: the first point is not repeated).
 fn ring(c: Vec2, r: f32, n: usize) -> Vec<Vec2> {
@@ -106,7 +119,7 @@ fn ring_n(r: f32) -> usize {
 
 impl Pen {
     pub fn new(atlas: &Atlas, glow: bool) -> Self {
-        Self { m: MeshBuf::default(), beacons: Vec::new(), white: atlas.region("fx/white"), soft: atlas.region("fx/dot_soft"), halo: atlas.region("fx/halo"), glow }
+        Self { m: MeshBuf::default(), beacons: Vec::new(), windows: Vec::new(), white: atlas.region("fx/white"), soft: atlas.region("fx/dot_soft"), halo: atlas.region("fx/halo"), glow }
     }
 
     pub fn into_mesh(self) -> Mesh {
@@ -244,15 +257,28 @@ fn conduits(pen: &mut Pen, pal: &Palette, a: Vec2, b: Vec2) {
     }
 }
 
-/// A row of `n` windows from `a` to `b`, a share `lit` of them glowing in `col` (the others dark).
-#[allow(clippy::too_many_arguments)]
-fn windows(pen: &mut Pen, pal: &Palette, rng: &mut Rng, a: Vec2, b: Vec2, n: usize, lit: f32, col: Color, upright: bool) {
-    let size = if upright { Vec2::new(0.15, 0.25) } else { Vec2::new(0.25, 0.15) };
-    for k in 0..n {
-        let at = a.lerp(b, (k as f32 + 0.5) / n as f32);
-        let on = rng.next_f32() < lit;
-        let c = if on { vcol(col, 0.9) } else { vcol(pal.hull_lo, 1.0) };
-        pen.rect(Rect::from_center_size(at, size), c);
+/// One building's or wall's windows, in rows of `n` from `a` to `b` (each pane long along its row), drawn dark and
+/// collected to light in `col` (`lit`: most of them, else hardly any).
+fn windows(pen: &mut Pen, pal: &Palette, rows: &[(Vec2, Vec2, usize)], col: Color, lit: bool) {
+    let mut panes = Vec::new();
+    for &(a, b, n) in rows {
+        let d = b - a;
+        let size = if d.y.abs() > d.x.abs() { Vec2::new(0.15, 0.25) } else { Vec2::new(0.25, 0.15) };
+        for k in 0..n {
+            let pane = Rect::from_center_size(a.lerp(b, (k as f32 + 0.5) / n as f32), size);
+            pen.rect(pane, vcol(pal.hull_lo, 1.0));
+            panes.push(pane);
+        }
+    }
+    pen.windows.push(Windows { panes, color: col, lit });
+}
+
+/// Windows' lights over their dark panes, each as bright as its `glow` (0: off, 1: on).
+pub fn window_lights(pen: &mut Pen, w: &Windows, glow: impl Iterator<Item = f32>) {
+    for (pane, g) in w.panes.iter().zip(glow) {
+        if g > 0.0 {
+            pen.rect(*pane, vcol(w.color, 0.9 * g));
+        }
     }
 }
 
@@ -308,11 +334,11 @@ pub fn walls(pen: &mut Pen, l: &Layout, pal: &Palette) {
     conduits(pen, pal, Vec2::new(0.3, t + 0.5), Vec2::new(tip, t + 0.5));
     conduits(pen, pal, Vec2::new(0.3, b - 0.5), Vec2::new(tip, b - 0.5));
     conduits(pen, pal, Vec2::new(-0.5, t - 0.3), Vec2::new(-0.5, b + 0.3));
-    // Window rows: the yard runs, so about half of them are lit.
+    // Window rows on each arm and the base: the yard runs, so they are lit.
     let n = ((tip - base) / 0.9) as usize;
-    windows(pen, pal, &mut rng, Vec2::new(base + 1.5, t + WALL - 1.3), Vec2::new(tip - 1.0, t + WALL - 1.3), n, 0.55, pal.gold, false);
-    windows(pen, pal, &mut rng, Vec2::new(base + 1.5, b - WALL + 1.3), Vec2::new(tip - 1.0, b - WALL + 1.3), n, 0.55, pal.gold, false);
-    windows(pen, pal, &mut rng, Vec2::new(base + 1.3, t - 1.0), Vec2::new(base + 1.3, b + 1.0), (h / 0.9) as usize, 0.5, pal.gold, true);
+    windows(pen, pal, &[(Vec2::new(base + 1.5, t + WALL - 1.3), Vec2::new(tip - 1.0, t + WALL - 1.3), n)], pal.gold, true);
+    windows(pen, pal, &[(Vec2::new(base + 1.5, b - WALL + 1.3), Vec2::new(tip - 1.0, b - WALL + 1.3), n)], pal.gold, true);
+    windows(pen, pal, &[(Vec2::new(base + 1.3, t - 1.0), Vec2::new(base + 1.3, b + 1.0), (h / 0.9) as usize)], pal.gold, true);
     // Radiator fins on the outer faces between the buildings.
     fins(pen, pal, 0.62 * w, 0.92 * w, t + WALL, 1.0, 7);
     fins(pen, pal, 0.72 * w, 0.95 * w, b - WALL, -1.0, 6);
@@ -365,7 +391,7 @@ fn strut(pen: &mut Pen, pal: &Palette, from: Vec2, to: Vec2) {
 }
 
 /// A building's body: a chamfered block with window rows top and bottom (`lit` lights most of them in `col`).
-fn block(pen: &mut Pen, pal: &Palette, rng: &mut Rng, r: Rect, lit: bool, col: Color) {
+fn block(pen: &mut Pen, pal: &Palette, r: Rect, lit: bool, col: Color) {
     let c = chamfer(r);
     let (lo, hi) = (r.min, r.max);
     let pts = [
@@ -381,9 +407,8 @@ fn block(pen: &mut Pen, pal: &Palette, rng: &mut Rng, r: Rect, lit: bool, col: C
     pen.poly(&pts, vcol(pal.hull, 1.0));
     pen.path(&pts, true, 0.15, vcol(pal.hull_hi, 1.0));
     let n = ((r.width() / 1.1) as usize).max(3);
-    let share = if lit { 0.7 } else { 0.05 };
-    windows(pen, pal, rng, Vec2::new(lo.x + 0.6, hi.y - 0.4), Vec2::new(hi.x - 0.6, hi.y - 0.4), n, share, col, false);
-    windows(pen, pal, rng, Vec2::new(lo.x + 0.6, lo.y + 0.4), Vec2::new(hi.x - 0.6, lo.y + 0.4), n, share, col, false);
+    let rows = [(Vec2::new(lo.x + 0.6, hi.y - 0.4), Vec2::new(hi.x - 0.6, hi.y - 0.4), n), (Vec2::new(lo.x + 0.6, lo.y + 0.4), Vec2::new(hi.x - 0.6, lo.y + 0.4), n)];
+    windows(pen, pal, &rows, col, lit);
 }
 
 /// An ellipse's outline (`rx`, `ry` turned by `angle`).
@@ -450,17 +475,15 @@ pub fn mind_core(pen: &mut Pen, pal: &Palette) {
 
 /// The mind's building: its block, cognition banks above and below the emblem, heat sinks on its top and bottom
 /// faces, coolant runs down its sides and the collar into the base.
-fn mind_house(pen: &mut Pen, l: &Layout, pal: &Palette, rng: &mut Rng) {
+fn mind_house(pen: &mut Pen, l: &Layout, pal: &Palette) {
     let r = l.mind.rect();
     let c = l.mind.centre;
-    block(pen, pal, rng, r, true, pal.violet);
+    block(pen, pal, r, true, pal.violet);
     for s in [1.0f32, -1.0] {
         // Cognition banks: two rows of cells, most of them thinking.
         let y = c.y + s * 3.55;
         pen.boxed(Rect::from_center_size(Vec2::new(c.x, y), Vec2::new(4.6, 0.95)), vcol(pal.dark, 1.0), vcol(pal.violet, 0.35), 0.05);
-        for dy in [-0.2, 0.2] {
-            windows(pen, pal, rng, Vec2::new(c.x - 2.1, y + dy), Vec2::new(c.x + 2.1, y + dy), 9, 0.6, pal.violet, false);
-        }
+        windows(pen, pal, &[-0.2, 0.2].map(|dy| (Vec2::new(c.x - 2.1, y + dy), Vec2::new(c.x + 2.1, y + dy), 9)), pal.violet, true);
         // Heat sinks standing out of the top and bottom faces, right of the bridges' corners.
         let face = if s > 0.0 { r.max.y } else { r.min.y };
         for k in 0..4 {
@@ -484,10 +507,10 @@ fn mind_house(pen: &mut Pen, l: &Layout, pal: &Palette, rng: &mut Rng) {
 
 /// Research's building: the lab block, a dome and the dishes' mounts on its roof, a rack of servers either side of
 /// its emblem (lit while research runs), its antenna.
-fn research_house(pen: &mut Pen, l: &Layout, pal: &Palette, rng: &mut Rng, lit: bool) {
+fn research_house(pen: &mut Pen, l: &Layout, pal: &Palette, lit: bool) {
     let r = &l.research;
     let col = if lit { pal.gold } else { pal.dim };
-    block(pen, pal, rng, r.rect(), lit, pal.gold);
+    block(pen, pal, r.rect(), lit, pal.gold);
     let roof = r.rect().max.y;
     // The dome: a half disc with its slit.
     let dome = Vec2::new(r.centre.x - 1.1, roof);
@@ -502,10 +525,11 @@ fn research_house(pen: &mut Pen, l: &Layout, pal: &Palette, rng: &mut Rng, lit: 
     // Server racks either side of the emblem.
     for x in [r.centre.x - 3.3, r.centre.x + 3.3] {
         pen.boxed(Rect::from_center_size(Vec2::new(x, r.centre.y), Vec2::new(1.3, 2.4)), vcol(pal.dark, 1.0), vcol(col, 0.4), 0.05);
-        for k in 0..4 {
-            let y = r.centre.y - 0.8 + 0.53 * k as f32;
-            windows(pen, pal, rng, Vec2::new(x - 0.45, y), Vec2::new(x + 0.45, y), 3, if lit { 0.7 } else { 0.05 }, pal.gold, false);
-        }
+        let rows = [0.0, 1.0, 2.0, 3.0].map(|k| {
+            let y = r.centre.y - 0.8 + 0.53 * k;
+            (Vec2::new(x - 0.45, y), Vec2::new(x + 0.45, y), 3)
+        });
+        windows(pen, pal, &rows, pal.gold, lit);
     }
     antenna(pen, pal, r.centre + Vec2::new(1.0, 2.75), Vec2::new(0.0, 1.3), pal.gold);
 }
@@ -558,11 +582,16 @@ pub fn gate_ring(pen: &mut Pen, pal: &Palette, awake: bool) {
     }
 }
 
-/// A light running up the approach path to the gate, heading +x.
-pub fn gate_pulse(pen: &mut Pen, pal: &Palette) {
-    pen.glow(Vec2::ZERO, 1.6, vcol(pal.teal, 0.7));
-    let s = 0.42;
-    pen.path(&[Vec2::new(0.0, s), Vec2::new(s, 0.0), Vec2::new(0.0, -s)], false, 0.1, vcol(pal.teal, 1.0));
+/// The approach path's chevrons lit over the path's own, each as bright as its `glow` (`super::life` runs a wave up
+/// them).
+pub fn approach_lights(pen: &mut Pen, pal: &Palette, chevrons: &[Vec2], glow: impl Iterator<Item = f32>) {
+    for (c, g) in chevrons.iter().zip(glow) {
+        if g > 0.0 {
+            let s = CHEVRON;
+            pen.glow(*c + Vec2::X * s / 2.0, 1.6, vcol(pal.teal, 0.7 * g));
+            pen.path(&[*c + Vec2::new(0.0, s), *c + Vec2::new(s, 0.0), *c - Vec2::new(0.0, s)], false, 0.1, vcol(pal.teal, g));
+        }
+    }
 }
 
 /// A shuttle heading +x: a small hull, its cockpit, an engine glow behind it.
@@ -591,7 +620,7 @@ fn lane(pen: &mut Pen, pal: &Palette, a: Vec2, b: Vec2) {
 
 /// A mooring: a small U hanging off a bridge, its mouth away from it (`open` +1 up, −1 down), lit while an escort
 /// lies in it. `c` is its interior's centre.
-fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, open: f32, lit: bool) {
+fn mooring(pen: &mut Pen, pal: &Palette, c: Vec2, open: f32, lit: bool) {
     let (hw, d, t) = (MOORING_HALF, MOORING_DEPTH / 2.0, MOORING_WALL);
     let ch = t * 0.45;
     // The berth's own frame: `u` from the base towards the mouth, `v` across it.
@@ -626,10 +655,8 @@ fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, open: f32, lit:
     pen.rect(quad((x0 - 0.48, -hw - 0.74), (x1 - 1.0, -hw - 0.46)), hi);
     pen.rect(quad((x0 - 0.74, -hw - 0.46), (x0 - 0.46, hw + 0.46)), hi);
     // Windows on the outer faces.
-    let share = if lit { 0.55 } else { 0.08 };
-    windows(pen, pal, rng, p(x1 - 1.5, y1 - 0.3), p(back + 1.0, y1 - 0.3), 10, share, pal.gold, true);
-    windows(pen, pal, rng, p(x1 - 1.5, y0 + 0.3), p(back + 1.0, y0 + 0.3), 10, share, pal.gold, true);
-    windows(pen, pal, rng, p(back + 0.3, -hw), p(back + 0.3, hw), 9, share, pal.gold, false);
+    let rows = [(p(x1 - 1.5, y1 - 0.3), p(back + 1.0, y1 - 0.3), 10), (p(x1 - 1.5, y0 + 0.3), p(back + 1.0, y0 + 0.3), 10), (p(back + 0.3, -hw), p(back + 0.3, hw), 9)];
+    windows(pen, pal, &rows, pal.gold, lit);
     // The lit inner edge and small clamps.
     let inner = pts(&[(x1, hw), (x0, hw), (x0, -hw), (x1, -hw)]);
     if lit {
@@ -651,7 +678,6 @@ fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, open: f32, lit:
 /// Everything around the U: struts, buildings, the gate with its pylons and approach path, the bridges and the
 /// moorings.
 pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
-    let mut rng = Rng::new(7);
     // The truss bridges to the moorings, bending into the mind's corners, and the cross bar at their far end.
     let (bx0, bx1) = l.bridge_x;
     for (y, (bend, end)) in l.bridges.into_iter().zip(l.mind_joints) {
@@ -663,7 +689,7 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     }
     pen.line(Vec2::new(bx0, l.bridges[0]), Vec2::new(bx0, l.bridges[1]), 0.5, vcol(pal.hull_hi, 1.0));
     for (k, c) in l.moorings.iter().enumerate() {
-        mooring(pen, pal, &mut rng, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
+        mooring(pen, pal, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }
     // Struts under the buildings (the mind's collar is its own), and the one from the range's tower to its lane.
     for b in [&l.research, &l.fabricator, &l.range, &l.salvage] {
@@ -671,21 +697,21 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     }
     let t = l.range.rect();
     strut(pen, pal, Vec2::new(t.max.x - 0.1, l.lane.0.y), l.lane.0 - Vec2::X * 1.0);
-    research_house(pen, l, pal, &mut rng, lights.research);
+    research_house(pen, l, pal, lights.research);
     // The fabricator and the salvage bay: dark until they have screens.
-    block(pen, pal, &mut rng, l.fabricator.rect(), false, pal.dim);
+    block(pen, pal, l.fabricator.rect(), false, pal.dim);
     bays(pen, pal, l.fabricator.centre, 0.0287);
-    block(pen, pal, &mut rng, l.salvage.rect(), false, pal.dim);
+    block(pen, pal, l.salvage.rect(), false, pal.dim);
     bays(pen, pal, l.salvage.centre, 0.0233);
-    mind_house(pen, l, pal, &mut rng);
+    mind_house(pen, l, pal);
     // The test range: its control tower and the target lane.
-    block(pen, pal, &mut rng, t, true, pal.teal);
+    block(pen, pal, t, true, pal.teal);
     pen.boxed(Rect::from_center_size(t.center(), t.size() * Vec2::new(0.64, 0.44)), vcol(pal.dark, 1.0), vcol(pal.teal, 0.5), 0.06);
     lane(pen, pal, l.lane.0, l.lane.1);
     // The approach path, the pylons (trusses from the arm tips to the gate's pods) and the gate.
     let path_col = if lights.gate { pal.teal } else { pal.dim };
     for (k, c) in l.chevrons.iter().enumerate() {
-        let s = 0.4;
+        let s = CHEVRON;
         pen.path(&[*c + Vec2::new(0.0, s), *c + Vec2::new(s, 0.0), *c - Vec2::new(0.0, s)], false, 0.08, vcol(path_col, 0.25 + 0.1 * k as f32));
     }
     for (a, b) in l.pylons {

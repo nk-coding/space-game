@@ -35,6 +35,8 @@ pub const CRANES: [f32; 3] = [0.18, 0.5, 0.82];
 /// Docking clamps: fractions along the arms (one on each arm at each), how far they reach in.
 pub const CLAMPS: [f32; 2] = [0.3, 0.7];
 pub const CLAMP_REACH: f32 = 1.3;
+/// How many places the shuttles fly between ([`Layout::shuttle_stops`]).
+pub const SHUTTLE_STOPS: usize = 13;
 
 /// A place on the station: what the camera flies to, what a click or a key opens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -221,14 +223,30 @@ impl Layout {
         Rect::new(far - MOORING_HALF - MOORING_WALL - 0.6, self.moorings[1].y - reach, self.mind.rect().min.x, self.moorings[0].y + reach)
     }
 
-    /// The shuttles' runs, each from one end to the other and back: along the bridges from the far moorings past the
-    /// near ones to research and to the salvage bay; and round the gate.
-    pub fn shuttle_runs(&self) -> [Vec<Vec2>; 2] {
-        let out = MOORING_DEPTH / 2.0 + MOORING_WALL + 1.6;
-        let run = |s: f32, far: Vec2, near: Vec2, to: Vec2| vec![far + Vec2::Y * s * out, near + Vec2::Y * s * out, to];
+    /// Where the shuttles fly around the station's left end, all clear of the hulls: berths they may stop at
+    /// (`true`: off the moorings' mouths, beside the mind, research and the salvage bay) and points in open space
+    /// they pass through (between the bridges, past the gaps between the moorings, beside the mind).
+    pub fn shuttle_stops(&self) -> [(Vec2, bool); SHUTTLE_STOPS] {
+        let mid = self.area.center().y;
+        let m = &self.moorings;
+        // Off the mouths, and past them over the gap between the near and the far moorings.
+        let (mouth, past) = (MOORING_DEPTH / 2.0 + 1.0, MOORING_DEPTH / 2.0 + 2.5);
+        let gap = (m[0].x + m[2].x) / 2.0;
+        let (r, s) = (self.research.rect(), self.salvage.rect());
         [
-            run(1.0, self.moorings[2], self.moorings[0], Vec2::new(self.research.rect().min.x - 1.6, self.research.centre.y)),
-            run(-1.0, self.moorings[3], self.moorings[1], Vec2::new(self.salvage.rect().min.x - 1.6, self.salvage.centre.y)),
+            (m[0] + Vec2::Y * mouth, true),
+            (m[1] - Vec2::Y * mouth, true),
+            (m[2] + Vec2::Y * mouth, true),
+            (m[3] - Vec2::Y * mouth, true),
+            (Vec2::new(self.mind.rect().min.x - 1.8, mid), true),
+            (Vec2::new(r.min.x - 1.6, self.research.centre.y), true),
+            (Vec2::new(s.min.x - 1.6, self.salvage.centre.y), true),
+            (Vec2::new(m[2].x, mid), false),
+            (Vec2::new(m[0].x, mid), false),
+            (Vec2::new(gap, m[0].y + past), false),
+            (Vec2::new(gap, m[1].y - past), false),
+            (Vec2::new(self.mind.centre.x, self.research.centre.y), false),
+            (Vec2::new(self.mind.centre.x, self.salvage.centre.y), false),
         ]
     }
 
@@ -392,6 +410,30 @@ mod tests {
             // The cranes park at the mouth, past the frame and inside the arms.
             for (x, p) in l.cranes.iter().zip(l.crane_park) {
                 assert!(*x > 0.0 && *x < l.area.max.x && p > l.area.max.x && p < l.tip_x);
+            }
+        }
+    }
+
+    /// The shuttles' stops are in view and clear of every hull: the U, the buildings, the moorings and the bridges.
+    #[test]
+    fn shuttle_stops_are_in_view_and_clear_of_the_hulls() {
+        for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
+            let l = Layout::new(frame);
+            let mut hulls = vec![l.station(), l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect()];
+            for (k, m) in l.moorings.iter().enumerate() {
+                // From the base behind the bridge side to the tips at the mouth.
+                let open = if k % 2 == 0 { 1.0 } else { -1.0 };
+                let (back, tips) = (*m - Vec2::Y * open * (MOORING_DEPTH / 2.0 + MOORING_WALL), *m + Vec2::Y * open * MOORING_DEPTH / 2.0);
+                hulls.push(Rect::from_corners(back - Vec2::X * (MOORING_HALF + MOORING_WALL), tips + Vec2::X * (MOORING_HALF + MOORING_WALL)));
+            }
+            for y in l.bridges {
+                hulls.push(Rect::new(l.bridge_x.0, y - BRIDGE / 2.0, l.bridge_x.1, y + BRIDGE / 2.0));
+            }
+            for (at, _) in l.shuttle_stops() {
+                assert!(l.overview.inflate(-0.6).contains(at), "{at} out of view at {frame:?}");
+                for h in &hulls {
+                    assert!(!h.inflate(0.5).contains(at), "{at} on {h:?} at {frame:?}");
+                }
             }
         }
     }

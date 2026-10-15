@@ -1,45 +1,68 @@
 //! What keeps the yard alive at home (Niklas, 15 Oct 2026: "the station should feel a bit more alive"): beacons
-//! that breathe and flash, the gate's ring turning and a light running up its approach while it is awake, the
-//! mind's spokes turning around its beating core, research's dishes sweeping and its orbit turning while research
-//! runs, and two shuttles plying from the far moorings to research and to the salvage bay.
+//! that breathe and flash, the gate's ring turning and a wave of light running up its approach while it is awake,
+//! the mind's spokes turning around its beating core, research's dishes sweeping and its orbit turning while
+//! research runs, two shuttles roaming the station's left end, and windows going on and off, a few in a minute.
 //!
 //! Each is a small mesh of its own, built with the yard (`super::rebuild`) and then only moved, turned or scaled by
 //! its transform, so nothing is rebuilt while it moves. The beacons' white cores stay in the static meshes; only
-//! their glows blink.
+//! their glows blink. The approach's lit chevrons and each building's or wall's window lights are drawn again only
+//! while one of them fades ([`relight`]): the wave for about a second in five, a building's windows for a few
+//! seconds about once a minute.
 
 use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 use kit::atlas::{Atlas, AtlasMaterial};
 use kit::meshbuf::MeshBuf;
+use kit::params::RenderToggles;
+use kit::rng::Rng;
 
-use super::draw::{self, Beacon, Lights, Palette, Pen};
+use super::draw::{self, Beacon, Lights, Palette, Pen, Windows};
 use super::layout::Layout;
 
-/// Depths: the gate's ring and pulse, the mind's and research's moving parts just over the yard (under the floor and
-/// the walls); the shuttles over everything but the drones.
+/// Depths: the gate's ring and approach lights, the mind's and research's moving parts just over the yard (under the
+/// floor and the walls); the shuttles over everything but the drones.
 const Z_PARTS: f32 = 1.3;
 const Z_SHUTTLES: f32 = 13.0;
-/// A beacon's glow just over the layer its core is drawn in.
+/// A beacon's glow and a window's light just over the layer they belong to.
 const Z_BEACON: f32 = 0.4;
+const Z_WINDOWS: f32 = 0.2;
 
-/// Shuttle speed (m/s), and how long one waits at each end of its run (s).
-const SHUTTLE_SPEED: f32 = 2.4;
-const SHUTTLE_DWELL: f32 = 3.0;
+/// Shuttles (Niklas, 15 Oct 2026: they "should roam more freely, and they should not teleport"): top speed (m/s),
+/// thrust and the braking they plan their arrival with (m/s²), how fast they turn (rad/s), how close a berth is
+/// reached and a passing point passed (m), and how often (a share) and how long (s) they stop at a berth.
+const SHUTTLE_SPEED: f32 = 2.6;
+const SHUTTLE_THRUST: f32 = 1.2;
+const SHUTTLE_BRAKE: f32 = 0.7;
+const SHUTTLE_TURN: f32 = 1.6;
+const SHUTTLE_ARRIVE: f32 = 0.25;
+const SHUTTLE_PASS: f32 = 1.5;
+const SHUTTLE_STOPS: f32 = 0.6;
+const SHUTTLE_WAIT: (f32, f32) = (2.0, 6.0);
 /// One turn of the gate's ring and of the mind's spokes, and of research's orbit (s).
 const GATE_TURN: f32 = 120.0;
 const MIND_TURN: f32 = 40.0;
 const ORBIT_TURN: f32 = 30.0;
-/// The lights up the approach: one run (s), and how many run at once, evenly apart (Niklas, 15 Oct 2026: one
-/// light every 2.8 s was too sparse; now one every 0.9 s).
-const PULSE_RUN: f32 = 1.8;
-const PULSES: usize = 2;
+/// The approach's wave (Niklas, 15 Oct 2026: "highlighting the arrows after each other ... only every 5s or so"):
+/// one every 5 s; each chevron lights this long after the one before it and rises and falls in this long, so a
+/// wave takes about a second.
+const WAVE_EVERY: f32 = 5.0;
+const WAVE_STEP: f32 = 0.11;
+const WAVE_RISE: f32 = 0.45;
+/// Windows (Niklas, 15 Oct 2026: "very slowly change which are active ... not too many/too little per
+/// component"): the share of a building's or wall's windows that is on while it is lit and while it is dark, how
+/// long it waits between two switches (s, drawn evenly) and how long a window takes to light or go dark (s).
+const LIT_SHARE: (f32, f32) = (0.35, 0.75);
+const DARK_SHARE: (f32, f32) = (0.0, 0.12);
+const SWITCH_EVERY: (f32, f32) = (20.0, 60.0);
+const WINDOW_FADE: f32 = 4.0;
 
 /// A moving part of the yard.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Part {
     GateRing,
-    GatePulse(usize),
+    /// The approach's chevrons, lit by its wave ([`relight`]).
+    Approach,
     MindRotor,
     MindCore,
     Dish(usize),
@@ -48,18 +71,7 @@ pub enum Part {
 }
 
 impl Part {
-    const ALL: [Part; 10] = [
-        Part::GateRing,
-        Part::GatePulse(0),
-        Part::GatePulse(1),
-        Part::MindRotor,
-        Part::MindCore,
-        Part::Dish(0),
-        Part::Dish(1),
-        Part::Orbit,
-        Part::Shuttle(0),
-        Part::Shuttle(1),
-    ];
+    const ALL: [Part; 9] = [Part::GateRing, Part::Approach, Part::MindRotor, Part::MindCore, Part::Dish(0), Part::Dish(1), Part::Orbit, Part::Shuttle(0), Part::Shuttle(1)];
 
     fn z(self) -> f32 {
         match self {
@@ -72,13 +84,169 @@ impl Part {
         let lab = if lights.research { pal.gold } else { pal.dim };
         match self {
             Part::GateRing => draw::gate_ring(pen, pal, lights.gate),
-            Part::GatePulse(_) => draw::gate_pulse(pen, pal),
+            // Dark between waves; the wave draws it as it runs.
+            Part::Approach => {}
             Part::MindRotor => draw::mind_rotor(pen, pal),
             Part::MindCore => draw::mind_core(pen, pal),
             Part::Dish(k) => draw::dish(pen, pal, draw::research_dishes(l)[k].1.0, lab),
             Part::Orbit => draw::orbit(pen, lab),
             Part::Shuttle(_) => draw::shuttle(pen, pal),
         }
+    }
+}
+
+/// A shuttle's flight, from its first frame at home on.
+#[derive(Component, Default)]
+pub struct Pilot(Option<Flight>);
+
+/// Where a shuttle is, how fast it goes and which way it faces, the stop it flies to and, at a berth, how much
+/// longer it waits there.
+#[derive(Clone, Copy, Debug)]
+struct Flight {
+    at: Vec2,
+    v: Vec2,
+    heading: f32,
+    to: usize,
+    wait: Option<f32>,
+}
+
+impl Flight {
+    /// Waiting a little at a stop `rng` picks.
+    fn new(stops: &[(Vec2, bool)], rng: &mut Rng) -> Self {
+        let to = pick(stops.len(), rng);
+        Self { at: stops[to].0, v: Vec2::ZERO, heading: rng.range(-PI, PI), to, wait: Some(rng.range(0.0, SHUTTLE_WAIT.1)) }
+    }
+
+    /// The next stop: the nearest of three picks, so mostly short hops round the moorings and now and then a long
+    /// one.
+    fn next(&self, stops: &[(Vec2, bool)], rng: &mut Rng) -> usize {
+        (0..3)
+            .map(|_| pick(stops.len(), rng))
+            .filter(|k| *k != self.to)
+            .min_by(|a, b| self.at.distance_squared(stops[*a].0).total_cmp(&self.at.distance_squared(stops[*b].0)))
+            .unwrap_or((self.to + 1) % stops.len())
+    }
+
+    /// `dt` s on: it turns towards its stop and thrusts along its nose (the sharper the turn, the less), brakes into a
+    /// berth and maybe waits there, passes through an open point at speed, then goes on to the next.
+    fn step(&mut self, dt: f32, stops: &[(Vec2, bool)], rng: &mut Rng) {
+        let (target, berth) = stops[self.to];
+        let dist = self.at.distance(target);
+        match self.wait {
+            Some(w) if w > dt => self.wait = Some(w - dt),
+            Some(_) => (self.wait, self.to) = (None, self.next(stops, rng)),
+            None if berth && dist < SHUTTLE_ARRIVE => {
+                if rng.next_f32() < SHUTTLE_STOPS {
+                    self.wait = Some(rng.range(SHUTTLE_WAIT.0, SHUTTLE_WAIT.1));
+                } else {
+                    self.to = self.next(stops, rng);
+                }
+            }
+            None if !berth && dist < SHUTTLE_PASS => self.to = self.next(stops, rng),
+            None => {}
+        }
+        let (target, berth) = stops[self.to];
+        let to = target - self.at;
+        let dist = to.length();
+        let mut want = Vec2::ZERO;
+        // Close in, it holds its nose (the way to the point would swing about) and drifts onto the point.
+        if dist > SHUTTLE_ARRIVE {
+            let dir = to / dist;
+            let turn = (dir.to_angle() - self.heading + PI).rem_euclid(TAU) - PI;
+            self.heading = (self.heading + turn.clamp(-SHUTTLE_TURN * dt, SHUTTLE_TURN * dt) + PI).rem_euclid(TAU) - PI;
+            let facing = Vec2::from_angle(self.heading).dot(dir).max(0.0);
+            let speed = if berth { (2.0 * SHUTTLE_BRAKE * dist).sqrt().min(SHUTTLE_SPEED) } else { SHUTTLE_SPEED };
+            want = dir * speed * facing;
+        } else if berth {
+            want = to / SHUTTLE_ARRIVE * (2.0 * SHUTTLE_BRAKE * SHUTTLE_ARRIVE).sqrt();
+        }
+        self.v += (want - self.v).clamp_length_max(SHUTTLE_THRUST * dt);
+        self.at += self.v * dt;
+    }
+}
+
+/// A random index below `n`.
+fn pick(n: usize, rng: &mut Rng) -> usize {
+    ((rng.next_f32() * n as f32) as usize).min(n - 1)
+}
+
+/// One building's or wall's window lights (`core`: on the U, else around it): which are on, how bright each is now,
+/// and how long until the next switch.
+#[derive(Component)]
+pub struct Lit {
+    windows: Windows,
+    pub core: bool,
+    on: Vec<bool>,
+    glow: Vec<f32>,
+    next: f32,
+    drawn: bool,
+}
+
+impl Lit {
+    fn new(windows: Windows, core: bool) -> Self {
+        Self { windows, core, on: Vec::new(), glow: Vec::new(), next: 0.0, drawn: false }
+    }
+
+    /// How many may be on: the band the building's state allows, at least one apart.
+    fn band(&self) -> (usize, usize) {
+        let n = self.windows.panes.len() as f32;
+        let (lo, hi) = if self.windows.lit { LIT_SHARE } else { DARK_SHARE };
+        let lo = (lo * n).ceil() as usize;
+        (lo, ((hi * n).floor() as usize).max(lo + 1).min(self.windows.panes.len()))
+    }
+
+    /// A random start inside the band, and a random wait until the first switch (so buildings don't switch together).
+    fn start(&mut self, rng: &mut Rng) {
+        let (lo, hi) = self.band();
+        self.on = vec![false; self.windows.panes.len()];
+        for _ in 0..lo + pick(hi - lo + 1, rng) {
+            if let Some(k) = self.any(false, rng) {
+                self.on[k] = true;
+            }
+        }
+        self.glow = self.on.iter().map(|on| if *on { 1.0 } else { 0.0 }).collect();
+        self.next = rng.range(0.0, SWITCH_EVERY.1);
+    }
+
+    /// A random window that is on (or off).
+    fn any(&self, on: bool, rng: &mut Rng) -> Option<usize> {
+        let n = self.on.iter().filter(|o| **o == on).count();
+        (n > 0).then(|| self.on.iter().enumerate().filter(|(_, o)| **o == on).nth(pick(n, rng)).map_or(0, |(k, _)| k))
+    }
+
+    /// One switch: a window goes on, one goes off, or (where either would leave the band) one goes off as another
+    /// comes on.
+    fn switch(&mut self, rng: &mut Rng) {
+        let lit = self.on.iter().filter(|o| **o).count();
+        let (lo, hi) = self.band();
+        let (off, on) = match pick(3, rng) {
+            0 if lit < hi => (None, self.any(false, rng)),
+            1 if lit > lo => (self.any(true, rng), None),
+            _ => (self.any(true, rng), self.any(false, rng)),
+        };
+        for (k, to) in [(off, false), (on, true)] {
+            if let Some(k) = k {
+                self.on[k] = to;
+            }
+        }
+    }
+
+    /// `dt` s on: maybe a switch, and the fades; whether any light changed.
+    fn step(&mut self, dt: f32, rng: &mut Rng) -> bool {
+        self.next -= dt;
+        if self.next <= 0.0 {
+            self.switch(rng);
+            self.next = rng.range(SWITCH_EVERY.0, SWITCH_EVERY.1);
+        }
+        let mut changed = false;
+        for (g, on) in self.glow.iter_mut().zip(&self.on) {
+            let want = if *on { 1.0 } else { 0.0 };
+            if *g != want {
+                *g = if *on { (*g + dt / WINDOW_FADE).min(1.0) } else { (*g - dt / WINDOW_FADE).max(0.0) };
+                changed = true;
+            }
+        }
+        changed
     }
 }
 
@@ -93,7 +261,10 @@ pub struct Blink {
 /// Spawns the moving parts (empty until the yard is built), in the yard's fading group.
 pub fn spawn(commands: &mut Commands, meshes: &mut Assets<Mesh>, outer: &Handle<AtlasMaterial>) {
     for part in Part::ALL {
-        commands.spawn((part, Mesh2d(meshes.add(MeshBuf::placeholder())), MeshMaterial2d(outer.clone()), Transform::from_xyz(0.0, 0.0, part.z()), Visibility::Hidden));
+        let mut e = commands.spawn((part, Mesh2d(meshes.add(MeshBuf::placeholder())), MeshMaterial2d(outer.clone()), Transform::from_xyz(0.0, 0.0, part.z()), Visibility::Hidden));
+        if let Part::Shuttle(_) = part {
+            e.insert(Pilot::default());
+        }
     }
 }
 
@@ -142,66 +313,67 @@ fn blink(b: &Blink, t: f32) -> f32 {
     }
 }
 
-/// Where a point `s` metres along a run is, and which way the run goes there.
-fn along(run: &[Vec2], s: f32) -> (Vec2, Vec2) {
-    let mut left = s;
-    for (i, w) in run.windows(2).enumerate() {
-        let len = w[0].distance(w[1]);
-        let d = (w[1] - w[0]) / len.max(1e-6);
-        if left <= len || i + 2 == run.len() {
-            return (w[0] + d * left.min(len), d);
+/// The windows' lights again, as the static layers collected them (`groups`: their windows, whether they are the
+/// U's, and their layer's depth). A building or wall whose windows didn't change keeps its lights as they are.
+pub fn respawn_windows(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: (&Handle<AtlasMaterial>, &Handle<AtlasMaterial>),
+    groups: Vec<(Windows, bool, f32)>,
+    old: &Query<(Entity, &Lit)>,
+) {
+    let mut kept = Vec::new();
+    for (windows, core, z) in groups {
+        if let Some((e, _)) = old.iter().find(|(e, lit)| lit.windows == windows && lit.core == core && !kept.contains(e)) {
+            kept.push(e);
+            continue;
         }
-        left -= len;
+        commands.spawn((
+            Lit::new(windows, core),
+            Mesh2d(meshes.add(MeshBuf::placeholder())),
+            MeshMaterial2d(if core { materials.0.clone() } else { materials.1.clone() }),
+            Transform::from_xyz(0.0, 0.0, z + Z_WINDOWS),
+            Visibility::Hidden,
+        ));
     }
-    (run[0], Vec2::X)
+    for (e, _) in old {
+        if !kept.contains(&e) {
+            commands.entity(e).despawn();
+        }
+    }
 }
 
-/// A shuttle `t` seconds into its run, out and back with a wait at each end, easing in and out: its place and
-/// heading.
-fn shuttle_at(run: &[Vec2], t: f32) -> (Vec2, f32) {
-    let len: f32 = run.windows(2).map(|w| w[0].distance(w[1])).sum();
-    let trip = len / SHUTTLE_SPEED;
-    let cycle = 2.0 * (trip + SHUTTLE_DWELL);
-    let p = t.rem_euclid(cycle);
-    let (u, back) = if p < trip {
-        (p / trip, false)
-    } else if p < trip + SHUTTLE_DWELL {
-        (1.0, false)
-    } else if p < 2.0 * trip + SHUTTLE_DWELL {
-        (1.0 - (p - trip - SHUTTLE_DWELL) / trip, true)
-    } else {
-        (0.0, true)
-    };
-    let eased = u * u * (3.0 - 2.0 * u);
-    let (at, d) = along(run, eased * len);
-    (at, if back { (-d).to_angle() } else { d.to_angle() })
+/// How bright chevron `k` (from the mouth) is `t` s into the approach's wave: dark but for a soft rise and fall,
+/// each a step after the one before.
+fn wave(k: usize, t: f32) -> f32 {
+    let p = (t.rem_euclid(WAVE_EVERY) - k as f32 * WAVE_STEP) / WAVE_RISE;
+    if (0.0..1.0).contains(&p) { (p * PI).sin().powi(2) } else { 0.0 }
 }
 
-/// Moves, turns and scales the parts and the beacons.
+/// Moves, turns and scales the parts and the beacons; flies the shuttles.
 pub fn animate(
     time: Res<Time<Real>>,
     yard: Res<super::Yard>,
-    mut parts: Query<(&Part, &mut Transform), Without<Blink>>,
+    mut rng: Local<Option<Rng>>,
+    mut parts: Query<(&Part, &mut Transform, Option<&mut Pilot>), Without<Blink>>,
     mut beacons: Query<(&Blink, &mut Transform), Without<Part>>,
 ) {
     let t = time.elapsed_secs_wrapped();
+    // A long frame (a hidden tab) must not throw a shuttle across the yard.
+    let dt = time.delta_secs().min(0.05);
+    let rng = rng.get_or_insert_with(|| Rng::new(time.elapsed().as_nanos() as u32));
     let (l, lights) = (&yard.layout, yard.lights);
-    let runs = l.shuttle_runs();
+    let stops = l.shuttle_stops();
     let set = |tf: &mut Transform, at: Vec2, angle: f32, scale: f32| {
         let want = Transform { translation: at.extend(tf.translation.z), rotation: Quat::from_rotation_z(angle), scale: Vec3::new(scale, scale, 1.0) };
         if *tf != want {
             *tf = want;
         }
     };
-    for (part, mut tf) in &mut parts {
+    for (part, mut tf, pilot) in &mut parts {
         match *part {
             Part::GateRing => set(&mut tf, l.gate, if lights.gate { t / GATE_TURN * TAU } else { 0.0 }, 1.0),
-            Part::GatePulse(k) => {
-                let (from, to) = (l.chevrons.first().copied().unwrap_or(l.gate), l.gate);
-                let u = (t / PULSE_RUN + k as f32 / PULSES as f32).rem_euclid(1.0);
-                let size = if lights.gate { (u * PI).sin() } else { 0.0 };
-                set(&mut tf, from.lerp(to, u), 0.0, size);
-            }
+            Part::Approach => set(&mut tf, Vec2::ZERO, 0.0, 1.0),
             Part::MindRotor => set(&mut tf, l.mind.centre, t / MIND_TURN * TAU, 1.0),
             Part::MindCore => set(&mut tf, l.mind.centre, 0.0, 1.0 + 0.06 * (t * 2.2).sin()),
             Part::Dish(k) => {
@@ -210,10 +382,12 @@ pub fn animate(
                 set(&mut tf, at, rest + sweep, 1.0);
             }
             Part::Orbit => set(&mut tf, l.research.centre, if lights.research { t / ORBIT_TURN * TAU } else { 0.0 }, 1.0),
-            Part::Shuttle(k) => {
-                // The two runs out of step.
-                let (at, angle) = shuttle_at(&runs[k], t + 7.0 * k as f32);
-                set(&mut tf, at, angle, 1.0);
+            Part::Shuttle(_) => {
+                if let Some(mut pilot) = pilot {
+                    let f = pilot.0.get_or_insert_with(|| Flight::new(&stops, rng));
+                    f.step(dt, &stops, rng);
+                    set(&mut tf, f.at, f.heading, 1.0);
+                }
             }
         }
     }
@@ -222,23 +396,124 @@ pub fn animate(
     }
 }
 
+/// Runs the approach's wave and switches and fades the windows, drawing a mesh again only while something in it
+/// changes.
+#[allow(clippy::too_many_arguments)]
+pub fn relight(
+    time: Res<Time<Real>>,
+    yard: Res<super::Yard>,
+    station: Res<super::Station>,
+    atlas: Res<Atlas>,
+    toggles: Res<RenderToggles>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut rng: Local<Option<Rng>>,
+    mut waving: Local<bool>,
+    parts: Query<(&Part, &Mesh2d)>,
+    mut windows: Query<(&mut Lit, &Mesh2d)>,
+) {
+    let (t, dt) = (time.elapsed_secs_wrapped(), time.delta_secs().min(0.05));
+    let rng = rng.get_or_insert_with(|| Rng::new(time.elapsed().as_nanos() as u32 ^ 0x9e37_79b9));
+    let (l, pal, glow) = (&yard.layout, &station.palette, toggles.glow_sprites);
+    let lit = |k: usize| if yard.lights.gate { wave(k, t) } else { 0.0 };
+    let now = (0..l.chevrons.len()).any(|k| lit(k) > 0.0);
+    // Every frame of a wave, and once more to clear it.
+    if now || *waving {
+        for (part, mesh) in &parts {
+            if *part == Part::Approach {
+                let mut pen = Pen::new(&atlas, glow);
+                draw::approach_lights(&mut pen, pal, &l.chevrons, (0..l.chevrons.len()).map(lit));
+                let _ = meshes.insert(&mesh.0, pen.into_mesh());
+            }
+        }
+    }
+    *waving = now;
+    for (mut w, mesh) in &mut windows {
+        if w.on.is_empty() {
+            w.start(rng);
+        }
+        if w.step(dt, rng) || !w.drawn {
+            w.drawn = true;
+            let mut pen = Pen::new(&atlas, glow);
+            // A soft start and end to every fade.
+            draw::window_lights(&mut pen, &w.windows, w.glow.iter().map(|g| g * g * (3.0 - 2.0 * g)));
+            let _ = meshes.insert(&mesh.0, pen.into_mesh());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A shuttle starts at the far end, reaches the other end after its trip, waits there, and comes back.
+    /// A shuttle roams: it never jumps or snaps round, keeps to its top speed, stays in view, reaches many stops and
+    /// waits at some berths.
     #[test]
-    fn a_shuttle_goes_out_and_back() {
-        let run = [Vec2::ZERO, Vec2::new(12.0, 0.0), Vec2::new(12.0, 12.0)];
-        let trip = 24.0 / SHUTTLE_SPEED;
-        assert_eq!(shuttle_at(&run, 0.0).0, Vec2::ZERO);
-        assert!(shuttle_at(&run, trip).0.distance(Vec2::new(12.0, 12.0)) < 1e-3);
-        assert!(shuttle_at(&run, trip + SHUTTLE_DWELL * 0.5).0.distance(Vec2::new(12.0, 12.0)) < 1e-3);
-        // Halfway back it is at the corner, heading back the way it came.
-        let (at, angle) = shuttle_at(&run, trip + SHUTTLE_DWELL + trip / 2.0);
-        assert!(at.distance(Vec2::new(12.0, 0.0)) < 1e-2, "{at}");
-        assert!((Vec2::from_angle(angle) - Vec2::NEG_X).length() < 1e-3 || (Vec2::from_angle(angle) - Vec2::NEG_Y).length() < 1e-3);
-        assert!(shuttle_at(&run, 2.0 * (trip + SHUTTLE_DWELL)).0.distance(Vec2::ZERO) < 1e-3);
+    fn a_shuttle_roams_smoothly() {
+        let l = Layout::new((24, 24));
+        let stops = l.shuttle_stops();
+        let mut rng = Rng::new(3);
+        let mut f = Flight::new(&stops, &mut rng);
+        let dt = 1.0 / 60.0;
+        let (mut seen, mut still) = (vec![f.to], 0.0f32);
+        let mut longest_still = 0.0f32;
+        for _ in 0..(600.0 / dt) as usize {
+            let (at, heading) = (f.at, f.heading);
+            f.step(dt, &stops, &mut rng);
+            assert!(f.at.distance(at) <= (SHUTTLE_SPEED + 0.05) * dt, "jumped from {at} to {}", f.at);
+            let turned = (f.heading - heading + PI).rem_euclid(TAU) - PI;
+            assert!(turned.abs() <= SHUTTLE_TURN * dt + 1e-4, "snapped round by {turned}");
+            assert!(l.overview.contains(f.at), "left the view at {}", f.at);
+            if !seen.contains(&f.to) {
+                seen.push(f.to);
+            }
+            still = if f.v.length() < 0.05 { still + dt } else { 0.0 };
+            longest_still = longest_still.max(still);
+        }
+        assert!(seen.len() >= 8, "only {} stops in ten minutes", seen.len());
+        assert!(longest_still > SHUTTLE_WAIT.0 * 0.8, "never waited at a berth");
+    }
+
+    /// The wave lights the chevrons one after another, each softly, then leaves them dark for most of its period.
+    #[test]
+    fn the_approach_wave_runs_up_the_chevrons_then_rests() {
+        let peak = |k: usize| k as f32 * WAVE_STEP + WAVE_RISE / 2.0;
+        for k in 0..7 {
+            assert!(wave(k, peak(k)) > 0.99);
+            assert!(wave(k, peak(k) + WAVE_EVERY) > 0.99, "it repeats");
+            assert_eq!(wave(k, k as f32 * WAVE_STEP - 0.01), 0.0, "dark until its turn");
+            assert!(wave(k, k as f32 * WAVE_STEP + 0.05) < 0.2, "a soft rise");
+            if k > 0 {
+                assert!(wave(k - 1, peak(k)) < wave(k, peak(k)), "the one before is already fading");
+            }
+        }
+        let dark = (0..500).filter(|i| (0..7).all(|k| wave(k, *i as f32 * WAVE_EVERY / 500.0) == 0.0)).count();
+        assert!(dark > 350, "dark only {dark} of 500");
+    }
+
+    /// A building's windows stay inside their band, switch about once in 20 to 60 s, and fade rather than pop.
+    #[test]
+    fn windows_switch_slowly_inside_their_band() {
+        let mut rng = Rng::new(9);
+        for (n, lit) in [(34, true), (12, true), (12, false), (29, false), (3, true)] {
+            let panes = (0..n).map(|k| Rect::from_center_size(Vec2::new(k as f32, 0.0), Vec2::splat(0.2))).collect();
+            let mut w = Lit::new(Windows { panes, color: Color::WHITE, lit }, false);
+            w.start(&mut rng);
+            let (lo, hi) = w.band();
+            let dt = 0.1;
+            let (mut switches, mut before) = (0, w.on.clone());
+            for _ in 0..(3600.0 / dt) as usize {
+                let glow = w.glow.clone();
+                w.step(dt, &mut rng);
+                let on = w.on.iter().filter(|o| **o).count();
+                assert!((lo..=hi).contains(&on), "{on} of {n} on, band {lo}..={hi}");
+                assert!(w.glow.iter().zip(&glow).all(|(a, b)| (a - b).abs() <= dt / WINDOW_FADE + 1e-6), "a window popped");
+                if w.on != before {
+                    switches += 1;
+                    before = w.on.clone();
+                }
+            }
+            assert!((50..=190).contains(&switches), "{switches} switches in an hour ({n} windows)");
+        }
     }
 
     /// A strobe flashes once per period and rests dim; a navigation light only breathes.

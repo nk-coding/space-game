@@ -388,7 +388,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   target lane and the salvage bay under the bottom wall, the mind behind the base (joined by violet conduits), four
   escort moorings on two truss bridges running off the left edge (two in view, two past it).
 - **Detail** (`shipyard::draw`): plate runs in four tones with dark seams, a lattice truss along each outer face,
-  three conduits (teal, gold, violet) along the inner faces, window rows (lit or dark by state), radiator fins,
+  three conduits (teal, gold, violet) along the inner faces, window rows (mostly lit or mostly dark by state), radiator fins,
   chamfered tips and a base strip, the name plate (`YARD 7 · RIM`, a label), red and green navigation lights on the
   arm tips, the base, the gate pylons and the moorings, antennas, the building area's floor with a dot at every cell
   corner, work lights pooling from the walls, gold corner brackets, a teal light strip with lamps around the inside.
@@ -399,10 +399,22 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   pods, the target lane hangs off its tower on a strut (GDR-0089).
 - **Life** (`shipyard::life`, GDR-0089; Niklas, 15 Oct 2026: "very static"): beacons (the navigation lights
   breathe, the antenna tips flash; their glows are small meshes of their own, the white cores stay in the static
-  meshes), the gate's dashes and small emitters turning (one turn in 120 s) and lights running up its approach
-  (one every 0.9 s) while it is awake, the mind's spokes turning around a beating core, research's dishes sweeping and its orbit
-  turning while research runs, two shuttles plying from the far moorings past the near ones to research and to
-  the salvage bay. Outside flight the backdrop's dust drifts slowly and its far stars twinkle (`backdrop.rs`).
+  meshes), the gate's dashes and small emitters turning (one turn in 120 s) and, while it is awake, a wave of light
+  up its approach every 5 s (the fixed chevrons light one after another towards the gate, 0.11 s apart, each rising
+  and falling in 0.45 s, so a wave takes about a second; Niklas, 15 Oct 2026: the moving arrows ran "way too
+  fast"), the mind's spokes turning around a beating core, research's dishes sweeping and its orbit turning while
+  research runs. **Two shuttles** roam the station's left end on their own (Niklas, 15 Oct 2026: "roam more
+  freely ... not teleport"): each flies between 13 stops clear of the hulls (`Layout::shuttle_stops`: berths off
+  the four moorings' mouths, beside the mind, research and the salvage bay, and open points between the bridges,
+  past the gaps between the moorings and beside the mind), picking the nearest of three random stops next; it turns
+  its nose towards the stop (1.6 rad/s) and thrusts along it (the sharper the turn, the less; top speed 2.6 m/s,
+  1.2 m/s²), brakes into a berth (planned at 0.7 m/s²) and waits there 2–6 s six times in ten, and passes through
+  an open point at speed. Its place only ever moves by its velocity (a frame counts at most 0.05 s), so it never
+  jumps. **Windows** (Niklas, 15 Oct 2026: "very slowly change which are active"): each building's or wall's
+  windows (an arm, the base, a block, a cognition bank, a server rack, a mooring) keep 35–75 % on while it is lit
+  and 0–12 % while it is dark, start at random inside that band, and switch about once in 20–60 s (drawn evenly):
+  one window on, one off, or (where either would leave the band) one off as another comes on, each fading over
+  4 s. Outside flight the backdrop's dust drifts slowly and its far stars twinkle (`backdrop.rs`).
 - **Colours**: `station.*` in `art/tokens.json` (plate tones, structure, floor, nav lights) and the UI accents
   (`ui.*`); glows are the atlas's soft dot and halo strip, as the ships' (the glow toggle turns them off).
 - **Cost**: the station is three static meshes, the yard around the U (z 1), the floor (z 2) and the walls (z 3),
@@ -410,8 +422,11 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   quads, built once). The docked ship is one mesh rebuilt with the design's revision (as the drydock's), each escort
   one. What moves is small meshes moved only by their transforms: the cranes (z 12, over the ship), their
   carriages and hoist lines, the clamps (z 2.5, under the walls), the drones (z 14), life's parts (z 1.3, the
-  shuttles z 13) and some twenty beacons (respawned with the static meshes). Labels and click areas are a few
-  UI nodes written only when they change.
+  shuttles z 13) and some twenty beacons (respawned with the static meshes). The approach's lit chevrons and the
+  windows' lights (one small mesh per building or wall, 16 at home, over its dark panes, z +0.2) are drawn again only
+  while one of them fades (`life::relight`): the wave about a second in five, a building's windows 4 s about once
+  in 40 s; a rebuild keeps the lights of every building whose windows did not change. Labels and click areas are a
+  few UI nodes written only when they change.
 - **States** (`shipyard::lights`, from the career; defaults for review): **research** is lit (windows, the orbit
   emblem's glow, the dishes in gold) once anything has been researched or any node can be paid now
   (`Career::can_pay`); a new game has no research data, so it starts dark. **The gate** is awake (glow, inner light,
