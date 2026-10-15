@@ -297,11 +297,17 @@ Next session:
   - conditions `lock_held`, `idle(...)` (pilot), `speed`, `can_stop_straight`;
   - in flight F1–F4 (ASSIST TOGGLE 1–4) and Z (ALL ASSISTS) switch them for the mission, with a banner; the HUD lists
     them under the speed; the debug overlay moved to F8.
+- **Hold station and collision avoidance** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 4,
+  15 Oct 2026; GDR-0088 is now built in full):
+  - assists `hold_station(point|ally)` (back to where the assist took thrust over, or to the place beside the nearest
+    own vessel; the pilot's thrust moves the station) and `avoid_collisions` (sidesteps a piece of any ship on a
+    collision course within 6 s, deciding thrust only meanwhile), both on the thrust channel and never turning the ship;
+    behaviors don't get them (every AI determinism stream byte-identical);
+  - a new determinism scenario `assists` (the flight scenario with every assist): native and wasm32-wasip1 identical;
+  - the BEHAVIOR screen's tabs are now BEHAVIOR | PILOT ASSISTS, each with GRAPH / TEXT (Niklas); the assists' TEXT
+    view edits the list as the blueprint's rule text.
 - **Next** (Niklas, 15 Oct 2026):
-  1. GDR-0088 in its own order (steps 1 to 3 done above): the action map with a settings screen, then weapon groups, then the pilot assists
-     as a PILOT ASSISTS tab next to BEHAVIOR on the behavior screen (chosen interactively), then hold station and
-     collision avoidance.
-  2. The evolution lab's screen (track L4), dev-only.
+  1. The evolution lab's screen (track L4), dev-only.
 
 ## Phase 4: measurement
 
