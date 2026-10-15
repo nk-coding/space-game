@@ -1,0 +1,21 @@
+// Mixed trials and goals (GDR-0092 step 5): the starter and the Halvex Runner, design and behavior, scored against the
+// enemies of the first voyage (weight 2), the test-range waves (a gauntlet of two), their own starts, the run's best
+// and a short headless voyage, weighing WIN, UNHURT, QUICK and CHEAP. Small, so `scripts/determinism-check.sh --run
+// mixed_trials` runs it natively and in wasm, straight and resumed, and compares (`docs/arena.md` "Determinism").
+// `cargo run --release -p arena-cli -- evolve crates/core/arena/runs/mixed_trials.ron --save /tmp/mixed.ron`
+// PLACEHOLDER numbers.
+(
+    seed: 1,
+    evolve: Both,
+    generations: 4,
+    population: 6,
+    trials: [
+        (preset: "enemies_you_meet", kind: Encounters(voyages: ["yard_approach"]), weight: 2, seeds: 1, time_limit: 20),
+        (preset: "test_range_waves", kind: Waves(target: 2), seeds: 1, time_limit: 40),
+        (preset: "beat_your_start", kind: BeatYourStart, seeds: 1, time_limit: 20),
+        (preset: "hall_of_fame", kind: HallOfFame(count: 1), seeds: 1, time_limit: 20),
+        (preset: "voyages", kind: Voyages(ids: ["yard_approach"], minutes: 1), weight: 0.5, seeds: 1),
+    ],
+    goals: (win: 1, unhurt: 1, quick: 0.5, cheap: 0.5),
+    starts: [Design(design: Ship("rim_skiff")), Design(design: Ship("halvex_runner"))],
+)

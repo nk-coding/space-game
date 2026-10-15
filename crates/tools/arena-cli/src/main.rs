@@ -6,6 +6,9 @@
 //! arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]
 //! arena evolve <run.ron> [--from <design>]... [--lock <lock>]... [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
 //! arena evolve --resume FILE [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
+//! arena trials
+//! arena validate <run file> [--genome G]... [--best N] [--seeds N] [--save FILE] [--threads N]
+//! arena rescore <run file> --save FILE [--until GEN] [--threads N]
 //! arena replay <run file> <generation> <child> <job>
 //! arena lineage <run file> [<genome>]
 //! ```
@@ -19,8 +22,12 @@
 //! lineage, writes them (blueprint and behavior text) into `--out` and prints a fight code per generation (its best
 //! child in its hardest fight). `--from` starts it from designs (replacing the run file's starts), `--lock` keeps
 //! parts, cells, categories and rules of every start, `--save` writes the run file after every generation and
-//! `--resume` goes on from one (GDR-0092 steps 2 and 3). `replay` prints the fight code of any fight of a saved run,
-//! `lineage` a genome's line from its start. The results do not depend on the thread count, nor on where a run was
+//! `--resume` goes on from one (GDR-0092 steps 2 and 3). `--trial` sets the run's trials from `lab.ron`'s presets
+//! (`default` for the lab's default selection; `arena trials` lists them), `--goal` and `--goals` its goals, `--open`,
+//! `--fleet`, `--champion` and `--escort` what the presets fight (step 5); the best elite's score is printed by trial
+//! and goal, and the run's cost per trial. `validate` fights a run's best designs on new seeds and their recorded
+//! fights again, `rescore` re-scores a stale run under today's rules into a new run file. `replay` prints the fight
+//! code of any fight of a saved run, `lineage` a genome's line from its start. The results do not depend on the thread count, nor on where a run was
 //! interrupted. The fights run on `available_parallelism` threads (`--threads` to change); only the wall clock line
 //! depends on the machine.
 
@@ -28,7 +35,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use arena::evolve::{Job, Locks, Start};
+use arena::evolve::{Goals, Job, Locks, Sources, Start, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
 use arena::{
     BehaviorRef, DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Run, RunSave,
     Summary,
@@ -39,18 +46,29 @@ const USAGE: &str = "usage:
   arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]
   arena evolve <run.ron> [--from <design>]... [--lock <lock>]... [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
   arena evolve --resume FILE [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
+  arena trials
+  arena validate <run file> [--genome G]... [--best N] [--seeds N] [--save FILE] [--threads N]
+  arena rescore <run file> --save FILE [--until GEN] [--threads N]
   arena replay <run file> <generation> <child> <job>
   arena lineage <run file> [<genome>]
 designs: a content ship id, or a blueprint file (*.ron; a behavior file of the same name with .txt beside it is its
 behavior, as --out writes them)
+evolve's trials and goals (they replace the run file's): --trial PRESET[:WEIGHT[:SEEDS]] (repeatable; a lab.ron
+preset, `default` for the lab's default selection, `arena trials` lists them), --goal ID:WEIGHT (repeatable: win,
+unhurt, quick, cheap; the others weigh 0) or --goals PRESET (win, win_unhurt, win_cheaply, win_fast); what presets
+fight: --open VOYAGE,... (the open voyages; default: a new career's), --fleet DESIGN, --champion DESIGN (repeatable),
+--escort DESIGN (repeatable: every trial flies with these beside the design)
 locks (of every start): part:N (its parts[N]), category:ID (every part of it, e.g. category:weapons), cell:X,Y (keep
 empty, in the start's coordinates), rule:N (its behavior's rule N, 0 = the top), target, order (the locked rules
 keep their order)";
 
+#[derive(Clone)]
 struct Opts {
     /// Positional arguments after the command.
     args: Vec<String>,
     seeds: u64,
+    /// `--seeds` was given (`validate`'s default is its own).
+    seeds_set: bool,
     seed: Option<u64>,
     distance: Option<f32>,
     time: Option<f32>,
@@ -65,6 +83,16 @@ struct Opts {
     save: Option<String>,
     resume: Option<String>,
     until: Option<u32>,
+    /// `evolve`: the run's trials from presets, its goals, what the presets fight.
+    trials: Vec<String>,
+    goal: Vec<String>,
+    goals: Option<String>,
+    open: Option<String>,
+    fleet: Vec<String>,
+    champions: Vec<String>,
+    escorts: Vec<String>,
+    /// `validate`: the genomes (default: the best `--best`) and the new seeds.
+    genomes: Vec<u32>,
 }
 
 /// The value of option `a`, as a number.
@@ -79,17 +107,26 @@ fn parse(args: &[String]) -> Result<Opts, String> {
     let mut o = Opts {
         args: Vec::new(),
         seeds: 1,
+        seeds_set: false,
         seed: None,
         distance: None,
         time: None,
         threads: std::thread::available_parallelism().map_or(1, |n| n.get()),
         out: None,
-        best: 8,
+        best: VALIDATE_BEST,
         from: Vec::new(),
         locks: Vec::new(),
         save: None,
         resume: None,
         until: None,
+        trials: Vec::new(),
+        goal: Vec::new(),
+        goals: None,
+        open: None,
+        fleet: Vec::new(),
+        champions: Vec::new(),
+        escorts: Vec::new(),
+        genomes: Vec::new(),
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -99,7 +136,10 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         }
         let v = it.next().ok_or_else(|| format!("{a} needs a value"))?;
         match a.as_str() {
-            "--seeds" => o.seeds = num(a, v)?,
+            "--seeds" => {
+                o.seeds = num(a, v)?;
+                o.seeds_set = true;
+            }
             "--seed" => o.seed = Some(num(a, v)?),
             "--distance" => o.distance = Some(num(a, v)?),
             "--time" => o.time = Some(num(a, v)?),
@@ -111,6 +151,14 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--save" => o.save = Some(v.clone()),
             "--resume" => o.resume = Some(v.clone()),
             "--until" => o.until = Some(num(a, v)?),
+            "--trial" => o.trials.push(v.clone()),
+            "--goal" => o.goal.push(v.clone()),
+            "--goals" => o.goals = Some(v.clone()),
+            "--open" => o.open = Some(v.clone()),
+            "--fleet" => o.fleet.push(v.clone()),
+            "--champion" => o.champions.push(v.clone()),
+            "--escort" => o.escorts.push(v.clone()),
+            "--genome" => o.genomes.push(num(a, v)?),
             _ => return Err(format!("unknown option {a}")),
         }
     }
@@ -128,6 +176,9 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "evolve" => parse(rest).and_then(|o| evolve(&o)),
         Some((cmd, rest)) if cmd == "replay" => parse(rest).and_then(|o| replay(&o)),
         Some((cmd, rest)) if cmd == "lineage" => parse(rest).and_then(|o| lineage(&o)),
+        Some((cmd, rest)) if cmd == "trials" => parse(rest).and_then(|_| trials()),
+        Some((cmd, rest)) if cmd == "validate" => parse(rest).and_then(|o| validate(&o)),
+        Some((cmd, rest)) if cmd == "rescore" => parse(rest).and_then(|o| rescore(&o)),
         _ => Err(USAGE.into()),
     };
     match result {
@@ -429,9 +480,9 @@ fn restored(content: &data::Content, path: &str) -> Result<Run, String> {
 fn row(g: &arena::evolve::GenerationStats, breed: Option<f64>, secs: Option<f64>) {
     let ms = |v: Option<f64>, d: usize| v.map_or("–".into(), |v| format!("{v:.d$}"));
     println!(
-        "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {} | {} |",
+        "| {} | {} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {} | {} |",
         g.generation,
-        g.genes,
+        if g.rescore { "re-score".to_string() } else { format!("{:?}", g.genes) },
         g.evaluated,
         g.rejected,
         g.best,
@@ -449,14 +500,15 @@ fn evolve(o: &Opts) -> Result<(), String> {
     let content = data::base_content();
     let (label, mut run) = match (&o.resume, o.args.as_slice()) {
         (Some(path), []) => {
-            if !o.from.is_empty() || !o.locks.is_empty() {
-                return Err("--from and --lock set up a new run; a resumed run keeps its own".into());
+            if !o.from.is_empty() || !o.locks.is_empty() || !o.trials.is_empty() || !o.goal.is_empty() || o.goals.is_some() {
+                return Err("--from, --lock, --trial and --goal set up a new run; a resumed run keeps its own".into());
             }
             (path.clone(), restored(&content, path)?)
         }
         (None, [path]) => {
             let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
             let mut config = arena::RunConfig::from_ron(&text).map_err(|e| format!("{path}: {e}"))?;
+            set_trials(&content, &mut config, o)?;
             let locks = locks_of(&o.locks)?;
             if !o.from.is_empty() {
                 config.start = None;
@@ -473,51 +525,8 @@ fn evolve(o: &Opts) -> Result<(), String> {
         _ => return Err(USAGE.into()),
     };
     let save = o.save.as_ref().or(o.resume.as_ref());
-    let state = run.state();
-    let until = o.until.unwrap_or(state.generations).min(state.generations);
-    println!(
-        "# {label}: {} generations of {} from {} start(s) on {} threads{}",
-        state.generations,
-        run.config().population,
-        run.starts().len(),
-        o.threads,
-        match state.generation {
-            0 => String::new(),
-            g => format!(", resumed after generation {}", g - 1),
-        }
-    );
-    println!(
-        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | breed ms | s |"
-    );
-    println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
-    for g in state.history {
-        row(g, None, None);
-    }
-    let start = Instant::now();
-    let first = run.generation();
-    while run.generation() < until {
-        let t0 = Instant::now();
-        // Breeding (mutation, crossover, the pre-filter) runs on this thread; the jobs on all of them.
-        let jobs = run.jobs().to_vec();
-        let breed = t0.elapsed().as_secs_f64() * 1e3;
-        let results = par_map(&jobs, o.threads, |j| j.run(&content));
-        run.submit(results);
-        if let Some(path) = save {
-            write_save(path, &run)?;
-        }
-        let g = run.state().history.last().cloned().expect("a generation is done");
-        row(&g, Some(breed), Some(t0.elapsed().as_secs_f64()));
-    }
-    let secs = start.elapsed().as_secs_f64();
-    let done = run.generation() - first;
-    println!(
-        "# {done} generations in {secs:.1} s on {} threads: {:.1} generations per minute",
-        o.threads,
-        done as f64 * 60.0 / secs
-    );
-    if let Some(path) = save {
-        println!("# the run is in {path} (`arena evolve --resume {path}` goes on with it)");
-    }
+    generations(&content, &mut run, &label, save, o)?;
+    trial_costs(&run);
     let results = run.results();
     let axes: Vec<String> = run
         .archive()
@@ -548,6 +557,9 @@ fn evolve(o: &Opts) -> Result<(), String> {
     for (k, e) in results.elites.iter().take(o.best.min(3)).enumerate() {
         let line: Vec<String> = run.lineage(e.id).iter().map(|g| g.to_string()).collect();
         println!("- rank {}: {} (start {})", k + 1, line.join(" → "), e.genome.root + 1);
+    }
+    if let Some(best) = results.elites.first() {
+        print_breakdown(&run, best.id);
     }
     if let Some(out) = &o.out {
         std::fs::create_dir_all(out).map_err(|e| format!("{out}: {e}"))?;
@@ -602,6 +614,273 @@ fn evolve(o: &Opts) -> Result<(), String> {
         for c in codes {
             println!("{c}");
         }
+    }
+    Ok(())
+}
+
+/// Runs `run` to `--until` (or its end), a generation's jobs on every core, printing a row per generation and saving
+/// after each one when `save` names a file.
+fn generations(content: &data::Content, run: &mut Run, label: &str, save: Option<&String>, o: &Opts) -> Result<(), String> {
+    let state = run.state();
+    let until = o.until.unwrap_or(state.generations).min(state.generations);
+    println!(
+        "# {label}: {} generations of {} from {} start(s) on {} threads{}",
+        state.generations,
+        run.config().population,
+        run.starts().len(),
+        o.threads,
+        match state.generation {
+            0 => String::new(),
+            g => format!(", resumed after generation {}", g - 1),
+        }
+    );
+    println!(
+        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | breed ms | s |"
+    );
+    println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
+    for g in state.history {
+        row(g, None, None);
+    }
+    let start = Instant::now();
+    let first = run.generation();
+    while run.generation() < until {
+        let t0 = Instant::now();
+        // Breeding (mutation, crossover, the pre-filter) runs on this thread; the jobs on all of them.
+        let jobs = run.jobs().to_vec();
+        let breed = t0.elapsed().as_secs_f64() * 1e3;
+        let results = par_map(&jobs, o.threads, |j| j.run(content));
+        run.submit(results);
+        if let Some(path) = save {
+            write_save(path, run)?;
+        }
+        let g = run.state().history.last().cloned().expect("a generation is done");
+        row(&g, Some(breed), Some(t0.elapsed().as_secs_f64()));
+    }
+    let secs = start.elapsed().as_secs_f64();
+    let done = run.generation() - first;
+    println!(
+        "# {done} generations in {secs:.1} s on {} threads: {:.1} generations per minute",
+        o.threads,
+        done as f64 * 60.0 / secs
+    );
+    if let Some(path) = save {
+        println!("# the run is in {path} (`arena evolve --resume {path}` goes on with it)");
+    }
+    Ok(())
+}
+
+/// `--trial`, `--goal` and `--goals`: the run's trials from `lab.ron`'s presets (they replace its `fitness` and
+/// `trials`) and its goals, the presets filled in from `--open`, `--fleet`, `--champion` and `--escort`.
+fn set_trials(content: &data::Content, config: &mut arena::RunConfig, o: &Opts) -> Result<(), String> {
+    let lab = &content.lab;
+    if !o.trials.is_empty() {
+        let entry = |arg: &String| -> Result<Entry, String> {
+            let Start::Design { design, behavior, .. } = start_of(arg, &Locks::default())? else { unreachable!() };
+            Ok(Entry { behavior, ..arena::evolve::entry_of(design, None) })
+        };
+        let open = match &o.open {
+            Some(list) => list.split(',').map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect(),
+            None => {
+                let start = content.starts.iter().next().ok_or("the content has no start")?;
+                data::Career::new(content, &start.id, 1).map_err(|e| format!("{e:?}"))?.open_voyages(content).into_iter().map(String::from).collect()
+            }
+        };
+        let src = Sources {
+            open_voyages: open,
+            fleet: o.fleet.iter().map(entry).collect::<Result<_, _>>()?,
+            champions: o.champions.iter().map(entry).collect::<Result<_, _>>()?,
+            escorts: o.escorts.iter().map(entry).collect::<Result<_, _>>()?,
+        };
+        let mut trials = Vec::new();
+        for arg in &o.trials {
+            let mut parts = arg.split(':');
+            let id = parts.next().unwrap_or_default();
+            let presets: Vec<&data::TrialPreset> = match id {
+                "default" => lab.trials.iter().filter(|t| t.default).collect(),
+                _ => vec![lab.trial(id).ok_or_else(|| format!("--trial {arg}: no preset `{id}` (`arena trials` lists them)"))?],
+            };
+            let weight = parts.next().map(|w| num::<f32>("--trial weight", w)).transpose()?;
+            let seeds = parts.next().map(|n| num::<u32>("--trial seeds", n)).transpose()?;
+            for p in presets {
+                let t = TrialSpec::from_preset(p, weight.unwrap_or(p.weight), seeds.unwrap_or(p.seeds), !src.escorts.is_empty(), &src)?;
+                trials.push(t);
+            }
+        }
+        config.fitness = None;
+        config.trials = trials;
+    }
+    if let Some(id) = &o.goals {
+        let p = lab.goal_presets.iter().find(|p| p.id == *id).ok_or_else(|| format!("--goals {id}: no goal preset `{id}`"))?;
+        config.goals = Goals::of(p.weights.clone());
+    }
+    if !o.goal.is_empty() {
+        let mut weights = Vec::new();
+        for g in &o.goal {
+            let (id, w) = g.split_once(':').ok_or_else(|| format!("--goal {g}: ID:WEIGHT, e.g. unhurt:1"))?;
+            if !data::GOALS.contains(&id) {
+                return Err(format!("--goal {g}: one of {}", data::GOALS.join(", ")));
+            }
+            weights.push((id.to_string(), num::<f32>("--goal", w)?));
+        }
+        config.goals = Goals::of(weights);
+    }
+    Ok(())
+}
+
+/// A trial's name: its preset's in `lab.ron`, else its kind.
+fn trial_name(content: &data::Content, t: &TrialSpec) -> String {
+    t.preset.as_deref().and_then(|id| content.lab.trial(id)).map_or_else(
+        || format!("{:?}", t.kind).split([' ', '{', '(']).next().unwrap_or("?").to_string(),
+        |p| p.name.clone(),
+    )
+}
+
+/// What each trial costs: its jobs a child and their mean length, over every child of the run (GDR-0092: the setup's
+/// estimate comes from such numbers).
+fn trial_costs(run: &Run) {
+    let content = data::base_content();
+    let trials = run.trials();
+    let mut jobs = vec![0u64; trials.len()];
+    let mut ticks = vec![0u64; trials.len()];
+    let mut children = 0u64;
+    for (g, rec) in run.state().records.iter().enumerate() {
+        for (k, child) in rec.children.iter().enumerate() {
+            let Some(tags) = run.tagged_jobs(g as u32, k) else { continue };
+            children += 1;
+            for ((t, _), r) in tags.iter().zip(&child.jobs) {
+                jobs[*t as usize] += 1;
+                ticks[*t as usize] += r.ticks;
+            }
+        }
+    }
+    let all: u64 = ticks.iter().sum();
+    println!();
+    println!("| trial | weight | jobs a child | mean ticks a job | share of the ticks |");
+    println!("|---|---|---|---|---|");
+    for (k, t) in trials.iter().enumerate() {
+        println!(
+            "| {} | {} | {:.1} | {:.0} | {:.0}% |",
+            trial_name(&content, t),
+            t.weight,
+            jobs[k] as f64 / children.max(1) as f64,
+            ticks[k] as f64 / jobs[k].max(1) as f64,
+            100.0 * ticks[k] as f64 / all.max(1) as f64
+        );
+    }
+}
+
+/// A genome's score by trial and goal, from its records (and VALIDATE's, if it was validated).
+fn print_breakdown(run: &Run, id: u32) {
+    let content = data::base_content();
+    let Some((g, child)) = run.scored(id) else { return };
+    let Some(b) = run.breakdown(g, child) else { return };
+    let v = run.validated(id);
+    println!();
+    println!("Genome {id} (generation {g}) by trial and goal{}:", if v.is_some() { ", and validated on new seeds" } else { "" });
+    println!();
+    println!("| trial | weight | jobs | score | win | unhurt | quick | cheap |{}", if v.is_some() { " validated |" } else { "" });
+    println!("|---|---|---|---|---|---|---|---|{}", if v.is_some() { "---|" } else { "" });
+    let trials = run.trials();
+    let f = |x: Option<f32>| x.map_or("–".into(), |x| format!("{x:.3}"));
+    for t in &b.trials {
+        let s = &t.goals;
+        let validated = v.map(|v| format!(" {} |", f(v.trials.get(t.trial).copied().flatten()))).unwrap_or_default();
+        println!(
+            "| {} | {} | {} | {} | {:.3} | {:.3} | {:.3} | {:.3} |{validated}",
+            trial_name(&content, trials[t.trial]),
+            trials[t.trial].weight,
+            t.jobs,
+            f(t.score),
+            s.win,
+            s.unhurt,
+            s.quick,
+            s.cheap
+        );
+    }
+    let s = &b.goals;
+    let score = run.state().records[g as usize].children[child].score;
+    let validated = v.map(|v| format!(" {:.3} (as recorded {} of {}) |", v.score, v.as_recorded.0, v.as_recorded.1)).unwrap_or_default();
+    println!("| all | | | {score:.3} | {:.3} | {:.3} | {:.3} | {:.3} |{validated}", s.win, s.unhurt, s.quick, s.cheap);
+    let goals = run.config().goals;
+    println!("# goals weigh win {} · unhurt {} · quick {} · cheap {}", goals.win, goals.unhurt, goals.quick, goals.cheap);
+}
+
+/// `arena trials`: the lab's trial and goal presets.
+fn trials() -> Result<(), String> {
+    let content = data::base_content();
+    println!("| preset | name | kind | weight | seeds | time limit | default |");
+    println!("|---|---|---|---|---|---|---|");
+    for t in &content.lab.trials {
+        let kind = format!("{:?}", t.kind);
+        println!(
+            "| {} | {} | {} | {} | {} | {} | {} |",
+            t.id,
+            t.name,
+            kind.split([' ', '{', '(']).next().unwrap_or("?"),
+            t.weight,
+            t.seeds,
+            t.time_limit.map_or("–".into(), |v| v.to_string()),
+            if t.default { "yes" } else { "–" }
+        );
+    }
+    println!();
+    for p in &content.lab.goal_presets {
+        let w: Vec<String> = p.weights.iter().map(|(g, w)| format!("{g}:{w}")).collect();
+        println!("- goals `{}` ({}): {}", p.id, p.name, w.join(" "));
+    }
+    Ok(())
+}
+
+/// `arena validate`: the run's best designs (or `--genome`s) on `--seeds` new seeds and their recorded fights again,
+/// on every core; the results written back with `--save`.
+fn validate(o: &Opts) -> Result<(), String> {
+    let [path] = o.args.as_slice() else {
+        return Err(USAGE.into());
+    };
+    let content = data::base_content();
+    let mut run = restored(&content, path)?;
+    let genomes: Vec<u32> = match o.genomes.as_slice() {
+        [] => run.results().elites.iter().take(o.best).map(|e| e.id).collect(),
+        g => g.to_vec(),
+    };
+    let seeds = if o.seeds_set { o.seeds as u32 } else { VALIDATE_SEEDS };
+    let mut v = run.validation(&genomes, seeds).ok_or_else(|| format!("{path}: a genome of {genomes:?} was never scored"))?;
+    let t0 = Instant::now();
+    let results = par_map(v.jobs(), o.threads, |j| j.run(&content));
+    let n = results.len();
+    v.submit(results);
+    run.validated_by(v);
+    println!("# {path}: {} designs on {seeds} new seeds each and their recorded fights again: {n} jobs in {:.1} s", genomes.len(), t0.elapsed().as_secs_f64());
+    println!("| genome | run score | validated | as recorded |");
+    println!("|---|---|---|---|");
+    for id in &genomes {
+        let v = run.validated(*id).expect("just validated");
+        let score = run.scored(*id).map_or(0.0, |(g, k)| run.state().records[g as usize].children[k].score);
+        println!("| {id} | {score:.3} | {:.3} | {} of {} |", v.score, v.as_recorded.0, v.as_recorded.1);
+    }
+    if let Some(first) = genomes.first() {
+        print_breakdown(&run, *first);
+    }
+    if let Some(save) = &o.save {
+        write_save(save, &run)?;
+        println!("# written to {save}");
+    }
+    Ok(())
+}
+
+/// `arena rescore`: a stale run as a new run under today's rules (its elites fought again, its archive rebuilt), run
+/// to `--until` (default: the re-score only) and written to `--save`.
+fn rescore(o: &Opts) -> Result<(), String> {
+    let [path] = o.args.as_slice() else {
+        return Err(USAGE.into());
+    };
+    let save = o.save.as_ref().ok_or("rescore writes a new run file: --save FILE")?;
+    let content = data::base_content();
+    let mut run = Run::rescored(&content, &read_save(path)?).map_err(|e| format!("{path}: {e}"))?;
+    let until = Opts { until: Some(o.until.unwrap_or(run.generation() + 1)), ..o.clone() };
+    generations(&content, &mut run, path, Some(save), &until)?;
+    if let Some(best) = run.archive().best() {
+        print_breakdown(&run, best.id);
     }
     Ok(())
 }

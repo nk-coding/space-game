@@ -388,6 +388,28 @@ struct StartText {
     locks: Locks,
 }
 
+/// The header every child of a start carries: the start's, renamed; the behavior goes beside it as text.
+fn header_of(start: &Blueprint) -> Blueprint {
+    Blueprint {
+        id: "evolved".into(),
+        name: format!("{} (evolved)", start.name),
+        summary: format!("Evolved from {} in the evolution lab.", start.name),
+        description: None,
+        lore: None,
+        tags: vec!["evolved".into()],
+        behavior: None,
+        // A start that was evolved before is a start like any other here.
+        origin: None,
+        source: Default::default(),
+        ..start.clone()
+    }
+}
+
+/// The headers of a configuration's starts, as a run gives its genomes.
+fn headers_of(content: &Content, config: &RunConfig) -> Result<Vec<Blueprint>, RunError> {
+    config.all_starts().map(|s| resolve_start(content, s).map(|t| header_of(&t.header)).map_err(RunError::Start)).collect()
+}
+
 fn resolve_start(content: &Content, start: &Start) -> Result<StartText, String> {
     match start {
         Start::Design {
@@ -496,20 +518,7 @@ impl Run {
         for (k, t) in texts.into_iter().enumerate() {
             let root = k as u32;
             let at = |e: String| RunError::Start(if k == 0 { e } else { format!("start {}: {e}", k + 1) });
-            // The header every child carries: the start's, renamed; the behavior goes beside it as text.
-            let header = Blueprint {
-                id: "evolved".into(),
-                name: format!("{} (evolved)", t.header.name),
-                summary: format!("Evolved from {} in the evolution lab.", t.header.name),
-                description: None,
-                lore: None,
-                tags: vec!["evolved".into()],
-                behavior: None,
-                // A start that was evolved before is a start like any other here.
-                origin: None,
-                source: Default::default(),
-                ..t.header
-            };
+            let header = header_of(&t.header);
             let g = match &t.design {
                 Some(written) => {
                     let bp = Blueprint {

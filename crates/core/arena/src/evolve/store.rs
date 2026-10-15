@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sim::Pcg32;
 
 use super::lineage::rebuild;
-use super::{Archive, Bred, Elite, GenerationRecord, GenerationStats, Run, RunConfig, RunError, Validated, scored_in};
+use super::{Archive, Bred, Elite, GenerationRecord, GenerationStats, Genome, Run, RunConfig, RunError, Validated, headers_of, scored_in};
 
 /// The payload's tag (space game lab); the full prefix is `SGL<format>:`.
 pub const SAVE_TAG: &str = "SGL";
@@ -101,6 +101,14 @@ impl RunSave {
             )));
         }
         Ok(save)
+    }
+
+    /// Genome `id` of the run, rebuilt from the file without building the run (a design of an earlier run, the lab's
+    /// CHAMPIONS): its starts must still resolve on `content`.
+    pub fn genome(&self, content: &Content, id: u32) -> Result<Genome, RunError> {
+        let p = unpack(&self.payload)?;
+        let headers = headers_of(content, &self.config)?;
+        rebuild(&p.genomes, &headers, id).ok_or_else(|| RunError::Save(format!("genome {id} doesn't rebuild")))
     }
 }
 

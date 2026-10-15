@@ -4,11 +4,15 @@
 //! lines (it panics if not). Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh --run NAME` runs
 //! both and compares, so a run resumes alike on every platform (GDR-0092).
 //!
-//! Usage: `run_hashes [--scenario two_starts_locked] [--seed N] [--resume-at K]`: the run files of
+//! Usage: `run_hashes [--scenario two_starts_locked|mixed_trials] [--seed N] [--resume-at K]`: the run files of
 //! `crates/core/arena/runs/` that are small enough (compiled in: the WASI run has no filesystem), with the seed
 //! replaced.
 
-const RUNS: [(&str, &str); 1] = [("two_starts_locked", include_str!("../runs/two_starts_locked.ron"))];
+const RUNS: [(&str, &str); 2] = [
+    ("two_starts_locked", include_str!("../runs/two_starts_locked.ron")),
+    // Every kind of job: fights, gauntlets and a voyage, with goals (GDR-0092 step 5).
+    ("mixed_trials", include_str!("../runs/mixed_trials.ron")),
+];
 
 /// The two slicings: as a client at 4 ms a frame steps, and much coarser.
 const BUDGETS: [u64; 2] = [700, 50_000];
@@ -30,7 +34,7 @@ fn main() {
     let text = RUNS
         .iter()
         .find(|(n, _)| *n == name)
-        .unwrap_or_else(|| panic!("unknown run {name} (known: two_starts_locked)"))
+        .unwrap_or_else(|| panic!("unknown run {name} (known: two_starts_locked, mixed_trials)"))
         .1;
     let mut config = arena::RunConfig::from_ron(text).expect("the run reads");
     config.seed = seed;
