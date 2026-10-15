@@ -297,6 +297,9 @@ for the minutes). The starter on `yard_approach` with the skirmisher behavior in
 Track L3 (`src/evolve/`): designs and behaviors bred through the editing models, scored by fights against a pool or by
 the voyages, kept in a MAP-Elites archive (GDR-0032, GDR-0083; the method of `docs/plans/coop-arena.md` 3.8). One
 `arena::Run` per run; single-threaded and steppable in the library, every core in the CLI, the same results either way.
+Since GDR-0092 steps 2 and 3 (15 Oct 2026) a run starts from one to four designs, keeps what is locked, produces only
+designs within the mind capacity and with the start's hold, and keeps every fight: [Starts and locks](#starts-and-locks),
+[What a run keeps](#what-a-run-keeps).
 
 ### A run is a text file
 
@@ -320,8 +323,8 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
         time_limit: 60,               // optional: start_distance, time_limit (fight defaults), count (1),
                                       // hall_of_fame (0)
     ),
-    limits: (frame: "frigate", build_points: 60, mirror: true),  // all optional, also parts: [...], materials: [...]
-    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),
+    limits: (frame: "frigate", build_points: 60, mirror: true),  // all optional, below
+    start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),  // or starts: [...], below
     // archive: (axes: [...]),        // default: acceleration × firepower, 8 × 8
     // crossover: 0.2, mutations: 3,  // the defaults
 )
@@ -331,38 +334,45 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
 |---|---|
 | `evolve` | `Behavior` (the design stays), `Design` (the behavior stays), `Both` (each mutation picks one), or `Stages([(evolve: Behavior, generations: 10), (evolve: Design, generations: 10), (evolve: Both, generations: 10)])`: one after the other, one archive throughout |
 | `fitness` | `ArenaPool(opponents, seeds, hall_of_fame, count, start_distance, time_limit)`: the genome (`count` ships of it, side 0) fights each opponent entry and the best `hall_of_fame` elites so far over seeds 1..=`seeds`; the mean arena score. `Voyages(ids, seeds, minutes, pilot)`: each voyage over seeds 1..=`seeds`, the mean voyage score; `pilot: Behavior` (default: the genome's behavior flies the fights) or `Closing` (the runner's scripted pilot) |
-| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest the start fits). `build_points`: the most a design may cost. `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; the start must be symmetric) |
-| `start` | `Design(design, behavior)`: a content ship or blueprint text, and a behavior (default: the design's own, else its faction's). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
+| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: 60`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; the starts must be symmetric) |
+| `start`, `starts` | One start (`start`, the old form) or a list (`starts: [...]`), one to four in all. `Design(design, behavior, locks)`: a content ship or blueprint text, a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
 | `archive` | `(axes: [(measure, min, max, cells), ...])`, one to three axes (at most 65 536 cells) |
 | `population`, `generations`, `seed`, `crossover`, `mutations` | Children per generation; generations; the run's stream; the share of children bred by crossover (0.2); a child gets 1 to `mutations` (3) mutations. All *placeholders* |
 
 Every error is a `RunError` value: `Config` (does not read, a number out of range, `generations` missing or given with
-`Stages`, an unknown frame, `EngageDistance` with the voyage fitness), `Start` (an unknown ship or behavior, the start
-breaks a limit or the pre-filter), `Fitness` (an opponent or voyage that does not resolve: `Run::new` builds one fight
-or voyage of each with the start).
+`Stages`, an unknown frame, `EngageDistance` with the voyage fitness, no start or more than four, fewer children than
+starts), `Start` (an unknown ship or behavior, a start breaks a limit, its locks or the pre-filter, a lock names a
+part, rule or category it lacks, a KEEP EMPTY cell it fills), `Fitness` (an opponent or voyage that does not resolve:
+`Run::new` builds one fight or voyage of each with every start), `Save` (a run file that is damaged, of a newer
+format, or doesn't match its configuration).
 
 ### Genomes, mutation and crossover
 
 A `Genome` is a blueprint (trimmed, as the drydock exports it; named "<start> (evolved)", tagged `evolved`, no
-behavior field) and a behavior text (canonical, without the start's notes). `genome.blueprint_text()` is the content
-RON form and `genome.behavior_text()` the text form, so the game can SAVE AS DESIGN.
+behavior field), a behavior text (canonical, without the start's notes), its `root` (the start it descends from) and
+`at`, where the blueprint's top-left cell sits in that start's frame. `genome.blueprint_text()` is the content RON form
+and `genome.behavior_text()` the text form, so the game can SAVE AS DESIGN; `genome.placed(run.frame(root))` is the
+design as the drydock holds and saves it (`size` = the frame, parts in frame coordinates).
 
-Designs change only through `data::design::edit::Drydock` (opened in the run's frame, one column narrower under the mirror
-lock when the design's width has the other parity), so every child is a legal placement; under the mirror lock an
-edit whose mirror image is impossible (`Twin::Skipped`) is undone. One mutation is one of (weights are
-*placeholders*):
+**Genomes keep frame coordinates** (GDR-0092 step 3): each start is opened centred in its frame once
+(`Drydock::open`), and from then on every genome is opened where its parts are (`Drydock::open_placed`, `docs/drydock.md`),
+never centred again, so a design that grows on one side keeps its cells and the locks (frame cells) never drift.
+Designs change only through `data::design::edit::Drydock` (in the start's frame: the run's, one column narrower under
+the mirror lock when the start's width has the other parity), so every child is a legal placement; under the mirror
+lock an edit whose mirror image is impossible (`Twin::Skipped`) is undone, and so is an edit that breaks a lock (a
+locked part's mirror twin, a part over a KEEP EMPTY cell). One mutation is one of (weights are *placeholders*):
 
 | Design operator | Weight | How |
 |---|---|---|
 | add a part | 30 | an allowed part on a free cell next to a random part: slopes oriented to the hull (`place_slope`), others in a random pose; only where the preview replaces nothing (since GDR-0081 `place` replaces what is under it) |
-| remove a part | 15 | `remove_part` (and its twin) |
+| remove a part | 15 | `remove_part` (and its twin); like every operator on a part, only an unlocked one |
 | move a part | 15 | by −2..2 cells each way (`move_part`, refused into other parts) |
 | rotate / flip | 10 / 5 | `rotate`, `flip` |
 | swap a part | 15 | another allowed part of the same footprint and shape in its place and pose: `place`, accepted only when it replaces just that part (and its twin) |
 | material | 10 | another allowed armour material on a hull part |
 
 Behaviors change only through `data::behavior::edit::BehaviorEditor`, so every program is legal; rules are added only
-below the design's rule slots:
+below the design's rule slots, and no operator picks a locked rule (its nodes, its conditions) or a locked target line:
 
 | Behavior operator | Weight | How |
 |---|---|---|
@@ -374,16 +384,55 @@ below the design's rule slots:
 | add / remove / negate / replace a condition | 8 / 6 / 4 / 4 | `add_condition`, `remove_condition`, `toggle_not`, `replace_node` |
 
 **Crossover** (a `crossover` share of the children, before their mutations): designs splice `a`'s parts above a
-random row with `b`'s from that row down (both in `a`'s frame; `b`'s parts that overlap are left out), behaviors
-`a`'s first rules with `b`'s from a random rule on (the target line of either). What evolves decides which halves
-cross.
+random row with `b`'s from that row down (both in one frame: two starts of different frames don't cross; `b`'s parts
+that overlap or cover one of `a`'s KEEP EMPTY cells are left out, `a`'s locked parts below the row stay), behaviors
+`a`'s first rules with `b`'s from a random rule on (the target line of either, `a`'s when it is locked; `a`'s locked
+rules past the splice stay, before `b`'s, which bring no second copy). The child is `a`'s: its start, its locks.
+What evolves decides which halves cross.
 
-**The pre-filter** (`Kit::assess`, part of the breeding time below) runs before any fight: the limits (parts, materials, frame, build
-points from `sim::design_report`, symmetry under the mirror lock), `data::validate_ship` without errors (this includes
-the rule-slot check of the faction's default behavior: a design with fewer slots than it has rules is refused), and
-the design report: it must fly (no blocker: a powered logic core and thrust), be one piece (no `FallsOff`) and carry a
-gun. A child that is refused, or equals its parent, is bred again (16 tries, then the generation is one smaller); the
-CLI's `refused` column counts the refusals.
+**The rule slots are repaired** (GDR-0092): after a child's mutations, a behavior with more rules than its own design's
+rule slots (a design mutation took a logic core) loses its lowest unlocked rules until it fits; if its locked rules
+alone don't fit, the try is refused.
+
+**The pre-filter** (`Kit::assess`, part of the breeding time below) runs before any fight: the limits (parts,
+materials, part counts, the start's frame, symmetry under the mirror lock, build points from `sim::design_report`, the
+hold, logic cores), the start's locks (every locked placement exactly where it was, every KEEP EMPTY cell empty, every
+locked rule there, in order under LOCK ORDER, a locked target line unchanged), the behavior in its canonical text,
+`data::validate_ship_flying` without errors (the content's checks with the genome's **own** behavior: its rules
+against its own design's rule slots, not the faction's default behavior as before GDR-0092), and the design report: it
+must fly (no blocker: a powered logic core and thrust), be one piece (no `FallsOff`) and carry a gun. A child that is
+refused, or equals its parent, is bred again (16 tries, then the generation is one smaller); the CLI's `refused`
+column counts the refusals. Fights check a blueprint the same way: an entry with a behavior of its own is validated
+with that behavior (`validate_ship_flying`), one without with its own or its faction's.
+
+### Starts and locks
+
+`starts: [...]` (with the old `start`, one to four, `MAX_STARTS`, lead default): generation 0 is every start, then
+mutants of each in turn (start 1, start 2, ..., start 1, ...); later generations breed from the whole archive, and a
+child descends from its first parent's start (its root). The run's frame is the configured one, else the smallest
+content frame every start fits; each start opens centred in it once.
+
+What a run keeps of a start is `locks` on its `Design` (GDR-0092 "LOCKS"; `arena::evolve::Locks`):
+
+```ron
+starts: [
+    Design(design: Ship("rim_skiff"), behavior: Content("skirmisher"),
+        locks: (
+            parts: [0],                   // the start's parts[0]: never moves, turns, changes material or power, or goes
+            categories: ["weapons"],      // every part of the category (categories.ron): KEEP ALL WEAPONS
+            cells: [(3, -1), (4, -1)],    // KEEP EMPTY: cells in the start's own coordinates (a clear line of fire)
+            rules: [0],                   // the behavior's rule 0 (the top): never changed, moved or deleted
+            target: true,                 // the target line stays
+            order: true,                  // LOCK ORDER: the locked rules keep their order
+        )),
+    Design(design: Ship("halvex_runner")),
+],
+```
+
+Under the mirror lock a locked part or cell locks its mirror image too. Rules may still be added around a locked rule,
+and the rules above it may change. The operators never pick what is locked, and the pre-filter refuses a child that
+lost any of it, so crossover can't break a lock either. `crates/core/arena/runs/two_starts_locked.ron` is a small
+example (the skiff's guns, first part, top rule and the cells in front of its guns, with the Runner beside it).
 
 ### The archive and the loop
 
@@ -406,8 +455,8 @@ cells in 3 generations). Behavior runs want behavior measures (`EngageDistance` 
 `skiff_behavior.ron`); in a behavior stage under design axes every child shares its parent's cell (a plain hill
 climb).
 
-Each generation: generation 0 is the start and `population − 1` mutants of it; later ones are `population` children
-of elites drawn uniformly from the occupied cells. Each child's jobs (every opponent × seed, or every voyage × seed)
+Each generation: generation 0 is the starts and `population − n` mutants of them (shared out evenly); later ones are
+`population` children of elites drawn uniformly from the occupied cells. Each child's jobs (every opponent × seed, or every voyage × seed)
 are evaluated; its score is their mean; then the children are offered to the archive in order. All random draws
 come from the run's PCG stream (`seed`, its own sequence) in a fixed order; fights and voyages use seeds 1..=n, the
 same for every child and generation, so scores stay comparable. The hall of fame (`hall_of_fame` best elites joining
@@ -416,51 +465,136 @@ the pool) makes the fitness move with the archive; elites are not re-scored.
 ### The API
 
 ```rust
-let mut run = arena::Run::new(&content, config)?;   // checks the config, resolves the start, checks the fitness
-let p = run.step(20_000);                           // up to 20 000 ticks of fights this frame -> Progress
-let s = run.state();                                // generation, generations, stage, history, archive
-for (cell, elite) in s.archive.cells() { /* elite.genome, elite.score, elite.measures, elite.generation */ }
+let mut run = arena::Run::new(&content, config)?;   // checks the config, resolves the starts, checks the fitness
+let p = run.step(20_000);                           // up to 20 000 ticks of breeding and fights this frame -> Progress
+let s = run.state();                                // generation, generations, stage, history, records, archive
+for (cell, elite) in s.archive.cells() { /* elite.genome, elite.id, elite.score, elite.measures, elite.generation */ }
 let r = run.results();                              // history + every elite, best first
 let (blueprint, behavior) = (r.elites[0].genome.blueprint_text(), r.elites[0].genome.behavior_text());
+let save = run.snapshot().to_ron();                 // the run file (after every generation)
+let run = arena::Run::restore(&content, &arena::RunSave::from_ron(&save)?)?;  // goes on exactly; run.stale()
+let code = run.fight_code(generation, child, job);  // any fight of any child, to re-watch (`?scene=fight&fight=`)
 ```
 
-- `Run::step(budget)`: breeds the next generation when none is open, then runs its jobs for up to `budget` sim ticks
-  (a fight or voyage is stepped in slices, `Fight::step` / `VoyageRunner::step`), and closes the generation after its
-  last job. Breeding is not counted against the budget: 4–10 ms per generation of 32 (native release, below).
-- `Run::jobs()` / `Run::submit(results)`: a generation's `Job`s (a `FightSpec` or `VoyageSpec` each, plain data) and
-  their `JobResult`s in the same order; `Job::run(&content)` runs one anywhere. The CLI uses these; don't mix them
-  with `step` within a generation.
-- `GenerationStats` per generation: stage and genes, children evaluated, refused, best and mean score, the archive's
-  best, occupied cells, children that took a cell, ticks.
-- `Run::champion()`: the jobs of the last closed generation's best child (the first of equal scores) with their
-  results, its fights to re-watch. `Job`, `JobResult`, `VoyageSpec`, `FightSpec` and `FightResult` are serde types
-  with a RON form (GDR-0092: for storing runs and sending jobs to workers later).
+What the lab (step 4) builds on:
+
+| Call | What |
+|---|---|
+| `Run::step(budget)` | Breeds the next generation child by child when none is open (each child counts `BREED_COST` = 60 ticks, *placeholder*: about 0.3 ms natively, below), then runs its jobs for the rest of `budget` sim ticks (a fight or voyage is stepped in slices, `Fight::step` / `VoyageRunner::step`), and closes the generation after its last job. The client converts its 4–10 ms frame budget to ticks from the measured cost per tick (GDR-0092). Every slicing gives the same run. A stale run doesn't step (`Progress::stale`) |
+| `Run::jobs()` / `Run::submit(results)` | A generation's `Job`s (a `FightSpec` or `VoyageSpec` each, plain data; breeding the rest of it first) and their `JobResult`s in the same order; `Job::run(&content)` runs one anywhere (the native executor's threads). Don't mix them with `step` within a generation |
+| `Run::state()` | Generations done and in all, the stage, the history (`GenerationStats`: stage and genes, children evaluated, refused, best and mean score, the archive's best, occupied cells, children that took a cell, ticks), the records (`GenerationRecord` per generation: the hall of fame its children fought, each child's genome number, score, measures, whether it took a cell and its job records) and the archive |
+| `Run::best_child(generation)` | Its best child (the first of equal scores) |
+| `Run::child_jobs(generation, child)`, `Run::job(generation, child, job)` | A child's jobs rebuilt (the same jobs it ran), one with its `JobRecord` |
+| `Run::fight_code(generation, child, job)` | The job as a fight code under the rules the run was fought under: it replays to the recorded end while they hold (`None` for a voyage job) |
+| `Run::genome(id)`, `Run::table()`, `Run::lineage(id)`, `Run::scored(id)` | Genome `id` rebuilt from the genome table; how every genome was bred (`Bred`); a genome's line from its start (genome numbers); where it was scored (generation, child) |
+| `Run::starts()`, `Run::frame(root)` | The starts as opened in their frames; the frame genomes of a start are edited in (`Genome::placed`) |
+| `Run::snapshot()`, `Run::restore(&content, &save)`, `RunSave::to_ron` / `from_ron` | The run file and going on from it ([What a run keeps](#what-a-run-keeps)) |
+| `Run::rules()`, `Run::stale()` | The rules' fingerprint the run started under; whether today's differ |
+
+`Job`, `JobResult`, `JobRecord`, `VoyageSpec`, `FightSpec`, `FightResult`, `GenerationStats`, `GenerationRecord`,
+`Bred` and `RunSave` are serde types with a RON form.
+
+### What a run keeps
+
+Every fight of a run can be re-watched (GDR-0092 step 2): a run keeps how every genome was bred and how every job
+ended, and rebuilds any job's spec from them.
+
+- **The genome table** (`Run::table()`, `arena::evolve::Bred`): every genome bred, numbered in breeding order (the
+  starts are 0 to n − 1), as a change against its parent: the generation, its start (`root`), its parent and a
+  crossover partner, the parent's parts it lost (indices) and the parts it gained (index and placement, in frame
+  coordinates; the longest common run of the two part lists is kept, so a mutation stores a part or two), its behavior
+  text when it changed, and its size. A start stores all its parts and its behavior. `Run::genome(id)` replays the
+  changes from the start: the identical genome, header included (`tests/runs.rs` checks every genome against the
+  blueprint and behavior its fights carried).
+- **The records** (`Run::state().records`): per generation the hall of fame its children fought (genome numbers),
+  per child its genome number, score, measures and whether it took a cell, and per job a `JobRecord`: the score, the
+  ticks and how it ended (`JobEnd::Fight`: outcome, build points lost, damage dealt and vessels left per side, the
+  final state hash, and a bit for every rule of the child's behavior that decided at least once,
+  `Referee::decided`, for GDR-0092's TIDY; `Voyage`: the final state hash; `Failed`). Each side's build points at the
+  start and the scores follow from the spec and the rest (`JobRecord::fight_result`). The config, the records and the
+  table rebuild every job (`Run::job`), so `Run::fight_code(generation, child, job)` is any fight as a code; a test
+  replays every fight of a run to its recorded result.
+- **The run file** (`Run::snapshot()` → `RunSave`, `to_ron`): the state between two generations. A readable RON head
+  (`format: 1`, the rules' fingerprint when the run started, the `RunConfig`, the `GenerationStats` per generation, the
+  best genome) and `payload: "SGL1:…"`, the base64url text (no padding) of the zlib-compressed RON of the rest: the
+  run's random stream (`Pcg32::raw`), the genome table, the records and the archive's elites (genome numbers; their
+  scores and measures come from the records). A snapshot taken during a generation is the state before it: a restored
+  run breeds that generation again from the same random state, so at most one generation's work is lost. Reading
+  refuses a newer format, a damaged payload and one past 16 MB packed or 128 MB unpacked (a run file is untrusted text,
+  IMPORT RUN).
+- **Resume** (`Run::restore(&content, &save)`): builds the run from its configuration again (which must still build
+  on the content), takes the stored starts, stream, table, records and history, and rebuilds the archive's elites from
+  the table. It goes on exactly as the run would have: the same run files byte for byte (`tests/runs.rs`: six
+  generations straight against three, a run file written and read, a restore and three more, and one interrupted in
+  the middle of a generation; `scripts/determinism-check.sh --run`, natively and in wasm, below).
+- **Stale runs**: the run file keeps the rules' fingerprint the run started under (`rules_fingerprint`, built in step
+  1). `Run::restore` on content whose fingerprint differs marks the run stale (`Run::stale()`): it keeps its fingerprint
+  (its fight codes say which rules they were fought under), it is read-only (`step` does nothing, `jobs` is empty),
+  and the CLI refuses to resume, replay or trace one. RE-SCORE comes with step 5.
+
+**Size** (`skiff_design_60bp.ron`, 32 children × 12 fights a generation, 20 generations, 15 Oct 2026): a job record is
+133 bytes of RON and **22 bytes packed**; a genome 382 bytes of RON and 24 packed; a generation **about 10 kB packed**
+(13.6 kB of run file with the base64 and its row in the head). The file after 20 generations: 272 kB (1.3 MB of RON
+unpacked), so a STANDARD run of 50 generations is about 0.7 MB.
 
 **Determinism**: a job's result depends only on the job and the content (it is a fight or voyage, deterministic on
-every platform), results are applied in job order, the archive is a `BTreeMap`. `tests/evolve.rs` checks that the
-same config and seed give the same results run twice, stepped in slices of 97 ticks, and on 1 and 4 threads; another
-seed gives another run. The CLI on 1 and on 16 threads printed identical tables and wrote identical files
-(`skiff_behavior.ron`, 14 Oct 2026, before and after ADR-0037).
+every platform), results are applied in job order, the archive is a `BTreeMap`, and breeding draws from the run's
+stream in a fixed order whatever the slicing. `tests/evolve.rs` checks that the same config and seed give the same
+results run twice, stepped in slices of 97 ticks, and on 1 and 4 threads; another seed gives another run.
+`tests/runs.rs` checks that slices of 1, 59, 97 and 5000 ticks, one go and the jobs handed out in reverse give the same
+run file byte for byte, and that a resumed run is the uninterrupted one. The CLI on 1 and on 16 threads printed
+identical tables and wrote identical files (`skiff_behavior.ron`, 14 Oct 2026, before and after ADR-0037).
+
+**Across platforms** (GDR-0092 step 2): `scripts/determinism-check.sh --run NAME [--seed N] [--resume-at K]` builds the
+`run_hashes` example natively and for `wasm32-wasip1`: the run file `crates/core/arena/runs/NAME.ron` (compiled in;
+`two_starts_locked`) with its seed, run straight in slices of 700 ticks, one line per generation (FNV-1a 64 of the run
+file after it); the example also runs it to generation K (default 3) in slices of 50 000, writes and reads the run
+file, restores it and runs on, and fails unless every later generation hashes the same. Result (15 Oct 2026, release
+builds): `two_starts_locked` seed 1 resumed after generations 0, 2 and 4, and seed 7 resumed after generation 2: native
+x86_64 vs wasm32-wasip1 **identical** (6 generations, 48 genomes; last line `4f126e780aff05c0` for seed 1,
+`887374c2560c32e7` for seed 7), every resume identical to the straight run.
 
 ### The CLI: `arena evolve`
 
 ```sh
 cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --out /tmp/skiff_design [--best 8] [--threads N]
+cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --save /tmp/run.ron --until 10
+cargo run --release -p arena-cli -- evolve --resume /tmp/run.ron        # goes on, and keeps saving to it
+cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --from my_ship.ron --from rim_skiff --lock category:weapons --lock rule:0
+cargo run --release -p arena-cli -- replay /tmp/run.ron 12 3 5         # generation 12, child 3, job 5: its fight code
+cargo run --release -p arena-cli -- lineage /tmp/run.ron [GENOME]       # a genome's line from its start (default: the best)
 ```
 
 Breeds on the main thread and runs each generation's jobs on every core (`--threads`, default all), prints a
 Markdown row per generation (evolves, children, refused, best, mean, archive best, cells, took a cell, million
-ticks, breeding ms, seconds), the generations per minute, and the best elites (rank, cell, score, measures,
-generation, parts). With `--out DIR` it writes the best `--best` (8) elites: `elite_NN.ron` (the blueprint, id
-`evolved_NN`, with a comment naming the run, rank, score and generation) and `elite_NN.txt` (its behavior). Last, a
-fight code per generation: its best child (`Run::champion()`, the jobs and results of the last closed generation's
-best child) in the fight it scored lowest in, its hardest (`- gen 12, score 0.833, seed 2: SGF1:…`; runs scored by
-voyages print none). Jobs keep only their score, so each coded fight is run once more for its full record.
+ticks, breeding ms, seconds), the generations per minute, the best elites (rank, genome number, cell, score, measures,
+generation, parts) and the lineage of the best three (`0 → 34 → 120 → 812`). With `--out DIR` it writes the best
+`--best` (8) elites: `elite_NN.ron` (the blueprint, id `evolved_NN`, with a comment naming the run, rank, score,
+generation and genome) and `elite_NN.txt` (its behavior). Last, a fight code per generation: its best child in the fight
+it scored lowest in, its hardest (`- gen 12, score 0.833, seed 2 (arena replay 12 3 5): SGF1:…`; runs scored by
+voyages print none). Every code comes from the run's records; no fight runs again.
+
+| Option | What |
+|---|---|
+| `--save FILE` | Writes the run file after every generation (whole or not at all: a `.part` file renamed) |
+| `--resume FILE` | Goes on from a run file instead of a run's configuration (its rows so far are printed with `–` for the times), and saves to it again unless `--save` names another; refused for a stale run |
+| `--until N` | Stops once N generations are done (with `--save`, a run to resume later) |
+| `--from DESIGN` | (repeatable, at most four) the run's starts instead of its file's: a content ship id or a blueprint file `*.ron`, whose behavior is the `.txt` of the same name beside it if there is one (as `--out` writes them), else its own or its faction's |
+| `--lock LOCK` | (repeatable) a lock of every start: `part:N` (its `parts[N]`), `category:ID` (`category:weapons`), `cell:X,Y` (KEEP EMPTY, in the start's coordinates), `rule:N` (its behavior's rule N, 0 = the top), `target`, `order` |
+
+`arena replay <run file> <generation> <child> <job>` prints that fight's code with the seed, how it ended, the score and
+the final hash; `arena lineage <run file> [<genome>]` a table of the genome's line from its start (generation, start,
+parent, crossover partner, parts lost and gained, whether the behavior changed, score). A resumed run prints the same
+rows, elites and codes as one run straight through (checked on `skiff_design_60bp.ron`, 10 + 10 generations, and a
+two-start locked run).
 
 ### What the example runs found
 
 `crates/core/arena/runs/`, 30 generations of 32 each, 14 Oct 2026 `dev` with ADR-0037 (simultaneous fire, shared think
-ticks, no spawn-order stopgap); the archive's best after generations 0, 10, 20 and 29:
+ticks, no spawn-order stopgap); the archive's best after generations 0, 10, 20 and 29. (Runs from GDR-0092 steps 2 and
+3 on, 15 Oct 2026, breed differently: genomes keep their frame cells instead of being centred at every mutation, the
+rule slots count the genome's own behavior, and the build points and the hold are capped at the start's by default;
+the sim changes since 14 Oct also moved the start's own score, 0.274 against these opponents on 15 Oct.)
 
 | Run | Start's score | Archive best, gen 0 / 10 / 20 / 29 | Cells | Best elite |
 |---|---|---|---|---|
@@ -572,6 +706,12 @@ Native release on all 16 threads (`arena evolve`, 3 runs each, load average 7–
 | `skiff_behavior.ron` | **339** (312–345) | 384 fights | 4.0 (5.0) |
 | `skiff_design_60bp.ron` | **386** (386–430) | 384 fights | 6.5 (9.0) |
 | `skiff_voyage_stages.ron` | **211** (209–214) | 128 voyage runs | 4.8 (6.9) |
+
+With GDR-0092 steps 2 and 3 (15 Oct 2026, the 4-core VM, load average 0.9, `skiff_design_60bp.ron`, 20 generations
+on 4 threads): breeding **10.3 ms** per generation of 32, median (p95 12.1), so about 0.3 ms a child (`BREED_COST`
+60 ticks); it now also opens each child where its parts are for the locks and the symmetry, cuts the behavior to the
+rule slots, checks the canonical text and the hold, and stores the change against the parent. 170–174 generations per
+minute on 4 threads; writing the run file after every generation is part of that.
 
 `skiff_behavior.ron` on one thread (before ADR-0037): 32.7 generations per minute (16 threads about 11× that). A generation is 0.4–0.75
 million ticks; the generation wall clock is 0.15–0.4 s.

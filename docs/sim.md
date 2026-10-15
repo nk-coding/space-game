@@ -383,6 +383,18 @@ pack's rules fingerprint with them is `87f8e44db8186359`. The browser's fight vi
 same final hashes (`docs/client.md` "Fight viewer"). A change to the sim changes the probes' hashes and with them
 every code's fingerprint: write the new values here.
 
+**Runs kept and resumed** ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) steps 2 and 3, 15 Oct 2026, release
+builds; `docs/arena.md` "What a run keeps"): no sim change; core `04c38a80a753f50f`, flight `2a51382797b4736b`, behavior
+`1b84c5d19d5d393d`, salvage `d53cf56822803318`, voyage `58c3b65781708409`, assists `ab49d109c0b68d3f` (seed 42, 900
+ticks), `runner_vs_raiders` `8d5b00d21e45e771` (to its end at 1273), the probes `close_quarters` `dcd603e2f48f8a88` and
+`warden` `bcda68d2360256f4`, and the Runner's code against three raiders (seed 3, `afa541fe50b16945`, as recorded):
+native x86_64 vs wasm32-wasip1 **identical** and byte-identical to the build before; the base pack's rules fingerprint
+is still `87f8e44db8186359`. A code made from a run's job records (`arena replay`) replays as recorded natively and in
+wasm. An evolution run is checked the same way: `scripts/determinism-check.sh --run two_starts_locked [--seed N]
+[--resume-at K]` hashes the run file after every generation, straight and resumed after K: seed 1 at K = 1, 3, 5 and
+seed 7 at K = 3, **identical** native against wasm and resumed against straight (last line `4f126e780aff05c0` and
+`887374c2560c32e7`).
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram

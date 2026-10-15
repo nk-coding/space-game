@@ -3,7 +3,20 @@
 - Status: Accepted (Niklas's requirements and his four answers; the rest are the design agent's proposals and lead
   defaults, marked, for him to review). Step 1 built 2026-10-15: the arena library in `crates/core/arena`
   ([ADR-0040](../adr/0040-arena-library-in-core.md)), fight codes with the rules' fingerprint, the fight viewer
-  `?scene=fight&fight=<code>` and side looks by owner (see "Phased build plan").
+  `?scene=fight&fight=<code>` and side looks by owner (see "Phased build plan"). Steps 2–3 built 2026-10-15 (engine
+  side; `docs/arena.md` "Starts and locks", "What a run keeps"): the genome table, job records as fight codes, run files
+  with resume and the stale mark, budgeted breeding, `Drydock::open_placed`, locks, the pre-filter (the genome's own
+  rule slots with the repair, `max_cores`, `min_hold`, part counts), up to four starts and the start's build points as
+  the default cap; in the CLI `arena evolve --save/--resume/--until/--from/--lock`, `arena replay`, `arena lineage`.
+  Where building found otherwise: several starts came forward from step 6 (Niklas's brief); records are about 22
+  bytes a job packed (133 of RON) and keep the rules that decided but no per-goal scores and no pilot (goals and
+  stand-ins come with steps 5 and 6); `build_points` and `min_hold` take `Start` (the default), a number or `Off`, and
+  the cap is each start's own for its genomes; the run file's head has no name, creation time or status yet (the
+  client's, step 4); a stale run restores read-only and doesn't step; a fight entry with a behavior of its own is
+  checked against that behavior's rules (`data::validate_ship_flying`), not its faction's; locks name parts and rules
+  by index in the start, cells in the start's own coordinates; `arena lineage` is new; step 1's `Run::champion` gave way
+to `Run::best_child` and the records (`Run::job`, `Run::fight_code`), and the CLI's codes come from the records without
+running the fight again.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

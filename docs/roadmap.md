@@ -326,17 +326,24 @@ Next session:
      no pilot, pause, 0.25–8×, 1 s back and forward through keyframes, from the start, follow a clicked ship,
      `AS RECORDED` or the changed rules at the end); side looks by owner (side 0 teal, side 1 coral whatever the
      faction); `determinism-check.sh --fight <code>`; every determinism stream byte-identical.
-  2. every fight of a run kept (lineage, per-job records, snapshot and resume, budgeted breeding; `arena replay`);
-  3. results that can launch (frame coordinates, locks, the pre-filter with mind capacity and the hold);
+  2. **Built 15 Oct 2026** (with step 3): every fight of a run kept: the genome table (each child a change against its
+     parent), job records (22 bytes a fight packed) that become fight codes, run files (`SGL1:` payload) after every
+     generation with resume byte-identical to an uninterrupted run (native = wasm, `determinism-check.sh --run`), the
+     run's fingerprint and the stale mark, breeding budgeted child by child; `arena evolve --save/--resume/--until`,
+     `arena replay`, `arena lineage`;
+  3. **Built 15 Oct 2026**: results that can launch: `Drydock::open_placed` (genomes keep frame cells), locks (parts,
+     cells, categories, rules, target, LOCK ORDER), the pre-filter (the genome's own rule slots with the repair,
+     `max_cores`, `min_hold`, part counts), up to four starts (taken forward from step 6) and the start's build points
+     as the default cap; `arena evolve --from/--lock`;
   4. the lab v1 in the game (the EVOLUTION building and layer, one start, threads natively and slices on the web,
      persistence, SAVE AS DESIGN), behind `?lab=1`;
   5. trials (the `TrialKind` abstraction, the test-range waves in shared code, goals, VALIDATE);
-  6. everything mutates (behavior structure, assists with a stand-in pilot, several starts, the LOCKS UI);
+  6. everything mutates (behavior structure, assists with a stand-in pilot, the LOCKS UI);
   7. co-evolution (the ARMS RACE);
   8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
   9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab, GDR-0092 step 2 (every fight of a run kept).
+  1. The evolution lab, GDR-0092 step 4 (the lab v1 in the game, on `arena::Run`'s API, `docs/arena.md` "The API").
 
 ## Phase 4: measurement
 
