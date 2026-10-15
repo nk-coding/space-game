@@ -532,7 +532,7 @@ pub fn evolution_ring(
 fn ring_share(lab: &world::evolution::Lab) -> f32 {
     if let Some(l) = lab.running() {
         let state = l.run.state();
-        return ((state.generation as f32 + l.run.generation_done()) / state.generations.max(1) as f32).min(1.0);
+        return ((state.generation as f32 + lab.generation_done(l)) / state.generations.max(1) as f32).min(1.0);
     }
     lab.runs().first().map_or(0.0, |e| e.generation as f32 / e.generations.max(1) as f32)
 }

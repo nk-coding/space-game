@@ -30,7 +30,7 @@ use bevy::prelude::*;
 use bevy::ui::UiTransform;
 use data::Content;
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
+use kit::ui_icons::UiIcon;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, ValueBar, field_text, label, number, prose, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, tracked};
 use world::evolution::{Lab, Loaded, result_name, save_as_design};
 use world::mode::AppMode;
@@ -39,7 +39,7 @@ use world::scene::Launch;
 use world::storage::now_unix;
 use world::voyage::clock;
 
-use super::{Ctx, EvolutionLayer, LabButton, Page, abs, column, row, score};
+use super::{Ctx, EvolutionLayer, LabButton, Page, abs, column, on_row, row, score};
 
 /// The panels' boxes on the stage: the chart, the archive, the picked design.
 const CHART: (Vec2, Vec2) = (Vec2::new(36.0, 170.0), Vec2::new(380.0, 210.0));
@@ -121,7 +121,7 @@ pub(super) struct SaveRow;
 
 pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color) {
     // The progress line.
-    p.spawn((Node { ..abs(Vec2::new(36.0, 88.0), Some(Vec2::new(1208.0, 34.0))) }, row(18.0))).with_children(|r| {
+    p.spawn(on_row(abs(Vec2::new(36.0, 88.0), Some(Vec2::new(1208.0, 34.0))), 18.0)).with_children(|r| {
         r.spawn((RunText::Status, label(fonts, "", 9.5, c(Tone::Teal, 1.0))));
         r.spawn(row(10.0)).with_children(|g| {
             g.spawn((RunText::Generation, number(fonts, "", 15.0, c(Tone::Number, 1.0))));
@@ -154,7 +154,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     // The picked design, and SAVE AS DESIGN's name.
     let (at, size) = PICKED;
     p.spawn((Panel::Picked, Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..abs(at, Some(size)) }));
-    p.spawn((SaveRow, Node { display: Display::None, ..abs(at + Vec2::new(0.0, size.y - 36.0), Some(Vec2::new(size.x, 36.0))) }, row(8.0))).with_children(|r| {
+    p.spawn((SaveRow, on_row(Node { display: Display::None, ..abs(at + Vec2::new(0.0, size.y - 36.0), Some(Vec2::new(size.x, 36.0))) }, 8.0))).with_children(|r| {
         r.spawn((
             SaveField,
             TextField { placeholder: "Name of the design".into(), max_chars: MAX_NAME, ..default() },
@@ -550,8 +550,7 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
             });
             if matches!(jr.end, JobEnd::Fight { .. }) {
                 spawn_pill(r, fonts, "CODE", 7.5, 24.0, None, Pill::new(Tone::Label), (LabButton::Run(RunButton::Code(generation, child, k)), kit::ui_kit::Tip::new("COPY FIGHT CODE")));
-                let play = UiIcon::Glyph { glyph: Glyph::Play, color: Color::NONE };
-                spawn_pill(r, fonts, "WATCH", 8.0, 24.0, Some(play), Pill::new(Tone::Teal), LabButton::Run(RunButton::Watch(generation, child, k)));
+                spawn_pill(r, fonts, "WATCH", 8.0, 24.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::Watch(generation, child, k)));
             }
         });
     }
@@ -664,7 +663,7 @@ pub(super) fn sync(
     let state = l.run.state();
     let entry = lab.entry(&l.id);
     let done = l.run.finished();
-    let inside = l.run.generation_done();
+    let inside = lab.generation_done(l);
     let share = if done { 1.0 } else { inside };
     if (bar.share - share).abs() > 1e-3 {
         bar.share = share;
@@ -693,7 +692,8 @@ pub(super) fn sync(
                 (Some(f), true) => {
                     let left = (state.generations - state.generation) as f32 - inside;
                     let secs = left * last.map_or(0.0, |g| g.ticks as f32) / rate;
-                    (format!("ABOUT {:.0} FIGHTS/S  ·  {} LEFT", rate / f.max(1.0), duration(secs)), Tone::Label)
+                    let last = lab.last_generation.map_or_else(String::new, |(took, _)| format!("  ·  THE LAST GENERATION {}", duration(took)));
+                    (format!("ABOUT {:.0} FIGHTS/S  ·  {} LEFT{last}", rate / f.max(1.0), duration(secs)), Tone::Label)
                 }
                 _ => (String::new(), Tone::Label),
             },

@@ -25,7 +25,7 @@ use world::arena::evolve::{Bound, Genes, Locks};
 use bevy::prelude::*;
 use data::Content;
 use data::behavior::Program;
-use kit::style::{Style, ui_color};
+use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, field_text, label, number, prose, ring_glyph, ring_node, spawn_pill, sub_tone, tracked};
 use world::career::fleet_cores;
@@ -189,7 +189,7 @@ pub(super) enum Section {
 #[derive(Component)]
 pub(super) struct NameField;
 
-pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color) {
+pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, ui: &UiPalette) {
     let (lx, lw) = LEFT;
     let (rx, rw) = RIGHT;
     let head = |p: &mut ChildSpawnerCommands, at: Vec2, words: &str| {
@@ -221,9 +221,9 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     section(p, Section::Size, Vec2::new(lx, 612.0), Vec2::new(lw, 70.0));
     // The right column: the locks, the trials, the run in numbers, the name, START RUN.
     section(p, Section::LocksHead, Vec2::new(rx, 90.0), Vec2::new(rw, 50.0));
-    head(p, Vec2::new(rx, 146.0), "PARTS  ·  A LOCKED PART NEVER MOVES, TURNS OR GOES");
+    head(p, Vec2::new(rx, 146.0), "PARTS  ·  A LOCKED ONE STAYS AS IT IS");
     list(p, Section::Parts, Vec2::new(rx, 162.0), 282.0, LIST_H);
-    head(p, Vec2::new(rx + 298.0, 146.0), "RULES  ·  NEVER CHANGED, MOVED OR DELETED");
+    head(p, Vec2::new(rx + 298.0, 146.0), "RULES  ·  A LOCKED ONE STAYS");
     list(p, Section::Rules, Vec2::new(rx + 298.0, 162.0), rw - 298.0, LIST_H - 36.0);
     section(p, Section::RuleLocks, Vec2::new(rx + 298.0, 162.0 + LIST_H - 28.0), Vec2::new(rw - 298.0, 30.0));
     head(p, Vec2::new(rx, 364.0), "TRIALS  ·  ENEMY SHIPS AND THE RUN'S OWN BEST");
@@ -253,7 +253,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
             });
         });
         n.spawn(Node { position_type: PositionType::Absolute, right: px(0), top: px(18), ..default() }).with_children(|b| {
-            let play = kit::ui_icons::UiIcon::Glyph { glyph: Glyph::Play, color: Color::NONE };
+            let play = kit::ui_icons::UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
             spawn_pill(b, fonts, "START RUN", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Setup(SetupButton::StartRun));
         });
     });
@@ -630,7 +630,7 @@ fn rules(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
         return;
     };
     if let Some(t) = &program.target {
-        p.spawn((tracked(fonts, &t.to_string(), 7.5, c(if l.target { Tone::Gold } else { Tone::Label }, 1.0), 0.05), TextLayout::no_wrap(), Node { margin: UiRect::left(px(10)), ..default() }));
+        p.spawn((prose(fonts, &t.to_string(), 10.5, c(if l.target { Tone::Gold } else { Tone::Label }, 1.0)), TextLayout::no_wrap(), Node { margin: UiRect::left(px(10)), flex_shrink: 0.0, ..default() }));
     }
     for (k, rule) in program.rules.iter().enumerate() {
         let locked = l.rules.contains(&(k as u32));
@@ -643,7 +643,7 @@ fn rules(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
             BackgroundColor(Color::NONE),
         ))
         .with_children(|r| {
-            r.spawn((tracked(fonts, &rule.to_string(), 7.5, c(if locked { Tone::Gold } else { Tone::Number }, 1.0), 0.05), TextLayout::no_wrap()));
+            r.spawn((prose(fonts, &rule.to_string(), 10.5, c(if locked { Tone::Gold } else { Tone::Number }, 1.0)), TextLayout::no_wrap()));
         });
     }
 }
@@ -659,10 +659,11 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
     };
     for (k, (id, n)) in s.opponents.iter().enumerate() {
         let name = content.ships.get(id).map_or(id.as_str(), |b| b.name.as_str());
-        let note = if *n == 0 { "NOT FOUGHT".to_string() } else { format!("{n} IN A FIGHT  ·  {} SEEDS", s.size.seeds) };
+        let seeds = if s.size.seeds == 1 { "1 SEED".to_string() } else { format!("{} SEEDS", s.size.seeds) };
+        let note = if *n == 0 { "NOT FOUGHT".to_string() } else { format!("{n} IN A FIGHT  ·  {seeds}") };
         line(p, name, *n, SetupButton::Opponent(k, -1), SetupButton::Opponent(k, 1), &note);
     }
-    let note = format!("THE RUN'S {} BEST SO FAR, A BAR THAT KEEPS RISING", s.hall_of_fame);
+    let note = if s.hall_of_fame == 0 { "NOT FOUGHT".to_string() } else { format!("THE RUN'S {} BEST SO FAR", s.hall_of_fame) };
     line(p, "Hall of fame", s.hall_of_fame, SetupButton::HallOfFame(-1), SetupButton::HallOfFame(1), &note);
 }
 
@@ -675,7 +676,7 @@ fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f3
     let per_second = world::evolution::BUDGET_OPEN_MS * 60.0 * 1000.0 / lab.rate.us_per_tick.max(0.01);
     let minutes = (s.ticks() / per_second as f64 / 60.0).max(0.1);
     let time = if minutes < 1.0 { "UNDER A MINUTE".to_string() } else { format!("ABOUT {minutes:.0} MIN") };
-    let measured = if lab.rate.measured { "MEASURED ON THIS DEVICE" } else { "ESTIMATED" };
+    let measured = if lab.rate.measured { "MEASURED" } else { "ESTIMATED" };
     p.spawn(label(fonts, "THE RUN", 9.0, c(Tone::Dim, 1.0)));
     p.spawn(label(fonts, &format!("{fights}  ·  {time} WITH THIS LAYER OPEN ({measured})"), 8.5, c(if jobs == 0 { Tone::Coral } else { Tone::Label }, 1.0)));
 }

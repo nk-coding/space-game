@@ -398,6 +398,11 @@ pub(crate) fn row(gap: f32) -> Node {
     Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() }
 }
 
+/// A placed node that lays its children out in a row.
+pub(crate) fn on_row(at: Node, gap: f32) -> Node {
+    Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..at }
+}
+
 pub(crate) fn column(gap: f32) -> Node {
     Node { flex_direction: FlexDirection::Column, row_gap: px(gap), ..default() }
 }
@@ -426,7 +431,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
             .with_children(|centre| {
                 centre.spawn(Node { width: px(STAGE.x), height: px(STAGE.y), flex_shrink: 0.0, ..default() }).with_children(|stage| {
                     // Top left: the way back, where we are, the title.
-                    stage.spawn((ScreenPart::new(Edge::Top, 0), Node { column_gap: px(14), ..row(14.0) }, abs(Vec2::new(22.0, 14.0), None))).with_children(|tl| {
+                    stage.spawn((ScreenPart::new(Edge::Top, 0), on_row(abs(Vec2::new(22.0, 14.0), None), 14.0))).with_children(|tl| {
                         tl.spawn((ring_node(40.0), LabButton::Back, Tip::key("BACK", "ESC")))
                             .with_child((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(22), height: px(22), ..default() }));
                         tl.spawn(column(4.0)).with_children(|col| {
@@ -450,7 +455,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                         let node = Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
                         stage.spawn((PageNode(page), ScreenPart::new(Edge::Fade, 1), node)).with_children(|p| match page {
                             Page::Runs => runs::spawn(p, fonts, &c),
-                            Page::Setup => setup::spawn(p, fonts, &c),
+                            Page::Setup => setup::spawn(p, fonts, &c, &ui),
                             Page::Run => run::spawn(p, fonts, &c),
                         });
                     }

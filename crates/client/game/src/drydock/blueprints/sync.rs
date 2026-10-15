@@ -219,12 +219,13 @@ pub(super) fn sync_shelf(
 }
 
 /// The start of a saved design's line: its frame, or for an evolved design where it came from (GDR-0092: `FROM RIM
-/// SKIFF COPY · G37`; its origin's first design by the name of a saved design or a content ship, else its id).
+/// SKIFF COPY · G37`; its origin's first design by the name of a saved design or a content ship, else its id in words:
+/// an unsaved working design goes by the slug of its name).
 pub(super) fn row_head(content: &Content, shelf: &Shelf, e: &Entry) -> String {
     let Some(o) = &e.origin else { return frame_name(content, e.frame).replace(" FRAME", "") };
     let id = o.from.first().map_or("", String::as_str);
-    let name = shelf.designs.iter().find(|d| d.id == id).map(|d| d.name.as_str()).or_else(|| content.ships.get(id).map(|b| b.name.as_str()));
-    format!("FROM {}  ·  G{}", name.unwrap_or(id).to_uppercase(), o.generation)
+    let name = shelf.designs.iter().find(|d| d.id == id).map(|d| d.name.clone()).or_else(|| content.ships.get(id).map(|b| b.name.clone()));
+    format!("FROM {}  ·  G{}", name.unwrap_or_else(|| id.replace('_', " ")).to_uppercase(), o.generation)
 }
 
 /// A saved design's tags and their tone: EVOLVED (gold) for one the evolution lab saved, IN THE DRYDOCK (teal, and

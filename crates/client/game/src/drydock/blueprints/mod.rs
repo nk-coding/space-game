@@ -425,6 +425,9 @@ mod tests {
         assert_eq!(sync::row_tag(plain, false, false).0, "");
         assert_eq!(sync::row_head(&content, &shelf, evolved), "FROM RIM SKIFF  ·  G37");
         assert_eq!(sync::row_head(&content, &shelf, plain), "8×4", "its frame (the skiff file is its own size)");
+        // An unsaved working design was its start: by its name's slug, in words.
+        let unsaved = Entry { origin: Some(data::Origin { from: vec!["rim_skiff_copy".into()], ..evolved.origin.clone().unwrap() }), ..evolved.clone() };
+        assert_eq!(sync::row_head(&content, &shelf, &unsaved), "FROM RIM SKIFF COPY  ·  G37");
     }
 
     /// The saved state after the name reads like the BEHAVIOR screen's: UNSAVED gold, SAVED grey.

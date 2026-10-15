@@ -76,7 +76,11 @@ pub(super) fn fill(mut commands: Commands, mut layer: ResMut<EvolutionLayer>, la
         if lab.runs().is_empty() {
             p.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), margin: UiRect::top(px(170)), ..default() }).with_children(|e| {
                 e.spawn(label(fonts, "NO RUNS YET", 11.0, c(Tone::Label, 1.0)));
-                e.spawn(prose(fonts, "A run starts from your designs, breeds variants of them and fights each against enemies: the best of every kind is kept, every fight can be watched again, and any result saves as a design.", 13.0, c(Tone::Dim, 1.0)));
+                e.spawn((
+                    prose(fonts, "A run starts from your designs, breeds variants of them and fights each against enemies: the best of every kind is kept, every fight can be watched again, and any result saves as a design.", 13.0, c(Tone::Dim, 1.0)),
+                    TextLayout::justify(bevy::text::Justify::Center),
+                    Node { max_width: px(620), ..default() },
+                ));
                 e.spawn(Node { height: px(8), ..default() });
                 spawn_pill(e, fonts, "NEW RUN", 9.5, 30.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::NewRun);
             });
