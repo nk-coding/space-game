@@ -102,6 +102,7 @@ actions! {
     OpenVoyages = "open_voyages",
     OpenTestRange = "open_test_range",
     OpenFleet = "open_fleet",
+    OpenLog = "open_log",
     OpenSettings = "open_settings",
     ToolPaint = "tool_paint",
     ToolBevel = "tool_bevel",

@@ -37,6 +37,7 @@
     (id: "open_voyages", name: "Voyages", summary: "Opens the voyage map through the gate.", section: shipyard, contexts: [home], inputs: ["KeyV"]),
     (id: "open_test_range", name: "Test range", summary: "Flies the working design against enemy waves.", section: shipyard, contexts: [home], inputs: ["KeyT"]),
     (id: "open_fleet", name: "Fleet", summary: "Opens FLEET at the moorings.", section: shipyard, contexts: [home], inputs: ["KeyF"]),
+    (id: "open_log", name: "Log", summary: "Opens the LOG at the records mast: the last voyages and what they brought home.", section: shipyard, contexts: [home], inputs: ["KeyL"]),
     (id: "open_settings", name: "Settings", summary: "Opens SETTINGS: controls and display.", section: shipyard, contexts: [home], inputs: ["KeyO"]),
     // The drydock and the behavior editor.
     (id: "tool_paint", name: "Paint", summary: "The drydock's paint tool: places the picked part.", section: drydock, contexts: [drydock], inputs: ["KeyB"]),
