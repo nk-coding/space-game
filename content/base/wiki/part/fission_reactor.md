@@ -4,20 +4,21 @@ from the same pool, with no wiring.
 
 ## Keeping it cool
 
-A reactor makes heat in proportion to how hard the piece is drawing on it. Put a [[part:radiator]] beside it
+A reactor makes heat as long as the piece draws on it at all: some even at a trickle, more the harder the
+piece draws. Put a [[part:radiator]] beside it
 on a side that faces open space: the radiator dumps heat *and* raises the reactor's output while it vents.
 A radiator buried inside the hull does neither.
 
 ## When it breaks off
 
-If the reactor ends up in a piece that has broken away from the ship, that piece keeps its own pool. Parts
-left behind without a reactor go dark.
+If the reactor ends up in a piece that has broken away from the ship, that piece keeps its own pool, but
+only a piece with an intact logic core still acts; without one it is salvage. Parts left behind without a
+reactor go dark.
 
 ## When it is destroyed
 
-A destroyed reactor explodes. Every part in the eight cells around it, and in the next cell straight out on each
-side, takes the blast at once: machines with one hit point, such as a gun or a [[part:logic_core]] near it, go
-with it, and a reactor beside it goes off in turn. Armor takes only part of a blast and lets only that part
+A destroyed reactor explodes. Every part within its [[stat:blast_radius|blast radius]] (the cells marked on
+its drawing) takes the blast at once: frail machines, such as a gun or a [[part:logic_core]] near it, go with it, and a reactor beside it goes off in turn. Armor takes only part of a blast and lets only that part
 through, so plating around a reactor usually survives it and shields what lies behind it. A reactor in front of
 a gun is no shield for it.
 

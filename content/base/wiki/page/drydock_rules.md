@@ -4,9 +4,10 @@ How the drydock decides what a design can do. The numbers live in the part pages
 
 - **Pieces.** Parts that touch through straight sides form a piece. [[part:slope_1x1|Slopes]] connect only
   through their two straight sides, never through the slope face. Each piece has its own power pool; a piece
-  that breaks off becomes salvage.
-- **Power.** Reactors add to the pool, everything else draws from it. Short on power, every consumer in the
-  piece runs at the same reduced share.
+  that breaks off becomes salvage, unless it keeps an intact logic core: then it is a vessel of its own.
+- **Power.** Reactors add to the pool, everything else draws from it. Short on power, the pool feeds its
+  consumers by power tier: the first tier it cannot fully serve shares what is left by weight, the tiers below
+  get nothing, and a part given less than its minimum power switches off.
 - **Heat.** Parts heat up under load and pass heat to linked neighbours. [[part:radiator|Radiators]] vent
   through sides open to space. Overheated parts shut down.
 - **Adjacency bonuses.** [[part:capacitor|Capacitors]] make lasers beside them fire faster; venting radiators
