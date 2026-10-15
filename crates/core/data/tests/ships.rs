@@ -133,6 +133,7 @@ fn machines_take_the_tone_of_the_hull_around_them() {
         ],
         behavior: None,
         assists: None,
+        origin: None,
         source: Default::default(),
     };
     let grid = content.ship_grid(&ship).unwrap();

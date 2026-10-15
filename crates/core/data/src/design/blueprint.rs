@@ -12,8 +12,8 @@ use crate::content::problem::Problem;
 /// Writes a blueprint as RON: the header fields, `size`, then `parts` with one placement per line, four-space
 /// indent. Defaults are left out: `rot: 0`, `flip: false`, a placement's `material` and `power` when absent,
 /// `description`, `lore`, `behavior` and `assists` when absent, `tags` when empty; a `power` override writes only the
-/// fields it sets. `source` is never written. Strings escape `"`, `\` and control characters (`\n`, `\t`,
-/// `\u{..}`); other characters, unicode included, are written as they are.
+/// fields it sets; `origin` is one line, when set. `source` is never written. Strings escape `"`, `\` and control
+/// characters (`\n`, `\t`, `\u{..}`); other characters, unicode included, are written as they are.
 ///
 /// The output is deterministic and reads back with [`parse_blueprint`] to an equal blueprint (its `source`
 /// aside).
@@ -42,6 +42,12 @@ pub fn blueprint_to_ron(bp: &Blueprint) -> String {
             let _ = writeln!(s, "            {},", string(r));
         }
         s.push_str("        ],\n    ),\n");
+    }
+    if let Some(o) = &bp.origin {
+        let from: Vec<String> = o.from.iter().map(|f| string(f)).collect();
+        // `Display` of an f32 is the shortest text that reads back to the same value.
+        let origin = format!("(run: {}, genome: {}, generation: {}, from: [{}], score: {})", string(&o.run), o.genome, o.generation, from.join(", "), o.score);
+        field(&mut s, "origin", &origin);
     }
     field(&mut s, "size", &format!("({}, {})", bp.size.0, bp.size.1));
     if bp.parts.is_empty() {

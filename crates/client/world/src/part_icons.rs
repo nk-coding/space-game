@@ -55,6 +55,7 @@ fn part_tile(
         }],
         behavior: None,
         assists: None,
+        origin: None,
         source: Default::default(),
     };
     let dv = design_visual(content, &bp, style).ok()?;

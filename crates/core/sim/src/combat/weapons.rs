@@ -1027,6 +1027,7 @@ mod tests {
             parts,
             behavior: None,
             assists: None,
+            origin: None,
             source: Default::default(),
         };
         let d = Arc::new(ShipDesign::compile(&content, &bp).unwrap());

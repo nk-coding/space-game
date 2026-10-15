@@ -28,6 +28,7 @@ fn design(parts: Vec<Placement>) -> Blueprint {
         parts,
         behavior: None,
         assists: None,
+        origin: None,
         source: Default::default(),
     }
 }
@@ -369,6 +370,32 @@ fn blueprint_text_format_and_defaults() {
         file: "ships/x.ron".into(),
     };
     assert_eq!(blueprint_to_ron(&loaded), blueprint_to_ron(&bp));
+}
+
+/// An evolved design's `origin` (GDR-0092) is one line after the assists, reads back equal, and is left out of the
+/// text and of the content's serde form when there is none (so the fingerprint and old fight codes stay).
+#[test]
+fn an_origin_is_one_line_and_left_out_when_none() {
+    let mut bp = design(vec![at("logic_core", 1, 0)]);
+    let plain = round_trip(&bp);
+    assert!(!plain.contains("origin"));
+    assert!(!ron::to_string(&bp).unwrap().contains("origin"), "none is not serialised");
+    bp.tags = vec!["evolved".into()];
+    bp.origin = Some(data::Origin {
+        run: "evolving_rim_skiff".into(),
+        genome: 412,
+        generation: 37,
+        from: vec!["rim_skiff_copy".into(), "halvex_runner".into()],
+        score: 0.91,
+    });
+    let text = round_trip(&bp);
+    assert!(
+        text.contains("    origin: (run: \"evolving_rim_skiff\", genome: 412, generation: 37, from: [\"rim_skiff_copy\", \"halvex_runner\"], score: 0.91),\n    size: (4, 4),"),
+        "{text}"
+    );
+    // `from` may be left out by hand.
+    let short = text.replace(", from: [\"rim_skiff_copy\", \"halvex_runner\"]", "");
+    assert_eq!(parse_blueprint(&short).unwrap().origin.unwrap().from, Vec::<String>::new());
 }
 
 #[test]

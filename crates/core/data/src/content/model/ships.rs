@@ -145,7 +145,30 @@ pub struct Blueprint {
     /// Its pilot assists (GDR-0088); none: the ship coasts when the player lets go.
     #[serde(default)]
     pub assists: Option<AssistList>,
+    /// Where an evolved design came from (GDR-0092); none for a design built by hand. Left out of the RON when
+    /// none, so the content's fingerprint and every fight code of before stay as they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(Blueprint, Kind::Ship);
+
+/// Where an evolved design came from (GDR-0092 "Saving a result"): the evolution lab's run, the genome there and
+/// the generation it was bred in, the designs its line starts from and its score in the run. It travels with the
+/// design in files and share codes; the BLUEPRINTS list tags such a design EVOLVED.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Origin {
+    /// The run's id (`lab/<run>`).
+    pub run: String,
+    /// The genome's number in the run's genome table.
+    pub genome: u32,
+    pub generation: u32,
+    /// The designs it descends from: a saved design's id or a content ship's id (else the start's name), its
+    /// start's first.
+    #[serde(default)]
+    pub from: Vec<String>,
+    /// Its score in the run, 0..1.
+    pub score: f32,
+}
