@@ -151,6 +151,8 @@ pub enum Launch {
     Range,
     /// A voyage `voyage::VoyageRun` holds (the scene's kind says which).
     Voyage,
+    /// A fight the replay viewer was given (`replay::Replay::queue`: the evolution lab's WATCH).
+    Fight,
 }
 
 #[derive(Resource)]
@@ -583,7 +585,7 @@ fn start_test(scene: &mut Scene, world: &mut SimWorld, runner: &Arc<ShipDesign>,
 }
 
 /// A flight another mode asked for: the sandbox with the player's design, raider waves on; a test flight (T or
-/// TEST-FLY in the drydock, TEST IN RANGE) or home's TEST RANGE.
+/// TEST-FLY in the drydock, TEST IN RANGE) or home's TEST RANGE; a voyage; a fight to watch (the lab's WATCH).
 fn launch(
     mut scene: ResMut<Scene>,
     mut focus: ResMut<PilotFocus>,
@@ -592,11 +594,13 @@ fn launch(
     mut world: ResMut<SimWorld>,
 ) {
     let Some(launch) = scene.launch.take() else { return };
-    if launch != Launch::Voyage {
-        scene.kind = SceneKind::Sandbox;
+    match launch {
+        Launch::Voyage => {}
+        Launch::Fight => scene.kind = SceneKind::Fight,
+        Launch::TestFlight | Launch::Range => scene.kind = SceneKind::Sandbox,
     }
     scene.test_flight = launch == Launch::TestFlight;
-    scene.waves = launch != Launch::Voyage;
+    scene.waves = matches!(launch, Launch::TestFlight | Launch::Range);
     *world = build_world(&mut scene, &mut focus, &mut inputs, &mut rig);
     info!("{launch:?}: {} parts, revision {}", inputs.design.blueprint().parts.len(), inputs.design.revision());
 }

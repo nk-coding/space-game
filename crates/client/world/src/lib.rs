@@ -3,6 +3,8 @@
 //!
 //! - `mode`: the app mode (home, flight, drydock, the BEHAVIOR screen, research, the map) and what runs in which.
 //! - `career`: the player's career save (`saves/<slot>`), a new game, what the career unlocks for the drydock.
+//! - `evolution`: the evolution lab's runs (`lab/<id>`): made from the setup, computed in the background within a
+//!   budget per frame (paused in flight), saved after every generation; SAVE AS DESIGN (GDR-0092).
 //! - `player`: what the player owns: the design every flight flies, the player's behaviors, the saved designs.
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
 //! - `scene`: sandbox (player + raider waves; home's TEST RANGE), test flight, showcase, load test; writes the
@@ -26,10 +28,14 @@
 //!   toggles, live tuning panel (egui).
 //! - `backdrop`: gradient, parallax dust, range rings.
 
+// The screens read the arena's runs and fights (the evolution lab's pages) through the world, which holds them.
+pub use arena;
+
 pub mod backdrop;
 pub mod camera;
 pub mod career;
 pub mod controls;
+pub mod evolution;
 pub mod fleet_bar;
 pub mod flight_hud;
 pub mod fx;

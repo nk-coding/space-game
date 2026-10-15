@@ -4,7 +4,8 @@
 //!
 //! * **Saved designs** ([`DesignDoc`], `designs/<id>`): the content ship format (`data::blueprint_to_ron`) in
 //!   the design's drydock frame: `size` = the frame, parts in frame coordinates, `id` = the design's id. Opening
-//!   one puts it back in that frame.
+//!   one puts it back in that frame. Format 2 (GDR-0092) may carry an evolved design's `origin`; format 1 reads as
+//!   it is (it has none), and an older build refuses a format 2 design as newer instead of failing on the field.
 //! * **Ids**: a snake_case slug of the name on the first save ([`slug`]), unique among saved designs and never a
 //!   content ship's id ([`unique_id`]); the design keeps it when renamed.
 //! * **The working design** ([`WorkingDoc`], `drydock/working`): the design being edited, written about a
@@ -37,7 +38,7 @@ pub struct DesignDoc(pub Blueprint);
 
 impl Document for DesignDoc {
     const NAMESPACE: &'static str = "designs";
-    const FORMAT: u32 = 1;
+    const FORMAT: u32 = 2;
 
     fn to_ron(&self) -> String {
         data::blueprint_to_ron(&self.0)
@@ -409,6 +410,7 @@ pub fn new_design(content: &Content, frame: (u32, u32), like: &Blueprint, names:
         size: frame,
         behavior: None,
         assists: None,
+        origin: None,
         ..like.clone()
     };
     PlayerDesign::open(content, &bp, frame).map_err(|e| open_error_text(&e))

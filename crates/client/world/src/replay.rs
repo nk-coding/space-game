@@ -201,6 +201,13 @@ fn side_name(designs: &[(data::Blueprint, std::sync::Arc<sim::ShipDesign>)], spe
 }
 
 impl Replay {
+    /// Plays `code` when a fight scene starts next (the evolution lab's WATCH, `scene::Launch::Fight`): read afresh,
+    /// at the normal speed.
+    pub fn queue(&mut self, code: String) {
+        self.code = Some(code);
+        self.watch = None;
+    }
+
     /// The fight's world (the scene builds it, `scene::build_world`): read the code the first time, then build the
     /// fight afresh. The camera frames it. A code that doesn't read or build leaves an empty world and says why.
     pub fn start(&mut self, content: &data::Content, rig: &mut CameraRig) -> SimWorld {
