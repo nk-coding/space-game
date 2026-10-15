@@ -19,6 +19,12 @@
     (id: "drift", name: "Drift", summary: "Turns drift on and off: pure momentum while keys are held, no sideways correction.", section: flight, contexts: [flight], inputs: ["KeyX"]),
     (id: "focus_next", name: "Next vessel", summary: "Flies the next of your vessels.", section: flight, contexts: [flight], inputs: ["KeyV"]),
     (id: "focus_previous", name: "Previous vessel", summary: "Flies the previous of your vessels.", section: flight, contexts: [flight], inputs: ["Shift+KeyV"]),
+    // Pilot assists (GDR-0088): which assists a toggle switches is set per design on the BEHAVIOR screen's PILOT ASSISTS tab.
+    (id: "assist_toggle_1", name: "Assist toggle 1", summary: "Switches the pilot assists on toggle 1 on and off (set under PILOT ASSISTS).", section: flight, contexts: [flight], inputs: ["F1"]),
+    (id: "assist_toggle_2", name: "Assist toggle 2", summary: "Switches the pilot assists on toggle 2 on and off (set under PILOT ASSISTS).", section: flight, contexts: [flight], inputs: ["F2"]),
+    (id: "assist_toggle_3", name: "Assist toggle 3", summary: "Switches the pilot assists on toggle 3 on and off (set under PILOT ASSISTS).", section: flight, contexts: [flight], inputs: ["F3"]),
+    (id: "assist_toggle_4", name: "Assist toggle 4", summary: "Switches the pilot assists on toggle 4 on and off (set under PILOT ASSISTS).", section: flight, contexts: [flight], inputs: ["F4"]),
+    (id: "all_assists", name: "All assists", summary: "Switches every pilot assist off, and back on as the toggles left them.", section: flight, contexts: [flight], inputs: ["KeyZ"]),
     // Missions.
     (id: "recall", name: "Recall", summary: "On a voyage: warps the fleet home with what it carries.", section: mission, contexts: [flight], inputs: ["KeyR"]),
     (id: "leave", name: "Shipyard / abandon", summary: "In the test range: back to the shipyard. On a voyage: asks whether to abandon it.", section: mission, contexts: [flight], inputs: ["KeyM"]),
@@ -71,7 +77,7 @@
     (id: "hide_hud", name: "Hide the HUD", summary: "Hides and shows the flight HUD.", section: debug, contexts: [flight], inputs: ["KeyH"]),
     (id: "pause", name: "Pause", summary: "Pauses the test range (voyages never pause).", section: debug, contexts: [flight], inputs: ["KeyP"]),
     (id: "tuning", name: "Tuning panel", summary: "Opens the tuning panel (flight feel and wave size).", section: debug, contexts: [flight], inputs: ["KeyU"]),
-    (id: "debug_overlay", name: "Debug overlay", summary: "Shows frame times and counts.", section: debug, contexts: [any], inputs: ["F3"]),
+    (id: "debug_overlay", name: "Debug overlay", summary: "Shows frame times and counts.", section: debug, contexts: [any], inputs: ["F8"]),
     (id: "debug_shapes", name: "Debug shapes", summary: "Draws ships as plain coloured cells.", section: debug, contexts: [flight], inputs: ["F5"]),
     (id: "glow_toggle", name: "Glow", summary: "Turns the glow layers off and on.", section: debug, contexts: [flight], inputs: ["F6"]),
     (id: "bloom_toggle", name: "Bloom", summary: "Turns full-screen bloom on and off.", section: debug, contexts: [flight], inputs: ["F7"]),

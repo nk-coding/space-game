@@ -12,7 +12,7 @@
 //! * T returns to where the test started ([`FlightExit`]: the screen that sent the request; the drydock for the
 //!   URL), and so does losing the tested ship (watch) or every vessel (alongside), after 3 s. Shift+R starts over.
 //! * [`BehaviorWatch`] (a resource) holds the tested ship's behavior live, refreshed after every think: which rule
-//!   decides, every rule's status and why. The F3 overlay shows it.
+//!   decides, every rule's status and why. The debug overlay (F8) shows it.
 //!
 //! The scene (`scene.rs`) builds and runs the test world; this module holds the request, the checks and the live
 //! view.
@@ -112,7 +112,7 @@ pub fn resolve(world: &mut SimWorld, program: &TestProgram, design: &ShipDesign)
     }
 }
 
-/// The tested ship's behavior, live (for the behavior screen's highlight and the F3 overlay). Refreshed after
+/// The tested ship's behavior, live (for the behavior screen's highlight and the debug overlay). Refreshed after
 /// every think of the ship (10 Hz), so `is_changed()` says when there is something new; empty outside a test.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct BehaviorWatch {

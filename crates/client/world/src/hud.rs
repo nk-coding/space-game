@@ -1,9 +1,10 @@
-//! Debug overlay (`F3`; always on in the load test): fps, frame and sim step times (mean / median / p95 over
+//! Debug overlay (`F8`; always on in the load test): fps, frame and sim step times (mean / median / p95 over
 //! a rolling window), entity and sim counts, the atlas tier against what the screen needs (window size and
 //! scale factor), render toggles, the focus ship's heading, turn rate and speed (for tuning turning, GDR-0055), the
 //! locked ship's active behavior rule and, in TEST IN RANGE, every rule of the tested behavior with why
-//! (`test_range::BehaviorWatch`). Keys: `F3` the overlay (everywhere); in flight only: `1` debug shapes, `2` glow
-//! sprites, `3` bloom, `H` hide the HUD, `P` pause, `Shift+R` reset the scene (`scene.rs`).
+//! (`test_range::BehaviorWatch`). Keys (defaults; SETTINGS rebinds them): `F8` the overlay (everywhere; it was F3
+//! until the assist toggles took F1–F4, GDR-0088); in flight only: `F5` debug shapes, `F6` glow sprites, `F7` bloom,
+//! `H` hide the HUD, `P` pause, `Shift+R` reset the scene (`scene.rs`).
 //!
 //! In the load test the overlay also logs a one-line summary to the browser console after 60 s
 //! (`LOADTEST ...`). `?slowmo=N` runs the game's clock N times slower (1 to 50; for looking at animations such as
@@ -105,7 +106,7 @@ fn keyboard_toggles(act: Act, mut toggles: ResMut<RenderToggles>, mut time: ResM
     }
 }
 
-/// F3: the debug overlay, in every mode.
+/// The debug overlay (F8), in every mode.
 fn debug_toggle(act: Act, mut toggles: ResMut<RenderToggles>) {
     if act.just_pressed(Action::DebugOverlay) {
         toggles.debug_info = !toggles.debug_info;
@@ -188,7 +189,7 @@ fn update_debug(
         s,
         "FPS {fps:5.1}   frame ms mean {fm:5.2}  med {fmed:5.2}  p95 {fp95:5.2}   sim ms mean {sm:.3}  med {smed:.3}  p95 {sp95:.3}\n\
          tick {}  ships {}  pieces {}  shots {}  entities {:.0}  zoom {:.1} px/m{}\n\
-         [1] debug shapes {}  [2] glow sprites {}  [3] bloom {}  [P] pause  [Shift+R] reset  [F3] stats",
+         [F5] debug shapes {}  [F6] glow sprites {}  [F7] bloom {}  [P] pause  [Shift+R] reset  [F8] stats",
         world.sim.tick(),
         world.sim.ships().len(),
         pieces,

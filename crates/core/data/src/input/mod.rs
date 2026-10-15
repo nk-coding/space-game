@@ -87,6 +87,11 @@ actions! {
     Drift = "drift",
     FocusNext = "focus_next",
     FocusPrevious = "focus_previous",
+    AssistToggle1 = "assist_toggle_1",
+    AssistToggle2 = "assist_toggle_2",
+    AssistToggle3 = "assist_toggle_3",
+    AssistToggle4 = "assist_toggle_4",
+    AllAssists = "all_assists",
     Recall = "recall",
     Leave = "leave",
     TestReturn = "test_return",
@@ -148,6 +153,12 @@ impl Action {
     pub fn fire_group(g: u8) -> Option<Action> {
         const GROUPS: [Action; crate::MAX_WEAPON_GROUP as usize] = [Action::FireGroup1, Action::FireGroup2, Action::FireGroup3];
         g.checked_sub(1).and_then(|k| GROUPS.get(k as usize).copied())
+    }
+
+    /// The key of assist toggle slot `k` (1-based, GDR-0088), if there is one.
+    pub fn assist_toggle(k: u8) -> Option<Action> {
+        const TOGGLES: [Action; crate::MAX_ASSIST_TOGGLES as usize] = [Action::AssistToggle1, Action::AssistToggle2, Action::AssistToggle3, Action::AssistToggle4];
+        k.checked_sub(1).and_then(|k| TOGGLES.get(k as usize).copied())
     }
 
     /// The drydock's armour shortcut for material `n` (1-based), if there is one.

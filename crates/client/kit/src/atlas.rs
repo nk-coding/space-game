@@ -11,7 +11,7 @@
 //! and identical at every tier, so meshes never need rebuilding. Every atlas mesh draws with [`AtlasMaterial`]
 //! (`atlas.wesl`: texture × vertex colour, sampled with a mip LOD bias so the icons stay as sharp as the
 //! geometry): alpha-blended, or opaque with depth writes for the lit ship tiles ([`Atlas::opaque`]).
-//! [`AtlasStatus`] reports what happens (F3 overlay).
+//! [`AtlasStatus`] reports what happens (the debug overlay).
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -276,7 +276,7 @@ pub struct UiAtlasNeed(pub f32);
 /// A finished rebuild: tier, milliseconds of work, frames, longest single step (ms).
 pub type Rebuild = (u32, f64, u32, f64);
 
-/// What the atlas does, for the debug overlay (F3).
+/// What the atlas does, for the debug overlay.
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct AtlasStatus {
     /// Pixels per cell the screen needs now (zoom × scale factor).
