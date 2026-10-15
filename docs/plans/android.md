@@ -395,7 +395,7 @@ Total about 5–7 GB (*estimate*), the NDK and the target dir the bulk; Gradle (
 | new `crates/client/game/src/platform/android.rs` (*name placeholder*) | Lifecycle (pause and resume the sim's clock), `SafeArea` (placeholder margins, then JNI insets), 60 Hz frame-rate hint after each resume, thermal headroom (`AThermal_*` from `libandroid` through `extern "C"` declarations in Rust, API 31), Back key (`NamedKey::BrowserBack` in winit 0.30.13) mapped to the game's Esc |
 | `crates/client/world/src/sim_bridge.rs` | `console_out` on Android: logcat plus the measurement file |
 | `crates/client/world/src/controls.rs` | Floating stick, FIRE in dp from the safe area, tap slack, next target from the target panel, touch widgets on from the start on Android |
-| `crates/client/world/src/flight_hud/`, `hud.rs` | Phone HUD positions inside the safe area, pause ring and menu, help line off on touch; F3 overlay gains thermal headroom and the atlas tier |
+| `crates/client/world/src/flight_hud/`, `hud.rs` | Phone HUD positions inside the safe area, pause ring and menu, help line off on touch; the debug overlay (F8) gains thermal headroom and the atlas tier |
 | `crates/client/kit/src/ui_kit/` | `UiPointer::blocked` also for touches; hit slop to 48 dp; drag-to-scroll; soft keyboard on focus (`Window::ime_enabled`) |
 | `crates/client/game/src/drydock/{view,tools,panels,inspector}.rs` | Compact layout; touch gestures (one finger tool, two fingers pan and zoom, drag from the palette, cancel on a second finger); default zoom for touch |
 | `crates/client/game/src/behavior_ui/{mod,screen,reorder,controls,text_view,list}.rs` | Compact layout; drag scroll; long-press reorder; slider hit areas; TEXT read-only on the phone |

@@ -33,7 +33,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | | PC | Touch (landscape) |
 |---|---|---|
 | Fly | A/D rotate (GDR-0055, numbers in GDR-0058: a tap nudges the nose a little, holding ramps up to the key turn rate, 1.5 rad/s, in 0.8 s; never faster than the ship's gyros, cores and RCS can stop), W/S thrust along the nose, Q/E strafe (arrows: rotate + thrust). The flight computer cancels sideways drift while keys are held; released keys coast, nose kept (GDR-0086) | virtual stick bottom left: "fly that way", push = speed |
-| Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086) | X | tuning panel |
+| Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086; also the tuning panel's checkbox and `?drift=1`) | X | – (drift changes only the keys; the stick always flies where it points) |
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
 | Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
@@ -376,15 +376,13 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
 | Keys | |
 |---|---|
 | Drydock: the building area | D, or a click on the U |
-| BEHAVIOR screen (the working design's behavior; its DRYDOCK pill and Esc lead on to the drydock): the mind | B, or a click on the mind |
+| BEHAVIOR screen (the working design's behavior; Esc and its ring button come back home, its DRYDOCK pill leads on to the drydock): the mind | B, or a click on the mind |
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
 | LOG: the last voyages ([LOG](#log)) at the records mast; Esc, CLOSE or its ring button closes it | L, or a click on the mast |
-| Voyages: the camera flies to the gate, then the voyage map opens ([Voyage map](#voyage-map)); coming back the camera flies out from the gate | V, or a click on the gate |
-| Research: inert until its screen exists (track 7G) | R (nothing yet) |
+| Voyages: the voyage map opens at once through the gate, the camera diving at it while the map opens inside its ring ([Voyage map](#voyage-map)); coming back runs the same way backwards | V, or a click on the gate |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
 | Research: the lab ([Research](#research); Esc, `‹ HOME` or its ring button come back) | R, or a click on the lab |
-| Voyages: inert until its screen exists (tracks 7H/7I) | V (nothing yet) |
 | Debug overlay | F8 |
 
 - **The station** (`shipyard::layout`, a pure function of the frame; sizes are the sketch's at 20 px per cell,
@@ -454,8 +452,9 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   world point that sits at the same place on screen in both views stays put while the zoom changes geometrically, as
   a zoom around the cursor does; without a change of zoom it pans. On arrival the place sends `HomeAction` and its
   screen opens. Hover highlights a working place (teal corner brackets, its title white). Inert places (the dark
-  buildings) neither highlight nor react; the lab works dark or lit. **The gate** opens the voyage map on arrival
-  ([Voyage map](#voyage-map)); the debrief's VOYAGE MAP (`map::OpenMap`) flies there as V does.
+  buildings) neither highlight nor react; the lab works dark or lit. **The gate** flies nowhere first: it opens the
+  voyage map at once and its portal takes the camera ([Voyage map](#voyage-map)); the debrief's VOYAGE MAP
+  (`map::OpenMap`) opens it as V does.
 - **The drydock hand-over**: the camera flies onto the drydock's own opening view of the frame
   (`drydock::view::DockCamera::opening_view`: its last view of this frame, else the frame fitted into its grid
   viewport, computed from the drydock's laid-out but hidden UI), while the cranes slide to the mouth (parked past the
@@ -634,8 +633,11 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
 
 Where voyages are chosen (track 7I, 14 Oct 2026; GDR-0065's star map inside the rim band, after
 `../space-game-archive/mockups/map-b.png`; GDR-0071: the gate is where you fly for voyages; GDR-0078: no route, the voyages are
-found one signal at a time), `map/`: `AppMode::Map`. Home's gate (V, or a click) flies the camera to the gate, then
-the map opens; Esc or the ring button top left goes back to the shipyard (the camera flies out from the gate);
+found one signal at a time), `map/`: `AppMode::Map`. Home's gate (V, a click, or the debrief's VOYAGE MAP) opens the
+map at once and the portal takes the camera (`map/portal.rs`, Niklas 14 Oct 2026): it dives at the gate while the map
+shows through an aperture in the ring that opens like an iris and widens over the yard, the map coming up from depth;
+the map's screen opens once the window is all map. Esc or the ring button top left goes back to the shipyard by the
+same path backwards;
 `?scene=map` starts here. Screenshots: `docs/results/map-signals-new-game.png` (a new game: the shipyard and the
 first voyage, nothing else), `map-signals-found.png` (the first voyage cleared: Halvex Drift a new signal). The older
 `map-1280.png`, `map-1600.png`, `map-1600-locked.png`, `map-wide.png` (3440 × 1305) and `map-tall.png` (900 × 1400)
@@ -710,7 +712,7 @@ show the window sizes but still the chain and the locked voyages the map drew be
   nodes, hit-tested by hand, so touch works; the map's labels move with the view (`UiTransform`) and are cut at the
   panel.
 - **The debrief** after a voyage that found a signal says `SIGNAL FOUND · <its name>` and adds VOYAGE MAP beside
-  DISMISS: it dismisses the panel and home flies to the gate (`map::OpenMap`), where the map selects the signal.
+  DISMISS: it dismisses the panel and opens the map through the gate (`map::OpenMap`), where it selects the signal.
 
 ## FLEET
 
@@ -1124,7 +1126,7 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 
 | Keys (only while neither a text field nor the TEXT view has the keyboard, and the BEHAVIORS list is closed; Ctrl+S also with the list open) | |
 |---|---|
-| Back to the drydock (the design is untouched; the draft stays) | Esc, or the DRYDOCK pill (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it) |
+| Back where the screen was opened (home or the drydock; the design is untouched, the draft stays) | Esc (in the TEXT view the first Esc leaves the text; with REPLACE armed Esc disarms it); the DRYDOCK pill always goes to the drydock, the ring button top left home |
 | Test in range (the WATCH / FLY ALONGSIDE pills pick the mode) | T, or TEST IN RANGE; T in the test comes back |
 | Save | Ctrl+S (also while the TEXT view types), or SAVE |
 | Rename the behavior | click the name top left; Enter (or a click elsewhere) renames, Esc keeps the old name |

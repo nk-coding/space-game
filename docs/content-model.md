@@ -189,11 +189,11 @@ what is locked; a development switch (`?unlock=all`) is planned.
 | `barrel` | optional, guns only: `(width, length, muzzle)` in cells, the barrel the client draws through the gun's nose (`length` beyond its front edge) and the radius of the muzzle glow at its tip; a gun without one gets a small glow at its front edge (13 Oct 2026, from the reference SVGs) |
 | `size` | footprint `(w, h)` in cells before rotation; each side 1 to 16 (`data::content::validate::MAX_PART_SIDE`, a placeholder) |
 | `shape` | `Rect` (default) or `Slope` |
-| `build_points` | cost against the drydock budget (no economy; balancing and enemy scaling) |
+| `build_points` | how big and costly the part is; no budget limits a design (no economy): balancing, the test range's wave size, the arena's design limit |
 | `control_cost` | optional: what the part costs against its vessel's control capacity (GDR-0044, see below); default by kind |
 | `hull` | `true`: takes an armor material per placement; then `mass`/`hp` must be absent |
 | `mass`, `hp` | required for non-hull parts |
-| `locked` | optional, default `false`: not in a new game until research unlocks it; the free drydock hides it, the career's shows it dimmed (GDR-0065). Content ships may still use it (the raider flies its locked automaton parts) |
+| `locked` | optional, default `false`: not in a new game until research unlocks it; the free drydock hides it, the career's shows it dimmed if a research node unlocks it, else hides it (GDR-0065). Content ships may still use it (the raider flies its locked automaton parts) |
 | `salvage` | optional, non-hull parts only: what the part gives when salvaged (see [Salvage](#salvage-added-13-oct-2026)). A part without it is never collected |
 
 Optional component blocks (a part has any combination):
@@ -219,7 +219,7 @@ Optional component blocks (a part has any combination):
 |---|---|---|
 | `Beam` | — | continuous hit-scan: `damage` per second while firing, burns the first block it touches |
 | `Pulse(rate: r)` | `rate` (shots/s, at most 60) | hit-scan pulses, each dealing `damage / rate`, first block only |
-| `Projectile(rate: r, speed: v, penetration: n, recoil: j)` | shots/s, m/s, blocks, kN·s | a flying shot (inherits the ship's velocity), lives `range / speed` s, goes through up to `n` blocks, pushes the shooter back with `j` per shot; kinetic shots ricochet off slopes hit at a shallow angle |
+| `Projectile(rate: r, speed: v, penetration: n, recoil: j)` | shots/s, m/s, blocks, kN·s | a flying shot (inherits the ship's velocity), lives `range / speed` s, hits up to `n` blocks (the first included; what breaks one carries on into the next), pushes the shooter back with `j` per shot; kinetic shots ricochet off slopes hit at a shallow angle |
 
 Stat lines: `range`, `shot_rate`, `shot_speed`, `penetration`, `recoil`, `shield_capacity`, `shield_regen`
 (added 11 Oct 2026). The capacitor's `fire_rate` bonus multiplies the shot rate (beams: their damage).

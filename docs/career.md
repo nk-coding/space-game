@@ -21,7 +21,7 @@ starts, salvage blocks, `locked`) is described in `content-model.md`.
 The model is pure, like `data::design::edit` for the drydock (ADR-0030): no Bevy, no I/O, wasm-safe, ordered containers
 only. Every question takes the `Content` it should be answered against.
 
-## The save (format 1)
+## The save (format 2)
 
 `Career` holds **facts only**. Everything that can be derived from content is derived on demand and never stored,
 so a content rebalance (a node's cost, a part's unlock) applies to old saves without a migration. The game stores
@@ -265,7 +265,7 @@ would roll its voyages differently. The game keeps it as it is and never writes 
 
 | Constant | Value | What |
 |---|---|---|
-| `career::FORMAT` | 1 | the save's format version |
+| `career::FORMAT` | 2 | the save's format version (1 until 15 Oct 2026; still read) |
 | `career::GENERATOR` | 2 | the voyage roller's version, voyage seeds included |
 | `career::MAX_DATA` | 1,000,000 | research data per family a store holds (100 × the largest content cost) |
 | `career::MAX_MATERIALS` | 1,000,000 | of one material a store holds |
@@ -281,7 +281,7 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
 
 - **The document**: `saves/<slot>` in the player storage (ADR-0031: the browser's local storage on the web, key
   `space-game/saves/career`; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
-  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 1, saved
+  note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 2, saved
   <unix seconds>` (`CareerDoc`, format `career::FORMAT`). The slot is `career`; `?save=<slot>` plays another one
   (a storage name: `a-z 0-9 _ -`; another name falls back to `career` with a note).
 - **Loading** (`career::load`, in the plugin's build before the first frame): read → `Career::from_ron` →
@@ -310,7 +310,8 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
 
 - **Start**: read `saves/career` → `Career::from_ron` → `reconcile` (show the notes); none: `Career::new(&content,
   start, seed)` with the content's first start.
-- **Drydock**: `unlocks` gates the palette, armour and frames (locked ones shown dimmed); `available` gives each
+- **Drydock**: `unlocks` gates the palette, armour and frames (locked ones shown dimmed if research unlocks them,
+  else hidden; locked frames dimmed; `docs/drydock.md`); `available` gives each
   palette row's count (`∞` today) and reaches the editing model (`Granted::counts` → `PlayerDesign::set_available` →
   `data::design::edit::Drydock::set_available`), which refuses a placement with none left; `fresh_parts` gives the NEW tags
   and `mark_seen` ends them; `voyage_ready` gives the status line's voyage-ready line.

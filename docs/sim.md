@@ -693,14 +693,14 @@ their limit for a few ticks. The numbers and details (6 ticks; differential thru
 heading, never for the keys, never to stop a spin) are lead defaults ([GDR-0058](gdr/0058-turning-v2-defaults.md)).
 Code: `flight::TurnAssist`, `Piece::assist`, the end of `flight::execute`.
 
-- **Gate** (`TurnAssist { ticks, on }`, per piece, hashed): every tick the first line reports the torque it could
-  not give. `assist_after` (6) ticks in a row with torque missing turn the last resort **on**; it stays on while
-  torque is still missing or the ship is still turning (heading error above 3°), so a turn planned with it can
-  brake with it; then it is off and the count starts over. Pieces the flight computer does not fly (not
-  controlling, dark, raw throttles, no goal) are reset, and so is a piece under keyboard rotation (a `Rate`
-  goal): the keys close a gate that a lock, `Auto` or behavior turn left open, and never open it (13 Oct 2026
-  review fix: a lock turn's open gate raised the key rate of the sample mid to about 1.15 rad/s with
-  differential thrust).
+- **Gate** (`TurnAssist { ticks, on }`, per piece, hashed): every tick the first line reports the torque it could not
+  give. `assist_after` (6) ticks in a row with torque missing turn the last resort **on**; it stays on while torque is
+  still missing or the ship is still turning (heading error above `flight::TURNING`, 0.05 rad or about 2.9°), so a
+  turn planned with it can brake with it; then it is off and the count starts over. Pieces the flight computer does
+  not fly (not controlling, dark, raw throttles, no goal) are reset, and so is a piece under keyboard rotation (a
+  `Rate` goal): the keys close a gate that a lock, `Auto` or behavior turn left open, and never open it (13 Oct 2026
+  review fix: a lock turn's open gate raised the key rate of the sample mid to about 1.15 rad/s with differential
+  thrust).
 - **What it adds**: gimbals of firing engines whenever it is on (they also hold a heading against uneven thrust),
   and differential thrust only while the flight computer steers to a heading: never to stop a spin without one
   (`Keep`, a settled `Auto`), which kept a released Runner from pushing itself into a flip-and-burn loop in
@@ -741,7 +741,7 @@ A/D turned the Runner at about 4.6 rad/s (a 0.1 s tap turned it
 - Halvex Runner (test `rotate_input_turns_the_ship`, `tests/keyboard.rs`): a 0.1 s tap turns the nose 0.8°;
   holding A: 0.17 s 1.3° (0.26 rad/s), 0.33 s 5° (0.52), 0.5 s 11° (0.77), 0.67 s 20° (1.03), 0.83 s 31° (1.29),
   1.0 s 45° (1.50, the cap), 1.5 s 88°; released at the cap it stops within 0.7 s, 26° further on (about 60° at
-  the old 4.6 rad/s). The browser (headless, F3 overlay readout) agrees: a tap 0.8°, holding 1.50 rad/s, last resort
+  the old 4.6 rad/s). The browser (headless, the debug overlay's readout) agrees: a tap 0.8°, holding 1.50 rad/s, last resort
   off, 0.00 rad/s after release.
 - **Lock**: A/D drive the aim nudge (`nudge_step`, GDR-0040) as before, from the raw key. Holding A, the
   Runner's nose trails the growing nudge (1.2 rad/s) by up to 0.29 rad, then sits on it (test
@@ -846,9 +846,10 @@ lines at the end of `flight::execute`.
   stick at the top speed = 1 (the engine pushes nothing, `Piece::output` ≈ 0, but the flame stays); **partial
   stick** = the stick share (holding half the top speed shows a gentle half flame, decided by the agent so that a
   held speed never looks like dead engines); maneuvers and behaviors (an approach, an orbit, matching a target's
-  velocity) show it the same way. Released stick (goal 0, brake) and drift (no goal) show none. RCS nozzles get
-  none (they puff only when they push). The client draws `max(output, cruise)` with the calm look where `cruise`
-  exceeds `output` ([client.md](client.md) "Plumes"). The cruise level is derived output and not hashed.
+  velocity) show it the same way. A released stick or released keys (no velocity goal: the ship coasts, GDR-0086;
+  with or without drift) show none. RCS nozzles get none (they puff only when they push). The client draws
+  `max(output, cruise)` with the calm look where `cruise` exceeds `output` ([client.md](client.md) "Plumes"). The
+  cruise level is derived output and not hashed.
 
 ### Tuning (`SimConfig::flight`, placeholders)
 
@@ -1281,9 +1282,9 @@ vessel agent for Niklas to review.
 
 - `ShipCommand::Focus` makes a vessel its owner's focus, at once (a tick input, so replays and co-op see it).
   The focus is **piloted**: its behavior is parked (`Ship::parked_behavior`; `ShipCommand::Behavior` on the focus
-  sets the parked one), its helm is `Pilot` (a released stick, i.e. brake, until pilot input arrives), and it
-  never goes dormant. The vessel the focus left runs its behavior again (its content default if it had none;
-  without a library it brakes) and gets a fresh mind claim, so it stays awake.
+  sets the parked one), its helm is `Pilot` (a released stick, which coasts with the heading kept since GDR-0086,
+  until pilot input arrives), and it never goes dormant. The vessel the focus left runs its behavior again (its
+  content default if it had none; without a library it brakes) and gets a fresh mind claim, so it stays awake.
 - An owner has no focus until one is commanded (scenarios and tests fly their ships as before; AI owners never
   have one). `Sim::focus(owner)`.
 - **A lost focus moves on** (the focus ship lost its last logic core or was removed), in the mind pass: to the

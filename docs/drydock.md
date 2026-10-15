@@ -374,8 +374,9 @@ unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked
   section of the palette lists its category's unlocked parts, then its locked ones, each in content order
   (`state::palette_sections`, filtered by the search). A locked row is dimmed, has a lock in place of its icon and
   says `LOCKED · <the research node that unlocks it>` (`career::unlocked_by`, the first node in content order). The
-  section heading counts them: `WEAPONS 1 · 2 LOCKED`. A locked row is a disabled pill: a click sends nothing, and
-  `actions::apply` refuses a locked `PickPart` anyway, so it is never picked or placed.
+  section heading counts them: `WEAPONS 1 · 2 LOCKED`. A locked row is a disabled pill: a click picks nothing but
+  opens the research screen on that node (`actions::clicks`, `DrydockAction::Research`; a locked armour swatch or
+  inspector pill likewise), and `actions::apply` refuses a locked `PickPart` anyway, so it is never picked or placed.
 - **What no research unlocks stays hidden** (default, track 7F: GDR-0065's "the career's drydock shows what research
   gives"): a locked part or armour material no research node unlocks (in the base pack: reactive armour and the
   automaton plate) is not shown at all, as before; free mode shows it.
@@ -646,8 +647,8 @@ screen: `crates/client/world/src/player/behaviors.rs` (behaviors on the storage 
 `scene.rs` (TEST IN RANGE); on the screen `behavior_ui/saving.rs` (SAVE, the working draft, the design's behavior,
 starting a test), `behavior_ui/list.rs` (BEHAVIORS) and `behavior_ui/live.rs` (the live panel in flight). Tests:
 `cargo test -p game -- behaviors share test_range scene behavior_ui`. Screenshots (1280 × 720):
-`docs/results/behavior-test-watch.png` (F3 on; `?scene=watch&behavior=careful`: a saved copy of the skirmisher that
-flees below 50% hull, every rule with why), `behavior-test-alongside.png` (F3 on; `?scene=alongside`: the working
+`docs/results/behavior-test-watch.png` (the debug overlay on, F3 then, F8 now; `?scene=watch&behavior=careful`: a saved copy of the skirmisher that
+flees below 50% hull, every rule with why), `behavior-test-alongside.png` (the overlay on; `?scene=alongside`: the working
 design names `careful`; the wingman on the right runs it, the player's ship sits unpiloted at the centre),
 `behavior-saving-linked.png` (the skirmisher template renamed "Careful" and saved: the player's copy, and the design
 flies it now), `behavior-saving-list.png` (BEHAVIORS), `behavior-live-watch.png` (TEST IN RANGE from the screen,
@@ -806,7 +807,7 @@ Written 13 Oct 2026 (GDR-0057; the screen itself: `docs/client.md` "Behavior scr
   `NoTarget`, `Failed { cond, why }`), `why` (one line per rule, `BehaviorState::describe`: "`hull < 50%` is false
   (hull is 96%)"), `slots` (working rule slots), `target`, `think` (its tick). Empty outside a test. The HUD's
   live panel (`behavior_ui/live.rs`) shows the rules as the graph's chip labels, the one that decides teal, rules
-  without a slot dimmed and why the rules above it don't match; the F3 overlay lists every rule with why and `>` at
+  without a slot dimmed and why the rules above it don't match; the debug overlay (F8) lists every rule with why and `>` at
   the one that decides.
 - Checked 13 Oct 2026 in headless Chromium (dev build, `scripts/web-drive.mjs`; the player's behavior and working
   design put into the browser's storage with `eval`, then `reload`): watch and fly alongside with a content
