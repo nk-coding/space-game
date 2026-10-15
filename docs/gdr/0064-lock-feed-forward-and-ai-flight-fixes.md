@@ -1,6 +1,6 @@
 # GDR-0064: The lock and `face` lead a moving target's turn; AI flight fixes from the balance study
 
-- Status: Accepted
+- Status: Accepted; superseded in part by [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md) (the fade weighted by cos² of the push angle and a speed governor replace `FADE_ALONG`; 2026-10-15)
 - Date: 2026-10-13
 - Decided by: Niklas (the feed-forward, interactively); lead session (the bug fixes, defaults for Niklas to review)
 - Related: [GDR-0040](0040-keyboard-flight-and-smart-lock-aim.md), [GDR-0055](0055-slower-crisper-turning.md), [GDR-0058](0058-turning-v2-defaults.md), [GDR-0061](0061-fight-balance-after-turning-v2.md), `docs/results/balance-2026-10-13.md` "Sim issues"

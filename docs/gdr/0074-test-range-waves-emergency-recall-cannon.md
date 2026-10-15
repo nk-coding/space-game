@@ -1,6 +1,6 @@
 # GDR-0074: Test-range waves follow the flown ship; recall also works when the fleet is disarmed; the cannon becomes an upgrade
 
-- Status: Accepted
+- Status: Accepted; the wave rule refined by [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md) (the budget goes to the biggest enemies first; 2026-10-15)
 - Date: 2026-10-13
 - Decided by: Niklas (interactively, from the slice tuning report)
 - Related: [GDR-0062](0062-first-playable-loop.md), [GDR-0064](0064-lock-feed-forward-and-ai-flight-fixes.md), [GDR-0068](0068-voyage-sites-clear-when-enemies-are-disarmed.md), [GDR-0073](0073-slice-tuning-v1.md), `docs/results/slice-balance-2026-10-13.md`

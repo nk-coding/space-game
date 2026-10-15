@@ -1,6 +1,6 @@
 # GDR-0055: Turning is slower and crisper; RCS pods are the strong turners; top speed is capped by the whole speed
 
-- Status: Accepted
+- Status: Accepted; superseded in part by [GDR-0089](0089-play-test-15-oct-speed-salvage-waves-station.md) (straight along the motion the whole speed still counts, but the fade lets go with the push angle and a governor caps every direction at the ship's top speed, so a diagonal is no longer held to the slower group; 2026-10-15)
 - Date: 2026-10-13
 - Decided by: Niklas (interactively, after flying the new speeds)
 - Supersedes: the turning target of [GDR-0042](0042-agility-target.md) (the acceleration target stays); the per-axis fade of [GDR-0041](0041-engine-rated-speed.md) for thrusters pushing with the motion; `docs/sim.md` design questions 14 and 15

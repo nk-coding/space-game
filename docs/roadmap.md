@@ -254,6 +254,26 @@ Next session:
   `is_present`, `side_segment`, `outward_normal`, `part_count`, `MAX_SHARE_CODE_BYTES`, the arena's job counts),
   unused style tokens, Bevy's `png` feature and stale comments gone.
 
+### 15 Oct 2026 (Niklas's play-test)
+
+- **Play-test fixes** ([GDR-0089](gdr/0089-play-test-15-oct-speed-salvage-waves-station.md)):
+  - At the top speed the velocity follows the push: the fade is weighted by the push angle, and a governor stops the
+    ship's own thrust from passing the top speed.
+  - Wrecks and loose cargo settle to a slow drift.
+  - Test-range waves spend their budget on the biggest enemies first.
+  - Range rings stay visible zoomed out.
+  - The station:
+    - comes alive: beacons, the gate's ring and approach light, the mind, research's dishes, shuttles, drifting
+      dust, twinkling stars;
+    - the mind and research buildings have more detail;
+    - its joints were fixed: bridges into the mind, pylons onto the gate, the lane's strut;
+    - FLEET's hover covers all four moorings.
+- **Next** (Niklas, 15 Oct 2026):
+  1. GDR-0088 in its own order: the action map with a settings screen, then weapon groups, then the pilot assists
+     as a PILOT ASSISTS tab next to BEHAVIOR on the behavior screen (chosen interactively), then hold station and
+     collision avoidance.
+  2. The evolution lab's screen (track L4), dev-only.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM
