@@ -9,9 +9,10 @@
 //! * **One run computes at a time** ([`Lab::running`]); starting or resuming another pauses it. It computes at home
 //!   and on every screen within a time budget per frame ([`BUDGET_OPEN_MS`] with the layer open, else
 //!   [`BUDGET_MS`]) and pauses in flight: the test range, test flights, replays and voyages ([`compute`]). The
-//!   budget is turned into ticks of work from the measured cost per tick ([`Rate`]); `arena::Run::step` breeds and
-//!   fights within it, so frames keep their time whatever the fight. The same slices on every platform (the native
-//!   thread executor of GDR-0092 comes later).
+//!   budget is turned into ticks of work from the measured cost per tick ([`Rate`]). On the web `arena::Run::step`
+//!   breeds and fights within it on the main thread ([`Lab::compute`]), so frames keep their time whatever the fight;
+//!   natively the frame's budget breeds and the fights run on Bevy's compute threads ([`Lab::compute_threads`]). Both
+//!   make the same run.
 //! * **Storage**: each run is a document `lab/<id>` ([`RunDoc`], format 1): the run file (`arena::RunSave`) with its
 //!   head's name, creation time and status, written after every generation (its only checkpoint: a reload breeds the
 //!   open generation again from the same random state, the same run) and when it is paused, resumed or made. A run
@@ -231,10 +232,11 @@ impl StartPick {
     /// by id.
     pub fn resolve(&self, storage: &Storage, content: &Content, behaviors: &PlayerBehaviors, working: &PlayerDesign) -> Result<StartDesign, String> {
         let (bp, from) = match self {
+            // The working design's header id is the drydock's own (`player:design`), no content id: it goes by a slug
+            // of its name, as a first save would name it.
             StartPick::Working => {
-                let bp = working.blueprint().clone();
-                let from = library::slug(&bp.name);
-                (bp, from)
+                let from = library::slug(&working.blueprint().name);
+                (Blueprint { id: from.clone(), ..working.blueprint().clone() }, from)
             }
             StartPick::Design(id) => {
                 let doc = storage.read::<DesignDoc>(id).map_err(|e| e.to_string())?.ok_or_else(|| format!("{id} is gone"))?;
@@ -420,6 +422,15 @@ pub struct Lab {
     /// Today's rules' fingerprint (`arena::rules_fingerprint`, a few ms: once, when a run is first listed).
     rules: Option<u64>,
     pub rate: Rate,
+    /// The last generation the run closed: how long it took on the wall clock (s), and writing the run then (ms).
+    pub last_generation: Option<(f32, f32)>,
+    /// When the generation in progress got its first slice.
+    started: Option<Instant>,
+    /// Natively: the open generation's fights on the threads, and the content they are fought with.
+    #[cfg(not(target_arch = "wasm32"))]
+    threads: Option<threads::Threads>,
+    #[cfg(not(target_arch = "wasm32"))]
+    content: Option<std::sync::Arc<Content>>,
     /// The EVOLUTION layer is open: the run gets [`BUDGET_OPEN_MS`].
     pub layer_open: bool,
     /// EVOLVE THIS DESIGN: the setup opens with this start.
@@ -605,6 +616,8 @@ impl Lab {
         if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
             e.status = status;
         }
+        // A generation's time is measured while it computes in one go.
+        self.started = None;
         match status {
             RunStatus::Running => self.running = Some(id.to_string()),
             RunStatus::Paused if self.running.as_deref() == Some(id) => self.running = None,
@@ -632,9 +645,10 @@ impl Lab {
         Ok(())
     }
 
-    /// One frame's work on the run that computes: `budget_ms` of it (turned into ticks with the measured rate),
-    /// in a frame `frame` seconds long. A generation that closes is written (the run's checkpoint), and so is the
-    /// run's end. `true` when a generation closed (the page and the building follow).
+    /// One frame's work on the run that computes, in slices on this thread (the web's executor; every platform's in
+    /// the tests): `budget_ms` of it (turned into ticks with the measured rate), in a frame `frame` seconds long. A
+    /// generation that closes is written (the run's checkpoint), and so is the run's end. `true` when a generation
+    /// closed (the page and the building follow).
     pub fn compute(&mut self, storage: &mut Storage, budget_ms: f32, frame: f32) -> bool {
         let Some(id) = self.running.clone() else { return false };
         let ticks = self.rate.ticks_for(budget_ms);
@@ -644,16 +658,32 @@ impl Lab {
         }
         let (before, generation) = (l.run.worked(), l.run.generation());
         let t0 = Instant::now();
+        self.started.get_or_insert(t0);
         let p = l.run.step(ticks);
-        let spent = t0.elapsed().as_secs_f32();
         let used = l.run.worked() - before;
-        self.rate.note(used, spent, frame);
-        if p.generation == generation {
-            return false;
-        }
+        self.rate.note(used, t0.elapsed().as_secs_f32(), frame);
+        p.generation != generation && self.closed(storage, &id)
+    }
+
+    /// The run that computes has closed a generation: it is written (its checkpoint), its entry follows, and its end
+    /// or a failed write stops it. `true` (a generation closed).
+    fn closed(&mut self, storage: &mut Storage, id: &str) -> bool {
+        let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
+        let t1 = Instant::now();
         let save = l.save();
-        let written = storage.write(&id, &RunDoc(save.clone()), now_unix());
-        let done = p.finished;
+        let written = storage.write(id, &RunDoc(save.clone()), now_unix());
+        let took = self.started.take().map_or(0.0, |t| (t1 - t).as_secs_f32());
+        let write = t1.elapsed().as_secs_f32() * 1000.0;
+        self.last_generation = Some((took, write));
+        let p = l.run.progress();
+        info!(
+            "lab: {id} generation {} of {} in {took:.1} s ({:.1} µs a tick of work, {:.0} ticks/s), written in {write:.1} ms ({} kB)",
+            p.generation,
+            p.generations,
+            self.rate.us_per_tick,
+            self.rate.ticks_per_second,
+            save.payload.len() / 1024
+        );
         if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
             e.generation = save.history.len() as u32;
             e.best = save.history.last().map(|g| g.archive_best);
@@ -667,11 +697,150 @@ impl Lab {
             if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
                 e.status = RunStatus::Paused;
             }
-        } else if done {
+        } else if p.finished {
             self.running = None;
-            self.fresh = Some(id);
+            self.fresh = Some(id.to_string());
         }
         true
+    }
+
+    /// How far the open generation of a run is, 0..1: its jobs done (natively, on the threads), else
+    /// `arena::Run::generation_done`.
+    pub fn generation_done(&self, l: &Loaded) -> f32 {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(t) = self.threads.as_ref().filter(|t| t.id == l.id && t.generation == l.run.generation()) {
+            return t.done() as f32 / t.total().max(1) as f32;
+        }
+        l.run.generation_done()
+    }
+
+    /// One frame's work natively (GDR-0092 "The executor"): the open generation is bred on this thread within
+    /// `budget_ms`, then its fights go to Bevy's compute threads a few at a time ([`threads`]); the results are taken
+    /// as they come and handed to the run in job order once all are in, which closes the generation as the slices
+    /// would (the same run). With no budget (in flight) no more fights start and the generation waits to close, so
+    /// the cores are flight's once the fights underway end (each under about 50 ms).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn compute_threads(&mut self, storage: &mut Storage, content: &Content, budget_ms: f32, frame: f32) -> bool {
+        let Some(id) = self.running.clone() else {
+            self.threads = None;
+            return false;
+        };
+        let ticks = self.rate.ticks_for(budget_ms);
+        let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
+        if !l.computes() {
+            return false;
+        }
+        let generation = l.run.generation();
+        if !self.threads.as_ref().is_some_and(|t| t.id == id && t.generation == generation) {
+            self.threads = None;
+            if budget_ms <= 0.0 {
+                return false;
+            }
+            let (before, t0) = (l.run.worked(), Instant::now());
+            self.started.get_or_insert(t0);
+            let bred = l.run.breed(ticks);
+            self.rate.note(l.run.worked() - before, t0.elapsed().as_secs_f32(), frame);
+            if !bred {
+                return false;
+            }
+            let content = self.content.get_or_insert_with(|| std::sync::Arc::new(content.clone())).clone();
+            self.threads = Some(threads::Threads::new(&id, generation, l.run.jobs().to_vec(), content));
+        }
+        let t = self.threads.as_mut().expect("the generation's fights are out");
+        let ticks_done = t.pump(budget_ms <= 0.0);
+        if frame > 0.0 && ticks_done > 0 {
+            self.rate.ticks_per_second += (ticks_done as f32 / frame - self.rate.ticks_per_second) * RATE_FOLLOW;
+        }
+        if budget_ms <= 0.0 || !t.finished() {
+            return false;
+        }
+        let results = self.threads.take().expect("the generation's fights are in").take();
+        let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
+        l.run.submit(results);
+        self.closed(storage, &id)
+    }
+}
+
+/// The native executor's work: a generation's fights on Bevy's compute threads (`AsyncComputeTaskPool`), a few to a
+/// task, as many tasks at once as the machine has cores less one (the frame's); the web has no threads and steps
+/// in slices ([`Lab::compute`]). Results are kept in job order, so the run gets them as `Run::jobs` gave the jobs.
+#[cfg(not(target_arch = "wasm32"))]
+mod threads {
+    use std::sync::Arc;
+
+    use arena::evolve::{Job, JobResult};
+    use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
+    use data::Content;
+
+    /// Fights a task runs one after the other (about 5–20 ms natively): small enough that flight gets the cores back
+    /// soon after it starts, large enough that the tasks' own cost doesn't count.
+    const CHUNK: usize = 4;
+
+    /// One generation's fights out on the threads.
+    pub struct Threads {
+        /// The run and generation they are of.
+        pub id: String,
+        pub generation: u32,
+        jobs: Arc<Vec<Job>>,
+        content: Arc<Content>,
+        results: Vec<Option<JobResult>>,
+        /// The first job not handed out yet.
+        next: usize,
+        running: Vec<(usize, Task<Vec<JobResult>>)>,
+        width: usize,
+    }
+
+    impl Threads {
+        pub fn new(id: &str, generation: u32, jobs: Vec<Job>, content: Arc<Content>) -> Self {
+            let width = std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1).max(1));
+            let n = jobs.len();
+            Threads { id: id.to_string(), generation, jobs: Arc::new(jobs), content, results: vec![None; n], next: 0, running: Vec::new(), width }
+        }
+
+        /// Takes the results of the tasks that finished and, unless `hold`, hands out more fights; returns the ticks
+        /// the finished fights ran.
+        pub fn pump(&mut self, hold: bool) -> u64 {
+            let mut ticks = 0;
+            let mut k = 0;
+            while k < self.running.len() {
+                match block_on(future::poll_once(&mut self.running[k].1)) {
+                    Some(rs) => {
+                        let (first, _) = self.running.swap_remove(k);
+                        for (j, r) in rs.into_iter().enumerate() {
+                            ticks += r.ticks;
+                            self.results[first + j] = Some(r);
+                        }
+                    }
+                    None => k += 1,
+                }
+            }
+            let pool = AsyncComputeTaskPool::get();
+            while !hold && self.running.len() < self.width && self.next < self.jobs.len() {
+                let (first, end) = (self.next, (self.next + CHUNK).min(self.jobs.len()));
+                let (jobs, content) = (self.jobs.clone(), self.content.clone());
+                self.running.push((first, pool.spawn(async move { jobs[first..end].iter().map(|j| j.run(&content)).collect() })));
+                self.next = end;
+            }
+            ticks
+        }
+
+        pub fn done(&self) -> usize {
+            self.results.iter().filter(|r| r.is_some()).count()
+        }
+
+        pub fn total(&self) -> usize {
+            self.results.len()
+        }
+
+        /// Every fight's result is in.
+        pub fn finished(&self) -> bool {
+            self.running.is_empty() && self.results.iter().all(Option::is_some)
+        }
+
+        /// The results in job order (all of them: [`Threads::finished`]).
+        pub fn take(self) -> Vec<JobResult> {
+            self.results.into_iter().map(|r| r.expect("every fight is in")).collect()
+        }
     }
 }
 
@@ -776,15 +945,23 @@ pub fn budget(mode: AppMode, layer_open: bool) -> f32 {
     }
 }
 
-/// Every frame at home and on the screens: the run that computes gets its budget (none in flight).
+/// Every frame at home and on the screens: the run that computes gets its budget (none in flight), its fights on the
+/// threads ([`Lab::compute_threads`]). Only a closed generation is news for the screens that show the lab (they read
+/// the progress inside one themselves while they show it).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
+    let ms = budget(*mode.get(), lab.layer_open);
+    if lab.running.is_some() && lab.bypass_change_detection().compute_threads(&mut storage, &content.0, ms, time.delta_secs()) {
+        lab.set_changed();
+    }
+}
+
+/// Every frame at home and on the screens: the run that computes gets its budget in slices on this thread (the web
+/// has no threads, [`Lab::compute`]); none in flight.
+#[cfg(target_arch = "wasm32")]
 pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>) {
     let ms = budget(*mode.get(), lab.layer_open);
-    if ms <= 0.0 || lab.running.is_none() {
-        return;
-    }
-    // Only a closed generation is news for the screens that show the lab (they read the progress inside one
-    // themselves while they show it).
-    if lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
+    if ms > 0.0 && lab.running.is_some() && lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
         lab.set_changed();
     }
 }
@@ -864,11 +1041,17 @@ mod tests {
 
     fn app(storage: Storage, lab: Lab, mode: AppMode) -> App {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, StatesPlugin)).insert_state(mode).insert_resource(storage).insert_resource(lab).add_systems(Update, compute);
+        app.add_plugins((MinimalPlugins, StatesPlugin))
+            .insert_state(mode)
+            .insert_resource(storage)
+            .insert_resource(lab)
+            .insert_resource(GameContent(data::base_content()))
+            .add_systems(Update, compute);
         app
     }
 
-    /// The run computes at home and on the screens, and waits in flight (where it was, nothing lost).
+    /// The run computes at home and on the screens (natively its fights on the threads), and waits in flight: no
+    /// breeding, no generation closes, nothing lost.
     #[test]
     fn the_run_pauses_in_flight() {
         let content = data::base_content();
@@ -890,11 +1073,42 @@ mod tests {
         assert!(at_dock > 0, "it computes on the screens");
         app.world_mut().resource_mut::<NextState<AppMode>>().set(AppMode::Flight);
         app.update();
-        let flying = worked(&app);
-        for _ in 0..5 {
+        let flying = (worked(&app), app.world().resource::<Lab>().get(&id).unwrap().run.generation());
+        for _ in 0..30 {
             app.update();
         }
-        assert_eq!(worked(&app), flying, "and waits again in flight");
+        let after = (worked(&app), app.world().resource::<Lab>().get(&id).unwrap().run.generation());
+        assert_eq!(after, flying, "and waits again in flight");
+    }
+
+    /// Natively a generation's fights run on the threads: the run they make is the one the slices make, file for file.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_threads_make_the_run_the_slices_make() {
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
+        let content = data::base_content();
+        let s = setup(&content);
+        let mut sliced = mem();
+        let mut lab = Lab::load(&sliced, &content, true);
+        let cfg = config(&content, &s, &sliced);
+        let a = lab.create(&mut sliced, &content, cfg, "Small", 10).unwrap();
+        while lab.running().is_some() {
+            lab.compute(&mut sliced, BUDGET_MS, 0.016);
+        }
+        let mut threaded = mem();
+        let mut lab = Lab::load(&threaded, &content, true);
+        let cfg = config(&content, &s, &threaded);
+        let b = lab.create(&mut threaded, &content, cfg, "Small", 10).unwrap();
+        let mut frames = 0;
+        while lab.running().is_some() {
+            // Now and then a frame in flight: no fight starts, the generation waits.
+            let ms = if frames % 7 == 3 { 0.0 } else { BUDGET_MS };
+            lab.compute_threads(&mut threaded, &content, ms, 0.016);
+            frames += 1;
+            assert!(frames < 100_000, "the threads never finished");
+        }
+        let doc = |st: &Storage, id: &str| st.read::<RunDoc>(id).unwrap().unwrap().doc.0.to_ron();
+        assert_eq!(doc(&threaded, &b), doc(&sliced, &a));
     }
 
     /// A run started, reloaded after a generation and part of another (a new lab from the same storage: a reload of
@@ -962,7 +1176,7 @@ mod tests {
         assert!(lab.running().is_none());
         assert!(!lab.compute(&mut storage, BUDGET_MS, 0.016));
         lab.delete(&mut storage, &a).unwrap();
-        assert_eq!(storage.list(RunDoc::NAMESPACE).unwrap(), [b.clone()]);
+        assert_eq!(storage.list(RunDoc::NAMESPACE).unwrap(), std::slice::from_ref(&b));
         assert!(lab.entry(&a).is_none() && lab.get(&a).is_none());
         // A stored run that doesn't read is listed with why.
         let mut text_store = MemoryBackend::default();
@@ -1033,8 +1247,14 @@ mod tests {
         let behaviors = PlayerBehaviors::default();
         let w = StartPick::Working.resolve(&storage, &content, &behaviors, &design).unwrap();
         assert_eq!((w.name.as_str(), w.blueprint.behavior.as_deref()), (design.blueprint().name.as_str(), None));
+        assert_eq!(w.blueprint.id, library::slug(&design.blueprint().name), "a content id, not the drydock's own");
         assert!(matches!(w.start(Locks::default()), Start::Design { design: DesignRef::Blueprint(_), .. }));
         assert!(!w.program.is_empty());
+        // It builds a run as it is (the arena checks the blueprint text like content).
+        let mut s = Setup::new(&content, vec![StartPick::Working], 3);
+        s.size = Size { population: 2, generations: 1, seeds: 1 };
+        let granted = Granted { unlocks: data::career::Unlocks::all(&content), mind_capacity: 4, free: true, ..default() };
+        Run::new(&content, s.config(&[w], &granted, 4)).unwrap();
         let t = StartPick::Template("halvex_runner".into()).resolve(&storage, &content, &behaviors, &design).unwrap();
         assert!(matches!(t.start(Locks::default()), Start::Design { design: DesignRef::Ship(ref id), .. } if id == "halvex_runner"));
         assert_eq!(templates(&content, "ship_mind").first().map(String::as_str), Some("halvex_runner"));
