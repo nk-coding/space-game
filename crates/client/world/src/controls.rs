@@ -4,13 +4,15 @@
 //! * **PC** (GDR-0040): A/D rotate (a tap nudges the nose, a hold ramps up to the key turn rate, GDR-0055), W/S
 //!   thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a lock the ship aims its strongest
 //!   guns and A/D nudge the aim (springs back). Left-click a ship = lock, click empty space = unlock, hold the
-//!   left button on empty space (or the right button, or Space) = fire. Tab = next target, Esc = unlock (not while
+//!   left button on empty space = fire weapon group 1. Space fires every group, 1 / 2 / 3 (and the right button:
+//!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. Tab = next target, Esc = unlock (not while
 //!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle. V / Shift+V = next / previous
 //!   vessel of the player (the sim's vessel list); clicking a friendly vessel switches to it. Both send
 //!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. Clicks and
 //!   taps on the fleet bar (`fleet_bar.rs`) and the HUD's buttons (`flight_hud::HudButton`: the home ring, RECALL,
 //!   the ABANDON VOYAGE? panel) are theirs, never the world's.
-//! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button bottom-right, tap a
+//! * **Touch** (landscape): virtual stick bottom-left (push distance = speed), fire button (every group)
+//!   bottom-right, tap a
 //!   ship = lock, tap empty space = unlock, two fingers = zoom. The touch widgets appear after the first touch
 //!   (or with `?touch=1`).
 //!
@@ -23,7 +25,7 @@ use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::input::{egui_wants_any_keyboard_input, egui_wants_any_pointer_input};
-use sim::{ShipCommand, ShipId, Target};
+use sim::{FIRE_ALL, ShipCommand, ShipId, Target};
 use kit::style::{Style, ui_color};
 
 use crate::camera::CameraRig;
@@ -42,6 +44,8 @@ const HOLD_TO_FIRE: f32 = 0.18;
 const STICK_RADIUS: f32 = 70.0;
 const FIRE_RADIUS: f32 = 56.0;
 const TAP_TIME: f32 = 0.3;
+/// The weapon group the held left button fires (GDR-0088).
+const LMB_GROUP: u8 = 1;
 
 #[derive(Resource, Default)]
 pub struct PlayerInput {
@@ -56,13 +60,14 @@ pub struct PlayerInput {
     /// The A/D rotation ramp without a lock, sent as `PilotAxes::turn` (integrated once per sim tick with
     /// `sim::flight::turn_ramp_step`, GDR-0055).
     pub turn_ramp: f32,
-    pub fire: bool,
+    /// The weapon groups whose triggers are held (`sim::PilotInput::fire`: bit g-1 for group g).
+    pub fire: u8,
     pub lock: Option<Target>,
     pub drift: bool,
     /// Show the touch widgets.
     pub touch_ui: bool,
     key_axes: Vec3,
-    key_fire: bool,
+    key_fire: u8,
     /// What was held since the last tick.
     latch: TickLatch,
     lmb: Option<LmbPress>,
@@ -90,25 +95,25 @@ impl PlayerInput {
         }
     }
 
-    /// The keyboard axes and fire for one sim tick: what is held now, else what was held since the last tick
-    /// (a tap between two ticks); then the latch starts over. Called once per tick by the scene.
-    pub fn for_tick(&mut self) -> (Vec3, bool) {
+    /// The keyboard axes and fire mask for one sim tick: what is held now, else what was held since the last
+    /// tick (a tap between two ticks); then the latch starts over. Called once per tick by the scene.
+    pub fn for_tick(&mut self) -> (Vec3, u8) {
         self.latch.take(self.axes, self.fire)
     }
 }
 
-/// The keyboard axes and fire held at any frame since the last sim tick (frames run faster than ticks).
+/// The keyboard axes and fire groups held at any frame since the last sim tick (frames run faster than ticks).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct TickLatch {
     /// Per axis (turn, thrust, strafe): held towards + / towards −.
     pos: [bool; 3],
     neg: [bool; 3],
-    fire: bool,
+    fire: u8,
 }
 
 impl TickLatch {
     /// One frame's input.
-    fn note(&mut self, axes: Vec3, fire: bool) {
+    fn note(&mut self, axes: Vec3, fire: u8) {
         for k in 0..3 {
             self.pos[k] |= axes[k] > 0.0;
             self.neg[k] |= axes[k] < 0.0;
@@ -116,15 +121,16 @@ impl TickLatch {
         self.fire |= fire;
     }
 
-    /// The tick's input: each axis as held now, or else as held since the last tick; fire if held at all.
-    fn take(&mut self, axes: Vec3, fire: bool) -> (Vec3, bool) {
+    /// The tick's input: each axis as held now, or else as held since the last tick; each fire group if held at
+    /// all.
+    fn take(&mut self, axes: Vec3, fire: u8) -> (Vec3, u8) {
         let mut out = axes;
         for k in 0..3 {
             if out[k] == 0.0 {
                 out[k] = (self.pos[k] as i32 - self.neg[k] as i32) as f32;
             }
         }
-        let fire = fire || self.fire;
+        let fire = fire | self.fire;
         *self = TickLatch::default();
         (out, fire)
     }
@@ -180,7 +186,7 @@ fn settings_open(layer: Res<SettingsLayer>) -> bool {
 /// While egui has the keyboard (or SETTINGS is open), the ship gets no key input.
 fn release_keys(mut input: ResMut<PlayerInput>) {
     input.key_axes = Vec3::ZERO;
-    input.key_fire = false;
+    input.key_fire = 0;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -202,7 +208,13 @@ fn keyboard(
         axis(down(Action::ThrustForward), down(Action::ThrustBack)),
         axis(down(Action::StrafeRight), down(Action::StrafeLeft)),
     );
-    input.key_fire = down(Action::Fire);
+    // Every held trigger adds its groups.
+    input.key_fire = if down(Action::Fire) { FIRE_ALL } else { 0 };
+    for g in 1..=data::MAX_WEAPON_GROUP {
+        if Action::fire_group(g).is_some_and(down) {
+            input.key_fire |= 1 << (g - 1);
+        }
+    }
     if act.just_pressed(Action::Drift) {
         input.drift = !input.drift;
     }
@@ -280,7 +292,9 @@ fn mouse(
             input.lmb = None;
         }
     }
-    input.key_fire = input.key_fire || lmb_fire;
+    if lmb_fire {
+        input.key_fire |= 1 << (LMB_GROUP - 1);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -350,7 +364,7 @@ fn combine(touches: Res<Touches>, mut input: ResMut<PlayerInput>) {
     input.stick_mode = stick.is_some();
     input.stick = stick.unwrap_or(Vec2::ZERO);
     input.axes = input.key_axes;
-    input.fire = input.key_fire || input.fire_touch.is_some();
+    input.fire = input.key_fire | if input.fire_touch.is_some() { FIRE_ALL } else { 0 };
     let (axes, fire) = (input.axes, input.fire);
     input.latch.note(axes, fire);
 }
@@ -546,18 +560,18 @@ mod tests {
     #[test]
     fn the_latch_gives_a_tap_to_the_next_tick_once_and_held_keys_win() {
         let mut latch = TickLatch::default();
-        // A for one frame, then Space for one frame, no tick in between.
-        latch.note(Vec3::new(1.0, 0.0, 0.0), false);
-        latch.note(Vec3::ZERO, true);
-        assert_eq!(latch.take(Vec3::ZERO, false), (Vec3::new(1.0, 0.0, 0.0), true));
-        assert_eq!(latch.take(Vec3::ZERO, false), (Vec3::ZERO, false));
+        // A for one frame, then group 1's trigger for one frame, no tick in between; group 2 held at the tick.
+        latch.note(Vec3::new(1.0, 0.0, 0.0), 0);
+        latch.note(Vec3::ZERO, 0b001);
+        assert_eq!(latch.take(Vec3::ZERO, 0b010), (Vec3::new(1.0, 0.0, 0.0), 0b011));
+        assert_eq!(latch.take(Vec3::ZERO, 0), (Vec3::ZERO, 0));
         // D held at the tick after an A tap and some W: D and W.
-        latch.note(Vec3::new(1.0, 1.0, 0.0), false);
-        assert_eq!(latch.take(Vec3::new(-1.0, 0.0, 0.0), false), (Vec3::new(-1.0, 1.0, 0.0), false));
+        latch.note(Vec3::new(1.0, 1.0, 0.0), 0);
+        assert_eq!(latch.take(Vec3::new(-1.0, 0.0, 0.0), 0), (Vec3::new(-1.0, 1.0, 0.0), 0));
     }
 
     #[derive(Resource, Default)]
-    struct Ticks(Vec<(Vec3, bool)>);
+    struct Ticks(Vec<(Vec3, u8)>);
 
     /// The input systems as the plugin schedules them (no window here: the mouse and touch systems skip), a
     /// 30 Hz tick that takes the input like the scene does, and frames of `frame_ms`.
@@ -588,7 +602,7 @@ mod tests {
     }
 
     /// One frame with these key changes; the ticks it ran.
-    fn frame(app: &mut App, keys: impl FnOnce(&mut ButtonInput<KeyCode>)) -> Vec<(Vec3, bool)> {
+    fn frame(app: &mut App, keys: impl FnOnce(&mut ButtonInput<KeyCode>)) -> Vec<(Vec3, u8)> {
         let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
         input.clear();
         keys(&mut input);
@@ -609,11 +623,12 @@ mod tests {
     }
 
     /// Frames at 100 Hz, ticks at 30 Hz: a tap pressed and released within one frame, between two ticks,
-    /// reaches the next tick, once.
+    /// reaches the next tick, once. Space fires every weapon group, 2 only group 2 (GDR-0088).
     #[test]
     fn a_tap_shorter_than_a_tick_reaches_one_tick() {
         let mut app = app(10.0);
-        for (key, check) in [(KeyCode::KeyA, (Vec3::X, false)), (KeyCode::Space, (Vec3::ZERO, true))] {
+        let taps = [(KeyCode::KeyA, (Vec3::X, 0)), (KeyCode::Space, (Vec3::ZERO, FIRE_ALL)), (KeyCode::Digit2, (Vec3::ZERO, 0b010))];
+        for (key, check) in taps {
             // Right after a tick.
             while frame(&mut app, |_| {}).is_empty() {}
             let mut ticks = frame(&mut app, |k| {
@@ -624,7 +639,7 @@ mod tests {
                 ticks.extend(frame(&mut app, |_| {}));
             }
             assert_eq!(ticks[0], check, "{key:?}");
-            assert_eq!(ticks[1], (Vec3::ZERO, false), "{key:?}");
+            assert_eq!(ticks[1], (Vec3::ZERO, 0), "{key:?}");
         }
     }
 

@@ -56,10 +56,12 @@ pub enum DrydockAction {
     Flip,
     Delete,
     Deselect,
-    /// The selected part's armour material, power tier and power weight (up or down a step): the inspector.
+    /// The selected part's armour material, power tier, power weight (up or down a step) and weapon group: the
+    /// inspector.
     PartMaterial(String),
     PartTier(PowerTier),
     PartWeight(bool),
+    PartGroup(u8),
     /// A click on a LOCKED palette row or a locked armour swatch: the research screen on the node (id) that unlocks
     /// it (`research` handles it).
     Research(String),

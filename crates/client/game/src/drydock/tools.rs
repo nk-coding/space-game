@@ -1,6 +1,7 @@
 //! Editing on the grid: the tools turn pointer gestures into `data::design::edit` calls on the player's design, and the
-//! editing actions (undo, redo, mirror, bevel, rotate, flip, delete, the inspector's material and power) run
-//! here. Every edit goes through [`PlayerDesign::edit`]; the editor's `mirror` and `bevel` flags are the modes.
+//! editing actions (undo, redo, mirror, bevel, rotate, flip, delete, the inspector's material, power and weapon
+//! group) run here. Every edit goes through [`PlayerDesign::edit`]; the editor's `mirror` and `bevel` flags are the
+//! modes.
 //!
 //! * [`Gesture`] is the pure part: a press, drags and a release on frame cells become [`Op`]s (a paint or erase
 //!   drag is one stroke and one undo step, fill drags a rectangle, select grabs a part and moves it on
@@ -433,6 +434,7 @@ pub(super) fn apply(
                 let o = power_with(content, p, None, Some(w));
                 design.edit(|d| d.set_power(i, o))
             }
+            (DrydockAction::PartGroup(g), Some(i)) => design.edit(|d| d.set_group(i, *g)),
             _ => continue,
         };
         // The selection follows the edited part (a turn can leave the selected cell).

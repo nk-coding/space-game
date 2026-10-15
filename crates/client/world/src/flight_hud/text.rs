@@ -243,18 +243,20 @@ pub(super) fn update_text(
                 }
             }
             HudText::Help => {
-                // The bound inputs (the first of each; the fire button's all), GDR-0090.
+                // The bound inputs (the first of each), GDR-0090; the weapon groups' triggers as one entry.
                 let k = |a: Action| controls.0.inputs(a).next().map_or_else(|| "—".to_string(), |c| c.label());
-                let all = |a: Action| controls.0.inputs(a).map(|c| c.label()).collect::<Vec<_>>().join("/");
                 let fly = format!(
-                    "{}/{} TURN · {}/{} THRUST · {}/{} STRAFE · CLICK LOCK · {} FIRE · {} TARGET · {} DRIFT · {} VESSEL",
+                    "{}/{} TURN · {}/{} THRUST · {}/{} STRAFE · CLICK LOCK · {} FIRE · {}/{}/{} GROUPS · {} TARGET · {} DRIFT · {} VESSEL",
                     k(Action::TurnLeft),
                     k(Action::TurnRight),
                     k(Action::ThrustForward),
                     k(Action::ThrustBack),
                     k(Action::StrafeLeft),
                     k(Action::StrafeRight),
-                    all(Action::Fire),
+                    k(Action::Fire),
+                    k(Action::FireGroup1),
+                    k(Action::FireGroup2),
+                    k(Action::FireGroup3),
                     k(Action::LockNext),
                     k(Action::Drift),
                     k(Action::FocusNext),

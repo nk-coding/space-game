@@ -9,7 +9,8 @@
 //!   receives or gives (`◆ +15% FIRE RATE FROM CAPACITOR ×2`, `◆ +15% FIRE RATE TO BEAM LASER`: names and
 //!   labels from content, the bonuses that apply from the report). Below: the armour pills of a hull part, the
 //!   power tier pills and weight stepper of a part that draws power (GDR-0014, through `set_power`; the
-//!   part's defaults are no override), and rotate, flip and delete.
+//!   part's defaults are no override), the GROUP pills 1 / 2 / 3 of a gun (its weapon group, GDR-0088, through
+//!   `set_group`; each pill's tooltip names the key that fires the group), and rotate, flip and delete.
 //! * **A palette part**: icon, name, footprint, category (and the armour of hull parts), its summary, its stat
 //!   lines from content and the bonuses it gives.
 //!
@@ -71,6 +72,8 @@ pub struct Installed {
     pub material: Option<String>,
     /// A consumer's tier and weight (its override, else the part's defaults).
     pub power: Option<(PowerTier, f32)>,
+    /// A gun's weapon group (1 when it has none).
+    pub group: Option<u8>,
 }
 
 /// Rows of controls under the block.
@@ -78,6 +81,7 @@ pub struct Installed {
 pub(super) enum ControlRow {
     Materials,
     Power,
+    Group,
     Actions,
 }
 
@@ -202,7 +206,11 @@ fn placed(content: &Content, design: &PlayerDesign, report: Option<&DesignReport
         summary: String::new(),
         stats,
         bonuses: report.map_or_else(Vec::new, |r| bonus_lines(content, design, r, i)),
-        installed: Some(Installed { material: p.material.clone().filter(|_| part.hull), power: power_setting(content, p) }),
+        installed: Some(Installed {
+            material: p.material.clone().filter(|_| part.hull),
+            power: power_setting(content, p),
+            group: part.weapon.is_some().then(|| p.group.unwrap_or(1)),
+        }),
     }
 }
 
@@ -253,7 +261,7 @@ fn effect_text(def: &StatDef, e: Effect) -> String {
 }
 
 /// The controls under the block (hidden until a placed part is selected): armour pills, power tier pills
-/// and the weight stepper, rotate / flip / delete.
+/// and the weight stepper, weapon group pills, rotate / flip / delete.
 pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, content: &Content) {
     let ui = &style.ui;
     let c = |tone: Tone| ui_color(tone.color(ui), 1.0);
@@ -283,6 +291,14 @@ pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, st
                 spawn_pill(t, fonts, tier_name(tier), 8.0, 22.0, None, Pill::new(Tone::Teal), ActionButton(DrydockAction::PartTier(tier)));
             }
         });
+    });
+    rp.spawn((ControlRow::Group, row())).with_children(|r| {
+        r.spawn((label(fonts, "GROUP", 8.0, c(Tone::Label)), Node { margin: UiRect::right(px(3)), ..default() }));
+        for g in 1..=data::MAX_WEAPON_GROUP {
+            let Some(fire) = Action::fire_group(g) else { continue };
+            let tip = (Tip::new(format!("WEAPON GROUP {g}: FIRES WITH")), ActionTip(fire));
+            spawn_pill(r, fonts, &g.to_string(), 8.5, 22.0, None, Pill::new(Tone::Teal), (ActionButton(DrydockAction::PartGroup(g)), tip));
+        }
     });
     rp.spawn((ControlRow::Actions, row())).with_children(|a| {
         for (g, action, tip) in [(Glyph::Undo, DrydockAction::RotateCcw, (Tip::new("ROTATE LEFT"), ActionTip(Action::RotateLeft))), (Glyph::Redo, DrydockAction::RotateCw, (Tip::new("ROTATE RIGHT"), ActionTip(Action::RotateRight)))] {
@@ -321,6 +337,7 @@ pub(super) fn sync_controls(
         let show = match row {
             ControlRow::Materials => inst.is_some_and(|i| i.material.is_some()),
             ControlRow::Power => power.is_some(),
+            ControlRow::Group => inst.is_some_and(|i| i.group.is_some()),
             ControlRow::Actions => inst.is_some(),
         };
         let d = if show { Display::Flex } else { Display::None };
@@ -332,6 +349,7 @@ pub(super) fn sync_controls(
         let active = match &b.0 {
             DrydockAction::PartMaterial(m) => inst.and_then(|i| i.material.as_ref()) == Some(m),
             DrydockAction::PartTier(t) => power.is_some_and(|(tier, _)| tier == *t),
+            DrydockAction::PartGroup(g) => inst.is_some_and(|i| i.group == Some(*g)),
             _ => continue,
         };
         if pill.active != active {
@@ -376,12 +394,12 @@ mod tests {
             // A faster beam does more damage per second: the boosted number is gold.
             assert!(insp.stats.iter().any(|l| l.label == "DAMAGE" && l.tone == Tone::Gold), "{:?}", insp.stats);
         }
-        assert!(insp.installed.as_ref().is_some_and(|i| i.power.is_some() && i.material.is_none()));
-        // A hull part: its material, no power.
+        assert!(insp.installed.as_ref().is_some_and(|i| i.power.is_some() && i.material.is_none() && i.group == Some(1)));
+        // A hull part: its material, no power, no weapon group.
         let block = index_of(&d, "armor_block");
         let insp = placed(&content, &d, Some(&report), block);
         let inst = insp.installed.unwrap();
-        assert!(inst.material.is_some() && inst.power.is_none());
+        assert!(inst.material.is_some() && inst.power.is_none() && inst.group.is_none());
         // A source names its targets.
         if let Some(b) = report.bonuses.first() {
             let insp = placed(&content, &d, Some(&report), b.source as usize);
