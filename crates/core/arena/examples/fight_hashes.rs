@@ -2,13 +2,17 @@
 //! `--ticks` have run. Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh --fight NAME` runs
 //! both and compares.
 //!
-//! Usage: `fight_hashes [--scenario runner_vs_raiders|skiff_mirror|SGF1:…] [--seed N] [--ticks N]`: the fight specs
-//! of `crates/core/arena/fights/` (compiled in: the WASI run has no filesystem), with the seed replaced, or a fight
-//! code (GDR-0092) with its own seed, checked against its record at the end (`# record=as recorded`).
+//! Usage: `fight_hashes [--scenario runner_vs_raiders|skiff_mirror|close_quarters|warden|SGF1:…] [--seed N]
+//! [--ticks N]`: the fight specs of `crates/core/arena/fights/` and the rules probes of `probes/` (compiled in: the
+//! WASI run has no filesystem), with the seed replaced, or a fight code (GDR-0092) with its own seed, checked
+//! against its record at the end (`# record=as recorded`).
 
-const FIGHTS: [(&str, &str); 2] = [
+const FIGHTS: [(&str, &str); 4] = [
     ("runner_vs_raiders", include_str!("../fights/runner_vs_raiders.ron")),
     ("skiff_mirror", include_str!("../fights/skiff_mirror.ron")),
+    // The rules probes (`arena::rules_fingerprint`), with their own seeds 1 and 2.
+    ("close_quarters", include_str!("../probes/close_quarters.ron")),
+    ("warden", include_str!("../probes/warden.ron")),
 ];
 
 fn main() {
@@ -35,7 +39,7 @@ fn main() {
                 .iter()
                 .find(|(n, _)| *n == name)
                 .unwrap_or_else(|| {
-                    panic!("unknown fight {name} (known: runner_vs_raiders, skiff_mirror, or a fight code)")
+                    panic!("unknown fight {name} (known: runner_vs_raiders, skiff_mirror, close_quarters, warden, or a fight code)")
                 })
                 .1;
             let mut spec = arena::FightSpec::from_ron(text).expect("the fight spec reads");

@@ -12,7 +12,8 @@
 # ship's cargo), voyage (a voyage directed by sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the
 # recall check).
 # `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/core/arena/fights/NAME.ron
-# (runner_vs_raiders, skiff_mirror) with the seed replaced, until the fight ends or --ticks have run (default 2700:
+# (runner_vs_raiders, skiff_mirror; or the rules probes crates/core/arena/probes/close_quarters|warden.ron, whose
+# fingerprint seeds are 1 and 2) with the seed replaced, until the fight ends or --ticks have run (default 2700:
 # the 90 s time limit). A fight code (`--fight SGF1:…`) runs its own spec and seed to its end and says whether it
 # ends as recorded (`# record=as recorded`); its files are named after a short hash of the code.
 #
