@@ -98,6 +98,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0087](0087-voyage-transitions.md) | Voyage transitions: the fleet visibly warps out (charge, stretch, flash) and in, the camera eases in 12 % during the charge, the emergency recall looks unstable, every end dips to dark and the next screen comes up out of it | Accepted (provisional, lead) | 2026-10-14 |
 | [0088](0088-pilot-assists-weapon-groups-and-key-bindings.md) | Pilot assists as rules per design (fill idle channels, switchable in flight by key and condition), weapon groups 1–3 set in the drydock, an action map with a settings screen | Accepted | 2026-10-14 |
 | [0089](0089-play-test-15-oct-speed-salvage-waves-station.md) | Play-test of 15 Oct: at the top speed the velocity follows the push (the fade weighted by the push angle, a governor on the ship's own thrust), salvage settles to a slow drift, test-range waves bring the biggest enemies first, the station comes alive | Accepted (provisional, lead) | 2026-10-15 |
+| [0090](0090-action-map-settings-and-pause-menu.md) | The action map (every key an action with up to two inputs, defaults in `controls.ron`), SETTINGS with controls and display over home and flight, Esc in flight unlocks else opens the flight menu (pauses the test range only), assist toggle slots | Accepted | 2026-10-15 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

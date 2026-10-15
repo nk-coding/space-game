@@ -24,14 +24,14 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 
 ## Crates (ADR-0003, folders and the client split ADR-0038)
 
-- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, the pure editing models `data::design::edit` (drydock) and `data::behavior::edit` (behavior editor), and the progression model `data::career`. No Bevy. Used by sim, game and tools (wiki).
+- `data`: content schema (serde types), pack loader (from in-memory files, so it works on wasm/Android), validation, shared blueprint geometry, the blueprint text format, the pure editing models `data::design::edit` (drydock) and `data::behavior::edit` (behavior editor), the progression model `data::career` and the action map `data::input` (actions, inputs, bindings; defaults in `controls.ron`). No Bevy. Used by sim, game and tools (wiki).
 - `sim`: engine-free simulation: ships, parts, physics (Rapier2D with `enhanced-determinism`, ADR-0014), heat, power, damage, weapons, flight computer, behaviors + Rhai. Fixed 30 Hz, deterministic. No Bevy, no graphics.
 - The Bevy client (web first, later desktop and Android; rendering at 60 fps with interpolation, UI, input) is three
   crates, each using only the ones below it (ADR-0038): `kit` (the toolkit: runtime atlas and its shader, style
   tokens, mesh building, the bevy_ui widget kit and fonts, UI icons, clipboard, launch parameters; knows nothing about
   ships or the sim), `world` (the running game: the sim bridge, scenes, ship views, effects, shields, camera,
   controls, the flight HUD and fleet bar, test range, voyages and their transitions, storage, the career and what
-  the player owns, `world::player`) and `game` (the screens and `main`: drydock, BEHAVIOR screen, research, FLEET,
+  the player owns, `world::player`, the player's settings and the action map's input, `world::settings`) and `game` (the screens and `main`: drydock, BEHAVIOR screen, research, FLEET,
   voyage map, shipyard, home, debrief). What two screens share moves down into `world`.
 - Inside every crate: feature folders, one plugin per feature (`mod.rs` holds the plugin and the public surface;
   single-file features stay files). `sim`: `ship/`, `flight/`, `combat/`, `behavior/`, `voyage/`; `data`:

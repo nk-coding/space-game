@@ -504,7 +504,7 @@ saved template copy moved to the cruiser frame).
   `write(namespace, name, text)`, `delete(namespace, name)`, `location()`) and stores **named RON documents in
   namespaces**: `designs/<id>`, `drydock/working`, `drydock/behavior` (the BEHAVIOR screen's working draft) and
   `behaviors/<id>` (see
-  [Behaviors](#behaviors-storage-designs-and-tests)) now; `saves/` and `settings/` later. Names are `a-z 0-9 _ -`
+  [Behaviors](#behaviors-storage-designs-and-tests)) now, `saves/<slot>` (the career) and `settings/controls` and `settings/display` (GDR-0090) since. Names are `a-z 0-9 _ -`
   (at most 64), safe as file names and keys everywhere.
 - A document type implements `Document` (`NAMESPACE`, `FORMAT`, `to_ron`, `from_ron(text, format)`).
   `Storage::write` puts one header line before the RON, a comment, so the document stays valid RON:

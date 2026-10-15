@@ -268,8 +268,15 @@ Next session:
     - the mind and research buildings have more detail;
     - its joints were fixed: bridges into the mind, pylons onto the gate, the lane's strut;
     - FLEET's hover covers all four moorings.
+- **The action map and SETTINGS** ([GDR-0090](gdr/0090-action-map-settings-and-pause-menu.md), GDR-0088 step 1):
+  - every key and mouse button outside the fixed ones (Esc, Enter, the pointer, the wheel) is an action with up to
+    two inputs; the defaults are in `content/base/controls.ron` (a new content kind, in the wiki too);
+  - SETTINGS (the gear ring at home or O, and the new flight menu) rebinds them and sets glow, bloom and the UI size,
+    saved on this device;
+  - Esc in flight unlocks, else opens the flight menu (it pauses the test range);
+  - tooltips and the help line show the bound keys; the debug toggles moved to F5–F7.
 - **Next** (Niklas, 15 Oct 2026):
-  1. GDR-0088 in its own order: the action map with a settings screen, then weapon groups, then the pilot assists
+  1. GDR-0088 in its own order (step 1 done above): the action map with a settings screen, then weapon groups, then the pilot assists
      as a PILOT ASSISTS tab next to BEHAVIOR on the behavior screen (chosen interactively), then hold station and
      collision avoidance.
   2. The evolution lab's screen (track L4), dev-only.

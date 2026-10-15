@@ -22,7 +22,11 @@ Port 8080 is Niklas's copy, served by the lead session from `/home/devbox/worksp
 ## Controls
 
 PC keyboard controls are ship-relative ([GDR-0040](gdr/0040-keyboard-flight-and-smart-lock-aim.md)); touch keeps
-the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)). The A/D rotation ramp is integrated by the scene once
+the stick ([GDR-0009](gdr/0009-stick-and-lock-controls.md)). **Every key and mouse button below except Esc, Enter, the
+left button as the pointer, middle-drag and the wheel is an action of the action map** ([GDR-0090](gdr/0090-action-map-settings-and-pause-menu.md);
+`data::input`, defaults in `content/base/controls.ron`, the player's changes in `settings/controls`): the table names
+the defaults, SETTINGS rebinds them, and the screens read them through `world::settings::Act` (tooltips with an
+`ActionTip`, key badges with an `ActionLabel` and the flight help line show the bound inputs). The A/D rotation ramp is integrated by the scene once
 per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nudge_step`) and sent as
 `PilotAxes::turn`; see `docs/sim.md` "Keyboard rotation".
 
@@ -32,7 +36,7 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Drift toggle (pure momentum while keys are held: no drift cancelling; a release coasts either way, GDR-0086) | X | tuning panel |
 | Lock a target | left-click a ship (or a salvage piece) | tap it |
 | While locked | the ship turns its strongest working guns onto the target (lead point for projectiles); A/D nudge the aim and it springs back; W/S and Q/E still thrust and strafe | the stick strafes |
-| Unlock | click empty space, or Esc | tap empty space |
+| Unlock | click empty space, or Esc (with nothing locked Esc opens the flight menu: RESUME, SETTINGS, SHIPYARD or ABANDON VOYAGE…; it pauses the test range, never a voyage; Esc closes it, GDR-0090) | tap empty space |
 | Next target (nearest first) | Tab | – |
 | Fire | hold the left button on empty space, hold the right button, or hold Space | fire button bottom right |
 | Switch vessel (the focus) | V / Shift+V (the sim's vessel list, ascending ship id), click a friendly vessel, or click its chip in the fleet bar | tap a friendly vessel or its chip |
@@ -45,8 +49,8 @@ per sim tick with `sim::flight::turn_ramp_step` (like the lock's nudge with `nud
 | Raider waves off / on (sandbox; off removes the raiders) | C | – |
 | Tuning panel (flight only; it was T until 12 Oct 2026) | U | – |
 | Debug overlay (fps, frame and sim times, the focus ship's heading, turn rate, speed and whether the last resort turns it, the locked ship's active behavior rule; in TEST IN RANGE every rule of the tested behavior with why) | F3 | – |
-| Render toggles | 1 debug shapes, 2 glow sprites, 3 bloom | – |
-| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R (left Shift) | – |
+| Render toggles | F5 debug shapes, F6 glow sprites, F7 bloom (1, 2 and 3 until GDR-0090: they are the fire groups' keys next) | – |
+| Hide HUD / pause (`PAUSED · P` shows) / reset scene (not in a voyage) | H / P / Shift+R | – |
 
 Ships with engines only at the back can't brake or strafe while locked (GDR-0011); S does nothing on them.
 
@@ -55,6 +59,14 @@ and release within one frame) still reaches one tick: the controls run before th
 keys and fire buttons until the next tick takes them (`controls::PlayerInput::for_tick`, 13 Oct 2026).
 Home's keys are in [Home](#home), the drydock's in [Drydock](#drydock), the BEHAVIOR screen's in
 [Behavior screen](#behavior-screen), a voyage's in [Voyages](#voyages).
+
+**SETTINGS** (`game::settings`, GDR-0090): a layer over home (the gear ring top right, or O) and over flight (the flight
+menu's SETTINGS; the HUD and the menu step aside, a dark ground covers the ships). CONTROLS lists every action by
+section with two input chips: click one, then press a key or mouse button (with Ctrl, Shift or Alt held: a
+combination; a modifier alone binds on release); Esc cancels, CLEAR empties it, an input another action on a shared
+screen had moves over (the status line names it), RESET TO DEFAULTS. DISPLAY: GLOW, BLOOM, UI SIZE (100 / 90 / 80 % of
+what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale). Both save at once on this device
+(`settings/controls`, `settings/display`); URL `glow=` / `bloom=` still win for one run.
 
 ## URL parameters
 
