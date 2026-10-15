@@ -28,6 +28,7 @@
 
 pub mod runner;
 pub mod scenario;
+pub mod waves;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
