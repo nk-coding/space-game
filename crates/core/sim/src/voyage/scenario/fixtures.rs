@@ -75,6 +75,30 @@ pub(super) fn assign_behaviors(content: &Content, sim: &mut Sim) -> Result<(), S
     Ok(())
 }
 
+/// The assists scenario's pilot assists on every player ship: each assist, a toggle on each slot, one off at start.
+pub(super) const ASSISTS: &[&str] = &[
+    "when idle(thrust) >= 1s -> avoid_collisions(toggle1)",
+    "when enemies_near(60m) >= 1 and can_stop_straight -> brake(toggle2)",
+    "always -> hold_station(ally, toggle2)",
+    "when not lock_held -> face_target(toggle3)",
+    "when target_in_range(90%) -> auto_fire(1)",
+    "always -> auto_fire(2, toggle4, off)",
+];
+
+/// Assists scenario: every player ship gets [`ASSISTS`] (the enemies fly their behaviors, as in the flight scenario).
+pub(super) fn assign_assists(sim: &mut Sim) -> Result<(), String> {
+    let list = data::AssistList { target: Some("nearest".into()), rules: ASSISTS.iter().map(|r| r.to_string()).collect() };
+    let id = sim
+        .behaviors_mut()
+        .add_assists(&list)
+        .map_err(|e| e.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; "))?;
+    let mine: Vec<crate::ShipId> = sim.ships().iter().filter(|s| s.owner() == Owner::PLAYER).map(|s| s.id()).collect();
+    for s in mine {
+        sim.command(s, ShipCommand::Assists(Some(id)));
+    }
+    Ok(())
+}
+
 pub(super) const HEAT_STRESS: &str = "heat_stress";
 
 /// The player's mind capacity in the behavior scenario (logic cores): fewer than its ship-mind ships have, so

@@ -1,7 +1,7 @@
 //! Prints the per-tick state hashes of the deterministic scenario, one `tick hash` line per tick.
 //! Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh` runs both and compares.
 //!
-//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage|voyage] [--ships N]`
+//! Usage: `determinism [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage] [--ships N]`
 //! (`--ships` sets the load test's ship count, default 20).
 
 fn main() {
@@ -21,7 +21,7 @@ fn main() {
         }
     }
     let mut kind = sim::voyage::scenario::ScenarioKind::from_name(&scenario).unwrap_or_else(|| {
-        panic!("unknown scenario {scenario} (known: core, flight, load, behavior, salvage, voyage)")
+        panic!("unknown scenario {scenario} (known: core, flight, assists, load, behavior, salvage, voyage)")
     });
     if let sim::voyage::scenario::ScenarioKind::Load(_) = kind {
         kind = sim::voyage::scenario::ScenarioKind::Load(ships);

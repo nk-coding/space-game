@@ -6,9 +6,10 @@
 #   scripts/determinism-check.sh --fight NAME [--seed N] [--ticks N]   # an arena fight (crates/tools/arena/fights/NAME.ron)
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
-# Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, load (--ships N in the example),
-# behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost ship's cargo), voyage (a voyage directed by
-# sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the recall check).
+# Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, assists (flight with pilot
+# assists), load (--ships N in the example), behavior, salvage (wrecks spawned as wrecks, collecting, fragments, a lost
+# ship's cargo), voyage (a voyage directed by sim::voyage: sites spawning, sleeping, waking and clearing, salvage, the
+# recall check).
 # `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/tools/arena/fights/NAME.ron
 # (runner_vs_raiders, skiff_mirror) with the seed replaced, until the fight ends or --ticks have run (default 2700:
 # the 90 s time limit).

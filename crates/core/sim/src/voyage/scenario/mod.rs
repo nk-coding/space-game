@@ -12,6 +12,10 @@
 //! * [`ScenarioKind::Flight`]: player ships flown by random pilot input (stick, lock on an enemy, drift,
 //!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
 //!   computer, allocation, maneuvers, fire at will.
+//! * [`ScenarioKind::Assists`]: the flight scenario with pilot assists (GDR-0088): every player ship flies its random
+//!   input with [`fixtures::ASSISTS`] (avoid collisions, brake, hold station beside an ally, face target,
+//!   auto-fire), lets go of the controls more often so the assists have channels, and flips a toggle or ALL ASSISTS
+//!   now and then.
 //! * [`ScenarioKind::Behavior`]: every ship under a content behavior (raiders: `raider_basic`; ship-mind
 //!   ships: `skirmisher` and three player programs with target priorities, among them an escort following
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
@@ -41,7 +45,7 @@ use std::sync::Arc;
 
 use data::Content;
 
-use crate::behavior::BehaviorLibrary;
+use crate::behavior::{AssistSwitch, BehaviorLibrary};
 use crate::ship::breakage::DamageTarget;
 use crate::ship::design::{PartIdx, ShipDesign};
 use crate::events::SimEvent;
@@ -54,7 +58,9 @@ use crate::ship::vessel::Owner;
 use crate::world::{DamageCommand, ShipCommand, Sim, TickInputs};
 
 pub use fixtures::BEHAVIOR_MIND_CAPACITY;
-use fixtures::{BURNER, HEAT_STRESS, assign_behaviors, burner_blueprint, heat_stress_blueprint, library, nth_alive};
+use fixtures::{
+    BURNER, HEAT_STRESS, assign_assists, assign_behaviors, burner_blueprint, heat_stress_blueprint, library, nth_alive,
+};
 use salvage::{SALVAGE_RETARGET, destroy_parts, salvage_scenario, salvage_target};
 use voyage::voyage_scenario;
 
@@ -72,6 +78,8 @@ pub fn scenario_owner(design: &ShipDesign) -> Owner {
 pub enum ScenarioKind {
     Core,
     Flight,
+    /// The flight scenario with pilot assists on the player's ships.
+    Assists,
     /// The shared load test with this many ships (see [`load_test`]).
     Load(u32),
     /// Behaviors (content and player programs, Rhai conditions, target priorities, slots).
@@ -87,6 +95,7 @@ impl ScenarioKind {
         match name {
             "core" => Some(ScenarioKind::Core),
             "flight" => Some(ScenarioKind::Flight),
+            "assists" => Some(ScenarioKind::Assists),
             "load" => Some(ScenarioKind::Load(20)),
             "behavior" => Some(ScenarioKind::Behavior),
             "salvage" => Some(ScenarioKind::Salvage),
@@ -99,7 +108,7 @@ impl ScenarioKind {
     fn hit_chance(self) -> f32 {
         match self {
             ScenarioKind::Core => 0.25,
-            ScenarioKind::Flight => 0.08,
+            ScenarioKind::Flight | ScenarioKind::Assists => 0.08,
             ScenarioKind::Behavior => 0.06,
             ScenarioKind::Salvage => 0.04,
             ScenarioKind::Voyage => 0.03,
@@ -111,7 +120,7 @@ impl ScenarioKind {
     fn blast_every(self) -> u64 {
         match self {
             ScenarioKind::Core => 75,
-            ScenarioKind::Flight | ScenarioKind::Behavior => 150,
+            ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior => 150,
             ScenarioKind::Salvage | ScenarioKind::Voyage => 300,
             ScenarioKind::Load(_) => u64::MAX,
         }
@@ -121,7 +130,7 @@ impl ScenarioKind {
     fn reroll_every(self) -> u64 {
         match self {
             ScenarioKind::Core => 20,
-            ScenarioKind::Flight | ScenarioKind::Behavior => 45,
+            ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior => 45,
             ScenarioKind::Salvage | ScenarioKind::Voyage => SALVAGE_RETARGET,
             ScenarioKind::Load(_) => u64::MAX,
         }
@@ -233,7 +242,7 @@ impl Scenario {
             let owner = scenario_owner(&design);
             sim.spawn_ship(design, owner, body);
         }
-        if kind == ScenarioKind::Flight {
+        if kind == ScenarioKind::Flight || kind == ScenarioKind::Assists {
             sim.set_behaviors(library(content)?);
             let enemies: Vec<(crate::ShipId, Option<crate::BehaviorId>)> = sim
                 .ships()
@@ -247,6 +256,9 @@ impl Scenario {
         }
         if kind == ScenarioKind::Behavior {
             assign_behaviors(content, &mut sim)?;
+        }
+        if kind == ScenarioKind::Assists {
+            assign_assists(&mut sim)?;
         }
         if kind == ScenarioKind::Core
             && let Ok(d) = ShipDesign::compile(content, &heat_stress_blueprint())
@@ -409,9 +421,11 @@ impl Scenario {
                     ));
                 }
                 // Flight and behavior (the load test returned above: its behaviors fly on their own).
-                ScenarioKind::Flight | ScenarioKind::Behavior | ScenarioKind::Load(_) => {
+                ScenarioKind::Flight | ScenarioKind::Assists | ScenarioKind::Behavior | ScenarioKind::Load(_) => {
+                    // With assists the pilot lets go more often and fires less, so the assists get channels.
+                    let assisted = kind == ScenarioKind::Assists;
                     let a = rng.range_f32(-core::f32::consts::PI, core::f32::consts::PI);
-                    let len = if rng.chance(0.2) {
+                    let len = if rng.chance(if assisted { 0.5 } else { 0.2 }) {
                         0.0
                     } else {
                         rng.range_f32(0.2, 1.0)
@@ -427,11 +441,18 @@ impl Scenario {
                         stick: Vec2::new(cos(a), sin(a)) * len,
                         lock,
                         drift: rng.chance(0.2),
-                        fire: if rng.chance(0.7) { crate::flight::FIRE_ALL } else { 0 },
+                        fire: if rng.chance(if assisted { 0.3 } else { 0.7 }) { crate::flight::FIRE_ALL } else { 0 },
                         aim: crate::flight::AimMode::Auto,
                         ..Default::default()
                     };
                     self.inputs.commands.push((id, ShipCommand::Pilot(input)));
+                    if assisted && rng.chance(0.15) {
+                        let switch = match rng.below(5) {
+                            0 => AssistSwitch::All,
+                            k => AssistSwitch::Toggle(k as u8),
+                        };
+                        self.inputs.commands.push((id, ShipCommand::SwitchAssists(switch)));
+                    }
                 }
                 // The collectors fly to salvage (`salvage_run`) or through the voyage (`voyage_run`), enemies
                 // their behavior.
