@@ -328,5 +328,6 @@ summary). Phone questions stay deferred to Android.
 
 - Drydock (web first), behavior trees + Rhai, salvage/research, galaxy, home ring menu.
 - Android build + phone measurements (deferred spike questions 4–7 on the phone).
-- Wiki generator on top of `data` + `content/`.
+- Wiki generator on top of `data` + `content/`: done 15 Oct 2026, the VitePress wiki (`wiki/`, ADR-0039; it replaced
+  the static generator of 13 Oct).
 - Co-op (`net`), arena/evolution.

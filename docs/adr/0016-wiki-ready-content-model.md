@@ -1,6 +1,6 @@
 # ADR-0016: Content is wiki-ready: stable ids, keyed text, stat descriptors, prose next to the data
 
-- Status: Accepted
+- Status: Accepted; 2026-10-15: the wiki is built on it, [ADR-0039](0039-vitepress-wiki-from-game-data.md) (`content-tool wiki-data` feeds the VitePress wiki from the same files)
 - Date: 2026-10-11
 - Decided by: Niklas (wiki later, content wiki-ready now); lead session (the model's details)
 - Related: [ADR-0015](0015-ron-content-packs-and-mods.md), [ADR-0017](0017-embedded-content-in-memory-loader.md), [ADR-0018](0018-english-only-keyed-text.md), [ADR-0021](0021-no-fixed-raster-graphics.md), `docs/content-model.md`

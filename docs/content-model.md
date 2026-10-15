@@ -857,13 +857,17 @@ clean grid and report nothing until the placements are fixed. Header errors do n
 
 ## The wiki
 
-`content-tool wiki <out_dir> [pack_dir...]` generates the wiki (added 13 Oct 2026; `docs/wiki.md`, ADR-0032): a
-static HTML site with a page per entry, stats labelled from `stats.ron`, the pack's icons, ships drawn from their
-blueprints and the prose of `wiki/`. It reads the `data` crate directly; other tools can use the JSON export:
+`content-tool wiki-data <wiki_dir> [pack_dir...]` feeds the wiki (15 Oct 2026; `docs/wiki.md`, ADR-0039, which
+replaced the static HTML generator of ADR-0032): it writes `wiki/gen/`, a page per entry of every kind (stats
+labelled from `stats.ron`, the pack's icons, parts and ships drawn from their geometry, the prose of `wiki/<kind>/`)
+and the data the VitePress site reads (`refs.json`: every entry, its values as the game formats them and the sim
+constants, which hand-written wiki pages reference as `[[part:thruster.thrust]]` or `[[sim:tick_hz]]` instead of
+copying them; `ui.json`, `sidebar.json`, the icon sprite and `art/tokens.json` as CSS). It reads the `data` crate
+directly and checks the wiki's hand-written pages against the content; other tools can use the JSON export:
 
 ```
 cargo run -p content-tool -- validate                 # all packs ok (icons included)?
-cargo run -p content-tool -- wiki /tmp/space-wiki      # the static wiki (docs/wiki.md)
+cargo run -p content-tool -- wiki-data wiki          # wiki/gen for the wiki site (docs/wiki.md)
 cargo run -p content-tool -- export-json content.json  # resolved content for any external tool
 cargo run -p content-tool -- list part
 ```

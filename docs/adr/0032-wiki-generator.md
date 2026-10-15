@@ -1,6 +1,6 @@
 # ADR-0032: Wiki generator: `content-tool wiki` writes a static HTML site straight from `data`
 
-- Status: Proposed
+- Status: Superseded by [ADR-0039](0039-vitepress-wiki-from-game-data.md)
 - Date: 2026-10-13
 - Decided by: wiki agent (proposal; the defaults below are for Niklas to review)
 - Related: [ADR-0015](0015-ron-content-packs-and-mods.md), [ADR-0016](0016-wiki-ready-content-model.md), [ADR-0018](0018-english-only-keyed-text.md), [ADR-0021](0021-no-fixed-raster-graphics.md), [ADR-0028](0028-icons-in-the-content-pack.md), [ADR-0030](0030-drydock-architecture.md), [GDR-0052](../gdr/0052-drydock-stats-full-use.md), [GDR-0054](../gdr/0054-drydock-locked-parts-tools-saving-sharing.md), `docs/wiki.md`

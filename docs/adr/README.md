@@ -24,7 +24,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0013](0013-physics-backend-trait.md) | Physics sits behind a `PhysicsBackend` trait, with `FreeFlight` as the stand-in | Superseded by [ADR-0025](0025-main-repo-holds-only-chosen-code.md) | 2026-10-11 |
 | [0014](0014-physics-engine-by-benchmark.md) | Physics engine: Rapier2D with one compound collider per ship piece, chosen by benchmark | Accepted | 2026-10-11; 2026-10-10 |
 | [0015](0015-ron-content-packs-and-mods.md) | Content lives in RON packs; the base game loads like a mod; mods from day one | Accepted | 2026-10-10 |
-| [0016](0016-wiki-ready-content-model.md) | Content is wiki-ready: stable ids, keyed text, stat descriptors, prose next to the data | Accepted | 2026-10-11 |
+| [0016](0016-wiki-ready-content-model.md) | Content is wiki-ready: stable ids, keyed text, stat descriptors, prose next to the data | Accepted | 2026-10-11; 2026-10-15 |
 | [0017](0017-embedded-content-in-memory-loader.md) | The base content is embedded at compile time behind a pure in-memory loader | Accepted (provisional, lead) | 2026-10-11 |
 | [0018](0018-english-only-keyed-text.md) | English only at launch; every string is keyed in data | Accepted | 2026-10-10 |
 | [0019](0019-rhai-scripting.md) | Rhai is the scripting language | Accepted | 2026-10-10 |
@@ -40,13 +40,14 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0029](0029-shield-bubbles-batched-procedural-mesh.md) | Shield bubbles are one batched world-space mesh with a procedural WESL material and max blending | Accepted (provisional, lead) | 2026-10-12 |
 | [0030](0030-drydock-architecture.md) | Drydock architecture: a pure editing model in `data`, a static design report in `sim`, player designs as content blueprints | Accepted (provisional, lead) | 2026-10-12 |
 | [0031](0031-player-storage-and-design-sharing.md) | A player storage layer of named, versioned RON documents; designs shared as files and share codes | Accepted (provisional, lead) | 2026-10-13 |
-| [0032](0032-wiki-generator.md) | Wiki generator: `content-tool wiki` writes a static HTML site straight from `data` | Proposed | 2026-10-13 |
+| [0032](0032-wiki-generator.md) | Wiki generator: `content-tool wiki` writes a static HTML site straight from `data` | Superseded by [ADR-0039](0039-vitepress-wiki-from-game-data.md) | 2026-10-13 |
 | [0033](0033-career-model-save-and-voyage-director.md) | The career: progression rules in `data::career`, salvage and the voyage director in `sim`, one career save | Accepted (provisional, lead) | 2026-10-13 |
 | [0034](0034-fast-everyday-web-builds-and-shared-compile-cache.md) | Everyday web builds without LTO and wasm-opt (`--full` for performance); sccache shared by every cargo build on the VM | Accepted | 2026-10-14 |
 | [0035](0035-saves-keep-the-galaxy-skeleton.md) | Saves keep the galaxy skeleton (clusters, gates, trails) next to the seed; interiors are still generated | Accepted | 2026-10-14 |
 | [0036](0036-arena-crate.md) | An engine-free `arena` crate for headless fights, evolution and benchmarks, used by the game (time-sliced) and a native CLI | Accepted | 2026-10-14 |
 | [0037](0037-simultaneous-fire-within-a-tick.md) | Ship ids decide nothing in a fight: simultaneous fire within a tick, shared think ticks, auto orbits by both ids | Accepted (provisional, lead) | 2026-10-14 |
 | [0038](0038-workspace-structure-feature-folders-and-client-split.md) | Workspace structure: crates grouped in `core/`, `client/`, `tools/`; the client split into `kit`, `world`, `game`; feature folders inside every crate | Accepted | 2026-10-14 |
+| [0039](0039-vitepress-wiki-from-game-data.md) | The wiki is a VitePress site in the game's look; its content pages and every number come from the game's data | Proposed | 2026-10-15 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

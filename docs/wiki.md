@@ -1,110 +1,140 @@
 # The wiki
 
-A static website generated from the content packs: every part, material, category, ship, frame, faction,
-behavior, behavior node, stat, research family, research node, start, voyage, encounter and free article gets a
-page, cross-linked both ways. Written 13 Oct 2026 (ADR-0032, Proposed); the career kinds (families, research,
-starts, salvage blocks, locked frames) and then voyages and encounters were added the same day. Code:
-`crates/tools/content-tool/src/wiki/`. It is a developer and modder wiki for now: locked content is shown and marked.
+A VitePress site in the game's look (`wiki/`, [ADR-0039](adr/0039-vitepress-wiki-from-game-data.md), written 15 Oct
+2026; it replaced the static HTML generator of ADR-0032). Two halves:
 
-![Index](results/wiki-index.png)
+- **Generated** (`content-tool wiki-data`, code `crates/tools/content-tool/src/wiki/`): a page for every entry of
+  every content kind (parts, materials, categories, ships, frames, factions, research, families, starts, voyages,
+  encounters, behaviors, behavior nodes, stats, controls, articles), a list per kind and a reference overview,
+  plus the data the site's components and Markdown plugin read. Written into `wiki/gen/` (git-ignored).
+- **Hand-written** (`wiki/guide/`, `wiki/mechanics/`, `wiki/behavior/`, the home page `wiki/index.md`): the guide, the
+  player-facing mechanics and the behavior system. Prose only: every name and number the game's data holds is a
+  reference (below), so it can never drift.
 
-## Generate and view
+It is a player and modder wiki for now: locked content is shown and marked.
+
+## Commands
 
 ```
-cargo run -p content-tool -- wiki /tmp/space-wiki                          # base pack
-cargo run -p content-tool -- wiki /tmp/space-wiki content/base ../my-mod   # base plus a mod, in load order
-python3 -m http.server 8090 --bind 0.0.0.0 -d /tmp/space-wiki              # then http://10.77.9.2:8090
+cd wiki
+npm install              # once: vitepress and reka-ui (pinned), ~130 MB in node_modules
+npm run dev              # content-tool wiki-data, then the dev server (http://localhost:5173/wiki/)
+npm run build            # content-tool wiki-data, then the static site in wiki/.vitepress/dist (about 10 s)
+npm run check            # checks the build (below)
+npm run deploy           # build, check, copy to ../serve/wiki and link it under the game: http://<host>:8080/wiki/
+npm run gen              # only content-tool wiki-data (also: cargo run -p content-tool -- wiki-data wiki)
 ```
 
-- Packs are given like for `validate` and `export-json`: directories in load order, default `content/base`. The
-  packs are loaded and validated first (errors stop it, warnings are printed), then the site is written. It takes
-  a few tens of milliseconds.
-- The output is plain HTML, one stylesheet and two font files, no JavaScript: open `index.html` from disk or serve
-  the folder with any static server. Do not commit the output; generate it when needed.
-- The output directory must be new, empty, or an earlier wiki. Each run writes `.wiki-files` (the list of files it
-  made); the next run removes pages that no longer exist (an entry deleted from a pack) and touches nothing else. A
-  non-empty directory without that list is refused.
-- The output is deterministic: the same packs give byte-identical files (paths sorted, entries in load order, no
-  dates), so two generations diff cleanly.
+- `wiki-data <wiki_dir> [pack_dir...]` loads and validates the packs like `validate` (default `content/base`;
+  mods after it in load order), writes `<wiki_dir>/gen/` and checks the hand-written pages. Problems in those pages
+  are errors (the command fails after writing, so the site still builds while you fix them). The output is
+  deterministic; unchanged files keep their time stamps, so the dev server reloads only what changed. `gen/` holds a
+  `.wiki-files` list; the next run removes what it no longer makes and refuses a non-empty directory without one.
+- `WIKI_BASE=/other/ npm run build` builds for another base path (default `/wiki/`).
+- The 8080 server serves `../serve/game`; `deploy` copies the site to `../serve/wiki` and puts a link
+  `serve/game/wiki → ../wiki` there, so the wiki sits beside the game without restarting the server. A game deploy
+  that empties `serve/game` drops the link; deploy the wiki again.
 
-## What it shows
+## Writing pages
 
-| Page | Contents |
+A page is Markdown with front matter (`title`, `description`; quote values with `: `), listed in `wiki/nav.json`
+(its section and order in the sidebar). Links between hand-written pages are Markdown links with absolute paths:
+`[pilot assists](/behavior/pilot-assists#channels)`.
+
+### References
+
+| Write | Shows |
 |---|---|
-| `index.html` | Pack description, counts per kind, ship cards, the part palette (category order), articles, the loaded packs. |
-| `parts.html` … `pages.html` | One list per kind, named like the kind's pack directory (`behavior_nodes.html`; free articles are `pages.html`). Parts are grouped by category, research nodes by family, behavior nodes by role, stats into part and ship stats; starts are cards with their ship; voyages are in load order with band, sites and expected length; encounters are a table of ships, wrecks and wake radius. |
-| `part/<id>.html` | The part on its style-2a tile (hull parts in every armor material), category, size, power tier, weapon family and delivery, shield absorption, icon key; stat lines as the drydock shows them (hull parts: a table per armor material); adjacency bonuses it grants (with the parts they reach) and gets; ships that use it; "Unlocked by" (the research nodes that unlock it); "Salvage": research data and materials an intact part gives and the fragment a destroyed one leaves (hull parts: per armour material, by hull area). |
-| `material/<id>.html` | Swatch, armor tone, per-cell stats, the hull parts made from it with their stats in it, ships that use it; "Unlocked by"; armour materials: salvage per cell of hull area; materials that salvage gives or research costs (programmable matter): the parts that give it and the research that costs it. |
-| `ship/<id>.html` | The layout drawn from the blueprint, faction, effective behavior, grid, smallest frame it fits, the starts that begin with it; the drydock's numbers from the sim's design report (full power, full use, `SimConfig::default()`); its parts with counts and materials; "In encounters": where it waits on voyages, fighting or as a wreck, with counts. |
-| `category/`, `faction/`, `frame/` | Colour or glow, parts of the category, ships of the faction (and its default behavior), ships whose grid fits the frame (and, for a locked frame, "Unlocked by"). |
-| `family/<id>.html` | Research family: colour, its research nodes (kind, summary, unlocks, cost), nodes of other trees that cost its data, and the parts and armour materials whose salvage gives its data (per part, per cell of hull). |
-| `research/<id>.html` | Research node: family, kind (`NewPart` … `Alien`, as words), cost (data per family and materials, linked); what it unlocks (parts, materials and frames with their pictures, mind capacity as text); the nodes it requires and the nodes that require it. |
-| `start/<id>.html` | How a new game begins: the ship drawn like on its ship page (and linked), the mind capacity with the research that adds to it, the open voyages (linked, with band, sites and length), and the parts, materials and frames a new game has (everything not locked). |
-| `voyage/<id>.html` | Band, place on the voyage map, radius, site spacing and expected length (metres and minutes), the number of sites, the goal and the starts that open it; the sites as a table (encounter, its ships and wrecks, how many such sites, the goal marked); the `cleared` line as the debrief shows it; "Opens after" (the voyages whose goal must be cleared first) and "Opens" (the voyages that name it). |
-| `encounter/<id>.html` | Wake radius and the total ships and wrecks; its ships and its wrecks, drawn small and linked, with their `(min, max)` counts (wrecks with the share of parts already gone); the voyages that place it, with how many sites and whether it is their goal. |
-| `behavior/<id>.html` | The rules as in the editor's text view, every node linked in its role's colour; the nodes it uses; factions using it as default; ships flying it. |
-| `behavior_node/<id>.html` | Role, value type, how it is written, the parameters (type, default, range, choices), the Rhai script; behaviors that use it. |
-| `stat/<id>.html` | Unit, precision, which way is better; every part, material, bonus and ship with that stat and its value. |
-| `page/<id>.html` | A free article from `wiki/page/<id>.md`. |
+| `[[part:thruster]]`, `[[part:thruster\|thrusters]]` | a link to the entry's page with its name (or the label); any kind: `stat`, `category`, `faction`, `material`, `part`, `frame`, `ship`, `behavior_node`, `behavior`, `family`, `research`, `start`, `voyage`, `encounter`, `control`, `page` |
+| `[[part:thruster.thrust]]` | a part's stat as the drydock shows it (`200 kN`); a hull part in a material: `[[part:block_1x1@steel.hp]]` |
+| `[[part:capacitor.bonus.fire_rate]]`, `.bonus.<stat>.max_stacks`, `.power_tier`, `.absorb.<family>`, `.salvage`, `.salvage_data`, `.salvage_materials`, `.fragment` | a part's bonus, power tier, shield absorption and salvage |
+| `[[material:steel.hp_per_cell]]`, `.salvage`, `.salvage_data` | a material's stats and salvage |
+| `[[ship:rim_skiff.top_speed]]` | a design-report stat (`build_points`, `mass`, `hp`, `power_use`, `peak_heat`, `acceleration`, `top_speed`, `turn_time`, `firepower`, `control_load`, `rule_slots`, `cargo_capacity`) |
+| `[[control:recall.keys]]` | the default keys as key caps |
+| `[[behavior_node:orbit.signature]]`, `[[behavior_node:orbit.default.radius]]` | how a node is written; a parameter's default |
+| `[[research:tamed_core.cost]]`, `.requires`, `.unlocks`; `[[frame:frigate.grid]]`; `[[start:rim_awakening.mind_capacity]]`; `[[voyage:yard_approach.sites]]`, `.length`, `.band`, `.opens_after`; `[[encounter:the_warden.wake_radius]]`; `[[behavior:escort.rules]]`; `[[stat:mass.unit]]` | more values |
+| `[[sim:tick_hz]]` | a simulation constant with its unit, read from the sim's own constants and `SimConfig::default()` (the list: `wiki::refs::sim_values`; add a constant there before using it) |
 
-Every entry page also shows the summary, description, lore and tags, the prose file if there is one, "Mentioned
-on" (entries whose texts or prose link here) and a collapsed "Data" block (id, link syntax, defining file, prose
-file, text keys).
+`wiki::refs` makes the table (`gen/refs.json`); the site's Markdown plugin (`wiki/.vitepress/refs.mts`) fills it in.
+Inside inline code (`` `[[part:x]]` ``) nothing is resolved. Constants that live only in the client crates (the
+recall warp time, the drydock's heat thresholds, the escort slots) cannot be referenced: the tool does not depend on
+Bevy, so describe them in words.
 
-- **All text comes from the content**: names, summaries, stat labels, units and precision (`stats.ron`), node and
-  parameter names. Values are formatted by `Content::stat_line`, exactly like the drydock. Only the page chrome
-  (headings such as "Used by ships", fact labels, "Locked") is the tool's own English, like the game's UI strings.
-- **Locked** parts, materials and frames (`locked: true`, GDR-0054, GDR-0063) appear everywhere with a coral
-  "Locked" badge; their pages say which research unlocks them, or that none does yet.
-- **Drawings are vector**: icons are the pack's SVGs, inlined once per page as `<symbol>`s (ids prefixed with
-  `icon-<key>-`, because all icons use the same gradient ids); ships and parts are SVG built from
-  `data::design::geometry` (tiles, slopes, seams, icons turned and mirrored like the placements, the hull glow of the main
-  piece in the faction's colour). Colours come from `art/tokens.json`, embedded at build time.
-- **Look**: the game's UI (`docs/style-guide.md`): the dark radial backdrop, Barlow (copied from
-  `crates/client/kit/assets/fonts` with its licence), uppercase tracked grey labels, white numbers with a slight glow,
-  teal links, dotted rules instead of boxes.
+### Rule examples
 
-## Prose files
+A fenced block with the language `behavior` or `assists` is parsed and checked by the game's own parser and
+vocabulary (`data::behavior::check_text_as`) and shown as its graph (as the BEHAVIOR screen's GRAPH view draws it)
+over its text with every node linked. An example that does not check fails `wiki-data`.
 
-Long-form text lives next to the data and is never embedded in the game:
+### Components
 
-```
-content/base/wiki/part/fission_reactor.md   # extra text on the part's page, under its description
-content/base/wiki/page/drydock_rules.md     # a free article; its first "# " line is the title
-```
+`<PartCard id="thruster" />`, `<PartGrid category="propulsion" />` (all parts without `category`),
+`<ShipCard id="rim_skiff" />`, `<ShipGallery />`, `<ControlsTable section="flight" />` (sections as in
+`controls.ron`), `<NodeTable role="condition" />` (`target`, `condition`, `action`; `pilot` for the pilot assists'
+own nodes, `tag="…"` for a tag), `<StatTable stats="thrust,rated_speed,gimbal" />` (sortable), `<PartsTable />`
+(sortable, filterable), `<KindGrid />`, `<ScrollBox x>` (a sideways-scrolling region). They read `gen/ui.json`;
+`wiki-data` checks their attributes against the content.
 
-`wiki/<kind>/<id>.md` works for every kind (`stat`, `category`, `faction`, `material`, `part`, `frame`, `ship`,
-`behavior_node`, `behavior`, `family`, `research`, `start`, `voyage`, `encounter`); validation rejects prose for
-entries that do not exist. Mods add or replace prose by path like any other file.
+### Diagrams
 
-The Markdown is a small subset, rendered by the tool itself:
+Inline `<svg class="diagram" viewBox="…">` in the page, no `width`/`height`, no blank lines inside, colours only
+through the theme's classes (strokes `s-teal s-gold s-coral s-violet s-blue s-dim s-label s-number s-ring`, fills
+`f-…` likewise plus `f-tile f-steel f-bg`, `.line`, `.dotted`, `.thick`, `.glow`; text `num`, `big`, `t-teal`, …),
+arrowheads `marker-end="url(#arrow-teal)"` (`#arrow`, `-gold`, `-coral`, `-violet`) from the theme. No `<a>` inside an
+SVG (VitePress's link prefetching cannot read one). No raster images anywhere: SVG, CSS and fonts only.
 
-- `#` to `######` headings (they start at `<h2>`: the page has its own title; a leading `# ` line is the title of a
-  free article and is left out of the text), paragraphs, `-`/`*` and `1.` lists (one level; indented lines continue
-  an item), `>` quotes, `---` rules, fenced code blocks.
-- Inline: `[[kind:id]]` and `[[kind:id|label]]` links (checked by validation, rendered as hyperlinks), `` `code` ``,
-  `**bold**`, `*italic*`. The same inline marks work in every content text (summaries, descriptions, lore).
-- Anything else shows as text: raw HTML is escaped, Markdown links `[text](url)` and tables are not supported.
-- Keep numbers out of prose (content-model rule); link to the stat or the part instead.
+## What the generated pages show
 
-## Tests
+The same as ADR-0032's pages, now as VitePress pages: every entry's texts (with its links and the pack's prose for
+it), an infobox with its drawing, facts and stats, and sections that link both ways (a part's ships, bonuses given and
+received, research that unlocks it, salvage; a material's parts, ships and salvage; a ship's parts, design report,
+pilot assists and encounters; a behavior's rules as graph and text, its nodes, ships and factions; a node's
+parameters, Rhai script and behaviors; research costs, requirements and unlocks; voyages, sites, encounters and what
+opens what; a control's keys and its section), "Mentioned on" back-links and the data details for modders (id,
+defining file, text keys, prose file).
 
-`cargo test -p content-tool` (`crates/tools/content-tool/src/wiki/tests.rs` and the unit tests next to the code):
-the base pack's wiki builds without warnings; every content item has a page and nothing else is written;
-every `href`, `url(...)` and `#fragment` resolves to a generated file and element; two runs are byte-identical;
-cross-links exist both ways (also for families, research nodes, starts, salvage and unlocks, and for voyages,
-encounters, the start that opens a voyage and the ships an encounter holds); locked parts, materials and frames are
-marked; drawings use the pack's icons and the faction's glow, no `<img>` or `<script>` anywhere; a test mod with
-`<`, `&`, `>` and quotes in every kind of text (a family, a research node, a start, two voyages and an encounter
-included, and a relabelled stat) is escaped everywhere and shows the mod's stat label; `write` replaces an earlier
-wiki and refuses other directories; plus the Markdown subset and the icon id prefixing.
+- **Parts are drawn as technical drawings** from the data: the tile as the drydock's palette shows it on its cell
+  grid, the sides that link to neighbours, and what the part does: thrust out of the forward side with the gimbal's
+  swing, the plume behind (length labelled), the line of fire, RCS nozzles and radiator vents on the open sides,
+  torque, the cells its blast reaches (each cell whose nearest point is within the blast radius of the part's centre),
+  the shield's reach.
+- Ships are drawn from the blueprint geometry with the hull glow of their faction. Machines are drawn as the
+  palette's tiles with their icons, not yet as the flight view's housings on hull-toned cells (GDR-0069): that rule
+  (`world::ship_model::hull_tone`) lives in the client and would have to move to `data` first.
+- Colours come from `art/tokens.json` (`gen/tokens.css`), the icons from the pack (`gen/sprite.svg`, inlined once per
+  page), the font is Barlow from `crates/client/kit/assets/fonts` (with its licence).
+
+## The look
+
+`wiki/.vitepress/theme/`: VitePress's default theme for the structure (sidebar, outline, prev/next, local search,
+phone layout) restyled in `style.css` after `docs/style-guide.md`: the radial backdrop with dotted rings and faint
+particles (drawn once per page), Barlow, tracked uppercase grey labels, white numbers with a slight glow, thin 1px
+outlines and dotted rules, pill buttons, teal for what you act on. Forced dark. No rule beside the sidebar's entries;
+the active one gets a teal bar.
+
+**Scrollbars** (Niklas, 15 Oct 2026): every scrolling region is a `ScrollBox` (Reka UI's ScrollArea: thin bars over
+the edge, a dim track, the thumb grey, teal under the pointer and while dragged): the sidebar, the outline (also the
+phone's outline menu and nav screen), the search results, wide tables, code blocks, rule graphs and examples. Those
+default-theme components are copies in `theme/overrides/` that wrap their scrolling part, swapped in by aliases in
+`config.mts` (VitePress 1.6.4; check them when updating VitePress). The page itself keeps the browser's own
+scrolling, because VitePress's anchor jumps, search jumps and active-heading tracking follow the window; its native
+bar is hidden and `PageScrollbar.vue` draws the same thin bar over the right edge (draggable; a click on the track
+pages). A global rule hides any other native bar.
+
+## Checks
+
+- `content-tool wiki-data` (and the test `the_wiki_is_complete_and_consistent` in `cargo test -p content-tool`, which
+  runs it over the repository's `wiki/`): every reference resolves, every rule example checks, every component names
+  existing content, every page has a title and a description and is in `nav.json` (and every `nav.json` entry has a
+  page), no raster image (a raster file anywhere in `wiki/`, an `<img>`, a raster `url(...)`, `src` or data URI).
+- The other tests of `crates/tools/content-tool/src/wiki/tests.rs`: every kind has a section (`KINDS` covers
+  `Kind::ALL`), every entry a page, a sidebar entry and a reference; every link in the pages and data resolves; two
+  runs are identical; generated pages are blocks Vue leaves alone; pages link both ways; locked content is marked;
+  drawings are vector and use the pack's icons; a mod with markup in every text is escaped everywhere.
+- `npm run check` on the build: every entry and hand-written page has its page, every internal link and fragment
+  resolves, no raster file, `<img>` or raster `url()`, and every page is in the search index.
 
 ## Not yet
 
-Search (it would need JavaScript), a tag index, translated wikis (wiki prose is English only, ADR-0018), the
-drydock's yaw and device-load words on ship pages, and pictures of behavior graphs, research trees and the voyage
-map (voyage pages give the map place as numbers).
-
-![A part page](results/wiki-part.png)
-
-![A ship page](results/wiki-ship.png)
+Translated wikis (prose is English only, ADR-0018), a tag index, pictures of research trees and the voyage map,
+ships drawn with the flight view's machine housings (above), and screenshots of the game (they would be raster).
