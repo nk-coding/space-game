@@ -43,6 +43,8 @@ pub(in crate::drydock) struct PreviewColumn;
 #[derive(Component, Default)]
 pub(in crate::drydock) struct PreviewCard {
     pub(super) shown: Option<Pick>,
+    /// The row it is shown for.
+    pub(super) row: Option<Entity>,
 }
 
 #[derive(Component)]
@@ -294,6 +296,7 @@ fn spawn_preview(lists: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn
                 position_type: PositionType::Absolute,
                 left: px(0),
                 right: px(0),
+                height: px(PREVIEW_CARD_H),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(6),
                 padding: UiRect::new(px(14), px(14), px(12), px(14)),

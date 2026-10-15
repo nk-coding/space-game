@@ -217,8 +217,10 @@ pub(super) fn sync_shelf(
 }
 
 /// The preview follows the hovered row: built once per entry (the ship and its numbers, from a `sim::design_report`
-/// made with the drydock's content and config, about 25 µs), gone when no row is hovered, and kept level with the
-/// row (from the laid-out nodes, so it follows a scrolling list) inside its column.
+/// made with the drydock's content and config, about 25 µs), gone when the pointer leaves the row (it stays over
+/// the gap to the next row, so moving down the list doesn't flash it), and kept level with the row inside its
+/// column. The card is as tall as [`PREVIEW_CARD_H`] and the rows' places are laid out already, so it is placed
+/// right in the frame it appears in (with the height of its own first layout it showed a frame lower, then jumped).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sync_preview(
     mut commands: Commands,
@@ -226,21 +228,35 @@ pub(super) fn sync_preview(
     storage: Res<Storage>,
     content: Res<GameContent>,
     report: Res<DrydockReport>,
-    rows: Query<(&RowNode, &Hot, &ComputedNode, &UiGlobalTransform)>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    rows: Query<(Entity, &RowNode, &Hot, &ComputedNode, &UiGlobalTransform)>,
     column: Single<(&ComputedNode, &UiGlobalTransform), With<PreviewColumn>>,
-    card: Single<(&mut PreviewCard, &mut Node, &ComputedNode)>,
+    card: Single<(&mut PreviewCard, &mut Node)>,
     ship: Single<Entity, With<PreviewShip>>,
     mut values: Query<(&PreviewStat, &mut Text)>,
 ) {
-    let hovered = rows.iter().find(|(_, hot, ..)| hot.hovered).filter(|_| shelf.page == Some(Page::Blueprints));
-    let pick = hovered.and_then(|(r, ..)| {
-        let i = shelf.offset[r.0] + r.1;
-        match r.0 {
-            0 => shelf.designs.get(i).filter(|e| e.problem.is_none()).map(|e| Pick::Design(e.id.clone())),
-            _ => shelf.templates.get(i).map(|id| Pick::Template(id.clone())),
+    let (mut card, mut node) = card.into_inner();
+    let open = shelf.page == Some(Page::Blueprints);
+    let hovered = rows.iter().find(|(_, _, hot, ..)| hot.hovered).filter(|_| open);
+    let near_shown = |(_, _, _, n, at): &(Entity, &RowNode, &Hot, &ComputedNode, &UiGlobalTransform)| {
+        let gap = Vec2::new(0.0, ROW_GAP / n.inverse_scale_factor);
+        let r = Rect::from_center_size(at.translation, n.size + 2.0 * gap);
+        window.physical_cursor_position().is_some_and(|c| r.contains(c))
+    };
+    let (row, pick) = match hovered {
+        Some((e, r, ..)) => {
+            let i = shelf.offset[r.0] + r.1;
+            let pick = match r.0 {
+                0 => shelf.designs.get(i).filter(|e| e.problem.is_none()).map(|e| Pick::Design(e.id.clone())),
+                _ => shelf.templates.get(i).map(|id| Pick::Template(id.clone())),
+            };
+            (Some(e), pick)
         }
-    });
-    let (mut card, mut node, laid) = card.into_inner();
+        None => match card.row.and_then(|e| rows.get(e).ok()).filter(|r| open && near_shown(r)) {
+            Some(_) => (card.row, card.shown.clone()),
+            None => (None, None),
+        },
+    };
     if card.shown != pick {
         let shown = pick.as_ref().and_then(|p| preview_of(&content.0, &storage, &report, p));
         let display = if shown.is_some() { Display::Flex } else { Display::None };
@@ -260,11 +276,12 @@ pub(super) fn sync_preview(
         }
         card.shown = pick;
     }
-    let (Some(_), Some((.., row_at))) = (&card.shown, hovered) else { return };
+    card.row = row;
+    let Some((.., row_at)) = row.and_then(|e| rows.get(e).ok()).filter(|_| card.shown.is_some()) else { return };
     let (col, col_at) = *column;
     let k = col.inverse_scale_factor;
-    let top = (row_at.translation.y - (col_at.translation.y - col.size.y / 2.0) - laid.size.y / 2.0) * k;
-    let top = px(top.clamp(0.0, ((col.size.y - laid.size.y) * k).max(0.0)).round());
+    let top = (row_at.translation.y - (col_at.translation.y - col.size.y / 2.0)) * k - PREVIEW_CARD_H / 2.0;
+    let top = px(top.clamp(0.0, (col.size.y * k - PREVIEW_CARD_H).max(0.0)).round());
     if node.top != top {
         node.top = top;
     }

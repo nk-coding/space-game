@@ -30,6 +30,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::text::{Justify, LineBreak};
 use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::window::PrimaryWindow;
 use data::{Blueprint, Content};
 use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
@@ -79,8 +80,10 @@ const DESIGNS_W: f32 = 480.0;
 const TEMPLATES_W: f32 = 344.0;
 const PREVIEW_W: f32 = 208.0;
 const LISTS_GAP: f32 = 24.0;
-/// The preview's ship drawing's height (it is fitted into the card's width and this).
+/// The preview's ship drawing's height (it is fitted into the card's width and this) and the card's height (fixed,
+/// so the card is placed before its first layout: the ship, its four numbers and the padding).
 const PREVIEW_SHIP_H: f32 = 96.0;
+const PREVIEW_CARD_H: f32 = 240.0;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -486,6 +489,7 @@ mod tests {
             shelf.templates = vec!["rim_skiff".into(), "halvex_runner".into()];
             shelf.offset = [0, 1];
         }
+        world.spawn((Window::default(), PrimaryWindow));
         let row = world.spawn((RowNode(1, 0), Hot { hovered: true, pressed: false }, Node::default())).id();
         world.spawn((PreviewColumn, Node::default()));
         let card = world.spawn((PreviewCard::default(), Node { display: Display::None, ..default() })).id();
@@ -508,7 +512,14 @@ mod tests {
         world.run_system(preview).unwrap();
         assert!(!world.entity(ship).get_ref::<UiIcon>().unwrap().last_changed().is_newer_than(tick, world.change_tick()));
 
+        // Over the gap to the next row it stays (moving down the list doesn't flash it); further off it goes.
+        let window = world.query_filtered::<Entity, With<PrimaryWindow>>().single(&world).unwrap();
+        let cursor = |world: &mut World, y: f64| world.get_mut::<Window>(window).unwrap().set_physical_cursor_position(Some(bevy::math::DVec2::new(0.0, y)));
         world.get_mut::<Hot>(row).unwrap().hovered = false;
+        cursor(&mut world, f64::from(ROW_GAP) - 1.0);
+        world.run_system(preview).unwrap();
+        assert!(world.get::<UiIcon>(ship).is_some());
+        cursor(&mut world, 50.0);
         world.run_system(preview).unwrap();
         assert!(world.get::<UiIcon>(ship).is_none());
         assert_eq!(world.get::<Node>(card).unwrap().display, Display::None);
