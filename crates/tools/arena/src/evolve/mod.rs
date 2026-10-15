@@ -260,6 +260,7 @@ impl Run {
                     size: (0, 0),
                     parts: Vec::new(),
                     behavior: None,
+                    assists: None,
                     source: Default::default(),
                 };
                 (header, content_behavior(content, &id).map_err(start_err)?, None)

@@ -110,4 +110,48 @@
         role: Condition,
         value: Seconds,
     ),
+    (
+        id: "speed",
+        name: "Speed",
+        summary: "How fast you fly, as a share of your top speed.",
+        description: "The top speed is that of the thrusters along your best axis. Nothing to measure while none of them can push.",
+        tags: ["self", "flight"],
+        role: Condition,
+        value: Percent,
+    ),
+    (
+        id: "can_stop_straight",
+        name: "Can stop straight",
+        summary: "You can stop without turning: thrusters already push against your motion.",
+        description: "True while you stand still. A small sideways share of the motion needs no thruster of its own. A ship with engines only at the back has to turn around to stop.",
+        tags: ["self", "flight"],
+        role: Condition,
+    ),
+    // The pilot's own conditions (`pilot: true`): only in a design's PILOT ASSISTS (GDR-0088).
+    (
+        id: "lock_held",
+        name: "Lock held",
+        summary: "You hold a lock on a ship or a piece.",
+        tags: ["pilot"],
+        role: Condition,
+        pilot: true,
+    ),
+    (
+        id: "idle",
+        name: "Idle",
+        summary: "Seconds since you last used a control: turning, thrust, the triggers, or any of them.",
+        description: "Counts from the start of the mission while you haven't. Under a lock the aim nudge counts as turning.",
+        tags: ["pilot", "timer"],
+        role: Condition,
+        value: Seconds,
+        pilot: true,
+        params: [
+            (id: "control", name: "Control", type: Choice([
+                (id: "any", name: "Any", summary: "Turning, thrust or a trigger."),
+                (id: "turn", name: "Turning", summary: "Turning the ship (A / D, or the touch stick)."),
+                (id: "thrust", name: "Thrust", summary: "Thrust and strafe (W / S / Q / E, or the touch stick)."),
+                (id: "fire", name: "Triggers", summary: "Any fire trigger."),
+            ]), default: "any"),
+        ],
+    ),
 ]

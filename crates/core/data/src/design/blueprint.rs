@@ -11,7 +11,7 @@ use crate::content::problem::Problem;
 
 /// Writes a blueprint as RON: the header fields, `size`, then `parts` with one placement per line, four-space
 /// indent. Defaults are left out: `rot: 0`, `flip: false`, a placement's `material` and `power` when absent,
-/// `description`, `lore` and `behavior` when absent, `tags` when empty; a `power` override writes only the
+/// `description`, `lore`, `behavior` and `assists` when absent, `tags` when empty; a `power` override writes only the
 /// fields it sets. `source` is never written. Strings escape `"`, `\` and control characters (`\n`, `\t`,
 /// `\u{..}`); other characters, unicode included, are written as they are.
 ///
@@ -35,6 +35,17 @@ pub fn blueprint_to_ron(bp: &Blueprint) -> String {
     field(&mut s, "faction", &string(&bp.faction));
     if let Some(b) = &bp.behavior {
         field(&mut s, "behavior", &string(b));
+    }
+    if let Some(a) = &bp.assists {
+        s.push_str("    assists: (\n");
+        if let Some(t) = &a.target {
+            let _ = writeln!(s, "        target: {},", string(t));
+        }
+        s.push_str("        rules: [\n");
+        for r in &a.rules {
+            let _ = writeln!(s, "            {},", string(r));
+        }
+        s.push_str("        ],\n    ),\n");
     }
     field(&mut s, "size", &format!("({}, {})", bp.size.0, bp.size.1));
     if bp.parts.is_empty() {

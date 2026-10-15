@@ -112,6 +112,7 @@ pub(super) fn heat_stress_blueprint() -> data::Blueprint {
             p("logic_core", 2, 3),
         ],
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }
@@ -156,6 +157,7 @@ pub(super) fn burner_blueprint() -> data::Blueprint {
         size: (3, 6),
         parts,
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }

@@ -11,6 +11,9 @@ impl<'a> Validator<'a> {
         if let Some(b) = &s.behavior {
             self.behavior_ref(s, b);
         }
+        if let Some(a) = &s.assists {
+            self.assists(s, a);
+        }
         let (sw, sh) = s.size;
         let size_ok = if sw == 0 || sh == 0 {
             self.err(s, "size", "size must be at least 1×1");

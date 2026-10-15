@@ -54,6 +54,7 @@ pub fn blueprint(parts: &[P]) -> Blueprint {
             })
             .collect(),
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }

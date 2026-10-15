@@ -28,6 +28,12 @@ impl<'a> Validator<'a> {
         if n.value.is_some() && n.role != NodeRole::Condition {
             self.err(n, "value", "only conditions yield a value");
         }
+        if n.pilot && n.role == NodeRole::Target {
+            self.err(n, "pilot", "target selectors serve behaviors and pilot assists alike");
+        }
+        if n.pilot && n.script.is_some() {
+            self.err(n, "pilot", "a scripted condition sees only `me` and `target`, nothing of the pilot");
+        }
         if let Some(script) = &n.script {
             if n.role != NodeRole::Condition {
                 self.err(n, "script", "only conditions can be scripted (for now)");
@@ -149,12 +155,27 @@ impl<'a> Validator<'a> {
                 return;
             }
         };
-        for e in crate::behavior::check_program(&program, &self.c.behavior_nodes) {
-            let msg = match e.line {
-                crate::behavior::LineRef::Whole => e.message,
-                _ => format!("column {}: {}", e.col, e.message),
+        let errors = crate::behavior::check_program(&program, &self.c.behavior_nodes);
+        self.line_errors(b, "", errors);
+    }
+
+    /// A design's pilot assists (GDR-0088): rules checked as an assist list.
+    pub(super) fn assists(&mut self, s: &'a Blueprint, a: &AssistList) {
+        let errors = match a.program() {
+            Ok(program) => crate::behavior::check_assists(&program, &self.c.behavior_nodes),
+            Err(errors) => errors,
+        };
+        self.line_errors(s, "assists.", errors);
+    }
+
+    /// Errors of a program's lines, at their fields (`rules[2]`) under `prefix`.
+    fn line_errors<T: Entry>(&mut self, e: &T, prefix: &str, errors: Vec<crate::behavior::LineError>) {
+        for err in errors {
+            let msg = match err.line {
+                crate::behavior::LineRef::Whole => err.message,
+                _ => format!("column {}: {}", err.col, err.message),
             };
-            self.err(b, e.line.field(), msg);
+            self.err(e, format!("{prefix}{}", err.line.field()), msg);
         }
     }
 }

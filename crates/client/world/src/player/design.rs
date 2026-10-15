@@ -57,6 +57,7 @@ impl PlayerDesign {
             size: (0, 0),
             parts: Vec::new(),
             behavior: None,
+            assists: None,
             source: Default::default(),
         };
         let ship = content.ships.get(ship).cloned().unwrap_or_else(empty);

@@ -134,6 +134,9 @@ impl BehaviorEditor {
                 expected: role,
             });
         }
+        if !self.kind.allows(node) {
+            return Err(Refusal::NotInList(id.to_string()));
+        }
         Ok(node)
     }
 
@@ -271,7 +274,7 @@ impl BehaviorEditor {
     /// The invariant (checked after every change in debug builds): the program checks against the
     /// vocabulary, survives its text form, and the ids match its shape.
     pub(super) fn is_legal(&self) -> bool {
-        check_program(&self.program, &self.nodes).is_empty()
+        check_list(&self.program, &self.nodes, self.kind).is_empty()
             && Program::parse(&self.program.to_text()).is_ok_and(|p| p == self.program)
             && self.ids.len() == self.program.rules.len()
             && self

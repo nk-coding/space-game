@@ -10,6 +10,9 @@ impl Wiki<'_> {
             extra.push("<span class=\"badge rhai\">Rhai</span>".into());
         }
         let mut facts = vec![("Role".to_string(), role_name(n.role).to_string())];
+        if n.pilot {
+            facts.push(("Used in".into(), "pilot assists only (a design's PILOT ASSISTS list, GDR-0088)".into()));
+        }
         if let Some(q) = n.value {
             facts.push((
                 "Value".into(),

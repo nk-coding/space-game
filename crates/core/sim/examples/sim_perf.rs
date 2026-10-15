@@ -73,6 +73,7 @@ fn big_ship(w: i32, h: i32) -> Blueprint {
         size: (w as u32, h as u32),
         parts,
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }

@@ -1,0 +1,76 @@
+// Pilot assists (GDR-0088): the actions of a design's PILOT ASSISTS list (the BEHAVIOR screen's PILOT ASSISTS tab;
+// `pilot: true`, so behaviors can't use them and an assist list has no others). They run only on the ship the player
+// flies, each on one control channel: turning (`face_target`), thrust (`brake`) or one weapon group's trigger
+// (`auto_fire`). The pilot always wins: a channel the player uses is the player's, and letting go hands it back. For
+// each channel the first rule that matches decides, so assists on different channels run together. `toggle` names
+// the ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when a mission starts.
+// Built into the sim (`sim::behavior`). PLACEHOLDER defaults.
+[
+    (
+        id: "face_target",
+        name: "Face target",
+        summary: "Turn your strongest guns onto the target while you don't steer.",
+        description: "The target is your lock while you hold one (a lock aims the ship by itself, so this assist waits then); without a lock the list's target line picks one, by default the nearest enemy.",
+        tags: ["assist", "turning"],
+        role: Action,
+        pilot: true,
+        params: [
+            (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
+                (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
+                (id: "toggle1", name: "1"),
+                (id: "toggle2", name: "2"),
+                (id: "toggle3", name: "3"),
+                (id: "toggle4", name: "4"),
+            ]), default: "none"),
+            (id: "start", name: "At start", summary: "On or off when a mission starts.", type: Choice([
+                (id: "on", name: "On"),
+                (id: "off", name: "Off"),
+            ]), default: "on"),
+        ],
+    ),
+    (
+        id: "brake",
+        name: "Brake",
+        summary: "Stop the ship while you don't thrust, with the thrusters that push against the motion; it never turns the ship.",
+        description: "A ship with engines only at the back can't brake without turning: give the rule `can_stop_straight`, or let Face target point it.",
+        tags: ["assist", "thrust"],
+        role: Action,
+        pilot: true,
+        params: [
+            (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
+                (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
+                (id: "toggle1", name: "1"),
+                (id: "toggle2", name: "2"),
+                (id: "toggle3", name: "3"),
+                (id: "toggle4", name: "4"),
+            ]), default: "none"),
+            (id: "start", name: "At start", summary: "On or off when a mission starts.", type: Choice([
+                (id: "on", name: "On"),
+                (id: "off", name: "Off"),
+            ]), default: "on"),
+        ],
+    ),
+    (
+        id: "auto_fire",
+        name: "Auto-fire",
+        summary: "Fire a weapon group by itself whenever its guns bear on the target.",
+        description: "Each gun of the group fires when the target (its lead point, for projectile guns) is in front of that gun and within its reach: the same test as a behavior's fire at will. Holding the group's trigger fires it as usual.",
+        tags: ["assist", "fire"],
+        role: Action,
+        pilot: true,
+        params: [
+            (id: "group", name: "Group", summary: "The weapon group it fires (each gun's group is set in the drydock).", type: Count, default: "1", min: 1, max: 3),
+            (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
+                (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
+                (id: "toggle1", name: "1"),
+                (id: "toggle2", name: "2"),
+                (id: "toggle3", name: "3"),
+                (id: "toggle4", name: "4"),
+            ]), default: "none"),
+            (id: "start", name: "At start", summary: "On or off when a mission starts.", type: Choice([
+                (id: "on", name: "On"),
+                (id: "off", name: "Off"),
+            ]), default: "on"),
+        ],
+    ),
+]

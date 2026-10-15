@@ -153,6 +153,10 @@ pub struct BehaviorNode {
     pub value: Option<Quantity>,
     #[serde(default)]
     pub params: Vec<NodeParam>,
+    /// Only in a design's PILOT ASSISTS list (GDR-0088): an assist action, or a condition about the pilot's own
+    /// input. Behaviors can't use it, and an assist list takes no other action ([`crate::behavior::ListKind`]).
+    #[serde(default)]
+    pub pilot: bool,
     /// Rhai source of a custom condition (tagged "Rhai" in the editor): an expression or statements that
     /// end in `true` or `false`. `None` = built into the sim.
     #[serde(default)]

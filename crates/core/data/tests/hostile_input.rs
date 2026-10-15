@@ -35,6 +35,7 @@ fn design(size: (u32, u32), parts: Vec<Placement>) -> Blueprint {
         size,
         parts,
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }

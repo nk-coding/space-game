@@ -5,7 +5,8 @@
 //! program with [`BehaviorEditor::set_text`]. The rules are documented in `docs/behavior-format.md` ("Editing
 //! model").
 //!
-//! The program is always legal: it passes [`check_program`] against the vocabulary, has at least one rule and
+//! The program is always legal: it passes [`check_list`] against the vocabulary for its [`ListKind`] (a behavior or
+//! a design's pilot assists, GDR-0088), has at least one rule (a behavior; an assist list may have none) and
 //! keeps the limits of the text format ([`MAX_RULES`] rules, [`MAX_CONDITIONS`] conditions per rule,
 //! [`MAX_LINE_CHARS`] characters per line). An operation that would break that is refused with a [`Refusal`]
 //! and changes nothing. The canonical text gives the program back: [`BehaviorEditor::from_text`] of
@@ -38,7 +39,7 @@ use std::fmt;
 
 use crate::behavior::{
     Arg, Call, CmpOp, Col, Compare, Cond, MAX_CONDITIONS, MAX_LINE_CHARS, MAX_REACH_PERCENT,
-    MAX_RULES, Program, Rule, TargetLine, TextError, Unit, Value, check_param_value, check_program,
+    MAX_RULES, ListKind, Program, Rule, TargetLine, TextError, Unit, Value, check_list, check_param_value,
     param_amount, parse_value, quantity_amount,
 };
 use crate::design::edit::UNDO_STEPS;
@@ -96,6 +97,9 @@ pub enum Refusal {
     LineTooLong,
     /// A behavior keeps at least one rule.
     LastRule,
+    /// The node doesn't belong in this kind of list ([`ListKind::allows`]): a pilot assist's node in a behavior,
+    /// a behavior's maneuver in pilot assists.
+    NotInList(String),
     /// No such position in the rule list.
     BadIndex(usize),
     /// A note is one line of text: no line breaks or other control characters.
@@ -129,6 +133,7 @@ impl fmt::Display for Refusal {
             }
             Refusal::LineTooLong => write!(f, "a line holds at most {MAX_LINE_CHARS} characters"),
             Refusal::LastRule => f.write_str("a behavior needs at least one rule"),
+            Refusal::NotInList(id) => write!(f, "`{id}` doesn't belong in this list"),
             Refusal::BadIndex(i) => write!(f, "there is no place {i} in the rule list"),
             Refusal::BadNote => f.write_str("a note is one line of text"),
         }
@@ -301,6 +306,8 @@ impl Place {
 #[derive(Clone, Debug)]
 pub struct BehaviorEditor {
     nodes: Table<BehaviorNode>,
+    /// A behavior or a design's pilot assists: what may be written, and whether a rule is needed.
+    kind: ListKind,
     program: Program,
     /// The ids of `program.rules`, same order.
     ids: Vec<RuleIds>,
@@ -329,9 +336,28 @@ impl BehaviorEditor {
         nodes: &Table<BehaviorNode>,
         text: &str,
     ) -> Result<BehaviorEditor, Vec<TextError>> {
-        let program = crate::behavior::check_text(text, nodes)?;
+        BehaviorEditor::from_text_as(nodes, text, ListKind::Behavior)
+    }
+
+    /// [`BehaviorEditor::open`] for a list of either kind (a design's pilot assists may have no rule at all).
+    pub fn open_as(
+        nodes: &Table<BehaviorNode>,
+        program: &Program,
+        kind: ListKind,
+    ) -> Result<BehaviorEditor, Vec<TextError>> {
+        BehaviorEditor::from_text_as(nodes, &program.to_text(), kind)
+    }
+
+    /// [`BehaviorEditor::from_text`] for a list of either kind.
+    pub fn from_text_as(
+        nodes: &Table<BehaviorNode>,
+        text: &str,
+        kind: ListKind,
+    ) -> Result<BehaviorEditor, Vec<TextError>> {
+        let program = crate::behavior::check_text_as(text, nodes, kind)?;
         let mut ed = BehaviorEditor {
             nodes: nodes.clone(),
+            kind,
             program: Program::default(),
             ids: Vec::new(),
             next_id: 0,
@@ -361,6 +387,11 @@ impl BehaviorEditor {
     /// The vocabulary the program is written in.
     pub fn nodes(&self) -> &Table<BehaviorNode> {
         &self.nodes
+    }
+
+    /// A behavior or a design's pilot assists.
+    pub fn kind(&self) -> ListKind {
+        self.kind
     }
 
     /// Goes up by one with every change of the program (edits, undo, redo); the client caches views per
@@ -439,15 +470,15 @@ impl BehaviorEditor {
         self.program.rules.len().min(slots as usize)
     }
 
-    /// The vocabulary of one role in content order (the add-node palette).
+    /// The vocabulary of one role in content order that this kind of list may use (the add-node palette).
     pub fn palette(&self, role: NodeRole) -> impl Iterator<Item = &BehaviorNode> + '_ {
-        self.nodes.iter().filter(move |n| n.role == role)
+        self.nodes.iter().filter(move |n| n.role == role && self.kind.allows(n))
     }
 
     /// Parses and checks a text against the vocabulary without changing anything (the text view's live
     /// errors). Every error has its line and column.
     pub fn check_text(&self, text: &str) -> Result<Program, Vec<TextError>> {
-        crate::behavior::check_text(text, &self.nodes)
+        crate::behavior::check_text_as(text, &self.nodes, self.kind)
     }
 }
 

@@ -121,11 +121,42 @@ pub fn check_param_value(v: &Value, p: &NodeParam) -> Result<Amount, String> {
 // ---------------------------------------------------------------------------------------------------------
 // Checking against the vocabulary
 
+/// Which rule list a program is (GDR-0088): a behavior, which flies a ship nobody pilots, or a design's PILOT
+/// ASSISTS, which help the player fly it. Both are written in the same format with the same conditions and target
+/// selectors; the nodes marked `pilot` (`BehaviorNode::pilot`) belong to assist lists only, and an assist list's
+/// actions are those.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ListKind {
+    #[default]
+    Behavior,
+    Assists,
+}
+
+impl ListKind {
+    /// May this node be written in such a list?
+    pub fn allows(self, n: &BehaviorNode) -> bool {
+        match self {
+            ListKind::Behavior => !n.pilot,
+            ListKind::Assists => n.pilot || n.role != NodeRole::Action,
+        }
+    }
+
+    /// A list needs a rule: a behavior does (a ship must do something), an assist list doesn't (none: the ship coasts).
+    pub fn needs_a_rule(self) -> bool {
+        self == ListKind::Behavior
+    }
+}
+
 /// Parses a behavior text and checks it against the vocabulary: the program, or every syntax and vocabulary
 /// error with its text line and column (what a text view shows as live errors).
 pub fn check_text(text: &str, nodes: &Table<BehaviorNode>) -> Result<Program, Vec<TextError>> {
+    check_text_as(text, nodes, ListKind::Behavior)
+}
+
+/// [`check_text`] for a list of either kind.
+pub fn check_text_as(text: &str, nodes: &Table<BehaviorNode>, kind: ListKind) -> Result<Program, Vec<TextError>> {
     let (program, lines) = Program::parse_with_lines(text)?;
-    let errors = check_program(&program, nodes);
+    let errors = check_list(&program, nodes, kind);
     if errors.is_empty() { Ok(program) } else { Err(errors.into_iter().map(|e| lines.to_text_error(e)).collect()) }
 }
 
@@ -133,8 +164,18 @@ pub fn check_text(text: &str, nodes: &Table<BehaviorNode>) -> Result<Program, Ve
 /// conditions are compared (and flag conditions are not), arguments fit their parameters, required ones are
 /// present, numbers are in range. Returns every problem found.
 pub fn check_program(p: &Program, nodes: &Table<BehaviorNode>) -> Vec<LineError> {
+    check_list(p, nodes, ListKind::Behavior)
+}
+
+/// [`check_program`] for a design's pilot assists: no rule at all is fine, and the actions are the assists'.
+pub fn check_assists(p: &Program, nodes: &Table<BehaviorNode>) -> Vec<LineError> {
+    check_list(p, nodes, ListKind::Assists)
+}
+
+/// [`check_program`] for a list of either kind.
+pub fn check_list(p: &Program, nodes: &Table<BehaviorNode>, kind: ListKind) -> Vec<LineError> {
     let mut out = Vec::new();
-    if p.rules.is_empty() {
+    if p.rules.is_empty() && kind.needs_a_rule() {
         out.push(LineError {
             line: LineRef::Whole,
             col: 1,
@@ -146,13 +187,13 @@ pub fn check_program(p: &Program, nodes: &Table<BehaviorNode>) -> Vec<LineError>
     }
     if let Some(t) = &p.target {
         check_printed_length(t, LineRef::Target, &mut out);
-        check_call(&t.call, NodeRole::Target, nodes, LineRef::Target, &mut out);
+        check_call(&t.call, NodeRole::Target, nodes, kind, LineRef::Target, &mut out);
     }
     for (i, r) in p.rules.iter().enumerate() {
         let at = LineRef::Rule(i);
         check_printed_length(r, at, &mut out);
         for c in &r.when {
-            let Some(node) = check_call(&c.call, NodeRole::Condition, nodes, at, &mut out) else {
+            let Some(node) = check_call(&c.call, NodeRole::Condition, nodes, kind, at, &mut out) else {
                 continue;
             };
             match (node.value, &c.cmp) {
@@ -188,7 +229,7 @@ pub fn check_program(p: &Program, nodes: &Table<BehaviorNode>) -> Vec<LineError>
                 (None, None) => {}
             }
         }
-        check_call(&r.action, NodeRole::Action, nodes, at, &mut out);
+        check_call(&r.action, NodeRole::Action, nodes, kind, at, &mut out);
     }
     out
 }
@@ -235,6 +276,7 @@ pub(super) fn check_call<'a>(
     call: &Call,
     role: NodeRole,
     nodes: &'a Table<BehaviorNode>,
+    kind: ListKind,
     at: LineRef,
     out: &mut Vec<LineError>,
 ) -> Option<&'a BehaviorNode> {
@@ -249,7 +291,7 @@ pub(super) fn check_call<'a>(
             &call.name,
             nodes
                 .iter()
-                .filter(|n| n.role == role)
+                .filter(|n| n.role == role && kind.allows(n))
                 .map(|n| n.id.as_str()),
         ) {
             msg += &format!("; did you mean `{s}`?");
@@ -267,6 +309,17 @@ pub(super) fn check_call<'a>(
                 role_word(role)
             ),
         ));
+        return None;
+    }
+    if !kind.allows(node) {
+        let message = match kind {
+            ListKind::Behavior => format!("`{}` is for pilot assists only", node.id),
+            ListKind::Assists => {
+                let assists: Vec<&str> = nodes.iter().filter(|n| n.pilot && n.role == role).map(|n| n.id.as_str()).collect();
+                format!("`{}` is a behavior's maneuver; pilot assists use {}", node.id, assists.join(", "))
+            }
+        };
+        out.push(err(call.col, message));
         return None;
     }
     if call.args.len() > node.params.len() {

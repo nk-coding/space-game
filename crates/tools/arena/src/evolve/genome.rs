@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use data::behavior::{CmpOp, MAX_RULES, Program, Value};
+use data::behavior::{CmpOp, ListKind, MAX_RULES, Program, Value};
 use data::behavior::edit::{BehaviorEditor, NodeRef};
 use data::design::edit::{Drydock, Outcome, Refusal, Twin};
 use data::design::geometry::PlacedShape;
@@ -131,7 +131,7 @@ impl Kit {
             content
                 .behavior_nodes
                 .iter()
-                .filter(|n| n.role == role)
+                .filter(|n| n.role == role && ListKind::Behavior.allows(n))
                 .map(|n| n.id.clone())
                 .collect::<Vec<_>>()
         };

@@ -399,6 +399,7 @@ fn header(bp: &Blueprint) -> Blueprint {
         size: bp.size,
         parts: Vec::new(),
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }

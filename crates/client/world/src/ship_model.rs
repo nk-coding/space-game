@@ -349,6 +349,7 @@ mod tests {
                 at("gyro", 4, 1, None),
             ],
             behavior: None,
+            assists: None,
             source: Default::default(),
         };
         let grid = content.ship_grid(&ship).unwrap();

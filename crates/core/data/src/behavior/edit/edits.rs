@@ -88,10 +88,10 @@ impl BehaviorEditor {
         Ok(id)
     }
 
-    /// Deletes a rule; refused for the last one.
+    /// Deletes a rule; refused for a behavior's last one.
     pub fn delete_rule(&mut self, id: RuleId) -> Result<bool, Refusal> {
         let index = self.index_of(id)?;
-        if self.program.rules.len() == 1 {
+        if self.program.rules.len() == 1 && self.kind.needs_a_rule() {
             return Err(Refusal::LastRule);
         }
         let entry = self.entry(index);

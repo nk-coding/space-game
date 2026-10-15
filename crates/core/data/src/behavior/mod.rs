@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::model::{BehaviorNode, NodeParam, NodeRole, ParamType, Quantity};
 use crate::content::table::Table;
 
-pub use check::{Amount, check_param_value, check_program, check_text, param_amount, quantity_amount, resolve_args, suggest};
+pub use check::{Amount, ListKind, check_assists, check_list, check_param_value, check_program, check_text, check_text_as, param_amount, quantity_amount, resolve_args, suggest};
 use check::too_many_rules;
 pub use parse::parse_value;
 use parse::{Line, parse_line, parse_target_part};

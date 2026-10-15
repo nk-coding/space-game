@@ -408,6 +408,7 @@ pub fn new_design(content: &Content, frame: (u32, u32), like: &Blueprint, names:
         parts: Vec::new(),
         size: frame,
         behavior: None,
+        assists: None,
         ..like.clone()
     };
     PlayerDesign::open(content, &bp, frame).map_err(|e| open_error_text(&e))

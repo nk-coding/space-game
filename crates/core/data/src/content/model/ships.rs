@@ -34,6 +34,37 @@ pub struct Placement {
 /// Weapon groups a gun can be in (GDR-0088).
 pub const MAX_WEAPON_GROUP: u8 = 3;
 
+/// Toggle slots for pilot assists (GDR-0088): the actions ASSIST TOGGLE 1 to 4; an assist rule names the one that
+/// switches it in flight (the assist actions' `toggle` parameter, `toggle1` to `toggle4`).
+pub const MAX_ASSIST_TOGGLES: u8 = 4;
+
+/// A design's PILOT ASSISTS (GDR-0088): rules in the behavior format (`docs/behavior-format.md` "Pilot assists")
+/// that help the player fly the ship; they run only while it is the focus. `target` and `rules` are lines as in a
+/// content behavior.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssistList {
+    /// The target selector (`"nearest"`); default `nearest`. The pilot's lock, while one is held, comes first.
+    #[serde(default)]
+    pub target: Option<String>,
+    /// The assist rules, one line each (`"when idle(thrust) >= 1s -> brake(toggle2)"`).
+    #[serde(default)]
+    pub rules: Vec<String>,
+}
+
+impl AssistList {
+    /// Parses `target` and `rules` (syntax only; see [`crate::behavior::check_assists`]).
+    pub fn program(&self) -> Result<crate::behavior::Program, Vec<crate::behavior::LineError>> {
+        crate::behavior::Program::from_parts(self.target.as_deref(), &self.rules)
+    }
+
+    /// The list of a program (`None` for one without rules and target: no assists).
+    pub fn of(program: &crate::behavior::Program) -> Option<AssistList> {
+        let (target, rules) = program.to_parts();
+        (target.is_some() || !rules.is_empty()).then_some(AssistList { target, rules })
+    }
+}
+
 /// `frames.ron` / `frames/*.ron`: a drydock frame (GDR-0006), the grid a design is built on. Bigger frames come
 /// with drydock expansions. Order in the files = order in the drydock.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -88,6 +119,9 @@ pub struct Blueprint {
     /// Behavior (id) this ship flies under when it is not piloted; default: its faction's behavior.
     #[serde(default)]
     pub behavior: Option<String>,
+    /// Its pilot assists (GDR-0088); none: the ship coasts when the player lets go.
+    #[serde(default)]
+    pub assists: Option<AssistList>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

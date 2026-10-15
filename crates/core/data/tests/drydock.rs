@@ -27,6 +27,7 @@ fn design(parts: Vec<Placement>) -> Blueprint {
         size: (4, 4),
         parts,
         behavior: None,
+        assists: None,
         source: Default::default(),
     }
 }

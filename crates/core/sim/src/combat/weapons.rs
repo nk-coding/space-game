@@ -1026,6 +1026,7 @@ mod tests {
             size: (5, 4),
             parts,
             behavior: None,
+            assists: None,
             source: Default::default(),
         };
         let d = Arc::new(ShipDesign::compile(&content, &bp).unwrap());
