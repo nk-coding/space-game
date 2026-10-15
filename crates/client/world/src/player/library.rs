@@ -234,6 +234,8 @@ pub struct Entry {
     pub parts: usize,
     /// When it was saved (Unix seconds).
     pub saved: Option<u64>,
+    /// Where an evolved design came from (the evolution lab's run): BLUEPRINTS tags it EVOLVED.
+    pub origin: Option<data::Origin>,
     /// Why it can't be read (it is listed anyway, so it can be deleted).
     pub problem: Option<String>,
 }
@@ -252,11 +254,12 @@ pub fn list_designs(storage: &Storage, content: &Content) -> Result<Vec<Entry>, 
                     size: parts_size(content, bp),
                     parts: bp.parts.len(),
                     saved: s.saved,
+                    origin: bp.origin.clone(),
                     problem: None,
                 }
             }
             Ok(None) => continue,
-            Err(e) => Entry { name: id.clone(), id, frame: (0, 0), size: (0, 0), parts: 0, saved: None, problem: Some(e.to_string()) },
+            Err(e) => Entry { name: id.clone(), id, frame: (0, 0), size: (0, 0), parts: 0, saved: None, origin: None, problem: Some(e.to_string()) },
         });
     }
     out.sort_by(|a, b| b.saved.cmp(&a.saved).then_with(|| a.name.cmp(&b.name)));

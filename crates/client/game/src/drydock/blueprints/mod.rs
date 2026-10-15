@@ -406,6 +406,27 @@ mod tests {
         assert_eq!(world.resource::<PlayerDesign>().blueprint().name, "Halvex Runner");
     }
 
+    /// A design saved by the evolution lab's SAVE AS DESIGN (one with an origin) is listed with it and tagged EVOLVED
+    /// in YOUR DESIGNS, its line saying where it came from; one built by hand isn't.
+    #[test]
+    fn evolved_designs_are_tagged_with_their_origin() {
+        let world = world();
+        let content = world.resource::<GameContent>().0.clone();
+        let skiff = content.ships.get("rim_skiff").unwrap().clone();
+        let origin = data::Origin { run: "evolving".into(), genome: 41, generation: 37, from: vec!["rim_skiff".into()], score: 0.9 };
+        let mut storage = Storage::new(MemoryBackend::default());
+        storage.write("skiff_evolved", &DesignDoc(Blueprint { id: "skiff_evolved".into(), name: "Evolved".into(), origin: Some(origin), ..skiff.clone() }), 20).unwrap();
+        storage.write("skiff_plain", &DesignDoc(Blueprint { id: "skiff_plain".into(), name: "Plain".into(), ..skiff }), 10).unwrap();
+        let shelf = Shelf { designs: library::list_designs(&storage, &content).unwrap(), ..default() };
+        let (evolved, plain) = (&shelf.designs[0], &shelf.designs[1]);
+        assert_eq!(evolved.origin.as_ref().map(|o| o.genome), Some(41));
+        assert_eq!(sync::row_tag(evolved, false, false), ("EVOLVED".into(), Tone::Gold));
+        assert_eq!(sync::row_tag(evolved, true, true).0, "EVOLVED  ·  IN THE DRYDOCK  ·  UNSAVED");
+        assert_eq!(sync::row_tag(plain, false, false).0, "");
+        assert_eq!(sync::row_head(&content, &shelf, evolved), "FROM RIM SKIFF  ·  G37");
+        assert_eq!(sync::row_head(&content, &shelf, plain), "8×4", "its frame (the skiff file is its own size)");
+    }
+
     /// The saved state after the name reads like the BEHAVIOR screen's: UNSAVED gold, SAVED grey.
     #[test]
     fn the_title_tag_matches_the_behavior_screen() {

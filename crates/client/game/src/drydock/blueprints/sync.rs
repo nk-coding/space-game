@@ -155,8 +155,8 @@ pub(super) fn sync_shelf(
                     Tone::Coral
                 }
                 Some(e) => {
-                    let frame = frame_name(content, e.frame).replace(" FRAME", "");
-                    s.push_str(&format!("{frame}  ·  {}×{}  ·  {} PARTS", e.size.0, e.size.1, e.parts));
+                    s.push_str(&row_head(content, &shelf, e));
+                    s.push_str(&format!("  ·  {}×{}  ·  {} PARTS", e.size.0, e.size.1, e.parts));
                     if let Some(t) = e.saved {
                         s.push_str(&format!("  ·  {}", library::ago(shelf.now, t)));
                     }
@@ -172,12 +172,14 @@ pub(super) fn sync_shelf(
                 }
                 sub_tone(picked(1, k))
             }
-            ShelfText::RowTag(list, k) => {
-                if list == 0 && shelf.designs.get(shelf.offset[0] + k).is_some_and(|e| Some(e.id.as_str()) == working) {
-                    s.push_str(if working_dirty { "IN THE DRYDOCK  ·  UNSAVED" } else { "IN THE DRYDOCK" });
+            ShelfText::RowTag(list, k) => match shelf.designs.get(shelf.offset[0] + k).filter(|_| list == 0) {
+                Some(e) => {
+                    let (tag, tone) = row_tag(e, Some(e.id.as_str()) == working, working_dirty);
+                    s.push_str(&tag);
+                    tone
                 }
-                Tone::Teal
-            }
+                None => Tone::Teal,
+            },
             ShelfText::DeleteQuestion => {
                 if let Mode::Delete(id) = &shelf.mode {
                     let name = shelf.entry(id).map_or(id.as_str(), |e| e.name.as_str());
@@ -214,6 +216,23 @@ pub(super) fn sync_shelf(
         set_text(&mut text, &s);
         set_color(&mut color, c(tone, if matches!(t, ShelfText::Code) { 0.9 } else { 1.0 }));
     }
+}
+
+/// The start of a saved design's line: its frame, or for an evolved design where it came from (GDR-0092: `FROM RIM
+/// SKIFF COPY · G37`; its origin's first design by the name of a saved design or a content ship, else its id).
+pub(super) fn row_head(content: &Content, shelf: &Shelf, e: &Entry) -> String {
+    let Some(o) = &e.origin else { return frame_name(content, e.frame).replace(" FRAME", "") };
+    let id = o.from.first().map_or("", String::as_str);
+    let name = shelf.designs.iter().find(|d| d.id == id).map(|d| d.name.as_str()).or_else(|| content.ships.get(id).map(|b| b.name.as_str()));
+    format!("FROM {}  ·  G{}", name.unwrap_or(id).to_uppercase(), o.generation)
+}
+
+/// A saved design's tags and their tone: EVOLVED (gold) for one the evolution lab saved, IN THE DRYDOCK (teal, and
+/// UNSAVED) for the one being edited.
+pub(super) fn row_tag(e: &Entry, docked: bool, dirty: bool) -> (String, Tone) {
+    let tags = [e.origin.is_some().then_some("EVOLVED"), docked.then_some(if dirty { "IN THE DRYDOCK  ·  UNSAVED" } else { "IN THE DRYDOCK" })];
+    let tone = if docked { Tone::Teal } else { Tone::Gold };
+    (tags.into_iter().flatten().collect::<Vec<_>>().join("  ·  "), tone)
 }
 
 /// The preview follows the hovered row: built once per entry (the ship and its numbers, from a `sim::design_report`
