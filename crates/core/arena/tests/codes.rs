@@ -111,25 +111,25 @@ fn the_setup_and_referee_give_the_fights_result() {
     let idle = sim::TickInputs::default();
     let result = loop {
         setup.sim.step(&idle);
-        if let Some(r) = setup.referee.observe(&setup.sim) {
+        if let Some(r) = setup.referee.observe(&mut setup.sim) {
             break r;
         }
     };
     assert_eq!(result, run_fight(&content, &spec).unwrap());
-    assert_eq!(setup.referee.observe(&setup.sim), Some(result), "the end stays");
+    assert_eq!(setup.referee.observe(&mut setup.sim), Some(result), "the end stays");
     // A cloned world and referee go on as the original (the viewer's keyframes).
     let mut fight = Fight::new(&content, &spec).unwrap();
     fight.step(200);
     let mut setup = FightSetup::build(&content, &spec).unwrap();
     for _ in 0..200 {
         setup.sim.step(&idle);
-        setup.referee.observe(&setup.sim);
+        setup.referee.observe(&mut setup.sim);
     }
     let (mut sim, mut referee) = (setup.sim.clone(), setup.referee.clone());
     assert_eq!(sim.state_hash(), fight.sim().state_hash());
     let end = loop {
         sim.step(&idle);
-        if let Some(r) = referee.observe(&sim) {
+        if let Some(r) = referee.observe(&mut sim) {
             break r;
         }
     };

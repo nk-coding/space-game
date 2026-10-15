@@ -32,6 +32,11 @@ pub struct FightSpec {
     /// Seconds until the fight is scored as it stands.
     #[serde(default = "default_time_limit")]
     pub time_limit: f32,
+    /// Side 1's reinforcements (a gauntlet, GDR-0092): each wave comes in [`crate::WAVE_DELAY`] after the one before
+    /// has no running vessel left, around side 0's first running vessel as the test range's waves do
+    /// (`sim::voyage::waves::wave_bodies`). Left out (written only when there are any): a plain fight.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waves: Vec<Side>,
 }
 
 /// One side: its entries, placed one behind the other in this order (the first entry in front).
@@ -128,6 +133,7 @@ impl FightSpec {
             sides: [Side { entries: a }, Side { entries: b }],
             start_distance: DEFAULT_START_DISTANCE,
             time_limit: DEFAULT_TIME_LIMIT,
+            waves: Vec::new(),
         }
     }
 
@@ -159,7 +165,9 @@ impl FightSpec {
         };
         number("start_distance", self.start_distance, MAX_START_DISTANCE)?;
         number("time_limit", self.time_limit, MAX_TIME_LIMIT)?;
-        for (side, s) in self.sides.iter().enumerate() {
+        // Waves are checked like side 1 (each on its own: the ships of a wave come in when the last is out); an error
+        // names wave k as side 2 + k.
+        for (side, s) in self.sides.iter().chain(&self.waves).enumerate() {
             if s.entries.is_empty() {
                 return Err(ArenaError::EmptySide { side });
             }

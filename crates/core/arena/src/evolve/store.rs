@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sim::Pcg32;
 
 use super::lineage::rebuild;
-use super::{Archive, Bred, Elite, GenerationRecord, GenerationStats, Run, RunConfig, RunError};
+use super::{Archive, Bred, Elite, GenerationRecord, GenerationStats, Run, RunConfig, RunError, Validated, scored_in};
 
 /// The payload's tag (space game lab); the full prefix is `SGL<format>:`.
 pub const SAVE_TAG: &str = "SGL";
@@ -67,6 +67,12 @@ struct Payload {
     generations: Vec<GenerationRecord>,
     /// The archive's elites, by genome number, in cell order.
     archive: Vec<u32>,
+    /// A RE-SCORE is due (`Run::rescored`; written only then).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    rescore: bool,
+    /// VALIDATE's results (written only when there are any).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    validated: Vec<Validated>,
 }
 
 impl RunSave {
@@ -138,6 +144,8 @@ impl Run {
             genomes: genomes.to_vec(),
             generations: self.records.clone(),
             archive: self.archive.cells().values().map(|e| e.id).collect(),
+            rescore: self.rescore,
+            validated: self.validated.clone(),
         };
         RunSave {
             format: SAVE_FORMAT,
@@ -161,6 +169,8 @@ impl Run {
         let mut run = Run::new(content, save.config.clone())?;
         run.stale = run.rules != save.rules;
         run.rules = save.rules;
+        // RE-SCOREs take none of the run's generations: done ones and a due one add theirs.
+        run.generations += save.history.iter().filter(|h| h.rescore).count() as u32 + p.rescore as u32;
         if save.history.len() != p.generations.len() || save.history.len() > run.generations as usize {
             return Err(damaged("its generations don't match their numbers"));
         }
@@ -181,10 +191,8 @@ impl Run {
                 .genomes
                 .get(id as usize)
                 .ok_or_else(|| damaged("an elite is no genome"))?;
-            let child = p
-                .generations
-                .get(bred.generation as usize)
-                .and_then(|g| g.children.iter().find(|c| c.genome == id))
+            let child = scored_in(&save.history, &p.generations, bred.generation, id)
+                .map(|(g, k)| &p.generations[g as usize].children[k])
                 .ok_or_else(|| damaged("an elite was never scored"))?;
             let genome = rebuild(&p.genomes, &run.headers, id).ok_or_else(|| damaged("an elite doesn't rebuild"))?;
             archive.offer(Elite {
@@ -200,6 +208,8 @@ impl Run {
         run.table = p.genomes;
         run.records = p.generations;
         run.history = save.history.clone();
+        run.rescore = p.rescore;
+        run.validated = p.validated;
         Ok(run)
     }
 }

@@ -1,7 +1,7 @@
 //! The voyage fitness (`arena::voyage`) and the evolution (`arena::evolve`): determinism, slices and threads,
 //! limits, the configuration's text form and errors, and a tiny run that improves.
 
-use arena::evolve::{Fitness, Genes, Job, JobResult, Measure, Results};
+use arena::evolve::{Fitness, Genes, Job, JobRecord, JobResult, Measure, Results};
 use arena::{DesignRef, Run, RunConfig, RunError, VoyageSpec};
 use data::Content;
 use sim::voyage::runner::Outcome;
@@ -198,7 +198,7 @@ fn the_run_text_reads_back_and_errors_are_values() {
     );
     assert!(matches!(err(&voyages), Err(RunError::Config(_))));
     let cfg = config(&voyages.replace("EngageDistance", "Firepower"));
-    assert!(matches!(cfg.fitness, Fitness::Voyages { .. }));
+    assert!(matches!(cfg.fitness, Some(Fitness::Voyages { .. })));
     assert_eq!(cfg.archive.axes[0].measure, Measure::Firepower);
     assert!(Run::new(&c, cfg).is_ok());
 }
@@ -212,6 +212,7 @@ fn voyage_fitness_scores_a_run() {
         design: DesignRef::Ship("rim_skiff".into()),
         behavior: None,
         minutes: 4.0,
+        escorts: Vec::new(),
     };
     let run = arena::run_voyage(&c, &spec).unwrap();
     assert!(run.ticks <= spec.limit_ticks());
@@ -284,7 +285,7 @@ fn every_childs_fights_are_kept_and_jobs_are_data() {
         assert_eq!(rebuilt.len(), 2, "one opponent, two seeds");
         for (j, (job, rec)) in rebuilt.iter().zip(&r.jobs).enumerate() {
             assert_eq!(job, &jobs[k], "child {child}, job {j} rebuilds");
-            assert_eq!(*rec, (&results[k]).into());
+            assert_eq!(*rec, JobRecord::of(&results[k], false), "a run of the old form keeps no goals");
             k += 1;
             round_trip(job);
             round_trip(&results[k - 1]);
@@ -293,7 +294,7 @@ fn every_childs_fights_are_kept_and_jobs_are_data() {
     }
     round_trip(&Job::Voyage {
         candidate: 3,
-        spec: VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0 },
+        spec: VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() },
     });
 }
 

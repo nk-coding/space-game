@@ -249,6 +249,7 @@ fn the_spec_reads_back_from_its_text() {
         ],
         start_distance: 120.5,
         time_limit: 45.0,
+        waves: vec![arena::Side { entries: vec![Entry::ship("automaton_hunter")] }],
     };
     let text = spec.to_ron();
     assert_eq!(FightSpec::from_ron(&text).unwrap(), spec, "{text}");

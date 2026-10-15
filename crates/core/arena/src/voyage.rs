@@ -27,6 +27,10 @@ pub struct VoyageSpec {
     /// Flies this behavior in fights; `None`: the runner's scripted closing pilot.
     pub behavior: Option<BehaviorRef>,
     pub minutes: f32,
+    /// Escorts launched beside it (WITH YOUR ESCORTS, GDR-0092), under the content's escort behavior; written only
+    /// when there are any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub escorts: Vec<DesignRef>,
 }
 
 impl VoyageSpec {
@@ -51,13 +55,19 @@ pub fn start_voyage(content: &Content, spec: &VoyageSpec) -> Result<VoyageRunner
         .voyages
         .get(&spec.voyage)
         .ok_or_else(|| ArenaError::UnknownVoyage(spec.voyage.clone()))?;
-    let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref()).map_err(|p| match p {
+    let unusable = |p| match p {
         DesignProblem::UnknownShip(id) => ArenaError::Voyage(format!("no ship `{id}` in the content")),
         DesignProblem::Blueprint(problems) => ArenaError::Voyage(format!(
             "the blueprint is not usable: {}",
             problems.join("; ")
         )),
-    })?;
+    };
+    let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref()).map_err(unusable)?;
+    let escorts = spec
+        .escorts
+        .iter()
+        .map(|d| resolve_design(content, d, None).map(|(_, d)| std::sync::Arc::new(d)).map_err(unusable))
+        .collect::<Result<Vec<_>, _>>()?;
     let report = sim::design_report(content, &bp, &SimConfig::default()).map_err(ArenaError::Voyage)?;
     let mut lib = BehaviorLibrary::new(content).map_err(|p| {
         ArenaError::Content(
@@ -93,7 +103,7 @@ pub fn start_voyage(content: &Content, spec: &VoyageSpec) -> Result<VoyageRunner
         voyage,
         flagship,
         lib,
-        &[],
+        &escorts,
         spec.seed,
         spec.limit_ticks(),
     )

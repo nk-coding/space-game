@@ -11,6 +11,8 @@ use crate::score::arena_score;
 use crate::spec::FightSpec;
 use crate::voyage::{VoyageSpec, start_voyage, voyage_score};
 
+use super::trial::GoalScores;
+
 /// A fight's distance is sampled every this many ticks (half a second) for [`super::Measure::EngageDistance`].
 pub const SAMPLE_TICKS: u64 = 15;
 
@@ -27,8 +29,11 @@ pub enum Job {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JobResult {
-    /// The candidate's score, 0..1 (0 if the job could not be built).
+    /// The candidate's score, 0..1 (0 if the job could not be built): its WIN goal.
     pub score: f32,
+    /// Its score per goal (CHEAP is the design's, filled in by the run).
+    #[serde(default)]
+    pub goals: GoalScores,
     /// Sum and number of the distance samples (fights only).
     pub engage_sum: f32,
     pub engage_samples: u32,
@@ -57,27 +62,45 @@ pub enum JobEnd {
         hash: u64,
         /// The candidate's behavior rules that decided at least once (bit `i`: rule `i`; `Referee::decided`).
         decided: u64,
+        /// A gauntlet's waves cleared (`FightResult::waves`; written only for a gauntlet).
+        #[serde(default, skip_serializing_if = "is_zero")]
+        waves: u32,
     },
     /// A voyage run's final state hash.
     Voyage { hash: u64 },
 }
 
-/// One job of a child, as the run keeps it: its score, its length and how it ended.
+fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
+
+/// One job of a child, as the run keeps it: its score, its length, how it ended and its score per goal.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JobRecord {
     pub score: f32,
     pub ticks: u64,
     pub end: JobEnd,
+    /// Its score per goal: kept by runs with trials or goals of GDR-0092 step 5 (a run of the old form scores WIN
+    /// alone, `score`, and its files stay as they were).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goals: Option<GoalScores>,
 }
 
-impl From<&JobResult> for JobRecord {
-    fn from(r: &JobResult) -> JobRecord {
+impl JobRecord {
+    /// The record of a result; `goals` keeps its score per goal.
+    pub fn of(r: &JobResult, goals: bool) -> JobRecord {
         JobRecord {
             score: r.score,
             ticks: r.ticks,
             end: r.end,
+            goals: goals.then_some(r.goals),
         }
+    }
+
+    /// Its score per goal: the kept ones, else WIN alone (a run of the old form).
+    pub fn goal_scores(&self) -> GoalScores {
+        self.goals.unwrap_or(GoalScores { win: self.score, ..GoalScores::default() })
     }
 }
 
@@ -91,6 +114,7 @@ impl JobRecord {
             dealt,
             left,
             hash,
+            waves,
             ..
         } = self.end
         else {
@@ -112,6 +136,7 @@ impl JobRecord {
             ticks: self.ticks,
             sides,
             state_hash: hash,
+            waves,
         })
     }
 }
@@ -145,6 +170,8 @@ impl Job {
             Job::Fight { spec, .. } => match Fight::new(content, spec) {
                 Ok(fight) => Active::Fight {
                     fight: Box::new(fight),
+                    waves: spec.waves.len() as u32 + 1,
+                    gauntlet: !spec.waves.is_empty(),
                     phase: 0,
                     sum: 0.0,
                     samples: 0,
@@ -166,6 +193,9 @@ impl Job {
 pub(crate) enum Active {
     Fight {
         fight: Box<Fight>,
+        /// A gauntlet's waves, its own first one counted, and whether it is one (WIN is then the share cleared).
+        waves: u32,
+        gauntlet: bool,
         /// Ticks since the last distance sample.
         phase: u64,
         sum: f32,
@@ -185,9 +215,16 @@ impl Active {
             Active::Failed => (0, Some(JobResult::default())),
             Active::Voyage { runner, limit } => {
                 let t0 = runner.sim().tick();
-                let done = runner.step(budget).map(|r| (voyage_score(r, *limit), r.ticks));
-                let done = done.map(|(score, ticks)| JobResult {
+                let limit = *limit;
+                let done = runner.step(budget).map(|r| {
+                    let score = voyage_score(r, limit);
+                    let quick = if r.cleared_and_home() { 1.0 - (r.ticks as f32 / limit.max(1) as f32).clamp(0.0, 1.0) } else { 0.0 };
+                    let goals = GoalScores { win: score, unhurt: 1.0 - r.hull_lost_share(), quick, cheap: 0.0 };
+                    (score, goals, r.ticks)
+                });
+                let done = done.map(|(score, goals, ticks)| JobResult {
                     score,
+                    goals,
                     ticks,
                     end: JobEnd::Voyage {
                         hash: runner.sim().state_hash(),
@@ -198,6 +235,8 @@ impl Active {
             }
             Active::Fight {
                 fight,
+                waves,
+                gauntlet,
                 phase,
                 sum,
                 samples,
@@ -225,11 +264,14 @@ impl Active {
                             left: r.sides.map(|s| s.vessels_left),
                             hash: r.state_hash,
                             decided: fight.referee().decided()[0],
+                            waves: r.waves,
                         };
+                        let goals = fight_goals(&r, fight.referee().limit(), (*gauntlet).then_some(*waves));
                         return (
                             used,
                             Some(JobResult {
-                                score: r.sides[0].score,
+                                score: goals.win,
+                                goals,
                                 engage_sum: *sum,
                                 engage_samples: *samples,
                                 ticks: r.ticks,
@@ -242,6 +284,20 @@ impl Active {
             }
         }
     }
+}
+
+/// A fight's goals for side 0 (CHEAP aside): WIN is the arena score, or a gauntlet's waves cleared of `waves`; UNHURT
+/// one less the share of its build points lost; QUICK one less the share of the time limit a win took.
+fn fight_goals(r: &FightResult, limit: u64, waves: Option<u32>) -> GoalScores {
+    let win = match waves {
+        Some(n) => (r.waves as f32 / n.max(1) as f32).clamp(0.0, 1.0),
+        None => r.sides[0].score,
+    };
+    let quick = match r.outcome {
+        Outcome::Won(0) => 1.0 - (r.ticks as f32 / limit.max(1) as f32).clamp(0.0, 1.0),
+        _ => 0.0,
+    };
+    GoalScores { win, unhurt: 1.0 - r.sides[0].lost_share(), quick, cheap: 0.0 }
 }
 
 /// Where a vessel of `owner` stands: running vessels only, by ship id.

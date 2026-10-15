@@ -64,21 +64,22 @@ pub enum ArenaError {
 impl fmt::Display for ArenaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let at = |f: &mut fmt::Formatter<'_>, side: &usize, entry: &usize| {
-            write!(f, "side {side}, entry {entry}: ")
+            write!(f, "{}, entry {entry}: ", who(*side))
         };
         match self {
             ArenaError::Parse(e) => write!(f, "the fight spec does not read: {e}"),
             ArenaError::Number { field, value, max } => {
                 write!(f, "`{field}` is {value}; it must be above 0 and at most {max}")
             }
-            ArenaError::EmptySide { side } => write!(f, "side {side} has no entries"),
+            ArenaError::EmptySide { side } => write!(f, "{} has no entries", who(*side)),
             ArenaError::ZeroCount { side, entry } => {
                 at(f, side, entry)?;
                 f.write_str("`count` is 0")
             }
             ArenaError::TooManyShips { side, ships } => write!(
                 f,
-                "side {side} fields {ships} ships, at most {}",
+                "{} fields {ships} ships, at most {}",
+                who(*side),
                 crate::spec::MAX_SHIPS_PER_SIDE
             ),
             ArenaError::UnknownShip { side, entry, id } => {
@@ -120,6 +121,14 @@ impl fmt::Display for ArenaError {
             ArenaError::UnknownVoyage(id) => write!(f, "no voyage `{id}` in the content"),
             ArenaError::Voyage(e) => write!(f, "the voyage run cannot start: {e}"),
         }
+    }
+}
+
+/// A side in words: side 0 or 1, or a gauntlet's reinforcements (numbered from 2 in the errors: wave 1 is 2).
+fn who(side: usize) -> String {
+    match side {
+        0 | 1 => format!("side {side}"),
+        k => format!("reinforcement wave {}", k - 1),
     }
 }
 

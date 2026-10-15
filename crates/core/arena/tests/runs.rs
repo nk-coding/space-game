@@ -133,7 +133,7 @@ fn every_recorded_fight_replays_as_recorded() {
             for j in 0..r.jobs.len() {
                 let (job, rec) = run.job(g as u32, child, j).unwrap();
                 assert_eq!(job, jobs[k], "generation {g}, child {child}, job {j}");
-                assert_eq!(rec, (&results[k]).into());
+                assert_eq!(rec, arena::evolve::JobRecord::of(&results[k], false));
                 let code = run.fight_code(g as u32, child, j).unwrap();
                 let back = FightCode::decode(&code.encode()).unwrap();
                 assert_eq!(back.rules, run.rules());

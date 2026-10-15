@@ -43,6 +43,7 @@ mod eval;
 mod genome;
 mod lineage;
 mod store;
+mod trial;
 
 use std::fmt;
 use std::ops::Range;
@@ -55,8 +56,8 @@ use sim::{Pcg32, SimConfig};
 use crate::code::FightCode;
 use crate::fight::{Fight, FightSetup, resolve_design};
 use crate::rules::rules_fingerprint;
-use crate::spec::{BehaviorRef, DesignRef, Entry, FightSpec, Formation};
-use crate::voyage::{VoyageSpec, start_voyage};
+use crate::spec::{BehaviorRef, DesignRef, Entry, Formation};
+use crate::voyage::start_voyage;
 
 pub use archive::{Archive, ArchiveShape, Axis, Elite, MAX_CELLS, Measure};
 pub use config::{
@@ -68,6 +69,7 @@ pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
 pub use genome::Genome;
 pub use lineage::Bred;
 pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
+pub use trial::{Contestant, DEFAULT_WAVES, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, entry_of};
 
 use eval::Active;
 use genome::{Kit, Locked, Root, Stats};
@@ -99,7 +101,7 @@ impl fmt::Display for RunError {
         match self {
             RunError::Config(e) => write!(f, "the run configuration is not usable: {e}"),
             RunError::Start(e) => write!(f, "the start is not usable: {e}"),
-            RunError::Fitness(e) => write!(f, "the fitness is not usable: {e}"),
+            RunError::Fitness(e) => write!(f, "a trial is not usable: {e}"),
             RunError::Save(e) => write!(f, "the run file is not usable: {e}"),
         }
     }
@@ -130,6 +132,10 @@ pub struct GenerationStats {
     pub improved: u32,
     /// Ticks simulated.
     pub ticks: u64,
+    /// A RE-SCORE (GDR-0092): the archive's elites fought again under new rules, the archive rebuilt from their new
+    /// scores; it bred nothing and takes none of the run's generations (written only when it is one).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rescore: bool,
 }
 
 /// What a run keeps of one generation besides its numbers: whom its children fought and how each of their jobs
@@ -141,6 +147,10 @@ pub struct GenerationRecord {
     pub opponents: Vec<u32>,
     /// Its children in breeding order.
     pub children: Vec<ChildRecord>,
+    /// The rules' fingerprint it was fought under, when it is not the run's (a generation before a RE-SCORE); its
+    /// fight codes carry it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules: Option<u64>,
 }
 
 /// One child of a generation.
@@ -182,12 +192,62 @@ pub struct RunState<'a> {
     pub archive: &'a Archive,
 }
 
+/// A child's score taken apart (the run's page): per trial its score and its goals' means over its jobs, and the goals
+/// over all trials as the score weighs them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Breakdown {
+    pub trials: Vec<TrialScore>,
+    pub goals: GoalScores,
+}
+
+/// One trial of a child's score.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrialScore {
+    /// Its index in the run's trials (`Run::trials`).
+    pub trial: usize,
+    /// Its jobs; a trial without jobs (the hall of fame in generation 0) has no score and leaves the sums.
+    pub jobs: usize,
+    pub score: Option<f32>,
+    pub goals: GoalScores,
+}
+
 /// A run's results.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Results {
     pub history: Vec<GenerationStats>,
     /// Every elite of the archive, best first (equal scores in cell order).
     pub elites: Vec<Elite>,
+}
+
+/// VALIDATE's result for one genome (GDR-0092): its score on new seeds (the ones after each trial's own) with each
+/// trial's part, and its recorded fights fought again under today's rules: how many still end as recorded.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Validated {
+    pub genome: u32,
+    /// New seeds per opponent.
+    pub seeds: u32,
+    pub score: f32,
+    /// Per trial (`Run::trials`), its score on the new seeds (none without jobs).
+    pub trials: Vec<Option<f32>>,
+    /// Its recorded jobs that ended as recorded, of all of them.
+    pub as_recorded: (u32, u32),
+}
+
+/// VALIDATE as work (GDR-0092): the jobs of some genomes on new seeds and their recorded jobs again, steppable like a
+/// generation ([`Validation::step`], or [`Validation::jobs`] and [`Validation::submit`] on threads); [`Run::validated_by`]
+/// takes the results into the run.
+pub struct Validation {
+    content: Content,
+    seeds: u32,
+    /// Per genome: its number, its trials' tags of the new jobs, and its recorded jobs (the job's index and record).
+    genomes: Vec<(u32, Vec<u32>, Vec<JobRecord>, f32)>,
+    /// Per job: the genome's index and whether it is a recorded one.
+    owner: Vec<(usize, bool)>,
+    jobs: Vec<Job>,
+    results: Vec<Option<JobResult>>,
+    next: usize,
+    active: Option<(usize, Active)>,
 }
 
 /// One child of the current generation.
@@ -208,18 +268,21 @@ struct Batch {
     first: usize,
     /// The hall of fame its children fight, and as fight entries.
     opponents: Vec<u32>,
-    extra: Vec<Entry>,
+    hall: Vec<Entry>,
     candidates: Vec<Candidate>,
     /// Children given up (the pre-filter refused every try).
     failed: usize,
     rejected: u32,
-    /// Each candidate's jobs.
+    /// Each candidate's jobs, and each job's trial.
     ranges: Vec<Range<usize>>,
     jobs: Vec<Job>,
+    trial_of: Vec<u32>,
     results: Vec<Option<JobResult>>,
     /// The next job to start.
     next: usize,
     active: Option<(usize, Active)>,
+    /// A RE-SCORE: the archive's elites again, nothing bred.
+    rescore: bool,
 }
 
 /// An evolution run (see the module docs).
@@ -227,6 +290,10 @@ pub struct Run {
     content: Content,
     config: RunConfig,
     kit: Kit,
+    /// The trials (`RunConfig::all_trials`) resolved against the content, in order.
+    trials: Vec<(TrialSpec, Box<dyn TrialKind>)>,
+    /// The starts as fight entries under their own behaviors (BEAT YOUR START).
+    start_entries: Vec<Entry>,
     stages: Vec<(Genes, u32)>,
     generations: u32,
     /// The rules' fingerprint when the run started.
@@ -244,6 +311,23 @@ pub struct Run {
     batch: Option<Batch>,
     /// The ticks of work [`Run::step`] has done since the run was built or restored.
     worked: u64,
+    /// A RE-SCORE is due: the next generation fights the archive's elites again ([`Run::rescored`]).
+    rescore: bool,
+    /// VALIDATE's results, by genome.
+    validated: Vec<Validated>,
+}
+
+/// VALIDATE's default: the archive's best this many, on this many new seeds each (GDR-0092, PLACEHOLDER).
+pub const VALIDATE_BEST: usize = 8;
+pub const VALIDATE_SEEDS: u32 = 20;
+
+/// Where genome `id` (bred in generation `born`) was last scored: the latest RE-SCORE that fought it, else its own
+/// generation; its generation and index among that generation's children.
+fn scored_in(history: &[GenerationStats], records: &[GenerationRecord], born: u32, id: u32) -> Option<(u32, usize)> {
+    (born as usize..records.len()).rev().filter(|&g| g == born as usize || history.get(g).is_some_and(|h| h.rescore)).find_map(|g| {
+        let k = records[g].children.iter().position(|c| c.genome == id)?;
+        Some((g as u32, k))
+    })
 }
 
 /// The behavior a design flies by default: its own, else its faction's; as text.
@@ -281,13 +365,18 @@ fn content_behavior(content: &Content, id: &str) -> Result<String, String> {
 }
 
 /// A genome as a fight entry: its blueprint and behavior inlined as text.
-fn entry_of(g: &Genome, count: u32) -> Entry {
+fn genome_entry(g: &Genome, count: u32) -> Entry {
     Entry {
         design: DesignRef::Blueprint(g.blueprint_text()),
         behavior: Some(BehaviorRef::Text(g.behavior.clone())),
         count,
         formation: Formation::Line,
     }
+}
+
+/// CHEAP: one less a design's build points over its limit, 0..1.
+fn cheapness(build_points: f32, limit: f32) -> f32 {
+    if limit > 0.0 { (1.0 - build_points / limit).clamp(0.0, 1.0) } else { 0.0 }
 }
 
 /// A start resolved against the content: its blueprint as written (none for a random one), its header and its
@@ -366,12 +455,16 @@ impl Run {
         config.check()?;
         let stages = config.schedule()?;
         let generations = stages.iter().map(|s| s.1).sum();
-        let fights = matches!(config.fitness, Fitness::ArenaPool { .. });
-        if !fights && config.archive.axes.iter().any(|a| a.measure.needs_fights()) {
+        let specs = config.all_trials();
+        if !specs.iter().any(TrialSpec::fights) && config.archive.axes.iter().any(|a| a.measure.needs_fights()) {
             return Err(RunError::Config(
-                "`EngageDistance` is measured in the arena pool's fights only".into(),
+                "`EngageDistance` is measured in fights, and no trial fights".into(),
             ));
         }
+        let trials = specs
+            .into_iter()
+            .map(|t| t.resolve(content).map(|k| (t, k)))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut rng = Pcg32::new(sim::rng::splitmix64(config.seed ^ RUN_STREAM), RUN_STREAM);
         let texts = config
             .all_starts()
@@ -437,6 +530,7 @@ impl Run {
                     kit.roots.push(Root {
                         frame: edit,
                         build_points: None,
+                        start_bp: 0.0,
                         min_hold: None,
                         locks,
                     });
@@ -446,6 +540,7 @@ impl Run {
                     kit.roots.push(Root {
                         frame: kit.frame_for(frame, (0, 0)),
                         build_points: None,
+                        start_bp: 0.0,
                         min_hold: None,
                         locks: Locked::default(),
                     });
@@ -457,6 +552,7 @@ impl Run {
             let report = sim::design_report(content, &g.blueprint, &SimConfig::default()).map_err(at)?;
             let r = &mut kit.roots[k];
             r.build_points = config.limits.build_points.of(report.build_points);
+            r.start_bp = report.build_points;
             r.min_hold = config.limits.min_hold.of(content.ship_hold(&g.blueprint) as f32);
             kit.assess(content, &g).map_err(at)?;
             headers.push(header);
@@ -480,6 +576,8 @@ impl Run {
             archive: Archive::new(config.archive.clone()),
             config,
             kit,
+            trials,
+            start_entries: starts.iter().map(|g| genome_entry(g, 1)).collect(),
             stages,
             generations,
             rules: rules_fingerprint(content),
@@ -492,10 +590,12 @@ impl Run {
             table,
             batch: None,
             worked: 0,
+            rescore: false,
+            validated: Vec::new(),
         };
-        // One job of every opponent or voyage with every start: the references resolve.
-        for g in &run.starts {
-            for job in run.jobs_of(g, &[]) {
+        // Every job of every start (generation 0's, with no hall of fame yet): the references resolve.
+        for (k, g) in run.starts.iter().enumerate() {
+            for (_, job) in run.jobs_of(g, run.kit.roots[k].start_bp, &[]) {
                 let ok = match &job {
                     Job::Fight { spec, .. } => Fight::new(content, spec).map(|_| ()),
                     Job::Voyage { spec, .. } => start_voyage(content, spec).map(|_| ()),
@@ -508,6 +608,11 @@ impl Run {
 
     pub fn config(&self) -> &RunConfig {
         &self.config
+    }
+
+    /// The run's trials in order (`RunConfig::all_trials`): what a [`Breakdown`]'s trial index names.
+    pub fn trials(&self) -> Vec<&TrialSpec> {
+        self.trials.iter().map(|(t, _)| t).collect()
     }
 
     /// The starts (generation 0's first children, genomes 0 to n − 1), each opened centred in its frame.
@@ -540,8 +645,9 @@ impl Run {
         self.generation() >= self.generations
     }
 
-    /// The stage of generation `g` (the last stage past the end).
+    /// The stage of generation `g` (the last stage past the end): RE-SCOREs before it take no stage's generations.
     fn stage_of(&self, g: u32) -> usize {
+        let g = g - self.history.iter().take(g as usize).filter(|h| h.rescore).count() as u32;
         let mut end = 0;
         for (k, s) in self.stages.iter().enumerate() {
             end += s.1;
@@ -595,10 +701,10 @@ impl Run {
     pub fn generation_done(&self) -> f32 {
         let Some(b) = &self.batch else { return 0.0 };
         let made = b.candidates.len() + b.failed;
-        if made == 0 {
+        if made == 0 && !b.rescore {
             return 0.0;
         }
-        let expected = b.jobs.len() as f32 * self.config.population as f32 / made as f32;
+        let expected = if b.rescore { b.jobs.len() as f32 } else { b.jobs.len() as f32 * self.config.population as f32 / made as f32 };
         let done = b.results.iter().filter(|r| r.is_some()).count() as f32;
         (done / expected.max(1.0)).clamp(0.0, 1.0)
     }
@@ -719,18 +825,80 @@ impl Run {
 
     /// The jobs of child `child` of generation `generation` (closed), rebuilt: the same jobs it ran.
     pub fn child_jobs(&self, generation: u32, child: usize) -> Option<Vec<Job>> {
+        Some(self.tagged_jobs(generation, child)?.into_iter().map(|(_, j)| j).collect())
+    }
+
+    /// [`Run::child_jobs`] with each job's trial (its index in [`Run::trials`]).
+    pub fn tagged_jobs(&self, generation: u32, child: usize) -> Option<Vec<(u32, Job)>> {
         let record = self.records.get(generation as usize)?;
         let genome = self.genome(record.children.get(child)?.genome)?;
-        let extra = record
+        let hall = record
             .opponents
             .iter()
-            .map(|&id| self.genome(id).map(|g| entry_of(&g, 1)))
+            .map(|&id| self.genome(id).map(|g| genome_entry(&g, 1)))
             .collect::<Option<Vec<_>>>()?;
-        let mut jobs = self.jobs_of(&genome, &extra);
-        for j in &mut jobs {
+        let bp = sim::design_report(&self.content, &genome.blueprint, &SimConfig::default()).ok()?.build_points;
+        let mut jobs = self.jobs_of(&genome, bp, &hall);
+        for (_, j) in &mut jobs {
             j.set_candidate(child as u32);
         }
         Some(jobs)
+    }
+
+    /// Child `child` of generation `generation`'s score taken apart by trial and goal, from its records.
+    pub fn breakdown(&self, generation: u32, child: usize) -> Option<Breakdown> {
+        let rec = self.records.get(generation as usize)?.children.get(child)?;
+        let tags: Vec<u32> = self.tagged_jobs(generation, child)?.into_iter().map(|(t, _)| t).collect();
+        let goals: Vec<GoalScores> = rec.jobs.iter().map(JobRecord::goal_scores).collect();
+        Some(self.combine(&tags, &goals).1)
+    }
+
+    /// A child's score from its jobs' goals and their trials (GDR-0092 "GOALS"): per trial the goals' means weighed
+    /// by the run's goal weights, then the trials by theirs; trials without jobs and weights of 0 leave the sums. With
+    /// the score, its breakdown.
+    fn combine(&self, tags: &[u32], goals: &[GoalScores]) -> (f32, Breakdown) {
+        let gw = self.config.goals.weights();
+        let gsum: f64 = gw.iter().map(|w| *w as f64).sum();
+        let (mut total, mut wsum) = (0.0f64, 0.0f64);
+        let mut all = [0.0f64; 4];
+        let mut trials = Vec::new();
+        for (k, (spec, _)) in self.trials.iter().enumerate() {
+            let mine: Vec<[f32; 4]> = goals.iter().zip(tags).filter(|(_, t)| **t == k as u32).map(|(g, _)| g.all()).collect();
+            let n = mine.len();
+            let mut mean = [0.0f64; 4];
+            for (g, m) in mean.iter_mut().enumerate() {
+                *m = mine.iter().map(|x| x[g] as f64).sum::<f64>() / n.max(1) as f64;
+            }
+            let score = (n > 0).then(|| {
+                let mut s = 0.0f64;
+                for (w, m) in gw.iter().zip(mean) {
+                    if *w != 0.0 {
+                        s += *w as f64 * m;
+                    }
+                }
+                s / gsum
+            });
+            if let Some(s) = score
+                && spec.weight != 0.0
+            {
+                total += spec.weight as f64 * s;
+                wsum += spec.weight as f64;
+                for (a, m) in all.iter_mut().zip(mean) {
+                    *a += spec.weight as f64 * m;
+                }
+            }
+            let [win, unhurt, quick, cheap] = mean.map(|m| m as f32);
+            trials.push(TrialScore { trial: k, jobs: n, score: score.map(|s| s as f32), goals: GoalScores { win, unhurt, quick, cheap } });
+        }
+        let score = if wsum > 0.0 { (total / wsum) as f32 } else { 0.0 };
+        let [win, unhurt, quick, cheap] = all.map(|a| if wsum > 0.0 { (a / wsum) as f32 } else { 0.0 });
+        (score, Breakdown { trials, goals: GoalScores { win, unhurt, quick, cheap } })
+    }
+
+    /// Runs of GDR-0092 step 5's form (trials or goals) keep every job's score per goal; the old form's files stay as
+    /// they were.
+    fn keeps_goals(&self) -> bool {
+        !self.config.trials.is_empty() || !self.config.goals.is_default()
     }
 
     /// Job `job` of child `child` of generation `generation`, rebuilt, with its record.
@@ -747,7 +915,8 @@ impl Run {
         };
         let build_points = FightSetup::build(&self.content, &spec).ok()?.referee.build_points();
         let result = record.fight_result(build_points)?;
-        Some(FightCode::new(&self.content, self.rules, spec, result))
+        let rules = self.records[generation as usize].rules.unwrap_or(self.rules);
+        Some(FightCode::new(&self.content, rules, spec, result))
     }
 
     /// Generation `generation`'s best child (the first of equal scores), its index among the generation's children.
@@ -761,83 +930,122 @@ impl Run {
         best.map(|(k, _)| k)
     }
 
-    /// Where genome `id` was scored: its generation and its index among that generation's children (the record
-    /// of its score, measures and fights).
+    /// Where genome `id` was last scored: its generation and its index among that generation's children (the
+    /// record of its score, measures and fights): its own generation's, or a RE-SCORE's since.
     pub fn scored(&self, id: u32) -> Option<(u32, usize)> {
-        let generation = self.table.get(id as usize)?.generation;
-        let k = self
-            .records
-            .get(generation as usize)?
-            .children
-            .iter()
-            .position(|c| c.genome == id)?;
-        Some((generation, k))
+        scored_in(&self.history, &self.records, self.table.get(id as usize)?.generation, id)
     }
 
-    /// The pool of opponents for this generation besides the configured ones: the best `hall_of_fame` elites.
-    fn hall_of_fame(&self) -> Vec<&Elite> {
-        let Fitness::ArenaPool { hall_of_fame, .. } = &self.config.fitness else {
-            return Vec::new();
+    /// VALIDATE (GDR-0092): `genomes` (the archive's best [`VALIDATE_BEST`], or the picked one) fight the run's trials
+    /// on `seeds` new seeds each (the ones after each trial's own), against the starts and today's hall of fame, and
+    /// their recorded fights again under today's rules. `None` for a genome never scored.
+    pub fn validation(&self, genomes: &[u32], seeds: u32) -> Option<Validation> {
+        let hall: Vec<Entry> = self.hall_of_fame().iter().map(|e| genome_entry(&e.genome, 1)).collect();
+        let mut v = Validation {
+            content: self.content.clone(),
+            seeds,
+            genomes: Vec::new(),
+            owner: Vec::new(),
+            jobs: Vec::new(),
+            results: Vec::new(),
+            next: 0,
+            active: None,
         };
-        self.archive.top(*hall_of_fame as usize)
+        for &id in genomes {
+            let g = self.genome(id)?;
+            let (generation, child) = self.scored(id)?;
+            let stats = self.kit.assess(&self.content, &g).ok()?;
+            let root = &self.kit.roots[g.root as usize];
+            let cheap = cheapness(stats.build_points, root.build_points.unwrap_or(root.start_bp));
+            let me = Contestant { entry: genome_entry(&g, 1), build_points: stats.build_points };
+            let ctx = GenCtx { starts: &self.start_entries, hall: &hall, fresh: Some(seeds) };
+            let k = v.genomes.len();
+            let mut tags = Vec::new();
+            for (t, (_, kind)) in self.trials.iter().enumerate().filter(|(_, (spec, _))| spec.weight != 0.0) {
+                for j in kind.jobs(&me, &ctx) {
+                    tags.push(t as u32);
+                    v.owner.push((k, false));
+                    v.jobs.push(j);
+                }
+            }
+            let recorded = self.records[generation as usize].children[child].jobs.clone();
+            for j in self.child_jobs(generation, child)? {
+                v.owner.push((k, true));
+                v.jobs.push(j);
+            }
+            v.genomes.push((id, tags, recorded, cheap));
+        }
+        v.results = vec![None; v.jobs.len()];
+        Some(v)
     }
 
-    /// A genome's jobs: every opponent (the configured ones and `extra`) or voyage, every seed.
-    fn jobs_of(&self, g: &Genome, extra: &[Entry]) -> Vec<Job> {
-        let design = DesignRef::Blueprint(g.blueprint_text());
-        let behavior = BehaviorRef::Text(g.behavior.clone());
-        match &self.config.fitness {
-            Fitness::ArenaPool {
-                opponents,
-                seeds,
-                count,
-                start_distance,
-                time_limit,
-                ..
-            } => {
-                let me = Entry {
-                    design,
-                    behavior: Some(behavior),
-                    count: *count,
-                    formation: Formation::Line,
-                };
-                let mut jobs = Vec::new();
-                for o in opponents.iter().chain(extra) {
-                    for seed in 1..=*seeds as u64 {
-                        let mut spec = FightSpec::new(seed, vec![me.clone()], vec![o.clone()]);
-                        spec.start_distance = *start_distance;
-                        spec.time_limit = *time_limit;
-                        jobs.push(Job::Fight { candidate: 0, spec });
-                    }
-                }
-                jobs
-            }
-            Fitness::Voyages {
-                ids,
-                seeds,
-                minutes,
-                pilot,
-            } => {
-                let behavior = match pilot {
-                    VoyagePilot::Behavior => Some(behavior),
-                    VoyagePilot::Closing => None,
-                };
-                let mut jobs = Vec::new();
-                for v in ids {
-                    for seed in 1..=*seeds as u64 {
-                        let spec = VoyageSpec {
-                            voyage: v.clone(),
-                            seed,
-                            design: design.clone(),
-                            behavior: behavior.clone(),
-                            minutes: *minutes,
-                        };
-                        jobs.push(Job::Voyage { candidate: 0, spec });
-                    }
-                }
-                jobs
-            }
+    /// Takes a finished validation's results into the run (kept in its file; a genome validated again replaces its
+    /// earlier result). Panics if it isn't finished.
+    pub fn validated_by(&mut self, v: Validation) {
+        let results: Vec<JobResult> = v.results.into_iter().map(|r| r.expect("a finished validation")).collect();
+        for (k, (id, tags, recorded, cheap)) in v.genomes.iter().enumerate() {
+            let mine = || v.owner.iter().zip(&results).filter(move |((o, _), _)| *o == k);
+            let goals: Vec<GoalScores> =
+                mine().filter(|((_, rec), _)| !rec).map(|(_, r)| GoalScores { cheap: *cheap, ..r.goals }).collect();
+            let (score, b) = self.combine(tags, &goals);
+            let again: Vec<&JobResult> = mine().filter(|((_, rec), _)| *rec).map(|(_, r)| r).collect();
+            let same = again.iter().zip(recorded).filter(|(r, rec)| r.end == rec.end && r.ticks == rec.ticks).count();
+            let result = Validated {
+                genome: *id,
+                seeds: v.seeds,
+                score,
+                trials: b.trials.iter().map(|t| t.score).collect(),
+                as_recorded: (same as u32, recorded.len() as u32),
+            };
+            self.validated.retain(|x| x.genome != *id);
+            self.validated.push(result);
         }
+    }
+
+    /// VALIDATE's result for genome `id`, if it was validated.
+    pub fn validated(&self, id: u32) -> Option<&Validated> {
+        self.validated.iter().find(|v| v.genome == id)
+    }
+
+    /// RE-SCORE (GDR-0092): a stale run as a new run under today's rules: its history and fights kept (their
+    /// generations keep the rules they were fought under), and its next generation fights the archive's elites again
+    /// and rebuilds the archive from their new scores; then it goes on breeding where it was. Refused for a run whose
+    /// rules are today's.
+    pub fn rescored(content: &Content, save: &RunSave) -> Result<Run, RunError> {
+        let mut run = Run::restore(content, save)?;
+        if !run.stale {
+            return Err(RunError::Save("its rules are today's: there is nothing to re-score".into()));
+        }
+        let old = run.rules;
+        for r in &mut run.records {
+            r.rules.get_or_insert(old);
+        }
+        run.rules = rules_fingerprint(content);
+        run.stale = false;
+        run.rescore = true;
+        run.generations += 1;
+        // What was validated was validated under the old rules.
+        run.validated.clear();
+        Ok(run)
+    }
+
+    /// The hall of fame this generation fights: the archive's best, as many as the trials want at most.
+    fn hall_of_fame(&self) -> Vec<&Elite> {
+        let n = self.trials.iter().map(|(_, t)| t.hall_of_fame()).max().unwrap_or(0);
+        self.archive.top(n as usize)
+    }
+
+    /// A genome's jobs, each with its trial: every trial in order, each its opponents (or voyages) and seeds, against
+    /// the run's starts and the generation's hall of fame `hall`; `build_points` are the genome's.
+    fn jobs_of(&self, g: &Genome, build_points: f32, hall: &[Entry]) -> Vec<(u32, Job)> {
+        let me = Contestant { entry: genome_entry(g, 1), build_points };
+        let ctx = GenCtx { starts: &self.start_entries, hall, fresh: None };
+        let mut jobs = Vec::new();
+        // A trial of weight 0 counts nothing, so it is not fought.
+        for (k, (_, t)) in self.trials.iter().enumerate().filter(|(_, (spec, _))| spec.weight != 0.0) {
+            jobs.extend(t.jobs(&me, &ctx).into_iter().map(|j| (k as u32, j)));
+        }
+        jobs
     }
 
     /// One child: crossover (sometimes) and mutations of a random elite (generation 0: of a start, shared out
@@ -936,16 +1144,30 @@ impl Run {
             from: self.rng.clone(),
             first: self.table.len(),
             opponents: top.iter().map(|e| e.id).collect(),
-            extra: top.iter().map(|e| entry_of(&e.genome, 1)).collect(),
+            hall: top.iter().map(|e| genome_entry(&e.genome, 1)).collect(),
             candidates: Vec::new(),
             failed: 0,
             rejected: 0,
             ranges: Vec::new(),
             jobs: Vec::new(),
+            trial_of: Vec::new(),
             results: Vec::new(),
             next: 0,
             active: None,
+            rescore: self.rescore,
         };
+        if self.rescore {
+            // Every elite again in cell order; one that no longer builds or passes (a part the content lost) is left
+            // out, counted as refused.
+            let elites: Vec<Elite> = self.archive.cells().values().cloned().collect();
+            for e in elites {
+                match self.kit.assess(&self.content, &e.genome) {
+                    Ok(stats) => self.add_jobs(&mut b, Candidate { genome: e.genome, id: e.id, stats }),
+                    Err(_) => b.rejected += 1,
+                }
+            }
+            return b;
+        }
         if g == 0 {
             for (k, s) in self.starts.iter().enumerate() {
                 let stats = self
@@ -963,9 +1185,9 @@ impl Run {
         b
     }
 
-    /// Every child of the generation is bred (or given up).
+    /// Every child of the generation is bred (or given up); a RE-SCORE breeds none.
     fn bred(&self, b: &Batch) -> bool {
-        b.candidates.len() + b.failed >= self.config.population as usize
+        b.rescore || b.candidates.len() + b.failed >= self.config.population as usize
     }
 
     /// Breeds the generation's next child: into the table and the batch with its jobs, or given up.
@@ -985,9 +1207,10 @@ impl Run {
     fn add_jobs(&self, b: &mut Batch, c: Candidate) {
         let k = b.candidates.len() as u32;
         let start = b.jobs.len();
-        for mut j in self.jobs_of(&c.genome, &b.extra) {
+        for (t, mut j) in self.jobs_of(&c.genome, c.stats.build_points, &b.hall) {
             j.set_candidate(k);
             b.jobs.push(j);
+            b.trial_of.push(t);
             b.results.push(None);
         }
         b.ranges.push(start..b.jobs.len());
@@ -1003,12 +1226,24 @@ impl Run {
         let mut improved = 0;
         let mut ticks = 0;
         let mut children = Vec::with_capacity(b.candidates.len());
+        if b.rescore {
+            self.archive = Archive::new(self.config.archive.clone());
+            self.rescore = false;
+        }
         for (c, range) in b.candidates.into_iter().zip(&b.ranges) {
+            // CHEAP is the design's: its build points against its start's limit (else the start's own).
+            let root = &self.kit.roots[c.genome.root as usize];
+            let cheap = cheapness(c.stats.build_points, root.build_points.unwrap_or(root.start_bp));
             let rs: Vec<JobResult> = b.results[range.clone()]
                 .iter()
-                .map(|r| r.expect("every job done"))
+                .map(|r| {
+                    let mut r = r.expect("every job done");
+                    r.goals.cheap = cheap;
+                    r
+                })
                 .collect();
-            let score = (rs.iter().map(|r| r.score as f64).sum::<f64>() / rs.len().max(1) as f64) as f32;
+            let goals: Vec<GoalScores> = rs.iter().map(|r| r.goals).collect();
+            let score = self.combine(&b.trial_of[range.clone()], &goals).0;
             let samples: u32 = rs.iter().map(|r| r.engage_samples).sum();
             let engage = if samples > 0 {
                 rs.iter().map(|r| r.engage_sum as f64).sum::<f64>() as f32 / samples as f32
@@ -1042,7 +1277,8 @@ impl Run {
                 id: c.id,
                 score,
                 measures: measures.clone(),
-                generation,
+                // Bred then (a re-scored elite keeps its own generation).
+                generation: self.table[c.id as usize].generation,
             };
             let took = self.archive.offer(elite);
             improved += took as u32;
@@ -1051,7 +1287,7 @@ impl Run {
                 score,
                 measures,
                 took,
-                jobs: rs.iter().map(JobRecord::from).collect(),
+                jobs: rs.iter().map(|r| JobRecord::of(r, self.keeps_goals())).collect(),
             });
         }
         let evaluated = b.ranges.len() as u32;
@@ -1071,10 +1307,62 @@ impl Run {
             filled: self.archive.cells().len() as u32,
             improved,
             ticks,
+            rescore: b.rescore,
         });
         self.records.push(GenerationRecord {
             opponents: b.opponents,
             children,
+            rules: None,
         });
+    }
+}
+
+impl Validation {
+    /// Does up to `budget` ticks of its jobs (like [`Run::step`]); `true` once every job is done.
+    pub fn step(&mut self, budget: u64) -> bool {
+        let mut left = budget;
+        while left > 0 {
+            if self.active.is_none() {
+                if self.next >= self.jobs.len() {
+                    break;
+                }
+                self.active = Some((self.next, self.jobs[self.next].start(&self.content)));
+                self.next += 1;
+            }
+            let (k, active) = self.active.as_mut().expect("a job is running");
+            let (used, done) = active.advance(left);
+            left -= used.min(left);
+            if let Some(r) = done {
+                self.results[*k] = Some(r);
+                self.active = None;
+            }
+        }
+        self.finished()
+    }
+
+    /// Its jobs, to run elsewhere ([`Job::run`]) and hand back with [`Validation::submit`] in the same order.
+    pub fn jobs(&self) -> &[Job] {
+        &self.jobs
+    }
+
+    pub fn submit(&mut self, results: Vec<JobResult>) {
+        assert_eq!(results.len(), self.jobs.len(), "one result per job");
+        self.results = results.into_iter().map(Some).collect();
+        self.active = None;
+        self.next = self.jobs.len();
+    }
+
+    pub fn finished(&self) -> bool {
+        self.results.iter().all(Option::is_some)
+    }
+
+    /// How far it is, 0..1.
+    pub fn done(&self) -> f32 {
+        self.results.iter().filter(|r| r.is_some()).count() as f32 / self.results.len().max(1) as f32
+    }
+
+    /// The genomes it validates.
+    pub fn genomes(&self) -> Vec<u32> {
+        self.genomes.iter().map(|g| g.0).collect()
     }
 }

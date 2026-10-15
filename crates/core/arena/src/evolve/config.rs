@@ -11,6 +11,7 @@ use crate::voyage::DEFAULT_VOYAGE_MINUTES;
 
 use super::RunError;
 use super::archive::ArchiveShape;
+use super::trial::{Goals, MAX_WEIGHT, TrialSpec};
 
 /// Children per generation when a run leaves it out. PLACEHOLDER (the plan's 64 halved, so a run is quick).
 pub const DEFAULT_POPULATION: u32 = 32;
@@ -41,7 +42,16 @@ pub struct RunConfig {
     /// Children per generation (generation 0: the start and its mutants).
     #[serde(default = "default_population")]
     pub population: u32,
-    pub fitness: Fitness,
+    /// How a genome was scored before GDR-0092 step 5 (still read and written as it was): one trial, taken as the
+    /// first of the trials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fitness: Option<Fitness>,
+    /// What a genome is scored against (with `fitness`, at least one): each trial with its weight (`trial.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trials: Vec<TrialSpec>,
+    /// What a score weighs: WIN alone when left out (the score of the runs before step 5).
+    #[serde(default, skip_serializing_if = "Goals::is_default")]
+    pub goals: Goals,
     #[serde(default)]
     pub limits: Limits,
     /// One start, the form of runs before GDR-0092 (still read): taken as the first of the starts.
@@ -86,7 +96,8 @@ pub struct Stage {
     pub generations: u32,
 }
 
-/// How a genome is scored, 0..1.
+/// How a genome was scored, 0..1, before GDR-0092 step 5's trials: each form reads as one trial
+/// (`TrialSpec::of_fitness`: `ArenaPool` as ENEMY SHIPS with its hall of fame, `Voyages` as VOYAGES).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Fitness {
@@ -329,6 +340,11 @@ impl RunConfig {
         Ok(stages)
     }
 
+    /// Every trial: `fitness` (the old form), then `trials`.
+    pub fn all_trials(&self) -> Vec<TrialSpec> {
+        self.fitness.iter().map(TrialSpec::of_fitness).chain(self.trials.iter().cloned()).collect()
+    }
+
     /// Every start: `start` (the old form), then `starts`.
     pub fn all_starts(&self) -> impl Iterator<Item = &Start> + '_ {
         self.start.iter().chain(&self.starts)
@@ -353,27 +369,19 @@ impl RunConfig {
         if !(1..=MAX_MUTATIONS).contains(&self.mutations) {
             return bad(format!("`mutations` must be 1 to {MAX_MUTATIONS}"));
         }
-        let seeds = match &self.fitness {
-            Fitness::ArenaPool {
-                opponents, seeds, count, ..
-            } => {
-                if opponents.is_empty() {
-                    return bad("the arena pool needs at least one opponent".into());
-                }
-                if *count == 0 {
-                    return bad("`count` must be at least 1".into());
-                }
-                *seeds
-            }
-            Fitness::Voyages { ids, seeds, .. } => {
-                if ids.is_empty() {
-                    return bad("`Voyages` needs at least one voyage id".into());
-                }
-                *seeds
-            }
-        };
-        if !(1..=MAX_SEEDS).contains(&seeds) {
-            return bad(format!("`seeds` must be 1 to {MAX_SEEDS}"));
+        let trials = self.all_trials();
+        if trials.is_empty() {
+            return bad("a run needs at least one trial (`trials`, or the old `fitness`)".into());
+        }
+        for (k, t) in trials.iter().enumerate() {
+            t.check().map_err(|e| RunError::Config(format!("trial {}: {e}", k + 1)))?;
+        }
+        if trials.iter().all(|t| t.weight == 0.0) {
+            return bad("every trial weighs 0".into());
+        }
+        let goals = self.goals.weights();
+        if goals.iter().any(|w| !(w.is_finite() && (0.0..=MAX_WEIGHT).contains(w))) || goals.iter().all(|w| *w == 0.0) {
+            return bad(format!("the goals' weights must be 0 to {MAX_WEIGHT}, not all 0"));
         }
         if let Bound::At(b) = self.limits.build_points
             && !(b.is_finite() && b > 0.0)

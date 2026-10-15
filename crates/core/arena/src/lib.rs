@@ -46,7 +46,7 @@ mod voyage;
 pub use code::{CODE_TAG, CODE_VERSION, CodeError, FightCode, MAX_PACKED, MAX_PAYLOAD};
 pub use error::ArenaError;
 pub use fight::{
-    FORMATION_GAP, Fight, FightResult, FightSetup, JITTER, OUT_AFTER, OWNERS, Outcome, Referee,
+    FORMATION_GAP, Fight, FightResult, FightSetup, JITTER, OUT_AFTER, OWNERS, Outcome, Referee, WAVE_DELAY,
     SideResult, run_fight, standing,
 };
 pub use rules::rules_fingerprint;

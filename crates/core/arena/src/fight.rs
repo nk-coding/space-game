@@ -1,11 +1,13 @@
 //! Building a fight from a spec and running it, in one go ([`run_fight`]) or in slices ([`Fight::step`]). A client
 //! that steps the world itself (the fight viewer, GDR-0092) builds it with [`FightSetup::build`] and asks the
-//! [`Referee`] after every tick; [`Fight`] is the two together.
+//! [`Referee`] after every tick; [`Fight`] is the two together. A gauntlet (a spec with `waves`) is a fight whose
+//! referee sends side 1's next wave once the one before has no running vessel, as the test range does.
 
 use std::sync::Arc;
 
 use data::{Blueprint, Content};
 use serde::{Deserialize, Serialize};
+use sim::voyage::waves::wave_bodies;
 use sim::{
     BehaviorId, BehaviorLibrary, Body, Owner, ShipCommand, ShipDesign, Sim, SimConfig, SimEvent,
     Stream, TickInputs, Vec2, VesselState,
@@ -24,6 +26,9 @@ pub const FORMATION_GAP: f32 = 5.0;
 /// Every ship's spawn position is moved by up to this many metres in x and y, rolled from the seed, so seeds
 /// differ (the sim itself rolls nothing in a plain fight). PLACEHOLDER.
 pub const JITTER: f32 = 2.0;
+/// A gauntlet's next wave comes in this many ticks (4 s, the test range's pause) after the one before has no running
+/// vessel left. PLACEHOLDER.
+pub const WAVE_DELAY: u64 = 4 * sim::TICK_HZ as u64;
 /// The sim owners of side 0 and side 1. Neither is the player's `Owner(0)`, so both sides get the same rules
 /// (only the player collects salvage).
 pub const OWNERS: [Owner; 2] = [Owner(1), Owner(2)];
@@ -76,6 +81,14 @@ pub struct FightResult {
     pub sides: [SideResult; 2],
     /// `Sim::state_hash` at the end: equal specs give equal hashes on every platform.
     pub state_hash: u64,
+    /// A gauntlet's waves (the first, side 1's own entries, counts) that had no running vessel left at some point:
+    /// all of them is a win. 0 for a plain fight (and not written then, so plain fights read as before).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub waves: u32,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
 }
 
 impl FightResult {
@@ -97,7 +110,8 @@ pub struct Fight {
 }
 
 /// A fight built and not yet run: the world, its referee, and the blueprint and compiled design of every entry
-/// (per side, in entry order), which a client needs to draw ships whose design is no content ship. Step the world
+/// (per side, in entry order; a gauntlet's waves after side 1's own), which a client needs to draw ships whose design
+/// is no content ship. Step the world
 /// with no inputs and call [`Referee::observe`] after every tick; that is all [`Fight`] does.
 pub struct FightSetup {
     pub sim: Sim,
@@ -115,6 +129,13 @@ pub struct Referee {
     out_since: [Option<u64>; 2],
     /// Per side, a bit for every behavior rule that decided at least once (bit `i`: rule `i`).
     decided: [u64; 2],
+    /// A gauntlet's waves still to come (each entry's design, behavior and count), the next one's index, the tick it
+    /// comes in once the wave before is out, the waves cleared, and side 1's build points brought in so far.
+    waves: Vec<Vec<(Arc<ShipDesign>, BehaviorId, u32)>>,
+    next_wave: usize,
+    wave_at: Option<u64>,
+    cleared: u32,
+    fielded: f32,
     result: Option<FightResult>,
 }
 
@@ -138,8 +159,10 @@ impl FightSetup {
                     .join("; "),
             )
         })?;
-        let mut sides: [Vec<Resolved>; 2] = Default::default();
-        for (side, s) in spec.sides.iter().enumerate() {
+        // Sides 0 and 1, then the waves (errors name wave k as side 2 + k).
+        let mut resolved: Vec<Vec<Resolved>> = Vec::new();
+        for (side, s) in spec.sides.iter().chain(&spec.waves).enumerate() {
+            let mut list = Vec::new();
             for (entry, e) in s.entries.iter().enumerate() {
                 let (blueprint, design) = match resolve_design(content, &e.design, e.behavior.as_ref()) {
                     Ok((bp, d)) => (bp, Arc::new(d)),
@@ -177,13 +200,16 @@ impl FightSetup {
                             design: design.id.clone(),
                         })?,
                 };
-                sides[side].push(Resolved {
+                list.push(Resolved {
                     blueprint,
                     design,
                     behavior,
                 });
             }
+            resolved.push(list);
         }
+        let waves = resolved.split_off(2);
+        let sides: [Vec<Resolved>; 2] = resolved.try_into().ok().expect("a spec has two sides");
 
         let mut config = SimConfig::default();
         for o in OWNERS {
@@ -201,13 +227,28 @@ impl FightSetup {
             damage: [0.0; 2],
             out_since: [None; 2],
             decided: [0; 2],
+            waves: waves
+                .iter()
+                .zip(&spec.waves)
+                .map(|(w, s)| {
+                    w.iter()
+                        .zip(&s.entries)
+                        .map(|(r, e)| (Arc::clone(&r.design), r.behavior, e.count))
+                        .collect()
+                })
+                .collect(),
+            next_wave: 0,
+            wave_at: None,
+            cleared: 0,
+            fielded: build_points[1],
             result: None,
         };
-        let designs = sides.map(|side| {
+        let mut designs = sides.map(|side| {
             side.into_iter()
                 .map(|r| (r.blueprint, r.design))
-                .collect()
+                .collect::<Vec<_>>()
         });
+        designs[1].extend(waves.into_iter().flatten().map(|r| (r.blueprint, r.design)));
         Ok(FightSetup {
             sim,
             referee,
@@ -217,15 +258,61 @@ impl FightSetup {
 }
 
 impl Referee {
-    /// Looks at the world after a tick: the damage dealt in it, and whether the fight ended with it. `Some` from
-    /// the tick it ends on; later calls look at nothing and return the same result.
-    pub fn observe(&mut self, sim: &Sim) -> Option<FightResult> {
+    /// Looks at the world after a tick: the damage dealt in it, a gauntlet's next wave (which it brings in), and
+    /// whether the fight ended with it. `Some` from the tick it ends on; later calls look at nothing and return the
+    /// same result.
+    pub fn observe(&mut self, sim: &mut Sim) -> Option<FightResult> {
         if self.result.is_none() {
             self.tally(sim);
             self.note_rules(sim);
+            if !self.waves.is_empty() {
+                self.reinforce(sim);
+            }
             self.result = self.end(sim);
         }
         self.result
+    }
+
+    /// A gauntlet's waves: `(the wave side 1 fights now, all of them)`, counting its own entries as wave 1.
+    pub fn wave(&self) -> (u32, u32) {
+        (self.next_wave as u32 + 1, self.waves.len() as u32 + 1)
+    }
+
+    /// A gauntlet: once side 1 has no running vessel, its wave is cleared, and the next comes in [`WAVE_DELAY`]
+    /// later around side 0's first running vessel (as the test range's waves do), rolled on the `Scenario` stream.
+    fn reinforce(&mut self, sim: &mut Sim) {
+        let tick = sim.tick();
+        if running(sim, OWNERS[1]) {
+            return;
+        }
+        if self.wave_at.is_none() && self.cleared <= self.next_wave as u32 {
+            self.cleared += 1;
+            if self.next_wave < self.waves.len() {
+                self.wave_at = Some(tick + WAVE_DELAY);
+            }
+        }
+        if self.wave_at.is_some_and(|t| tick >= t) {
+            self.wave_at = None;
+            let centre = sim
+                .ships()
+                .iter()
+                .filter(|s| s.owner() == OWNERS[0] && s.vessel_state() == Some(VesselState::Running))
+                .find_map(|s| Some(s.piece(s.control_piece()?)?.com_world()))
+                .unwrap_or(Vec2::ZERO);
+            let wave = &self.waves[self.next_wave];
+            let n: u32 = wave.iter().map(|w| w.2).sum();
+            let rng = sim.rng(Stream::Scenario);
+            let bodies = wave_bodies(centre, n as usize, |lo, hi| rng.range_f32(lo, hi));
+            let before = kept(sim, OWNERS[1]).0;
+            let ships = wave.iter().flat_map(|(d, b, n)| std::iter::repeat_n((d, *b), *n as usize));
+            for ((design, behavior), body) in ships.zip(bodies) {
+                let id = sim.spawn_ship(Arc::clone(design), OWNERS[1], body);
+                sim.command(id, ShipCommand::Behavior(Some(behavior)));
+            }
+            self.fielded += kept(sim, OWNERS[1]).0 - before;
+            self.next_wave += 1;
+            self.out_since[1] = None;
+        }
     }
 
     /// The result, once the fight has ended.
@@ -288,12 +375,10 @@ impl Referee {
     fn end(&mut self, sim: &Sim) -> Option<FightResult> {
         let tick = sim.tick();
         let mut out = [false; 2];
+        // A gauntlet's side 1 is not out while a wave is still to come.
+        let coming = self.next_wave < self.waves.len();
         for (side, &owner) in OWNERS.iter().enumerate() {
-            let running = sim
-                .ships()
-                .iter()
-                .any(|s| s.owner() == owner && s.vessel_state() == Some(VesselState::Running));
-            if running {
+            if running(sim, owner) || (side == 1 && coming) {
                 self.out_since[side] = None;
             } else {
                 let since = *self.out_since[side].get_or_insert(tick);
@@ -311,11 +396,12 @@ impl Referee {
         } else {
             return None;
         };
+        let fielded = [self.build_points[0], self.fielded];
         let mut sides = [0, 1].map(|side| {
             let (left, vessels) = kept(sim, OWNERS[side]);
             SideResult {
                 build_points: self.build_points[side],
-                build_points_lost: (self.build_points[side] - left).max(0.0),
+                build_points_lost: (fielded[side] - left).max(0.0),
                 damage_dealt: self.damage[side],
                 vessels_left: vessels,
                 score: 0.0,
@@ -330,8 +416,16 @@ impl Referee {
             ticks: tick,
             sides,
             state_hash: sim.state_hash(),
+            waves: self.cleared,
         })
     }
+}
+
+/// Has `owner` a running vessel?
+fn running(sim: &Sim, owner: Owner) -> bool {
+    sim.ships()
+        .iter()
+        .any(|s| s.owner() == owner && s.vessel_state() == Some(VesselState::Running))
 }
 
 impl Fight {
@@ -353,7 +447,7 @@ impl Fight {
                 break;
             }
             self.sim.step(&self.idle);
-            self.referee.observe(&self.sim);
+            self.referee.observe(&mut self.sim);
         }
         self.referee.result()
     }

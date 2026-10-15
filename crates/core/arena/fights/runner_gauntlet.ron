@@ -1,0 +1,17 @@
+// A gauntlet (GDR-0092 step 5): the Halvex Runner against waves of automatons, each coming in 4 s after the one
+// before has no running vessel left, around the Runner as the test range's waves do; the lab's TEST-RANGE WAVES and
+// gauntlet trials fight such specs. In the determinism check (`scripts/determinism-check.sh --fight runner_gauntlet`)
+// and `arena fight` (`docs/arena.md` "Trials and goals").
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner"))]),
+        (entries: [(design: Ship("automaton_raider"), count: 2)]),
+    ],
+    start_distance: 100.0,
+    time_limit: 180.0,
+    waves: [
+        (entries: [(design: Ship("automaton_hunter"))]),
+        (entries: [(design: Ship("automaton_raider"), count: 2), (design: Ship("automaton_hunter"))]),
+    ],
+)

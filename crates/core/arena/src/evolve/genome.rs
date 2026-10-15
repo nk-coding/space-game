@@ -206,6 +206,8 @@ pub(crate) struct Root {
     pub frame: (u32, u32),
     /// The most build points and the smallest hold of its genomes ([`super::config::Bound`] resolved).
     pub build_points: Option<f32>,
+    /// The start's own build points (CHEAP's measure when the run caps none).
+    pub start_bp: f32,
     pub min_hold: Option<f32>,
     pub locks: Locked,
 }
@@ -984,6 +986,7 @@ mod tests {
         kit.roots.push(Root {
             frame,
             build_points: None,
+            start_bp: 0.0,
             min_hold: None,
             locks,
         });
@@ -1081,7 +1084,7 @@ mod tests {
         let program = Program::parse(five).unwrap();
         let locks = Locks { rules: vec![0, 4], ..Locks::default() };
         let locks = Locked::resolve(&c, &locks, bp, &dock, &program).unwrap();
-        kit.roots.push(Root { frame: (24, 24), build_points: None, min_hold: None, locks });
+        kit.roots.push(Root { frame: (24, 24), build_points: None, start_bp: 0.0, min_hold: None, locks });
         let text = BehaviorEditor::from_text(&c.behavior_nodes, five).unwrap().text();
         let three = kit.fit_rules(&text, 3, 0).unwrap();
         let rules = Program::parse(&three).unwrap().rules;
@@ -1114,6 +1117,7 @@ mod tests {
             kit.roots.push(Root {
                 frame,
                 build_points: None,
+                start_bp: 0.0,
                 min_hold: None,
                 locks: Locked::default(),
             });
