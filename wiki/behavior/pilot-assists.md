@@ -212,7 +212,7 @@ Stop when you let go, but only when no turn is needed; lock the nearest enemy on
 
 ```assists
 when idle(thrust) >= 1s and can_stop_straight -> brake(toggle1) # stop on release, no flip
-always -> auto_lock(nearest, toggle2, off) # lock the nearest enemy, from toggle 2 on
+always -> auto_lock(nearest, toggle2, off) # from toggle 2 on
 ```
 
 A fighting list, for a design with its front guns in group 1 and its side guns in group 2. It locks a ship that
