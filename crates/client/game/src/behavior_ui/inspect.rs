@@ -11,7 +11,7 @@
 //! * **A rule** (its `always` chip or its row): the rule as text and its block.
 //! * **A palette node** with nothing to add it to: its default values, read-only, and how to add it.
 
-use data::behavior::{CmpOp, MAX_RULES, Value, parse_value};
+use data::behavior::{CmpOp, ListKind, MAX_RULES, Value, parse_value};
 use data::behavior::edit::{BehaviorEditor, CondId, NodeRef, ParamView, Refusal, RuleId};
 use data::{Behavior, BehaviorNode, NodeRole, ParamType, Table};
 use kit::ui_kit::Tone;
@@ -190,6 +190,19 @@ fn number_of(v: &Value) -> Option<f32> {
 }
 
 /// The behavior itself (nothing selected): its name, its content summary and a hint.
+/// The inspector with nothing selected on the PILOT ASSISTS tab (GDR-0088): what assists are and how they run.
+pub fn assists_inspection(rules: usize) -> Inspection {
+    Inspection {
+        kicker: format!("PILOT ASSISTS  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }),
+        name: super::draft::ASSISTS_NAME.into(),
+        role: None,
+        rhai: false,
+        summary: "They help you fly this design. Each assist works one channel (turning, thrust or a weapon group's trigger) whenever its rule matches and you leave that channel free; the first matching rule per channel decides. Its TOGGLE key switches it on and off in flight, ALL ASSISTS every one.".into(),
+        controls: vec![Control::Hint("CLICK A NODE OR A RULE TO EDIT IT  ·  + ASSIST ADDS ONE  ·  SAVED WITH THE DESIGN".into())],
+        script: None,
+    }
+}
+
 pub fn behavior_inspection(name: &str, source: Option<&Behavior>, rules: usize) -> Inspection {
     Inspection {
         kicker: format!("BEHAVIOR  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }),
@@ -213,6 +226,8 @@ pub fn inspect(ed: &BehaviorEditor, sel: &Selection, cx: &Context) -> Option<Ins
 
 fn kind_line(node: &BehaviorNode) -> &'static str {
     match node.role {
+        NodeRole::Action if node.pilot => "ACTION  ·  PILOT ASSIST",
+        NodeRole::Condition if node.pilot => "CONDITION  ·  THE PILOT",
         NodeRole::Condition if node.script.is_some() => "CONDITION  ·  RHAI",
         NodeRole::Condition if node.value.is_some() => "CONDITION  ·  VALUE",
         NodeRole::Condition => "CONDITION  ·  FLAG",
@@ -316,7 +331,9 @@ fn rule_inspection(ed: &BehaviorEditor, rule: RuleId, cx: &Context) -> Option<In
     let view = ed.rule(rule)?;
     let mut controls = vec![Control::Hint("A CONDITION PICKED IN ADD NODE IS ADDED TO THIS RULE; AN ACTION REPLACES ITS ACTION".into())];
     rule_block(&mut controls, ed, rule, cx);
-    let state = if view.index >= ed.active_rules(cx.slots) {
+    let state = if ed.kind() == ListKind::Assists {
+        "DECIDES ITS CHANNEL UNLESS A RULE ABOVE DOES"
+    } else if view.index >= ed.active_rules(cx.slots) {
         "NO RULE SLOT: DOES NOT RUN"
     } else if never_reached_in(ed, cx).contains(&view.index) {
         "NEVER REACHED: AN ALWAYS RULE ABOVE MATCHES FIRST"
@@ -334,8 +351,12 @@ fn rule_inspection(ed: &BehaviorEditor, rule: RuleId, cx: &Context) -> Option<In
     })
 }
 
-/// The rules of the program that have a slot but sit below an `always` rule (`graph::never_reached`).
+/// The rules of the program that have a slot but sit below an `always` rule (`graph::never_reached`); none in pilot
+/// assists, where each rule decides its own channel.
 fn never_reached_in(ed: &BehaviorEditor, cx: &Context) -> std::ops::Range<usize> {
+    if ed.kind() == ListKind::Assists {
+        return 0..0;
+    }
     let always: Vec<bool> = ed.program().rules.iter().map(|r| r.when.is_empty()).collect();
     never_reached(&always, cx.slots)
 }
@@ -345,7 +366,9 @@ fn never_reached_in(ed: &BehaviorEditor, cx: &Context) -> std::ops::Range<usize>
 fn rule_block(out: &mut Vec<Control>, ed: &BehaviorEditor, rule: RuleId, cx: &Context) {
     let Some(view) = ed.rule(rule) else { return };
     let (i, n) = (view.index, ed.rules().len());
-    let slot = if i >= ed.active_rules(cx.slots) {
+    // A behavior keeps its last rule; pilot assists may have none (GDR-0088).
+    let keeps_one = ed.kind().needs_a_rule();
+    let slot = if keeps_one && i >= ed.active_rules(cx.slots) {
         "  ·  NO SLOT"
     } else if never_reached_in(ed, cx).contains(&i) {
         "  ·  NEVER REACHED"
@@ -359,10 +382,10 @@ fn rule_block(out: &mut Vec<Control>, ed: &BehaviorEditor, rule: RuleId, cx: &Co
             Button::new("UP", if i > 0 { mv(i - 1) } else { None }),
             Button::new("DOWN", if i + 1 < n { mv(i + 1) } else { None }),
             Button::new("DUPLICATE", (n < MAX_RULES).then(|| edit(Edit::DuplicateRule(rule)))),
-            Button { tone: Tone::Coral, ..Button::new("DELETE", (n > 1).then(|| edit(Edit::DeleteRule(rule)))) },
+            Button { tone: Tone::Coral, ..Button::new("DELETE", (n > 1 || !keeps_one).then(|| edit(Edit::DeleteRule(rule)))) },
         ],
     });
-    if n == 1 {
+    if n == 1 && keeps_one {
         out.push(Control::Hint(format!("{}: THE LAST RULE STAYS", Refusal::LastRule.to_string().to_uppercase())));
     }
     out.push(Control::Note { target: NoteTarget::Rule(rule), text: view.rule.note.clone().unwrap_or_default() });
@@ -472,14 +495,15 @@ pub struct PaletteEntry {
     pub rhai: bool,
 }
 
-/// The vocabulary for the palette: conditions, then actions, then target selectors, each in content order;
-/// with a search, only the nodes whose name or id contains it (ignoring case).
-pub fn palette(nodes: &Table<BehaviorNode>, search: &str) -> Vec<PaletteEntry> {
+/// The vocabulary for the palette: conditions, then actions, then target selectors, each in content order, those
+/// the list may use (a behavior's or the pilot assists', GDR-0088); with a search, only the nodes whose name or id
+/// contains it (ignoring case).
+pub fn palette(nodes: &Table<BehaviorNode>, kind: ListKind, search: &str) -> Vec<PaletteEntry> {
     let search = search.trim().to_lowercase();
     let wanted = |n: &BehaviorNode| search.is_empty() || n.name.to_lowercase().contains(&search) || n.id.contains(&search);
     [NodeRole::Condition, NodeRole::Action, NodeRole::Target]
         .into_iter()
-        .flat_map(|role| nodes.iter().filter(move |n| n.role == role))
+        .flat_map(|role| nodes.iter().filter(move |n| n.role == role && kind.allows(n)))
         .filter(|n| wanted(n))
         .map(|n| PaletteEntry {
             id: n.id.clone(),
@@ -666,8 +690,8 @@ mod tests {
     #[test]
     fn the_palette_lists_the_vocabulary_by_role() {
         let content = data::base_content();
-        let all = palette(&content.behavior_nodes, "");
-        assert_eq!(all.len(), content.behavior_nodes.iter().count());
+        let all = palette(&content.behavior_nodes, ListKind::Behavior, "");
+        assert_eq!(all.len(), content.behavior_nodes.iter().filter(|n| !n.pilot).count());
         let roles: Vec<NodeRole> = all.iter().map(|e| e.role).collect();
         let mut sorted = roles.clone();
         sorted.sort();
@@ -676,10 +700,39 @@ mod tests {
         assert!(rhai.rhai);
         assert_eq!(rhai.label, "CLOSING IN  ·  RHAI");
         // Search by name or id, any case.
-        let ids: Vec<String> = palette(&content.behavior_nodes, "Target").into_iter().map(|e| e.id).collect();
+        let ids: Vec<String> = palette(&content.behavior_nodes, ListKind::Behavior, "Target").into_iter().map(|e| e.id).collect();
         assert!(ids.contains(&"target_in_range".to_string()) && ids.contains(&"face".to_string()), "{ids:?}");
-        let ids: Vec<String> = palette(&content.behavior_nodes, "keep").into_iter().map(|e| e.id).collect();
+        let ids: Vec<String> = palette(&content.behavior_nodes, ListKind::Behavior, "keep").into_iter().map(|e| e.id).collect();
         assert_eq!(ids, ["kite"]);
-        assert!(palette(&content.behavior_nodes, "zzz").is_empty());
+        assert!(palette(&content.behavior_nodes, ListKind::Behavior, "zzz").is_empty());
+        // Pilot assists (GDR-0088): the assists' actions only, every condition (the pilot's too).
+        let assists = palette(&content.behavior_nodes, ListKind::Assists, "");
+        let actions: Vec<&str> = assists.iter().filter(|e| e.role == NodeRole::Action).map(|e| e.id.as_str()).collect();
+        assert_eq!(actions, ["face_target", "brake", "auto_fire"]);
+        assert!(assists.iter().any(|e| e.id == "idle") && assists.iter().any(|e| e.id == "hull"));
+        assert!(!all.iter().any(|e| e.id == "idle"));
+    }
+
+    /// A rule of the pilot assists: no rule slots and nothing "never reached" (each rule decides its own channel),
+    /// and the last one can go.
+    #[test]
+    fn assist_rules_have_no_slots_and_the_last_can_go() {
+        let content = data::base_content();
+        let program = data::behavior::Program::parse("always -> face_target(toggle1)\nalways -> brake\n").unwrap();
+        let ed = BehaviorEditor::open_as(&content.behavior_nodes, &program, ListKind::Assists).unwrap();
+        let second = ed.rule_at(1).unwrap().id;
+        let i = inspect(&ed, &Selection::Rule(second), &Context { slots: 0, ..cx() }).unwrap();
+        assert_eq!(i.kicker, "RULE  ·  DECIDES ITS CHANNEL UNLESS A RULE ABOVE DOES");
+        let Control::Buttons { label, buttons } = &i.controls[1] else { panic!("{:?}", i.controls) };
+        assert_eq!(label, "RULE 2 OF 2");
+        assert!(buttons.iter().find(|b| b.text == "DELETE").is_some_and(|b| b.action.is_some()));
+        let face = inspect(&ed, &Selection::Node(NodeRef::Action(ed.rule_at(0).unwrap().id)), &cx()).unwrap();
+        assert_eq!(face.kicker, "ACTION  ·  PILOT ASSIST");
+        // Its toggle and start are pills, set like any other value.
+        let toggle = face.controls.iter().find_map(|c| match c {
+            Control::Choice(ch) if ch.label.starts_with("TOGGLE") => Some(ch),
+            _ => None,
+        });
+        assert!(toggle.is_some_and(|t| t.options.len() == 5), "{:?}", face.controls);
     }
 }

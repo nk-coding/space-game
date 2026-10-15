@@ -8,13 +8,15 @@
 //! looked like when it was opened or last saved ([`BehaviorDraft::dirty`]), so the screen can say UNSAVED.
 
 use bevy::prelude::*;
-use data::behavior::{Program, TextError, check_program};
+use data::behavior::{ListKind, Program, TextError, check_list, check_program};
 use data::behavior::edit::BehaviorEditor;
 use data::{Behavior, BehaviorNode, Blueprint, Content, NodeRole, Table};
 use world::player::behaviors::{PlayerBehaviors, text_of};
 
 /// The name a new behavior gets ("New behavior", "New behavior 2", ... in the BEHAVIORS list).
 pub const NEW_NAME: &str = "New behavior";
+/// The name of a design's pilot assists on the screen (the PILOT ASSISTS tab).
+pub const ASSISTS_NAME: &str = "Pilot assists";
 
 /// The behavior on the BEHAVIOR screen.
 #[derive(Resource, Clone, Debug, Default)]
@@ -96,10 +98,25 @@ impl BehaviorDraft {
         wanted.and_then(|id| behaviors.behavior(content, id)).or_else(|| design_behavior(content, behaviors, design))
     }
 
+    /// A design's pilot assists (GDR-0088): the list in its blueprint, none for a design without. Rules that no
+    /// longer check against the vocabulary (the content changed since) are left out; the count says how many.
+    pub fn assists(design: &Blueprint, nodes: &Table<BehaviorNode>) -> (Self, usize) {
+        let checks = |p: &Program| check_list(p, nodes, ListKind::Assists).is_empty();
+        let list = design.assists.clone().unwrap_or_default();
+        let target = list.target.as_deref().filter(|t| Program::from_parts(Some(t), &[]).is_ok_and(|p| checks(&p)));
+        let rules: Vec<String> = list.rules.iter().filter(|r| Program::from_parts(None, std::slice::from_ref(*r)).is_ok_and(|p| checks(&p))).cloned().collect();
+        let dropped = list.rules.len() - rules.len() + usize::from(list.target.is_some() && target.is_none());
+        let program = Program::from_parts(target, &rules).unwrap_or_default();
+        let editor = BehaviorEditor::open_as(nodes, &program, ListKind::Assists).unwrap_or_else(|_| {
+            BehaviorEditor::open_as(nodes, &Program::default(), ListKind::Assists).expect("an empty assist list checks")
+        });
+        (Self::with_editor(None, ASSISTS_NAME.into(), editor), dropped)
+    }
+
     /// A new draft with one rule: `always ->` the vocabulary's first action (a behavior needs a rule). `None`
     /// if the vocabulary has no action.
     pub fn empty(nodes: &Table<BehaviorNode>) -> Option<Self> {
-        let action = nodes.iter().find(|n| n.role == NodeRole::Action)?;
+        let action = nodes.iter().find(|n| n.role == NodeRole::Action && ListKind::Behavior.allows(n))?;
         let editor = BehaviorEditor::from_text(nodes, &format!("always -> {}", action.id)).ok()?;
         Some(Self::with_editor(None, NEW_NAME.into(), editor))
     }

@@ -25,6 +25,7 @@ use world::settings::ActionTip;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use data::NodeRole;
+use data::behavior::ListKind;
 use data::behavior::edit::RuleId;
 use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
@@ -44,8 +45,8 @@ use super::controls::{DesignReach, SliderDrag, spawn_inspection};
 use super::dashed::{DashedOutline, outline_color};
 use super::draft::BehaviorDraft;
 use super::edit::EditState;
-use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, never_reached, slot_line_label, slots_pill};
-use super::inspect::{self, Selection, behavior_inspection, inspect, palette, palette_hint};
+use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, assists_pill, never_reached, slot_line_label, slots_pill};
+use super::inspect::{self, Selection, assists_inspection, behavior_inspection, inspect, palette, palette_hint};
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
 use super::{BehaviorUi, BehaviorView, EditorContext, TestMode};
@@ -238,6 +239,9 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         for (text, view) in [("GRAPH", BehaviorView::Graph), ("TEXT", BehaviorView::Text)] {
                             spawn_pill(v, fonts, text, 10.0, 34.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::View(view)));
                         }
+                        // The design's pilot assists (GDR-0088), a tab of their own after a gap.
+                        v.spawn(Node { width: px(6), ..default() });
+                        spawn_pill(v, fonts, "PILOT ASSISTS", 10.0, 34.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::View(BehaviorView::Assists)), Tip::new("PILOT ASSISTS: HELP WHILE YOU FLY THIS DESIGN")));
                     });
                     tr.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), ..default() }).with_children(|t| {
                         let play = UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
@@ -580,8 +584,10 @@ pub(super) fn rebuild_graph(
                     BorderColor::all(kit.c(Tone::Label, 0.5)),
                 ))
                 .with_children(|root| {
-                    root.spawn(prose(kit.fonts, "Priority", 16.0, kit.c(Tone::Number, 1.0)));
-                    root.spawn(tracked(kit.fonts, "FIRST MATCH", 7.5, kit.c(Tone::Label, 1.0), 0.3));
+                    // A behavior runs its first matching rule; each assist decides its own channel.
+                    let (title, sub) = if g.assists { ("Assists", "EACH CHANNEL") } else { ("Priority", "FIRST MATCH") };
+                    root.spawn(prose(kit.fonts, title, 16.0, kit.c(Tone::Number, 1.0)));
+                    root.spawn(tracked(kit.fonts, sub, 7.5, kit.c(Tone::Label, 1.0), 0.3));
                 });
                 if !g.rules.is_empty() {
                     spawn_line(rc, Node { flex_grow: 1.0, height: px(LINE_W), ..default() }, kit.c(Tone::Label, 0.4));
@@ -647,7 +653,7 @@ pub(super) fn rebuild_graph(
                     BorderColor::all(Color::NONE),
                     BackgroundColor(Color::NONE),
                 ))
-                .with_child(tracked(kit.fonts, &add_rule_label(g.rules.len(), g.slots), 9.0, kit.c(Tone::Label, 1.0), 0.3));
+                .with_child(tracked(kit.fonts, &if g.assists { "+ ASSIST".to_string() } else { add_rule_label(g.rules.len(), g.slots) }, 9.0, kit.c(Tone::Label, 1.0), 0.3));
             });
     });
 }
@@ -707,9 +713,12 @@ pub(super) fn rebuild_inspector(
         scroll.0 = Vec2::ZERO;
     }
     *built = Some(key);
-    let i = ui.selected.as_ref().and_then(|s| inspect(ed, s, &cx)).unwrap_or_else(|| {
-        let source = draft.source.as_deref().and_then(|id| behaviors.behavior(&content.0, id));
-        behavior_inspection(&draft.name, source, ed.rules().len())
+    let i = ui.selected.as_ref().and_then(|s| inspect(ed, s, &cx)).unwrap_or_else(|| match ed.kind() {
+        ListKind::Assists => assists_inspection(ed.rules().len()),
+        ListKind::Behavior => {
+            let source = draft.source.as_deref().and_then(|id| behaviors.behavior(&content.0, id));
+            behavior_inspection(&draft.name, source, ed.rules().len())
+        }
     });
     let kit = Kit { fonts: &fonts, ui: style.ui };
     commands.entity(body).despawn_children().with_children(|p| spawn_inspection(p, &kit, &i));
@@ -720,20 +729,23 @@ pub(super) fn rebuild_inspector(
 pub(super) fn rebuild_palette(
     mut commands: Commands,
     ui: Res<BehaviorUi>,
+    draft: Res<BehaviorDraft>,
     content: Res<GameContent>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     list: Single<(Entity, &mut ScrollPosition), With<PaletteList>>,
-    mut built: Local<Option<String>>,
+    mut built: Local<Option<(String, ListKind)>>,
 ) {
-    if built.as_deref() == Some(ui.search.as_str()) {
+    // What the list may use: a behavior's nodes, or the assists' (GDR-0088).
+    let kind = draft.editor().map_or(ListKind::Behavior, |e| e.kind());
+    if built.as_ref().is_some_and(|(search, k)| *search == ui.search && *k == kind) {
         return;
     }
-    *built = Some(ui.search.clone());
+    *built = Some((ui.search.clone(), kind));
     let kit = Kit { fonts: &fonts, ui: style.ui };
     let (list, mut scroll) = list.into_inner();
     scroll.0 = Vec2::ZERO;
-    let entries = palette(&content.0.behavior_nodes, &ui.search);
+    let entries = palette(&content.0.behavior_nodes, kind, &ui.search);
     commands.entity(list).despawn_children().with_children(|l| {
         if entries.is_empty() {
             l.spawn(tracked(kit.fonts, "NO NODE MATCHES", 8.5, kit.c(Tone::Dim, 1.0), 0.3));
@@ -765,9 +777,9 @@ pub(super) fn sync_search(mut ui: ResMut<BehaviorUi>, mut field: Single<&mut Tex
     }
 }
 
-/// GRAPH shows the graph; TEXT hides it (the editor draws over its rectangle).
+/// GRAPH and PILOT ASSISTS show the graph; TEXT hides it (the editor draws over its rectangle).
 pub(super) fn show_view(ui: Res<BehaviorUi>, mut graph: Single<&mut Visibility, With<GraphViewport>>) {
-    let want = if ui.view == BehaviorView::Graph { Visibility::Inherited } else { Visibility::Hidden };
+    let want = if ui.view == BehaviorView::Text { Visibility::Hidden } else { Visibility::Inherited };
     if **graph != want {
         **graph = want;
     }
@@ -775,12 +787,15 @@ pub(super) fn show_view(ui: Res<BehaviorUi>, mut graph: Single<&mut Visibility, 
 
 /// The status line under the screen: errors in the text, rules without a slot, else how the rules run.
 pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (String, Tone) {
+    if view == BehaviorView::Assists {
+        return ("AN ASSIST TAKES ITS CHANNEL ONLY WHILE YOU LEAVE IT FREE  ·  A TOGGLE SWITCHES IT IN FLIGHT".into(), Tone::Label);
+    }
     let errors = draft.errors.len();
     let s = if errors == 1 { "" } else { "S" };
     if let Some(e) = draft.errors.first() {
         return match view {
             BehaviorView::Text => (format!("{errors} ERROR{s}  ·  FIRST ON LINE {}, COLUMN {}", e.line, e.col), Tone::Coral),
-            BehaviorView::Graph => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES, READ-ONLY UNTIL IT IS FIXED"), Tone::Gold),
+            _ => (format!("THE TEXT HAS {errors} ERROR{s}  ·  THE GRAPH SHOWS THE LAST VALID RULES, READ-ONLY UNTIL IT IS FIXED"), Tone::Gold),
         };
     }
     let rules = draft.program().rules.len();
@@ -800,7 +815,7 @@ pub fn status_line(draft: &BehaviorDraft, view: BehaviorView, slots: u32) -> (St
     }
     match view {
         BehaviorView::Text => (format!("VALID  ·  {rules} RULE{}", if rules == 1 { "" } else { "S" }), Tone::Teal),
-        BehaviorView::Graph => ("THE FIRST RULE THAT MATCHES DECIDES  ·  GUNS FIRE AT WILL".into(), Tone::Label),
+        _ => ("THE FIRST RULE THAT MATCHES DECIDES  ·  GUNS FIRE AT WILL".into(), Tone::Label),
     }
 }
 
@@ -821,6 +836,7 @@ pub(super) fn sync_texts(
         let (s, tone) = match t {
             ScreenText::Breadcrumb => (format!("BEHAVIOR  ·  {}", context.design_name.to_uppercase()), Tone::Label),
             ScreenText::Name => (draft.name.clone(), Tone::Number),
+            ScreenText::Slots if ui.view == BehaviorView::Assists => (assists_pill(draft.program().rules.len()), Tone::Violet),
             ScreenText::Slots => (slots_pill(draft.program().rules.len(), context.slots), Tone::Violet),
             ScreenText::Status => note.show(&draft).unwrap_or_else(|| status_line(&draft, ui.view, context.slots)),
             ScreenText::AddNode => match draft.editor() {
@@ -958,7 +974,7 @@ pub(super) fn draw_dots(
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(r) = regions else { return };
-    if ui.view != BehaviorView::Graph || !root.visible() {
+    if ui.view == BehaviorView::Text || !root.visible() {
         return;
     }
     let (node, tf) = *graph;

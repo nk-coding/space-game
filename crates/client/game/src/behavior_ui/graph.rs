@@ -4,7 +4,7 @@
 //! the model's stable ids ([`NodeRef`], [`RuleId`]), so a selection keeps naming the same node while rules move.
 //! The screen (`screen.rs`) turns this into nodes; the tests below pin the mapping.
 
-use data::behavior::{Call, Cond};
+use data::behavior::{Call, Cond, ListKind};
 use data::behavior::edit::{BehaviorEditor, DEFAULT_TARGET, NodeRef, RuleId};
 use data::{BehaviorNode, NodeRole, Table};
 
@@ -46,12 +46,17 @@ pub struct GraphView {
     pub rules: Vec<RuleRow>,
     /// The design's rule slots.
     pub slots: u32,
+    /// The design's pilot assists (GDR-0088), not its behavior: every rule runs (no rule slots; each decides its
+    /// own channel, so an `always` rule doesn't stop the ones below).
+    pub assists: bool,
 }
 
 impl GraphView {
     pub fn of(ed: &BehaviorEditor, slots: u32) -> Self {
         let nodes = ed.nodes();
         let program = ed.program();
+        let assists = ed.kind() == ListKind::Assists;
+        let slots = if assists { u32::MAX } else { slots };
         let (target, default_target) = match &program.target {
             Some(t) => (chip(&t.call, NodeRef::Target, NodeRole::Target, nodes), false),
             None => {
@@ -61,7 +66,7 @@ impl GraphView {
         };
         let active = ed.active_rules(slots);
         let always: Vec<bool> = program.rules.iter().map(|r| r.when.is_empty()).collect();
-        let never = never_reached(&always, slots);
+        let never = if assists { 0..0 } else { never_reached(&always, slots) };
         let rules = ed
             .rules()
             .map(|r| RuleRow {
@@ -73,7 +78,7 @@ impl GraphView {
                 reached: !never.contains(&r.index),
             })
             .collect();
-        Self { target, default_target, rules, slots }
+        Self { target, default_target, rules, slots, assists }
     }
 
     /// Where the slot line goes: the index of the first rule without a slot (`None`: every rule has one).
@@ -124,6 +129,11 @@ fn cond_chip(c: &Cond, node: NodeRef, nodes: &Table<BehaviorNode>) -> Chip {
 /// The header pill: `6 / 12 RULE SLOTS` (rules / slots).
 pub fn slots_pill(rules: usize, slots: u32) -> String {
     format!("{rules} / {slots} RULE SLOT{}", if slots == 1 { "" } else { "S" })
+}
+
+/// The header pill on the PILOT ASSISTS tab: `3 ASSISTS · WHILE YOU FLY IT` (they need no rule slots).
+pub fn assists_pill(rules: usize) -> String {
+    format!("{rules} ASSIST{}  ·  WHILE YOU FLY IT", if rules == 1 { "" } else { "S" })
 }
 
 /// The pill under the rules: `+ RULE · 6 SLOTS LEFT`.

@@ -31,7 +31,7 @@ pub enum BehaviorAction {
     Back,
     /// The ring button top left: home (the ring menu).
     Menu,
-    /// GRAPH or TEXT.
+    /// GRAPH or TEXT (the behavior), or PILOT ASSISTS.
     View(BehaviorView),
     /// A click on a node of the graph: the inspector shows it.
     Select(NodeRef),
@@ -148,6 +148,8 @@ pub(super) fn apply(
                 }
                 ui.view = *v;
             }
+            // The list opens and replaces behaviors: the behavior's draft comes back first (`assists::switch`).
+            BehaviorAction::Behaviors if ui.view == BehaviorView::Assists => ui.view = BehaviorView::Graph,
             BehaviorAction::Select(n) => ui.selected = Some(Selection::Node(*n)),
             BehaviorAction::Deselect => ui.selected = None,
             BehaviorAction::TestMode(m) => ui.test_mode = *m,

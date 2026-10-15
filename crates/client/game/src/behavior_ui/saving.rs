@@ -36,6 +36,7 @@ use world::test_range::{self, BehaviorTest, StartTest, TestProgram};
 
 use crate::drydock::report::DrydockReport;
 
+use super::assists::AssistTab;
 use super::draft::{BehaviorDraft, Snapshot, design_behavior};
 use super::screen::ScreenText;
 use super::{BehaviorAction, BehaviorUi, BehaviorView, EditorContext};
@@ -111,6 +112,12 @@ impl ScreenNote {
     pub fn show(&self, draft: &BehaviorDraft) -> Option<(String, Tone)> {
         self.line.as_ref().filter(|_| self.key == draft.snapshot()).cloned()
     }
+
+    /// A message for the status line (uppercase), until `draft` changes.
+    pub fn say(&mut self, draft: &BehaviorDraft, line: impl AsRef<str>, tone: Tone) {
+        self.line = Some((line.as_ref().to_uppercase(), tone));
+        self.key = draft.snapshot();
+    }
 }
 
 /// The resources saving, opening and linking work on.
@@ -128,8 +135,7 @@ pub(super) struct Lib<'w> {
 impl Lib<'_> {
     /// A message for the status line (uppercase), until the draft changes.
     pub fn say(&mut self, line: impl AsRef<str>, tone: Tone) {
-        self.note.line = Some((line.as_ref().to_uppercase(), tone));
-        self.note.key = self.draft.snapshot();
+        self.note.say(&self.draft, line, tone);
     }
 
     /// The id of the behavior the design flies.
@@ -408,15 +414,18 @@ pub(super) fn apply(
     content: Res<GameContent>,
     ui: Res<BehaviorUi>,
     report: Res<DrydockReport>,
+    tab: Res<AssistTab>,
     mut start: MessageWriter<StartTest>,
 ) {
     for a in actions.read() {
         match a {
+            // The assists are the design's: they are saved with it.
+            BehaviorAction::Save if tab.open() => lib.say("pilot assists are saved with the design: save it in the drydock", Tone::Gold),
             BehaviorAction::Save => {
                 let (line, tone) = lib.save(&content.0);
                 lib.say(line, tone);
             }
-            BehaviorAction::TestInRange => match report.report.as_ref().ok_or("the design has no report yet").map_err(String::from).and_then(|r| test_request(&lib.draft, &lib.behaviors, &content.0, r)) {
+            BehaviorAction::TestInRange => match report.report.as_ref().ok_or("the design has no report yet").map_err(String::from).and_then(|r| test_request(tab.behavior(&lib.draft), &lib.behaviors, &content.0, r)) {
                 Ok(program) => {
                     start.write(StartTest { test: BehaviorTest { mode: ui.test_mode, program }, back: AppMode::Behavior });
                 }
@@ -438,8 +447,12 @@ pub fn test_request(draft: &BehaviorDraft, behaviors: &PlayerBehaviors, content:
     Ok(program)
 }
 
-/// The working draft is written a second after the last change, at once after a save, an open or a link.
-pub(super) fn autosave(time: Res<Time<Real>>, mut lib: Lib) {
+/// The working draft is written a second after the last change, at once after a save, an open or a link. It waits
+/// while the PILOT ASSISTS tab is open (the screen's draft is the assists then; the behavior's doesn't change).
+pub(super) fn autosave(time: Res<Time<Real>>, mut lib: Lib, tab: Res<AssistTab>) {
+    if tab.open() {
+        return;
+    }
     let now = time.elapsed_secs_f64();
     if lib.draft.is_changed() && lib.draft.editor().is_some() {
         let snap = lib.draft.snapshot();
@@ -536,10 +549,12 @@ pub(super) fn title(
     field: Single<(&mut TextField, &mut Node), With<TitleField>>,
     mut editing: Local<bool>,
     mut draft: ResMut<BehaviorDraft>,
+    tab: Res<AssistTab>,
 ) {
     let (button, mut button_node) = button.into_inner();
     let (mut f, mut node) = field.into_inner();
-    let clicked = clicks.read().any(|c| c.0 == button);
+    // The assists' name is the tab's, not the player's.
+    let clicked = clicks.read().any(|c| c.0 == button) && !tab.open();
     let (open, renamed) = name_in_place(&mut editing, &mut f, clicked, keys.just_pressed(KeyCode::Escape), &draft.name);
     if let Some(new) = renamed {
         draft.name = new;
@@ -557,6 +572,7 @@ pub(super) fn sync_title(
     behaviors: Res<PlayerBehaviors>,
     content: Res<GameContent>,
     style: Res<Style>,
+    tab: Res<AssistTab>,
     note: Single<(&mut Text, &mut TextColor), With<TitleNote>>,
 ) {
     if !draft.is_changed() && !design.is_changed() && !behaviors.is_changed() {
@@ -564,7 +580,7 @@ pub(super) fn sync_title(
     }
     let content = &content.0;
     let flown = design_behavior(content, &behaviors, design.blueprint());
-    let (s, tone) = header_tag(&draft, content, &behaviors, flown);
+    let (s, tone) = if tab.open() { ("SAVED WITH THE DESIGN".into(), Tone::Dim) } else { header_tag(&draft, content, &behaviors, flown) };
     let (mut text, mut color) = note.into_inner();
     set_ui_text(&mut text, &s);
     set_color(&mut color, ui_color(tone.color(&style.ui), 1.0));
@@ -598,6 +614,7 @@ mod tests {
         world.init_resource::<ScreenNote>();
         world.init_resource::<EditorContext>();
         world.init_resource::<BehaviorUi>();
+        world.init_resource::<AssistTab>();
         world.init_resource::<Time<Real>>();
         world
     }
@@ -674,6 +691,57 @@ mod tests {
         world.run_system_once(leave).unwrap();
         let w = world.resource::<Storage>().read::<WorkingBehavior>(WORKING).unwrap().unwrap().doc;
         assert_eq!((w.text.as_str(), w.unsaved), ("always -> orbit(50%)", true));
+    }
+
+    /// PILOT ASSISTS (GDR-0088): the tab puts the design's assists on the screen and parks the behavior's draft (its
+    /// working draft is left alone meanwhile); an edit goes into the design and the working design at once; SAVE
+    /// says where they are saved; leaving brings the behavior back as it was.
+    #[test]
+    fn the_assists_tab_edits_the_designs_assists_and_keeps_the_behavior() {
+        use bevy::ecs::system::RunSystemOnce;
+        use data::behavior::ListKind;
+        use super::super::assists::{leave as leave_tab, switch, write};
+        use super::super::controls::SliderDrag;
+        let mut world = world(Storage::new(MemoryBackend::default()));
+        world.init_resource::<SliderDrag>();
+        world.run_system_once(open).unwrap();
+        world.run_system_once(autosave).unwrap();
+        let behavior = world.resource::<BehaviorDraft>().text.clone();
+        world.resource_mut::<BehaviorUi>().view = BehaviorView::Assists;
+        world.run_system_once(switch).unwrap();
+        let draft = world.resource::<BehaviorDraft>();
+        assert_eq!((draft.editor().unwrap().kind(), draft.program().rules.len(), draft.name.as_str()), (ListKind::Assists, 0, "Pilot assists"));
+        assert!(world.resource::<AssistTab>().open());
+        // Opening the tab changes nothing in the design.
+        world.run_system_once(write).unwrap();
+        assert!(world.resource::<PlayerDesign>().blueprint().assists.is_none());
+        // + ASSIST, then its toggle: the design has the list, the storage's working design too.
+        world.resource_mut::<BehaviorDraft>().edit(|e| e.add_rule(0, "brake").unwrap()).unwrap();
+        let rule = world.resource::<BehaviorDraft>().editor().unwrap().rule_at(0).unwrap().id;
+        world.resource_mut::<BehaviorDraft>().edit(|e| e.set_param(data::behavior::edit::NodeRef::Action(rule), 0, data::behavior::Value::Word("toggle2".into())).unwrap()).unwrap();
+        world.run_system_once(write).unwrap();
+        let want = Some(data::AssistList { target: None, rules: vec!["always -> brake(toggle2)".into()] });
+        assert_eq!(world.resource::<PlayerDesign>().blueprint().assists, want);
+        let stored = library::restore_working(&mut world.resource_mut::<Storage>(), &data::base_content()).unwrap().unwrap().0;
+        assert_eq!(stored.blueprint().assists, want);
+        // The working behavior draft waits; SAVE says where assists go.
+        world.run_system_once(autosave).unwrap();
+        assert_eq!(world.resource::<Storage>().read::<WorkingBehavior>(WORKING).unwrap().unwrap().doc.text, behavior);
+        world.init_resource::<Messages<BehaviorAction>>();
+        world.init_resource::<Messages<StartTest>>();
+        world.init_resource::<DrydockReport>();
+        world.write_message(BehaviorAction::Save);
+        world.run_system_once(apply).unwrap();
+        let (line, _) = world.resource::<ScreenNote>().show(world.resource::<BehaviorDraft>()).unwrap();
+        assert_eq!(line, "PILOT ASSISTS ARE SAVED WITH THE DESIGN: SAVE IT IN THE DRYDOCK");
+        // Leaving brings the behavior back; reopening the tab shows the design's list.
+        world.run_system_once(leave_tab).unwrap();
+        assert_eq!(world.resource::<BehaviorDraft>().text, behavior);
+        world.run_system_once(switch).unwrap();
+        assert_eq!(world.resource::<BehaviorDraft>().text, "always -> brake(toggle2)\n");
+        world.resource_mut::<BehaviorUi>().view = BehaviorView::Graph;
+        world.run_system_once(switch).unwrap();
+        assert_eq!(world.resource::<BehaviorDraft>().text, behavior);
     }
 
     #[test]

@@ -14,7 +14,7 @@
 
 use bevy::prelude::*;
 use data::NodeRole;
-use data::behavior::{CmpOp, Value};
+use data::behavior::{CmpOp, ListKind, Value};
 use data::behavior::edit::{BehaviorEditor, CondId, NodeRef, Refusal, RuleId};
 use kit::style::Style;
 use kit::ui_icons::UiIcon;
@@ -124,11 +124,12 @@ pub fn palette_click(ed: &BehaviorEditor, sel: Option<&Selection>, replacing: Op
 }
 
 /// `+ RULE`: `always ->` the palette's first action, above the last rule when that one is a fallback (`always`,
-/// so it stays last), else at the bottom. `None` if the vocabulary has no action.
+/// so it stays last), else at the bottom. Pilot assists (`+ ASSIST`) have no fallback, every rule deciding its own
+/// channel: always at the bottom, also in an empty list. `None` if the vocabulary has no action.
 pub fn add_rule_edit(ed: &BehaviorEditor) -> Option<Edit> {
     let action = ed.palette(NodeRole::Action).next()?.id.clone();
     let n = ed.rules().len();
-    let fallback_last = ed.rule_at(n.checked_sub(1)?).is_some_and(|r| r.rule.when.is_empty());
+    let fallback_last = ed.kind() == ListKind::Behavior && n.checked_sub(1).and_then(|i| ed.rule_at(i)).is_some_and(|r| r.rule.when.is_empty());
     Some(Edit::AddRule { index: if fallback_last { n - 1 } else { n }, action })
 }
 

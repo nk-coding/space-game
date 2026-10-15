@@ -25,6 +25,8 @@
 //!   and reloading), linking a behavior to the design, TEST IN RANGE.
 //! * [`list`]: the BEHAVIORS list (the player's behaviors and the templates: open, use for this design, duplicate,
 //!   rename, delete, new).
+//! * [`assists`]: the PILOT ASSISTS tab (GDR-0088): the design's pilot assists in the same graph, inspector and
+//!   palette, saved with the design.
 //! * [`live`]: the live rule panel in the flight HUD while a test runs.
 //!
 //! **For handlers** (the ring menu, later ones): read `MessageReader<BehaviorAction>` in a system in
@@ -33,6 +35,7 @@
 //! [`EditorContext`] (the design's name and rule slots).
 
 pub mod actions;
+pub mod assists;
 pub mod controls;
 pub mod dashed;
 pub mod draft;
@@ -78,12 +81,13 @@ pub enum BehaviorSet {
     Show,
 }
 
-/// GRAPH or TEXT.
+/// GRAPH or TEXT (the behavior), or PILOT ASSISTS (the design's assists, in the graph).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum BehaviorView {
     #[default]
     Graph,
     Text,
+    Assists,
 }
 
 /// The two modes of TEST IN RANGE (GDR-0057): WATCH and FLY ALONGSIDE.
@@ -134,6 +138,7 @@ impl Plugin for BehaviorPlugin {
             .init_resource::<saving::DraftSlot>()
             .init_resource::<saving::ScreenNote>()
             .init_resource::<list::BehaviorList>()
+            .init_resource::<assists::AssistTab>()
             .add_message::<BehaviorAction>()
             .configure_sets(
                 Update,
@@ -148,7 +153,7 @@ impl Plugin for BehaviorPlugin {
             // The design report (the drydock's, `drydock::report`) is brought up to date first: the reach and TEST IN
             // RANGE read it.
             .add_systems(OnEnter(AppMode::Behavior), (actions::way_in, remember_flight_zoom, design_report, (saving::open, controls::measure_reach)).chain())
-            .add_systems(OnExit(AppMode::Behavior), (give_back_zoom, controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
+            .add_systems(OnExit(AppMode::Behavior), (assists::leave, give_back_zoom, controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
             .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>| s.0 = size.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(PostUpdate, screen::draw_dots.after(CameraSet).before(FxFlush))
@@ -163,10 +168,12 @@ impl Plugin for BehaviorPlugin {
                         fit_window,
                         hold_camera,
                         actions::apply,
+                        assists::switch,
                         design_report,
                         (saving::title, saving::apply, list::apply, list::scroll).chain(),
                         edit::apply,
                         controls::drag_sliders,
+                        assists::write,
                         saving::autosave,
                     )
                         .chain()
