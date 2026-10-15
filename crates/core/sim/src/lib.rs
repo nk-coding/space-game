@@ -48,7 +48,7 @@ pub mod ship;
 pub mod voyage;
 pub mod world;
 
-pub use behavior::{BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
+pub use behavior::{AssistState, AssistSwitch, Assists, AssistsId, BehaviorId, BehaviorLibrary, BehaviorState, RuleStatus, Why};
 pub use combat::salvage::{Cargo, Item, Loose, LooseId, Salvaged, Stack};
 pub use combat::weapons::{BeamTrace, Bubble, GoneReason, Projectile, ProjectileId, ShotKind};
 pub use config::{FlightTuning, PhysicsTuning, SalvageTuning, SimConfig};

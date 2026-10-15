@@ -2,8 +2,8 @@
 //! default and unit is resolved once here, so a think only reads enums and numbers.
 
 use data::behavior::{
-    Amount, Call, CmpOp, LineError, LineRef, MAX_ARGS, Program, check_program, quantity_amount,
-    resolve_args,
+    Amount, Call, CmpOp, LineError, LineRef, MAX_ARGS, Program, check_assists, check_program,
+    quantity_amount, resolve_args,
 };
 use data::{BehaviorNode, ParamType, Quantity};
 
@@ -66,6 +66,18 @@ pub enum Flag {
     ShieldDown,
     TargetOnMe,
     UnderAttack,
+    CanStopStraight,
+    /// The pilot holds a lock (pilot assists only).
+    LockHeld,
+}
+
+/// What the pilot's `idle` condition times (pilot assists only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    Any,
+    Turn,
+    Thrust,
+    Fire,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,6 +91,10 @@ pub enum Sensor {
     /// Period in ticks.
     Cycle(u64),
     TargetTime,
+    /// Speed as a share of the top speed.
+    Speed,
+    /// Seconds since the pilot last used a control (pilot assists only).
+    Idle(Control),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -147,6 +163,44 @@ pub struct Code {
     pub conds: Vec<Cond>,
 }
 
+/// What a pilot assist does (GDR-0088), each on one control channel (`assist.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AssistAction {
+    /// Turning: the strongest guns onto the target.
+    FaceTarget,
+    /// Thrust: stop, without turning.
+    Brake,
+    /// The trigger of this weapon group (1 to `data::MAX_WEAPON_GROUP`): fire when its guns bear.
+    AutoFire(u8),
+}
+
+impl AssistAction {
+    /// Needs a target to act (else the rule claims nothing).
+    pub fn needs_target(self) -> bool {
+        self != AssistAction::Brake
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AssistRule {
+    /// Range into [`AssistCode::conds`].
+    pub start: u32,
+    pub len: u32,
+    pub action: AssistAction,
+    /// The toggle slot that switches it (1 to `data::MAX_ASSIST_TOGGLES`; 0 = none).
+    pub toggle: u8,
+    /// On when a mission starts.
+    pub on: bool,
+}
+
+/// A compiled pilot assist list.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AssistCode {
+    pub target: Selector,
+    pub rules: Vec<AssistRule>,
+    pub conds: Vec<Cond>,
+}
+
 fn choice_id(node: &BehaviorNode, param: usize, a: Amount) -> &str {
     match (&node.params[param].ty, a) {
         (ParamType::Choice(opts), Amount::Choice(k)) => opts[k].id.as_str(),
@@ -181,113 +235,138 @@ fn aim(id: &str) -> AimAt {
     }
 }
 
+type Errors = Vec<LineError>;
+
+fn fail(line: LineRef, call: &Call, msg: &str) -> Errors {
+    vec![LineError {
+        line,
+        col: call.col.0,
+        message: format!("`{}`: {msg}", call.name),
+    }]
+}
+
+fn lookup<'v>(vocab: &'v Vocab, line: LineRef, call: &Call) -> Result<(&'v BehaviorNode, Vec<Amount>), Errors> {
+    let node = vocab
+        .nodes
+        .get(&call.name)
+        .ok_or_else(|| fail(line, call, "unknown node"))?;
+    let args = resolve_args(call, node).ok_or_else(|| fail(line, call, "bad arguments"))?;
+    Ok((node, args))
+}
+
+/// The target line (default: `nearest` at the centre).
+fn selector(program: &Program, vocab: &Vocab) -> Result<Selector, Errors> {
+    let Some(t) = &program.target else {
+        return Ok(Selector::default());
+    };
+    let (node, args) = lookup(vocab, LineRef::Target, &t.call)?;
+    let kind = match node.id.as_str() {
+        "nearest" => SelectorKind::Nearest,
+        "weakest" => SelectorKind::Weakest,
+        "threat" => SelectorKind::Threat,
+        "attacker" => SelectorKind::Attacker,
+        "locked" => SelectorKind::Locked,
+        _ => {
+            return Err(fail(
+                LineRef::Target,
+                &t.call,
+                "no implementation in the sim",
+            ));
+        }
+    };
+    let aim = args
+        .first()
+        .map_or(AimAt::Centre, |&a| aim(choice_id(node, 0, a)));
+    Ok(Selector { kind, aim })
+}
+
+/// The conditions of rule `line`, appended to `conds`.
+fn conditions(rule: &data::behavior::Rule, line: LineRef, vocab: &Vocab, conds: &mut Vec<Cond>) -> Result<(), Errors> {
+    for c in &rule.when {
+        let (node, args) = lookup(vocab, line, &c.call)?;
+        let test = if let Some(script) = vocab.script_of(&node.id) {
+            let mut params = [Dist::Metres(0.0); MAX_ARGS];
+            for (k, &a) in args.iter().enumerate().take(MAX_ARGS) {
+                params[k] = dist(a);
+            }
+            Test::Script {
+                script,
+                params,
+                n: args.len().min(MAX_ARGS) as u8,
+            }
+        } else if let Some(q) = node.value {
+            let cmp = c
+                .cmp
+                .as_ref()
+                .ok_or_else(|| fail(line, &c.call, "needs a comparison"))?;
+            let rhs =
+                quantity_amount(&cmp.rhs.value, q).map_err(|m| fail(line, &c.call, &m))?;
+            let sensor = match node.id.as_str() {
+                "hull" => Sensor::Hull,
+                "shield" => Sensor::Shield,
+                "heat" => Sensor::Heat,
+                "power" => Sensor::Power,
+                "target_hull" => Sensor::TargetHull,
+                "enemies_near" => Sensor::EnemiesNear(dist(args[0])),
+                "cycle" => {
+                    let ticks = (seconds(args[0]) * TICK_HZ as f32 + 0.5) as u64;
+                    Sensor::Cycle(ticks.max(1))
+                }
+                "target_time" => Sensor::TargetTime,
+                "speed" => Sensor::Speed,
+                "idle" => Sensor::Idle(match choice_id(node, 0, args[0]) {
+                    "turn" => Control::Turn,
+                    "thrust" => Control::Thrust,
+                    "fire" => Control::Fire,
+                    _ => Control::Any,
+                }),
+                _ => return Err(fail(line, &c.call, "no implementation in the sim")),
+            };
+            Test::Value {
+                sensor,
+                op: cmp.op,
+                rhs: dist(rhs),
+            }
+        } else {
+            match node.id.as_str() {
+                "shield_down" => Test::Flag(Flag::ShieldDown),
+                "target_on_me" => Test::Flag(Flag::TargetOnMe),
+                "under_attack" => Test::Flag(Flag::UnderAttack),
+                "can_stop_straight" => Test::Flag(Flag::CanStopStraight),
+                "lock_held" => Test::Flag(Flag::LockHeld),
+                "target_in_range" => Test::InRange(dist(args[0])),
+                _ => return Err(fail(line, &c.call, "no implementation in the sim")),
+            }
+        };
+        let measure = match test {
+            Test::InRange(_) => Some(Quantity::Distance),
+            Test::Value { .. } => node.value,
+            _ => None,
+        };
+        conds.push(Cond {
+            not: c.not,
+            test,
+            measure,
+        });
+    }
+    Ok(())
+}
+
 /// Checks `program` against the vocabulary and compiles it. Errors as [`check_program`] reports them.
 pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<LineError>> {
     let errors = check_program(program, &vocab.nodes);
     if !errors.is_empty() {
         return Err(errors);
     }
-    let fail = |line: LineRef, call: &Call, msg: &str| {
-        vec![LineError {
-            line,
-            col: call.col.0,
-            message: format!("`{}`: {msg}", call.name),
-        }]
+    let mut code = Code {
+        target: selector(program, vocab)?,
+        ..Code::default()
     };
-    let lookup =
-        |line: LineRef, call: &Call| -> Result<(&BehaviorNode, Vec<Amount>), Vec<LineError>> {
-            let node = vocab
-                .nodes
-                .get(&call.name)
-                .ok_or_else(|| fail(line, call, "unknown node"))?;
-            let args = resolve_args(call, node).ok_or_else(|| fail(line, call, "bad arguments"))?;
-            Ok((node, args))
-        };
-
-    let mut code = Code::default();
-    if let Some(t) = &program.target {
-        let (node, args) = lookup(LineRef::Target, &t.call)?;
-        let kind = match node.id.as_str() {
-            "nearest" => SelectorKind::Nearest,
-            "weakest" => SelectorKind::Weakest,
-            "threat" => SelectorKind::Threat,
-            "attacker" => SelectorKind::Attacker,
-            "locked" => SelectorKind::Locked,
-            _ => {
-                return Err(fail(
-                    LineRef::Target,
-                    &t.call,
-                    "no implementation in the sim",
-                ));
-            }
-        };
-        let aim = args
-            .first()
-            .map_or(AimAt::Centre, |&a| aim(choice_id(node, 0, a)));
-        code.target = Selector { kind, aim };
-    }
     for (i, r) in program.rules.iter().enumerate() {
         let line = LineRef::Rule(i);
         let start = code.conds.len() as u32;
-        for c in &r.when {
-            let (node, args) = lookup(line, &c.call)?;
-            let test = if let Some(script) = vocab.script_of(&node.id) {
-                let mut params = [Dist::Metres(0.0); MAX_ARGS];
-                for (k, &a) in args.iter().enumerate().take(MAX_ARGS) {
-                    params[k] = dist(a);
-                }
-                Test::Script {
-                    script,
-                    params,
-                    n: args.len().min(MAX_ARGS) as u8,
-                }
-            } else if let Some(q) = node.value {
-                let cmp = c
-                    .cmp
-                    .as_ref()
-                    .ok_or_else(|| fail(line, &c.call, "needs a comparison"))?;
-                let rhs =
-                    quantity_amount(&cmp.rhs.value, q).map_err(|m| fail(line, &c.call, &m))?;
-                let sensor = match node.id.as_str() {
-                    "hull" => Sensor::Hull,
-                    "shield" => Sensor::Shield,
-                    "heat" => Sensor::Heat,
-                    "power" => Sensor::Power,
-                    "target_hull" => Sensor::TargetHull,
-                    "enemies_near" => Sensor::EnemiesNear(dist(args[0])),
-                    "cycle" => {
-                        let ticks = (seconds(args[0]) * TICK_HZ as f32 + 0.5) as u64;
-                        Sensor::Cycle(ticks.max(1))
-                    }
-                    "target_time" => Sensor::TargetTime,
-                    _ => return Err(fail(line, &c.call, "no implementation in the sim")),
-                };
-                Test::Value {
-                    sensor,
-                    op: cmp.op,
-                    rhs: dist(rhs),
-                }
-            } else {
-                match node.id.as_str() {
-                    "shield_down" => Test::Flag(Flag::ShieldDown),
-                    "target_on_me" => Test::Flag(Flag::TargetOnMe),
-                    "under_attack" => Test::Flag(Flag::UnderAttack),
-                    "target_in_range" => Test::InRange(dist(args[0])),
-                    _ => return Err(fail(line, &c.call, "no implementation in the sim")),
-                }
-            };
-            let measure = match test {
-                Test::InRange(_) => Some(Quantity::Distance),
-                Test::Value { .. } => node.value,
-                _ => None,
-            };
-            code.conds.push(Cond {
-                not: c.not,
-                test,
-                measure,
-            });
-        }
-        let (node, args) = lookup(line, &r.action)?;
+        conditions(r, line, vocab, &mut code.conds)?;
+        let (node, args) = lookup(vocab, line, &r.action)?;
         let action = match node.id.as_str() {
             "approach" => Action::Approach(dist(args[0])),
             "orbit" => Action::Orbit(
@@ -309,6 +388,50 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             start,
             len: code.conds.len() as u32 - start,
             action,
+        });
+    }
+    Ok(code)
+}
+
+/// Checks a design's pilot assists against the vocabulary (`data::behavior::check_assists`) and compiles them.
+pub(crate) fn compile_assists(program: &Program, vocab: &Vocab) -> Result<AssistCode, Vec<LineError>> {
+    let errors = check_assists(program, &vocab.nodes);
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let mut code = AssistCode {
+        target: selector(program, vocab)?,
+        ..AssistCode::default()
+    };
+    for (i, r) in program.rules.iter().enumerate() {
+        let line = LineRef::Rule(i);
+        let start = code.conds.len() as u32;
+        conditions(r, line, vocab, &mut code.conds)?;
+        let (node, args) = lookup(vocab, line, &r.action)?;
+        // The toggle and the start are the last two values of every assist.
+        let n = args.len();
+        let action = match node.id.as_str() {
+            "face_target" => AssistAction::FaceTarget,
+            "brake" => AssistAction::Brake,
+            "auto_fire" => match args[0] {
+                Amount::Count(g) => AssistAction::AutoFire(g.clamp(1, data::MAX_WEAPON_GROUP as u32) as u8),
+                _ => return Err(fail(line, &r.action, "bad arguments")),
+            },
+            _ => return Err(fail(line, &r.action, "no implementation in the sim")),
+        };
+        let toggle = match choice_id(node, n - 2, args[n - 2]) {
+            "toggle1" => 1,
+            "toggle2" => 2,
+            "toggle3" => 3,
+            "toggle4" => 4,
+            _ => 0,
+        };
+        code.rules.push(AssistRule {
+            start,
+            len: code.conds.len() as u32 - start,
+            action,
+            toggle,
+            on: choice_id(node, n - 1, args[n - 1]) != "off",
         });
     }
     Ok(code)

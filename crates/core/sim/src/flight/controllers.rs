@@ -119,6 +119,14 @@ pub(crate) fn execute(ship: &mut Ship, plan: &Plan, cfg: &SimConfig) {
                     &mut controls.guns,
                 );
             }
+            Fire::Assisted { held, auto, at } => {
+                crate::behavior::guns_at_will(piece, &at, design.guns.len(), &mut controls.guns);
+                for (f, g) in controls.guns.iter_mut().zip(&design.guns) {
+                    let bit = 1 << (g.group - 1);
+                    *f = held & bit != 0 || (auto & bit != 0 && *f);
+                }
+                controls.fire = controls.guns.contains(&true);
+            }
         }
         let Some(goal) = plan.goal else {
             piece.assist = TurnAssist::default();

@@ -195,6 +195,8 @@ impl Ship {
             control: Some(pid),
             helm: self.helm,
             behavior: None,
+            // The design's assists, switched as the parent's are (one mission), for when the player flies it.
+            assists: self.assists.as_ref().map(|a| a.inherit()),
             leader: self.leader,
             telemetry: FlightTelemetry::default(),
             thrust_scale: self.thrust_scale,

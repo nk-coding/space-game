@@ -25,7 +25,7 @@
 
 use std::sync::Arc;
 
-use crate::behavior::{self, BehaviorId, BehaviorLibrary, BehaviorState};
+use crate::behavior::{self, AssistState, BehaviorId, BehaviorLibrary, BehaviorState};
 use crate::ship::breakage::{DamageOutcome, DamageTarget};
 use crate::config::SimConfig;
 use crate::ship::design::{PartIdx, ShipDesign};
@@ -93,6 +93,13 @@ pub enum ShipCommand {
     Behavior(Option<BehaviorId>),
     /// Set the ship whose lock the `locked` target selector follows (an escort's leader), or none.
     Leader(Option<ShipId>),
+    /// Give the ship its design's pilot assists from the sim's [`BehaviorLibrary`] (`Some`; `add_assists`) or take
+    /// them away (`None`). They run only while the ship is piloted (GDR-0088); each rule starts as its `start` value
+    /// says. Unknown ids are ignored.
+    Assists(Option<crate::behavior::AssistsId>),
+    /// Flip the ship's assists of one toggle slot, or ALL ASSISTS (in flight: the ASSIST TOGGLE keys). Ignored
+    /// without assists.
+    SwitchAssists(crate::behavior::AssistSwitch),
     /// Change a consumer part's power tier and weight (`Ship::set_power_setting`; ignored for parts that draw
     /// no power and for invalid weights).
     Power {
@@ -428,6 +435,13 @@ impl Sim {
             },
             _ => None,
         };
+        let assists = match cmd {
+            ShipCommand::Assists(Some(id)) => match self.behaviors.assists(id) {
+                Some(p) => Some(AssistState::new(id, Arc::clone(p), self.tick)),
+                None => return,
+            },
+            _ => None,
+        };
         let s = &mut self.ships[k];
         match cmd {
             ShipCommand::Pilot(p) => s.helm = HelmMode::Pilot(p),
@@ -438,6 +452,12 @@ impl Sim {
             ShipCommand::Behavior(_) if piloted => s.parked = program,
             ShipCommand::Behavior(_) => s.behavior = program,
             ShipCommand::Leader(l) => s.leader = l,
+            ShipCommand::Assists(_) => s.assists = assists,
+            ShipCommand::SwitchAssists(w) => {
+                if let Some(a) = s.assists.as_mut() {
+                    a.switch(w);
+                }
+            }
             ShipCommand::Power { part, setting } => {
                 s.set_power_setting(part, setting);
             }
@@ -694,6 +714,14 @@ impl Sim {
             &mut self.behavior_scratch,
             self.tick,
             false,
+        );
+        // The pilots' assists note the controls in use and decide on the same ticks.
+        behavior::assist_all(
+            &mut self.ships,
+            &self.behaviors,
+            &mut self.behavior_scratch,
+            self.tick,
+            &self.config.flight,
         );
 
         // Flight: plan every ship from the same world, then act.

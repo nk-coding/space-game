@@ -450,6 +450,9 @@ pub(crate) enum Fire {
     /// Fire at will at a target (behaviors): each gun fires when the target is inside its own cone along its
     /// facing and within its reach (`behavior::guns_at_will`).
     AtWill(TargetState),
+    /// The pilot's assisted fire (GDR-0088): the guns of the `held` groups fire (the triggers), those of the `auto`
+    /// groups fire at will at `at` (auto-fire assists; never a held group).
+    Assisted { held: u8, auto: u8, at: TargetState },
 }
 
 impl Fire {
@@ -524,11 +527,18 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             fire: Fire::all_if(*fire),
             raw: false,
         },
-        HelmMode::Pilot(input) => Plan {
-            goal: Some(pilot_goal(input, &kin, ship, piece, ships, tuning)),
-            fire: Fire::groups(input.fire),
-            raw: false,
-        },
+        HelmMode::Pilot(input) => {
+            let mut goal = pilot_goal(input, &kin, ship, piece, ships, tuning);
+            let mut fire = Fire::groups(input.fire);
+            if let Some(a) = &ship.assists {
+                crate::behavior::assist_plan(a, input, &kin, ship, piece, ships, tuning, &mut goal, &mut fire);
+            }
+            Plan {
+                goal: Some(goal),
+                fire,
+                raw: false,
+            }
+        }
     }
 }
 

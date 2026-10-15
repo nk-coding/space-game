@@ -274,6 +274,8 @@ pub struct Ship {
     pub(crate) helm: HelmMode,
     /// A behavior program flies the ship (overrides the helm).
     pub(crate) behavior: Option<crate::behavior::BehaviorState>,
+    /// Its design's pilot assists (GDR-0088), for while the player flies it (`behavior/assist.rs`).
+    pub(crate) assists: Option<crate::behavior::AssistState>,
     /// Whose lock the `locked` target selector follows (an escort's leader).
     pub(crate) leader: Option<ShipId>,
     pub(crate) telemetry: FlightTelemetry,
@@ -351,6 +353,7 @@ impl Ship {
             control: None,
             helm: HelmMode::Raw,
             behavior: None,
+            assists: None,
             leader: None,
             telemetry: FlightTelemetry::default(),
             thrust_scale: cfg.thrust_scale,
@@ -510,6 +513,11 @@ impl Ship {
     /// The running behavior and its debug view (active rule, why the others failed, target), if any.
     pub fn behavior(&self) -> Option<&crate::behavior::BehaviorState> {
         self.behavior.as_ref()
+    }
+
+    /// Its pilot assists and their switches for the mission (GDR-0088), if it was given a list.
+    pub fn assists(&self) -> Option<&crate::behavior::AssistState> {
+        self.assists.as_ref()
     }
 
     /// The ship whose lock this ship's `locked` target selector follows.
@@ -703,6 +711,11 @@ impl StateHash for Ship {
                 b.hash_state(h);
             }
             None => h.u8(0),
+        }
+        // Nothing for a ship without assists, so worlds without them keep the hashes they had before assists.
+        if let Some(a) = &self.assists {
+            h.u8(1);
+            a.hash_state(h);
         }
         h.u32(self.leader.map_or(u32::MAX, |l| l.0));
         h.u8(self.owner.0);

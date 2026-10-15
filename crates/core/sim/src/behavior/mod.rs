@@ -10,9 +10,11 @@
 //!   agree in both directions (ids, roles, value types, parameter types and options) and compiles the Rhai
 //!   scripts of custom conditions.
 //! * **Library**: [`BehaviorLibrary::new`] compiles the vocabulary and every content behavior;
-//!   [`BehaviorLibrary::add_text`] adds a player's program. Hand it to the sim with `Sim::set_behaviors`.
+//!   [`BehaviorLibrary::add_text`] adds a player's program, [`BehaviorLibrary::add_assists`] a design's pilot
+//!   assists. Hand it to the sim with `Sim::set_behaviors`.
 //! * **Commands**: `ShipCommand::Behavior(Some(id))` (overrides the helm), `Behavior(None)`,
-//!   `ShipCommand::Leader(Some(ship))` (whose lock the `locked` selector follows, and whom `escort` keeps near).
+//!   `ShipCommand::Leader(Some(ship))` (whose lock the `locked` selector follows, and whom `escort` keeps near),
+//!   `ShipCommand::Assists(Some(id))` and `ShipCommand::SwitchAssists` (pilot assists, `assist.rs`).
 //! * **Cadence**: every ship thinks on the same ticks, every [`tuning::THINK_PERIOD`] (10 Hz,
 //!   `tick % period == 0`; not staggered by ship id, ADR-0037), and on the first tick after it gets a
 //!   behavior. Between thinks the chosen maneuver is flown every tick (target position, lead and fire-at-will
@@ -22,6 +24,7 @@
 //! * **Determinism**: ordered containers, index-order loops, one snapshot per pass, integer tick timers,
 //!   `sim::math` only; Rhai is sandboxed and restricted to deterministic math (`script.rs`).
 
+mod assist;
 mod compile;
 mod eval;
 mod script;
@@ -30,8 +33,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use data::behavior::{LineError, Program, TextError};
-use data::{BehaviorNode, Content, Kind, NodeRole, ParamType, Problem, Quantity, Table};
+use data::{AssistList, BehaviorNode, Content, Kind, NodeRole, ParamType, Problem, Quantity, Table};
 
+pub use assist::{AssistState, AssistSwitch, Channel};
+pub(crate) use assist::{assist_all, assist_plan};
 pub use compile::AimAt;
 pub use eval::{BehaviorState, RuleStatus, Why};
 pub(crate) use eval::{Scratch, fly, guns_at_will, think_all};
@@ -79,12 +84,17 @@ pub struct NodeSig {
     pub role: NodeRole,
     pub value: Option<Quantity>,
     pub params: &'static [ParamSig],
+    /// Only in pilot assists (`BehaviorNode::pilot`, GDR-0088).
+    pub pilot: bool,
 }
 
 const AIM: &[ParamSig] = &[ParamSig::Choice(&[
     "centre", "engines", "weapons", "power", "core",
 ])];
 const DIST: &[ParamSig] = &[ParamSig::Number(Quantity::Distance)];
+/// An assist's toggle slot and whether it starts on (the assist actions' last two parameters).
+const TOGGLE: ParamSig = ParamSig::Choice(&["none", "toggle1", "toggle2", "toggle3", "toggle4"]);
+const START: ParamSig = ParamSig::Choice(&["on", "off"]);
 
 const fn node(
     id: &'static str,
@@ -97,6 +107,20 @@ const fn node(
         role,
         value,
         params,
+        pilot: false,
+    }
+}
+
+/// A node of pilot assists only.
+const fn pilot(
+    id: &'static str,
+    role: NodeRole,
+    value: Option<Quantity>,
+    params: &'static [ParamSig],
+) -> NodeSig {
+    NodeSig {
+        pilot: true,
+        ..node(id, role, value, params)
     }
 }
 
@@ -122,6 +146,15 @@ pub const BUILTIN_NODES: &[NodeSig] = {
             &[ParamSig::Number(Seconds)],
         ),
         node("target_time", Condition, Some(Seconds), &[]),
+        node("speed", Condition, Some(Percent), &[]),
+        node("can_stop_straight", Condition, None, &[]),
+        pilot("lock_held", Condition, None, &[]),
+        pilot(
+            "idle",
+            Condition,
+            Some(Seconds),
+            &[ParamSig::Choice(&["any", "turn", "thrust", "fire"])],
+        ),
         node("approach", Action, None, DIST),
         node(
             "orbit",
@@ -137,6 +170,14 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("flee", Action, None, &[]),
         node("hold", Action, None, &[]),
         node("escort", Action, None, DIST),
+        pilot("face_target", Action, None, &[TOGGLE, START]),
+        pilot("brake", Action, None, &[TOGGLE, START]),
+        pilot(
+            "auto_fire",
+            Action,
+            None,
+            &[ParamSig::Number(Count), TOGGLE, START],
+        ),
         node("nearest", Target, None, AIM),
         node("weakest", Target, None, AIM),
         node("threat", Target, None, AIM),
@@ -179,6 +220,17 @@ fn sig_matches(n: &BehaviorNode, sig: &NodeSig) -> Vec<Problem> {
                 n.id,
                 sig.role.noun(),
                 n.role.noun()
+            ),
+        ));
+    }
+    if n.pilot != sig.pilot {
+        out.push(node_problem(
+            n,
+            "pilot",
+            format!(
+                "the sim implements `{}` for {}",
+                n.id,
+                if sig.pilot { "pilot assists only (`pilot: true`)" } else { "behaviors and pilot assists" }
             ),
         ));
     }
@@ -350,13 +402,28 @@ impl Behavior {
     }
 }
 
-/// The vocabulary plus every compiled behavior. Cheap to clone (shared by `Arc`). The sim holds one; ships
-/// refer to its programs by [`BehaviorId`].
+/// Handle of a design's pilot assists in a [`BehaviorLibrary`]: its index, stable for the library's lifetime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AssistsId(pub u32);
+
+/// A design's compiled pilot assists (GDR-0088; `assist.rs`).
+#[derive(Debug)]
+pub struct Assists {
+    /// The source, as checked (`data::behavior::check_assists`).
+    pub program: Program,
+    /// FNV-1a 64 of the canonical text: part of the state hash, like a behavior's.
+    pub fingerprint: u64,
+    pub(crate) code: compile::AssistCode,
+}
+
+/// The vocabulary plus every compiled behavior and pilot assist list. Cheap to clone (shared by `Arc`). The sim
+/// holds one; ships refer to its programs by [`BehaviorId`] and [`AssistsId`].
 #[derive(Clone, Default)]
 pub struct BehaviorLibrary {
     vocab: Option<Arc<Vocab>>,
     programs: Vec<Arc<Behavior>>,
     by_id: BTreeMap<String, BehaviorId>,
+    assists: Vec<Arc<Assists>>,
 }
 
 impl std::fmt::Debug for BehaviorLibrary {
@@ -380,6 +447,7 @@ impl BehaviorLibrary {
             vocab: Some(vocab),
             programs: Vec::new(),
             by_id: BTreeMap::new(),
+            assists: Vec::new(),
         };
         let mut problems = Vec::new();
         for b in &content.behaviors {
@@ -431,6 +499,27 @@ impl BehaviorLibrary {
         }));
         self.by_id.insert(id.to_string(), handle);
         Ok(handle)
+    }
+
+    /// Checks and compiles a design's pilot assists (its blueprint's `assists`) and adds them; hand the handle to
+    /// the design's ships with `ShipCommand::Assists`. Errors by line of the list (`rules[i]`).
+    pub fn add_assists(&mut self, list: &AssistList) -> Result<AssistsId, Vec<LineError>> {
+        let program = list.program()?;
+        let Some(vocab) = &self.vocab else {
+            return Err(vec![LineError {
+                line: data::behavior::LineRef::Whole,
+                col: 1,
+                message: "this library has no vocabulary (build it with BehaviorLibrary::new)".into(),
+            }]);
+        };
+        let code = compile::compile_assists(&program, vocab)?;
+        let fingerprint = crate::hash::fnv1a64(program.to_text().as_bytes());
+        self.assists.push(Arc::new(Assists { program, fingerprint, code }));
+        Ok(AssistsId(self.assists.len() as u32 - 1))
+    }
+
+    pub fn assists(&self, id: AssistsId) -> Option<&Arc<Assists>> {
+        self.assists.get(id.0 as usize)
     }
 
     /// Parses, checks and adds a program in the text form (a player's edit). Errors by text line and column.

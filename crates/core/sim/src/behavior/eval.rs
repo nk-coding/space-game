@@ -262,10 +262,12 @@ impl Default for Out {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Scratch {
     outs: Vec<Out>,
+    /// The pilot assists' think results (`assist.rs`).
+    pub(super) assist_outs: Vec<super::assist::AssistOut>,
     /// Hull share per ship index for this pass (NaN = not computed yet).
-    hull: Vec<f32>,
+    pub(super) hull: Vec<f32>,
     /// Centre of mass and velocity of each ship's controlling piece, once per pass (each costs a sin/cos).
-    centres: Vec<Option<TargetState>>,
+    pub(super) centres: Vec<Option<TargetState>>,
     /// One scope per Rhai script of the library.
     pub(crate) scopes: Vec<Scope<'static>>,
     /// Rhai evaluations so far (diagnostics; not part of the state).
@@ -277,6 +279,14 @@ pub(crate) struct Scratch {
 #[inline]
 fn due(st: &BehaviorState, tick: u64) -> bool {
     st.thought.is_none() || tick.is_multiple_of(tuning::THINK_PERIOD)
+}
+
+/// The snapshot a think pass reads besides the ships: hull shares (filled as asked) and every ship's centre.
+pub(super) fn snapshot(ships: &[Ship], hull: &mut Vec<f32>, centres: &mut Vec<Option<TargetState>>) {
+    hull.clear();
+    hull.resize(ships.len(), f32::NAN);
+    centres.clear();
+    centres.extend(ships.iter().map(centre));
 }
 
 /// The think pass: every ship with a behavior whose turn it is (or every one, with `all`) decides, from one
@@ -300,16 +310,14 @@ pub(crate) fn think_all(
     if !any_due {
         return;
     }
-    scratch.hull.clear();
-    scratch.hull.resize(n, f32::NAN);
-    scratch.centres.clear();
-    scratch.centres.extend(ships.iter().map(centre));
+    snapshot(ships, &mut scratch.hull, &mut scratch.centres);
     let Scratch {
         outs,
         hull,
         centres,
         scopes,
         script_evals,
+        ..
     } = scratch;
     {
         let world: &[Ship] = ships;
@@ -339,6 +347,7 @@ pub(crate) fn think_all(
                 scopes,
                 script_evals,
                 script_error: None,
+                pilot: None,
             };
             cx.think(st, out);
             out.script_error = cx.script_error.take();
@@ -364,7 +373,7 @@ pub(crate) fn think_all(
 }
 
 #[derive(Default)]
-struct Lazy {
+pub(super) struct Lazy {
     shield: Option<Option<f32>>,
     shield_down: Option<bool>,
     heat: Option<f32>,
@@ -372,24 +381,36 @@ struct Lazy {
     under_attack: Option<bool>,
 }
 
-struct Ctx<'a> {
-    me: &'a Ship,
+/// One ship's evaluation of its rules (a behavior's think, or the pilot assists' in `assist.rs`) against one
+/// snapshot of the world.
+pub(super) struct Ctx<'a> {
+    pub me: &'a Ship,
     /// Index of `me` in `world`.
-    my_k: usize,
-    world: &'a [Ship],
-    tick: u64,
-    kin: Option<Kin>,
-    reach: f32,
+    pub my_k: usize,
+    pub world: &'a [Ship],
+    pub tick: u64,
+    pub kin: Option<Kin>,
+    pub reach: f32,
     /// Index, centre and distance of the target.
-    focus: Option<(usize, TargetState, f32)>,
-    acquired: u64,
-    hull: &'a mut [f32],
-    centres: &'a [Option<TargetState>],
-    lazy: Lazy,
-    lib: &'a BehaviorLibrary,
-    scopes: &'a mut [Scope<'static>],
-    script_evals: &'a mut u64,
-    script_error: Option<String>,
+    pub focus: Option<(usize, TargetState, f32)>,
+    pub acquired: u64,
+    pub hull: &'a mut [f32],
+    pub centres: &'a [Option<TargetState>],
+    pub lazy: Lazy,
+    pub lib: &'a BehaviorLibrary,
+    pub scopes: &'a mut [Scope<'static>],
+    pub script_evals: &'a mut u64,
+    pub script_error: Option<String>,
+    /// What the pilot's own conditions read (pilot assists; `None` for a behavior).
+    pub pilot: Option<Pilot>,
+}
+
+/// The pilot as the assists' conditions see it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Pilot {
+    pub lock: bool,
+    /// Seconds since the pilot last used each control, by [`super::compile::Control`] (`Any`, `Turn`, `Thrust`, `Fire`).
+    pub idle: [f32; 4],
 }
 
 /// The ship a ship aims at: its behavior's target, or its pilot's lock.
@@ -501,7 +522,7 @@ fn reach_of(s: &Ship) -> f32 {
 }
 
 /// The nearest working part of a kind on a ship's controlling piece (target priority).
-fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
+pub(super) fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
     if aim == AimAt::Centre {
         return None;
     }
@@ -605,9 +626,44 @@ pub(crate) fn guns_at_will(
     any
 }
 
+/// Below this speed (m/s) a ship counts as standing still: nothing to stop.
+const STILL: f32 = 0.1;
+/// A body axis whose share of the motion is below this needs no thruster of its own to stop (about 14°).
+const STRAIGHT_SHARE: f32 = 0.25;
+
+/// The ship can stop without turning: for each body axis that carries a real share of its motion, a thrust group
+/// pushes against it (`can_stop_straight`).
+fn can_stop_straight(kin: &Kin) -> bool {
+    let speed = kin.vel.length();
+    if speed < STILL {
+        return true;
+    }
+    let v = kin.rot.apply_inverse(kin.vel) * (1.0 / speed);
+    // Groups: forward (+y), backward (−y), right (+x), left (−x); stopping pushes against the motion.
+    let against = |share: f32, plus: usize, minus: usize| {
+        share.abs() < STRAIGHT_SHARE || kin.caps[if share > 0.0 { minus } else { plus }] > 0.0
+    };
+    against(v.y, 0, 1) && against(v.x, 2, 3)
+}
+
 impl Ctx<'_> {
     fn kin(&self) -> &Kin {
         self.kin.as_ref().expect("set at the start of a think")
+    }
+
+    /// The start of every think: the ship's kinematics and the reach `%` distances resolve against. `None` for a
+    /// ship without a controlling piece.
+    pub(super) fn prepare(&mut self) -> Option<Kin> {
+        let me = self.me;
+        let piece = me.control_piece().and_then(|c| me.piece(c))?;
+        let kin = Kin::of(piece, me.parts());
+        self.reach = if kin.reach > 0.0 {
+            kin.reach
+        } else {
+            tuning::DEFAULT_REACH
+        };
+        self.kin = Some(kin);
+        Some(kin)
     }
 
     fn hull_of(&mut self, k: usize) -> f32 {
@@ -619,16 +675,9 @@ impl Ctx<'_> {
 
     fn think(&mut self, st: &BehaviorState, out: &mut Out) {
         let me = self.me;
-        let Some(piece) = me.control_piece().and_then(|c| me.piece(c)) else {
+        let Some(kin) = self.prepare() else {
             return;
         };
-        let kin = Kin::of(piece, me.parts());
-        self.reach = if kin.reach > 0.0 {
-            kin.reach
-        } else {
-            tuning::DEFAULT_REACH
-        };
-        self.kin = Some(kin);
         let code = &st.program.code;
 
         // Target.
@@ -743,7 +792,7 @@ impl Ctx<'_> {
 
     /// Picks the target ship (index, centre, distance). The current target keeps its place unless another
     /// is better by the stickiness margin.
-    fn select(
+    pub(super) fn select(
         &mut self,
         kind: SelectorKind,
         current: Option<ShipId>,
@@ -832,7 +881,7 @@ impl Ctx<'_> {
     }
 
     /// `Ok((holds, measured value))`, or why it cannot be decided (counts as false).
-    fn cond(&mut self, c: &Cond) -> Result<(bool, Option<f32>), Why> {
+    pub(super) fn cond(&mut self, c: &Cond) -> Result<(bool, Option<f32>), Why> {
         let (holds, value) = self.test(&c.test)?;
         Ok((holds != c.not, value))
     }
@@ -847,6 +896,8 @@ impl Ctx<'_> {
                 Ok((v, None))
             }
             Test::Flag(Flag::UnderAttack) => Ok((self.under_attack(), None)),
+            Test::Flag(Flag::CanStopStraight) => Ok((can_stop_straight(self.kin()), None)),
+            Test::Flag(Flag::LockHeld) => Ok((self.pilot.ok_or(Why::NoValue)?.lock, None)),
             Test::Flag(Flag::TargetOnMe) => {
                 let (k, _, _) = self.focus.ok_or(Why::NoTarget)?;
                 Ok((aims_at(&self.world[k]) == Some(self.me.id()), None))
@@ -924,6 +975,14 @@ impl Ctx<'_> {
                 self.focus.ok_or(Why::NoTarget)?;
                 self.since_acquired() as f32 * DT
             }
+            Sensor::Speed => {
+                let kin = self.kin();
+                if kin.top_speed <= 0.0 {
+                    return Err(Why::NoValue);
+                }
+                kin.vel.length() / kin.top_speed
+            }
+            Sensor::Idle(c) => self.pilot.ok_or(Why::NoValue)?.idle[c as usize],
         })
     }
 
