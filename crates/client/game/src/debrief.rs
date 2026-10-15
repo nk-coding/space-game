@@ -33,7 +33,6 @@
 use bevy::prelude::*;
 use data::career::Outcome;
 use kit::style::{Style, ui_color};
-use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
     HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill,
 };
@@ -171,6 +170,51 @@ fn rebuild(
     });
 }
 
+/// Barlow has no ◆ and no signal mark, and the panel can't take the vector glyphs (`ui_icons`): they are world meshes
+/// that its opaque backing covers (it has to be opaque: home's words under it are UI too, so a world backing would not
+/// hide them). So both are bevy_ui nodes, drawn like the glyphs: ◆ a square turned 45°, `side` px across.
+fn diamond(color: Color, side: f32) -> impl Bundle {
+    let square = side * 0.42 * std::f32::consts::SQRT_2;
+    (
+        Node { width: px(side), height: px(side), justify_content: JustifyContent::Center, align_items: AlignItems::Center, flex_shrink: 0.0, ..default() },
+        children![(Node { width: px(square), height: px(square), ..default() }, BackgroundColor(color), UiTransform { rotation: Rot2::degrees(45.0), ..default() })],
+    )
+}
+
+/// A beacon sending, `side` px across: a dot between two pairs of arcs. An arc is a ring's left or right border (a
+/// border's sides meet on the diagonals, so each spans 90°).
+fn signal(color: Color, side: f32) -> impl Bundle {
+    let w = (side * 0.07).max(1.2);
+    let ring = |r: f32| {
+        let d = 2.0 * r * side + w;
+        (
+            Node {
+                position_type: PositionType::Absolute,
+                left: px((side - d) / 2.0),
+                top: px((side - d) / 2.0),
+                width: px(d),
+                height: px(d),
+                border: UiRect::all(px(w)),
+                border_radius: BorderRadius::MAX,
+                ..default()
+            },
+            BorderColor { left: color, right: color, ..BorderColor::all(Color::NONE) },
+        )
+    };
+    let dot = 0.18 * side;
+    (
+        Node { width: px(side), height: px(side), flex_shrink: 0.0, ..default() },
+        children![
+            ring(0.22),
+            ring(0.4),
+            (
+                Node { position_type: PositionType::Absolute, left: px((side - dot) / 2.0), top: px((side - dot) / 2.0), width: px(dot), height: px(dot), border_radius: BorderRadius::MAX, ..default() },
+                BackgroundColor(color),
+            ),
+        ],
+    )
+}
+
 /// The report's lines.
 fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &DebriefData) {
     let ui = style.ui;
@@ -258,10 +302,9 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
                     });
                 });
             }
-            // Barlow has no ◆: it is a vector glyph.
             for (m, n) in &d.materials {
                 p.spawn(row(7.0)).with_children(|l| {
-                    l.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(8), height: px(8), flex_shrink: 0.0, ..default() }));
+                    l.spawn(diamond(c(Tone::Gold), 8.0));
                     l.spawn(label(fonts, &format!("{} +{n}", m.to_uppercase()), 9.5, c(Tone::Gold)));
                 });
             }
@@ -278,7 +321,7 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
     }
     for line in d.signals() {
         p.spawn(row(7.0)).with_children(|l| {
-            l.spawn((UiIcon::Glyph { glyph: Glyph::Signal, color: ui.teal }, Node { width: px(16), height: px(16), flex_shrink: 0.0, ..default() }));
+            l.spawn(signal(c(Tone::Teal), 16.0));
             l.spawn(label(fonts, &line, 10.5, c(Tone::Teal)));
         });
     }

@@ -24,13 +24,7 @@ impl Wiki<'_> {
                 ),
             ));
         }
-        let sig: Vec<&str> = n.params.iter().map(|p| p.id.as_str()).collect();
-        let sig = if sig.is_empty() {
-            n.id.clone()
-        } else {
-            format!("{}({})", n.id, sig.join(", "))
-        };
-        facts.push(("Written".into(), format!("<code>{}</code>", esc(&sig))));
+        facts.push(("Written".into(), format!("<code>{}</code>", esc(&signature(n)))));
         let mut sections = Vec::new();
         if !n.params.is_empty() {
             let mut t = String::from(
@@ -121,61 +115,10 @@ impl Wiki<'_> {
             Ok(program) => {
                 facts.push(("Rules".to_string(), program.rules.len().to_string()));
                 facts.push(("Rule slots needed".into(), program.rules.len().to_string()));
-                let mut s = String::from("<div class=\"rules\">\n");
-                let target = program.target.as_ref();
-                let tline = match target {
-                    Some(t) => format!(
-                        "{}{}",
-                        self.call(root, &t.call, NodeRole::Target),
-                        note(&t.note)
-                    ),
-                    None => format!(
-                        "{} <span class=\"note\"># default</span>",
-                        self.call_named(root, "nearest", "", NodeRole::Target)
-                    ),
-                };
-                writeln!(
-                    s,
-                    "<p class=\"rule target\"><span class=\"kw\">target</span> {tline}</p>"
-                )
-                .unwrap();
-                s.push_str("<ol>\n");
-                for r in &program.rules {
-                    let mut line = String::new();
-                    if r.when.is_empty() {
-                        line.push_str("<span class=\"kw\">always</span>");
-                    } else {
-                        line.push_str("<span class=\"kw\">when</span> ");
-                        for (k, cond) in r.when.iter().enumerate() {
-                            if k > 0 {
-                                line.push_str(" <span class=\"kw\">and</span> ");
-                            }
-                            if cond.not {
-                                line.push_str("<span class=\"kw\">not</span> ");
-                            }
-                            line.push_str(&self.call(root, &cond.call, NodeRole::Condition));
-                            if let Some(cmp) = &cond.cmp {
-                                write!(
-                                    line,
-                                    " {} {}",
-                                    esc(cmp.op.symbol()),
-                                    esc(&cmp.rhs.to_string())
-                                )
-                                .unwrap();
-                            }
-                        }
-                    }
-                    write!(
-                        line,
-                        " <span class=\"kw\">-&gt;</span> {}{}",
-                        self.call(root, &r.action, NodeRole::Action),
-                        note(&r.note)
-                    )
-                    .unwrap();
-                    writeln!(s, "<li class=\"rule\">{line}</li>").unwrap();
-                }
-                s.push_str("</ol>\n</div>\n");
-                sections.push(("Rules".to_string(), s));
+                sections.push((
+                    "Rules".to_string(),
+                    self.rules_figure(root, &program, data::behavior::ListKind::Behavior),
+                ));
             }
             Err(errors) => {
                 for e in errors {
@@ -233,13 +176,91 @@ impl Wiki<'_> {
         )
     }
 
+    /// A rule list drawn as the GRAPH view draws it, and as its text, one line per rule with every node linked in its
+    /// role's colour (what the TEXT view shows).
+    pub(crate) fn rules_figure(
+        &self,
+        root: &str,
+        program: &data::behavior::Program,
+        kind: data::behavior::ListKind,
+    ) -> String {
+        format!(
+            "<figure class=\"rule-figure\">\n{}{}</figure>\n",
+            graph::draw(self.c, program, kind),
+            self.rules_text(root, program, kind)
+        )
+    }
+
+    /// The rule text with links: the target line (or the default one), then one line per rule.
+    pub(crate) fn rules_text(
+        &self,
+        root: &str,
+        program: &data::behavior::Program,
+        kind: data::behavior::ListKind,
+    ) -> String {
+        let mut s = String::from("<div class=\"rules\">\n");
+        let tline = match program.target.as_ref() {
+            Some(t) => format!(
+                "{}{}",
+                self.call(root, &t.call, NodeRole::Target),
+                note(&t.note)
+            ),
+            None => format!(
+                "{} <span class=\"note\"># default</span>",
+                self.call_named(root, "nearest", "", NodeRole::Target)
+            ),
+        };
+        writeln!(
+            s,
+            "<p class=\"rule target\"><span class=\"kw\">target</span> {tline}</p>"
+        )
+        .unwrap();
+        s.push_str(if kind == data::behavior::ListKind::Assists { "<ul>\n" } else { "<ol>\n" });
+        for r in &program.rules {
+            let mut line = String::new();
+            if r.when.is_empty() {
+                line.push_str("<span class=\"kw\">always</span>");
+            } else {
+                line.push_str("<span class=\"kw\">when</span> ");
+                for (k, cond) in r.when.iter().enumerate() {
+                    if k > 0 {
+                        line.push_str(" <span class=\"kw\">and</span> ");
+                    }
+                    if cond.not {
+                        line.push_str("<span class=\"kw\">not</span> ");
+                    }
+                    line.push_str(&self.call(root, &cond.call, NodeRole::Condition));
+                    if let Some(cmp) = &cond.cmp {
+                        write!(
+                            line,
+                            " {} {}",
+                            esc(cmp.op.symbol()),
+                            esc(&cmp.rhs.to_string())
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+            write!(
+                line,
+                " <span class=\"kw\">-&gt;</span> {}{}",
+                self.call(root, &r.action, NodeRole::Action),
+                note(&r.note)
+            )
+            .unwrap();
+            writeln!(s, "<li class=\"rule\">{line}</li>").unwrap();
+        }
+        s.push_str(if kind == data::behavior::ListKind::Assists { "</ul>\n" } else { "</ol>\n" });
+        s + "</div>\n"
+    }
+
     /// A node call in a rule: the name linked to the node's page in its role's colour, then the arguments.
-    pub(super) fn call(&self, root: &str, call: &data::behavior::Call, role: NodeRole) -> String {
+    pub(crate) fn call(&self, root: &str, call: &data::behavior::Call, role: NodeRole) -> String {
         let text = call.to_string();
         self.call_named(root, &call.name, &text[call.name.len()..], role)
     }
 
-    pub(super) fn call_named(&self, root: &str, name: &str, args: &str, role: NodeRole) -> String {
+    pub(crate) fn call_named(&self, root: &str, name: &str, args: &str, role: NodeRole) -> String {
         let class = role_class(role);
         if self.c.behavior_nodes.contains(name) {
             format!(
@@ -254,10 +275,20 @@ impl Wiki<'_> {
     }
 }
 
-/// Node roles in the editor's order: the target line, then conditions, then actions.
-pub(super) const ROLES: [NodeRole; 3] = [NodeRole::Target, NodeRole::Condition, NodeRole::Action];
+/// How a node is written: `orbit(radius, dir)`, or just its id without parameters.
+pub(crate) fn signature(n: &BehaviorNode) -> String {
+    let params: Vec<&str> = n.params.iter().map(|p| p.id.as_str()).collect();
+    if params.is_empty() {
+        n.id.clone()
+    } else {
+        format!("{}({})", n.id, params.join(", "))
+    }
+}
 
-pub(super) fn role_name(role: NodeRole) -> &'static str {
+/// Node roles in the editor's order: the target line, then conditions, then actions.
+pub(crate) const ROLES: [NodeRole; 3] = [NodeRole::Target, NodeRole::Condition, NodeRole::Action];
+
+pub(crate) fn role_name(role: NodeRole) -> &'static str {
     match role {
         NodeRole::Condition => "Condition",
         NodeRole::Action => "Action",
@@ -265,7 +296,16 @@ pub(super) fn role_name(role: NodeRole) -> &'static str {
     }
 }
 
-pub(super) fn role_class(role: NodeRole) -> &'static str {
+/// The heading of a role's nodes in lists.
+pub(crate) fn role_title(role: NodeRole) -> &'static str {
+    match role {
+        NodeRole::Target => "Target selectors",
+        NodeRole::Condition => "Conditions",
+        NodeRole::Action => "Actions",
+    }
+}
+
+pub(crate) fn role_class(role: NodeRole) -> &'static str {
     match role {
         NodeRole::Condition => "cond",
         NodeRole::Action => "act",
@@ -273,7 +313,7 @@ pub(super) fn role_class(role: NodeRole) -> &'static str {
     }
 }
 
-pub(super) fn role_badge(role: NodeRole) -> String {
+pub(crate) fn role_badge(role: NodeRole) -> String {
     format!(
         "<span class=\"badge {}\">{}</span>",
         role_class(role),
@@ -281,14 +321,14 @@ pub(super) fn role_badge(role: NodeRole) -> String {
     )
 }
 
-pub(super) fn note(n: &Option<String>) -> String {
+pub(crate) fn note(n: &Option<String>) -> String {
     n.as_ref().map_or(String::new(), |n| {
         format!(" <span class=\"note\"># {}</span>", esc(n))
     })
 }
 
 /// Every node a behavior names, in reading order: `(id, role it is used in)`; the default target counts.
-pub(super) fn node_uses(b: &Behavior) -> Vec<(String, NodeRole)> {
+pub(crate) fn node_uses(b: &Behavior) -> Vec<(String, NodeRole)> {
     let Ok(p) = b.program() else {
         return Vec::new();
     };

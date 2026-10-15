@@ -1,23 +1,35 @@
-//! `content-tool wiki`: a static website generated from the loaded content (ADR-0032, `docs/wiki.md`).
+//! `content-tool wiki-data`: the generated half of the wiki (`wiki/`, a VitePress site; ADR-0039, `docs/wiki.md`).
 //!
-//! [`generate`] is pure: content in, files out (`path → bytes`, sorted), so two runs give identical bytes and the
-//! tests need no disk; [`write`] puts them into a directory. Layout of the site:
+//! [`generate`] is pure: content and the wiki's hand-written pages in, files out (`path → bytes`, sorted) for
+//! `wiki/gen/`, so two runs give identical bytes and the tests need no disk; [`write`] puts them into the directory.
+//! What it writes:
 //!
-//! * `index.html`, `style.css` (the one stylesheet), `fonts/` (Barlow, the game's UI font);
-//! * one list page per kind at the top level, named like the kind's pack directory (`parts.html`,
-//!   `behavior_nodes.html`, `pages.html` for the free articles);
-//! * one page per entry under the kind's link key, exactly like `[[part:fission_reactor]]`:
-//!   `part/fission_reactor.html`.
+//! * one page per entry of every kind, `<kind dir>/<id>.md` (`parts/fission_reactor.md`; free articles under
+//!   `pages/`), and one list per kind, `<kind dir>/index.md`, plus `reference/index.md` (every kind, the packs).
+//!   The site serves them at the same paths (`parts/fission_reactor.html`). They are Markdown files that hold
+//!   only HTML blocks, which Vue leaves alone (`v-pre`), with the headings the site's outline and search use;
+//! * `refs.json`: what hand-written pages may reference (`[[kind:id]]`, `[[kind:id.field]]`, `[[sim:name]]`) and
+//!   the rendered rule examples, for the site's Markdown plugin at build time;
+//! * `ui.json` (what the site's components show: cards, the parts table, controls, nodes) and `sidebar.json`;
+//! * `sprite.svg` (the pack's icons as symbols), `tokens.css` (`art/tokens.json` as CSS variables) and `fonts/`.
+//!
+//! It also checks the hand-written pages ([`hand`]): every reference resolves, every rule example parses and
+//! checks against the vocabulary, every component names existing content, every page is in the navigation and
+//! no raster image is used anywhere. Those problems are [`Site::errors`]: the command fails on them.
 //!
 //! Every name, summary, stat label and unit comes from the content (the keyed English text, ADR-0018); colours
-//! come from `art/tokens.json`; icons are the pack's SVGs, inlined; ships are drawn from the blueprint geometry.
-//! The headings and words around them ("Used by", "Locked") are the tool's own, like the game's UI strings.
+//! come from `art/tokens.json`; icons are the pack's SVGs; ships, parts and rule graphs are drawn as SVG from the
+//! data. The headings and words around them ("Used by", "Locked") are the tool's own, like the game's UI strings.
 
 mod draw;
+mod graph;
+pub mod hand;
 mod markup;
 mod pages;
+mod refs;
 #[cfg(test)]
 mod tests;
+mod ui;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,21 +43,25 @@ use data::{
     Material, NodeRole, ParamType, Part, PlacedShape, ResearchKind, ResearchNode, Selector, Start,
     StatLine, Unlock, Voyage,
 };
+use serde_json::{Value, json};
 use sim::DesignReport;
 
 use draw::{Glow, Style, Tile};
 use markup::{esc, inline, markdown};
 
-/// The generated site: file path (relative, `/`-separated) → contents, sorted by path.
+/// The generated files: path (relative to `wiki/gen/`, `/`-separated) → contents, sorted by path.
 pub struct Site {
     pub files: BTreeMap<String, Vec<u8>>,
     /// Problems found while generating (an unclosed code fence in a prose file, a broken icon). The base pack
     /// has none.
     pub warnings: Vec<String>,
+    /// Problems of the hand-written pages: an unknown reference, a rule example that does not check, a page
+    /// missing from the navigation, a raster image. The command fails on any.
+    pub errors: Vec<String>,
 }
 
-/// The kinds in navigation order, with the titles of their list pages.
-const KINDS: [(Kind, &str); 16] = [
+/// The kinds in navigation order, with the titles of their list pages. Every [`Kind`] is here (a test checks).
+pub const KINDS: [(Kind, &str); 16] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -67,14 +83,14 @@ const KINDS: [(Kind, &str); 16] = [
 /// Stat lines as `(stat id, value text)`.
 type Lines = Vec<(String, String)>;
 
-/// Pages in a kind directory link to the top level through this.
+/// Generated pages sit one directory down (`parts/x.md`) and link to each other through this.
 const UP: &str = "../";
-/// Pixels per cell of the drawings: ship pages, ship cards, part pages, the index's part palette and the small
-/// chips in tables.
+/// The data files (`refs.json`, `ui.json`) link through this placeholder: the site replaces it with its base, so the
+/// same HTML works on a page at any depth.
+pub const ROOT: &str = "@@/";
+/// Pixels per cell of the drawings: ship pages and ship cards.
 const PX_SHIP: f32 = 34.0;
 const PX_CARD: f32 = 14.0;
-const PX_PART: f32 = 72.0;
-const PX_PALETTE: f32 = 36.0;
 /// Table chips fit a square of this many pixels, whatever the part's size.
 const CHIP_BOX: f32 = 34.0;
 /// Margin around a drawing, in cells: room for the hull glow around ships, just the seams around parts.
@@ -84,12 +100,18 @@ const MARGIN_PART: f32 = 0.06;
 /// Where the file written by [`write`] lists the files it made, so the next run can remove stale ones.
 pub const MANIFEST: &str = ".wiki-files";
 
-fn item_path(kind: Kind, id: &str) -> String {
-    format!("{}/{id}.html", kind.key())
+/// The directory of a kind's pages: its pack directory (`parts`), `pages` for the free articles.
+pub fn kind_dir(kind: Kind) -> &'static str {
+    kind.dir().unwrap_or("pages")
+}
+
+/// Where an entry's page is served, relative to the site root.
+pub fn item_path(kind: Kind, id: &str) -> String {
+    format!("{}/{id}.html", kind_dir(kind))
 }
 
 fn list_path(kind: Kind) -> String {
-    format!("{}.html", kind.dir().unwrap_or("pages"))
+    format!("{}/index.html", kind_dir(kind))
 }
 
 fn kind_title(kind: Kind) -> &'static str {
@@ -99,80 +121,156 @@ fn kind_title(kind: Kind) -> &'static str {
         .map_or("", |(_, t)| t)
 }
 
-/// Generates the whole site from validated content.
-pub fn generate(c: &Content) -> Site {
+/// One generated page: its front matter and its body (HTML blocks).
+struct Page {
+    title: String,
+    description: String,
+    /// The entry it shows (`None` for lists).
+    entry: Option<(Kind, String)>,
+    /// Leave out the outline column, for a page whose table needs the width.
+    wide: bool,
+    body: String,
+}
+
+impl Page {
+    /// The Markdown file: front matter (JSON strings are valid YAML scalars), then the blocks.
+    fn markdown(&self) -> String {
+        let q = |s: &str| serde_json::to_string(s).unwrap();
+        let mut s = format!(
+            "---\ntitle: {}\ndescription: {}\n",
+            q(&self.title),
+            q(&self.description)
+        );
+        if let Some((kind, id)) = &self.entry {
+            writeln!(
+                s,
+                "entry:\n  kind: {}\n  id: {}\n  dir: {}\n  kindTitle: {}",
+                kind.key(),
+                q(id),
+                kind_dir(*kind),
+                q(kind_title(*kind))
+            )
+            .unwrap();
+        }
+        if self.wide {
+            s.push_str("aside: false\n");
+        }
+        s.push_str("---\n\n");
+        s.push_str(&self.body);
+        s
+    }
+}
+
+/// Generates every file of `wiki/gen/` from validated content, and checks the hand-written pages against it.
+pub fn generate(c: &Content, hand: &[hand::HandFile]) -> Site {
     let w = Wiki::new(c);
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let mut page = |path: String, title: &str, crumbs: &[(String, &str)], body: String| {
-        let html = w.document(&path, title, crumbs, &body);
-        files.insert(path, html.into_bytes());
+    let mut put = |path: String, page: Page| {
+        files.insert(path, page.markdown().into_bytes());
     };
 
-    page("index.html".into(), &w.site_name(), &[], w.index());
     for (kind, title) in KINDS {
-        page(list_path(kind), title, &[], w.list(kind));
+        put(
+            format!("{}/index.md", kind_dir(kind)),
+            Page {
+                title: title.to_string(),
+                description: format!("Every entry of the kind “{title}” in the loaded content."),
+                entry: None,
+                wide: kind == Kind::Part,
+                body: w.list(kind),
+            },
+        );
     }
+    put(
+        "reference/index.md".into(),
+        Page {
+            title: "Reference".into(),
+            description: "Every kind of game content, generated from the content packs.".into(),
+            entry: None,
+            wide: false,
+            body: w.reference(),
+        },
+    );
     // One page per entry, below the list of its kind.
-    let mut entry = |kind: Kind, id: &str, name: &str, body: String| {
-        let up = [(format!("{UP}{}", list_path(kind)), kind_title(kind))];
-        page(item_path(kind, id), name, &up, body);
+    let mut entry = |kind: Kind, id: &str, name: &str, summary: &str, body: String| {
+        put(
+            format!("{}/{id}.md", kind_dir(kind)),
+            Page {
+                title: name.to_string(),
+                description: c.render_plain(summary),
+                entry: Some((kind, id.to_string())),
+                wide: false,
+                body,
+            },
+        );
     };
     for e in &c.stats {
-        entry(Kind::Stat, &e.id, &e.name, w.stat_page(e));
+        entry(Kind::Stat, &e.id, &e.name, &e.summary, w.stat_page(e));
     }
     for e in &c.categories {
-        entry(Kind::Category, &e.id, &e.name, w.category_page(e));
+        entry(Kind::Category, &e.id, &e.name, &e.summary, w.category_page(e));
     }
     for e in &c.factions {
-        entry(Kind::Faction, &e.id, &e.name, w.faction_page(e));
+        entry(Kind::Faction, &e.id, &e.name, &e.summary, w.faction_page(e));
     }
     for e in &c.materials {
-        entry(Kind::Material, &e.id, &e.name, w.material_page(e));
+        entry(Kind::Material, &e.id, &e.name, &e.summary, w.material_page(e));
     }
     for e in &c.parts {
-        entry(Kind::Part, &e.id, &e.name, w.part_page(e));
+        entry(Kind::Part, &e.id, &e.name, &e.summary, w.part_page(e));
     }
     for e in &c.frames {
-        entry(Kind::Frame, &e.id, &e.name, w.frame_page(e));
+        entry(Kind::Frame, &e.id, &e.name, &e.summary, w.frame_page(e));
     }
     for (k, e) in c.ships.iter().enumerate() {
-        entry(Kind::Ship, &e.id, &e.name, w.ship_page(k, e));
+        entry(Kind::Ship, &e.id, &e.name, &e.summary, w.ship_page(k, e));
     }
     for e in &c.behavior_nodes {
-        entry(Kind::BehaviorNode, &e.id, &e.name, w.node_page(e));
+        entry(Kind::BehaviorNode, &e.id, &e.name, &e.summary, w.node_page(e));
     }
     for e in &c.behaviors {
-        entry(Kind::Behavior, &e.id, &e.name, w.behavior_page(e));
+        entry(Kind::Behavior, &e.id, &e.name, &e.summary, w.behavior_page(e));
     }
     for e in &c.families {
-        entry(Kind::Family, &e.id, &e.name, w.family_page(e));
+        entry(Kind::Family, &e.id, &e.name, &e.summary, w.family_page(e));
     }
     for e in &c.research {
-        entry(Kind::Research, &e.id, &e.name, w.research_page(e));
+        entry(Kind::Research, &e.id, &e.name, &e.summary, w.research_page(e));
     }
     for e in &c.starts {
-        entry(Kind::Start, &e.id, &e.name, w.start_page(e));
+        entry(Kind::Start, &e.id, &e.name, &e.summary, w.start_page(e));
     }
     for e in &c.voyages {
-        entry(Kind::Voyage, &e.id, &e.name, w.voyage_page(e));
+        entry(Kind::Voyage, &e.id, &e.name, &e.summary, w.voyage_page(e));
     }
     for e in &c.encounters {
-        entry(Kind::Encounter, &e.id, &e.name, w.encounter_page(e));
+        entry(Kind::Encounter, &e.id, &e.name, &e.summary, w.encounter_page(e));
     }
     for e in &c.controls {
-        entry(Kind::Control, &e.id, &e.name, w.control_page(e));
+        entry(Kind::Control, &e.id, &e.name, &e.summary, w.control_page(e));
     }
     for p in c.wiki.values().filter(|p| p.kind == Kind::Page) {
         let title = c.name_of(Kind::Page, &p.id).unwrap_or(&p.id);
-        entry(Kind::Page, &p.id, title, w.article(&p.id));
+        entry(Kind::Page, &p.id, title, "", w.article(&p.id));
     }
-    files.insert("style.css".into(), w.css().into_bytes());
+
+    let refs = refs::Refs::new(&w);
+    let checked = hand::check(&w, &refs, hand);
+    let json = |v: &Value| (serde_json::to_string_pretty(v).unwrap() + "\n").into_bytes();
+    files.insert("refs.json".into(), json(&refs.to_json(&checked.examples)));
+    files.insert("ui.json".into(), json(&w.ui()));
+    files.insert("sidebar.json".into(), json(&w.sidebar()));
+    files.insert("sprite.svg".into(), w.sprite().into_bytes());
+    files.insert("tokens.css".into(), w.tokens_css().into_bytes());
     for (name, bytes) in FONTS {
         files.insert(format!("fonts/{name}"), bytes.to_vec());
     }
+    let mut warnings = w.warnings.into_inner();
+    warnings.extend(checked.warnings);
     Site {
         files,
-        warnings: w.warnings.into_inner(),
+        warnings,
+        errors: checked.errors,
     }
 }
 
@@ -192,7 +290,7 @@ const FONTS: [(&str, &[u8]); 3] = [
     ),
 ];
 
-/// Writes the site into `dir` (created if needed). A directory that is not empty must hold the file list of an
+/// Writes the files into `dir` (created if needed). A directory that is not empty must hold the file list of an
 /// earlier run ([`MANIFEST`]); files of that run that are gone now are removed, nothing else is touched.
 pub fn write(site: &Site, dir: &Path) -> Result<(), String> {
     let manifest = dir.join(MANIFEST);
@@ -202,7 +300,7 @@ pub fn write(site: &Site, dir: &Path) -> Result<(), String> {
             let empty = std::fs::read_dir(dir).map_or(true, |mut d| d.next().is_none());
             if !empty {
                 return Err(format!(
-                    "{} is not empty and holds no wiki made by content-tool ({MANIFEST}); pick an empty or new directory",
+                    "{} is not empty and holds no wiki data made by content-tool ({MANIFEST}); pick an empty or new directory",
                     dir.display()
                 ));
             }
@@ -230,6 +328,10 @@ pub fn write(site: &Site, dir: &Path) -> Result<(), String> {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
         }
+        // Unchanged files keep their time stamp, so the site's dev server reloads only what changed.
+        if std::fs::read(&file).is_ok_and(|old| old == *bytes) {
+            continue;
+        }
         std::fs::write(&file, bytes)
             .map_err(|e| format!("cannot write {}: {e}", file.display()))?;
     }
@@ -238,11 +340,87 @@ pub fn write(site: &Site, dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("cannot write {}: {e}", manifest.display()))
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// HTML blocks of a page
+
+/// An id for a heading: lowercase letters, digits and dashes.
+fn slug(text: &str) -> String {
+    let mut s = String::new();
+    for c in text.chars().flat_map(char::to_lowercase) {
+        if c.is_ascii_alphanumeric() {
+            s.push(c);
+        } else if !s.ends_with('-') && !s.is_empty() {
+            s.push('-');
+        }
+    }
+    s.trim_end_matches('-').to_string()
+}
+
+/// A heading as the site writes it (an id and a permalink anchor, which its outline and search read), as raw HTML
+/// that Vue leaves alone: `text` may be content (a name), which must not be read as a template.
+fn heading(level: u8, html: &str, id: &str) -> String {
+    format!(
+        "<h{level} id=\"{id}\" tabindex=\"-1\" v-pre>{html} <a class=\"header-anchor\" href=\"#{id}\" aria-hidden=\"true\">&#8203;</a></h{level}>\n\n"
+    )
+}
+
+/// An HTML block of a page: one `<div>` that Vue leaves alone (`v-pre`, content text must not be read as a template),
+/// without blank lines (one would end the block for the Markdown reader). Line breaks inside `<pre>` become
+/// `&#10;`, and every table gets its `<tbody>` (the browser would insert one, and the page would not match what the
+/// server rendered).
+fn block(class: &str, html: &str) -> String {
+    format!("<div class=\"{class}\" v-pre>\n{}\n</div>\n\n", tidy(html))
+}
+
+/// A [`block`] that may be wider than the page (tables, rule graphs): it scrolls sideways in the site's ScrollBox.
+fn wide_block(class: &str, html: &str) -> String {
+    format!(
+        "<ScrollBox x>\n<div class=\"{class}\" v-pre>\n{}\n</div>\n</ScrollBox>\n\n",
+        tidy(html)
+    )
+}
+
+fn tidy(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() + 64);
+    let mut rest = html;
+    while let Some(k) = rest.find("<pre") {
+        out.push_str(&rest[..k]);
+        let end = rest[k..].find("</pre>").map_or(rest.len(), |e| k + e + 6);
+        out.push_str(&rest[k..end].replace('\n', "&#10;"));
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    let mut s = String::with_capacity(out.len() + 64);
+    let mut rest = out.as_str();
+    while let Some(k) = rest.find("<table") {
+        let open = rest[k..].find('>').map_or(rest.len(), |e| k + e + 1);
+        s.push_str(&rest[..open]);
+        if !rest[open..].starts_with("<tbody>") && !rest[open..].starts_with("\n<tbody>") {
+            s.push_str("<tbody>");
+        }
+        rest = &rest[open..];
+        if let Some(close) = rest.find("</table>") {
+            let inner = &rest[..close];
+            s.push_str(inner);
+            if !inner.trim_end().ends_with("</tbody>") {
+                s.push_str("</tbody>");
+            }
+            s.push_str("</table>");
+            rest = &rest[close + 8..];
+        }
+    }
+    s.push_str(rest);
+    s.lines()
+        .filter(|l| !l.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The generator: content plus what every page needs (style, icon symbols, design reports, back-links).
 struct Wiki<'a> {
     c: &'a Content,
     style: Style,
-    /// Icon key → `<symbol>` for the page sprites.
+    /// Icon key → `<symbol>` for the site's sprite.
     symbols: BTreeMap<String, String>,
     /// The sim's design report of every ship (the drydock's numbers), in ship order.
     reports: Vec<Option<DesignReport>>,
@@ -314,117 +492,65 @@ impl<'a> Wiki<'a> {
         self.warnings.borrow_mut().push(message);
     }
 
-    fn site_name(&self) -> String {
-        let name = self.c.packs.first().map_or("Content", |p| p.name.as_str());
-        format!("{name} wiki")
+    /// Every icon as a `<symbol>`, plus the shared filter: the site puts this once into every page.
+    fn sprite(&self) -> String {
+        let symbols: Vec<String> = self.symbols.values().cloned().collect();
+        draw::sprite(&self.style, &symbols)
     }
 
-    // -----------------------------------------------------------------------------------------------------
-    // Page frame
-
-    /// The full HTML document of a page: head, the icon sprite, navigation, crumbs, body, footer.
-    fn document(&self, path: &str, title: &str, crumbs: &[(String, &str)], body: &str) -> String {
-        let root = if path.contains('/') { UP } else { "" };
-        let mut used = BTreeSet::new();
-        for (k, _) in body.match_indices("href=\"#icon-") {
-            let key = &body[k + 12..];
-            used.insert(&key[..key.find('"').unwrap_or(0)]);
-        }
-        let symbols: Vec<String> = used
-            .into_iter()
-            .filter_map(|k| self.symbols.get(k).cloned())
-            .collect();
-        let mut s = String::with_capacity(body.len() + 4096);
-        let site = esc(&self.site_name());
-        let full_title = if title == self.site_name() {
-            site.clone()
-        } else {
-            format!("{} · {site}", esc(title))
-        };
-        write!(
-            s,
-            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
-             <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-             <title>{full_title}</title>\n<link rel=\"stylesheet\" href=\"{root}style.css\">\n</head>\n<body>\n"
-        )
-        .unwrap();
-        s.push_str(&draw::sprite(&self.style, &symbols));
-        write!(
-            s,
-            "<header class=\"top\"><a class=\"brand\" href=\"{root}index.html\">{site}</a><nav>"
-        )
-        .unwrap();
-        for (kind, t) in KINDS {
-            let target = list_path(kind);
-            let here = path == target || path.starts_with(&format!("{}/", kind.key()));
-            let class = if here { " class=\"here\"" } else { "" };
-            write!(s, "<a{class} href=\"{root}{target}\">{t}</a>").unwrap();
-        }
-        s.push_str("</nav></header>\n<main>\n");
-        if !crumbs.is_empty() {
-            write!(
-                s,
-                "<nav class=\"crumbs\"><a href=\"{root}index.html\">{site}</a>"
-            )
-            .unwrap();
-            for (href, label) in crumbs {
-                write!(s, " / <a href=\"{href}\">{}</a>", esc(label)).unwrap();
-            }
-            s.push_str("</nav>\n");
-        }
-        s.push_str(body);
-        s.push_str("</main>\n<footer>Generated by <code>content-tool wiki</code> from ");
-        let packs: Vec<String> = self
-            .c
-            .packs
-            .iter()
-            .map(|p| {
-                format!(
-                    "{} <code>{}</code> {}",
-                    esc(&p.name),
-                    esc(&p.id),
-                    esc(&p.version)
-                )
-            })
-            .collect();
-        s.push_str(&packs.join(", "));
-        s.push_str(".</footer>\n</body>\n</html>\n");
-        s
-    }
-
-    fn css(&self) -> String {
+    /// The style tokens the site uses, as CSS variables, and the game's font.
+    fn tokens_css(&self) -> String {
         let t = |p: &str| self.style.get(p);
-        let mut s =
-            String::from("/* Generated by content-tool wiki; colours from art/tokens.json. */\n");
+        let mut s = String::from(
+            "/* Generated by content-tool wiki-data from art/tokens.json: the game's colours for the wiki's theme. */\n",
+        );
         for weight in [("Regular", 400), ("Medium", 500)] {
             writeln!(
                 s,
-                "@font-face {{ font-family: \"{}\"; src: url(\"fonts/Barlow-{}.ttf\") format(\"truetype\"); font-weight: {}; }}",
+                "@font-face {{ font-family: \"{}\"; src: url(\"./fonts/Barlow-{}.ttf\") format(\"truetype\"); font-weight: {}; font-display: swap; }}",
                 t("ui.font"),
                 weight.0,
                 weight.1
             )
             .unwrap();
         }
-        writeln!(
-            s,
-            ":root {{\n  --bg: {};\n  --teal: {};\n  --gold: {};\n  --coral: {};\n  --violet: {};\n  --label: {};\n  --dim: {};\n  --number: {};\n  --ring: {};\n  --particle: {};\n  --tile: {};\n  --seam: {};\n  --font: \"{}\";\n}}",
-            t("ui.background"),
-            t("ui.teal"),
-            t("ui.gold"),
-            t("ui.coral"),
-            t("ui.violet"),
-            t("ui.label"),
-            t("ui.dim"),
-            t("ui.number"),
-            t("ui.dotted_ring"),
-            t("ui.particle"),
-            t("ship.machine_tile"),
-            t("ship.seam"),
-            t("ui.font"),
-        )
-        .unwrap();
-        s + include_str!("style.css")
+        s.push_str(":root {\n");
+        let vars = [
+            ("bg", "ui.background"),
+            ("teal", "ui.teal"),
+            ("gold", "ui.gold"),
+            ("coral", "ui.coral"),
+            ("violet", "ui.violet"),
+            ("label", "ui.label"),
+            ("dim", "ui.dim"),
+            ("number", "ui.number"),
+            ("ring", "ui.dotted_ring"),
+            ("particle", "ui.particle"),
+            ("star", "ui.star"),
+            ("blue", "ship.shield_bubble.color"),
+            ("tile", "ship.machine_tile"),
+            ("seam", "ship.seam"),
+            ("glow", "ship.hull_glow.color"),
+            ("glow-enemy", "ship.hull_glow.enemy_color"),
+            ("darkest", "station.dark"),
+            ("panel", "station.panel"),
+        ];
+        for (name, path) in vars {
+            writeln!(s, "  --sg-{name}: {};", t(path)).unwrap();
+        }
+        for tone in data::content::art_keys::ARMOR_TONES {
+            writeln!(s, "  --sg-armor-{tone}: {};", t(&format!("ship.armor.{tone}"))).unwrap();
+        }
+        for key in data::content::art_keys::SYSTEM_COLORS {
+            writeln!(
+                s,
+                "  --sg-system-{key}: {};",
+                t(&format!("ship.system_colors.{key}"))
+            )
+            .unwrap();
+        }
+        writeln!(s, "  --sg-font: \"{}\";\n}}", t("ui.font")).unwrap();
+        s
     }
 
     // -----------------------------------------------------------------------------------------------------
@@ -513,24 +639,31 @@ impl<'a> Wiki<'a> {
         armor().find(|m| !m.locked).or_else(|| armor().next())
     }
 
-    /// One part on its tile, unrotated: the drydock palette's look.
-    fn part_svg(&self, p: &Part, material: Option<&Material>, px: f32, class: &str) -> String {
-        let shape = PlacedShape {
-            footprint: p.footprint(),
-            x: 0,
-            y: 0,
-            rot: 0,
-            flip: false,
-        };
+    /// One part's tile, unrotated: the drydock palette's look.
+    fn part_tile(&self, p: &Part, material: Option<&Material>) -> Tile {
         let fill = if p.hull {
             self.tone(material.or(self.default_armor()))
         } else {
             self.tone(None)
         };
-        let icon = if p.hull { None } else { p.icon.clone() };
+        Tile {
+            shape: PlacedShape {
+                footprint: p.footprint(),
+                x: 0,
+                y: 0,
+                rot: 0,
+                flip: false,
+            },
+            fill,
+            icon: if p.hull { None } else { p.icon.clone() },
+        }
+    }
+
+    /// One part on its tile, unrotated: the drydock palette's look.
+    fn part_svg(&self, p: &Part, material: Option<&Material>, px: f32, class: &str) -> String {
         draw::layout(
             &self.style,
-            &[Tile { shape, fill, icon }],
+            &[self.part_tile(p, material)],
             None,
             px,
             MARGIN_PART,
@@ -782,20 +915,19 @@ impl<'a> Wiki<'a> {
     // -----------------------------------------------------------------------------------------------------
     // The entry page frame
 
-    /// An entry page: the main column (title, texts, prose, sections, mentions, data) and the infobox.
+    /// An entry page: the title, the lead (summary, texts, prose; the infobox beside it), the sections, mentions and
+    /// the data details, as HTML blocks.
     fn entry<T: Entry>(&self, e: &T, parts: EntryParts) -> String {
         let root = UP;
+        let mut out = heading(1, &esc(e.name()), &slug(e.id()));
         let mut main = String::new();
-        writeln!(main, "<h1>{}{}</h1>", esc(e.name()), parts.badges).unwrap();
         writeln!(
             main,
-            "<p class=\"summary\">{}</p>",
-            self.text(root, e.summary())
+            "<p class=\"summary\">{}{}</p>",
+            self.text(root, e.summary()),
+            parts.badges
         )
         .unwrap();
-        if let Some(hero) = &parts.hero {
-            main.push_str(hero);
-        }
         if let Some(d) = e.description() {
             writeln!(main, "<p>{}</p>", self.text(root, d)).unwrap();
         }
@@ -823,12 +955,6 @@ impl<'a> Wiki<'a> {
             )
             .unwrap();
         }
-        for (title, html) in &parts.sections {
-            writeln!(main, "<section>\n<h2>{}</h2>\n{html}</section>", esc(title)).unwrap();
-        }
-        main.push_str(&self.mentioned(T::KIND, e.id()));
-        main.push_str(&self.data_details(T::KIND, e.id(), e.source(), &e.text_fields()));
-
         let mut aside = String::new();
         if let Some(f) = &parts.figure {
             writeln!(aside, "<figure>{f}</figure>").unwrap();
@@ -841,9 +967,23 @@ impl<'a> Wiki<'a> {
             aside.push_str("</dl>\n");
         }
         aside.push_str(&parts.stats);
-        format!(
-            "<article class=\"entry\">\n<div class=\"main\">\n{main}</div>\n<aside class=\"infobox\">\n{aside}</aside>\n</article>\n"
-        )
+        let hero = parts.hero.unwrap_or_default();
+        out.push_str(&block(
+            "sg-entry",
+            &format!(
+                "{hero}<div class=\"sg-lead\">\n<div class=\"sg-main\">\n{main}</div>\n<aside class=\"sg-infobox\">\n{aside}</aside>\n</div>\n"
+            ),
+        ));
+        for (title, html) in &parts.sections {
+            out.push_str(&heading(2, &esc(title), &slug(title)));
+            out.push_str(&wide_block("sg-section", html));
+        }
+        out.push_str(&self.mentioned(T::KIND, e.id()));
+        out.push_str(&block(
+            "sg-data",
+            &self.data_details(T::KIND, e.id(), e.source(), &e.text_fields()),
+        ));
+        out
     }
 
     /// "Mentioned on": the entries whose texts or prose link here.
@@ -851,7 +991,8 @@ impl<'a> Wiki<'a> {
         match self.mentions.get(&(kind, id.to_string())) {
             Some(v) if !v.is_empty() => {
                 let list = self.links(UP, v.iter().cloned()).unwrap_or_default();
-                format!("<section>\n<h2>Mentioned on</h2>\n<p>{list}</p>\n</section>\n")
+                heading(2, "Mentioned on", "mentioned-on")
+                    + wide_block("sg-section", &format!("<p>{list}</p>\n")).as_str()
             }
             _ => String::new(),
         }
@@ -889,13 +1030,116 @@ impl<'a> Wiki<'a> {
         }
         s + "</dl>\n</details>\n"
     }
+
+    /// The site's sidebar for the generated kinds: one group per kind, its entries in the list page's order
+    /// (parts by category, research by family, nodes by role), as VitePress reads it.
+    fn sidebar(&self) -> Value {
+        let c = self.c;
+        let link = |kind: Kind, id: &str| format!("/{}/{id}", kind_dir(kind));
+        let item = |kind: Kind, id: &str, name: &str| json!({ "text": name, "link": link(kind, id) });
+        let group = |text: &str, items: Vec<Value>| json!({ "text": text, "collapsed": true, "items": items });
+        let flat = |kind: Kind, items: Vec<(&str, &str)>| -> Vec<Value> {
+            items.into_iter().map(|(id, n)| item(kind, id, n)).collect()
+        };
+        let mut out = Vec::new();
+        for (kind, title) in KINDS {
+            let items: Vec<Value> = match kind {
+                Kind::Part => c
+                    .categories
+                    .iter()
+                    .filter_map(|cat| {
+                        let parts: Vec<Value> = c
+                            .parts
+                            .iter()
+                            .filter(|p| p.category == cat.id)
+                            .map(|p| item(Kind::Part, &p.id, &p.name))
+                            .collect();
+                        (!parts.is_empty()).then(|| group(&cat.name, parts))
+                    })
+                    .collect(),
+                Kind::Research => c
+                    .families
+                    .iter()
+                    .filter_map(|f| {
+                        let nodes: Vec<Value> = crate::family_research(c, &f.id)
+                            .into_iter()
+                            .map(|n| item(Kind::Research, &n.id, &n.name))
+                            .collect();
+                        (!nodes.is_empty()).then(|| group(&f.name, nodes))
+                    })
+                    .collect(),
+                Kind::BehaviorNode => pages::ROLES
+                    .iter()
+                    .map(|&role| {
+                        let nodes: Vec<Value> = c
+                            .behavior_nodes
+                            .iter()
+                            .filter(|n| n.role == role)
+                            .map(|n| item(Kind::BehaviorNode, &n.id, &n.name))
+                            .collect();
+                        group(pages::role_title(role), nodes)
+                    })
+                    .collect(),
+                Kind::Control => data::input::Section::ALL
+                    .iter()
+                    .filter_map(|&section| {
+                        let controls: Vec<Value> = c
+                            .controls
+                            .iter()
+                            .filter(|e| e.section == section)
+                            .map(|e| item(Kind::Control, &e.id, &e.name))
+                            .collect();
+                        (!controls.is_empty()).then(|| group(pages::section_title(section), controls))
+                    })
+                    .collect(),
+                Kind::Stat => flat(kind, c.stats.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Category => {
+                    flat(kind, c.categories.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Faction => {
+                    flat(kind, c.factions.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Material => {
+                    flat(kind, c.materials.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Frame => flat(kind, c.frames.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Ship => flat(kind, c.ships.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Behavior => {
+                    flat(kind, c.behaviors.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Family => {
+                    flat(kind, c.families.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Start => flat(kind, c.starts.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Voyage => {
+                    flat(kind, c.voyages.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Encounter => {
+                    flat(kind, c.encounters.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Page => c
+                    .wiki
+                    .values()
+                    .filter(|p| p.kind == Kind::Page)
+                    .map(|p| item(Kind::Page, &p.id, c.name_of(Kind::Page, &p.id).unwrap_or(&p.id)))
+                    .collect(),
+            };
+            out.push(json!({
+                "text": title,
+                "link": format!("/{}/", kind_dir(kind)),
+                "collapsed": true,
+                "items": items,
+            }));
+        }
+        Value::Array(out)
+    }
 }
 
 /// What an entry page shows besides the common header fields.
 #[derive(Default)]
 struct EntryParts {
     badges: String,
-    /// A wide figure under the summary (ships).
+    /// A wide figure above the lead (ships).
     hero: Option<String>,
     /// A drawing at the top of the infobox.
     figure: Option<String>,
@@ -903,7 +1147,7 @@ struct EntryParts {
     facts: Vec<(String, String)>,
     /// Infobox stats table (HTML).
     stats: String,
-    /// Sections after the texts and prose: title → HTML.
+    /// Sections after the lead: title → HTML.
     sections: Vec<(String, String)>,
 }
 

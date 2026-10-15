@@ -333,6 +333,254 @@ pub fn layout(
     s
 }
 
+/// How much of a long plume the drawing shows, in cells.
+const PLUME_SHOWN: f32 = 2.0;
+
+/// What a part's technical drawing marks around its tile, in cells (1 cell = 1 m), the part unrotated with its
+/// forward side up (blueprint −y).
+#[derive(Default)]
+pub struct Marks {
+    /// The straight sides that link to neighbours (`PlacedShape::connectable_sides`): slope faces are not.
+    pub sides: Vec<(data::design::geometry::Cell, data::design::geometry::Dir)>,
+    /// An engine: it pushes towards the forward side, its thrust swinging this many degrees to either side.
+    pub thrust: Option<f32>,
+    /// Its exhaust plume: how far it reaches behind the back side, and the label.
+    pub plume: Option<(f32, String)>,
+    /// A gun: it fires along the forward side.
+    pub fires: bool,
+    /// RCS: a nozzle fires out of every connectable side open to space.
+    pub nozzles: bool,
+    /// A radiator: it vents heat through every side open to space.
+    pub vents: bool,
+    /// Pure torque (a gyro, a logic core's turning help).
+    pub torque: bool,
+    /// A ring around the centre: radius, CSS class and label (a shield bubble).
+    pub rings: Vec<(f32, &'static str, String)>,
+    /// An explosion: the cells it reaches (their nearest point within the radius of the part's centre), and the
+    /// label.
+    pub blast: Option<(f32, String)>,
+}
+
+/// A part's technical drawing: its tile as the palette shows it, the cell grid, the sides that link, and what it
+/// does marked around it (thrust and plume, line of fire, nozzles, vents, torque, the cells a blast reaches, the
+/// shield's reach). Labels are the content's stat values. At most `max_px` pixels on its longer side.
+pub fn blueprint(style: &Style, tile: &Tile, marks: &Marks, max_px: f32, label: &str) -> String {
+    use data::design::geometry::Dir;
+    let (w, h) = (tile.shape.footprint.w as f32, tile.shape.footprint.h as f32);
+    let (cx, cy) = (w / 2.0, h / 2.0);
+    // Room around the tile for the marks: the plume behind, the arrows ahead, the rings and the blast.
+    let mut reach: f32 = 1.0;
+    if let Some((len, _)) = &marks.plume {
+        reach = reach.max(len.min(PLUME_SHOWN) + 0.4);
+    }
+    for (r, _, _) in &marks.rings {
+        reach = reach.max(r - w.min(h) / 2.0 + 0.4);
+    }
+    if let Some((r, _)) = &marks.blast {
+        reach = reach.max(r.ceil() + 0.4);
+    }
+    let m = reach.min(3.0);
+    let (vw, vh) = (w + 2.0 * m, h + 2.0 * m);
+    let px = max_px / vw.max(vh);
+    // Labels at about 10 px, whatever the scale.
+    let font = 10.0 / px;
+    let mut s = format!(
+        "<svg class=\"blueprint\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"{}\" height=\"{}\" role=\"img\" aria-label=\"{}\">",
+        n(-m),
+        n(-m),
+        n(vw),
+        n(vh),
+        n(vw * px),
+        n(vh * px),
+        esc(label)
+    );
+    let text = |s: &mut String, x: f32, y: f32, anchor: &str, class: &str, t: &str| {
+        write!(
+            s,
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"{anchor}\" font-size=\"{}\" class=\"{class}\">{}</text>",
+            n(x),
+            n(y),
+            n(font),
+            esc(t)
+        )
+        .unwrap();
+    };
+    // The grid of cells around the part, dotted, and the cells a blast reaches.
+    s.push_str("<g class=\"bp-grid\">");
+    let (gx0, gx1) = ((-m).ceil() as i32, (w + m).floor() as i32);
+    let (gy0, gy1) = ((-m).ceil() as i32, (h + m).floor() as i32);
+    if let Some((r, _)) = &marks.blast {
+        for j in gy0 - 1..=gy1 {
+            for i in gx0 - 1..=gx1 {
+                let inside = i >= 0 && j >= 0 && (i as f32) < w && (j as f32) < h;
+                // The nearest point of cell (i, j) to the centre.
+                let nx = cx.clamp(i as f32, i as f32 + 1.0);
+                let ny = cy.clamp(j as f32, j as f32 + 1.0);
+                let d = ((nx - cx) * (nx - cx) + (ny - cy) * (ny - cy)).sqrt();
+                if !inside && d <= *r {
+                    write!(
+                        s,
+                        "<rect class=\"bp-blast\" x=\"{i}\" y=\"{j}\" width=\"1\" height=\"1\"/>"
+                    )
+                    .unwrap();
+                }
+            }
+        }
+    }
+    let mut d = String::new();
+    for i in gx0..=gx1 {
+        write!(d, "M{i} {}V{}", n(-m), n(h + m)).unwrap();
+    }
+    for j in gy0..=gy1 {
+        write!(d, "M{} {j}H{}", n(-m), n(w + m)).unwrap();
+    }
+    write!(s, "<path class=\"bp-cells\" d=\"{d}\"/></g>").unwrap();
+    // The tile itself, as the palette draws it.
+    let mut fill = String::new();
+    path_of(&tile.shape.polygon(), true, &mut fill);
+    write!(
+        s,
+        "<path fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" stroke-linejoin=\"round\" d=\"{fill}\"/>",
+        esc(&tile.fill),
+        esc(&style.get("ship.seam")),
+        n(2.0 * style.num("ship.seam_width_cells"))
+    )
+    .unwrap();
+    if let Some(key) = &tile.icon {
+        write!(
+            s,
+            "<use href=\"#{}\" x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>",
+            icon_id(key),
+            n(w),
+            n(h)
+        )
+        .unwrap();
+    }
+    // Cell lines inside a bigger part.
+    let mut inner = String::new();
+    for i in 1..tile.shape.footprint.w {
+        write!(inner, "M{i} 0V{}", n(h)).unwrap();
+    }
+    for j in 1..tile.shape.footprint.h {
+        write!(inner, "M0 {j}H{}", n(w)).unwrap();
+    }
+    if !inner.is_empty() {
+        write!(s, "<path class=\"bp-inner\" d=\"{inner}\"/>").unwrap();
+    }
+    // The sides that link: a short line just outside each.
+    let side_line = |c: (i32, i32), dir: Dir, off: f32| -> (f32, f32, f32, f32) {
+        let (x, y) = (c.0 as f32, c.1 as f32);
+        match dir {
+            Dir::Up => (x + 0.15, y - off, x + 0.85, y - off),
+            Dir::Down => (x + 0.15, y + 1.0 + off, x + 0.85, y + 1.0 + off),
+            Dir::Left => (x - off, y + 0.15, x - off, y + 0.85),
+            Dir::Right => (x + 1.0 + off, y + 0.15, x + 1.0 + off, y + 0.85),
+        }
+    };
+    let mut links = String::new();
+    for &(c, dir) in &marks.sides {
+        let (x0, y0, x1, y1) = side_line(c, dir, 0.08);
+        write!(links, "M{} {}L{} {}", n(x0), n(y0), n(x1), n(y1)).unwrap();
+    }
+    write!(s, "<path class=\"bp-link\" d=\"{links}\"/>").unwrap();
+    // Nozzles and vents on every side that links (they work where that side is open to space).
+    if marks.nozzles || marks.vents {
+        let class = if marks.nozzles { "bp-nozzle" } else { "bp-vent" };
+        let mut d = String::new();
+        for &(c, dir) in &marks.sides {
+            let (x, y) = (c.0 as f32 + 0.5, c.1 as f32 + 0.5);
+            let (dx, dy) = dir.delta();
+            let (dx, dy) = (dx as f32, dy as f32);
+            // From the side outward: the exhaust (nozzles) or the heat (vents) leaves through it.
+            let (sx, sy) = (x + dx * 0.62, y + dy * 0.62);
+            let (ex, ey) = (x + dx * 1.05, y + dy * 1.05);
+            write!(d, "M{} {}L{} {}", n(sx), n(sy), n(ex), n(ey)).unwrap();
+        }
+        let marker = if marks.nozzles { "arrow-teal" } else { "arrow-coral" };
+        write!(s, "<path class=\"{class}\" marker-end=\"url(#{marker})\" d=\"{d}\"/>").unwrap();
+    }
+    if marks.torque {
+        let r = (w.min(h) / 2.0) * 0.82;
+        write!(
+            s,
+            "<path class=\"bp-torque\" marker-end=\"url(#arrow-teal)\" d=\"M{} {}A{r} {r} 0 1 1 {} {}\"/>",
+            n(cx + r),
+            n(cy),
+            n(cx),
+            n(cy - r),
+            r = n(r)
+        )
+        .unwrap();
+    }
+    if let Some(gimbal) = marks.thrust {
+        // The push: from the centre out through the forward side; the gimbal's swing as two faint lines.
+        // The push: out through the forward side; the gimbal's swing as two faint lines.
+        let len = 0.85;
+        write!(
+            s,
+            "<path class=\"bp-thrust\" marker-end=\"url(#arrow-teal)\" d=\"M{} -0.08V{}\"/>",
+            n(cx),
+            n(-len)
+        )
+        .unwrap();
+        if gimbal > 0.0 {
+            let a = gimbal.to_radians();
+            let (dx, dy) = (len * a.sin(), len * a.cos());
+            write!(
+                s,
+                "<path class=\"bp-gimbal\" d=\"M{c} 0L{} {}M{c} 0L{} {}\"/>",
+                n(cx - dx),
+                n(-dy),
+                n(cx + dx),
+                n(-dy),
+                c = n(cx)
+            )
+            .unwrap();
+        }
+        text(&mut s, cx, -len - 0.15, "middle", "bp-label t-teal", "THRUST");
+    }
+    if let Some((len, label)) = &marks.plume {
+        let shown = len.min(PLUME_SHOWN);
+        write!(
+            s,
+            "<rect class=\"bp-plume\" x=\"0\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+            n(h),
+            n(w),
+            n(shown)
+        )
+        .unwrap();
+        text(&mut s, cx, h + shown / 2.0 + font * 0.35, "middle", "bp-label t-coral", label);
+    }
+    if marks.fires {
+        write!(
+            s,
+            "<path class=\"bp-fire\" marker-end=\"url(#arrow-gold)\" d=\"M{} 0V{}\"/>",
+            n(cx),
+            n(-0.9)
+        )
+        .unwrap();
+        text(&mut s, cx, -0.98, "middle", "bp-label t-gold", "FIRES");
+    }
+    for (r, class, label) in &marks.rings {
+        write!(
+            s,
+            "<circle class=\"{class}\" cx=\"{}\" cy=\"{}\" r=\"{}\"/>",
+            n(cx),
+            n(cy),
+            n(*r)
+        )
+        .unwrap();
+        text(&mut s, cx + r * 0.72, cy - r * 0.72 - 0.06, "start", "bp-label t-blue", label);
+    }
+    if let Some((_, label)) = &marks.blast {
+        text(&mut s, -m + 0.1, h + m - 0.15, "start", "bp-label t-coral", label);
+    }
+    // Forward is up.
+    text(&mut s, -m + 0.1, -m + font * 1.3, "start", "bp-label", "FORWARD ↑");
+    s.push_str("</svg>");
+    s
+}
+
 /// An icon on its own (a material swatch, a category icon): the symbol drawn into a `w × h` box.
 pub fn icon(key: &str, w: u32, h: u32, class: &str) -> String {
     format!(

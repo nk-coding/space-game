@@ -11,10 +11,11 @@ mod voyages;
 
 use super::*;
 
-use behaviors::{ROLES, role_class};
+pub(crate) use behaviors::{ROLES, role_title, signature};
+pub(crate) use behaviors::role_class;
 
 impl Wiki<'_> {
-    pub(super) fn part_page(&self, p: &Part) -> String {
+    pub(crate) fn part_page(&self, p: &Part) -> String {
         let root = UP;
         let mut facts = vec![("Category".to_string(), {
             let dot = self
@@ -130,7 +131,7 @@ impl Wiki<'_> {
                 .collect();
             format!("<div class=\"materials\">{}</div>", armor.join(""))
         } else {
-            self.part_svg(p, None, PX_PART, "part")
+            self.part_figure(p)
         };
         self.entry(
             p,
@@ -143,6 +144,35 @@ impl Wiki<'_> {
                 ..Default::default()
             },
         )
+    }
+
+    /// A part's technical drawing (`draw::blueprint`): its tile with what it does marked around it.
+    pub(crate) fn part_figure(&self, p: &Part) -> String {
+        let shape = self.part_tile(p, None).shape;
+        let upper = |stat: &str, v: f32| format!("{} {}", self.c.stats.get(stat).map_or(stat.to_string(), |d| d.name.to_uppercase()), self.value(stat, v));
+        let marks = draw::Marks {
+            sides: shape.connectable_sides(),
+            thrust: p.engine.as_ref().map(|e| e.gimbal),
+            plume: p
+                .engine
+                .as_ref()
+                .filter(|e| e.plume.length > 0.0)
+                .map(|e| (e.plume.length, upper("plume_length", e.plume.length))),
+            fires: p.weapon.is_some(),
+            nozzles: p.rcs.is_some(),
+            vents: p.radiator.is_some(),
+            torque: p.gyro.is_some(),
+            rings: p
+                .shield
+                .iter()
+                .map(|sh| (sh.radius, "bp-shield", upper("shield_radius", sh.radius)))
+                .collect(),
+            blast: p
+                .explosion
+                .as_ref()
+                .map(|x| (x.radius, upper("blast_radius", x.radius))),
+        };
+        draw::blueprint(&self.style, &self.part_tile(p, None), &marks, 260.0, &p.name)
     }
 
     /// Stats of a hull part per armour material: one column per material.
@@ -183,7 +213,7 @@ impl Wiki<'_> {
         s + "</table>\n"
     }
 
-    pub(super) fn material_page(&self, m: &Material) -> String {
+    pub(crate) fn material_page(&self, m: &Material) -> String {
         let root = UP;
         let mut facts = Vec::new();
         if let Some(a) = &m.armor {
@@ -293,7 +323,7 @@ impl Wiki<'_> {
         )
     }
 
-    pub(super) fn category_page(&self, cat: &data::Category) -> String {
+    pub(crate) fn category_page(&self, cat: &data::Category) -> String {
         let mut facts = Vec::new();
         if let Some(k) = &cat.color {
             facts.push((
@@ -322,17 +352,33 @@ impl Wiki<'_> {
     }
 
     /// A control: its section, the screens it acts on and its default inputs.
-    pub(super) fn control_page(&self, e: &data::Control) -> String {
-        let contexts: Vec<String> = e.contexts.iter().map(|c| format!("{c:?}").to_lowercase()).collect();
+    pub(crate) fn control_page(&self, e: &data::Control) -> String {
+        let contexts: Vec<&str> = e.contexts.iter().map(|&c| context_name(c)).collect();
         let facts = vec![
-            ("Section".to_string(), esc(&format!("{:?}", e.section).to_lowercase())),
+            ("Section".to_string(), esc(section_title(e.section))),
             ("Acts on".into(), esc(&contexts.join(", "))),
             ("Default".into(), default_inputs(e)),
         ];
-        self.entry(e, EntryParts { facts, ..Default::default() })
+        // The other actions of its section: what it sits beside in SETTINGS.
+        let others: Vec<String> = self
+            .c
+            .controls
+            .iter()
+            .filter(|o| o.section == e.section && o.id != e.id)
+            .map(|o| format!("{}: {}", self.a(UP, Kind::Control, &o.id), default_inputs(o)))
+            .collect();
+        let sections = vec![(format!("More {}", section_title(e.section).to_lowercase()), list_or_none(&others))];
+        self.entry(
+            e,
+            EntryParts {
+                facts,
+                sections,
+                ..Default::default()
+            },
+        )
     }
 
-    pub(super) fn faction_page(&self, f: &data::Faction) -> String {
+    pub(crate) fn faction_page(&self, f: &data::Faction) -> String {
         let root = UP;
         let mut facts = vec![(
             "Hull glow".to_string(),
@@ -357,7 +403,7 @@ impl Wiki<'_> {
         )
     }
 
-    pub(super) fn frame_page(&self, fr: &data::Frame) -> String {
+    pub(crate) fn frame_page(&self, fr: &data::Frame) -> String {
         let facts = vec![(
             "Grid".to_string(),
             format!("{} × {} cells", fr.size.0, fr.size.1),
@@ -379,7 +425,7 @@ impl Wiki<'_> {
         )
     }
 
-    pub(super) fn ship_page(&self, k: usize, s: &Blueprint) -> String {
+    pub(crate) fn ship_page(&self, k: usize, s: &Blueprint) -> String {
         let root = UP;
         let mut facts = vec![(
             "Faction".to_string(),
@@ -481,6 +527,18 @@ impl Wiki<'_> {
         }
         t.push_str("</table>\n");
         let mut sections = vec![("Parts".to_string(), t)];
+        // Its pilot assists (GDR-0088): the rules that help the player fly it.
+        let assists = match s.assists.as_ref().map(|a| a.program()) {
+            Some(Ok(p)) => self.rules_figure(root, &p, data::behavior::ListKind::Assists),
+            Some(Err(errors)) => {
+                for e in errors {
+                    self.warn(format!("ship `{}`: assists: {e}", s.id));
+                }
+                none()
+            }
+            None => "<p class=\"none\">None: the ship coasts when you let go.</p>\n".into(),
+        };
+        sections.push(("Pilot assists".to_string(), assists));
         // Where it waits on voyages: fighting, or lying there as a wreck.
         let found: Vec<String> = crate::encounters_with(self.c, &s.id)
             .into_iter()
@@ -525,7 +583,7 @@ impl Wiki<'_> {
         )
     }
 
-    pub(super) fn stat_page(&self, st: &data::StatDef) -> String {
+    pub(crate) fn stat_page(&self, st: &data::StatDef) -> String {
         let root = UP;
         let better = match st.better {
             Better::Higher => "higher",
@@ -643,20 +701,50 @@ impl Wiki<'_> {
         )
     }
 
-    pub(super) fn article(&self, id: &str) -> String {
+    pub(crate) fn article(&self, id: &str) -> String {
         let Some(p) = self.c.wiki_page(Kind::Page, id) else {
             return String::new();
         };
         let title = self.c.name_of(Kind::Page, id).unwrap_or(id);
-        let mut s = format!(
-            "<article class=\"page\">\n<h1>{}</h1>\n<div class=\"prose\">\n",
-            esc(title)
-        );
-        s.push_str(&self.prose(UP, &p.markdown, &p.source));
-        s.push_str("</div>\n");
+        let mut s = heading(1, &esc(title), &slug(id));
+        s.push_str(&block(
+            "sg-article prose",
+            &self.prose(UP, &p.markdown, &p.source),
+        ));
         s.push_str(&self.mentioned(Kind::Page, id));
-        s.push_str(&self.data_details(Kind::Page, id, &p.source, &[]));
-        s + "</article>\n"
+        s.push_str(&block(
+            "sg-data",
+            &self.data_details(Kind::Page, id, &p.source, &[]),
+        ));
+        s
+    }
+}
+
+/// The SETTINGS screen's name of a controls section.
+pub(crate) fn section_title(s: data::input::Section) -> &'static str {
+    use data::input::Section;
+    match s {
+        Section::Flight => "Flight",
+        Section::Mission => "Missions",
+        Section::Camera => "Camera and views",
+        Section::Shipyard => "The shipyard",
+        Section::Drydock => "The drydock and the behavior editor",
+        Section::Map => "The voyage map",
+        Section::Debug => "Debug and display",
+    }
+}
+
+/// Where a control acts, in words.
+fn context_name(c: data::input::Context) -> &'static str {
+    use data::input::Context;
+    match c {
+        Context::Flight => "flight",
+        Context::Home => "the shipyard",
+        Context::Drydock => "the drydock",
+        Context::Behavior => "the BEHAVIOR screen",
+        Context::Research => "research",
+        Context::Map => "the voyage map",
+        Context::Any => "every screen",
     }
 }
 
@@ -713,7 +801,7 @@ fn count_range((lo, hi): (u32, u32)) -> String {
     }
 }
 
-fn metres(x: f32) -> String {
+pub(crate) fn metres(x: f32) -> String {
     format!("{} m", format_number(x, 1))
 }
 
@@ -725,7 +813,7 @@ fn sum_ranges(counts: impl Iterator<Item = (u32, u32)>) -> (u32, u32) {
 }
 
 /// An expected length, `(min, max)` minutes: "6–8 min".
-fn minutes(range: (u32, u32)) -> String {
+pub(crate) fn minutes(range: (u32, u32)) -> String {
     format!("{} min", count_range(range))
 }
 
@@ -775,7 +863,7 @@ fn list_or_none(items: &[String]) -> String {
 }
 
 /// A control's default inputs as keys (`<kbd>W</kbd> or <kbd>↑</kbd>`), or "none".
-pub(super) fn default_inputs(e: &data::Control) -> String {
+pub(crate) fn default_inputs(e: &data::Control) -> String {
     let keys: Vec<String> =
         e.inputs.iter().map(|s| s.parse::<data::input::Chord>().map_or_else(|_| esc(s), |c| format!("<kbd>{}</kbd>", esc(&c.label())))).collect();
     if keys.is_empty() { "none".into() } else { keys.join(" or ") }

@@ -1,10 +1,11 @@
-//! `content-tool`: validate content packs, export the resolved content as JSON, list entries, generate the wiki.
+//! `content-tool`: validate content packs, export the resolved content as JSON, list entries, generate the wiki's
+//! data.
 //!
 //! ```text
 //! content-tool validate [pack_dir...]
 //! content-tool export-json <out.json | -> [pack_dir...]
 //! content-tool list <kind> [pack_dir...]
-//! content-tool wiki <out_dir> [pack_dir...]
+//! content-tool wiki-data <wiki_dir> [pack_dir...]
 //! ```
 //!
 //! Pack directories are loaded in the order given (later packs override earlier ones by id). Without any,
@@ -29,8 +30,9 @@ const USAGE: &str = "usage:
   content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, frame,
                                              ship, behavior_node, behavior, family, research, start,
                                              voyage, encounter, page
-  content-tool wiki <out_dir> [pack_dir...]  static HTML wiki (docs/wiki.md); out_dir empty, new or an
-                                             earlier wiki
+  content-tool wiki-data <wiki_dir> [pack_dir...]
+                                             the wiki's generated half into <wiki_dir>/gen, checking its
+                                             hand-written pages (docs/wiki.md)
 
 Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
@@ -43,7 +45,7 @@ fn main() -> ExitCode {
         Some("validate") => validate(&args[1..]),
         Some("export-json") => export_json(&args[1..]),
         Some("list") => list(&args[1..]),
-        Some("wiki") => generate_wiki(&args[1..]),
+        Some("wiki-data") => wiki_data(&args[1..]),
         Some("-h" | "--help" | "help") => {
             println!("{USAGE}");
             Ok(())
@@ -249,21 +251,32 @@ fn list(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn generate_wiki(args: &[String]) -> Result<(), String> {
-    let out = PathBuf::from(args.first().ok_or_else(|| USAGE.to_string())?);
+/// Writes the wiki's generated half (`<wiki_dir>/gen`) and checks its hand-written pages against the content: a
+/// problem there fails the command, after the data is written (so the site still builds while it is fixed).
+fn wiki_data(args: &[String]) -> Result<(), String> {
+    let dir = PathBuf::from(args.first().ok_or_else(|| USAGE.to_string())?);
     let (c, content_warnings) = load_content(&pack_dirs(&args[1..]))?;
-    let site = wiki::generate(&c);
+    let hand = wiki::hand::read(&dir)?;
+    let site = wiki::generate(&c, &hand);
     for w in &site.warnings {
         eprintln!("warning: wiki: {w}");
     }
+    let out = dir.join("gen");
     wiki::write(&site, &out)?;
-    let pages = site.files.keys().filter(|p| p.ends_with(".html")).count();
+    let pages = site.files.keys().filter(|p| p.ends_with(".md")).count();
     println!(
-        "wrote {pages} pages to {}; {} warning(s)",
+        "wrote {pages} pages and the wiki data to {}; {} warning(s)",
         out.display(),
         content_warnings + site.warnings.len()
     );
-    Ok(())
+    for e in &site.errors {
+        eprintln!("error: wiki: {e}");
+    }
+    if site.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("{} error(s) in the wiki's hand-written pages", site.errors.len()))
+    }
 }
 
 fn export_json(args: &[String]) -> Result<(), String> {

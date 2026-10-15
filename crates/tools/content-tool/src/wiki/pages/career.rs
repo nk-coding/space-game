@@ -7,7 +7,7 @@ impl Wiki<'_> {
     // Career: salvage, research costs and unlocks
 
     /// A family's name, linked, after its colour dot.
-    pub(super) fn family_link(&self, root: &str, id: &str) -> String {
+    pub(crate) fn family_link(&self, root: &str, id: &str) -> String {
         let dot = self
             .c
             .families
@@ -19,7 +19,7 @@ impl Wiki<'_> {
     }
 
     /// "8 Logic and sensors data": research data of a family.
-    pub(super) fn data_amount(&self, root: &str, family: &str, v: f32) -> String {
+    pub(crate) fn data_amount(&self, root: &str, family: &str, v: f32) -> String {
         format!(
             "{} {} data",
             format_number(v, 2),
@@ -28,7 +28,7 @@ impl Wiki<'_> {
     }
 
     /// Materials (id → amount) as "2 Programmable matter" items, in material order.
-    pub(super) fn material_items(&self, root: &str, amounts: &BTreeMap<String, u32>) -> Vec<String> {
+    pub(crate) fn material_items(&self, root: &str, amounts: &BTreeMap<String, u32>) -> Vec<String> {
         let mut v: Vec<(&String, &u32)> = amounts.iter().collect();
         v.sort_by_key(|(id, _)| self.c.materials.position(id).unwrap_or(usize::MAX));
         v.into_iter()
@@ -37,7 +37,7 @@ impl Wiki<'_> {
     }
 
     /// A research cost as items: data per family (in family order), then materials.
-    pub(super) fn cost_items(&self, root: &str, cost: &data::ResearchCost) -> Vec<String> {
+    pub(crate) fn cost_items(&self, root: &str, cost: &data::ResearchCost) -> Vec<String> {
         let mut data: Vec<(&String, &f32)> = cost.data.iter().collect();
         data.sort_by_key(|(id, _)| self.c.families.position(id).unwrap_or(usize::MAX));
         let mut v: Vec<String> = data
@@ -49,7 +49,7 @@ impl Wiki<'_> {
     }
 
     /// What a node unlocks, in a few words: links, or "Mind capacity +1".
-    pub(super) fn unlock_short(&self, root: &str, u: &Unlock) -> String {
+    pub(crate) fn unlock_short(&self, root: &str, u: &Unlock) -> String {
         match u {
             Unlock::Part(id) => self.a_badged(root, Kind::Part, id),
             Unlock::Material(id) => self.a_badged(root, Kind::Material, id),
@@ -59,7 +59,7 @@ impl Wiki<'_> {
     }
 
     /// Research nodes as table rows: name with its kind, summary, what it unlocks, cost.
-    pub(super) fn research_table(&self, root: &str, nodes: &[&ResearchNode]) -> String {
+    pub(crate) fn research_table(&self, root: &str, nodes: &[&ResearchNode]) -> String {
         if nodes.is_empty() {
             return none();
         }
@@ -91,7 +91,7 @@ impl Wiki<'_> {
 
     /// "Unlocked by" on a part, material or frame page: the nodes that unlock it. Left out for an entry a new
     /// game has that no node names.
-    pub(super) fn unlocked_by(&self, unlock: &Unlock, locked: bool) -> Option<(String, String)> {
+    pub(crate) fn unlocked_by(&self, unlock: &Unlock, locked: bool) -> Option<(String, String)> {
         let nodes = crate::unlocked_by(self.c, unlock);
         if nodes.is_empty() && !locked {
             return None;
@@ -106,7 +106,7 @@ impl Wiki<'_> {
 
     /// "Salvage" on a part page: what it gives when the haul is dismantled at home (GDR-0063). Hull parts give
     /// research data by their material, per cell of hull area.
-    pub(super) fn part_salvage(&self, root: &str, p: &Part) -> String {
+    pub(crate) fn part_salvage(&self, root: &str, p: &Part) -> String {
         if p.hull {
             let rows: Vec<String> = self
                 .c
@@ -150,7 +150,7 @@ impl Wiki<'_> {
     }
 
     /// "Salvage" on an armour material's page: research data per cell of hull area.
-    pub(super) fn material_salvage(&self, root: &str, m: &Material) -> String {
+    pub(crate) fn material_salvage(&self, root: &str, m: &Material) -> String {
         match &m.salvage {
             Some(s) => format!(
                 "<table class=\"list\">\n<tr><th>Per cell of hull area</th><td>{}</td></tr>\n</table>\n<p class=\"note\">Hull parts made from it give this per cell of their area; slopes count half.</p>\n",

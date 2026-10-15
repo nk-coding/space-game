@@ -7,7 +7,7 @@ impl Wiki<'_> {
 
     /// Rows of `(picture, name, stat lines)` as a table with one column per stat (labels from `stats.ron`), in
     /// the order of the first row's lines.
-    pub(super) fn stat_columns(&self, root: &str, rows: &[(String, String, Lines)]) -> String {
+    pub(crate) fn stat_columns(&self, root: &str, rows: &[(String, String, Lines)]) -> String {
         let Some((_, _, first)) = rows.first() else {
             return none();
         };
@@ -35,7 +35,7 @@ impl Wiki<'_> {
     }
 
     /// Parts as table rows: chip, name, summary, build points.
-    pub(super) fn parts_table(&self, root: &str, parts: &[&Part]) -> String {
+    pub(crate) fn parts_table(&self, root: &str, parts: &[&Part]) -> String {
         if parts.is_empty() {
             return none();
         }
@@ -54,7 +54,7 @@ impl Wiki<'_> {
         s + "</table>\n"
     }
 
-    pub(super) fn ship_cards(&self, root: &str, ships: &[&Blueprint]) -> String {
+    pub(crate) fn ship_cards(&self, root: &str, ships: &[&Blueprint]) -> String {
         let cards: Vec<Card> = ships
             .iter()
             .map(|s| {
@@ -70,7 +70,7 @@ impl Wiki<'_> {
     }
 
     /// Cards with a ship drawing, a title and a summary.
-    pub(super) fn cards(&self, cards: &[Card]) -> String {
+    pub(crate) fn cards(&self, cards: &[Card]) -> String {
         if cards.is_empty() {
             return none();
         }
@@ -90,7 +90,7 @@ impl Wiki<'_> {
 
     /// A list table on a top-level page: picture (the column is left out when no row has one), name with badge,
     /// summary, one extra cell.
-    pub(super) fn rows<T: Entry>(
+    pub(crate) fn rows<T: Entry>(
         &self,
         items: &[T],
         pic: impl Fn(&T) -> String,
@@ -107,8 +107,8 @@ impl Wiki<'_> {
             writeln!(
                 s,
                 "<td class=\"name\">{}</td><td>{}</td><td class=\"num\">{}</td></tr>",
-                self.a_badged("", T::KIND, e.id()),
-                self.text("", e.summary()),
+                self.a_badged(UP, T::KIND, e.id()),
+                self.text(UP, e.summary()),
                 extra(e)
             )
             .unwrap();
@@ -118,7 +118,8 @@ impl Wiki<'_> {
 
     pub(crate) fn list(&self, kind: Kind) -> String {
         let c = self.c;
-        let mut s = format!("<h1>{}</h1>\n", kind_title(kind));
+        let title = kind_title(kind);
+        let mut s = heading(1, title, &slug(title));
         let count = |n: usize, one: &str, many: &str| {
             if n == 1 {
                 format!("1 {one}")
@@ -126,8 +127,15 @@ impl Wiki<'_> {
                 format!("{n} {many}")
             }
         };
+        // A titled section of the list: heading, then its block.
+        let section = |s: &mut String, title_html: &str, id: &str, html: &str| {
+            s.push_str(&heading(2, title_html, id));
+            s.push_str(&wide_block("sg-section", html));
+        };
         match kind {
             Kind::Part => {
+                // The sortable table of every part (the site's component, from `ui.json`), then the categories.
+                s.push_str("<PartsTable />\n\n");
                 for cat in &c.categories {
                     let parts: Vec<&Part> =
                         c.parts.iter().filter(|p| p.category == cat.id).collect();
@@ -136,84 +144,107 @@ impl Wiki<'_> {
                         .as_deref()
                         .map(|k| self.color_dot(k))
                         .unwrap_or_default();
-                    writeln!(
-                        s,
-                        "<section>\n<h2>{dot}{}</h2>\n<p class=\"lead\">{}</p>\n{}</section>",
-                        self.a("", Kind::Category, &cat.id),
-                        self.text("", &cat.summary),
-                        self.parts_table("", &parts)
-                    )
-                    .unwrap();
+                    section(
+                        &mut s,
+                        &format!("{dot}{}", esc(&cat.name)),
+                        &slug(&cat.id),
+                        &format!(
+                            "<p class=\"lead\">{} {}</p>\n{}",
+                            self.text(UP, &cat.summary),
+                            self.a(UP, Kind::Category, &cat.id),
+                            self.parts_table(UP, &parts)
+                        ),
+                    );
                 }
             }
             Kind::Material => {
-                s += &self.rows(
-                    c.materials.as_slice(),
-                    |m| {
-                        m.icon
-                            .as_ref()
-                            .map(|k| draw::icon(k, 1, 1, "chip-icon"))
-                            .unwrap_or_default()
-                    },
-                    |m| {
-                        let l: Vec<String> = c
-                            .material_stats(m)
-                            .iter()
-                            .map(|l| format!("{} {}", esc(&l.label), esc(&l.text)))
-                            .collect();
-                        l.join("<br>")
-                    },
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(
+                        c.materials.as_slice(),
+                        |m| {
+                            m.icon
+                                .as_ref()
+                                .map(|k| draw::icon(k, 1, 1, "chip-icon"))
+                                .unwrap_or_default()
+                        },
+                        |m| {
+                            let l: Vec<String> = c
+                                .material_stats(m)
+                                .iter()
+                                .map(|l| format!("{} {}", esc(&l.label), esc(&l.text)))
+                                .collect();
+                            l.join("<br>")
+                        },
+                    ),
                 )
             }
             Kind::Category => {
-                s += &self.rows(
-                    c.categories.as_slice(),
-                    |k| {
-                        k.color
-                            .as_deref()
-                            .map(|key| self.color_dot(key))
-                            .unwrap_or_default()
-                    },
-                    |k| {
-                        count(
-                            c.parts.iter().filter(|p| p.category == k.id).count(),
-                            "part",
-                            "parts",
-                        )
-                    },
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(
+                        c.categories.as_slice(),
+                        |k| {
+                            k.color
+                                .as_deref()
+                                .map(|key| self.color_dot(key))
+                                .unwrap_or_default()
+                        },
+                        |k| {
+                            count(
+                                c.parts.iter().filter(|p| p.category == k.id).count(),
+                                "part",
+                                "parts",
+                            )
+                        },
+                    ),
                 )
             }
-            Kind::Ship => s += &self.ship_cards("", &c.ships.iter().collect::<Vec<_>>()),
+            Kind::Ship => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.ship_cards(UP, &c.ships.iter().collect::<Vec<_>>()),
+                )
+            }
             Kind::Frame => {
-                s += &self.rows(
-                    c.frames.as_slice(),
-                    |_| String::new(),
-                    |f| format!("{} × {}", f.size.0, f.size.1),
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(
+                        c.frames.as_slice(),
+                        |_| String::new(),
+                        |f| format!("{} × {}", f.size.0, f.size.1),
+                    ),
                 )
             }
             Kind::Faction => {
-                s += &self.rows(
-                    c.factions.as_slice(),
-                    |f| {
-                        format!(
-                            "<span class=\"dot\" style=\"--c: {}\"></span>",
-                            esc(&self.style.glow(&f.glow))
-                        )
-                    },
-                    |f| {
-                        count(
-                            c.ships.iter().filter(|x| x.faction == f.id).count(),
-                            "ship",
-                            "ships",
-                        )
-                    },
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(
+                        c.factions.as_slice(),
+                        |f| {
+                            format!(
+                                "<span class=\"dot\" style=\"--c: {}\"></span>",
+                                esc(&self.style.glow(&f.glow))
+                            )
+                        },
+                        |f| {
+                            count(
+                                c.ships.iter().filter(|x| x.faction == f.id).count(),
+                                "ship",
+                                "ships",
+                            )
+                        },
+                    ),
                 )
             }
             Kind::Behavior => {
-                s += &self.rows(
-                    c.behaviors.as_slice(),
-                    |_| String::new(),
-                    |b| count(b.rules.len(), "rule", "rules"),
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(
+                        c.behaviors.as_slice(),
+                        |_| String::new(),
+                        |b| count(b.rules.len(), "rule", "rules"),
+                    ),
                 )
             }
             Kind::BehaviorNode => {
@@ -224,31 +255,32 @@ impl Wiki<'_> {
                         .filter(|n| n.role == role)
                         .cloned()
                         .collect();
-                    let title = match role {
-                        NodeRole::Target => "Target selectors",
-                        NodeRole::Condition => "Conditions",
-                        NodeRole::Action => "Actions",
-                    };
-                    writeln!(
-                        s,
-                        "<section>\n<h2>{title}</h2>\n{}</section>",
-                        self.rows(
+                    let title = role_title(role);
+                    section(
+                        &mut s,
+                        title,
+                        &slug(title),
+                        &self.rows(
                             &nodes,
-                            |n| format!(
-                                "<code class=\"{}\">{}</code>",
-                                role_class(n.role),
-                                esc(&n.id)
-                            ),
                             |n| {
+                                format!(
+                                    "<code class=\"{}\">{}</code>",
+                                    role_class(n.role),
+                                    esc(&n.id)
+                                )
+                            },
+                            |n| {
+                                let mut b = Vec::new();
                                 if n.script.is_some() {
-                                    "<span class=\"badge rhai\">Rhai</span>".into()
-                                } else {
-                                    String::new()
+                                    b.push("<span class=\"badge rhai\">Rhai</span>");
                                 }
-                            }
-                        )
-                    )
-                    .unwrap();
+                                if n.pilot {
+                                    b.push("<span class=\"badge pilot\">Pilot assist</span>");
+                                }
+                                b.join(" ")
+                            },
+                        ),
+                    );
                 }
             }
             Kind::Stat => {
@@ -264,35 +296,38 @@ impl Wiki<'_> {
                         format!("<code>{}</code>", esc(&d.unit))
                     }
                 };
-                writeln!(
-                    s,
-                    "<section>\n<h2>Part and material stats</h2>\n{}</section>",
-                    self.rows(&part, |_| String::new(), unit)
-                )
-                .unwrap();
-                writeln!(
-                    s,
-                    "<section>\n<h2>Ship stats</h2>\n{}</section>",
-                    self.rows(&ship, |_| String::new(), unit)
-                )
-                .unwrap();
+                section(
+                    &mut s,
+                    "Part and material stats",
+                    "part-and-material-stats",
+                    &self.rows(&part, |_| String::new(), unit),
+                );
+                section(
+                    &mut s,
+                    "Ship stats",
+                    "ship-stats",
+                    &self.rows(&ship, |_| String::new(), unit),
+                );
             }
             Kind::Family => {
-                s += &self.rows(
-                    c.families.as_slice(),
-                    |f| {
-                        f.color
-                            .as_deref()
-                            .map(|k| self.color_dot(k))
-                            .unwrap_or_default()
-                    },
-                    |f| {
-                        count(
-                            crate::family_research(c, &f.id).len(),
-                            "research node",
-                            "research nodes",
-                        )
-                    },
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(
+                        c.families.as_slice(),
+                        |f| {
+                            f.color
+                                .as_deref()
+                                .map(|k| self.color_dot(k))
+                                .unwrap_or_default()
+                        },
+                        |f| {
+                            count(
+                                crate::family_research(c, &f.id).len(),
+                                "research node",
+                                "research nodes",
+                            )
+                        },
+                    ),
                 )
             }
             Kind::Research => {
@@ -302,14 +337,17 @@ impl Wiki<'_> {
                     if nodes.is_empty() {
                         continue;
                     }
-                    writeln!(
-                        s,
-                        "<section>\n<h2>{}</h2>\n<p class=\"lead\">{}</p>\n{}</section>",
-                        self.family_link("", &f.id),
-                        self.text("", &f.summary),
-                        self.research_table("", &nodes)
-                    )
-                    .unwrap();
+                    section(
+                        &mut s,
+                        &self.family_dot_name(f),
+                        &slug(&f.id),
+                        &format!(
+                            "<p class=\"lead\">{} {}</p>\n{}",
+                            self.text(UP, &f.summary),
+                            self.a(UP, Kind::Family, &f.id),
+                            self.research_table(UP, &nodes)
+                        ),
+                    );
                 }
             }
             Kind::Start => {
@@ -318,100 +356,98 @@ impl Wiki<'_> {
                     .iter()
                     .filter_map(|st| {
                         Some((
-                            item_path(Kind::Start, &st.id),
+                            format!("{UP}{}", item_path(Kind::Start, &st.id)),
                             c.ships.get(&st.ship)?,
                             st.name.as_str(),
                             st.summary.as_str(),
                         ))
                     })
                     .collect();
-                s += &self.cards(&cards);
+                s += &wide_block("sg-list", &self.cards(&cards));
             }
             Kind::Voyage => {
-                s += &self.voyage_table("", &c.voyages.iter().collect::<Vec<_>>());
+                s += &wide_block(
+                    "sg-list",
+                    &self.voyage_table(UP, &c.voyages.iter().collect::<Vec<_>>()),
+                );
             }
             Kind::Encounter => {
-                s += &self.encounter_table("", &c.encounters.iter().collect::<Vec<_>>());
+                s += &wide_block(
+                    "sg-list",
+                    &self.encounter_table(UP, &c.encounters.iter().collect::<Vec<_>>()),
+                );
             }
             Kind::Control => {
-                s.push_str("<p class=\"lead\">The default inputs; players rebind them in the game's SETTINGS.</p>\n");
-                s += &self.rows(c.controls.as_slice(), |_| String::new(), super::default_inputs);
+                s += &wide_block(
+                    "sg-list",
+                    "<p class=\"lead\">The default inputs; you rebind them in the game's SETTINGS.</p>\n",
+                );
+                for section_id in data::input::Section::ALL {
+                    let controls: Vec<data::Control> = c
+                        .controls
+                        .iter()
+                        .filter(|e| e.section == section_id)
+                        .cloned()
+                        .collect();
+                    if controls.is_empty() {
+                        continue;
+                    }
+                    let title = super::section_title(section_id);
+                    section(
+                        &mut s,
+                        title,
+                        &slug(title),
+                        &self.rows(&controls, |_| String::new(), super::default_inputs),
+                    );
+                }
             }
             Kind::Page => {
                 let pages: Vec<String> = c
                     .wiki
                     .values()
                     .filter(|p| p.kind == Kind::Page)
-                    .map(|p| self.a("", Kind::Page, &p.id))
+                    .map(|p| self.a(UP, Kind::Page, &p.id))
                     .collect();
-                s += &list_or_none(&pages);
+                s += &wide_block("sg-list", &list_or_none(&pages));
             }
         }
         s
     }
 
-    pub(crate) fn index(&self) -> String {
+    /// A family's name after its colour dot (no link: a heading).
+    fn family_dot_name(&self, f: &Family) -> String {
+        let dot = f
+            .color
+            .as_deref()
+            .map(|k| self.color_dot(k))
+            .unwrap_or_default();
+        format!("{dot}{}", esc(&f.name))
+    }
+
+    /// The reference overview: every kind with its count, and the loaded packs.
+    pub(crate) fn reference(&self) -> String {
         let c = self.c;
-        let mut s = format!("<h1>{}</h1>\n", esc(&self.site_name()));
+        let mut s = heading(1, "Reference", "reference");
+        let mut kinds = String::new();
         if let Some(d) = c.packs.first().and_then(|p| p.description.as_deref()) {
-            writeln!(s, "<p class=\"summary\">{}</p>", esc(d)).unwrap();
+            writeln!(kinds, "<p class=\"summary\">{}</p>", esc(d)).unwrap();
         }
-        let n_pages = c.wiki.values().filter(|p| p.kind == Kind::Page).count();
-        s.push_str("<div class=\"kinds\">\n");
+        kinds.push_str("<div class=\"kinds\">\n");
         for (kind, title) in KINDS {
-            let n = match kind {
-                Kind::Stat => c.stats.len(),
-                Kind::Category => c.categories.len(),
-                Kind::Faction => c.factions.len(),
-                Kind::Material => c.materials.len(),
-                Kind::Part => c.parts.len(),
-                Kind::Frame => c.frames.len(),
-                Kind::Ship => c.ships.len(),
-                Kind::BehaviorNode => c.behavior_nodes.len(),
-                Kind::Behavior => c.behaviors.len(),
-                Kind::Family => c.families.len(),
-                Kind::Research => c.research.len(),
-                Kind::Start => c.starts.len(),
-                Kind::Voyage => c.voyages.len(),
-                Kind::Encounter => c.encounters.len(),
-                Kind::Control => c.controls.len(),
-                Kind::Page => n_pages,
-            };
-            writeln!(s, "<a class=\"kind\" href=\"{}\"><span class=\"n\">{n}</span><span class=\"t\">{title}</span></a>", list_path(kind)).unwrap();
-        }
-        s.push_str("</div>\n");
-        writeln!(
-            s,
-            "<section>\n<h2>Ships</h2>\n{}</section>",
-            self.ship_cards("", &c.ships.iter().collect::<Vec<_>>())
-        )
-        .unwrap();
-        s.push_str("<section>\n<h2>Parts</h2>\n<div class=\"palette\">\n");
-        for p in self.parts_by_category() {
             writeln!(
-                s,
-                "<a href=\"{}\">{}<span>{}{}</span></a>",
-                item_path(Kind::Part, &p.id),
-                self.part_svg(p, None, PX_PALETTE, "chip"),
-                esc(&p.name),
-                if p.locked { LOCKED } else { "" }
+                kinds,
+                "<a class=\"kind\" href=\"{UP}{}\"><span class=\"n\">{}</span><span class=\"t\">{title}</span></a>",
+                list_path(kind),
+                self.count(kind)
             )
             .unwrap();
         }
-        s.push_str("</div>\n</section>\n");
-        if n_pages > 0 {
-            let pages: Vec<String> = c
-                .wiki
-                .values()
-                .filter(|p| p.kind == Kind::Page)
-                .map(|p| self.a("", Kind::Page, &p.id))
-                .collect();
-            writeln!(s, "<section>\n<h2>Articles</h2>\n{}</section>", ul(&pages)).unwrap();
-        }
-        s.push_str("<section>\n<h2>Packs</h2>\n<table class=\"list\">\n");
+        kinds.push_str("</div>\n");
+        s.push_str(&wide_block("sg-list", &kinds));
+        let mut packs = String::from("<table class=\"list\">\n");
         for p in &c.packs {
             writeln!(
-                s,
+                packs,
                 "<tr><td class=\"name\">{} <code>{}</code></td><td class=\"num\">{}</td><td>{}</td><td>{}</td></tr>",
                 esc(&p.name),
                 esc(&p.id),
@@ -421,7 +457,32 @@ impl Wiki<'_> {
             )
             .unwrap();
         }
-        s.push_str("</table>\n</section>\n");
+        packs.push_str("</table>\n");
+        s.push_str(&heading(2, "Packs", "packs"));
+        s.push_str(&wide_block("sg-section", &packs));
         s
+    }
+
+    /// How many entries of a kind the content holds.
+    pub(crate) fn count(&self, kind: Kind) -> usize {
+        let c = self.c;
+        match kind {
+            Kind::Stat => c.stats.len(),
+            Kind::Category => c.categories.len(),
+            Kind::Faction => c.factions.len(),
+            Kind::Material => c.materials.len(),
+            Kind::Part => c.parts.len(),
+            Kind::Frame => c.frames.len(),
+            Kind::Ship => c.ships.len(),
+            Kind::BehaviorNode => c.behavior_nodes.len(),
+            Kind::Behavior => c.behaviors.len(),
+            Kind::Family => c.families.len(),
+            Kind::Research => c.research.len(),
+            Kind::Start => c.starts.len(),
+            Kind::Voyage => c.voyages.len(),
+            Kind::Encounter => c.encounters.len(),
+            Kind::Control => c.controls.len(),
+            Kind::Page => c.wiki.values().filter(|p| p.kind == Kind::Page).count(),
+        }
     }
 }

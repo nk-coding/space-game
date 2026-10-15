@@ -458,7 +458,9 @@ fn spawn_detail(stage: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Styl
                 let pill_text = |text: &str| {
                     (PillText, Text::new(text), TextFont { font: fonts.medium.clone().into(), font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::NONE), LetterSpacing::Px(3.0))
                 };
-                p.spawn((UnlockText::Words, pill_text("UNLOCK")));
+                // The letter spacing also follows the last letter: the words' own left margin as wide balances it, so the
+                // words, with or without the materials after them, sit centred (as `spawn_pill`'s label does).
+                p.spawn((UnlockText::Words, pill_text("UNLOCK"), Node { margin: UiRect::left(px(3.0)), ..default() }));
                 p.spawn((RNode::UnlockMatter, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() })).with_children(|m| {
                     m.spawn((UiIcon::Glyph { glyph: Glyph::Diamond, color: ui.gold }, Node { width: px(9), height: px(9), ..default() }));
                     m.spawn((UnlockText::Matter, pill_text("")));

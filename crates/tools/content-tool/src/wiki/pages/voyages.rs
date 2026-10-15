@@ -6,7 +6,7 @@ impl Wiki<'_> {
     // Voyages and encounters in tables
 
     /// An encounter's fighting ships, one per line: "Automaton raider ×2–3".
-    pub(super) fn encounter_ships(&self, root: &str, e: &Encounter) -> String {
+    pub(crate) fn encounter_ships(&self, root: &str, e: &Encounter) -> String {
         let v: Vec<String> = e
             .ships
             .iter()
@@ -26,7 +26,7 @@ impl Wiki<'_> {
     }
 
     /// An encounter's wrecks, one per line: "Sample early ×1, 50% of parts gone".
-    pub(super) fn encounter_wrecks(&self, root: &str, e: &Encounter) -> String {
+    pub(crate) fn encounter_wrecks(&self, root: &str, e: &Encounter) -> String {
         let v: Vec<String> = e
             .wrecks
             .iter()
@@ -47,7 +47,7 @@ impl Wiki<'_> {
     }
 
     /// Voyages as table rows: name with its band, summary, how many sites, expected length.
-    pub(super) fn voyage_table(&self, root: &str, voyages: &[&Voyage]) -> String {
+    pub(crate) fn voyage_table(&self, root: &str, voyages: &[&Voyage]) -> String {
         if voyages.is_empty() {
             return none();
         }
@@ -68,7 +68,7 @@ impl Wiki<'_> {
     }
 
     /// Encounters with a header row: name, summary, ships, wrecks, wake radius.
-    pub(super) fn encounter_table(&self, root: &str, encounters: &[&Encounter]) -> String {
+    pub(crate) fn encounter_table(&self, root: &str, encounters: &[&Encounter]) -> String {
         if encounters.is_empty() {
             return none();
         }
