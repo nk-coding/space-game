@@ -133,10 +133,11 @@ fn w_thrusts_along_the_nose_and_cancels_drift() {
     assert!(b.linvel.dot(n) > 1.0, "moves along the nose: {:?}", b.linvel);
     assert!(b.linvel.dot(sd).abs() < 0.5, "sideways drift cancelled: {}", b.linvel.dot(sd));
     assert!((b.angle - angle).abs() < 0.05, "W does not turn the ship");
-    // Drift on: W is pure thrust, the sideways component is kept.
+    // Drift on: W is pure thrust, the sideways component is kept (below the top speed: at it the governor turns the
+    // velocity onto the push, GDR-0089).
     let mut w = sim::Sim::new(3);
     let s = w.spawn_ship(rcs_ship(&c), sim::Owner::PLAYER, Body { pos: Vec2::ZERO, angle, linvel: side * 3.0, angvel: 0.0 });
-    steer(&mut w, s, PilotInput { drift: true, ..axes(0.0, 1.0, 0.0) }, 300);
+    steer(&mut w, s, PilotInput { drift: true, ..axes(0.0, 1.0, 0.0) }, 60);
     let b = body(&w, s);
     assert!(b.linvel.dot(side) > 2.5, "drift keeps momentum: {:?}", b.linvel);
     assert!(b.linvel.dot(nose) > 0.3, "and thrusts along the nose");

@@ -2,6 +2,7 @@
 //! peers) must use the same config. All numbers are **placeholders** for feel.
 
 use crate::hash::{StateHash, StateHasher};
+use crate::math::Vec2;
 use crate::ship::vessel::{MAX_OWNERS, Owner};
 
 /// Flight-computer tuning (see `flight/mod.rs` and `docs/sim.md`).
@@ -111,6 +112,22 @@ pub struct SalvageTuning {
     /// Owners whose running vessels collect, by `Owner.0`: the player (owner 0) only by default; owners
     /// beyond the table never collect.
     pub collects: [bool; MAX_OWNERS],
+    /// Salvage (a piece that is not a vessel, a loose item) faster than this slows down to it (m/s; Niklas,
+    /// 15 Oct 2026: cargo dropped near the player's top speed was very hard to reach) ...
+    pub settle_speed: f32,
+    /// ... by this much every second (m/s²).
+    pub settle_decel: f32,
+}
+
+impl SalvageTuning {
+    /// A salvage velocity one tick of settling later.
+    pub fn settle(&self, vel: Vec2) -> Vec2 {
+        let speed = vel.length();
+        if speed <= self.settle_speed {
+            return vel;
+        }
+        vel * ((speed - self.settle_decel * crate::DT).max(self.settle_speed) / speed)
+    }
 }
 
 impl SalvageTuning {
@@ -134,6 +151,8 @@ impl Default for SalvageTuning {
             fragment_ticks: None,
             spill_speed: 1.5,
             collects,
+            settle_speed: 3.0,
+            settle_decel: 4.0,
         }
     }
 }
@@ -273,6 +292,8 @@ impl StateHash for SimConfig {
         for &c in &s.collects {
             h.bool(c);
         }
+        h.f32(s.settle_speed);
+        h.f32(s.settle_decel);
         self.voyage.hash_state(h);
     }
 }

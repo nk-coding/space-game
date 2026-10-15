@@ -704,12 +704,15 @@ impl Sim {
             .map(|t| self.tick() + t as u64)
     }
 
-    /// Moves the loose items one tick (after the physics step, like the bodies); expired ones are gone.
+    /// Moves the loose items one tick (after the physics step, like the bodies), settling as salvage does
+    /// (`SalvageTuning::settle`); expired ones are gone.
     pub(crate) fn drift_loose(&mut self) {
         let tick = self.tick();
+        let t = self.config().salvage;
         let loose = &mut self.salvage.loose;
         loose.retain(|l| l.expires.is_none_or(|e| e > tick));
         for l in loose.iter_mut() {
+            l.vel = t.settle(l.vel);
             l.prev_pos = l.pos;
             l.pos += l.vel * DT;
         }

@@ -58,19 +58,13 @@ pub mod tuning {
     /// rating. Flat first, so the acceleration stays constant for most of the way and the approach to the top
     /// speed is short.
     pub const RATED_KNEE: f32 = 0.8;
-    /// The whole-speed fade is continuous in the push angle (GDR-0064, lead default): a row pushing with the
-    /// motion fades by the piece's whole speed, but by no more than this many times the speed along its own
-    /// axis. Pushes within about 76° of the motion (cos = 1/4) fade exactly by the whole speed (GDR-0055); from
-    /// there the fade eases off to none for a push square to the motion, so a push across the motion is never
-    /// cut off by a sign test. Such a push can take a ship past its rating by at most √(1 + 1/4²) − 1 ≈ 3%.
-    pub const FADE_ALONG: f32 = 4.0;
 }
 
 /// Share of a thruster's force left at `speed` m/s, for rated speed `rated` (GDR-0041): 1 up to `RATED_KNEE ×
-/// rated`, then linear to 0 at `rated` and beyond. [`Thruster::falloff`] applies it with the piece's whole speed
-/// to a thruster that pushes with the motion (GDR-0055, continuous in the push angle since GDR-0064); braking
-/// and sideways thrusters keep full thrust. No drag: a coasting ship keeps its speed; only its own thrust stops
-/// growing. Only `+ − × ÷` and comparisons (deterministic).
+/// rated`, then linear to 0 at `rated` and beyond. [`Thruster::falloff`] applies it to a thruster that pushes with
+/// the motion (GDR-0055, weighted by the push angle since GDR-0089); braking and sideways thrusters keep full
+/// thrust, and [`govern`] keeps what they add to the speed under the ship's top speed. No drag: a coasting ship
+/// keeps its speed; only its own thrust stops growing. Only `+ − × ÷` and comparisons (deterministic).
 pub fn rated_falloff(speed: f32, rated: f32) -> f32 {
     let knee = tuning::RATED_KNEE * rated;
     if speed <= knee {
@@ -80,6 +74,26 @@ pub fn rated_falloff(speed: f32, rated: f32) -> f32 {
     } else {
         (rated - speed) / (rated - knee)
     }
+}
+
+/// The speed governor (GDR-0089; Niklas, 15 Oct 2026: at the top speed a push in a new direction should turn the
+/// ship onto it at that speed, the speed the other way falling away, instead of sometimes passing the top speed
+/// and sometimes barely answering): the world force a piece's own actuators put on it this tick, `force`, cut so
+/// that it never takes the piece's speed past `top` (or past its speed now, if that is higher already). What it
+/// keeps turns the velocity towards the push. `vel` is the velocity at the centre of mass, `mass` the piece's.
+/// Braking and anything below the top speed pass unchanged; collisions and blasts are not the piece's force and
+/// are never cut.
+pub fn govern(force: Vec2, vel: Vec2, mass: f32, top: f32) -> Vec2 {
+    if top <= 0.0 || mass <= 0.0 || force == Vec2::ZERO {
+        return force;
+    }
+    let next = vel + force * (DT / mass);
+    let allowed = top.max(vel.length());
+    let speed = next.length();
+    if speed <= allowed {
+        return force;
+    }
+    (next * (allowed / speed) - vel) * (mass / DT)
 }
 
 /// World pose and velocity of a piece's body. Written by the physics layer after each step; the sim sets it

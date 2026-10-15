@@ -84,7 +84,9 @@ fn the_fade_is_continuous_in_the_push_angle() {
     };
     assert_eq!(at(0.0, 20.0), 0.0, "straight with the motion at the rating");
     assert!(close(at(0.0, 18.0), 0.5, 1e-5));
-    assert_eq!(at(45.0, 20.0), 0.0, "mostly with the motion: the whole speed counts");
+    // GDR-0089: weighted by cos² of the angle, so the fade lets go as the push turns away from the motion.
+    assert!(close(at(20.0, 20.0), (20.0 - 20.0 * 0.883_022) / 4.0, 1e-3), "20° off: {}", at(20.0, 20.0));
+    assert_eq!(at(45.0, 20.0), 1.0, "45° off: full thrust (cos² = 0.5)");
     assert!(at(89.0, 20.0) > 0.999, "a hair less than square: {}", at(89.0, 20.0));
     assert!(at(89.0, 21.0) > 0.999, "also a little past the rating");
     assert_eq!(at(91.0, 40.0), 1.0, "against the motion");
@@ -157,15 +159,16 @@ fn braking_and_sideways_keep_full_thrust() {
     let (thrust, rated) = thruster(&c);
     let d = pusher(&c);
     // (velocity, thrust left): moving backwards fast (braking), sideways (turning), forwards past the rating,
-    // and diagonally forwards and backwards (GDR-0055: a thruster pushing with the motion fades by the whole
-    // speed, here 0.94 of the rating, although the speed along it is only 0.6 of it; braking keeps it all).
+    // and diagonally forwards and backwards (GDR-0089: a thruster pushing with the motion fades by the whole
+    // speed times cos² of its angle to the motion, here 0.94 × 0.41 of the rating, so it keeps all of it; braking
+    // keeps it all).
     let diag = (0.72f32 * 0.72 + 0.6 * 0.6).sqrt();
     for (vel, want) in [
         (Vec2::new(0.0, -3.0 * rated), thrust),
         (Vec2::new(3.0 * rated, 0.0), thrust),
         (Vec2::new(0.0, 0.9 * rated), 0.5 * thrust),
         (Vec2::new(0.0, 1.5 * rated), 0.0),
-        (Vec2::new(0.72 * rated, 0.6 * rated), rated_falloff(diag * rated, rated) * thrust),
+        (Vec2::new(0.72 * rated, 0.6 * rated), rated_falloff(0.36 / diag * rated, rated) * thrust),
         (Vec2::new(0.72 * rated, -0.6 * rated), thrust),
     ] {
         let mut w = sim::Sim::new(1);
@@ -420,4 +423,34 @@ fn rcs_pods_make_the_runner_turn_faster() {
     }
     assert!(turns[1] < 0.85 * turns[0], "2 pods: {} vs {} s", turns[1], turns[0]);
     assert!(turns[2] < 0.9 * turns[1], "4 pods: {} vs {} s", turns[2], turns[1]);
+}
+
+/// GDR-0089 (Niklas's play-test, 15 Oct 2026): at the top speed, pushing a new way swings the velocity onto the push
+/// at the top speed, never past it (GDR-0064's fade gave a push 60° off the motion nothing at all, and a push
+/// nearly square to it could pass the rating).
+#[test]
+fn at_top_speed_the_velocity_swings_onto_the_push_and_never_passes_it() {
+    let c = content();
+    let (_, rated) = thruster(&c);
+    for degrees in [30.0f32, 60.0, 89.0, 120.0] {
+        // Moving along +x at the rating, the nose `degrees` off the motion; W held in drift (pure thrust).
+        let a = degrees.to_radians() - std::f32::consts::FRAC_PI_2;
+        let mut w = sim::Sim::new(1);
+        let s = w.spawn_ship(pusher(&c), sim::Owner::PLAYER, Body { angle: a, linvel: Vec2::new(rated, 0.0), ..Default::default() });
+        w.command(
+            s,
+            ShipCommand::Pilot(PilotInput { axes: Some(sim::flight::PilotAxes { turn: 0.0, thrust: 1.0, strafe: 0.0 }), drift: true, ..Default::default() }),
+        );
+        let mut fastest = 0.0f32;
+        for _ in 0..600 {
+            w.step(&TickInputs::default());
+            fastest = fastest.max(control(&w, s).body.linvel.length());
+        }
+        let p = control(&w, s);
+        let nose = sim::Rot::from_angle(p.body.angle).apply(Vec2::new(0.0, 1.0));
+        let v = p.body.linvel;
+        println!("{degrees}° off: {v:?}, |v| {:.2}, max {fastest:.3}, nose {nose:?}", v.length());
+        assert!(fastest <= rated * 1.001, "{degrees}°: never past the rating: {fastest}");
+        assert!(v.length() > 0.95 * rated && v.dot(nose) > 0.99 * v.length(), "{degrees}°: onto the push at the top speed: {v:?}");
+    }
 }

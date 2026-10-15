@@ -43,17 +43,19 @@ pub struct Thruster {
 }
 
 impl Thruster {
-    /// Share of the row's force left at piece-frame velocity `v_local` of length `speed` (GDR-0055, GDR-0064): a
-    /// row that pushes with the motion (`v_local · dir > 0`) fades by the whole speed ([`rated_falloff`]), so a
-    /// ship moving diagonally cannot beat the rating of the slowest thruster pushing that way, but by no more
-    /// than [`tuning::FADE_ALONG`] times the speed along its own axis, so the fade eases off continuously as the
-    /// push turns square to the motion; braking (against the motion) and sideways rows keep full thrust. The
-    /// caller takes `speed` once per piece (one square root).
+    /// Share of the row's force left at piece-frame velocity `v_local` of length `speed` (GDR-0055, GDR-0089): a
+    /// row that pushes with the motion (`v_local · dir > 0`, at angle θ to it) fades by the whole speed times
+    /// cos²θ ([`rated_falloff`]): straight along the motion by the whole speed, so the ship eases into its rating
+    /// as before; the more the push turns away from the motion, the less it fades (full thrust at the top speed
+    /// from about 27° off, cos²θ = 0.8), so a push off the motion always turns the velocity towards it, never cut
+    /// off at some angle; [`super::govern`] keeps the speed under the top speed meanwhile. Braking (against the
+    /// motion) and sideways rows keep full thrust. The caller takes `speed` once per piece (one square root).
     #[inline]
     pub fn falloff(&self, v_local: Vec2, speed: f32) -> f32 {
         let along = v_local.dot(self.dir);
         if along > 0.0 {
-            rated_falloff(speed.min(tuning::FADE_ALONG * along), self.rated)
+            // `speed.max(along)`: a velocity so small that its square underflows has `speed` 0 but `along` > 0.
+            rated_falloff(along * (along / speed.max(along)), self.rated)
         } else {
             1.0
         }

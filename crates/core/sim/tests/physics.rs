@@ -291,7 +291,10 @@ fn raycasts_skip_every_piece_of_the_own_ship() {
 
 #[test]
 fn split_pieces_ghost_each_other_then_collide() {
-    let mut w = sim::Sim::new(1);
+    // Salvage that settles (GDR-0089) would slow the launched piece: not what this test is about.
+    let mut config = sim::SimConfig::default();
+    config.salvage.settle_speed = f32::INFINITY;
+    let mut w = sim::Sim::with_config(1, config);
     let s = raider(&mut w, Owner(1), Vec2::ZERO, 0.0, Vec2::ZERO);
     // Cut the middle column: a left and a right piece, 1 m apart.
     for cell in [(1, 0), (1, 1), (1, 2)] {

@@ -757,19 +757,20 @@ lines at the end of `flight::execute`.
   first, so the acceleration stays constant for 80% of the way and the last 20% takes about a quarter of the
   time. Rotation-induced velocity is ignored (cheap, and a turning ship's points move sideways to the thrust
   anyway). Cost: one square root per flown piece per tick (`|v_local|`, shared by its rows).
-- **Continuous in the push angle** (GDR-0064; `tuning::FADE_ALONG` = 4, lead default): the fade uses
-  `min(|v|, 4 × the speed along the row's axis)` instead of `|v|`. A push within about 76° of the motion
-  (cos ≥ 1/4) fades exactly by the whole speed as above; from there the fade eases off to none for a push square
-  to the motion, with no jump anywhere (test `the_fade_is_continuous_in_the_push_angle`). Until then a sign test
-  decided: a forward engine whose push was a hair "with" the motion got nothing at the top speed, so a ship whose
-  velocity was 89° off its nose could not push along its nose at all (the balance study's sim issue 1; a locked
-  Runner sliding sideways ignored the stick). A push nearly square to the motion can now take a ship past its
-  rating by at most √(1 + 1/4²) − 1 ≈ 3%, and as the velocity turns towards the push the whole speed counts
-  again (test `a_locked_ship_at_top_speed_still_answers_the_stick_across_its_motion`: a Runner locked ahead while
-  sliding sideways at 22 m/s pushes along its nose to 5.8 m/s, 22.7 m/s in all; before, nothing). A ship with
-  engines only at the back that is locked at its top speed with its velocity less than about 76° off its nose
-  still cannot turn its velocity onto the nose without passing its rating: that is GDR-0011's trade-off (it
-  cannot brake or strafe while locked), not the fade.
+- **Weighted by the push angle** (GDR-0089, 15 Oct 2026; before it GDR-0064's `min(|v|, 4 × the speed along the
+  row's axis)`): the fade uses `|v| cos²θ`, θ the push's angle to the motion (`along² / |v|`). Straight along
+  the motion that is the whole speed (unchanged: the knee, the cruise flame); off the motion the fade lets go
+  smoothly, and at the rating a push about 27° or more off the motion (cos²θ ≤ 0.8) has full thrust. Continuous
+  in the angle (test `the_fade_is_continuous_in_the_push_angle`). GDR-0064's version went from nothing to
+  everything between 75.5° and 78.5° off the motion, and a ship that kept turning while it pushed in the full
+  band could gain speed without a bound (Niklas's play-test, 15 Oct 2026: "sometimes beyond the max speed, and
+  sometimes I barely can").
+- **The governor** (`ship::govern`, GDR-0089): in the physics phase, the world force a piece's own actuators put
+  on it is cut so that this tick it never takes the piece's speed past its top speed (the highest rating among
+  its groups that can push now, `ThrustAuthority::speed`), or past its speed now if a blast made it faster
+  already. What is left turns the velocity towards the push: at the top speed, pushing a new way swings the
+  velocity onto it at the top speed, the speed the old way falling away. Braking passes unchanged; collisions
+  and blasts are not the piece's force and are never cut. Cost: two square roots per flown piece per tick.
 - **Where it applies**: the flight computer computes each row's falloff once per tick from the velocity at the
   start of the tick (`Piece::falloff`, also for raw throttles), allocates over `max_force × falloff`, and the
   systems use the same numbers for the wrench (`max_force × power × falloff`) and for the power demand
@@ -780,10 +781,10 @@ lines at the end of `flight::execute`.
 - **No drag**: a coasting ship keeps its speed (test `raw_thrust_tops_out_at_the_rated_speed_and_coasting_keeps_it`).
 - **Top speed per direction** (`ThrustAuthority::speed`, `Kin::speeds`): per thrust group (forward, backward,
   right, left) the highest rating among its rows that can push now
-  ([Planning with what works](#planning-with-what-works)). With the whole-speed fade no ship gets faster than
-  its fastest thrusters, and diagonally no faster than the slowest group still pushing that way (up to the 3% a
-  push nearly square to the motion may add): the old box (a ship with 22 m/s forward and 14 m/s RCS sideways
-  reached 26 m/s crabwise) is gone.
+  ([Planning with what works](#planning-with-what-works)). Straight along a group each row fades by its own
+  rating; the governor caps every direction at the ship's top speed (the fastest group's), so a diagonal is no
+  longer held to the slower group's rating (GDR-0055's rule, until GDR-0089), and the old box (a ship with
+  22 m/s forward and 14 m/s RCS sideways reached 26 m/s crabwise) stays gone.
 - **`Kin::top_along(u)`** (the locked touch stick's full length): the fastest velocity goal along `u` the flight
   computer reaches from rest. It pushes each group flat out until its share of the goal is there; the group that
   finishes last caps the speed at its own top speed, and the group that finishes first must get there before
@@ -793,7 +794,10 @@ lines at the end of `flight::execute`.
   `top_speed_per_direction_comes_from_the_thrusters_pushing_that_way` and
   `a_diagonal_is_no_faster_than_the_slowest_thrusters_pushing_that_way` (`tests/speed.rs`): an RCS box (pods
   14 m/s, thruster 20 m/s) locked with the stick at (0.6, 0.8) flies that diagonal at 14.0 m/s (the box allowed
-  23 m/s); with W and E held in drift it ends at 20 m/s (the thruster) with 7.9 m/s sideways.
+  23 m/s; `top_along` still asks for this conservative goal); with W and E held in drift it ends at 20 m/s (the
+  thruster) with 12.7 m/s sideways (7.9 before GDR-0089). Test `at_top_speed_the_velocity_swings_onto_the_push_and_never_passes_it`:
+  a 20 m/s ship at its rating pushing 30°, 60°, 89° and 120° off the motion ends on its nose (within 4°) at
+  20.00 m/s, never past it.
 - "Fly that way" turns the best axis onto the stick and flies at its rating (unchanged). The keyboard's W with Q
   or E asks for both axes' top speeds; the side push stops once the whole speed passes the side thrusters'
   rating.
@@ -1829,13 +1833,15 @@ later; the wreck counts for nobody. Used by the salvage scenario and the voyage 
 | `fragment_ticks` | `None` | how long an uncollected fragment (or spilled item) drifts, in ticks; `None`: until the sim ends (GDR-0079; 1800 = 60 s before, which the sandbox keeps) |
 | `spill_speed` | 1.5 m/s | spilled cargo's push away from the lost hold: half to all of this, a random direction (GDR-0076) |
 | `collects` | owner 0 only | owners whose running vessels collect (by `Owner.0`; owners beyond the table never) |
+| `settle_speed` | 3 m/s | salvage (a piece that is not a vessel, a loose item) faster than this slows down to it (GDR-0089; Niklas, 15 Oct 2026: cargo dropped near his top speed was very hard to reach) |
+| `settle_decel` | 4 m/s² | how fast it slows: a wreck from 20 m/s drifts slowly after about 4 s and 50 m (`SalvageTuning::settle`; pieces by a force in the physics phase, loose items in `drift_loose`) |
 
 ### State hash
 
 Per ship the burned-out flag and the cargo (units in use; per item its kind, its content ids as bytes, count, units
 and value bits); after the projectiles the loose items (the id counter, then per item id, item, units, value,
 position, previous position, velocity, and whether it expires and when: a flag, then the tick or 0); the salvage
-settings with the config (`fragment_ticks` the same way).
+settings with the config (`fragment_ticks` the same way, then `settle_speed` and `settle_decel`).
 
 ### Cost
 

@@ -721,10 +721,13 @@ impl Sim {
         self.collect();
 
         // Physics: ghosts expire, this tick's wrenches replace the last ones (world force at the centre of
-        // mass), one Rapier step.
+        // mass; the speed governor cuts what would pass the top speed, salvage pieces settle,
+        // `SalvageTuning::settle`), one Rapier step.
         mark(StepPhase::Physics);
+        let salvage = self.config.salvage;
         for s in &mut self.ships {
             let sid = s.id();
+            let control = s.control_piece();
             for p in &mut s.pieces {
                 let key = BodyKey {
                     ship: sid,
@@ -734,11 +737,18 @@ impl Sim {
                     p.ghost_until = 0;
                     self.physics.set_ghost(key, None);
                 }
-                let f = if p.wrench.force != Vec2::ZERO {
+                let mut f = if p.wrench.force != Vec2::ZERO {
                     Rot::from_angle(p.body.angle).apply(p.wrench.force)
                 } else {
                     Vec2::ZERO
                 };
+                // The piece's own thrust never takes it past its top speed (GDR-0089).
+                let top = p.authority.speed.iter().fold(0.0f32, |a, &b| a.max(b));
+                f = crate::ship::govern(f, p.body.linvel, p.mass.mass, top);
+                if control != Some(p.id) {
+                    let v = p.body.linvel;
+                    f += (salvage.settle(v) - v) * (p.mass.mass / crate::DT);
+                }
                 self.physics.set_wrench(key, f, p.wrench.torque);
             }
         }
