@@ -1,9 +1,10 @@
 //! PILOT ASSISTS (GDR-0088): the tab next to BEHAVIOR where the design's pilot assists are edited with the same GRAPH
 //! and TEXT views, inspector and palette as its behavior (the TEXT view edits the list in the blueprint's rule text,
-//! e.g. `brake(toggle2, off)`). An assist rule's action is one of the assists (face target, brake, hold station, avoid
+//! e.g. `brake(toggle2, off)`). An assist rule's action is one of the assists (auto-lock, brake, hold station, avoid
 //! collisions, auto-fire); its TOGGLE and AT START values (the inspector's pills) say which ASSIST TOGGLE key switches
-//! it in flight and whether a mission starts with it on. The conditions and target selectors are the behaviors', plus
-//! the pilot's own (`lock_held`, `idle`).
+//! it in flight and whether a mission starts with it on. The conditions are the behaviors', plus the pilot's own
+//! (`lock_held`, `idle`). There is no target line: the graph's TARGET row says YOUR LOCK, as the assists act on the
+//! pilot's lock (auto-lock's pick reuses the behaviors' target selectors).
 //!
 //! * **The tab** ([`switch`]): opening it puts the design's assists on the screen as the draft (`BehaviorDraft::assists`)
 //!   and parks the behavior's draft in [`AssistTab`]; BEHAVIOR (or BEHAVIORS) brings the behavior back and parks the

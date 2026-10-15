@@ -15,7 +15,7 @@
     (id: "fire_group_1", name: "Fire group 1", summary: "Fires weapon group 1 while held, as does the left button held on empty space.", section: flight, contexts: [flight], inputs: ["Digit1"]),
     (id: "fire_group_2", name: "Fire group 2", summary: "Fires the guns of weapon group 2 while held.", section: flight, contexts: [flight], inputs: ["Digit2", "MouseRight"]),
     (id: "fire_group_3", name: "Fire group 3", summary: "Fires the guns of weapon group 3 while held.", section: flight, contexts: [flight], inputs: ["Digit3"]),
-    (id: "lock_next", name: "Lock next target", summary: "Locks the next enemy, nearest first.", section: flight, contexts: [flight], inputs: ["Tab"]),
+    (id: "lock_next", name: "Lock target", summary: "Locks the nearest enemy; pressed again while one is locked, the next one by distance, round to the nearest again.", section: flight, contexts: [flight], inputs: ["Tab"]),
     (id: "drift", name: "Drift", summary: "Turns drift on and off: pure momentum while keys are held, no sideways correction.", section: flight, contexts: [flight], inputs: ["KeyX"]),
     (id: "focus_next", name: "Next vessel", summary: "Flies the next of your vessels.", section: flight, contexts: [flight], inputs: ["KeyV"]),
     (id: "focus_previous", name: "Previous vessel", summary: "Flies the previous of your vessels.", section: flight, contexts: [flight], inputs: ["Shift+KeyV"]),

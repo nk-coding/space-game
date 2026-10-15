@@ -721,7 +721,7 @@ mod tests {
         let rule = world.resource::<BehaviorDraft>().editor().unwrap().rule_at(0).unwrap().id;
         world.resource_mut::<BehaviorDraft>().edit(|e| e.set_param(data::behavior::edit::NodeRef::Action(rule), 0, data::behavior::Value::Word("toggle2".into())).unwrap()).unwrap();
         world.run_system_once(write).unwrap();
-        let want = Some(data::AssistList { target: None, rules: vec!["always -> brake(toggle2)".into()] });
+        let want = Some(data::AssistList { rules: vec!["always -> brake(toggle2)".into()] });
         assert_eq!(world.resource::<PlayerDesign>().blueprint().assists, want);
         let stored = library::restore_working(&mut world.resource_mut::<Storage>(), &data::base_content()).unwrap().unwrap().0;
         assert_eq!(stored.blueprint().assists, want);
@@ -749,7 +749,7 @@ mod tests {
         let typed = "always -> brake(toggle2, off)\nwhen lock_held -> hold_station(ally)\n";
         assert!(world.resource_mut::<BehaviorDraft>().set_text(typed));
         world.run_system_once(write).unwrap();
-        let want = Some(data::AssistList { target: None, rules: vec!["always -> brake(toggle2, off)".into(), "when lock_held -> hold_station(ally)".into()] });
+        let want = Some(data::AssistList { rules: vec!["always -> brake(toggle2, off)".into(), "when lock_held -> hold_station(ally)".into()] });
         assert_eq!(world.resource::<PlayerDesign>().blueprint().assists, want);
         // A typed error: the design keeps the last valid list, and the text as typed survives a trip to BEHAVIOR.
         assert!(!world.resource_mut::<BehaviorDraft>().set_text("always -> orbit\n"));

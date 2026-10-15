@@ -37,11 +37,7 @@ pub fn blueprint_to_ron(bp: &Blueprint) -> String {
         field(&mut s, "behavior", &string(b));
     }
     if let Some(a) = &bp.assists {
-        s.push_str("    assists: (\n");
-        if let Some(t) = &a.target {
-            let _ = writeln!(s, "        target: {},", string(t));
-        }
-        s.push_str("        rules: [\n");
+        s.push_str("    assists: (\n        rules: [\n");
         for r in &a.rules {
             let _ = writeln!(s, "            {},", string(r));
         }

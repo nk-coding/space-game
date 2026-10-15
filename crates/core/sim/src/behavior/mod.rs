@@ -180,7 +180,12 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("flee", Action, None, &[]),
         node("hold", Action, None, &[]),
         node("escort", Action, None, DIST),
-        pilot("face_target", Action, None, &[TOGGLE, START]),
+        pilot(
+            "auto_lock",
+            Action,
+            None,
+            &[ParamSig::Choice(&["nearest", "weakest", "threat", "attacker"]), TOGGLE, START],
+        ),
         pilot("brake", Action, None, &[TOGGLE, START]),
         pilot(
             "hold_station",

@@ -62,7 +62,8 @@ pub struct CondId(u32);
 /// A node of the program: the target selector, a rule's action or one of its conditions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeRef {
-    /// The target selector; while the program has no `target` line, the default ([`DEFAULT_TARGET`]).
+    /// The target selector; while the program has no `target` line, the default ([`DEFAULT_TARGET`]). Pilot
+    /// assists have none (refused with [`Refusal::NotInList`]).
     Target,
     /// The action of a rule.
     Action(RuleId),

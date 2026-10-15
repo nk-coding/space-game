@@ -2,27 +2,30 @@
 //! fly the ship they pilot. They run only on a piloted ship (the focus: `HelmMode::Pilot`, no behavior) that was
 //! given a list (`ShipCommand::Assists`); every other ship, and a piloted one without a list, flies as before.
 //!
-//! * **Channels**: each assist acts on one control channel: turning (`face_target`), thrust (`brake`, `hold_station`,
+//! * **Channels**: each assist acts on one control channel: the lock (`auto_lock`), thrust (`brake`, `hold_station`,
 //!   `avoid_collisions`) or the trigger of one weapon group (`auto_fire(g)`). The pilot always wins: a channel the
-//!   player uses this tick (A/D or the stick, or a held lock, which aims by itself; W/S/Q/E or the stick; a group's
-//!   trigger) is the player's, and letting go hands it back on the next tick.
-//! * **Rules**: at every think (with the behaviors, every [`tuning::THINK_PERIOD`] ticks, and on the tick after the
-//!   list is set or switched) the rules are read from the top; a rule that is switched on, whose conditions all hold
-//!   (and that has a target, if it needs one; for `avoid_collisions`, something on a collision course) decides its
-//!   channel unless a rule above it already does. So "face" and "fire group 2" run together, and two brakes with
-//!   different conditions are a priority list of their own.
-//! * **Target**: the pilot's lock while one is held, else the list's target line (default `nearest`; `locked`, the
-//!   leader's lock, finds nothing for the focus, which has no leader).
+//!   player uses this tick (a held lock; W/S/Q/E or the stick; a group's trigger) is the player's, and letting go
+//!   hands it back on the next tick.
+//! * **Rules**: at every think (with the behaviors, every [`tuning::THINK_PERIOD`] ticks, on the tick after the
+//!   list is set or switched and on the tick auto-lock pauses or resumes) the rules are read from the top; a rule that is switched on, whose conditions all hold
+//!   (and that has a target, if it needs one; for `avoid_collisions`, something on a collision course; for
+//!   `auto_lock`, a ship to lock) decides its channel unless a rule above it already does. So "brake" and "fire group
+//!   2" run together, and two brakes with different conditions are a priority list of their own.
+//! * **Target**: the pilot's lock, the one the HUD shows, and nothing else (Niklas, 15 Oct 2026: no target the
+//!   assists pick on their own and don't show). Without a lock `auto_fire` does nothing; `auto_lock` sets one.
+//! * **Auto-lock**: while the pilot holds no lock it picks a ship with its selector ([`AssistState::auto_lock`]); the
+//!   client locks it as a click would (`PilotInput::lock` from the next tick), so the HUD, the aim and every assist
+//!   see the one lock. A lock the pilot drops while its ship is still there (Esc, a click on empty space) pauses
+//!   auto-lock until the pilot locks again or switches an auto-lock rule (its toggle, ALL ASSISTS); a lock that goes
+//!   because its ship did (destroyed, gone dark) doesn't, so auto-lock moves on to the next.
 //! * **Switches**: each rule starts a mission on or off (its `start` value); `ShipCommand::SwitchAssists` flips the
 //!   rules of a toggle slot (`toggle1`..`toggle4`) or the master switch, ALL ASSISTS (off: no assist acts; on: they
 //!   are back as their toggles left them). The state lives on the ship for the mission.
-//! * **Per tick** ([`assist_plan`]): the deciding rules shape the pilot's goal: face turns the strongest guns onto the
-//!   target (smart aim, as a lock does), brake asks for zero velocity, auto-fire fires the group's guns that bear,
-//!   with fire at will's per-gun test.
+//! * **Per tick** ([`assist_plan`]): the deciding rules shape the pilot's goal: brake asks for zero velocity,
+//!   auto-fire fires the group's guns that bear on the lock, with fire at will's per-gun test.
 //! * **Thrust assists turn while turning is free** (brake, hold station, avoid collisions; Niklas, 15 Oct 2026, as
-//!   no base ship has RCS): while neither the pilot (steering, a lock) nor a rule (face target) has the turning
-//!   channel, and the velocity change asked is at least [`tuning::ASSIST_TURN_DV`], the heading becomes
-//!   `HeadingGoal::Auto` (the behaviors' flip and burn: kept while the thrusters facing the needed way give half the
+//!   no base ship has RCS): while the pilot neither steers nor holds a lock (which aims the ship), and the velocity
+//!   change asked is at least [`tuning::ASSIST_TURN_DV`], the heading becomes `HeadingGoal::Auto` (the behaviors' flip and burn: kept while the thrusters facing the needed way give half the
 //!   best axis). Otherwise the heading stays the pilot's and only the thrusters pushing the needed way act.
 //! * **Hold station** (GDR-0088 step 4): the station is taken on the first tick the rule has thrust while the pilot
 //!   doesn't thrust: the ship's centre of mass, or its offset from the nearest other active vessel of its owner (with
@@ -42,27 +45,26 @@ use std::sync::Arc;
 
 use data::MAX_WEAPON_GROUP;
 
-use super::compile::{AssistAction, SelectorKind, Station};
-use super::eval::{Ctx, Lazy, Pilot, aim_state, pick_part, snapshot};
+use super::compile::{AssistAction, Station};
+use super::eval::{Ctx, Lazy, Pilot, snapshot};
 use super::{Assists, AssistsId, BehaviorLibrary, Scratch, tuning};
 use crate::DT;
 use crate::config::FlightTuning;
 use crate::flight::maneuver::Maneuver;
 use crate::flight::{
-    AimMode, FIRE_ALL, Fire, FlightGoal, HeadingGoal, HelmMode, Kin, PilotInput, Target, TargetState, find_ship, resolve_target,
-    smart_aim,
+    FIRE_ALL, Fire, FlightGoal, HeadingGoal, HelmMode, Kin, PilotInput, Target, TargetState, find_ship, resolve_target,
 };
 use crate::hash::{StateHash, StateHasher};
 use crate::ids::{PieceId, ShipId};
 use crate::math::{Vec2, sqrt};
-use crate::ship::design::PartIdx;
 use crate::ship::vessel::friendly;
 use crate::ship::{Piece, Ship};
 
 /// A control channel an assist acts on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Channel {
-    Turning,
+    /// The pilot's lock (`auto_lock`).
+    Lock,
     Thrust,
     /// The trigger of a weapon group (1 to `data::MAX_WEAPON_GROUP`).
     Fire(u8),
@@ -71,7 +73,7 @@ pub enum Channel {
 impl Channel {
     fn of(a: AssistAction) -> Channel {
         match a {
-            AssistAction::FaceTarget => Channel::Turning,
+            AssistAction::AutoLock(_) => Channel::Lock,
             AssistAction::Brake | AssistAction::HoldStation(_) | AssistAction::AvoidCollisions => Channel::Thrust,
             AssistAction::AutoFire(g) => Channel::Fire(g),
         }
@@ -79,14 +81,14 @@ impl Channel {
 
     fn index(self) -> usize {
         match self {
-            Channel::Turning => 0,
+            Channel::Lock => 0,
             Channel::Thrust => 1,
             Channel::Fire(g) => 1 + g as usize,
         }
     }
 }
 
-/// Turning, thrust and one channel per weapon group.
+/// The lock, thrust and one channel per weapon group.
 const CHANNELS: usize = 2 + MAX_WEAPON_GROUP as usize;
 
 /// What `ShipCommand::SwitchAssists` flips.
@@ -120,12 +122,17 @@ pub struct AssistState {
     pub(crate) all: bool,
     /// The tick the pilot last used each control (turning, thrust, a trigger); the tick the list was set until then.
     pub(crate) used: [u64; 3],
-    /// The target at the last think: the pilot's lock, else the target line's pick (and its aim part).
+    /// The target at the last think: the ship of the pilot's lock.
     pub(crate) focus: Option<ShipId>,
-    pub(crate) aim_part: Option<PartIdx>,
     /// Tick the current target was picked (the target timers count from here).
     pub(crate) acquired: u64,
-    /// Per channel (turning, thrust, weapon groups 1..), the rule that decides it.
+    /// The pilot's lock and the last tick it was held (a drop is seen on the tick after).
+    pub(crate) held: Option<(Target, u64)>,
+    /// The pilot dropped a lock whose ship is still there: auto-lock waits until the pilot locks again or switches it.
+    pub(crate) paused: bool,
+    /// The ship auto-lock asks the pilot's lock to take (from the last think; none while a lock is held).
+    pub(crate) pick: Option<ShipId>,
+    /// Per channel (the lock, thrust, weapon groups 1..), the rule that decides it.
     pub(crate) decides: [Option<u16>; CHANNELS],
     /// Tick of the last think (`None`: thinks on the next tick).
     pub(crate) thought: Option<u64>,
@@ -150,8 +157,10 @@ impl AssistState {
             all: true,
             used: [tick; 3],
             focus: None,
-            aim_part: None,
             acquired: tick,
+            held: None,
+            paused: false,
+            pick: None,
             decides: [None; CHANNELS],
             thought: None,
             station: None,
@@ -166,18 +175,24 @@ impl AssistState {
             thought: None,
             station: None,
             avoid: None,
+            pick: None,
             ..self.clone()
         }
     }
 
-    /// Flips a toggle slot's rules or the master switch; the rules are read again on the next tick.
+    /// Flips a toggle slot's rules or the master switch; the rules are read again on the next tick. Switching an
+    /// auto-lock rule (ALL ASSISTS switches every one) ends its pause.
     pub(crate) fn switch(&mut self, s: AssistSwitch) {
         match s {
-            AssistSwitch::All => self.all = !self.all,
+            AssistSwitch::All => {
+                self.all = !self.all;
+                self.paused = false;
+            }
             AssistSwitch::Toggle(k) => {
                 for (i, r) in self.program.code.rules.iter().enumerate() {
                     if r.toggle == k && k != 0 {
                         self.on ^= 1 << i;
+                        self.paused &= Channel::of(r.action) != Channel::Lock;
                     }
                 }
             }
@@ -219,9 +234,19 @@ impl AssistState {
         self.decides.contains(&Some(i as u16))
     }
 
-    /// The target the assists aim at (at the last think).
+    /// The target the assists act on (at the last think): the ship of the pilot's lock.
     pub fn target(&self) -> Option<ShipId> {
         self.focus
+    }
+
+    /// The ship auto-lock asks to be locked while the pilot holds no lock: the client locks it, as a click does.
+    pub fn auto_lock(&self) -> Option<ShipId> {
+        self.pick
+    }
+
+    /// Auto-lock waits: the pilot dropped a lock while its ship was still there.
+    pub fn lock_paused(&self) -> bool {
+        self.paused
     }
 
     /// The station `hold_station` keeps now, if it has one.
@@ -251,8 +276,17 @@ impl StateHash for AssistState {
             h.u64(u);
         }
         h.u32(self.focus.map_or(u32::MAX, |s| s.0));
-        h.u32(self.aim_part.unwrap_or(u32::MAX));
         h.u64(self.acquired);
+        match &self.held {
+            Some((t, at)) => {
+                h.u8(1);
+                t.hash_state(h);
+                h.u64(*at);
+            }
+            None => h.u8(0),
+        }
+        h.bool(self.paused);
+        h.u32(self.pick.map_or(u32::MAX, |s| s.0));
         for d in &self.decides {
             h.u32(d.map_or(u32::MAX, u32::from));
         }
@@ -299,26 +333,57 @@ fn piloted(s: &Ship) -> Option<&PilotInput> {
 pub(crate) struct AssistOut {
     valid: bool,
     focus: Option<ShipId>,
-    aim_part: Option<PartIdx>,
     acquired: u64,
     decides: [Option<u16>; CHANNELS],
     avoid: Option<(ShipId, PieceId)>,
+    pick: Option<ShipId>,
+}
+
+/// A lock's ship (or piece) is still there: a ship still active, a piece not gone; a point always is. The client
+/// drops a lock whose ship isn't, so a lock gone while its ship is there was dropped by the pilot.
+fn lock_there(ships: &[Ship], t: &Target) -> bool {
+    match *t {
+        Target::Ship(id) => find_ship(ships, id).is_some_and(Ship::is_active),
+        Target::Piece(id, piece) => find_ship(ships, id).is_some_and(|s| s.piece(piece).is_some()),
+        Target::Point(_) => true,
+    }
 }
 
 /// The assist pass, every tick after the behaviors' think: each piloted ship with assists notes which controls its
-/// pilot uses; on think ticks (or right after a switch) its rules decide the channels, all from one snapshot; then
-/// the stations are kept.
+/// pilot uses and whether the pilot dropped a lock (auto-lock's pause); on think ticks (or right after a switch) its
+/// rules decide the channels, all from one snapshot; then the stations are kept.
 pub(crate) fn assist_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, tick: u64, flight: &FlightTuning) {
     let mut any_due = false;
-    for s in ships.iter_mut() {
-        let Some(used) = piloted(s).map(|p| controls_used(p, flight.stick_deadzone)) else {
+    for k in 0..ships.len() {
+        let Some(&input) = piloted(&ships[k]) else {
             continue;
         };
-        let st = s.assists.as_mut().expect("piloted() checked it");
+        let used = controls_used(&input, flight.stick_deadzone);
+        let held = ships[k].assists.as_ref().expect("piloted() checked it").held;
+        // Held on the tick before and gone now while its ship is still there: the pilot let go of it.
+        let dropped = input.lock.is_none() && held.is_some_and(|(t, at)| at + 1 == tick && lock_there(ships, &t));
+        let st = ships[k].assists.as_mut().expect("piloted() checked it");
         for (u, now) in st.used.iter_mut().zip(used) {
             if now {
                 *u = tick;
             }
+        }
+        match input.lock {
+            // A lock of the pilot's: auto-lock has nothing to ask, and its pause ends.
+            Some(t) => {
+                st.held = Some((t, tick));
+                if std::mem::take(&mut st.paused) {
+                    st.thought = None;
+                }
+                st.pick = None;
+            }
+            // The rules are read again at once, so the pause shows on this tick.
+            None if dropped => {
+                st.paused = true;
+                st.pick = None;
+                st.thought = None;
+            }
+            None => {}
         }
         any_due |= st.thought.is_none() || tick.is_multiple_of(tuning::THINK_PERIOD);
     }
@@ -387,10 +452,10 @@ fn think_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, t
         }
         if let Some(st) = s.assists.as_mut() {
             st.focus = out.focus;
-            st.aim_part = out.aim_part;
             st.acquired = out.acquired;
             st.decides = out.decides;
             st.avoid = out.avoid;
+            st.pick = out.pick;
             st.thought = Some(tick);
         }
     }
@@ -497,53 +562,61 @@ fn evade(piece: &Piece, avoid: (ShipId, PieceId), ships: &[Ship]) -> Option<Vec2
     Some(me.2 + away * ((reach - len) / t.max(DT)))
 }
 
-/// One ship's think: the target (the lock first), then the rules in order, each deciding its channel if it is
+/// One ship's think: the target (the pilot's lock), then the rules in order, each deciding its channel if it is
 /// switched on, its conditions hold and no rule above decided that channel.
 fn think(cx: &mut Ctx, st: &AssistState, input: &PilotInput, out: &mut AssistOut) {
     let Some(kin) = cx.prepare() else {
         return;
     };
     let code = &st.program.code;
-    let locked = match input.lock {
-        Some(Target::Ship(id) | Target::Piece(id, _)) => Some(id),
-        _ => None,
-    };
-    let focus = match locked {
-        Some(id) => cx.world.binary_search_by_key(&id, |s| s.id()).ok().and_then(|k| {
+    let focus = match input.lock {
+        Some(Target::Ship(id) | Target::Piece(id, _)) => cx.world.binary_search_by_key(&id, |s| s.id()).ok().and_then(|k| {
             let ts = cx.centres[k].or_else(|| resolve_target(cx.world, &Target::Ship(id)))?;
             Some((k, ts, (ts.pos - kin.pos).length()))
         }),
-        // `locked` follows a leader's lock; the focus has none (its own lock came first).
-        None if code.target.kind == SelectorKind::Locked => None,
-        None => cx.select(code.target.kind, st.focus),
+        _ => None,
     };
     cx.focus = focus;
     let focus_id = focus.map(|(k, _, _)| cx.world[k].id());
     cx.acquired = if focus_id == st.focus { st.acquired } else { cx.tick };
-    out.aim_part = match locked {
-        Some(_) => None,
-        None => focus.and_then(|(k, _, _)| pick_part(&cx.world[k], code.target.aim, kin.pos)),
-    };
     out.decides = [None; CHANNELS];
     out.avoid = None;
+    out.pick = None;
     // What `avoid_collisions` would steer clear of, looked for once.
     let mut threat_of: Option<Option<(ShipId, PieceId)>> = None;
     if st.all {
         for (i, rule) in code.rules.iter().enumerate() {
-            let ch = Channel::of(rule.action).index();
+            let channel = Channel::of(rule.action);
+            let ch = channel.index();
             if !st.is_on(i) || out.decides[ch].is_some() || (rule.action.needs_target() && focus.is_none()) {
+                continue;
+            }
+            // The pilot dropped a lock: no auto-lock until they lock again or switch it.
+            if channel == Channel::Lock && st.paused {
                 continue;
             }
             let conds = &code.conds[rule.start as usize..(rule.start + rule.len) as usize];
             if !conds.iter().all(|c| matches!(cx.cond(c), Ok((true, _)))) {
                 continue;
             }
-            if rule.action == AssistAction::AvoidCollisions {
-                // Nothing on a collision course: the rules below keep the channel.
-                let Some(t) = *threat_of.get_or_insert_with(|| threat(cx.me, cx.world)) else {
-                    continue;
-                };
-                out.avoid = Some(t);
+            match rule.action {
+                AssistAction::AvoidCollisions => {
+                    // Nothing on a collision course: the rules below keep the channel.
+                    let Some(t) = *threat_of.get_or_insert_with(|| threat(cx.me, cx.world)) else {
+                        continue;
+                    };
+                    out.avoid = Some(t);
+                }
+                AssistAction::AutoLock(kind) => {
+                    // No ship it would lock (no attacker, say): the rules below may pick another way.
+                    let Some((k, _, _)) = cx.select(kind, None) else {
+                        continue;
+                    };
+                    if input.lock.is_none() {
+                        out.pick = Some(cx.world[k].id());
+                    }
+                }
+                _ => {}
             }
             out.decides[ch] = Some(i as u16);
         }
@@ -559,7 +632,6 @@ pub(crate) fn assist_plan(
     st: &AssistState,
     input: &PilotInput,
     kin: &Kin,
-    ship: &Ship,
     piece: &Piece,
     ships: &[Ship],
     flight: &FlightTuning,
@@ -570,21 +642,10 @@ pub(crate) fn assist_plan(
         return;
     }
     let [turning, thrust, _] = controls_used(input, flight.stick_deadzone);
-    let at = match &input.lock {
-        Some(t) => resolve_target(ships, t),
-        None => st.focus.and_then(|f| aim_state(ships, f, st.aim_part)),
-    };
-    // A lock aims the ship itself: the turning channel is the pilot's while one is held.
-    if st.decides[Channel::Turning.index()].is_some()
-        && !turning
-        && input.lock.is_none()
-        && let Some(t) = at
-        && let Some(h) = smart_aim(ship, piece, kin, &t).or_else(|| kin.track(kin.aim_point(&t, AimMode::Auto), t.vel, 0))
-    {
-        goal.heading = h;
-    }
-    // Turning left free: the pilot doesn't steer or hold a lock, no rule decides it.
-    let turn_free = !turning && input.lock.is_none() && st.decides[Channel::Turning.index()].is_none();
+    // The target is the pilot's lock, which also aims the ship (`pilot_goal`).
+    let at = input.lock.as_ref().and_then(|t| resolve_target(ships, t));
+    // Turning left free: the pilot doesn't steer or hold a lock.
+    let turn_free = !turning && input.lock.is_none();
     let pushed = match st.decider(Channel::Thrust) {
         _ if thrust => None,
         Some((_, AssistAction::Brake)) => Some(Vec2::ZERO),

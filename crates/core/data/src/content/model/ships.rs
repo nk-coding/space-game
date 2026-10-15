@@ -39,29 +39,52 @@ pub const MAX_WEAPON_GROUP: u8 = 3;
 pub const MAX_ASSIST_TOGGLES: u8 = 4;
 
 /// A design's PILOT ASSISTS (GDR-0088): rules in the behavior format (`docs/behavior-format.md` "Pilot assists")
-/// that help the player fly the ship; they run only while it is the focus. `target` and `rules` are lines as in a
-/// content behavior.
+/// that help the player fly the ship; they run only while it is the focus. `rules` are lines as in a content
+/// behavior. A list has no target line: the assists act on the pilot's lock (an `auto_lock` rule sets one).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "AssistListText")]
 pub struct AssistList {
-    /// The target selector (`"nearest"`); default `nearest`. The pilot's lock, while one is held, comes first.
-    #[serde(default)]
-    pub target: Option<String>,
     /// The assist rules, one line each (`"when idle(thrust) >= 1s -> brake(toggle2)"`).
-    #[serde(default)]
     pub rules: Vec<String>,
 }
 
+/// What a blueprint's `assists` reads. The first lists (GDR-0088 step 3, 15 Oct 2026) had a target line and could
+/// hold `face_target`: both are read and left out, so those designs still load and are written back without them.
+/// No format version changes: what is written now reads in the builds before.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssistListText {
+    /// The old target line (the assists picked a target of their own while nothing was locked): ignored.
+    #[serde(default, rename = "target")]
+    _target: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    rules: Vec<String>,
+}
+
+/// Assists that are gone, whose rules old lists may hold: `face_target` turned the guns onto the target, which
+/// the lock it now needs already does by itself.
+const RETIRED_ASSISTS: &[&str] = &["face_target"];
+
+impl From<AssistListText> for AssistList {
+    fn from(t: AssistListText) -> Self {
+        let retired = |r: &String| {
+            crate::behavior::Program::from_parts(None, std::slice::from_ref(r))
+                .is_ok_and(|p| p.rules.iter().any(|rule| RETIRED_ASSISTS.contains(&rule.action.name.as_str())))
+        };
+        AssistList { rules: t.rules.into_iter().filter(|r| !retired(r)).collect() }
+    }
+}
+
 impl AssistList {
-    /// Parses `target` and `rules` (syntax only; see [`crate::behavior::check_assists`]).
+    /// Parses `rules` (syntax only; see [`crate::behavior::check_assists`]).
     pub fn program(&self) -> Result<crate::behavior::Program, Vec<crate::behavior::LineError>> {
-        crate::behavior::Program::from_parts(self.target.as_deref(), &self.rules)
+        crate::behavior::Program::from_parts(None, &self.rules)
     }
 
-    /// The list of a program (`None` for one without rules and target: no assists).
+    /// The list of a program (`None` for one without rules: no assists).
     pub fn of(program: &crate::behavior::Program) -> Option<AssistList> {
-        let (target, rules) = program.to_parts();
-        (target.is_some() || !rules.is_empty()).then_some(AssistList { target, rules })
+        let (_, rules) = program.to_parts();
+        (!rules.is_empty()).then_some(AssistList { rules })
     }
 }
 

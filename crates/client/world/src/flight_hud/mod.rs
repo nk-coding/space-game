@@ -625,6 +625,42 @@ mod tests {
         assert!(built.matches(third.ship(again)));
     }
 
+    /// GDR-0088: the ship an auto-lock assist asks for becomes the pilot's lock at the scene's tick, and the target
+    /// panel shows it like any lock; once the pilot drops it (Esc), auto-lock waits and nothing is locked again.
+    #[test]
+    fn a_lock_set_by_auto_lock_is_the_pilots_lock_in_the_target_panel() {
+        let content = data::base_content();
+        let mut sim = sim::Sim::new(1);
+        sim.set_behaviors(sim::BehaviorLibrary::new(&content).unwrap());
+        let me = sim.spawn_ship(design(&content, "halvex_runner"), PLAYER, Body::at(sim::Vec2::ZERO, 0.0));
+        let raider = sim.spawn_ship(design(&content, "automaton_raider"), crate::scene::ENEMY, Body::at(sim::Vec2::new(0.0, 60.0), 0.0));
+        let id = sim.behaviors_mut().add_assists(&data::AssistList { rules: vec!["always -> auto_lock(nearest, toggle1)".into()] }).unwrap();
+        sim.command(me, sim::ShipCommand::Assists(Some(id)));
+        sim.command(me, sim::ShipCommand::Focus);
+        let mut world = SimWorld::new(sim, content);
+        let tick = |world: &mut SimWorld, lock: Option<Target>| {
+            let input = sim::PilotInput { lock, ..Default::default() };
+            world.sim.step(&sim::TickInputs { commands: vec![(me, sim::ShipCommand::Pilot(input))], ..Default::default() });
+        };
+        let panel = |world: &SimWorld, lock: Option<Target>| {
+            let mut name = String::new();
+            super::text::target_text(HudText::TargetName, &mut name, world, lock, Some("TAB"), None);
+            name
+        };
+        assert_eq!(panel(&world, None), "NO TARGET");
+        tick(&mut world, None);
+        let lock = crate::scene::tick_lock(&world, world.sim.ship(me).unwrap(), None);
+        assert_eq!(lock, Some(Target::Ship(raider)));
+        assert_eq!(panel(&world, lock), world.sim.ship(raider).unwrap().design().name.to_uppercase());
+        // Held from the next tick on, it stays; a lock the pilot holds is never replaced.
+        tick(&mut world, lock);
+        assert_eq!(crate::scene::tick_lock(&world, world.sim.ship(me).unwrap(), lock), lock);
+        // Esc: auto-lock pauses, so nothing comes back.
+        tick(&mut world, None);
+        assert!(world.sim.ship(me).unwrap().assists().unwrap().lock_paused());
+        assert_eq!(crate::scene::tick_lock(&world, world.sim.ship(me).unwrap(), None), None);
+    }
+
     /// A site label sits towards the view's centre, or beside its arrow when the HUD or another label is there.
     #[test]
     fn site_labels_keep_clear_of_the_hud_and_each_other() {

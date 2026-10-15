@@ -94,6 +94,8 @@ impl BehaviorEditor {
 
     pub(super) fn place(&self, at: NodeRef) -> Result<Place, Refusal> {
         match at {
+            // Pilot assists have no target line: they act on the pilot's lock.
+            NodeRef::Target if self.kind == ListKind::Assists => Err(Refusal::NotInList("target".into())),
             NodeRef::Target => Ok(Place::Target),
             NodeRef::Action(r) => self.index_of(r).map(Place::Action),
             NodeRef::Cond(c) => self.find_cond(c).map(|(i, j)| Place::Cond(i, j)),

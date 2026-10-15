@@ -704,10 +704,12 @@ mod tests {
         let ids: Vec<String> = palette(&content.behavior_nodes, ListKind::Behavior, "keep").into_iter().map(|e| e.id).collect();
         assert_eq!(ids, ["kite"]);
         assert!(palette(&content.behavior_nodes, ListKind::Behavior, "zzz").is_empty());
-        // Pilot assists (GDR-0088): the assists' actions only, every condition (the pilot's too).
+        // Pilot assists (GDR-0088): the assists' actions only, every condition (the pilot's too), no target selector
+        // (they act on the pilot's lock).
         let assists = palette(&content.behavior_nodes, ListKind::Assists, "");
         let actions: Vec<&str> = assists.iter().filter(|e| e.role == NodeRole::Action).map(|e| e.id.as_str()).collect();
-        assert_eq!(actions, ["face_target", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
+        assert_eq!(actions, ["auto_lock", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
+        assert!(!assists.iter().any(|e| e.role == NodeRole::Target));
         assert!(assists.iter().any(|e| e.id == "idle") && assists.iter().any(|e| e.id == "hull"));
         assert!(!all.iter().any(|e| e.id == "idle"));
     }
@@ -717,7 +719,7 @@ mod tests {
     #[test]
     fn assist_rules_have_no_slots_and_the_last_can_go() {
         let content = data::base_content();
-        let program = data::behavior::Program::parse("always -> face_target(toggle1)\nalways -> brake\n").unwrap();
+        let program = data::behavior::Program::parse("always -> auto_lock(nearest, toggle1)\nalways -> brake\n").unwrap();
         let ed = BehaviorEditor::open_as(&content.behavior_nodes, &program, ListKind::Assists).unwrap();
         let second = ed.rule_at(1).unwrap().id;
         let i = inspect(&ed, &Selection::Rule(second), &Context { slots: 0, ..cx() }).unwrap();
@@ -725,14 +727,19 @@ mod tests {
         let Control::Buttons { label, buttons } = &i.controls[1] else { panic!("{:?}", i.controls) };
         assert_eq!(label, "RULE 2 OF 2");
         assert!(buttons.iter().find(|b| b.text == "DELETE").is_some_and(|b| b.action.is_some()));
-        let face = inspect(&ed, &Selection::Node(NodeRef::Action(ed.rule_at(0).unwrap().id)), &cx()).unwrap();
-        assert_eq!(face.kicker, "ACTION  ·  PILOT ASSIST");
-        // Its toggle and start are pills, set like any other value.
-        let toggle = face.controls.iter().find_map(|c| match c {
-            Control::Choice(ch) if ch.label.starts_with("TOGGLE") => Some(ch),
-            _ => None,
-        });
-        assert!(toggle.is_some_and(|t| t.options.len() == 5), "{:?}", face.controls);
+        let lock = inspect(&ed, &Selection::Node(NodeRef::Action(ed.rule_at(0).unwrap().id)), &cx()).unwrap();
+        assert_eq!(lock.kicker, "ACTION  ·  PILOT ASSIST");
+        // Its pick (the target selectors that suit a pilot), toggle and start are pills, set like any other value.
+        let choice = |label: &str| {
+            lock.controls.iter().find_map(|c| match c {
+                Control::Choice(ch) if ch.label.starts_with(label) => Some(ch.options.iter().map(|o| o.text.as_str()).collect::<Vec<_>>()),
+                _ => None,
+            })
+        };
+        assert_eq!(choice("PICKS"), Some(vec!["NEAREST", "WEAKEST", "BIGGEST THREAT", "ATTACKER"]), "{:?}", lock.controls);
+        assert!(choice("TOGGLE").is_some_and(|t| t.len() == 5), "{:?}", lock.controls);
+        // There is no target node to inspect: the assists act on the lock.
+        assert!(inspect(&ed, &Selection::Node(NodeRef::Target), &cx()).is_none());
         // Hold station (step 4): what it keeps its place at is a pill pair of its own, before the toggle and the start.
         let program = data::behavior::Program::parse("always -> hold_station(ally)\n").unwrap();
         let ed = BehaviorEditor::open_as(&content.behavior_nodes, &program, ListKind::Assists).unwrap();

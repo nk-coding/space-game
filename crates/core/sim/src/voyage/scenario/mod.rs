@@ -13,9 +13,11 @@
 //!   fire), automaton ships by their faction's content behavior (`raider_basic`), fewer hits: flight
 //!   computer, allocation, maneuvers, fire at will.
 //! * [`ScenarioKind::Assists`]: the flight scenario with pilot assists (GDR-0088): every player ship flies its random
-//!   input with [`fixtures::ASSISTS`] (avoid collisions, brake, hold station beside an ally, face target,
-//!   auto-fire), lets go of the controls more often so the assists have channels, and flips a toggle or ALL ASSISTS
-//!   now and then.
+//!   input with [`fixtures::ASSISTS`] (avoid collisions, brake, hold station beside an ally, auto-lock, auto-fire),
+//!   lets go of the controls more often so the assists have channels, and flips a toggle or ALL ASSISTS now and then.
+//!   Its pilots keep their lock as a player does: now and then they drop it (Esc: auto-lock pauses) or press LOCK
+//!   TARGET ([`crate::flight::next_lock`]), and while they hold none they take the one auto-lock asks for, as the
+//!   client does.
 //! * [`ScenarioKind::Behavior`]: every ship under a content behavior (raiders: `raider_basic`; ship-mind
 //!   ships: `skirmisher` and three player programs with target priorities, among them an escort following
 //!   the piloted leader's lock), Rhai conditions included, plus hits and blasts that knock out logic cores
@@ -392,6 +394,7 @@ impl Scenario {
             if autonomous || !(tick + k as u64 * 3).is_multiple_of(kind.reroll_every()) {
                 continue;
             }
+            let locks = (kind == ScenarioKind::Assists).then(|| self.pilot_locks(id));
             let rng = self.sim.rng(Stream::Scenario);
             match kind {
                 ScenarioKind::Core => {
@@ -430,12 +433,17 @@ impl Scenario {
                     } else {
                         rng.range_f32(0.2, 1.0)
                     };
-                    let lock = if !enemies.is_empty() && rng.chance(0.5) {
-                        Some(Target::Ship(
+                    let lock = match locks {
+                        // A pilot with assists: Esc, LOCK TARGET, or the lock held (else the one auto-lock asks for).
+                        Some((held, auto, tab)) => match rng.below(8) {
+                            0 => None,
+                            1 => tab,
+                            _ => held.or(auto),
+                        },
+                        None if !enemies.is_empty() && rng.chance(0.5) => Some(Target::Ship(
                             enemies[rng.below(enemies.len() as u32) as usize],
-                        ))
-                    } else {
-                        None
+                        )),
+                        None => None,
                     };
                     let input = PilotInput {
                         stick: Vec2::new(cos(a), sin(a)) * len,
@@ -497,6 +505,28 @@ impl Scenario {
                 });
             }
         }
+    }
+}
+
+impl Scenario {
+    /// The locks an assists-scenario pilot chooses from, as the client sees them: the lock it holds (dropped once its
+    /// ship is no longer active, as the client drops it), the one its auto-lock asks for, and LOCK TARGET's.
+    fn pilot_locks(&self, id: crate::ShipId) -> (Option<Target>, Option<Target>, Option<Target>) {
+        let ships = self.sim.ships();
+        let Some(ship) = self.sim.ship(id) else {
+            return (None, None, None);
+        };
+        let held = match ship.helm {
+            crate::flight::HelmMode::Pilot(p) => p.lock,
+            _ => None,
+        }
+        .filter(|t| matches!(t, Target::Ship(s) if self.sim.ship(*s).is_some_and(Ship::is_active)));
+        let held_ship = match held {
+            Some(Target::Ship(s)) => Some(s),
+            _ => None,
+        };
+        let auto = ship.assists().and_then(|a| a.auto_lock()).map(Target::Ship);
+        (held, auto, crate::flight::next_lock(ships, id, held_ship))
     }
 }
 

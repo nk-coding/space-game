@@ -1,5 +1,5 @@
-//! What the graph view shows, as plain data: the editing model's program becomes the target chip and one row per
-//! rule (violet condition chips → a teal action chip), each chip with its content name, its values as written in
+//! What the graph view shows, as plain data: the editing model's program becomes the target chip (none for pilot
+//! assists, which act on the pilot's lock) and one row per rule (violet condition chips → a teal action chip), each chip with its content name, its values as written in
 //! the text and the comparison of a value condition; rules without a rule slot are inactive. Chips and rows carry
 //! the model's stable ids ([`NodeRef`], [`RuleId`]), so a selection keeps naming the same node while rules move.
 //! The screen (`screen.rs`) turns this into nodes; the tests below pin the mapping.
@@ -40,7 +40,8 @@ pub struct RuleRow {
 /// The whole graph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphView {
-    pub target: Chip,
+    /// A behavior's target selector; `None` for pilot assists, whose target is the pilot's lock (GDR-0088).
+    pub target: Option<Chip>,
     /// The program has no target line: the chip shows the default (`nearest`).
     pub default_target: bool,
     pub rules: Vec<RuleRow>,
@@ -58,10 +59,11 @@ impl GraphView {
         let assists = ed.kind() == ListKind::Assists;
         let slots = if assists { u32::MAX } else { slots };
         let (target, default_target) = match &program.target {
-            Some(t) => (chip(&t.call, NodeRef::Target, NodeRole::Target, nodes), false),
+            _ if assists => (None, false),
+            Some(t) => (Some(chip(&t.call, NodeRef::Target, NodeRole::Target, nodes)), false),
             None => {
                 let call = Call { name: DEFAULT_TARGET.into(), args: Vec::new(), col: Default::default() };
-                (chip(&call, NodeRef::Target, NodeRole::Target, nodes), true)
+                (Some(chip(&call, NodeRef::Target, NodeRole::Target, nodes)), true)
             }
         };
         let active = ed.active_rules(slots);
@@ -181,7 +183,7 @@ mod tests {
         let content = data::base_content();
         let ed = skirmisher(&content);
         let g = GraphView::of(&ed, 12);
-        assert_eq!(g.target.name, "Nearest");
+        assert_eq!(g.target.as_ref().unwrap().name, "Nearest");
         assert!(!g.default_target);
         assert_eq!(g.rules.len(), 4);
         assert!(g.rules.iter().all(|r| r.active));
@@ -299,11 +301,18 @@ mod tests {
         let content = data::base_content();
         let g = GraphView::of(&editor(&content, "when hull < 30% -> flee"), 6);
         assert!(g.default_target);
-        assert_eq!(g.target.name, "Nearest");
-        assert_eq!(g.target.node, NodeRef::Target);
+        let target = g.target.unwrap();
+        assert_eq!(target.name, "Nearest");
+        assert_eq!(target.node, NodeRef::Target);
         let g = GraphView::of(&editor(&content, "target weakest(engines)\nalways -> hold"), 6);
-        assert_eq!((g.target.name.as_str(), g.target.args.as_str()), ("Weakest", "engines"));
+        let target = g.target.unwrap();
+        assert_eq!((target.name.as_str(), target.args.as_str()), ("Weakest", "engines"));
         assert!(!g.default_target);
+        // Pilot assists have no target chip: they act on the pilot's lock.
+        let assists = BehaviorEditor::from_text_as(&content.behavior_nodes, "always -> auto_lock\nwhen lock_held -> auto_fire(2)", data::behavior::ListKind::Assists).unwrap();
+        let g = GraphView::of(&assists, 6);
+        assert_eq!((g.target, g.default_target, g.assists), (None, false, true));
+        assert_eq!(g.rules[0].action.name, "Auto-lock");
     }
 
     #[test]

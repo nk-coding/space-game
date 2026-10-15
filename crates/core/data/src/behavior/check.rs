@@ -122,9 +122,9 @@ pub fn check_param_value(v: &Value, p: &NodeParam) -> Result<Amount, String> {
 // Checking against the vocabulary
 
 /// Which rule list a program is (GDR-0088): a behavior, which flies a ship nobody pilots, or a design's PILOT
-/// ASSISTS, which help the player fly it. Both are written in the same format with the same conditions and target
-/// selectors; the nodes marked `pilot` (`BehaviorNode::pilot`) belong to assist lists only, and an assist list's
-/// actions are those.
+/// ASSISTS, which help the player fly it. Both are written in the same format with the same conditions; the nodes
+/// marked `pilot` (`BehaviorNode::pilot`) belong to assist lists only, and an assist list's actions are those. An
+/// assist list has no target line: its assists act on the pilot's lock, which `auto_lock` can set.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ListKind {
     #[default]
@@ -137,7 +137,7 @@ impl ListKind {
     pub fn allows(self, n: &BehaviorNode) -> bool {
         match self {
             ListKind::Behavior => !n.pilot,
-            ListKind::Assists => n.pilot || n.role != NodeRole::Action,
+            ListKind::Assists => n.pilot || n.role == NodeRole::Condition,
         }
     }
 
@@ -185,9 +185,17 @@ pub fn check_list(p: &Program, nodes: &Table<BehaviorNode>, kind: ListKind) -> V
     if p.rules.len() > MAX_RULES {
         out.push(too_many_rules());
     }
-    if let Some(t) = &p.target {
-        check_printed_length(t, LineRef::Target, &mut out);
-        check_call(&t.call, NodeRole::Target, nodes, kind, LineRef::Target, &mut out);
+    match &p.target {
+        Some(t) if kind == ListKind::Assists => out.push(LineError {
+            line: LineRef::Target,
+            col: t.call.col.0,
+            message: "pilot assists have no target line: they act on the ship you lock".into(),
+        }),
+        Some(t) => {
+            check_printed_length(t, LineRef::Target, &mut out);
+            check_call(&t.call, NodeRole::Target, nodes, kind, LineRef::Target, &mut out);
+        }
+        None => {}
     }
     for (i, r) in p.rules.iter().enumerate() {
         let at = LineRef::Rule(i);

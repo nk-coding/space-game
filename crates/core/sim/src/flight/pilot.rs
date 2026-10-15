@@ -155,6 +155,23 @@ pub(super) fn keyboard_goal(
     FlightGoal { heading, velocity }
 }
 
+/// LOCK TARGET (GDR-0088): the lock after `current` among the active enemy vessels of ship `me`, ordered by the
+/// distance of their controlling pieces from its own, nearest first and round to it again after the farthest (the
+/// lower id first on a tie). The nearest while `current` is none of them; `None` without enemies. From the sim's
+/// state, so a key press picks the same ship wherever it is replayed.
+pub fn next_lock(ships: &[Ship], me: ShipId, current: Option<ShipId>) -> Option<Target> {
+    let me = find_ship(ships, me)?;
+    let from = me.piece(me.control_piece()?)?.com_world();
+    let mut list: Vec<(f32, ShipId)> = ships
+        .iter()
+        .filter(|s| s.is_active() && !crate::ship::vessel::friendly(me.team(), s.team()))
+        .filter_map(|s| Some(((s.piece(s.control_piece()?)?.com_world() - from).length_squared(), s.id())))
+        .collect();
+    list.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    let k = current.and_then(|c| list.iter().position(|e| e.1 == c)).map_or(0, |k| (k + 1) % list.len());
+    list.get(k).map(|e| Target::Ship(e.1))
+}
+
 /// Pilot input: the touch stick (world terms) or the PC keyboard axes (ship terms), target lock, drift toggle,
 /// the fire groups.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

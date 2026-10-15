@@ -556,16 +556,23 @@ pub(super) fn rebuild_graph(
     let kit = Kit { fonts: &fonts, ui: style.ui };
     let materials = &mut OutlineKit { pool: &mut outlines, assets: &mut materials, used: 0 };
     commands.entity(*graph).despawn_children().with_children(|gc| {
-        // The target line.
+        // The target line; pilot assists say theirs is the pilot's lock (GDR-0088: no target they pick unseen).
         gc.spawn(Node { height: px(ROW_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, flex_shrink: 0.0, ..default() }).with_children(|r| {
             r.spawn(Node { width: px(ROOT_W + TRUNK_W), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(10), flex_shrink: 0.0, ..default() })
                 .with_children(|l| {
                     l.spawn(tracked(kit.fonts, "TARGET", 8.5, kit.c(Tone::Dim, 1.0), 0.3));
                     spawn_line(l, Node { width: px(26), height: px(LINE_W), margin: UiRect::right(px(10)), ..default() }, kit.c(Tone::Label, 0.4));
                 });
-            spawn_chip(r, &kit, materials, &g.target, true);
-            if g.default_target {
-                r.spawn((tracked(kit.fonts, "DEFAULT", 8.0, kit.c(Tone::Dim, 1.0), 0.3), Node { margin: UiRect::left(px(12)), ..default() }));
+            match &g.target {
+                Some(target) => {
+                    spawn_chip(r, &kit, materials, target, true);
+                    if g.default_target {
+                        r.spawn((tracked(kit.fonts, "DEFAULT", 8.0, kit.c(Tone::Dim, 1.0), 0.3), Node { margin: UiRect::left(px(12)), ..default() }));
+                    }
+                }
+                None => {
+                    r.spawn(tracked(kit.fonts, "YOUR LOCK", 9.0, kit.c(Tone::Label, 1.0), 0.3));
+                }
             }
         });
         let (slot_line, never_line) = (g.slot_line(), g.never_line());
@@ -1032,7 +1039,7 @@ mod tests {
         assert_eq!(status_line(&d, BehaviorView::Graph, 12).1, Tone::Gold);
         // Pilot assists need no slots (none at all is fine): how they take their channels, or the text's count.
         let mut bp = content.ships.get("halvex_runner").unwrap().clone();
-        bp.assists = Some(data::AssistList { target: None, rules: vec!["always -> brake".into(), "always -> face_target".into()] });
+        bp.assists = Some(data::AssistList { rules: vec!["always -> brake".into(), "always -> auto_lock".into()] });
         let (mut a, _) = BehaviorDraft::assists(&bp, &content.behavior_nodes);
         assert_eq!(status_line(&a, BehaviorView::Graph, 0).0, "AN ASSIST TAKES ITS CHANNEL ONLY WHILE YOU LEAVE IT FREE  ·  A TOGGLE SWITCHES IT IN FLIGHT");
         assert_eq!(status_line(&a, BehaviorView::Text, 0), ("VALID  ·  2 ASSISTS".into(), Tone::Teal));

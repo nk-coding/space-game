@@ -1,20 +1,28 @@
 // Pilot assists (GDR-0088): the actions of a design's PILOT ASSISTS list (the BEHAVIOR screen's PILOT ASSISTS tab;
 // `pilot: true`, so behaviors can't use them and an assist list has no others). They run only on the ship the player
-// flies, each on one control channel: turning (`face_target`), thrust (`brake`, `hold_station`, `avoid_collisions`)
+// flies, each on one control channel: the lock (`auto_lock`), thrust (`brake`, `hold_station`, `avoid_collisions`)
 // or one weapon group's trigger (`auto_fire`). The pilot always wins: a channel the player uses is the player's, and
 // letting go hands it back. For each channel the first rule that matches decides, so assists on different channels
-// run together. `toggle` names the ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when
-// a mission starts. Built into the sim (`sim::behavior`). PLACEHOLDER defaults.
+// run together. An assist list has no target line: what needs a target acts on the pilot's lock. `toggle` names the
+// ASSIST TOGGLE key that switches the rule in flight, `start` whether it is on when a mission starts. `auto_lock`'s
+// picks are the behaviors' target selectors (`targets.ron`) that suit a pilot. Built into the sim (`sim::behavior`).
+// PLACEHOLDER defaults.
 [
     (
-        id: "face_target",
-        name: "Face target",
-        summary: "Turn your strongest guns onto the target while you don't steer.",
-        description: "The target is your lock while you hold one (a lock aims the ship by itself, so this assist waits then); without a lock the list's target line picks one, by default the nearest enemy.",
-        tags: ["assist", "turning"],
+        id: "auto_lock",
+        name: "Auto-lock",
+        summary: "Lock an enemy by itself while you have nothing locked.",
+        description: "The lock it sets is your own: the HUD shows it, the ship aims at it, Esc drops it, and a click or Lock target changes it. When you drop a lock yourself, auto-lock waits until you lock something again or switch it; when the locked ship is destroyed it locks the next one.",
+        tags: ["assist", "lock"],
         role: Action,
         pilot: true,
         params: [
+            (id: "pick", name: "Picks", summary: "Which enemy it locks, chosen like a behavior's target.", type: Choice([
+                (id: "nearest", name: "Nearest", summary: "The closest enemy ship."),
+                (id: "weakest", name: "Weakest", summary: "The enemy ship with the least hull left (the nearer one on a tie)."),
+                (id: "threat", name: "Biggest threat", summary: "The enemy ship with the most firepower, weighted up if it aims at you and down with distance."),
+                (id: "attacker", name: "Attacker", summary: "The nearest enemy ship that aims at you; nothing while nobody does."),
+            ]), default: "nearest"),
             (id: "toggle", name: "Toggle", summary: "The ASSIST TOGGLE key that switches it in flight (F1 to F4 unless rebound in SETTINGS).", type: Choice([
                 (id: "none", name: "None", summary: "No toggle of its own; ALL ASSISTS still switches it."),
                 (id: "toggle1", name: "1"),
@@ -32,7 +40,7 @@
         id: "brake",
         name: "Brake",
         summary: "Stop the ship while you don't thrust; while you don't steer either, it turns the ship to brake with its main engines.",
-        description: "While you steer, hold a lock or Face target points the ship, it brakes only with the thrusters that push against the motion: a ship with engines only at the back can't then. Otherwise it flips and burns when those thrusters give less than half its best push (never for a slight drift, so it doesn't spin around). `can_stop_straight` keeps it to stops without a turn.",
+        description: "While you steer or hold a lock (the lock aims the ship), it brakes only with the thrusters that push against the motion: a ship with engines only at the back can't then. Otherwise it flips and burns when those thrusters give less than half its best push (never for a slight drift, so it doesn't spin around). `can_stop_straight` keeps it to stops without a turn.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,
@@ -54,7 +62,7 @@
         id: "hold_station",
         name: "Hold station",
         summary: "Keep the ship where you let it go, or at its place beside an ally; while you don't steer, it turns the ship to bring its engines to bear.",
-        description: "The station is taken when the assist takes thrust over: where you let go of the thrust keys (or the stick), or with Ally your place beside the nearest of your other vessels, kept as that ship moves. A push drifts the ship off and it flies back; thrusting yourself moves the station, and letting go holds the new spot. While you steer, hold a lock or Face target points the ship, only the thrusters that push the needed way fly it back.",
+        description: "The station is taken when the assist takes thrust over: where you let go of the thrust keys (or the stick), or with Ally your place beside the nearest of your other vessels, kept as that ship moves. A push drifts the ship off and it flies back; thrusting yourself moves the station, and letting go holds the new spot. While you steer or hold a lock, only the thrusters that push the needed way fly it back.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,
@@ -80,7 +88,7 @@
         id: "avoid_collisions",
         name: "Avoid collisions",
         summary: "Sidestep a ship, wreck or piece of debris on a collision course; while you don't steer, it turns the ship to sidestep with its engines.",
-        description: "It looks a few seconds ahead and takes thrust only while something is on a collision course, so put it above Brake or Hold station: the rule below keeps thrust the rest of the time. While you steer, hold a lock or Face target points the ship, it sidesteps only with the thrusters that push that way.",
+        description: "It looks a few seconds ahead and takes thrust only while something is on a collision course, so put it above Brake or Hold station: the rule below keeps thrust the rest of the time. While you steer or hold a lock, it sidesteps only with the thrusters that push that way.",
         tags: ["assist", "thrust"],
         role: Action,
         pilot: true,
@@ -101,8 +109,8 @@
     (
         id: "auto_fire",
         name: "Auto-fire",
-        summary: "Fire a weapon group by itself whenever its guns bear on the target.",
-        description: "Each gun of the group fires when the target (its lead point, for projectile guns) is in front of that gun and within its reach: the same test as a behavior's fire at will. Holding the group's trigger fires it as usual.",
+        summary: "Fire a weapon group by itself whenever its guns bear on your lock.",
+        description: "Only while you hold a lock (Auto-lock can set one). Each gun of the group fires when the locked ship (its lead point, for projectile guns) is in front of that gun and within its reach: the same test as a behavior's fire at will. Holding the group's trigger fires it as usual.",
         tags: ["assist", "fire"],
         role: Action,
         pilot: true,

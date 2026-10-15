@@ -1,7 +1,7 @@
 //! The pilot assists in the flight HUD (GDR-0088): left, under the speed, the assists of the ship flown, one line
 //! each with its toggle key (`F2 · BRAKE`): teal while it decides its channel (it acts whenever the pilot leaves the
-//! channel free), white while it is on, dim while off. The title says `ASSISTS OFF` while ALL ASSISTS has switched
-//! them off. Hidden for a ship without assists. Toggling one says what changed in the HUD's banner
+//! channel free), white while it is on, dim while off; an auto-lock the pilot paused by dropping a lock says
+//! `PAUSED`. The title says `ASSISTS OFF` while ALL ASSISTS has switched them off. Hidden for a ship without assists. Toggling one says what changed in the HUD's banner
 //! ([`switch_note`], `controls.rs`).
 
 use super::*;
@@ -119,7 +119,11 @@ pub(super) fn update(
             set_color(&mut color, ui_color(ui.dim, 1.0));
             continue;
         }
-        let name = assist_name(&world.content, st, k);
+        let mut name = assist_name(&world.content, st, k);
+        // Auto-lock waits after the pilot dropped a lock, until they lock again or switch it.
+        if st.lock_paused() && st.channel(k) == Some(sim::behavior::Channel::Lock) {
+            name.push_str("  ·  PAUSED");
+        }
         let line = match st.toggle(k).and_then(Action::assist_toggle) {
             Some(a) => format!("{}  ·  {name}", controls.0.label(a)),
             None => name,

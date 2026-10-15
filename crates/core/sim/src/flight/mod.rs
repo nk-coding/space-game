@@ -44,7 +44,7 @@ use crate::ship::{PartState, Piece, Ship, Wrench, gun_works, producing};
 pub use aim::{intercept_time, lead_point, resolve_target, smart_aim};
 pub use controllers::turn_rate;
 pub(crate) use controllers::execute;
-pub use pilot::{FIRE_ALL, KEY_TURN_GROWTH, KEY_TURN_START, NUDGE_MAX, NUDGE_RATE, NUDGE_RETURN, PilotAxes, PilotInput, nudge_step, pilot_goal, turn_ramp_step};
+pub use pilot::{FIRE_ALL, KEY_TURN_GROWTH, KEY_TURN_START, NUDGE_MAX, NUDGE_RATE, NUDGE_RETURN, PilotAxes, PilotInput, next_lock, nudge_step, pilot_goal, turn_ramp_step};
 
 /// What a lock or a maneuver points at.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -531,7 +531,7 @@ pub(crate) fn plan(ship: &Ship, ships: &[Ship], cfg: &SimConfig) -> Plan {
             let mut goal = pilot_goal(input, &kin, ship, piece, ships, tuning);
             let mut fire = Fire::groups(input.fire);
             if let Some(a) = &ship.assists {
-                crate::behavior::assist_plan(a, input, &kin, ship, piece, ships, tuning, &mut goal, &mut fire);
+                crate::behavior::assist_plan(a, input, &kin, piece, ships, tuning, &mut goal, &mut fire);
             }
             Plan {
                 goal: Some(goal),

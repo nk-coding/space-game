@@ -122,20 +122,24 @@ fn assists_scenario_is_deterministic_and_the_assists_act() {
     let (b, sb) = scenario::run_kind(ScenarioKind::Assists, 42, 900);
     assert_eq!(a, b);
     assert_eq!(sa, sb);
-    // Ship-ticks with a station held, something dodged, a rule deciding each rule's channel.
+    // Ship-ticks with a station held, something dodged, a lock asked for by auto-lock, auto-lock paused by a dropped
+    // lock, a rule deciding each rule's channel.
     let mut sc = Scenario::with_kind(&data::base_content(), 42, ScenarioKind::Assists).unwrap();
-    let (mut station, mut avoiding, mut decides) = (0, 0, [0; 6]);
+    let (mut station, mut avoiding, mut asked, mut paused, mut decides) = (0, 0, 0, 0, [0; 7]);
     for _ in 0..900 {
         sc.step();
         for st in sc.sim.ships().iter().filter_map(|s| s.assists()) {
             station += st.station().is_some() as u32;
             avoiding += st.avoiding().is_some() as u32;
+            asked += st.auto_lock().is_some() as u32;
+            paused += st.lock_paused() as u32;
             for (i, d) in decides.iter_mut().enumerate() {
                 *d += st.decides(i) as u32;
             }
         }
     }
     assert!(station > 100 && avoiding > 0, "station {station}, avoiding {avoiding}");
+    assert!(asked > 0 && paused > 0, "auto-lock asked {asked}, paused {paused}");
     assert!(decides.iter().all(|&d| d > 0), "every assist decides at times: {decides:?}");
     let (f, _) = scenario::run_kind(ScenarioKind::Flight, 42, 900);
     assert_ne!(a, f);

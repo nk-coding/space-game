@@ -277,6 +277,7 @@ impl BehaviorEditor {
     /// note is trimmed; an empty one clears it.
     pub fn set_target_note(&mut self, note: Option<&str>) -> Result<bool, Refusal> {
         let note = clean_note(note)?;
+        self.place(NodeRef::Target)?;
         if self.program.target.is_none() && note.is_none() {
             return Ok(false);
         }

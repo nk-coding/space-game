@@ -975,13 +975,14 @@ fn random_edit_sequences_keep_the_text_round_trip() {
 }
 
 /// A design's pilot assists (GDR-0088) are written like a behavior, with the assist actions only: an assist list
-/// takes the pilot's nodes a behavior refuses, refuses the behaviors' maneuvers, and may have no rule at all.
+/// takes the pilot's nodes a behavior refuses, refuses the behaviors' maneuvers and a target line (the assists act on
+/// the pilot's lock), and may have no rule at all.
 #[test]
 fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     use data::behavior::{ListKind, check_assists};
     let c = content();
     let nodes = &c.behavior_nodes;
-    let text = "target nearest\nwhen idle(thrust) >= 1s and can_stop_straight -> brake(toggle2)\nwhen lock_held -> auto_fire(2, toggle3, off)\nalways -> face_target\n";
+    let text = "when idle(thrust) >= 1s and can_stop_straight -> brake(toggle2)\nwhen lock_held -> auto_fire(2, toggle3, off)\nalways -> auto_lock\n";
     let mut ed = BehaviorEditor::from_text_as(nodes, text, ListKind::Assists).unwrap();
     assert_eq!(ed.kind(), ListKind::Assists);
     assert_eq!(ed.text(), text);
@@ -992,18 +993,32 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     let orbit = Program::parse("always -> orbit").unwrap();
     let errors = check_assists(&orbit, nodes);
     assert_eq!(errors.len(), 1);
-    assert_eq!(errors[0].message, "`orbit` is a behavior's maneuver; pilot assists use face_target, brake, hold_station, avoid_collisions, auto_fire");
-    // The palette offers the assists' actions and every condition (the pilot's too); edits keep to the list.
+    assert_eq!(errors[0].message, "`orbit` is a behavior's maneuver; pilot assists use auto_lock, brake, hold_station, avoid_collisions, auto_fire");
+    // No target line: the assists act on the pilot's lock. The text refuses one, the model has no target node.
+    let targeted = Program::parse("target weakest\nalways -> brake").unwrap();
+    let errors = check_assists(&targeted, nodes);
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].message, "pilot assists have no target line: they act on the ship you lock");
+    assert!(BehaviorEditor::from_text_as(nodes, "target nearest\nalways -> brake\n", ListKind::Assists).is_err());
+    assert!(ed.node(NodeRef::Target).is_none());
+    assert_eq!(ed.replace_node(NodeRef::Target, "weakest"), Err(Refusal::NotInList("target".into())));
+    assert_eq!(ed.set_target_note(Some("why")), Err(Refusal::NotInList("target".into())));
+    // The palette offers the assists' actions and every condition (the pilot's too), no target selector; edits keep
+    // to the list.
     let actions: Vec<&str> = ed.palette(NodeRole::Action).map(|n| n.id.as_str()).collect();
-    assert_eq!(actions, ["face_target", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
+    assert_eq!(actions, ["auto_lock", "brake", "hold_station", "avoid_collisions", "auto_fire"]);
+    assert_eq!(ed.palette(NodeRole::Target).count(), 0);
     assert!(ed.palette(NodeRole::Condition).any(|n| n.id == "hull"));
     assert!(ed.palette(NodeRole::Condition).any(|n| n.id == "idle"));
-    let face = ids(&ed)[2];
-    assert_eq!(ed.replace_node(NodeRef::Action(face), "orbit"), Err(Refusal::NotInList("orbit".into())));
+    let lock = ids(&ed)[2];
+    assert_eq!(ed.replace_node(NodeRef::Action(lock), "orbit"), Err(Refusal::NotInList("orbit".into())));
     assert_eq!(ed.add_rule(0, "flee"), Err(Refusal::NotInList("flee".into())));
+    // Auto-lock's pick is a target selector that suits a pilot (not `locked`, a leader's lock).
+    ed.set_param(NodeRef::Action(lock), 0, word("threat")).unwrap();
+    assert!(ed.set_param(NodeRef::Action(lock), 0, word("locked")).is_err());
     // The toggle and the start are values of the action, set like any other.
-    ed.set_param(NodeRef::Action(face), 0, word("toggle1")).unwrap();
-    assert_eq!(line(&ed, 2), "always -> face_target(toggle1)");
+    ed.set_param(NodeRef::Action(lock), 1, word("toggle1")).unwrap();
+    assert_eq!(line(&ed, 2), "always -> auto_lock(threat, toggle1)");
     // Hold station's first value is what it keeps its place at, before the toggle and the start.
     let hold = ed.add_rule(3, "hold_station").unwrap();
     ed.set_param(NodeRef::Action(hold), 0, word("ally")).unwrap();
@@ -1014,7 +1029,7 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
     for id in ids(&ed) {
         ed.delete_rule(id).unwrap();
     }
-    assert_eq!(ed.text(), "target nearest\n");
+    assert_eq!(ed.text(), "");
     let back = BehaviorEditor::from_text_as(nodes, "", ListKind::Assists).unwrap();
     assert!(back.program().rules.is_empty());
     let mut behavior = editor(&c, "always -> flee");
@@ -1026,13 +1041,35 @@ fn assist_lists_take_the_pilot_nodes_and_may_be_empty() {
 fn blueprint_assists_round_trip_and_validate() {
     let c = content();
     let mut bp = c.ships.get("halvex_runner").unwrap().clone();
-    bp.assists = Some(data::AssistList { target: Some("nearest".into()), rules: vec!["when speed > 10% -> brake(toggle1, off)".into(), "always -> auto_fire(2)".into()] });
+    bp.assists = Some(data::AssistList { rules: vec!["when speed > 10% -> brake(toggle1, off)".into(), "always -> auto_fire(2)".into()] });
     let text = data::blueprint_to_ron(&bp);
-    assert!(text.contains("    assists: (\n        target: \"nearest\",\n        rules: [\n            \"when speed > 10% -> brake(toggle1, off)\",\n"), "{text}");
+    assert!(text.contains("    assists: (\n        rules: [\n            \"when speed > 10% -> brake(toggle1, off)\",\n"), "{text}");
     let back = data::parse_blueprint(&text).unwrap();
     assert_eq!(back.assists, bp.assists);
     assert!(data::validate_ship(&c, &bp).iter().all(|p| !p.is_error()));
-    bp.assists = Some(data::AssistList { target: None, rules: vec!["always -> orbit".into()] });
+    bp.assists = Some(data::AssistList { rules: vec!["always -> orbit".into()] });
     let problems = data::validate_ship(&c, &bp);
     assert!(problems.iter().any(|p| p.is_error() && p.field.as_deref() == Some("assists.rules[0]")), "{problems:?}");
+}
+
+/// A blueprint from GDR-0088 step 3 (15 Oct 2026) whose assists had a target line and a `face_target` rule still
+/// loads: both are read and left out (the assists act on the lock, which aims the ship by itself), and the blueprint
+/// is written back without them.
+#[test]
+fn old_assists_with_a_target_line_and_face_target_load_and_are_written_without() {
+    let c = content();
+    let mut text = data::blueprint_to_ron(c.ships.get("halvex_runner").unwrap());
+    let old = "    assists: (\n        target: \"weakest(engines)\",\n        rules: [\n            \"when idle(thrust) >= 1s -> brake(toggle2)\",\n            \"always -> face_target(toggle1)\",\n            \"when lock_held -> auto_fire(2)\",\n        ],\n    ),\n";
+    let at = text.find("    size:").unwrap();
+    text.insert_str(at, old);
+    let bp = data::parse_blueprint(&text).unwrap();
+    let rules = ["when idle(thrust) >= 1s -> brake(toggle2)", "when lock_held -> auto_fire(2)"];
+    assert_eq!(bp.assists, Some(data::AssistList { rules: rules.iter().map(|r| r.to_string()).collect() }));
+    assert!(data::validate_ship(&c, &bp).iter().all(|p| !p.is_error()));
+    let written = data::blueprint_to_ron(&bp);
+    assert!(!written.contains("target:") && !written.contains("face_target"), "{written}");
+    assert!(written.contains("    assists: (\n        rules: [\n            \"when idle(thrust) >= 1s -> brake(toggle2)\",\n            \"when lock_held -> auto_fire(2)\",\n        ],\n    ),\n"), "{written}");
+    // Anything else unknown in `assists` is still refused.
+    let typo = text.replace("        target: ", "        targte: ");
+    assert!(data::parse_blueprint(&typo).is_err());
 }

@@ -1,6 +1,7 @@
-//! Pilot assists (GDR-0088 steps 3 and 4): face target, brake, auto-fire, hold station and avoid collisions on their
-//! channels, the pilot winning each channel while using it, the pilot's conditions, the toggle slots and ALL ASSISTS,
-//! and that only the piloted ship runs them.
+//! Pilot assists (GDR-0088 steps 3 and 4): auto-lock, brake, auto-fire, hold station and avoid collisions on their
+//! channels, the pilot winning each channel while using it, auto-fire acting on the pilot's lock only, auto-lock's
+//! pause after the pilot drops a lock, the pilot's conditions, the toggle slots and ALL ASSISTS, and that only the
+//! piloted ship runs them.
 
 mod common;
 
@@ -13,9 +14,9 @@ fn lib() -> sim::BehaviorLibrary {
     sim::BehaviorLibrary::new(&content()).expect("base behaviors compile")
 }
 
-/// Gives `ship` an assist list (rules in the text form, target line `nearest`).
+/// Gives `ship` an assist list (rules in the text form).
 fn assists(w: &mut Sim, ship: ShipId, rules: &[&str]) {
-    let list = AssistList { target: None, rules: rules.iter().map(|r| r.to_string()).collect() };
+    let list = AssistList { rules: rules.iter().map(|r| r.to_string()).collect() };
     let id = w.behaviors_mut().add_assists(&list).unwrap_or_else(|e| panic!("{rules:?}: {e:?}"));
     w.command(ship, ShipCommand::Assists(Some(id)));
 }
@@ -87,34 +88,102 @@ fn speed(w: &Sim, s: ShipId) -> f32 {
     body(w, s).linvel.length()
 }
 
+/// A pilot holding no lock, as the client sends it: the ship auto-lock asks for, if any.
+fn asked(w: &Sim, s: ShipId) -> Option<ShipId> {
+    w.ship(s).unwrap().assists().unwrap().auto_lock()
+}
+
+fn locked(target: ShipId) -> PilotInput {
+    PilotInput { lock: Some(Target::Ship(target)), ..keys(0.0, 0.0) }
+}
+
 #[test]
-fn face_turns_to_the_target_and_steering_overrides_it() {
+fn auto_lock_asks_for_the_nearest_while_nothing_is_locked_and_never_overrides_a_lock() {
     let c = content();
-    // A raider to the right: the nose (and the Runner's front guns) must turn from up to +x.
-    let (mut w, me, _) = piloted(design(&c, "halvex_runner"), &[(45.0, 0.0)]);
-    // Smart aim puts one of the two front guns (5.5 m either side of the centre line) on the target, so the nose
-    // ends up to 0.15 rad off the centre bearing.
-    let want = -std::f32::consts::FRAC_PI_2;
-    // Without the assist the ship keeps its heading.
-    fly(&mut w, me, keys(0.0, 0.0), 30);
-    assert!(wrap(body(&w, me).angle).abs() < 0.01, "no assist: {}", body(&w, me).angle);
-    assists(&mut w, me, &["always -> face_target"]);
-    fly(&mut w, me, keys(0.0, 0.0), 120);
-    let a = wrap(body(&w, me).angle - want);
-    assert!(a.abs() < 0.3, "faces the target: off by {a}");
+    let (mut w, me, rs) = piloted(design(&c, "halvex_runner"), &[(0.0, 80.0), (40.0, 0.0)]);
+    // Without the assist nothing is picked: no lock, no target.
+    fly(&mut w, me, keys(0.0, 0.0), 3);
+    assists(&mut w, me, &["always -> auto_lock"]);
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    assert_eq!(asked(&w, me), Some(rs[1]), "the nearest raider");
     assert!(w.ship(me).unwrap().assists().unwrap().decides(0));
-    // The pilot steers (A held, ramped as the client does): the turn is the pilot's, away from the target.
-    let before = body(&w, me).angle;
-    let mut level = 0.0;
-    for _ in 0..20 {
-        level = turn_ramp_step(level, 1.0);
-        fly(&mut w, me, keys(level, 0.0), 1);
-    }
-    let turned = wrap(body(&w, me).angle - before);
-    assert!(turned > 0.25, "A turned it left, against the assist: {turned}");
-    // Letting go hands the channel back: it faces the target again.
-    fly(&mut w, me, keys(0.0, 0.0), 120);
-    assert!(wrap(body(&w, me).angle - want).abs() < 0.3);
+    assert_eq!(w.ship(me).unwrap().assists().unwrap().target(), None, "nothing is the target until it is locked");
+    // The client locks it (as a click does): the ask is gone, the lock is the target.
+    fly(&mut w, me, locked(rs[1]), 4);
+    assert_eq!(asked(&w, me), None);
+    assert_eq!(w.ship(me).unwrap().assists().unwrap().target(), Some(rs[1]));
+    // The pilot locks the far one instead (a click, LOCK TARGET): auto-lock leaves it be.
+    fly(&mut w, me, locked(rs[0]), 30);
+    assert_eq!(asked(&w, me), None);
+    assert_eq!(w.ship(me).unwrap().assists().unwrap().target(), Some(rs[0]));
+    // A pick that finds nobody (no raider aims at the ship) leaves the lock to the rule below.
+    let (mut w, me, rs) = piloted(design(&c, "halvex_runner"), &[(0.0, 80.0), (40.0, 0.0)]);
+    assists(&mut w, me, &["always -> auto_lock(attacker)", "always -> auto_lock(weakest, toggle1)"]);
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    let st = w.ship(me).unwrap().assists().unwrap();
+    assert_eq!((st.decides(0), st.decides(1)), (false, true));
+    assert!(asked(&w, me).is_some_and(|s| rs.contains(&s)));
+}
+
+#[test]
+fn a_lock_the_pilot_drops_pauses_auto_lock_until_they_lock_again_or_switch_it() {
+    let c = content();
+    let (mut w, me, rs) = piloted(design(&c, "halvex_runner"), &[(0.0, 80.0), (40.0, 0.0)]);
+    assists(&mut w, me, &["always -> auto_lock(nearest, toggle1)"]);
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    fly(&mut w, me, locked(rs[1]), 10);
+    // Esc: the lock goes while its ship is still there. No ask, however long the pilot waits.
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    let st = w.ship(me).unwrap().assists().unwrap();
+    assert!(st.lock_paused());
+    assert!(!st.decides(0), "paused: the rule doesn't decide");
+    fly(&mut w, me, keys(0.0, 0.0), 60);
+    assert_eq!(asked(&w, me), None);
+    // Locking again ends the pause; dropping that one pauses again.
+    fly(&mut w, me, locked(rs[0]), 3);
+    assert!(!w.ship(me).unwrap().assists().unwrap().lock_paused());
+    fly(&mut w, me, keys(0.0, 0.0), 30);
+    assert!(w.ship(me).unwrap().assists().unwrap().lock_paused());
+    assert_eq!(asked(&w, me), None);
+    // Its toggle (off, on) ends the pause: it asks again.
+    w.command(me, ShipCommand::SwitchAssists(AssistSwitch::Toggle(1)));
+    w.command(me, ShipCommand::SwitchAssists(AssistSwitch::Toggle(1)));
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    assert_eq!(asked(&w, me), Some(rs[1]));
+    // A lock that goes with its ship (removed, as when it is destroyed) is no drop: auto-lock moves on.
+    fly(&mut w, me, locked(rs[1]), 3);
+    w.remove_ship(rs[1]);
+    fly(&mut w, me, keys(0.0, 0.0), 4);
+    assert!(!w.ship(me).unwrap().assists().unwrap().lock_paused());
+    assert_eq!(asked(&w, me), Some(rs[0]));
+    // Switched off it asks for nothing; ALL ASSISTS too.
+    w.command(me, ShipCommand::SwitchAssists(AssistSwitch::Toggle(1)));
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    assert_eq!(asked(&w, me), None);
+    w.command(me, ShipCommand::SwitchAssists(AssistSwitch::Toggle(1)));
+    w.command(me, ShipCommand::SwitchAssists(AssistSwitch::All));
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    assert_eq!(asked(&w, me), None);
+    w.command(me, ShipCommand::SwitchAssists(AssistSwitch::All));
+    fly(&mut w, me, keys(0.0, 0.0), 1);
+    assert_eq!(asked(&w, me), Some(rs[0]));
+}
+
+#[test]
+fn lock_target_locks_the_nearest_then_the_next_by_distance_round_again() {
+    let c = content();
+    let (w, me, rs) = piloted(design(&c, "halvex_runner"), &[(0.0, 80.0), (40.0, 0.0), (-60.0, 0.0)]);
+    let next = |cur: Option<ShipId>| match sim::flight::next_lock(w.ships(), me, cur) {
+        Some(Target::Ship(s)) => Some(s),
+        _ => None,
+    };
+    assert_eq!(next(None), Some(rs[1]));
+    assert_eq!(next(Some(rs[1])), Some(rs[2]));
+    assert_eq!(next(Some(rs[2])), Some(rs[0]));
+    assert_eq!(next(Some(rs[0])), Some(rs[1]), "round to the nearest again");
+    assert_eq!(next(Some(me)), Some(rs[1]), "not an enemy: the nearest");
+    let (w, me, _) = piloted(design(&c, "halvex_runner"), &[]);
+    assert_eq!(sim::flight::next_lock(w.ships(), me, None), None, "no enemy, no lock");
 }
 
 #[test]
@@ -170,30 +239,42 @@ fn shots(w: &mut Sim, s: ShipId, input: PilotInput, ticks: usize) -> Vec<u32> {
     fired.into_iter().collect()
 }
 
+/// The pilot's lock on `target` with the stick released (the lock aims the ship with `AimMode::Target`, so the
+/// ship turns its nose onto it; at the start of a test the ship still faces up).
+fn lock_on(target: ShipId) -> PilotInput {
+    PilotInput { lock: Some(Target::Ship(target)), aim: sim::flight::AimMode::Target, ..Default::default() }
+}
+
 #[test]
-fn auto_fire_fires_its_group_only_when_its_guns_bear() {
+fn auto_fire_fires_its_group_at_the_lock_only_when_its_guns_bear() {
     let c = content();
     let d = three_guns(&c);
-    // The target ahead: group 1's gun bears, group 2's (left and right) don't.
-    for (rules, want) in [(["always -> auto_fire(1)"], vec![0]), (["always -> auto_fire(2)"], vec![])] {
+    // No lock: no target, so nothing fires, the raider ahead in reach or not.
+    for rules in [["always -> auto_fire(1)"], ["always -> auto_fire(2)"]] {
         let (mut w, me, _) = piloted(d.clone(), &[(0.0, 30.0)]);
         assists(&mut w, me, &rules);
-        assert_eq!(shots(&mut w, me, PilotInput::default(), 30), want, "{rules:?}, target ahead");
+        assert!(shots(&mut w, me, PilotInput::default(), 30).is_empty(), "{rules:?}, nothing locked");
+        assert!(!w.ship(me).unwrap().assists().unwrap().decides(0));
     }
-    // The target to the right: only the right gun of group 2 fires; group 1 holds.
-    for (rules, want) in [(["always -> auto_fire(2)"], vec![3]), (["always -> auto_fire(1)"], vec![])] {
-        let (mut w, me, _) = piloted(d.clone(), &[(30.0, 0.0)]);
+    // Locked ahead: group 1's gun bears, group 2's (left and right) don't.
+    for (rules, want) in [(["always -> auto_fire(1)"], vec![0]), (["always -> auto_fire(2)"], vec![])] {
+        let (mut w, me, rs) = piloted(d.clone(), &[(0.0, 30.0)]);
         assists(&mut w, me, &rules);
-        assert_eq!(shots(&mut w, me, PilotInput::default(), 30), want, "{rules:?}, target right");
+        assert_eq!(shots(&mut w, me, lock_on(rs[0]), 30), want, "{rules:?}, lock ahead");
     }
-    // Out of reach: nothing.
-    let (mut w, me, _) = piloted(d.clone(), &[(0.0, 120.0)]);
-    assists(&mut w, me, &["always -> auto_fire(1)"]);
-    assert!(shots(&mut w, me, PilotInput::default(), 30).is_empty());
-    // The pilot's trigger of group 2 wins: both group 2 guns fire, bearing or not; auto-fire keeps group 1.
-    let (mut w, me, _) = piloted(d, &[(0.0, 30.0)]);
+    // Of two raiders, the locked one: the far one ahead, the near one to the right (which the old nearest pick
+    // took): group 1 fires at the lock, group 2's right gun doesn't.
+    let (mut w, me, rs) = piloted(d.clone(), &[(0.0, 40.0), (25.0, 0.0)]);
     assists(&mut w, me, &["always -> auto_fire(1)", "always -> auto_fire(2)"]);
-    assert_eq!(shots(&mut w, me, PilotInput { fire: 0b010, ..Default::default() }, 30), vec![0, 2, 3]);
+    assert_eq!(shots(&mut w, me, lock_on(rs[0]), 20), vec![0]);
+    // Out of reach: nothing.
+    let (mut w, me, rs) = piloted(d.clone(), &[(0.0, 120.0)]);
+    assists(&mut w, me, &["always -> auto_fire(1)"]);
+    assert!(shots(&mut w, me, lock_on(rs[0]), 30).is_empty());
+    // The pilot's trigger of group 2 wins: both group 2 guns fire, bearing or not; auto-fire keeps group 1.
+    let (mut w, me, rs) = piloted(d, &[(0.0, 30.0)]);
+    assists(&mut w, me, &["always -> auto_fire(1)", "always -> auto_fire(2)"]);
+    assert_eq!(shots(&mut w, me, PilotInput { fire: 0b010, ..lock_on(rs[0]) }, 30), vec![0, 2, 3]);
 }
 
 #[test]
@@ -241,14 +322,14 @@ fn conditions_gate_the_assists() {
 fn toggles_and_all_assists_switch_rules_for_the_mission() {
     let c = content();
     let (mut w, me, _) = piloted(rcs_ship(&c), &[]);
-    assists(&mut w, me, &["always -> brake(toggle2, off)", "always -> face_target(toggle2)"]);
+    assists(&mut w, me, &["always -> brake(toggle2, off)", "always -> auto_lock(nearest, toggle2)"]);
     let st = |w: &Sim| w.ship(me).unwrap().assists().unwrap().clone();
     assert_eq!((st(&w).is_on(0), st(&w).is_on(1)), (false, true), "each rule starts as its `start` says");
     assert_eq!((st(&w).toggle(0), st(&w).toggle(1)), (Some(2), Some(2)));
     drift(&mut w, me, Vec2::new(2.0, 0.0));
     fly(&mut w, me, keys(0.0, 0.0), 30);
     assert!(speed(&w, me) > 1.9, "brake starts off");
-    // Toggle 2 flips both of its rules: brake on (face off, no target anyway).
+    // Toggle 2 flips both of its rules: brake on (auto-lock off, nothing to lock anyway).
     w.command(me, ShipCommand::SwitchAssists(AssistSwitch::Toggle(2)));
     assert_eq!((st(&w).is_on(0), st(&w).is_on(1)), (true, false));
     fly(&mut w, me, keys(0.0, 0.0), 120);
@@ -500,13 +581,6 @@ fn with_turning_free_thrust_assists_turn_a_ship_with_rear_thrusters_only() {
 #[test]
 fn thrust_assists_leave_the_heading_alone_while_turning_is_taken() {
     let c = content();
-    // Face target has the turning channel: brake keeps its thrust-only stop, the nose stays on the raider.
-    let (mut w, me, _) = piloted(design(&c, "rim_skiff"), &[(45.0, 0.0)]);
-    assists(&mut w, me, &["always -> brake", "always -> face_target"]);
-    drift(&mut w, me, Vec2::new(0.0, 3.0));
-    fly(&mut w, me, keys(0.0, 0.0), 120);
-    assert!(matches!(heading_goal(&w, me), sim::HeadingGoal::Track { .. }), "{:?}", heading_goal(&w, me));
-    assert!(speed(&w, me) > 2.5, "facing the raider it can't brake the drift: {}", speed(&w, me));
     // The pilot steers (A held): the heading is the pilot's.
     let (mut w, me, _) = piloted(design(&c, "rim_skiff"), &[]);
     assists(&mut w, me, &["always -> brake"]);
@@ -517,12 +591,13 @@ fn thrust_assists_leave_the_heading_alone_while_turning_is_taken() {
         fly(&mut w, me, keys(level, 0.0), 1);
         assert!(matches!(heading_goal(&w, me), sim::HeadingGoal::Rate(_)), "{:?}", heading_goal(&w, me));
     }
-    // A held lock aims the ship: the same.
+    // A held lock aims the ship: brake keeps its thrust-only stop, the nose stays on the raider.
     let (mut w, me, rs) = piloted(design(&c, "rim_skiff"), &[(45.0, 0.0)]);
     assists(&mut w, me, &["always -> brake"]);
     drift(&mut w, me, Vec2::new(0.0, 3.0));
-    fly(&mut w, me, PilotInput { lock: Some(Target::Ship(rs[0])), ..keys(0.0, 0.0) }, 30);
+    fly(&mut w, me, locked(rs[0]), 120);
     assert!(matches!(heading_goal(&w, me), sim::HeadingGoal::Track { .. }), "{:?}", heading_goal(&w, me));
+    assert!(speed(&w, me) > 2.5, "facing the raider it can't brake the drift: {}", speed(&w, me));
     // A slight drift (under `ASSIST_TURN_DV`) never spins it around.
     let (mut w, me, _) = piloted(design(&c, "rim_skiff"), &[]);
     assists(&mut w, me, &["always -> brake"]);

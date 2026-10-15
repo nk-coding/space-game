@@ -191,7 +191,7 @@ impl Wiki<'_> {
         )
     }
 
-    /// The rule text with links: the target line (or the default one), then one line per rule.
+    /// The rule text with links: the target line (or the default one; none for pilot assists), then one line per rule.
     pub(crate) fn rules_text(
         &self,
         root: &str,
@@ -199,22 +199,25 @@ impl Wiki<'_> {
         kind: data::behavior::ListKind,
     ) -> String {
         let mut s = String::from("<div class=\"rules\">\n");
-        let tline = match program.target.as_ref() {
-            Some(t) => format!(
-                "{}{}",
-                self.call(root, &t.call, NodeRole::Target),
-                note(&t.note)
-            ),
-            None => format!(
-                "{} <span class=\"note\"># default</span>",
-                self.call_named(root, "nearest", "", NodeRole::Target)
-            ),
-        };
-        writeln!(
-            s,
-            "<p class=\"rule target\"><span class=\"kw\">target</span> {tline}</p>"
-        )
-        .unwrap();
+        // Pilot assists have no target line: they act on the pilot's lock (GDR-0088).
+        if kind != data::behavior::ListKind::Assists {
+            let tline = match program.target.as_ref() {
+                Some(t) => format!(
+                    "{}{}",
+                    self.call(root, &t.call, NodeRole::Target),
+                    note(&t.note)
+                ),
+                None => format!(
+                    "{} <span class=\"note\"># default</span>",
+                    self.call_named(root, "nearest", "", NodeRole::Target)
+                ),
+            };
+            writeln!(
+                s,
+                "<p class=\"rule target\"><span class=\"kw\">target</span> {tline}</p>"
+            )
+            .unwrap();
+        }
         s.push_str(if kind == data::behavior::ListKind::Assists { "<ul>\n" } else { "<ol>\n" });
         for r in &program.rules {
             let mut line = String::new();

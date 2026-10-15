@@ -44,7 +44,7 @@ pub enum AimAt {
     Core,
 }
 
-/// How the target line picks the target ship.
+/// How the target line (or `auto_lock`) picks the target ship.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SelectorKind {
     #[default]
@@ -168,8 +168,8 @@ pub struct Code {
 /// What a pilot assist does (GDR-0088), each on one control channel (`assist.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AssistAction {
-    /// Turning: the strongest guns onto the target.
-    FaceTarget,
+    /// The lock: while the pilot has none, lock the ship this picks (never `Locked`).
+    AutoLock(SelectorKind),
     /// Thrust: stop (turning too while turning is free).
     Brake,
     /// The trigger of this weapon group (1 to `data::MAX_WEAPON_GROUP`): fire when its guns bear.
@@ -191,9 +191,9 @@ pub enum Station {
 }
 
 impl AssistAction {
-    /// Needs a target to act (else the rule claims nothing).
+    /// Needs a target, the pilot's lock, to act (else the rule claims nothing).
     pub fn needs_target(self) -> bool {
-        matches!(self, AssistAction::FaceTarget | AssistAction::AutoFire(_))
+        matches!(self, AssistAction::AutoFire(_))
     }
 }
 
@@ -209,10 +209,9 @@ pub struct AssistRule {
     pub on: bool,
 }
 
-/// A compiled pilot assist list.
+/// A compiled pilot assist list (no target line: the assists act on the pilot's lock).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssistCode {
-    pub target: Selector,
     pub rules: Vec<AssistRule>,
     pub conds: Vec<Cond>,
 }
@@ -276,24 +275,29 @@ fn selector(program: &Program, vocab: &Vocab) -> Result<Selector, Errors> {
         return Ok(Selector::default());
     };
     let (node, args) = lookup(vocab, LineRef::Target, &t.call)?;
-    let kind = match node.id.as_str() {
-        "nearest" => SelectorKind::Nearest,
-        "weakest" => SelectorKind::Weakest,
-        "threat" => SelectorKind::Threat,
-        "attacker" => SelectorKind::Attacker,
-        "locked" => SelectorKind::Locked,
-        _ => {
-            return Err(fail(
-                LineRef::Target,
-                &t.call,
-                "no implementation in the sim",
-            ));
-        }
+    let Some(kind) = selector_kind(&node.id) else {
+        return Err(fail(
+            LineRef::Target,
+            &t.call,
+            "no implementation in the sim",
+        ));
     };
     let aim = args
         .first()
         .map_or(AimAt::Centre, |&a| aim(choice_id(node, 0, a)));
     Ok(Selector { kind, aim })
+}
+
+/// A target selector by its id (a target line's node, an `auto_lock` pick).
+fn selector_kind(id: &str) -> Option<SelectorKind> {
+    Some(match id {
+        "nearest" => SelectorKind::Nearest,
+        "weakest" => SelectorKind::Weakest,
+        "threat" => SelectorKind::Threat,
+        "attacker" => SelectorKind::Attacker,
+        "locked" => SelectorKind::Locked,
+        _ => return None,
+    })
 }
 
 /// The conditions of rule `line`, appended to `conds`.
@@ -416,10 +420,7 @@ pub(crate) fn compile_assists(program: &Program, vocab: &Vocab) -> Result<Assist
     if !errors.is_empty() {
         return Err(errors);
     }
-    let mut code = AssistCode {
-        target: selector(program, vocab)?,
-        ..AssistCode::default()
-    };
+    let mut code = AssistCode::default();
     for (i, r) in program.rules.iter().enumerate() {
         let line = LineRef::Rule(i);
         let start = code.conds.len() as u32;
@@ -428,7 +429,11 @@ pub(crate) fn compile_assists(program: &Program, vocab: &Vocab) -> Result<Assist
         // The toggle and the start are the last two values of every assist.
         let n = args.len();
         let action = match node.id.as_str() {
-            "face_target" => AssistAction::FaceTarget,
+            // Its picks are the selectors that suit a pilot (`BUILTIN_NODES`: not `locked`, a leader's lock).
+            "auto_lock" => match selector_kind(choice_id(node, 0, args[0])) {
+                Some(k) => AssistAction::AutoLock(k),
+                None => return Err(fail(line, &r.action, "no implementation in the sim")),
+            },
             "brake" => AssistAction::Brake,
             "hold_station" => AssistAction::HoldStation(match choice_id(node, 0, args[0]) {
                 "ally" => Station::Ally,

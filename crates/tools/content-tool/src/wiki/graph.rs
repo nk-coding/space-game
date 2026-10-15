@@ -1,5 +1,5 @@
 //! Rule lists drawn as the BEHAVIOR screen's GRAPH view draws them (`docs/client.md` "Behavior screen"): the target
-//! line on top, the root (`Priority · first match`, for assists `Assists · each channel`), the trunk with a dot per
+//! line on top (for pilot assists `YOUR LOCK`: they have no target line and act on the pilot's lock), the root (`Priority · first match`, for assists `Assists · each channel`), the trunk with a dot per
 //! rule, each rule's condition chips (violet; Rhai conditions dashed gold) joined by `and`, a connector, and the action
 //! chip (teal) in one column, the rule's note after it. Chips show the nodes' content names and the values as written. Colours are CSS classes (`rg-*`), which the site maps to the style tokens.
 
@@ -132,19 +132,22 @@ pub fn draw(c: &Content, p: &Program, kind: ListKind) -> String {
     let act_x = FIRST_X + rows.iter().map(|(cs, _, _)| chain(cs)).fold(0.0, f32::max) + CONNECTOR;
     let notes = |n: Option<&str>| n.map_or(0.0, |n| 16.0 + n.chars().count() as f32 * CHAR);
     let target = match &p.target {
-        Some(t) => node_chip(c, &t.call, "rg-chip rg-tgt"),
-        None => Chip {
+        _ if kind == ListKind::Assists => None,
+        Some(t) => Some(node_chip(c, &t.call, "rg-chip rg-tgt")),
+        None => Some(Chip {
             label: format!("{} · default", call_label(c, &Call { name: "nearest".into(), args: Vec::new(), col: Default::default() })),
             node: c.behavior_nodes.get("nearest").map(|n| n.id.clone()),
             class: "rg-chip rg-tgt",
             tag: None,
-        },
+        }),
     };
     let target_x = 70.0;
+    let lock_label = "YOUR LOCK";
+    let target_w = target.as_ref().map_or(lock_label.len() as f32 * CHAR, Chip::width);
     let width = rows
         .iter()
         .map(|(_, a, n)| act_x + a.width() + notes(*n))
-        .fold(target_x + target.width(), f32::max)
+        .fold(target_x + target_w, f32::max)
         + 8.0;
     let top = 20.0;
     let root_y = top + 36.0;
@@ -159,7 +162,12 @@ pub fn draw(c: &Content, p: &Program, kind: ListKind) -> String {
         "<svg class=\"rule-graph\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width:.0} {height:.0}\" width=\"{width:.0}\" height=\"{height:.0}\" font-size=\"{FONT}\" role=\"img\" aria-label=\"{label}\">"
     );
     text(&mut s, 0.0, top + FONT * 0.36, "rg-kicker", "TARGET");
-    chip(&mut s, &target, target_x, top);
+    match &target {
+        Some(t) => {
+            chip(&mut s, t, target_x, top);
+        }
+        None => text(&mut s, target_x, top + FONT * 0.36, "rg-kicker", lock_label),
+    }
     // The root and the trunk.
     write!(s, "<circle class=\"rg-root\" cx=\"{TRUNK_X}\" cy=\"{root_y:.1}\" r=\"4\"/>").unwrap();
     let root_label = if kind == ListKind::Assists {

@@ -5,7 +5,8 @@
 //!   thrust along the nose, Q/E strafe (arrows: rotate and thrust). Under a lock the ship aims its strongest
 //!   guns and A/D nudge the aim (springs back). Left-click a ship = lock, click empty space = unlock, hold the
 //!   left button on empty space = fire weapon group 1. Space fires every group, 1 / 2 / 3 (and the right button:
-//!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. Tab = next target, Esc = unlock (not while
+//!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. Tab (LOCK TARGET) = the nearest
+//!   enemy, then the next by distance (`sim::flight::next_lock`), Esc = unlock (not while
 //!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle. V / Shift+V = next / previous
 //!   vessel of the player (the sim's vessel list); clicking a friendly vessel switches to it. Both send
 //!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. F1–F4 (ASSIST
@@ -209,7 +210,6 @@ fn keyboard(
     mut input: ResMut<PlayerInput>,
     mut world: ResMut<SimWorld>,
     focus: Res<PilotFocus>,
-    rig: Res<CameraRig>,
     run: Res<VoyageRun>,
     mut menu: ResMut<FlightMenu>,
     mut scene: ResMut<Scene>,
@@ -253,8 +253,11 @@ fn keyboard(
             menu.open = true;
         }
     }
-    if act.just_pressed(Action::LockNext) {
-        input.lock = next_target(&world, focus.0, input.locked_ship(), rig.focus);
+    // LOCK TARGET: the nearest enemy, then the next by distance (the sim's order, from the ship's own position).
+    if act.just_pressed(Action::LockNext)
+        && let Some(me) = focus.0
+    {
+        input.lock = sim::flight::next_lock(world.sim.ships(), me, input.locked_ship());
     }
     // Cycle the focus through the player's vessels (a focus command for the sim).
     let step = if act.just_pressed(Action::FocusNext) {
@@ -430,26 +433,6 @@ pub fn pick(world: &SimWorld, player: Option<ShipId>, at: Vec2, m_per_px: f32, a
         }
     }
     best.map(|b| b.1)
-}
-
-/// Next active enemy ship by distance from the player (wraps around).
-pub fn next_target(world: &SimWorld, player: Option<ShipId>, current: Option<ShipId>, from: Option<Vec2>) -> Option<Target> {
-    let player_ship = player.and_then(|p| world.sim.ship(p))?;
-    let team = player_ship.team();
-    let from = from.unwrap_or(Vec2::ZERO);
-    let mut list: Vec<(f32, ShipId)> = world
-        .sim
-        .ships()
-        .iter()
-        .filter(|s| s.is_active() && !sim::friendly(team, s.team()))
-        .filter_map(|s| s.control_piece().and_then(|c| s.piece(c)).map(|p| (v2(p.com_world()).distance(from), s.id())))
-        .collect();
-    list.sort_by(|a, b| a.0.total_cmp(&b.0));
-    if list.is_empty() {
-        return None;
-    }
-    let k = current.and_then(|c| list.iter().position(|e| e.1 == c)).map(|k| (k + 1) % list.len()).unwrap_or(0);
-    Some(Target::Ship(list[k].1))
 }
 
 fn spawn_touch_ui(mut commands: Commands, style: Res<Style>, params: Res<kit::params::Params>, mut input: ResMut<PlayerInput>) {
@@ -697,6 +680,39 @@ mod tests {
         assert!(ticks.iter().all(|t| t.0.y == 0.0), "{ticks:?}");
     }
 
+    /// LOCK TARGET (Tab, GDR-0088): the first press locks the nearest enemy, each next press the next one by
+    /// distance, round to the nearest again; the lock is the one a click sets (`PlayerInput::lock`).
+    #[test]
+    fn lock_target_locks_the_nearest_then_cycles_by_distance() {
+        let mut app = app(40.0);
+        let content = data::base_content();
+        let design = |id: &str| std::sync::Arc::new(sim::ShipDesign::compile(&content, content.ships.get(id).unwrap()).unwrap());
+        let mut w = sim::Sim::new(1);
+        let me = w.spawn_ship(design("halvex_runner"), sim::Owner::PLAYER, sim::Body::default());
+        let at = |x: f32, y: f32| sim::Body::at(sim::Vec2::new(x, y), 0.0);
+        let far = w.spawn_ship(design("automaton_raider"), crate::scene::ENEMY, at(0.0, 90.0));
+        let near = w.spawn_ship(design("automaton_raider"), crate::scene::ENEMY, at(40.0, 0.0));
+        let mid = w.spawn_ship(design("automaton_raider"), crate::scene::ENEMY, at(-60.0, 0.0));
+        app.insert_resource(SimWorld::new(w, content.clone()));
+        app.world_mut().resource_mut::<PilotFocus>().0 = Some(me);
+        let lock = |app: &App| app.world().resource::<PlayerInput>().lock;
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            frame(&mut app, |k| k.press(KeyCode::Tab));
+            seen.push(lock(&app));
+            frame(&mut app, |k| k.release(KeyCode::Tab));
+        }
+        assert_eq!(seen, [near, mid, far, near].map(|s| Some(Target::Ship(s))));
+        // Esc drops it; Tab locks the nearest again.
+        frame(&mut app, |k| k.press(KeyCode::Escape));
+        assert_eq!(lock(&app), None);
+        frame(&mut app, |k| {
+            k.release(KeyCode::Escape);
+            k.press(KeyCode::Tab);
+        });
+        assert_eq!(lock(&app), Some(Target::Ship(near)));
+    }
+
     /// The assist toggles (GDR-0088): F1–F4 switch their slot's assists and Z all of them, each a command for the
     /// flown ship, and the banner says what changed (from the state before the switch); a rebound toggle works on
     /// its new key.
@@ -711,7 +727,7 @@ mod tests {
         let mut w = sim::Sim::new(1);
         w.set_behaviors(sim::BehaviorLibrary::new(&content).unwrap());
         let me = w.spawn_ship(sim::ShipDesign::compile(&content, content.ships.get("halvex_runner").unwrap()).unwrap().into(), sim::Owner::PLAYER, sim::Body::default());
-        let list = data::AssistList { target: None, rules: vec!["always -> brake(toggle2, off)".into(), "always -> auto_fire(2, toggle2)".into()] };
+        let list = data::AssistList { rules: vec!["always -> brake(toggle2, off)".into(), "always -> auto_fire(2, toggle2)".into()] };
         let id = w.behaviors_mut().add_assists(&list).unwrap();
         w.command(me, ShipCommand::Assists(Some(id)));
         app.insert_resource(SimWorld::new(w, content));

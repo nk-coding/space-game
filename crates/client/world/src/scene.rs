@@ -638,6 +638,19 @@ fn toggle_waves(act: crate::settings::Act, mut scene: ResMut<Scene>, mut world: 
     }
 }
 
+/// The pilot's lock for this tick: the one held, dropped once its target went dark or vanished; with nothing locked,
+/// the ship an auto-lock assist of the flown ship asks for (GDR-0088), locked as a click locks it, so the HUD, the
+/// target panel and the sim all see the one lock.
+pub(crate) fn tick_lock(world: &SimWorld, ship: &sim::Ship, held: Option<Target>) -> Option<Target> {
+    let active = |s: ShipId| world.sim.ship(s).is_some_and(|s| s.is_active());
+    match held {
+        Some(Target::Ship(s)) if active(s) => held,
+        Some(Target::Piece(s, p)) if world.sim.ship(s).and_then(|s| s.piece(p)).is_some() => held,
+        Some(Target::Point(_)) => held,
+        _ => ship.assists().and_then(|a| a.auto_lock()).filter(|s| active(*s)).map(Target::Ship),
+    }
+}
+
 fn scene_tick(
     mut scene: ResMut<Scene>,
     mut world: ResMut<SimWorld>,
@@ -682,14 +695,8 @@ fn scene_tick(
     if let Some(me) = focus.0 {
         match world.sim.ship(me) {
             Some(ship) if ship.is_vessel() => {
-                // Drop a lock on a target that went dark or vanished.
                 let input = &mut *player_input;
-                let lock = match input.lock {
-                    Some(Target::Ship(s)) if world.sim.ship(s).is_some_and(|s| s.is_active()) => input.lock,
-                    Some(Target::Piece(s, p)) if world.sim.ship(s).and_then(|s| s.piece(p)).is_some() => input.lock,
-                    Some(Target::Point(_)) => input.lock,
-                    _ => None,
-                };
+                let lock = tick_lock(world, ship, input.lock);
                 input.lock = lock;
                 // The A/D nudge only acts under a lock; it springs back otherwise (one step per tick).
                 let turn = if lock.is_some() && !input.stick_mode { axes.x } else { 0.0 };

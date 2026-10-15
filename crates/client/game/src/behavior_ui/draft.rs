@@ -103,10 +103,9 @@ impl BehaviorDraft {
     pub fn assists(design: &Blueprint, nodes: &Table<BehaviorNode>) -> (Self, usize) {
         let checks = |p: &Program| check_list(p, nodes, ListKind::Assists).is_empty();
         let list = design.assists.clone().unwrap_or_default();
-        let target = list.target.as_deref().filter(|t| Program::from_parts(Some(t), &[]).is_ok_and(|p| checks(&p)));
         let rules: Vec<String> = list.rules.iter().filter(|r| Program::from_parts(None, std::slice::from_ref(*r)).is_ok_and(|p| checks(&p))).cloned().collect();
-        let dropped = list.rules.len() - rules.len() + usize::from(list.target.is_some() && target.is_none());
-        let program = Program::from_parts(target, &rules).unwrap_or_default();
+        let dropped = list.rules.len() - rules.len();
+        let program = Program::from_parts(None, &rules).unwrap_or_default();
         let editor = BehaviorEditor::open_as(nodes, &program, ListKind::Assists).unwrap_or_else(|_| {
             BehaviorEditor::open_as(nodes, &Program::default(), ListKind::Assists).expect("an empty assist list checks")
         });

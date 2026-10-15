@@ -522,7 +522,7 @@ fn reach_of(s: &Ship) -> f32 {
 }
 
 /// The nearest working part of a kind on a ship's controlling piece (target priority).
-pub(super) fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
+fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
     if aim == AimAt::Centre {
         return None;
     }
@@ -553,7 +553,7 @@ pub(super) fn pick_part(s: &Ship, aim: AimAt, from: Vec2) -> Option<PartIdx> {
 
 /// Position and velocity of the point a behavior aims at: a part of the target (if it still works) or the
 /// target ship's centre.
-pub(crate) fn aim_state(
+fn aim_state(
     ships: &[Ship],
     focus: ShipId,
     part: Option<PartIdx>,
