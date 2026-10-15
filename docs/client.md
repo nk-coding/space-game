@@ -617,8 +617,12 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   the band, the outcome (`GOAL CLEARED`, `RECALLED`, `LOST`) and `FIRST CLEAR`; time, sites, kills, ships lost;
   `14 PARTS DISMANTLED` with a row per part (fragments apart, most first, six at most) and what it gave; research
   data per family with what is now in store; the materials; `RESEARCH READY · n` with the nodes the stores pay for
-  now; `SIGNAL FOUND · HALVEX DRIFT` after a vector beacon glyph for each voyage it opened (GDR-0078: the name from
-  the content; Barlow has no ◆ either, the materials' diamond is a vector glyph too); the voyage's `cleared` words at
+  now; `SIGNAL FOUND · HALVEX DRIFT` after a beacon mark for each voyage it opened (GDR-0078: the name from
+  the content; Barlow has no ◆ either, so the materials have a diamond mark too). The two marks are bevy_ui nodes
+  drawn like the vector glyphs (◆ a square turned 45°, the beacon a dot between two rings showing only their left
+  and right borders), not `ui_icons` glyphs: those are world meshes, which the panel's opaque backing covered (15
+  Oct 2026), and the backing can't be a world scrim as BLUEPRINTS' is, since home's words under the panel are UI
+  and would draw over it; the voyage's `cleared` words at
   the first clear. The report scrolls when it is longer than the panel (14 Oct 2026; Niklas: "the voyage report is
   not scrollable, and thus can cut things off"): everything above the buttons is one area with the kit's
   `Scrollbar` (smooth wheel, overlay bar),
@@ -993,7 +997,8 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   semi-bold pills; plain, active teal, active gold, the glowing primary, disabled, bare list rows; `PillLock`: a lock
   icon shown only while the pill is disabled, for locked frames; the letter spacing's trailing room is balanced by
   the label's own left margin, so a label alone and an icon with its label sit centred whether the icon shows or
-  not, 15 Oct 2026), ring buttons, value bars, corner
+  not, 15 Oct 2026; a pill colours every `PillText` in it, also one in a group with an icon such as research's
+  UNLOCK materials, but not those of a pill inside it), ring buttons, value bars, corner
   brackets and a one-line
   text field (`TextField`, used for the names, the searches and the notes: a caret and a selection, both drawn in
   place as text spans of `field_text`; Left / Right / Home / End move the caret, with Shift they select, Backspace
@@ -1094,7 +1099,10 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   it and still show icons backs itself with a `UiIcon::Scrim` whose insets meet (`[f32::INFINITY; 4]` fills the
   node; BLUEPRINTS, whose locks were hidden under its opaque background until 15 Oct 2026, the empty room
   pushing the labels right of centre). bevy_ui's clipping doesn't reach the
-  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again. An icon follows
+  meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again. A new icon's
+  mesh is spawned and placed in the frame its node first lays out (by commands that apply before the transforms
+  propagate), so an icon appears together with its node (15 Oct 2026: BLUEPRINTS' preview ship came a frame
+  late). An icon follows
   its node when a screen transition slides it, and fades with its screen part (the part's atlas material,
   `ui_kit::IconMaterials`; [Screen transitions](#screen-transitions)).
 

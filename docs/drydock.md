@@ -574,8 +574,10 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   first frame a template fits, as OPEN would open it), MASS, TOP SPEED (labels and units from `stats.ron`, the
   values as the stats grid shows them) and WEAPONS (its guns), from a design report made with the drydock's content
   and config (`DrydockReport::config`). It is built once per hovered entry (`blueprints::sync_preview`; a saved
-  design is read from storage then) and goes when no row is hovered; an unreadable design shows none. The lists
-  are 480 and 344 px wide for it (600 and 432 before).
+  design is read from storage then) and goes when the pointer leaves the row; over the gap to the next row it
+  stays, so moving down the list doesn't flash it. An unreadable design shows none. The card has a fixed height,
+  so it is placed right in the frame it appears in (with the height of its own first layout it showed a frame
+  lower, then jumped; Niklas, 15 Oct 2026). The lists are 480 and 344 px wide for it (600 and 432 before).
 - On the picked row: **OPEN** (a template: as a copy), **DUPLICATE** (a saved copy with a fresh name; for a
   template, its copy saved as a design), **RENAME** (a field; Enter renames, Esc cancels; the open design follows),
   **DELETE** (asks first: DELETE / KEEP; deleting the open design leaves it in the drydock, unsaved).
