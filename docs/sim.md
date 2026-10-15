@@ -190,7 +190,7 @@ How it is checked:
 - `cargo test -p sim` (`tests/determinism.rs`): same seed → identical hash sequence (core 600 ticks, flight 900
   ticks); different seeds → different hashes and different runs; a cloned world continues identically; a 1e-6
   change in one part's hp changes the hash; incrementally maintained caches equal a full recompute.
-- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|load|behavior|salvage|voyage]` builds the `determinism`
+- `scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario core|flight|assists|load|behavior|salvage|voyage]` builds the `determinism`
   example natively and for `wasm32-wasip1`, runs the wasm under Node's built-in WASI (`scripts/wasi-run.mjs`)
   and compares the per-tick hashes, printing the first divergent tick (exit 1). `--compare A.txt B.txt` compares
   any two hash streams (`<tick> <hash>` lines, `#` comments), e.g. a browser console dump.
@@ -341,6 +341,16 @@ before: no scenario ship has assists, the assist state is hashed only for a ship
 compile was only reorganised. Last ticks: core `04c38a80a753f50f`, flight `2a51382797b4736b`, behavior
 `1b84c5d19d5d393d`, salvage `d53cf56822803318`, voyage `58c3b65781708409`, `runner_vs_raiders` `8d5b00d21e45e771`.
 No determinism scenario flies with assists yet (`tests/assists.rs` covers them natively).
+
+**Hold station and avoid collisions** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 4,
+15 Oct 2026, release builds, seed 42, 900 ticks; `runner_vs_raiders` to its end at 1273): core, flight, behavior,
+salvage, voyage and `runner_vs_raiders`: native x86_64 vs wasm32-wasip1 **identical**, and every stream byte-identical
+to the build before (no AI ship has assists; the new assist state is hashed only for ships with assists). The new
+**assists** scenario (`ScenarioKind::Assists`, `--scenario assists`: the flight scenario with every pilot assist on the
+player's ships, `scenario::fixtures::ASSISTS`; the pilots let go more often (50%) and fire less (30%) so the assists get
+channels, and 15% of the rerolls flip a toggle slot or ALL ASSISTS) is **identical** too, last tick
+`ff0c7503bceb7356`; over the run a station is held for 2478 ship-ticks, something is dodged for 465, and every
+rule decides at times (`assists_scenario_is_deterministic_and_the_assists_act`).
 
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
@@ -1115,7 +1125,8 @@ as before.
 
 - **State** (`Ship::assists()` → `AssistState`): per rule whether it is switched on (bit `i`, starting as its
   `start` value), the master switch, the tick the pilot last used each control (turning, thrust, a trigger), the
-  target, and per channel the rule that decides it. It lasts for the ship's life (a mission); a vessel split off
+  target, per channel the rule that decides it, the station `hold_station` keeps (`station()`) and the piece
+  `avoid_collisions` steers clear of (`avoiding()`). It lasts for the ship's life (a mission); a vessel split off
   inherits it.
 - **The pass** (`assist_all`, after the behaviors' think): every tick each piloted ship with assists notes the
   controls its pilot uses (`PilotInput`: A/D or the stick without a lock = turning; W/S/Q/E or the stick = thrust;
@@ -1134,11 +1145,32 @@ as before.
   true below 0.1 m/s), which behaviors may use too, and the pilot's own `lock_held` and `idle(any|turn|thrust|fire)`
   (seconds since the last use; `Why::NoValue` outside an assist list, which the checks never let happen).
 - **State hash**: the assist state (id, program fingerprint, switches, last uses, target, aim part, acquisition
-  tick, decisions, last think) after the ship's behavior, and nothing at all for a ship without assists, so worlds
+  tick, decisions, last think, station, the piece avoided) after the ship's behavior, and nothing at all for a ship without assists, so worlds
   without assists hash as before.
+- **Hold station** (step 4, 15 Oct 2026; `hold_station(point|ally)`, thrust): the station is taken on the first tick
+  the rule has thrust while the pilot doesn't thrust (`keep_stations`, every tick after the thinks): the ship's centre
+  of mass, or with `ally` its offset (world frame) from the nearest other active vessel of its owner (first in id
+  order on a tie; a point without one). The pilot's thrust drops it, so flying moves the station; while a rule above
+  has thrust (a dodge, a brake) it waits, unless the rule that took it is switched off; an ally that is no vessel any
+  more is replaced on the next tick. Per tick the velocity goal is an escort of the station point at distance 0
+  (`Maneuver::Escort::goal_for`: back at the speed it can still stop from, then the station's velocity; capped at
+  the top speed); the heading stays the pilot's, so only thrusters that push the needed way fly it back.
+- **Avoid collisions** (step 4; `avoid_collisions`, thrust): at each think, if its conditions hold, it looks for the
+  piece it would meet first: of every ship (vessels of any owner, wrecks, the ship's own broken-off pieces), the
+  bounding circles (`Piece::radius` about the frame origin) on straight lines, the first closest approach within
+  `tuning::AVOID_AHEAD` (6 s) that comes nearer than the two radii plus `tuning::AVOID_CLEARANCE` (2 m). Only then
+  does it decide thrust (else the rules below keep it). Per tick the velocity goal is the ship's own velocity plus the
+  sidestep that makes that closest approach the clearance: along the miss vector (to the left of the relative motion
+  when head-on), `(reach − miss) / t`, capped at the top speed; once clear (or the piece is gone) it asks nothing
+  until the next think hands thrust down again. It never turns the ship. Behaviors don't get it (GDR-0088 left that
+  open; it would change every AI stream).
 - Tests: `tests/assists.rs` (face turns to the target and the pilot's A wins the turn; brake kills drift without
   turning and W wins; auto-fire fires only its group's guns that bear, never out of reach, and a held trigger wins;
-  `lock_held`, `idle(thrust)`, `speed`, `can_stop_straight` gate rules; toggles and ALL ASSISTS; only the piloted ship).
+  `lock_held`, `idle(thrust)`, `speed`, `can_stop_straight` gate rules; toggles and ALL ASSISTS; only the piloted ship;
+  hold station flies back after a push and W moves the station; beside an ally it keeps its place as the ally drifts;
+  avoidance sidesteps a raider on a collision course (without it they collide), does nothing on a clear path (a brake
+  below keeps thrust) and takes thrust over from it on a collision course; the pilot's W wins over it; the station
+  waits while avoidance dodges a raider drifting through it, and the ship comes back).
 
 ### Rhai conditions
 

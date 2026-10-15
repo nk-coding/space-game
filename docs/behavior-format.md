@@ -106,7 +106,8 @@ line 5, column 29: `sideways` is not an option; choose one of: auto, ccw, cw
 
 Added 15 Oct 2026 ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 3). A design can carry
 a second rule list, its **PILOT ASSISTS**, written in exactly this format and edited on the BEHAVIOR screen's PILOT
-ASSISTS tab with the same graph, inspector and palette. Assists help the player fly the ship; they run only on the
+ASSISTS tab with the same GRAPH and TEXT views, inspector and palette (the TEXT view since step 4: the lines below are
+what it shows and what the blueprint stores). Assists help the player fly the ship; they run only on the
 ship the player flies (the focus), never on an unpiloted one, whose behavior flies it.
 
 ```text
@@ -116,16 +117,29 @@ always -> face_target(toggle1)                                     # guns on the
 when target_in_range(90%) -> auto_fire(2, toggle3, off)           # group 2 fires by itself once F3 is pressed
 ```
 
+With step 4 (15 Oct 2026), steering clear and keeping a place:
+
+```text
+when idle(thrust) >= 1s -> avoid_collisions(toggle1)   # sidestep what I'm coasting into
+always -> hold_station(ally, toggle2)                  # else keep my place beside my nearest ship
+```
+
 - **Actions**: the assists, and only they: `face_target` (turning: the strongest guns onto the target, as a lock
-  aims), `brake` (thrust: zero velocity with the thrusters that push against the motion; it never turns the ship)
-  and `auto_fire(group)` (that weapon group's trigger: each of its guns fires when it bears, the test of fire at
-  will). The behaviors' maneuvers are refused in an assist list, and the assists in a behavior.
+  aims), `brake` (thrust: zero velocity with the thrusters that push against the motion; it never turns the ship),
+  `hold_station(at)` (thrust: back to the station and keep it; `point`, the default: where the assist took thrust
+  over, e.g. where you let go of W; `ally`: your place then beside the nearest of your other vessels, moving with
+  it; thrusting moves the station; it never turns the ship), `avoid_collisions` (thrust: sidestep a ship, wreck or
+  piece of debris on a collision course within a few seconds; it decides only while something is, so the rule below
+  it keeps thrust the rest of the time; it never turns the ship) and `auto_fire(group)` (that weapon group's trigger:
+  each of its guns fires when it bears, the test of fire at will). The thrust assists work with the thrusters that
+  push the needed way: a ship with engines only at the back can't brake, hold station or sidestep without turning.
+  The behaviors' maneuvers are refused in an assist list, and the assists in a behavior.
 - **Channels, the player wins**: each assist works one channel: turning, thrust, or one weapon group's trigger. A
   channel the player uses this tick (A/D or the stick, or a held lock, which aims by itself; W/S/Q/E or the stick;
   the group's trigger) is the player's; letting go hands it back at once.
 - **Which rule decides**: the rules are read from the top at every think (10 Hz, with the behaviors); for each
-  channel the first rule that is switched on, whose conditions hold (and that has a target, if it needs one)
-  decides. So an `always` rule doesn't stop the rules below it: they may decide other channels. A list may be
+  channel the first rule that is switched on, whose conditions hold (and that has a target, if it needs one;
+  `avoid_collisions`: something on a collision course) decides. So an `always` rule doesn't stop the rules below it: they may decide other channels. A list may be
   empty (no assists: the ship coasts when let go, GDR-0086). Assists need no rule slots.
 - **Toggles**: the last two values of every assist: `toggle` (`none`, `toggle1` to `toggle4`: the ASSIST TOGGLE key
   that switches it on and off in flight, F1 to F4 by default) and `start` (`on`, `off`: how each mission starts).

@@ -339,7 +339,9 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
   hull block and the touch stick on a phone), under it the **pilot assists** of the ship flown (`flight_hud/assists.rs`,
   GDR-0088; hidden without any): `ASSISTS`, then one line per assist with its toggle key, `F2 · BRAKE`, teal while it
   decides its channel, white while on, dim while off; `ASSISTS OFF · Z` in gold while ALL ASSISTS has them off
-  (`docs/results/flight-assists-hud.png`: F3 just switched auto-fire on; face target keeps the guns on the raider off screen top right),
+  (`docs/results/flight-assists-hud.png`: F3 just switched auto-fire on; face target keeps the guns on the raider off screen top right;
+  `docs/results/flight-assists-hold-station.png`, step 4: hold station and face target deciding, avoid collisions on
+  and waiting for something on a collision course, auto-fire off at start),
   target panel (in watch mode the watched ship's behavior target),
   wave line, banners (`PAUSED · P` while paused), warnings, help; lock ring and off-screen markers are world-space
   FX (the markers in watch mode too). A marker sits where the ray to its ship meets the view's edge, moved in along the ray until it is clear of
@@ -1128,8 +1130,9 @@ content or saved behavior instead of the design's). Screenshots: `docs/results/b
 The screen, top to bottom: the ring menu button, the breadcrumb `BEHAVIOR · HALVEX RUNNER` (the design's name) and
 the behavior's name (a click renames it) with its saved state after it (TEMPLATE, SAVED, UNSAVED or NOT SAVED YET,
 and `THE DESIGN FLIES <NAME>` when the open behavior is not the design's), the `6 / 12 RULE SLOTS` pill (rules / the
-design's slots, `Content::ship_rule_slots`, from its logic cores); GRAPH / TEXT; TEST IN RANGE with WATCH and FLY
-ALONGSIDE under it (PILOT ASSISTS, the third tab, below). Left the graph: the `TARGET` line
+design's slots, `Content::ship_rule_slots`, from its logic cores); under them, over the graph area, the tabs
+BEHAVIOR / PILOT ASSISTS (the design's two rule lists, PILOT ASSISTS below); top right GRAPH / TEXT (how the open list
+is shown, one choice for both tabs), TEST IN RANGE with WATCH and FLY ALONGSIDE under it. Left the graph: the `TARGET` line
 on top (`Nearest` and `DEFAULT` when the program has none), the `Priority · first match` root, the trunk with a
 dot per rule, each rule as violet condition chips (content name, values grey (white while the chip is selected), the comparison as written: `Enemies
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
@@ -1154,20 +1157,30 @@ Screenshots: `docs/results/behavior-editing-condition.png` (a condition with `no
 threshold), `docs/results/behavior-editing-rule.png` (a rule added with `+ RULE` and a palette condition, its
 action selected).
 
-**PILOT ASSISTS** (the third tab after GRAPH and TEXT; GDR-0088 step 3, 15 Oct 2026, `behavior_ui/assists.rs`;
-`docs/behavior-format.md` "Pilot assists"): the design's pilot assists in the same graph, inspector and palette. The
-screen's draft becomes the assist list (`BehaviorDraft::assists`, a `ListKind::Assists` editor; the behavior's draft
-waits in `AssistTab` and comes back with GRAPH, TEXT, BEHAVIORS or on leaving the screen). What changes there: the
+**PILOT ASSISTS** (the tab after BEHAVIOR; GDR-0088 step 3, 15 Oct 2026, `behavior_ui/assists.rs`;
+`docs/behavior-format.md` "Pilot assists"): the design's pilot assists in the same GRAPH and TEXT views, inspector and
+palette. Until step 4 (15 Oct 2026, Niklas: the split was weird) PILOT ASSISTS was a third pill after GRAPH and TEXT
+and graph-only; now the two lists are the tabs (`BehaviorUi::tab`, `BehaviorTab`, `BehaviorAction::Tab`) and
+GRAPH / TEXT (`BehaviorUi::view`) works the same in both, kept when the tab changes. The TEXT view edits the assist
+list as rule text, exactly what the blueprint stores (`brake(toggle2, off)`), with the behavior text editor's
+highlighting, live errors and apply (`BehaviorDraft::set_text` on the `ListKind::Assists` editor; no slot or
+never-reached notes there); the status line reads `VALID · 4 ASSISTS` or the errors. The screen's draft becomes the
+assist list (`BehaviorDraft::assists`, a `ListKind::Assists` editor; the behavior's draft waits in `AssistTab` and
+comes back with the BEHAVIOR tab, BEHAVIORS or on leaving the screen; switching tabs tidies the text as leaving TEXT
+does). The assists' draft waits in `AssistTab` too while BEHAVIOR is open, so a text with errors is still there on
+the way back; the design keeps the last valid list, and leaving the screen drops the typed errors. What changes there: the
 name reads `Pilot assists · SAVED WITH THE DESIGN` (no rename), the pill `3 ASSISTS · WHILE YOU FLY IT`, the root
 `Assists · each channel`, no slot line and no never-reached line (each rule decides its own channel), `+ ASSIST`
 (also into an empty list), the palette lists the assists' actions and every condition (the pilot's `lock_held` and
 `idle` too), and the last rule can be deleted. An assist's inspector has its values as pills: TOGGLE (NONE, 1–4: the
-ASSIST TOGGLE key that switches it in flight) and AT START (ON, OFF), and auto-fire's GROUP. Every change goes into
+ASSIST TOGGLE key that switches it in flight) and AT START (ON, OFF), auto-fire's GROUP and hold station's STATION (POINT, ALLY). Every change goes into
 the working design at once (`PlayerDesign::edit_header`, written to the storage when no slider is held; the drydock
 shows the design UNSAVED until it is saved); SAVE says so, TEST IN RANGE tests the behavior (the design flies with
 its assists). A list line that no longer checks is left out, with a note. Screenshot
-`docs/results/behavior-pilot-assists.png` (three assists: face target on toggle 1, brake when it can stop straight on
-toggle 2, auto-fire on toggle 3 starting off, selected).
+`docs/results/behavior-pilot-assists.png` (step 3: three assists: face target on toggle 1, brake when it can stop straight on
+toggle 2, auto-fire on toggle 3 starting off, selected; the old tab arrangement), `docs/results/behavior-pilot-assists-tabs.png` and
+`docs/results/behavior-pilot-assists-text.png` (step 4, 1600 × 900: the tabs, avoid collisions, hold station, face
+target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 × 1440 too).
 
 - **Numbers** (`RANGE · 67%  ≈ 100 M`): a −/+ ring on each side of a slider. Steps are round numbers that grow
   with the value and land on multiples (5 m below 50 m, 10 m below 200 m, 50 m below 1000 m; 5 % of the weapon

@@ -372,7 +372,7 @@ player fly it, `target` (optional, a target line without its keyword) and `rules
 list (`data::behavior::check_assists`; errors at `assists.rules[i]`), e.g.
 `assists: (rules: ["when idle(thrust) >= 1s -> brake(toggle2)", "always -> face_target(toggle1)"])`. None (the
 default) is no assists: the ship coasts when let go. The drydock writes it with the design; the BEHAVIOR screen's
-PILOT ASSISTS tab edits it (`docs/behavior-format.md` "Pilot assists").
+PILOT ASSISTS tab edits it (its graph, or its TEXT view in exactly this rule text) (`docs/behavior-format.md` "Pilot assists").
 
 Base ships: `halvex_runner`, `automaton_raider` (from `../space-game-archive/ships/automaton-raider.svg`), `sample_early` and
 `sample_mid` (from the concept-board drafts), and `rim_skiff` (13 Oct 2026, the starter ship of `rim_awakening`:
@@ -450,10 +450,11 @@ an error), so text, wiki and code cannot drift apart. The grammar is in `docs/be
 | `params[].default` | written as in a rule (`"67%"`, `"45m"`, `"cw"`); parameters without a default come first and are required |
 | `params[].min`, `max` | range of the number as written in the parameter's unit (m, %, s, count); reach-relative distances are checked against 0–1000% |
 | `script` | Rhai source: makes the node a custom (flag) condition, tagged "Rhai" in the editor; see `docs/behavior-format.md` |
-| `pilot` | default false; true: the node belongs to pilot assists only (GDR-0088, 15 Oct 2026): an action marked so is an assist (`assists.ron`: `face_target`, `brake`, `auto_fire`; an assist list takes no other action), a condition marked so is about the pilot's own input (`lock_held`, `idle`); behaviors refuse them. Not on target selectors or scripted conditions (validation); the sim's `BUILTIN_NODES` must agree |
+| `pilot` | default false; true: the node belongs to pilot assists only (GDR-0088, 15 Oct 2026): an action marked so is an assist (`assists.ron`: `face_target`, `brake`, `hold_station`, `avoid_collisions`, `auto_fire`; an assist list takes no other action), a condition marked so is about the pilot's own input (`lock_held`, `idle`); behaviors refuse them. Not on target selectors or scripted conditions (validation); the sim's `BUILTIN_NODES` must agree |
 
 The assists' actions end in two choices, `toggle` (`none`, `toggle1`..`toggle4`: the ASSIST TOGGLE that switches the
-rule in flight) and `start` (`on`, `off`); `auto_fire` takes its weapon `group` (Count, 1–3) first. `speed` (Percent)
+rule in flight) and `start` (`on`, `off`); `auto_fire` takes its weapon `group` (Count, 1–3) first, `hold_station`
+(step 4, 15 Oct 2026) its station `at` (`point`, `ally`) first; `avoid_collisions` takes only the two. `speed` (Percent)
 and `can_stop_straight` (flag), added with them, are conditions of both lists.
 
 Text keys: the header fields as usual, plus `behavior_node.<id>.params.<param>.name` / `.summary` and
