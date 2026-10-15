@@ -33,13 +33,13 @@ impl Career {
 
     /// Ends the voyage underway. Recalled: the haul is unloaded ([`unload`]) into the stores, and a cleared goal
     /// marks the voyage cleared (and its best time). Lost: the haul is gone and the goal does not count. Either way
-    /// the debrief becomes the last haul, which is returned.
+    /// its result joins the history, new (the oldest goes past [`MAX_HISTORY`]), and is returned.
     pub fn voyage_ended(
         &mut self,
         content: &Content,
         voyage: &str,
         end: VoyageEnd,
-    ) -> Result<&LastHaul, Refusal> {
+    ) -> Result<&VoyageResult, Refusal> {
         if self.underway.as_deref() != Some(voyage) {
             return Err(Refusal::NotUnderway(voyage.to_string()));
         }
@@ -64,7 +64,7 @@ impl Career {
                 }
                 self.log.recalled = self.log.recalled.saturating_add(1);
                 self.log.salvaged = self.log.salvaged.saturating_add(report.items());
-                LastHaul {
+                VoyageResult {
                     voyage: voyage.to_string(),
                     outcome: if cleared {
                         Outcome::Cleared
@@ -73,19 +73,25 @@ impl Career {
                     },
                     ticks,
                     report,
+                    new: true,
                 }
             }
             VoyageEnd::Lost { ticks } => {
                 self.log.lost = self.log.lost.saturating_add(1);
-                LastHaul {
+                VoyageResult {
                     voyage: voyage.to_string(),
                     outcome: Outcome::Lost,
                     ticks,
                     report: HaulReport::default(),
+                    new: true,
                 }
             }
         };
-        Ok(self.last_haul.insert(last))
+        self.history.push(last);
+        if self.history.len() > MAX_HISTORY {
+            self.history.drain(..self.history.len() - MAX_HISTORY);
+        }
+        Ok(&self.history[self.history.len() - 1])
     }
 }
 

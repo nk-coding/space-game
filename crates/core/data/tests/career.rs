@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use common::*;
 use data::career::{
     Career, DATA_EPSILON, FleetSlot, GENERATOR, Haul, HaulItem, HaulReport, Log, MAX_DATA,
-    MAX_MATERIALS, Outcome, Readiness, Refusal, Shortfall, Unlocks, VoyageEnd, unload,
-    voyage_ready,
+    MAX_HISTORY, MAX_MATERIALS, Outcome, Readiness, Refusal, Shortfall, Unlocks, VoyageEnd,
+    unload, voyage_ready,
 };
 use data::{Blueprint, Content, Kind, Pack, Problem, Severity};
 
@@ -108,7 +108,7 @@ fn a_new_game_has_the_early_game_kit() {
     assert!(career.researched().is_empty() && career.data().is_empty());
     assert!(career.materials().is_empty() && career.escorts().is_empty());
     assert_eq!(career.log(), &Log::default());
-    assert!(career.last_haul().is_none() && career.underway().is_none());
+    assert!(career.history().is_empty() && career.underway().is_none());
     assert!(career.voyage(FIRST).is_none());
 
     // Everything the content does not lock, nothing it does.
@@ -760,9 +760,60 @@ fn the_save_round_trips_through_ron() {
     assert_eq!(back.underway(), Some(FIRST));
 }
 
+/// The history keeps the last [`MAX_HISTORY`] voyages, newest last, each new until the LOG opens; it round trips
+/// through the save (a read entry writes no `new`), and a longer one written by hand loses its oldest.
+#[test]
+fn the_history_keeps_the_last_voyages() {
+    let c = content();
+    let mut career = new_game(&c);
+    let n = MAX_HISTORY as u32;
+    for k in 1..=n + 5 {
+        bring_home(&mut career, &c, &[(part("thruster"), k)]);
+    }
+    let h = career.history();
+    assert_eq!(h.len(), MAX_HISTORY);
+    assert_eq!(h[0].report.parts["thruster"], 6, "the five oldest went");
+    let last = career.last_voyage().unwrap();
+    assert_eq!(last.report.parts["thruster"], n + 5);
+    assert_eq!(career.log().recalled, n + 5, "the counts keep every voyage");
+    assert_eq!(career.unread(), MAX_HISTORY);
+    assert_eq!(Career::from_ron(&career.to_ron()).unwrap(), career);
+
+    assert!(career.read_log());
+    assert!(!career.read_log(), "nothing new the second time");
+    assert_eq!(career.unread(), 0);
+    let text = career.to_ron();
+    assert!(
+        text.contains("history: [") && !text.contains("new:") && !text.contains("last_haul"),
+        "{text}"
+    );
+    bring_home(&mut career, &c, &[]);
+    assert_eq!(career.unread(), 1);
+    assert_eq!(Career::from_ron(&career.to_ron()).unwrap(), career);
+
+    // Two more than it keeps, written by hand: the oldest two go, with a note.
+    let entries = format!(
+        "{}(voyage: \"{FIRST}\", outcome: Lost)",
+        format!("(voyage: \"{FIRST}\", outcome: Recalled), ").repeat(MAX_HISTORY + 1)
+    );
+    let text = format!(
+        "(start: \"{START}\", seed: 1, generator: {GENERATOR}, history: [{entries}])"
+    );
+    let mut long = Career::from_ron(&text).unwrap();
+    let notes = long.reconcile(&c);
+    assert!(
+        note(&notes, "history").message.contains("oldest 2"),
+        "{}",
+        show(&notes)
+    );
+    assert_eq!(long.history().len(), MAX_HISTORY);
+    assert_eq!(long.last_voyage().unwrap().outcome, Outcome::Lost);
+}
+
 #[test]
 fn a_hand_written_save_reads() {
-    // The shape of docs/career.md: comments, `Some` left out, fields with defaults left out.
+    // The shape of docs/career.md: comments, `Some` left out, fields with defaults left out. A format 1 save:
+    // its `last_haul` starts the history.
     let text = r#"
 // space-game: saves, format 1, saved 1760351234
 (
@@ -792,9 +843,15 @@ fn a_hand_written_save_reads() {
     assert_eq!(career.data()["hull"], 11.5);
     assert_eq!(career.voyage(FIRST).unwrap().best_ticks, Some(13500));
     assert_eq!(career.log().recalled, 0);
-    let last = career.last_haul().unwrap();
+    let last = career.last_voyage().unwrap();
     assert_eq!(last.report.data["propulsion"], 6.0);
     assert!(last.report.materials.is_empty());
+    assert_eq!((career.history().len(), career.unread()), (1, 0));
+    let text = career.to_ron();
+    assert!(
+        text.contains("history: [") && !text.contains("last_haul"),
+        "{text}"
+    );
     let u = career.unlocks(&c);
     assert!(u.has_part("automaton_cannon") && u.has_material("composite"));
 }
@@ -877,7 +934,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
         "materials.unobtainium",
         "materials.programmable_matter",
         "voyages.nowhere",
-        "last_haul",
+        "history[0]",
     ] {
         note(&notes, field);
     }
@@ -901,7 +958,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
     );
     assert!(career.voyage("nowhere").is_none());
     assert_eq!(career.voyage(FIRST).unwrap().launched, 2);
-    assert!(career.last_haul().is_none());
+    assert!(career.history().is_empty());
     // A second pass finds nothing more.
     assert!(career.reconcile(&c).is_empty());
 }
@@ -919,8 +976,9 @@ fn closing_the_game_mid_voyage_loses_it() {
     assert_eq!(notes.len(), 1);
     assert_eq!(loaded.underway(), None);
     assert_eq!((loaded.log().lost, loaded.log().recalled), (1, 1));
-    let last = loaded.last_haul().unwrap();
-    assert_eq!((last.outcome, last.ticks), (Outcome::Lost, 0));
+    let last = loaded.last_voyage().unwrap();
+    assert_eq!((last.outcome, last.ticks, last.new), (Outcome::Lost, 0, true));
+    assert_eq!(loaded.history().len(), 2);
     assert_eq!(loaded.data()["propulsion"], 3.0);
     // The next launch rolls a new voyage.
     assert_eq!(loaded.voyage(FIRST).unwrap().launched, 2);
@@ -975,14 +1033,15 @@ fn a_removed_mod_takes_its_research_with_it() {
     assert!(note(&notes, "packs").message.contains("test_mod"));
     assert_eq!(note(&notes, "researched[0]").id.as_deref(), Some("seeker"));
     note(&notes, "data.missiles");
-    note(&notes, "last_haul.report.data.missiles");
+    note(&notes, "history[0].report.data.missiles");
+    note(&notes, "history[1].report.data.missiles");
     assert_eq!(note(&notes, "start").id.as_deref(), Some("alt"));
-    assert_eq!(notes.len(), 5, "{}", show(&notes));
+    assert_eq!(notes.len(), 6, "{}", show(&notes));
     assert_eq!(loaded.mind_capacity(&c), 2);
     assert!(loaded.researched().is_empty() && loaded.data().is_empty());
     // The debrief keeps what came home.
     assert_eq!(
-        loaded.last_haul().unwrap().report.parts,
+        loaded.last_voyage().unwrap().report.parts,
         map(&[("seeker_rack", 2)])
     );
 }
@@ -1012,7 +1071,7 @@ fn an_evening(c: &Content) -> Career {
     );
     assert_eq!(report.data, map(&[("hull", 8.0), ("kinetic", 12.0)]));
     assert_eq!(career.materials(), &map(&[("programmable_matter", 2)]));
-    let last = career.last_haul().unwrap();
+    let last = career.last_voyage().unwrap();
     assert_eq!(
         (last.voyage.as_str(), last.outcome),
         (FIRST, Outcome::Recalled)

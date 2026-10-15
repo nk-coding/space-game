@@ -22,7 +22,8 @@ impl Career {
             voyages: BTreeMap::new(),
             underway: None,
             log: Log::default(),
-            last_haul: None,
+            history: Vec::new(),
+            old_last_haul: None,
         })
     }
 
@@ -33,7 +34,8 @@ impl Career {
     /// like [`crate::parse_blueprint`]'s).
     ///
     /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
-    /// roll its voyages differently. The game keeps such a save aside and never writes over it.
+    /// roll its voyages differently. The game keeps such a save aside and never writes over it. A format 1 save's
+    /// `last_haul` starts the history.
     pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
         if text.len() > MAX_DOCUMENT_BYTES {
             return Err(vec![Problem::error(format!(
@@ -41,9 +43,14 @@ impl Career {
                 text.len()
             ))]);
         }
-        let career: Career = ron_options()
+        let mut career: Career = ron_options()
             .from_str(strip_bom(text))
             .map_err(|e| vec![parse_error(&e)])?;
+        if let Some(last) = career.old_last_haul.take()
+            && career.history.is_empty()
+        {
+            career.history.push(last);
+        }
         if career.generator > GENERATOR {
             return Err(vec![
                 Problem::error(format!(
@@ -72,10 +79,11 @@ impl Career {
 
     /// Brings a loaded career in line with the current content (it may have changed since the save was
     /// written): ids the content no longer has are dropped (researched nodes, families and materials in store
-    /// and in the last haul, voyage records), an unknown start is replaced by the content's first start, numbers
-    /// are made finite, non-negative and bounded ([`MAX_DATA`], [`MAX_MATERIALS`]), a voyage still underway
-    /// counts as lost (the game was closed mid-voyage, GDR-0062), and the pack list is updated. Returns a
-    /// warning for each change, for the status line. Never fails.
+    /// and in the history, voyage records and the history's entries of such voyages), an unknown start is
+    /// replaced by the content's first start, numbers are made finite, non-negative and bounded ([`MAX_DATA`],
+    /// [`MAX_MATERIALS`]), a history past [`MAX_HISTORY`] loses its oldest, a voyage still underway counts as
+    /// lost (the game was closed mid-voyage, GDR-0062), and the pack list is updated. Returns a warning for each
+    /// change, for the status line. Never fails.
     pub fn reconcile(&mut self, content: &Content) -> Vec<Problem> {
         let mut notes = Vec::new();
         let now = packs_of(content);
@@ -171,31 +179,44 @@ impl Career {
             }
         }
 
-        if let Some(last) = &mut self.last_haul {
-            if content.voyages.contains(&last.voyage) {
-                clean_data(
-                    &mut last.report.data,
-                    content,
-                    "last_haul.report.data",
-                    &mut notes,
-                );
-                clean_materials(
-                    &mut last.report.materials,
-                    content,
-                    "last_haul.report.materials",
-                    &mut notes,
-                );
-            } else {
+        let mut kept = Vec::new();
+        for (k, mut v) in std::mem::take(&mut self.history).into_iter().enumerate() {
+            let field = format!("history[{k}]");
+            if !content.voyages.contains(&v.voyage) {
                 notes.push(
                     Problem::warning(format!(
-                        "the content has no voyage `{}` any more: the last haul's report is dropped",
-                        last.voyage
+                        "the content has no voyage `{}` any more: its entry in the log is dropped",
+                        v.voyage
                     ))
-                    .field("last_haul"),
+                    .field(field),
                 );
-                self.last_haul = None;
+                continue;
             }
+            clean_data(
+                &mut v.report.data,
+                content,
+                &format!("{field}.report.data"),
+                &mut notes,
+            );
+            clean_materials(
+                &mut v.report.materials,
+                content,
+                &format!("{field}.report.materials"),
+                &mut notes,
+            );
+            kept.push(v);
         }
+        if kept.len() > MAX_HISTORY {
+            let gone = kept.len() - MAX_HISTORY;
+            notes.push(
+                Problem::warning(format!(
+                    "the log keeps the last {MAX_HISTORY} voyages: the oldest {gone} are dropped"
+                ))
+                .field("history"),
+            );
+            kept.drain(..gone);
+        }
+        self.history = kept;
 
         // Last: the least interesting change for the status line, which shows the first.
         if self.generator == 0 {

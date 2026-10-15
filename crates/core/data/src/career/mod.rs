@@ -2,8 +2,8 @@
 //! for the drydock. No Bevy, no I/O, wasm-safe. The rules are documented in `docs/career.md`.
 //!
 //! A [`Career`] holds the save's **facts** only: the start, the game seed, the researched nodes, the research data
-//! and materials in store, the escorts, a record per voyage, the voyage underway, a small log and the last
-//! voyage's haul. Everything else is derived from the content on demand ([`Career::unlocks`],
+//! and materials in store, the escorts, a record per voyage, the voyage underway, a small log and the history of
+//! the last voyages ([`MAX_HISTORY`]). Everything else is derived from the content on demand ([`Career::unlocks`],
 //! [`Career::mind_capacity`], [`Career::open_voyages`], [`Career::can_pay`]), so a rebalance of the content
 //! applies to old saves without a migration. The game stores it as RON ([`Career::to_ron`],
 //! [`Career::from_ron`]) in its `saves/` namespace and calls [`Career::reconcile`] after loading, which drops what
@@ -40,7 +40,14 @@ pub use voyages::{unload, voyage_ready};
 /// document header (ADR-0031). Raise it when a field is added or its meaning changes, and migrate older formats
 /// when reading: an older build refuses unknown fields, so only a new format lets its storage report the save as
 /// newer instead of damaged.
-pub const FORMAT: u32 = 1;
+///
+/// * 1: the last voyage only, as `last_haul`.
+/// * 2 (15 Oct 2026, GDR-0091): the last voyages as `history`; a format 1 `last_haul` is read and starts it
+///   ([`Career::from_ron`]).
+pub const FORMAT: u32 = 2;
+
+/// How many voyages the history keeps (home's LOG, GDR-0091): the oldest go first. A placeholder.
+pub const MAX_HISTORY: usize = 50;
 
 /// The version of the voyage roller a new career uses (ADR-0024: old versions must stay reproducible or be
 /// migrated). It covers [`Career::voyage_seed`] and the sim's `VoyagePlan::roll` (the draw order, the plan's own
@@ -106,9 +113,13 @@ pub struct Career {
     underway: Option<String>,
     #[serde(default)]
     log: Log,
-    /// How the last voyage ended and what it brought home (the debrief).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    last_haul: Option<LastHaul>,
+    /// The last voyages, oldest first, at most [`MAX_HISTORY`]: how each ended and what it brought home (the
+    /// debrief, home's LOG).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    history: Vec<VoyageResult>,
+    /// Format 1's `last_haul`: read only, it starts the history ([`Career::from_ron`]).
+    #[serde(default, rename = "last_haul", skip_serializing)]
+    old_last_haul: Option<VoyageResult>,
 }
 
 /// What a career remembers about one voyage.
@@ -144,7 +155,7 @@ pub struct Log {
     pub salvaged: u32,
 }
 
-/// How a voyage ended, as stored in the debrief.
+/// How a voyage ended, as stored in the history.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
     /// Came home without the goal cleared.
@@ -155,10 +166,10 @@ pub enum Outcome {
     Lost,
 }
 
-/// The last voyage's debrief: the save's `last_haul`.
+/// How a voyage ended and what it brought home: one entry of the save's `history` (the debrief, home's LOG).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LastHaul {
+pub struct VoyageResult {
     pub voyage: String,
     pub outcome: Outcome,
     /// How long the voyage took, in sim ticks (0 when the game was closed mid-voyage).
@@ -167,6 +178,9 @@ pub struct LastHaul {
     /// What came home and what it gave (empty when lost).
     #[serde(default)]
     pub report: HaulReport,
+    /// Not looked at in the LOG yet: its mast glows until the LOG opens ([`Career::read_log`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub new: bool,
 }
 
 /// Something a ship carries home: the career's copy of the sim's cargo item (the game converts; `data` does not
@@ -457,9 +471,29 @@ impl Career {
         &self.log
     }
 
-    /// The last voyage's debrief.
-    pub fn last_haul(&self) -> Option<&LastHaul> {
-        self.last_haul.as_ref()
+    /// The last voyages, oldest first (at most [`MAX_HISTORY`]).
+    pub fn history(&self) -> &[VoyageResult] {
+        &self.history
+    }
+
+    /// The last voyage's result.
+    pub fn last_voyage(&self) -> Option<&VoyageResult> {
+        self.history.last()
+    }
+
+    /// How many voyage results the LOG has not shown yet.
+    pub fn unread(&self) -> usize {
+        self.history.iter().filter(|v| v.new).count()
+    }
+
+    /// The LOG was opened: every result has been looked at. True when one had not (the game writes the save then).
+    pub fn read_log(&mut self) -> bool {
+        let mut changed = false;
+        for v in self.history.iter_mut().filter(|v| v.new) {
+            v.new = false;
+            changed = true;
+        }
+        changed
     }
 
     /// What the player may build with: every part, material and frame that is not `locked` in the content, plus
