@@ -16,7 +16,7 @@ use kit::meshbuf::MeshBuf;
 use kit::rng::Rng;
 use kit::style::{Style, vcol};
 
-use super::layout::{BASE_STRIP, BRIDGE, CLAMP_REACH, GATE_RADIUS, Layout, MOORING_DEPTH, MOORING_HALF, MOORING_WALL, TIP, WALL};
+use super::layout::{BASE_STRIP, BRIDGE, CLAMP_REACH, GATE_POD, GATE_RADIUS, Layout, MOORING_DEPTH, MOORING_HALF, MOORING_WALL, TIP, WALL, chamfer};
 
 /// The station's colours: `station.*` in `art/tokens.json`, the accents from `ui.*`.
 #[derive(Clone, Copy, Debug)]
@@ -74,9 +74,21 @@ pub struct Lights {
     pub moored: usize,
 }
 
-/// A mesh being drawn: flat shapes sample the atlas's white texel, glows its soft dot and halo strip.
+/// A light that blinks (`super::life`): where it is, its colour and how it blinks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Beacon {
+    pub at: Vec2,
+    pub color: Color,
+    /// The glow's size (m).
+    pub size: f32,
+    pub strobe: bool,
+}
+
+/// A mesh being drawn: flat shapes sample the atlas's white texel, glows its soft dot and halo strip. Blinking
+/// lights are collected, not drawn (their glows are small meshes of their own, `super::life`).
 pub struct Pen {
     pub m: MeshBuf,
+    pub beacons: Vec<Beacon>,
     white: Region,
     soft: Region,
     halo: Region,
@@ -94,7 +106,7 @@ fn ring_n(r: f32) -> usize {
 
 impl Pen {
     pub fn new(atlas: &Atlas, glow: bool) -> Self {
-        Self { m: MeshBuf::default(), white: atlas.region("fx/white"), soft: atlas.region("fx/dot_soft"), halo: atlas.region("fx/halo"), glow }
+        Self { m: MeshBuf::default(), beacons: Vec::new(), white: atlas.region("fx/white"), soft: atlas.region("fx/dot_soft"), halo: atlas.region("fx/halo"), glow }
     }
 
     pub fn into_mesh(self) -> Mesh {
@@ -172,10 +184,22 @@ impl Pen {
         }
     }
 
-    /// A red or green navigation light: a glow and a white core.
+    /// A soft glow `d` m across at the origin: a blinking light's own mesh.
+    pub fn beacon_glow(&mut self, d: f32, c: Color) {
+        self.glow(Vec2::ZERO, d, vcol(c, 0.6));
+    }
+
+    /// A light whose glow blinks: its white core here, the glow collected.
+    fn beacon(&mut self, at: Vec2, col: Color, lamp: Color, size: f32, core: f32, strobe: bool) {
+        if self.glow {
+            self.beacons.push(Beacon { at, color: col, size, strobe });
+        }
+        self.disc(at, core, vcol(lamp, 1.0));
+    }
+
+    /// A red or green navigation light: a glow that breathes and a white core.
     fn nav(&mut self, at: Vec2, col: Color, lamp: Color) {
-        self.glow(at, 1.9, vcol(col, 0.6));
-        self.disc(at, 0.12, vcol(lamp, 1.0));
+        self.beacon(at, col, lamp, 1.9, 0.12, false);
     }
 }
 
@@ -241,11 +265,10 @@ fn fins(pen: &mut Pen, pal: &Palette, x0: f32, x1: f32, y: f32, dir: f32, n: usi
     }
 }
 
-/// An antenna from `at` by `d`, a glowing tip.
+/// An antenna from `at` by `d`, its tip a flashing beacon.
 fn antenna(pen: &mut Pen, pal: &Palette, at: Vec2, d: Vec2, col: Color) {
     pen.line(at, at + d, 0.1, vcol(pal.hull_hi, 1.0));
-    pen.glow(at + d, 1.4, vcol(col, 0.6));
-    pen.disc(at + d, 0.08, vcol(pal.lamp, 1.0));
+    pen.beacon(at + d, col, pal.lamp, 1.4, 0.08, true);
 }
 
 /// The U: plate runs, its outline, trusses outside, conduits inside, window rows, fins, the name plate, nav
@@ -343,7 +366,7 @@ fn strut(pen: &mut Pen, pal: &Palette, from: Vec2, to: Vec2) {
 
 /// A building's body: a chamfered block with window rows top and bottom (`lit` lights most of them in `col`).
 fn block(pen: &mut Pen, pal: &Palette, rng: &mut Rng, r: Rect, lit: bool, col: Color) {
-    let c = r.width().min(r.height()) * 0.18;
+    let c = chamfer(r);
     let (lo, hi) = (r.min, r.max);
     let pts = [
         Vec2::new(lo.x + c, lo.y),
@@ -370,12 +393,22 @@ fn ellipse(pen: &mut Pen, c: Vec2, rx: f32, ry: f32, angle: f32, width: f32, col
     pen.path(&pts, true, width, col);
 }
 
-/// A dish facing `dir` (radians): its bowl and the feed.
-fn dish(pen: &mut Pen, pal: &Palette, c: Vec2, r: f32, dir: f32, col: Color) {
-    let arc: Vec<Vec2> = (0..=16).map(|k| c + Vec2::from_angle(dir - 1.2 + 2.4 * k as f32 / 16.0) * r).collect();
+/// A dish's bowl and feed, facing +x around the origin (`super::life` turns it).
+pub fn dish(pen: &mut Pen, pal: &Palette, r: f32, col: Color) {
+    let arc: Vec<Vec2> = (0..=16).map(|k| Vec2::from_angle(-1.2 + 2.4 * k as f32 / 16.0) * r).collect();
     pen.poly(&arc, vcol(pal.hull_lo, 1.0));
     pen.path(&arc, false, 0.08, vcol(col, 1.0));
-    pen.line(c, c + Vec2::from_angle(dir) * r * 0.8, 0.06, vcol(col, 1.0));
+    pen.line(Vec2::ZERO, Vec2::X * r * 0.8, 0.06, vcol(col, 1.0));
+    pen.disc(Vec2::ZERO, 0.14, vcol(pal.hull_hi, 1.0));
+}
+
+/// Research's emblem around the origin: two orbits and a body riding the outer one (`super::life` turns it).
+pub fn orbit(pen: &mut Pen, col: Color) {
+    let (rx, ry) = (1.69, 0.62);
+    ellipse(pen, Vec2::ZERO, rx, ry, 20f32.to_radians(), 0.1, vcol(col, 1.0));
+    ellipse(pen, Vec2::ZERO, rx, ry, -40f32.to_radians(), 0.06, vcol(col, 0.5));
+    let on = Vec2::from_angle(20f32.to_radians()).rotate(Vec2::new(rx, 0.0));
+    pen.disc(on, 0.13, vcol(col, 1.0));
 }
 
 /// Three dark bays: a building waiting for its screen (the fabricator, the salvage bay).
@@ -387,21 +420,100 @@ fn bays(pen: &mut Pen, pal: &Palette, c: Vec2, s: f32) {
     }
 }
 
-/// The mind's emblem: a hexagon with a glowing core, six spokes and a diamond.
+/// The mind's emblem plate: a hexagon (its spokes and core turn and pulse over it, `super::life`).
 fn mind(pen: &mut Pen, pal: &Palette, c: Vec2) {
     let hex: Vec<Vec2> = (0..6).map(|k| c + Vec2::from_angle((60.0 * k as f32 + 30.0).to_radians()) * 2.64).collect();
     pen.poly(&hex, vcol(pal.structure, 1.0));
     pen.path(&hex, true, 0.15, vcol(pal.structure_hi, 1.0));
-    pen.glow(c, 5.2, vcol(pal.violet, 0.45));
+    // An inner ring the spokes run on.
+    pen.circle(c, 1.87, 0.05, vcol(pal.violet, 0.25));
+}
+
+/// The mind's six spokes, around the origin.
+pub fn mind_rotor(pen: &mut Pen, pal: &Palette) {
     for k in 0..6 {
-        let end = c + Vec2::from_angle((60.0 * k as f32).to_radians()) * 1.87;
-        pen.line(c, end, 0.07, vcol(pal.violet, 0.5));
+        let end = Vec2::from_angle((60.0 * k as f32).to_radians()) * 1.87;
+        pen.line(Vec2::ZERO, end, 0.07, vcol(pal.violet, 0.5));
         pen.disc(end, 0.17, vcol(pal.violet, 0.8));
     }
+}
+
+/// The mind's core around the origin: its glow and the diamond.
+pub fn mind_core(pen: &mut Pen, pal: &Palette) {
+    pen.glow(Vec2::ZERO, 5.2, vcol(pal.violet, 0.45));
     let d = 0.96;
-    let diamond = [c + Vec2::new(0.0, d), c + Vec2::new(-d, 0.0), c + Vec2::new(0.0, -d), c + Vec2::new(d, 0.0)];
+    let diamond = [Vec2::new(0.0, d), Vec2::new(-d, 0.0), Vec2::new(0.0, -d), Vec2::new(d, 0.0)];
     pen.poly(&diamond, vcol(pal.dark, 1.0));
     pen.path(&diamond, true, 0.1, vcol(pal.violet, 1.0));
+    pen.disc(Vec2::ZERO, 0.18, vcol(pal.violet, 0.9));
+}
+
+/// The mind's building: its block, cognition banks above and below the emblem, heat sinks on its top and bottom
+/// faces, coolant runs down its sides and the collar into the base.
+fn mind_house(pen: &mut Pen, l: &Layout, pal: &Palette, rng: &mut Rng) {
+    let r = l.mind.rect();
+    let c = l.mind.centre;
+    block(pen, pal, rng, r, true, pal.violet);
+    for s in [1.0f32, -1.0] {
+        // Cognition banks: two rows of cells, most of them thinking.
+        let y = c.y + s * 3.55;
+        pen.boxed(Rect::from_center_size(Vec2::new(c.x, y), Vec2::new(4.6, 0.95)), vcol(pal.dark, 1.0), vcol(pal.violet, 0.35), 0.05);
+        for dy in [-0.2, 0.2] {
+            windows(pen, pal, rng, Vec2::new(c.x - 2.1, y + dy), Vec2::new(c.x + 2.1, y + dy), 9, 0.6, pal.violet, false);
+        }
+        // Heat sinks standing out of the top and bottom faces, right of the bridges' corners.
+        let face = if s > 0.0 { r.max.y } else { r.min.y };
+        for k in 0..4 {
+            let x = r.min.x + 2.6 + 0.85 * k as f32;
+            pen.boxed(Rect::from_corners(Vec2::new(x - 0.14, face), Vec2::new(x + 0.14, face + s * 0.8)), vcol(pal.hull_hi, 1.0), vcol(pal.violet, 0.5), 0.05);
+        }
+    }
+    // Coolant runs down both sides of the emblem.
+    for x in [r.min.x + 0.55, r.max.x - 0.55] {
+        pen.line(Vec2::new(x, c.y - 2.9), Vec2::new(x, c.y + 2.9), 0.12, vcol(pal.hull_hi, 1.0));
+        pen.line(Vec2::new(x, c.y - 2.9), Vec2::new(x, c.y + 2.9), 0.04, vcol(pal.violet, 0.45));
+    }
+    // The collar into the base, with the violet conduits on it.
+    let back = l.base_x - BASE_STRIP;
+    pen.boxed(Rect::new(r.max.x - 0.1, c.y - 2.4, back, c.y + 2.4), vcol(pal.hull_lo, 1.0), vcol(pal.hull_hi, 1.0), 0.08);
+    for dy in [-1.6, -0.55, 0.55, 1.6] {
+        pen.line(Vec2::new(r.max.x, c.y + dy), Vec2::new(back, c.y + dy), 0.08, vcol(pal.violet, 0.5));
+    }
+    mind(pen, pal, c);
+}
+
+/// Research's building: the lab block, a dome and the dishes' mounts on its roof, a rack of servers either side of
+/// its emblem (lit while research runs), its antenna.
+fn research_house(pen: &mut Pen, l: &Layout, pal: &Palette, rng: &mut Rng, lit: bool) {
+    let r = &l.research;
+    let col = if lit { pal.gold } else { pal.dim };
+    block(pen, pal, rng, r.rect(), lit, pal.gold);
+    let roof = r.rect().max.y;
+    // The dome: a half disc with its slit.
+    let dome = Vec2::new(r.centre.x - 1.1, roof);
+    let half: Vec<Vec2> = (0..=12).map(|k| dome + Vec2::from_angle(PI * k as f32 / 12.0) * 0.85).collect();
+    pen.poly(&half, vcol(pal.hull_hi, 1.0));
+    pen.path(&half, false, 0.06, vcol(col, 0.7));
+    pen.line(dome, dome + Vec2::from_angle(1.2) * 0.8, 0.12, vcol(pal.dark, 1.0));
+    // The dishes' mounts (the dishes turn on them).
+    for (at, _) in research_dishes(l) {
+        pen.line(Vec2::new(at.x, roof), at, 0.16, vcol(pal.hull_hi, 1.0));
+    }
+    // Server racks either side of the emblem.
+    for x in [r.centre.x - 3.3, r.centre.x + 3.3] {
+        pen.boxed(Rect::from_center_size(Vec2::new(x, r.centre.y), Vec2::new(1.3, 2.4)), vcol(pal.dark, 1.0), vcol(col, 0.4), 0.05);
+        for k in 0..4 {
+            let y = r.centre.y - 0.8 + 0.53 * k as f32;
+            windows(pen, pal, rng, Vec2::new(x - 0.45, y), Vec2::new(x + 0.45, y), 3, if lit { 0.7 } else { 0.05 }, pal.gold, false);
+        }
+    }
+    antenna(pen, pal, r.centre + Vec2::new(1.0, 2.75), Vec2::new(0.0, 1.3), pal.gold);
+}
+
+/// Research's dishes: where each turns, its size and the way it faces at rest.
+pub fn research_dishes(l: &Layout) -> [(Vec2, (f32, f32)); 2] {
+    let c = l.research.centre;
+    [(c + Vec2::new(-3.5, 3.1), (0.9, PI / 2.0)), (c + Vec2::new(3.3, 3.1), (0.7, PI / 3.0))]
 }
 
 /// A square turned by `angle` at `c`.
@@ -413,7 +525,8 @@ fn turned_square(pen: &mut Pen, c: Vec2, side: f32, angle: f32, fill: [f32; 4], 
     pen.path(&pts, true, width, stroke);
 }
 
-/// The gate: a segmented ring with emitters, glowing and filled while awake.
+/// The gate: its ring and the four big pods, glowing and filled while awake (the dashes and small emitters turn,
+/// [`gate_ring`]).
 fn gate(pen: &mut Pen, pal: &Palette, c: Vec2, awake: bool) {
     let r = GATE_RADIUS;
     let col = if awake { pal.teal } else { pal.dim };
@@ -422,21 +535,44 @@ fn gate(pen: &mut Pen, pal: &Palette, c: Vec2, awake: bool) {
         pen.pool(c, Vec2::splat(2.0 * r), vcol(pal.teal, 0.2));
     }
     pen.circle(c, r, 0.16 * r, vcol(pal.structure_hi, 1.0));
-    // The sketch's dashes: 3 px on, 9 off around a 150 px ring.
+    for k in 0..4 {
+        let a = PI / 4.0 + k as f32 * PI / 2.0;
+        turned_square(pen, c + Vec2::from_angle(a) * (r + GATE_POD), 0.9, a, vcol(pal.hull, 1.0), vcol(col, 0.7), 0.075);
+    }
+}
+
+/// The gate's dashes and small emitters around the origin (the sketch's dashes: 3 px on, 9 off around a 150 px
+/// ring), turning slowly while it is awake (`super::life`).
+pub fn gate_ring(pen: &mut Pen, pal: &Palette, awake: bool) {
+    let r = GATE_RADIUS;
+    let col = if awake { pal.teal } else { pal.dim };
     let n = 78;
     for k in 0..n {
         let a0 = k as f32 / n as f32 * TAU;
-        let arc: Vec<Vec2> = (0..=2).map(|j| c + Vec2::from_angle(a0 + j as f32 * 0.25 * TAU / n as f32) * r).collect();
+        let arc: Vec<Vec2> = (0..=2).map(|j| Vec2::from_angle(a0 + j as f32 * 0.25 * TAU / n as f32) * r).collect();
         pen.path(&arc, false, 0.1, vcol(col, 0.9));
     }
     for k in 0..8 {
         let a = k as f32 * PI / 4.0;
-        turned_square(pen, c + Vec2::from_angle(a) * r, 0.7, a, vcol(pal.structure, 1.0), vcol(col, 0.6), 0.05);
+        turned_square(pen, Vec2::from_angle(a) * r, 0.7, a, vcol(pal.structure, 1.0), vcol(col, 0.6), 0.05);
     }
-    for k in 0..4 {
-        let a = PI / 4.0 + k as f32 * PI / 2.0;
-        turned_square(pen, c + Vec2::from_angle(a) * (r + 0.9), 0.9, a, vcol(pal.hull, 1.0), vcol(col, 0.7), 0.075);
-    }
+}
+
+/// A light running up the approach path to the gate, heading +x.
+pub fn gate_pulse(pen: &mut Pen, pal: &Palette) {
+    pen.glow(Vec2::ZERO, 1.6, vcol(pal.teal, 0.7));
+    let s = 0.42;
+    pen.path(&[Vec2::new(0.0, s), Vec2::new(s, 0.0), Vec2::new(0.0, -s)], false, 0.1, vcol(pal.teal, 1.0));
+}
+
+/// A shuttle heading +x: a small hull, its cockpit, an engine glow behind it.
+pub fn shuttle(pen: &mut Pen, pal: &Palette) {
+    pen.glow(Vec2::new(-0.55, 0.0), 0.9, vcol(pal.teal, 0.5));
+    let hull = [Vec2::new(0.55, 0.0), Vec2::new(0.25, 0.26), Vec2::new(-0.45, 0.26), Vec2::new(-0.45, -0.26), Vec2::new(0.25, -0.26)];
+    pen.poly(&hull, vcol(pal.hull_hi, 1.0));
+    pen.path(&hull, true, 0.04, vcol(pal.structure_hi, 1.0));
+    pen.rect(Rect::new(0.08, -0.08, 0.28, 0.08), vcol(pal.gold, 0.9));
+    pen.rect(Rect::new(-0.5, -0.14, -0.42, 0.14), vcol(pal.teal, 0.9));
 }
 
 /// The test range's target lane: a rounded band with a dashed centre line and three targets.
@@ -516,63 +652,51 @@ fn mooring(pen: &mut Pen, pal: &Palette, rng: &mut Rng, c: Vec2, open: f32, lit:
 /// moorings.
 pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     let mut rng = Rng::new(7);
-    // The truss bridges to the moorings, and the cross bars at their far end and behind the mind.
+    // The truss bridges to the moorings, bending into the mind's corners, and the cross bar at their far end.
     let (bx0, bx1) = l.bridge_x;
-    for y in l.bridges {
+    for (y, (bend, end)) in l.bridges.into_iter().zip(l.mind_joints) {
         truss(pen, pal, Vec2::new(bx0, y), Vec2::new(bx1, y), BRIDGE, ((bx1 - bx0) / 1.1) as usize);
+        truss(pen, pal, bend, end, BRIDGE, 2);
+        pen.disc(bend, BRIDGE * 0.75, vcol(pal.hull_hi, 1.0));
+        pen.circle(bend, BRIDGE * 0.75, 0.06, vcol(pal.dark, 1.0));
+        pen.disc(bend, 0.12, vcol(pal.dark, 1.0));
     }
-    for x in [bx0, bx1] {
-        pen.line(Vec2::new(x, l.bridges[0]), Vec2::new(x, l.bridges[1]), 0.5, vcol(pal.hull_hi, 1.0));
-    }
+    pen.line(Vec2::new(bx0, l.bridges[0]), Vec2::new(bx0, l.bridges[1]), 0.5, vcol(pal.hull_hi, 1.0));
     for (k, c) in l.moorings.iter().enumerate() {
         mooring(pen, pal, &mut rng, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }
-    // Struts under the buildings; violet conduits from the mind into the base.
-    for b in [&l.research, &l.fabricator, &l.mind, &l.range, &l.salvage] {
+    // Struts under the buildings (the mind's collar is its own), and the one from the range's tower to its lane.
+    for b in [&l.research, &l.fabricator, &l.range, &l.salvage] {
         strut(pen, pal, b.strut.0, b.strut.1);
     }
-    for dy in [-2.0, 2.0] {
-        let y = l.mind.centre.y + dy;
-        pen.line(Vec2::new(l.mind.rect().max.x, y), Vec2::new(l.base_x - BASE_STRIP, y), 0.06, vcol(pal.violet, 0.45));
-    }
-    // Research: a lab with an orbit emblem and dishes on its roof, lit when research runs.
-    let r = &l.research;
-    let lab_col = if lights.research { pal.gold } else { pal.dim };
-    block(pen, pal, &mut rng, r.rect(), lights.research, pal.gold);
-    let (rx, ry) = (1.69, 0.62);
-    ellipse(pen, r.centre, rx, ry, 20f32.to_radians(), 0.1, vcol(lab_col, 1.0));
-    ellipse(pen, r.centre, rx, ry, -40f32.to_radians(), 0.06, vcol(lab_col, 0.5));
-    if lights.research {
-        pen.glow(r.centre, 3.0, vcol(pal.gold, 0.6));
-    }
-    pen.disc(r.centre, 0.29, vcol(lab_col, 1.0));
-    dish(pen, pal, r.centre + Vec2::new(-3.5, 3.1), 0.9, PI / 2.0, lab_col);
-    dish(pen, pal, r.centre + Vec2::new(3.3, 3.1), 0.7, PI / 3.0, lab_col);
-    antenna(pen, pal, r.centre + Vec2::new(1.0, 2.75), Vec2::new(0.0, 1.3), pal.gold);
+    let t = l.range.rect();
+    strut(pen, pal, Vec2::new(t.max.x - 0.1, l.lane.0.y), l.lane.0 - Vec2::X * 1.0);
+    research_house(pen, l, pal, &mut rng, lights.research);
     // The fabricator and the salvage bay: dark until they have screens.
     block(pen, pal, &mut rng, l.fabricator.rect(), false, pal.dim);
     bays(pen, pal, l.fabricator.centre, 0.0287);
     block(pen, pal, &mut rng, l.salvage.rect(), false, pal.dim);
     bays(pen, pal, l.salvage.centre, 0.0233);
-    // The mind, behind the base.
-    block(pen, pal, &mut rng, l.mind.rect(), true, pal.violet);
-    mind(pen, pal, l.mind.centre);
+    mind_house(pen, l, pal, &mut rng);
     // The test range: its control tower and the target lane.
-    let t = l.range.rect();
     block(pen, pal, &mut rng, t, true, pal.teal);
     pen.boxed(Rect::from_center_size(t.center(), t.size() * Vec2::new(0.64, 0.44)), vcol(pal.dark, 1.0), vcol(pal.teal, 0.5), 0.06);
     lane(pen, pal, l.lane.0, l.lane.1);
-    // The approach path, the pylons and the gate.
+    // The approach path, the pylons (trusses from the arm tips to the gate's pods) and the gate.
     let path_col = if lights.gate { pal.teal } else { pal.dim };
     for (k, c) in l.chevrons.iter().enumerate() {
         let s = 0.4;
         pen.path(&[*c + Vec2::new(0.0, s), *c + Vec2::new(s, 0.0), *c - Vec2::new(0.0, s)], false, 0.08, vcol(path_col, 0.25 + 0.1 * k as f32));
     }
-    for (k, (a, b)) in l.pylons.iter().enumerate() {
-        pen.line(*a, *b, 0.45, vcol(pal.hull_hi, 1.0));
-        pen.nav(*b, if k == 1 { pal.port } else { pal.starboard }, pal.lamp);
+    for (a, b) in l.pylons {
+        truss(pen, pal, a, b, 0.6, (a.distance(b) / 1.1) as usize);
+        let d = (b - a).normalize_or_zero();
+        turned_square(pen, a + d * 0.2, 0.75, d.to_angle(), vcol(pal.hull_hi, 1.0), vcol(pal.dark, 1.0), 0.05);
     }
     gate(pen, pal, l.gate, lights.gate);
+    for (k, (_, b)) in l.pylons.iter().enumerate() {
+        pen.nav(*b, if k == 1 { pal.port } else { pal.starboard }, pal.lamp);
+    }
 }
 
 /// A gantry crane spanning the arms (local: its rail centred on x = 0, from the top arm to the bottom one).

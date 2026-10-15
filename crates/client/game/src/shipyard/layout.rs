@@ -19,6 +19,8 @@ pub const TIP: f32 = 1.3;
 pub const BASE_STRIP: f32 = 1.1;
 /// The gate's ring radius and how far its centre lies past the arm tips.
 pub const GATE_RADIUS: f32 = 7.5;
+/// How far out of the ring the gate's four big pods sit (the pylons end on the two facing the station).
+pub const GATE_POD: f32 = 0.9;
 const GATE_GAP: f32 = 13.0;
 /// The truss bridges' width.
 pub const BRIDGE: f32 = 0.8;
@@ -74,6 +76,11 @@ impl Building {
     }
 }
 
+/// How much a building's block is chamfered at each corner.
+pub fn chamfer(r: Rect) -> f32 {
+    r.width().min(r.height()) * 0.18
+}
+
 /// How a label lines up with its anchor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Align {
@@ -96,7 +103,7 @@ pub struct Layout {
     pub research: Building,
     pub fabricator: Building,
     pub mind: Building,
-    /// The test range's control tower and its target lane (start and end of its centre line).
+    /// The test range's control tower and its target lane (start and end of its centre line, a strut apart).
     pub range: Building,
     pub lane: (Vec2, Vec2),
     pub salvage: Building,
@@ -108,9 +115,11 @@ pub struct Layout {
     /// Mooring centres (their interior's centre), escort 1 first: the near two, then the far two; the upper ones
     /// open up, the lower ones down.
     pub moorings: [Vec2; MOORINGS],
-    /// The truss bridges' y and their x span (from just past the far moorings to the mind's back).
+    /// The truss bridges' y and their x span (from just past the far moorings to where they bend towards the mind).
     pub bridges: [f32; 2],
     pub bridge_x: (f32, f32),
+    /// Where each bridge bends, and where it then meets the middle of the mind's chamfered corner (square onto it).
+    pub mind_joints: [(Vec2, Vec2); 2],
     /// Crane rails' x in the yard, and where they park at the mouth while the drydock is open.
     pub cranes: [f32; 3],
     pub crane_park: [f32; 3],
@@ -145,20 +154,31 @@ impl Layout {
         // Right of the salvage bay however small the frame.
         let range_c = Vec2::new((0.5 * w).max(8.25), bottom - 3.9);
         let range = Building { centre: range_c, size: Vec2::new(4.5, 3.5), strut: (range_c + Vec2::Y * 1.75, Vec2::new(range_c.x, bottom)) };
-        let lane = (range_c + Vec2::X * 3.0, range_c + Vec2::X * 19.0);
+        // The lane's round end a strut's length right of the tower.
+        let lane_start = range_c.x + 2.25 + 1.0 + 1.1;
+        let lane = (Vec2::new(lane_start, range_c.y), Vec2::new(lane_start + 11.0, range_c.y));
         let salvage_c = Vec2::new(2.0, bottom - 3.0);
         let salvage = Building { centre: salvage_c, size: Vec2::new(6.0, 3.5), strut: (salvage_c + Vec2::Y * 1.75, Vec2::new(salvage_c.x, bottom)) };
 
         let gate = Vec2::new(tip_x + GATE_GAP, mid);
         let chevrons = (0..7).map(|k| Vec2::new(tip_x + 2.0 + 1.3 * k as f32, mid)).collect();
-        let pylons = [-1.0f32, 1.0].map(|s| (Vec2::new(tip_x + TIP, mid + s * (h + WALL) / 2.0), Vec2::new(gate.x - 3.0, mid + s * 8.0)));
+        // From the arm tips' faces to the gate's pods facing the station.
+        let pylons = [-1.0f32, 1.0].map(|s| (Vec2::new(tip_x + TIP, mid + s * (h + WALL) / 2.0), gate + Vec2::new(-1.0, s).normalize() * (GATE_RADIUS + GATE_POD)));
 
-        let near = mind.rect().min.x - 5.05;
-        let far = near - 2.0 * (MOORING_HALF + MOORING_WALL) - 2.0;
         let bridges = [mid + 6.5, mid - 6.5];
+        // Each bridge bends by 45° into the middle of the mind's corner chamfer, so it meets the block square on.
+        let (m, c) = (mind.rect(), chamfer(mind.rect()));
+        let mind_joints = [1.0f32, -1.0].map(|s| {
+            let end = Vec2::new(m.min.x + c / 2.0, mid + s * (m.height() / 2.0 - c / 2.0));
+            let drop = (mid + s * 6.5 - end.y).abs();
+            (Vec2::new(end.x - drop, mid + s * 6.5), end)
+        });
+        let bend = mind_joints[0].0.x;
+        let near = bend - MOORING_HALF - MOORING_WALL - 0.3;
+        let far = near - 2.0 * (MOORING_HALF + MOORING_WALL) - 2.0;
         let off = BRIDGE / 2.0 + MOORING_WALL + MOORING_DEPTH / 2.0;
         let moorings = [Vec2::new(near, bridges[0] + off), Vec2::new(near, bridges[1] - off), Vec2::new(far, bridges[0] + off), Vec2::new(far, bridges[1] - off)];
-        let bridge_x = (far - MOORING_HALF - MOORING_WALL - 1.0, mind.rect().min.x);
+        let bridge_x = (far - MOORING_HALF - MOORING_WALL - 1.0, bend);
 
         let cranes = CRANES.map(|f| f * w);
         let crane_park = [0.7, 1.6, 2.5].map(|d| w + d);
@@ -182,6 +202,7 @@ impl Layout {
             moorings,
             bridges,
             bridge_x,
+            mind_joints,
             cranes,
             crane_park,
             overview,
@@ -193,11 +214,22 @@ impl Layout {
         Rect::new(self.base_x - BASE_STRIP, self.area.min.y - WALL, self.tip_x + TIP, self.area.max.y + WALL)
     }
 
-    /// The near moorings and their bridge: FLEET's place.
+    /// All four moorings and their bridges: FLEET's place.
     fn fleet_rect(&self) -> Rect {
-        let near = self.moorings[0].x;
-        let reach = MOORING_DEPTH / 2.0;
-        Rect::new(near - MOORING_HALF - MOORING_WALL - 0.6, self.moorings[1].y - reach, self.mind.rect().min.x, self.moorings[0].y + reach)
+        let far = self.moorings[2].x;
+        let reach = MOORING_DEPTH / 2.0 + MOORING_WALL;
+        Rect::new(far - MOORING_HALF - MOORING_WALL - 0.6, self.moorings[1].y - reach, self.mind.rect().min.x, self.moorings[0].y + reach)
+    }
+
+    /// The shuttles' runs, each from one end to the other and back: along the bridges from the far moorings past the
+    /// near ones to research and to the salvage bay; and round the gate.
+    pub fn shuttle_runs(&self) -> [Vec<Vec2>; 2] {
+        let out = MOORING_DEPTH / 2.0 + MOORING_WALL + 1.6;
+        let run = |s: f32, far: Vec2, near: Vec2, to: Vec2| vec![far + Vec2::Y * s * out, near + Vec2::Y * s * out, to];
+        [
+            run(1.0, self.moorings[2], self.moorings[0], Vec2::new(self.research.rect().min.x - 1.6, self.research.centre.y)),
+            run(-1.0, self.moorings[3], self.moorings[1], Vec2::new(self.salvage.rect().min.x - 1.6, self.salvage.centre.y)),
+        ]
     }
 
     /// Where a click or a tap finds the place.

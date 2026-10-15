@@ -1,6 +1,11 @@
 //! The space backdrop: the radial gradient from the style guide stretched over the viewport, two parallax
-//! layers of faint dust particles and dotted range rings around the followed ship; and the veil the screens over
-//! the station (BEHAVIOR, RESEARCH, FLEET) lay over all of it, so they share one dark ground.
+//! layers of faint dust particles, a far layer of stars twinkling in three groups, and dotted range rings around
+//! the followed ship; and the veil the screens over the station (BEHAVIOR, RESEARCH, FLEET) lay over all of it, so
+//! they share one dark ground.
+//!
+//! Outside flight the dust drifts slowly past (the station floats; Niklas, 15 Oct 2026: "very static"); in flight
+//! it stays put, the ships' measure of their own motion. The rings keep their dots a few pixels across and apart at
+//! any zoom (rebuilt when the zoom moves by a step), so they stay visible zoomed out.
 
 use bevy::prelude::*;
 use kit::atlas::{Atlas, AtlasMaterial, set_alpha};
@@ -11,6 +16,7 @@ use kit::style::{RadialGradient, Style, vcol};
 use kit::ui_kit::ScreenFx;
 
 use crate::camera::{CameraRig, CameraSet, MainCamera};
+use crate::mode::AppMode;
 
 const Z_BACKDROP: f32 = -900.0;
 const Z_DUST: f32 = -800.0;
@@ -34,8 +40,13 @@ struct DustCopy {
     slot: i32,
 }
 
+/// A star group's material (the group twinkles as one).
 #[derive(Component)]
-pub struct RangeRings;
+struct Twinkle(usize);
+
+/// The dotted range rings: the zoom step they were built for.
+#[derive(Component)]
+pub struct RangeRings(Option<i32>);
 
 /// A screen that veils the backdrop while it shows (fading with its `ScreenFx`): BEHAVIOR, RESEARCH and FLEET sit
 /// on the same dark ground, the gradient's outer colour, and the station behind them shows only as much as
@@ -53,7 +64,23 @@ struct DustLayer {
     parallax: f32,
 }
 
-const LAYERS: [DustLayer; 2] = [DustLayer { parallax: 0.35 }, DustLayer { parallax: 0.7 }];
+/// Two layers of dust, then three groups of stars (far away, each group twinkling on its own).
+const LAYERS: [DustLayer; 5] =
+    [DustLayer { parallax: 0.35 }, DustLayer { parallax: 0.7 }, DustLayer { parallax: 0.12 }, DustLayer { parallax: 0.12 }, DustLayer { parallax: 0.12 }];
+const STAR_LAYER: usize = 2;
+/// Stars per group and tile.
+const STARS: usize = 140;
+/// The dust's drift outside flight (m/s, in the far layer's space; nearer layers pass faster).
+const DRIFT: Vec2 = Vec2::new(-0.55, 0.12);
+/// The drift wraps after this many metres: a whole number of tiles in every layer (it moves 1, 35/12 and 70/12
+/// times as far in the stars', the far dust's and the near dust's space), so nothing jumps.
+const DRIFT_WRAP: f32 = TILE * 12.0;
+/// The range rings: radius (m), and their dots' least size and spacing on screen (logical px).
+const RINGS: [f32; 2] = [30.0, 60.0];
+const RING_DOT_PX: f32 = 2.6;
+const RING_GAP_PX: f32 = 11.0;
+/// Zoom steps the rings are rebuilt at (per doubling).
+const RING_STEPS: f32 = 6.0;
 
 pub struct BackdropPlugin;
 
@@ -64,11 +91,12 @@ impl Plugin for BackdropPlugin {
         let clear = app.world().resource::<Style>().background.outer();
         app.insert_resource(ClearColor(clear))
             .add_systems(Startup, spawn_backdrop.after(crate::camera::spawn_camera))
-            .add_systems(Update, veil)
+            .init_resource::<Drift>()
+            .add_systems(Update, (veil, twinkle, drift))
             // After the camera moved, before the transforms are propagated (else they show last frame's place).
             .add_systems(
                 PostUpdate,
-                (fit_backdrop, place_dust, follow_rings).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
+                (fit_backdrop, place_dust, follow_rings, build_rings).after(CameraSet).before(bevy::transform::TransformSystems::Propagate),
             );
     }
 }
@@ -109,7 +137,7 @@ fn spawn_backdrop(
     let soft = atlas.region("fx/dot_soft");
     let hard = atlas.region("fx/dot_hard");
     let mut rng = Rng::new(0x5eed_d057);
-    for (li, _) in LAYERS.iter().enumerate() {
+    for (li, _) in LAYERS.iter().enumerate().take(STAR_LAYER) {
         let mut m = MeshBuf::default();
         let (count, size, alpha) = if li == 0 { (3600, (0.05, 0.11), (0.12, 0.35)) } else { (1200, (0.08, 0.16), (0.2, 0.5)) };
         for _ in 0..count {
@@ -133,21 +161,90 @@ fn spawn_backdrop(
         }
     }
 
-    // Dotted range rings (style guide: dotted rings in #414c52).
-    let mut m = MeshBuf::default();
-    for (radius, spacing, dot) in [(30.0f32, 1.1f32, 0.22f32), (60.0, 1.6, 0.26)] {
-        let n = (std::f32::consts::TAU * radius / spacing).round() as usize;
-        for k in 0..n {
-            let a = k as f32 / n as f32 * std::f32::consts::TAU;
-            m.region_at(&hard, Vec2::new(a.cos(), a.sin()) * radius, Vec2::splat(dot / 0.92), 0.0, vcol(style.dotted_ring, 0.9));
+    // Stars: a hard point and a faint halo each, in three groups that twinkle out of step.
+    for group in 0..LAYERS.len() - STAR_LAYER {
+        let mut m = MeshBuf::default();
+        for _ in 0..STARS {
+            let at = Vec2::new(rng.range(0.0, TILE), rng.range(0.0, TILE));
+            let s = rng.range(0.1, 0.24);
+            let a = rng.range(0.45, 0.9);
+            m.region_at(&hard, at, Vec2::splat(s), 0.0, vcol(style.star, a));
+            m.region_at(&soft, at, Vec2::splat(s * 7.0), 0.0, vcol(style.star, a * 0.22));
+        }
+        let mesh = meshes.add(m.into_mesh());
+        let material = atlas.group_material(&mut materials);
+        for slot in 0..COPIES * COPIES {
+            commands.spawn((
+                DustCopy { layer: STAR_LAYER + group, slot },
+                Twinkle(group),
+                Mesh2d(mesh.clone()),
+                MeshMaterial2d(material.clone()),
+                Transform::from_xyz(0.0, 0.0, Z_DUST - 1.0),
+            ));
         }
     }
-    commands.spawn((
-        RangeRings,
-        Mesh2d(meshes.add(m.into_mesh())),
-        MeshMaterial2d(atlas.material.clone()),
-        Transform::from_xyz(0.0, 0.0, Z_RINGS),
-    ));
+
+    // Dotted range rings (style guide: dotted rings in #414c52), built for the zoom (`build_rings`).
+    commands.spawn((RangeRings(None), Mesh2d(meshes.add(MeshBuf::placeholder())), MeshMaterial2d(atlas.material.clone()), Transform::from_xyz(0.0, 0.0, Z_RINGS)));
+}
+
+/// How far the dust has drifted (m, in the far layer's space).
+#[derive(Resource, Default)]
+struct Drift(Vec2);
+
+/// The dust drifts outside flight.
+fn drift(time: Res<Time<Real>>, mode: Res<State<AppMode>>, mut drift: ResMut<Drift>) {
+    if *mode.get() == AppMode::Flight {
+        return;
+    }
+    let d = drift.0 + DRIFT * time.delta_secs();
+    drift.0 = Vec2::new(d.x.rem_euclid(DRIFT_WRAP), d.y.rem_euclid(DRIFT_WRAP));
+}
+
+/// How bright a star group is at `t` (s): two slow waves out of step, so no group repeats soon.
+fn twinkle_alpha(group: usize, t: f32) -> f32 {
+    let g = group as f32;
+    let w = (t * (0.9 + 0.37 * g) + g * 2.1).sin() * 0.6 + (t * (2.3 + 0.53 * g) + g).sin() * 0.4;
+    0.6 + 0.4 * w
+}
+
+/// The star groups twinkle.
+fn twinkle(time: Res<Time<Real>>, stars: Query<(&Twinkle, &MeshMaterial2d<AtlasMaterial>)>, mut materials: ResMut<Assets<AtlasMaterial>>, mut done: Local<[bool; 3]>) {
+    let t = time.elapsed_secs_wrapped();
+    *done = [false; 3];
+    for (tw, material) in &stars {
+        if !done[tw.0] {
+            done[tw.0] = true;
+            set_alpha(&mut materials, &material.0, twinkle_alpha(tw.0, t));
+        }
+    }
+}
+
+/// The range rings for a zoom (px per m): each dot at least [`RING_DOT_PX`] across and [`RING_GAP_PX`] apart on
+/// screen, never smaller or closer than the style's world sizes.
+fn ring_mesh(hard: &kit::atlas::Region, color: Color, zoom: f32) -> Mesh {
+    let mut m = MeshBuf::default();
+    for (radius, (spacing, dot)) in RINGS.into_iter().zip([(1.1f32, 0.22f32), (1.6, 0.26)]) {
+        let (spacing, dot) = (spacing.max(RING_GAP_PX / zoom), dot.max(RING_DOT_PX / zoom));
+        let n = (std::f32::consts::TAU * radius / spacing).round().max(8.0) as usize;
+        for k in 0..n {
+            let a = k as f32 / n as f32 * std::f32::consts::TAU;
+            m.region_at(hard, Vec2::new(a.cos(), a.sin()) * radius, Vec2::splat(dot / 0.92), 0.0, vcol(color, 0.9));
+        }
+    }
+    m.into_mesh()
+}
+
+/// The rings again when the zoom has moved by a step.
+fn build_rings(rig: Res<CameraRig>, atlas: Res<Atlas>, style: Res<Style>, mut meshes: ResMut<Assets<Mesh>>, rings: Single<(&mut RangeRings, &Mesh2d)>) {
+    let step = (rig.zoom.max(1e-3).log2() * RING_STEPS).round() as i32;
+    let (mut rings, mesh) = rings.into_inner();
+    if rings.0 == Some(step) {
+        return;
+    }
+    rings.0 = Some(step);
+    let zoom = 2f32.powf(step as f32 / RING_STEPS);
+    let _ = meshes.insert(&mesh.0, ring_mesh(&atlas.region("fx/dot_hard"), style.dotted_ring, zoom));
 }
 
 fn fit_backdrop(
@@ -229,6 +326,7 @@ fn backdrop_mesh(atlas: &Atlas, gradient: &RadialGradient) -> Mesh {
 #[allow(clippy::type_complexity)]
 fn place_dust(
     toggles: Res<RenderToggles>,
+    drift: Res<Drift>,
     camera: Single<(&Camera, &Projection, &Transform), (With<MainCamera>, Without<DustCopy>)>,
     mut copies: Query<(&DustCopy, &mut Transform, &mut Visibility)>,
 ) {
@@ -241,13 +339,14 @@ fn place_dust(
     let cam_pos = cam_tf.translation.truncate();
     for (copy, mut tf, mut vis) in &mut copies {
         let f = LAYERS[copy.layer].parallax;
-        // Camera position in layer space; the layer is shifted so it moves `f` times as fast as the world.
-        let q = cam_pos * f;
+        // Camera position in layer space (plus the drift, nearer layers passing faster); the layer is shifted so it
+        // moves `f` times as fast as the world.
+        let q = cam_pos * f - drift.0 * (f / LAYERS[STAR_LAYER].parallax);
         let first = ((q - view / 2.0) / TILE).floor();
         let (ix, iy) = (copy.slot % COPIES, copy.slot / COPIES);
         let tile = first + Vec2::new(ix as f32, iy as f32);
         let needed = (tile * TILE - q).cmple(view / 2.0);
-        let origin = tile * TILE + cam_pos * (1.0 - f);
+        let origin = tile * TILE - q + cam_pos;
         if tf.translation.truncate() != origin {
             tf.translation.x = origin.x;
             tf.translation.y = origin.y;

@@ -132,7 +132,7 @@ pub(super) fn update_text(
                 match scene.kind {
                     SceneKind::Sandbox => {
                         // The player's vessels are in the fleet bar (`fleet_bar.rs`).
-                        let _ = write!(s, "RAIDERS {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
+                        let _ = write!(s, "ENEMIES {} / {}  ·  KILLS {}", alive, scene.wave_ships.len(), scene.kills);
                         s.push_str(if scene.waves { "  ·  WAVES ON" } else { "  ·  WAVES OFF" });
                     }
                     SceneKind::Load(_) => {

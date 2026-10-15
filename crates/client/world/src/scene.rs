@@ -1,10 +1,10 @@
 //! Scenes: what is in the world and who flies it. Chosen by URL parameters, or by the screen that starts a flight:
 //!
 //! * **sandbox** (home's TEST RANGE, `?scene=sandbox`): the player flies their design (`drydock::PlayerDesign`; at the first start a copy of
-//!   the Halvex Runner, then the autosaved working design) as the focus; waves of raiders (the first content ship
-//!   tagged `enemy`: the automaton raider) under their content behavior (`raider_basic`), a new wave a few seconds
-//!   after the last raider goes dark (C turns the waves off and on), each wave as big as the flown design calls for
-//!   ([`wave_size`], GDR-0074) unless the tuning panel sets it by hand; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
+//!   the Halvex Runner, then the autosaved working design) as the focus; waves of enemies (the content ships tagged
+//!   `enemy`) under their content behavior (`raider_basic`), a new wave a few seconds after the last enemy goes dark
+//!   (C turns the waves off and on), each wave as big as the flown design calls for, the biggest enemies first
+//!   ([`wave_mix`], GDR-0074, GDR-0089) unless the tuning panel sets a number of raiders by hand; the player's other vessels (`?fleet=N` more of the design, their leader the player's ship, and pieces that split off with a
 //!   logic core) fly the behavior the design names (default: its faction's, `skirmisher`; the player's saved
 //!   behaviors are in the flight's library, `drydock::behaviors`); wrecks and salvage drift away and are cleaned up
 //!   far from the player, loose items after 60 s ([`SANDBOX_LOOSE_TICKS`]); when the player has no vessel left, a
@@ -61,9 +61,9 @@ use crate::voyage::VoyageRun;
 pub const PLAYER: Owner = Owner::PLAYER;
 pub const ENEMY: Owner = Owner(1);
 
-/// Content ships with this tag are raiders: the sandbox's waves and the showcase's attackers fly the first one
-/// (content order: the base pack's `automaton_raider`).
-const RAIDER_TAG: &str = "enemy";
+/// Content ships with this tag are enemies: the sandbox's waves draw from all of them, the showcase's attackers fly
+/// the smallest (the base pack's `automaton_raider`).
+const ENEMY_TAG: &str = "enemy";
 
 /// How long a loose item (a core fragment, spilled cargo) drifts in the sandbox and the showcase before it is gone
 /// (ticks; 1800 = 60 s, the sim's default until GDR-0079). The sim keeps loose items until it ends (a voyage does),
@@ -71,30 +71,46 @@ const RAIDER_TAG: &str = "enemy";
 /// clean-up.
 const SANDBOX_LOOSE_TICKS: u32 = 1800;
 
-/// The design the raiders fly, compiled for [`ENEMY`].
-fn raider_design(world: &mut SimWorld) -> Option<Arc<ShipDesign>> {
-    let Some(id) = world.content.ships.iter().find(|s| s.tags.iter().any(|t| t == RAIDER_TAG)).map(|s| s.id.clone()) else {
-        warn_once!("no content ship is tagged `{RAIDER_TAG}`: no raiders");
-        return None;
-    };
-    world.design(&id, ENEMY)
-}
-
-/// Raiders per sandbox wave when the tuning does not set it by hand (GDR-0074, PLACEHOLDER rule): the flown
-/// design's build points over a raider's, times [`WAVE_SHARE`], rounded, at least 1 and at most [`WAVE_CAP`].
-/// With the content of 14 Oct 2026 (a raider is 15.8 build points) the starter `rim_skiff` (59) meets 2 raiders
-/// and the Halvex Runner (132.5) 4: waves a pilot wins about nine times in ten
-/// (`docs/results/slice-balance-2026-10-13.md`, "GDR-0074").
-pub fn wave_size(design_bp: f32, raider_bp: f32) -> u32 {
-    if !(design_bp > 0.0 && raider_bp > 0.0) {
-        return 1;
+/// Every enemy design, compiled for [`ENEMY`], smallest (by build points) first.
+fn enemy_designs(world: &mut SimWorld) -> Vec<Arc<ShipDesign>> {
+    let ids: Vec<String> = world.content.ships.iter().filter(|s| s.tags.iter().any(|t| t == ENEMY_TAG)).map(|s| s.id.clone()).collect();
+    if ids.is_empty() {
+        warn_once!("no content ship is tagged `{ENEMY_TAG}`: no raiders");
     }
-    (design_bp / raider_bp * WAVE_SHARE).round().clamp(1.0, WAVE_CAP as f32) as u32
+    let mut designs: Vec<Arc<ShipDesign>> = ids.iter().filter_map(|id| world.design(id, ENEMY)).collect();
+    designs.sort_by(|a, b| build_points(a).total_cmp(&build_points(b)));
+    designs
 }
 
-/// One raider per this share of a raider's build points in the flown design ([`wave_size`]).
+/// A sandbox wave (GDR-0074 sized it, GDR-0089 fills it; PLACEHOLDER rule): a budget of the flown design's build
+/// points times [`WAVE_SHARE`], spent on the biggest enemies first (each as often as it fits whole), then one more
+/// of the smallest if at least half of it is left; at least one ship, at most [`WAVE_CAP`]. `enemies` holds their
+/// build points, smallest first; the result says how many of each. With the content of 15 Oct 2026 the starter
+/// `rim_skiff` (59) meets a hunter, the Halvex Runner (132.5) two hunters and a raider, a 300-point design two
+/// wardens (Niklas, 15 Oct 2026: a single ship against a swarm of small ones felt wrong).
+pub fn wave_mix(design_bp: f32, enemies: &[f32]) -> Vec<u32> {
+    let mut n = vec![0u32; enemies.len()];
+    let Some(&smallest) = enemies.first().filter(|bp| **bp > 0.0) else {
+        return n;
+    };
+    let mut left = if design_bp > 0.0 { design_bp * WAVE_SHARE } else { 0.0 };
+    let mut total = 0;
+    for k in (0..enemies.len()).rev() {
+        while enemies[k] > 0.0 && enemies[k] <= left && total < WAVE_CAP {
+            n[k] += 1;
+            total += 1;
+            left -= enemies[k];
+        }
+    }
+    if total == 0 || (left >= smallest / 2.0 && total < WAVE_CAP) {
+        n[0] += 1;
+    }
+    n
+}
+
+/// Spend a wave's budget at this share of the flown design's build points ([`wave_mix`]).
 pub const WAVE_SHARE: f32 = 0.5;
-/// The biggest wave [`wave_size`] makes.
+/// The most ships in a wave.
 pub const WAVE_CAP: u32 = 8;
 
 /// A compiled design's build points (as placed: hull parts with their material's factor).
@@ -395,7 +411,7 @@ fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, 
                 // from (about 45-50 m), so hits come at once.
                 let attack = params.flag("fire").unwrap_or(false);
                 let (n, dist) = if attack { (tuning.raiders_per_wave.unwrap_or(3).max(1), 46.0) } else { (3, 16.0) };
-                if let Some(raider) = raider_design(&mut world) {
+                if let Some(raider) = enemy_designs(&mut world).into_iter().next() {
                     for k in 0..n {
                         let a = k as f32 * std::f32::consts::TAU / n as f32 + 0.4;
                         let pos = Vec2::new(a.cos(), a.sin()) * dist;
@@ -733,24 +749,28 @@ fn scene_tick(
             .and_then(|s| s.control_piece().and_then(|p| s.piece(p)))
             .map(|p| v2(p.com_world()))
             .unwrap_or(Vec2::ZERO);
-        let raider = raider_design(world);
+        let designs = enemy_designs(world);
         let flown = scene.player_design.as_deref().map_or(0.0, build_points);
-        let n = tuning.raiders_per_wave.unwrap_or_else(|| wave_size(flown, raider.as_deref().map_or(0.0, build_points))).max(1);
-        if let Some(raider) = raider {
-            let base = scene.rng.range(0.0, std::f32::consts::TAU);
-            for k in 0..n {
-                let a = base + (k as f32 - (n as f32 - 1.0) / 2.0) * 0.32;
-                let r = scene.rng.range(105.0, 125.0);
-                let pos = centre + Vec2::new(a.cos(), a.sin()) * r;
-                let to = (centre - pos).normalize_or_zero();
-                let body = Body { pos: sv(pos), angle: (-to.x).atan2(to.y), linvel: sv(to * 3.0), angvel: 0.0 };
-                let behavior = world.sim.behaviors().default_for(&raider);
-                let id = world.sim.spawn_ship(raider.clone(), ENEMY, body);
-                world.sim.command(id, ShipCommand::Behavior(behavior));
-                scene.wave_ships.push(id);
-            }
+        // Raiders set by hand are that many of the smallest.
+        let mix = match tuning.raiders_per_wave {
+            Some(n) => designs.iter().enumerate().map(|(k, _)| if k == 0 { n.max(1) } else { 0 }).collect(),
+            None => wave_mix(flown, &designs.iter().map(|d| build_points(d)).collect::<Vec<_>>()),
+        };
+        let wave: Vec<Arc<ShipDesign>> = designs.iter().zip(&mix).rev().flat_map(|(d, n)| std::iter::repeat_n(d.clone(), *n as usize)).collect();
+        let n = wave.len();
+        let base = scene.rng.range(0.0, std::f32::consts::TAU);
+        for (k, design) in wave.iter().enumerate() {
+            let a = base + (k as f32 - (n as f32 - 1.0) / 2.0) * 0.32;
+            let r = scene.rng.range(105.0, 125.0);
+            let pos = centre + Vec2::new(a.cos(), a.sin()) * r;
+            let to = (centre - pos).normalize_or_zero();
+            let body = Body { pos: sv(pos), angle: (-to.x).atan2(to.y), linvel: sv(to * 3.0), angvel: 0.0 };
+            let behavior = world.sim.behaviors().default_for(design);
+            let id = world.sim.spawn_ship(design.clone(), ENEMY, body);
+            world.sim.command(id, ShipCommand::Behavior(behavior));
+            scene.wave_ships.push(id);
         }
-        scene.banner = Some((format!("WAVE {} · {} RAIDERS", scene.wave, n), now + 3.0));
+        scene.banner = Some((format!("WAVE {} · {} {}", scene.wave, n, if n == 1 { "ENEMY" } else { "ENEMIES" }), now + 3.0));
     }
 
     // Clean up wrecks: dark ships far from the player, or dark for a long time.
@@ -830,20 +850,25 @@ mod tests {
     use super::*;
     use crate::test_range::{StartTest, TestProgram, TestRangePlugin};
 
-    /// GDR-0074: a wave follows the flown design's build points against a raider's, at least 1, at most the cap.
+    /// GDR-0074, GDR-0089: a wave spends the flown design's budget on the biggest enemies first, at least one ship,
+    /// at most the cap.
     #[test]
-    fn waves_follow_the_flown_design() {
-        assert_eq!(wave_size(59.0, 15.8), 2);
-        assert_eq!(wave_size(132.5, 15.8), 4);
-        assert_eq!(wave_size(1.0, 15.8), 1, "at least one raider");
-        assert_eq!(wave_size(0.0, 15.8), 1);
-        assert_eq!(wave_size(50.0, 0.0), 1, "no raider design to measure");
-        assert_eq!(wave_size(10_000.0, 15.8), WAVE_CAP);
-        // The content's designs, compiled: the starter meets 2 raiders, the Halvex Runner 4.
+    fn waves_follow_the_flown_design_biggest_first() {
+        let kinds = [15.8, 23.6, 75.0];
+        assert_eq!(wave_mix(59.0, &kinds), [0, 1, 0], "the starter meets a hunter");
+        assert_eq!(wave_mix(132.5, &kinds), [1, 2, 0]);
+        assert_eq!(wave_mix(300.0, &kinds), [0, 0, 2]);
+        assert_eq!(wave_mix(40.0, &kinds), [1, 0, 0], "20 points: a raider and a little left over");
+        assert_eq!(wave_mix(1.0, &kinds), [1, 0, 0], "at least one ship");
+        assert_eq!(wave_mix(0.0, &kinds), [1, 0, 0]);
+        assert_eq!(wave_mix(50.0, &[]), Vec::<u32>::new(), "no enemy designs");
+        assert_eq!(wave_mix(100_000.0, &kinds).iter().sum::<u32>(), WAVE_CAP);
+        // The content's designs, compiled.
         let c = data::base_content();
         let bp = |id: &str| build_points(&ShipDesign::compile(&c, c.ships.get(id).unwrap()).unwrap());
-        let raider = bp("automaton_raider");
-        assert_eq!((wave_size(bp("rim_skiff"), raider), wave_size(bp("halvex_runner"), raider)), (2, 4));
+        let enemies = [bp("automaton_raider"), bp("automaton_hunter"), bp("automaton_warden")];
+        assert!(enemies.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!((wave_mix(bp("rim_skiff"), &enemies), wave_mix(bp("halvex_runner"), &enemies)), (vec![0, 1, 0], vec![1, 2, 0]));
     }
 
     /// The behavior screen's request: from another mode it launches a test flight; in flight it rebuilds the

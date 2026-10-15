@@ -8,11 +8,14 @@
 //! * [`draw`]: the meshes, flat vector shapes in the style tokens with a few glows.
 //! * [`fly`]: the camera's flight between the yard and a place (home flies it, `home.rs`).
 //! * `gate`: the ring of light at the gate after a recall.
+//! * `life`: what moves at home besides the rigging (beacons, the gate's ring, the mind, research's dishes,
+//!   shuttles).
 //!
 //! **Cost**: the station is three static meshes (the yard around the U, the building area's floor, the walls),
 //! rebuilt only when the frame size, the career's lights or the glow setting change; the docked ship is one mesh
 //! rebuilt with the design, each escort one. What moves (cranes sliding to the mouth for the drydock, carriages
-//! riding their cranes, hoist lines, clamps, drones) is a dozen small meshes moved by their transforms.
+//! riding their cranes, hoist lines, clamps, drones, and `life`'s parts and beacons) is small meshes moved by their
+//! transforms.
 //!
 //! **States** (from the career, [`lights`]): research is lit once anything has been researched or any research
 //! node can be paid now; the gate is awake while any voyage is open (a new game opens its first one, so it is
@@ -27,6 +30,7 @@ pub mod draw;
 pub mod fly;
 mod gate;
 pub mod layout;
+mod life;
 
 use bevy::prelude::*;
 use data::{Blueprint, Content, career::Career};
@@ -157,7 +161,7 @@ impl Plugin for ShipyardPlugin {
             .add_systems(Startup, setup)
             .add_systems(
                 Update,
-                (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Research))), animate)
+                (follow, rebuild, (rebuild_ship, rebuild_escorts).run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Research))), animate, life::animate)
                     .chain()
                     .in_set(ShipyardSet)
                     .run_if(in_state(AppMode::Home).or_eager(in_state(AppMode::Drydock)).or_eager(in_state(AppMode::Research)).or_eager(in_state(AppMode::Map))),
@@ -216,6 +220,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     for k in 0..DRONES {
         commands.spawn((Drone(k), Mesh2d(drone.clone()), MeshMaterial2d(outer.clone()), hidden(Z_DRONES)));
     }
+    life::spawn(&mut commands, &mut meshes, &outer);
     commands.insert_resource(Station { palette, core, outer });
 }
 
@@ -232,9 +237,11 @@ fn follow(design: Res<PlayerDesign>, career: Res<PlayerCareer>, escorts: Res<Esc
     }
 }
 
-/// The static meshes and the cranes, when the frame, the lights or the glow setting changed.
+/// The static meshes, the cranes, the moving parts and the beacons, when the frame, the lights or the glow setting
+/// changed.
 #[allow(clippy::too_many_arguments)]
 fn rebuild(
+    mut commands: Commands,
     mut yard: ResMut<Yard>,
     atlas: Res<Atlas>,
     toggles: Res<RenderToggles>,
@@ -242,21 +249,38 @@ fn rebuild(
     mut meshes: ResMut<Assets<Mesh>>,
     layers: Query<(&Layer, &Mesh2d)>,
     cranes: Query<&Mesh2d, With<Crane>>,
+    parts: Query<(&life::Part, &Mesh2d)>,
+    beacons: Query<Entity, With<life::Blink>>,
 ) {
     let key = (yard.layout.frame, yard.lights, toggles.glow_sprites);
     if yard.built == Some(key) {
         return;
     }
     let (l, pal, glow) = (&yard.layout, &res.palette, toggles.glow_sprites);
+    for e in &beacons {
+        commands.entity(e).despawn();
+    }
     for (layer, mesh) in &layers {
         let mut pen = Pen::new(&atlas, glow);
-        match layer {
-            Layer::Yard => draw::yard(&mut pen, l, pal, yard.lights),
-            Layer::Floor => draw::floor(&mut pen, l, pal),
-            Layer::Walls => draw::walls(&mut pen, l, pal),
-        }
+        let z = match layer {
+            Layer::Yard => {
+                draw::yard(&mut pen, l, pal, yard.lights);
+                Z_YARD
+            }
+            Layer::Floor => {
+                draw::floor(&mut pen, l, pal);
+                Z_FLOOR
+            }
+            Layer::Walls => {
+                draw::walls(&mut pen, l, pal);
+                Z_WALLS
+            }
+        };
+        let core = *layer == Layer::Walls;
+        life::respawn_beacons(&mut commands, &atlas, &mut meshes, if core { &res.core } else { &res.outer }, z, core, &pen.beacons);
         let _ = meshes.insert(&mesh.0, pen.into_mesh());
     }
+    life::rebuild(&atlas, glow, l, pal, yard.lights, &mut meshes, &parts);
     if yard.built.is_none_or(|b| b.0 != key.0) {
         let mut pen = Pen::new(&atlas, glow);
         draw::crane(&mut pen, l, pal);
@@ -420,6 +444,8 @@ fn show(
         Query<&mut Visibility, With<Drone>>,
         Query<&mut Visibility, With<DockedShip>>,
         Query<(&Moored, &mut Visibility)>,
+        Query<&mut Visibility, With<life::Part>>,
+        Query<(&life::Blink, &mut Visibility)>,
     )>,
     escorts: Res<EscortDesigns>,
     portal: Res<Portal>,
@@ -458,6 +484,12 @@ fn show(
     }
     for (m, mut v) in &mut parts.p4() {
         put(&mut v, vis(outer > 0.0 && m.slot < escorts.0.len()));
+    }
+    for mut v in &mut parts.p5() {
+        put(&mut v, vis(outer > 0.0));
+    }
+    for (b, mut v) in &mut parts.p6() {
+        put(&mut v, vis(if b.core { core > 0.0 } else { outer > 0.0 }));
     }
 }
 

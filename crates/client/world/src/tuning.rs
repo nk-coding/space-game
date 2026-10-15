@@ -5,7 +5,7 @@
 //!   linked), speed scale (every engine's and RCS pod's rated speed, so every top speed), max turn rate, key
 //!   turn rate (A/D held, GDR-0055), the player's mind capacity (logic cores running at once; fewer than the
 //!   fleet has puts the newest vessels to sleep, GDR-0044).
-//! * Next wave: raiders per wave. By default a wave follows the flown design (`scene::wave_size`, GDR-0074);
+//! * Next wave: raiders per wave. By default a wave follows the flown design (`scene::wave_mix`, GDR-0074, GDR-0089);
 //!   unticking "follow the flown ship" (or `?raiders=N`) sets the size by hand.
 //! * Immediate: drift default.
 //! * **Reset**: weapon range and damage scales change the content the designs are compiled from, so they
@@ -40,7 +40,7 @@ pub struct Tuning {
     pub mind_capacity: u32,
     pub range_scale: f32,
     pub damage_scale: f32,
-    /// Raiders per wave set by hand; `None`: each wave follows the flown design (`scene::wave_size`, GDR-0074).
+    /// Raiders per wave set by hand; `None`: each wave follows the flown design (`scene::wave_mix`, GDR-0074, GDR-0089).
     pub raiders_per_wave: Option<u32>,
     pub drift: bool,
     /// The weapon scales the running scene was built with.

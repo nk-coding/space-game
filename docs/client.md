@@ -99,12 +99,14 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 ## Scenes (`scene.rs`)
 
 - **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`player::PlayerDesign`; at the first start and a new game
-  a copy of the career's start ship, the Rim skiff; after that the autosaved working design). Waves of raiders (the first content ship tagged `enemy`:
-  the base pack's automaton raider; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
-  raider vessel goes dark (a raider shot in half can be two raiders). **A wave follows the flown design** (GDR-0074, `scene::wave_size`, a placeholder rule):
-  the design's build points over a raider's, halved and rounded, at least 1 and at most 8 (`WAVE_SHARE`,
-  `WAVE_CAP`): the starter `rim_skiff` (59 build points against a raider's 15.8) meets 2, the Halvex Runner (132.5)
-  4, each a wave a pilot stand-in wins about nine times in ten (`docs/results/slice-balance-2026-10-13.md`); the
+  a copy of the career's start ship, the Rim skiff; after that the autosaved working design). Waves of enemies (the content ships tagged `enemy`:
+  the base pack's automaton raider, hunter and warden; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
+  enemy vessel goes dark (a raider shot in half can be two raiders). **A wave follows the flown design** (GDR-0074, GDR-0089, `scene::wave_mix`, a placeholder rule):
+  half the design's build points (`WAVE_SHARE`) are spent on the biggest enemies first, each as often as it fits whole, then one more
+  of the smallest if at least half of it is left; at least 1 ship, at most 8 (`WAVE_CAP`). The starter `rim_skiff` (59 build points) meets a hunter
+  (23.6), the Halvex Runner (132.5) two hunters and a raider (15.8), a 300-point design two wardens (75) (Niklas, 15 Oct 2026: a single ship
+  against a swarm of small ones felt wrong; until then a wave was only raiders, 2 and 4 of them, each a wave a pilot stand-in won about nine times in ten,
+  `docs/results/slice-balance-2026-10-13.md`); the
   tuning panel's "follow the flown ship" box (or `raiders=N`) sets the size by hand. C turns the waves off (every raider vessel
   is removed at once, their wrecks stay, no new wave comes) and on again (a wave 2 s later); the subtitle says
   `WAVES ON` / `WAVES OFF` (C turns them on, the help line says so), Shift+R keeps the setting. Wrecks and salvage drift away and are removed when
@@ -334,7 +336,8 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
-  layers, dotted range rings around the followed ship), `meshbuf.rs` (`MeshBuf`, the CPU builder for
+  layers drifting slowly outside flight, a far layer of stars twinkling in three groups, dotted range rings around
+  the followed ship whose dots keep at least 2.6 px across and 11 px apart at any zoom, rebuilt per zoom step), `meshbuf.rs` (`MeshBuf`, the CPU builder for
   atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
   PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
   change announcements to: announced earlier, a mesh replaced two frames in a row lost its GPU buffer and vanished),
@@ -378,14 +381,24 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   arm tips, the base, the gate pylons and the moorings, antennas, the building area's floor with a dot at every cell
   corner, work lights pooling from the walls, gold corner brackets, a teal light strip with lamps around the inside.
   Three gantry cranes span the arms with carriages riding them and hoist lines to the ship; four docking clamps
-  reach in from the arms; six drones circle the ship.
+  reach in from the arms; six drones circle the ship. The mind has cognition banks, heat sinks, coolant runs and a
+  collar into the base; research a dome, server racks either side of its emblem and mounts for its dishes. The
+  bridges bend 45° into the mind's corner chamfers, the gate pylons are trusses from the arm tips to the gate's
+  pods, the target lane hangs off its tower on a strut (GDR-0089).
+- **Life** (`shipyard::life`, GDR-0089; Niklas, 15 Oct 2026: "very static"): beacons (the navigation lights
+  breathe, the antenna tips flash; their glows are small meshes of their own, the white cores stay in the static
+  meshes), the gate's dashes and small emitters turning (one turn in 120 s) and a light running up its approach
+  while it is awake, the mind's spokes turning around a beating core, research's dishes sweeping and its orbit
+  turning while research runs, two shuttles plying from the far moorings past the near ones to research and to
+  the salvage bay. Outside flight the backdrop's dust drifts slowly and its far stars twinkle (`backdrop.rs`).
 - **Colours**: `station.*` in `art/tokens.json` (plate tones, structure, floor, nav lights) and the UI accents
   (`ui.*`); glows are the atlas's soft dot and halo strip, as the ships' (the glow toggle turns them off).
 - **Cost**: the station is three static meshes, the yard around the U (z 1), the floor (z 2) and the walls (z 3),
   rebuilt only when the frame size, the career's lights or the glow setting change (a frigate yard is a few thousand
   quads, built once). The docked ship is one mesh rebuilt with the design's revision (as the drydock's), each escort
-  one. What moves is a dozen small meshes moved only by their transforms: the cranes (z 12, over the ship), their
-  carriages and hoist lines, the clamps (z 2.5, under the walls), the drones (z 14). Labels and click areas are a few
+  one. What moves is small meshes moved only by their transforms: the cranes (z 12, over the ship), their
+  carriages and hoist lines, the clamps (z 2.5, under the walls), the drones (z 14), life's parts (z 1.3, the
+  shuttles z 13) and some twenty beacons (respawned with the static meshes). Labels and click areas are a few
   UI nodes written only when they change.
 - **States** (`shipyard::lights`, from the career; defaults for review): **research** is lit (windows, the orbit
   emblem's glow, the dishes in gold) once anything has been researched or any node can be paid now

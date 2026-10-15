@@ -25,6 +25,8 @@ pub struct Style {
     pub aura_opacity: f32,
     pub shield: ShieldStyle,
     pub particle: Color,
+    /// The backdrop's twinkling stars.
+    pub star: Color,
     pub dotted_ring: Color,
     /// The space backdrop (`ui.background`).
     pub background: RadialGradient,
@@ -77,6 +79,7 @@ impl Style {
             aura_opacity: atlas.token_f32("ship.aura.opacity_center"),
             shield: ShieldStyle::from_atlas(atlas),
             particle: atlas.token_color("ui.particle"),
+            star: atlas.token_color("ui.star"),
             dotted_ring: atlas.token_color("ui.dotted_ring"),
             background: RadialGradient::parse(atlas.token("ui.background"))
                 .unwrap_or_else(|e| panic!("style token `ui.background`: {e}")),
