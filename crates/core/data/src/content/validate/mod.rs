@@ -2,11 +2,12 @@
 //! drydock designs). Every problem names pack, file, kind, id and field where possible.
 //!
 //! The checks are split by what they check: parts (`parts.rs`), research and starts (`progression.rs`), encounters
-//! and voyages (`voyages.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`); packs, headers, links, icons and
-//! numbers here.
+//! and voyages (`voyages.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`); packs, headers,
+//! links, icons and numbers here.
 
 mod behaviors;
 mod controls;
+mod lab;
 mod parts;
 mod progression;
 mod ships;
@@ -84,6 +85,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
     );
     v.entries(c.controls.as_slice(), |v, e| v.control(e));
     v.controls();
+    v.lab();
     v.voyages_open();
     v.locked();
     v.icons();

@@ -47,6 +47,8 @@ pub struct Pack {
     pub voyages: Vec<Voyage>,
     pub encounters: Vec<Encounter>,
     pub controls: Vec<Control>,
+    /// `lab.ron`: the evolution lab's goals and trial presets (GDR-0092).
+    pub lab: Option<Lab>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
     /// `icons/<key>.ship.svg`, sorted by key: machines as drawn on a ship (GDR-0069).
@@ -62,6 +64,7 @@ impl Pack {
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
     ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
     ///   `starts`, `voyages`, `encounters` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    /// * `lab.ron`: the evolution lab's goals and trial presets, one `( ... )` ([`Lab`]).
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `icons/<key>.ship.svg`: the ship drawing of the machines whose icon is `key` (GDR-0069).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
@@ -128,6 +131,7 @@ impl Pack {
             voyages: Vec::new(),
             encounters: Vec::new(),
             controls: Vec::new(),
+            lab: None,
             icons: Vec::new(),
             ship_art: Vec::new(),
             wiki: Vec::new(),
@@ -140,6 +144,19 @@ impl Pack {
             };
             let text = contents.as_ref();
             if path == "pack.ron" {
+                continue;
+            }
+            if path == "lab.ron" {
+                match ron_options().from_str::<Lab>(strip_bom(text)) {
+                    Ok(lab) => {
+                        // Ids repeated across packs replace each other; within one file they are a mistake.
+                        for (what, id) in lab.repeated() {
+                            problems.push(Problem::error(format!("the {what} `{id}` is listed twice")).at(&src).field(format!("lab.{what}s[{id}]")));
+                        }
+                        pack.lab = Some(Lab { source: src, ..lab });
+                    }
+                    Err(e) => problems.push(parse_problem(&e, &src)),
+                }
                 continue;
             }
             if path.ends_with(".ron") {
@@ -383,6 +400,8 @@ pub struct Content {
     pub encounters: Table<Encounter>,
     /// The action map's actions in load order, which is also the settings screen's order within a section.
     pub controls: Table<Control>,
+    /// The evolution lab's goals and trial presets (`lab.ron`, packs merged by id).
+    pub lab: Lab,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
     /// Ship drawings of machines by icon key (`icons/<key>.ship.svg`, GDR-0069); later packs replace them like icons.
@@ -454,6 +473,9 @@ impl Content {
                 .cloned()
                 .for_each(|e| drop(c.encounters.upsert(e)));
             p.controls.iter().cloned().for_each(|e| drop(c.controls.upsert(e)));
+            if let Some(lab) = &p.lab {
+                c.lab.merge(lab);
+            }
             for i in &p.icons {
                 c.icons.insert(i.key.clone(), i.clone());
             }
@@ -481,7 +503,7 @@ impl Content {
 
     /// A fingerprint of everything a fight or a voyage reads from the content (GDR-0092): FNV-1a 64 of the RON of
     /// the stats, categories, factions, materials, parts, frames, ships, behavior nodes, behaviors, voyages and
-    /// encounters, in load order. Pack versions, research, starts, controls, icons and wiki prose are left out:
+    /// encounters, in load order. Pack versions, research, starts, controls, the lab, icons and wiki prose are left out:
     /// they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal content
     /// gives the same fingerprint on every platform (RON writes floats exactly and the same everywhere).
     pub fn fingerprint(&self) -> u64 {

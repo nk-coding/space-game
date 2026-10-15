@@ -1,0 +1,105 @@
+// The evolution lab (GDR-0092): the goals a run weighs and the trials it can fight. What each goal and trial kind
+// computes is the arena's (`docs/arena.md` "Trials and goals"); the words and numbers are here. A run keeps its
+// trials as they were when it was made, so a change here changes no run. Weights run 0 to 3; `seeds` is how many
+// seeds each opponent is fought on (1, 2, ...); `time_limit` is seconds a fight lasts at most (minutes for VOYAGES).
+// `default: true` trials are on in a new run (GDR-0092's default selection). PLACEHOLDER NUMBERS (lead defaults of
+// 15 Oct 2026; the measured cost of each kind is in docs/arena.md). Size presets, measures, stand-in pilots and the
+// rest of the lab's numbers come with GDR-0092 step 8.
+(
+    goals: [
+        (id: "win", name: "Win", summary: "Beat the opponent: a win counts 1, a loss 0, a draw by the build points each side lost.", weight: 1),
+        (id: "unhurt", name: "Unhurt", summary: "Come out whole: one less the share of your own build points lost."),
+        (id: "quick", name: "Quick", summary: "Win fast: one less the share of the time limit a win took; nothing for a fight not won."),
+        (id: "cheap", name: "Cheap", summary: "Cost little: one less the design's build points over the run's build-point limit."),
+    ],
+    goal_presets: [
+        (id: "win", name: "Win", weights: {"win": 1}),
+        (id: "win_unhurt", name: "Win unhurt", weights: {"win": 1, "unhurt": 1}),
+        (id: "win_cheaply", name: "Win cheaply", weights: {"win": 1, "cheap": 1}),
+        (id: "win_fast", name: "Win fast", weights: {"win": 1, "quick": 1}),
+    ],
+    trials: [
+        (
+            id: "enemies_you_meet",
+            name: "The enemies you meet",
+            summary: "Every encounter of the voyages open to you, its ships at their largest count: what voyages throw at you. It grows with the career.",
+            kind: Encounters,
+            weight: 2,
+            seeds: 4,
+            time_limit: 60,
+            default: true,
+        ),
+        (
+            id: "test_range_waves",
+            name: "Test-range waves",
+            summary: "Waves as the test range sends them, sized to the design, one after the other until it is out or time is up; five cleared is a win. Fair for a design of any size.",
+            kind: Waves(target: 5),
+            seeds: 2,
+            time_limit: 180,
+            default: true,
+        ),
+        (
+            id: "beat_your_start",
+            name: "Beat your start",
+            summary: "Every start of the run under its own behavior: is it better than what you had?",
+            kind: BeatYourStart,
+            seeds: 2,
+            time_limit: 60,
+            default: true,
+        ),
+        (
+            id: "hall_of_fame",
+            name: "Hall of fame",
+            summary: "The run's own best designs so far: a bar that keeps rising, so scores don't stall.",
+            kind: HallOfFame(count: 4),
+            seeds: 2,
+            time_limit: 60,
+            default: true,
+        ),
+        (
+            id: "enemy_ships",
+            name: "Enemy ships",
+            summary: "Enemy ships of your choosing, each pack a fight.",
+            kind: EnemyShips(ships: [(ship: "automaton_raider", count: 2), (ship: "automaton_hunter")]),
+            seeds: 4,
+            time_limit: 60,
+        ),
+        (
+            id: "raider_gauntlet",
+            name: "Raider gauntlet",
+            summary: "Four waves of automatons, each coming in when the one before is out: two raiders, three, a hunter and a raider, two hunters.",
+            kind: Gauntlet(waves: [
+                [(ship: "automaton_raider", count: 2)],
+                [(ship: "automaton_raider", count: 3)],
+                [(ship: "automaton_hunter"), (ship: "automaton_raider")],
+                [(ship: "automaton_hunter", count: 2)],
+            ]),
+            seeds: 2,
+            time_limit: 180,
+        ),
+        (
+            id: "your_fleet",
+            name: "Your fleet",
+            summary: "Your own saved designs as opponents, FLEET's escorts picked first. Your escorts are allies, so it is off unless you want a sparring partner.",
+            kind: Fleet,
+            seeds: 2,
+            time_limit: 60,
+        ),
+        (
+            id: "champions",
+            name: "Champions",
+            summary: "The best designs of the lab's earlier runs.",
+            kind: Champions(count: 4),
+            seeds: 2,
+            time_limit: 60,
+        ),
+        (
+            id: "voyages",
+            name: "Voyages",
+            summary: "The voyages open to you, flown headless from start to home: the real thing, and about five times a fight's cost.",
+            kind: Voyages,
+            seeds: 2,
+            time_limit: 10,
+        ),
+    ],
+)

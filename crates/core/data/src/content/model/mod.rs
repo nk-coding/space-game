@@ -4,7 +4,8 @@
 //! Structs deny unknown fields so typos fail loudly. Numbers are `f32`, containers are ordered.
 //!
 //! The kinds are split by subject: parts and materials (`parts.rs`), ships (`ships.rs`), behaviors
-//! (`behaviors.rs`), progression (`progression.rs`), voyages and encounters (`voyages.rs`); the shared header, packs,
+//! (`behaviors.rs`), progression (`progression.rs`), voyages and encounters (`voyages.rs`), the evolution lab's
+//! goals and trial presets (`lab.rs`, one `lab.ron` per pack, no entry kind of its own yet); the shared header, packs,
 //! stats, categories and factions here. Every type is reached as `content::model::*` (and `data::*`).
 
 use std::collections::BTreeMap;
@@ -14,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::kind::Kind;
 
 pub use controls::Control;
+pub use lab::{GOALS, GoalPreset, Lab, LabGoal, LabShips, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, TrialPreset, TrialPresetKind};
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RcsSpec, SalvageSpec, Selector, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};
@@ -78,6 +80,7 @@ macro_rules! entry {
 // After `entry!`, which they use.
 mod behaviors;
 mod controls;
+mod lab;
 mod parts;
 mod progression;
 mod ships;
