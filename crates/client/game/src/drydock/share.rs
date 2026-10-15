@@ -6,12 +6,13 @@
 //!   of the player's behaviors carries it after the ship as a comment block (`// behavior: behaviors/<id>.ron`,
 //!   then that behavior file with every line commented out): pack loaders skip it, an import reads it. Web: a
 //!   download (`<id>.ron`); desktop: `<data dir>/exports/<id>.ron` (the path shows in the status line).
-//! * **Share code**: `SGD2:` (space game design, share format 2) followed by the base64url text (no padding) of
+//! * **Share code**: `SGD3:` (space game design, share format 3) followed by the base64url text (no padding) of
 //!   the zlib-compressed payload: RON `(packs: [("base", "0.1.0"), ...], ship: (...), behavior: (...))`, the
 //!   content packs the design was made with (id, version), the exported ship and, when the ship names one of the
 //!   player's behaviors, that behavior (the content behavior format); content behaviors go by id only. zlib's
 //!   checksum catches damaged codes; the pack list explains missing content. About 950 characters for the Halvex
-//!   Runner. Format 1 (13 Oct 2026, no behavior) still imports.
+//!   Runner. Format 3 (GDR-0092) may carry an evolved ship's `origin`, so an older build refuses it as newer;
+//!   format 2 (the same without it) and format 1 (13 Oct 2026, no behavior) still import.
 //! * **Import** ([`read`], [`check`]): a share code, or RON text (a `.ron` file, or pasted). A newer share format,
 //!   a damaged code, text that is no blueprint, and parts or materials this game doesn't have give a message
 //!   (with the packs the design was made with) instead of a crash; an unknown faction is replaced, an unknown
@@ -35,7 +36,7 @@ use world::player::behaviors::{behavior_to_ron, parse_behavior};
 /// The share code's tag; the full prefix is `SGD<version>:`.
 const TAG: &str = "SGD";
 /// The share format this build writes (it reads every format up to this one).
-pub const CODE_VERSION: u32 = 2;
+pub const CODE_VERSION: u32 = 3;
 /// The longest text an import reads: a pasted code or blueprint text, a `.ron` file (the RON of a full 64 × 64
 /// frame is about 280 kB).
 pub const MAX_TEXT: usize = 1 << 20;
@@ -386,7 +387,7 @@ mod tests {
         let content = data::base_content();
         for ship in content.ships.iter() {
             let code = encode(&content, ship, None);
-            assert!(code.starts_with("SGD2:"), "{code}");
+            assert!(code.starts_with("SGD3:"), "{code}");
             assert!(code[5..].chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
             let back = read(&code).unwrap();
             let want = Blueprint { source: Default::default(), ..ship.clone() };
@@ -394,6 +395,12 @@ mod tests {
         }
         let code = encode(&content, &runner(&content), None);
         assert!(code.len() < 1400, "{} characters", code.len());
+        // An evolved design's origin travels with it (format 3); a format 2 code, the same payload without one, still
+        // reads.
+        let origin = data::Origin { run: "evolving".into(), genome: 9, generation: 2, from: vec!["rim_skiff".into()], score: 0.5 };
+        let evolved = Blueprint { origin: Some(origin), ..runner(&content) };
+        assert_eq!(read(&encode(&content, &evolved, None)).unwrap().ship.origin, evolved.origin);
+        assert_eq!(read(&format!("SGD2:{}", &code[5..])).unwrap().ship, runner(&content));
         // Wrapped by a chat program, lower-case tag, padding: still reads.
         let wrapped = format!("  sgd2:{}\n{}==\n", &code[5..40], &code[40..]);
         assert_eq!(read(&wrapped).unwrap().ship.parts, runner(&content).parts);
