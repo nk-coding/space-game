@@ -730,6 +730,7 @@ fn context_name(c: data::input::Context) -> &'static str {
         Context::Behavior => "the BEHAVIOR screen",
         Context::Research => "research",
         Context::Map => "the voyage map",
+        Context::Replay => "the fight viewer",
         Context::Any => "every screen",
     }
 }

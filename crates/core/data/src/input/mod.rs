@@ -28,6 +28,9 @@ pub enum Context {
     Behavior,
     Research,
     Map,
+    /// The fight viewer (`?scene=fight`, GDR-0092): a replay in the flight view, where nobody pilots, so its keys
+    /// may share inputs with flying.
+    Replay,
     /// Every screen.
     Any,
 }
@@ -47,11 +50,13 @@ pub enum Section {
     Shipyard,
     Drydock,
     Map,
+    Replay,
     Debug,
 }
 
 impl Section {
-    pub const ALL: [Section; 7] = [Section::Flight, Section::Mission, Section::Camera, Section::Shipyard, Section::Drydock, Section::Map, Section::Debug];
+    pub const ALL: [Section; 8] =
+        [Section::Flight, Section::Mission, Section::Camera, Section::Shipyard, Section::Drydock, Section::Map, Section::Replay, Section::Debug];
 
     /// The section's title: the settings screen shows it in capitals, the wiki as it is.
     pub fn title(self) -> &'static str {
@@ -62,6 +67,7 @@ impl Section {
             Section::Shipyard => "The shipyard",
             Section::Drydock => "The drydock and the behavior editor",
             Section::Map => "The voyage map",
+            Section::Replay => "The fight viewer",
             Section::Debug => "Debug and display",
         }
     }
@@ -148,6 +154,12 @@ actions! {
     Armour9 = "armour_9",
     NextVoyage = "next_voyage",
     PreviousVoyage = "previous_voyage",
+    ReplayPause = "replay_pause",
+    ReplaySlower = "replay_slower",
+    ReplayFaster = "replay_faster",
+    ReplayBack = "replay_back",
+    ReplayForward = "replay_forward",
+    ReplayRestart = "replay_restart",
     HideHud = "hide_hud",
     Pause = "pause",
     Tuning = "tuning",
