@@ -982,14 +982,18 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   namespace with a format version; the browser's local storage on the web, files in the user's data directory on
   desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the
   BLUEPRINTS and EXPORT screens (one floating layer over everything above the bottom bar: `ShelfRoot`, a `Hot`
-  veil so clicks reach nothing under it; hidden at once when the drydock is left, with the clipboard's offer and
+  veil so clicks reach nothing under it, its backing a `UiIcon::Scrim` with the hole closed rather than a UI
+  background, so its own icons (the frames' locks, the preview's ship) draw over it; the drydock's parts it covers
+  (`panels::UnderShelf`, all but the bottom bar and the grid's scrim) hide meanwhile; hidden at once when the drydock is left, with the clipboard's offer and
   paste target let go), share codes and `.ron` files, copy and paste (`Clipboard`). The screens' handlers run
   before the editing tools and the report, so a design opened, renamed or moved to another frame gets its report
   and status in the same frame. Status messages go out through `DrydockStatus` once `stats::update` has made the
   status for the current revision (`blueprints::announce`).
 - **Widgets** (`ui_kit/`): labels (tracked uppercase), numbers, prose, pills (Barlow medium, as the mockup's
   semi-bold pills; plain, active teal, active gold, the glowing primary, disabled, bare list rows; `PillLock`: a lock
-  icon shown only while the pill is disabled, for locked armour and frames), ring buttons, value bars, corner
+  icon shown only while the pill is disabled, for locked frames; the letter spacing's trailing room is balanced by
+  the label's own left margin, so a label alone and an icon with its label sit centred whether the icon shows or
+  not, 15 Oct 2026), ring buttons, value bars, corner
   brackets and a one-line
   text field (`TextField`, used for the names, the searches and the notes: a caret and a selection, both drawn in
   place as text spans of `field_text`; Left / Right / Home / End move the caret, with Shift they select, Backspace
@@ -1086,7 +1090,10 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   would sample the sRGB atlas without encoding for the sRGB compositing and look too dark); `atlas::UiAtlasNeed`
   raises the atlas tier to the icons' pixels per cell (twice what a part icon shows: icons are stored at
   `art::ICON_DENSITY`, 0.5). bevy_ui draws after
-  the world, so nodes over an icon should have at most a faint background. bevy_ui's clipping doesn't reach the
+  the world, so nodes over an icon should have at most a faint background; a layer that has to hide what is under
+  it and still show icons backs itself with a `UiIcon::Scrim` whose insets meet (`[f32::INFINITY; 4]` fills the
+  node; BLUEPRINTS, whose locks were hidden under its opaque background until 15 Oct 2026, the empty room
+  pushing the labels right of centre). bevy_ui's clipping doesn't reach the
   meshes: an icon that a scrolled parent clips (`CalculatedClip`) is hidden until it is whole again. An icon follows
   its node when a screen transition slides it, and fades with its screen part (the part's atlas material,
   `ui_kit::IconMaterials`; [Screen transitions](#screen-transitions)).

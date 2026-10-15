@@ -382,7 +382,8 @@ unlocked; with `?unlock=all` (free mode) everything, and nothing below is locked
 - **Locked materials and frames**: every armour material research can unlock has a swatch (the 1–9 keys count
   every armour material, hidden ones too); a locked one shows a lock instead of its tile and is refused, and so are
   its pills in the inspector (`state::material_shown`). The ⋯ menu's FRAME pills of a locked frame are dimmed. BLUEPRINTS' NEW and FRAME pills of a locked frame
-  (the cruiser and the capital) are dimmed with a lock.
+  (the cruiser and the capital) are dimmed with a lock, centred with the label (until 15 Oct 2026 the lock was
+  hidden under the screen's opaque background and its empty room pushed the label right of centre).
 - **NEW**: a part research unlocked carries a gold NEW tag in the palette until it is picked there or a placed one
   is selected (whatever the SELECTED PART block shows: `panels::see_fresh` sends `career::SeenPart`). The career
   keeps what was seen in the save (`seen`, written at once), so a tag goes for good and a new game shows them again.
@@ -566,6 +567,15 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   copies with a fresh name ("Sample mid copy", "Sample mid copy 2", ...) and not saved until they change or SAVE.
   The wheel scrolls a list (smoothly, by pixels since 14 Oct 2026; whole rows before). An unreadable document is
   listed with the reason, so it can be deleted.
+- **The preview** (15 Oct 2026, Niklas: "the list itself is only partially helpful"): hovering a row shows its
+  ship in a card in the column between the two lists (so it sits next to either), level with the row and kept
+  inside the lists' height as the pointer moves or the list scrolls: the design drawn with the flight tiles
+  (`UiIcon::Ship`, the same drawing as FLEET's ships), and under it CLASS (the frame a saved design is in, the
+  first frame a template fits, as OPEN would open it), MASS, TOP SPEED (labels and units from `stats.ron`, the
+  values as the stats grid shows them) and WEAPONS (its guns), from a design report made with the drydock's content
+  and config (`DrydockReport::config`). It is built once per hovered entry (`blueprints::sync_preview`; a saved
+  design is read from storage then) and goes when no row is hovered; an unreadable design shows none. The lists
+  are 480 and 344 px wide for it (600 and 432 before).
 - On the picked row: **OPEN** (a template: as a copy), **DUPLICATE** (a saved copy with a fresh name; for a
   template, its copy saved as a design), **RENAME** (a field; Enter renames, Esc cancels; the open design follows),
   **DELETE** (asks first: DELETE / KEEP; deleting the open design leaves it in the drydock, unsaved).
