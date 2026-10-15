@@ -1,0 +1,12 @@
+// A rules probe (GDR-0092, `arena::rules_fingerprint`): the Runner and the starter against two raiders and a hunter
+// at 45 m, 10 s, so guns, hits, plumes and broken parts all happen early. Its final hash changes with almost any
+// change to the sim's code. Changing this file changes every fight code's fingerprint.
+(
+    seed: 1,
+    sides: [
+        (entries: [(design: Ship("halvex_runner")), (design: Ship("rim_skiff"))]),
+        (entries: [(design: Ship("automaton_raider"), count: 2), (design: Ship("automaton_hunter"))]),
+    ],
+    start_distance: 45.0,
+    time_limit: 10.0,
+)

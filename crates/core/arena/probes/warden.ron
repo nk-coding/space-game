@@ -1,0 +1,11 @@
+// A rules probe (GDR-0092, `arena::rules_fingerprint`): a mid-size ship against the warden at 50 m, 10 s: shields,
+// cannons and chain reactions. Changing this file changes every fight code's fingerprint.
+(
+    seed: 2,
+    sides: [
+        (entries: [(design: Ship("sample_mid"))]),
+        (entries: [(design: Ship("automaton_warden"))]),
+    ],
+    start_distance: 50.0,
+    time_limit: 10.0,
+)

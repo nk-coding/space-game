@@ -4,6 +4,7 @@
 #
 #   scripts/determinism-check.sh [--seed N] [--ticks N] [--scenario NAME] [--package CRATE] [--example NAME]
 #   scripts/determinism-check.sh --fight NAME [--seed N] [--ticks N]   # an arena fight (crates/core/arena/fights/NAME.ron)
+#   scripts/determinism-check.sh --fight SGF1:…            # a fight code (GDR-0092: `arena fight|evolve` print them)
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
 # Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, assists (flight with pilot
@@ -12,7 +13,8 @@
 # recall check).
 # `--fight NAME` runs arena's `fight_hashes` example instead: the fight spec crates/core/arena/fights/NAME.ron
 # (runner_vs_raiders, skiff_mirror) with the seed replaced, until the fight ends or --ticks have run (default 2700:
-# the 90 s time limit).
+# the 90 s time limit). A fight code (`--fight SGF1:…`) runs its own spec and seed to its end and says whether it
+# ends as recorded (`# record=as recorded`); its files are named after a short hash of the code.
 #
 # Hash stream format (what the example prints): one "<tick> <hash>" line per tick; lines starting with '#'
 # are comments (header, summary) and are shown but not compared. Any producer that prints this format can
@@ -64,6 +66,9 @@ while [ $# -gt 0 ]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+# A fight code carries its seed and runs to its end (at most the arena's 30-minute bound).
+CODE=0
+case "$SCENARIO" in SGF*) CODE=1; DEFAULT_TICKS=54000 ;; esac
 TICKS=${TICKS:-$DEFAULT_TICKS}
 JOBS=${JOBS:-6}
 PROFILE=${PROFILE:-release}
@@ -79,8 +84,13 @@ cargo build -q -p "$PACKAGE" --example "$EXAMPLE" --profile "$PROFILE" --target 
 
 mkdir -p "$OUT"
 ARGS=(--seed "$SEED" --ticks "$TICKS" --scenario "$SCENARIO")
-NATIVE_OUT="$OUT/$EXAMPLE-$SCENARIO-$SEED-native.txt"
-WASM_OUT="$OUT/$EXAMPLE-$SCENARIO-$SEED-wasm.txt"
+LABEL="$SCENARIO-$SEED"
+if [ $CODE = 1 ]; then
+  ARGS=(--ticks "$TICKS" --scenario "$SCENARIO")
+  LABEL="code-$(printf %s "$SCENARIO" | md5sum | cut -c1-12)"
+fi
+NATIVE_OUT="$OUT/$EXAMPLE-$LABEL-native.txt"
+WASM_OUT="$OUT/$EXAMPLE-$LABEL-wasm.txt"
 "$TARGET/$DIR/examples/$EXAMPLE" "${ARGS[@]}" > "$NATIVE_OUT"
 node --no-warnings scripts/wasi-run.mjs "$TARGET/wasm32-wasip1/$DIR/examples/$EXAMPLE.wasm" "${ARGS[@]}" > "$WASM_OUT"
 echo "native ($(uname -m)) vs wasm32-wasip1 (node $(node --version)), profile $PROFILE"

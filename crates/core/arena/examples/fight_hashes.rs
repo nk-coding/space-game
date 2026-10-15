@@ -2,8 +2,9 @@
 //! `--ticks` have run. Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh --fight NAME` runs
 //! both and compares.
 //!
-//! Usage: `fight_hashes [--scenario runner_vs_raiders|skiff_mirror] [--seed N] [--ticks N]`: the fight specs of
-//! `crates/core/arena/fights/` (compiled in: the WASI run has no filesystem), with the seed replaced.
+//! Usage: `fight_hashes [--scenario runner_vs_raiders|skiff_mirror|SGF1:…] [--seed N] [--ticks N]`: the fight specs
+//! of `crates/core/arena/fights/` (compiled in: the WASI run has no filesystem), with the seed replaced, or a fight
+//! code (GDR-0092) with its own seed, checked against its record at the end (`# record=as recorded`).
 
 const FIGHTS: [(&str, &str); 2] = [
     ("runner_vs_raiders", include_str!("../fights/runner_vs_raiders.ron")),
@@ -24,16 +25,34 @@ fn main() {
             other => panic!("unknown argument {other}"),
         }
     }
-    let text = FIGHTS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .unwrap_or_else(|| panic!("unknown fight {name} (known: runner_vs_raiders, skiff_mirror)"))
-        .1;
-    let mut spec = arena::FightSpec::from_ron(text).expect("the fight spec reads");
-    spec.seed = seed;
+    let code = name
+        .starts_with(arena::CODE_TAG)
+        .then(|| arena::FightCode::decode(&name).expect("the fight code reads"));
+    let spec = match &code {
+        Some(code) => code.spec.clone(),
+        None => {
+            let text = FIGHTS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .unwrap_or_else(|| {
+                    panic!("unknown fight {name} (known: runner_vs_raiders, skiff_mirror, or a fight code)")
+                })
+                .1;
+            let mut spec = arena::FightSpec::from_ron(text).expect("the fight spec reads");
+            spec.seed = seed;
+            spec
+        }
+    };
     let content = data::base_content();
     let mut fight = arena::Fight::new(&content, &spec).expect("the fight builds");
-    println!("# arena fight={name} seed={seed} ticks={ticks}");
+    match &code {
+        Some(code) => {
+            let stale = code.rules != arena::rules_fingerprint(&content);
+            let rules = if stale { "changed" } else { "same" };
+            println!("# arena fight=code seed={} ticks={ticks} rules={rules}", spec.seed);
+        }
+        None => println!("# arena fight={name} seed={seed} ticks={ticks}"),
+    }
     let mut result = None;
     for t in 1..=ticks {
         result = fight.step(1);
@@ -56,5 +75,9 @@ fn main() {
             r.state_hash
         ),
         None => println!("# still running after {ticks} ticks"),
+    }
+    if let Some(code) = &code {
+        let same = result == Some(code.record);
+        println!("# record={}", if same { "as recorded" } else { "DIFFERS" });
     }
 }

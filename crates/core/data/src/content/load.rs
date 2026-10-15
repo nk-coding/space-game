@@ -479,6 +479,26 @@ impl Content {
         }
     }
 
+    /// A fingerprint of everything a fight or a voyage reads from the content (GDR-0092): FNV-1a 64 of the RON of
+    /// the stats, categories, factions, materials, parts, frames, ships, behavior nodes, behaviors, voyages and
+    /// encounters, in load order. Pack versions, research, starts, controls, icons and wiki prose are left out:
+    /// they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal content
+    /// gives the same fingerprint on every platform (RON writes floats exactly and the same everywhere).
+    pub fn fingerprint(&self) -> u64 {
+        let ruled = (
+            &self.stats,
+            &self.categories,
+            &self.factions,
+            &self.materials,
+            &self.parts,
+            &self.frames,
+            &self.ships,
+            (&self.behavior_nodes, &self.behaviors, &self.voyages, &self.encounters),
+        );
+        let text = ron::to_string(&ruled).expect("content always serialises");
+        crate::hash::fnv1a64(text.as_bytes())
+    }
+
     /// Does an entry (or wiki page for `Kind::Page`) exist?
     pub fn exists(&self, kind: Kind, id: &str) -> bool {
         match kind {

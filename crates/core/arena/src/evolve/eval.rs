@@ -2,6 +2,7 @@
 //! content, so jobs may run in any order, on any thread, in one go or in slices, and give the same result.
 
 use data::Content;
+use serde::{Deserialize, Serialize};
 use sim::voyage::runner::VoyageRunner;
 use sim::{Owner, Sim, VesselState};
 
@@ -12,8 +13,9 @@ use crate::voyage::{VoyageSpec, start_voyage, voyage_score};
 /// A fight's distance is sampled every this many ticks (half a second) for [`super::Measure::EngageDistance`].
 pub const SAMPLE_TICKS: u64 = 15;
 
-/// One fight or voyage run of candidate `candidate` of the current generation.
-#[derive(Clone, Debug, PartialEq)]
+/// One fight or voyage run of candidate `candidate` of the current generation. Jobs and their results are plain
+/// data with a RON form, so they can be stored with a run or sent to another thread or worker (GDR-0092).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Job {
     /// The candidate is side 0.
     Fight { candidate: u32, spec: FightSpec },
@@ -21,7 +23,8 @@ pub enum Job {
 }
 
 /// What a job gives.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JobResult {
     /// The candidate's score, 0..1 (0 if the job could not be built).
     pub score: f32,

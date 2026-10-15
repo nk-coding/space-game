@@ -10,4 +10,7 @@ publish.workspace = true
 data = { path = "../data" }
 sim = { path = "../sim" }
 serde = { version = "1.0.229", features = ["derive"] }
-ron = "=0.12.2"  # the fight spec's text form (later a fight code), the same RON as the content
+ron = "=0.12.2"  # the fight spec's text form, the same RON as the content
+# Fight codes (`code.rs`): base64url of the zlib-compressed RON, as the drydock's share codes.
+base64 = "=0.22.1"
+miniz_oxide = "=0.8.9"

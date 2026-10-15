@@ -89,6 +89,14 @@ client can run a slice per frame; `fight.sim()` is the world for drawing. `run_f
 go. The sim's per-tick state hash runs only in debug builds (as in every runner); the result's `state_hash` is taken
 once at the end.
 
+A client that steps the world itself (the game's fight viewer, [GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md))
+builds it with `FightSetup::build(&content, &spec)`: the `Sim`, its `Referee` and every entry's blueprint and
+compiled design (per side, in entry order; the client draws ships whose design is no content ship from them). It
+steps the sim with no inputs and calls `referee.observe(&sim)` after every tick, which tallies the tick's damage
+and returns `Some(FightResult)` from the tick the fight ends on; that is all `Fight` does. Both are `Clone`, so a
+viewer keeps keyframes and seeks (`tests/codes.rs`: a cloned pair goes on to the same end). `arena::standing(&sim,
+side)` gives a side's build points and vessels now.
+
 **The end** (coop-arena 3.7): a side is out once it has had no running vessel (`VesselState::Running`) for 5 s
 (`OUT_AFTER`, placeholder), so a short brown-out is no loss. If one side is out while the other still has a running
 vessel, the other wins (`Outcome::Won(side)`); if neither has one, `Outcome::BothOut`; otherwise the fight ends at the
@@ -116,6 +124,44 @@ a count of 0 or too many ships, an unknown ship or behavior id, a blueprint text
 checks or does not compile, a behavior text that does not parse or check (by text line), a design without a default
 behavior, content behaviors that do not compile. Errors name the side and entry.
 
+## Fight codes
+
+A fight is re-watched by simulating its spec again ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md)): equal
+specs give equal fights everywhere, so a fight is stored as what was fought and how it ended, never as frames.
+`FightCode::new(&content, rules, spec, record)` holds:
+
+| Field | What |
+|---|---|
+| `packs` | The content packs it was fought with (id, version), to explain a code whose ships this game lacks |
+| `rules` | The rules' fingerprint then (`arena::rules_fingerprint`, below) |
+| `spec` | The `FightSpec`: seed, both sides' entries (designs as content ids or blueprint texts, behaviors as content ids or program texts, counts, formations), start distance, time limit |
+| `record` | The `FightResult`: outcome, ticks, both sides' numbers and the final state hash |
+
+The rest of a fight's setup is fixed by the arena: owners 1 and 2, every core running, `SimConfig::default()`, the
+packs' content only (no tuning scales, no player storage), nobody piloting.
+
+`code.encode()` gives one line: `SGF1:` (space game fight, format 1) and the base64url text (no padding, so it goes
+into a URL as it is) of the zlib-compressed RON, made like the drydock's share codes (ADR-0031). About 430
+characters for the Runner against three raiders, 1–2 kB with an evolved blueprint and its behavior.
+`FightCode::decode(text)` ignores whitespace (a wrapped line pastes whole) and refuses, with a `CodeError`: text that
+is no code, a newer format, a damaged code (not base64url, not zlib, a wrong checksum, cut short), more than 256 kB
+packed or 4 MB unpacked, and a payload that is no fight. A code that decodes may still not build (a ship the content
+lacks): `run_fight` says why.
+
+**The rules' fingerprint** (`rules_fingerprint(&content)`): FNV-1a 64 over `Content::fingerprint` (the RON of
+everything a fight or voyage reads: stats, categories, factions, materials, parts, frames, ships, behavior nodes,
+behaviors, voyages, encounters; not pack versions, research, controls, icons or wiki prose) and the final state hashes
+of the two rules probes in `probes/` (fixed fights of 300 ticks at close range: guns, hits, plumes, shields, chain
+reactions), so a change to the sim's code shows without a version number someone must remember to raise. 4.7 ms
+natively (median of 20, p95 5.4 ms, release, load 0.9; the content's part 0.35 ms). A code whose `rules` differ from today's was fought under other rules: the viewer says so at once, plays it
+under today's rules and says at the end whether it still ends as recorded. A probe the content can't build counts
+as 0.
+
+`tests/codes.rs`: a code with a blueprint and a behavior text round-trips (also wrapped and with a lower-case tag), is
+URL-safe, and replays as recorded; every refusal; the fingerprint is stable, includes the probes and changes with a
+part's mass, which also changes the fight's end; the setup stepped with the referee gives `run_fight`'s result, and a
+cloned world and referee go on to the same end.
+
 ## The CLI
 
 The binary `arena` of the package `arena-cli` (`crates/tools/arena-cli/src/main.rs`), not an example: it is the arena's
@@ -129,8 +175,10 @@ cargo run --release -p arena-cli -- matrix halvex_runner automaton_raider rim_sk
 ```
 
 - `arena fight <spec.ron> [--seeds N] [--threads N]`: runs the spec with its seed and the N − 1 after it, prints a
-  Markdown row per seed (outcome, time, build points lost of the start, damage dealt, vessels left, score, hash) and a
-  summary (wins per side, undecided, mean score, mean time).
+  Markdown row per seed (outcome, time, build points lost of the start, damage dealt, vessels left, score, hash), a
+  summary (wins per side, undecided, mean score, mean time) and then each seed's fight code (`- seed 3: SGF1:…`):
+  pasted into the game as `?scene=fight&fight=<code>`, the fight replays in the flight view (`docs/client.md`
+  "Fight viewer").
 - `arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]`: every pair of designs
   (a content ship id, or a blueprint file `*.ron`) one against one under their default behaviors, N seeds (from S,
   default 1) in each starting position, and each design once against itself. Prints the row design's win rate and
@@ -382,6 +430,9 @@ let (blueprint, behavior) = (r.elites[0].genome.blueprint_text(), r.elites[0].ge
   with `step` within a generation.
 - `GenerationStats` per generation: stage and genes, children evaluated, refused, best and mean score, the archive's
   best, occupied cells, children that took a cell, ticks.
+- `Run::champion()`: the jobs of the last closed generation's best child (the first of equal scores) with their
+  results, its fights to re-watch. `Job`, `JobResult`, `VoyageSpec`, `FightSpec` and `FightResult` are serde types
+  with a RON form (GDR-0092: for storing runs and sending jobs to workers later).
 
 **Determinism**: a job's result depends only on the job and the content (it is a fight or voyage, deterministic on
 every platform), results are applied in job order, the archive is a `BTreeMap`. `tests/evolve.rs` checks that the
@@ -399,7 +450,10 @@ Breeds on the main thread and runs each generation's jobs on every core (`--thre
 Markdown row per generation (evolves, children, refused, best, mean, archive best, cells, took a cell, million
 ticks, breeding ms, seconds), the generations per minute, and the best elites (rank, cell, score, measures,
 generation, parts). With `--out DIR` it writes the best `--best` (8) elites: `elite_NN.ron` (the blueprint, id
-`evolved_NN`, with a comment naming the run, rank, score and generation) and `elite_NN.txt` (its behavior).
+`evolved_NN`, with a comment naming the run, rank, score and generation) and `elite_NN.txt` (its behavior). Last, a
+fight code per generation: its best child (`Run::champion()`, the jobs and results of the last closed generation's
+best child) in the fight it scored lowest in, its hardest (`- gen 12, score 0.833, seed 2: SGF1:…`; runs scored by
+voyages print none). Jobs keep only their score, so each coded fight is run once more for its full record.
 
 ### What the example runs found
 

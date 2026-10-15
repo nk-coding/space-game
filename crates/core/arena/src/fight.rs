@@ -1,8 +1,11 @@
-//! Building a fight from a spec and running it, in one go ([`run_fight`]) or in slices ([`Fight::step`]).
+//! Building a fight from a spec and running it, in one go ([`run_fight`]) or in slices ([`Fight::step`]). A client
+//! that steps the world itself (the fight viewer, GDR-0092) builds it with [`FightSetup::build`] and asks the
+//! [`Referee`] after every tick; [`Fight`] is the two together.
 
 use std::sync::Arc;
 
 use data::{Blueprint, Content};
+use serde::{Deserialize, Serialize};
 use sim::{
     BehaviorId, BehaviorLibrary, Body, Owner, ShipCommand, ShipDesign, Sim, SimConfig, SimEvent,
     Stream, TickInputs, Vec2, VesselState,
@@ -26,7 +29,7 @@ pub const JITTER: f32 = 2.0;
 pub const OWNERS: [Owner; 2] = [Owner(1), Owner(2)];
 
 /// How a fight ended.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
     /// The other side had no running vessel for [`OUT_AFTER`] ticks while this one still had one.
     Won(usize),
@@ -37,7 +40,8 @@ pub enum Outcome {
 }
 
 /// One side's numbers at the end of a fight.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SideResult {
     /// Build points of the side's vessels at the start (each part's build points, with its material factor).
     pub build_points: f32,
@@ -63,7 +67,8 @@ impl SideResult {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FightResult {
     pub outcome: Outcome,
     /// Ticks the fight ran (30 per second).
@@ -87,25 +92,41 @@ impl FightResult {
 /// at once ([`run_fight`]) or a few ticks per frame in a client.
 pub struct Fight {
     sim: Sim,
+    referee: Referee,
+    idle: TickInputs,
+}
+
+/// A fight built and not yet run: the world, its referee, and the blueprint and compiled design of every entry
+/// (per side, in entry order), which a client needs to draw ships whose design is no content ship. Step the world
+/// with no inputs and call [`Referee::observe`] after every tick; that is all [`Fight`] does.
+pub struct FightSetup {
+    pub sim: Sim,
+    pub referee: Referee,
+    pub designs: [Vec<(Blueprint, Arc<ShipDesign>)>; 2],
+}
+
+/// Watches a fight tick by tick: tallies the damage each side deals and decides when and how it ends.
+#[derive(Clone, Debug)]
+pub struct Referee {
     limit: u64,
     build_points: [f32; 2],
     damage: [f32; 2],
     /// The first tick of the current stretch without a running vessel, per side.
     out_since: [Option<u64>; 2],
-    idle: TickInputs,
     result: Option<FightResult>,
 }
 
-/// One entry resolved against the content: its compiled design and its behavior.
+/// One entry resolved against the content: its blueprint, its compiled design and its behavior.
 struct Resolved {
+    blueprint: Blueprint,
     design: Arc<ShipDesign>,
     behavior: BehaviorId,
 }
 
-impl Fight {
+impl FightSetup {
     /// Checks the spec, compiles its designs and behaviors and spawns the ships. Every problem with the spec
     /// comes back as an [`ArenaError`].
-    pub fn new(content: &Content, spec: &FightSpec) -> Result<Fight, ArenaError> {
+    pub fn build(content: &Content, spec: &FightSpec) -> Result<FightSetup, ArenaError> {
         spec.check()?;
         let mut lib = BehaviorLibrary::new(content).map_err(|p| {
             ArenaError::Content(
@@ -118,8 +139,8 @@ impl Fight {
         let mut sides: [Vec<Resolved>; 2] = Default::default();
         for (side, s) in spec.sides.iter().enumerate() {
             for (entry, e) in s.entries.iter().enumerate() {
-                let design = match resolve_design(content, &e.design) {
-                    Ok((_, d)) => Arc::new(d),
+                let (blueprint, design) = match resolve_design(content, &e.design) {
+                    Ok((bp, d)) => (bp, Arc::new(d)),
                     Err(DesignProblem::UnknownShip(id)) => {
                         return Err(ArenaError::UnknownShip { side, entry, id });
                     }
@@ -154,7 +175,11 @@ impl Fight {
                             design: design.id.clone(),
                         })?,
                 };
-                sides[side].push(Resolved { design, behavior });
+                sides[side].push(Resolved {
+                    blueprint,
+                    design,
+                    behavior,
+                });
             }
         }
 
@@ -168,39 +193,55 @@ impl Fight {
             spawn_side(&mut sim, side, spec, resolved);
         }
         let build_points = OWNERS.map(|o| kept(&sim, o).0);
-        Ok(Fight {
-            sim,
+        let referee = Referee {
             limit: spec.limit_ticks(),
             build_points,
             damage: [0.0; 2],
             out_since: [None; 2],
-            idle: TickInputs::default(),
             result: None,
+        };
+        let designs = sides.map(|side| {
+            side.into_iter()
+                .map(|r| (r.blueprint, r.design))
+                .collect()
+        });
+        Ok(FightSetup {
+            sim,
+            referee,
+            designs,
         })
     }
+}
 
-    /// Runs up to `ticks` more ticks; stops early when the fight ends. `Some` once it has ended (later calls
-    /// step nothing and return the same result).
-    pub fn step(&mut self, ticks: u64) -> Option<FightResult> {
-        for _ in 0..ticks {
-            if self.result.is_some() {
-                break;
-            }
-            self.sim.step(&self.idle);
-            self.tally();
-            self.result = self.end();
+impl Referee {
+    /// Looks at the world after a tick: the damage dealt in it, and whether the fight ended with it. `Some` from
+    /// the tick it ends on; later calls look at nothing and return the same result.
+    pub fn observe(&mut self, sim: &Sim) -> Option<FightResult> {
+        if self.result.is_none() {
+            self.tally(sim);
+            self.result = self.end(sim);
         }
         self.result
     }
 
-    /// The world, for drawing a fight or hashing it every tick.
-    pub fn sim(&self) -> &Sim {
-        &self.sim
+    /// The result, once the fight has ended.
+    pub fn result(&self) -> Option<FightResult> {
+        self.result
+    }
+
+    /// The fight's time limit in ticks.
+    pub fn limit(&self) -> u64 {
+        self.limit
+    }
+
+    /// Each side's build points at the start.
+    pub fn build_points(&self) -> [f32; 2] {
+        self.build_points
     }
 
     /// Damage dealt by each side's shots and plumes this tick.
-    fn tally(&mut self) {
-        for e in self.sim.events() {
+    fn tally(&mut self, sim: &Sim) {
+        for e in sim.events() {
             let (by, ship, damage) = match *e {
                 SimEvent::Hit {
                     by, ship, damage, ..
@@ -210,7 +251,7 @@ impl Fight {
                 } => (by, ship, damage),
                 _ => continue,
             };
-            let owner = |id| self.sim.ship(id).map(|s| s.owner());
+            let owner = |id| sim.ship(id).map(|s| s.owner());
             let (Some(from), Some(to)) = (owner(by), owner(ship)) else {
                 continue;
             };
@@ -223,12 +264,11 @@ impl Fight {
     }
 
     /// The result, if the fight ended this tick.
-    fn end(&mut self) -> Option<FightResult> {
-        let tick = self.sim.tick();
+    fn end(&mut self, sim: &Sim) -> Option<FightResult> {
+        let tick = sim.tick();
         let mut out = [false; 2];
         for (side, &owner) in OWNERS.iter().enumerate() {
-            let running = self
-                .sim
+            let running = sim
                 .ships()
                 .iter()
                 .any(|s| s.owner() == owner && s.vessel_state() == Some(VesselState::Running));
@@ -251,7 +291,7 @@ impl Fight {
             return None;
         };
         let mut sides = [0, 1].map(|side| {
-            let (left, vessels) = kept(&self.sim, OWNERS[side]);
+            let (left, vessels) = kept(sim, OWNERS[side]);
             SideResult {
                 build_points: self.build_points[side],
                 build_points_lost: (self.build_points[side] - left).max(0.0),
@@ -268,8 +308,38 @@ impl Fight {
             outcome,
             ticks: tick,
             sides,
-            state_hash: self.sim.state_hash(),
+            state_hash: sim.state_hash(),
         })
+    }
+}
+
+impl Fight {
+    /// Checks the spec, compiles its designs and behaviors and spawns the ships ([`FightSetup::build`]).
+    pub fn new(content: &Content, spec: &FightSpec) -> Result<Fight, ArenaError> {
+        let setup = FightSetup::build(content, spec)?;
+        Ok(Fight {
+            sim: setup.sim,
+            referee: setup.referee,
+            idle: TickInputs::default(),
+        })
+    }
+
+    /// Runs up to `ticks` more ticks; stops early when the fight ends. `Some` once it has ended (later calls
+    /// step nothing and return the same result).
+    pub fn step(&mut self, ticks: u64) -> Option<FightResult> {
+        for _ in 0..ticks {
+            if self.referee.result().is_some() {
+                break;
+            }
+            self.sim.step(&self.idle);
+            self.referee.observe(&self.sim);
+        }
+        self.referee.result()
+    }
+
+    /// The world, for drawing a fight or hashing it every tick.
+    pub fn sim(&self) -> &Sim {
+        &self.sim
     }
 }
 
@@ -361,6 +431,11 @@ fn spawn_side(sim: &mut Sim, side: usize, spec: &FightSpec, resolved: &[Resolved
         }
         prev_half = Some(h / 2.0);
     }
+}
+
+/// Build points on side `side`'s vessels now, and how many vessels it has (what a client shows during a fight).
+pub fn standing(sim: &Sim, side: usize) -> (f32, u32) {
+    kept(sim, OWNERS[side])
 }
 
 /// Build points on the owner's vessels (alive parts of each vessel's controlling piece), and how many vessels.

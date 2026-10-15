@@ -7,20 +7,21 @@
 //! arena evolve <run.ron> [--out DIR] [--best N] [--threads N]
 //! ```
 //!
-//! `fight` runs a fight spec once per seed (the spec's seed and the N − 1 after it) and prints a row per seed and
-//! a summary. `matrix` runs every pair of designs (a content ship id, or a blueprint file `*.ron`) one against
+//! `fight` runs a fight spec once per seed (the spec's seed and the N − 1 after it) and prints a row per seed, a
+//! summary and each fight's code (GDR-0092: `?scene=fight&fight=<code>` re-watches it in the game). `matrix` runs every pair of designs (a content ship id, or a blueprint file `*.ron`) one against
 //! one under their default behaviors, N seeds in each starting position, and prints the win rate and mean score
 //! of each row's design against each column's. Both print fights per second. `evolve` runs an evolution
 //! (`docs/arena.md` "Evolution"), a generation's fights or voyage runs on every core, prints a row per generation
-//! and writes the best elites (blueprint and behavior text) into `--out`; the results do not depend on the thread
-//! count. The fights run on
+//! and writes the best elites (blueprint and behavior text) into `--out`; after the run it prints a fight code per
+//! generation (its best child in its hardest fight). The results do not depend on the thread count. The fights run on
 //! `available_parallelism` threads (`--threads` to change); only the wall clock line depends on the machine.
 
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use arena::{DesignRef, Entry, FightResult, FightSpec, Formation, Outcome, Summary};
+use arena::evolve::{Job, JobResult};
+use arena::{DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Summary};
 
 const USAGE: &str = "usage:
   arena fight <spec.ron> [--seeds N] [--threads N]
@@ -218,6 +219,14 @@ fn fight(o: &Opts) -> Result<(), String> {
         sum.mean_score[1],
         seconds(sum.mean_ticks as u64)
     );
+    let rules = arena::rules_fingerprint(&content);
+    println!();
+    println!("Fight codes (re-watch one in the game: `?scene=fight&fight=<code>`):");
+    println!();
+    for (s, r) in specs.into_iter().zip(results) {
+        let seed = s.seed;
+        println!("- seed {seed}: {}", FightCode::new(&content, rules, s, r).encode());
+    }
     Ok(())
 }
 
@@ -335,6 +344,8 @@ fn evolve(o: &Opts) -> Result<(), String> {
     );
     println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
     let start = Instant::now();
+    // Per generation: its best child's hardest fight (none for voyage fitness), coded after the run.
+    let mut hardest: Vec<Option<(FightSpec, f32)>> = Vec::new();
     while !run.finished() {
         let t0 = Instant::now();
         // Breeding (mutation, crossover, the pre-filter) runs on this thread; the jobs on all of them.
@@ -342,6 +353,7 @@ fn evolve(o: &Opts) -> Result<(), String> {
         let breed = t0.elapsed().as_secs_f64() * 1e3;
         let results = par_map(&jobs, o.threads, |j| j.run(&content));
         run.submit(results);
+        hardest.push(hardest_fight(run.champion()));
         let g = run.state().history.last().cloned().expect("a generation is done");
         println!(
             "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {breed:.1} | {:.2} |",
@@ -411,5 +423,35 @@ fn evolve(o: &Opts) -> Result<(), String> {
             o.best.min(results.elites.len())
         );
     }
+    if hardest.iter().any(Option::is_some) {
+        // Jobs keep only their score, so each coded fight runs once more for its full record (the same fight).
+        let rules = arena::rules_fingerprint(&content);
+        println!();
+        println!("Fight codes: each generation's best child in its hardest fight (re-watch one in the game: `?scene=fight&fight=<code>`):");
+        println!();
+        for (generation, h) in hardest.into_iter().enumerate() {
+            if let Some((spec, score)) = h {
+                let record = arena::run_fight(&content, &spec).map_err(|e| e.to_string())?;
+                let seed = spec.seed;
+                let code = FightCode::new(&content, rules, spec, record).encode();
+                println!("- gen {generation}, score {score:.3}, seed {seed}: {code}");
+            }
+        }
+    }
     Ok(())
+}
+
+/// The fight of a generation's best child it scored lowest in (the first of equal scores), with that score.
+fn hardest_fight(champion: &[(Job, JobResult)]) -> Option<(FightSpec, f32)> {
+    champion
+        .iter()
+        .filter_map(|(j, r)| match j {
+            Job::Fight { spec, .. } => Some((spec, r.score)),
+            Job::Voyage { .. } => None,
+        })
+        .fold(None, |low: Option<(&FightSpec, f32)>, (spec, score)| match low {
+            Some((_, s)) if s <= score => low,
+            _ => Some((spec, score)),
+        })
+        .map(|(spec, score)| (spec.clone(), score))
 }

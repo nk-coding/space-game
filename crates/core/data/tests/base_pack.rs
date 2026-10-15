@@ -257,3 +257,20 @@ fn placement_mass_and_centroid() {
     assert_eq!(grid.shape(j).centroid(), [6.0, 3.0]);
     assert_eq!(c.placement_mass(&ship.parts[j]), Some(12.0));
 }
+
+/// The content's fingerprint (GDR-0092) is the same for equal content, changes with what a fight reads (a part's
+/// mass) and not with what it doesn't (a research node's name, wiki prose).
+#[test]
+fn the_fingerprint_follows_what_fights_read() {
+    let c = content();
+    let base = c.fingerprint();
+    assert_eq!(content().fingerprint(), base);
+    let mut heavier = c.clone();
+    let part = heavier.parts.iter_mut().find(|p| p.mass.is_some()).unwrap();
+    part.mass = part.mass.map(|m| m + 0.5);
+    assert_ne!(heavier.fingerprint(), base);
+    let mut renamed = c.clone();
+    renamed.research.iter_mut().next().unwrap().name.push_str(" II");
+    renamed.wiki.clear();
+    assert_eq!(renamed.fingerprint(), base);
+}

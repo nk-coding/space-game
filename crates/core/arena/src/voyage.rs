@@ -2,6 +2,7 @@
 //! the headless voyage runner (`sim::voyage::runner`), scored 0..1 by the goal cleared, the time and the hull lost.
 
 use data::Content;
+use serde::{Deserialize, Serialize};
 use sim::{BehaviorLibrary, Flagship, SimConfig, VoyageRun, VoyageRunner};
 
 use crate::error::ArenaError;
@@ -16,7 +17,8 @@ pub const MAX_VOYAGE_MINUTES: f32 = 600.0;
 
 /// One voyage run: which voyage, the seed (the voyage's roll and the world), the design, the behavior it fights
 /// with and the time limit.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VoyageSpec {
     /// A content voyage id.
     pub voyage: String,

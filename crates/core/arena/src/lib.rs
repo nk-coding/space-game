@@ -11,6 +11,10 @@
 //! [`VoyageSpec`], [`run_voyage`] and [`voyage_score`] score a design by the slice's voyages (the headless voyage
 //! runner, `sim::voyage::runner`). [`evolve`] breeds designs and behaviors ([`Run`], configured by a [`RunConfig`]).
 //!
+//! A fight is re-watched by simulating its spec again (GDR-0092): a [`FightCode`] carries the spec, the record of how
+//! it ended and the [`rules_fingerprint`] it was fought under, as one line of text. A client that steps the world
+//! itself builds it with [`FightSetup::build`] and asks its [`Referee`] after every tick.
+//!
 //! No Bevy, no I/O, no threads, no wall clock; builds for wasm32. The same spec gives the same result and hash
 //! on every platform (the sim's determinism rules apply here too: ordered containers, `sim::math` for any
 //! transcendental function). The native `arena` CLI (`crates/tools/arena-cli`, ADR-0040) runs batches on every core.
@@ -29,17 +33,22 @@
 
 #![forbid(unsafe_code)]
 
+mod code;
 mod error;
 pub mod evolve;
 mod fight;
+mod rules;
 mod score;
 mod spec;
 mod voyage;
 
+pub use code::{CODE_TAG, CODE_VERSION, CodeError, FightCode, MAX_PACKED, MAX_PAYLOAD};
 pub use error::ArenaError;
 pub use fight::{
-    FORMATION_GAP, Fight, FightResult, JITTER, OUT_AFTER, OWNERS, Outcome, SideResult, run_fight,
+    FORMATION_GAP, Fight, FightResult, FightSetup, JITTER, OUT_AFTER, OWNERS, Outcome, Referee,
+    SideResult, run_fight, standing,
 };
+pub use rules::rules_fingerprint;
 pub use score::{Summary, arena_score, run_seeds};
 pub use spec::{
     BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec,

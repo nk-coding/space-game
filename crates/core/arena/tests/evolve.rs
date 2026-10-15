@@ -1,7 +1,7 @@
 //! The voyage fitness (`arena::voyage`) and the evolution (`arena::evolve`): determinism, slices and threads,
 //! limits, the configuration's text form and errors, and a tiny run that improves.
 
-use arena::evolve::{Fitness, Genes, JobResult, Measure, Results};
+use arena::evolve::{Fitness, Genes, Job, JobResult, Measure, Results};
 use arena::{DesignRef, Run, RunConfig, RunError, VoyageSpec};
 use data::Content;
 use sim::voyage::runner::Outcome;
@@ -257,4 +257,38 @@ fn voyage_fitness_scores_a_run() {
         bad(&|s| s.behavior = Some(arena::BehaviorRef::Text("always -> nope".into()))),
         arena::ArenaError::Voyage(_)
     ));
+}
+
+/// GDR-0092: after each generation the run hands out its best child's jobs and results (its fights to re-watch),
+/// in the threaded and the stepped way alike; jobs and results are plain data with a RON form.
+#[test]
+fn the_best_childs_fights_are_kept_and_jobs_are_data() {
+    let c = data::base_content();
+    let mut run = Run::new(&c, config(TINY)).unwrap();
+    assert!(run.champion().is_empty());
+    let jobs = run.jobs().to_vec();
+    run.submit(jobs.iter().map(|j| j.run(&c)).collect());
+    let champion = run.champion().to_vec();
+    assert_eq!(champion.len(), 2, "one opponent, two seeds");
+    let mean = champion.iter().map(|(_, r)| r.score as f64).sum::<f64>() / champion.len() as f64;
+    assert_eq!(mean as f32, run.state().history[0].best);
+    let mut stepped = Run::new(&c, config(TINY)).unwrap();
+    while stepped.state().history.is_empty() {
+        stepped.step(1000);
+    }
+    assert_eq!(stepped.champion(), champion.as_slice());
+    for (job, result) in &champion {
+        round_trip(job);
+        round_trip(result);
+    }
+    round_trip(&Job::Voyage {
+        candidate: 3,
+        spec: VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0 },
+    });
+}
+
+/// Writes a value as RON and reads it back to an equal one.
+fn round_trip<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug>(v: &T) {
+    let text = ron::to_string(v).unwrap();
+    assert_eq!(&ron::from_str::<T>(&text).unwrap(), v, "{text}");
 }

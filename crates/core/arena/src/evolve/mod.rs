@@ -169,6 +169,8 @@ pub struct Run {
     archive: Archive,
     history: Vec<GenerationStats>,
     batch: Option<Batch>,
+    /// The jobs of the last closed generation's best child, with their results.
+    champion: Vec<(Job, JobResult)>,
 }
 
 /// The behavior a design flies by default: its own, else its faction's; as text.
@@ -323,6 +325,7 @@ impl Run {
             start,
             history: Vec::new(),
             batch: None,
+            champion: Vec::new(),
         };
         // One job of every opponent or voyage with the start: the references resolve.
         for job in run.jobs_of(&run.start, &[]) {
@@ -439,6 +442,12 @@ impl Run {
             self.breed();
         }
         &self.batch.as_ref().expect("bred").jobs
+    }
+
+    /// The jobs of the last closed generation's best child (the first of equal scores) and their results, in job
+    /// order: its fights to re-watch (GDR-0092). Empty before the first generation has closed.
+    pub fn champion(&self) -> &[(Job, JobResult)] {
+        &self.champion
     }
 
     /// Takes the results of [`Run::jobs`] (same order) and closes the generation. Panics if the count differs.
@@ -645,6 +654,7 @@ impl Run {
         let mut sum = 0.0f64;
         let mut improved = 0;
         let mut ticks = 0;
+        let mut champion: Option<(f32, &Range<usize>)> = None;
         for (c, range) in b.candidates.into_iter().zip(&b.ranges) {
             let rs: Vec<JobResult> = b.results[range.clone()]
                 .iter()
@@ -658,6 +668,9 @@ impl Run {
                 0.0
             };
             ticks += rs.iter().map(|r| r.ticks).sum::<u64>();
+            if champion.is_none_or(|(s, _)| score > s) {
+                champion = Some((score, range));
+            }
             best = best.max(score);
             sum += score as f64;
             let s = c.stats;
@@ -687,6 +700,13 @@ impl Run {
             };
             improved += self.archive.offer(elite) as u32;
         }
+        self.champion = champion.map_or_else(Vec::new, |(_, range)| {
+            b.jobs[range.clone()]
+                .iter()
+                .cloned()
+                .zip(b.results[range.clone()].iter().map(|r| r.expect("every job done")))
+                .collect()
+        });
         let evaluated = b.ranges.len() as u32;
         self.history.push(GenerationStats {
             generation,
