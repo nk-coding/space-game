@@ -1,18 +1,14 @@
 //! A voyage's debrief as data (GDR-0065): what came home and what it gave. [`DebriefData`] is built from the
 //! career before and after the voyage's end (`voyage::end`), the voyage's haul and what the flight counted
 //! ([`DebriefStats`]: sites, kills, ships lost); [`Debrief`] holds the last one for home's panel (`debrief.rs`).
-//! Kills and ships lost are not in the save, so a game loaded with a `last_haul` shows only the one-line summary
-//! of it.
+//! Kills and ships lost are not in the save; the career's history keeps the rest (home's LOG, GDR-0091).
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 
 use bevy::prelude::*;
-use data::career::{Haul, HaulItem, LastHaul, Outcome, unload};
+use data::career::{Haul, HaulItem, Outcome, VoyageResult, unload};
 use data::{Career, Content};
 use kit::ui_kit::Tone;
-
-use super::clock;
 
 /// What one part's items gave: how many, research data per family, materials per id.
 type Gave = (u32, BTreeMap<String, f32>, BTreeMap<String, u32>);
@@ -75,15 +71,24 @@ pub struct DebriefData {
     pub practice: Option<String>,
 }
 
+/// How a voyage ended, in words and their tone (the debrief's chip, the LOG's rows).
+pub fn outcome_words(outcome: Outcome) -> (&'static str, Tone) {
+    match outcome {
+        Outcome::Cleared => ("GOAL CLEARED", Tone::Teal),
+        Outcome::Recalled => ("RECALLED", Tone::Label),
+        Outcome::Lost => ("LOST", Tone::Coral),
+    }
+}
+
 /// Research data as the debrief writes it: whole numbers plain, else one decimal.
 pub fn amount(x: f32) -> String {
     if (x - x.round()).abs() < 0.05 { format!("{:.0}", x.round()) } else { format!("{x:.1}") }
 }
 
 impl DebriefData {
-    /// The debrief of `last` (the career's last haul), from the career `before` and `after` the end, the `haul`
-    /// that came home (its items, for the rows) and what the flight counted.
-    pub fn build(content: &Content, before: &Career, after: &Career, last: &LastHaul, haul: &Haul, stats: DebriefStats) -> DebriefData {
+    /// The debrief of `last` (the voyage's result), from the career `before` and `after` the end, the `haul` that
+    /// came home (its items, for the rows) and what the flight counted.
+    pub fn build(content: &Content, before: &Career, after: &Career, last: &VoyageResult, haul: &Haul, stats: DebriefStats) -> DebriefData {
         let voyage = content.voyages.get(&last.voyage);
         let was_cleared = before.voyage(&last.voyage).is_some_and(|r| r.cleared);
         let first_clear = !was_cleared && after.voyage(&last.voyage).is_some_and(|r| r.cleared);
@@ -170,39 +175,12 @@ impl DebriefData {
 
     /// The outcome chip.
     pub fn outcome_chip(&self) -> (&'static str, Tone) {
-        match self.outcome {
-            Outcome::Cleared => ("GOAL CLEARED", Tone::Teal),
-            Outcome::Recalled => ("RECALLED", Tone::Label),
-            Outcome::Lost => ("LOST", Tone::Coral),
-        }
+        outcome_words(self.outcome)
     }
 
     /// One line per signal found: `SIGNAL FOUND · HALVEX DRIFT`.
     pub fn signals(&self) -> Vec<String> {
         self.opened.iter().map(|v| format!("SIGNAL FOUND  ·  {}", v.to_uppercase())).collect()
-    }
-
-    /// The one line home shows once the panel is dismissed: `LAST VOYAGE · SHIPYARD APPROACH · GOAL CLEARED · 7:42
-    /// · 14 PARTS → KINETIC +18 · PROPULSION +9`.
-    pub fn summary(&self) -> String {
-        let mut s = String::from(if self.practice.is_some() { "PRACTICE RUN" } else { "LAST VOYAGE" });
-        let _ = write!(s, "  ·  {}  ·  {}  ·  {}", self.name.to_uppercase(), self.outcome_chip().0, clock(self.ticks));
-        if self.outcome == Outcome::Lost {
-            s.push_str("  ·  THE HAUL STAYED BEHIND");
-            return s;
-        }
-        let _ = write!(s, "  ·  {} {}", self.items, if self.items == 1 { "PART" } else { "PARTS" });
-        // `»` for "turned into": Barlow has no arrows (an `→` showed as a box).
-        let mut first = true;
-        for f in &self.families {
-            let _ = write!(s, "{}{} +{}", if first { "  »  " } else { "  ·  " }, f.name, amount(f.gained));
-            first = false;
-        }
-        for (m, n) in &self.materials {
-            let _ = write!(s, "{}{} +{n}", if first { "  »  " } else { "  ·  " }, m.to_uppercase());
-            first = false;
-        }
-        s
     }
 }
 
@@ -231,7 +209,7 @@ mod tests {
     }
 
     /// A first clear: rows by part with what they gave, data per family with the store, research ready, the next
-    /// voyage open, the voyage's words; then the one-line summary.
+    /// voyage open, the voyage's words.
     #[test]
     fn a_cleared_voyage_debriefs_its_haul() {
         let content = data::base_content();
@@ -265,12 +243,6 @@ mod tests {
         assert_eq!(d.signals(), ["SIGNAL FOUND  ·  HALVEX DRIFT"]);
         assert!(d.cleared_text.as_deref().is_some_and(|t| t.contains("Halvex Drift") && !t.contains("[[")), "{:?}", d.cleared_text);
         assert!(!d.ready.is_empty(), "the cannon data pays for the cannon node");
-        let line = d.summary();
-        assert!(line.starts_with("LAST VOYAGE  ·  SHIPYARD APPROACH  ·  GOAL CLEARED  ·  7:42  ·  10 PARTS  »  KINETIC WEAPONS +"), "{line}");
-        // From the save alone (no rows, no counts): the same summary.
-        let loaded = DebriefData::build(&content, &after, &after, &last, &Haul::default(), DebriefStats::default());
-        assert!(loaded.rows.is_empty() && !loaded.first_clear && loaded.stats.kills.is_none());
-        assert_eq!(loaded.summary(), line);
     }
 
     #[test]
@@ -282,7 +254,6 @@ mod tests {
         let last = after.voyage_ended(&content, "yard_approach", VoyageEnd::Lost { ticks: 30 * 61 }).unwrap().clone();
         let d = DebriefData::build(&content, &before, &after, &last, &Haul::default(), DebriefStats { left: 5, ..default() });
         assert_eq!(d.head(), ("SHIP LOST  ·  RECALLED HOME", Tone::Coral));
-        assert_eq!(d.summary(), "LAST VOYAGE  ·  SHIPYARD APPROACH  ·  LOST  ·  1:01  ·  THE HAUL STAYED BEHIND");
         assert!(d.opened.is_empty() && d.signals().is_empty() && !d.first_clear);
         assert_eq!((amount(18.0), amount(4.5), amount(0.04)), ("18".into(), "4.5".into(), "0".into()));
     }

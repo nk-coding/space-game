@@ -3,9 +3,9 @@
 //! over it and the camera's flights between the yard and its places.
 //!
 //! ```text
-//! THE SHIPYARD · RIM          RESEARCH  [lab]      FABRICATOR
-//! Rim skiff copy               1 READY  [lab]
-//!  [mooring]==.      .========================.
+//! THE SHIPYARD · RIM          RESEARCH  [lab]      FABRICATOR   |* LOG
+//! Rim skiff copy               1 READY  [lab]                  |  NEW · …
+//!  [mooring]==.      .========================[log]
 //!             [mind]=|  BUILDING AREA (ship) =|  > > > ( GATE )
 //!  [mooring]=='      '========================'      VOYAGES
 //! FLEET               [SALVAGE BAY] [tower]-o--o--o-   NOTES …
@@ -16,17 +16,20 @@
 //!   the building area is the drydock (D; the camera lands exactly on the drydock's own view of the frame,
 //!   `DockCamera::opening_view`, so only its panels appear), the mind the BEHAVIOR screen (B), the tower and lane the
 //!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the lab RESEARCH (R,
-//!   `research/`). The gate opens the voyage map at once (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
+//!   `research/`), the records mast by the gate the LOG (L, a layer over home, `voyage_log.rs`; its tooltip is the
+//!   last voyage in one line, and it glows while a result waits there). The gate opens the voyage map at once (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
 //!   its portal takes the camera through the gate and back out (`map::portal`). The fabricator and the salvage bay
 //!   are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
 //!   place (corner brackets, a brighter title).
 //! * **Coming back** from a screen the camera starts on its place (the drydock's last view, the mind, the test
-//!   range, the lab; FLEET's moorings when it closes) and flies back out to the yard; from the map it is back out
-//!   already.
+//!   range, the lab; FLEET's moorings and the LOG's mast when they close) and flies back out to the yard; from the
+//!   map it is back out already.
 //! * **Labels** are small UI text placed over the world (the sketch's), shown while the camera rests on the yard.
 //! * **Notes** bottom right: what the career has to say (a new game, a save kept as it is, content that changed,
 //!   `?unlock=all`, an escort whose design is gone), from `career::PlayerCareer::notes`.
+//! * **The layers over home** (FLEET, SETTINGS, the LOG) leave the station barely showing: home's words, labels and
+//!   click areas, and the debrief's panel, step aside while one is open, so nothing reads through it.
 //!
 //! Entering home keeps the flight camera's zoom and leaving gives it back with the normal UI scale, so the drydock
 //! and flight find the camera as they left it. UI words are chrome in code, like the drydock's; the shipyard's
@@ -52,6 +55,7 @@ use crate::drydock::view::{DockCamera, GridViewport};
 use crate::fleet::{self, Fleet};
 use crate::research;
 use crate::shipyard::fly::{Fly, View};
+use crate::voyage_log::{self, LogRow, VoyageLog};
 use crate::shipyard::layout::{Align, Layout, Place, Tag, fit, fit_tagged};
 use crate::shipyard::{ShipyardSet, Yard};
 
@@ -86,6 +90,8 @@ pub enum HomeAction {
     Voyages,
     /// The lab: the research screen.
     Research,
+    /// The records mast: the LOG layer over home (`voyage_log.rs` opens it).
+    Log,
 }
 
 /// A place's action in the action map, if it has one (its tooltip names the bound keys while it works).
@@ -97,6 +103,7 @@ pub fn key_of(place: Place) -> Option<Action> {
         Place::Voyages => Some(Action::OpenVoyages),
         Place::TestRange => Some(Action::OpenTestRange),
         Place::Fleet => Some(Action::OpenFleet),
+        Place::Log => Some(Action::OpenLog),
         Place::Fabricator | Place::SalvageBay => None,
     }
 }
@@ -110,6 +117,7 @@ pub fn action_of(place: Place) -> Option<HomeAction> {
         Place::Fleet => Some(HomeAction::Fleet),
         Place::Voyages => Some(HomeAction::Voyages),
         Place::Research => Some(HomeAction::Research),
+        Place::Log => Some(HomeAction::Log),
         Place::Fabricator | Place::SalvageBay => None,
     }
 }
@@ -123,6 +131,8 @@ fn tip_of(place: Place) -> Option<Tip> {
         HomeAction::Fleet => "FLEET",
         HomeAction::Voyages => "VOYAGES",
         HomeAction::Research => "RESEARCH",
+        // Until a voyage has ended (then the last one in one line, `log_tip`).
+        HomeAction::Log => "LOG",
     };
     Some(Tip::new(name))
 }
@@ -147,7 +157,7 @@ enum Phase {
     Yard,
     /// On the way to a place (`to`), or back to the yard from one (`from`).
     Flying { fly: Fly, to: Option<Place>, from: Option<Place> },
-    /// Arrived at a place: its screen opens (FLEET stays a layer over home until it closes).
+    /// Arrived at a place: its screen opens (FLEET and the LOG stay layers over home until they close).
     At(Place, View),
 }
 
@@ -221,10 +231,10 @@ impl Plugin for HomePlugin {
                 Update,
                 (
                     ui_scale,
-                    (clicks, keys).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open))),
+                    (clicks, keys).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open))),
                     fly,
                     apply,
-                    (place_labels, sync_titles, sync_name, sync_notes).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open))),
+                    (place_labels, sync_titles, sync_name, sync_notes, log_tip).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open))),
                     measure_labels,
                     show,
                 )
@@ -234,7 +244,7 @@ impl Plugin for HomePlugin {
                     .before(ShipyardSet)
                     .run_if(in_state(AppMode::Home)),
             )
-            .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>)))
+            .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>).or_eager(resource_changed::<VoyageLog>)))
             .add_systems(PostUpdate, draw_hover.run_if(in_state(AppMode::Home)).after(CameraSet).before(FxFlush));
     }
 }
@@ -248,6 +258,8 @@ fn title_tone(place: Place, yard: &Yard) -> Tone {
         Place::Fleet => Tone::Teal,
         Place::Research if yard.lights.research => Tone::Gold,
         Place::Voyages if yard.lights.gate => Tone::Teal,
+        Place::Log if yard.lights.log => Tone::Gold,
+        Place::Log => Tone::Label,
         Place::Research | Place::Voyages | Place::Fabricator | Place::SalvageBay => Tone::Dim,
     }
 }
@@ -473,7 +485,7 @@ fn clicks(
     }
 }
 
-/// The places' actions (D, B, T, F, R, V by default): not while a text field has the keyboard (the action map keeps
+/// The places' actions (D, B, T, F, R, V, L by default): not while a text field has the keyboard (the action map keeps
 /// them apart from Ctrl and Cmd combinations: Ctrl+D is the browser's bookmark key). The debrief's VOYAGE MAP acts
 /// as the voyages' key.
 #[allow(clippy::too_many_arguments)]
@@ -503,12 +515,12 @@ fn keys(
 
 /// The camera: on the yard it shows the whole station (fitted to the window); in flight it follows the flight
 /// (time-based), and the rigging makes room as it flies into the drydock (or comes back out); on arrival at a
-/// place its screen opens. FLEET's moorings: when FLEET closes, the camera flies back out.
+/// place its screen opens. FLEET's moorings and the LOG's mast: when their layer closes, the camera flies back out.
 #[allow(clippy::too_many_arguments)]
 fn fly(
     time: Res<Time<Real>>,
     window: Single<&Window, With<PrimaryWindow>>,
-    fleet: Res<Fleet>,
+    (fleet, log): (Res<Fleet>, Res<VoyageLog>),
     tags: Res<LabelTags>,
     mut yard: ResMut<Yard>,
     mut rig: ResMut<CameraRig>,
@@ -545,9 +557,14 @@ fn fly(
             if *place == Place::Drydock {
                 clear = 1.0;
             }
-            if *place == Place::Fleet && !fleet.open {
-                // FLEET closed: back out to the yard.
-                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)).after(EXIT_SECONDS), to: None, from: Some(Place::Fleet) });
+            let closed = match *place {
+                Place::Fleet => !fleet.open,
+                Place::Log => !log.open,
+                _ => false,
+            };
+            if closed {
+                // The layer closed: back out to the yard.
+                next = Some(Phase::Flying { fly: Fly::new(*view, overview(&yard.layout, &window, &tags)).after(EXIT_SECONDS), to: None, from: Some(*place) });
             }
             *view
         }
@@ -576,24 +593,25 @@ fn apply(
                 scene.launch = Some(Launch::Range);
                 next.set(AppMode::Flight);
             }
-            // A layer over home, not a mode: `fleet::open` reads the same message.
-            HomeAction::Fleet => {}
+            // Layers over home, not modes: `fleet::open` and `voyage_log::open` read the same message.
+            HomeAction::Fleet | HomeAction::Log => {}
             HomeAction::Voyages => next.set(AppMode::Map),
         }
     }
 }
 
-/// Home's screen shows at home while FLEET is closed; the labels while the camera rests on the yard.
+/// Home's screen shows at home while no layer is over it (FLEET, SETTINGS, the LOG); the labels while the camera
+/// rests on the yard.
 #[allow(clippy::type_complexity)]
 fn show(
     mode: Res<State<AppMode>>,
-    fleet: Res<Fleet>,
+    (fleet, log): (Res<Fleet>, Res<VoyageLog>),
     settings: Res<world::settings::SettingsLayer>,
     visit: Res<Visit>,
     mut screens: Query<&mut ScreenFx, Or<(With<HomeRoot>, With<LabelRoot>)>>,
     mut spots: Single<&mut Visibility, With<SpotRoot>>,
 ) {
-    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open;
+    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open;
     let resting = home && matches!(visit.phase, Phase::Yard);
     for mut fx in &mut screens {
         show_screen(&mut fx, resting);
@@ -672,7 +690,7 @@ fn place_labels(
 }
 
 /// Titles and the lines under them: the frame's name in the building area's, FLEET's cores, what research can
-/// pay for now, the lit and dark buildings; a hovered place's title brightens.
+/// pay for now, what waits in the LOG, the lit and dark buildings; a hovered place's title brightens.
 #[allow(clippy::too_many_arguments)]
 fn sync_titles(
     yard: Res<Yard>,
@@ -704,6 +722,7 @@ fn sync_titles(
             Place::Voyages => "VOYAGES".into(),
             Place::TestRange => "TEST RANGE".into(),
             Place::Fleet => "FLEET".into(),
+            Place::Log => "LOG".into(),
             Place::Fabricator => "FABRICATOR".into(),
             Place::SalvageBay => "SALVAGE BAY".into(),
         };
@@ -732,6 +751,15 @@ fn sync_titles(
                     None => ("DORMANT".into(), Tone::Dim),
                 }
             }
+            Place::Log => {
+                let c = career.career();
+                match (c.unread(), c.last_voyage()) {
+                    (_, None) => ("NO VOYAGES YET".into(), Tone::Dim),
+                    (0, Some(_)) => (plural(c.history().len(), "VOYAGE"), Tone::Label),
+                    (1, Some(last)) => (format!("NEW  ·  {}", LogRow::of(&content.0, last).name.to_uppercase()), Tone::Gold),
+                    (n, Some(_)) => (format!("{n} NEW"), Tone::Gold),
+                }
+            }
             Place::Fabricator | Place::SalvageBay => ("LATER".into(), Tone::Dim),
         };
         set_text(&mut text, &words);
@@ -739,6 +767,23 @@ fn sync_titles(
         let display = if words.is_empty() { Display::None } else { Display::Flex };
         if node.display != display {
             node.display = display;
+        }
+    }
+}
+
+fn plural(n: usize, one: &str) -> String {
+    if n == 1 { format!("1 {one}") } else { format!("{n} {one}S") }
+}
+
+/// The LOG's tooltip: the last voyage in one line (what sat over home before the LOG, GDR-0091).
+fn log_tip(career: Res<PlayerCareer>, content: Res<GameContent>, mut spots: Query<(&Spot, &mut Tip)>) {
+    if !career.is_changed() {
+        return;
+    }
+    let line = career.career().last_voyage().map_or_else(|| "LOG".to_string(), |v| LogRow::of(&content.0, v).line());
+    for (spot, mut tip) in &mut spots {
+        if spot.0 == Place::Log && tip.name != line {
+            tip.name = line.clone().into();
         }
     }
 }
@@ -849,8 +894,8 @@ mod tests {
         }
     }
 
-    /// D, B, T, F, R and V lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research and the voyage
-    /// map; every key is one place's, every action one place's.
+    /// D, B, T, F, R, V and L lead to the drydock, the BEHAVIOR screen, the test range, FLEET, research, the voyage
+    /// map and the LOG; every key is one place's, every action one place's.
     #[test]
     fn keys_and_places_map_to_screens() {
         let by_key = |k: Action| Place::ALL.into_iter().find(|p| key_of(*p) == Some(k));
@@ -860,6 +905,7 @@ mod tests {
         assert_eq!(screen(Action::OpenTestRange), Some(HomeAction::TestRange));
         assert_eq!(screen(Action::OpenFleet), Some(HomeAction::Fleet));
         assert_eq!(screen(Action::OpenVoyages), Some(HomeAction::Voyages));
+        assert_eq!(screen(Action::OpenLog), Some(HomeAction::Log));
         assert_eq!((by_key(Action::OpenResearch), screen(Action::OpenResearch)), (Some(Place::Research), Some(HomeAction::Research)));
         for p in Place::ALL {
             if let Some(k) = key_of(p) {

@@ -40,6 +40,7 @@ use world::sim_bridge::GameContent;
 use world::storage::Storage;
 
 use crate::fleet::Fleet;
+use crate::voyage_log::VoyageLog;
 
 /// The layout's size (logical px), like FLEET's.
 const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
@@ -114,8 +115,8 @@ pub fn is_open(layer: Res<SettingsLayer>) -> bool {
     layer.open
 }
 
-/// Opens it: at home the gear ring or its key (not while FLEET is open or a field types), in flight the menu's
-/// SETTINGS.
+/// Opens it: at home the gear ring or its key (not while FLEET or the LOG is open or a field types), in flight the
+/// menu's SETTINGS.
 #[allow(clippy::too_many_arguments)]
 fn open(
     mode: Res<State<AppMode>>,
@@ -123,13 +124,13 @@ fn open(
     ring: Query<(), With<SettingsRing>>,
     act: Act,
     pointer: Res<UiPointer>,
-    fleet: Res<Fleet>,
+    (fleet, log): (Res<Fleet>, Res<VoyageLog>),
     mut asked: MessageReader<OpenSettings>,
     mut layer: ResMut<SettingsLayer>,
     mut ui: ResMut<SettingsUi>,
 ) {
     let mode = *mode.get();
-    let home = mode == AppMode::Home && !fleet.open && !layer.open;
+    let home = mode == AppMode::Home && !fleet.open && !log.open && !layer.open;
     let by_ring = clicks.read().any(|c| ring.contains(c.0));
     let by_key = home && !pointer.typing && act.just_pressed(Action::OpenSettings);
     let by_menu = asked.read().count() > 0 && mode == AppMode::Flight;

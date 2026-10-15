@@ -1,7 +1,8 @@
 //! What keeps the yard alive at home (Niklas, 15 Oct 2026: "the station should feel a bit more alive"): beacons
 //! that breathe and flash, the gate's ring turning and a wave of light running up its approach while it is awake,
 //! the mind's spokes turning around its beating core, research's dishes sweeping and its orbit turning while
-//! research runs, two shuttles roaming the station's left end, and windows going on and off, a few in a minute.
+//! research runs, two shuttles roaming the station's left end, windows going on and off, a few in a minute, and the
+//! LOG's mast glowing while a voyage's result waits there (GDR-0091).
 //!
 //! Each is a small mesh of its own, built with the yard (`super::rebuild`) and then only moved, turned or scaled by
 //! its transform, so nothing is rebuilt while it moves. The beacons' white cores stay in the static meshes; only
@@ -43,6 +44,10 @@ const SHUTTLE_WAIT: (f32, f32) = (2.0, 6.0);
 const GATE_TURN: f32 = 120.0;
 const MIND_TURN: f32 = 40.0;
 const ORBIT_TURN: f32 = 30.0;
+/// The LOG's glow while a result waits: one breath (s), and its size between breaths and at the full breath
+/// (noticeable but calm).
+const LOG_BREATH: f32 = 2.8;
+const LOG_GLOW: (f32, f32) = (0.7, 1.15);
 /// The approach's wave (Niklas, 15 Oct 2026: "highlighting the arrows after each other ... only every 5s or so"):
 /// one every 5 s; each chevron lights this long after the one before it and rises and falls in this long, so a
 /// wave takes about a second.
@@ -67,11 +72,14 @@ pub enum Part {
     MindCore,
     Dish(usize),
     Orbit,
+    /// The LOG's glow (none while nothing waits there).
+    LogGlow,
     Shuttle(usize),
 }
 
 impl Part {
-    const ALL: [Part; 9] = [Part::GateRing, Part::Approach, Part::MindRotor, Part::MindCore, Part::Dish(0), Part::Dish(1), Part::Orbit, Part::Shuttle(0), Part::Shuttle(1)];
+    const ALL: [Part; 10] =
+        [Part::GateRing, Part::Approach, Part::MindRotor, Part::MindCore, Part::Dish(0), Part::Dish(1), Part::Orbit, Part::LogGlow, Part::Shuttle(0), Part::Shuttle(1)];
 
     fn z(self) -> f32 {
         match self {
@@ -90,6 +98,8 @@ impl Part {
             Part::MindCore => draw::mind_core(pen, pal),
             Part::Dish(k) => draw::dish(pen, pal, draw::research_dishes(l)[k].1.0, lab),
             Part::Orbit => draw::orbit(pen, lab),
+            Part::LogGlow if lights.log => draw::log_glow(pen, pal),
+            Part::LogGlow => {}
             Part::Shuttle(_) => draw::shuttle(pen, pal),
         }
     }
@@ -350,6 +360,12 @@ fn wave(k: usize, t: f32) -> f32 {
     if (0.0..1.0).contains(&p) { (p * PI).sin().powi(2) } else { 0.0 }
 }
 
+/// The LOG's glow's size `t` s on: a slow, soft breath.
+fn breath(t: f32) -> f32 {
+    let b = 0.5 - 0.5 * (t * TAU / LOG_BREATH).cos();
+    LOG_GLOW.0 + (LOG_GLOW.1 - LOG_GLOW.0) * b
+}
+
 /// Moves, turns and scales the parts and the beacons; flies the shuttles.
 pub fn animate(
     time: Res<Time<Real>>,
@@ -382,6 +398,7 @@ pub fn animate(
                 set(&mut tf, at, rest + sweep, 1.0);
             }
             Part::Orbit => set(&mut tf, l.research.centre, if lights.research { t / ORBIT_TURN * TAU } else { 0.0 }, 1.0),
+            Part::LogGlow => set(&mut tf, l.log_beacon, 0.0, breath(t)),
             Part::Shuttle(_) => {
                 if let Some(mut pilot) = pilot {
                     let f = pilot.0.get_or_insert_with(|| Flight::new(&stops, rng));
@@ -514,6 +531,15 @@ mod tests {
             }
             assert!((50..=190).contains(&switches), "{switches} switches in an hour ({n} windows)");
         }
+    }
+
+    /// The LOG's glow breathes slowly between its two sizes, never gone.
+    #[test]
+    fn the_log_glow_breathes() {
+        let sizes: Vec<f32> = (0..280).map(|k| breath(k as f32 * 0.01)).collect();
+        assert!(sizes.iter().all(|s| (LOG_GLOW.0 - 1e-4..=LOG_GLOW.1 + 1e-4).contains(s)));
+        assert!((breath(0.0) - LOG_GLOW.0).abs() < 1e-4 && (breath(LOG_BREATH / 2.0) - LOG_GLOW.1).abs() < 1e-4);
+        assert!(sizes.windows(2).all(|w| (w[1] - w[0]).abs() < 0.01), "it breathes, it doesn't blink");
     }
 
     /// A strobe flashes once per period and rests dim; a navigation light only breathes.

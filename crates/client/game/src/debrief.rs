@@ -1,6 +1,7 @@
 //! The debrief (GDR-0065): after a voyage, a full panel over home's right
-//! side until it is dismissed (DISMISS, Esc or Enter), then a one-line summary top left. A layer of its own over
-//! [`AppMode::Home`] (the shipyard), independent of home's layout; hidden while FLEET is open.
+//! side until it is dismissed (DISMISS, Esc or Enter). A layer of its own over [`AppMode::Home`] (the shipyard),
+//! independent of home's layout; hidden while FLEET, SETTINGS or the LOG is open. What came home stays in the LOG
+//! (`voyage_log.rs`, GDR-0091; it replaced the one-line summary that sat over home after the panel).
 //!
 //! ```text
 //! VOYAGE HOME · HAUL UNLOADED
@@ -20,9 +21,8 @@
 //! ```
 //!
 //! * What it shows is [`DebriefData`] (`voyage::debrief`): built at the voyage's end from the career before and
-//!   after it, the haul and what the flight counted. Kills and ships lost are not in the save, so a game loaded
-//!   with a `last_haul` shows only the one-line summary of it.
-//! * Dismissed is not saved: the next start shows the summary.
+//!   after it, the haul and what the flight counted. Kills and ships lost are not in the save.
+//! * It is not saved: the next start shows no panel (the LOG has the voyage).
 //! * The report scrolls when it is longer than the panel (a long haul, a low window; Niklas, 14 Oct 2026: "the
 //!   voyage report is not scrollable, and thus can cut things off"): everything above the buttons is one area with
 //!   the kit's [`Scrollbar`] (smooth wheel, the overlay bar, edge fades); the buttons stay put at the bottom.
@@ -31,19 +31,19 @@
 //!   (`map::OpenMap`), where the map selects the new signal.
 
 use bevy::prelude::*;
-use data::career::{Haul, Outcome};
+use data::career::Outcome;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{
-    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill, tracked,
+    HudFonts, Edge, Hot, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, show_screen, UiBlock, UiClick, UiInputSet, UiPointer, UiStyleSet, label, number, prose, spawn_pill,
 };
-use world::career::PlayerCareer;
 use world::mode::AppMode;
-use world::sim_bridge::GameContent;
+use world::settings::SettingsLayer;
 use world::voyage::clock;
-use world::voyage::debrief::{Debrief, DebriefData, DebriefStats, amount};
+use world::voyage::debrief::{Debrief, DebriefData, amount};
 
-use crate::fleet::{self, Fleet};
+use crate::fleet::Fleet;
+use crate::voyage_log::VoyageLog;
 
 /// Rows of parts shown (the rest are counted in one line).
 const MAX_ROWS: usize = 6;
@@ -56,10 +56,6 @@ const GAP: f32 = 14.0;
 #[derive(Component)]
 struct PanelRoot;
 
-/// The summary line's text.
-#[derive(Component)]
-struct SummaryText;
-
 #[derive(Component)]
 struct DismissButton;
 
@@ -71,21 +67,13 @@ pub struct DebriefPlugin;
 
 impl Plugin for DebriefPlugin {
     fn build(&self, app: &mut App) {
-        // A game loaded with a last haul starts with its summary (the panel was seen when it came home).
-        let debrief = {
-            let world = app.world();
-            let content = &world.resource::<GameContent>().0;
-            let career = world.resource::<PlayerCareer>().career();
-            let data = career.last_haul().map(|last| DebriefData::build(content, career, career, last, &Haul::default(), DebriefStats::default()));
-            Debrief { data, open: false }
-        };
-        app.insert_resource(debrief)
+        app.init_resource::<Debrief>()
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
             .add_systems(Update, (dismiss, rebuild, show).chain().after(UiInputSet).before(UiStyleSet));
     }
 }
 
-fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear: Res<ClearColor>) {
+fn spawn(mut commands: Commands, style: Res<Style>, clear: Res<ClearColor>) {
     commands.spawn((
         PanelRoot,
         // Slides in from the right and fades in (`ui_kit::ScreenFx`); out the same way when dismissed.
@@ -112,21 +100,14 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, clear:
             ..default()
         },
     ));
-    commands.spawn((
-        SummaryText,
-        ScreenFx::closed(),
-        Visibility::Hidden,
-        tracked(&fonts, "", 10.5, ui_color(style.ui.label, 1.0), 0.18),
-        // Top left under the shipyard's name (home's notes are bottom right).
-        Node { position_type: PositionType::Absolute, left: px(28), top: px(76), max_width: px(640), ..default() },
-    ));
 }
 
-/// DISMISS, Esc or Enter close the panel.
+/// DISMISS, Esc or Enter close the panel while it shows: not while a layer over home hides it (their Esc is
+/// theirs, also in the frame it closes them).
 #[allow(clippy::too_many_arguments)]
 fn dismiss(
     mode: Res<State<AppMode>>,
-    fleet: Res<Fleet>,
+    panel: Single<&ScreenFx, With<PanelRoot>>,
     keys: Res<ButtonInput<KeyCode>>,
     pointer: Res<UiPointer>,
     mut clicks: MessageReader<UiClick>,
@@ -140,7 +121,7 @@ fn dismiss(
         clicked |= buttons.contains(c.0);
         to_map |= map_buttons.contains(c.0);
     }
-    if !debrief.open || *mode.get() != AppMode::Home || fleet.open {
+    if !debrief.open || *mode.get() != AppMode::Home || !panel.is_open() {
         return;
     }
     let key = !pointer.typing && keys.any_just_pressed([KeyCode::Escape, KeyCode::Enter, KeyCode::NumpadEnter]);
@@ -152,34 +133,30 @@ fn dismiss(
     }
 }
 
-/// Shown at home only (not while FLEET is open): the panel while open, else the summary.
+/// Shown at home while open, and not under FLEET, SETTINGS or the LOG (the layers over home leave the world
+/// behind them barely there, so a panel left showing would read through them).
 fn show(
     mode: Res<State<AppMode>>,
-    fleet: Res<Fleet>,
+    (fleet, settings, log): (Res<Fleet>, Res<SettingsLayer>, Res<VoyageLog>),
     debrief: Res<Debrief>,
-    mut panel: Single<&mut ScreenFx, (With<PanelRoot>, Without<SummaryText>)>,
-    mut summary: Single<&mut ScreenFx, (With<SummaryText>, Without<PanelRoot>)>,
+    mut panel: Single<&mut ScreenFx, With<PanelRoot>>,
 ) {
-    let home = *mode.get() == AppMode::Home && !fleet::is_open(fleet);
-    let has = debrief.data.is_some();
-    show_screen(&mut panel, home && has && debrief.open);
-    show_screen(&mut summary, home && has && !debrief.open);
+    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open && !log.open;
+    show_screen(&mut panel, home && debrief.data.is_some() && debrief.open);
 }
 
-/// Rebuilds the panel and the summary when the debrief changes.
+/// Rebuilds the panel when the debrief changes.
 fn rebuild(
     mut commands: Commands,
     debrief: Res<Debrief>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     panel: Single<Entity, With<PanelRoot>>,
-    mut summary: Single<&mut Text, With<SummaryText>>,
 ) {
     if !debrief.is_changed() {
         return;
     }
     let Some(d) = &debrief.data else { return };
-    kit::ui_kit::set_text(&mut summary, &d.summary());
     commands.entity(*panel).despawn_children();
     commands.entity(*panel).with_children(|p| {
         // The report (it scrolls when it is longer than the panel; a new one starts at the top), the buttons under

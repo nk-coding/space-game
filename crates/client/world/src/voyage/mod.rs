@@ -27,7 +27,7 @@ pub mod debrief;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::input::egui_wants_any_keyboard_input;
-use data::career::{Haul, HaulItem, LastHaul, Outcome, Refusal, Unlocks, VoyageEnd, voyage_ready};
+use data::career::{Haul, HaulItem, Outcome, Refusal, Unlocks, VoyageEnd, VoyageResult, voyage_ready};
 use data::{Blueprint, Career, Content};
 use sim::{Item, Owner, SimConfig, SimEvent, SiteState};
 use kit::params::Params;
@@ -516,15 +516,15 @@ pub fn ended(
     DebriefData::build(content, &before, &after, &last, haul, stats)
 }
 
-/// The last haul of a voyage the career doesn't record (a practice run): what it would have given.
-fn unrecorded_haul(content: &Content, voyage: &str, how: VoyageEnd) -> LastHaul {
+/// The result of a voyage the career doesn't record (a practice run): what it would have given.
+fn unrecorded_haul(content: &Content, voyage: &str, how: VoyageEnd) -> VoyageResult {
     let (outcome, ticks, report) = match how {
         VoyageEnd::Recalled { haul, cleared, ticks } => {
             (if cleared { Outcome::Cleared } else { Outcome::Recalled }, ticks, data::career::unload(content, &haul))
         }
         VoyageEnd::Lost { ticks } => (Outcome::Lost, ticks, Default::default()),
     };
-    LastHaul { voyage: voyage.to_string(), outcome, ticks, report }
+    VoyageResult { voyage: voyage.to_string(), outcome, ticks, report, new: false }
 }
 
 /// Flight ends while a recorded voyage still runs (it shouldn't: T does nothing in a voyage, abandoning goes

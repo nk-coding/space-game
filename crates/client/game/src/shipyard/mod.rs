@@ -1,15 +1,15 @@
 //! The shipyard: home's world scene (GDR-0071). A long U-shaped
 //! dock lies on its side, its inside the building area (the working design's drydock frame, the ship docked in it
-//! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes and
-//! the dark fabricator on the top wall, the test range's tower and lane and the dark salvage bay under the bottom
-//! wall, the mind behind the base, the escorts' moorings on two truss bridges left of the mind.
+//! as the drydock draws it), the gate in front of its mouth, the buildings attached: research with its dishes, the
+//! dark fabricator and the LOG's records mast on the top wall, the test range's tower and lane and the dark salvage
+//! bay under the bottom wall, the mind behind the base, the escorts' moorings on two truss bridges left of the mind.
 //!
 //! * [`layout`]: where everything sits, a pure function of the frame size (a bigger frame, a bigger U).
 //! * [`draw`]: the meshes, flat vector shapes in the style tokens with a few glows.
 //! * [`fly`]: the camera's flight between the yard and a place (home flies it, `home.rs`).
 //! * `gate`: the ring of light at the gate after a recall.
 //! * `life`: what moves at home besides the rigging (beacons, the gate's ring and the wave up its approach, the
-//!   mind, research's dishes, shuttles, the windows' lights).
+//!   mind, research's dishes, the LOG's glow, shuttles, the windows' lights).
 //!
 //! **Cost**: the station is three static meshes (the yard around the U, the building area's floor, the walls),
 //! rebuilt only when the frame size, the career's lights or the glow setting change; the docked ship is one mesh
@@ -20,8 +20,8 @@
 //!
 //! **States** (from the career, [`lights`]): research is lit once anything has been researched or any research
 //! node can be paid now; the gate is awake while any voyage is open (a new game opens its first one, so it is
-//! awake from the start); the moorings hold the FLEET's escorts; the fabricator and the salvage bay stay dark
-//! until they have screens.
+//! awake from the start); the moorings hold the FLEET's escorts; the LOG's mast glows while a voyage's result waits
+//! there unread; the fabricator and the salvage bay stay dark until they have screens.
 //!
 //! **In the drydock** the walls and the parked cranes stay around the frame (the drydock's veil dims them outside
 //! its grid viewport); the floor, the yard and the drones are home's alone. **On the research screen** the whole
@@ -76,6 +76,7 @@ pub fn lights(content: &Content, career: &Career, escorts: usize) -> Lights {
         research: !career.researched().is_empty() || content.research.iter().any(|n| career.can_pay(content, &n.id).is_ok()),
         gate: !career.open_voyages(content).is_empty(),
         moored: escorts.min(MOORINGS),
+        log: career.unread() > 0,
     }
 }
 
@@ -541,7 +542,19 @@ mod tests {
     #[test]
     fn a_new_game_has_research_dark_and_the_gate_awake() {
         let (content, c) = career("");
-        assert_eq!(lights(&content, &c, 0), Lights { research: false, gate: true, moored: 0 });
+        assert_eq!(lights(&content, &c, 0), Lights { research: false, gate: true, moored: 0, log: false });
+    }
+
+    /// The LOG's mast glows from a voyage's end until the LOG has been opened.
+    #[test]
+    fn the_log_glows_until_read() {
+        let (content, mut c) = career("");
+        c.voyage_launched(&content, "yard_approach").unwrap();
+        assert!(!lights(&content, &c, 0).log);
+        c.voyage_ended(&content, "yard_approach", data::career::VoyageEnd::Lost { ticks: 30 }).unwrap();
+        assert!(lights(&content, &c, 0).log);
+        c.read_log();
+        assert!(!lights(&content, &c, 0).log);
     }
 
     /// Research lights up as soon as a node can be paid, and stays lit once anything is researched.

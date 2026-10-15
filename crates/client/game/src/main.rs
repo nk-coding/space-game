@@ -7,9 +7,10 @@
 //! - `home`: the start screen over the shipyard (places, labels, the camera's flights to the drydock, behavior, test
 //!   range and fleet); `shipyard`: the station itself, a world scene built around the drydock frame; `fleet`: the
 //!   FLEET layer over home (escorts picked from saved designs, against the mind capacity); `research`: the research
-//!   screen over the lab (the tree of research nodes, UNLOCK).
+//!   screen over the lab (the tree of research nodes, UNLOCK); `voyage_log`: the LOG layer over home (the last
+//!   voyages, newest first); `settings`: the SETTINGS layer over home and flight.
 //! - `map`: the voyage map (a star map of the voyages, their states from the career, SET COURSE).
-//! - `debrief`: the panel and the summary line over home after a voyage.
+//! - `debrief`: the panel over home after a voyage.
 //! - `drydock`: the ship editor (the view of the player's design, the screen, editing, saving and sharing, the
 //!   test flight; the design itself is `world::player`).
 //! - `behavior_ui`: the BEHAVIOR screen (how the design thinks: graph and text views of its rules), opened from
@@ -24,6 +25,7 @@ mod map;
 mod research;
 mod settings;
 mod shipyard;
+mod voyage_log;
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
@@ -67,6 +69,7 @@ fn main() {
                 behavior_ui::BehaviorPlugin,
                 home::HomePlugin,
                 fleet::FleetPlugin,
+                voyage_log::VoyageLogPlugin,
                 settings::SettingsPlugin,
                 map::MapPlugin,
                 debrief::DebriefPlugin,

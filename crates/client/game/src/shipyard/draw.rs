@@ -72,6 +72,8 @@ pub struct Lights {
     pub gate: bool,
     /// Moorings with an escort in them.
     pub moored: usize,
+    /// A voyage's result waits in the LOG: its mast glows.
+    pub log: bool,
 }
 
 /// A light that blinks (`super::life`): where it is, its colour and how it blinks.
@@ -436,6 +438,31 @@ pub fn orbit(pen: &mut Pen, col: Color) {
     pen.disc(on, 0.13, vcol(col, 1.0));
 }
 
+/// The LOG's records mast (GDR-0091): a small house on the top arm with its windows, a lattice mast with two
+/// signal yards and a slow beacon at its top (the glow of a new result is `super::life`'s).
+fn log_mast(pen: &mut Pen, l: &Layout, pal: &Palette) {
+    let r = l.log.rect();
+    block(pen, pal, r, true, pal.gold);
+    let (foot, top) = (Vec2::new(r.center().x, r.max.y), l.log_beacon);
+    truss(pen, pal, foot, top, 0.42, 5);
+    for (f, half) in [(0.38, 0.85), (0.7, 0.55)] {
+        let y = foot.lerp(top, f);
+        pen.line(y - Vec2::X * half, y + Vec2::X * half, 0.1, vcol(pal.hull_hi, 1.0));
+        for s in [-1.0, 1.0] {
+            pen.disc(y + Vec2::X * s * half, 0.09, vcol(pal.teal, 0.85));
+        }
+    }
+    pen.disc(top, 0.24, vcol(pal.hull_hi, 1.0));
+    pen.beacon(top, pal.teal, pal.lamp, 1.6, 0.1, true);
+}
+
+/// The LOG's glow while a voyage's result waits, around the origin (`super::life` breathes it at the mast's top): a
+/// soft gold glow and a thin ring (the ring alone without glows).
+pub fn log_glow(pen: &mut Pen, pal: &Palette) {
+    pen.glow(Vec2::ZERO, 4.2, vcol(pal.gold, 0.55));
+    pen.circle(Vec2::ZERO, 0.62, 0.06, vcol(pal.gold, 0.85));
+}
+
 /// Three dark bays: a building waiting for its screen (the fabricator, the salvage bay).
 fn bays(pen: &mut Pen, pal: &Palette, c: Vec2, s: f32) {
     for k in 0..3 {
@@ -692,7 +719,7 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
         mooring(pen, pal, *c, if c.y > l.area.center().y { 1.0 } else { -1.0 }, k < lights.moored);
     }
     // Struts under the buildings (the mind's collar is its own), and the one from the range's tower to its lane.
-    for b in [&l.research, &l.fabricator, &l.range, &l.salvage] {
+    for b in [&l.research, &l.fabricator, &l.range, &l.salvage, &l.log] {
         strut(pen, pal, b.strut.0, b.strut.1);
     }
     let t = l.range.rect();
@@ -704,6 +731,7 @@ pub fn yard(pen: &mut Pen, l: &Layout, pal: &Palette, lights: Lights) {
     block(pen, pal, l.salvage.rect(), false, pal.dim);
     bays(pen, pal, l.salvage.centre, 0.0233);
     mind_house(pen, l, pal);
+    log_mast(pen, l, pal);
     // The test range: its control tower and the target lane.
     block(pen, pal, t, true, pal.teal);
     pen.boxed(Rect::from_center_size(t.center(), t.size() * Vec2::new(0.64, 0.44)), vcol(pal.dark, 1.0), vcol(pal.teal, 0.5), 0.06);

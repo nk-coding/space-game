@@ -53,6 +53,8 @@ pub enum Place {
     TestRange,
     /// The moorings on the truss bridges left of the mind: FLEET.
     Fleet,
+    /// The records mast on the top arm's tip, by the gate: the LOG.
+    Log,
     /// Dark until it has a screen.
     Fabricator,
     /// Dark until it has a screen.
@@ -60,8 +62,17 @@ pub enum Place {
 }
 
 impl Place {
-    pub const ALL: [Place; 8] =
-        [Place::Drydock, Place::Behavior, Place::Research, Place::Voyages, Place::TestRange, Place::Fleet, Place::Fabricator, Place::SalvageBay];
+    pub const ALL: [Place; 9] = [
+        Place::Drydock,
+        Place::Behavior,
+        Place::Research,
+        Place::Voyages,
+        Place::TestRange,
+        Place::Fleet,
+        Place::Log,
+        Place::Fabricator,
+        Place::SalvageBay,
+    ];
 }
 
 /// A building attached to the U: its body and the strut joining it to the station.
@@ -109,6 +120,10 @@ pub struct Layout {
     pub range: Building,
     pub lane: (Vec2, Vec2),
     pub salvage: Building,
+    /// The LOG's records house on the top arm by its tip (GDR-0091), and the top of its mast: the beacon, where it
+    /// glows while a voyage's result waits.
+    pub log: Building,
+    pub log_beacon: Vec2,
     pub gate: Vec2,
     /// The approach path: chevron tips from the mouth towards the gate.
     pub chevrons: Vec<Vec2>,
@@ -162,6 +177,12 @@ impl Layout {
         let salvage_c = Vec2::new(2.0, bottom - 3.0);
         let salvage = Building { centre: salvage_c, size: Vec2::new(6.0, 3.5), strut: (salvage_c + Vec2::Y * 1.75, Vec2::new(salvage_c.x, bottom)) };
 
+        // The LOG's house sits on the top arm just short of its tip, the end nearest the gate, its mast rising from
+        // it; right of the fabricator however small the frame (the strut then leans back onto the arm).
+        let log_c = Vec2::new((tip_x - 1.6).max(fabricator.rect().max.x + 3.0), top + 1.9);
+        let log = Building { centre: log_c, size: Vec2::new(2.4, 1.8), strut: (log_c - Vec2::Y * 0.9, Vec2::new(log_c.x.min(tip_x), top)) };
+        let log_beacon = log_c + Vec2::Y * 4.6;
+
         let gate = Vec2::new(tip_x + GATE_GAP, mid);
         let chevrons = (0..7).map(|k| Vec2::new(tip_x + 2.0 + 1.3 * k as f32, mid)).collect();
         // From the arm tips' faces to the gate's pods facing the station.
@@ -198,6 +219,8 @@ impl Layout {
             range,
             lane,
             salvage,
+            log,
+            log_beacon,
             gate,
             chevrons,
             pylons,
@@ -259,9 +282,16 @@ impl Layout {
             Place::Voyages => Rect::from_center_half_size(self.gate, Vec2::splat(GATE_RADIUS + 1.4)),
             Place::TestRange => self.range.rect().union(Rect::from_corners(self.lane.0 - Vec2::Y * 1.1, self.lane.1 + Vec2::new(1.1, 1.1))),
             Place::Fleet => self.fleet_rect(),
+            Place::Log => self.log_rect(),
             Place::Fabricator => self.fabricator.rect(),
             Place::SalvageBay => self.salvage.rect(),
         }
+    }
+
+    /// The LOG's house and its mast up to the beacon.
+    fn log_rect(&self) -> Rect {
+        let r = self.log.rect();
+        Rect::new(r.min.x, r.min.y, r.max.x, self.log_beacon.y + 0.6)
     }
 
     /// What the camera frames when it flies to the place (the drydock's own view replaces the area's box when the
@@ -274,6 +304,7 @@ impl Layout {
             Place::Voyages => focus_box(self.gate - Vec2::X * 2.0, 32.0),
             Place::TestRange => focus_box(self.range.centre + Vec2::X * 2.0, 30.0),
             Place::Fleet => focus_box(Vec2::new(self.moorings[0].x + 1.5, self.area.center().y), 50.0),
+            Place::Log => focus_box(self.log_rect().center(), 20.0),
             Place::Fabricator => focus_box(self.fabricator.centre, 24.0),
             Place::SalvageBay => focus_box(self.salvage.centre, 23.0),
         }
@@ -288,6 +319,8 @@ impl Layout {
             Place::Voyages => (self.gate - Vec2::Y * (GATE_RADIUS + 2.6), Align::Middle),
             Place::TestRange => (Vec2::new((self.lane.0.x + self.lane.1.x) / 2.0, self.range.centre.y - 1.6), Align::Middle),
             Place::Fleet => (Vec2::new(self.moorings[0].x - MOORING_HALF - MOORING_WALL, self.moorings[1].y - MOORING_DEPTH / 2.0 - 0.8), Align::Start),
+            // Right of the mast's top, over the open space above the gate.
+            Place::Log => (self.log_beacon + Vec2::new(2.2, 0.4), Align::Start),
             Place::Fabricator => (self.fabricator.centre + Vec2::Y * 3.8, Align::Middle),
             Place::SalvageBay => (self.salvage.centre - Vec2::Y * 2.0, Align::Middle),
         }
@@ -414,12 +447,42 @@ mod tests {
         }
     }
 
+    /// The LOG's house and mast stand on the top arm by its tip, clear of every other place, of the buildings' bodies,
+    /// the gate and its pods, and of the antenna at the arm's tip; its label hangs right of the mast, above the gate and
+    /// clear of the fabricator's (whose label is centred over it, at most its width plus 4 m wide).
+    #[test]
+    fn the_log_stands_apart_by_the_gate() {
+        for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
+            let l = Layout::new(frame);
+            let log = l.hit(Place::Log);
+            let top = l.area.max.y + WALL;
+            assert!(log.min.y > top && log.max.y < l.overview.max.y, "{frame:?}: {log:?}");
+            for p in Place::ALL.into_iter().filter(|p| *p != Place::Log) {
+                assert!(log.inflate(0.5).intersect(l.hit(p)).is_empty(), "{frame:?}: the LOG touches {p:?}");
+            }
+            for b in [l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect()] {
+                assert!(log.inflate(1.0).intersect(b).is_empty(), "{frame:?}: the LOG touches {b:?}");
+            }
+            let gate = Rect::from_center_half_size(l.gate, Vec2::splat(GATE_RADIUS + GATE_POD + 0.5));
+            assert!(log.intersect(gate).is_empty(), "{frame:?}");
+            let antenna = Rect::new(l.tip_x + 0.2, top, l.tip_x + 1.4, top + 1.5);
+            assert!(log.intersect(antenna).is_empty(), "{frame:?}");
+            // The strut lands on the arm.
+            assert!(l.log.strut.1.x <= l.tip_x && l.log.strut.1.y == top, "{frame:?}");
+            let (at, align) = l.label(Place::Log);
+            assert_eq!(align, Align::Start);
+            assert!(at.x > log.max.x && at.y > l.gate.y + GATE_RADIUS + GATE_POD, "{frame:?}");
+            let fab = l.label(Place::Fabricator).0;
+            assert!(at.x > fab.x + l.fabricator.size.x / 2.0 + 2.0, "{frame:?}: the LOG's label runs into the fabricator's");
+        }
+    }
+
     /// The shuttles' stops are in view and clear of every hull: the U, the buildings, the moorings and the bridges.
     #[test]
     fn shuttle_stops_are_in_view_and_clear_of_the_hulls() {
         for frame in [(24, 24), (40, 40), (64, 64), (30, 18), (12, 12)] {
             let l = Layout::new(frame);
-            let mut hulls = vec![l.station(), l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect()];
+            let mut hulls = vec![l.station(), l.research.rect(), l.fabricator.rect(), l.mind.rect(), l.range.rect(), l.salvage.rect(), l.log_rect()];
             for (k, m) in l.moorings.iter().enumerate() {
                 // From the base behind the bridge side to the tips at the mouth.
                 let open = if k % 2 == 0 { 1.0 } else { -1.0 };
