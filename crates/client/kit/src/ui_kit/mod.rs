@@ -201,6 +201,7 @@ pub struct UiKitPlugin;
 impl Plugin for UiKitPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiPointer>()
+            .init_resource::<UiSize>()
             .init_resource::<TipState>()
             .add_message::<UiClick>()
             .configure_sets(Update, UiStyleSet.after(UiInputSet))
@@ -300,12 +301,23 @@ const MAX_UI_SCALE: f32 = 2.0;
 /// Smaller windows scale them down to this (below it they no longer fit).
 const MIN_UI_SCALE: f32 = 0.5;
 
+/// The player's UI size (GDR-0090, the display settings): a share of the scale that fits the window (1, 0.9, 0.8;
+/// larger would not fit the 1280 × 720 layouts). Every screen's UI scale is [`ui_scale_for`] times it.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct UiSize(pub f32);
+
+impl Default for UiSize {
+    fn default() -> Self {
+        UiSize(1.0)
+    }
+}
+
 /// The UI scale for a window: min(w / 1280, h / 720), [`MIN_UI_SCALE`] to [`MAX_UI_SCALE`]. So the 1280 × 720
 /// layout always fits the window: a window narrower or lower than that scales it down (until 13 Oct 2026 the scale
 /// stopped at 1, and a centred layout such as FLEET's lost its left and top edges in a 1080 px wide or a 650 px
 /// high window); a wider aspect leaves room at the sides, a taller one below and above.
-pub fn ui_scale_for(window: &Window) -> f32 {
-    ui_scale(window.size())
+pub fn ui_scale_for(window: &Window, size: UiSize) -> f32 {
+    ui_scale(window.size()) * size.0
 }
 
 /// [`ui_scale_for`] for a window of `size` logical px.
@@ -378,10 +390,10 @@ mod tests {
     #[test]
     fn the_ui_grows_with_the_window() {
         let window = |w: f32, h: f32| Window { resolution: bevy::window::WindowResolution::new(w as u32, h as u32), ..default() };
-        assert_eq!(ui_scale_for(&window(1280.0, 720.0)), 1.0);
-        assert_eq!(ui_scale_for(&window(1920.0, 1080.0)), 1.5);
-        assert_eq!(ui_scale_for(&window(5120.0, 2880.0)), MAX_UI_SCALE);
-        assert_eq!(ui_scale_for(&window(400.0, 200.0)), MIN_UI_SCALE);
+        assert_eq!(ui_scale_for(&window(1280.0, 720.0), UiSize(1.0)), 1.0);
+        assert_eq!(ui_scale_for(&window(1920.0, 1080.0), UiSize(1.0)), 1.5);
+        assert_eq!(ui_scale_for(&window(5120.0, 2880.0), UiSize(1.0)), MAX_UI_SCALE);
+        assert_eq!(ui_scale_for(&window(400.0, 200.0), UiSize(1.0)), MIN_UI_SCALE);
     }
 
     /// The 1280 × 720 layout fits every window the play-test named (Niklas, 13 Oct 2026: things at the left and

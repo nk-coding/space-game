@@ -10,6 +10,8 @@
 //! text view. With the list open, the list handles its keys (Esc closes it).
 
 use bevy::prelude::*;
+use data::input::Action;
+use world::settings::Act;
 use bevy_egui::EguiContexts;
 use data::behavior::edit::{NodeRef, RuleId};
 use kit::ui_kit::{Pill, Ring, TextField, UiClick, UiPointer};
@@ -88,6 +90,7 @@ pub(super) fn clicks(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
+    act: Act,
     pointer: Res<UiPointer>,
     edit: Res<EditState>,
     ui: Res<BehaviorUi>,
@@ -96,9 +99,8 @@ pub(super) fn shortcuts(
     mut search: Query<&mut TextField, With<SearchField>>,
     mut out: MessageWriter<BehaviorAction>,
 ) {
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
-    // Ctrl+S also while the text view types (not in a one-line field, which would take the S).
-    if ctrl && keys.just_pressed(KeyCode::KeyS) && !pointer.typing {
+    // Save also while the text view types (not in a one-line field, which would take its key).
+    if act.just_pressed(Action::Save) && !pointer.typing {
         out.write(BehaviorAction::Save);
     }
     // The text view's editor (egui) or a field has the keyboard, or the BEHAVIORS list handles its own keys.
@@ -106,38 +108,25 @@ pub(super) fn shortcuts(
     if pointer.typing || egui_typing || list.is_open() {
         return;
     }
-    // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
+    // Search gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
     // one frame come in no order).
-    if !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
+    if act.just_pressed(Action::Search) {
         for mut f in &mut search {
             f.focus();
         }
         return;
     }
-    let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    for key in keys.get_just_pressed() {
-        match (*key, ctrl) {
-            (KeyCode::KeyZ, true) => {
-                out.write(if shift { BehaviorAction::Redo } else { BehaviorAction::Undo });
-            }
-            (KeyCode::KeyY, true) => {
-                out.write(BehaviorAction::Redo);
-            }
-            (_, true) => {}
-            (KeyCode::Escape, _) => {
-                out.write(match (edit.replacing.is_some(), ui.from_home) {
-                    (true, _) => BehaviorAction::Replace,
-                    (false, true) => BehaviorAction::Menu,
-                    (false, false) => BehaviorAction::Back,
-                });
-            }
-            (KeyCode::Delete | KeyCode::Backspace, _) => {
-                out.write(BehaviorAction::Delete);
-            }
-            (KeyCode::KeyT, _) => {
-                out.write(BehaviorAction::TestInRange);
-            }
-            _ => {}
+    // Esc (fixed): ends REPLACE, else goes back (home or the drydock).
+    if keys.just_pressed(KeyCode::Escape) && !act.ctrl() {
+        out.write(match (edit.replacing.is_some(), ui.from_home) {
+            (true, _) => BehaviorAction::Replace,
+            (false, true) => BehaviorAction::Menu,
+            (false, false) => BehaviorAction::Back,
+        });
+    }
+    for (a, action) in [(Action::Undo, BehaviorAction::Undo), (Action::Redo, BehaviorAction::Redo), (Action::Delete, BehaviorAction::Delete), (Action::TestFlight, BehaviorAction::TestInRange)] {
+        if act.just_pressed(a) {
+            out.write(action);
         }
     }
 }

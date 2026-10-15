@@ -317,7 +317,7 @@ pub(super) fn input(
     stage: Single<(&ComputedNode, &UiGlobalTransform), With<Stage>>,
     scroll: Res<AccumulatedMouseScroll>,
     buttons: Res<ButtonInput<MouseButton>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    act: world::settings::Act,
     touches: Res<Touches>,
     pointer: Res<UiPointer>,
     mut clicks: MessageReader<UiClick>,
@@ -333,13 +333,13 @@ pub(super) fn input(
         }
     }
     if !pointer.typing {
-        if keys.any_just_pressed([KeyCode::Equal, KeyCode::NumpadAdd]) {
+        if act.just_pressed(data::input::Action::ZoomIn) {
             view.zoom_around(KEY_STEP, None);
         }
-        if keys.any_just_pressed([KeyCode::Minus, KeyCode::NumpadSubtract]) {
+        if act.just_pressed(data::input::Action::ZoomOut) {
             view.zoom_around(1.0 / KEY_STEP, None);
         }
-        if keys.any_just_pressed([KeyCode::Digit0, KeyCode::Numpad0]) {
+        if act.just_pressed(data::input::Action::ResetView) {
             view.reset();
         }
     }

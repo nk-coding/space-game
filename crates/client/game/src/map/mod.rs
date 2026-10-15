@@ -48,6 +48,8 @@ pub mod portal;
 pub mod view;
 
 use bevy::prelude::*;
+use data::input::Action;
+use world::settings::ActionTip;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiSystems, UiTransform};
 use bevy::window::PrimaryWindow;
 
@@ -227,7 +229,7 @@ impl Plugin for MapPlugin {
             .add_plugins(portal::plugin)
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
             .add_systems(OnEnter(AppMode::Map), enter)
-            .add_systems(OnExit(AppMode::Map), |mut s: ResMut<UiScale>| s.0 = 1.0)
+            .add_systems(OnExit(AppMode::Map), |mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>| s.0 = size.0)
             .add_systems(Update, (show, fade_mesh).chain().after(portal::PortalSet))
             .add_systems(
                 Update,
@@ -436,10 +438,10 @@ fn spawn(
                 // The view's buttons, bottom right (as the drydock's zoom).
                 let at = Node { position_type: PositionType::Absolute, right: px(24), top: px((LEGEND_ROWS[0] + LEGEND_ROWS[1]) / 2.0 - 14.0), ..row(10.0) };
                 m.spawn((UiBlock, at)).with_children(|z| {
-                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomOut), Tip::key("ZOOM OUT", "−"))).with_child(ring_glyph(Glyph::Minus, 13.0));
+                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomOut), Tip::new("ZOOM OUT"), ActionTip(Action::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
                     z.spawn((ZoomText, number(fonts, "100 %", 13.0, c(Tone::Number, 1.0)), Node { min_width: px(46), justify_content: JustifyContent::Center, ..default() }));
-                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomIn), Tip::key("ZOOM IN", "+"))).with_child(ring_glyph(Glyph::Plus, 13.0));
-                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::Reset), Tip::key("RESET VIEW", "0"))).with_child(ring_glyph(Glyph::Fit, 13.0));
+                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::ZoomIn), Tip::new("ZOOM IN"), ActionTip(Action::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
+                    z.spawn((ring_node(28.0), MapButton::View(ViewButton::Reset), Tip::new("RESET VIEW"), ActionTip(Action::ResetView))).with_child(ring_glyph(Glyph::Fit, 13.0));
                 });
             });
 
@@ -527,8 +529,8 @@ fn spawn(
 }
 
 /// The stage fits the window; the camera rig knows the window (the mesh and the icons are placed through it).
-fn fit(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
-    let s = stage_scale(window.size());
+fn fit(window: Single<&Window, With<PrimaryWindow>>, size: Res<kit::ui_kit::UiSize>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
+    let s = stage_scale(window.size()) * size.0;
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }
@@ -563,6 +565,7 @@ fn input(
     mut clicks: MessageReader<UiClick>,
     buttons: Query<&MapButton>,
     keys: Res<ButtonInput<KeyCode>>,
+    act: world::settings::Act,
     pointer: Res<UiPointer>,
     fleet: FleetNow,
     geo: Res<MapGeometry>,
@@ -610,9 +613,9 @@ fn input(
         if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter]) {
             launch = true;
         }
-        let step = if keys.any_just_pressed([KeyCode::ArrowRight, KeyCode::ArrowDown]) {
+        let step = if act.just_pressed(Action::NextVoyage) {
             1
-        } else if keys.any_just_pressed([KeyCode::ArrowLeft, KeyCode::ArrowUp]) {
+        } else if act.just_pressed(Action::PreviousVoyage) {
             n - 1
         } else {
             0

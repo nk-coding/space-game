@@ -90,6 +90,8 @@ pub enum Glyph {
     Mirror,
     Bevel,
     Caret,
+    /// A cog with eight teeth (SETTINGS).
+    Gear,
 }
 
 /// The mesh drawing one node's icon.
@@ -393,6 +395,19 @@ fn glyph_mesh(glyph: Glyph, color: Color, side: f32, atlas: &Atlas) -> Mesh {
             m.strip(&[p(-0.32, 0.02), p(-0.32, -0.32), p(0.32, -0.32), p(0.32, 0.02)], false, w, &white, col);
             m.strip(&[p(0.0, -0.14), p(0.0, 0.36)], false, w, &white, col);
             m.strip(&[p(-0.16, 0.2), p(0.0, 0.36), p(0.16, 0.2)], false, w, &white, col);
+        }
+        Glyph::Gear => {
+            // Eight teeth: four steps around each, two out, two in (the corners of a tooth on the step lines).
+            let n = 32;
+            let teeth: Vec<Vec2> = (0..n)
+                .map(|k| {
+                    let a = k as f32 / n as f32 * std::f32::consts::TAU + std::f32::consts::TAU / 64.0;
+                    let r = if k % 4 < 2 { 0.36 } else { 0.27 };
+                    Vec2::from_angle(a) * r * s
+                })
+                .collect();
+            m.strip(&teeth, true, w, &white, col);
+            m.strip(&arc(Vec2::ZERO, 0.12 * s, 0.0, std::f32::consts::TAU, 16)[..16], true, w, &white, col);
         }
         Glyph::More => {
             for x in [-0.3, 0.0, 0.3] {

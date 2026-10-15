@@ -34,11 +34,13 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::input::egui_wants_any_pointer_input;
 use sim::Target;
 use kit::params::Params;
+use data::input::Action;
 use kit::view::{ViewScale, ViewSet};
 
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
 use crate::scene::Scene;
+use crate::settings::Act;
 use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, v2};
 
 pub const MIN_PX_PER_M: f32 = 3.0;
@@ -352,7 +354,7 @@ fn wheel_and_drag(
     mut rig: ResMut<CameraRig>,
     scroll: Res<AccumulatedMouseScroll>,
     buttons: Res<ButtonInput<MouseButton>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    act: Act,
     focus: Res<PilotFocus>,
     window: Single<&Window, With<PrimaryWindow>>,
 ) {
@@ -365,13 +367,13 @@ fn wheel_and_drag(
         };
         zoom_by(&mut rig, 1.15f32.powf(steps.clamp(-5.0, 5.0)), cursor);
     }
-    if keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd) {
+    if act.just_pressed(Action::ZoomIn) {
         zoom_by(&mut rig, 1.25, None);
     }
-    if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract) {
+    if act.just_pressed(Action::ZoomOut) {
         zoom_by(&mut rig, 0.8, None);
     }
-    if keys.just_pressed(KeyCode::KeyF) {
+    if act.just_pressed(Action::CameraFollow) {
         rig.mode = if rig.mode == CamMode::Free { rig.auto_mode } else { CamMode::Free };
         rig.user_zoom = false;
     }

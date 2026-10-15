@@ -17,6 +17,8 @@
 //! are spawned and kept here.
 
 use bevy::prelude::*;
+use data::input::Action;
+use world::settings::ActionTip;
 use data::design::stats::{format_number, with_unit};
 use data::{Content, Effect, PowerTier, StatDef};
 use sim::{DesignReport, Stat};
@@ -283,13 +285,13 @@ pub(super) fn spawn_controls(rp: &mut ChildSpawnerCommands, fonts: &HudFonts, st
         });
     });
     rp.spawn((ControlRow::Actions, row())).with_children(|a| {
-        for (g, action, tip) in [(Glyph::Undo, DrydockAction::RotateCcw, Tip::key("ROTATE LEFT", "Q")), (Glyph::Redo, DrydockAction::RotateCw, Tip::key("ROTATE RIGHT", "E"))] {
+        for (g, action, tip) in [(Glyph::Undo, DrydockAction::RotateCcw, (Tip::new("ROTATE LEFT"), ActionTip(Action::RotateLeft))), (Glyph::Redo, DrydockAction::RotateCw, (Tip::new("ROTATE RIGHT"), ActionTip(Action::RotateRight)))] {
             a.spawn((ring_node(26.0), ActionButton(action), tip)).with_children(|r| {
                 r.spawn(glyph(g));
             });
         }
-        spawn_pill(a, fonts, "FLIP", 8.5, 26.0, None, Pill::new(Tone::Teal), (ActionButton(DrydockAction::Flip), Tip::key("FLIP", "F")));
-        spawn_pill(a, fonts, "DELETE", 8.5, 26.0, None, Pill::new(Tone::Coral), (ActionButton(DrydockAction::Delete), Tip::key("DELETE", "DEL")));
+        spawn_pill(a, fonts, "FLIP", 8.5, 26.0, None, Pill::new(Tone::Teal), (ActionButton(DrydockAction::Flip), Tip::new("FLIP"), ActionTip(Action::Flip)));
+        spawn_pill(a, fonts, "DELETE", 8.5, 26.0, None, Pill::new(Tone::Coral), (ActionButton(DrydockAction::Delete), Tip::new("DELETE"), ActionTip(Action::Delete)));
     });
 }
 

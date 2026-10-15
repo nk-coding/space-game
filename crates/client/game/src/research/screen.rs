@@ -3,6 +3,8 @@
 //! with the window, as the drydock's); the lanes scroll (the kit's [`Scrollbar`]) when the content has more than fit.
 
 use bevy::prelude::*;
+use data::input::Action;
+use world::settings::ActionTip;
 use bevy::text::LetterSpacing;
 use data::{Content, ResearchNode, Unlock};
 use kit::style::{Style, ui_color};
@@ -284,7 +286,7 @@ pub fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, co
                             });
                             bottom.spawn((RText::Status, label(fonts, "", 9.0, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), abs(Vec2::new(150.0, 11.0), None)));
                             bottom.spawn(Node { position_type: PositionType::Absolute, right: px(24), top: px(0), ..default() }).with_children(|b| {
-                                spawn_pill(b, fonts, "DRYDOCK", 9.5, 32.0, None, Pill::new(Tone::Teal), (ResearchButton(ResearchAction::Drydock), Tip::key("DRYDOCK", "D")));
+                                spawn_pill(b, fonts, "DRYDOCK", 9.5, 32.0, None, Pill::new(Tone::Teal), (ResearchButton(ResearchAction::Drydock), Tip::new("DRYDOCK"), ActionTip(Action::OpenDrydock)));
                             });
                         });
                     });

@@ -25,6 +25,7 @@
 //! Text is rebuilt at 8 Hz and only re-laid out when it changes.
 
 mod markers;
+mod menu;
 mod text;
 
 use std::fmt::Write as _;
@@ -44,6 +45,8 @@ use crate::controls::PlayerInput;
 use crate::fx::{FxQueue, FxRegions, Z_HUD};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{Scene, SceneKind};
+use crate::settings::ActionTip;
+use data::input::Action;
 use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, v2};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::voyage::{self, Phase, VoyageRun};
@@ -51,6 +54,7 @@ use crate::warp_fx::Transit;
 use crate::ship_view::PieceView;
 
 use markers::{lock_ring, offscreen_markers, site_markers};
+pub use menu::FlightMenu;
 pub use text::hull_fraction;
 use text::update_text;
 
@@ -210,7 +214,10 @@ impl Plugin for FlightHudPlugin {
             labels_for: None,
             scratch: String::with_capacity(256),
         })
-        .add_systems(Startup, (spawn_hud, spawn_abandon_panel).chain().after(load_fonts))
+        .init_resource::<FlightMenu>()
+        .add_systems(Startup, (spawn_hud, spawn_abandon_panel, menu::spawn_menu).chain().after(load_fonts))
+        .add_systems(Update, menu::flight_menu.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
+        .add_systems(OnExit(AppMode::Flight), menu::close_menu)
         .add_systems(Update, (update_text, update_hull_map).chain().run_if(in_state(AppMode::Flight)))
         .add_systems(Update, (go_home, recall_click).after(UiInputSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
@@ -249,7 +256,7 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
         .with_children(|root| {
             // Top left: the home ring (as on the drydock and the BEHAVIOR screen), then the hull.
             root.spawn((ScreenPart::new(Edge::Left, 0), abs(Some(20.0), None, Some(18.0), None))).with_children(|c| {
-                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0), Tip::key("SHIPYARD", "M"))).with_children(|r| {
+                c.spawn((HomeRing, HudButton, HudZone, ring_node(34.0), Tip::new("SHIPYARD"), ActionTip(Action::Leave))).with_children(|r| {
                     r.spawn((UiIcon::Glyph { glyph: Glyph::Menu, color: ui.violet }, Node { width: px(19), height: px(19), ..default() }));
                 });
             });
@@ -273,7 +280,7 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                         v.spawn((HudText::SalvageSub, label(&fonts, "", 10.0, dim)));
                         v.spawn(Node { height: px(16), ..default() });
                         v.spawn(Node { align_self: AlignSelf::FlexStart, ..default() }).with_children(|r| {
-                            spawn_pill(r, &fonts, "RECALL", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone, Tip::key("RECALL", "R")));
+                            spawn_pill(r, &fonts, "RECALL", 12.0, 42.0, None, Pill::new(Tone::Teal), (RecallButton, HudButton, HudZone, Tip::new("RECALL"), ActionTip(Action::Recall)));
                         });
                         v.spawn((HudText::RecallSub, label(&fonts, "", 9.5, teal)));
                     });
@@ -387,7 +394,7 @@ fn spawn_abandon_panel(mut commands: Commands, fonts: Res<HudFonts>, style: Res<
                 p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(12), margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
                     let abandon = Pill { active: true, ..Pill::new(Tone::Coral) };
                     spawn_pill(row, &fonts, "ABANDON VOYAGE", 11.0, 36.0, None, abandon, (AbandonButton::Abandon, Tip::key("ABANDON VOYAGE", "ENTER")));
-                    spawn_pill(row, &fonts, "KEEP FLYING", 11.0, 36.0, None, Pill::new(Tone::Teal), (AbandonButton::KeepFlying, Tip::key("KEEP FLYING", "ESC / M")));
+                    spawn_pill(row, &fonts, "KEEP FLYING", 11.0, 36.0, None, Pill::new(Tone::Teal), (AbandonButton::KeepFlying, Tip::key("KEEP FLYING", "ESC")));
                 });
             });
         });

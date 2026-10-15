@@ -36,7 +36,7 @@ pub mod tree;
 use bevy::prelude::*;
 use bevy::ui::UiScale;
 use bevy::window::PrimaryWindow;
-use kit::ui_kit::{Tone, UiInputSet, UiPointer, UiStyleSet, ui_scale_for};
+use kit::ui_kit::{Tone, UiInputSet, UiPointer, UiSize, UiStyleSet, ui_scale_for};
 use world::camera::{CamMode, CameraRig};
 use world::career::PlayerCareer;
 use world::mode::AppMode;
@@ -170,16 +170,16 @@ fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<ResearchCamera>) {
 }
 
 /// Leaving: flight gets its zoom back and the UI its normal scale (home starts on the lab and flies out).
-fn exit(mut rig: ResMut<CameraRig>, cam: Res<ResearchCamera>, mut ui_scale: ResMut<UiScale>) {
+fn exit(mut rig: ResMut<CameraRig>, cam: Res<ResearchCamera>, mut ui_scale: ResMut<UiScale>, size: Res<UiSize>) {
     rig.view_offset = Vec2::ZERO;
     rig.zoom = cam.flight_zoom;
     rig.zoom_target = cam.flight_zoom;
-    ui_scale.0 = 1.0;
+    ui_scale.0 = size.0;
 }
 
 /// The layout is made for 1280 × 720 logical px and grows with larger windows (as the drydock's and home's).
-fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>) {
-    let s = ui_scale_for(&window);
+fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, mut ui_scale: ResMut<UiScale>) {
+    let s = ui_scale_for(&window, *size);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }
@@ -200,16 +200,15 @@ fn hold_camera(window: Single<&Window, With<PrimaryWindow>>, yard: Res<Yard>, mu
     }
 }
 
-/// Esc and the ring button go home, D to the drydock (not while a text field has the keyboard, nor with Ctrl or
-/// Cmd held, as everywhere).
-fn keys(keys: Res<ButtonInput<KeyCode>>, pointer: Res<UiPointer>, mut out: MessageWriter<ResearchAction>) {
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
-    if pointer.typing || ctrl {
+/// Esc and the ring button go home, the drydock's action (D) to the drydock (not while a text field has the
+/// keyboard, nor with Ctrl or Cmd held, as everywhere).
+fn keys(keys: Res<ButtonInput<KeyCode>>, act: world::settings::Act, pointer: Res<UiPointer>, mut out: MessageWriter<ResearchAction>) {
+    if pointer.typing || act.ctrl() {
         return;
     }
     if keys.just_pressed(KeyCode::Escape) {
         out.write(ResearchAction::Home);
-    } else if keys.just_pressed(KeyCode::KeyD) {
+    } else if act.just_pressed(data::input::Action::OpenDrydock) {
         out.write(ResearchAction::Drydock);
     }
 }

@@ -11,7 +11,9 @@
 //! - `voyage`: launching a voyage (the career's seed and save), its run (recall, losing it), its end and its
 //!   debrief's data; `warp_fx`: the voyage's transitions (the warp-out, the arrival, the dip to dark and the lift
 //!   at the next screen).
-//! - `storage`: the player's documents (designs and behaviors now; saves, settings later), per platform.
+//! - `storage`: the player's documents (saves, designs, behaviors, settings), per platform.
+//! - `settings`: the action map's bindings (every screen reads its inputs through `settings::Act`) and the display
+//!   settings, saved on this device (GDR-0090).
 //! - `ship_model` / `ship_view`: content + sim piece → style-2a meshes, posed from `render_pose` every frame;
 //!   `part_icons`: part and ship icons in the UI, drawn the same way.
 //! - `fx`: immediate-mode sprites (plumes, trails, beams, tracers, sparks, flashes, blasts).
@@ -34,6 +36,7 @@ pub mod mode;
 pub mod part_icons;
 pub mod player;
 pub mod scene;
+pub mod settings;
 pub mod shield;
 pub mod ship_model;
 pub mod ship_view;

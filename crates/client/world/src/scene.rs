@@ -597,8 +597,8 @@ fn leave_flight(
 }
 
 /// C in the sandbox: raider waves off (the raiders leave at once, no new wave) or on again (a wave soon).
-fn toggle_waves(keys: Res<ButtonInput<KeyCode>>, mut scene: ResMut<Scene>, mut world: ResMut<SimWorld>) {
-    if scene.kind != SceneKind::Sandbox || !keys.just_pressed(KeyCode::KeyC) {
+fn toggle_waves(act: crate::settings::Act, mut scene: ResMut<Scene>, mut world: ResMut<SimWorld>) {
+    if scene.kind != SceneKind::Sandbox || !act.just_pressed(data::input::Action::Waves) {
         return;
     }
     scene.waves = !scene.waves;
@@ -811,7 +811,7 @@ fn scene_tick(
 #[allow(clippy::too_many_arguments)]
 fn reset(
     mut commands: Commands,
-    keys: Res<ButtonInput<KeyCode>>,
+    act: crate::settings::Act,
     mut request: ResMut<ResetRequest>,
     mut scene: ResMut<Scene>,
     mut world: ResMut<SimWorld>,
@@ -822,7 +822,7 @@ fn reset(
     mut input: ResMut<PlayerInput>,
     mut focus: ResMut<PilotFocus>,
 ) {
-    if keys.just_pressed(KeyCode::KeyR) && keys.pressed(KeyCode::ShiftLeft) {
+    if act.just_pressed(data::input::Action::ResetScene) {
         request.0 = true;
     }
     if !request.0 {

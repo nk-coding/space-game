@@ -32,7 +32,10 @@ use crate::flight_hud::{HudButtons, HudZone, on_hud_button};
 use crate::mode::{AppMode, FlightUi};
 use crate::scene::{is_friendly, player_vessels};
 use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, sv, v2};
+use crate::flight_hud::FlightMenu;
+use crate::settings::{Act, SettingsLayer};
 use crate::voyage::VoyageRun;
+use data::input::Action;
 
 /// Hold the left button this long on empty space to fire (shorter = a click = unlock).
 const HOLD_TO_FIRE: f32 = 0.18;
@@ -142,9 +145,9 @@ fn add_input_systems(app: &mut App) {
         .add_systems(
             RunFixedMainLoop,
             (
-                release_keys.run_if(egui_wants_any_keyboard_input),
-                keyboard.run_if(not(egui_wants_any_keyboard_input)),
-                mouse.run_if(not(egui_wants_any_pointer_input)),
+                release_keys.run_if(egui_wants_any_keyboard_input.or_eager(settings_open)),
+                keyboard.run_if(not(egui_wants_any_keyboard_input).and_eager(not(settings_open))),
+                mouse.run_if(not(egui_wants_any_pointer_input).and_eager(not(settings_open))),
                 touch,
                 combine,
             )
@@ -169,43 +172,62 @@ impl Plugin for ControlsPlugin {
     }
 }
 
-/// While egui has the keyboard, the ship gets no key input.
+/// SETTINGS lies over the flight: its keys are the screen's (rebinding), not the ship's.
+fn settings_open(layer: Res<SettingsLayer>) -> bool {
+    layer.open
+}
+
+/// While egui has the keyboard (or SETTINGS is open), the ship gets no key input.
 fn release_keys(mut input: ResMut<PlayerInput>) {
     input.key_axes = Vec3::ZERO;
     input.key_fire = false;
 }
 
+#[allow(clippy::too_many_arguments)]
 fn keyboard(
     keys: Res<ButtonInput<KeyCode>>,
+    act: Act,
     mut input: ResMut<PlayerInput>,
     mut world: ResMut<SimWorld>,
     focus: Res<PilotFocus>,
     rig: Res<CameraRig>,
     run: Res<VoyageRun>,
+    mut menu: ResMut<FlightMenu>,
 ) {
     // Held this frame, or pressed and released within it (a quick tap).
-    let down = |k: KeyCode| keys.pressed(k) || keys.just_pressed(k);
-    let k = |a: KeyCode, b: KeyCode| down(a) || down(b);
+    let down = |a: Action| act.pressed(a) || act.just_pressed(a);
     let axis = |pos: bool, neg: bool| (pos as i32 - neg as i32) as f32;
     input.key_axes = Vec3::new(
-        axis(k(KeyCode::KeyA, KeyCode::ArrowLeft), k(KeyCode::KeyD, KeyCode::ArrowRight)),
-        axis(k(KeyCode::KeyW, KeyCode::ArrowUp), k(KeyCode::KeyS, KeyCode::ArrowDown)),
-        axis(down(KeyCode::KeyE), down(KeyCode::KeyQ)),
+        axis(down(Action::TurnLeft), down(Action::TurnRight)),
+        axis(down(Action::ThrustForward), down(Action::ThrustBack)),
+        axis(down(Action::StrafeRight), down(Action::StrafeLeft)),
     );
-    input.key_fire = down(KeyCode::Space);
-    if keys.just_pressed(KeyCode::KeyX) {
+    input.key_fire = down(Action::Fire);
+    if act.just_pressed(Action::Drift) {
         input.drift = !input.drift;
     }
-    // The input runs before `voyage_keys` in the frame: an Esc that closes the panel keeps the lock.
+    // Esc (fixed, GDR-0090): closes the menu; else unlocks; else opens the menu. The input runs before
+    // `voyage_keys` in the frame: an Esc that closes the ABANDON VOYAGE? panel does neither.
     if keys.just_pressed(KeyCode::Escape) && !run.asking {
-        input.lock = None;
+        if menu.open {
+            menu.open = false;
+        } else if input.lock.is_some() {
+            input.lock = None;
+        } else {
+            menu.open = true;
+        }
     }
-    if keys.just_pressed(KeyCode::Tab) {
+    if act.just_pressed(Action::LockNext) {
         input.lock = next_target(&world, focus.0, input.locked_ship(), rig.focus);
     }
     // Cycle the focus through the player's vessels (a focus command for the sim).
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    let step = if keys.just_pressed(KeyCode::KeyV) { if shift { -1 } else { 1 } } else { 0 };
+    let step = if act.just_pressed(Action::FocusNext) {
+        1
+    } else if act.just_pressed(Action::FocusPrevious) {
+        -1
+    } else {
+        0
+    };
     if step != 0 && focus.0.is_some() {
         let vessels = player_vessels(&world);
         if !vessels.is_empty() {
@@ -258,8 +280,7 @@ fn mouse(
             input.lmb = None;
         }
     }
-    let right = buttons.pressed(MouseButton::Right) || buttons.just_pressed(MouseButton::Right);
-    input.key_fire = input.key_fire || lmb_fire || right;
+    input.key_fire = input.key_fire || lmb_fire;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -555,6 +576,9 @@ mod tests {
             .init_resource::<CameraRig>()
             .init_resource::<VoyageRun>()
             .init_resource::<Ticks>()
+            .init_resource::<SettingsLayer>()
+            .init_resource::<FlightMenu>()
+            .insert_resource(crate::settings::Controls::defaults(&data::base_content()))
             .insert_resource(SimWorld::new(sim::Sim::new(1), data::Content::default()));
         add_input_systems(&mut app);
         app.add_systems(FixedUpdate, |mut input: ResMut<PlayerInput>, mut ticks: ResMut<Ticks>| {
@@ -602,5 +626,34 @@ mod tests {
             assert_eq!(ticks[0], check, "{key:?}");
             assert_eq!(ticks[1], (Vec3::ZERO, false), "{key:?}");
         }
+    }
+
+    /// Esc (GDR-0090): unlocks while a target is locked, else opens the flight menu, and closes it again; a
+    /// rebound action works on its new key only.
+    #[test]
+    fn esc_unlocks_else_opens_the_menu_and_rebound_keys_work() {
+        let mut app = app(40.0);
+        app.world_mut().resource_mut::<PlayerInput>().lock = Some(Target::Point(sim::Vec2::ZERO));
+        let esc = |k: &mut ButtonInput<KeyCode>| k.press(KeyCode::Escape);
+        frame(&mut app, esc);
+        assert!(app.world().resource::<PlayerInput>().lock.is_none() && !app.world().resource::<FlightMenu>().open, "unlocked, no menu");
+        let up = |k: &mut ButtonInput<KeyCode>| k.release(KeyCode::Escape);
+        frame(&mut app, up);
+        frame(&mut app, esc);
+        assert!(app.world().resource::<FlightMenu>().open, "nothing locked: the menu");
+        frame(&mut app, up);
+        frame(&mut app, esc);
+        assert!(!app.world().resource::<FlightMenu>().open, "Esc again closes it");
+        // Thrust moved from W to J: J thrusts, W doesn't.
+        let chord: data::input::Chord = "KeyJ".parse().unwrap();
+        app.world_mut().resource_mut::<crate::settings::Controls>().0.set(Action::ThrustForward, 0, chord);
+        app.world_mut().resource_mut::<crate::settings::Controls>().0.clear(Action::ThrustForward, 1);
+        let ticks = frame(&mut app, |k| k.press(KeyCode::KeyJ));
+        assert!(ticks.iter().all(|t| t.0.y == 1.0), "{ticks:?}");
+        let ticks = frame(&mut app, |k| {
+            k.release(KeyCode::KeyJ);
+            k.press(KeyCode::KeyW);
+        });
+        assert!(ticks.iter().all(|t| t.0.y == 0.0), "{ticks:?}");
     }
 }

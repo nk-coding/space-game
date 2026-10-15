@@ -138,9 +138,9 @@ impl Plugin for TuningPlugin {
     }
 }
 
-fn toggle_panel(keys: Res<ButtonInput<KeyCode>>, mut t: ResMut<Tuning>, mut contexts: EguiContexts) {
+fn toggle_panel(act: crate::settings::Act, mut t: ResMut<Tuning>, mut contexts: EguiContexts) {
     let typing = contexts.ctx_mut().is_ok_and(|c| c.egui_wants_keyboard_input());
-    if keys.just_pressed(KeyCode::KeyU) && !typing {
+    if act.just_pressed(data::input::Action::Tuning) && !typing {
 
         t.open = !t.open;
     }

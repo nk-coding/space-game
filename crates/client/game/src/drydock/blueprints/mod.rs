@@ -408,6 +408,8 @@ mod tests {
         world.resource_mut::<Shelf>().page = Some(Page::Blueprints);
         world.init_resource::<Messages<DrydockAction>>();
         world.init_resource::<kit::ui_kit::UiPointer>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world.insert_resource(world::settings::Controls::defaults(&data::base_content()));
         let mut keys = ButtonInput::<KeyCode>::default();
         for k in [KeyCode::Delete, KeyCode::KeyT, KeyCode::KeyX, KeyCode::ControlLeft, KeyCode::KeyS] {
             keys.press(k);
@@ -449,6 +451,8 @@ mod tests {
         let mut world = world();
         world.init_resource::<Messages<DrydockAction>>();
         world.init_resource::<kit::ui_kit::UiPointer>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world.insert_resource(world::settings::Controls::defaults(&data::base_content()));
         let search = world.spawn((super::super::actions::SearchField, TextField::default())).id();
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyT);

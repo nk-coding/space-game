@@ -2,11 +2,15 @@
 //! title and subtitle, banners, warnings, the help line.
 
 use super::*;
+use crate::settings::Controls;
+
+/// The three clocks the HUD reads (one parameter: a system takes at most sixteen).
+type Clocks<'w> = (Res<'w, Time<Real>>, Res<'w, Time<Virtual>>, Res<'w, Time<Fixed>>);
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_text(
-    time: Res<Time<Real>>,
-    virtual_time: Res<Time<Virtual>>,
+    (time, virtual_time, fixed): Clocks,
+    (controls, menu, layer): (Res<Controls>, Res<FlightMenu>, Res<crate::settings::SettingsLayer>),
     mut state: ResMut<HudState>,
     world: Res<SimWorld>,
     scene: Res<Scene>,
@@ -15,7 +19,6 @@ pub(super) fn update_text(
     watch: Res<BehaviorWatch>,
     toggles: Res<RenderToggles>,
     rig: Res<CameraRig>,
-    fixed: Res<Time<Fixed>>,
     run: Res<VoyageRun>,
     style: Res<Style>,
     transit: Res<Transit>,
@@ -24,7 +27,8 @@ pub(super) fn update_text(
 ) {
     // The HUD closes for the hand-over at the end of a voyage or a lost test flight (`warp_fx.rs`).
     for mut fx in &mut root {
-        show_screen(&mut fx, toggles.hud && !transit.hud_out());
+        // SETTINGS over the flight takes the screen.
+        show_screen(&mut fx, toggles.hud && !transit.hud_out() && !layer.open);
     }
     if !state.timer.tick(time.delta()).just_finished() {
         return;
@@ -105,7 +109,8 @@ pub(super) fn update_text(
             }
             HudText::TargetName | HudText::TargetValue | HudText::TargetSub => {
                 let from = control.map(|p| piece_com(p, alpha)).or(rig.focus);
-                target_text(*kind, s, &world, target, !watching, from);
+                let lock_key = (!watching).then(|| controls.0.inputs(Action::LockNext).next().map(|c| c.label())).flatten();
+                target_text(*kind, s, &world, target, (!watching).then_some(lock_key.as_deref().unwrap_or("—")), from);
             }
             HudText::Title => match &scene.kind {
                 SceneKind::Sandbox => {
@@ -153,7 +158,8 @@ pub(super) fn update_text(
                 }
             }
             HudText::Banner => {
-                if virtual_time.is_paused() {
+                // The flight menu says it itself.
+                if virtual_time.is_paused() && !menu.open {
                     s.push_str("PAUSED");
                 } else if let Phase::Warping { home_at } = run.phase {
                     let what = if transit.emergency() { "EMERGENCY WARP" } else { "WARPING HOME" };
@@ -236,22 +242,66 @@ pub(super) fn update_text(
                     warnings(s, ship, p, labels);
                 }
             }
-            HudText::Help => match scene.kind {
-                SceneKind::Sandbox if scene.watched().is_some() => {
-                    s.push_str("NOBODY PILOTS · DRAG PAN · F FOLLOW / FREE · WHEEL ZOOM · C WAVES · F3 RULES · T BACK · M HOME · H HIDE");
-                }
-                SceneKind::Sandbox if input.touch_ui => {
-                    s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM");
-                }
-                SceneKind::Sandbox => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK (A/D NUDGE) · MOUSE/SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · C WAVES · T DRYDOCK · M HOME · U TUNING · F3 DEBUG · H HIDE",
-                ),
-                SceneKind::Voyage(_) if input.touch_ui => s.push_str("STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL"),
-                SceneKind::Voyage(_) => s.push_str(
-                    "A/D TURN · W/S THRUST · Q/E STRAFE · CLICK LOCK · SPACE FIRE · TAB TARGET · X DRIFT · V VESSEL · R RECALL · M ABANDON · U TUNING · F3 DEBUG · H HIDE",
-                ),
-                _ => s.push_str("DRAG PAN  ·  WHEEL ZOOM  ·  F FRAME / FREE  ·  1 DEBUG SHAPES  ·  2 GLOW  ·  3 BLOOM  ·  F3 STATS  ·  H HIDE  ·  T DRYDOCK  ·  M HOME"),
-            },
+            HudText::Help => {
+                // The bound inputs (the first of each; the fire button's all), GDR-0090.
+                let k = |a: Action| controls.0.inputs(a).next().map_or_else(|| "—".to_string(), |c| c.label());
+                let all = |a: Action| controls.0.inputs(a).map(|c| c.label()).collect::<Vec<_>>().join("/");
+                let fly = format!(
+                    "{}/{} TURN · {}/{} THRUST · {}/{} STRAFE · CLICK LOCK · {} FIRE · {} TARGET · {} DRIFT · {} VESSEL",
+                    k(Action::TurnLeft),
+                    k(Action::TurnRight),
+                    k(Action::ThrustForward),
+                    k(Action::ThrustBack),
+                    k(Action::StrafeLeft),
+                    k(Action::StrafeRight),
+                    all(Action::Fire),
+                    k(Action::LockNext),
+                    k(Action::Drift),
+                    k(Action::FocusNext),
+                );
+                let line = match scene.kind {
+                    SceneKind::Sandbox if scene.watched().is_some() => format!(
+                        "NOBODY PILOTS · DRAG PAN · {} FOLLOW / FREE · WHEEL ZOOM · {} WAVES · {} RULES · {} BACK · {} HOME · {} HIDE",
+                        k(Action::CameraFollow),
+                        k(Action::Waves),
+                        k(Action::DebugOverlay),
+                        k(Action::TestReturn),
+                        k(Action::Leave),
+                        k(Action::HideHud),
+                    ),
+                    SceneKind::Sandbox if input.touch_ui => "STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM".into(),
+                    SceneKind::Sandbox => format!(
+                        "{fly} · {} WAVES · {} DRYDOCK · {} HOME · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
+                        k(Action::Waves),
+                        k(Action::TestReturn),
+                        k(Action::Leave),
+                        k(Action::Tuning),
+                        k(Action::DebugOverlay),
+                        k(Action::HideHud),
+                    ),
+                    SceneKind::Voyage(_) if input.touch_ui => "STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL".into(),
+                    SceneKind::Voyage(_) => format!(
+                        "{fly} · {} RECALL · {} ABANDON · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
+                        k(Action::Recall),
+                        k(Action::Leave),
+                        k(Action::Tuning),
+                        k(Action::DebugOverlay),
+                        k(Action::HideHud),
+                    ),
+                    _ => format!(
+                        "DRAG PAN  ·  WHEEL ZOOM  ·  {} FRAME / FREE  ·  {} DEBUG SHAPES  ·  {} GLOW  ·  {} BLOOM  ·  {} STATS  ·  {} HIDE  ·  {} DRYDOCK  ·  {} HOME",
+                        k(Action::CameraFollow),
+                        k(Action::DebugShapes),
+                        k(Action::GlowToggle),
+                        k(Action::BloomToggle),
+                        k(Action::DebugOverlay),
+                        k(Action::HideHud),
+                        k(Action::TestReturn),
+                        k(Action::Leave),
+                    ),
+                };
+                s.push_str(&line);
+            }
         }
         set_text(&mut text, scratch);
     }
@@ -283,13 +333,13 @@ pub fn hull_fraction(ship: &sim::Ship, control: Option<sim::PieceId>) -> f32 {
 }
 
 /// The target panel: the player's lock (with how to lock when there is none), or in watch mode the watched
-/// ship's behavior target (`hint` off: nobody can lock).
-pub(super) fn target_text(kind: HudText, s: &mut String, world: &SimWorld, target: Option<Target>, hint: bool, from: Option<Vec2>) {
+/// ship's behavior target (`hint`: the lock key; none: nobody can lock).
+pub(super) fn target_text(kind: HudText, s: &mut String, world: &SimWorld, target: Option<Target>, hint: Option<&str>, from: Option<Vec2>) {
     let Some(lock) = target else {
         if kind == HudText::TargetName {
             s.push_str("NO TARGET");
-        } else if kind == HudText::TargetSub && hint {
-            s.push_str("CLICK OR TAB TO LOCK");
+        } else if kind == HudText::TargetSub && let Some(key) = hint {
+            let _ = write!(s, "CLICK OR {key} TO LOCK");
         }
         return;
     };

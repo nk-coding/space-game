@@ -74,9 +74,6 @@ use super::view::{DockCamera, DrydockCursor, GridViewport};
 pub(in crate::drydock) use spawn::spawn;
 pub(in crate::drydock) use sync::{fit_bar, fit_status, scroll_chips, scroll_selected, see_fresh, sync_blocks, sync_live, sync_menus, sync_palette, sync_pills, sync_scrim, sync_search, sync_swatches, sync_texts};
 
-/// The keys of the first nine armour swatches (in their tooltips).
-const MATERIAL_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-
 /// The left column's width.
 const LEFT_W: f32 = 248.0;
 const RIGHT_W: f32 = 292.0;

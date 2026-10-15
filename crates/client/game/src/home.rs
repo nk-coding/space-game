@@ -37,8 +37,10 @@ use bevy::state::state::StateTransitionEvent;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
+use kit::ui_kit::{HudFonts, EXIT_SECONDS, Hot, ScreenFx, Tip, Tone, UiClick, show_screen, UiInputSet, UiPointer, UiSize, UiStyleSet, label, prose, set_color, set_text, ui_scale_for};
+use data::input::Action;
 use world::camera::{CamMode, CameraRig, CameraSet};
+use world::settings::{Act, ActionTip};
 use world::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use world::fx::{FxFlush, FxQueue, FxRegions};
 use world::mode::AppMode;
@@ -86,15 +88,15 @@ pub enum HomeAction {
     Research,
 }
 
-/// A place's key, if it has one (its tooltip names it while it works).
-pub fn key_of(place: Place) -> Option<(KeyCode, &'static str)> {
+/// A place's action in the action map, if it has one (its tooltip names the bound keys while it works).
+pub fn key_of(place: Place) -> Option<Action> {
     match place {
-        Place::Drydock => Some((KeyCode::KeyD, "D")),
-        Place::Behavior => Some((KeyCode::KeyB, "B")),
-        Place::Research => Some((KeyCode::KeyR, "R")),
-        Place::Voyages => Some((KeyCode::KeyV, "V")),
-        Place::TestRange => Some((KeyCode::KeyT, "T")),
-        Place::Fleet => Some((KeyCode::KeyF, "F")),
+        Place::Drydock => Some(Action::OpenDrydock),
+        Place::Behavior => Some(Action::OpenBehavior),
+        Place::Research => Some(Action::OpenResearch),
+        Place::Voyages => Some(Action::OpenVoyages),
+        Place::TestRange => Some(Action::OpenTestRange),
+        Place::Fleet => Some(Action::OpenFleet),
         Place::Fabricator | Place::SalvageBay => None,
     }
 }
@@ -122,7 +124,7 @@ fn tip_of(place: Place) -> Option<Tip> {
         HomeAction::Voyages => "VOYAGES",
         HomeAction::Research => "RESEARCH",
     };
-    Some(key_of(place).map_or(Tip::new(name), |(_, key)| Tip::key(name, key)))
+    Some(Tip::new(name))
 }
 
 /// The place a screen belongs to: where the camera starts when that screen goes back home.
@@ -219,10 +221,10 @@ impl Plugin for HomePlugin {
                 Update,
                 (
                     ui_scale,
-                    (clicks, keys).run_if(not(fleet::is_open)),
+                    (clicks, keys).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open))),
                     fly,
                     apply,
-                    (place_labels, sync_titles, sync_name, sync_notes).run_if(not(fleet::is_open)),
+                    (place_labels, sync_titles, sync_name, sync_notes).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open))),
                     measure_labels,
                     show,
                 )
@@ -232,7 +234,7 @@ impl Plugin for HomePlugin {
                     .before(ShipyardSet)
                     .run_if(in_state(AppMode::Home)),
             )
-            .add_systems(Update, show.run_if(state_changed::<AppMode>))
+            .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<world::settings::SettingsLayer>)))
             .add_systems(PostUpdate, draw_hover.run_if(in_state(AppMode::Home)).after(CameraSet).before(FxFlush));
     }
 }
@@ -264,6 +266,8 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 tl.spawn(label(fonts, "THE SHIPYARD  ·  RIM", 11.0, c(Tone::Label, 1.0)));
                 tl.spawn((DesignName, prose(fonts, "", 20.0, c(Tone::Number, 1.0))));
             });
+        // Top right: SETTINGS (GDR-0090).
+        root.spawn(Node { position_type: PositionType::Absolute, right: px(22), top: px(18), ..default() }).with_children(crate::settings::spawn_ring);
         // Bottom right: the career's notes.
         root.spawn(Node {
             position_type: PositionType::Absolute,
@@ -285,7 +289,10 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
     commands.spawn((SpotRoot, full.clone(), Visibility::Hidden)).with_children(|root| {
         for place in Place::ALL {
             if let Some(tip) = tip_of(place) {
-                root.spawn((Spot(place), Hot::default(), tip, Node { position_type: PositionType::Absolute, ..default() }));
+                let spot = root.spawn((Spot(place), Hot::default(), tip, Node { position_type: PositionType::Absolute, ..default() })).id();
+                if let Some(a) = key_of(place) {
+                    root.commands().entity(spot).insert(ActionTip(a));
+                }
             }
         }
     });
@@ -419,17 +426,17 @@ fn remember_start_zoom(rig: Res<CameraRig>, mut cam: ResMut<HomeCamera>) {
 
 /// Leaving home: flight gets its zoom back, the UI its normal scale (the drydock and the BEHAVIOR screen set
 /// their own).
-fn exit(mut rig: ResMut<CameraRig>, cam: Res<HomeCamera>, mut ui_scale: ResMut<UiScale>) {
+fn exit(mut rig: ResMut<CameraRig>, cam: Res<HomeCamera>, mut ui_scale: ResMut<UiScale>, size: Res<UiSize>) {
     rig.view_offset = Vec2::ZERO;
     rig.zoom = cam.flight_zoom;
     rig.zoom_target = cam.flight_zoom;
-    ui_scale.0 = 1.0;
+    ui_scale.0 = size.0;
 }
 
 /// The UI scale: the labels are made for 1280 × 720 logical pixels and grow with larger windows (as the drydock's,
 /// whose layout home's camera flies onto).
-fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>) {
-    let s = ui_scale_for(&window);
+fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, mut ui_scale: ResMut<UiScale>) {
+    let s = ui_scale_for(&window, *size);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }
@@ -466,11 +473,12 @@ fn clicks(
     }
 }
 
-/// D, B, T, F, R, V: not while a text field has the keyboard, and not with Ctrl or Cmd held (Ctrl+D is the browser's
-/// bookmark key), as the drydock's shortcuts. The debrief's VOYAGE MAP acts as V.
+/// The places' actions (D, B, T, F, R, V by default): not while a text field has the keyboard (the action map keeps
+/// them apart from Ctrl and Cmd combinations: Ctrl+D is the browser's bookmark key). The debrief's VOYAGE MAP acts
+/// as the voyages' key.
 #[allow(clippy::too_many_arguments)]
 fn keys(
-    keys: Res<ButtonInput<KeyCode>>,
+    act: Act,
     pointer: Res<UiPointer>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
@@ -483,12 +491,11 @@ fn keys(
     if open_map.read().count() > 0 {
         go(Place::Voyages, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
     }
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
-    if pointer.typing || ctrl {
+    if pointer.typing {
         return;
     }
     for place in Place::ALL {
-        if key_of(place).is_some_and(|(k, _)| keys.just_pressed(k)) {
+        if key_of(place).is_some_and(|a| act.just_pressed(a)) {
             go(place, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
         }
     }
@@ -581,11 +588,12 @@ fn apply(
 fn show(
     mode: Res<State<AppMode>>,
     fleet: Res<Fleet>,
+    settings: Res<world::settings::SettingsLayer>,
     visit: Res<Visit>,
     mut screens: Query<&mut ScreenFx, Or<(With<HomeRoot>, With<LabelRoot>)>>,
     mut spots: Single<&mut Visibility, With<SpotRoot>>,
 ) {
-    let home = *mode.get() == AppMode::Home && !fleet.open;
+    let home = *mode.get() == AppMode::Home && !fleet.open && !settings.open;
     let resting = home && matches!(visit.phase, Phase::Yard);
     for mut fx in &mut screens {
         show_screen(&mut fx, resting);
@@ -845,17 +853,16 @@ mod tests {
     /// map; every key is one place's, every action one place's.
     #[test]
     fn keys_and_places_map_to_screens() {
-        let by_key = |k: KeyCode| Place::ALL.into_iter().find(|p| key_of(*p).is_some_and(|(key, _)| key == k));
-        let screen = |k: KeyCode| by_key(k).and_then(action_of);
-        assert_eq!(screen(KeyCode::KeyD), Some(HomeAction::Drydock));
-        assert_eq!(screen(KeyCode::KeyB), Some(HomeAction::Behavior));
-        assert_eq!(screen(KeyCode::KeyT), Some(HomeAction::TestRange));
-        assert_eq!(screen(KeyCode::KeyF), Some(HomeAction::Fleet));
-        assert_eq!(screen(KeyCode::KeyV), Some(HomeAction::Voyages));
-        assert_eq!(by_key(KeyCode::KeyV), Some(Place::Voyages));
-        assert_eq!((by_key(KeyCode::KeyR), screen(KeyCode::KeyR)), (Some(Place::Research), Some(HomeAction::Research)));
+        let by_key = |k: Action| Place::ALL.into_iter().find(|p| key_of(*p) == Some(k));
+        let screen = |k: Action| by_key(k).and_then(action_of);
+        assert_eq!(screen(Action::OpenDrydock), Some(HomeAction::Drydock));
+        assert_eq!(screen(Action::OpenBehavior), Some(HomeAction::Behavior));
+        assert_eq!(screen(Action::OpenTestRange), Some(HomeAction::TestRange));
+        assert_eq!(screen(Action::OpenFleet), Some(HomeAction::Fleet));
+        assert_eq!(screen(Action::OpenVoyages), Some(HomeAction::Voyages));
+        assert_eq!((by_key(Action::OpenResearch), screen(Action::OpenResearch)), (Some(Place::Research), Some(HomeAction::Research)));
         for p in Place::ALL {
-            if let Some((k, _)) = key_of(p) {
+            if let Some(k) = key_of(p) {
                 assert_eq!(by_key(k), Some(p), "{p:?}");
             }
             if let Some(a) = action_of(p) {

@@ -39,7 +39,9 @@ use crate::player::design::flight_ready;
 use crate::mode::AppMode;
 use crate::scene::{ENEMY, Launch, PLAYER, Scene, SceneKind};
 use crate::sim_bridge::{GameContent, SimSet, SimWorld};
+use crate::settings::Act;
 use crate::storage::Storage;
+use data::input::Action;
 
 use debrief::{Debrief, DebriefData, DebriefStats};
 
@@ -280,15 +282,14 @@ fn start(
 /// R asks for the recall (the RECALL pill does the same, `flight_hud/`). M opens the ABANDON VOYAGE? panel and
 /// closes it again, Esc closes it, Enter abandons the voyage (like the panel's button; it counts as lost, like
 /// closing the game: the way out of a stalemate).
-fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, mut run: ResMut<VoyageRun>, scene: Res<Scene>) {
+fn voyage_keys(keys: Res<ButtonInput<KeyCode>>, act: Act, mut run: ResMut<VoyageRun>, scene: Res<Scene>) {
     if run.launched.is_none() || scene.voyage().is_none() || !matches!(run.phase, Phase::Flying | Phase::Warping { .. }) {
         return;
     }
-    let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    if keys.just_pressed(KeyCode::KeyR) && !shift {
+    if act.just_pressed(Action::Recall) {
         run.recall = true;
     }
-    if keys.just_pressed(KeyCode::KeyM) {
+    if act.just_pressed(Action::Leave) {
         run.asking = !run.asking;
     } else if run.asking && keys.just_pressed(KeyCode::Escape) {
         run.asking = false;

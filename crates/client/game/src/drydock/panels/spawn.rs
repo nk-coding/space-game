@@ -2,6 +2,8 @@
 //! the stats and the selected part, the bottom bar with its menus.
 
 use super::*;
+use data::input::Action;
+use world::settings::{ActionLabel, ActionTip};
 
 pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, content: Res<GameContent>) {
     let ui = style.ui;
@@ -71,7 +73,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                         SearchField,
                         TextField { placeholder: "Search parts".into(), max_chars: 24, ..default() },
                         Hot::default(),
-                        Tip::key("SEARCH PARTS", "/"),
+                        Tip::new("SEARCH PARTS"),
+                        ActionTip(Action::Search),
                         Node {
                             height: px(36),
                             flex_shrink: 0.0,
@@ -105,7 +108,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     ))
                     .with_children(|strip| {
                         for (k, m) in armor_materials(content).enumerate() {
-                            let tip = Tip { name: material_tip(content, block, m).into(), key: MATERIAL_KEYS.get(k).copied() };
+                            let tip = Tip::new(material_tip(content, block, m));
+                            let key = Action::armour(k + 1);
                             strip
                                 .spawn((
                                     ActionButton(DrydockAction::Material(m.id.clone())),
@@ -129,6 +133,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                                     BorderColor::all(Color::NONE),
                                     BackgroundColor(Color::NONE),
                                 ))
+                                .insert_if(ActionTip(key.unwrap_or(Action::Armour1)), || key.is_some())
                                 .with_children(|sw| {
                                     let tile = UiIcon::Part { part: block.map_or(String::new(), |b| b.id.clone()), material: Some(m.id.clone()) };
                                     sw.spawn((
@@ -139,8 +144,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                                         Outline { width: px(1), offset: px(0), color: c(Tone::Number, 0.22) },
                                     ))
                                     .with_children(|t| {
-                                        if let Some(key) = MATERIAL_KEYS.get(k) {
-                                            t.spawn((label(fonts, key, 7.5, c(Tone::Number, 0.8)), Node { position_type: PositionType::Absolute, right: px(1), bottom: px(-1), ..default() }));
+                                        if let Some(a) = Action::armour(k + 1) {
+                                            t.spawn((ActionLabel(a), label(fonts, "", 7.5, c(Tone::Number, 0.8)), Node { position_type: PositionType::Absolute, right: px(1), bottom: px(-1), ..default() }));
                                         }
                                     });
                                 });
@@ -300,10 +305,10 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     .with_children(|b| {
                         b.spawn((PanelText::Info, label(fonts, "", 9.0, c(Tone::Dim, 1.0)))).with_child(crate::drydock::ghost::hint_span(fonts, &style));
                         b.spawn((UiBlock, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() })).with_children(|z| {
-                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut), Tip::key("ZOOM OUT", "−"))).with_child(ring_glyph(Glyph::Minus, 13.0));
+                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomOut), Tip::new("ZOOM OUT"), ActionTip(Action::ZoomOut))).with_child(ring_glyph(Glyph::Minus, 13.0));
                             // A fixed width with the value centred in it, so the rings stay put and "58 %" sits as centred as "100 %".
                             z.spawn(Node { width: px(46), justify_content: JustifyContent::Center, ..default() }).with_child((PanelText::Zoom, number(fonts, "", 13.0, c(Tone::Number, 1.0))));
-                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn), Tip::key("ZOOM IN", "+"))).with_child(ring_glyph(Glyph::Plus, 13.0));
+                            z.spawn((ring_node(28.0), ActionButton(DrydockAction::ZoomIn), Tip::new("ZOOM IN"), ActionTip(Action::ZoomIn))).with_child(ring_glyph(Glyph::Plus, 13.0));
                         });
                     });
             });
@@ -321,27 +326,27 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
             // the BEHAVIOR screen and the test flight.
             root.spawn((UiBlock, ScreenPart::new(Edge::Bottom, 3), Node { height: px(42), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..abs(Some(22.0), Some(20.0), None, Some(14.0)) }))
                 .with_children(|bb| {
-                    for (g, action, tip) in [(Glyph::Undo, DrydockAction::Undo, Tip::key("UNDO", "CTRL+Z")), (Glyph::Redo, DrydockAction::Redo, Tip::key("REDO", "CTRL+SHIFT+Z"))] {
+                    for (g, action, tip) in [(Glyph::Undo, DrydockAction::Undo, (Tip::new("UNDO"), ActionTip(Action::Undo))), (Glyph::Redo, DrydockAction::Redo, (Tip::new("REDO"), ActionTip(Action::Redo)))] {
                         bb.spawn((ring_node(36.0), ActionButton(action), tip)).with_children(|r| {
                             r.spawn(glyph(g, Tone::Number, 19.0));
                         });
                     }
                     bb.spawn(sep());
                     let tools = [
-                        ("PAINT", "B", DrydockAction::Tool(Tool::Paint)),
-                        ("FILL", "G", DrydockAction::Tool(Tool::Fill)),
-                        ("ERASE", "X", DrydockAction::Tool(Tool::Erase)),
-                        ("SELECT", "V", DrydockAction::Tool(Tool::Select)),
-                        ("ROTATE", "R · Q / E", DrydockAction::RotateCw),
+                        ("PAINT", Action::ToolPaint, DrydockAction::Tool(Tool::Paint)),
+                        ("FILL", Action::ToolFill, DrydockAction::Tool(Tool::Fill)),
+                        ("ERASE", Action::ToolErase, DrydockAction::Tool(Tool::Erase)),
+                        ("SELECT", Action::ToolSelect, DrydockAction::Tool(Tool::Select)),
+                        ("ROTATE", Action::RotateRight, DrydockAction::RotateCw),
                     ];
                     // Wide: the tool pills, mirror and bevel.
                     bb.spawn((WideTools, Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), flex_shrink: 0.0, ..default() })).with_children(|w| {
                         for (text, key, action) in tools.clone() {
-                            spawn_pill(w, fonts, text, 9.5, 30.0, None, pill(Tone::Teal), (ActionButton(action), Tip::key(text, key)));
+                            spawn_pill(w, fonts, text, 9.5, 30.0, None, pill(Tone::Teal), (ActionButton(action), Tip::new(text), ActionTip(key)));
                         }
                         w.spawn(sep());
-                        spawn_pill(w, fonts, "MIRROR", 9.5, 30.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Mirror), Tip::key("MIRROR", "M")));
-                        spawn_pill(w, fonts, "BEVEL", 9.5, 30.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Bevel), Tip::key("BEVEL", "SHIFT+B")));
+                        spawn_pill(w, fonts, "MIRROR", 9.5, 30.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Mirror), Tip::new("MIRROR"), ActionTip(Action::Mirror)));
+                        spawn_pill(w, fonts, "BEVEL", 9.5, 30.0, None, pill(Tone::Teal), (ActionButton(DrydockAction::Bevel), Tip::new("BEVEL"), ActionTip(Action::ToolBevel)));
                     });
                     // Folded: the current tool as a dropdown (its menu opens upward), mirror and bevel as icons.
                     bb.spawn((FoldedTools, Node { display: Display::None, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), flex_shrink: 0.0, ..default() }))
@@ -375,8 +380,8 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                                     }
                                 });
                             });
-                            f.spawn((ring_node(34.0), ActionButton(DrydockAction::Mirror), Tip::key("MIRROR", "M"))).with_child(ring_glyph(Glyph::Mirror, 16.0));
-                            f.spawn((ring_node(34.0), ActionButton(DrydockAction::Bevel), Tip::key("BEVEL", "SHIFT+B"))).with_child(ring_glyph(Glyph::Bevel, 15.0));
+                            f.spawn((ring_node(34.0), ActionButton(DrydockAction::Mirror), Tip::new("MIRROR"), ActionTip(Action::Mirror))).with_child(ring_glyph(Glyph::Mirror, 16.0));
+                            f.spawn((ring_node(34.0), ActionButton(DrydockAction::Bevel), Tip::new("BEVEL"), ActionTip(Action::ToolBevel))).with_child(ring_glyph(Glyph::Bevel, 15.0));
                         });
                     // The status line over the voyage-ready line, each shortened when it doesn't fit (`fit_status`).
                     bb.spawn((
@@ -401,12 +406,15 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                             s.spawn((t, label(fonts, "", 9.5, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), Node { flex_shrink: 0.0, ..default() }));
                         }
                     });
-                    for (g, size, action, tip) in [
-                        (Glyph::Save, 16.0, DrydockAction::Save, Tip::key("SAVE", "CTRL+S")),
-                        (Glyph::Blueprints, 16.0, DrydockAction::Blueprints, Tip::new("BLUEPRINTS")),
-                        (Glyph::Export, 16.0, DrydockAction::Export, Tip::new("EXPORT")),
+                    for (g, size, action, tip, key) in [
+                        (Glyph::Save, 16.0, DrydockAction::Save, "SAVE", Some(Action::Save)),
+                        (Glyph::Blueprints, 16.0, DrydockAction::Blueprints, "BLUEPRINTS", None),
+                        (Glyph::Export, 16.0, DrydockAction::Export, "EXPORT", None),
                     ] {
-                        bb.spawn((ring_node(34.0), ActionButton(action), tip)).with_child(ring_glyph(g, size));
+                        let ring = bb.spawn((ring_node(34.0), ActionButton(action), Tip::new(tip))).with_child(ring_glyph(g, size)).id();
+                        if let Some(a) = key {
+                            bb.commands().entity(ring).insert(ActionTip(a));
+                        }
                     }
                     bb.spawn(Node::default()).with_children(|anchor| {
                         anchor.spawn((ring_node(34.0), ActionButton(DrydockAction::OpenMenu(BarMenu::More)), Tip::new("MORE"))).with_child(ring_glyph(Glyph::More, 16.0));
@@ -430,7 +438,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                     spawn_pill(bb, fonts, "BEHAVIOR", 9.5, 32.0, None, pill(Tone::Teal), ActionButton(DrydockAction::Behavior));
                     bb.spawn(Node { width: px(4), ..default() });
                     let play = UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
-                    spawn_pill(bb, fonts, "TEST-FLY", 12.0, 40.0, Some(play), Pill { primary: true, ..pill(Tone::Teal) }, (ActionButton(DrydockAction::TestFly), Tip::key("TEST-FLY", "T")));
+                    spawn_pill(bb, fonts, "TEST-FLY", 12.0, 40.0, Some(play), Pill { primary: true, ..pill(Tone::Teal) }, (ActionButton(DrydockAction::TestFly), Tip::new("TEST-FLY"), ActionTip(Action::TestFlight)));
                 });
         });
 }
@@ -518,7 +526,7 @@ pub(super) fn spawn_menu(anchor: &mut ChildSpawnerCommands, menu: BarMenu, plate
 }
 
 /// A menu row: its name (and key) on a bare pill that sends `action`.
-pub(super) fn menu_item(m: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, text: &str, key: Option<&str>, action: DrydockAction) {
+pub(super) fn menu_item(m: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, text: &str, key: Option<Action>, action: DrydockAction) {
     m.spawn((
         ActionButton(action),
         Pill { bare: true, ..Pill::new(Tone::Teal) },
@@ -541,7 +549,7 @@ pub(super) fn menu_item(m: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl
     .with_children(|r| {
         r.spawn((pill_text(fonts, text, 9.5), TextLayout::no_wrap()));
         if let Some(key) = key {
-            r.spawn((number(fonts, key, 10.0, c(Tone::Dim, 1.0)), TextLayout::no_wrap()));
+            r.spawn((ActionLabel(key), number(fonts, "", 10.0, c(Tone::Dim, 1.0)), TextLayout::no_wrap()));
         }
     });
 }

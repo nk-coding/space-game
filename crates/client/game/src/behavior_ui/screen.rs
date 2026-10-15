@@ -20,6 +20,8 @@
 //! inspector's controls are spawned by `controls.rs`.
 
 use bevy::prelude::*;
+use data::input::Action;
+use world::settings::ActionTip;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use bevy::window::PrimaryWindow;
 use data::NodeRole;
@@ -239,7 +241,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     });
                     tr.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), ..default() }).with_children(|t| {
                         let play = UiIcon::Glyph { glyph: Glyph::Play, color: kit.ui.teal };
-                        spawn_pill(t, fonts, "TEST IN RANGE", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (BehaviorButton(BehaviorAction::TestInRange), Tip::key("TEST IN RANGE", "T")));
+                        spawn_pill(t, fonts, "TEST IN RANGE", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, (BehaviorButton(BehaviorAction::TestInRange), Tip::new("TEST IN RANGE"), ActionTip(Action::TestFlight)));
                         t.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(6), ..default() }).with_children(|m| {
                             for (text, mode) in [("WATCH", TestMode::Watch), ("FLY ALONGSIDE", TestMode::Alongside)] {
                                 spawn_pill(m, fonts, text, 8.5, 24.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::TestMode(mode)));
@@ -280,7 +282,8 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                     SearchField,
                     TextField { placeholder: "Search nodes".into(), max_chars: 24, ..default() },
                     Hot::default(),
-                    Tip::key("SEARCH NODES", "/"),
+                    Tip::new("SEARCH NODES"),
+                    ActionTip(Action::Search),
                     Node {
                         height: px(32),
                         flex_shrink: 0.0,
@@ -325,7 +328,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                 .with_children(|bb| {
                     spawn_pill(bb, fonts, "‹  DRYDOCK", 10.0, 32.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Back), Tip::new("DRYDOCK")));
                     bb.spawn(Node { width: px(8), ..default() });
-                    for (g, action, tip) in [(Glyph::Undo, BehaviorAction::Undo, Tip::key("UNDO", "CTRL+Z")), (Glyph::Redo, BehaviorAction::Redo, Tip::key("REDO", "CTRL+SHIFT+Z"))] {
+                    for (g, action, tip) in [(Glyph::Undo, BehaviorAction::Undo, (Tip::new("UNDO"), ActionTip(Action::Undo))), (Glyph::Redo, BehaviorAction::Redo, (Tip::new("REDO"), ActionTip(Action::Redo)))] {
                         bb.spawn((ring_node(34.0), BehaviorButton(action), tip)).with_children(|r| {
                             r.spawn((UiIcon::Glyph { glyph: g, color: kit.ui.dim }, Node { width: px(18), height: px(18), ..default() }));
                         });
@@ -344,7 +347,7 @@ pub(super) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Sty
                         ));
                     bb.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(10), flex_shrink: 0.0, ..default() }).with_children(|r| {
                         spawn_pill(r, fonts, "BEHAVIORS", 9.5, 30.0, None, Pill::new(Tone::Teal), BehaviorButton(BehaviorAction::Behaviors));
-                        spawn_pill(r, fonts, "SAVE", 9.5, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Save), Tip::key("SAVE", "CTRL+S")));
+                        spawn_pill(r, fonts, "SAVE", 9.5, 30.0, None, Pill::new(Tone::Teal), (BehaviorButton(BehaviorAction::Save), Tip::new("SAVE"), ActionTip(Action::Save)));
                     });
                 });
         });

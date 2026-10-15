@@ -94,7 +94,7 @@ impl Plugin for ModePlugin {
 /// `OnExit(Flight)`). Neither in a voyage: RECALL goes home, M asks in a panel whether to abandon it
 /// (`voyage.rs`).
 fn leave_by_key(
-    keys: Res<ButtonInput<KeyCode>>,
+    act: crate::settings::Act,
     exit: Res<FlightExit>,
     scene: Res<crate::scene::Scene>,
     mut next: ResMut<NextState<AppMode>>,
@@ -102,9 +102,9 @@ fn leave_by_key(
     if scene.voyage().is_some() {
         return;
     }
-    if keys.just_pressed(KeyCode::KeyT) {
+    if act.just_pressed(data::input::Action::TestReturn) {
         next.set(exit.0);
-    } else if keys.just_pressed(KeyCode::KeyM) {
+    } else if act.just_pressed(data::input::Action::Leave) {
         next.set(AppMode::Home);
     }
 }

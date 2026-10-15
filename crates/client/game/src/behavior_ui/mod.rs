@@ -149,7 +149,7 @@ impl Plugin for BehaviorPlugin {
             // RANGE read it.
             .add_systems(OnEnter(AppMode::Behavior), (actions::way_in, remember_flight_zoom, design_report, (saving::open, controls::measure_reach)).chain())
             .add_systems(OnExit(AppMode::Behavior), (give_back_zoom, controls::drop_drags, list::leave, saving::leave, text_view::leave).chain())
-            .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>| s.0 = 1.0)
+            .add_systems(OnTransition { exited: AppMode::Behavior, entered: AppMode::Flight }, |mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>| s.0 = size.0)
             .add_systems(Update, show.run_if(state_changed::<AppMode>))
             .add_systems(PostUpdate, screen::draw_dots.after(CameraSet).before(FxFlush))
             .add_systems(
@@ -252,8 +252,8 @@ fn show(mode: Res<State<AppMode>>, mut transitions: MessageReader<StateTransitio
 
 /// The window: the UI scale (min(w / 1280, h / 720), 1 to 2) and the camera rig's viewport, which places the
 /// icons and the dot grid (world sprites under the UI) on screen.
-fn fit_window(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
-    let s = kit::ui_kit::ui_scale_for(&window);
+fn fit_window(window: Single<&Window, With<PrimaryWindow>>, size: Res<kit::ui_kit::UiSize>, mut ui_scale: ResMut<UiScale>, mut rig: ResMut<CameraRig>) {
+    let s = kit::ui_kit::ui_scale_for(&window, *size);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

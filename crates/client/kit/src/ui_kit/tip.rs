@@ -14,7 +14,8 @@ use super::*;
 pub struct Tip {
     /// The name, or what the control picks with a few key numbers (an armour swatch: `STEEL  ·  MASS 2 T`).
     pub name: Cow<'static, str>,
-    pub key: Option<&'static str>,
+    /// The key line: fixed (`"ESC"`), or kept on an action's bound inputs by the action map (`world::settings`).
+    pub key: Option<Cow<'static, str>>,
 }
 
 impl Tip {
@@ -23,9 +24,9 @@ impl Tip {
         Self { name: name.into(), key: None }
     }
 
-    /// A name and its key (`"B"`, `"CTRL+S"`, `"Q / E"`).
-    pub fn key(name: impl Into<Cow<'static, str>>, key: &'static str) -> Self {
-        Self { name: name.into(), key: Some(key) }
+    /// A name and its key (`"ESC"`, `"ENTER"`: the fixed ones; an action's inputs come from the action map).
+    pub fn key(name: impl Into<Cow<'static, str>>, key: impl Into<Cow<'static, str>>) -> Self {
+        Self { name: name.into(), key: Some(key.into()) }
     }
 }
 
@@ -137,7 +138,7 @@ pub(super) fn show_tip(
         // New texts: laid out this frame, placed and shown from the next.
         state.shown = Some(e);
         set_text(&mut name.0, &tip.name);
-        set_text(&mut key.0, tip.key.unwrap_or(""));
+        set_text(&mut key.0, tip.key.as_deref().unwrap_or(""));
         let d = if tip.key.is_some() { Display::Flex } else { Display::None };
         if key.1.display != d {
             key.1.display = d;

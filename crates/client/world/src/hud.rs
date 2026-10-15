@@ -24,6 +24,8 @@ use crate::camera::{CameraRig, MainCamera};
 use crate::controls::PlayerInput;
 use crate::mode::AppMode;
 use crate::scene::{Scene, SceneKind};
+use crate::settings::Act;
+use data::input::Action;
 use crate::sim_bridge::{PilotFocus, SimWorld, Timings, console_out};
 use crate::test_range::BehaviorWatch;
 
@@ -81,20 +83,20 @@ fn spawn_debug(mut commands: Commands, style: Res<Style>) {
     ));
 }
 
-fn keyboard_toggles(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<RenderToggles>, mut time: ResMut<Time<Virtual>>) {
-    if keys.just_pressed(KeyCode::Digit1) {
+fn keyboard_toggles(act: Act, mut toggles: ResMut<RenderToggles>, mut time: ResMut<Time<Virtual>>) {
+    if act.just_pressed(Action::DebugShapes) {
         toggles.debug_shapes = !toggles.debug_shapes;
     }
-    if keys.just_pressed(KeyCode::Digit2) {
+    if act.just_pressed(Action::GlowToggle) {
         toggles.glow_sprites = !toggles.glow_sprites;
     }
-    if keys.just_pressed(KeyCode::Digit3) {
+    if act.just_pressed(Action::BloomToggle) {
         toggles.bloom = !toggles.bloom;
     }
-    if keys.just_pressed(KeyCode::KeyH) {
+    if act.just_pressed(Action::HideHud) {
         toggles.hud = !toggles.hud;
     }
-    if keys.just_pressed(KeyCode::KeyP) {
+    if act.just_pressed(Action::Pause) {
         if time.is_paused() {
             time.unpause();
         } else {
@@ -104,8 +106,8 @@ fn keyboard_toggles(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<RenderT
 }
 
 /// F3: the debug overlay, in every mode.
-fn debug_toggle(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<RenderToggles>) {
-    if keys.just_pressed(KeyCode::F3) {
+fn debug_toggle(act: Act, mut toggles: ResMut<RenderToggles>) {
+    if act.just_pressed(Action::DebugOverlay) {
         toggles.debug_info = !toggles.debug_info;
     }
 }

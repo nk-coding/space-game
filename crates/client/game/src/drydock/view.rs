@@ -25,7 +25,7 @@ use bevy::state::state::StateTransitionEvent;
 use kit::atlas::{Atlas, AtlasMaterial, set_alpha};
 use kit::params::RenderToggles;
 use kit::style::Style;
-use kit::ui_kit::{ScreenFx, show_screen, snap_screen, UiPointer, ui_scale_for};
+use kit::ui_kit::{ScreenFx, show_screen, snap_screen, UiPointer, UiSize, ui_scale_for};
 use world::camera::{CamMode, CameraRig, MAX_PX_PER_M};
 use world::fx::{FxQueue, FxRegions, FxSprite};
 use world::mode::AppMode;
@@ -225,6 +225,7 @@ pub(super) fn exit(
     mut rig: ResMut<CameraRig>,
     mut cam: ResMut<DockCamera>,
     mut ui_scale: ResMut<UiScale>,
+    size: Res<UiSize>,
 ) {
     rig.settle_zoom();
     if cam.fit > 0.0 {
@@ -240,7 +241,7 @@ pub(super) fn exit(
     rig.view_offset = Vec2::ZERO;
     rig.zoom = cam.flight_zoom;
     rig.zoom_target = cam.flight_zoom;
-    ui_scale.0 = 1.0;
+    ui_scale.0 = size.0;
 }
 
 /// Leaving the BEHAVIOR screen for anywhere but the drydock while the drydock's view is parked: flight gets its
@@ -256,8 +257,8 @@ pub(super) fn unpark(mut transitions: MessageReader<StateTransitionEvent<AppMode
 }
 
 /// The UI scale: the layout is made for 1280 × 720 logical pixels and grows with larger windows.
-pub(super) fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, mut ui_scale: ResMut<UiScale>) {
-    let s = ui_scale_for(&window);
+pub(super) fn ui_scale(window: Single<&Window, With<PrimaryWindow>>, size: Res<UiSize>, mut ui_scale: ResMut<UiScale>) {
+    let s = ui_scale_for(&window, *size);
     if (ui_scale.0 - s).abs() > 1e-3 {
         ui_scale.0 = s;
     }

@@ -5,16 +5,19 @@
 //! mirror, bevel, rotate, the selected part) by `tools.rs`, saving, export and the blueprint list by
 //! `blueprints/`, the BEHAVIOR button by `behavior_ui`, a click on a locked part or armour by `research`.
 //!
-//! Keys (only while no text field has the keyboard): B paint, Shift+B bevel, G fill, X erase, V select, R / Shift+R
-//! (or Shift+wheel down / up over the grid) and E / Q turn (the selected part, else the brush), F flip, Delete /
-//! Backspace delete, Esc closes the open menu, else deselects, M mirror, 1–9 armour material (unlocked ones), Ctrl+Z
-//! undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom, / search.
+//! Keys (only while no text field has the keyboard; the action map's, GDR-0090, defaults named here): B paint,
+//! Shift+B bevel, G fill, X erase, V select, R / Shift+R (or Shift+wheel down / up over the grid) and E / Q turn (the
+//! selected part, else the brush), F flip, Delete / Backspace delete, M mirror, 1–9 armour material (unlocked ones),
+//! Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, T test flight, + / − zoom, / search; Esc (fixed) closes the
+//! open menu, else deselects.
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use data::{Content, PowerTier, Unlock};
 use kit::ui_kit::{Pill, TextField, UiClick, UiPointer, WHEEL_LINE_PX};
+use data::input::Action;
 use world::career::{Granted, unlocked_by};
+use world::settings::Act;
 use world::mode::AppMode;
 use world::player::PlayerDesign;
 use world::scene::{Launch, Scene};
@@ -126,6 +129,7 @@ pub fn locked_research(content: &Content, action: &DrydockAction) -> Option<Stri
 #[allow(clippy::too_many_arguments)]
 pub(super) fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
+    act: Act,
     scroll: Option<Res<AccumulatedMouseScroll>>,
     pointer: Res<UiPointer>,
     content: Res<GameContent>,
@@ -139,54 +143,57 @@ pub(super) fn shortcuts(
         return;
     }
     let covered = shelf.is_open();
-    let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
+    let mods = act.mods();
     let mut send = |a: DrydockAction| {
         out.write(a);
     };
-    let over_grid = shift && !ctrl && !covered && !pointer.blocked;
+    let over_grid = mods.shift && !mods.ctrl && !covered && !pointer.blocked;
     if let Some(forward) = wheel_turn(&mut wheel, scroll.as_deref().filter(|_| over_grid)) {
         send(if forward { DrydockAction::RotateCw } else { DrydockAction::RotateCcw });
     }
-    // `/` gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
+    // Search gives the search field the keyboard; the other keys of that frame are typing, not shortcuts (keys of
     // one frame come in no order).
-    if !covered && !ctrl && keys.any_just_pressed([KeyCode::Slash, KeyCode::NumpadDivide]) {
+    if !covered && act.just_pressed(Action::Search) {
         for mut f in &mut search {
             f.focus();
         }
         return;
     }
-    for key in keys.get_just_pressed() {
-        if covered && !(ctrl && *key == KeyCode::KeyS) {
-            continue;
+    if act.just_pressed(Action::Save) {
+        send(DrydockAction::Save);
+    }
+    if covered {
+        return;
+    }
+    // Esc (fixed): closes the open menu, else deselects.
+    if keys.just_pressed(KeyCode::Escape) {
+        send(if ui.menu.is_some() { DrydockAction::CloseMenu } else { DrydockAction::Deselect });
+    }
+    let pairs = [
+        (Action::Undo, DrydockAction::Undo),
+        (Action::Redo, DrydockAction::Redo),
+        (Action::ToolBevel, DrydockAction::Bevel),
+        (Action::ToolPaint, DrydockAction::Tool(Tool::Paint)),
+        (Action::ToolFill, DrydockAction::Tool(Tool::Fill)),
+        (Action::ToolErase, DrydockAction::Tool(Tool::Erase)),
+        (Action::ToolSelect, DrydockAction::Tool(Tool::Select)),
+        (Action::RotateLeft, DrydockAction::RotateCcw),
+        (Action::RotateRight, DrydockAction::RotateCw),
+        (Action::Mirror, DrydockAction::Mirror),
+        (Action::Flip, DrydockAction::Flip),
+        (Action::Delete, DrydockAction::Delete),
+        (Action::TestFlight, DrydockAction::TestFly),
+        (Action::ZoomIn, DrydockAction::ZoomIn),
+        (Action::ZoomOut, DrydockAction::ZoomOut),
+    ];
+    for (a, action) in pairs {
+        if act.just_pressed(a) {
+            send(action);
         }
-        match (*key, ctrl, shift) {
-            (KeyCode::KeyZ, true, false) => send(DrydockAction::Undo),
-            (KeyCode::KeyZ, true, true) | (KeyCode::KeyY, true, _) => send(DrydockAction::Redo),
-            (KeyCode::KeyS, true, _) => send(DrydockAction::Save),
-            (_, true, _) => {}
-            (KeyCode::KeyB, _, true) => send(DrydockAction::Bevel),
-            (KeyCode::KeyB, _, false) => send(DrydockAction::Tool(Tool::Paint)),
-            (KeyCode::KeyG, ..) => send(DrydockAction::Tool(Tool::Fill)),
-            (KeyCode::KeyX, ..) => send(DrydockAction::Tool(Tool::Erase)),
-            (KeyCode::KeyV, ..) => send(DrydockAction::Tool(Tool::Select)),
-            (KeyCode::KeyQ, ..) | (KeyCode::KeyR, _, true) => send(DrydockAction::RotateCcw),
-            (KeyCode::KeyE, ..) | (KeyCode::KeyR, _, false) => send(DrydockAction::RotateCw),
-            (KeyCode::KeyM, ..) => send(DrydockAction::Mirror),
-            (KeyCode::KeyF, ..) => send(DrydockAction::Flip),
-            (KeyCode::Delete | KeyCode::Backspace, ..) => send(DrydockAction::Delete),
-            (KeyCode::Escape, ..) if ui.menu.is_some() => send(DrydockAction::CloseMenu),
-            (KeyCode::Escape, ..) => send(DrydockAction::Deselect),
-            (KeyCode::KeyT, ..) => send(DrydockAction::TestFly),
-            (KeyCode::Equal | KeyCode::NumpadAdd, ..) => send(DrydockAction::ZoomIn),
-            (KeyCode::Minus | KeyCode::NumpadSubtract, ..) => send(DrydockAction::ZoomOut),
-            (k, ..) => {
-                if let Some(n) = digit(k)
-                    && let Some(m) = armor_materials(&content.0).nth(n)
-                {
-                    send(DrydockAction::Material(m.id.clone()));
-                }
-            }
+    }
+    for (n, m) in armor_materials(&content.0).take(9).enumerate() {
+        if Action::armour(n + 1).is_some_and(|a| act.just_pressed(a)) {
+            send(DrydockAction::Material(m.id.clone()));
         }
     }
 }
@@ -214,22 +221,6 @@ pub fn wheel_turn(acc: &mut f32, scroll: Option<&AccumulatedMouseScroll>) -> Opt
     let forward = *acc < 0.0;
     *acc = 0.0;
     Some(forward)
-}
-
-/// 0-based index of the digit keys 1–9.
-fn digit(k: KeyCode) -> Option<usize> {
-    const KEYS: [KeyCode; 9] = [
-        KeyCode::Digit1,
-        KeyCode::Digit2,
-        KeyCode::Digit3,
-        KeyCode::Digit4,
-        KeyCode::Digit5,
-        KeyCode::Digit6,
-        KeyCode::Digit7,
-        KeyCode::Digit8,
-        KeyCode::Digit9,
-    ];
-    KEYS.iter().position(|&d| d == k)
 }
 
 /// The UI-state actions, the menus, the test flight (only a design that can fly takes off) and the way home.
