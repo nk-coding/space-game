@@ -125,6 +125,7 @@ fn every_content_item_has_a_page() {
     want.extend(c.families.iter().map(|e| item_path(Kind::Family, &e.id)));
     want.extend(c.research.iter().map(|e| item_path(Kind::Research, &e.id)));
     want.extend(c.starts.iter().map(|e| item_path(Kind::Start, &e.id)));
+    want.extend(c.controls.iter().map(|e| item_path(Kind::Control, &e.id)));
     want.extend(c.voyages.iter().map(|e| item_path(Kind::Voyage, &e.id)));
     want.extend(
         c.encounters

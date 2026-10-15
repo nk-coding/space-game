@@ -19,6 +19,7 @@ pub mod career;
 pub mod content;
 pub mod design;
 pub mod hash;
+pub mod input;
 
 #[cfg(feature = "fs")]
 pub mod fs;

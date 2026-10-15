@@ -27,12 +27,14 @@ pub enum Kind {
     Voyage,
     /// What waits at a voyage site: ships and wrecks.
     Encounter,
+    /// A player action and its default inputs (the action map, GDR-0090).
+    Control,
     /// Free-standing wiki article (`wiki/page/<id>.md`); has no RON data.
     Page,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [
+    pub const ALL: [Kind; 16] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
@@ -47,6 +49,7 @@ impl Kind {
         Kind::Start,
         Kind::Voyage,
         Kind::Encounter,
+        Kind::Control,
         Kind::Page,
     ];
 
@@ -66,6 +69,7 @@ impl Kind {
             Kind::Start => "start",
             Kind::Voyage => "voyage",
             Kind::Encounter => "encounter",
+            Kind::Control => "control",
             Kind::Page => "page",
         }
     }
@@ -87,6 +91,7 @@ impl Kind {
             Kind::Start => Some("starts"),
             Kind::Voyage => Some("voyages"),
             Kind::Encounter => Some("encounters"),
+            Kind::Control => Some("controls"),
             Kind::Page => None,
         }
     }

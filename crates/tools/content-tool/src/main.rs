@@ -167,7 +167,7 @@ fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
 fn validate(args: &[String]) -> Result<(), String> {
     let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} icons, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} controls, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
@@ -182,6 +182,7 @@ fn validate(args: &[String]) -> Result<(), String> {
         content.starts.len(),
         content.voyages.len(),
         content.encounters.len(),
+        content.controls.len(),
         content.icons.len(),
         content.wiki.len()
     );
@@ -226,6 +227,7 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Start => rows(c.starts.as_slice()),
         Kind::Voyage => rows(c.voyages.as_slice()),
         Kind::Encounter => rows(c.encounters.as_slice()),
+        Kind::Control => rows(c.controls.as_slice()),
         Kind::Page => c
             .wiki
             .values()

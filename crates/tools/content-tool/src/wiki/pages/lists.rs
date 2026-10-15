@@ -333,6 +333,10 @@ impl Wiki<'_> {
             Kind::Encounter => {
                 s += &self.encounter_table("", &c.encounters.iter().collect::<Vec<_>>());
             }
+            Kind::Control => {
+                s.push_str("<p class=\"lead\">The default inputs; players rebind them in the game's SETTINGS.</p>\n");
+                s += &self.rows(c.controls.as_slice(), |_| String::new(), super::default_inputs);
+            }
             Kind::Page => {
                 let pages: Vec<String> = c
                     .wiki
@@ -370,6 +374,7 @@ impl Wiki<'_> {
                 Kind::Start => c.starts.len(),
                 Kind::Voyage => c.voyages.len(),
                 Kind::Encounter => c.encounters.len(),
+                Kind::Control => c.controls.len(),
                 Kind::Page => n_pages,
             };
             writeln!(s, "<a class=\"kind\" href=\"{}\"><span class=\"n\">{n}</span><span class=\"t\">{title}</span></a>", list_path(kind)).unwrap();

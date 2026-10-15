@@ -6,6 +6,7 @@
 //! numbers here.
 
 mod behaviors;
+mod controls;
 mod parts;
 mod progression;
 mod ships;
@@ -80,6 +81,8 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         "opens after",
         "can ever open",
     );
+    v.entries(c.controls.as_slice(), |v, e| v.control(e));
+    v.controls();
     v.voyages_open();
     v.locked();
     v.icons();

@@ -147,7 +147,7 @@ fn layout_errors_name_the_new_dirs_and_kinds() {
     assert!(
         err[0]
             .message
-            .contains("families, research, starts, voyages or encounters"),
+            .contains("families, research, starts, voyages, encounters or controls"),
         "{}",
         err[0]
     );
@@ -155,7 +155,7 @@ fn layout_errors_name_the_new_dirs_and_kinds() {
     assert!(
         err[0]
             .message
-            .contains("family, research, start, voyage, encounter or page"),
+            .contains("family, research, start, voyage, encounter, control or page"),
         "{}",
         err[0]
     );

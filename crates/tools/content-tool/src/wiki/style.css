@@ -17,6 +17,7 @@ code {
 }
 pre { background: color-mix(in srgb, var(--tile) 75%, transparent); padding: 0.8em 1em; border-radius: 6px; overflow-x: auto; }
 pre code { background: none; padding: 0; font-size: 14px; }
+kbd { font: 600 12px/1 ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace; color: var(--number); letter-spacing: 0.04em; padding: 2px 6px; border: 1px solid currentColor; border-radius: 4px; opacity: 0.9; white-space: nowrap; }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 header.top {

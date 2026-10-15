@@ -45,7 +45,7 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages.
-const KINDS: [(Kind, &str); 15] = [
+const KINDS: [(Kind, &str); 16] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -60,6 +60,7 @@ const KINDS: [(Kind, &str); 15] = [
     (Kind::Behavior, "Behaviors"),
     (Kind::BehaviorNode, "Behavior nodes"),
     (Kind::Stat, "Stats"),
+    (Kind::Control, "Controls"),
     (Kind::Page, "Articles"),
 ];
 
@@ -157,6 +158,9 @@ pub fn generate(c: &Content) -> Site {
     }
     for e in &c.encounters {
         entry(Kind::Encounter, &e.id, &e.name, w.encounter_page(e));
+    }
+    for e in &c.controls {
+        entry(Kind::Control, &e.id, &e.name, w.control_page(e));
     }
     for p in c.wiki.values().filter(|p| p.kind == Kind::Page) {
         let title = c.name_of(Kind::Page, &p.id).unwrap_or(&p.id);

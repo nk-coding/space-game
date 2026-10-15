@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::kind::Kind;
 
+pub use controls::Control;
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RcsSpec, SalvageSpec, Selector, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};
@@ -76,6 +77,7 @@ macro_rules! entry {
 
 // After `entry!`, which they use.
 mod behaviors;
+mod controls;
 mod parts;
 mod progression;
 mod ships;

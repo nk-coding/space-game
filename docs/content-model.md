@@ -36,6 +36,7 @@ content/base/
   starts.ron               how a new game begins
   voyages/rim.ron          voyages (the first playable loop's four rim clusters); order = voyage map order
   encounters/*.ron         what waits at a voyage site (ships, wrecks)
+  controls.ron             the action map: every player action, its section, screens and default inputs (GDR-0090)
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
@@ -48,7 +49,7 @@ File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
-  `research`, `starts`, `voyages`, `encounters`. File names are free; group however reads best.
+  `research`, `starts`, `voyages`, `encounters`, `controls`. File names are free; group however reads best.
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
@@ -666,6 +667,22 @@ approach (raider pair ×2, derelict field, goal raider pair), Halvex Drift (raid
 graveyard, goal raider den), Corran Reach (hunter pack, precursor wrecks, goal hunter den), the Warden's gate (raider
 pack, core graveyard, goal the Warden).
 
+### Controls (`controls.ron`, added 15 Oct 2026, GDR-0090)
+
+The action map's actions (`data::input::Action`; every action needs exactly one entry once the content has any, and
+an entry's `id` must be one of them: validation checks both ways). Order = the settings screen's order inside a
+section.
+
+| Field | Meaning |
+|---|---|
+| `section` | the settings screen's group: `flight`, `mission`, `camera`, `shipyard`, `drydock`, `map`, `debug` |
+| `contexts` | the screens it acts on: `flight`, `home`, `drydock`, `behavior`, `research`, `map`, `any`. Two actions sharing one cannot share an input |
+| `inputs` | up to two default inputs: a key (Bevy's `KeyCode` names, `data::input::KEYS`: `KeyW`, `Digit1`, `ArrowUp`, `F5`, `Space`, …) or a mouse button (`MouseRight`, `MouseMiddle`, `MouseBack`, `MouseForward`), optionally with `Ctrl+`, `Shift+`, `Alt+` (`Ctrl+Shift+KeyZ`) |
+
+Fixed and never listed: Esc, Enter, text fields, the clipboard, the left mouse button as the pointer, middle-drag,
+the wheel, touch. The player's changes are not content: the client saves them (`settings/controls`). A mod rebinds a
+default by replacing the entry. The wiki lists the controls with their default inputs.
+
 ## Coordinates and geometry
 
 All in the **blueprint frame**, 1 cell = 1 m:
@@ -707,7 +724,7 @@ of truth.
 - Fields that name another entry hold its id (`category: "power"`, `faction: "automatons"`,
   `material: "steel"`, `target: Part("capacitor")`); validation checks each target exists.
 - Any text field and wiki file may link: `[[kind:id]]` or `[[kind:id|label]]`, kind one of `stat category
-  faction material part frame ship behavior_node behavior family research start voyage encounter page`. The game renders links as plain names (`Content::render_plain`), the wiki
+  faction material part frame ship behavior_node behavior family research start voyage encounter control page`. The game renders links as plain names (`Content::render_plain`), the wiki
   as hyperlinks. Broken links are errors.
 
 ## Text and localisation

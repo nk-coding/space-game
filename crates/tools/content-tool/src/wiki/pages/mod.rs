@@ -321,6 +321,17 @@ impl Wiki<'_> {
         )
     }
 
+    /// A control: its section, the screens it acts on and its default inputs.
+    pub(super) fn control_page(&self, e: &data::Control) -> String {
+        let contexts: Vec<String> = e.contexts.iter().map(|c| format!("{c:?}").to_lowercase()).collect();
+        let facts = vec![
+            ("Section".to_string(), esc(&format!("{:?}", e.section).to_lowercase())),
+            ("Acts on".into(), esc(&contexts.join(", "))),
+            ("Default".into(), default_inputs(e)),
+        ];
+        self.entry(e, EntryParts { facts, ..Default::default() })
+    }
+
     pub(super) fn faction_page(&self, f: &data::Faction) -> String {
         let root = UP;
         let mut facts = vec![(
@@ -761,4 +772,11 @@ fn none() -> String {
 
 fn list_or_none(items: &[String]) -> String {
     if items.is_empty() { none() } else { ul(items) }
+}
+
+/// A control's default inputs as keys (`<kbd>W</kbd> or <kbd>↑</kbd>`), or "none".
+pub(super) fn default_inputs(e: &data::Control) -> String {
+    let keys: Vec<String> =
+        e.inputs.iter().map(|s| s.parse::<data::input::Chord>().map_or_else(|_| esc(s), |c| format!("<kbd>{}</kbd>", esc(&c.label())))).collect();
+    if keys.is_empty() { "none".into() } else { keys.join(" or ") }
 }

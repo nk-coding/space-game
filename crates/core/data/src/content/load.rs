@@ -46,6 +46,7 @@ pub struct Pack {
     pub starts: Vec<Start>,
     pub voyages: Vec<Voyage>,
     pub encounters: Vec<Encounter>,
+    pub controls: Vec<Control>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
     /// `icons/<key>.ship.svg`, sorted by key: machines as drawn on a ship (GDR-0069).
@@ -126,6 +127,7 @@ impl Pack {
             starts: Vec::new(),
             voyages: Vec::new(),
             encounters: Vec::new(),
+            controls: Vec::new(),
             icons: Vec::new(),
             ship_art: Vec::new(),
             wiki: Vec::new(),
@@ -176,6 +178,7 @@ impl Pack {
                     Some(Kind::Encounter) => {
                         parse_into(text, &src, &mut pack.encounters, &mut problems)
                     }
+                    Some(Kind::Control) => parse_into(text, &src, &mut pack.controls, &mut problems),
                     Some(Kind::Page) | None => problems.push(
                         Problem::error(format!(
                             "unknown content file location; RON files belong in {}",
@@ -253,6 +256,7 @@ impl Pack {
         check_duplicates(&pack.starts, &mut problems);
         check_duplicates(&pack.voyages, &mut problems);
         check_duplicates(&pack.encounters, &mut problems);
+        check_duplicates(&pack.controls, &mut problems);
         let mut seen: BTreeMap<(Kind, &str), &Source> = BTreeMap::new();
         for page in &pack.wiki {
             if let Some(first) = seen.insert((page.kind, &page.id), &page.source) {
@@ -377,6 +381,8 @@ pub struct Content {
     /// Voyages in load order, which is also the voyage map's order.
     pub voyages: Table<Voyage>,
     pub encounters: Table<Encounter>,
+    /// The action map's actions in load order, which is also the settings screen's order within a section.
+    pub controls: Table<Control>,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
     /// Ship drawings of machines by icon key (`icons/<key>.ship.svg`, GDR-0069); later packs replace them like icons.
@@ -447,6 +453,7 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.encounters.upsert(e)));
+            p.controls.iter().cloned().for_each(|e| drop(c.controls.upsert(e)));
             for i in &p.icons {
                 c.icons.insert(i.key.clone(), i.clone());
             }
@@ -489,6 +496,7 @@ impl Content {
             Kind::Start => self.starts.contains(id),
             Kind::Voyage => self.voyages.contains(id),
             Kind::Encounter => self.encounters.contains(id),
+            Kind::Control => self.controls.contains(id),
             Kind::Page => self.wiki.contains_key(&format!("page:{id}")),
         }
     }
@@ -510,6 +518,7 @@ impl Content {
             Kind::Start => self.starts.get(id).map(|e| e.name.as_str()),
             Kind::Voyage => self.voyages.get(id).map(|e| e.name.as_str()),
             Kind::Encounter => self.encounters.get(id).map(|e| e.name.as_str()),
+            Kind::Control => self.controls.get(id).map(|e| e.name.as_str()),
             Kind::Page => self.wiki.get(&format!("page:{id}")).map(|p| {
                 p.markdown
                     .lines()

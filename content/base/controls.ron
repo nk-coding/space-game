@@ -1,0 +1,74 @@
+// The action map's actions and their default inputs (GDR-0088, GDR-0090; `data::input`). Every action the game has
+// needs one entry (validation checks both ways). `inputs`: up to two, a key or mouse button with Ctrl / Shift / Alt
+// (`Ctrl+Shift+KeyZ`, `MouseRight`); keys by Bevy's `KeyCode` names. `contexts`: the screens it acts on; actions
+// sharing one cannot share an input. Fixed and not listed: Esc (back; in flight unlock, else the menu), Enter
+// (confirm), text fields, the clipboard, the left mouse as the pointer, middle-drag, the wheel, touch.
+[
+    // Flight.
+    (id: "turn_left", name: "Turn left", summary: "Rotates the ship to the left; under a lock it nudges the aim.", section: flight, contexts: [flight], inputs: ["KeyA", "ArrowLeft"]),
+    (id: "turn_right", name: "Turn right", summary: "Rotates the ship to the right; under a lock it nudges the aim.", section: flight, contexts: [flight], inputs: ["KeyD", "ArrowRight"]),
+    (id: "thrust_forward", name: "Thrust forward", summary: "Pushes along the nose.", section: flight, contexts: [flight], inputs: ["KeyW", "ArrowUp"]),
+    (id: "thrust_back", name: "Thrust back", summary: "Pushes against the nose.", section: flight, contexts: [flight], inputs: ["KeyS", "ArrowDown"]),
+    (id: "strafe_left", name: "Strafe left", summary: "Pushes sideways to the left.", section: flight, contexts: [flight], inputs: ["KeyQ"]),
+    (id: "strafe_right", name: "Strafe right", summary: "Pushes sideways to the right.", section: flight, contexts: [flight], inputs: ["KeyE"]),
+    (id: "fire", name: "Fire", summary: "Fires every gun while held (holding the left button on empty space fires too).", section: flight, contexts: [flight], inputs: ["Space", "MouseRight"]),
+    (id: "lock_next", name: "Lock next target", summary: "Locks the next enemy, nearest first.", section: flight, contexts: [flight], inputs: ["Tab"]),
+    (id: "drift", name: "Drift", summary: "Turns drift on and off: pure momentum while keys are held, no sideways correction.", section: flight, contexts: [flight], inputs: ["KeyX"]),
+    (id: "focus_next", name: "Next vessel", summary: "Flies the next of your vessels.", section: flight, contexts: [flight], inputs: ["KeyV"]),
+    (id: "focus_previous", name: "Previous vessel", summary: "Flies the previous of your vessels.", section: flight, contexts: [flight], inputs: ["Shift+KeyV"]),
+    // Missions.
+    (id: "recall", name: "Recall", summary: "On a voyage: warps the fleet home with what it carries.", section: mission, contexts: [flight], inputs: ["KeyR"]),
+    (id: "leave", name: "Shipyard / abandon", summary: "In the test range: back to the shipyard. On a voyage: asks whether to abandon it.", section: mission, contexts: [flight], inputs: ["KeyM"]),
+    (id: "test_return", name: "End the test", summary: "Ends a test flight: back to the drydock or the behavior screen it started from.", section: mission, contexts: [flight], inputs: ["KeyT"]),
+    (id: "waves", name: "Waves on / off", summary: "In the test range: stops and starts the enemy waves.", section: mission, contexts: [flight], inputs: ["KeyC"]),
+    (id: "reset_scene", name: "Restart the test", summary: "In the test range: starts the scene over.", section: mission, contexts: [flight], inputs: ["Shift+KeyR"]),
+    // Camera and views.
+    (id: "zoom_in", name: "Zoom in", summary: "Moves the view closer.", section: camera, contexts: [flight, drydock, map], inputs: ["Equal", "NumpadAdd"]),
+    (id: "zoom_out", name: "Zoom out", summary: "Moves the view away.", section: camera, contexts: [flight, drydock, map], inputs: ["Minus", "NumpadSubtract"]),
+    (id: "camera_follow", name: "Follow / free camera", summary: "In flight: the camera follows your ship, or stays where you pan it.", section: camera, contexts: [flight], inputs: ["KeyF"]),
+    (id: "reset_view", name: "Reset the view", summary: "On the voyage map: shows the whole map again.", section: camera, contexts: [map], inputs: ["Digit0", "Numpad0"]),
+    // The shipyard.
+    (id: "open_drydock", name: "Drydock", summary: "Opens the drydock (from the shipyard and the research screen).", section: shipyard, contexts: [home, research], inputs: ["KeyD"]),
+    (id: "open_behavior", name: "Behavior", summary: "Opens the BEHAVIOR screen for the working design.", section: shipyard, contexts: [home], inputs: ["KeyB"]),
+    (id: "open_research", name: "Research", summary: "Opens the research lab.", section: shipyard, contexts: [home], inputs: ["KeyR"]),
+    (id: "open_voyages", name: "Voyages", summary: "Opens the voyage map through the gate.", section: shipyard, contexts: [home], inputs: ["KeyV"]),
+    (id: "open_test_range", name: "Test range", summary: "Flies the working design against enemy waves.", section: shipyard, contexts: [home], inputs: ["KeyT"]),
+    (id: "open_fleet", name: "Fleet", summary: "Opens FLEET at the moorings.", section: shipyard, contexts: [home], inputs: ["KeyF"]),
+    (id: "open_settings", name: "Settings", summary: "Opens SETTINGS: controls and display.", section: shipyard, contexts: [home], inputs: ["KeyO"]),
+    // The drydock and the behavior editor.
+    (id: "tool_paint", name: "Paint", summary: "The drydock's paint tool: places the picked part.", section: drydock, contexts: [drydock], inputs: ["KeyB"]),
+    (id: "tool_bevel", name: "Bevel", summary: "The drydock's bevel tool: cuts hull corners into slopes.", section: drydock, contexts: [drydock], inputs: ["Shift+KeyB"]),
+    (id: "tool_fill", name: "Fill", summary: "The drydock's fill tool.", section: drydock, contexts: [drydock], inputs: ["KeyG"]),
+    (id: "tool_erase", name: "Erase", summary: "The drydock's erase tool (the right button erases too).", section: drydock, contexts: [drydock], inputs: ["KeyX"]),
+    (id: "tool_select", name: "Select", summary: "The drydock's select tool.", section: drydock, contexts: [drydock], inputs: ["KeyV"]),
+    (id: "rotate_left", name: "Rotate left", summary: "Turns the picked part or the selection anticlockwise.", section: drydock, contexts: [drydock], inputs: ["KeyQ", "Shift+KeyR"]),
+    (id: "rotate_right", name: "Rotate right", summary: "Turns the picked part or the selection clockwise.", section: drydock, contexts: [drydock], inputs: ["KeyE", "KeyR"]),
+    (id: "mirror", name: "Mirror", summary: "Turns mirrored building on and off.", section: drydock, contexts: [drydock], inputs: ["KeyM"]),
+    (id: "flip", name: "Flip", summary: "Flips the selection.", section: drydock, contexts: [drydock], inputs: ["KeyF"]),
+    (id: "delete", name: "Delete", summary: "Deletes the selection (parts in the drydock, a rule or node in the behavior editor).", section: drydock, contexts: [drydock, behavior], inputs: ["Delete", "Backspace"]),
+    (id: "test_flight", name: "Test flight", summary: "Flies the design (or tests the behavior) in the test range.", section: drydock, contexts: [drydock, behavior], inputs: ["KeyT"]),
+    (id: "search", name: "Search", summary: "Jumps to the search field.", section: drydock, contexts: [drydock, behavior], inputs: ["Slash", "NumpadDivide"]),
+    (id: "undo", name: "Undo", summary: "Takes back the last edit.", section: drydock, contexts: [drydock, behavior], inputs: ["Ctrl+KeyZ"]),
+    (id: "redo", name: "Redo", summary: "Does the last undone edit again.", section: drydock, contexts: [drydock, behavior], inputs: ["Ctrl+Shift+KeyZ", "Ctrl+KeyY"]),
+    (id: "save", name: "Save", summary: "Saves the design or the behavior.", section: drydock, contexts: [drydock, behavior], inputs: ["Ctrl+KeyS"]),
+    (id: "armour_1", name: "Armour 1", summary: "Picks the first armour material.", section: drydock, contexts: [drydock], inputs: ["Digit1"]),
+    (id: "armour_2", name: "Armour 2", summary: "Picks the second armour material.", section: drydock, contexts: [drydock], inputs: ["Digit2"]),
+    (id: "armour_3", name: "Armour 3", summary: "Picks the third armour material.", section: drydock, contexts: [drydock], inputs: ["Digit3"]),
+    (id: "armour_4", name: "Armour 4", summary: "Picks the fourth armour material.", section: drydock, contexts: [drydock], inputs: ["Digit4"]),
+    (id: "armour_5", name: "Armour 5", summary: "Picks the fifth armour material.", section: drydock, contexts: [drydock], inputs: ["Digit5"]),
+    (id: "armour_6", name: "Armour 6", summary: "Picks the sixth armour material.", section: drydock, contexts: [drydock], inputs: ["Digit6"]),
+    (id: "armour_7", name: "Armour 7", summary: "Picks the seventh armour material.", section: drydock, contexts: [drydock], inputs: ["Digit7"]),
+    (id: "armour_8", name: "Armour 8", summary: "Picks the eighth armour material.", section: drydock, contexts: [drydock], inputs: ["Digit8"]),
+    (id: "armour_9", name: "Armour 9", summary: "Picks the ninth armour material.", section: drydock, contexts: [drydock], inputs: ["Digit9"]),
+    // The voyage map.
+    (id: "next_voyage", name: "Next voyage", summary: "Picks the next voyage on the map.", section: map, contexts: [map], inputs: ["ArrowRight", "ArrowDown"]),
+    (id: "previous_voyage", name: "Previous voyage", summary: "Picks the previous voyage on the map.", section: map, contexts: [map], inputs: ["ArrowLeft", "ArrowUp"]),
+    // Debug and display.
+    (id: "hide_hud", name: "Hide the HUD", summary: "Hides and shows the flight HUD.", section: debug, contexts: [flight], inputs: ["KeyH"]),
+    (id: "pause", name: "Pause", summary: "Pauses the test range (voyages never pause).", section: debug, contexts: [flight], inputs: ["KeyP"]),
+    (id: "tuning", name: "Tuning panel", summary: "Opens the tuning panel (flight feel and wave size).", section: debug, contexts: [flight], inputs: ["KeyU"]),
+    (id: "debug_overlay", name: "Debug overlay", summary: "Shows frame times and counts.", section: debug, contexts: [any], inputs: ["F3"]),
+    (id: "debug_shapes", name: "Debug shapes", summary: "Draws ships as plain coloured cells.", section: debug, contexts: [flight], inputs: ["F5"]),
+    (id: "glow_toggle", name: "Glow", summary: "Turns the glow layers off and on.", section: debug, contexts: [flight], inputs: ["F6"]),
+    (id: "bloom_toggle", name: "Bloom", summary: "Turns full-screen bloom on and off.", section: debug, contexts: [flight], inputs: ["F7"]),
+]
