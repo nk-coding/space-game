@@ -30,15 +30,16 @@ const SHUTTLE_DWELL: f32 = 3.0;
 const GATE_TURN: f32 = 120.0;
 const MIND_TURN: f32 = 40.0;
 const ORBIT_TURN: f32 = 30.0;
-/// The light up the approach: its run and the whole cycle (s).
+/// The lights up the approach: one run (s), and how many run at once, evenly apart (Niklas, 15 Oct 2026: one
+/// light every 2.8 s was too sparse; now one every 0.9 s).
 const PULSE_RUN: f32 = 1.8;
-const PULSE_CYCLE: f32 = 2.8;
+const PULSES: usize = 2;
 
 /// A moving part of the yard.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Part {
     GateRing,
-    GatePulse,
+    GatePulse(usize),
     MindRotor,
     MindCore,
     Dish(usize),
@@ -47,7 +48,18 @@ pub enum Part {
 }
 
 impl Part {
-    const ALL: [Part; 8] = [Part::GateRing, Part::GatePulse, Part::MindRotor, Part::MindCore, Part::Dish(0), Part::Dish(1), Part::Orbit, Part::Shuttle(0)];
+    const ALL: [Part; 10] = [
+        Part::GateRing,
+        Part::GatePulse(0),
+        Part::GatePulse(1),
+        Part::MindRotor,
+        Part::MindCore,
+        Part::Dish(0),
+        Part::Dish(1),
+        Part::Orbit,
+        Part::Shuttle(0),
+        Part::Shuttle(1),
+    ];
 
     fn z(self) -> f32 {
         match self {
@@ -60,7 +72,7 @@ impl Part {
         let lab = if lights.research { pal.gold } else { pal.dim };
         match self {
             Part::GateRing => draw::gate_ring(pen, pal, lights.gate),
-            Part::GatePulse => draw::gate_pulse(pen, pal),
+            Part::GatePulse(_) => draw::gate_pulse(pen, pal),
             Part::MindRotor => draw::mind_rotor(pen, pal),
             Part::MindCore => draw::mind_core(pen, pal),
             Part::Dish(k) => draw::dish(pen, pal, draw::research_dishes(l)[k].1.0, lab),
@@ -80,8 +92,7 @@ pub struct Blink {
 
 /// Spawns the moving parts (empty until the yard is built), in the yard's fading group.
 pub fn spawn(commands: &mut Commands, meshes: &mut Assets<Mesh>, outer: &Handle<AtlasMaterial>) {
-    let parts = Part::ALL.into_iter().chain([Part::Shuttle(1)]);
-    for part in parts {
+    for part in Part::ALL {
         commands.spawn((part, Mesh2d(meshes.add(MeshBuf::placeholder())), MeshMaterial2d(outer.clone()), Transform::from_xyz(0.0, 0.0, part.z()), Visibility::Hidden));
     }
 }
@@ -185,10 +196,10 @@ pub fn animate(
     for (part, mut tf) in &mut parts {
         match *part {
             Part::GateRing => set(&mut tf, l.gate, if lights.gate { t / GATE_TURN * TAU } else { 0.0 }, 1.0),
-            Part::GatePulse => {
+            Part::GatePulse(k) => {
                 let (from, to) = (l.chevrons.first().copied().unwrap_or(l.gate), l.gate);
-                let u = (t.rem_euclid(PULSE_CYCLE) / PULSE_RUN).min(1.0);
-                let size = if lights.gate && u < 1.0 { (u * PI).sin() } else { 0.0 };
+                let u = (t / PULSE_RUN + k as f32 / PULSES as f32).rem_euclid(1.0);
+                let size = if lights.gate { (u * PI).sin() } else { 0.0 };
                 set(&mut tf, from.lerp(to, u), 0.0, size);
             }
             Part::MindRotor => set(&mut tf, l.mind.centre, t / MIND_TURN * TAU, 1.0),

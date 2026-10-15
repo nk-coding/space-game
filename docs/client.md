@@ -336,7 +336,7 @@ PostUpdate            ship_view::sync_piece_views (render_pose(alpha) → Transf
 - **Smaller modules**: `params.rs` (launch parameters: the page URL's query, natively `GAME_PARAMS`;
   `Params::flag` / `f32` / `text`), `controls.rs` (keyboard, mouse and touch → `PlayerInput`: stick, A/D ramp and
   nudge, lock, fire, drift, V / Tab / Esc; the touch widgets), `backdrop.rs` (the radial gradient, two parallax dust
-  layers drifting slowly outside flight, a far layer of stars twinkling in three groups, dotted range rings around
+  layers drifting slowly outside flight (0.16 m/s in the far layer), a far layer of stars twinkling in three groups, dotted range rings around
   the followed ship whose dots keep at least 2.6 px across and 11 px apart at any zoom, rebuilt per zoom step), `meshbuf.rs` (`MeshBuf`, the CPU builder for
   atlas-textured, vertex-coloured 2D meshes; index order = draw order; their data lives only on the GPU, so a
   PostUpdate system that replaces one runs before `TransformSystems::Propagate`, where `atlas.rs` moves Bevy's mesh
@@ -387,8 +387,8 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
   pods, the target lane hangs off its tower on a strut (GDR-0089).
 - **Life** (`shipyard::life`, GDR-0089; Niklas, 15 Oct 2026: "very static"): beacons (the navigation lights
   breathe, the antenna tips flash; their glows are small meshes of their own, the white cores stay in the static
-  meshes), the gate's dashes and small emitters turning (one turn in 120 s) and a light running up its approach
-  while it is awake, the mind's spokes turning around a beating core, research's dishes sweeping and its orbit
+  meshes), the gate's dashes and small emitters turning (one turn in 120 s) and lights running up its approach
+  (one every 0.9 s) while it is awake, the mind's spokes turning around a beating core, research's dishes sweeping and its orbit
   turning while research runs, two shuttles plying from the far moorings past the near ones to research and to
   the salvage bay. Outside flight the backdrop's dust drifts slowly and its far stars twinkle (`backdrop.rs`).
 - **Colours**: `station.*` in `art/tokens.json` (plate tones, structure, floor, nav lights) and the UI accents

@@ -70,8 +70,9 @@ const LAYERS: [DustLayer; 5] =
 const STAR_LAYER: usize = 2;
 /// Stars per group and tile.
 const STARS: usize = 140;
-/// The dust's drift outside flight (m/s, in the far layer's space; nearer layers pass faster).
-const DRIFT: Vec2 = Vec2::new(-0.55, 0.12);
+/// The dust's drift outside flight (m/s, in the far layer's space; nearer layers pass faster; Niklas, 15 Oct 2026:
+/// 0.55 m/s moved too fast).
+const DRIFT: Vec2 = Vec2::new(-0.16, 0.035);
 /// The drift wraps after this many metres: a whole number of tiles in every layer (it moves 1, 35/12 and 70/12
 /// times as far in the stars', the far dust's and the near dust's space), so nothing jumps.
 const DRIFT_WRAP: f32 = TILE * 12.0;
