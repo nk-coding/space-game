@@ -50,6 +50,7 @@ pub fn blueprint(parts: &[P]) -> Blueprint {
                 flip,
                 material: material.map(Into::into),
                 power: None,
+                group: None,
             })
             .collect(),
         behavior: None,
@@ -86,6 +87,7 @@ pub fn runner_with_pods(c: &Content, pods: usize) -> Blueprint {
             flip: false,
             material: None,
             power: None,
+            group: None,
         });
     }
     bp

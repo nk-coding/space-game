@@ -40,7 +40,7 @@ use crate::design::geometry::{
     Bounds, Cell, Dir, Footprint, PlacedShape, span, transform_point, transform_vector,
 };
 use crate::content::load::Content;
-use crate::content::model::{Blueprint, MAX_POWER_WEIGHT, Placement, PowerOverride, Shape};
+use crate::content::model::{Blueprint, MAX_POWER_WEIGHT, MAX_WEAPON_GROUP, Placement, PowerOverride, Shape};
 use crate::content::validate::MAX_FRAME_SIZE;
 
 /// Undo steps kept; older ones are dropped.
@@ -71,6 +71,10 @@ pub enum Refusal {
     DrawsNoPower,
     /// A power weight must be above 0 and at most [`MAX_POWER_WEIGHT`].
     BadWeight,
+    /// Only weapons have a weapon group (GDR-0088).
+    NotWeapon,
+    /// A weapon group is 1 to [`MAX_WEAPON_GROUP`].
+    BadGroup,
     /// `rot` is a number of quarter turns, 0 to 3.
     BadRotation,
     /// [`Drydock::place_slope`] needs a slope part.
@@ -156,6 +160,7 @@ struct PartInfo {
     footprint: Footprint,
     hull: bool,
     draws_power: bool,
+    weapon: bool,
 }
 
 /// The content facts the editor uses, copied out of [`Content`] so the editor owns its data.
@@ -181,6 +186,7 @@ impl Catalog {
                         footprint: p.footprint(),
                         hull: p.hull,
                         draws_power: p.draws_power(),
+                        weapon: p.weapon.is_some(),
                     };
                     (p.id.clone(), info)
                 })
@@ -489,6 +495,7 @@ impl Drydock {
     pub fn preview_place(&self, p: &Placement) -> Result<Preview, Refusal> {
         let p = Placement {
             power: nonempty(p.power),
+            group: group_of(p.group),
             ..p.clone()
         };
         let s = self.validate(&p)?;
@@ -620,6 +627,21 @@ fn nonempty(power: Option<PowerOverride>) -> Option<PowerOverride> {
     power.filter(|o| o.tier.is_some() || o.weight.is_some())
 }
 
+/// Group 1 is the default: stored as none.
+fn group_of(group: Option<u8>) -> Option<u8> {
+    group.filter(|g| *g != 1)
+}
+
+fn group_ok(info: &PartInfo, group: u8) -> Result<(), Refusal> {
+    if !info.weapon {
+        return Err(Refusal::NotWeapon);
+    }
+    if !(1..=MAX_WEAPON_GROUP).contains(&group) {
+        return Err(Refusal::BadGroup);
+    }
+    Ok(())
+}
+
 fn power_ok(info: &PartInfo, o: &PowerOverride) -> Result<(), Refusal> {
     if !info.draws_power {
         return Err(Refusal::DrawsNoPower);
@@ -645,6 +667,7 @@ fn unit_placement(part: &str, (x, y): Cell, rot: u8, material: &str) -> Placemen
         flip: false,
         material: Some(material.to_string()),
         power: None,
+        group: None,
     }
 }
 

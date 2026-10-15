@@ -40,6 +40,7 @@ fn at(part: &str, x: i32, y: i32) -> Placement {
         flip: false,
         material: None,
         power: None,
+        group: None,
     }
 }
 

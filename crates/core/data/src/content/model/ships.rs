@@ -25,7 +25,14 @@ pub struct Placement {
     /// Power tier and weight of this placement, overriding the part's defaults (parts that draw power only).
     #[serde(default)]
     pub power: Option<PowerOverride>,
+    /// The weapon group of a gun (1 to [`MAX_WEAPON_GROUP`]): which fire input fires it when the player flies the
+    /// ship (GDR-0088; behaviors fire every gun at will). `None` is group 1. Weapons only.
+    #[serde(default)]
+    pub group: Option<u8>,
 }
+
+/// Weapon groups a gun can be in (GDR-0088).
+pub const MAX_WEAPON_GROUP: u8 = 3;
 
 /// `frames.ron` / `frames/*.ron`: a drydock frame (GDR-0006), the grid a design is built on. Bigger frames come
 /// with drydock expansions. Order in the files = order in the drydock.

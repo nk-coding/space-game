@@ -328,6 +328,7 @@ mod tests {
             flip: false,
             material: material.map(str::to_string),
             power: None,
+            group: None,
         };
         let ship = Blueprint {
             id: "t".into(),

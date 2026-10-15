@@ -92,6 +92,7 @@ pub(super) fn heat_stress_blueprint() -> data::Blueprint {
         flip: false,
         material: None,
         power: None,
+        group: None,
     };
     data::Blueprint {
         id: HEAT_STRESS.into(),
@@ -129,6 +130,7 @@ pub(super) fn burner_blueprint() -> data::Blueprint {
         flip: false,
         material: material.map(Into::into),
         power: None,
+        group: None,
     };
     let mut parts = vec![
         p("logic_core", 0, 0, 0, None),

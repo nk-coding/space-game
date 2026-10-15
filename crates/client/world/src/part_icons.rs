@@ -51,6 +51,7 @@ fn part_tile(
             flip: false,
             material: material.filter(|_| def.hull).map(str::to_string),
             power: None,
+            group: None,
         }],
         behavior: None,
         source: Default::default(),

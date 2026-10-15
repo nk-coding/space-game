@@ -19,6 +19,7 @@ fn block(x: i32, y: i32) -> Placement {
         flip: false,
         material: Some("steel".into()),
         power: None,
+        group: None,
     }
 }
 

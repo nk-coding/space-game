@@ -97,6 +97,7 @@ pub fn brush_placement(part: &Part, (cx, cy): Cell, rot: u8, material: &str) -> 
         flip: false,
         material: part.hull.then(|| material.to_string()),
         power: None,
+        group: None,
     }
 }
 
@@ -327,6 +328,8 @@ pub fn refusal_text(content: &Content, design: &PlayerDesign, r: &Refusal, new_p
         Refusal::NeedsMaterial => "NEEDS AN ARMOR MATERIAL".into(),
         Refusal::NotHull => "ONLY HULL PARTS TAKE ARMOR".into(),
         Refusal::DrawsNoPower => "DRAWS NO POWER".into(),
+        Refusal::NotWeapon => "NOT A WEAPON".into(),
+        Refusal::BadGroup => "GROUPS ARE 1 TO 3".into(),
         Refusal::BadWeight => "POWER WEIGHT OUT OF RANGE".into(),
         Refusal::BadRotation => "BAD ROTATION".into(),
         Refusal::NotSlope => "NOT A SLOPE".into(),
@@ -616,7 +619,7 @@ mod tests {
         let content = data::base_content();
         let empty = data::Blueprint { parts: Vec::new(), ..content.ships.get("halvex_runner").unwrap().clone() };
         let mut design = PlayerDesign::open(&content, &empty, (10, 10)).unwrap();
-        let reactor = Placement { part: "fusion_reactor".into(), x: 1, y: 1, rot: 0, flip: false, material: None, power: None };
+        let reactor = Placement { part: "fusion_reactor".into(), x: 1, y: 1, rot: 0, flip: false, material: None, power: None, group: None };
         design.edit(|d| {
             d.place(reactor).unwrap();
             d.paint((8, 1), "steel").unwrap();

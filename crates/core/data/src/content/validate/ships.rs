@@ -97,6 +97,13 @@ impl<'a> Validator<'a> {
                     );
                 }
             }
+            if let Some(g) = pl.group {
+                if part.weapon.is_none() {
+                    self.err(s, format!("{f}.group"), format!("`{}` is not a weapon; remove `group`", pl.part));
+                } else if !(1..=MAX_WEAPON_GROUP).contains(&g) {
+                    self.err(s, format!("{f}.group"), format!("weapon group {g}: groups are 1 to {MAX_WEAPON_GROUP}"));
+                }
+            }
             let shape = self.c.placed_shape(pl).unwrap();
             let (w, h) = shape.dims();
             let (x, y) = (pl.x as i64, pl.y as i64);

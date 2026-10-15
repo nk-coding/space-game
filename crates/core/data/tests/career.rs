@@ -1068,6 +1068,7 @@ fn an_evening(c: &Content) -> Career {
         flip: false,
         material: None,
         power: None,
+        group: None,
     });
     let cap = career.mind_capacity(c);
     assert_eq!(voyage_ready(c, &unlocks, cap, &skiff, &[drone]), []);

@@ -17,7 +17,7 @@ pub use controls::Control;
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RcsSpec, SalvageSpec, Selector, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};
-pub use ships::{Blueprint, Frame, Icon, Placement};
+pub use ships::{Blueprint, Frame, Icon, MAX_WEAPON_GROUP, Placement};
 pub use voyages::{Encounter, EncounterShips, EncounterWrecks, Voyage, VoyageSite};
 
 /// Where an entry came from: pack id and the file path inside the pack (`/`-separated).

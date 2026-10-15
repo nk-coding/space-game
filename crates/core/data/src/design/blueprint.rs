@@ -94,6 +94,9 @@ fn placement(s: &mut String, p: &Placement) {
         s.push_str(", power: ");
         power(s, o);
     }
+    if let Some(g) = p.group {
+        let _ = write!(s, ", group: {g}");
+    }
     s.push(')');
 }
 

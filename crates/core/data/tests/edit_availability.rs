@@ -17,7 +17,7 @@ fn block(c: &Content) -> String {
 }
 
 fn machine(part: &str, x: i32, y: i32) -> Placement {
-    Placement { part: part.into(), x, y, rot: 0, flip: false, material: None, power: None }
+    Placement { part: part.into(), x, y, rot: 0, flip: false, material: None, power: None, group: None }
 }
 
 #[test]

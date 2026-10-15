@@ -45,6 +45,9 @@ impl Drydock {
         if let Some(o) = &nonempty(p.power) {
             power_ok(info, o)?;
         }
+        if let Some(g) = group_of(p.group) {
+            group_ok(info, g)?;
+        }
         Ok(self.shape_of(p))
     }
 

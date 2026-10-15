@@ -278,6 +278,7 @@ impl Kit {
                 flip: rng.chance(0.5),
                 material,
                 power: None,
+                group: None,
             };
             match dock.preview_place(&p) {
                 Ok(pv) if pv.removed.is_empty() => dock.place(p),

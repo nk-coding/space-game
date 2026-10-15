@@ -198,6 +198,16 @@ impl Drydock {
         Ok(self.apply_part_plan(i, plan))
     }
 
+    /// Puts a gun (and its mirror twin) into weapon group `group` (1 to `MAX_WEAPON_GROUP`, GDR-0088; group 1 is
+    /// stored as none).
+    pub fn set_group(&mut self, i: usize, group: u8) -> Result<Outcome, Refusal> {
+        let part = self.parts.get(i).ok_or(Refusal::NoSuchPart(i))?;
+        group_ok(&self.catalog.parts[&part.part], group)?;
+        let group = group_of(Some(group));
+        let plan = self.part_plan(i, |old, _, _| Ok(Placement { group, ..old.clone() }))?;
+        Ok(self.apply_part_plan(i, plan))
+    }
+
     /// Opens a stroke: every edit until [`Drydock::end_stroke`] becomes one undo step (a paint or erase drag).
     /// An open stroke is closed first; undo, redo and frame changes close it too.
     pub fn begin_stroke(&mut self) {

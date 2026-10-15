@@ -1011,6 +1011,7 @@ mod tests {
                     flip: false,
                     material: Some("steel".into()),
                     power: None,
+                    group: None,
                 });
             }
         }

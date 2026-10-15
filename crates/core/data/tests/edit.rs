@@ -33,6 +33,7 @@ fn pl(part: &str, x: i32, y: i32, rot: u8, flip: bool, material: Option<&str>) -
         flip,
         material: material.map(Into::into),
         power: None,
+        group: None,
     }
 }
 
@@ -1443,4 +1444,31 @@ fn edit_timings_on_a_full_64x64_frame() {
     let d = full();
     println!("{:<44} {:>10.2?}", "open + fill 64×64", s.elapsed());
     assert_eq!(d.parts().len(), 4096);
+}
+
+/// GDR-0088: a gun goes into weapon group 1 to 3 (and its mirror twin with it), group 1 is stored as none, other
+/// parts take no group, and the group is written into the blueprint text and read back; undo takes it back.
+#[test]
+fn guns_take_a_weapon_group_with_their_twin() {
+    let c = content();
+    let mut dock = empty(&c, (10, 8));
+    dock.mirror = true;
+    assert_eq!(dock.place(any(&c, "pulse_laser", 1, 2, 0, false)).unwrap().part, Some(0));
+    assert_eq!(dock.parts().len(), 2, "the twin");
+    assert!(dock.set_group(0, 2).unwrap().changed);
+    assert!(dock.parts().iter().all(|p| p.group == Some(2)), "{:?}", dock.parts());
+    assert_eq!(dock.set_group(0, 4), Err(Refusal::BadGroup));
+    assert_eq!(dock.set_group(0, 0), Err(Refusal::BadGroup));
+    dock.set_group(0, 1).unwrap();
+    assert!(dock.parts().iter().all(|p| p.group.is_none()), "group 1 is none");
+    dock.set_group(0, 3).unwrap();
+    let text = data::blueprint_to_ron(&dock.export());
+    assert!(text.contains("group: 3"), "{text}");
+    assert_eq!(data::parse_blueprint(&text).unwrap().parts[0].group, Some(3));
+    dock.undo();
+    assert!(dock.parts().iter().all(|p| p.group.is_none()));
+    assert_eq!(dock.place(any(&c, "armor_block", 5, 5, 0, false)).map(|o| o.part.is_some()), Ok(true));
+    let block = dock.parts().iter().position(|p| p.part == "armor_block").unwrap();
+    assert_eq!(dock.set_group(block, 2), Err(Refusal::NotWeapon));
+    assert_eq!(dock.check(&Placement { group: Some(2), ..any(&c, "armor_block", 0, 0, 0, false) }), Err(Refusal::NotWeapon));
 }

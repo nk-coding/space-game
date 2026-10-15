@@ -508,7 +508,7 @@ mod tests {
         let design = PlayerDesign::starter(&content, "halvex_runner");
         assert!(design.dock().mirror);
         let radius = content.parts.get("shield_emitter").unwrap().shield.as_ref().unwrap().radius;
-        let p = Placement { part: "shield_emitter".into(), x: 2, y: 2, rot: 0, flip: false, material: None, power: None };
+        let p = Placement { part: "shield_emitter".into(), x: 2, y: 2, rot: 0, flip: false, material: None, power: None, group: None };
         let after = design.dock().preview_place(&p).unwrap();
         let bubbles = bubbles_after(&content, &sim::SimConfig::default(), &design, &after);
         assert_eq!(bubbles.len(), 2);
