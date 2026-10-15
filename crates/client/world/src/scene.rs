@@ -18,6 +18,8 @@
 //! * **showcase** (`?scene=showcase`): the design holds position, three raiders orbit it without firing; with
 //!   `&fire=1` they attack it under their content behavior instead (for looking at shield hits).
 //! * **load test** (`?load=1|5|20`): `sim::voyage::scenario::load_test(n, seed)`, no player, the camera frames the fight.
+//! * **fight viewer** (`?scene=fight&fight=<code>`, `replay.rs`, GDR-0092): a fight of the arena replayed from its
+//!   code, the world built by the arena; nobody pilots, the camera frames both sides or follows a clicked ship.
 //! * **voyage** (`voyage.rs` launches it: home's V, `?scene=voyage&voyage=<id>`): the sim gets the career's mind
 //!   capacity and is seeded with the voyage's seed; the plan is rolled from the content the enemies fly with
 //!   (`sim::VoyagePlan::roll`) and the sim directs it (`Sim::start_voyage`); the flagship (the drydock's working
@@ -49,6 +51,7 @@ use crate::camera::{CamMode, CameraRig};
 use crate::controls::PlayerInput;
 use crate::player::PlayerDesign;
 use crate::player::behaviors::{self, PlayerBehaviors};
+use crate::replay::Replay;
 use crate::fx::Effects;
 use crate::mode::{AppMode, FlightExit};
 use crate::shield::ShieldBubbles;
@@ -135,6 +138,8 @@ pub enum SceneKind {
     Load(u32),
     /// A voyage (content id), as `voyage::VoyageRun` launched it.
     Voyage(String),
+    /// A replayed arena fight (`replay.rs`).
+    Fight,
 }
 
 /// A flight another mode asked for; `OnEnter(AppMode::Flight)` builds it.
@@ -182,6 +187,8 @@ pub struct Scene {
     test: Option<BehaviorTest>,
     /// The ship running the tested behavior (watch: the design; alongside: the wingman).
     test_ship: Option<ShipId>,
+    /// A replayed fight: the ship the camera follows (a click on it); none frames both sides.
+    pub spectate: Option<ShipId>,
 }
 
 impl Scene {
@@ -208,6 +215,7 @@ impl Scene {
             kills: 0,
             test: None,
             test_ship: None,
+            spectate: None,
         }
     }
 
@@ -239,9 +247,9 @@ impl Scene {
         self.test_ship
     }
 
-    /// The ship the camera follows and the HUD shows while nobody is piloted (watch).
+    /// The ship the camera follows and the HUD shows while nobody is piloted (watch, a replayed fight).
     pub fn watched(&self) -> Option<ShipId> {
-        self.test_ship.filter(|_| self.test_mode() == Some(TestMode::Watch))
+        self.test_ship.filter(|_| self.test_mode() == Some(TestMode::Watch)).or(self.spectate)
     }
 
     /// A lost test flight going back (to the drydock, or the screen a behavior test started from): the tick it
@@ -282,6 +290,8 @@ impl Plugin for ScenePlugin {
             SceneKind::Load(20)
         } else if params.text("scene") == Some("showcase") {
             SceneKind::Showcase
+        } else if params.text("scene") == Some("fight") {
+            SceneKind::Fight
         } else {
             SceneKind::Sandbox
         };
@@ -315,6 +325,7 @@ pub(crate) struct SceneInputs<'w> {
     design: Res<'w, PlayerDesign>,
     behaviors: Res<'w, PlayerBehaviors>,
     voyage: Res<'w, VoyageRun>,
+    replay: ResMut<'w, Replay>,
 }
 
 /// The scene at start (in the drydock the world stays empty).
@@ -322,12 +333,12 @@ pub(crate) fn setup(
     mut world: ResMut<SimWorld>,
     mut scene: ResMut<Scene>,
     mut focus: ResMut<PilotFocus>,
-    inputs: SceneInputs,
+    mut inputs: SceneInputs,
     mode: Res<State<AppMode>>,
     mut rig: ResMut<CameraRig>,
 ) {
     if *mode.get() == AppMode::Flight {
-        *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
+        *world = build_world(&mut scene, &mut focus, &mut inputs, &mut rig);
     }
 }
 
@@ -337,11 +348,12 @@ fn empty_world(scene: &Scene) -> SimWorld {
 }
 
 /// Creates the sim world for the current scene kind.
-fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &SceneInputs, rig: &mut CameraRig) -> SimWorld {
+fn build_world(scene: &mut Scene, focus: &mut PilotFocus, inputs: &mut SceneInputs, rig: &mut CameraRig) -> SimWorld {
     let (tuning, params, base) = (&*inputs.tuning, &*inputs.params, &inputs.content.0);
     *scene = scene.restart();
     focus.0 = None;
     match scene.kind.clone() {
+        SceneKind::Fight => inputs.replay.start(base, rig),
         SceneKind::Voyage(id) => build_voyage(scene, focus, inputs, rig, &id),
         SceneKind::Load(n) => {
             let sim = sim::voyage::scenario::load_test(n as usize, scene.seed);
@@ -575,7 +587,7 @@ fn start_test(scene: &mut Scene, world: &mut SimWorld, runner: &Arc<ShipDesign>,
 fn launch(
     mut scene: ResMut<Scene>,
     mut focus: ResMut<PilotFocus>,
-    inputs: SceneInputs,
+    mut inputs: SceneInputs,
     mut rig: ResMut<CameraRig>,
     mut world: ResMut<SimWorld>,
 ) {
@@ -585,7 +597,7 @@ fn launch(
     }
     scene.test_flight = launch == Launch::TestFlight;
     scene.waves = launch != Launch::Voyage;
-    *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
+    *world = build_world(&mut scene, &mut focus, &mut inputs, &mut rig);
     info!("{launch:?}: {} parts, revision {}", inputs.design.blueprint().parts.len(), inputs.design.revision());
 }
 
@@ -610,7 +622,7 @@ fn leave_flight(
     *scene = scene.restart();
     scene.test_flight = false;
     scene.test = None;
-    if scene.voyage().is_some() {
+    if scene.voyage().is_some() || scene.kind == SceneKind::Fight {
         scene.kind = SceneKind::Sandbox;
     }
     *world = empty_world(&scene);
@@ -843,7 +855,7 @@ fn reset(
     mut request: ResMut<ResetRequest>,
     mut scene: ResMut<Scene>,
     mut world: ResMut<SimWorld>,
-    inputs: SceneInputs,
+    mut inputs: SceneInputs,
     mut rig: ResMut<CameraRig>,
     mut fx: ResMut<Effects>,
     mut shields: ResMut<ShieldBubbles>,
@@ -867,7 +879,7 @@ fn reset(
     fx.clear();
     shields.clear();
     input.lock = None;
-    *world = build_world(&mut scene, &mut focus, &inputs, &mut rig);
+    *world = build_world(&mut scene, &mut focus, &mut inputs, &mut rig);
     info!("scene reset ({:?})", scene.kind);
 }
 

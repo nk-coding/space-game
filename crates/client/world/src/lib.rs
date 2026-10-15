@@ -7,6 +7,8 @@
 //! - `sim_bridge`: owns the `sim::Sim`, steps it at 30 Hz, turns events into view changes and effects.
 //! - `scene`: sandbox (player + raider waves; home's TEST RANGE), test flight, showcase, load test; writes the
 //!   player's pilot input.
+//! - `replay`: the fight viewer (`?scene=fight&fight=<code>`): an arena fight replayed from its code, its playback
+//!   and the check against its record (GDR-0092).
 //! - `test_range`: TEST IN RANGE for behaviors (watch, fly alongside), its request and the live behavior view.
 //! - `voyage`: launching a voyage (the career's seed and save), its run (recall, losing it), its end and its
 //!   debrief's data; `warp_fx`: the voyage's transitions (the warp-out, the arrival, the dip to dark and the lift
@@ -35,6 +37,7 @@ pub mod hud;
 pub mod mode;
 pub mod part_icons;
 pub mod player;
+pub mod replay;
 pub mod scene;
 pub mod settings;
 pub mod shield;

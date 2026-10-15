@@ -20,6 +20,14 @@ use crate::ship_view::{GunVisual, PartVisual, ShipVisual};
 /// The muzzle glow of a gun without a barrel (its content has no `barrel`), at its front edge, in cells.
 const BARE_MUZZLE: f32 = 0.12;
 
+/// How a ship is drawn: as one of the player's (teal glow) or as an enemy's (coral). By default its design's faction
+/// decides (`Faction::glow`); a replayed fight decides by side (`SimWorld::looks`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Look {
+    Player,
+    Enemy,
+}
+
 /// The look of every part of one blueprint (blueprint frame), computed once per design.
 #[derive(Clone, Debug)]
 pub struct DesignVisual {
@@ -96,6 +104,15 @@ pub fn design_visual(content: &Content, ship: &Blueprint, style: &Style) -> Resu
         logic_part.push(def.logic.is_some());
     }
     Ok(DesignVisual { parts, rect_part, logic_part, enemy, glow, port_light: style.glow_enemy, weapon_color })
+}
+
+impl DesignVisual {
+    /// The same parts with the hull glow, aura and trails of `look`.
+    pub fn with_look(mut self, look: Look, style: &Style) -> DesignVisual {
+        self.enemy = look == Look::Enemy;
+        self.glow = if self.enemy { style.glow_enemy } else { style.glow_player };
+        self
+    }
 }
 
 /// The visual of one live piece: its alive parts, drawn in the sim's piece frame (pivot = `piece.origin`), with

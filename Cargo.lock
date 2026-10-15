@@ -6729,6 +6729,7 @@ dependencies = [
 name = "world"
 version = "0.1.0"
 dependencies = [
+ "arena",
  "bevy",
  "bevy_egui",
  "data",

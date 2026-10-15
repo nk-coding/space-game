@@ -55,7 +55,8 @@ pub(super) fn hud_fade(hud: &Query<&ScreenFx, With<HudRoot>>) -> f32 {
 
 /// Markers at the screen edge pointing at active enemies (of the focus; in watch mode of the watched ship) outside
 /// the view, kept clear of the HUD's texts and widgets (bevy_ui draws over the world: a marker there hid them or
-/// was hidden).
+/// was hidden). A replayed fight framed as a whole marks every ship off screen, each in its side's colour (and
+/// following a ship, the other side's in theirs).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn offscreen_markers(
     world: Res<SimWorld>,
@@ -71,8 +72,11 @@ pub(super) fn offscreen_markers(
     mut queue: ResMut<FxQueue>,
 ) {
     let Some(regions) = regions else { return };
-    // The focus, else (watch) the watched ship.
-    let Some(me) = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id)) else { return };
+    // The focus, else (watch) the watched ship; a replayed fight needs neither.
+    let me = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
+    if me.is_none() && scene.kind != SceneKind::Fight {
+        return;
+    }
     let fade = hud_fade(&hud);
     if fade <= 0.0 {
         return;
@@ -80,7 +84,7 @@ pub(super) fn offscreen_markers(
     rects.clear();
     let shown = zones.iter().filter(|z| z.2.get());
     rects.extend(shown.filter_map(|(node, tf, _)| logical_rect(node, tf)).map(|r| r.inflate(MARKER_CLEARANCE)));
-    let team = me.team();
+    let team = me.map(|m| m.team());
     let px = 1.0 / rig.zoom;
     let half = rig.half_extent();
     let centre = rig.view_center();
@@ -88,7 +92,8 @@ pub(super) fn offscreen_markers(
     let voyage = world.sim.voyage();
     for s in world.sim.ships() {
         // A sleeping site's ships are the site's marker (`site_markers`).
-        if !s.is_active() || sim::friendly(team, s.team()) || voyage.is_some_and(|v| v.asleep(s.id())) {
+        let friend = team.is_some_and(|team| sim::friendly(team, s.team()));
+        if !s.is_active() || friend || voyage.is_some_and(|v| v.asleep(s.id())) {
             continue;
         }
         let Some(p) = s.control_piece().and_then(|c| s.piece(c)) else { continue };
@@ -103,7 +108,8 @@ pub(super) fn offscreen_markers(
         let dir = Vec2::new(ray.x, -ray.y).normalize_or_zero();
         let side = Vec2::new(-dir.y, dir.x);
         let locked = input.locked_ship() == Some(s.id());
-        let c = style.glow_enemy.with_alpha(if locked { 1.0 } else { 0.75 } * fade);
+        let glow = if world.looks.get(&s.owner()) == Some(&Look::Player) { style.glow_player } else { style.glow_enemy };
+        let c = glow.with_alpha(if locked { 1.0 } else { 0.75 } * fade);
         let tip = pos + dir * 9.0 * px;
         queue.line(&regions.white, tip, pos - dir * 3.0 * px + side * 7.0 * px, 2.0 * px, c, Z_HUD);
         queue.line(&regions.white, tip, pos - dir * 3.0 * px - side * 7.0 * px, 2.0 * px, c, Z_HUD);

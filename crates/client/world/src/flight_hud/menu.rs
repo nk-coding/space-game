@@ -134,7 +134,11 @@ pub(super) fn flight_menu(
     // SETTINGS opened from it covers it; it comes back when SETTINGS closes.
     show_screen(&mut root, menu.open && !layer.open);
     if menu.open {
-        let (title, sub) = if voyage { ("MENU", "THE FLIGHT GOES ON") } else { ("PAUSED", "THE TEST RANGE WAITS") };
+        let (title, sub) = match (voyage, scene.kind == crate::scene::SceneKind::Fight) {
+            (true, _) => ("MENU", "THE FLIGHT GOES ON"),
+            (false, true) => ("PAUSED", "THE REPLAY WAITS"),
+            (false, false) => ("PAUSED", "THE TEST RANGE WAITS"),
+        };
         if texts.p0().0 != title {
             texts.p0().0 = title.into();
         }

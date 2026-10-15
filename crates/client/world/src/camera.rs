@@ -1,6 +1,6 @@
 //! The world camera: 2D orthographic, 1 world unit = 1 m = 1 cell, never rotates. Modes: follow the focused
-//! vessel (sandbox; the watched ship of a behavior test while nobody pilots), frame the whole fight (load test),
-//! or free (drag to pan). Zoom with the wheel or a pinch;
+//! vessel (sandbox; the watched ship of a behavior test while nobody pilots, a ship clicked in a replayed fight),
+//! frame the whole fight (load test, a replayed fight), or free (drag to pan). Zoom with the wheel or a pinch;
 //! both position and zoom ease towards their targets (time-based, so framerate-independent).
 //!
 //! A focus switch glides over (GDR-0013): the follow point snaps to the new vessel and the camera eases from
@@ -58,6 +58,8 @@ pub const LOCK_MIN_SHARE: f32 = 0.35;
 /// constant it eases with (s).
 const SPEED_WIDEN_MAX: f32 = 1.4;
 const SPEED_WIDEN_TAU: f32 = 0.8;
+/// Framing (load test, a replayed fight) keeps this much of the view's top and bottom clear of ships (logical px).
+const FRAME_HUD_BAND: f32 = 70.0;
 
 #[derive(Component)]
 pub struct MainCamera;
@@ -424,6 +426,7 @@ fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInp
 fn update_camera(
     time: Res<Time<Real>>,
     fixed: Res<Time<Fixed>>,
+    playback: Res<Time<Virtual>>,
     world: Res<SimWorld>,
     focus: Res<PilotFocus>,
     scene: Res<Scene>,
@@ -476,12 +479,15 @@ fn update_camera(
                 }
             }
             if any {
-                let k = 1.0 - (-dt / 0.6).exp();
+                // A replay played faster moves its ships faster: the framing keeps up (never slower than real time).
+                let k = 1.0 - (-dt * playback.relative_speed().max(1.0) / 0.6).exp();
                 let centre = (min + max) / 2.0;
                 rig.pos = rig.pos.lerp(centre, k);
                 if !rig.user_zoom {
+                    // The HUD's title lines and its bottom lines (help, a replay's timeline) are kept clear.
                     let size = (max - min) * 1.15;
-                    let fit = (rig.viewport.x / size.x).min(rig.viewport.y / size.y);
+                    let room = rig.viewport - Vec2::new(0.0, 2.0 * FRAME_HUD_BAND);
+                    let fit = (room.x / size.x).min(room.y.max(1.0) / size.y);
                     rig.zoom_target = fit.clamp(MIN_PX_PER_M, 40.0);
                 }
             }

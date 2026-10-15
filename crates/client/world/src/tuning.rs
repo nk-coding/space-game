@@ -225,6 +225,9 @@ fn panel(
             if matches!(scene.kind, SceneKind::Load(_)) {
                 ui.small("Load test: changing values breaks the hash comparison.");
             }
+            if scene.kind == SceneKind::Fight {
+                ui.small("A replayed fight plays by its own rules: the panel doesn't change it.");
+            }
         });
     if copy {
         ctx.copy_text(t.text());
@@ -233,7 +236,8 @@ fn panel(
         console_out(&format!("# tuning {}", t.text().replace('\n', " ")));
     }
     t.open = open;
-    if *t != before {
+    // A replayed fight keeps the arena's settings, or it would no longer end as recorded.
+    if *t != before && scene.kind != SceneKind::Fight {
         // The panel does not tune salvage: the scene's settings stay (the sandbox's loose-item lifetime).
         let cfg = SimConfig { salvage: world.sim.config().salvage, ..t.config() };
         if *world.sim.config() != cfg {

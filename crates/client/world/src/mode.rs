@@ -38,7 +38,7 @@ pub enum AppMode {
 impl AppMode {
     /// The mode the app starts in: home (`?scene=home`, and the default), the drydock (`?scene=drydock`), the
     /// BEHAVIOR screen (`?scene=behavior`), the research screen (`?scene=research`), the voyage map (`?scene=map`), or
-    /// flight for the flight scenes (`?scene=sandbox|showcase|watch|alongside|voyage`) and for parameters that only mean
+    /// flight for the flight scenes (`?scene=sandbox|showcase|watch|alongside|voyage|fight`) and for parameters that only mean
     /// something in flight ([`Params::wants_flight`]: `?load=`,
     /// `?fleet=`, `?hashlog=` ...). An unknown scene starts at home.
     pub fn at_start(params: &Params) -> Self {
@@ -48,7 +48,7 @@ impl AppMode {
             Some("behavior") => AppMode::Behavior,
             Some("research") => AppMode::Research,
             Some("map") => AppMode::Map,
-            Some("sandbox" | "showcase" | "watch" | "alongside" | "voyage") => AppMode::Flight,
+            Some("sandbox" | "showcase" | "watch" | "alongside" | "voyage" | "fight") => AppMode::Flight,
             None if params.wants_flight() => AppMode::Flight,
             None => AppMode::Home,
             Some(other) => {
@@ -134,7 +134,7 @@ mod tests {
         assert_eq!(start("?scene=home&zoom=60"), AppMode::Home);
         assert_eq!(start("?debug=1&hud=0&stats=1"), AppMode::Home);
         assert_eq!(start("?scene=nowhere"), AppMode::Home);
-        for q in ["?scene=sandbox", "?scene=showcase&fire=1", "?scene=watch&behavior=raider_basic", "?scene=alongside", "?scene=voyage&voyage=yard_approach"] {
+        for q in ["?scene=sandbox", "?scene=showcase&fire=1", "?scene=watch&behavior=raider_basic", "?scene=alongside", "?scene=voyage&voyage=yard_approach", "?scene=fight&fight=SGF1:x"] {
             assert_eq!(start(q), AppMode::Flight, "{q}");
         }
         for q in ["?load=20", "?hashlog=1&hashticks=600", "?fleet=3&mind=4", "?zoom=70", "?seed=7", "?tuning=1"] {

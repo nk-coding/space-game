@@ -19,7 +19,7 @@ pub(super) fn update_text(
     watch: Res<BehaviorWatch>,
     toggles: Res<RenderToggles>,
     rig: Res<CameraRig>,
-    run: Res<VoyageRun>,
+    (run, replay): (Res<VoyageRun>, Res<crate::replay::Replay>),
     style: Res<Style>,
     transit: Res<Transit>,
     mut texts: Query<(&HudText, &mut Text, &mut TextColor)>,
@@ -37,8 +37,21 @@ pub(super) fn update_text(
     let alpha = fixed.overstep_fraction();
     let player = focus.0.or(scene.watched()).and_then(|id| world.sim.ship(id));
     let control = player.and_then(|s| s.control_piece().and_then(|c| s.piece(c)));
-    // Watch: nobody pilots or locks; the target panel shows what the watched ship's behavior targets.
+    // Watch: nobody pilots or locks; the target panel shows what the watched ship's behavior targets. Nobody locks in
+    // a replayed fight either.
     let watching = focus.0.is_none() && scene.watched().is_some();
+    let fight = scene.kind == SceneKind::Fight;
+    let watched = replay.watched().filter(|_| fight);
+    // A replay's banner: the end check, the changed rules at its start, or why the code doesn't play.
+    let notice = if fight {
+        match (watched, replay.problem()) {
+            (Some(w), _) => w.notice(world.sim.tick()),
+            (None, Some(why)) => Some(("THIS FIGHT CODE DOESN'T PLAY".to_string(), why.to_uppercase(), Tone::Coral)),
+            (None, None) => None,
+        }
+    } else {
+        None
+    };
     let target = if watching { player.and_then(|s| s.behavior()).and_then(|b| b.target()).map(Target::Ship) } else { input.lock };
 
     // Labels per part of the shown ship's design (a design edited in the drydock can keep its part count).
@@ -109,8 +122,9 @@ pub(super) fn update_text(
             }
             HudText::TargetName | HudText::TargetValue | HudText::TargetSub => {
                 let from = control.map(|p| piece_com(p, alpha)).or(rig.focus);
-                let lock_key = (!watching).then(|| controls.0.inputs(Action::LockNext).next().map(|c| c.label())).flatten();
-                target_text(*kind, s, &world, target, (!watching).then_some(lock_key.as_deref().unwrap_or("—")), from);
+                let locks = !watching && !fight;
+                let lock_key = locks.then(|| controls.0.inputs(Action::LockNext).next().map(|c| c.label())).flatten();
+                target_text(*kind, s, &world, target, locks.then_some(lock_key.as_deref().unwrap_or("—")), from);
             }
             HudText::Title => match &scene.kind {
                 SceneKind::Sandbox => {
@@ -131,6 +145,7 @@ pub(super) fn update_text(
                     let _ = write!(s, "LOAD TEST  ·  {n} SHIPS");
                 }
                 SceneKind::Voyage(id) => s.push_str(&voyage::title(&world.content, id)),
+                SceneKind::Fight => s.push_str(&watched.map_or_else(|| "REPLAY".into(), |w| w.title())),
             },
             HudText::Subtitle => {
                 let alive = world.sim.vessels(crate::scene::ENEMY).filter(|v| v.state == sim::VesselState::Running).count();
@@ -155,11 +170,18 @@ pub(super) fn update_text(
                             s.push_str("  ·  PRACTICE, NOT SAVED");
                         }
                     }
+                    SceneKind::Fight => {
+                        if let Some(w) = watched {
+                            w.subtitle(&world.sim, s);
+                        }
+                    }
                 }
             }
             HudText::Banner => {
                 // The flight menu says it itself.
-                if virtual_time.is_paused() && !menu.open {
+                if let Some((title, _, _)) = &notice {
+                    s.push_str(title);
+                } else if virtual_time.is_paused() && !menu.open {
                     s.push_str("PAUSED");
                 } else if let Phase::Warping { home_at } = run.phase {
                     let what = if transit.emergency() { "EMERGENCY WARP" } else { "WARPING HOME" };
@@ -171,15 +193,18 @@ pub(super) fn update_text(
                     s.push_str(b);
                 }
                 // The emergency recall's warp is amber (GDR-0074, `warp_fx.rs`).
-                let tone = match (warping, transit.emergency()) {
-                    (true, true) => Tone::Gold,
-                    (true, false) => Tone::Teal,
+                let tone = match (warping, transit.emergency(), &notice) {
+                    (true, true, _) => Tone::Gold,
+                    (true, false, _) => Tone::Teal,
+                    (_, _, Some((_, _, tone))) => *tone,
                     _ => scene.banner_tone,
                 };
                 set_color(&mut color, ui_color(tone.color(&ui), 1.0));
             }
             HudText::BannerSub => {
-                if warping {
+                if let Some((_, sub, _)) = &notice {
+                    s.push_str(sub);
+                } else if warping {
                     s.push_str("THE HAUL COMES WITH YOU");
                 } else if !virtual_time.is_paused()
                     && let Some((_, until)) = &scene.banner
@@ -282,6 +307,18 @@ pub(super) fn update_text(
                         k(Action::HideHud),
                     ),
                     SceneKind::Voyage(_) if input.touch_ui => "STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL".into(),
+                    SceneKind::Fight => format!(
+                        "NOBODY PILOTS · {} PAUSE · {} {} SPEED · {} {} 1 S · {} FROM THE START · CLICK A SHIP FOLLOW · {} FRAME / FREE · DRAG PAN · WHEEL ZOOM · {} HOME · {} HIDE",
+                        k(Action::ReplayPause),
+                        k(Action::ReplaySlower),
+                        k(Action::ReplayFaster),
+                        k(Action::ReplayBack),
+                        k(Action::ReplayForward),
+                        k(Action::ReplayRestart),
+                        k(Action::CameraFollow),
+                        k(Action::Leave),
+                        k(Action::HideHud),
+                    ),
                     SceneKind::Voyage(_) => format!(
                         "{fly} · {} RECALL · {} ABANDON · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
                         k(Action::Recall),

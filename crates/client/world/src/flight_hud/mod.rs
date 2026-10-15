@@ -11,7 +11,10 @@
 //!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
-//!   clear of the HUD's texts and widgets).
+//!   clear of the HUD's texts and widgets; in a replayed fight for every ship, in its side's colour).
+//! * **a replayed fight** (`replay.rs`): the title names both sides and the seed, the subtitle the time, speed and
+//!   build points left; the banner says whether the rules changed and, at the end, whether it ended as recorded;
+//!   the help line lists the replay keys.
 //! * **voyages** (GDR-0065): the title is the voyage and its band, the
 //!   subtitle `SITES 2 / 5 · 7:05`; under the hull the cargo block (`SALVAGE`, `5 / 8` with one pip per cargo unit,
 //!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
@@ -53,6 +56,7 @@ use crate::sim_bridge::{PilotFocus, SimWorld, piece_com, v2};
 use crate::test_range::{BehaviorWatch, TestMode};
 use crate::voyage::{self, Phase, VoyageRun};
 use crate::warp_fx::Transit;
+use crate::ship_model::Look;
 use crate::ship_view::PieceView;
 
 use markers::{lock_ring, offscreen_markers, site_markers};

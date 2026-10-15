@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 data = { path = "../../core/data" }
 sim = { path = "../../core/sim" }
+arena = { path = "../../core/arena" }  # the fight viewer replays arena fights (GDR-0092, ADR-0040)
 kit = { path = "../kit" }
 bevy = { workspace = true }
 bevy_egui = { workspace = true }

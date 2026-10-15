@@ -12,6 +12,10 @@
 //!   visuals are cached per compiled design (its `Arc`), never per id, so an edited blueprint flown again under
 //!   the same id never meets a stale visual.
 //! * The FixedUpdate chain runs only in flight (`AppMode::Flight`); the drydock keeps an empty world.
+//! * A ship's look (teal as the player's, coral as an enemy's) follows its design's faction, unless
+//!   [`SimWorld::looks`] names its owner: a replayed fight (GDR-0092) draws side 0 teal and side 1 coral whatever
+//!   their designs are. [`SimWorld::hold`] stops the stepping (a replay at its end); [`SimWorld::rebuild_views`]
+//!   draws every piece afresh (a replay that jumped to another tick).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -27,7 +31,7 @@ use kit::style::Style;
 use crate::fx::Effects;
 use crate::mode::AppMode;
 use crate::shield::ShieldBubbles;
-use crate::ship_model::{DesignVisual, design_visual};
+use crate::ship_model::{DesignVisual, Look, design_visual};
 use crate::ship_view::{PieceView, Z_FOCUS, draw_layer, spawn_piece_view, world_of};
 
 /// The simulation type the client runs. Change the backend here once the physics engine is chosen.
@@ -102,6 +106,9 @@ pub struct GameContent(pub Content);
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PilotFocus(pub Option<ShipId>);
 
+/// A design's identity (`Arc::as_ptr`) and the look its owner is drawn with, if [`SimWorld::looks`] names one.
+type VisualKey = (usize, Option<Look>);
+
 #[derive(Resource)]
 pub struct SimWorld {
     pub sim: SimT,
@@ -115,8 +122,15 @@ pub struct SimWorld {
     designs: [BTreeMap<String, Arc<ShipDesign>>; 2],
     /// The blueprints of designs compiled from memory ([`SimWorld::design_from`]), by design identity.
     blueprints: BTreeMap<usize, (Arc<ShipDesign>, Blueprint)>,
-    /// Visuals by design identity (`Arc::as_ptr`; the stored `Arc` keeps the address from being reused).
-    visuals: BTreeMap<usize, (Arc<ShipDesign>, Arc<DesignVisual>)>,
+    /// Visuals by design and look (the stored `Arc` keeps the address from being reused).
+    visuals: BTreeMap<VisualKey, (Arc<ShipDesign>, Arc<DesignVisual>)>,
+    /// Owners drawn with one look whatever their designs' faction (a replayed fight's two sides); every other
+    /// owner's ships look as their faction does.
+    pub looks: BTreeMap<Owner, Look>,
+    /// The sim is not stepped (a replayed fight that has ended): no ticks, no events.
+    pub hold: bool,
+    /// Every piece view is drawn afresh at the next frame (the world jumped: a replay seeked).
+    pub rebuild_views: bool,
     /// Inputs for the next tick (filled by the scene, cleared after each step).
     pub inputs: sim::TickInputs,
     /// Live piece views.
@@ -134,6 +148,9 @@ impl SimWorld {
             designs: Default::default(),
             blueprints: BTreeMap::new(),
             visuals: BTreeMap::new(),
+            looks: BTreeMap::new(),
+            hold: false,
+            rebuild_views: false,
             inputs: sim::TickInputs::default(),
             views: BTreeMap::new(),
             step_ms: Timings::new(900),
@@ -185,20 +202,31 @@ impl SimWorld {
         }
     }
 
-    /// The look of a compiled design (cached per design): from its in-memory blueprint, else from the content
-    /// blueprint of its id (content designs, and the load test's, which the sim compiles itself).
-    fn visual(&mut self, design: &Arc<ShipDesign>, style: &Style) -> Option<Arc<DesignVisual>> {
-        let key = Arc::as_ptr(design) as usize;
+    /// Draws ships of `design` from `bp`: a design compiled elsewhere (a replayed fight's, `arena::FightSetup`)
+    /// whose blueprint is no content ship.
+    pub fn adopt(&mut self, design: &Arc<ShipDesign>, bp: Blueprint) {
+        self.blueprints.insert(Arc::as_ptr(design) as usize, (design.clone(), bp));
+    }
+
+    /// The look of a compiled design for ships of `owner` (cached per design and look): from its in-memory
+    /// blueprint, else from the content blueprint of its id (content designs, and the load test's, which the sim
+    /// compiles itself).
+    fn visual(&mut self, design: &Arc<ShipDesign>, owner: Owner, style: &Style) -> Option<Arc<DesignVisual>> {
+        let look = self.looks.get(&owner).copied();
+        let key = (Arc::as_ptr(design) as usize, look);
         if let Some((_, v)) = self.visuals.get(&key) {
             return Some(v.clone());
         }
-        let bp = match self.blueprints.get(&key) {
+        let bp = match self.blueprints.get(&key.0) {
             Some((_, bp)) => bp,
             None => self.content.ships.get(&design.id)?,
         };
         match design_visual(&self.content, bp, style) {
             Ok(v) => {
-                let v = Arc::new(v);
+                let v = Arc::new(match look {
+                    Some(look) => v.with_look(look, style),
+                    None => v,
+                });
                 self.visuals.insert(key, (design.clone(), v.clone()));
                 Some(v)
             }
@@ -231,13 +259,16 @@ impl Plugin for SimBridgePlugin {
             .add_systems(FixedUpdate, (step_sim.in_set(SimSet::Step), apply_events.in_set(SimSet::Events)))
             .add_systems(
                 PostUpdate,
-                crate::ship_view::sync_piece_views.before(bevy::transform::TransformSystems::Propagate),
+                (rebuild_views, crate::ship_view::sync_piece_views).chain().before(bevy::transform::TransformSystems::Propagate),
             );
     }
 }
 
 fn step_sim(mut world: ResMut<SimWorld>) {
     let world = &mut *world;
+    if world.hold {
+        return;
+    }
     let t0 = Instant::now();
     world.sim.step(&world.inputs);
     let ms = t0.elapsed().as_secs_f64() as f32 * 1000.0;
@@ -290,7 +321,8 @@ fn apply_events(
 ) {
     let world = &mut *world;
     let n = world.sim.events().len();
-    if n == 0 {
+    // Held, the last step's events were shown already.
+    if n == 0 || world.hold {
         return;
     }
     let player = focus.0;
@@ -496,8 +528,8 @@ fn drawn_part(
 }
 
 fn weapon_color(world: &mut SimWorld, ship: ShipId, style: &Style) -> Color {
-    let design = world.sim.ship(ship).map(|s| s.design().clone());
-    design.and_then(|d| world.visual(&d, style)).map(|v| v.weapon_color).unwrap_or(Color::WHITE)
+    let design = world.sim.ship(ship).map(|s| (s.design().clone(), s.owner()));
+    design.and_then(|(d, owner)| world.visual(&d, owner, style)).map(|v| v.weapon_color).unwrap_or(Color::WHITE)
 }
 
 /// (Re)creates the view of one piece from the current sim state, on the piece's own draw layer
@@ -518,14 +550,37 @@ fn respawn_view(
     if let Some(e) = world.views.remove(&(ship, piece)) {
         commands.entity(e).despawn();
     }
-    let Some(design) = world.sim.ship(ship).map(|s| s.design().clone()) else { return };
-    let Some(dv) = world.visual(&design, style) else { return };
+    let Some((design, owner)) = world.sim.ship(ship).map(|s| (s.design().clone(), s.owner())) else { return };
+    let Some(dv) = world.visual(&design, owner, style) else { return };
     let layer = draw_layer(ship, piece);
     let Some(s) = world.sim.ship(ship) else { return };
     let Some(p) = s.piece(piece) else { return };
     let z = if player == Some(ship) && p.controlled { Z_FOCUS } else { layer };
     let e = spawn_piece_view(commands, meshes, atlas, style, toggles, &dv, s, p, layer, z, 1.0);
     world.views.insert((ship, piece), e);
+}
+
+/// [`SimWorld::rebuild_views`]: every view goes and every piece of every ship gets a new one, from the sim as it is.
+#[allow(clippy::too_many_arguments)]
+fn rebuild_views(
+    mut commands: Commands,
+    mut world: ResMut<SimWorld>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    atlas: Res<Atlas>,
+    style: Res<Style>,
+    toggles: Res<RenderToggles>,
+    focus: Res<PilotFocus>,
+) {
+    if !world.rebuild_views {
+        return;
+    }
+    let world = &mut *world;
+    world.rebuild_views = false;
+    despawn_all_views(&mut commands, world);
+    let pieces: Vec<(ShipId, PieceId)> = world.sim.ships().iter().flat_map(|s| s.pieces().iter().map(|p| (s.id(), p.id))).collect();
+    for (ship, piece) in pieces {
+        respawn_view(&mut commands, world, &mut meshes, &atlas, &style, &toggles, focus.0, ship, piece);
+    }
 }
 
 /// Removes every view (scene reset).

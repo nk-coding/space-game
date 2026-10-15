@@ -59,7 +59,7 @@ fn main() {
             kit::atlas::AtlasPlugin,
             world::tuning::TuningPlugin,
             world::mode::ModePlugin,
-            (world::scene::ScenePlugin, world::test_range::TestRangePlugin, world::voyage::VoyagePlugin),
+            (world::scene::ScenePlugin, world::replay::ReplayPlugin, world::test_range::TestRangePlugin, world::voyage::VoyagePlugin),
             world::sim_bridge::SimBridgePlugin,
             (world::storage::StoragePlugin, kit::clipboard::ClipboardPlugin, world::career::CareerPlugin, world::settings::SettingsPlugin),
             // After the bridge (it reads the content the bridge loads), the storage and the career.
