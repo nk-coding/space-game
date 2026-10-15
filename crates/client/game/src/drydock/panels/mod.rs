@@ -34,9 +34,10 @@
 //! resources; texts and colours are written only when they change. UI words are chrome in code (like the flight
 //! HUD); part names, summaries and stat labels come from content.
 //!
-//! What the career has not unlocked (`career::Granted`) is shown, not hidden (GDR-0065): locked parts close their
-//! section dimmed, with a lock and `LOCKED · <research node>`, and can't be picked; locked armour swatches show a
-//! lock. Fresh parts (research unlocked them, the drydock hasn't shown them yet) carry a NEW tag until they are
+//! What the career has not unlocked (`career::Granted`) is shown, not hidden (GDR-0065), as far as research unlocks it
+//! (`state::palette_sections`, `state::material_shown`; the rest stays hidden): locked parts close their section
+//! dimmed, with a lock and `LOCKED · <research node>`, and can't be picked (a click opens that node); locked armour
+//! swatches show a lock. Fresh parts (research unlocked them, the drydock hasn't shown them yet) carry a NEW tag until they are
 //! picked or selected once.
 //!
 //! Part icons are world meshes drawn under bevy_ui (`ui_icons`), so the menus (opaque plates over everything) hold

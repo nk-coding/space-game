@@ -186,7 +186,7 @@ fn panel(
             ui.add(egui::Slider::new(&mut t.max_turn_rate, 0.5..=12.0).text("max turn rate"));
             ui.add(egui::Slider::new(&mut t.key_turn_rate, 0.25..=6.0).text("key turn rate (A/D)"));
             ui.add(egui::Slider::new(&mut t.mind_capacity, 1..=48).text("mind capacity (cores)"));
-            ui.checkbox(&mut t.drift, "drift (released stick coasts)");
+            ui.checkbox(&mut t.drift, "drift (keys: pure thrust, no drift cancelling)");
             ui.separator();
             ui.label(egui::RichText::new("Next wave").strong());
             let mut follow = t.raiders_per_wave.is_none();

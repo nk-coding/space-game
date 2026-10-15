@@ -153,7 +153,7 @@ pub(in crate::drydock) fn sync_palette(
     for (row, mut n, mut action) in &mut rows {
         let p = part(row.0);
         set_display(&mut n, p.is_some());
-        // A locked row keeps its part id: `sync_pills` disables it, so it sends nothing.
+        // A locked row keeps its part id: `sync_pills` disables it, so a click opens its research (`actions::clicks`).
         let want = DrydockAction::PickPart(p.cloned().unwrap_or_default());
         if action.0 != want {
             action.0 = want;
