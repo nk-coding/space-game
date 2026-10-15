@@ -9,7 +9,8 @@
 //! seeds.
 //!
 //! [`VoyageSpec`], [`run_voyage`] and [`voyage_score`] score a design by the slice's voyages (the headless voyage
-//! runner, `sim::voyage::runner`). [`evolve`] breeds designs and behaviors ([`Run`], configured by a [`RunConfig`]).
+//! runner, `sim::voyage::runner`). [`evolve`] breeds designs and behaviors ([`Run`], configured by a [`RunConfig`]),
+//! keeps every genome and fight, and saves between generations as a [`RunSave`] to go on from.
 //!
 //! A fight is re-watched by simulating its spec again (GDR-0092): a [`FightCode`] carries the spec, the record of how
 //! it ended and the [`rules_fingerprint`] it was fought under, as one line of text. A client that steps the world
@@ -54,7 +55,7 @@ pub use spec::{
     BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec,
     Formation, MAX_SHIPS_PER_SIDE, MAX_START_DISTANCE, MAX_TIME_LIMIT, Side,
 };
-pub use evolve::{Genome, Run, RunConfig, RunError};
+pub use evolve::{Genome, Run, RunConfig, RunError, RunSave};
 pub use voyage::{
     DEFAULT_VOYAGE_MINUTES, MAX_VOYAGE_MINUTES, VoyageSpec, run_voyage, start_voyage,
     voyage_fitness, voyage_score,

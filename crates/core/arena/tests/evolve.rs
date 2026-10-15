@@ -259,27 +259,37 @@ fn voyage_fitness_scores_a_run() {
     ));
 }
 
-/// GDR-0092: after each generation the run hands out its best child's jobs and results (its fights to re-watch),
-/// in the threaded and the stepped way alike; jobs and results are plain data with a RON form.
+/// GDR-0092: after each generation the run keeps every child's jobs as records, in the threaded and the stepped
+/// way alike, and rebuilds the jobs; jobs and results are plain data with a RON form.
 #[test]
-fn the_best_childs_fights_are_kept_and_jobs_are_data() {
+fn every_childs_fights_are_kept_and_jobs_are_data() {
     let c = data::base_content();
     let mut run = Run::new(&c, config(TINY)).unwrap();
-    assert!(run.champion().is_empty());
+    assert_eq!(run.best_child(0), None);
     let jobs = run.jobs().to_vec();
-    run.submit(jobs.iter().map(|j| j.run(&c)).collect());
-    let champion = run.champion().to_vec();
-    assert_eq!(champion.len(), 2, "one opponent, two seeds");
-    let mean = champion.iter().map(|(_, r)| r.score as f64).sum::<f64>() / champion.len() as f64;
-    assert_eq!(mean as f32, run.state().history[0].best);
+    let results: Vec<JobResult> = jobs.iter().map(|j| j.run(&c)).collect();
+    run.submit(results.clone());
+    let record = &run.state().records[0];
+    assert_eq!(record.children.len(), 6);
+    let best = run.best_child(0).unwrap();
+    assert_eq!(record.children[best].score, run.state().history[0].best);
     let mut stepped = Run::new(&c, config(TINY)).unwrap();
     while stepped.state().history.is_empty() {
         stepped.step(1000);
     }
-    assert_eq!(stepped.champion(), champion.as_slice());
-    for (job, result) in &champion {
-        round_trip(job);
-        round_trip(result);
+    assert_eq!(stepped.state().records, run.state().records);
+    let mut k = 0;
+    for (child, r) in record.children.iter().enumerate() {
+        let rebuilt = run.child_jobs(0, child).unwrap();
+        assert_eq!(rebuilt.len(), 2, "one opponent, two seeds");
+        for (j, (job, rec)) in rebuilt.iter().zip(&r.jobs).enumerate() {
+            assert_eq!(job, &jobs[k], "child {child}, job {j} rebuilds");
+            assert_eq!(*rec, (&results[k]).into());
+            k += 1;
+            round_trip(job);
+            round_trip(&results[k - 1]);
+            round_trip(rec);
+        }
     }
     round_trip(&Job::Voyage {
         candidate: 3,

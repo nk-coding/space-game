@@ -1,7 +1,8 @@
-//! The run configuration: what evolves, how it is scored, the limits, where it starts, how big it is. Plain data
-//! with a RON text form, so a run is a text file (`crates/core/arena/runs/`, `docs/arena.md` "Evolution").
+//! The run configuration: what evolves, how it is scored, the limits, where it starts and what it keeps (locks), how
+//! big it is. Plain data with a RON text form, so a run is a text file (`crates/core/arena/runs/`, `docs/arena.md`
+//! "Evolution").
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,8 @@ pub const MAX_POPULATION: u32 = 4096;
 pub const MAX_GENERATIONS: u32 = 100_000;
 pub const MAX_SEEDS: u32 = 1000;
 pub const MAX_MUTATIONS: u32 = 16;
+/// Most starts a run may have (GDR-0092, lead default).
+pub const MAX_STARTS: usize = 4;
 
 /// A whole run. See `docs/arena.md` "Evolution" for an example.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,7 +44,13 @@ pub struct RunConfig {
     pub fitness: Fitness,
     #[serde(default)]
     pub limits: Limits,
-    pub start: Start,
+    /// One start, the form of runs before GDR-0092 (still read): taken as the first of the starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<Start>,
+    /// The starts (with `start`, one to [`MAX_STARTS`]). Generation 0 is every start and mutants of each, shared
+    /// out evenly; every genome descends from one of them (its root) and keeps that start's locks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starts: Vec<Start>,
     #[serde(default)]
     pub archive: ArchiveShape,
     /// Share of children bred by crossover, 0..1.
@@ -121,16 +130,28 @@ pub enum VoyagePilot {
     Closing,
 }
 
-/// What a design may be. Every limit is optional.
+/// What a design may be. Every limit may be left out.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
-    /// A content frame id (`frigate`, `cruiser`, `capital`); left out: the smallest content frame the start fits.
+    /// A content frame id (`frigate`, `cruiser`, `capital`); left out: the smallest content frame every start fits.
     #[serde(default)]
     pub frame: Option<String>,
-    /// The most build points a design may cost.
+    /// The most build points a design may cost: by default its start's ("same cost, better ship", GDR-0092), a
+    /// number (`build_points: 60`), or `Off`.
     #[serde(default)]
-    pub build_points: Option<f32>,
+    pub build_points: Bound,
+    /// The smallest cargo hold a design may have (`Content::ship_hold`, cargo units): by default its start's, so
+    /// every result still brings salvage home (VOYAGE-READY), a number, or `Off`.
+    #[serde(default)]
+    pub min_hold: Bound,
+    /// The most logic cores a design may have: the career's mind capacity less the cores of FLEET's escorts
+    /// (VOYAGE-READY); left out: any number.
+    #[serde(default)]
+    pub max_cores: Option<u32>,
+    /// How many of a part a design may hold (`Career::available`, for the parts with a count); others: any number.
+    #[serde(default)]
+    pub counts: Option<BTreeMap<String, u32>>,
     /// Only these parts (e.g. a career's unlocked parts, `data::career::Unlocks::parts`); left out: all parts.
     #[serde(default)]
     pub parts: Option<BTreeSet<String>>,
@@ -142,20 +163,103 @@ pub struct Limits {
     pub mirror: bool,
 }
 
+/// A limit taken from the start (the default), a number, or none. A plain number reads as `At` (`build_points:
+/// 60`, the form of runs before GDR-0092).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(from = "BoundText")]
+pub enum Bound {
+    /// The start's own value (each genome its own start's).
+    #[default]
+    Start,
+    Off,
+    At(f32),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BoundText {
+    Number(f32),
+    Named(BoundName),
+}
+
+#[derive(Deserialize)]
+enum BoundName {
+    Start,
+    Off,
+    At(f32),
+}
+
+impl From<BoundText> for Bound {
+    fn from(t: BoundText) -> Bound {
+        match t {
+            BoundText::Number(v) | BoundText::Named(BoundName::At(v)) => Bound::At(v),
+            BoundText::Named(BoundName::Start) => Bound::Start,
+            BoundText::Named(BoundName::Off) => Bound::Off,
+        }
+    }
+}
+
+impl Bound {
+    /// The limit for a genome whose start has `start`.
+    pub fn of(self, start: f32) -> Option<f32> {
+        match self {
+            Bound::Start => Some(start),
+            Bound::Off => None,
+            Bound::At(v) => Some(v),
+        }
+    }
+}
+
 /// Where a run starts.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Start {
     /// A design (a content ship or blueprint text) and a behavior (left out: the design's own, else its
-    /// faction's).
+    /// faction's), and what the run keeps of them.
     Design {
         design: DesignRef,
         #[serde(default)]
         behavior: Option<BehaviorRef>,
+        #[serde(default, skip_serializing_if = "Locks::is_empty")]
+        locks: Locks,
     },
     /// A random design that flies (a logic core, a power source, an engine and a gun, then random parts) of this
     /// faction, under the faction's behavior.
     Random { faction: String },
+}
+
+/// What a run keeps of a start (GDR-0092 "LOCKS"). The operators never pick what is locked, and the pre-filter
+/// refuses a child that lost any of it, so crossover cannot break a lock either. Under the mirror lock a locked part
+/// or cell locks its mirror image too.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Locks {
+    /// Parts by index in the start's blueprint (`parts[i]`): they never move, turn, change material or power, or go.
+    #[serde(default)]
+    pub parts: Vec<u32>,
+    /// Part categories (`categories.ron` ids): every part of them in the start is locked (`["weapons"]`: KEEP ALL
+    /// WEAPONS, each gun where it is).
+    #[serde(default)]
+    pub categories: Vec<String>,
+    /// KEEP EMPTY: cells `(x, y)` in the start blueprint's coordinates that no part may cover (a clear line of fire).
+    #[serde(default)]
+    pub cells: Vec<(i32, i32)>,
+    /// Rules by index in the start's behavior (0 = the top rule): never changed, moved or deleted. Rules may still
+    /// be added around them.
+    #[serde(default)]
+    pub rules: Vec<u32>,
+    /// The behavior's target line stays as it is.
+    #[serde(default)]
+    pub target: bool,
+    /// LOCK ORDER: the locked rules also keep their order among themselves.
+    #[serde(default)]
+    pub order: bool,
+}
+
+impl Locks {
+    pub fn is_empty(&self) -> bool {
+        *self == Locks::default()
+    }
 }
 
 fn default_population() -> u32 {
@@ -225,11 +329,23 @@ impl RunConfig {
         Ok(stages)
     }
 
+    /// Every start: `start` (the old form), then `starts`.
+    pub fn all_starts(&self) -> impl Iterator<Item = &Start> + '_ {
+        self.start.iter().chain(&self.starts)
+    }
+
     /// The numbers are in range (references are checked when the run is built).
     pub(crate) fn check(&self) -> Result<(), RunError> {
         let bad = |m: String| Err(RunError::Config(m));
+        let starts = self.all_starts().count();
+        if !(1..=MAX_STARTS).contains(&starts) {
+            return bad(format!("a run needs one to {MAX_STARTS} starts (`start` or `starts`)"));
+        }
         if !(1..=MAX_POPULATION).contains(&self.population) {
             return bad(format!("`population` must be 1 to {MAX_POPULATION}"));
+        }
+        if (self.population as usize) < starts {
+            return bad(format!("`population` must be at least the {starts} starts"));
         }
         if !(0.0..=1.0).contains(&self.crossover) {
             return bad("`crossover` must be 0 to 1".into());
@@ -259,10 +375,15 @@ impl RunConfig {
         if !(1..=MAX_SEEDS).contains(&seeds) {
             return bad(format!("`seeds` must be 1 to {MAX_SEEDS}"));
         }
-        if let Some(b) = self.limits.build_points
+        if let Bound::At(b) = self.limits.build_points
             && !(b.is_finite() && b > 0.0)
         {
             return bad("`build_points` must be above 0".into());
+        }
+        if let Bound::At(h) = self.limits.min_hold
+            && !(h.is_finite() && h >= 0.0)
+        {
+            return bad("`min_hold` must be 0 or more".into());
         }
         self.archive.check()?;
         self.schedule().map(|_| ())

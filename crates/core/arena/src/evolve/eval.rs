@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use sim::voyage::runner::VoyageRunner;
 use sim::{Owner, Sim, VesselState};
 
-use crate::fight::{Fight, OWNERS};
+use crate::fight::{Fight, FightResult, OWNERS, Outcome, SideResult};
+use crate::score::arena_score;
 use crate::spec::FightSpec;
 use crate::voyage::{VoyageSpec, start_voyage, voyage_score};
 
@@ -33,12 +34,98 @@ pub struct JobResult {
     pub engage_samples: u32,
     /// Ticks the job ran.
     pub ticks: u64,
+    /// How it ended, kept with the run.
+    pub end: JobEnd,
+}
+
+/// How a job ended, as a run keeps it (GDR-0092): with the job's spec (rebuilt from the run) it is a fight code, so
+/// any fight of any child can be re-watched and checked against its end.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum JobEnd {
+    /// The job's world could not be built (the pre-filter should have caught it); it scored 0.
+    #[default]
+    Failed,
+    /// A fight's record without what its spec gives again (each side's build points at the start) or what follows
+    /// from the rest (the scores): [`JobRecord::fight_result`] makes the whole [`FightResult`].
+    Fight {
+        outcome: Outcome,
+        /// Each side's build points lost, damage dealt and vessels left.
+        lost: [f32; 2],
+        dealt: [f32; 2],
+        left: [u32; 2],
+        /// The final state hash.
+        hash: u64,
+        /// The candidate's behavior rules that decided at least once (bit `i`: rule `i`; `Referee::decided`).
+        decided: u64,
+    },
+    /// A voyage run's final state hash.
+    Voyage { hash: u64 },
+}
+
+/// One job of a child, as the run keeps it: its score, its length and how it ended.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JobRecord {
+    pub score: f32,
+    pub ticks: u64,
+    pub end: JobEnd,
+}
+
+impl From<&JobResult> for JobRecord {
+    fn from(r: &JobResult) -> JobRecord {
+        JobRecord {
+            score: r.score,
+            ticks: r.ticks,
+            end: r.end,
+        }
+    }
+}
+
+impl JobRecord {
+    /// The fight's whole result, given each side's build points at the start (`Referee::build_points` of the
+    /// rebuilt fight): equal to what the fight gave. `None` for a voyage or a job that failed.
+    pub fn fight_result(&self, build_points: [f32; 2]) -> Option<FightResult> {
+        let JobEnd::Fight {
+            outcome,
+            lost,
+            dealt,
+            left,
+            hash,
+            ..
+        } = self.end
+        else {
+            return None;
+        };
+        let mut sides = [0, 1].map(|k| SideResult {
+            build_points: build_points[k],
+            build_points_lost: lost[k],
+            damage_dealt: dealt[k],
+            vessels_left: left[k],
+            score: 0.0,
+        });
+        let shares = sides.map(|s| s.lost_share());
+        for (k, s) in sides.iter_mut().enumerate() {
+            s.score = arena_score(outcome, k, shares);
+        }
+        Some(FightResult {
+            outcome,
+            ticks: self.ticks,
+            sides,
+            state_hash: hash,
+        })
+    }
 }
 
 impl Job {
     pub fn candidate(&self) -> u32 {
         match self {
             Job::Fight { candidate, .. } | Job::Voyage { candidate, .. } => *candidate,
+        }
+    }
+
+    pub(crate) fn set_candidate(&mut self, k: u32) {
+        match self {
+            Job::Fight { candidate, .. } | Job::Voyage { candidate, .. } => *candidate = k,
         }
     }
 
@@ -98,9 +185,13 @@ impl Active {
             Active::Failed => (0, Some(JobResult::default())),
             Active::Voyage { runner, limit } => {
                 let t0 = runner.sim().tick();
-                let done = runner.step(budget).map(|r| JobResult {
-                    score: voyage_score(r, *limit),
-                    ticks: r.ticks,
+                let done = runner.step(budget).map(|r| (voyage_score(r, *limit), r.ticks));
+                let done = done.map(|(score, ticks)| JobResult {
+                    score,
+                    ticks,
+                    end: JobEnd::Voyage {
+                        hash: runner.sim().state_hash(),
+                    },
                     ..JobResult::default()
                 });
                 (runner.sim().tick() - t0, done)
@@ -127,6 +218,14 @@ impl Active {
                         }
                     }
                     if let Some(r) = done {
+                        let end = JobEnd::Fight {
+                            outcome: r.outcome,
+                            lost: r.sides.map(|s| s.build_points_lost),
+                            dealt: r.sides.map(|s| s.damage_dealt),
+                            left: r.sides.map(|s| s.vessels_left),
+                            hash: r.state_hash,
+                            decided: fight.referee().decided()[0],
+                        };
                         return (
                             used,
                             Some(JobResult {
@@ -134,6 +233,7 @@ impl Active {
                                 engage_sum: *sum,
                                 engage_samples: *samples,
                                 ticks: r.ticks,
+                                end,
                             }),
                         );
                     }

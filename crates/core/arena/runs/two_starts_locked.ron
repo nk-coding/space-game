@@ -1,0 +1,29 @@
+// Evolve the starter ship (the rim skiff) and the Halvex Runner together, design and behavior, mirror-locked: the
+// skiff keeps its guns where they are, its first part, its top rule (flee when badly hurt) and the cells in front of
+// its guns (KEEP EMPTY); each design stays within its own start's build points and keeps its hold (the defaults).
+// Small, so `scripts/determinism-check.sh --run two_starts_locked` runs it natively and in wasm, straight and resumed
+// after generation 3, and compares (`docs/arena.md` "Determinism").
+// `cargo run --release -p arena-cli -- evolve crates/core/arena/runs/two_starts_locked.ron --save /tmp/two_starts.ron`
+// PLACEHOLDER numbers.
+(
+    seed: 1,
+    evolve: Both,
+    generations: 6,
+    population: 8,
+    crossover: 0.3,
+    fitness: ArenaPool(
+        opponents: [(design: Ship("automaton_raider"), count: 2)],
+        seeds: 2,
+        hall_of_fame: 1,
+        time_limit: 30,
+    ),
+    limits: (mirror: true),
+    starts: [
+        Design(
+            design: Ship("rim_skiff"),
+            behavior: Content("skirmisher"),
+            locks: (parts: [0], categories: ["weapons"], cells: [(3, -1), (4, -1)], rules: [0]),
+        ),
+        Design(design: Ship("halvex_runner")),
+    ],
+)

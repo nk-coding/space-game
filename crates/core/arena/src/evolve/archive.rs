@@ -127,6 +127,8 @@ impl ArchiveShape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Elite {
     pub genome: Genome,
+    /// Its number in the run's genome table (`Run::genome`, `Run::lineage`).
+    pub id: u32,
     /// Fitness, 0..1.
     pub score: f32,
     /// The genome's value of each axis's measure, in axis order.

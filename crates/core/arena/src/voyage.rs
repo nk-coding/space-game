@@ -51,7 +51,7 @@ pub fn start_voyage(content: &Content, spec: &VoyageSpec) -> Result<VoyageRunner
         .voyages
         .get(&spec.voyage)
         .ok_or_else(|| ArenaError::UnknownVoyage(spec.voyage.clone()))?;
-    let (bp, design) = resolve_design(content, &spec.design).map_err(|p| match p {
+    let (bp, design) = resolve_design(content, &spec.design, spec.behavior.as_ref()).map_err(|p| match p {
         DesignProblem::UnknownShip(id) => ArenaError::Voyage(format!("no ship `{id}` in the content")),
         DesignProblem::Blueprint(problems) => ArenaError::Voyage(format!(
             "the blueprint is not usable: {}",

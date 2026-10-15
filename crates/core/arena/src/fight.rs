@@ -113,6 +113,8 @@ pub struct Referee {
     damage: [f32; 2],
     /// The first tick of the current stretch without a running vessel, per side.
     out_since: [Option<u64>; 2],
+    /// Per side, a bit for every behavior rule that decided at least once (bit `i`: rule `i`).
+    decided: [u64; 2],
     result: Option<FightResult>,
 }
 
@@ -139,7 +141,7 @@ impl FightSetup {
         let mut sides: [Vec<Resolved>; 2] = Default::default();
         for (side, s) in spec.sides.iter().enumerate() {
             for (entry, e) in s.entries.iter().enumerate() {
-                let (blueprint, design) = match resolve_design(content, &e.design) {
+                let (blueprint, design) = match resolve_design(content, &e.design, e.behavior.as_ref()) {
                     Ok((bp, d)) => (bp, Arc::new(d)),
                     Err(DesignProblem::UnknownShip(id)) => {
                         return Err(ArenaError::UnknownShip { side, entry, id });
@@ -198,6 +200,7 @@ impl FightSetup {
             build_points,
             damage: [0.0; 2],
             out_since: [None; 2],
+            decided: [0; 2],
             result: None,
         };
         let designs = sides.map(|side| {
@@ -219,6 +222,7 @@ impl Referee {
     pub fn observe(&mut self, sim: &Sim) -> Option<FightResult> {
         if self.result.is_none() {
             self.tally(sim);
+            self.note_rules(sim);
             self.result = self.end(sim);
         }
         self.result
@@ -237,6 +241,13 @@ impl Referee {
     /// Each side's build points at the start.
     pub fn build_points(&self) -> [f32; 2] {
         self.build_points
+    }
+
+    /// Per side, a bit for every rule of its ships' behaviors that decided at least once so far (bit `i`: rule `i`;
+    /// a program has at most `data::behavior::MAX_RULES` = 64): the rules a design's fights used, so the lab can
+    /// tidy away the ones that never run (GDR-0092).
+    pub fn decided(&self) -> [u64; 2] {
+        self.decided
     }
 
     /// Damage dealt by each side's shots and plumes this tick.
@@ -259,6 +270,16 @@ impl Referee {
                 && to != from
             {
                 self.damage[side] += damage;
+            }
+        }
+    }
+
+    /// The rule each side's ships fly now.
+    fn note_rules(&mut self, sim: &Sim) {
+        for s in sim.ships() {
+            let side = OWNERS.iter().position(|&o| o == s.owner());
+            if let (Some(side), Some(rule)) = (side, s.behavior().and_then(|b| b.active_rule())) {
+                self.decided[side] |= 1u64.checked_shl(rule as u32).unwrap_or(0);
             }
         }
     }
@@ -341,6 +362,10 @@ impl Fight {
     pub fn sim(&self) -> &Sim {
         &self.sim
     }
+
+    pub fn referee(&self) -> &Referee {
+        &self.referee
+    }
 }
 
 /// Builds the fight and runs it to the end.
@@ -359,10 +384,11 @@ pub(crate) enum DesignProblem {
 }
 
 /// A design reference resolved: its blueprint (a content ship, or a blueprint text checked against the content
-/// first) and the compiled design.
+/// first, its rule slots against `flies`, the behavior it will fly, when one is given) and the compiled design.
 pub(crate) fn resolve_design(
     content: &Content,
     r: &DesignRef,
+    flies: Option<&BehaviorRef>,
 ) -> Result<(Blueprint, ShipDesign), DesignProblem> {
     let bad = DesignProblem::Blueprint;
     let bp = match r {
@@ -374,7 +400,17 @@ pub(crate) fn resolve_design(
         DesignRef::Blueprint(text) => {
             let bp = data::parse_blueprint(text)
                 .map_err(|p| bad(p.iter().map(|p| p.to_string()).collect()))?;
-            let errors: Vec<String> = data::validate_ship(content, &bp)
+            // A program that doesn't read is the behavior's problem, reported when it is compiled.
+            let program = match flies {
+                Some(BehaviorRef::Text(t)) => data::behavior::Program::parse(t).ok(),
+                Some(BehaviorRef::Content(id)) => content.behaviors.get(id).and_then(|b| b.program().ok()),
+                None => None,
+            };
+            let problems = match &program {
+                Some(p) => data::validate_ship_flying(content, &bp, p),
+                None => data::validate_ship(content, &bp),
+            };
+            let errors: Vec<String> = problems
                 .iter()
                 .filter(|p| p.is_error())
                 .map(|p| p.to_string())

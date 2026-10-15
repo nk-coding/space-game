@@ -4,30 +4,48 @@
 //! ```text
 //! arena fight <spec.ron> [--seeds N] [--threads N]
 //! arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]
-//! arena evolve <run.ron> [--out DIR] [--best N] [--threads N]
+//! arena evolve <run.ron> [--from <design>]... [--lock <lock>]... [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
+//! arena evolve --resume FILE [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
+//! arena replay <run file> <generation> <child> <job>
+//! arena lineage <run file> [<genome>]
 //! ```
 //!
 //! `fight` runs a fight spec once per seed (the spec's seed and the N − 1 after it) and prints a row per seed, a
-//! summary and each fight's code (GDR-0092: `?scene=fight&fight=<code>` re-watches it in the game). `matrix` runs every pair of designs (a content ship id, or a blueprint file `*.ron`) one against
-//! one under their default behaviors, N seeds in each starting position, and prints the win rate and mean score
-//! of each row's design against each column's. Both print fights per second. `evolve` runs an evolution
-//! (`docs/arena.md` "Evolution"), a generation's fights or voyage runs on every core, prints a row per generation
-//! and writes the best elites (blueprint and behavior text) into `--out`; after the run it prints a fight code per
-//! generation (its best child in its hardest fight). The results do not depend on the thread count. The fights run on
-//! `available_parallelism` threads (`--threads` to change); only the wall clock line depends on the machine.
+//! summary and each fight's code (GDR-0092: `?scene=fight&fight=<code>` re-watches it in the game). `matrix` runs
+//! every pair of designs (a content ship id, or a blueprint file `*.ron`) one against one under their default
+//! behaviors, N seeds in each starting position, and prints the win rate and mean score of each row's design against
+//! each column's. Both print fights per second. `evolve` runs an evolution (`docs/arena.md` "Evolution"), a
+//! generation's fights or voyage runs on every core, prints a row per generation, the best elites with their
+//! lineage, writes them (blueprint and behavior text) into `--out` and prints a fight code per generation (its best
+//! child in its hardest fight). `--from` starts it from designs (replacing the run file's starts), `--lock` keeps
+//! parts, cells, categories and rules of every start, `--save` writes the run file after every generation and
+//! `--resume` goes on from one (GDR-0092 steps 2 and 3). `replay` prints the fight code of any fight of a saved run,
+//! `lineage` a genome's line from its start. The results do not depend on the thread count, nor on where a run was
+//! interrupted. The fights run on `available_parallelism` threads (`--threads` to change); only the wall clock line
+//! depends on the machine.
 
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use arena::evolve::{Job, JobResult};
-use arena::{DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Summary};
+use arena::evolve::{Job, Locks, Start};
+use arena::{
+    BehaviorRef, DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Run, RunSave,
+    Summary,
+};
 
 const USAGE: &str = "usage:
   arena fight <spec.ron> [--seeds N] [--threads N]
   arena matrix <design>... [--seeds N] [--seed S] [--distance M] [--time S] [--threads N]
-  arena evolve <run.ron> [--out DIR] [--best N] [--threads N]
-designs: a content ship id, or a blueprint file (*.ron)";
+  arena evolve <run.ron> [--from <design>]... [--lock <lock>]... [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
+  arena evolve --resume FILE [--save FILE] [--until GEN] [--out DIR] [--best N] [--threads N]
+  arena replay <run file> <generation> <child> <job>
+  arena lineage <run file> [<genome>]
+designs: a content ship id, or a blueprint file (*.ron; a behavior file of the same name with .txt beside it is its
+behavior, as --out writes them)
+locks (of every start): part:N (its parts[N]), category:ID (every part of it, e.g. category:weapons), cell:X,Y (keep
+empty, in the start's coordinates), rule:N (its behavior's rule N, 0 = the top), target, order (the locked rules
+keep their order)";
 
 struct Opts {
     /// Positional arguments after the command.
@@ -40,6 +58,13 @@ struct Opts {
     /// `evolve`: where the best elites are written, and how many.
     out: Option<String>,
     best: usize,
+    /// `evolve`: its starts and their locks, the run file to write after every generation or to go on from, the
+    /// generation to stop after.
+    from: Vec<String>,
+    locks: Vec<String>,
+    save: Option<String>,
+    resume: Option<String>,
+    until: Option<u32>,
 }
 
 /// The value of option `a`, as a number.
@@ -60,6 +85,11 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         threads: std::thread::available_parallelism().map_or(1, |n| n.get()),
         out: None,
         best: 8,
+        from: Vec::new(),
+        locks: Vec::new(),
+        save: None,
+        resume: None,
+        until: None,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -76,6 +106,11 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--threads" => o.threads = num::<usize>(a, v)?.max(1),
             "--out" => o.out = Some(v.clone()),
             "--best" => o.best = num(a, v)?,
+            "--from" => o.from.push(v.clone()),
+            "--lock" => o.locks.push(v.clone()),
+            "--save" => o.save = Some(v.clone()),
+            "--resume" => o.resume = Some(v.clone()),
+            "--until" => o.until = Some(num(a, v)?),
             _ => return Err(format!("unknown option {a}")),
         }
     }
@@ -91,6 +126,8 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "fight" => parse(rest).and_then(|o| fight(&o)),
         Some((cmd, rest)) if cmd == "matrix" => parse(rest).and_then(|o| matrix(&o)),
         Some((cmd, rest)) if cmd == "evolve" => parse(rest).and_then(|o| evolve(&o)),
+        Some((cmd, rest)) if cmd == "replay" => parse(rest).and_then(|o| replay(&o)),
+        Some((cmd, rest)) if cmd == "lineage" => parse(rest).and_then(|o| lineage(&o)),
         _ => Err(USAGE.into()),
     };
     match result {
@@ -316,6 +353,7 @@ fn matrix(o: &Opts) -> Result<(), String> {
     Ok(())
 }
 
+
 /// The cell of an elite as text: one bin per axis.
 fn cell_name(cell: &[u32]) -> String {
     cell.iter()
@@ -324,59 +362,162 @@ fn cell_name(cell: &[u32]) -> String {
         .join("×")
 }
 
-fn evolve(o: &Opts) -> Result<(), String> {
-    let [path] = o.args.as_slice() else {
-        return Err(USAGE.into());
+/// A `--from` start: a content ship, or a blueprint file and the behavior file of the same name beside it.
+fn start_of(arg: &str, locks: &Locks) -> Result<Start, String> {
+    let behavior = match arg.strip_suffix(".ron") {
+        Some(stem) => match std::fs::read_to_string(format!("{stem}.txt")) {
+            Ok(text) => Some(BehaviorRef::Text(text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(format!("{stem}.txt: {e}")),
+        },
+        None => None,
     };
+    Ok(Start::Design {
+        design: design_ref(arg)?,
+        behavior,
+        locks: locks.clone(),
+    })
+}
+
+/// The `--lock` arguments as locks.
+fn locks_of(args: &[String]) -> Result<Locks, String> {
+    let mut l = Locks::default();
+    for a in args {
+        let (kind, v) = a.split_once(':').unwrap_or((a, ""));
+        let bad = || format!("--lock {a}: one of part:N, category:ID, cell:X,Y, rule:N, target, order");
+        match kind {
+            "part" => l.parts.push(v.parse().map_err(|_| bad())?),
+            "category" => l.categories.push(v.to_string()),
+            "cell" => {
+                let (x, y) = v.split_once(',').ok_or_else(bad)?;
+                l.cells.push((x.trim().parse().map_err(|_| bad())?, y.trim().parse().map_err(|_| bad())?));
+            }
+            "rule" => l.rules.push(v.parse().map_err(|_| bad())?),
+            "target" => l.target = true,
+            "order" => l.order = true,
+            _ => return Err(bad()),
+        }
+    }
+    Ok(l)
+}
+
+fn read_save(path: &str) -> Result<RunSave, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
-    let config = arena::RunConfig::from_ron(&text).map_err(|e| format!("{path}: {e}"))?;
-    let content = data::base_content();
-    let mut run = arena::Run::new(&content, config).map_err(|e| format!("{path}: {e}"))?;
-    let state = run.state();
+    RunSave::from_ron(&text).map_err(|e| format!("{path}: {e}"))
+}
+
+/// Writes the run file whole or not at all (a run killed mid-write keeps its last generation).
+fn write_save(path: &str, run: &Run) -> Result<(), String> {
+    let tmp = format!("{path}.part");
+    std::fs::write(&tmp, run.snapshot().to_ron()).map_err(|e| format!("{tmp}: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("{path}: {e}"))
+}
+
+/// A run file's run, read-only: refused if today's rules differ from the ones it was fought under.
+fn restored(content: &data::Content, path: &str) -> Result<Run, String> {
+    let run = Run::restore(content, &read_save(path)?).map_err(|e| format!("{path}: {e}"))?;
+    if run.stale() {
+        return Err(format!(
+            "{path}: the rules have changed since this run (fingerprint {:016x}, today {:016x}): its fights no longer replay as recorded",
+            run.rules(),
+            arena::rules_fingerprint(content)
+        ));
+    }
+    Ok(run)
+}
+
+fn row(g: &arena::evolve::GenerationStats, breed: Option<f64>, secs: Option<f64>) {
+    let ms = |v: Option<f64>, d: usize| v.map_or("–".into(), |v| format!("{v:.d$}"));
     println!(
-        "# {path}: {} generations of {} on {} threads",
+        "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {} | {} |",
+        g.generation,
+        g.genes,
+        g.evaluated,
+        g.rejected,
+        g.best,
+        g.mean,
+        g.archive_best,
+        g.filled,
+        g.improved,
+        g.ticks as f64 / 1e6,
+        ms(breed, 1),
+        ms(secs, 2)
+    );
+}
+
+fn evolve(o: &Opts) -> Result<(), String> {
+    let content = data::base_content();
+    let (label, mut run) = match (&o.resume, o.args.as_slice()) {
+        (Some(path), []) => {
+            if !o.from.is_empty() || !o.locks.is_empty() {
+                return Err("--from and --lock set up a new run; a resumed run keeps its own".into());
+            }
+            (path.clone(), restored(&content, path)?)
+        }
+        (None, [path]) => {
+            let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+            let mut config = arena::RunConfig::from_ron(&text).map_err(|e| format!("{path}: {e}"))?;
+            let locks = locks_of(&o.locks)?;
+            if !o.from.is_empty() {
+                config.start = None;
+                config.starts = o.from.iter().map(|a| start_of(a, &locks)).collect::<Result<_, _>>()?;
+            } else if !o.locks.is_empty() {
+                for s in config.start.iter_mut().chain(&mut config.starts) {
+                    if let Start::Design { locks: l, .. } = s {
+                        *l = locks.clone();
+                    }
+                }
+            }
+            (path.clone(), Run::new(&content, config).map_err(|e| format!("{path}: {e}"))?)
+        }
+        _ => return Err(USAGE.into()),
+    };
+    let save = o.save.as_ref().or(o.resume.as_ref());
+    let state = run.state();
+    let until = o.until.unwrap_or(state.generations).min(state.generations);
+    println!(
+        "# {label}: {} generations of {} from {} start(s) on {} threads{}",
         state.generations,
         run.config().population,
-        o.threads
+        run.starts().len(),
+        o.threads,
+        match state.generation {
+            0 => String::new(),
+            g => format!(", resumed after generation {}", g - 1),
+        }
     );
     println!(
         "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | breed ms | s |"
     );
     println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
+    for g in state.history {
+        row(g, None, None);
+    }
     let start = Instant::now();
-    // Per generation: its best child's hardest fight (none for voyage fitness), coded after the run.
-    let mut hardest: Vec<Option<(FightSpec, f32)>> = Vec::new();
-    while !run.finished() {
+    let first = run.generation();
+    while run.generation() < until {
         let t0 = Instant::now();
         // Breeding (mutation, crossover, the pre-filter) runs on this thread; the jobs on all of them.
         let jobs = run.jobs().to_vec();
         let breed = t0.elapsed().as_secs_f64() * 1e3;
         let results = par_map(&jobs, o.threads, |j| j.run(&content));
         run.submit(results);
-        hardest.push(hardest_fight(run.champion()));
+        if let Some(path) = save {
+            write_save(path, &run)?;
+        }
         let g = run.state().history.last().cloned().expect("a generation is done");
-        println!(
-            "| {} | {:?} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {breed:.1} | {:.2} |",
-            g.generation,
-            g.genes,
-            g.evaluated,
-            g.rejected,
-            g.best,
-            g.mean,
-            g.archive_best,
-            g.filled,
-            g.improved,
-            g.ticks as f64 / 1e6,
-            t0.elapsed().as_secs_f64()
-        );
+        row(&g, Some(breed), Some(t0.elapsed().as_secs_f64()));
     }
     let secs = start.elapsed().as_secs_f64();
-    let generations = run.state().generations;
+    let done = run.generation() - first;
     println!(
-        "# {generations} generations in {secs:.1} s on {} threads: {:.1} generations per minute",
+        "# {done} generations in {secs:.1} s on {} threads: {:.1} generations per minute",
         o.threads,
-        generations as f64 * 60.0 / secs
+        done as f64 * 60.0 / secs
     );
+    if let Some(path) = save {
+        println!("# the run is in {path} (`arena evolve --resume {path}` goes on with it)");
+    }
     let results = run.results();
     let axes: Vec<String> = run
         .archive()
@@ -386,19 +527,27 @@ fn evolve(o: &Opts) -> Result<(), String> {
         .map(|a| format!("{:?}", a.measure))
         .collect();
     println!();
-    println!("| rank | cell | score | {} | generation | parts |", axes.join(" | "));
-    println!("|---|---|---|{}---|---|", "---|".repeat(axes.len()));
+    println!("| rank | genome | cell | score | {} | generation | parts |", axes.join(" | "));
+    println!("|---|---|---|---|{}---|---|", "---|".repeat(axes.len()));
     for (k, e) in results.elites.iter().take(o.best).enumerate() {
         let measures: Vec<String> = e.measures.iter().map(|m| format!("{:.1}", m + 0.0)).collect();
         println!(
-            "| {} | {} | {:.3} | {} | {} | {} |",
+            "| {} | {} | {} | {:.3} | {} | {} | {} |",
             k + 1,
+            e.id,
             cell_name(&run.archive().cell_of(&e.measures)),
             e.score,
             measures.join(" | "),
             e.generation,
             e.genome.blueprint.parts.len()
         );
+    }
+    println!();
+    println!("Lineage of the best (genome numbers from the start; `arena lineage <run file> <genome>` for each step):");
+    println!();
+    for (k, e) in results.elites.iter().take(o.best.min(3)).enumerate() {
+        let line: Vec<String> = run.lineage(e.id).iter().map(|g| g.to_string()).collect();
+        println!("- rank {}: {} (start {})", k + 1, line.join(" → "), e.genome.root + 1);
     }
     if let Some(out) = &o.out {
         std::fs::create_dir_all(out).map_err(|e| format!("{out}: {e}"))?;
@@ -407,10 +556,11 @@ fn evolve(o: &Opts) -> Result<(), String> {
             let mut bp = e.genome.blueprint.clone();
             bp.id = format!("evolved_{:02}", k + 1);
             let header = format!(
-                "// Evolved by `arena evolve {path}`: rank {}, score {:.3}, generation {}. Its behavior: elite_{:02}.txt\n",
+                "// Evolved by `arena evolve {label}`: rank {}, score {:.3}, generation {}, genome {}. Its behavior: elite_{:02}.txt\n",
                 k + 1,
                 e.score,
                 e.generation,
+                e.id,
                 k + 1
             );
             std::fs::write(format!("{base}.ron"), header + data::blueprint_to_ron(&bp).as_str())
@@ -423,35 +573,117 @@ fn evolve(o: &Opts) -> Result<(), String> {
             o.best.min(results.elites.len())
         );
     }
-    if hardest.iter().any(Option::is_some) {
-        // Jobs keep only their score, so each coded fight runs once more for its full record (the same fight).
-        let rules = arena::rules_fingerprint(&content);
+    // Every fight is kept, so each code comes from the run's records (GDR-0092): no fight runs again.
+    let codes: Vec<String> = (0..run.generation())
+        .filter_map(|g| {
+            let child = run.best_child(g)?;
+            let record = &run.state().records[g as usize].children[child];
+            let (job, low) = record
+                .jobs
+                .iter()
+                .enumerate()
+                .filter(|(k, _)| matches!(run.job(g, child, *k), Some((Job::Fight { .. }, _))))
+                .fold(None, |low: Option<(usize, f32)>, (k, r)| match low {
+                    Some((_, s)) if s <= r.score => low,
+                    _ => Some((k, r.score)),
+                })?;
+            let code = run.fight_code(g, child, job)?;
+            Some(format!(
+                "- gen {g}, score {low:.3}, seed {} (`arena replay` {g} {child} {job}): {}",
+                code.spec.seed,
+                code.encode()
+            ))
+        })
+        .collect();
+    if !codes.is_empty() {
         println!();
         println!("Fight codes: each generation's best child in its hardest fight (re-watch one in the game: `?scene=fight&fight=<code>`):");
         println!();
-        for (generation, h) in hardest.into_iter().enumerate() {
-            if let Some((spec, score)) = h {
-                let record = arena::run_fight(&content, &spec).map_err(|e| e.to_string())?;
-                let seed = spec.seed;
-                let code = FightCode::new(&content, rules, spec, record).encode();
-                println!("- gen {generation}, score {score:.3}, seed {seed}: {code}");
-            }
+        for c in codes {
+            println!("{c}");
         }
     }
     Ok(())
 }
 
-/// The fight of a generation's best child it scored lowest in (the first of equal scores), with that score.
-fn hardest_fight(champion: &[(Job, JobResult)]) -> Option<(FightSpec, f32)> {
-    champion
+fn replay(o: &Opts) -> Result<(), String> {
+    let [path, g, child, job] = o.args.as_slice() else {
+        return Err(USAGE.into());
+    };
+    let content = data::base_content();
+    let run = restored(&content, path)?;
+    let (g, child, job) = (num("generation", g)?, num("child", child)?, num("job", job)?);
+    let (j, record) = run
+        .job(g, child, job)
+        .ok_or_else(|| format!("{path}: no job {job} of child {child} of generation {g}"))?;
+    let code = run
+        .fight_code(g, child, job)
+        .ok_or_else(|| format!("{path}: job {job} of child {child} of generation {g} is no fight"))?;
+    let genome = run.state().records[g as usize].children[child].genome;
+    println!(
+        "# {path}: generation {g}, child {child} (genome {genome}), job {job}: seed {}, {}, score {:.3}, hash {:016x}",
+        code.spec.seed,
+        outcome(code.record.outcome),
+        record.score,
+        code.record.state_hash
+    );
+    if let Job::Fight { spec, .. } = &j {
+        println!("# {} against {}", side_text(&spec.sides[0]), side_text(&spec.sides[1]));
+    }
+    println!("{}", code.encode());
+    Ok(())
+}
+
+/// A side of a fight in a few words.
+fn side_text(side: &arena::Side) -> String {
+    let names: Vec<String> = side
+        .entries
         .iter()
-        .filter_map(|(j, r)| match j {
-            Job::Fight { spec, .. } => Some((spec, r.score)),
-            Job::Voyage { .. } => None,
+        .map(|e| {
+            let d = match &e.design {
+                DesignRef::Ship(id) => id.clone(),
+                DesignRef::Blueprint(_) => "a blueprint".into(),
+            };
+            format!("{} × {d}", e.count)
         })
-        .fold(None, |low: Option<(&FightSpec, f32)>, (spec, score)| match low {
-            Some((_, s)) if s <= score => low,
-            _ => Some((spec, score)),
-        })
-        .map(|(spec, score)| (spec.clone(), score))
+        .collect();
+    names.join(", ")
+}
+
+fn lineage(o: &Opts) -> Result<(), String> {
+    let (path, id) = match o.args.as_slice() {
+        [path] => (path, None),
+        [path, id] => (path, Some(num::<u32>("genome", id)?)),
+        _ => return Err(USAGE.into()),
+    };
+    let content = data::base_content();
+    let run = restored(&content, path)?;
+    let id = match id {
+        Some(id) => id,
+        None => run.archive().best().map(|e| e.id).ok_or("the run has no elite yet")?,
+    };
+    if run.genome(id).is_none() {
+        return Err(format!("{path}: no genome {id}"));
+    }
+    println!("# {path}: genome {id} from its start");
+    println!("| genome | generation | start | parent | crossed with | parts lost | parts gained | behavior | score |");
+    println!("|---|---|---|---|---|---|---|---|---|");
+    for g in run.lineage(id) {
+        let b = &run.table()[g as usize];
+        let score = run
+            .scored(g)
+            .map_or("–".into(), |(at, k)| format!("{:.3}", run.state().records[at as usize].children[k].score));
+        let opt = |v: Option<u32>| v.map_or("–".into(), |v| v.to_string());
+        println!(
+            "| {g} | {} | {} | {} | {} | {} | {} | {} | {score} |",
+            b.generation,
+            b.root + 1,
+            opt(b.parent),
+            opt(b.partner),
+            b.removed.len(),
+            b.added.len(),
+            if b.parent.is_none() { "its own" } else if b.behavior.is_some() { "changed" } else { "–" },
+        );
+    }
+    Ok(())
 }
