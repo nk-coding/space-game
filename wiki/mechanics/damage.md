@@ -215,7 +215,8 @@ to the charge it has left, and the rest flies on.
 - **Overlapping bubbles stack**: a shot crosses them one after the other, and each takes its share of what reaches
   it.
 - **A shot fired from inside a bubble passes it.** A gun whose muzzle is inside an enemy's bubble, right up against
-  its hull, gets past that shield.
+  its hull, gets past that shield. This is at the muzzle only: a shell already flying is caught by every enemy
+  bubble it meets, also when that ship flies onto it so fast that the bubble is around it before it reaches the rim.
 - The bubble holds [[stat:shield_capacity]] and recharges [[stat:shield_regen]] while its emitter has power, slower
   at partial power. It needs at least [[part:shield_emitter.power_min_level]] of its draw to stand at all.
 - When the charge runs out, the bubble **collapses** and stays down until it has recharged

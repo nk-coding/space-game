@@ -1,6 +1,9 @@
 # GDR-0066: Phase 7 wave 1 defaults: salvage values and fragments, cargo and collecting, the career model, the home screen
 
 - Status: Accepted (provisional, lead); superseded in part by [GDR-0076](0076-spilled-cargo-becomes-fragments.md) (a shrinking hold's items spill as loose items instead of vanishing; 2026-10-14) and by [GDR-0079](0079-review-of-lead-defaults-14-oct.md) (collecting up to 8 m/s, loose items last the voyage); core matter and the take-first order confirmed there
+  2026-10-16 (Niklas): the `rim_skiff`'s two shield emitters moved forward into row 1 and the two steel blocks there into
+  the rear row: from the rear row their bubbles left the whole front row bare, both pulse lasers too; now they cover
+  it and the stern is the bare end (the same day as the shields fix in [GDR-0021](0021-shields.md)'s Notes).
 - Date: 2026-10-13
 - Decided by: lead session (defaults for Niklas to review); details by the wave-1 agents (tracks 7A–7D)
 - Related: [GDR-0062](0062-first-playable-loop.md), [GDR-0063](0063-salvage-and-research-v1.md), [GDR-0065](0065-phase-7-screens-and-escort-action.md), [ADR-0033](../adr/0033-career-model-save-and-voyage-director.md), `docs/content-model.md`, `docs/sim.md` "Salvage", `docs/career.md`, `docs/client.md` "Home"

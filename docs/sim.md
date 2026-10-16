@@ -410,6 +410,17 @@ wasm); `--run two_starts_locked` seeds 1 and 7 unchanged (`4f126e780aff05c0`, `8
 `--run mixed_trials` (every kind of trial, all four goals) identical, seed 1 `222c9bee00fa033e` and seed 4
 `8d85b8edf59c7a64` (`docs/arena.md` "Determinism").
 
+**The point-blank pass at the muzzle only, and the skiff's emitters forward** ([GDR-0021](gdr/0021-shields.md) Notes,
+16 Oct 2026, release builds): a projectile in flight is taken by a bubble it finds itself inside ([Weapons](#weapons),
+new hashed state `Projectile::crossed`), and the content changed (the `rim_skiff`'s emitters in row 1). Native x86_64
+vs wasm32-wasip1 **identical**, last ticks (seed 42, 900 ticks): core `c94ee627199edcbb`, flight `797803bc06624f60`,
+behavior `8be2be6123e0040f`, salvage `ceff1b3db1904a3b`, voyage `c2974339dd10cbde`, assists `377a6da647a8ba3b`; the
+probes `close_quarters` `4851c82acb8c04fd` and `warden` `afff2bb6cac0a09b`. `runner_vs_raiders` is unchanged
+(`8d5b00d21e45e771`, won at 1273: its last tick has no shell left in flight, and the fight ended the same). The base pack's rules fingerprint is now
+`7aaf91e998fb2f63` (was `87f8e44db8186359`), so every fight code and lab run made before is fought under other rules:
+codes replay under today's rules with the note, runs restore stale and read-only, to be re-scored (`docs/arena.md`
+"Determinism").
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
@@ -1564,10 +1575,16 @@ example runs found": evolved designs shutter their cannons behind reactors that 
   with `capacity`, regenerating `regen × work` per second. A shot whose path enters a bubble of a non-friendly
   ship (not its own, not a vessel of its owner) loses `damage × absorb[family]` (content: energy 1.0, kinetic 0.5, missile 1.0) up to what the bubble has
   left. Bubbles along the path are crossed in entry order, so overlapping bubbles stack (each takes its share
-  of what reaches it). A shot that starts inside a bubble passes it. A bubble that runs empty collapses and
+  of what reaches it). A shot fired from inside a bubble passes it (point blank: at the muzzle only, a beam's or
+  a pulse's ray and a projectile whose muzzle was inside when it was fired). A projectile is taken once by each
+  bubble (`Projectile::crossed`, hashed: the bubbles it started inside and those that took their share, the last
+  8), and one it finds itself inside in flight takes its share at once, at the start of the tick's segment: ships
+  move after the weapons, so a ship closing on a shell carries its bubble past the shell's last position between
+  two ticks (0.67 m a tick at 20 m/s; until 16 Oct 2026 the shell then passed the bubble and hit the hull whole,
+  [GDR-0021](gdr/0021-shields.md)). A bubble that runs empty collapses and
   stays down until it has recharged 30% of its capacity. A beam that a bubble fully absorbs ends at the bubble.
 - Tuning constants (`weapons::tuning`, placeholders): ricochet cosine 0.5, speed 0.6, damage 0.5, max 2
-  ricochets, shield restart 0.3, at most 8 shots per gun per tick (a safety cap, 13 Oct 2026 review: a rate
+  ricochets, shield restart 0.3, 8 bubbles a projectile remembers, at most 8 shots per gun per tick (a safety cap, 13 Oct 2026 review: a rate
   whose period was below half an ulp of the cooldown hung the step), 4 re-casts past destroyed parts.
 
 Events (in `Sim::events()`, for visuals and sound):

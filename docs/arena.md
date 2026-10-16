@@ -796,6 +796,16 @@ resumed after generation 1 and seed 2 after generation 2: native and wasm **iden
 `d642fc5d8e93e758`); `two_starts_locked` seed 1 still `76a00f92091034f7`, `mixed_trials` `d544b205648f22a1`,
 `everything` `ef0039c55cfebe6d`, the rules' fingerprint `87f8e44db8186359`.
 
+**The point-blank pass at the muzzle only** (GDR-0021 Notes, 16 Oct 2026, release builds): a shell a bubble's ship
+flies onto between ticks is taken by it (`docs/sim.md` "Weapons"), and the starter's emitters moved forward, so
+fights and with them every run changed: native and wasm **identical**, resumed identical, `two_starts_locked` seed 1
+`26640964243d2ef3`, `mixed_trials` seed 1 `815f907b41da854c`, `everything` seed 1 `594676fe18bf1bc5`, `arms_race` seed
+1 `311601d6146da787`; `runner_vs_raiders` unchanged (`8d5b00d21e45e771`). The rules' fingerprint is `7aaf91e998fb2f63`
+(was `87f8e44db8186359`): run files of before restore stale (read-only; the CLI refuses to resume, replay or trace
+them, `arena rescore` makes a new run of one; the lab marks them and offers RE-SCORE), and fight codes of before
+replay under today's rules with `THE RULES HAVE CHANGED SINCE THIS FIGHT`, saying at the end whether they still end as
+recorded. The run configurations in `runs/` keep no results, so none needed re-scoring.
+
 ### The CLI: `arena evolve`
 
 ```sh

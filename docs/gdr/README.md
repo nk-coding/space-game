@@ -29,7 +29,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0018](0018-weapon-families.md) | All six weapon families; the capacitor bonus is for lasers only; guns fire along their facing | Accepted | concept phase; 2026-10-11 |
 | [0019](0019-damage-model.md) | Damage: outer blocks first, penetration by weapon type, ricochets off slopes, chain reactions, ramming | Accepted | 2026-10-10; 2026-10-11 |
 | [0020](0020-damage-v1-defaults.md) | Damage v1 defaults: hitscan lasers, kinetic projectiles with ricochet, chain reactions later | Accepted (provisional, lead); chain reactions built by [GDR-0084](0084-chain-reactions-v1.md) | 2026-10-11 |
-| [0021](0021-shields.md) | Shields are one bubble per powered emitter; bubbles stack and collapse when emptied | Accepted | 2026-10-10; 2026-10-11 |
+| [0021](0021-shields.md) | Shields are one bubble per powered emitter; bubbles stack and collapse when emptied | Accepted; 2026-10-16 the point-blank pass is the muzzle's only | 2026-10-10; 2026-10-11 |
 | [0022](0022-heat-per-part.md) | Heat is simulated per part, with shutdown hysteresis | Accepted (provisional, lead) | 2026-10-11 |
 | [0023](0023-shot-leading.md) | AI ships lead their shots; the player's lock aims at the lead point for projectile weapons | Accepted (provisional, lead) | 2026-10-11 |
 | [0024](0024-tech-trees-no-mk-levels.md) | Big tech trees per family, with node kinds instead of Mk levels | Accepted | concept phase |

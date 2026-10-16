@@ -150,6 +150,12 @@ running the fight again.
   `cf042041f708d5e6`, seed 2 `d642fc5d8e93e758`); runs without an enemy, fights, codes and the rules' fingerprint are
   unchanged (`two_starts_locked` `76a00f92091034f7`, `mixed_trials` `d544b205648f22a1`, `everything`
   `ef0039c55cfebe6d`, `87f8e44db8186359`).
+  Rules changed 2026-10-16 ([GDR-0021](0021-shields.md) Notes: the point-blank pass at the muzzle only, and the
+  starter's shield emitters moved forward): the rules' fingerprint is `7aaf91e998fb2f63` (was `87f8e44db8186359`), so
+  fight codes and runs made before were fought under other rules, as this record intends: codes replay under
+  today's rules with the note, runs restore stale and read-only, for RE-SCORE. Runs now (native = wasm, resumed
+  identical): `two_starts_locked` `26640964243d2ef3`, `mixed_trials` `815f907b41da854c`, `everything`
+  `594676fe18bf1bc5`, `arms_race` `311601d6146da787`.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

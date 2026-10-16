@@ -106,6 +106,7 @@ https://claude.ai/artifact/MhdtJiNFHLnnwP2Ayruimh (revision 16, 11 Oct 2026). Up
 - **Locked flight with rear-only engines** (Niklas, 11 Oct 2026): a design trade-off. Strafing or braking while locked needs RCS pods or side/front thrusters; rear-only ships must turn around. → [GDR-0011](gdr/0011-locked-flight-rear-engines-trade-off.md)
 - **Combat rules confirmed by Niklas (11 Oct 2026):**
   - Shields: one bubble per powered emitter with its own recharging charge; absorbs energy fully, kinetic 50%, missiles fully; an emptied bubble stays down until 30% recharged; overlapping bubbles stack along the shot. → [GDR-0021](gdr/0021-shields.md)
+    - 16 Oct 2026 (Niklas, a bug fix): a shot fired from inside a bubble passes it at the muzzle only; a shell in flight is taken by every bubble once, also by one whose ship flew onto it between two ticks (it used to pass and hit the hull whole). The rim skiff's shield emitters moved forward so its bubbles cover its nose and guns. → [GDR-0021](gdr/0021-shields.md), [GDR-0066](gdr/0066-phase-7-wave-1-defaults.md)
   - Kinetic shots stop at the hull (no over-penetration; revisit with railguns). → [GDR-0019](gdr/0019-damage-model.md)
   - The capacitor bonus applies to lasers only; kinetic weapons get their own support part later. → [GDR-0018](gdr/0018-weapon-families.md)
   - Guns fire along their rotated facing (broadside and rear guns are possible). → [GDR-0018](gdr/0018-weapon-families.md)
