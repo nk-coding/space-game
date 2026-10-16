@@ -265,10 +265,8 @@ modules). Desktop keeps files, unchanged (`docs/drydock.md` "Storage and sharing
   guarantees is less: a transaction committed before the page went away is finished by the browser's storage
   process; a crash or a killed tab loses what had not committed (at most the last frame's writes, and the lab's open
   generation as always). Other tabs of the game on the same origin keep their own memory; the last commit wins.
-- **The local storage** (where the build before 16 Oct 2026 kept everything) was moved into IndexedDB once by the
-  builds of 16 Oct 2026, lab runs stored whole written in parts; the move was removed once it had run (ADR-0041's
-  status). The game no longer reads the local storage or a lab run stored whole; a database made then keeps its
-  `meta` store (the move's mark), unread.
+- **The local storage** is not used (ADR-0041). A database made on 16 Oct 2026 may hold a `meta` store besides
+  `docs`; nothing reads or creates it.
 - **Usage**: `Storage::usage` (the documents' bytes and `navigator.storage.estimate()`) for the lab's RUNS page.
   Browsers give `navigator.storage` only to secure addresses (https, localhost): on `http://10.77.9.2:8080` there is
   no estimate and no persistence request, and the storage works all the same.
