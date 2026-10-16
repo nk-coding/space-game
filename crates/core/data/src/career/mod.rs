@@ -42,8 +42,8 @@ pub use voyages::{unload, voyage_ready};
 /// newer instead of damaged.
 ///
 /// * 1: the last voyage only, as `last_haul`.
-/// * 2 (15 Oct 2026, GDR-0091): the last voyages as `history`; a format 1 `last_haul` is read and starts it
-///   ([`Career::from_ron`]).
+/// * 2 (15 Oct 2026, GDR-0091): the last voyages as `history`. Format 1 is no longer read (16 Oct 2026: every save
+///   is written again on its first change).
 pub const FORMAT: u32 = 2;
 
 /// How many voyages the history keeps (home's LOG, GDR-0091): the oldest go first. A placeholder.
@@ -117,9 +117,6 @@ pub struct Career {
     /// debrief, home's LOG).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     history: Vec<VoyageResult>,
-    /// Format 1's `last_haul`: read only, it starts the history ([`Career::from_ron`]).
-    #[serde(default, rename = "last_haul", skip_serializing)]
-    old_last_haul: Option<VoyageResult>,
 }
 
 /// What a career remembers about one voyage.

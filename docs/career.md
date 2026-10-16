@@ -122,8 +122,8 @@ so a content rebalance (a node's cost, a part's unlock) applies to old saves wit
 The text is written with the pack loader's options (`Some(..)` left out, four-space indent) and is deterministic;
 unknown fields are errors, fields with defaults may be left out. `career::FORMAT` (2) is the format the game's
 document header carries: raise it when a field is added or its meaning changes, and migrate older formats when
-reading. Format 1 (until 15 Oct 2026) kept only the last voyage as `last_haul` (the same fields as a history entry):
-`from_ron` still reads it and makes it the history's first entry (not new), and it is never written again. Unknown fields are errors, so a field added without a new format would make an older build call a newer
+reading. Format 1 (until 15 Oct 2026) kept only the last voyage as `last_haul`; it is no longer read (16 Oct 2026),
+as every save is written again on its first change. Unknown fields are errors, so a field added without a new format would make an older build call a newer
 save damaged instead of newer; with the format raised, its storage reports `Newer`. The history's reports are
 what was credited, not derived. A save that cannot be read (newer, damaged, or from a newer voyage roller,
 below) is never written over: the game keeps it as it is ("How the game uses it" below).
@@ -265,7 +265,7 @@ would roll its voyages differently. The game keeps it as it is and never writes 
 
 | Constant | Value | What |
 |---|---|---|
-| `career::FORMAT` | 2 | the save's format version (1 until 15 Oct 2026; still read) |
+| `career::FORMAT` | 2 | the save's format version (1 until 15 Oct 2026, no longer read) |
 | `career::GENERATOR` | 2 | the voyage roller's version, voyage seeds included |
 | `career::MAX_DATA` | 1,000,000 | research data per family a store holds (100 × the largest content cost) |
 | `career::MAX_MATERIALS` | 1,000,000 | of one material a store holds |

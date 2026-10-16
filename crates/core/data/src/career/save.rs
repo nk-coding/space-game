@@ -23,7 +23,6 @@ impl Career {
             underway: None,
             log: Log::default(),
             history: Vec::new(),
-            old_last_haul: None,
         })
     }
 
@@ -34,8 +33,7 @@ impl Career {
     /// like [`crate::parse_blueprint`]'s).
     ///
     /// A save from a newer build (a voyage roller version above [`GENERATOR`]) is refused too: this build would
-    /// roll its voyages differently. The game keeps such a save aside and never writes over it. A format 1 save's
-    /// `last_haul` starts the history.
+    /// roll its voyages differently. The game keeps such a save aside and never writes over it.
     pub fn from_ron(text: &str) -> Result<Career, Vec<Problem>> {
         if text.len() > MAX_DOCUMENT_BYTES {
             return Err(vec![Problem::error(format!(
@@ -43,14 +41,9 @@ impl Career {
                 text.len()
             ))]);
         }
-        let mut career: Career = ron_options()
+        let career: Career = ron_options()
             .from_str(strip_bom(text))
             .map_err(|e| vec![parse_error(&e)])?;
-        if let Some(last) = career.old_last_haul.take()
-            && career.history.is_empty()
-        {
-            career.history.push(last);
-        }
         if career.generator > GENERATOR {
             return Err(vec![
                 Problem::error(format!(

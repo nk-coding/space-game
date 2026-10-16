@@ -784,7 +784,7 @@ fn the_history_keeps_the_last_voyages() {
     assert_eq!(career.unread(), 0);
     let text = career.to_ron();
     assert!(
-        text.contains("history: [") && !text.contains("new:") && !text.contains("last_haul"),
+        text.contains("history: [") && !text.contains("new:"),
         "{text}"
     );
     bring_home(&mut career, &c, &[]);
@@ -812,10 +812,9 @@ fn the_history_keeps_the_last_voyages() {
 
 #[test]
 fn a_hand_written_save_reads() {
-    // The shape of docs/career.md: comments, `Some` left out, fields with defaults left out. A format 1 save:
-    // its `last_haul` starts the history.
+    // The shape of docs/career.md: comments, `Some` left out, fields with defaults left out.
     let text = r#"
-// space-game: saves, format 1, saved 1760351234
+// space-game: saves, format 2, saved 1760351234
 (
     packs: [("base", "0.1.0")],
     start: "rim_awakening",
@@ -829,8 +828,8 @@ fn a_hand_written_save_reads() {
         "yard_approach": (launched: 2, cleared: true, best_ticks: 13500),
     },
     log: (voyages: 3, lost: 1, salvaged: 34),
-    last_haul: (voyage: "yard_approach", outcome: Recalled, ticks: 8000,
-                report: (parts: {"automaton_cannon": 3, "thruster": 2}, data: {"kinetic": 9, "propulsion": 6})),
+    history: [(voyage: "yard_approach", outcome: Recalled, ticks: 8000,
+               report: (parts: {"automaton_cannon": 3, "thruster": 2}, data: {"kinetic": 9, "propulsion": 6}))],
 )
 "#;
     let c = content();
@@ -847,11 +846,7 @@ fn a_hand_written_save_reads() {
     assert_eq!(last.report.data["propulsion"], 6.0);
     assert!(last.report.materials.is_empty());
     assert_eq!((career.history().len(), career.unread()), (1, 0));
-    let text = career.to_ron();
-    assert!(
-        text.contains("history: [") && !text.contains("last_haul"),
-        "{text}"
-    );
+    assert!(career.to_ron().contains("history: ["));
     let u = career.unlocks(&c);
     assert!(u.has_part("automaton_cannon") && u.has_material("composite"));
 }
@@ -906,7 +901,7 @@ fn reconcile_drops_what_the_content_no_longer_has() {
     data: {"kinetic": 4, "lasers": 2, "hull": NaN, "power": -3, "energy": 1e12, "thermal": 0, "shields": inf},
     materials: {"programmable_matter": 5000000, "unobtainium": 2, "steel": 0},
     voyages: {"yard_approach": (launched: 2), "nowhere": (launched: 1, cleared: true)},
-    last_haul: (voyage: "nowhere", outcome: Cleared, report: (data: {"kinetic": 3})),
+    history: [(voyage: "nowhere", outcome: Cleared, report: (data: {"kinetic": 3}))],
 )"#;
     let c = content();
     let mut career = Career::from_ron(text).unwrap_or_else(|p| panic!("{}", show(&p)));

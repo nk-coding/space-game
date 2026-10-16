@@ -286,7 +286,7 @@ Next session:
   - a records mast on the top arm by the gate replaces the one-line summary over home; it glows while a voyage's
     result is new, its tooltip is the last voyage;
   - L or a click opens the LOG, a layer with the last 50 voyages, newest first;
-  - the save keeps them (`history`, format 2; an old save's `last_haul` starts it);
+  - the save keeps them (`history`, format 2);
   - home's words and the debrief's panel step aside under every layer over home.
 - **Pilot assists** ([GDR-0088](gdr/0088-pilot-assists-weapon-groups-and-key-bindings.md) step 3):
   - a PILOT ASSISTS tab next to GRAPH and TEXT on the BEHAVIOR screen edits the design's assist list (blueprint

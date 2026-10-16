@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn a_broken_or_newer_save_is_kept_and_not_overwritten() {
         let content = data::base_content();
-        for text in ["// space-game: saves, format 1, saved 5\n(start: \"rim_awakening\", seed: ", "// space-game: saves, format 9, saved 5\n()"] {
+        for text in ["// space-game: saves, format 2, saved 5\n(start: \"rim_awakening\", seed: ", "// space-game: saves, format 9, saved 5\n()"] {
             let mut mem = MemoryBackend::default();
             crate::storage::Backend::write(&mut mem, "saves", "career", text).unwrap();
             let mut storage = Storage::new(mem);
@@ -523,7 +523,7 @@ mod tests {
     fn changed_content_and_gone_escorts_are_notes() {
         let content = data::base_content();
         let mut mem = MemoryBackend::default();
-        let text = "// space-game: saves, format 1, saved 5\n(start: \"rim_awakening\", seed: 3, generator: 1, researched: [\"warp_theory\"], escorts: [\"kept\", \"gone\"])";
+        let text = "// space-game: saves, format 2, saved 5\n(start: \"rim_awakening\", seed: 3, generator: 1, researched: [\"warp_theory\"], escorts: [\"kept\", \"gone\"])";
         crate::storage::Backend::write(&mut mem, "saves", "career", text).unwrap();
         let mut storage = Storage::new(mem);
         let skiff = content.ships.get("rim_skiff").unwrap().clone();
