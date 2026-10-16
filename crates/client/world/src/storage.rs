@@ -1157,6 +1157,7 @@ mod tests {
         exercise(&mut Storage::new(MemoryBackend::default()));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn file_backend_lists_reads_writes_and_deletes() {
         let dir = std::env::temp_dir().join(format!("space-game-storage-test-{}", std::process::id()));
