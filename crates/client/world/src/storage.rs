@@ -3,22 +3,27 @@
 //! the drydock's designs (`designs/<id>`, the working design `drydock/working`) and the player's behaviors
 //! (`behaviors/<id>`, `drydock/behaviors.rs`); save games since (`saves/<slot>`, ADR-0024: saves are versioned, with
 //! migrations), the settings (`settings/controls`, `settings/display`, `settings.rs`, GDR-0090) and the evolution
-//! lab's runs (`lab/<id>`, `evolution.rs`, GDR-0092).
+//! lab's runs (`lab/<id>` and its parts, `evolution/store.rs`, GDR-0092).
 //!
 //! * A **key** is `namespace/name`; both parts are `a-z`, `0-9`, `_` and `-`, starting with a letter or digit, at
-//!   most 64 characters (safe as file names and storage keys on every platform).
+//!   most 64 characters (safe as file names and storage keys on every platform). A document may have **parts**,
+//!   `namespace/name/part` with the same rules for the part (a lab run's generations, `lab/<id>/g12`): written on
+//!   their own, listed with [`Storage::parts`] and not with the namespace's documents.
 //! * A **document** ([`Document`]) is RON text. Stored, it gets one header line, a RON comment, so the rest stays
 //!   valid RON (a saved design is a content ship file):
 //!   `// space-game: designs, format 1, saved 1760351234` (namespace, format version, Unix seconds). Reading
 //!   checks the namespace, refuses formats newer than the build knows ([`StorageError::Newer`]) and hands older
 //!   ones to [`Document::from_ron`], where migrations live. A file without the header line (a ship file copied
 //!   in by hand) reads as format 1.
-//! * **Backends** ([`Backend`]): the browser's local storage (web, keys `space-game/<key>`), files in the user's
-//!   data directory (desktop: `<data dir>/<namespace>/<name>.ron`), and memory (tests, and the fallback when the
-//!   platform has no storage, e.g. Android until its backend lands: the files backend with the app's internal
-//!   data path). [`Storage::open`] picks one.
+//! * **Backends** ([`Backend`]): the browser's IndexedDB (web, ADR-0041: every document read into memory before the
+//!   game starts, writes kept at once and written behind; until 16 Oct 2026 the local storage, moved in once),
+//!   files in the user's data directory (desktop: `<data dir>/<namespace>/<name>.ron`, a part
+//!   `<data dir>/<namespace>/<name>/<part>.ron`), and memory (tests, and the fallback when the platform has no
+//!   storage, e.g. Android until its backend lands: the files backend with the app's internal data path).
+//!   [`Storage::open`] picks one.
 //! * **Errors** ([`StorageError`]) say what went wrong in words the UI can show: storage unavailable or full
-//!   (the browser's quota), unreadable documents, documents from a newer build.
+//!   (the browser's quota), unreadable documents, documents from a newer build. A write behind that fails comes
+//!   back with the next write (and [`Storage::unsaved`] names what it left unsaved).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -29,6 +34,8 @@ use bevy::prelude::*;
 const HEADER: &str = "// space-game: ";
 /// The longest namespace or name.
 const MAX_NAME: usize = 64;
+/// The room left under which [`Usage::low`] warns (bytes; PLACEHOLDER: a dozen STANDARD lab runs).
+pub const LOW_ROOM: u64 = 64 << 20;
 
 /// Why a storage operation failed, in words for the status line.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,17 +69,35 @@ impl fmt::Display for StorageError {
     }
 }
 
-/// Where documents live: one per platform, plus memory. Keys are checked by [`Storage`] before they get here.
+/// How much the storage holds, for the lab's RUNS page (bytes).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Usage {
+    /// The game's documents: the length of their text.
+    pub documents: u64,
+    /// What the page's origin uses in all and may use, as the browser estimates them (`navigator.storage.estimate()`,
+    /// which browsers give only on a secure address: https or localhost, not `http://10.77.9.2`).
+    pub estimate: Option<(u64, u64)>,
+}
+
+impl Usage {
+    /// Little room is left: under [`LOW_ROOM`], or over nine tenths of the quota used.
+    pub fn low(&self) -> bool {
+        self.estimate.is_some_and(|(used, quota)| quota.saturating_sub(used) < LOW_ROOM || used > quota / 10 * 9)
+    }
+}
+
+/// Where documents live: one per platform, plus memory. Keys are checked by [`Storage`] before they get here; a
+/// `folder` is a namespace, or `<namespace>/<name>` for a document's parts.
 pub trait Backend: Send + Sync + 'static {
-    /// The names of the documents in a namespace, sorted.
-    fn list(&self, namespace: &str) -> Result<Vec<String>, StorageError>;
+    /// The names of the documents in a folder, sorted.
+    fn list(&self, folder: &str) -> Result<Vec<String>, StorageError>;
     /// A document's text, `None` if there is none.
-    fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, StorageError>;
+    fn read(&self, folder: &str, name: &str) -> Result<Option<String>, StorageError>;
     /// Creates or replaces a document.
-    fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), StorageError>;
+    fn write(&mut self, folder: &str, name: &str, text: &str) -> Result<(), StorageError>;
     /// Removes a document; removing a missing one is fine.
-    fn delete(&mut self, namespace: &str, name: &str) -> Result<(), StorageError>;
-    /// Where the documents are, for messages and the docs ("browser storage of http://…", a directory).
+    fn delete(&mut self, folder: &str, name: &str) -> Result<(), StorageError>;
+    /// Where the documents are, for messages and the docs ("the browser's IndexedDB of http://…", a directory).
     fn location(&self) -> String;
     /// Whether this backend writes documents kept with [`Backend::keep_on_leave`] when the page goes away.
     fn keeps_on_leave(&self) -> bool {
@@ -80,7 +105,20 @@ pub trait Backend: Send + Sync + 'static {
     }
     /// Keeps a document's text (made when it is needed) to write if the page goes away before the next write of
     /// that document (web). Other backends keep nothing.
-    fn keep_on_leave(&mut self, _namespace: &str, _name: &str, _text: Box<dyn FnOnce() -> String>) {}
+    fn keep_on_leave(&mut self, _folder: &str, _name: &str, _text: Box<dyn FnOnce() -> String>) {}
+    /// Why the last write made behind the calls failed, until one commits again (web). Backends that write in the
+    /// call fail there and have none.
+    fn failure(&self) -> Option<StorageError> {
+        None
+    }
+    /// Whether a document or one of its parts (`name/…`) waits for a failed write behind to be tried again.
+    fn waiting(&self, _folder: &str, _name: &str) -> bool {
+        false
+    }
+    /// How much it holds, when it knows (web).
+    fn usage(&self) -> Option<Usage> {
+        None
+    }
 }
 
 /// A kind of stored document: its namespace, its current format and its RON text.
@@ -117,12 +155,13 @@ impl Storage {
         Self { backend: Box::new(backend), fallback: None }
     }
 
-    /// The platform's storage: the browser's local storage on the web, files in the user's data directory on
-    /// desktop. Falls back to memory (with [`Storage::fallback`] set) when the platform has none.
+    /// The platform's storage: the browser's IndexedDB on the web (opened by `preload` before the game starts),
+    /// files in the user's data directory on desktop. Falls back to memory (with [`Storage::fallback`] set) when the
+    /// platform has none; on the web that memory holds the documents found (so the game shows them), unsaved.
     pub fn open() -> Self {
         match platform_backend() {
             Ok(b) => Self { backend: b, fallback: None },
-            Err(e) => Self { backend: Box::new(MemoryBackend::default()), fallback: Some(e.to_string()) },
+            Err((e, memory)) => Self { backend: Box::new(memory), fallback: Some(e.to_string()) },
         }
     }
 
@@ -131,16 +170,23 @@ impl Storage {
         self.backend.location()
     }
 
-    /// The names of the documents in a namespace, sorted.
+    /// The names of the documents in a namespace, sorted (their parts aside).
     pub fn list(&self, namespace: &str) -> Result<Vec<String>, StorageError> {
         check_name(namespace)?;
         self.backend.list(namespace)
     }
 
-    /// Reads and migrates a document; `None` if there is none.
-    pub fn read<D: Document>(&self, name: &str) -> Result<Option<Stored<D>>, StorageError> {
+    /// The names of a document's parts (`<name>/<part>`), sorted.
+    pub fn parts<D: Document>(&self, name: &str) -> Result<Vec<String>, StorageError> {
         check_name(name)?;
-        let Some(text) = self.backend.read(D::NAMESPACE, name)? else { return Ok(None) };
+        self.backend.list(&format!("{}/{name}", D::NAMESPACE))
+    }
+
+    /// Reads and migrates a document or a part; `None` if there is none.
+    pub fn read<D: Document>(&self, name: &str) -> Result<Option<Stored<D>>, StorageError> {
+        check_key(name)?;
+        let (folder, leaf) = place(D::NAMESPACE, name);
+        let Some(text) = self.backend.read(&folder, leaf)? else { return Ok(None) };
         let key = format!("{}/{name}", D::NAMESPACE);
         let unreadable = |why: String| StorageError::Unreadable { key: key.clone(), why };
         let (header, body) = split_header(&text);
@@ -155,10 +201,14 @@ impl Storage {
         Ok(Some(Stored { doc, saved }))
     }
 
-    /// Writes a document in the current format, stamped with the time `saved` (Unix seconds).
+    /// Writes a document or a part in the current format, stamped with the time `saved` (Unix seconds). Written
+    /// behind (web), it is kept at once; while the last write behind failed (and nothing committed since), it gets
+    /// that failure (the storage is full, ...), as it may not be kept either; it is tried all the same.
     pub fn write<D: Document>(&mut self, name: &str, doc: &D, saved: u64) -> Result<(), StorageError> {
-        check_name(name)?;
-        self.backend.write(D::NAMESPACE, name, &stored_text(doc, saved))
+        check_key(name)?;
+        let (folder, leaf) = place(D::NAMESPACE, name);
+        self.backend.write(&folder, leaf, &stored_text(doc, saved))?;
+        self.backend.failure().map_or(Ok(()), Err)
     }
 
     /// Keeps the document `doc()` makes, to be written under `name` if the page goes away before its next write
@@ -166,16 +216,39 @@ impl Storage {
     /// lost; the page's `pagehide` writes it). `doc` runs only where that is done; the text is made only then.
     /// Desktop needs none (it writes a waiting autosave when the app closes).
     pub fn keep_on_leave<D: Document + 'static>(&mut self, name: &str, doc: impl FnOnce() -> D) {
-        if self.backend.keeps_on_leave() && valid_name(name) {
+        if self.backend.keeps_on_leave() && check_key(name).is_ok() {
             let doc = doc();
-            self.backend.keep_on_leave(D::NAMESPACE, name, Box::new(move || stored_text(&doc, now_unix())));
+            let (folder, leaf) = place(D::NAMESPACE, name);
+            self.backend.keep_on_leave(&folder, leaf, Box::new(move || stored_text(&doc, now_unix())));
         }
     }
 
-    /// Removes a document.
+    /// Removes a document or a part (a document's parts stay: [`Storage::delete_parts`]). Never refused for a
+    /// failed write behind: deleting makes room.
     pub fn delete<D: Document>(&mut self, name: &str) -> Result<(), StorageError> {
-        check_name(name)?;
-        self.backend.delete(D::NAMESPACE, name)
+        check_key(name)?;
+        let (folder, leaf) = place(D::NAMESPACE, name);
+        self.backend.delete(&folder, leaf)
+    }
+
+    /// Removes every part of a document.
+    pub fn delete_parts<D: Document>(&mut self, name: &str) -> Result<(), StorageError> {
+        let folder = format!("{}/{name}", D::NAMESPACE);
+        for part in self.parts::<D>(name)? {
+            self.backend.delete(&folder, &part)?;
+        }
+        Ok(())
+    }
+
+    /// Whether a document or one of its parts isn't kept: written behind (web), its write failed and waits to be
+    /// tried again with the next write. The failure, if so (the lab pauses a run whose checkpoint it is).
+    pub fn unsaved<D: Document>(&self, name: &str) -> Option<StorageError> {
+        self.backend.failure().filter(|_| self.backend.waiting(D::NAMESPACE, name))
+    }
+
+    /// How much the storage holds, when the platform says (web).
+    pub fn usage(&self) -> Option<Usage> {
+        self.backend.usage()
     }
 
     /// Copies a document's stored text as it is (header and all, unread) to `aside` in its namespace, so a
@@ -191,6 +264,14 @@ impl Storage {
     }
 }
 
+/// A document's folder and its name there: `lab` + `run/g3` is (`lab/run`, `g3`).
+fn place<'a>(namespace: &str, name: &'a str) -> (String, &'a str) {
+    match name.split_once('/') {
+        Some((doc, part)) => (format!("{namespace}/{doc}"), part),
+        None => (namespace.to_string(), name),
+    }
+}
+
 /// Is this a valid namespace or document name?
 pub fn valid_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -201,6 +282,15 @@ pub fn valid_name(name: &str) -> bool {
 
 fn check_name(name: &str) -> Result<(), StorageError> {
     if valid_name(name) { Ok(()) } else { Err(StorageError::BadName(name.into())) }
+}
+
+/// A document's name, or `<name>/<part>` for one of its parts.
+fn check_key(name: &str) -> Result<(), StorageError> {
+    match name.split_once('/') {
+        Some((doc, part)) if valid_name(doc) && valid_name(part) => Ok(()),
+        Some(_) => Err(StorageError::BadName(name.into())),
+        None => check_name(name),
+    }
 }
 
 /// A document as stored: the header line, then its RON.
@@ -263,21 +353,21 @@ pub struct MemoryBackend {
 }
 
 impl Backend for MemoryBackend {
-    fn list(&self, namespace: &str) -> Result<Vec<String>, StorageError> {
-        Ok(self.docs.keys().filter(|(ns, _)| ns == namespace).map(|(_, n)| n.clone()).collect())
+    fn list(&self, folder: &str) -> Result<Vec<String>, StorageError> {
+        Ok(self.docs.keys().filter(|(f, _)| f == folder).map(|(_, n)| n.clone()).collect())
     }
 
-    fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, StorageError> {
-        Ok(self.docs.get(&(namespace.to_string(), name.to_string())).cloned())
+    fn read(&self, folder: &str, name: &str) -> Result<Option<String>, StorageError> {
+        Ok(self.docs.get(&(folder.to_string(), name.to_string())).cloned())
     }
 
-    fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), StorageError> {
-        self.docs.insert((namespace.into(), name.into()), text.into());
+    fn write(&mut self, folder: &str, name: &str, text: &str) -> Result<(), StorageError> {
+        self.docs.insert((folder.into(), name.into()), text.into());
         Ok(())
     }
 
-    fn delete(&mut self, namespace: &str, name: &str) -> Result<(), StorageError> {
-        self.docs.remove(&(namespace.to_string(), name.to_string()));
+    fn delete(&mut self, folder: &str, name: &str) -> Result<(), StorageError> {
+        self.docs.remove(&(folder.to_string(), name.to_string()));
         Ok(())
     }
 
@@ -286,15 +376,18 @@ impl Backend for MemoryBackend {
     }
 }
 
+/// The platform's backend, else why not and the memory to run on instead.
 #[cfg(target_arch = "wasm32")]
-fn platform_backend() -> Result<Box<dyn Backend>, StorageError> {
-    web::LocalStorage::open().map(|b| Box::new(b) as Box<dyn Backend>)
+fn platform_backend() -> Result<Box<dyn Backend>, (StorageError, MemoryBackend)> {
+    web::opened()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn platform_backend() -> Result<Box<dyn Backend>, StorageError> {
-    let dir = data_dir().ok_or_else(|| StorageError::Unavailable("no user data directory on this platform".into()))?;
-    Ok(Box::new(FileBackend::new(dir)))
+fn platform_backend() -> Result<Box<dyn Backend>, (StorageError, MemoryBackend)> {
+    match data_dir() {
+        Some(dir) => Ok(Box::new(FileBackend::new(dir))),
+        None => Err((StorageError::Unavailable("no user data directory on this platform".into()), MemoryBackend::default())),
+    }
 }
 
 /// The game's directory in the user's data directory: `$XDG_DATA_HOME/space-game` (else
@@ -316,8 +409,8 @@ pub fn data_dir() -> Option<std::path::PathBuf> {
     base.map(|b| b.join("space-game"))
 }
 
-/// Documents as files: `<root>/<namespace>/<name>.ron`. Writes go to a temporary file first and are renamed
-/// into place, so a crash never leaves half a document.
+/// Documents as files: `<root>/<namespace>/<name>.ron`, a document's parts `<root>/<namespace>/<name>/<part>.ron`.
+/// Writes go to a temporary file first and are renamed into place, so a crash never leaves half a document.
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug)]
 pub struct FileBackend {
@@ -330,8 +423,12 @@ impl FileBackend {
         Self { root: root.into() }
     }
 
-    fn path(&self, namespace: &str, name: &str) -> std::path::PathBuf {
-        self.root.join(namespace).join(format!("{name}.ron"))
+    fn dir(&self, folder: &str) -> std::path::PathBuf {
+        folder.split('/').fold(self.root.clone(), |dir, segment| dir.join(segment))
+    }
+
+    fn path(&self, folder: &str, name: &str) -> std::path::PathBuf {
+        self.dir(folder).join(format!("{name}.ron"))
     }
 }
 
@@ -342,8 +439,8 @@ fn io_error(e: std::io::Error) -> StorageError {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Backend for FileBackend {
-    fn list(&self, namespace: &str) -> Result<Vec<String>, StorageError> {
-        let dir = match std::fs::read_dir(self.root.join(namespace)) {
+    fn list(&self, folder: &str) -> Result<Vec<String>, StorageError> {
+        let dir = match std::fs::read_dir(self.dir(folder)) {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(io_error(e)),
@@ -362,26 +459,32 @@ impl Backend for FileBackend {
         Ok(names)
     }
 
-    fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, StorageError> {
-        match std::fs::read_to_string(self.path(namespace, name)) {
+    fn read(&self, folder: &str, name: &str) -> Result<Option<String>, StorageError> {
+        match std::fs::read_to_string(self.path(folder, name)) {
             Ok(t) => Ok(Some(t)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(io_error(e)),
         }
     }
 
-    fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), StorageError> {
-        let path = self.path(namespace, name);
-        std::fs::create_dir_all(self.root.join(namespace)).map_err(io_error)?;
+    fn write(&mut self, folder: &str, name: &str, text: &str) -> Result<(), StorageError> {
+        let path = self.path(folder, name);
+        std::fs::create_dir_all(self.dir(folder)).map_err(io_error)?;
         let tmp = path.with_extension("ron.tmp");
         std::fs::write(&tmp, text).map_err(io_error)?;
         std::fs::rename(&tmp, &path).map_err(io_error)
     }
 
-    fn delete(&mut self, namespace: &str, name: &str) -> Result<(), StorageError> {
-        match std::fs::remove_file(self.path(namespace, name)) {
+    fn delete(&mut self, folder: &str, name: &str) -> Result<(), StorageError> {
+        match std::fs::remove_file(self.path(folder, name)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io_error(e)),
-            _ => Ok(()),
+            _ => {
+                // A document's last part gone: its folder goes too (it fails while parts are left).
+                if folder.contains('/') {
+                    let _ = std::fs::remove_dir(self.dir(folder));
+                }
+                Ok(())
+            }
         }
     }
 
@@ -390,27 +493,592 @@ impl Backend for FileBackend {
     }
 }
 
+/// Writing behind, platform-free (the web drives it with IndexedDB, the tests with a fake): every document in
+/// memory, read once at start, so reads and lists never wait; a write or delete changes the memory at once and marks
+/// its key; [`WriteBehind::take`] hands the marked keys out as batches to commit, and [`WriteBehind::done`] hears how
+/// each ended. The platform commits batches in the order they were taken (IndexedDB runs read-write transactions on
+/// one store in the order they were made), and a batch writes each key's text as it is when the batch is taken, so
+/// the last write of a key wins and a delete after a write deletes. A failed batch's keys wait and go out again with
+/// the next batch that deletes nothing, and after any batch that commits (a delete that made room), so the stored
+/// documents catch up with memory once there is room again.
+#[cfg(any(target_arch = "wasm32", test))]
+mod behind {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use super::{StorageError, valid_name};
+
+    #[derive(Default)]
+    pub(crate) struct WriteBehind {
+        /// Every document: its key (`folder/name`) and its stored text.
+        docs: BTreeMap<String, String>,
+        /// Changed since the last batch was taken.
+        dirty: BTreeSet<String>,
+        /// Keys a failed batch left unsaved, written again with a later batch.
+        unsaved: BTreeSet<String>,
+        /// Batches out: their keys.
+        flying: BTreeMap<u64, Vec<String>>,
+        next: u64,
+        /// Why the last batch that ended failed, if it did.
+        failure: Option<StorageError>,
+        /// The documents' text, in bytes.
+        bytes: u64,
+    }
+
+    /// Keys to commit together: first the ones to remove (they make room), then the ones to write with their text.
+    #[derive(Debug, PartialEq)]
+    pub(crate) struct Batch {
+        pub id: u64,
+        pub deletes: Vec<String>,
+        pub puts: Vec<(String, String)>,
+    }
+
+    pub(crate) fn key(folder: &str, name: &str) -> String {
+        format!("{folder}/{name}")
+    }
+
+    impl WriteBehind {
+        pub fn new(docs: BTreeMap<String, String>) -> Self {
+            let bytes = docs.values().map(|t| t.len() as u64).sum();
+            Self { docs, bytes, ..Self::default() }
+        }
+
+        /// The documents directly in a folder (a document's parts are in a folder of their own), sorted.
+        pub fn list(&self, folder: &str) -> Vec<String> {
+            let prefix = format!("{folder}/");
+            self.docs
+                .range(prefix.clone()..)
+                .take_while(|(k, _)| k.starts_with(&prefix))
+                .map(|(k, _)| &k[prefix.len()..])
+                .filter(|name| valid_name(name))
+                .map(str::to_string)
+                .collect()
+        }
+
+        pub fn read(&self, key: &str) -> Option<&String> {
+            self.docs.get(key)
+        }
+
+        pub fn write(&mut self, key: String, text: String) {
+            self.bytes += text.len() as u64;
+            if let Some(old) = self.docs.insert(key.clone(), text) {
+                self.bytes -= old.len() as u64;
+            }
+            self.dirty.insert(key);
+        }
+
+        pub fn delete(&mut self, key: String) {
+            if let Some(old) = self.docs.remove(&key) {
+                self.bytes -= old.len() as u64;
+            }
+            self.dirty.insert(key);
+        }
+
+        /// The changes to commit, as at most two batches (the deletes, then the writes); nothing when nothing changed.
+        /// Unless something is deleted, the writes take along the keys a failed batch left unsaved (and no batch out
+        /// holds); a delete goes first on its own, so the room it makes is there when they are tried again
+        /// ([`WriteBehind::retry_due`]).
+        pub fn take(&mut self) -> Vec<Batch> {
+            let deleting = self.dirty.iter().any(|k| !self.docs.contains_key(k));
+            let retry: Vec<String> = if deleting { Vec::new() } else { self.retry() };
+            let keys: BTreeSet<String> = std::mem::take(&mut self.dirty).into_iter().chain(retry).collect();
+            let (puts, deletes): (Vec<String>, Vec<String>) = keys.into_iter().partition(|k| self.docs.contains_key(k));
+            let puts: Vec<(String, String)> = puts.into_iter().map(|k| (k.clone(), self.docs[&k].clone())).collect();
+            let mut batches = Vec::new();
+            for (deletes, puts) in [(deletes, Vec::new()), (Vec::new(), puts)] {
+                if deletes.is_empty() && puts.is_empty() {
+                    continue;
+                }
+                let id = self.next;
+                self.next += 1;
+                self.flying.insert(id, deletes.iter().cloned().chain(puts.iter().map(|(k, _)| k.clone())).collect());
+                batches.push(Batch { id, deletes, puts });
+            }
+            batches
+        }
+
+        /// The unsaved keys no batch out holds.
+        fn retry(&self) -> Vec<String> {
+            let out: BTreeSet<&String> = self.flying.values().flatten().collect();
+            self.unsaved.iter().filter(|k| !out.contains(k)).cloned().collect()
+        }
+
+        /// A batch committed while keys wait: they are to go out again now (the platform takes a batch).
+        pub fn retry_due(&self) -> bool {
+            self.failure.is_none() && !self.retry().is_empty()
+        }
+
+        /// Batch `id` was committed, or failed: its keys wait for a later batch. A commit ends the failure (the
+        /// storage takes writes again); what is still unsaved goes out with the next batch.
+        pub fn done(&mut self, id: u64, result: Result<(), StorageError>) {
+            let Some(keys) = self.flying.remove(&id) else { return };
+            match result {
+                Ok(()) => {
+                    for k in &keys {
+                        self.unsaved.remove(k);
+                    }
+                    self.failure = None;
+                }
+                Err(e) => {
+                    self.unsaved.extend(keys);
+                    self.failure = Some(e);
+                }
+            }
+        }
+
+        pub fn failure(&self) -> Option<&StorageError> {
+            self.failure.as_ref()
+        }
+
+        /// Whether `key` or one of its parts (`key/…`) is unsaved.
+        pub fn waiting(&self, key: &str) -> bool {
+            let parts = format!("{key}/");
+            self.unsaved.contains(key) || self.unsaved.range(parts.clone()..).next().is_some_and(|k| k.starts_with(&parts))
+        }
+
+        pub fn bytes(&self) -> u64 {
+            self.bytes
+        }
+    }
+}
+
+/// Moving the web's documents out of the local storage (where they were kept until 16 Oct 2026) into IndexedDB,
+/// once, before the game first runs on it (ADR-0041). Platform-free: the web runs it on the browser's stores
+/// ([`web`]), the tests on fakes.
+///
+/// Every old document is copied, read back and compared; only then is the move marked done in the new store, and
+/// only after that are the old copies removed, each only when the new store holds the same text. Closed at any
+/// point, the next start finds it as it was left: unmarked, it copies again (the game never ran on the new store,
+/// so nothing there is newer); marked, it only removes what is left of the old copies. An old document whose text
+/// differs from the new store's after the move (a tab of an older build still open and writing) is left where it
+/// is, untouched, and named.
+#[cfg(any(target_arch = "wasm32", test))]
+mod moving {
+    use std::collections::BTreeMap;
+
+    use super::StorageError;
+
+    /// The old store: its documents by key (`namespace/name`).
+    pub(super) trait OldStore {
+        fn keys(&self) -> Vec<String>;
+        fn get(&self, key: &str) -> Option<String>;
+        fn remove(&mut self, key: &str) -> Result<(), StorageError>;
+    }
+
+    /// The new store.
+    pub(super) trait NewStore {
+        /// Whether the move was marked done.
+        async fn moved(&mut self) -> Result<bool, StorageError>;
+        /// Writes documents, all or none.
+        async fn put(&mut self, docs: &[(String, String)]) -> Result<(), StorageError>;
+        /// Every document.
+        async fn all(&mut self) -> Result<BTreeMap<String, String>, StorageError>;
+        async fn mark_moved(&mut self) -> Result<(), StorageError>;
+    }
+
+    /// What the move did, and the new store's documents after it (the game's).
+    #[derive(Debug)]
+    pub(super) struct Moved {
+        pub docs: BTreeMap<String, String>,
+        pub copied: usize,
+        pub removed: usize,
+        /// Old documents left as they were: written after the move.
+        pub kept: Vec<String>,
+        /// Old copies that didn't go (the next start removes them).
+        pub stayed: Vec<(String, StorageError)>,
+    }
+
+    pub(super) async fn run(old: &mut impl OldStore, new: &mut impl NewStore) -> Result<Moved, StorageError> {
+        let first = !new.moved().await?;
+        let found: Vec<(String, String)> = old.keys().into_iter().filter_map(|k| old.get(&k).map(|t| (k, t))).collect();
+        if first && !found.is_empty() {
+            new.put(&found).await?;
+        }
+        let docs = new.all().await?;
+        let (same, kept): (Vec<_>, Vec<_>) = found.into_iter().partition(|(k, t)| docs.get(k) == Some(t));
+        let kept: Vec<String> = kept.into_iter().map(|(k, _)| k).collect();
+        if first {
+            if let Some(k) = kept.first() {
+                return Err(StorageError::Io(format!("{k} didn't read back from IndexedDB as it was written; the old storage stays")));
+            }
+            new.mark_moved().await?;
+        }
+        let (mut removed, mut stayed) = (0, Vec::new());
+        for (k, _) in &same {
+            match old.remove(k) {
+                Ok(()) => removed += 1,
+                Err(e) => stayed.push((k.clone(), e)),
+            }
+        }
+        Ok(Moved { docs, copied: if first { same.len() } else { 0 }, removed, kept, stayed })
+    }
+}
+
+/// The web's storage: IndexedDB (ADR-0041), database `space-game` with the documents in `docs` (keys
+/// `namespace/name`, the text as it is stored) and the move's mark in `meta`. It belongs to the origin (scheme, host
+/// and port: the copies served on :8080 and :8081 don't share it); the browser's quota is a share of the disk, not
+/// local storage's 5 MB.
+///
+/// `preload` (awaited by `main` before the app is built) opens it, moves the old local storage's documents in
+/// ([`moving`]) and reads every document into memory ([`behind`]). The game's calls then never wait: writes are
+/// kept in memory at once and committed behind them, what a frame writes in one transaction (a microtask at the
+/// end of the frame's task), so a lab generation's part and head are kept together or not at all. A failed
+/// transaction (the quota: `QuotaExceededError`) comes back with the next write and through [`Backend::waiting`].
+///
+/// When the page goes away (`pagehide`) or is hidden (`visibilitychange`), the documents kept for leaving are
+/// written and every change still in memory is committed right then. The browser finishes a transaction that was
+/// committed before the page went away (Chromium: also on a reload or a closed tab, checked in the headless
+/// browser); a crash or a killed tab loses what had not committed, at most the last frame's writes.
 #[cfg(target_arch = "wasm32")]
 mod web {
     use std::cell::{Cell, RefCell};
     use std::collections::BTreeMap;
 
-    use wasm_bindgen::JsCast;
+    use bevy::prelude::*;
+    use js_sys::{Array, Promise, Reflect};
     use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::{JsCast, JsValue};
+    use wasm_bindgen_futures::{JsFuture, spawn_local};
+    use web_sys::{IdbDatabase, IdbRequest, IdbTransaction, IdbTransactionMode};
 
-    use super::{Backend, StorageError};
+    use super::behind::{Batch, WriteBehind, key};
+    use super::moving::{self, NewStore, OldStore};
+    use super::{Backend, MemoryBackend, StorageError, Usage, valid_name};
 
-    /// Every key starts with this, so other pages of the origin don't mix in.
-    const PREFIX: &str = "space-game/";
+    const DB: &str = "space-game";
+    const VERSION: u32 = 1;
+    const DOCS: &str = "docs";
+    const META: &str = "meta";
+    const MOVED: &str = "moved-from-local-storage";
+    /// The old local storage's keys began with this.
+    const OLD_PREFIX: &str = "space-game/";
+
+    /// The open database and what is written behind it.
+    struct Open {
+        db: IdbDatabase,
+        docs: WriteBehind,
+        /// Transactions committing, with their batch.
+        flying: Vec<(IdbTransaction, u64)>,
+        /// A flush is queued as a microtask.
+        queued: bool,
+        /// Documents to write if the page goes away before their next write: key → its text, made then.
+        on_leave: BTreeMap<String, Box<dyn FnOnce() -> String>>,
+        /// The browser's estimate (used, quota), and whether one is being asked for.
+        estimate: Option<(u64, u64)>,
+        estimating: bool,
+    }
+
+    /// The handlers every transaction and flush shares, made once.
+    struct Handlers {
+        complete: Closure<dyn FnMut(web_sys::Event)>,
+        abort: Closure<dyn FnMut(web_sys::Event)>,
+        flush: Closure<dyn FnMut(JsValue)>,
+    }
 
     thread_local! {
-        /// Documents to write if the page goes away before their next write: key → its text, made then.
-        static ON_LEAVE: RefCell<BTreeMap<String, Box<dyn FnOnce() -> String>>> = RefCell::new(BTreeMap::new());
+        static OPEN: RefCell<Option<Open>> = const { RefCell::new(None) };
+        static HANDLERS: RefCell<Option<Handlers>> = const { RefCell::new(None) };
+        /// Why the database didn't open, and the old documents to run on in memory.
+        static FAILED: RefCell<Option<(StorageError, BTreeMap<String, String>)>> = const { RefCell::new(None) };
         static LISTENING: Cell<bool> = const { Cell::new(false) };
     }
 
-    /// Writes the kept documents when the page goes away (`pagehide`: a reload, a closed tab, another page) or is
-    /// hidden (a background tab gets no frames and may be discarded without `pagehide`).
+    fn with_open<R>(f: impl FnOnce(&mut Open) -> R) -> Option<R> {
+        OPEN.with_borrow_mut(|o| o.as_mut().map(f))
+    }
+
+    /// Opens the storage before the game starts: the database, the move from the local storage (once) and every
+    /// document into memory. If it fails, the game runs on the old documents in memory, unsaved (`Storage::fallback`
+    /// says why).
+    pub async fn preload() {
+        let mut old = OldLocal::open();
+        match open(&mut old).await {
+            Ok(open) => {
+                OPEN.with_borrow_mut(|o| *o = Some(open));
+                HANDLERS.with_borrow_mut(|h| {
+                    *h = Some(Handlers {
+                        complete: Closure::new(|e: web_sys::Event| finished(e, true)),
+                        abort: Closure::new(|e: web_sys::Event| finished(e, false)),
+                        flush: Closure::new(|_: JsValue| {
+                            with_open(flush);
+                        }),
+                    })
+                });
+                persist();
+                with_open(estimate);
+            }
+            Err(e) => {
+                console(true, &format!("storage: IndexedDB didn't open: {e}; the game runs on the old documents in memory"));
+                FAILED.with_borrow_mut(|f| *f = Some((e, old.docs())));
+            }
+        }
+    }
+
+    async fn open(old: &mut OldLocal) -> Result<Open, StorageError> {
+        let db = open_db().await?;
+        let moved = moving::run(old, &mut Idb(&db)).await?;
+        if moved.copied > 0 || moved.removed > 0 {
+            console(false, &format!("storage: moved {} documents from the local storage into IndexedDB, {} old copies removed", moved.copied, moved.removed));
+        }
+        if !moved.kept.is_empty() {
+            console(true, &format!("storage: left in the local storage, written there after the move (by a tab of an older build?): {}", moved.kept.join(", ")));
+        }
+        for (k, e) in &moved.stayed {
+            console(true, &format!("storage: the old copy of {k} stays until the next start: {e}"));
+        }
+        Ok(Open { db, docs: WriteBehind::new(moved.docs), flying: Vec::new(), queued: false, on_leave: BTreeMap::new(), estimate: None, estimating: false })
+    }
+
+    /// A line in the browser's console: the game's log isn't up before the app is built.
+    fn console(warn: bool, line: &str) {
+        match warn {
+            true => web_sys::console::warn_1(&line.into()),
+            false => web_sys::console::log_1(&line.into()),
+        }
+    }
+
+    /// The backend `Storage::open` gets: the database `preload` opened, else memory with the documents it found.
+    pub fn opened() -> Result<Box<dyn Backend>, (StorageError, MemoryBackend)> {
+        if OPEN.with_borrow(Option::is_some) {
+            return Ok(Box::new(IndexedDb));
+        }
+        let (e, docs) = FAILED.with_borrow_mut(Option::take).unwrap_or_else(|| (StorageError::Unavailable("the storage wasn't opened before the game started".into()), BTreeMap::new()));
+        let mut memory = MemoryBackend::default();
+        for (k, text) in docs {
+            if let Some((folder, name)) = k.rsplit_once('/') {
+                let _ = memory.write(folder, name, &text);
+            }
+        }
+        Err((e, memory))
+    }
+
+    fn js_error(e: JsValue) -> StorageError {
+        match e.dyn_into::<web_sys::DomException>() {
+            Ok(d) => dom_error(d),
+            Err(e) => StorageError::Io(format!("{e:?}")),
+        }
+    }
+
+    fn dom_error(d: web_sys::DomException) -> StorageError {
+        match d.name().as_str() {
+            "QuotaExceededError" => StorageError::Full,
+            _ => StorageError::Io(d.message()),
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Opening and the move
+
+    async fn open_db() -> Result<IdbDatabase, StorageError> {
+        let unavailable = |why: &str| StorageError::Unavailable(format!("the browser's IndexedDB {why}"));
+        let factory = web_sys::window().and_then(|w| w.indexed_db().ok().flatten()).ok_or_else(|| unavailable("is blocked"))?;
+        let req = factory.open_with_u32(DB, VERSION).map_err(js_error)?;
+        // A new database gets its stores.
+        let upgrade = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
+            let db = e.target().and_then(|t| t.dyn_into::<web_sys::IdbOpenDbRequest>().ok()).and_then(|r| r.result().ok()).and_then(|r| r.dyn_into::<IdbDatabase>().ok());
+            if let Some(db) = db {
+                for store in [DOCS, META] {
+                    if !db.object_store_names().contains(store) {
+                        let _ = db.create_object_store(store);
+                    }
+                }
+            }
+        });
+        req.set_onupgradeneeded(Some(upgrade.as_ref().unchecked_ref()));
+        let db = request(&req).await;
+        req.set_onupgradeneeded(None);
+        db?.dyn_into::<IdbDatabase>().map_err(|_| unavailable("gave no database"))
+    }
+
+    /// A request's result, once it succeeds.
+    async fn request(req: &IdbRequest) -> Result<JsValue, StorageError> {
+        let done = Promise::new(&mut |resolve, reject| {
+            req.set_onsuccess(Some(&resolve));
+            req.set_onerror(Some(&reject));
+        });
+        let ended = JsFuture::from(done).await;
+        req.set_onsuccess(None);
+        req.set_onerror(None);
+        match ended {
+            Ok(_) => req.result().map_err(js_error),
+            Err(_) => Err(req.error().ok().flatten().map_or_else(|| StorageError::Io("a request failed".into()), dom_error)),
+        }
+    }
+
+    /// A transaction, once it committed.
+    async fn committed(tx: &IdbTransaction) -> Result<(), StorageError> {
+        let done = Promise::new(&mut |resolve, reject| {
+            tx.set_oncomplete(Some(&resolve));
+            tx.set_onabort(Some(&reject));
+        });
+        match JsFuture::from(done).await {
+            Ok(_) => Ok(()),
+            Err(_) => Err(tx.error().map_or_else(|| StorageError::Io("a write was cut off".into()), dom_error)),
+        }
+    }
+
+    /// The database as the move sees it.
+    struct Idb<'a>(&'a IdbDatabase);
+
+    impl Idb<'_> {
+        fn tx(&self, store: &str, mode: IdbTransactionMode) -> Result<(IdbTransaction, web_sys::IdbObjectStore), StorageError> {
+            let tx = self.0.transaction_with_str_and_mode(store, mode).map_err(js_error)?;
+            let s = tx.object_store(store).map_err(js_error)?;
+            Ok((tx, s))
+        }
+    }
+
+    impl NewStore for Idb<'_> {
+        async fn moved(&mut self) -> Result<bool, StorageError> {
+            let (_, meta) = self.tx(META, IdbTransactionMode::Readonly)?;
+            Ok(!request(&meta.get(&MOVED.into()).map_err(js_error)?).await?.is_undefined())
+        }
+
+        async fn put(&mut self, docs: &[(String, String)]) -> Result<(), StorageError> {
+            let (tx, store) = self.tx(DOCS, IdbTransactionMode::Readwrite)?;
+            for (k, text) in docs {
+                store.put_with_key(&text.into(), &k.into()).map_err(js_error)?;
+            }
+            committed(&tx).await
+        }
+
+        async fn all(&mut self) -> Result<BTreeMap<String, String>, StorageError> {
+            let (_, store) = self.tx(DOCS, IdbTransactionMode::Readonly)?;
+            let keys = store.get_all_keys().map_err(js_error)?;
+            let values = store.get_all().map_err(js_error)?;
+            let (keys, values) = (Array::from(&request(&keys).await?), Array::from(&request(&values).await?));
+            Ok(keys.iter().zip(values.iter()).filter_map(|(k, v)| Some((k.as_string()?, v.as_string()?))).collect())
+        }
+
+        async fn mark_moved(&mut self) -> Result<(), StorageError> {
+            let (tx, meta) = self.tx(META, IdbTransactionMode::Readwrite)?;
+            meta.put_with_key(&js_sys::Date::now().into(), &MOVED.into()).map_err(js_error)?;
+            committed(&tx).await
+        }
+    }
+
+    /// The old local storage (kept only to move its documents out and remove them).
+    struct OldLocal(Option<web_sys::Storage>);
+
+    impl OldLocal {
+        fn open() -> Self {
+            OldLocal(web_sys::window().and_then(|w| w.local_storage().ok().flatten()))
+        }
+
+        /// Its documents, to run on in memory when the database doesn't open.
+        fn docs(&self) -> BTreeMap<String, String> {
+            self.keys().into_iter().filter_map(|k| self.get(&k).map(|t| (k, t))).collect()
+        }
+    }
+
+    impl OldStore for OldLocal {
+        /// The game's keys without their prefix: `namespace/name`, both valid (other pages' keys stay out).
+        fn keys(&self) -> Vec<String> {
+            let Some(s) = &self.0 else { return Vec::new() };
+            let n = s.length().unwrap_or(0);
+            let mut keys: Vec<String> = (0..n)
+                .filter_map(|i| s.key(i).ok().flatten())
+                .filter_map(|k| k.strip_prefix(OLD_PREFIX).map(str::to_string))
+                .filter(|k| k.split_once('/').is_some_and(|(ns, name)| valid_name(ns) && valid_name(name)))
+                .collect();
+            keys.sort();
+            keys
+        }
+
+        fn get(&self, key: &str) -> Option<String> {
+            self.0.as_ref()?.get_item(&format!("{OLD_PREFIX}{key}")).ok().flatten()
+        }
+
+        fn remove(&mut self, key: &str) -> Result<(), StorageError> {
+            match &self.0 {
+                Some(s) => s.remove_item(&format!("{OLD_PREFIX}{key}")).map_err(js_error),
+                None => Ok(()),
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Writing behind
+
+    /// Something changed: a flush is queued as a microtask, which runs when the frame's task ends, so everything a
+    /// frame writes commits in one transaction.
+    fn changed(o: &mut Open) {
+        if o.queued {
+            return;
+        }
+        o.queued = true;
+        HANDLERS.with_borrow(|h| {
+            if let Some(h) = h {
+                let _ = Promise::resolve(&JsValue::UNDEFINED).then(&h.flush);
+            }
+        });
+    }
+
+    /// Commits what changed, one transaction a batch.
+    fn flush(o: &mut Open) {
+        o.queued = false;
+        for batch in o.docs.take() {
+            match transaction(&o.db, &batch) {
+                Ok(tx) => {
+                    HANDLERS.with_borrow(|h| {
+                        if let Some(h) = h {
+                            tx.set_oncomplete(Some(h.complete.as_ref().unchecked_ref()));
+                            tx.set_onabort(Some(h.abort.as_ref().unchecked_ref()));
+                        }
+                    });
+                    o.flying.push((tx, batch.id));
+                }
+                Err(e) => {
+                    warn!("storage: a write failed: {e}");
+                    o.docs.done(batch.id, Err(e));
+                }
+            }
+        }
+    }
+
+    fn transaction(db: &IdbDatabase, b: &Batch) -> Result<IdbTransaction, StorageError> {
+        let tx = db.transaction_with_str_and_mode(DOCS, IdbTransactionMode::Readwrite).map_err(js_error)?;
+        let fill = || -> Result<(), JsValue> {
+            let store = tx.object_store(DOCS)?;
+            for k in &b.deletes {
+                store.delete(&k.into())?;
+            }
+            for (k, text) in &b.puts {
+                store.put_with_key(&text.into(), &k.into())?;
+            }
+            Ok(())
+        };
+        if let Err(e) = fill() {
+            let _ = tx.abort();
+            return Err(js_error(e));
+        }
+        // Committed now, not when the task ends: a page going away has its last changes on their way. Called by
+        // name (web-sys marks its binding deprecated); browsers without `commit` commit at the task's end anyway.
+        if let Some(commit) = Reflect::get(&tx, &"commit".into()).ok().and_then(|f| f.dyn_into::<js_sys::Function>().ok()) {
+            let _ = commit.call0(&tx);
+        }
+        Ok(tx)
+    }
+
+    /// A transaction committed or failed: its batch hears it.
+    fn finished(e: web_sys::Event, ok: bool) {
+        let Some(tx) = e.target().and_then(|t| t.dyn_into::<IdbTransaction>().ok()) else { return };
+        with_open(|o| {
+            let Some(k) = o.flying.iter().position(|(t, _)| t == &tx) else { return };
+            let (_, id) = o.flying.remove(k);
+            let result = if ok { Ok(()) } else { Err(tx.error().map_or_else(|| StorageError::Io("a write was cut off".into()), dom_error)) };
+            match &result {
+                Ok(()) => estimate(o),
+                Err(e) => warn!("storage: a write failed: {e}"),
+            }
+            o.docs.done(id, result);
+            if o.docs.retry_due() {
+                changed(o);
+            }
+        });
+    }
+
+    /// Writes the kept documents and commits every change when the page goes away (`pagehide`: a reload, a closed
+    /// tab, another page) or is hidden (a background tab gets no frames and may be discarded without `pagehide`).
     fn listen() {
         if LISTENING.replace(true) {
             return;
@@ -421,12 +1089,12 @@ mod web {
             if e.type_() != "pagehide" && !hidden {
                 return;
             }
-            let kept = ON_LEAVE.with_borrow_mut(std::mem::take);
-            if let Ok(s) = store() {
-                for (key, text) in kept {
-                    let _ = s.set_item(&key, &text());
+            with_open(|o| {
+                for (k, text) in std::mem::take(&mut o.on_leave) {
+                    o.docs.write(k, text());
                 }
-            }
+                flush(o);
+            });
         });
         for event in ["pagehide", "visibilitychange"] {
             let _ = window.add_event_listener_with_callback(event, on_leave.as_ref().unchecked_ref());
@@ -435,79 +1103,104 @@ mod web {
         on_leave.forget();
     }
 
-    /// The browser's local storage (`localStorage`). It belongs to the origin (scheme, host and port: the
-    /// copies served on :8080 and :8081 don't share it) and holds about 5 MB per origin.
-    pub struct LocalStorage;
-
-    impl LocalStorage {
-        pub fn open() -> Result<Self, StorageError> {
-            store().map(|_| Self)
-        }
+    /// The browser's storage manager, which only secure addresses (https, localhost) have.
+    fn manager() -> Option<web_sys::StorageManager> {
+        let navigator = web_sys::window()?.navigator();
+        Reflect::get(&navigator, &"storage".into()).ok().filter(|m| !m.is_undefined() && !m.is_null()).map(JsCast::unchecked_into)
     }
 
-    fn store() -> Result<web_sys::Storage, StorageError> {
-        let unavailable = || StorageError::Unavailable("the browser's local storage is blocked".into());
-        let window = web_sys::window().ok_or_else(unavailable)?;
-        window.local_storage().ok().flatten().ok_or_else(unavailable)
+    /// Asks the browser to keep the storage when the disk runs low (best effort: it may say no, and says nothing on
+    /// an insecure address).
+    fn persist() {
+        let Some(p) = manager().and_then(|m| m.persist().ok()) else { return };
+        spawn_local(async move {
+            if let Ok(granted) = JsFuture::from(p).await {
+                info!("storage: kept when the disk runs low: {}", if granted.as_bool() == Some(true) { "yes" } else { "no (the browser's choice)" });
+            }
+        });
     }
 
-    fn key(namespace: &str, name: &str) -> String {
-        format!("{PREFIX}{namespace}/{name}")
+    /// Asks for the browser's estimate of what the origin uses and may use (after the start and every commit).
+    fn estimate(o: &mut Open) {
+        if o.estimating {
+            return;
+        }
+        let Some(p) = manager().and_then(|m| m.estimate().ok()) else { return };
+        o.estimating = true;
+        spawn_local(async move {
+            let got = JsFuture::from(p).await.ok().map(JsCast::unchecked_into::<web_sys::StorageEstimate>);
+            with_open(|o| {
+                o.estimating = false;
+                if let Some(e) = got {
+                    o.estimate = Some((e.get_usage().unwrap_or(0.0) as u64, e.get_quota().unwrap_or(0.0) as u64));
+                }
+            });
+        });
     }
 
-    fn js_error(e: wasm_bindgen::JsValue) -> StorageError {
-        match e.dyn_ref::<web_sys::DomException>() {
-            Some(d) if d.name() == "QuotaExceededError" => StorageError::Full,
-            Some(d) => StorageError::Io(d.message()),
-            None => StorageError::Io(format!("{e:?}")),
-        }
-    }
+    /// The backend: the documents in memory, written behind into the database (see the module docs).
+    pub struct IndexedDb;
 
-    impl Backend for LocalStorage {
-        fn list(&self, namespace: &str) -> Result<Vec<String>, StorageError> {
-            let s = store()?;
-            let prefix = key(namespace, "");
-            let n = s.length().map_err(js_error)?;
-            let mut names: Vec<String> = (0..n)
-                .filter_map(|i| s.key(i).ok().flatten())
-                .filter_map(|k| k.strip_prefix(&prefix).map(str::to_string))
-                .filter(|n| super::valid_name(n))
-                .collect();
-            names.sort();
-            Ok(names)
+    impl Backend for IndexedDb {
+        fn list(&self, folder: &str) -> Result<Vec<String>, StorageError> {
+            Ok(with_open(|o| o.docs.list(folder)).unwrap_or_default())
         }
 
-        fn read(&self, namespace: &str, name: &str) -> Result<Option<String>, StorageError> {
-            store()?.get_item(&key(namespace, name)).map_err(js_error)
+        fn read(&self, folder: &str, name: &str) -> Result<Option<String>, StorageError> {
+            Ok(with_open(|o| o.docs.read(&key(folder, name)).cloned()).flatten())
         }
 
-        fn write(&mut self, namespace: &str, name: &str, text: &str) -> Result<(), StorageError> {
-            let key = key(namespace, name);
-            store()?.set_item(&key, text).map_err(js_error)?;
-            // Written: nothing is waiting for the page to go away.
-            ON_LEAVE.with_borrow_mut(|kept| kept.remove(&key));
+        fn write(&mut self, folder: &str, name: &str, text: &str) -> Result<(), StorageError> {
+            with_open(|o| {
+                let k = key(folder, name);
+                // Written: nothing is waiting for the page to go away.
+                o.on_leave.remove(&k);
+                o.docs.write(k, text.to_string());
+                changed(o);
+            });
             Ok(())
         }
 
-        fn delete(&mut self, namespace: &str, name: &str) -> Result<(), StorageError> {
-            store()?.remove_item(&key(namespace, name)).map_err(js_error)
+        fn delete(&mut self, folder: &str, name: &str) -> Result<(), StorageError> {
+            with_open(|o| {
+                let k = key(folder, name);
+                o.on_leave.remove(&k);
+                o.docs.delete(k);
+                changed(o);
+            });
+            Ok(())
         }
 
         fn location(&self) -> String {
             let origin = web_sys::window().and_then(|w| w.location().origin().ok()).unwrap_or_default();
-            format!("the browser's local storage of {origin}")
+            format!("the browser's IndexedDB of {origin}")
         }
 
         fn keeps_on_leave(&self) -> bool {
             true
         }
 
-        fn keep_on_leave(&mut self, namespace: &str, name: &str, text: Box<dyn FnOnce() -> String>) {
+        fn keep_on_leave(&mut self, folder: &str, name: &str, text: Box<dyn FnOnce() -> String>) {
             listen();
-            ON_LEAVE.with_borrow_mut(|kept| kept.insert(key(namespace, name), text));
+            with_open(|o| o.on_leave.insert(key(folder, name), text));
+        }
+
+        fn failure(&self) -> Option<StorageError> {
+            with_open(|o| o.docs.failure().cloned()).flatten()
+        }
+
+        fn waiting(&self, folder: &str, name: &str) -> bool {
+            with_open(|o| o.docs.waiting(&key(folder, name))).unwrap_or(false)
+        }
+
+        fn usage(&self) -> Option<Usage> {
+            with_open(|o| Usage { documents: o.docs.bytes(), estimate: o.estimate })
         }
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use web::preload;
 
 pub struct StoragePlugin;
 
@@ -519,6 +1212,84 @@ impl Plugin for StoragePlugin {
             None => info!("storage: {}", storage.location()),
         }
         app.insert_resource(storage);
+    }
+}
+
+/// The web's writing behind without the browser, for the tests of the crates over the storage.
+#[cfg(test)]
+pub(crate) mod testing {
+    use std::collections::BTreeMap;
+
+    use super::behind::{self, Batch, WriteBehind};
+    use super::{Backend, StorageError};
+
+    /// Commits batches into a fake database in order, the way IndexedDB runs them.
+    pub fn commit_in(db: &mut BTreeMap<String, String>, wb: &mut WriteBehind, batches: Vec<Batch>) {
+        for b in batches {
+            for k in &b.deletes {
+                db.remove(k);
+            }
+            db.extend(b.puts.iter().cloned());
+            wb.done(b.id, Ok(()));
+        }
+    }
+
+    /// The web's backend with a fake database (shared with the test, which commits or refuses its batches).
+    #[derive(Default)]
+    pub struct Behind(pub std::sync::Arc<std::sync::Mutex<(WriteBehind, BTreeMap<String, String>)>>);
+
+    impl Behind {
+        /// Commits what is out, and the retries a commit makes due; with `full` every batch that writes fails with
+        /// the quota.
+        pub fn commit(&self, full: bool) {
+            let mut guard = self.0.lock().unwrap();
+            let (wb, db) = &mut *guard;
+            loop {
+                let batches = wb.take();
+                if batches.is_empty() {
+                    break;
+                }
+                let mut failed = false;
+                for b in batches {
+                    if full && !b.puts.is_empty() {
+                        wb.done(b.id, Err(StorageError::Full));
+                        failed = true;
+                    } else {
+                        commit_in(db, wb, vec![b]);
+                    }
+                }
+                // A failure takes no retry (the web's waits for a commit or a write).
+                if failed {
+                    break;
+                }
+            }
+        }
+    }
+
+    impl Backend for Behind {
+        fn list(&self, folder: &str) -> Result<Vec<String>, StorageError> {
+            Ok(self.0.lock().unwrap().0.list(folder))
+        }
+        fn read(&self, folder: &str, name: &str) -> Result<Option<String>, StorageError> {
+            Ok(self.0.lock().unwrap().0.read(&behind::key(folder, name)).cloned())
+        }
+        fn write(&mut self, folder: &str, name: &str, text: &str) -> Result<(), StorageError> {
+            self.0.lock().unwrap().0.write(behind::key(folder, name), text.into());
+            Ok(())
+        }
+        fn delete(&mut self, folder: &str, name: &str) -> Result<(), StorageError> {
+            self.0.lock().unwrap().0.delete(behind::key(folder, name));
+            Ok(())
+        }
+        fn location(&self) -> String {
+            "behind".into()
+        }
+        fn failure(&self) -> Option<StorageError> {
+            self.0.lock().unwrap().0.failure().cloned()
+        }
+        fn waiting(&self, folder: &str, name: &str) -> bool {
+            self.0.lock().unwrap().0.waiting(&behind::key(folder, name))
+        }
     }
 }
 
@@ -556,10 +1327,22 @@ mod tests {
         storage.delete::<Note>("a").unwrap();
         storage.delete::<Note>("a").unwrap();
         assert_eq!(storage.list("notes").unwrap(), ["b"]);
+        // A document's parts: listed with it, not with the namespace; removed with `delete_parts`.
+        storage.write("b/g1", &Note("p1".into()), 21).unwrap();
+        storage.write("b/g0", &Note("p0".into()), 21).unwrap();
+        storage.write("b-2/g0", &Note("other".into()), 21).unwrap();
+        assert_eq!(storage.list("notes").unwrap(), ["b"]);
+        assert_eq!(storage.parts::<Note>("b").unwrap(), ["g0", "g1"]);
+        assert_eq!(storage.read::<Note>("b/g1").unwrap().unwrap().doc, Note("p1".into()));
+        storage.delete_parts::<Note>("b").unwrap();
+        storage.delete_parts::<Note>("b-2").unwrap();
+        assert_eq!(storage.parts::<Note>("b").unwrap(), Vec::<String>::new());
+        assert_eq!(storage.read::<Note>("b").unwrap().unwrap().doc, Note("two".into()));
         // Names are checked.
-        for bad in ["", "../x", "A", "a/b", "a b", &"x".repeat(65)] {
+        for bad in ["", "../x", "A", "a/b/c", "a/", "/a", "a/B", "a b", &"x".repeat(65)] {
             assert_eq!(storage.write(bad, &Note("x".into()), 0), Err(StorageError::BadName(bad.into())), "{bad}");
         }
+        assert!(storage.parts::<Note>("a/b").is_err());
     }
 
     #[test]
@@ -583,6 +1366,9 @@ mod tests {
         std::fs::write(dir.join("notes/Bad Name.ron"), "x").unwrap();
         assert_eq!(storage.list("notes").unwrap(), ["b"]);
         assert!(storage.location().contains("space-game-storage-test"));
+        // A part is a file in its document's folder.
+        storage.write("b/g0", &Note("p0".into()), 22).unwrap();
+        assert!(dir.join("notes/b/g0.ron").is_file());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -665,5 +1451,287 @@ mod tests {
         storage.set_aside::<Note>("missing", "missing-unread").unwrap();
         assert_eq!(storage.read::<Note>("missing-unread").unwrap(), None);
         assert!(matches!(storage.set_aside::<Note>("new", "../x"), Err(StorageError::BadName(_))));
+    }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Writing behind (the web's backend without the browser)
+
+    use std::collections::BTreeMap;
+
+    use super::behind::WriteBehind;
+    use super::moving::{self, NewStore, OldStore};
+    use super::testing::{Behind, commit_in as commit};
+
+    fn docs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    /// Reads and lists come from memory at once; what goes out is each key's last state: the last write wins, a
+    /// delete after a write deletes, a write after a delete writes; deletes go first, in a batch of their own.
+    #[test]
+    fn writes_behind_keep_the_last_state_of_each_key() {
+        let mut db = docs(&[("designs/a", "1"), ("lab/r", "head"), ("lab/r/g0", "part")]);
+        let mut wb = WriteBehind::new(db.clone());
+        assert_eq!(wb.bytes(), 1 + 4 + 4);
+        wb.write("designs/b".into(), "x".into());
+        wb.write("designs/b".into(), "y".into());
+        wb.delete("designs/a".into());
+        wb.write("lab/r/g1".into(), "part 1".into());
+        wb.write("lab/r-2".into(), "other".into());
+        assert_eq!(wb.list("designs"), ["b"]);
+        assert_eq!(wb.list("lab"), ["r", "r-2"], "a document's parts are not the namespace's");
+        assert_eq!(wb.list("lab/r"), ["g0", "g1"]);
+        assert_eq!(wb.read("designs/b").map(String::as_str), Some("y"));
+        assert_eq!(wb.bytes(), 1 + 4 + 4 + 6 + 5);
+        let batches = wb.take();
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].deletes, ["designs/a"]);
+        assert!(batches[0].puts.is_empty() && batches[1].deletes.is_empty());
+        assert_eq!(batches[1].puts.iter().find(|(k, _)| k == "designs/b").unwrap().1, "y");
+        commit(&mut db, &mut wb, batches);
+        assert!(wb.take().is_empty(), "nothing changed since");
+        // Written then deleted before it went out: a delete; deleted then written: a write.
+        wb.write("designs/c".into(), "c".into());
+        wb.delete("designs/c".into());
+        wb.delete("designs/b".into());
+        wb.write("designs/b".into(), "again".into());
+        let b = wb.take();
+        commit(&mut db, &mut wb, b);
+        // Two batches out at once commit in order: the later one's text stays.
+        wb.write("designs/b".into(), "first".into());
+        let one = wb.take();
+        wb.write("designs/b".into(), "second".into());
+        let two = wb.take();
+        commit(&mut db, &mut wb, one);
+        commit(&mut db, &mut wb, two);
+        let mem: BTreeMap<String, String> = ["designs", "lab", "lab/r"].iter().flat_map(|f| wb.list(f).into_iter().map(move |n| format!("{f}/{n}"))).map(|k| (k.clone(), wb.read(&k).unwrap().clone())).collect();
+        assert_eq!(db, mem, "the database holds what memory does");
+        assert_eq!(db["designs/b"], "second");
+        assert!(!db.contains_key("designs/c") && !db.contains_key("designs/a"));
+        assert!(wb.failure().is_none());
+    }
+
+    /// A failed batch (the quota) leaves its keys unsaved: they wait, are named, and go out again with the next
+    /// batch (once, not while a retry is out); deletes still go first on their own, so deleting makes room; once
+    /// everything is kept, the failure is gone.
+    #[test]
+    fn a_failed_batch_waits_and_goes_out_again() {
+        let mut db = BTreeMap::new();
+        let mut wb = WriteBehind::new(BTreeMap::new());
+        wb.write("lab/old".into(), "old run".into());
+        let b = wb.take();
+        commit(&mut db, &mut wb, b);
+        wb.write("lab/r/g0".into(), "a big part".into());
+        wb.write("lab/r".into(), "head".into());
+        let b = wb.take();
+        assert_eq!(b.len(), 1);
+        wb.done(b[0].id, Err(StorageError::Full));
+        assert_eq!(wb.failure(), Some(&StorageError::Full));
+        assert!(wb.waiting("lab/r") && !wb.waiting("lab/old") && !wb.waiting("lab/r-2"));
+        assert!(!wb.retry_due(), "nothing committed since");
+        // The player deletes a run: the delete goes on its own; once it committed (room made) the unsaved keys go
+        // out again.
+        wb.delete("lab/old".into());
+        let b = wb.take();
+        assert_eq!((b.len(), b[0].deletes.clone()), (1, vec!["lab/old".to_string()]));
+        db.remove("lab/old");
+        wb.done(b[0].id, Ok(()));
+        assert!(wb.failure().is_none() && wb.waiting("lab/r") && wb.retry_due(), "the storage takes writes again; they wait");
+        let b = wb.take();
+        assert_eq!(b[0].puts.len(), 2);
+        assert!(!wb.retry_due() && wb.take().is_empty(), "a retry out is not sent twice");
+        db.extend(b[0].puts.iter().cloned());
+        wb.done(b[0].id, Ok(()));
+        assert!(wb.failure().is_none() && !wb.waiting("lab/r"));
+        assert_eq!(db.keys().collect::<Vec<_>>(), ["lab/r", "lab/r/g0"]);
+        // A write while keys wait takes them along (when it deletes nothing).
+        wb.write("lab/r/g1".into(), "next".into());
+        let b = wb.take();
+        wb.done(b[0].id, Err(StorageError::Full));
+        wb.write("designs/a".into(), "small".into());
+        let b = wb.take();
+        assert_eq!(b[0].puts.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["designs/a", "lab/r/g1"]);
+    }
+
+    /// Through `Storage`: a write behind that failed comes back with the next write, `unsaved` names what waits,
+    /// deleting is never refused, and once a commit made room writes are fine and what waited is kept.
+    #[test]
+    fn a_failed_write_behind_reaches_the_caller() {
+        let backend = Behind::default();
+        let shared = Behind(backend.0.clone());
+        let mut storage = Storage::new(backend);
+        storage.write("a", &Note("one".into()), 1).unwrap();
+        shared.commit(true);
+        assert_eq!(storage.unsaved::<Note>("a"), Some(StorageError::Full));
+        assert_eq!(storage.unsaved::<Note>("b"), None);
+        assert_eq!(storage.write("b", &Note("two".into()), 2), Err(StorageError::Full), "the next write hears of it");
+        assert_eq!(storage.read::<Note>("b").unwrap().unwrap().doc, Note("two".into()), "kept in memory all the same");
+        storage.delete::<Note>("b").unwrap();
+        shared.commit(false);
+        assert_eq!(storage.unsaved::<Note>("a"), None);
+        storage.write("c", &Note("three".into()), 3).unwrap();
+        shared.commit(false);
+        let db = shared.0.lock().unwrap().1.clone();
+        assert_eq!(db.keys().collect::<Vec<_>>(), ["notes/a", "notes/c"]);
+    }
+
+    // -----------------------------------------------------------------------------------------------------
+    // The move from the local storage
+
+    /// The old local storage; its removals stop after `removals` (the page closed).
+    #[derive(Clone, Default)]
+    struct OldFake {
+        docs: BTreeMap<String, String>,
+        removals: Option<usize>,
+    }
+
+    impl OldStore for OldFake {
+        fn keys(&self) -> Vec<String> {
+            self.docs.keys().cloned().collect()
+        }
+        fn get(&self, key: &str) -> Option<String> {
+            self.docs.get(key).cloned()
+        }
+        fn remove(&mut self, key: &str) -> Result<(), StorageError> {
+            if let Some(n) = &mut self.removals {
+                if *n == 0 {
+                    return Err(StorageError::Io("the page closed".into()));
+                }
+                *n -= 1;
+            }
+            self.docs.remove(key);
+            Ok(())
+        }
+    }
+
+    /// IndexedDB: its operations stop after `ops` (the page closed); `garble` writes damaged text.
+    #[derive(Clone, Default)]
+    struct NewFake {
+        docs: BTreeMap<String, String>,
+        moved: bool,
+        ops: Option<usize>,
+        garble: bool,
+    }
+
+    impl NewFake {
+        fn op(&mut self) -> Result<(), StorageError> {
+            match &mut self.ops {
+                Some(0) => Err(StorageError::Io("the page closed".into())),
+                Some(n) => {
+                    *n -= 1;
+                    Ok(())
+                }
+                None => Ok(()),
+            }
+        }
+    }
+
+    impl NewStore for NewFake {
+        async fn moved(&mut self) -> Result<bool, StorageError> {
+            self.op()?;
+            Ok(self.moved)
+        }
+        async fn put(&mut self, docs: &[(String, String)]) -> Result<(), StorageError> {
+            self.op()?;
+            let garble = self.garble;
+            self.docs.extend(docs.iter().map(|(k, t)| (k.clone(), if garble { format!("{t}?") } else { t.clone() })));
+            Ok(())
+        }
+        async fn all(&mut self) -> Result<BTreeMap<String, String>, StorageError> {
+            self.op()?;
+            Ok(self.docs.clone())
+        }
+        async fn mark_moved(&mut self) -> Result<(), StorageError> {
+            self.op()?;
+            self.moved = true;
+            Ok(())
+        }
+    }
+
+    fn old_docs() -> BTreeMap<String, String> {
+        docs(&[("saves/career", "career"), ("designs/rim-skiff-copy", "design"), ("drydock/working", "working"), ("lab/evolving-rim-skiff", "run")])
+    }
+
+    fn moved(old: &mut OldFake, new: &mut NewFake) -> Result<moving::Moved, StorageError> {
+        bevy::tasks::block_on(moving::run(old, new))
+    }
+
+    /// The first start moves every document, checks it and only then removes the old copies; the next starts
+    /// change nothing.
+    #[test]
+    fn the_move_copies_checks_and_then_clears_once() {
+        let mut old = OldFake { docs: old_docs(), ..default() };
+        let mut new = NewFake::default();
+        let m = moved(&mut old, &mut new).unwrap();
+        assert_eq!((m.copied, m.removed, m.kept.len()), (4, 4, 0));
+        assert_eq!((m.docs.clone(), new.docs.clone(), new.moved), (old_docs(), old_docs(), true));
+        assert!(old.docs.is_empty());
+        // Again: nothing to move, nothing changes.
+        let again = moved(&mut old, &mut new).unwrap();
+        assert_eq!((again.copied, again.removed, again.docs), (0, 0, old_docs()));
+        // A new player: nothing to move, the move is marked all the same.
+        let mut empty = NewFake::default();
+        assert_eq!(moved(&mut OldFake::default(), &mut empty).unwrap().copied, 0);
+        assert!(empty.moved && empty.docs.is_empty());
+    }
+
+    /// The page closed at any point of the move: the next start finishes it, with every document there once and
+    /// the old copies gone.
+    #[test]
+    fn a_move_cut_off_anywhere_is_finished_by_the_next_start() {
+        for ops in 0..5 {
+            for removals in [Some(0), Some(2), None] {
+                let mut old = OldFake { docs: old_docs(), removals };
+                let mut new = NewFake { ops: Some(ops), ..default() };
+                match moved(&mut old, &mut new) {
+                    Err(_) => assert!(old.docs == old_docs(), "nothing old goes before the move is marked ({ops} ops)"),
+                    // The page closed while the old copies went: the ones left are named.
+                    Ok(m) => assert_eq!((m.removed, m.stayed.len()), (4 - old.docs.len(), old.docs.len())),
+                }
+                old.removals = None;
+                new.ops = None;
+                let m = moved(&mut old, &mut new).unwrap();
+                assert_eq!(m.docs, old_docs(), "{ops} ops, {removals:?} removals");
+                assert_eq!(new.docs, old_docs());
+                assert!(new.moved && old.docs.is_empty(), "{ops} ops, {removals:?} removals");
+            }
+        }
+    }
+
+    /// Text that doesn't read back as written stops the move: nothing is marked or removed (the game runs on the old
+    /// documents in memory and the next start tries again).
+    #[test]
+    fn a_move_that_doesnt_read_back_keeps_the_old_storage() {
+        let mut old = OldFake { docs: old_docs(), ..default() };
+        let mut new = NewFake { garble: true, ..default() };
+        assert!(matches!(moved(&mut old, &mut new), Err(StorageError::Io(_))));
+        assert!(!new.moved && old.docs == old_docs());
+        new.garble = false;
+        assert_eq!(moved(&mut old, &mut new).unwrap().copied, 4);
+    }
+
+    /// After the move, an old document that differs from the new one (a tab of an older build still writing) is left
+    /// in the old storage, untouched, and named; the new one is never overwritten.
+    #[test]
+    fn documents_written_after_the_move_are_left_alone() {
+        let mut old = OldFake { docs: old_docs(), ..default() };
+        let mut new = NewFake::default();
+        moved(&mut old, &mut new).unwrap();
+        new.docs.insert("saves/career".into(), "career, played on".into());
+        old.docs.insert("saves/career".into(), "career, an old tab".into());
+        old.docs.insert("designs/from-old-tab".into(), "design".into());
+        let m = moved(&mut old, &mut new).unwrap();
+        assert_eq!(m.kept, ["designs/from-old-tab", "saves/career"]);
+        assert_eq!(new.docs["saves/career"], "career, played on");
+        assert_eq!(old.docs.len(), 2);
+    }
+
+    #[test]
+    fn usage_warns_when_little_room_is_left() {
+        let at = |used: u64, quota: u64| Usage { documents: 0, estimate: Some((used, quota)) };
+        assert!(!at(10 << 20, 2 << 30).low());
+        assert!(at((2 << 30) - (10 << 20), 2 << 30).low(), "under 64 MB left");
+        assert!(at(95 << 30, 100 << 30).low(), "over nine tenths used");
+        assert!(!Usage { documents: 5, estimate: None }.low(), "no quota known: no warning");
     }
 }

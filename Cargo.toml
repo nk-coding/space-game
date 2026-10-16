@@ -36,8 +36,9 @@ bevy = { version = "=0.20.0", default-features = false, features = [
 ] }
 web-sys = { version = "=0.3.106", features = [
   "Window", "Location", "console",
-  # world/storage.rs: the browser's local storage
-  "Storage", "DomException",
+  # world/storage.rs: IndexedDB, the storage estimate, and the old local storage (moved into IndexedDB once)
+  "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbTransaction", "IdbTransactionMode",
+  "IdbObjectStore", "DomStringList", "StorageManager", "StorageEstimate", "Storage", "DomException",
   # kit/clipboard.rs, game/drydock/share.rs: copy / paste events, downloads, the file chooser
   "Document", "HtmlDocument", "Element", "HtmlElement", "HtmlAnchorElement", "HtmlInputElement", "CssStyleDeclaration",
   "Navigator", "Clipboard", "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "ClipboardEvent",
@@ -45,6 +46,8 @@ web-sys = { version = "=0.3.106", features = [
 ] }
 js-sys = "=0.3.106"
 wasm-bindgen = "=0.2.129"
+# Awaiting IndexedDB before the app starts (world/storage.rs, game's main); already in the build through Bevy.
+wasm-bindgen-futures = "=0.4.79"
 # The system clipboard on desktop (already in the build through bevy_egui, which also turns on arboard's default
 # features, so `default-features = false` here changes nothing).
 arboard = { version = "=3.6.1", default-features = false }

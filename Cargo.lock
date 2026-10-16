@@ -2955,6 +2955,7 @@ dependencies = [
  "serde",
  "sim",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "world",
 ]
@@ -6739,6 +6740,7 @@ dependencies = [
  "serde",
  "sim",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
