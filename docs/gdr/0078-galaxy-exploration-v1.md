@@ -1,6 +1,7 @@
 # GDR-0078: Galaxy exploration v1: signals that narrow as you search, blind jumps, jump range, hidden gates
 
-- Status: Accepted
+- Status: Accepted. 2026-10-16: jumps start from home or any charted cluster, not only from home and opened gates
+  ([GDR-0093](0093-galaxy-exploration-decisions-16-oct.md), which also sets the jump range: 2.5 S growing to 4 S).
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions, interactively, after GDR-0075)
 - Supersedes: GDR-0026 and GDR-0028 in part (travel along lanes; see Decision)

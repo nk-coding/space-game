@@ -5,6 +5,9 @@
   origin (ADR-0022), with a radius of at most about 4 km; spawned and asleep, its ~200 ships and wrecks add
   0.12–0.15 ms per tick natively and 0.16–0.21 ms as wasm, so frozen far sites stay records until the fleet comes
   near and need no despawning in E3.
+  2026-10-16: the scanner's numbers and the first scanner (on the starter skiff) decided in
+  [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md); the galaxy's content kinds (lore fragments among them) and
+  generator built (tracks E1, E2: [GDR-0094](0094-galaxy-generator-defaults.md), [ADR-0042](../adr/0042-galaxy-generator-crate.md)).
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions from `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0075](0075-voyages-feel-like-exploration.md), [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md), `docs/plans/galaxy-voyages.md`

@@ -2,6 +2,8 @@
 
 - Status: Accepted. 14 Oct 2026: the crates are grouped in folders and the client is three crates (`kit`, `world`,
   `game`), [ADR-0038](0038-workspace-structure-feature-folders-and-client-split.md); the engine-free split here stands.
+  16 Oct 2026: a further engine-free crate, `galaxy` (the galaxy generator, on `data` only),
+  [ADR-0042](0042-galaxy-generator-crate.md).
 - Date: 2026-10-10 (crate plan); 2026-10-11 (tool crates; benchmark moved out of the repo, ADR-0025)
 - Decided by: Niklas (crate plan, concept phase; benchmark in its own repo); lead session (tool crates)
 - Related: [ADR-0002](0002-all-rust-stack-with-bevy.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0013](0013-physics-backend-trait.md), [ADR-0014](0014-physics-engine-by-benchmark.md), [ADR-0025](0025-main-repo-holds-only-chosen-code.md), [ADR-0017](0017-embedded-content-in-memory-loader.md), [ADR-0023](0023-host-authoritative-netcode.md), [GDR-0032](../gdr/0032-balancing-arena-evolution.md), `CLAUDE.md` "Crates"

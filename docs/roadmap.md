@@ -394,6 +394,24 @@ Next session:
   ~250 ships (Niklas's browser, once E3 has a big cluster).
 - Next: E1 (content kinds) with E0 done; then E2, E3, E4.
 
+### 16 Oct 2026: galaxy tracks E1 and E2 (`plans/galaxy-voyages.md`)
+
+- Niklas answered the plan's open questions ([GDR-0093](gdr/0093-galaxy-exploration-decisions-16-oct.md)): the S
+  unit, the scanner and the starter's, jump range 2.5 → 4 S from any charted cluster, a signal's look and words, SCAN
+  for pilots and behaviors, data cores in the hold.
+- **E1 built**: six content kinds in `data` (`galaxy`, `bands`, `cluster_types`, `trails`, `signal_sources`, `lore`)
+  with validation, JSON export, `content-tool list` and wiki pages (one per entry, the galaxy's with a generated
+  example map, the hand-written `mechanics/galaxy`); the rim real, the other four bands stubs; S in `stats.ron`.
+- **E2 built**: the `galaxy` crate ([ADR-0042](adr/0042-galaxy-generator-crate.md), numbers
+  [GDR-0094](gdr/0094-galaxy-generator-defaults.md)): Poisson-disc clusters at 0.9 S in ring bands (77–85, about 37
+  in the rim), home, 3 gates per band, reachability at 2.5 S checked, trails with their signals' areas, interiors from
+  each cluster's seed. `content-tool galaxy --seed N --svg F` to inspect; `scripts/determinism-check.sh --galaxy 50`:
+  IDENTICAL native vs wasm; seed 1's hash pinned (`e2055530fd51f960`).
+- PCG32 moved to `data::rng` (the sim re-exports it). The E0 bench's `records`/`none` difference was the bench calling
+  `set_config` after moving the fight, not the director (results note); fixed in the bench.
+- Next: E3 (sim: sensor range, hidden sites, `Scan`, beacons) and E4 (career format 2 with the skeleton, signals,
+  the jump-range nodes and their unlock kind), side by side; then E5.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

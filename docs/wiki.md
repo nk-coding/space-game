@@ -54,6 +54,7 @@ A page is Markdown with front matter (`title`, `description`; quote values with 
 | `[[control:recall.keys]]` | the default keys as key caps |
 | `[[behavior_node:orbit.signature]]`, `[[behavior_node:orbit.default.radius]]` | how a node is written; a parameter's default |
 | `[[research:tamed_core.cost]]`, `.requires`, `.unlocks`; `[[frame:frigate.grid]]`; `[[start:rim_awakening.mind_capacity]]`; `[[voyage:yard_approach.sites]]`, `.length`, `.band`, `.opens_after`; `[[encounter:the_warden.wake_radius]]`; `[[behavior:escort.rules]]`; `[[stat:mass.unit]]` | more values |
+| `[[galaxy:galaxy.jump_range]]`, `.spacing`, `.home_neighbours`, `.warp`, `.signal_area`, `.trail_step`, `.bands`; `[[band:rim.edge]]`, `.gates`; `[[cluster_type:wreck_drift.radius]]`; `[[trail:rim_gate.length]]`, `.hint`; `[[signal_source:hauler_log.line]]` | the galaxy's values (16 Oct 2026) |
 | `[[lab:trial.voyages]]`, `[[lab:size.standard.population]]` | an entry of `lab.ron` (`goal`, `goal_preset`, `kind`, `trial`, `gene`, `gene_preset`, `pilot`, `size`, `measure`), linked to its row on the lab's page with its name, and its values (`summary`, a trial's `kind`, `weight`, `seeds`, `time_limit`, `default`, `target`, `count`, `ships`, `waves`, the arms race's numbers; a pilot's `lock`, `close_to`, `stick`, `fire`; a size's `population`, `generations`; a preset's `weights` or `genes`; a measure's `unit`); `[[lab:spread.design]]`, `[[lab:budget.layer_open]]`, `[[lab:palette.automatons]]` (`wiki::pages::lab`) |
 | `[[sim:tick_hz]]` | a simulation constant with its unit, read from the sim's own constants and `SimConfig::default()` (the list: `wiki::refs::sim_values`; add a constant there before using it) |
 
@@ -93,8 +94,15 @@ received, research that unlocks it, salvage; a material's parts, ships and salva
 pilot assists (as graph and text, without a target line: the graph's TARGET reads YOUR LOCK) and encounters; a
 behavior's rules as graph and text, its nodes, ships and factions; a node's
 parameters, Rhai script and behaviors; research costs, requirements and unlocks; voyages, sites, encounters and what
-opens what; a control's keys and its section), "Mentioned on" back-links and the data details for modders (id,
-defining file, text keys, prose file).
+opens what; a control's keys and its section; the galaxy's bands, cluster types, trails, signal sources and lore
+fragments, linked both ways), "Mentioned on" back-links and the data details for modders (id, defining file, text
+keys, prose file).
+
+- **The galaxy's page** (16 Oct 2026) shows an example: the galaxy generated for seed 1 by the `galaxy` crate (ADR-0042)
+  drawn as SVG (`wiki::map`, also `content-tool galaxy --svg`): band edges dotted, home and gates as diamonds, the
+  starting jump range, each trail from its first source to its reward coloured by what it leads to, the rim's signal
+  areas. A generator that fails on the content is a wiki warning, so the completeness test fails too. The hand-written
+  page `mechanics/galaxy` explains bands, S, home, gates, trails, signals and lore from the data.
 
 - **Parts are drawn as technical drawings** from the data: the tile as the drydock's palette shows it on its cell
   grid, the sides that link to neighbours, and what the part does: thrust out of the forward side with the gimbal's

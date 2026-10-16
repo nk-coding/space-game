@@ -36,6 +36,12 @@ content/base/
   starts.ron               how a new game begins
   voyages/rim.ron          voyages (the first playable loop's four rim clusters); order = voyage map order
   encounters/*.ron         what waits at a voyage site (ships, wrecks)
+  galaxy.ron               the galaxy's generator numbers (spacing, jump range, home, signal areas, trail steps, names)
+  bands.ron                the galaxy's bands from the rim inwards: edges, cluster types, gates, trails
+  cluster_types/*.ron      kinds of cluster: radius, site spacing, name words, ordinary sites
+  trails.ron               trail templates: reward, length, target encounter, signal sources, hint
+  signal_sources.ron       where signals come from: logs in wrecks, beacons
+  lore/*.ron               lore fragments at the ends of lore trails
   controls.ron             the action map: every player action, its section, screens and default inputs (GDR-0090)
   facilities.ron           the home shipyard's buildings research opens (the evolution lab; GDR-0092)
   lab.ron                  the evolution lab's words and numbers: goals, trials, genes, pilots, sizes, measures (GDR-0092)
@@ -51,7 +57,8 @@ File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
-  `research`, `facilities`, `starts`, `voyages`, `encounters`, `controls`. File names are free; group however reads
+  `research`, `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `trails`,
+  `signal_sources`, `lore`, `controls`. File names are free; group however reads
   best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind).
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
@@ -726,6 +733,27 @@ plus `locked` (default false): a locked facility is dark until a research node's
 shipyard places and draws the building; only `evolution` (the evolution lab, locked, opened by `simulation_vault`) is
 content so far; the fabricator and the salvage bay come later. The wiki gives each a page with the research that
 opens it. Not in the rules' fingerprint.
+
+### The galaxy (`galaxy.ron`, `bands.ron`, `cluster_types/`, `trails.ron`, `signal_sources.ron`, `lore/`; added 16 Oct 2026, track E1)
+
+What the `galaxy` crate generates a game's galaxy from (ADR-0042; the decisions GDR-0093, the numbers GDR-0094).
+Distances on the galaxy map are in **S**, the spacing unit (stats `galaxy_distance` and `jump_range`, unit `S`):
+about one slice voyage to the next. Only the rim is real; the other bands are stubs (tag `stub`). None of these kinds
+is in the rules' fingerprint: a game keeps its generated galaxy (ADR-0035).
+
+| Kind | Fields besides the common header |
+|---|---|
+| `galaxy` (`galaxy.ron`) | `bands` (ids, rim first, each inside the one before), `spacing` (S, no two clusters closer), `jump_range` (S at the start; at least twice the spacing), `home_neighbours` (home's band clusters within the jump range), `warp` (`(seconds, seconds per S)`), `signal_area: (across: (min, max) S, offset: share of the radius the place may lie off-centre, below 1)`, `trail_step` (`(min, max)` S between a trail's places), `names: (starts, ends)` (syllables of a cluster name's first word) |
+| `band` (`bands.ron`) | `edge` (S from the centre to its outer edge; the next band's edge is its inner one), `clusters` (`[(id: cluster type, weight)]`), `gates` (optional `(count, trail)`: gates near its inner edge, each at the end of a `Gate` trail; every band but the innermost has them), `trails` (`[(trail, count)]`, `Cache` or `Salvage` trails) |
+| `cluster_type` (`cluster_types/*.ron`) | `radius` (`(min, max)` m, at most 4000: one `f32` space, ADR-0022), `spacing` (`(min, max)` m between sites, as a voyage's), `words` (the second word of its clusters' names), `sites` (`[(encounter, count: (min, max))]`, at most 64 sites) |
+| `trail` (`trails.ron`) | `reward` (`Gate`, `Cache`, `Lore`, `Salvage`), `length` (`(min, max)` signals, 1 to 4), `target` (the encounter at its end; a gate's must have ships for sure), `sources` (signal source ids, equally likely), `hint` (text: the signal's first line, "SIGNAL · A GATE") |
+| `signal_source` (`signal_sources.ron`) | `form` (`Log`: a data core in a wreck, decoded at home; `Beacon`: scanned in the cluster), `line` (text: the signal's second line, "a log from a hauler's wreck"), `site` (the encounter at its place: required for a log and must hold wrecks; a beacon's keeper, none for the beacon alone) |
+| `lore` (`lore/*.ron`) | `band`, `trail` (a `Lore` trail: one is placed per fragment), `text` (the fragment, for the memory log) |
+
+Texts keyed as usual: `trail.<id>.hint`, `signal_source.<id>.line`, `lore.<id>.text`. Name syllables and words are
+not keyed (they make proper names). Validation warns when a band is in no galaxy, a cluster type in no band, or a
+trail placed by no band or fragment. The jump range's research (two propulsion nodes of +0.75 S, GDR-0093) and its
+unlock kind come with track E4.
 
 ### The evolution lab (`lab.ron`, GDR-0092; completed 16 Oct 2026, step 8)
 

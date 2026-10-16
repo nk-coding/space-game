@@ -16,7 +16,7 @@ mark an area on the map. These **signals** start wide and narrow as the player s
 galaxy, then, inside a cluster, a bearing from a scan, and the last stretch by flying. At the end of a trail lies
 something worth the trip: a precursor cache, a lore fragment, a rich graveyard, or the gate to the next band and
 its guardian. Between trails the player may always **jump blind** into unknown space nearby, for ordinary finds and
-sometimes a new signal. Travel is by **jump range** from home and from opened gates; research grows it. Nothing on
+sometimes a new signal. Travel is by **jump range** from home and from any charted cluster (GDR-0093); research grows it. Nothing on
 the map is a route.
 
 ## 2. Where we start
@@ -131,11 +131,12 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
 
 ### 4.5 Jump range and travel
 
-- From home and from each opened gate the player can launch to anything within its **jump range** *(placeholder:
-  1.5 cluster spacings at the start, growing to 3 by two research nodes in the propulsion family)*. The map draws
-  the range as soft circles.
+- From home and from any charted cluster (GDR-0093, 16 Oct 2026; was: home and opened gates) the player can launch
+  to anything within its **jump range**: 2.5 S at the start, growing to 4 S by two research nodes of +0.75 S in the
+  propulsion family (Niklas, GDR-0093; S is the spacing unit, about one slice voyage to the next). The map draws the
+  range as soft circles.
 - A target outside every circle is a reason to research range or open a nearer gate.
-- Warp time grows with distance *(placeholder: 3 s + 2 s per cluster spacing)*; the voyage starts at the
+- Warp time grows with distance (3 s + 2 s per S, GDR-0093); the voyage starts at the
   destination's edge. Coming home stays the recall (GDR-0062).
 - No lanes: GDR-0078 supersedes GDR-0026's and GDR-0028's lanes.
 
@@ -166,33 +167,38 @@ is the rim's first gate trail. Until the generator exists they stay as they are.
 
 | What | Value |
 |---|---|
-| Clusters per band (rim, outer, middle, inner, core) | 12, 18, 22, 24, 4 (= 80) |
-| Fresh signal area | 2–3 cluster spacings across |
+| Clusters per band (rim, outer, middle, inner, core) | by the bands' areas at 0.9 S spacing: about 37, 18, 13, 8, 3 (77–85; GDR-0094, was 12, 18, 22, 24, 4) |
+| Fresh signal area | 2–3 S across |
 | Narrowing per scan or second source | the area halves |
 | Site revealed within | 400 m |
 | Trails open at once | usually 2–4 |
 | Gate trails per boundary | 3, each 3–4 signals long |
 | Clusters holding a signal source | 1 in 3 |
-| Jump range | 1.5 → 3 cluster spacings by research |
-| Warp time | 3 s + 2 s per cluster spacing |
+| Jump range | 2.5 → 4 S by research (Niklas, GDR-0093) |
+| Warp time | 3 s + 2 s per S (GDR-0093) |
 | Cluster radius for searching | 2–3 km |
-| Scan radius; scan wakes enemies within | 1.2 km; 300 m |
+| Scan radius; scan wakes enemies within | 1.2 km; 300 m (the scanner: 1×1, 3 BP, 3 power while it charges 2 s, 8 s cooldown; GDR-0093) |
 
 ## 5. Galaxy generation
 
 All of it a pure function of (game seed, generator version, content): PCG32 streams, libm math, ordered
-containers, ascending ids (ADR-0010). A generation hash is checked native vs wasm.
+containers, ascending ids (ADR-0010). A generation hash is checked native vs wasm. **Built 16 Oct 2026** (track E2,
+the `galaxy` crate, [ADR-0042](../adr/0042-galaxy-generator-crate.md); its numbers [GDR-0094](../gdr/0094-galaxy-generator-defaults.md)):
+steps 1–4 and 6 as below, step 1 changed: the plan's counts per band could not connect at the slice's spacing.
 
-1. **Clusters** per band, placed in rings of a disc by rejection sampling with a minimum distance; positions rounded
-   to integers. Each gets a type from its band's weighted list, a seed and a name (syllables from content, on their
-   own stream).
+1. **Clusters** fill the whole disc by Poisson-disc sampling at the galaxy's spacing (0.9 S), so every spot lies
+   within about one spacing of a cluster; each belongs to the band whose ring holds it (counts follow the bands'
+   areas); positions are integers in S/100. Each gets a type from its band's weighted list, a seed and a name
+   (syllables from content, on their own stream). Every band's clusters must be reachable hop by hop within the
+   starting jump range from its entrances, else the placement is re-rolled (bounded).
 2. **Home** is the rim cluster nearest a random angle; at least 3 rim clusters *(placeholder)* lie within the
    starting jump range, otherwise the angle is re-rolled (bounded, deterministic).
 3. **Gates**: per boundary, 3 clusters of the outer band near its inner edge, spread around the disc.
 4. **Trails**: for each gate, and for a number of caches, lore fragments and graveyards per band (content counts),
    pick the target's cluster, then walk outward towards home picking 0–3 earlier places for the trail's sources
    (each the previous one's target), and decide each source's form (a log in a wreck site, a beacon site). Checks:
-   every gate trail's first source is reachable from the band's start; no two targets share a site.
+   every gate trail's first source is reachable from the band's start; no two targets share a site. (Built: the
+   walk prefers places nearer the band's entrances, 0.9–2.5 S per step; no two rewards share a cluster.)
 5. **Hand-made set pieces** (the slice's voyages first) are pinned to clusters by content.
 6. **Interiors** are generated on demand at warp time from the cluster's seed and type, with the trail places the
    cluster holds put in as fixed sites.
@@ -213,6 +219,8 @@ reshuffle a running galaxy; interiors are still generated from each cluster's se
   rule stays.
 - **Generation**: a new engine-free crate `galaxy` (depends on `data`; no Bevy, no I/O, wasm-safe), or a module in
   `data`. Recommendation: the crate, as the 13 Oct plan proposed; it holds the skeleton, trails and interiors.
+  Built 16 Oct 2026 as the crate ([ADR-0042](../adr/0042-galaxy-generator-crate.md)); the content kinds above are
+  in `data` (`docs/content-model.md` "The galaxy").
 - **`sim::voyage`** grows from a hand-made plan to a generated one: the plan takes sites from an interior instead of
   `voyages/*.ron`, plus hidden sites (not shown until revealed) and beacon sites. Scanning is a sim command
   (`ShipCommand::Scan`) with a result event (sites revealed, bearings), so it is deterministic and in the hash.
@@ -241,8 +249,8 @@ Sizes: **S** one agent session, **M** one or two, **L** several.
 | Track | Goal | Depends on | Size |
 |---|---|---|---|
 | E0 Measure | A cluster of 2–3 km with 20–40 awake and 200 frozen ships: step cost, `f32` at 3 km, spawn hitches (the old V0). **Done 16 Oct 2026** (`docs/results/2026-10-16-bigger-clusters.md`, `scripts/cluster-bench.sh`): one `f32` space centred on the origin, radius ≤ 4 km; no despawning needed for cost (lazy spawning, sleeping sites); spawn per site | — | S |
-| E1 Content kinds | `galaxy`, `bands`, `cluster_types`, `trails`, `signal_sources`, `lore`; the rim filled, the other bands stubs | — | M |
-| E2 Generator | The `galaxy` crate: clusters, home, gates, trails, interiors; generation hash native vs wasm | E1 | M |
+| E1 Content kinds | `galaxy`, `bands`, `cluster_types`, `trails`, `signal_sources`, `lore`; the rim filled, the other bands stubs. **Done 16 Oct 2026**: the six kinds with validation, JSON export and wiki pages (a page per entry, `mechanics/galaxy`); S in `stats.ron`; the jump-range research nodes and their unlock kind wait for E4 | — | M |
+| E2 Generator | The `galaxy` crate: clusters, home, gates, trails, interiors; generation hash native vs wasm. **Done 16 Oct 2026** (ADR-0042, GDR-0094): `galaxy::generate` and `interior`, `content-tool galaxy [--svg]`, `scripts/determinism-check.sh --galaxy N` (50 seeds identical native vs wasm) | E1 | M |
 | E3 Sim: bigger clusters | Sensor range, frozen sites, hidden sites, `Scan` with bearings, beacon sites; determinism green | E0 | M |
 | E4 Career format 2 | Charted, signals and narrowing, logs, gates, range; migration from format 1 | E1 | M |
 | E5 Map | Unknown space, charted clusters, signal areas, range circles, blind-jump picking; the panel says what a signal knows | E2, E4 | M |
@@ -272,6 +280,7 @@ Answered on 14 Oct 2026 ([GDR-0080](../gdr/0080-exploration-searching-and-story.
 log is free; a blind jump finds an ordinary cluster, sometimes a trail's start; saves keep the skeleton; the story is
 lore fragments in a memory log plus milestone cards.
 
-Still open, for later rounds: the scanner part's numbers and how the first one is obtained (the starter or an early
-node); the jump range numbers and their research; how a signal is drawn and worded on the map (a visual question,
-best shown side by side).
+Answered on 16 Oct 2026 ([GDR-0093](../gdr/0093-galaxy-exploration-decisions-16-oct.md)): the scanner part's numbers
+and the first one on the starter skiff (its hold 8 → 4); the jump range (2.5 → 4 S, two propulsion nodes, from home or
+any charted cluster); how a signal is drawn (a dotted, pulsing area) and worded ("SIGNAL · SOMETHING OLD" over its
+source line; NARROWED, LOCATED); a SCAN key and a behavior action; data cores take a hold slot.

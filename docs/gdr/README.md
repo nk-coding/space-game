@@ -86,7 +86,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0075](0075-voyages-feel-like-exploration.md) | Voyages should feel like exploring a galaxy and following hints, not a fixed path (direction) | Accepted; first design [GDR-0078](0078-galaxy-exploration-v1.md) | 2026-10-14 |
 | [0076](0076-spilled-cargo-becomes-fragments.md) | Cargo that no longer fits a shrinking hold spills as loose items that can be collected again | Accepted | 2026-10-14 |
 | [0077](0077-abandon-voyage-asks-in-a-panel.md) | Abandoning a voyage asks in a panel (M opens it) instead of M twice | Accepted | 2026-10-14 |
-| [0078](0078-galaxy-exploration-v1.md) | Galaxy exploration v1: signals that narrow as you search, blind jumps, jump range instead of lanes, hidden gates, scanning inside clusters | Accepted | 2026-10-14 |
+| [0078](0078-galaxy-exploration-v1.md) | Galaxy exploration v1: signals that narrow as you search, blind jumps, jump range instead of lanes, hidden gates, scanning inside clusters | Accepted; jumps from any charted cluster in [GDR-0093](0093-galaxy-exploration-decisions-16-oct.md) | 2026-10-14 |
 | [0079](0079-review-of-lead-defaults-14-oct.md) | Review of the lead defaults: most confirmed; collecting up to 8 m/s, loose items last the voyage, a speed zoom in flight | Accepted | 2026-10-14 |
 | [0080](0080-exploration-searching-and-story.md) | Exploration details: 2–3 km clusters, a scanner part, scans wake enemies, about two steps to locate, free decoding, blind jumps sometimes start a trail, story by fragments and milestone cards | Accepted | 2026-10-14 |
 | [0081](0081-drydock-editing-bevel-rotate-replace.md) | Drydock editing: bevel after the stroke, R / Shift+wheel turn the brush (slopes auto first), placing and painting replace what is under them, shield parts show their radius while placing | Accepted | 2026-10-14 |
@@ -101,6 +101,8 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0090](0090-action-map-settings-and-pause-menu.md) | The action map (every key an action with up to two inputs, defaults in `controls.ron`), SETTINGS with controls and display over home and flight, Esc in flight unlocks else opens the flight menu (pauses the test range only), assist toggle slots | Accepted | 2026-10-15 |
 | [0091](0091-log-building-and-voyage-history.md) | The LOG: a records mast by the gate that glows while a voyage's result is new, its tooltip the last voyage, its screen the last 50 voyages newest first; it replaces the one-line summary over home | Accepted | 2026-10-15 |
 | [0092](0092-evolution-lab-for-your-own-ships.md) | The evolution lab is a station building for improving your own ships: runs from your designs, locks, combinable trials with co-evolving enemies, everything mutable, every fight re-watchable from a fight code, results saved as designs | Accepted, step 1 built (the fight viewer) | 2026-10-15 |
+| [0093](0093-galaxy-exploration-decisions-16-oct.md) | Galaxy exploration, 16 Oct: the S unit, a light scanner on the starter skiff, jump range 2.5 → 4 S from home or any charted cluster, how a signal looks and reads, SCAN for pilots and behaviors, data cores in the hold | Accepted | 2026-10-16 |
+| [0094](0094-galaxy-generator-defaults.md) | The galaxy generator's defaults: clusters 0.9 S apart fill five ring bands (about 80, most in the rim), 3 hidden gates per band, trails walked towards home, the rim real and the rest stubs | Accepted (provisional, lead) | 2026-10-16 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate
