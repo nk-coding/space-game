@@ -11,7 +11,8 @@ describes how the galaxy is put together.
 
 ::: info Coming
 The galaxy is generated but not played yet. The voyage map still shows the first four voyages of the rim
-([voyages](/mechanics/voyages) has those); flying into the generated galaxy, scanning and following signals come next.
+([voyages](/mechanics/voyages) has those); flying into the generated galaxy and following signals come next.
+Scanning inside a cluster works already, on the first four voyages too.
 :::
 
 ## Distances: S
@@ -76,6 +77,29 @@ that holds the place it leads to, though not in its middle. Its first line names
 A trail's first source lies in an ordinary cluster of its band; each later one waits at the place the signal before
 it led to, so following a trail walks you across the band, a [[galaxy:galaxy.trail_step]] step at a time, towards its
 end. No two rewards share a cluster.
+
+## Inside a cluster: sensors and scans
+
+A cluster is dark when you arrive. Your ships see as far as their **sensors** reach: [[part:logic_core.sensor_range]]
+for a [[part:logic_core]], and never less than [[sim:always_seen]]. A site shows once one of your vessels has it
+within its sensors; behaviors only pick targets they see, so an enemy that gets away beyond the sensors is let go.
+
+A **signal's place** (a trail's place in the cluster, and for now the goal of each of the first four voyages) is
+quieter: it shows only within [[sim:signal_reveal]] of one of your vessels, or under a scan.
+
+A **scan** needs a [[part:scanner]] built into the ship ([[part:scanner.build_points]]; the starter ship carries one).
+Press [[control:scan.keys]] ([[control:scan]]) or the SCAN pill under the target panel; ships under a behavior scan
+with the [[behavior_node:scan]] action. The scanner charges for [[part:scanner.scan_charge]], drawing its
+[[part:scanner.power_draw]] only then, and sweeps:
+
+- every site within [[part:scanner.scan_range]] shows;
+- every hidden signal's place beyond that range gets a **bearing**: a dashed gold line from where you scanned,
+  pointing straight at it. Scan again from somewhere else and the two lines cross at the place;
+- sleeping ships within [[part:scanner.scan_wake]] wake up: where you scan matters.
+
+Then it cools down for [[part:scanner.scan_cooldown]]. A banner says what the scan found. A cluster has an edge
+[[sim:edge_margin]] outside its radius (never more than [[sim:max_edge]] from its centre): beyond it your ship is
+pushed back.
 
 ## Lore
 

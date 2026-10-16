@@ -437,7 +437,7 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
 |---|---|
 | `evolve` | `MayChange((...))`: the genes a run may change (GDR-0092 "MAY CHANGE", step 6), each left out on, so `MayChange(())` is everything ([Genomes, mutation and crossover](#genomes-mutation-and-crossover)); `Behavior` (the behavior's genes: numbers and rules), `Design` (the design's: layout, parts, armour, power), `Both` (both, not the assists); or `Stages([(evolve: Behavior, generations: 10), (evolve: Design, generations: 10), (evolve: MayChange(()), generations: 10)])`: one after the other, one archive throughout. Nothing to change is an error |
 | `fitness` | `ArenaPool(opponents, seeds, hall_of_fame, count, start_distance, time_limit)`: the genome (`count` ships of it, side 0) fights each opponent entry and the best `hall_of_fame` elites so far over seeds 1..=`seeds`; the mean arena score. `Voyages(ids, seeds, minutes, pilot)`: each voyage over seeds 1..=`seeds`, the mean voyage score; `pilot: Behavior` (default: the genome's behavior flies the fights) or `Closing` (the runner's scripted pilot) |
-| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: 60`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; the starts must be symmetric) |
+| `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: 60`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; a start's parts without a mirror image, `evolve::unmatched`, are locked where they are: the starter's single scanner and the cargo bay across from it, 16 Oct 2026, GDR-0095) |
 | `start`, `starts` | One start (`start`, the old form) or a list (`starts: [...]`), one to four in all. `Design(design, behavior, locks)`: a content ship or blueprint text (with its pilot assists, `assists`), a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
 | `archive` | `(axes: [(measure, min, max, cells), ...])`, one to three axes (at most 65 536 cells) |
 | `enemy` | Optional (written only when there is one; step 7): THE ENEMY of an ARMS RACE, a `Population` ([Co-evolution](#co-evolution-the-arms-race)); a run with one has exactly one `CoEvolution` trial, and one with that trial an `enemy` |
@@ -552,7 +552,7 @@ starts: [
 ],
 ```
 
-Under the mirror lock a locked part or cell locks its mirror image too. Locked assist rules (GDR-0092 step 6) are kept
+Under the mirror lock a locked part or cell locks its mirror image too, and a part without a mirror image is locked. Locked assist rules (GDR-0092 step 6) are kept
 like locked behavior rules (never changed, moved or deleted; LOCK ORDER keeps their order too). Rules may still be added around a locked rule,
 and the rules above it may change. The operators never pick what is locked, and the pre-filter refuses a child that
 lost any of it, so crossover can't break a lock either. `crates/core/arena/runs/two_starts_locked.ron` is a small
@@ -813,6 +813,12 @@ fights and with them every run changed: native and wasm **identical**, resumed i
 them, `arena rescore` makes a new run of one; the lab marks them and offers RE-SCORE), and fight codes of before
 replay under today's rules with `THE RULES HAVE CHANGED SINCE THIS FIGHT`, saying at the end whether they still end as
 recorded. The run configurations in `runs/` keep no results, so none needed re-scoring.
+
+**The scanner** (galaxy track E3, 16 Oct 2026, GDR-0093, GDR-0095): the starter carries a scanner in place of a
+cargo bay, cores have sensors (800 m) and the vocabulary a `scan` action, so every fight and run changed and the rules'
+fingerprint with them (run files of before restore stale). The skiff is 60.5 BP: `skiff_design_60bp.ron` allows 62,
+`skiff_voyage_stages.ron` allows the scanner. Native and wasm **identical**: `two_starts_locked` seed 1 resumed after
+generation 2 (`c4372c8cd861fe24`), `skiff_mirror` (`d1deef39e6c7b7b5`), `runner_vs_raiders` (`de48601be0d811c1`).
 
 ### The CLI: `arena evolve`
 

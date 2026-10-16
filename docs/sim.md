@@ -2216,6 +2216,8 @@ ids; some may be gone or salvage by now), `plan()`.
 |---|---|---|
 | `spawn_radius` | 600 m | a site spawns when a player vessel comes this close (the plan's lazy spawning) |
 | `recall_radius` | 200 m | no armed awake enemy vessel this close to recall (GDR-0062, GDR-0068), unless the fleet is disarmed (GDR-0074) |
+| `signal_reveal` | 400 m | a signal's site shows when a player vessel comes this close (if its sensors reach it) or under a sweep (GDR-0095) |
+| `edge_margin` | 500 m | the cluster's edge lies this far outside its radius, at most `voyage::MAX_EDGE` (4 km) from the centre (GDR-0095) |
 
 The layout numbers of the roll (30 m spread, 5 m gap, 64 tries, 8 goal choices) are constants in `voyage/mod.rs`.
 
@@ -2746,6 +2748,49 @@ and the fight at 0, 3, 8 and 30 km from the origin). `--repeat N` gives "median 
 and what they mean for E3 are in `docs/results/2026-10-16-bigger-clusters.md`: a whole 2.5 km cluster asleep (about
 200 ships and wrecks) adds 0.12–0.15 ms per tick natively, 0.16–0.21 ms as wasm; `f32` holds up to about 4 km from
 the origin, where only slow coasting (under ~1 m/s) shows the grid.
+
+## Sensors and scans
+
+Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-16-oct.md) the scanner's numbers,
+[GDR-0095](gdr/0095-sensors-hidden-sites-and-scans.md) the lead defaults). Code: `src/ship/scan.rs`, the director in
+`src/voyage/mod.rs`, the `scan` action in `src/behavior/`; tests `tests/scan.rs`.
+
+- **Sensors** (content `sensor: (range)`, on logic and automaton cores, 800 m): `Ship::sensor_range()` is the
+  longest range of the working sensor parts (alive, not overheated, not idle) on the controlling piece while it is
+  active, at least `ship::sensor_tuning::ALWAYS_SEEN` (150 m). A think (behaviors and pilot assists) prepares it once;
+  `select` skips enemies farther away (the `locked` selector, the leader's lock, is not limited). Cost: a pass over
+  the sensor parts per think.
+- **Scans** (content `scanner: (range, charge, cooldown, wake)`, power drawn only while charging:
+  `ConsumerKind::Scanner`): `ShipCommand::Scan` starts one when `Ship::can_scan()` (ready, active, a working scanner
+  on the controlling piece; the one with the longest range is used). `Ship::scan()` is `Scan::Ready`,
+  `Charging { part, charged }` or `Cooling { part, left }`. In the systems phase, after `update_systems`, a charging
+  scan adds the scanner's `work × DT` (its power level), sweeps when it reaches `charge` (`SimEvent::Scanned { ship, at,
+  range, wake }`, `at` the controlling piece's centre of mass) and cools down for `cooldown` seconds; a scanner that
+  died or left the controlling piece ends it (no sweep). The scan state is in the ship's hash only while not `Ready`.
+  The design report's full use counts every scanner as charging.
+- **The `scan` action** (`Action::Scan`, `RuleStatus::Scan { started }`, `behavior::action_decides`): when its
+  rule's conditions hold it starts a scan if the ship can (one per think) and steps aside; the next rule that holds
+  decides the maneuver. It needs no target.
+- **Hidden sites and bearings** (the director, each pass after spawning): it collects this step's sweeps of the
+  player's ships; each reveals every site within its range (`Site::known`, `SimEvent::SiteRevealed`), gives every
+  hidden signal's site beyond it a `voyage::Bearing { site, from, dir, tick }` (`Voyage::bearings`,
+  `SimEvent::SiteBearing`: exact, a unit vector from the scan spot) and marks the sleeping sites within its `wake`
+  radius to wake. Then every hidden site within a player vessel's sensor range shows (a signal's site,
+  `SitePlan::signal`, only within `signal_reveal` as well). Signals' sites: the goal of a content voyage (until E7),
+  every trail place of a generated cluster. Found is final.
+- **Generated clusters**: `VoyagePlan::roll_interior(content, id, &galaxy::Interior, seed)` rolls an interior on the
+  same generator and draw order as `roll` (no goal; a trail place is a signal's site; one without an encounter, a
+  beacon alone, rolls no ships or wrecks and is a quiet site). `roll` itself draws exactly as before.
+- **The edge** (`voyage::edge_force`, in the physics phase with the wrenches): with a voyage underway, a piece whose
+  centre of mass lies beyond `Voyage::edge` (radius + `edge_margin`, at most `MAX_EDGE`) gets a force towards the
+  centre: `mass × (EDGE_PUSH × min(depth / EDGE_DEPTH, 1) + outward speed / EDGE_BRAKE)` (3 m/s², 100 m, 2 s); it is
+  not the piece's own, so the speed governor never cuts it.
+- **Determinism**: the voyage scenario's ships scan whenever they decide. 16 Oct 2026, release builds, native x86_64
+  vs wasm32-wasip1 under Node 24: **identical**: core seed 42 900 ticks (final `f47052940ca8ca75`), voyage seed 42
+  3600 ticks (`539fc2dd23846817`), `--fight skiff_mirror` (a draw at the time limit, `d1deef39e6c7b7b5`), `--fight
+  runner_vs_raiders` (won in 1273 ticks, `de48601be0d811c1`), `--run two_starts_locked` (resumed identical, last line
+  `c4372c8cd861fe24`), `--galaxy 5`. Every stream with the starter or a core changed (the scanner, the sensors in
+  the content, the new action).
 
 ## Design questions for Niklas
 

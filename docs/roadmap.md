@@ -412,6 +412,20 @@ Next session:
 - Next: E3 (sim: sensor range, hidden sites, `Scan`, beacons) and E4 (career format 2 with the skeleton, signals,
   the jump-range nodes and their unlock kind), side by side; then E5.
 
+### 16 Oct 2026: galaxy track E3 (`plans/galaxy-voyages.md`)
+
+- **E3 built** ([GDR-0095](gdr/0095-sensors-hidden-sites-and-scans.md), lead defaults): the scanner part (GDR-0093's
+  numbers) on the starter skiff in place of its right cargo bay (hold 8 → 4, 60.5 BP); SCAN (G), the HUD's SCAN pill
+  and the `scan` behavior action (starts a scan, lets the next rule fly); sensors on cores (800 m) bound behaviors'
+  targets; a voyage's sites hidden until sensors or a sweep find them, signals' sites (trail places, the slice's goal)
+  only within 400 m, far ones get bearings (dashed gold lines in flight); a sweep wakes sleeping sites within 300 m; the
+  cluster's edge (radius + 500 m, at most 4 km) turns ships back; `VoyagePlan::roll_interior` rolls a generated
+  cluster. Fly one: `?scene=voyage&cluster=signal[&galaxy=<seed>]` (a practice run, never saved).
+- The evolution's mirror lock keeps a start's parts without a twin in place (the starter's scanner); the 60 BP skiff
+  run allows 62. Hashes changed (the starter, sensors, the new action): native and wasm IDENTICAL (`docs/sim.md`
+  "Sensors and scans"); the rules' fingerprint changed, so saved lab runs restore stale.
+- Next: E4 (career format 2), then E5 (map).
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

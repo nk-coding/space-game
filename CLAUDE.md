@@ -21,7 +21,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 | `art/tokens.json` | All colours and style constants (compiled into the `art` crate and the wiki). Part icons live in the content pack: `content/base/icons/<key>.svg` (ADR-0028). |
 | `../space-game-archive/` | A separate local repo (14 Oct 2026) with what the game no longer uses but older records link to: the concept bundle (`concept/`: boards, UI mockups, the drydock rules in plain JS, data drafts, generators, the original CLAUDE.md; old paths `docs/concept/…`, `reference/…`, `boards/…`), the concept ship art (`ships/`, was `art/ships/`), the phase 7 screen mockups (`mockups/`, was `docs/plans/mockups/`), superseded plans and uncited screenshots. Nothing in this repo may depend on it. |
 | `content/base/` | The base game content pack (RON). Loaded exactly like a mod. |
-| `crates/` | Cargo workspace members, grouped (ADR-0038): `core/` (`data`, `sim`, `arena`: engine-free, deterministic), `client/` (`art`, `kit`, `world`, `game`: the Bevy client), `tools/` (`arena-cli`, `content-tool`; ADR-0040). Every `crates/<group>/<crate>` with a `Cargo.toml` is a member. |
+| `crates/` | Cargo workspace members, grouped (ADR-0038): `core/` (`data`, `sim`, `arena`, `galaxy`: engine-free, deterministic), `client/` (`art`, `kit`, `world`, `game`: the Bevy client), `tools/` (`arena-cli`, `content-tool`; ADR-0040). Every `crates/<group>/<crate>` with a `Cargo.toml` is a member. |
 
 ## Crates (ADR-0003, folders and the client split ADR-0038)
 
@@ -37,6 +37,7 @@ Owner: Niklas (hobby developer, works with AI help). This file is the brief for 
 - Inside every crate: feature folders, one plugin per feature (`mod.rs` holds the plugin and the public surface;
   single-file features stay files). `sim`: `ship/`, `flight/`, `combat/`, `behavior/`, `voyage/`; `data`:
   `content/`, `design/`, `behavior/`.
+- `galaxy` (`crates/core/galaxy`, ADR-0042): the galaxy generator: a game's skeleton (clusters in bands, home, gates, trails of signals) and a cluster's interior from the seed and the content; integer positions, a generation hash (`scripts/determinism-check.sh --galaxy N`). Depends on `data` only, no Bevy, no I/O; the sim rolls interiors into voyage plans (`VoyagePlan::roll_interior`).
 - `art`: style tokens (embedded), effect textures and the runtime SVG rasteriser. No Bevy.
 - `content-tool`: CLI over `data` (validate, export-json, list, and `wiki-data`: the wiki's generated pages and data, checking its hand-written pages).
 - Experiments and benchmarks don't live here (ADR-0025): the physics benchmark is the separate local repo `/home/devbox/workspace/space-game-physics-bench`.

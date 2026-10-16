@@ -52,8 +52,13 @@ There is no `end`, no `or` and no nesting. For "this **or** that", write two rul
 
 ### Actions
 
-`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `hold`, `escort(distance)`. See the
+`approach(range)`, `orbit(radius, dir)`, `kite(range)`, `face`, `flee`, `hold`, `escort(distance)`, `scan`. See the
 vocabulary in the wiki (or `content/base/behavior_nodes/actions.ron`) for what each does.
+
+`scan` (added 16 Oct 2026, GDR-0093, GDR-0095) starts a scan with the ship's scanner when its conditions hold and the
+scanner is ready, then **steps aside**: the next rule that holds flies the ship (the debug view says `started a scan`
+or `the scanner is not ready`). It needs no target and never ends the list, so `always -> scan` above the fighting
+rules scans whenever it can; `when enemies_near(300m) < 1 -> scan` only where a sweep wakes nothing.
 
 `escort(distance)` (added 13 Oct 2026, GDR-0065; default `30m`) keeps the ship within that distance of its
 **leader**, the ship it escorts (for wingmen: the player's flagship): it closes in when farther and keeps pace

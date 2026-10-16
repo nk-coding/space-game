@@ -152,9 +152,11 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
   a drydock trade-off (room, power, mass); better scanners come by research. A scan is an action with a short
   charge *(lead default)*, then a sweep that reveals sites within the scanner's range *(placeholder: 1.2 km)* and
   gives each active signal it can hear a bearing. It wakes sleeping enemies nearby *(placeholder: within 300 m)*,
-  so where you scan matters. The starter or an early research node must give a scanner (E8).
+  so where you scan matters. The starter or an early research node must give a scanner (E8). Built 16 Oct 2026
+  (E3, [GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): the starter carries one (GDR-0093); the charge is
+  2 s on the scanner's power; until E4 every trail place (and the slice's goal) counts as a signal a scan hears.
 - **Bearings** show in flight as a line from the scan spot and on the cluster map overlay; two crossing lines mark
-  the place.
+  the place. (In flight since E3: dashed gold lines; the overlay is E6.)
 
 ### 4.7 The slice's four voyages
 
@@ -235,7 +237,8 @@ nodes, an inert fast path for wrecks, measuring a cluster-sized space first (the
 lanes, routes, the gate network as instant links between gates (a gate is now a place to jump from), the ring menu.
 E0 (16 Oct 2026) narrowed the freezing: sites stay records until the fleet comes near (the director's lazy spawning,
 built) and spawned sites stay asleep; freezing them back to records with hysteresis, and the inert fast path, can wait
-until a cluster passes about 1000 bodies or the client's per-ship cost asks for it.
+until a cluster passes about 1000 bodies or the client's per-ship cost asks for it. E3 (16 Oct 2026) built sensor
+range (800 m on cores, GDR-0095) and kept the streaming as E0 recommends.
 
 ### 6.3 Determinism
 
@@ -251,7 +254,7 @@ Sizes: **S** one agent session, **M** one or two, **L** several.
 | E0 Measure | A cluster of 2–3 km with 20–40 awake and 200 frozen ships: step cost, `f32` at 3 km, spawn hitches (the old V0). **Done 16 Oct 2026** (`docs/results/2026-10-16-bigger-clusters.md`, `scripts/cluster-bench.sh`): one `f32` space centred on the origin, radius ≤ 4 km; no despawning needed for cost (lazy spawning, sleeping sites); spawn per site | — | S |
 | E1 Content kinds | `galaxy`, `bands`, `cluster_types`, `trails`, `signal_sources`, `lore`; the rim filled, the other bands stubs. **Done 16 Oct 2026**: the six kinds with validation, JSON export and wiki pages (a page per entry, `mechanics/galaxy`); S in `stats.ron`; the jump-range research nodes and their unlock kind wait for E4 | — | M |
 | E2 Generator | The `galaxy` crate: clusters, home, gates, trails, interiors; generation hash native vs wasm. **Done 16 Oct 2026** (ADR-0042, GDR-0094): `galaxy::generate` and `interior`, `content-tool galaxy [--svg]`, `scripts/determinism-check.sh --galaxy N` (50 seeds identical native vs wasm) | E1 | M |
-| E3 Sim: bigger clusters | Sensor range, frozen sites, hidden sites, `Scan` with bearings, beacon sites; determinism green | E0 | M |
+| E3 Sim: bigger clusters | Sensor range, frozen sites, hidden sites, `Scan` with bearings, beacon sites; determinism green. **Done 16 Oct 2026** ([GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): the scanner part on the starter, SCAN (G) and the `scan` action; cores see 800 m; sites hidden until sensors (a signal's site: 400 m) or a sweep reach them, bearings to the far ones, wakes within 300 m; the edge turns ships back; `VoyagePlan::roll_interior` (beacons alone as quiet sites); no despawning (E0); native = wasm. Fly a generated cluster: `?scene=voyage&cluster=signal` | E0 | M |
 | E4 Career format 2 | Charted, signals and narrowing, logs, gates, range; migration from format 1 | E1 | M |
 | E5 Map | Unknown space, charted clusters, signal areas, range circles, blind-jump picking; the panel says what a signal knows | E2, E4 | M |
 | E6 Voyage flow | Launch into a generated cluster, scanning in flight (control, bearing lines, the cluster overlay), finding, the debrief's finds, decoding logs at home | E3, E4, E5 | L |

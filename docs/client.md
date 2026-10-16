@@ -670,6 +670,21 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   enemy marker of their own. Banners (with a line under them): `RAIDER PAIR · AWAKE` (coral), `SITE CLEARED ·
   RAIDER PACK` / `SITES 2 / 4 · THE WRECKS ARE YOURS` (teal), `GOAL CLEARED · RAIDER PACK` / `… · RECALL WHEN CLEAR
   · R` (gold). The home ring top left is hidden. The help line names R RECALL and M ABANDON.
+- **Scanning** (galaxy track E3, 16 Oct 2026, [GDR-0095](gdr/0095-sensors-hidden-sites-and-scans.md);
+  `flight_hud/scan.rs`, in every flight scene): under the target panel the SCAN pill (violet; G, the SCAN action, or a
+  click sends `ShipCommand::Scan` for the flown ship) with a bar and a line: `READY · G · 1.2 KM`, `CHARGING · 45 %`,
+  `COOLING · 6 S`, `NO WORKING SCANNER`; hidden for a design without a scanner. In the world (vector, Z_HUD, faded
+  with the HUD): a dotted violet arc filling round each player ship whose scan charges; the sweep, a ring running
+  out to the scanner's range (zoomed in, to the screen's corners) and its edge fading; a ping at every site just
+  found; every bearing as a dashed gold line from its scan spot with a small dotted mark there (hidden once its site
+  is found); a dotted ring at every found site on screen. Site markers show only found sites (`Site::known`), the
+  nearest 12, a signal's site labelled `· SIGNAL`, a beacon alone `BEACON`. A sweep makes a banner:
+  `SCAN · 3 SITES FOUND` / `2 BEARINGS TOWARDS A SIGNAL · SCAN AGAIN ELSEWHERE TO CROSS IT` (gold with bearings,
+  else teal with `SWEPT 1.2 KM AROUND`).
+- **A generated cluster** (for testing E3): `?scene=voyage&cluster=<id>|signal[&galaxy=<seed>]` generates the base
+  galaxy from the seed (default: the career's game seed), takes the cluster (`signal`: the first that holds a trail's
+  place) and flies its interior (`VoyagePlan::roll_interior`, seeded with the cluster's seed) as a practice run,
+  named after the cluster, never saved.
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
   RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`, for the emergency recall `EMERGENCY WARP · 2` in gold); what it looks like: **Transitions** below; losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones

@@ -103,6 +103,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0092](0092-evolution-lab-for-your-own-ships.md) | The evolution lab is a station building for improving your own ships: runs from your designs, locks, combinable trials with co-evolving enemies, everything mutable, every fight re-watchable from a fight code, results saved as designs | Accepted, step 1 built (the fight viewer) | 2026-10-15 |
 | [0093](0093-galaxy-exploration-decisions-16-oct.md) | Galaxy exploration, 16 Oct: the S unit, a light scanner on the starter skiff, jump range 2.5 → 4 S from home or any charted cluster, how a signal looks and reads, SCAN for pilots and behaviors, data cores in the hold | Accepted | 2026-10-16 |
 | [0094](0094-galaxy-generator-defaults.md) | The galaxy generator's defaults: clusters 0.9 S apart fill five ring bands (about 80, most in the rim), 3 hidden gates per band, trails walked towards home, the rim real and the rest stubs | Accepted (provisional, lead) | 2026-10-16 |
+| [0095](0095-sensors-hidden-sites-and-scans.md) | Sensors, hidden sites and scans: cores see 800 m (behaviors' targets too), signals' sites show within 400 m or under a sweep, far ones get exact bearings, the `scan` action steps aside, the cluster's edge turns ships back, the mirror lock keeps a single part in place | Accepted (provisional, lead) | 2026-10-16 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

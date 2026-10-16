@@ -4,6 +4,9 @@
   `docs/results/2026-10-16-bigger-clusters.md`): with the cluster centred on the origin it covers a radius of about
   4 km (at 3 km steered flight, fights and rams play as at the origin and native and wasm hash identically; only
   slow coasting shows the 0.24 mm grid); beyond that a cluster would need `f64` physics or local frames.
+  2026-10-16 (track E3, [GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): a voyage's edge (its radius plus
+  500 m, at most 4 km from the centre) pushes every piece back, so ships stay where `f32` holds; sites stream as E0
+  recommended (records until the fleet comes within 600 m, spawned sites sleep, nothing despawns).
 - Date: 2026-10-10
 - Decided by: Niklas
 - Related: [ADR-0010](0010-cross-platform-determinism.md), [ADR-0023](0023-host-authoritative-netcode.md), [ADR-0024](0024-saves-seed-and-deltas.md), [GDR-0026](../gdr/0026-procedural-galaxy-and-bands.md), [GDR-0028](../gdr/0028-clusters-and-voyages.md)

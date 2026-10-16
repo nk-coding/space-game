@@ -50,6 +50,13 @@ group 1, so a fresh design fires everything with one trigger.
 
 Triggers add up: hold two and both groups fire. A tap shorter than one sim tick still fires once.
 
+### Scanning
+
+[[control:scan]] ([[control:scan.keys]]) starts a scan with the [[part:scanner]] of the vessel you fly, as does
+the SCAN pill under the target panel, which also says what the scanner is doing (ready, charging, cooling down).
+A vessel without a working scanner can't scan; [scanning](/mechanics/galaxy#inside-a-cluster-sensors-and-scans)
+explains what a sweep finds.
+
 ### Switching vessels
 
 You fly one vessel at a time, the focus. [[control:focus_next]] and [[control:focus_previous]]

@@ -77,8 +77,12 @@ come in. One site is the **goal**: it is placed far from the entry, and clearing
 when you reach its outer ring and wakes at its inner one.*
 
 There is no travel screen between sites: the whole cluster is one space, and you fly from one site to the next
-yourself. Markers at the screen edge point to every site that is off screen, with its name and distance: coral for
-enemies, gold for wrecks only, brighter for the goal (`· GOAL`), dim once cleared (`· CLEARED`).
+yourself. Sites start **hidden**: a site shows once one of your vessels has it within its sensors
+([[part:logic_core.sensor_range]] for a [[part:logic_core]]), or a scan sweeps over it. The goal is harder to find:
+it shows only within [[sim:signal_reveal]], or under a scan, and a scan from farther away points at it (see
+[scanning](/mechanics/galaxy#inside-a-cluster-sensors-and-scans)). Markers at the screen edge point to the nearest
+sites you have found that are off screen, with their name and distance: coral for enemies, gold for wrecks only,
+brighter for the goal (`· GOAL`), dim once cleared (`· CLEARED`). Found sites on screen get a dotted ring.
 
 ### What happens at a site
 
@@ -110,8 +114,11 @@ the sites done of all (`SITES n / m`) and the time since you arrived.
 
 ::: tip Pick your fights
 Sleeping ships wait. Come in from one side, shoot first, and you fight one site at a time. Fly past a site too
-closely and it wakes behind you.
+closely and it wakes behind you. A scan is loud: it wakes sleeping sites within [[part:scanner.scan_wake]].
 :::
+
+The cluster has an **edge**, [[sim:edge_margin]] outside its radius: fly past it and your ship is pushed back
+towards the centre.
 
 ## Your fleet on a voyage
 

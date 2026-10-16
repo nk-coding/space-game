@@ -1,6 +1,8 @@
 # GDR-0093: Galaxy exploration decisions of 16 Oct: the S unit, a light scanner on the starter, jump range 2.5 → 4 S from any charted cluster, how signals look and read, SCAN for pilots and behaviors, data cores in the hold
 
-- Status: Accepted
+- Status: Accepted. 2026-10-16: the scanner, the starter's (hold 8 → 4), SCAN (G) and the `scan` behavior action built
+  (track E3); the open questions around them (sensor range, hidden sites, bearings, the cluster's edge) as lead
+  defaults in [GDR-0095](0095-sensors-hidden-sites-and-scans.md).
 - Date: 2026-10-16
 - Decided by: Niklas (the open questions of `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Supersedes: GDR-0078 in part (jumps start from home and opened gates only; now from home or any charted cluster)

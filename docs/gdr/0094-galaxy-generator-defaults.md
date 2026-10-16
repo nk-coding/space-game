@@ -1,6 +1,8 @@
 # GDR-0094: The galaxy generator's defaults: clusters at 0.9 S fill five ring bands (about 80, most of them in the rim), three hidden gates per band, trails walked towards home, the rim real and the rest stubs
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 2026-10-16: the open sensor range (E3) and how far sites stream set in
+  [GDR-0095](0095-sensors-hidden-sites-and-scans.md) (800 m on cores; records until 600 m, no despawning); a cluster's
+  interior rolls into a voyage plan (`sim::VoyagePlan::roll_interior`), its trail places signals' sites.
 - Date: 2026-10-16
 - Decided by: lead session (defaults for Niklas to review, galaxy tracks E1 and E2)
 - Supersedes: the plan's placeholder cluster counts per band (12, 18, 22, 24, 4; `docs/plans/galaxy-voyages.md` 4.8; not a record)

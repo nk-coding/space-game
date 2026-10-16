@@ -122,6 +122,13 @@ fire projectiles.
 matches, finds no target and steps aside; the rules below it get their turn. [[behavior_node:hold]] and
 [[behavior_node:escort]] need no target, so a rule with one of them always runs once its conditions hold.
 
+[[behavior_node:scan]] is the one action that is no maneuver: it starts a scan with the ship's [[part:scanner]]
+whenever its conditions hold and the scanner is ready, then always steps aside, so the next rule flies the ship.
+Put it above the rules that fight: `when enemies_near(300m) < 1 -> scan` scans only where a sweep wakes nothing.
+
+A behavior only picks targets its ship's sensors see ([[part:logic_core.sensor_range]] for a logic core); the
+leader's lock is the exception, wherever it is.
+
 If no rule decides, the ship **stops and holds**: it brakes to a standstill and waits for the next think.
 
 <NodeTable role="action" />
