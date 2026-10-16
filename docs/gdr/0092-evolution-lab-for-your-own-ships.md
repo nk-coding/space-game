@@ -69,6 +69,17 @@ running the fight again.
   `--run mixed_trials` (seed 1 `222c9bee00fa033e`, seed 4 `8d85b8edf59c7a64`) and the gauntlet
   `fights/runner_gauntlet.ron`; every older stream, fight code and run unchanged. Not yet: GENERATION n, the chip, the
   `visibilitychange` pause (step 8), the stand-in and FLOWN BY (step 6), the ARMS RACE (step 7).
+  Run storage layout 2026-10-16 ([ADR-0041](../adr/0041-web-storage-in-indexeddb.md), after a run filled the web's
+  local storage): a run is stored in parts, `lab/<id>` its head (format 2: name, created, status, the rules'
+  fingerprint, the generations done, the best genome and the state between generations, packed; about 0.3 kB),
+  `lab/<id>/config` its configuration (written once) and `lab/<id>/g<n>` each generation done (its numbers, its
+  genomes and records packed; written once when it closes), so a generation writes its part and the head (9–30 kB
+  measured) instead of the whole run (a STANDARD run's 0.7 MB at the end). "Persistence" above stands for the run file
+  (the CLI's, IMPORT RUN's), which is the same run: the parts restore to it byte for byte. Format-1 runs are written in
+  parts when the lab loads. The web keeps everything in IndexedDB now; the 5 MB limit, and with it the reason for at
+  most 8 runs (still the placeholder), is gone. A checkpoint the web's storage failed to keep pauses the run as before,
+  with "delete runs you don't need to make room" for a full storage; RUNS shows the storage used and the quota and
+  warns before it runs out.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

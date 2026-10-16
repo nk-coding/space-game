@@ -567,7 +567,8 @@ let code = run.fight_code(generation, child, job);  // any fight of any child, t
 ```
 
 What the lab builds on (the game's EVOLUTION lab since GDR-0092 step 4, 16 Oct 2026: `world::evolution`, `docs/client.md`
-"Evolution"; it keeps each run as `lab/<id>`, this run file with its head's name, creation time and status):
+"Evolution"; it keeps each run in parts since ADR-0041, [The run in parts](#what-a-run-keeps), with the head's name,
+creation time and status):
 
 | Call | What |
 |---|---|
@@ -586,7 +587,8 @@ What the lab builds on (the game's EVOLUTION lab since GDR-0092 step 4, 16 Oct 2
 | `Run::trials()`, `Run::tagged_jobs(generation, child)`, `Run::breakdown(generation, child)` | The run's trials; a child's jobs with their trial; its score by trial and goal ([Trials and goals](#trials-and-goals)) |
 | `Run::validation(genomes, seeds)`, `Run::validated_by(v)`, `Run::validated(id)` | VALIDATE as work, its results into the run, a genome's result |
 | `Run::rescored(&content, &save)` | RE-SCORE: a stale run as a new run under today's rules |
-| `RunSave::genome(&content, id)` | A genome of a run file without building the run (the lab's CHAMPIONS) |
+| `RunSave::genome(&content, id)`, `RunParts::genome(&content, id)` | A genome of a run file or of a run's parts without building the run (the lab's CHAMPIONS) |
+| `Run::head()`, `Run::part(generation)`, `Run::parts()`, `RunParts::of(&save)`, `Run::restore_parts(&content, &parts)`, `RunHead`/`RunPart::to_ron`/`from_ron` | The run in parts (the lab's storage): the small head, a closed generation's part, all of them, a run file split; going on from them is going on from the run file |
 
 `Job`, `JobResult`, `JobRecord`, `VoyageSpec`, `FightSpec`, `FightResult`, `GenerationStats`, `GenerationRecord`,
 `Bred` and `RunSave` are serde types with a RON form.
@@ -626,6 +628,22 @@ ended, and rebuilds any job's spec from them.
   the table. It goes on exactly as the run would have: the same run files byte for byte (`tests/runs.rs`: six
   generations straight against three, a run file written and read, a restore and three more, and one interrupted in
   the middle of a generation; `scripts/determinism-check.sh --run`, natively and in wasm, below).
+- **The run in parts** (`RunParts`, ADR-0041, 16 Oct 2026; the game's lab keeps runs so, `docs/client.md` "Evolution"):
+  the same run as a head, the configuration and one part per generation done, so a store that writes the run as it
+  grows writes each generation once. `RunHead` is the run file's head without the configuration and the numbers per
+  generation (`format`, the game's `name`, `created`, `status`, `rules`, `generations` done, `best`) and `payload:
+  "SGL1:…"` with what changes between generations, packed: the random stream, the archive's elites, a due RE-SCORE,
+  VALIDATE's results, and the genomes no part holds yet (a run with no generation done keeps its starts there).
+  `RunPart` is a generation's `GenerationStats`, readable, and `payload` with the genomes bred for it (generation 0's
+  begin with the starts) and its `GenerationRecord`, packed; nothing changes a closed generation, so a part is
+  written once. `Run::head()` and `Run::part(g)` are what a generation's close writes, `Run::parts()` all of it,
+  `RunParts::of(&save)` splits a run file, and `Run::restore_parts` goes on from the parts through the same restore
+  as `Run::restore`: the run file's run, byte for byte (`tests/runs.rs` `a_run_in_parts_is_its_run_file`, also before
+  the first generation and in the middle of one; `tests/trials.rs` with a due re-score and with VALIDATE's results;
+  `run_hashes` restores from the parts too, so `determinism-check.sh --run` covers them). Sizes, measured 16 Oct 2026
+  in the browser: the head about 0.3 kB, the configuration 4 kB, a part 9–14 kB for the starter's QUICK run (16
+  children, the default trials) and 25–30 kB for 64 children × 12 fights; a 200-generation run file of 5.2 MB became
+  5.6 MB of parts (each part compressed alone, and its numbers readable). The CLI keeps its one file.
 - **Stale runs**: the run file keeps the rules' fingerprint the run started under (`rules_fingerprint`, built in step
   1). `Run::restore` on content whose fingerprint differs marks the run stale (`Run::stale()`): it keeps its fingerprint
   (its fight codes say which rules they were fought under), it is read-only (`step` does nothing, `jobs` is empty),

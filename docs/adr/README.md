@@ -39,7 +39,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0028](0028-icons-in-the-content-pack.md) | Icons live in the content pack as SVG text, loaded and validated by `data` | Accepted (provisional, lead) | 2026-10-12 |
 | [0029](0029-shield-bubbles-batched-procedural-mesh.md) | Shield bubbles are one batched world-space mesh with a procedural WESL material and max blending | Accepted (provisional, lead) | 2026-10-12 |
 | [0030](0030-drydock-architecture.md) | Drydock architecture: a pure editing model in `data`, a static design report in `sim`, player designs as content blueprints | Accepted (provisional, lead) | 2026-10-12 |
-| [0031](0031-player-storage-and-design-sharing.md) | A player storage layer of named, versioned RON documents; designs shared as files and share codes | Accepted (provisional, lead) | 2026-10-13 |
+| [0031](0031-player-storage-and-design-sharing.md) | A player storage layer of named, versioned RON documents; designs shared as files and share codes | Accepted (provisional, lead); amended by [ADR-0041](0041-web-storage-in-indexeddb.md) | 2026-10-13; 2026-10-16 |
 | [0032](0032-wiki-generator.md) | Wiki generator: `content-tool wiki` writes a static HTML site straight from `data` | Superseded by [ADR-0039](0039-vitepress-wiki-from-game-data.md) | 2026-10-13 |
 | [0033](0033-career-model-save-and-voyage-director.md) | The career: progression rules in `data::career`, salvage and the voyage director in `sim`, one career save | Accepted (provisional, lead) | 2026-10-13 |
 | [0034](0034-fast-everyday-web-builds-and-shared-compile-cache.md) | Everyday web builds without LTO and wasm-opt (`--full` for performance); sccache shared by every cargo build on the VM | Accepted | 2026-10-14 |
@@ -49,6 +49,7 @@ is the overview and links to both series. Format and status rules: `CLAUDE.md`, 
 | [0038](0038-workspace-structure-feature-folders-and-client-split.md) | Workspace structure: crates grouped in `core/`, `client/`, `tools/`; the client split into `kit`, `world`, `game`; feature folders inside every crate | Accepted; amended by [ADR-0040](0040-arena-library-in-core.md) | 2026-10-14 |
 | [0039](0039-vitepress-wiki-from-game-data.md) | The wiki is a VitePress site in the game's look; its content pages and every number come from the game's data | Proposed | 2026-10-15 |
 | [0040](0040-arena-library-in-core.md) | The `arena` library moves to `crates/core/arena` (the client replays its fights); its CLI is the package `arena-cli` in `crates/tools/` | Accepted | 2026-10-15 |
+| [0041](0041-web-storage-in-indexeddb.md) | The web build keeps its documents in IndexedDB, read into memory at start and written behind; the local storage moves in once; lab runs are stored in parts | Accepted (provisional, lead) | 2026-10-16 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

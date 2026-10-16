@@ -529,14 +529,19 @@ saved template copy moved to the cruiser frame).
   `Storage::set_aside` copies a document's text as stored to another name (a working document this build can't
   read is kept before it is written over); `Storage::keep_on_leave` keeps a document that waits for its write, and
   the web backend writes it when the page goes away or is hidden (made into text only then).
-- Backends: **web** the browser's local storage, keys `space-game/<namespace>/<name>` (per origin: the copies on
-  :8080 and :8081 don't share designs; about 5 MB per origin, a design is 2–250 kB); **desktop** files
-  `<data dir>/<namespace>/<name>.ron`, written to a temporary file and renamed (data dir: `$XDG_DATA_HOME` or
+- Backends: **web** the browser's IndexedDB (since 16 Oct 2026, ADR-0041; until then the local storage, keys
+  `space-game/<namespace>/<name>`, moved in once at the first start): the database `space-game`, keys
+  `<namespace>/<name>`, every document read into memory before the game starts, writes kept at once and committed
+  behind them (per origin: the copies on :8080 and :8081 don't share designs; the browser's quota is a share of the
+  disk, a design is 2–250 kB; `docs/client.md` "The web's storage"); **desktop** files
+  `<data dir>/<namespace>/<name>.ron` (a document's parts `<data dir>/<namespace>/<name>/<part>.ron`), written to a
+  temporary file and renamed (data dir: `$XDG_DATA_HOME` or
   `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows, each
   `/space-game`); **memory** for tests and as the fallback when the platform gives no storage (the status line
   says so; Android until its backend, the files backend on the app's internal data path, lands).
 - `StorageError` reaches the status line in words: no storage, storage full (the browser's quota, a full disk),
-  I/O, unreadable document, newer format, bad name.
+  I/O, unreadable document, newer format, bad name. On the web a write that failed behind the call comes back with
+  the next write (the same words).
 
 ### Designs
 

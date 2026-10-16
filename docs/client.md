@@ -232,6 +232,62 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
    "<url>/?hashlog=1&load=20&debug=1&hud=0" <dir> "wait 120000" 480 270`, then keep the lines matching
    `^[0-9]+ [0-9a-f]{16}$` and `^# ` (the console prints 30 lines per call).
 
+## The web's storage
+
+The web build keeps the player's documents (designs, the working design, behaviors, the career, settings, the lab's
+runs) in the browser's IndexedDB (ADR-0041, 16 Oct 2026; `world::storage`, the `web`, `behind` and `moving`
+modules). Desktop keeps files, unchanged (`docs/drydock.md` "Storage and sharing").
+
+- **Start**: `main` awaits `world::storage::preload()` before it builds the app (`wasm_bindgen_futures::spawn_local`):
+  it opens the database `space-game` (stores `docs`: key `namespace/name`, the stored text; `meta`: the move's mark),
+  moves the old local storage in once (below) and reads every document into memory. `Storage::open` then finds it
+  open; if it couldn't be opened, the game runs on the documents found in memory, unsaved, and says so
+  (`Storage::fallback`, the career's NO STORAGE note). It also asks for persistent storage
+  (`navigator.storage.persist()`, best effort; the console says what the browser answered).
+- **Reads and lists** come from memory at once. **Writes and deletes** change memory at once and are committed
+  behind the calls: a microtask at the end of the frame's task puts everything that changed into one read-write
+  transaction (deletes in one of their own, first), each key with its text as it is then, and starts the commit
+  (`IDBTransaction.commit()`). Transactions on the store run in the order they were made, so the last write of a key
+  wins and a delete after a write deletes; what a frame writes (a lab generation's part and head) is kept together
+  or not at all.
+- **Failures**: a transaction that fails (`QuotaExceededError` is `StorageError::Full`) leaves its keys unsaved;
+  they go out again with the next write that deletes nothing and right after any transaction that commits (a delete
+  goes first on its own, so the room it makes is there when they are tried again). While the last transaction
+  failed, every write returns its error, so the screens show the words they always did (`AUTOSAVE FAILED: THE STORAGE
+  IS FULL`, `NOT SAVED: …`). Deletes are never refused: they make room. `Storage::unsaved` names a document waiting
+  so; the lab pauses a run whose checkpoint it is (Evolution, "Storage"). Checked in the headless browser with the
+  origin's quota lowered (DevTools' `Storage.overrideQuotaForOrigin`): a running lab run paused with `NOT SAVED: THE
+  STORAGE IS FULL: DELETE RUNS YOU DON'T NEED TO MAKE ROOM; THE RUN IS PAUSED`; deleting the big run made room, its
+  unsaved generations went out and RESUME went on.
+- **Leaving the page**: on `pagehide` (a reload, a closed tab, another page) and on `visibilitychange` to hidden, the
+  documents kept for leaving (`Storage::keep_on_leave`: the working design and the behavior draft within their
+  autosave's second) are written and committed right then. Checked in the headless Chromium: an edit in the drydock
+  followed at once by a reload, or by closing the tab, is there when the page comes back. What the browser
+  guarantees is less: a transaction committed before the page went away is finished by the browser's storage
+  process; a crash or a killed tab loses what had not committed (at most the last frame's writes, and the lab's open
+  generation as always). Other tabs of the game on the same origin keep their own memory; the last commit wins.
+- **The move from the local storage** (the build before 16 Oct 2026 kept everything there, keys
+  `space-game/<namespace>/<name>`, about 5 MB): at the first start every such key is copied into `docs` in one
+  transaction, read back and compared; only then is the move marked in `meta`, and only after that are the old keys
+  removed, each only where IndexedDB holds the same text. Closed at any point, the next start finishes it: before
+  the mark it copies again (nothing in IndexedDB can be newer, the game never ran on it), after it it removes what is
+  left. A key whose text differs after the move (a tab of an older build still open and writing) is left in the local
+  storage, untouched, and named in the console. The console says `storage: moved N documents from the local storage
+  into IndexedDB, N old copies removed`. A lab run stored whole (`lab/<id>` format 1) is then written in parts by the
+  lab. Checked in the headless browser: a career, the working design, a saved design and a running lab run made by
+  the old build moved, every text identical (the run in parts), the local storage empty, and the run went on and
+  survived a reload.
+- **Usage**: `Storage::usage` (the documents' bytes and `navigator.storage.estimate()`) for the lab's RUNS page.
+  Browsers give `navigator.storage` only to secure addresses (https, localhost): on `http://10.77.9.2:8080` there is
+  no estimate and no persistence request, and the storage works all the same.
+- **Looking at it**: the browser's developer tools, Application → IndexedDB → `space-game` → `docs`.
+- **Tests** (native, `world::storage`): writing behind keeps each key's last state (the last write wins, a delete
+  after a write deletes, deletes first, two batches out commit in order), lists keep a document's parts apart, a
+  failed batch waits and goes out again (not twice while out; deletes still go), a failed write behind reaches the
+  next write and `unsaved` and never a delete; the move copies, checks and then clears once, a move cut off at any
+  point is finished by the next start, one that doesn't read back keeps the old storage, documents written after the
+  move are left alone; the warning's threshold.
+
 ## Structure
 
 **Three crates** (ADR-0038, 14 Oct 2026), each using only the ones below it; the module names stayed, so the file
@@ -839,7 +895,7 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   camera flies from the drydock straight to the lab, and the setup opens with the working design as its start). A
   layer over home like FLEET and the LOG: home's words, FLEET, SETTINGS, the LOG and the debrief step aside under it.
   The ring top left, CLOSE and Esc go back a page, and close the layer from RUNS (the camera flies back out).
-- **RUNS**: every run, newest first (at most `MAX_RUNS`, 8: the web's local storage holds about 5 MB per origin):
+- **RUNS**: every run, newest first (at most `MAX_RUNS`, 8, a placeholder chosen for the web's old local storage):
   its name, its starts, its status (`RUNNING` teal, `PAUSED`, `DONE` gold, `RULES CHANGED` and `DOESN'T READ` coral),
   generation n / N, `START 0.42 » BEST 0.81` (generation 0's best, the archive's best), when it was made; PAUSE or
   RESUME, DUPLICATE (the same setup with a new seed, a new run that computes), OPEN (or a click on the row) and DELETE,
@@ -847,7 +903,10 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   reads a run file of the CLI (`arena evolve --save`; on the web through the file chooser, on desktop dropped onto
   the window while the layer is open; at most 32 MB), paused, under its file's name (`Lab::import`); one fought under
   other rules comes in read-only, to be re-scored. One run computes at a time: making or resuming one pauses the one
-  that computed.
+  that computed. On the web the head's right end says what the storage holds and may hold (`STORAGE 3.4 MB OF 2.1
+  GB`, `navigator.storage.estimate()`), in coral with `NEARLY FULL: DELETE RUNS YOU DON'T NEED` under 64 MB or a
+  tenth of the quota left; on an insecure address (`http://10.77.9.2`, where browsers give no estimate) the game's own
+  bytes (`GAME DATA 3.4 MB · NO QUOTA KNOWN ON THIS ADDRESS`). It follows each commit.
 - **SETUP** (NEW RUN): START FROM, one to four starts picked from YOUR DESIGNS and the templates (the content ships of
   the player's faction), each a chip (a click shows its locks); LOCKS in lists until the on-ship painting of step 6:
   KEEP ALL of a category (gold pills, `categories.ron`), each part of the start (a part kept with its category shows
@@ -923,17 +982,26 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   generation in about 1.5 s and a STANDARD one (512 fights, about 0.5 M ticks) in about 5–6 s with the layer open,
   13–15 s elsewhere. Writing the run after a generation took 2–11 ms for 3–32 kB (it grows with the run: a STANDARD run
   of 50 generations is about 0.7 MB, so its last writes may take some tens of ms, GDR-0092's "cost of the snapshot").
-- **Storage**: each run is `lab/<id>` (`RunDoc`, format 1; the id a slug of its name): the run file
-  (`arena::RunSave`, `docs/arena.md` "What a run keeps") with its head's `name`, `created` and `status`, written
-  after every generation (its checkpoint: a reload breeds the open generation again from the same random state, the
-  same run), when it is made, paused or resumed. At start the lab lists `lab/` and restores the run that was
-  computing, so it goes on; a stored run that doesn't read is listed with why (so it can be deleted), one whose
-  rules' fingerprint differs from today's is stale and read-only. A failed write (the storage full) pauses the run
-  and says so. The CLI reads the same file (`arena evolve --resume`, `arena replay`), header comment and all. Old
-  storage without `lab/` reads as no runs.
+- **Storage** (`world::evolution::store`, ADR-0041, 16 Oct 2026): each run in parts (the id a slug of its name):
+  `lab/<id>` its head (`RunDoc`, format 2: `arena::RunHead` with `name`, `created` and `status`, a few hundred bytes),
+  `lab/<id>/config` its `RunConfig` (written once) and `lab/<id>/g<n>` each generation done (`arena::RunPart`, written
+  once when it closes; `docs/arena.md` "What a run keeps"). After every generation its part and then the head are
+  written (its checkpoint: a reload breeds the open generation again from the same random state, the same run); the
+  head alone when the run is paused, resumed, renamed or validated. A generation writes 2–40 kB, however long the
+  run is (measured below). At start the lab lists `lab/` and restores the run that was computing, so it goes on; a
+  stored run that doesn't read (a lost part included) is listed with why, so it can be deleted, one whose rules'
+  fingerprint differs from today's is stale and read-only. A run stored whole (format 1, until 16 Oct 2026) is
+  written in parts when the lab loads. A failed write (the storage full), or on the web a checkpoint the storage
+  failed to keep behind the call (`Storage::unsaved`), pauses the run and says so (`NOT SAVED: THE STORAGE IS FULL:
+  DELETE RUNS YOU DON'T NEED TO MAKE ROOM; THE RUN IS PAUSED`). DELETE removes the parts and then the head. The CLI
+  keeps one run file (`arena evolve --save/--resume`); IMPORT RUN splits one into parts. Old storage without `lab/`
+  reads as no runs.
 - **Tests**: `world::evolution` (a frame's work stays within its budget's ticks; the run waits in flight and
   computes on the screens; a run reloaded mid-way goes on to the same run file byte for byte as one that ran
-  through; pause, resume, delete, old storage; SAVE AS DESIGN validates, opens in the drydock and keeps its origin;
+  through; pause, resume, delete, old storage; a generation writes its part and the head and nothing else, the parts
+  read back as the run, a lost part is named, DELETE removes every document; a run stored whole moves into parts and
+  goes on byte for byte; a checkpoint the storage couldn't keep pauses the run, RESUME waits for room and the run then
+  ends with every part kept; SAVE AS DESIGN validates, opens in the drydock and keeps its origin;
   starts resolve self-contained), `game::evolution` (the building's words; the setup pre-filled by EVOLVE THIS
   DESIGN; changes and endings in words), `drydock::actions` (EVOLVE THIS DESIGN asks the lab and goes home),
   `drydock::blueprints` (the EVOLVED tag), `shipyard::layout` (the building and its label apart).
@@ -1164,8 +1232,9 @@ the sides, a taller one above and below (`ui_kit::ui_scale`, tested for every pl
   the drydock's view for the next visit.
 - **Storage and sharing** (`storage.rs`, `clipboard.rs`, `player/library.rs`, `share.rs`, `blueprints/`;
   [drydock.md "Storage and sharing"](drydock.md#storage-and-sharing)): `Storage` (named RON documents per
-  namespace with a format version; the browser's local storage on the web, files in the user's data directory on
-  desktop, memory as the fallback), saved designs and the autosaved working design (restored at start), the
+  namespace with a format version, and a document's parts; on the web IndexedDB read into memory before the app is
+  built and written behind, ADR-0041 and "The web's storage" below; files in the user's data directory on desktop,
+  memory as the fallback), saved designs and the autosaved working design (restored at start), the
   BLUEPRINTS and EXPORT screens (one floating layer over everything above the bottom bar: `ShelfRoot`, a `Hot`
   veil so clicks reach nothing under it, its backing a `UiIcon::Scrim` with the hole closed rather than a UI
   background, so its own icons (the frames' locks, the preview's ship) draw over it; the drydock's parts it covers
