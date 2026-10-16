@@ -1,5 +1,5 @@
 //! The `voyage` scenario: a voyage directed by `sim::voyage` (sites spawning, sleeping, waking and clearing,
-//! salvage, the recall check), flown by a scripted fleet.
+//! salvage, the recall check, scans with their reveals, bearings and wakes), flown by a scripted fleet.
 
 use super::*;
 
@@ -57,7 +57,8 @@ pub(super) fn voyage_scenario(content: &Content, seed: u64) -> Result<Scenario, 
 
 impl Scenario {
     /// The voyage scenario's script for this tick: the scripted kills, then each player ship fights, salvages or
-    /// flies on (re-decided every `SALVAGE_RETARGET` ticks, staggered).
+    /// flies on (re-decided every `SALVAGE_RETARGET` ticks, staggered) and scans whenever it decides (the sim
+    /// ignores it while its scanner charges or cools down, and for a ship without one).
     pub(super) fn voyage_run(&mut self, tick: u64) {
         let Some(v) = self.sim.voyage() else {
             return;
@@ -137,6 +138,7 @@ impl Scenario {
                 },
             };
             self.inputs.commands.push((c, cmd));
+            self.inputs.commands.push((c, ShipCommand::Scan));
         }
     }
 }
