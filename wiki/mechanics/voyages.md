@@ -11,9 +11,10 @@ where research data comes from, and clearing one is how you find the next.
 
 ## The voyage map
 
-Fly to the gate from home ([[control:open_voyages.keys]], or a click on the gate) and the voyage map opens. It is a
-star map of the galaxy's edge. The galaxy is split into bands, from the rim inwards: rim, outer, middle, inner and
-core. Every voyage you can fly now lies in the rim band; the bands further in are shown as uncharted.
+Fly to the gate from home ([[control:open_voyages.keys]], or a click on the gate) and the voyage map opens. It is
+your game's [galaxy](/mechanics/galaxy), around home: the bands from the rim inwards (rim, outer, middle, inner and
+core; only the rim is open to you at first), the clusters you have charted, the signals you have heard as gold areas,
+and your jump range as soft teal circles. The first four voyages of the rim sit on clusters near home.
 
 You only see the voyages you know about. A voyage that is not open yet is not drawn at all. A known voyage has a
 marker and a label:
@@ -25,6 +26,13 @@ marker and a label:
 - **GUARDIAN**: a voyage whose goal is a boss, drawn as a coral diamond.
 
 Under each voyage's name, one dot per site: coral for enemies, gold for wrecks, a diamond for the goal.
+
+Besides the voyages: a charted cluster is a small teal ring (CHARTED), a cluster a signal leads to a gold one
+(SIGNAL · … · LOCATED). Click one to see it in the panel: its band and type, how far it lies and how long the warp
+takes, the signals that lead there. Click a signal's words to see the signal; click empty space for a **blind jump**
+(the [galaxy](/mechanics/galaxy) page has the rules). SET COURSE on any of them runs the warp on the map, a light
+running from where the jump starts to the cluster, and then your fleet arrives; Esc ends the warp before anything
+launches.
 
 Click a voyage (or step through them with [[control:next_voyage.keys]] and [[control:previous_voyage.keys]]) to
 see it in the panel on the right: its band, the factions you will meet, WRECKS if any site holds them, its summary,
@@ -178,7 +186,9 @@ After every voyage, home opens with the debrief on the right:
 - RESEARCH DATA per family, with what is now in store, and the materials;
 - RESEARCH READY: the research nodes you can pay for now;
 - `SIGNAL FOUND · <voyage>` for every voyage this one opened, with VOYAGE MAP to fly straight to the gate, and the
-  voyage's own closing words on a first clear.
+  voyage's own closing words on a first clear;
+- after a voyage into the galaxy: `CHARTED · <cluster>` the first time, every signal heard or narrowed, located,
+  found or followed to its end, and `1 LOG TO DECODE · AT THE LOG` for every data core that came home.
 
 Everything in the hold is dismantled at once: each part becomes research data for its family, and some give
 materials too. Press DISMISS (Esc, Enter) to close it. The debrief is not kept, but the LOG is.
@@ -195,6 +205,9 @@ haven't seen, the voyage's name, its outcome (GOAL CLEARED, RECALLED or LOST), i
 part count and the data and materials it gave), or THE HAUL STAYED BEHIND. Opening the LOG marks everything seen.
 
 Kills and ships lost are not kept in the LOG; the debrief shows them once.
+
+Data cores you bring home wait at the top of the LOG (LOGS TO DECODE), and the mast glows while one waits. DECODE is
+free: the log becomes a signal on the map, and its row says what it leads to and what found it.
 
 ## Clearing a voyage
 

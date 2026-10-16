@@ -1,6 +1,6 @@
 ---
 title: "The galaxy"
-description: "How a game's galaxy is generated - bands, clusters, home, gates, trails of signals and their sources, lore - and the jump range that limits where you go. Coming: the voyage map does not use it yet."
+description: "How a game's galaxy is generated - bands, clusters, home, gates, trails of signals and their sources, lore - the jump range that limits where you go, blind jumps, following a signal and decoding logs."
 ---
 
 # The galaxy
@@ -9,12 +9,9 @@ Every game has its own galaxy, generated once from the game's seed and kept in i
 you. It is mostly dark: you find places by following **signals**, or by jumping blind into space nearby. This page
 describes how the galaxy is put together.
 
-::: info Coming
-The galaxy is generated and kept in your save, but not played yet. The voyage map still shows the first four voyages
-of the rim ([voyages](/mechanics/voyages) has those); your save already places them in its galaxy (the ones you have
-flown charted, the next one a located signal). Flying into the generated galaxy and following signals come next.
-Scanning inside a cluster works already, on the first four voyages too.
-:::
+The voyage map is this galaxy: home, the clusters you have charted, the signals you have heard and how far your
+jumps reach ([voyages](/mechanics/voyages) has the map itself). The first four voyages of the rim sit on clusters of it;
+everything else you find by jumping.
 
 ## Distances: S
 
@@ -48,7 +45,18 @@ in the propulsion family grows the range: [[research:jump_calibration_1]] and [[
 [[research:jump_calibration_1.unlocks]] each. A jump takes [[galaxy:galaxy.warp]] of distance.
 
 Every cluster of a band can be reached from where the band is entered, one jump at a time within the starting range:
-the generator checks it for every galaxy.
+the generator checks it for every galaxy. Jumps reach only the bands a gate has opened: the rim at first.
+
+On the map the jump range is drawn as soft teal circles round home and every charted cluster (only their outer
+edge). A jump starts from the nearest of them; the warp runs on the map before your fleet arrives, and Esc ends it
+before anything launches.
+
+## Blind jumps
+
+Most of the galaxy is dark: clusters you haven't charted are not drawn. Click a spot of unknown space within your
+range and the panel offers a **blind jump**: it goes to the cluster nearest that spot (within about one and a half
+clusters' spacing; farther is EMPTY SPACE). It is an ordinary cluster of its band: patrols, wrecks, now and then a
+beacon or a data core that starts a trail. Arriving charts it, even if the voyage is lost.
 
 ## Gates
 
@@ -79,9 +87,18 @@ that holds the place it leads to, though not in its middle. Its first line names
 - [[signal_source:old_beacon]] and [[signal_source:distress_call]]: something calling in the cluster
   ("[[signal_source:old_beacon.line]]"). Scan it and it is a signal at once.
 
-A signal you have heard **narrows** as you search: a scan in another cluster inside its area halves the area towards
-the place (NARROWED), still holding it, and once no other cluster lies inside, the signal is **LOCATED**: you know
-the cluster. A scan in the place's own cluster locates it at once.
+On the map a signal you have heard is a gold area: a dotted edge, a faint fill, a slow pulse running out to the edge,
+and its two lines over it. A signal you have heard **narrows** as you search: a scan in another cluster inside its
+area halves the area towards the place (NARROWED; the old edge fades out), still holding it, and once no other
+cluster lies inside, the signal is **LOCATED**: you know the cluster, and the map marks it in gold. A scan in the
+place's own cluster locates it at once. One voyage narrows a signal once: scanning again in the same cluster tells
+you nothing new about where else to look.
+
+In the place's cluster its site is hidden until you come close or a scan sweeps it; once you see it the signal is
+**FOUND**, and when you clear it (or it holds nothing to clear) you have followed it to its end. A voyage keeps what
+it found even when it is lost: charts and signals are knowledge, not haul. The debrief lists it all.
+
+A data core you bring home waits at the **LOG** at home (its mast glows): DECODE turns it into a signal, free.
 
 A trail's first source lies in an ordinary cluster of its band; each later one waits at the place the signal before
 it led to, so following a trail walks you across the band, a [[galaxy:galaxy.trail_step]] step at a time, towards its
@@ -106,7 +123,9 @@ with the [[behavior_node:scan]] action. The scanner charges for [[part:scanner.s
   pointing straight at it. Scan again from somewhere else and the two lines cross at the place;
 - sleeping ships within [[part:scanner.scan_wake]] wake up: where you scan matters.
 
-Then it cools down for [[part:scanner.scan_cooldown]]. A banner says what the scan found. A cluster has an edge
+Then it cools down for [[part:scanner.scan_cooldown]]. A banner says what the scan found, and what it did to your
+signals. [[control:cluster_map.keys]] ([[control:cluster_map]]) lays the whole cluster over your view: its edge,
+where you came in, what your scans swept, the bearings, the sites found and your fleet. A cluster has an edge
 [[sim:edge_margin]] outside its radius (never more than [[sim:max_edge]] from its centre): beyond it your ship is
 pushed back.
 
