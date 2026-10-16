@@ -355,19 +355,21 @@ Next session:
      DUPLICATE, RENAME; the SETUP's trials and goals with the estimate, the run's SCORES by trial and goal and its
      fights in fixed columns; the CLI's `--trial`, `--goal(s)`, `arena trials`, `validate`, `rescore`;
      `determinism-check.sh --run mixed_trials` (native = wasm); every older stream and run unchanged;
-  6. **Built 16 Oct 2026** (GENERATION n, REPLACE <START>, the ORIGIN line and TIDY still to come): everything mutates
-     within MAY CHANGE's genes (layout, parts by category, armour, power, behavior numbers and rules, assist numbers
-     and rules; `lab.ron`'s presets EVERYTHING, the default, DESIGN ONLY, BEHAVIOR ONLY, ASSISTS ONLY, NUMBERS ONLY),
+  6. **Built 16 Oct 2026**: everything mutates within MAY CHANGE's genes (layout, parts by category, armour, power,
+     behavior numbers and rules, assist numbers and rules; `lab.ron`'s presets EVERYTHING, the default, DESIGN ONLY,
+     BEHAVIOR ONLY, ASSISTS ONLY, NUMBERS ONLY),
      the stand-in pilot (`sim::flight::stand_in`, `lab.ron`'s CASUAL, HANDS OFF, BUSY) and FLOWN BY (BOTH by default),
      locked assists, the LOCKS grid (a part's lock, KEEP EMPTY cells), the CLI's `--flown-by` and `--lock assist:N`;
      `determinism-check.sh --run everything` (native = wasm); runs breed otherwise than before (new run hashes),
-     fights and codes unchanged;
+     fights and codes unchanged; the same day GENERATION n (a click on the chart lists a generation's children),
+     REPLACE START (over a start that is one of YOUR DESIGNS), TIDY at SAVE (`Run::tidied`: an evolved behavior's
+     rules that never decided go) and the BLUEPRINTS preview card's ORIGIN (a click opens the run at the design);
   7. co-evolution (the ARMS RACE);
   8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
   9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab: the rest of GDR-0092 step 6 (GENERATION n, REPLACE <START>, the ORIGIN line, TIDY at SAVE);
-     co-evolution with step 7; the rest of `lab.ron`, its wiki page and the Simulation vault with step 8.
+  1. The evolution lab: co-evolution with step 7; the rest of `lab.ron`, its wiki page and the Simulation vault with
+     step 8.
 
 ## Phase 4: measurement
 

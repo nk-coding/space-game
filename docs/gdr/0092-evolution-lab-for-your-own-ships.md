@@ -105,6 +105,24 @@ running the fight again.
   `ef0039c55cfebe6d`; native = wasm, resumed identical); fights, fight codes and the rules' fingerprint
   (`87f8e44db8186359`) are unchanged, and run files of before read, restore and replay. Not yet (still step 6's):
   GENERATION n, REPLACE <START>, the preview card's ORIGIN line and a click on the origin, TIDY at SAVE.
+  Step 6 completed 2026-10-16 (`docs/client.md` "Evolution", `docs/drydock.md` "Blueprints", `docs/arena.md` "The
+  API"): GENERATION n (a click on a generation in SCORES BY GENERATION lists its children in the picked design's
+  place, best first, with score, whether it took a cell, parent and crossover partner, cell and what changed; ‹ and ›
+  step through the generations; a click on a child picks it with its FIGHTS), REPLACE <START> (a REPLACE START pill
+  beside SAVE AS DESIGN when the design's start is one of YOUR DESIGNS still saved; it asks, then writes over that
+  design under its id and name with the result's `origin`; the drydock opens the new version when it had that design
+  open unchanged), TIDY at SAVE (`arena::Run::tidied`; the lead default, on, with a TIDY pill on the save line that
+  switches it off and a tip that names the rules it drops) and the preview card's ORIGIN line (`G37 · 0.91` and the
+  run's name; a click goes home and opens the run at the design: `world::evolution::LabRequest::Origin`; `ITS RUN IS
+  DELETED` when it is gone). Where building found otherwise: TIDY drops only the behavior's rules: the records keep
+  the behavior rules that decided but not the assists' (adding them would change the record format and every run
+  hash), so the assists are saved as evolved; it counts only the fights the behavior flew (a stand-in pilot's fights
+  run no behavior on its ship, voyages keep no rules), keeps the start's locked rules and the top rule when none
+  decided, tidies only a behavior that evolved (the player's own, unchanged, is saved as it is) and the bits are a
+  side's, so an escort's rules can only keep a rule; EVOLVE THIS DESIGN starts from the saved design itself (not the
+  working copy) when it has no unsaved changes, so REPLACE <START> has a design to write over; the pill says REPLACE
+  START (the start's name in its tip and question: names are too long for the pill); GENERATION n shows in the right
+  column, not as a page of its own. Breeding, fights, codes and run hashes are unchanged.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

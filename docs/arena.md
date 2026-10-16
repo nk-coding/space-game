@@ -617,6 +617,7 @@ creation time and status):
 | `Run::trials()`, `Run::tagged_jobs(generation, child)`, `Run::breakdown(generation, child)` | The run's trials; a child's jobs with their trial; its score by trial and goal ([Trials and goals](#trials-and-goals)) |
 | `Run::validation(genomes, seeds)`, `Run::validated_by(v)`, `Run::validated(id)` | VALIDATE as work, its results into the run, a genome's result |
 | `Run::rescored(&content, &save)` | RE-SCORE: a stale run as a new run under today's rules |
+| `Run::tidied(id)` | TIDY at SAVE (GDR-0092 step 6): genome `id`'s behavior without the rules that never decided in any of its recorded fights its behavior flew (the records' `decided` bits, ORed; a stand-in's fights and voyages tell nothing), its start's locked rules kept and the top rule when none decided; with the dropped rules' indices and the fights that told. `None` when no fight told. The lab saves an evolved behavior so (on by default) |
 | `RunSave::genome(&content, id)`, `RunParts::genome(&content, id)` | A genome of a run file or of a run's parts without building the run (the lab's CHAMPIONS) |
 | `Run::head()`, `Run::part(generation)`, `Run::parts()`, `RunParts::of(&save)`, `Run::restore_parts(&content, &parts)`, `RunHead`/`RunPart::to_ron`/`from_ron` | The run in parts (the lab's storage): the small head, a closed generation's part, all of them, a run file split; going on from them is going on from the run file |
 
@@ -640,7 +641,7 @@ ended, and rebuilds any job's spec from them.
   per child its genome number, score, measures and whether it took a cell, and per job a `JobRecord`: the score, the
   ticks and how it ended (`JobEnd::Fight`: outcome, build points lost, damage dealt and vessels left per side, the
   final state hash, and a bit for every rule of the child's behavior that decided at least once,
-  `Referee::decided`, for GDR-0092's TIDY; `Voyage`: the final state hash; `Failed`). Each side's build points at the
+  `Referee::decided`, for GDR-0092's TIDY, `Run::tidied`; `Voyage`: the final state hash; `Failed`). Each side's build points at the
   start and the scores follow from the spec and the rest (`JobRecord::fight_result`). The config, the records and the
   table rebuild every job (`Run::job`), so `Run::fight_code(generation, child, job)` is any fight as a code; a test
   replays every fight of a run to its recorded result.

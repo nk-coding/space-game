@@ -868,7 +868,8 @@ the records mast by the gate, once the camera has flown there).
 
 The evolution lab ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026; its trials and goals,
 VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME with step 5 the same day; MAY CHANGE, FLOWN BY and the locks'
-grid with step 6, also 16 Oct 2026): runs that breed the
+grid with step 6, also 16 Oct 2026, its GENERATION n, REPLACE START, TIDY and the preview card's ORIGIN the same
+day): runs that breed the
 player's designs against enemies and keep the best of each kind, every fight to watch again, any result saved as a
 design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
 the building `shipyard`. Until its research node comes (step 8) it opens with `?lab=1`; without it the building is
@@ -884,8 +885,11 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   fills with the run's generations (the open one counted in), drawn again only when a segment lights. Its label
   hangs over it, right-aligned short of the station's corner; the layout test keeps it and the building clear of
   every place, the moorings, the bridges, the station and the other labels at the three UI check sizes.
-- **Opening it**: E (`open_evolution`, context `home`), a click, or EVOLVE THIS DESIGN in the drydock's ⋯ menu (the
-  camera flies from the drydock straight to the lab, and the setup opens with the working design as its start). A
+- **Opening it**: E (`open_evolution`, context `home`), a click, EVOLVE THIS DESIGN in the drydock's ⋯ menu (the
+  camera flies from the drydock straight to the lab, and the setup opens with the working design as its start: the
+  saved design itself when it has no unsaved changes, so its result can replace it), or a click on an evolved design's
+  ORIGIN in BLUEPRINTS' preview card (the same flight; its run's page opens with the design picked;
+  `world::evolution::LabRequest`). A
   layer over home like FLEET and the LOG: home's words, FLEET, SETTINGS, the LOG and the debrief step aside under it.
   The ring top left, CLOSE and Esc go back a page, and close the layer from RUNS (the camera flies back out).
 - **RUNS**: every run, newest first (at most `MAX_RUNS`, 8, a placeholder chosen for the web's old local storage):
@@ -941,7 +945,13 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   `<name> (re-scored)` under today's rules that fights the archive's elites again first, then goes on; the stale run
   stays as it was); a coral line for a stale run (`THE RULES HAVE CHANGED SINCE THIS RUN · IT IS KEPT READ-ONLY`). SCORES BY
   GENERATION: three lines over the run's generations (the archive's best gold, each generation's best teal, its mean
-  grey; thin rotated nodes) over bars of the children that took a cell, and the last generation in numbers. THE
+  grey; thin rotated nodes) over bars of the children that took a cell, and the last generation in numbers; a
+  click on a generation (a column over its lines and bar, its tip `GENERATION 12 · BEST 0.81 · MEAN 0.40`, lit while
+  open) opens GENERATION n in the picked design's place: `GENERATION 12 OF 50` with ‹ and › (the one before, the
+  next) and THE DESIGN (back), its numbers (`32 CHILDREN · 4 REFUSED · 5 TOOK A CELL · BEST 0.81 · MEAN 0.40`, `· A
+  RE-SCORE`), then its children best first as cards: the drawing, score and genome number, `TOOK A CELL` in gold,
+  and under them `FROM #45 × #12 · CELL 3, 4 · +1 PULSE LASER · BEHAVIOR CHANGED` (a crossover's partner after the
+  ×; a start's `A START`, a re-score's `FOUGHT AGAIN`); a click on one picks it with its FIGHTS. THE
   ARCHIVE: a cell per bin of the run's first two measures (a third folded in), each occupied cell a ship card
   (`UiIcon::Ship`, as FLEET and BLUEPRINTS draw them) tinted by its score, the best with a gold edge, a start with a
   teal corner; its axes in words under it (the content's stat names and units where there are some). THE PICKED
@@ -956,7 +966,13 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   STAND-IN` after the seed when a stand-in flew it; a gauntlet's waves cleared after it); CODE copies the fight's code,
   WATCH plays it), LINEAGE (the start and the last ancestors as cards with generation, score and what changed, `·
   BEHAVIOR CHANGED`, `· ASSISTS CHANGED`; a click picks one), COMPARE (the start and the design side by side, the parts
-  gained and lost by name, the behavior, the pilot assists), and SAVE AS DESIGN (a name, `<start> · evolved g<generation>`, then SAVE).
+  gained and lost by name, the behavior, the pilot assists), SAVE AS DESIGN (a name, `<start> · evolved g<generation>`,
+  then SAVE) and, when the design's start is one of YOUR DESIGNS still saved, REPLACE START (gold; its tip names the
+  design): it asks under the tabs (`REPLACE MY SKIFF? IT KEEPS ITS ID AND NAME`, REPLACE / KEEP), then writes over it
+  (`world::evolution::SaveTo::Replace`). While either is open, TIDY's line: for a behavior that evolved, `TIDY` (on)
+  and `DROPS 2 RULES THAT NEVER DECIDED IN ITS 12 FIGHTS` (its tip lists them; off: `KEEPS ALL 7 RULES · 2 RULES
+  NEVER DECIDED`), else why there is nothing to tidy (`ITS BEHAVIOR IS ITS START'S: SAVED AS IT IS`, `EVERY RULE
+  DECIDED IN ITS 12 FIGHTS: NOTHING TO TIDY`, `ITS BEHAVIOR FLEW NO FIGHT`).
 - **VALIDATE** (`Lab::validate`): the picked design, or the archive's best 8, fight the run's trials on 20 new seeds
   each and their recorded fights again (`arena::Run::validation`); it computes in the run's place (the progress line
   says `VALIDATING 8 DESIGNS · 40% · THE RUN WAITS`; slices on the web, the compute threads natively), then its results
@@ -970,7 +986,13 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   start's when it didn't change (a content behavior by id, a template's own, the player's that it flew); else saved
   beside it as a player behavior `<behavior> (evolved)` that the design names. Its pilot assists and weapon groups are
   the genome's (since step 6 they evolve: the assists as a gene, a new gun in its nearest gun's group). YOUR DESIGNS tags it EVOLVED and its line reads `FROM RIM SKIFF COPY · G37` ([Drydock](#drydock)); it opens
-  in the drydock like any design.
+  in the drydock like any design. **TIDY** (GDR-0092's lead default, on unless switched off on the save line): an
+  evolved behavior is saved without the rules that never decided in any of the fights it flew
+  (`arena::Run::tidied`: the records' `decided` bits; a stand-in's fights and voyages tell nothing), its start's
+  locked rules kept; a behavior as its start's is saved as it is. **REPLACE START** writes the same over the start's
+  saved design under its id and name (`replace_target`: only a start that is one of YOUR DESIGNS still saved), so
+  FLEET's escorts fly the new version; when the drydock has that design open without unsaved changes it opens the new
+  version (else it keeps its unsaved changes and says so).
 - **Computing** (`world::evolution::compute`, every frame in every mode): the run that computes gets 10 ms of the
   frame with the layer open and 4 ms anywhere else at home and on the screens (the drydock, BEHAVIOR, research, the
   map, the LOG, SETTINGS; `BUDGET_OPEN_MS`, `BUDGET_MS`, placeholders), none in flight (the test range, test flights,
@@ -1006,7 +1028,8 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   read back as the run, a lost part is named, DELETE removes every document; a run stored whole moves into parts and
   goes on byte for byte; a checkpoint the storage couldn't keep pauses the run, RESUME waits for room and the run then
   ends with every part kept; SAVE AS DESIGN validates, opens in the drydock and keeps its origin;
-  starts resolve self-contained), `game::evolution` (the building's words; the setup pre-filled by EVOLVE THIS
+  REPLACE writes over its saved start, its id and name kept, and TIDY saves the tidied behavior; starts resolve
+  self-contained), `game::evolution` (the building's words; the setup pre-filled by EVOLVE THIS
   DESIGN; changes and endings in words), `drydock::actions` (EVOLVE THIS DESIGN asks the lab and goes home),
   `drydock::blueprints` (the EVOLVED tag), `shipyard::layout` (the building and its label apart).
 

@@ -594,7 +594,11 @@ closes it; Esc first leaves a rename, a delete question or a selected box):
   values as the stats grid shows them) and WEAPONS (its guns), from a design report made with the drydock's content
   and config (`DrydockReport::config`). It is built once per hovered entry (`blueprints::sync_preview`; a saved
   design is read from storage then) and goes when the pointer leaves the row; over the gap to the next row it
-  stays, so moving down the list doesn't flash it. An unreadable design shows none. The card has a fixed height,
+  stays, so moving down the list doesn't flash it, and over the card and the way to it. An evolved design's card
+  (GDR-0092 step 6, 16 Oct 2026) adds its ORIGIN: `G37 · 0.91` (its generation and score) and its run by name
+  (`EVOLVING RIM SKIFF ›`, teal): a click on it goes home and on to the evolution lab, its run's page open with the
+  design picked; `ITS RUN IS DELETED` when the run is gone. An unreadable design shows none. The card has a fixed
+  height (50 px more with an ORIGIN),
   so it is placed right in the frame it appears in (with the height of its own first layout it showed a frame
   lower, then jumped; Niklas, 15 Oct 2026). The lists are 480 and 344 px wide for it (600 and 432 before).
 - On the picked row: **OPEN** (a template: as a copy), **DUPLICATE** (a saved copy with a fresh name; for a
