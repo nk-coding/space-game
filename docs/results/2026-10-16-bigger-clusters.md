@@ -157,3 +157,13 @@ scripts/cluster-bench.sh --wasm --section cost --repeat 7 --awake 40 --radius 30
 ```
 
 Tables go to `target/cluster-bench/{native,wasm}.txt`. On the 4-core VM a full run takes well under a minute after the builds.
+
+## Note, 16 Oct 2026 (later): `records` against `none`
+
+The `records` rows' fight differed a little from `none` (the 40-ship case ended with 21 bodies instead of 20), which
+looked like the voyage director leaking into the fight. It is not: the bench set the config (`spawn_radius`) only
+for `records` and `asleep`, and after moving the fight to the entry. `Sim::set_config` rebuilds every piece, and
+after a teleport that nudges the fight a little (deterministically: native and wasm agree). With the config set
+before the move in every mode, `records` and `none` play the same fight (same bodies, same sleepers; the state hashes
+still differ by the voyage's own state). The bench does that now; the nudge is far too small to move the costs
+above (a rerun of the cost section gives the same medians within noise). Open for later: why a rebuild after a teleport changes the next steps at all.

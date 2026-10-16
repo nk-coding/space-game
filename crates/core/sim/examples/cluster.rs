@@ -198,11 +198,13 @@ fn cost(a: &Args, content: &data::Content) {
             let (mut world, mut tail) = (String::new(), String::new());
             for _ in 0..a.repeat {
                 let mut sim = fight(n, a.seed);
+                // The config before the shift in every mode: `set_config` rebuilds every piece, which after a
+                // teleport nudges the fight, so `records` would differ from `none` for that alone.
+                let mut config = *sim.config();
+                config.voyage.spawn_radius = if mode == "asleep" { 4.0 * a.radius } else { 0.0 };
+                sim.set_config(config);
                 shift(&mut sim, plan.entry.pos);
                 if mode != "none" {
-                    let mut config = *sim.config();
-                    config.voyage.spawn_radius = if mode == "asleep" { 4.0 * a.radius } else { 0.0 };
-                    sim.set_config(config);
                     sim.start_voyage(plan.clone(), Owner::PLAYER, Owner(1));
                 }
                 let idle = TickInputs::default();
