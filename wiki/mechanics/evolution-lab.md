@@ -139,7 +139,8 @@ can't run says why.
 
 RUNS lists every run, newest first: its name, starts, status, generation, its start's score and its best, and when
 it was made. PAUSE or RESUME, OPEN, DUPLICATE (the same setup with a new seed), RENAME and DELETE (it asks first).
-The lab keeps at most eight runs. IMPORT RUN reads a run file made by the arena tool on a computer.
+The lab keeps at most 32 runs; the list scrolls, and its head says how much storage they take. IMPORT RUN reads a
+run file made by the arena tool on a computer.
 
 ## The run's page
 

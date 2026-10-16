@@ -53,9 +53,11 @@ const FIRST_US_PER_TICK: f32 = 9.0;
 const RATE_FOLLOW: f32 = 0.1;
 /// Frames with less work than this don't measure the cost (their timer's noise is larger than the work).
 const RATE_MIN_TICKS: u64 = 200;
-/// Most runs the lab keeps (GDR-0092, PLACEHOLDER: chosen for the web's local storage of about 5 MB, which a STANDARD
-/// run of about 0.7 MB filled quickly; IndexedDB holds far more since 16 Oct 2026, ADR-0041).
-pub const MAX_RUNS: usize = 8;
+/// Most runs the lab keeps (GDR-0092, ADR-0041; PLACEHOLDER). Not the storage's room, which IndexedDB has plenty of,
+/// but its memory: the web build reads every document into memory at start, and a DEEP run with the default trials
+/// is about 5 MB stored (measured 16 Oct 2026; a STANDARD one about a quarter of that), so 32 of the largest are
+/// about 160 MB read at every start. RUNS shows what the storage holds.
+pub const MAX_RUNS: usize = 32;
 /// The share of its time limit a job lasts on average, for the setup's estimate: a fight, a gauntlet (its time limit
 /// is for all its waves), a voyage. Measured 16 Oct 2026 (`docs/arena.md` "What a trial costs": 0.40–0.52, 0.25–0.34,
 /// 0.13 for designs early in a run); PLACEHOLDER.

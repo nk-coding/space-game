@@ -179,7 +179,9 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 - **Camera**: frames both sides (as the load test; framing keeps 70 px at the top and bottom clear for the HUD and
   eases faster when the replay plays faster). A click on a ship follows it (zoomed in to at least 18 px per metre;
   the HUD then shows its hull, speed and what its behavior targets, as in watch mode); a click on empty space frames
-  again; F frees the camera; drag pans, the wheel zooms. Off-screen markers point at every ship of the other side
+  again; F frees the camera; drag pans, the wheel zooms: out to 6.3 px per metre (flight's default 18 × lock
+  framing's 35 %, `replay::OUT_TO`), further only while the whole fight needs it, never past the camera's 3
+  (`replay::zoom_floor`, `CameraRig::floor`, 16 Oct 2026: zoomed out to 3 the ships were specks). Off-screen markers point at every ship of the other side
   (of all sides while framing), in its side's colour.
 - **Playback** (the `replay` actions of the action map, context `replay`, so they share keys with flying, which a
   replay doesn't use): **Space** or K pause and play (at the end: play again from the start), **,** and **.** slower
@@ -897,7 +899,9 @@ save slot, so a slot without the node has its runs but the lab locked). The lab'
   `world::evolution::LabRequest`). A
   layer over home like FLEET and the LOG: home's words, FLEET, SETTINGS, the LOG and the debrief step aside under it.
   The ring top left, CLOSE and Esc go back a page, and close the layer from RUNS (the camera flies back out).
-- **RUNS**: every run, newest first (at most `MAX_RUNS`, 8, a placeholder chosen for the web's old local storage):
+- **RUNS**: every run, newest first (at most `MAX_RUNS`, 32, a placeholder: since 16 Oct 2026 not the storage's room
+  but the memory the web build reads every document into at start, a DEEP run with the default trials being about
+  5 MB; the rows scroll under the head and the column names):
   its name, its starts, its status (`RUNNING` teal, `PAUSED`, `DONE` gold, `RULES CHANGED` and `DOESN'T READ` coral),
   generation n / N, `START 0.42 » BEST 0.81` (generation 0's best, the archive's best), when it was made; PAUSE or
   RESUME, DUPLICATE (the same setup with a new seed, a new run that computes), OPEN (or a click on the row) and DELETE,
@@ -1466,7 +1470,8 @@ is shown, one choice for both tabs), TEST IN RANGE with WATCH and FLY ALONGSIDE 
 on top (`Nearest` and `DEFAULT` when the program has none), the `Priority · first match` root, the trunk with a
 dot per rule, each rule as violet condition chips (content name, values grey (white while the chip is selected), the comparison as written: `Enemies
 near 100m >= 3`, `not` in violet) → a connector → a teal action chip (`Orbit 80% · ccw`), actions in one column, the
-rule's note dim after it; Rhai conditions dashed with a gold RHAI tag; `always` as a plain chip; the dashed coral
+rule's note dim after it; Rhai conditions dashed with a gold SCRIPT tag (its tooltip: a condition written as a small script, not built into
+the game); `always` as a plain chip; the dashed coral
 slot line above the first rule without a slot (`6 RULE SLOTS · THE RULES BELOW DO NOT RUN`) and those rules
 dimmed (they are kept, not deleted; moving a rule up is how it gets a slot); likewise a never-reached line under
 an `always` rule whose action needs no target (`hold`, `escort`) that has rules with a slot below it (`ALWAYS
@@ -1476,7 +1481,7 @@ whose action needs a target steps aside without one, as in the sim, so the rules
 pill; a dot grid behind (immediate-mode FX dots). The selected rule's row is lit faintly, the selected chip glows.
 Right the inspector (below), ADD NODE (its line says where a pick goes: `ADD NODE · TO RULE 3`, `REPLACE HULL ·
 PICK A CONDITION`) with its search and the palette (the content vocabulary: conditions violet, actions teal, Rhai
-gold, target selectors white; nothing is listed in code, so the `escort` action and the `escort` template of
+gold with `· SCRIPT` and the tag's tooltip, target selectors white; nothing is listed in code, so the `escort` action and the `escort` template of
 13 Oct 2026, GDR-0065, show up in the palette and the BEHAVIORS list without client changes). Bottom the DRYDOCK pill, undo / redo, the status line (a message from saving, opening or testing until the draft
 changes; else text errors, rules without a slot, rules never reached, or how rules run; a refusal in coral after it for 3 s, like the
 drydock's info line), BEHAVIORS and SAVE (as in the drydock). Larger windows
@@ -1537,7 +1542,7 @@ target and auto-fire in the graph and as text; checked at 1280 × 720 and 2560 �
   NOTE field.
 - **The target line**: the selector pills, `AIM AT` (centre, engines, weapons, power, core), USE THE DEFAULT TARGET
   when the program has a target line, and the target line's note.
-- **A Rhai condition**: its script in gold. **A palette node** with nothing to add it to: its defaults, read-only,
+- **A Rhai condition**: its script in gold under `SCRIPT`. **A palette node** with nothing to add it to: its defaults, read-only,
   and how to add it. **Nothing**: the behavior's name and content summary.
 
 - **Draft** (`draft.rs`): `BehaviorDraft`, the behavior being edited: a copy of a content behavior

@@ -2,6 +2,11 @@
 
 - Status: Accepted (provisional, lead). 2026-10-16: the move from the local storage and the conversion of lab runs
   stored whole (format 1) into parts were removed once Niklas's data had moved; the game no longer reads either.
+  2026-10-16: `MAX_RUNS` raised from 8 to 32 (lead, placeholder). Measured: a DEEP run (64 children, 100
+  generations, the default trials) is 5.4 MB in parts (102 documents; its CLI file 5.2 MB), a STANDARD one about a
+  quarter; 32 DEEP runs were 164 M characters in IndexedDB, which one `getAll` read in 0.7–0.8 s in headless
+  Chromium, and the game ran with them (JS heap 180 MB). The cap now bounds what the preload holds in memory, not the
+  storage's room; RUNS scrolls and shows the bytes.
 - Date: 2026-10-16
 - Decided by: Niklas (IndexedDB instead of the local storage, after a lab run filled it: "for what does indexeddb
   exist"); the shape by the lead session and the storage agent, for Niklas to review

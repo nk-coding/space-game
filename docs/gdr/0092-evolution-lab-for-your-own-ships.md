@@ -178,6 +178,11 @@ running the fight again.
   run already waits (step 4's finding). The lab's runs (`lab/`) are shared by every save slot, so a slot without the
   node keeps them, locked. Fights, codes, run files and every run hash are unchanged (the lab and facilities are
   outside the rules' fingerprint; the spreads are the numbers the code had).
+  2026-10-16 (lead, for Niklas to review): the lab keeps up to 32 runs (`MAX_RUNS`, was 8; why in
+  [ADR-0041](../adr/0041-web-storage-in-indexeddb.md)'s status) and RUNS scrolls its rows under the head. The fight
+  viewer's wheel zooms out to 6.3 px per metre (flight's default 18 × lock framing's 35 %), further only while the
+  whole fight needs it, never past the camera's 3: zoomed out to 3 the ships were specks (`docs/client.md` "Fight
+  viewer"); this answers "how far framing zooms out" below for the hand zoom.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

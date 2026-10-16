@@ -277,7 +277,7 @@ const THIN: f32 = 4.0;
 const WIDE: f32 = 6.0;
 /// The bar's hit area across (the thumb sits at its side next to the area's edge), and the gutter an area keeps for
 /// it.
-const HIT: f32 = 10.0;
+pub const BAR_HIT: f32 = 10.0;
 /// The thumb's distance from the area's edge, and the track's from the area's ends.
 pub const EDGE_INSET: f32 = 2.0;
 /// The shortest thumb (a long list still gets one to grab).
@@ -390,8 +390,8 @@ fn attach(mut commands: Commands, mut areas: Query<(Entity, &Scrollbar, &ChildOf
                 BarAxis::Horizontal => &mut node.padding.bottom,
             };
             *side = match *side {
-                Val::Px(p) => Val::Px(p + HIT),
-                _ => Val::Px(HIT),
+                Val::Px(p) => Val::Px(p + BAR_HIT),
+                _ => Val::Px(BAR_HIT),
             };
         }
         commands.spawn((
@@ -653,10 +653,10 @@ fn show(
             continue;
         };
         let hit = match (axis, track.bar.outside) {
-            (BarAxis::Vertical, false) => Rect::new(r.max.x - HIT, r.min.y + EDGE_INSET, r.max.x, r.max.y - EDGE_INSET),
-            (BarAxis::Vertical, true) => Rect::new(r.max.x, r.min.y + EDGE_INSET, r.max.x + HIT, r.max.y - EDGE_INSET),
-            (BarAxis::Horizontal, false) => Rect::new(r.min.x + EDGE_INSET, r.max.y - HIT, r.max.x - EDGE_INSET, r.max.y),
-            (BarAxis::Horizontal, true) => Rect::new(r.min.x + EDGE_INSET, r.max.y, r.max.x - EDGE_INSET, r.max.y + HIT),
+            (BarAxis::Vertical, false) => Rect::new(r.max.x - BAR_HIT, r.min.y + EDGE_INSET, r.max.x, r.max.y - EDGE_INSET),
+            (BarAxis::Vertical, true) => Rect::new(r.max.x, r.min.y + EDGE_INSET, r.max.x + BAR_HIT, r.max.y - EDGE_INSET),
+            (BarAxis::Horizontal, false) => Rect::new(r.min.x + EDGE_INSET, r.max.y - BAR_HIT, r.max.x - EDGE_INSET, r.max.y),
+            (BarAxis::Horizontal, true) => Rect::new(r.min.x + EDGE_INSET, r.max.y, r.max.x - EDGE_INSET, r.max.y + BAR_HIT),
         };
         place(&mut node, true, hit);
 
@@ -670,7 +670,7 @@ fn show(
 
         let across = if hot_bar { WIDE } else { THIN };
         // The thumb [`EDGE_INSET`] from the area's edge: inside it at the hit area's far side, outside at its near one.
-        let off = if track.bar.outside { EDGE_INSET } else { HIT - EDGE_INSET - across };
+        let off = if track.bar.outside { EDGE_INSET } else { BAR_HIT - EDGE_INSET - across };
         let (l, t, w, h) = match axis {
             BarAxis::Vertical => (px(off), px(start), px(across), px(thumb_len)),
             BarAxis::Horizontal => (px(start), px(off), px(thumb_len), px(across)),

@@ -2,10 +2,11 @@
 //! its best, when it was made; OPEN, PAUSE or RESUME, DUPLICATE (the same setup, a new seed) and DELETE, which asks in
 //! the row first. IMPORT RUN (the top right) reads a CLI run file: on the web through the file chooser, on desktop
 //! dropped onto the window while the layer is open. On the web the head says how much the storage holds and may hold
-//! (`world::storage::Usage`), and warns in coral when little room is left.
+//! (`world::storage::Usage`), and warns in coral when little room is left. The rows scroll under the head (up to
+//! `MAX_RUNS` of them).
 //!
 //! ```text
-//! RUNS  ·  2 OF 8  ·  ONE COMPUTES AT A TIME                                        STORAGE  3.4 MB OF 2.1 GB
+//! RUNS  ·  2 OF 32  ·  ONE COMPUTES AT A TIME                                        STORAGE  3.4 MB OF 2.1 GB
 //! NAME                 STARTS            STATUS     GENERATION   START → BEST   MADE
 //! Evolving Rim skiff   RIM SKIFF COPY    RUNNING    12 / 50      0.42 → 0.81    5 MIN AGO   [PAUSE] [DELETE]
 //! ```
@@ -13,7 +14,7 @@
 use world::arena::evolve::RunStatus;
 use bevy::prelude::*;
 use kit::style::{Style, ui_color};
-use kit::ui_kit::{HudFonts, Hot, Pill, Tone, label, number, prose, spawn_pill, tracked};
+use kit::ui_kit::{BAR_HIT, HudFonts, Hot, Pill, Scrollbar, Tone, label, number, prose, spawn_pill, tracked};
 use world::evolution::{Lab, MAX_RUNS, RunEntry};
 use world::player::library::ago;
 use world::storage::{Storage, Usage, now_unix};
@@ -24,14 +25,27 @@ use super::{Ctx, EvolutionLayer, LabButton, Page, abs, column, row, score};
 /// made; the buttons take the rest).
 const LIST: (Vec2, Vec2) = (Vec2::new(60.0, 100.0), Vec2::new(1160.0, 570.0));
 const ROW: f32 = 48.0;
-const COLUMNS: [f32; 6] = [250.0, 210.0, 120.0, 100.0, 130.0, 100.0];
+const COLUMNS: [f32; 6] = [230.0, 170.0, 110.0, 100.0, 120.0, 80.0];
+
+/// The head (the count, the storage, the column names; it keeps the rows' gutter for their scrollbar, so both end
+/// alike) and the rows under it, which scroll.
+#[derive(Component)]
+pub(super) struct RunsHead;
 
 #[derive(Component)]
-pub(super) struct RunsList;
+pub(super) struct RunsRows;
 
 pub(super) fn spawn(p: &mut ChildSpawnerCommands, _fonts: &HudFonts, _c: &impl Fn(Tone, f32) -> Color) {
     let (at, size) = LIST;
-    p.spawn((RunsList, Node { flex_direction: FlexDirection::Column, ..abs(at, Some(size)) }));
+    p.spawn(Node { flex_direction: FlexDirection::Column, ..abs(at, Some(size)) }).with_children(|l| {
+        l.spawn((RunsHead, Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, padding: UiRect::right(px(BAR_HIT)), ..default() }));
+        l.spawn((
+            RunsRows,
+            Scrollbar::vertical(),
+            ScrollPosition::default(),
+            Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_height: px(0), overflow: Overflow::scroll_y(), ..default() },
+        ));
+    });
 }
 
 /// A run's status in words and its tone.
@@ -84,7 +98,8 @@ fn usage_words(u: &Usage) -> (String, Tone) {
     }
 }
 
-/// The rows, built again when the runs, the page or what the storage holds change.
+/// The head and the rows, built again when the runs, the page or what the storage holds change (the rows' scroll
+/// stays).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn fill(
     mut commands: Commands,
@@ -94,7 +109,8 @@ pub(super) fn fill(
     mut shown: Local<Option<Usage>>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
-    list: Single<Entity, With<RunsList>>,
+    head: Single<Entity, With<RunsHead>>,
+    rows: Single<Entity, With<RunsRows>>,
 ) {
     let usage = storage.usage();
     if !layer.open || layer.page != Page::Runs || !(layer.dirty || lab.is_changed() || usage != *shown) {
@@ -106,9 +122,10 @@ pub(super) fn fill(
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
     let now = now_unix();
-    commands.entity(*list).despawn_children();
-    commands.entity(*list).with_children(|p| {
-        if lab.runs().is_empty() {
+    commands.entity(*head).despawn_children();
+    commands.entity(*rows).despawn_children();
+    if lab.runs().is_empty() {
+        commands.entity(*rows).with_children(|p| {
             p.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(10), margin: UiRect::top(px(170)), ..default() }).with_children(|e| {
                 e.spawn(label(fonts, "NO RUNS YET", 11.0, c(Tone::Label, 1.0)));
                 e.spawn((
@@ -119,8 +136,11 @@ pub(super) fn fill(
                 e.spawn(Node { height: px(8), ..default() });
                 spawn_pill(e, fonts, "NEW RUN", 9.5, 30.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::NewRun);
             });
-            return;
-        }
+        });
+        return;
+    }
+    let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..default() };
+    commands.entity(*head).with_children(|p| {
         let head = format!("RUNS  ·  {} OF {MAX_RUNS}  ·  ONE COMPUTES AT A TIME", lab.runs().len());
         p.spawn(Node { justify_content: JustifyContent::SpaceBetween, margin: UiRect::bottom(px(10)), ..row(16.0) }).with_children(|h| {
             h.spawn(label(fonts, &head, 9.5, c(Tone::Dim, 1.0)));
@@ -129,12 +149,13 @@ pub(super) fn fill(
                 h.spawn(label(fonts, &words, 9.5, c(tone, 1.0)));
             }
         });
-        let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..default() };
         p.spawn(Node { padding: UiRect::horizontal(px(14)), margin: UiRect::bottom(px(4)), ..row(0.0) }).with_children(|h| {
             for (word, w) in ["NAME", "STARTS", "STATUS", "GENERATION", "START  »  BEST", "MADE"].into_iter().zip(COLUMNS) {
                 h.spawn((label(fonts, word, 8.0, c(Tone::Dim, 1.0)), cell(w)));
             }
         });
+    });
+    commands.entity(*rows).with_children(|p| {
         for e in lab.runs() {
             let (status, tone) = status_words(&lab, e);
             let asking = layer.confirm.as_deref() == Some(e.id.as_str());
