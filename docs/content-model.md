@@ -456,7 +456,7 @@ an error), so text, wiki and code cannot drift apart. The grammar is in `docs/be
 | `params[].type` | `Distance` (metres `45m`/`45`, or `60%` = a share of the weapon reach), `Percent` (always `%`), `Seconds`, `Count`, or `Choice([(id, name, summary?), ...])` |
 | `params[].default` | written as in a rule (`"67%"`, `"45m"`, `"cw"`); parameters without a default come first and are required |
 | `params[].min`, `max` | range of the number as written in the parameter's unit (m, %, s, count); reach-relative distances are checked against 0–1000% |
-| `script` | Rhai source: makes the node a custom (flag) condition, tagged "Rhai" in the editor; see `docs/behavior-format.md` |
+| `script` | Rhai source: makes the node a custom (flag) condition, tagged SCRIPT in the editor; see `docs/behavior-format.md` |
 | `pilot` | default false; true: the node belongs to pilot assists only (GDR-0088, 15 Oct 2026): an action marked so is an assist (`assists.ron`: `auto_lock`, `brake`, `hold_station`, `avoid_collisions`, `auto_fire`; an assist list takes no other action, and no target selector: it has no target line), a condition marked so is about the pilot's own input (`lock_held`, `idle`); behaviors refuse them. Not on target selectors or scripted conditions (validation); the sim's `BUILTIN_NODES` must agree |
 
 The assists' actions end in two choices, `toggle` (`none`, `toggle1`..`toggle4`: the ASSIST TOGGLE that switches the

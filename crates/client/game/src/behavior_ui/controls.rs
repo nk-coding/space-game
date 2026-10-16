@@ -25,7 +25,7 @@ use crate::drydock::report::DrydockReport;
 use super::actions::{BehaviorAction, BehaviorButton};
 use super::draft::BehaviorDraft;
 use super::edit::{Edit, EditState, apply_edit};
-use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SliderSpec, SwitchRow};
+use super::inspect::{Button, ChoiceRow, Control, Inspection, NoteTarget, NumberRow, SCRIPT_TAG, SliderSpec, SwitchRow};
 use super::screen::{Kit, LINE_W, role_color};
 
 /// Space above each block of the inspector.
@@ -114,7 +114,7 @@ pub(super) fn spawn_inspection(p: &mut ChildSpawnerCommands, kit: &Kit, i: &Insp
     }
     if let Some(script) = &i.script {
         p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(5), margin: UiRect::top(px(GAP)), ..default() }).with_children(|n| {
-            n.spawn(tracked(kit.fonts, "RHAI SCRIPT", 8.5, kit.c(Tone::Gold, 1.0), 0.3));
+            n.spawn(tracked(kit.fonts, SCRIPT_TAG, 8.5, kit.c(Tone::Gold, 1.0), 0.3));
             n.spawn(prose(kit.fonts, script, 11.0, kit.c(Tone::Gold, 0.7)));
         });
     }

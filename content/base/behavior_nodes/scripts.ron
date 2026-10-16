@@ -1,4 +1,4 @@
-// Custom conditions written in Rhai (tagged "Rhai" in the editor). The sim runs them sandboxed: they see only
+// Custom conditions written in Rhai (tagged SCRIPT in the editor). The sim runs them sandboxed: they see only
 // a read-only view of the ship (`me`) and its target (`target`) plus their own parameters, have an operation
 // budget, no I/O, and only deterministic math. A script that fails or runs out of budget counts as false.
 // API: docs/behavior-format.md ("Rhai conditions"). PLACEHOLDER defaults.

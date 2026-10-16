@@ -21,6 +21,10 @@ use super::edit::Edit;
 use super::graph::{always_decides, never_reached};
 use super::values::{Kind, Scale, reach_hint, switch_unit};
 
+/// The tag of a condition written as a Rhai script (`scripts.ron`), and its tooltip: what the word means.
+pub const SCRIPT_TAG: &str = "SCRIPT";
+pub const SCRIPT_TIP: &str = "SCRIPT: A CONDITION WRITTEN AS A SMALL SCRIPT, NOT BUILT INTO THE GAME";
+
 /// What the inspector shows.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Selection {
@@ -228,7 +232,7 @@ fn kind_line(node: &BehaviorNode) -> &'static str {
     match node.role {
         NodeRole::Action if node.pilot => "ACTION  ·  PILOT ASSIST",
         NodeRole::Condition if node.pilot => "CONDITION  ·  THE PILOT",
-        NodeRole::Condition if node.script.is_some() => "CONDITION  ·  RHAI",
+        NodeRole::Condition if node.script.is_some() => "CONDITION  ·  SCRIPT",
         NodeRole::Condition if node.value.is_some() => "CONDITION  ·  VALUE",
         NodeRole::Condition => "CONDITION  ·  FLAG",
         NodeRole::Action => "ACTION  ·  MANEUVER",
@@ -488,7 +492,7 @@ pub fn palette_hint(ed: &BehaviorEditor, sel: Option<&Selection>, replacing: Opt
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaletteEntry {
     pub id: String,
-    /// The pill's text: the name in capitals, `· RHAI` after a Rhai condition.
+    /// The pill's text: the name in capitals, `· SCRIPT` after a Rhai condition.
     pub label: String,
     pub role: NodeRole,
     pub rhai: bool,
@@ -506,7 +510,7 @@ pub fn palette(nodes: &Table<BehaviorNode>, kind: ListKind, search: &str) -> Vec
         .filter(|n| wanted(n))
         .map(|n| PaletteEntry {
             id: n.id.clone(),
-            label: if n.script.is_some() { format!("{}  ·  RHAI", n.name.to_uppercase()) } else { n.name.to_uppercase() },
+            label: if n.script.is_some() { format!("{}  ·  {SCRIPT_TAG}", n.name.to_uppercase()) } else { n.name.to_uppercase() },
             role: n.role,
             rhai: n.script.is_some(),
         })
@@ -697,7 +701,7 @@ mod tests {
         assert_eq!(roles, sorted, "conditions, then actions, then targets");
         let rhai = all.iter().find(|e| e.id == "closing_in").unwrap();
         assert!(rhai.rhai);
-        assert_eq!(rhai.label, "CLOSING IN  ·  RHAI");
+        assert_eq!(rhai.label, "CLOSING IN  ·  SCRIPT");
         // Search by name or id, any case.
         let ids: Vec<String> = palette(&content.behavior_nodes, ListKind::Behavior, "Target").into_iter().map(|e| e.id).collect();
         assert!(ids.contains(&"target_in_range".to_string()) && ids.contains(&"face".to_string()), "{ids:?}");

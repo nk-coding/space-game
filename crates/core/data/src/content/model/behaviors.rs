@@ -157,7 +157,7 @@ pub struct BehaviorNode {
     /// input. Behaviors can't use it, and an assist list takes no other action ([`crate::behavior::ListKind`]).
     #[serde(default)]
     pub pilot: bool,
-    /// Rhai source of a custom condition (tagged "Rhai" in the editor): an expression or statements that
+    /// Rhai source of a custom condition (tagged SCRIPT in the editor): an expression or statements that
     /// end in `true` or `false`. `None` = built into the sim.
     #[serde(default)]
     pub script: Option<String>,

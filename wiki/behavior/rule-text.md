@@ -247,7 +247,7 @@ you save in the game are stored in exactly this format, so a saved behavior can 
 ### Script conditions for modders
 
 A condition node with a `script` field is a custom condition written in Rhai. It lives with the other
-conditions in the pack's `behavior_nodes/` folder and is tagged RHAI in the editor:
+conditions in the pack's `behavior_nodes/` folder and is tagged SCRIPT in the editor:
 
 ```ron
 (

@@ -181,7 +181,7 @@ pub struct NodeView<'a> {
 }
 
 impl NodeView<'_> {
-    /// A custom condition written in Rhai (tagged "Rhai" in the editor).
+    /// A custom condition written in Rhai (tagged SCRIPT in the editor).
     pub fn is_rhai(&self) -> bool {
         self.node.script.is_some()
     }

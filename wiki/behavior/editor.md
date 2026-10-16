@@ -41,7 +41,8 @@ The graph reads like the text, top to bottom:
 - **One row per rule:** violet condition chips, a connector, then a teal action chip. Actions line up in one
   column. A chip shows the node's name, its values dim after it (for example [[behavior_node:orbit]] `75% · cw`), a comparison as written
   ([[behavior_node:enemies_near]] `100m >= 3`) and `not` in violet. A rule without conditions shows a plain `always` chip. A
-  script condition has a dashed outline and a gold RHAI tag. The rule's note follows, dim.
+  script condition has a dashed outline and a gold SCRIPT tag (rest the mouse on it: a condition written as a
+  small script, not built into the game). The rule's note follows, dim.
 - **The slot line:** a dashed coral line above the first rule your design has no slot for,
   `<SLOTS> RULE SLOTS · THE RULES BELOW DO NOT RUN`. The rules below it are dimmed. They are kept, not deleted:
   moving a rule up is how it gets a slot.
@@ -65,7 +66,7 @@ behavior's name and summary. The wheel scrolls the graph, the inspector and the 
 ## The inspector
 
 The inspector shows what you selected: a small kicker that says what it is (`CONDITION · VALUE`,
-`ACTION · MANEUVER`, `TARGET · SELECTOR`, `CONDITION · RHAI`), its name in its colour, its summary, then its
+`ACTION · MANEUVER`, `TARGET · SELECTOR`, `CONDITION · SCRIPT`), its name in its colour, its summary, then its
 controls. A script condition also shows its script in gold.
 
 - **Numbers:** a slider with a −/+ ring on each side. The steps are round numbers that grow with the value. A
@@ -86,7 +87,7 @@ controls. A script condition also shows its script in gold.
 ## ADD NODE and the palette
 
 The palette lists the whole vocabulary: conditions in violet, actions in teal, script conditions in gold with
-`· RHAI`, target selectors in white. Press [[control:search.keys]] to jump to the search field and type part of a
+`· SCRIPT`, target selectors in white. Press [[control:search.keys]] to jump to the search field and type part of a
 name. The line over the search field says where your next pick goes: `ADD NODE · TO RULE 3`,
 `ADD NODE · A SELECTOR SETS THE TARGET`, or `REPLACE HULL · PICK A CONDITION`.
 

@@ -234,8 +234,8 @@ tests".
 
 ## Rhai conditions
 
-A condition node with a `script` is a custom condition written in [Rhai](https://rhai.rs) (tagged "Rhai" in
-the editor). The script ends in `true` or `false`:
+A condition node with a `script` is a custom condition written in [Rhai](https://rhai.rs) (tagged SCRIPT in
+the editor, with a tooltip saying what it means). The script ends in `true` or `false`:
 
 ```ron
 (

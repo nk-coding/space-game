@@ -203,7 +203,7 @@ don't run.
 
 Most conditions are built into the game. A condition can also be a small script in the Rhai language, shipped
 in the content like every other word of the vocabulary. The editor draws them with a dashed outline and a
-gold RHAI tag. The base game has one: [[behavior_node:closing_in]].
+gold SCRIPT tag. The base game has one: [[behavior_node:closing_in]].
 
 A script reads a few numbers about your ship and its target (hull, shield, heat, power, position, speed, weapon
 reach, distance, bearing, closing speed, whether it aims at you) and answers true or false. It runs sealed off:

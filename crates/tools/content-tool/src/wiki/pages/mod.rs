@@ -832,6 +832,9 @@ type Card<'a> = (String, &'a Blueprint, &'a str, &'a str);
 const GOAL: &str =
     " <span class=\"badge goal\" title=\"Clearing this site clears the voyage\">Goal</span>";
 
+/// The badge of a condition written as a Rhai script (the editor's SCRIPT tag).
+const SCRIPT: &str = "<span class=\"badge rhai\" title=\"A condition written as a small Rhai script, not built into the game\">Script</span>";
+
 /// A ship's grid fits a frame.
 fn fits(s: &Blueprint, f: &data::Frame) -> bool {
     s.size.0 <= f.size.0 && s.size.1 <= f.size.1

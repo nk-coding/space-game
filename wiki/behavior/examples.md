@@ -163,7 +163,7 @@ always -> hold # nobody aims at me: wait
 [[behavior_node:attacker]] picks the nearest enemy that aims at you, and none while nobody does. So the picket
 holds until it is attacked, and never starts a fight by itself.
 
-[[behavior_node:closing_in]] is a script condition (RHAI in the editor): it holds while, at the current closing
+[[behavior_node:closing_in]] is a script condition (SCRIPT in the editor): it holds while, at the current closing
 speed, the target will be within your reach in less than the given time. Combined with
 `not target_in_range(100%)` it turns the picket towards an attacker that is still out of reach, so its front guns
 are ready when the attacker arrives. Inside the reach, the second rule circles the attacker.

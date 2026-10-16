@@ -46,7 +46,7 @@ use super::dashed::{DashedOutline, outline_color};
 use super::draft::BehaviorDraft;
 use super::edit::EditState;
 use super::graph::{Chip, GraphView, NEVER_LINE_LABEL, add_rule_label, always_decides, assists_pill, never_reached, slot_line_label, slots_pill};
-use super::inspect::{self, Selection, assists_inspection, behavior_inspection, inspect, palette, palette_hint};
+use super::inspect::{self, SCRIPT_TAG, SCRIPT_TIP, Selection, assists_inspection, behavior_inspection, inspect, palette, palette_hint};
 use super::saving::ScreenNote;
 use super::text_view::TextViewport;
 use super::{BehaviorTab, BehaviorUi, BehaviorView, EditorContext, TestMode};
@@ -425,7 +425,7 @@ impl OutlineKit<'_> {
     }
 }
 
-/// A chip of the graph: the node's name, its values dim, the comparison, `not` and the RHAI tag.
+/// A chip of the graph: the node's name, its values dim, the comparison, `not` and the SCRIPT tag (with its tooltip).
 fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit, chip: &Chip, active: bool) {
     let color = role_color(&kit.ui, chip.role, false);
     let k = if active { 1.0 } else { INACTIVE };
@@ -448,7 +448,7 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit
         BackgroundColor(Color::NONE),
     ));
     if let Some(m) = dashed {
-        e.insert(MaterialNode(m));
+        e.insert((MaterialNode(m), Tip::new(SCRIPT_TIP)));
     }
     e.with_children(|c| {
         if chip.not {
@@ -462,7 +462,7 @@ fn spawn_chip(p: &mut ChildSpawnerCommands, kit: &Kit, outlines: &mut OutlineKit
             c.spawn(prose(kit.fonts, &chip.compare, CHIP_FONT, kit.c(Tone::Number, 0.95 * k)));
         }
         if chip.rhai {
-            c.spawn((tracked(kit.fonts, "RHAI", 8.5, kit.c(Tone::Gold, k), 0.3), Node { margin: UiRect::left(px(3)), ..default() }));
+            c.spawn((tracked(kit.fonts, SCRIPT_TAG, 8.5, kit.c(Tone::Gold, k), 0.3), Node { margin: UiRect::left(px(3)), ..default() }));
         }
     });
 }
@@ -772,6 +772,7 @@ pub(super) fn rebuild_palette(
                 BorderColor::all(Color::NONE),
                 BackgroundColor(Color::NONE),
             ))
+            .insert_if(Tip::new(SCRIPT_TIP), || e.rhai)
             .with_child(tracked(kit.fonts, &e.label, 8.5, ui_color(color, 1.0), 0.28));
         }
     });

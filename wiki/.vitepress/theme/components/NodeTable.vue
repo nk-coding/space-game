@@ -20,7 +20,7 @@ const rows = computed(() =>
     <thead><tr><th>Node</th><th>Written</th><th>What it does</th></tr></thead>
     <tbody>
       <tr v-for="n in rows" :key="n.id">
-        <td class="name"><a :class="n.role" :href="href(n.url)">{{ n.name }}</a><b v-if="n.rhai" class="badge rhai">Rhai</b></td>
+        <td class="name"><a :class="n.role" :href="href(n.url)">{{ n.name }}</a><b v-if="n.rhai" class="badge rhai" title="A condition written as a small Rhai script, not built into the game">Script</b></td>
         <td><code :class="n.role">{{ n.signature }}</code></td>
         <td v-html="html(n.summary)"></td>
       </tr>

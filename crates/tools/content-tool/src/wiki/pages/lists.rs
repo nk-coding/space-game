@@ -272,7 +272,7 @@ impl Wiki<'_> {
                             |n| {
                                 let mut b = Vec::new();
                                 if n.script.is_some() {
-                                    b.push("<span class=\"badge rhai\">Rhai</span>");
+                                    b.push(SCRIPT);
                                 }
                                 if n.pilot {
                                     b.push("<span class=\"badge pilot\">Pilot assist</span>");

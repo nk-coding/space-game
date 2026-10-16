@@ -21,7 +21,7 @@ pub struct Chip {
     pub args: String,
     /// The comparison of a value condition, as written in the text (`< 25%`, `>= 3`).
     pub compare: String,
-    /// A condition written in Rhai: dashed outline and a gold RHAI tag.
+    /// A condition written in Rhai: dashed outline and a gold SCRIPT tag.
     pub rhai: bool,
 }
 

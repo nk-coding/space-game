@@ -27,7 +27,7 @@ struct Chip {
     label: String,
     node: Option<String>,
     class: &'static str,
-    /// A small tag over the chip (`RHAI`).
+    /// A small tag over the chip (`SCRIPT`).
     tag: Option<&'static str>,
 }
 
@@ -58,7 +58,7 @@ fn node_chip(c: &Content, call: &Call, class: &'static str) -> Chip {
         label: call_label(c, call),
         node: node.map(|n| n.id.clone()),
         class: if rhai { "rg-chip rg-rhai" } else { class },
-        tag: rhai.then_some("RHAI"),
+        tag: rhai.then_some("SCRIPT"),
     }
 }
 

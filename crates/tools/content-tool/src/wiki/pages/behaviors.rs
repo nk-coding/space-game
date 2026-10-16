@@ -7,7 +7,7 @@ impl Wiki<'_> {
         let root = UP;
         let mut extra = vec![role_badge(n.role)];
         if n.script.is_some() {
-            extra.push("<span class=\"badge rhai\">Rhai</span>".into());
+            extra.push(SCRIPT.into());
         }
         let mut facts = vec![("Role".to_string(), role_name(n.role).to_string())];
         if n.pilot {
