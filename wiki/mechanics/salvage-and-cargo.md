@@ -86,7 +86,9 @@ Your hold is the summed [[stat:cargo_capacity]] of the cargo parts on your vesse
 <StatTable stats="cargo_capacity" />
 
 - A collected part takes as many units of hold space as cells in its footprint (a slope its whole footprint). A
-  fragment takes one.
+  fragment takes one, and so does a **data core**, a log from a wreck that is decoded at home into a signal (see
+  [the galaxy](/mechanics/galaxy#trails-and-signals)). A data core counts as the most valuable thing in a hold:
+  collected first, spilled last.
 - The flight HUD shows the hold as used / capacity: CARGO in the test range, SALVAGE on a voyage with the name of
   your biggest hold under it, or NO HOLD. The drydock's [[stat:cargo_capacity]] cell shows your design's hold, and
   the voyage-ready line warns when no ship of your fleet has one (you may still launch).

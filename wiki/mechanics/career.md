@@ -32,9 +32,11 @@ The save holds only what you did:
 - your escorts;
 - which NEW parts you have already seen;
 - for every voyage: how often you launched it, whether you cleared it, and your best time;
-- the counts the LOG shows (voyages, recalls, losses, items salvaged) and the last [[sim:max_history]] voyage results.
+- the counts the LOG shows (voyages, recalls, losses, items salvaged) and the last [[sim:max_history]] voyage results;
+- your [galaxy](/mechanics/galaxy): the map it was generated with, the clusters you have charted, the signals you
+  have heard and how far you have narrowed them, the logs waiting to be decoded and the gates you have opened.
 
-Everything else (what is unlocked, your mind capacity, which voyages are open) is worked out from that whenever it
+Everything else (what is unlocked, your mind capacity, your jump range, which voyages are open) is worked out from that whenever it
 is needed. So when a new version of the game changes a research cost or what a node unlocks, your old save simply
 follows the new rules. Your designs are not part of the career: they live in BLUEPRINTS.
 
@@ -112,7 +114,7 @@ once. There is no research time. The line above the button says what happened, o
 | NEW PART | a new part with its own shape and role (or a new armour) |
 | VARIANT | a sidegrade of a part you have, with a trade-off |
 | SIZE CLASS | a bigger frame for bigger hulls |
-| REFINEMENT | a small step in a chain, such as more mind capacity |
+| REFINEMENT | a small step in a chain, such as more mind capacity or a longer jump |
 | ALIEN TECH | needs reverse-engineered alien technology |
 | FACILITY | opens a building of the shipyard |
 
@@ -126,13 +128,17 @@ once. There is no research time. The line above the button says what happened, o
 | [[research:beam_laser]] | [[research:beam_laser.cost]] | [[research:beam_laser.requires]] | [[research:beam_laser.unlocks]] |
 | [[research:fusion_reactor]] | [[research:fusion_reactor.cost]] | [[research:fusion_reactor.requires]] | [[research:fusion_reactor.unlocks]] |
 | [[research:torch_drive]] | [[research:torch_drive.cost]] | [[research:torch_drive.requires]] | [[research:torch_drive.unlocks]] |
+| [[research:jump_calibration_1]] | [[research:jump_calibration_1.cost]] | [[research:jump_calibration_1.requires]] | [[research:jump_calibration_1.unlocks]] |
+| [[research:jump_calibration_2]] | [[research:jump_calibration_2.cost]] | [[research:jump_calibration_2.requires]] | [[research:jump_calibration_2.unlocks]] |
 | [[research:tamed_core]] | [[research:tamed_core.cost]] | [[research:tamed_core.requires]] | [[research:tamed_core.unlocks]] |
 | [[research:mind_expansion_1]] | [[research:mind_expansion_1.cost]] | [[research:mind_expansion_1.requires]] | [[research:mind_expansion_1.unlocks]] |
 | [[research:mind_expansion_2]] | [[research:mind_expansion_2.cost]] | [[research:mind_expansion_2.requires]] | [[research:mind_expansion_2.unlocks]] |
 | [[research:simulation_vault]] | [[research:simulation_vault.cost]] | [[research:simulation_vault.requires]] | [[research:simulation_vault.unlocks]] |
 
-A node unlocks one or more of five things: a part, an armour material, a drydock frame, more mind capacity, or a
-building of the shipyard (the [evolution lab](/mechanics/evolution-lab)).
+A node unlocks one or more of six things: a part, an armour material, a drydock frame, more mind capacity, a
+building of the shipyard (the [evolution lab](/mechanics/evolution-lab)), or a longer **jump range** (the
+[galaxy](/mechanics/galaxy#home-and-the-jump-range)'s reach from home and every charted cluster; the research screen
+shows it before and after).
 Unlocks are for good. A newly unlocked part shows a gold NEW tag in the drydock until you pick it.
 
 ## Locked content

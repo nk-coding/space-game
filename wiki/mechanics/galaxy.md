@@ -10,8 +10,9 @@ you. It is mostly dark: you find places by following **signals**, or by jumping 
 describes how the galaxy is put together.
 
 ::: info Coming
-The galaxy is generated but not played yet. The voyage map still shows the first four voyages of the rim
-([voyages](/mechanics/voyages) has those); flying into the generated galaxy and following signals come next.
+The galaxy is generated and kept in your save, but not played yet. The voyage map still shows the first four voyages
+of the rim ([voyages](/mechanics/voyages) has those); your save already places them in its galaxy (the ones you have
+flown charted, the next one a located signal). Flying into the generated galaxy and following signals come next.
 Scanning inside a cluster works already, on the first four voyages too.
 :::
 
@@ -42,7 +43,9 @@ come back.
 
 Home, the shipyard, is a cluster at the rim's outer edge with at least [[galaxy:galaxy.home_neighbours]] other rim
 clusters within reach. Your drive jumps [[galaxy:galaxy.jump_range]] at the start, from home or from any cluster you
-have charted; research will grow it. A jump takes [[galaxy:galaxy.warp]] of distance.
+have charted. A cluster is **charted** once a fleet of yours has arrived there, even if that voyage is lost. Research
+in the propulsion family grows the range: [[research:jump_calibration_1]] and [[research:jump_calibration_2]] add
+[[research:jump_calibration_1.unlocks]] each. A jump takes [[galaxy:galaxy.warp]] of distance.
 
 Every cluster of a band can be reached from where the band is entered, one jump at a time within the starting range:
 the generator checks it for every galaxy.
@@ -70,9 +73,15 @@ that holds the place it leads to, though not in its middle. Its first line names
 (<span class="sig">SIGNAL</span> and the trail's hint, such as "[[trail:rim_gate.hint]]"), its second what found it. Signals come from:
 
 - [[signal_source:hauler_log]] and [[signal_source:precursor_log]]: a data core in a wreck ("[[signal_source:hauler_log.line]]").
-  Salvage it, bring it home and it is decoded into a signal for free.
+  Salvage it, bring it home and it is decoded into a signal for free. A data core takes one unit of your hold, and
+  your ships take it before anything else there; if the voyage is lost it stays in its wreck, and waits there for
+  your next visit.
 - [[signal_source:old_beacon]] and [[signal_source:distress_call]]: something calling in the cluster
   ("[[signal_source:old_beacon.line]]"). Scan it and it is a signal at once.
+
+A signal you have heard **narrows** as you search: a scan in another cluster inside its area halves the area towards
+the place (NARROWED), still holding it, and once no other cluster lies inside, the signal is **LOCATED**: you know
+the cluster. A scan in the place's own cluster locates it at once.
 
 A trail's first source lies in an ordinary cluster of its band; each later one waits at the place the signal before
 it led to, so following a trail walks you across the band, a [[galaxy:galaxy.trail_step]] step at a time, towards its
