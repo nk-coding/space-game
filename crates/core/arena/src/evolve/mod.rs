@@ -68,7 +68,7 @@ pub use config::{
 pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
 pub use genome::Genome;
 pub use lineage::Bred;
-pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
+pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunHead, RunPart, RunParts, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
 pub use trial::{Contestant, DEFAULT_WAVES, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, entry_of};
 
 use eval::Active;

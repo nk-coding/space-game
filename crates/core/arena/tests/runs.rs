@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use arena::evolve::{Bound, Job, JobResult, Locks, Start};
+use arena::evolve::{Bound, Job, JobResult, Locks, RunHead, RunPart, RunParts, Start};
 use arena::{FightCode, Run, RunConfig, RunError, RunSave, run_fight};
 use data::Content;
 
@@ -74,6 +74,67 @@ fn a_resumed_run_is_the_uninterrupted_run() {
     assert!(matches!(Run::restore(&c, &bad), Err(RunError::Save(_))));
     assert!(matches!(RunSave::from_ron(&file.replace("format: 1", "format: 9")), Err(RunError::Save(_))));
     assert!(matches!(RunSave::from_ron("(format: 1"), Err(RunError::Save(_))));
+}
+
+/// A run's parts through their text, as a store keeps them.
+fn reread(parts: &RunParts) -> RunParts {
+    RunParts {
+        head: RunHead::from_ron(&parts.head.to_ron()).unwrap(),
+        config: RunConfig::from_ron(&parts.config.to_ron()).unwrap(),
+        generations: parts.generations.iter().map(|p| RunPart::from_ron(&p.to_ron()).unwrap()).collect(),
+    }
+}
+
+/// The run in parts (the game's lab, ADR-0041): written as it grows (the head again after every generation, each
+/// generation's part once), read back through text, it restores to the run its file restores to, byte for byte, and
+/// goes on to the same end; a run file splits into the same parts, at any point, also in the middle of a generation
+/// and before the first one closed.
+#[test]
+fn a_run_in_parts_is_its_run_file() {
+    let c = data::base_content();
+    let straight = stepped(&c, config(BOTH), u64::MAX);
+    let mut run = Run::new(&c, config(BOTH)).unwrap();
+    // Before any generation: the starts are in the head.
+    let fresh = reread(&run.parts());
+    assert!(fresh.generations.is_empty());
+    assert_eq!(text(&Run::restore_parts(&c, &fresh).unwrap()), text(&run));
+    let mut kept: Vec<RunPart> = Vec::new();
+    let mut head = run.head();
+    while run.generation() < 4 {
+        let g = run.generation();
+        while run.generation() == g {
+            run.step(1500);
+        }
+        kept.push(run.part(g).unwrap());
+        head = run.head();
+        assert!(run.part(g + 1).is_none(), "only closed generations have parts");
+    }
+    // The middle of the next generation: the parts stay those of the closed ones.
+    run.step(arena::evolve::BREED_COST * 2);
+    assert_eq!(run.head(), head);
+    let parts = RunParts { head, config: config(BOTH), generations: kept };
+    assert_eq!(parts, run.parts(), "written as it grew: the run's parts");
+    assert_eq!(RunParts::of(&run.snapshot()).unwrap(), parts, "a run file splits into the same parts");
+    let file = text(&run);
+    let mut resumed = Run::restore_parts(&c, &reread(&parts)).unwrap();
+    assert_eq!(text(&resumed), file, "restored from its parts: the run file's run");
+    while !resumed.step(777).finished {}
+    assert_eq!(text(&resumed), text(&straight), "and it goes on byte for byte");
+    // Each part is about its generation's bytes; the head stays small however long the run is.
+    let all = RunParts::of(&straight.snapshot()).unwrap();
+    let head = all.head.to_ron().len();
+    assert!(head < 1200 && head < all.generations[1].to_ron().len(), "a head of {head} bytes");
+    // A missing or misplaced part is refused with a reason.
+    let mut short = parts.clone();
+    short.generations.pop();
+    assert!(matches!(Run::restore_parts(&c, &short), Err(RunError::Save(_))));
+    let mut swapped = parts.clone();
+    swapped.generations.swap(1, 2);
+    assert!(matches!(Run::restore_parts(&c, &swapped), Err(RunError::Save(_))));
+    assert!(matches!(RunHead::from_ron(&parts.head.to_ron().replace("format: 1", "format: 9")), Err(RunError::Save(_))));
+    // A genome rebuilds from the parts as from the file.
+    let best = straight.archive().best().unwrap().id;
+    assert_eq!(all.genome(&c, best).unwrap(), straight.snapshot().genome(&c, best).unwrap());
 }
 
 #[test]

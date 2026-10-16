@@ -231,6 +231,13 @@ fn rescore_is_deterministic_and_goes_on() {
         resumed.step(u64::MAX);
     }
     assert_eq!(resumed.snapshot().to_ron(), a.snapshot().to_ron());
+    // In parts (the lab's) the same: the head keeps the re-score that is due.
+    let mut from_parts = Run::restore_parts(&changed, &mid.parts()).unwrap();
+    assert_eq!(from_parts.snapshot(), mid.snapshot());
+    while from_parts.generation() < 3 {
+        from_parts.step(u64::MAX);
+    }
+    assert_eq!(from_parts.snapshot().to_ron(), a.snapshot().to_ron());
     // The old generations' codes carry their rules; the re-score's today's, and they replay as recorded.
     assert_eq!(a.fight_code(0, 0, 0).unwrap().rules, save.rules);
     let code = a.fight_code(2, 0, 0).unwrap();
@@ -278,6 +285,8 @@ fn validate_on_new_seeds_and_the_records() {
     let back = Run::restore(&c, &RunSave::from_ron(&file).unwrap()).unwrap();
     assert_eq!(back.validated(best[0]), a.validated(best[0]), "kept in the run file");
     assert_eq!(back.snapshot().to_ron(), file, "IMPORT RUN: a run file reads and writes back the same");
+    let parts = arena::evolve::RunParts::of(&back.snapshot()).unwrap();
+    assert_eq!(Run::restore_parts(&c, &parts).unwrap().snapshot().to_ron(), file, "VALIDATE's results in the head");
 }
 
 /// The lab's presets become trials with the career's open voyages, the player's designs and earlier runs' best; a

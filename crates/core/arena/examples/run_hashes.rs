@@ -1,7 +1,7 @@
 //! Prints an evolution run's hashes, one `generation hash` line per generation (FNV-1a 64 of the run file after it,
 //! `Run::snapshot`), for a run straight through in budgeted slices, and checks that the same run interrupted after
 //! `--resume-at` generations, written as a run file, read back, restored and run on in other slices gives the same
-//! lines (it panics if not). Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh --run NAME` runs
+//! lines, and that its parts (the game's lab's) restore to the same run (it panics if not). Built natively and for `wasm32-wasip1`; `scripts/determinism-check.sh --run NAME` runs
 //! both and compares, so a run resumes alike on every platform (GDR-0092).
 //!
 //! Usage: `run_hashes [--scenario two_starts_locked|mixed_trials] [--seed N] [--resume-at K]`: the run files of
@@ -58,6 +58,15 @@ fn main() {
     }
     let file = first.snapshot().to_ron();
     let save = arena::RunSave::from_ron(&file).expect("the run file reads");
+    // The game's lab keeps it in parts (ADR-0041): read back through their text, the same run as the file's.
+    let parts = first.parts();
+    let parts = arena::evolve::RunParts {
+        head: arena::evolve::RunHead::from_ron(&parts.head.to_ron()).expect("the head reads"),
+        config: arena::RunConfig::from_ron(&parts.config.to_ron()).expect("the configuration reads"),
+        generations: parts.generations.iter().map(|p| arena::evolve::RunPart::from_ron(&p.to_ron()).expect("a part reads")).collect(),
+    };
+    let from_parts = arena::Run::restore_parts(&content, &parts).expect("the parts restore");
+    assert_eq!(from_parts.snapshot().to_ron(), file, "restored from its parts, the run DIFFERS from its file's");
     let mut resumed = arena::Run::restore(&content, &save).expect("the run restores");
     assert!(!resumed.stale(), "the same rules");
     while !resumed.finished() {
