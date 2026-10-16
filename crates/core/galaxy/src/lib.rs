@@ -13,14 +13,18 @@
 //! 1. **Clusters** fill the galaxy's disc (out to the first band's edge) by Poisson-disc sampling at the galaxy's
 //!    spacing, so no two lie closer than it and every spot lies within it of a cluster; each belongs to the band
 //!    whose ring holds it. Ids run from the rim inwards, round each band by angle.
-//! 2. **Home** is the first band's cluster nearest a random spot on the galaxy's edge with at least
-//!    `home_neighbours` others of its band within the starting jump range.
-//! 3. **Gates**: per band with gates, the cluster nearest its inner edge in each of `count` equal sectors of the disc.
+//! 2. **Home and the set pieces**: home is the first band's cluster nearest a random spot on the galaxy's edge where
+//!    the galaxy's `set_pieces` (hand-made voyages, the slice's four) find their clusters at their distances from
+//!    home, a gate's piece nearest its band's inner edge, the others along the way to it a trail step apart, and at least
+//!    `home_neighbours` others of its band without a set piece lie within the starting jump range.
+//! 3. **Gates**: per band with gates, the cluster nearest its inner edge in each of `count` equal sectors of the disc;
+//!    a band's gate piece is its first gate, the sectors turned round it.
 //! 4. **Reachable**: within the starting jump range, hop by hop, every cluster of a band is reachable from its
 //!    entrances (home for the first band, the gates of the band outside it for the others). Steps 1 to 4 start
 //!    again on a new attempt when a band is empty, home or a gate cannot be placed, or a band is not reachable.
-//! 5. **Types, seeds and names** per cluster in id order.
-//! 6. **Trails** per band: one per gate, the band's caches and graveyards, one per lore fragment of the band. A
+//! 5. **Types, seeds and names** per cluster in id order; a set piece's cluster takes its voyage's name.
+//! 6. **Trails** per band: one per gate but a gate piece's (its voyages are its trail), the band's caches and
+//!    graveyards, one per lore fragment of the band. No trail place lies at home or a set piece. A
 //!    trail's reward goes into a cluster of its own; its earlier places are walked back from there, a trail step at a
 //!    time, towards the band's entrances where possible; each signal's area holds the place it leads to.
 //!
@@ -41,11 +45,11 @@ pub use data::skeleton::{Area, Cluster, Place, Point, Signal, Skeleton, TrailPla
 pub use interior::{Interior, InteriorSite, interior};
 
 /// The generator's version: saves store it next to the skeleton (ADR-0024). Raise it when the same seed and content
-/// would generate a different skeleton or interior.
-pub const GENERATOR_VERSION: u32 = 1;
+/// would generate a different skeleton or interior. 2: the set pieces (galaxy plan E7).
+pub const GENERATOR_VERSION: u32 = 2;
 
 /// Placement attempts before generation gives up (each a fresh sampling of the disc).
-const ATTEMPTS: u64 = 16;
+const ATTEMPTS: u64 = 32;
 
 /// The generator's random streams. **Append only, never renumber**: a stream's id is part of what a seed means.
 #[derive(Clone, Copy, Debug)]
@@ -120,15 +124,37 @@ pub(crate) fn resolve<'a>(c: &'a Content, galaxy: &str) -> Result<(&'a Galaxy, V
     Ok((g, bands))
 }
 
+/// The galaxy's set pieces resolved: their voyages' names and bands, their distances in map units², the piece each
+/// voyage opens after.
+fn pieces(c: &Content, g: &Galaxy, bands: &[&Band]) -> Result<Vec<place::Piece>, GenError> {
+    g.set_pieces
+        .iter()
+        .map(|p| {
+            let v = c.voyages.get(&p.voyage).ok_or_else(|| GenError(format!("unknown voyage `{}`", p.voyage)))?;
+            let band = bands.iter().position(|b| b.id == v.band).ok_or_else(|| GenError(format!("voyage `{}` lies outside the galaxy", v.id)))?;
+            let after = v.opens_after.first().and_then(|a| g.set_pieces.iter().position(|q| q.voyage == *a));
+            Ok(place::Piece {
+                voyage: v.id.clone(),
+                name: v.name.clone(),
+                band,
+                within: (units(p.distance.0).pow(2), units(p.distance.1).pow(2)),
+                gate: p.gate,
+                after,
+            })
+        })
+        .collect()
+}
+
 /// Generates the skeleton of `galaxy` (id) for a game's `seed`: a pure function of the seed, [`GENERATOR_VERSION`]
 /// and the content.
 pub fn generate(c: &Content, galaxy: &str, seed: u64) -> Result<Skeleton, GenError> {
     let (g, bands) = resolve(c, galaxy)?;
+    let pieces = pieces(c, g, &bands)?;
     let mut why = String::new();
     for attempt in 0..ATTEMPTS {
-        match place::layout(g, &bands, seed, attempt) {
+        match place::layout(g, &bands, &pieces, seed, attempt) {
             Ok(layout) => {
-                let mut s = place::skeleton(c, g, &bands, seed, layout)?;
+                let mut s = place::skeleton(c, g, &bands, &pieces, seed, layout)?;
                 s.trails = trails::trails(c, g, &bands, &s)?;
                 return Ok(s);
             }

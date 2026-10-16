@@ -1,5 +1,6 @@
 // The galaxy's bands from the rim inwards (GDR-0026), each a ring around the centre out to its `edge` (S). A band's
-// clusters fill its ring at the galaxy's spacing; its `gates` lie near its inner edge, each at the end of a trail;
+// clusters fill its ring at the galaxy's spacing; its `gates` lie near its inner edge, each at the end of a trail (the
+// rim's first is the Warden's, a set piece whose trail is the slice's voyages, GDR-0098);
 // `trails` adds caches and graveyards (lore trails come from `lore/`). Only the rim is real: the other bands are
 // stubs (tag `stub`) until their races and guardians exist (plan track E8 and later). PLACEHOLDER NUMBERS (lead,
 // 16 Oct 2026, GDR-0094).

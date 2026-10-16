@@ -76,10 +76,55 @@ impl<'a> Validator<'a> {
         if !(off.is_finite() && (0.0..1.0).contains(&off)) {
             self.err(g, "signal_area.offset", format!("a share of the area's radius, 0 to below 1, got {off}"));
         }
+        let narrow = g.signal_area.narrow;
+        if !(narrow.is_finite() && narrow > 0.0 && narrow < 1.0) {
+            self.err(g, "signal_area.narrow", format!("a share of the area's radius, above 0 and below 1, got {narrow}"));
+        }
         self.span(g, "trail_step", g.trail_step, MAX_GALAXY_RADIUS, " S");
         for (field, parts) in [("names.starts", &g.names.starts), ("names.ends", &g.names.ends)] {
             if parts.is_empty() || parts.iter().any(|p| p.trim().is_empty()) {
                 self.err(g, field, "at least one name part, none empty");
+            }
+        }
+        self.set_pieces(g);
+    }
+
+    /// A galaxy's set pieces: voyages of its bands, each once; a gate's piece in a band with gates, one a band, with a
+    /// goal that has ships to beat; the galaxy's voyages without a piece are never on the map (a warning).
+    fn set_pieces(&mut self, g: &'a Galaxy) {
+        let c = self.c;
+        let mut gated: Vec<&str> = Vec::new();
+        for (k, p) in g.set_pieces.iter().enumerate() {
+            let f = format!("set_pieces[{k}]");
+            self.span(g, &format!("{f}.distance"), p.distance, MAX_GALAXY_RADIUS, " S");
+            let Some(v) = c.voyages.get(&p.voyage) else {
+                self.err(g, format!("{f}.voyage"), format!("unknown voyage `{}`", p.voyage));
+                continue;
+            };
+            if g.set_pieces[..k].iter().any(|q| q.voyage == p.voyage) {
+                self.err(g, format!("{f}.voyage"), format!("`{}` is placed twice", p.voyage));
+            }
+            if !g.bands.contains(&v.band) {
+                self.err(g, format!("{f}.voyage"), format!("voyage `{}` lies in band `{}`, not one of the galaxy's", v.id, v.band));
+            }
+            if !p.gate {
+                continue;
+            }
+            if c.bands.get(&v.band).is_some_and(|b| b.gates.is_none()) {
+                self.err(g, format!("{f}.gate"), format!("band `{}` has no gates", v.band));
+            }
+            if gated.contains(&v.band.as_str()) {
+                self.err(g, format!("{f}.gate"), format!("band `{}` has a gate's piece already", v.band));
+            }
+            gated.push(&v.band);
+            let guarded = v.goal().and_then(|s| c.encounters.get(&s.encounter)).is_some_and(|e| e.always_has_ships());
+            if !guarded {
+                self.err(g, format!("{f}.gate"), format!("voyage `{}` has no goal with ships for sure: its gate could never open", v.id));
+            }
+        }
+        for v in c.voyages.iter().filter(|v| g.bands.contains(&v.band)) {
+            if !g.set_pieces.iter().any(|p| p.voyage == v.id) {
+                self.warn(g, "set_pieces", format!("voyage `{}` has no set piece: it is never on the map", v.id));
             }
         }
     }
@@ -165,6 +210,14 @@ impl<'a> Validator<'a> {
         if t.hint.trim().is_empty() {
             self.err(t, "hint", "hint must not be empty");
         }
+        for (id, &x) in &t.gives.data {
+            let f = format!("gives.data.{id}");
+            if !c.families.contains(id) {
+                self.err(t, &f, format!("unknown research family `{id}`"));
+            }
+            self.research_data(t, &f, x, true);
+        }
+        self.material_amounts(t, "gives.materials", &t.gives.materials);
         let used = match t.reward {
             Reward::Gate => c.bands.iter().any(|b| b.gates.as_ref().is_some_and(|g| g.trail == t.id)),
             Reward::Lore => c.lore.iter().any(|l| l.trail == t.id),

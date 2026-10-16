@@ -100,7 +100,7 @@ fn plans_are_reproducible_and_follow_the_content() {
                 assert!(s.pos.length() <= v.radius * 1.0001, "{} outside", v.id);
                 spots.push(s.pos);
                 let e = c.encounters.get(s.encounter.as_deref().unwrap()).unwrap();
-                assert_eq!(s.signal, s.goal, "the slice's goal is its signal");
+                assert!(!s.signal, "a slice voyage's goal is an ordinary site (its voyage is the signal, E7)");
                 assert_eq!(s.wake_radius, e.wake_radius);
                 // Counts within the encounter's ranges, per blueprint.
                 for (list, entries) in [

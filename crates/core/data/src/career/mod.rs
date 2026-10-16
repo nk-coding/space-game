@@ -4,7 +4,7 @@
 //! A [`Career`] holds the save's **facts** only: the start, the game seed, the researched nodes, the research data
 //! and materials in store, the escorts, a record per voyage, the voyage underway, a small log, the history of
 //! the last voyages ([`MAX_HISTORY`]) and what the player knows of the galaxy ([`Exploration`]: its skeleton, charted
-//! clusters, signals, logs, gates). Everything else is derived from the content on demand ([`Career::unlocks`],
+//! clusters, signals, logs, gates, memories). Everything else is derived from the content on demand ([`Career::unlocks`],
 //! [`Career::mind_capacity`], [`Career::jump_range`], [`Career::open_voyages`], [`Career::can_pay`]), so a rebalance
 //! of the content applies to old saves without a migration. The game stores it as RON ([`Career::to_ron`],
 //! [`Career::from_ron`]) in its `saves/` namespace and calls [`Career::reconcile`] after loading, which drops what
@@ -51,7 +51,11 @@ pub use voyages::{unload, voyage_ready};
 ///   format 2 save reads as it is (the field has a default) and gets its galaxy when the game loads it
 ///   ([`Career::begin_galaxy`]: the slice's voyages pinned to clusters, the cleared and launched ones charted, the
 ///   open ones signals).
-pub const FORMAT: u32 = 3;
+/// * 4 (17 Oct 2026, galaxy plan E7 and E8, GDR-0098): the skeleton's set pieces as `pieces`, the memory log as
+///   `galaxy.memories`. A format 3 save reads as it is: its skeleton (generator version 1) has no set pieces, so its
+///   career keeps the pins E4 gave the slice, and at load the Warden's pinned cluster becomes a gate
+///   (`Career::reconcile`), which its clearing opens.
+pub const FORMAT: u32 = 4;
 
 /// How many voyages the history keeps (home's LOG, GDR-0091): the oldest go first. A placeholder.
 pub const MAX_HISTORY: usize = 50;

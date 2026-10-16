@@ -2,9 +2,9 @@
 // signal's source lies in an ordinary cluster, each later one at the place the signal before it led to; the last
 // place holds `target`. `sources` are equally likely per signal; `hint` is the signal's first line on the map
 // ("SIGNAL · SOMETHING OLD"). Bands place gate trails (`gates`), caches and graveyards (`trails`); lore fragments
-// place their own. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, from the plan's section 4.3). The targets are the slice's
-// encounters until track E8 gives caches and lore wrecks their own (a new encounter changes the rules' fingerprint,
-// which marks saved lab runs stale, GDR-0092).
+// place their own. Following a trail to its end gives its reward (GDR-0098): a gate opens, a fragment joins the
+// memory log, `gives` goes into store (a cache's research data and materials), a graveyard is salvage.
+// PLACEHOLDER NUMBERS (lead, 16 Oct 2026, from the plan's section 4.3; the rewards and targets 17 Oct 2026, track E8).
 [
     (
         id: "rim_gate",
@@ -12,7 +12,7 @@
         summary: "The long trail to one of the rim's gates, and the old guardian that keeps it.",
         reward: Gate,
         length: (3, 4),
-        target: "the_warden",
+        target: "gate_sentinel",
         sources: ["hauler_log", "precursor_log", "old_beacon"],
         hint: "A gate",
     ),
@@ -30,12 +30,13 @@
     (
         id: "precursor_cache",
         name: "A precursor cache",
-        summary: "A sealed cache of precursor work: a research node or a part found nowhere else.",
+        summary: "A sealed cache of precursor work: research data and programmable matter, straight into store.",
         reward: Cache,
         length: (2, 3),
-        target: "precursor_wrecks",
+        target: "sealed_cache",
         sources: ["precursor_log", "old_beacon"],
         hint: "A cache",
+        gives: (data: {"logic": 8, "propulsion": 8}, materials: {"programmable_matter": 4}),
     ),
     (
         id: "memory",
@@ -43,7 +44,7 @@
         summary: "A short trail to a fragment of what happened, for the memory log.",
         reward: Lore,
         length: (1, 2),
-        target: "precursor_wrecks",
+        target: "memory_wreck",
         sources: ["precursor_log", "old_beacon", "distress_call"],
         hint: "Something old",
     ),
@@ -53,7 +54,7 @@
         summary: "A short trail to a graveyard with far more to salvage than usual.",
         reward: Salvage,
         length: (1, 2),
-        target: "core_graveyard",
+        target: "deep_graveyard",
         sources: ["hauler_log", "distress_call"],
         hint: "A graveyard",
     ),

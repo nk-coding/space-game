@@ -1,6 +1,6 @@
 //! The base content's galaxy keeps the generator's rules on many seeds (ADR-0042, `docs/plans/galaxy-voyages.md`
-//! section 5): spacing, bands, home, gates, reachability, trails and their signals, names, interiors; and the same
-//! seed always gives the same galaxy.
+//! section 5): spacing, bands, home, the set pieces, gates, reachability, trails and their signals, names, interiors;
+//! and the same seed always gives the same galaxy.
 
 use std::collections::BTreeSet;
 
@@ -67,8 +67,21 @@ fn check(c: &Content, s: &Skeleton) {
     let home = &s.clusters[s.home as usize];
     assert_eq!(home.band, g.bands[0]);
     assert!(!home.gate);
-    let near = s.band(&g.bands[0]).filter(|&k| k != s.home && s.clusters[k as usize].at.dist2(home.at) <= jump2).count();
-    assert!(near >= g.home_neighbours as usize, "seed {seed}: home has {near} neighbours");
+    let piece = |k: u32| s.pieces.values().any(|&p| p == k);
+    let near = s.band(&g.bands[0]).filter(|&k| k != s.home && !piece(k) && s.clusters[k as usize].at.dist2(home.at) <= jump2).count();
+    assert!(near >= g.home_neighbours as usize, "seed {seed}: home has {near} free neighbours");
+    // The set pieces: each voyage on a cluster of its band at its distance from home, named after it; a gate's on a
+    // gate; no two on one cluster.
+    assert_eq!(s.pieces.len(), g.set_pieces.len(), "seed {seed}: every set piece placed");
+    for p in &g.set_pieces {
+        let v = c.voyages.get(&p.voyage).unwrap();
+        let k = &s.clusters[s.pieces[&p.voyage] as usize];
+        let d = k.at.dist2(home.at);
+        assert!((units(p.distance.0).pow(2)..=units(p.distance.1).pow(2)).contains(&d), "seed {seed}: {} at {d}", v.id);
+        assert_eq!((k.band.as_str(), k.name.as_str(), k.gate), (v.band.as_str(), v.name.as_str(), p.gate), "seed {seed}");
+    }
+    let pieces: BTreeSet<u32> = s.pieces.values().copied().collect();
+    assert!(pieces.len() == s.pieces.len() && !pieces.contains(&s.home));
     // Gates per band, and every band reachable hop by hop from its entrances.
     for (b, id) in g.bands.iter().enumerate() {
         let band = c.bands.get(id).unwrap();
@@ -91,7 +104,9 @@ fn check(c: &Content, s: &Skeleton) {
     let mut wanted = 0;
     for id in &g.bands {
         let band = c.bands.get(id).unwrap();
-        wanted += band.gates.as_ref().map_or(0, |x| x.count) + band.trails.iter().map(|t| t.count).sum::<u32>();
+        // A gate piece's gate has the slice for its trail.
+        let gated = g.set_pieces.iter().filter(|p| p.gate && c.voyages.get(&p.voyage).unwrap().band == *id).count() as u32;
+        wanted += band.gates.as_ref().map_or(0, |x| x.count) - gated + band.trails.iter().map(|t| t.count).sum::<u32>();
         wanted += c.lore.iter().filter(|l| l.band == *id).count() as u32;
     }
     assert_eq!(s.trails.len() as u32, wanted, "seed {seed}: trails");
@@ -109,6 +124,7 @@ fn check(c: &Content, s: &Skeleton) {
         for p in &t.places {
             assert_eq!(s.clusters[p.cluster as usize].band, t.band, "seed {seed}: a trail stays in its band");
             assert_ne!(p.cluster, s.home, "seed {seed}: no trail place at home");
+            assert!(!piece(p.cluster), "seed {seed}: no trail place at a set piece");
         }
         for (k, sig) in t.signals.iter().enumerate() {
             assert!(tpl.sources.contains(&sig.source));
@@ -155,5 +171,5 @@ fn interiors_follow_their_cluster_types_and_hold_the_trail_places() {
 #[test]
 fn the_generation_hash_is_pinned() {
     let c = data::base_content();
-    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "e2055530fd51f960");
+    assert_eq!(format!("{:016x}", generate(&c, "galaxy", 1).unwrap().hash()), "8a509f91bd8fd0b8");
 }

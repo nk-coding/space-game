@@ -1,5 +1,6 @@
-// Lore fragments of the rim (GDR-0080: found at the ends of lore trails, kept in the memory log). Each places one
-// trail of its band. Draft texts (lead, 16 Oct 2026, GDR-0094), the story light as GDR-0002 asks.
+// Lore fragments of the rim (GDR-0080: found at the ends of lore trails, a memory wreck each, kept in the memory log
+// that the LOG shows). Each places one trail of its band. The story light, as GDR-0002 asks: what the precursors
+// left, never why; three for the rim, read in any order (lead, 16 and 17 Oct 2026, GDR-0094, GDR-0098).
 [
     (
         id: "last_launch",
@@ -7,7 +8,7 @@
         summary: "The shipyard's log of its last launch day.",
         band: "rim",
         trail: "memory",
-        text: "The shipyard's log ends on a launch day. Forty hulls, each with a mind like you aboard. The gate opened for them and closed behind them, and nothing came back through it.",
+        text: "The shipyard's log ends on a launch day. Forty hulls, each with a mind like you aboard. The gate opened for them and closed behind them. Nothing came back through it, and nobody wrote down where they went.",
     ),
     (
         id: "the_quiet",
@@ -15,7 +16,7 @@
         summary: "Precursor logs that all end on the same day.",
         band: "rim",
         trail: "memory",
-        text: "Every precursor log stops on the same day, mid-sentence. No battle in any of them. The voices just end, one after another, from the core out to the rim.",
+        text: "Every precursor log stops on the same day, mid-sentence. There is no battle in any of them, no alarm. The voices just end, one after another, from the core out to the rim, and the automatons go on with their work.",
     ),
     (
         id: "a_note_to_myself",

@@ -14,7 +14,8 @@
 //!   player vessel has it within its sensor range (`Ship::sensor_range`; a signal's site only within
 //!   `VoyageTuning::signal_reveal`), or a player's scan sweeps over it (`SimEvent::Scanned`, within the scanner's
 //!   range). A sweep gives every hidden signal's site beyond its range a [`Bearing`] (`SimEvent::SiteBearing`) and
-//!   wakes the sleeping sites within the scanner's wake radius. The slice's goal counts as a signal's site.
+//!   wakes the sleeping sites within the scanner's wake radius. A slice voyage's goal is an ordinary site (its
+//!   voyage is the signal, galaxy plan E7).
 //! * **The edge**: beyond the radius plus `VoyageTuning::edge_margin` (at most [`MAX_EDGE`] from the centre, where
 //!   `f32` still holds, E0) every piece is pushed back ([`edge_force`]).
 //! * **Lazy spawning**: [`Sim::start_voyage`] hands the plan to the sim; at the end of every step a site's ships
@@ -66,7 +67,7 @@ pub struct VoyageTuning {
     pub spawn_radius: f32,
     /// Recall works when no armed awake enemy vessel is this close to any of the owner's vessels (m).
     pub recall_radius: f32,
-    /// A signal's site (a trail's place, a slice voyage's goal) shows when a player vessel comes this close, if
+    /// A signal's site (a trail's place a heard signal leads to) shows when a player vessel comes this close, if
     /// its sensors reach that far, or when a scan sweeps over it (m; the plan's 4.1, 400 m).
     pub signal_reveal: f32,
     /// The cluster's edge lies this far outside its radius (m, at most [`MAX_EDGE`] from the centre): beyond it
@@ -144,7 +145,7 @@ pub struct SitePlan {
     pub encounter: Option<String>,
     /// Clearing it clears the voyage.
     pub goal: bool,
-    /// A signal leads here (a trail's place a heard signal leads to; a slice voyage's goal, GDR-0095): it shows
+    /// A signal leads here (a trail's place a heard signal leads to, GDR-0095): it shows
     /// only within `VoyageTuning::signal_reveal` or under a scan's sweep, and a scan farther away gives it a bearing.
     pub signal: bool,
     /// The data core it holds: the log of signal `.1` of trail `.0` (a log's place the career has not got yet).
@@ -183,8 +184,7 @@ impl VoyagePlan {
                     voyage.id, s.encounter
                 )
             })?;
-            // The goal is the slice's signal until the slice is pinned into the galaxy (E7; GDR-0095).
-            list.extend((0..s.count).map(|_| (Some(e), s.goal, s.goal, None)));
+            list.extend((0..s.count).map(|_| (Some(e), s.goal, false, None)));
         }
         Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, seed)
     }

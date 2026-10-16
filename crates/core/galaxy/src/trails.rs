@@ -7,8 +7,8 @@ use data::{Band, Content, Galaxy, Trail};
 
 use crate::{Area, GenError, Place, Point, Signal, Skeleton, Stream, TrailPlan, polar, stream, unit, units};
 
-/// The trails of a skeleton whose clusters, home and gates are set: per band (rim first) one per gate, then the
-/// band's `trails`, then one per lore fragment of the band.
+/// The trails of a skeleton whose clusters, home, set pieces and gates are set: per band (rim first) one per gate (but
+/// a gate piece's), then the band's `trails`, then one per lore fragment of the band.
 pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> Result<Vec<TrailPlan>, GenError> {
     let mut rng = stream(s.seed, Stream::Trails, 0);
     let get = |id: &str| c.trails.get(id).ok_or_else(|| GenError(format!("unknown trail `{id}`")));
@@ -18,9 +18,11 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
     for (b, band) in bands.iter().enumerate() {
         // (template, fixed end, lore fragment)
         let mut wanted: Vec<(&Trail, Option<u32>, Option<String>)> = Vec::new();
+        // A gate piece's gate has its voyages for a trail.
+        let piece = |k: u32| s.pieces.values().any(|&p| p == k);
         if let Some(gates) = &band.gates {
             let t = get(&gates.trail)?;
-            wanted.extend(s.band(&band.id).filter(|&k| s.clusters[k as usize].gate).map(|k| (t, Some(k), None)));
+            wanted.extend(s.band(&band.id).filter(|&k| s.clusters[k as usize].gate && !piece(k)).map(|k| (t, Some(k), None)));
         }
         for tc in &band.trails {
             let t = get(&tc.trail)?;
@@ -31,8 +33,8 @@ pub(crate) fn trails(c: &Content, g: &Galaxy, bands: &[&Band], s: &Skeleton) -> 
         }
         let entrances: Vec<Point> = s.entrances(&g.bands, b).iter().map(|&k| s.clusters[k as usize].at).collect();
         let from_start = |k: u32| entrances.iter().map(|e| e.dist2(s.clusters[k as usize].at)).min().unwrap_or(0);
-        // Places a trail may use: the band's clusters but home and the gates.
-        let open: Vec<u32> = s.band(&band.id).filter(|&k| k != s.home && !s.clusters[k as usize].gate).collect();
+        // Places a trail may use: the band's clusters but home, the gates and the set pieces.
+        let open: Vec<u32> = s.band(&band.id).filter(|&k| k != s.home && !s.clusters[k as usize].gate && !piece(k)).collect();
         for (t, fixed, lore) in wanted {
             let end = match fixed {
                 Some(k) => k,

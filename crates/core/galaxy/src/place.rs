@@ -1,5 +1,5 @@
-//! Steps 1 to 5 of generation: clusters on the disc, their bands, home, the gates, the reachability check, then
-//! the clusters' types, seeds and names.
+//! Steps 1 to 5 of generation: clusters on the disc, their bands, home and the set pieces, the gates, the
+//! reachability check, then the clusters' types, seeds and names.
 
 use std::collections::BTreeSet;
 use std::f64::consts::TAU;
@@ -11,17 +11,32 @@ use crate::{Cluster, GENERATOR_VERSION, GenError, Point, Skeleton, Stream, polar
 /// Candidates tried around a cluster before it counts as surrounded (Bridson's k).
 const TRIES: u32 = 30;
 /// Spots on the edge tried for home before the attempt fails.
-const HOME_TRIES: u32 = 16;
+const HOME_TRIES: u32 = 64;
 /// Name rolls before a name gets a number.
 const NAME_TRIES: u32 = 32;
 
-/// Where the clusters lie, sorted (band, then angle), with home and the gates.
+/// Where the clusters lie, sorted (band, then angle), with home, the set pieces and the gates.
 pub(crate) struct Layout {
     points: Vec<Point>,
     /// Index into the galaxy's bands.
     band: Vec<usize>,
     home: usize,
+    /// The cluster of each of [`Piece`]s, in order.
+    pieces: Vec<usize>,
     gate: Vec<bool>,
+}
+
+/// A set piece to place (the galaxy's `set_pieces`, resolved against the content).
+pub(crate) struct Piece {
+    pub voyage: String,
+    pub name: String,
+    /// Index into the galaxy's bands.
+    pub band: usize,
+    /// Map units² from home, `(min, max)`.
+    pub within: (i64, i64),
+    pub gate: bool,
+    /// The piece (index) its voyage opens after, if it is one.
+    pub after: Option<usize>,
 }
 
 fn fail<T>(why: impl Into<String>) -> Result<T, GenError> {
@@ -79,8 +94,34 @@ fn sample(radius: i64, spacing: i64, rng: &mut crate::Pcg32) -> Vec<Point> {
     points
 }
 
+/// The clusters of `pieces` for home `home`, or `None` when one finds no cluster: a gate's piece first, the cluster
+/// of its band nearest the band's inner edge (the smallest radius) within its distance from home; then the others
+/// in order, within theirs and a trail step (`step`, map units²) from the piece their voyage opens after (else
+/// home), the one nearest the way from there to their band's gate piece (if any); a gate's piece must lie a trail
+/// step from the piece it opens after too. Never home, never one cluster twice.
+fn place_pieces(points: &[Point], band: &[usize], home: usize, pieces: &[Piece], step: (i64, i64)) -> Option<Vec<usize>> {
+    let mut at: Vec<Option<usize>> = vec![None; pieces.len()];
+    let free = |k: usize, p: &Piece, at: &[Option<usize>]| {
+        band[k] == p.band && k != home && !at.contains(&Some(k)) && (p.within.0..=p.within.1).contains(&points[k].dist2(points[home]))
+    };
+    for (i, p) in pieces.iter().enumerate().filter(|(_, p)| p.gate) {
+        at[i] = Some((0..points.len()).filter(|&k| free(k, p, &at)).min_by_key(|&k| (points[k].r2(), k))?);
+    }
+    let dist = |a: usize, b: usize| libm::sqrt(points[a].dist2(points[b]) as f64);
+    for (i, p) in pieces.iter().enumerate().filter(|(_, p)| !p.gate) {
+        let from = p.after.and_then(|j| at[j]).unwrap_or(home);
+        let to = pieces.iter().zip(&at).find(|(q, _)| q.gate && q.band == p.band).and_then(|(_, k)| *k);
+        let cost = |k: usize| dist(from, k) + to.map_or(0.0, |t| dist(k, t));
+        let near = |k: usize| (step.0..=step.1).contains(&points[k].dist2(points[from]));
+        at[i] = Some((0..points.len()).filter(|&k| free(k, p, &at) && near(k)).min_by(|&a, &b| cost(a).total_cmp(&cost(b)).then(a.cmp(&b)))?);
+    }
+    let at: Vec<usize> = at.into_iter().collect::<Option<_>>()?;
+    let stepped = |(i, p): (usize, &Piece)| p.after.is_none_or(|j| (step.0..=step.1).contains(&points[at[i]].dist2(points[at[j]])));
+    pieces.iter().enumerate().filter(|(_, p)| p.gate).all(stepped).then_some(at)
+}
+
 /// Steps 1 to 4 for one attempt.
-pub(crate) fn layout(g: &Galaxy, bands: &[&Band], seed: u64, attempt: u64) -> Result<Layout, GenError> {
+pub(crate) fn layout(g: &Galaxy, bands: &[&Band], pieces: &[Piece], seed: u64, attempt: u64) -> Result<Layout, GenError> {
     let edges: Vec<i64> = bands.iter().map(|b| units(b.edge)).collect();
     let mut points = sample(edges[0], units(g.spacing), &mut stream(seed, Stream::Place, attempt));
     // The band of a point: the innermost whose edge still holds it.
@@ -94,28 +135,36 @@ pub(crate) fn layout(g: &Galaxy, bands: &[&Band], seed: u64, attempt: u64) -> Re
     let of = |b: usize| (0..points.len()).filter(move |&k| band_ref[k] == b);
     let jump2 = units(g.jump_range).pow(2);
 
-    // Home: the first band's cluster nearest a spot on the edge, with enough neighbours in range.
+    // Home: the first band's cluster nearest a spot on the edge, its set pieces placed, with enough free neighbours
+    // in range (not set pieces: the first blind jumps go there).
     let mut rng = stream(seed, Stream::Home, attempt);
-    let home = (0..HOME_TRIES)
+    let (home, placed) = (0..HOME_TRIES)
         .find_map(|_| {
             let spot = polar(Point::default(), edges[0] as f64, TAU * unit(&mut rng));
             let home = of(0).min_by_key(|&k| (points[k].dist2(spot), k))?;
-            let near = of(0).filter(|&k| k != home && points[k].dist2(points[home]) <= jump2).count();
-            (near >= g.home_neighbours as usize).then_some(home)
+            let placed = place_pieces(&points, &band, home, pieces, (units(g.trail_step.0).pow(2), units(g.trail_step.1).pow(2)))?;
+            let near = of(0).filter(|&k| k != home && !placed.contains(&k) && points[k].dist2(points[home]) <= jump2).count();
+            (near >= g.home_neighbours as usize).then_some((home, placed))
         })
-        .ok_or_else(|| GenError(format!("no spot for home with {} neighbours in range", g.home_neighbours)))?;
+        .ok_or_else(|| GenError(format!("no spot for home with its set pieces and {} free neighbours in range", g.home_neighbours)))?;
 
-    // Gates: per band, the cluster nearest its inner edge in each sector.
+    // Gates: per band, the cluster nearest its inner edge in each sector; a band's gate piece is its first gate, in
+    // the middle of the first sector.
     let mut rng = stream(seed, Stream::Gates, attempt);
     let mut gate = vec![false; points.len()];
     for (b, band_entry) in bands.iter().enumerate() {
         let Some(gates) = &band_entry.gates else { continue };
-        let turn = TAU * unit(&mut rng);
         let width = TAU / gates.count as f64;
+        let fixed = pieces.iter().zip(&placed).find(|(p, _)| p.gate && p.band == b).map(|(_, &k)| k);
+        let roll = TAU * unit(&mut rng);
+        let turn = fixed.map_or(roll, |k| points[k].angle() - width / 2.0);
         for s in 0..gates.count {
             let lo = turn + s as f64 * width;
             let inside = |k: &usize| (points[*k].angle() - lo).rem_euclid(TAU) < width;
-            let pick = of(b).filter(|k| *k != home && inside(k)).min_by_key(|&k| (points[k].r2(), k));
+            let pick = match fixed.filter(|_| s == 0) {
+                Some(k) => Some(k),
+                None => of(b).filter(|k| *k != home && !placed.contains(k) && inside(k)).min_by_key(|&k| (points[k].r2(), k)),
+            };
             match pick {
                 Some(k) => gate[k] = true,
                 None => return fail(format!("no cluster for gate {} of band `{}`", s + 1, band_entry.id)),
@@ -140,14 +189,15 @@ pub(crate) fn layout(g: &Galaxy, bands: &[&Band], seed: u64, attempt: u64) -> Re
             return fail(format!("a cluster of band `{}` at {:?} is out of reach", band_entry.id, points[k]));
         }
     }
-    Ok(Layout { points, band, home, gate })
+    Ok(Layout { points, band, home, pieces: placed, gate })
 }
 
-/// Step 5: the skeleton of a layout, with each cluster's type, seed and name (no trails yet).
-pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], seed: u64, l: Layout) -> Result<Skeleton, GenError> {
+/// Step 5: the skeleton of a layout, with each cluster's type, seed and name (a set piece's its voyage's; no trails
+/// yet).
+pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], pieces: &[Piece], seed: u64, l: Layout) -> Result<Skeleton, GenError> {
     let (mut kinds, mut seeds, mut names) =
         (stream(seed, Stream::Kinds, 0), stream(seed, Stream::Seeds, 0), stream(seed, Stream::Names, 0));
-    let mut taken: BTreeSet<String> = BTreeSet::new();
+    let mut taken: BTreeSet<String> = pieces.iter().map(|p| p.name.clone()).collect();
     let mut clusters = Vec::with_capacity(l.points.len());
     for (k, &at) in l.points.iter().enumerate() {
         let band = bands[l.band[k]];
@@ -179,6 +229,9 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], seed: u64, l: L
             n += 1;
         }
         taken.insert(name.clone());
+        if let Some(j) = l.pieces.iter().position(|&p| p == k) {
+            name = pieces[j].name.clone();
+        }
         clusters.push(Cluster {
             name,
             band: band.id.clone(),
@@ -194,6 +247,7 @@ pub(crate) fn skeleton(c: &Content, g: &Galaxy, bands: &[&Band], seed: u64, l: L
         version: GENERATOR_VERSION,
         clusters,
         home: l.home as u32,
+        pieces: pieces.iter().zip(&l.pieces).map(|(p, &k)| (p.voyage.clone(), k as u32)).collect(),
         trails: Vec::new(),
     })
 }

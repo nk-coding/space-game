@@ -1,8 +1,9 @@
-//! The galaxy in the career (`data::career::Exploration`, save format 3; galaxy plan E4, GDR-0093, GDR-0096) on a
-//! small hand-made skeleton: the jump range and its research, jumps from home and charted clusters, launching into a
-//! cluster and ending there, data cores and logs, hearing, decoding and narrowing signals, gates, the slice's voyages
-//! pinned and kept in step, the save. The migration of a format 2 save with a generated galaxy is in the `galaxy`
-//! crate's tests (`tests/career.rs`).
+//! The galaxy in the career (`data::career::Exploration`, save formats 3 and 4; galaxy plan E4, E7, E8, GDR-0093,
+//! GDR-0096, GDR-0098) on a small hand-made skeleton: the jump range and its research, jumps from home and charted
+//! clusters, launching into a cluster and ending there, data cores and logs, hearing, decoding and narrowing signals,
+//! gates, the slice's voyages on their set pieces and kept in step (the Warden's gate opening), the trails' rewards,
+//! the save. The migrations of a format 2 and a format 3 save with a generated galaxy are in the `galaxy` crate's
+//! tests (`tests/career.rs`).
 
 mod common;
 
@@ -12,7 +13,8 @@ use data::skeleton::{Area, Cluster, Place, Point, Signal, Skeleton, TrailPlan};
 use data::Content;
 
 /// Five rim clusters on a line and one off it (map units, 100 a S): home at 0, then 2, 3 and 4.5 S out; a gate 2.3 S
-/// the other way. One trail: a hauler's log in cluster 1 leads to cluster 3, its fresh area holding 1, 2 and 3.
+/// the other way. The slice's voyages lie on 1 to 4 (the Warden's on the gate). One trail: a hauler's log in cluster 1
+/// leads to cluster 3, its fresh area holding 1, 2 and 3.
 fn skeleton() -> Skeleton {
     let cluster = |name: &str, x: i32, y: i32, gate: bool| Cluster {
         name: name.into(),
@@ -25,7 +27,7 @@ fn skeleton() -> Skeleton {
     Skeleton {
         galaxy: "galaxy".into(),
         seed: 4207,
-        version: 1,
+        version: 2,
         clusters: vec![
             cluster("Home", 0, 0, false),
             cluster("One", 200, 0, false),
@@ -34,6 +36,7 @@ fn skeleton() -> Skeleton {
             cluster("Gate", 0, 230, true),
         ],
         home: 0,
+        pieces: [("yard_approach", 1), ("halvex_drift", 2), ("corran_reach", 3), ("wardens_gate", 4)].map(|(v, k)| (v.to_string(), k)).into(),
         trails: vec![TrailPlan {
             trail: "precursor_cache".into(),
             band: "rim".into(),
@@ -130,19 +133,22 @@ fn data_cores_become_logs_then_signals_that_narrow() {
     assert!(!career.hear(LOG), "heard already");
     assert_eq!(career.leads(&c, 3).signals, [(0, 1)], "its place is a signal's site now");
 
-    // A scan in cluster 2 halves the area towards cluster 3; it still holds cluster 2, so it is only narrowed.
+    // A scan in cluster 2 shrinks the area to 60 % (`galaxy.ron`) towards cluster 3, which stays within 60 % of the new
+    // radius of its centre; it still holds clusters 1 and 2, so it is only narrowed.
     let mut alt = career.clone();
-    assert_eq!(career.narrow(LOG, 2), Some(SignalState::Narrowed));
+    assert_eq!(career.narrow(&c, LOG, 2), Some(SignalState::Narrowed));
     let a = career.exploration().unwrap().signal(LOG).unwrap().area;
-    assert_eq!(a, Area { centre: Point { x: 364, y: 29 }, radius: 150 });
+    assert_eq!(a, Area { centre: Point { x: 347, y: 35 }, radius: 180 });
     let three = skeleton().clusters[3].at;
-    assert!(a.centre.dist2(three) <= 150 * 150, "the place stays inside");
-    // A second scan leaves no other cluster inside: located, on its cluster.
-    assert_eq!(career.narrow(LOG, 1), Some(SignalState::Located));
+    assert!(a.centre.dist2(three) <= 109 * 109, "the place stays within 60 % of the radius (to a unit)");
+    // Again from cluster 1: 108, still holding cluster 2; once more, no other cluster is inside: located, on its cluster.
+    assert_eq!(career.narrow(&c, LOG, 1), Some(SignalState::Narrowed));
+    assert_eq!(career.exploration().unwrap().signal(LOG).unwrap().area.radius, 108);
+    assert_eq!(career.narrow(&c, LOG, 2), Some(SignalState::Located));
     assert_eq!(career.exploration().unwrap().signal(LOG).unwrap().area, Area { centre: three, radius: 0 });
-    assert_eq!(career.narrow(LOG, 1), None, "located is final");
+    assert_eq!(career.narrow(&c, LOG, 1), None, "located is final");
     // A scan in its own cluster locates it at once.
-    assert_eq!(alt.narrow(LOG, 3), Some(SignalState::Located));
+    assert_eq!(alt.narrow(&c, LOG, 3), Some(SignalState::Located));
 }
 
 #[test]
@@ -155,10 +161,11 @@ fn gates_open_once() {
     assert_eq!(career.exploration().unwrap().gates().iter().copied().collect::<Vec<_>>(), [4]);
 }
 
-/// The slice's voyages (provisional, GDR-0096): pinned in a chain from home, the open one a located signal; flying
-/// one charts its cluster, clearing it marks its signal done and the next voyage's located.
+/// The slice's voyages (galaxy plan E7): on the skeleton's set pieces, the open one a located signal; flying one
+/// charts its cluster, clearing it marks its signal done and the next voyage's located; clearing the Warden opens its
+/// gate and the band beyond.
 #[test]
-fn the_slices_voyages_are_pinned_and_kept_in_step() {
+fn the_slices_voyages_lie_on_their_set_pieces_and_the_warden_opens_its_gate() {
     let c = content();
     let mut career = game(&c, "");
     let g = career.exploration().unwrap();
@@ -184,6 +191,46 @@ fn the_slices_voyages_are_pinned_and_kept_in_step() {
             ("Voyage(\"halvex_drift\")".to_string(), SignalState::Located)
         ]
     );
+    let clear = |career: &mut Career, v: &str| {
+        career.voyage_launched(&c, v).unwrap();
+        career.voyage_ended(&c, v, VoyageEnd::Recalled { haul: Haul::default(), cleared: true, ticks: 9 }).unwrap();
+    };
+    clear(&mut career, "halvex_drift");
+    clear(&mut career, "corran_reach");
+    assert!(career.exploration().unwrap().gates().is_empty() && !career.band_open(&c, "outer"));
+    clear(&mut career, "wardens_gate");
+    assert_eq!(career.exploration().unwrap().gates().iter().copied().collect::<Vec<_>>(), [4], "the Warden's gate");
+    assert!(career.band_open(&c, "outer"));
+}
+
+/// Galaxy plan E8 (GDR-0098): the last signal of a trail done gives its reward, once: a cache's research data and
+/// materials, a lore fragment for the memory log, a gate; found alone, or an earlier signal done, gives nothing.
+#[test]
+fn a_trails_end_gives_its_reward() {
+    let c = content();
+    let mut sk = skeleton();
+    sk.trails[0].lore = Some("last_launch".into());
+    sk.clusters[3].gate = true;
+    let mut career = Career::from_ron("(start: \"rim_awakening\", seed: 4207, generator: 2)").unwrap();
+    assert!(career.reconcile(&c).is_empty());
+    career.begin_galaxy(&c, sk);
+    assert!(career.hear(LOG));
+    let store = |career: &Career| (career.data().get("logic").copied(), career.materials().get("programmable_matter").copied());
+    assert_eq!(store(&career), (None, None));
+    assert!(career.found(&c, LOG, false));
+    assert_eq!(store(&career), (None, None), "found is no reward");
+    assert!(career.found(&c, LOG, true));
+    // The trail is a precursor cache: `trails.ron` gives logic 8, propulsion 8, programmable matter 4.
+    assert_eq!(store(&career), (Some(8.0), Some(4)));
+    let g = career.exploration().unwrap();
+    assert_eq!(g.memories(), ["last_launch"]);
+    assert_eq!(g.gates().iter().copied().collect::<Vec<_>>(), [3]);
+    assert!(!career.found(&c, LOG, true), "once");
+    assert_eq!(store(&career), (Some(8.0), Some(4)));
+    // The memory log is saved and survives a reload; a fragment the content lost is dropped.
+    let mut back = Career::from_ron(&career.to_ron()).unwrap();
+    assert!(back.reconcile(&c).is_empty());
+    assert_eq!(back, career);
 }
 
 /// The galaxy is saved with the career and reads back equal; a cluster still underway at load counts as lost.
@@ -194,7 +241,7 @@ fn the_galaxy_is_saved_and_a_voyage_underway_is_lost_at_load() {
     career.cluster_launched(&c, 1).unwrap();
     career.cluster_ended(&c, 1, VoyageEnd::Recalled { haul: core_haul(), cleared: false, ticks: 10 }).unwrap();
     career.decode(0);
-    career.narrow(LOG, 2);
+    career.narrow(&c, LOG, 2);
     career.open_gate(4);
     career.cluster_launched(&c, 4).unwrap();
     let text = career.to_ron();
@@ -246,20 +293,20 @@ fn beacons_scans_finds_and_blind_jumps() {
 
     // Scans: in cluster 1 (inside its area), once a voyage; not in cluster 5 (outside it).
     let mut far = career.clone();
-    assert!(far.scanned(5, &[]).is_empty());
-    let narrowed = career.scanned(1, &[]);
+    assert!(far.scanned(&c, 5, &[]).is_empty());
+    let narrowed = career.scanned(&c, 1, &[]);
     assert_eq!(narrowed.iter().map(|n| n.0).collect::<Vec<_>>(), [beacon]);
-    assert!(career.scanned(1, &[beacon]).is_empty());
+    assert!(career.scanned(&c, 1, &[beacon]).is_empty());
 
     // Found, then done; never back.
-    assert!(career.found(beacon, false));
-    assert!(!career.found(beacon, false));
+    assert!(career.found(&c, beacon, false));
+    assert!(!career.found(&c, beacon, false));
     let s = career.exploration().unwrap().signal(beacon).unwrap().clone();
     assert_eq!((s.state, s.area), (SignalState::Found, Area { centre: Point { x: 300, y: 0 }, radius: 0 }));
-    assert!(career.found(beacon, true));
+    assert!(career.found(&c, beacon, true));
     assert_eq!(career.exploration().unwrap().signal(beacon).unwrap().state, SignalState::Done);
-    assert!(!career.found(LOG, true), "not heard");
-    assert!(career.scanned(1, &[]).is_empty(), "done");
+    assert!(!career.found(&c, LOG, true), "not heard");
+    assert!(career.scanned(&c, 1, &[]).is_empty(), "done");
 
     // Blind jumps: to the cluster nearest the spot, Five, or Deep in the outer band, which opens with the gate.
     assert_eq!(career.blind_target(&c, Point { x: -120, y: -150 }), Some(5));

@@ -137,15 +137,17 @@ fn the_scan_action_scans_and_lets_the_next_rule_fly() {
     assert_eq!(st.active_rule(), Some(1));
 }
 
-/// A voyage's sites stay hidden until the sensors reach them; the goal (the slice's signal) only within the
-/// reveal distance. A scan shows every site within its range, gives the hidden goal beyond it a bearing and wakes
+/// A voyage's sites stay hidden until the sensors reach them; a signal's site (here the goal, made one) only within
+/// the reveal distance. A scan shows every site within its range, gives the hidden goal beyond it a bearing and wakes
 /// the sleeping sites close by.
 #[test]
 fn sites_show_by_sensors_and_scans_and_far_signals_get_bearings() {
     let c = content();
     let mut w = Sim::new(5);
     w.set_behaviors(sim::BehaviorLibrary::new(&c).unwrap());
-    let plan = VoyagePlan::roll(&c, c.voyages.get("corran_reach").unwrap(), 5).unwrap();
+    let mut plan = VoyagePlan::roll(&c, c.voyages.get("corran_reach").unwrap(), 5).unwrap();
+    let goal = plan.sites.iter().position(|s| s.goal).unwrap();
+    plan.sites[goal].signal = true;
     let entry = plan.entry;
     w.start_voyage(plan, Owner::PLAYER, ENEMY);
     let me = w.spawn_ship(design(&c, "rim_skiff"), Owner::PLAYER, entry);
@@ -161,7 +163,6 @@ fn sites_show_by_sensors_and_scans_and_far_signals_get_bearings() {
         assert_eq!(s.known(), sees, "site {k} at {d} m");
         assert_eq!(events.contains(&SimEvent::SiteRevealed { site: k as u32 }), sees);
     }
-    let goal = v.sites().iter().position(|s| s.goal()).unwrap();
     assert!(v.sites()[goal].signal() && !v.sites()[goal].known());
 
     // Scan from the entry.

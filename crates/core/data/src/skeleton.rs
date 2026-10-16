@@ -1,10 +1,12 @@
 //! A game's galaxy skeleton (ADR-0035, ADR-0042): the clusters with their bands, types, places, seeds, names and gate
-//! flags, home, and the trails with their places and signals. The `galaxy` crate generates it from a seed and the
+//! flags, home, the set pieces, and the trails with their places and signals. The `galaxy` crate generates it from a seed and the
 //! content; the career keeps it in the save ([`crate::career::Exploration`]), so content updates never reshuffle a
 //! running galaxy. The types live here, beside the career that stores them, and the generator re-exports them.
 //!
 //! Positions are integers in hundredths of S ([`UNITS_PER_S`]); [`Skeleton::hash`] is FNV-1a 64 of its RON, the same
 //! on every platform.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +110,10 @@ pub struct Skeleton {
     pub clusters: Vec<Cluster>,
     /// The home cluster (id).
     pub home: u32,
+    /// The set pieces: voyage (id) → the cluster (id) it lies on, named after it (the galaxy's `set_pieces`). A
+    /// skeleton from before them (generator version 1) has none: its career pinned the slice itself (GDR-0096).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pieces: BTreeMap<String, u32>,
     pub trails: Vec<TrailPlan>,
 }
 

@@ -1,7 +1,8 @@
 // The voyages of the first playable loop (GDR-0062): four small rim clusters in a chain, each opened by clearing the
 // goal of the one before it (the first is open at the start, `starts.ron`). The order here is the voyage map's.
-// Radius and spacing in metres, `minutes` the expected length. The voyage map shows each on the cluster of the
-// career's galaxy it is pinned to (GDR-0096, GDR-0097), until track E7 pins them by content.
+// Radius and spacing in metres, `minutes` the expected length. They are set pieces of the galaxy (`galaxy.ron`'s
+// `set_pieces`, GDR-0098): each lies on a rim cluster that takes its name, and the Warden's gate is the rim's first
+// gate, its four voyages the gate's trail: clearing the Warden opens the outer reach.
 // PLACEHOLDER NUMBERS (track 7J draft of 13 Oct 2026; sites tuned with the headless
 // voyage runner the same day, GDR-0073 and docs/results/slice-balance-2026-10-13.md).
 [
@@ -62,7 +63,7 @@
         radius: 900,
         spacing: (400, 700),
         minutes: (6, 10),
-        cleared: "The Warden goes dark. The gate behind it stays cold: whatever opened it once is gone.",
+        cleared: "The Warden goes dark, and the gate behind it wakes for the first time since the last launch. The outer reach is open.",
         sites: [
             (encounter: "raider_pack"),
             (encounter: "core_graveyard"),

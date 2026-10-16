@@ -28,7 +28,8 @@ pub struct Galaxy {
     pub spacing: f32,
     /// S: how far the drive jumps at the start (from home or any charted cluster, GDR-0093). Research grows it.
     pub jump_range: f32,
-    /// Home is a cluster of the first band with at least this many others of it within the starting jump range.
+    /// Home is a cluster of the first band with at least this many others of it within the starting jump range that
+    /// hold no set piece: free for the first blind jumps.
     pub home_neighbours: u32,
     /// Warp time: `(seconds, seconds per S)`, the first plus the second times the distance.
     pub warp: (f32, f32),
@@ -40,10 +41,30 @@ pub struct Galaxy {
     /// The parts of cluster names: a start and an end make the first word ("Hal" + "vex"), the cluster type gives
     /// the second ("Drift").
     pub names: NameParts,
+    /// Hand-made voyages placed into the generated galaxy (the plan's step 5: the slice's four first), each on a
+    /// cluster of its band that takes its name.
+    #[serde(default)]
+    pub set_pieces: Vec<SetPiece>,
     #[serde(skip_deserializing)]
     pub source: Source,
 }
 entry!(Galaxy, Kind::Galaxy);
+
+/// A hand-made voyage in the galaxy ([`Galaxy::set_pieces`]).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetPiece {
+    /// The voyage (id).
+    pub voyage: String,
+    /// S `(min, max)` from home. A gate's piece takes the cluster nearest its band's inner edge in it; the others the
+    /// one nearest the way from the piece their voyage opens after (else home) to their band's gate piece, a trail
+    /// step ([`Galaxy::trail_step`]) from the one they open after.
+    pub distance: (f32, f32),
+    /// It keeps one of its band's gates: clearing its goal opens the gate, and its voyages are the gate's trail (the
+    /// Warden's gate, the rim's first, GDR-0078).
+    #[serde(default)]
+    pub gate: bool,
+}
 
 /// A fresh signal's area ([`Galaxy::signal_area`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -51,8 +72,11 @@ entry!(Galaxy, Kind::Galaxy);
 pub struct SignalArea {
     /// S: `(min, max)` across.
     pub across: (f32, f32),
-    /// Largest distance of the place from the area's centre, as a share of the area's radius (0 to below 1).
+    /// Largest distance of the place from the area's centre, as a share of the area's radius (0 to below 1); a
+    /// narrowed area keeps it.
     pub offset: f32,
+    /// The share of its radius an area keeps when a scan from another cluster narrows it (above 0, below 1).
+    pub narrow: f32,
 }
 
 /// Syllables of cluster names ([`Galaxy::names`]).
@@ -192,6 +216,10 @@ pub struct Trail {
     pub sources: Vec<String>,
     /// What its signals say they lead to, the map's first line: "Something old" (GDR-0093: "SIGNAL · SOMETHING OLD").
     pub hint: String,
+    /// What following it to its end gives besides what lies there: a cache's research data and materials, kept like
+    /// every find of a voyage, lost or not.
+    #[serde(default)]
+    pub gives: ResearchCost,
     #[serde(skip_deserializing)]
     pub source: Source,
 }

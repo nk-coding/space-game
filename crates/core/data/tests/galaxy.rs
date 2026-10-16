@@ -46,6 +46,9 @@ fn the_base_galaxy_is_the_rim_and_four_stub_bands() {
     assert_eq!(texts["trail.rim_gate.hint"], "A gate");
     assert_eq!(texts["signal_source.hauler_log.line"], "a log from a hauler's wreck");
     assert!(texts.contains_key("lore.the_quiet.text"));
+    // The slice's four voyages are set pieces, the Warden's the rim's first gate (galaxy plan E7, GDR-0098).
+    let pieces: Vec<(&str, bool)> = g.set_pieces.iter().map(|p| (p.voyage.as_str(), p.gate)).collect();
+    assert_eq!(pieces, [("yard_approach", false), ("halvex_drift", false), ("corran_reach", false), ("wardens_gate", true)]);
     assert_eq!(Kind::from_dir("cluster_types"), Some(Kind::ClusterType));
 }
 
@@ -55,7 +58,9 @@ fn validation_refuses_broken_galaxies() {
         "galaxy.ron",
         r#"(id: "broken", name: "Broken", summary: "A galaxy that cannot be.", bands: ["core", "rim", "nowhere"],
             spacing: 2, jump_range: 3, home_neighbours: 3, warp: (3, 2),
-            signal_area: (across: (3, 2), offset: 1), trail_step: (1, 2.5), names: (starts: [], ends: ["x"]))"#,
+            signal_area: (across: (3, 2), offset: 1, narrow: 1), trail_step: (1, 2.5), names: (starts: [], ends: ["x"]),
+            set_pieces: [(voyage: "nowhere", distance: (1, 2)), (voyage: "yard_approach", distance: (2, 1), gate: true),
+                (voyage: "yard_approach", distance: (1, 2)), (voyage: "halvex_drift", distance: (1, 2), gate: true)])"#,
     )]);
     has(&p, "broken", "bands[2]", "unknown band `nowhere`");
     has(&p, "broken", "bands[1]", "must lie inside");
@@ -64,6 +69,11 @@ fn validation_refuses_broken_galaxies() {
     has(&p, "broken", "jump_range", "at least twice the spacing");
     has(&p, "broken", "signal_area.across", "min ≤ max");
     has(&p, "broken", "signal_area.offset", "below 1");
+    has(&p, "broken", "signal_area.narrow", "below 1");
+    has(&p, "broken", "set_pieces[0].voyage", "unknown voyage `nowhere`");
+    has(&p, "broken", "set_pieces[1].distance", "min ≤ max");
+    has(&p, "broken", "set_pieces[3].gate", "has a gate's piece already");
+    has(&p, "broken", "set_pieces[2].voyage", "placed twice");
     has(&p, "broken", "names.starts", "at least one name part");
 }
 

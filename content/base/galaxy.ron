@@ -1,8 +1,11 @@
 // The galaxy a game is generated from (GDR-0026, GDR-0078, GDR-0093, GDR-0094; the `galaxy` crate, ADR-0042). A
 // new game generates it once from its seed and keeps the result in the save (ADR-0035). Distances in S (the spacing
-// unit, `stats.ron`'s `galaxy_distance`), warp time in seconds. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094)
-// except the jump range and warp time, Niklas's (GDR-0093): 2.5 S at the start (two propulsion research nodes add
-// 0.75 S each, track E4), 3 s + 2 s per S.
+// unit, `stats.ron`'s `galaxy_distance`), warp time in seconds. PLACEHOLDER NUMBERS (lead, 16 Oct 2026, GDR-0094;
+// the signal areas, home's free neighbours and the set pieces 17 Oct 2026, GDR-0098, tuned with `content-tool galaxy
+// --seeds`) except the jump range and warp time, Niklas's (GDR-0093): 2.5 S at the start (two propulsion research
+// nodes add 0.75 S each, track E4), 3 s + 2 s per S. The set pieces' distances from home are the slice's (GDR-0093's
+// notes: the Shipyard approach 0.9 S, Halvex Drift 2.1, Corran Reach 2.3, the Warden 3.2: reached with Jump
+// calibration I).
 (
     id: "galaxy",
     name: "The galaxy",
@@ -11,12 +14,18 @@
     bands: ["rim", "outer", "middle", "inner", "core"],
     spacing: 0.9,
     jump_range: 2.5,
-    home_neighbours: 3,
+    home_neighbours: 4,
     warp: (3, 2),
-    signal_area: (across: (2, 3), offset: 0.6),
+    signal_area: (across: (3, 4), offset: 0.6, narrow: 0.6),
     trail_step: (0.9, 2.5),
     names: (
         starts: ["Hal", "Cor", "Var", "Tes", "Mor", "Kel", "Dra", "Os", "Vel", "Ist", "Ny", "Bra", "Sel", "Thar", "Quen", "Ar"],
         ends: ["vex", "ran", "dis", "sa", "ith", "on", "mar", "ek", "ira", "und", "ost", "ane"],
     ),
+    set_pieces: [
+        (voyage: "yard_approach", distance: (0.8, 1.3)),
+        (voyage: "halvex_drift", distance: (1.7, 2.3)),
+        (voyage: "corran_reach", distance: (2, 2.5)),
+        (voyage: "wardens_gate", distance: (2.8, 3.5), gate: true),
+    ],
 )

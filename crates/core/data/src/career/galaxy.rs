@@ -1,23 +1,28 @@
-//! The galaxy in the career (save format 3; galaxy plan E4, GDR-0093, GDR-0096): the skeleton the game was generated
-//! with (ADR-0035), the clusters charted, the signals heard and how far they narrowed, the logs to decode, the gates
-//! opened, the jump range, and the slice's voyages pinned to clusters until E7 pins them by content.
+//! The galaxy in the career (save format 3, 4 since E7 and E8; galaxy plan E4, GDR-0093, GDR-0096, GDR-0098): the
+//! skeleton the game was generated with (ADR-0035), the clusters charted, the signals heard and how far they
+//! narrowed, the logs to decode, the gates opened, the memory log, the jump range, and the slice's voyages on the
+//! clusters the skeleton placed them on.
 //!
 //! * **Charting**: home is charted from the start; launching into a cluster charts it (arriving is enough: the
 //!   chart is knowledge, not haul). Jumps start from home or any charted cluster (GDR-0093) and reach
 //!   [`Career::jump_range`] S.
 //! * **Signals** ([`SignalRecord`]): a trail's signal is heard (a beacon scanned, [`Career::beacon`]; a log
-//!   decoded) with the skeleton's fresh area; a scan in another cluster inside it halves it towards its place
-//!   ([`Career::scanned`], [`Career::narrow`]), and once no other cluster lies inside, or a scan is taken in its own
-//!   cluster, it is located. Its site seen is found, and cleared (or seen, with nothing there to clear) done
-//!   ([`Career::found`], galaxy plan E6, GDR-0097).
+//!   decoded) with the skeleton's fresh area; a scan in another cluster inside it narrows it towards its place (the
+//!   galaxy's `signal_area.narrow`, [`Career::scanned`], [`Career::narrow`]), and once no other cluster lies inside,
+//!   or a scan is taken in its own cluster, it is located. Its site seen is found, and cleared (or seen, with nothing
+//!   there to clear) done ([`Career::found`], galaxy plan E6, GDR-0097).
+//! * **Rewards** (galaxy plan E8, GDR-0098): the last signal of a trail done gives the trail's reward: a gate opens
+//!   (its guardian beaten), a lore fragment joins the memory log ([`Exploration::memories`]), a cache's research data
+//!   and materials (the trail's `gives`) go into store. A find, so kept on a lost voyage.
 //! * **Jumps** reach the jump range from home or a charted cluster, into the bands opened so far
 //!   ([`Career::band_open`]); a blind jump to a spot goes to the cluster nearest it ([`Career::blind_target`]); the
 //!   warp takes the galaxy's `warp` seconds ([`Career::warp_seconds`]).
 //! * **Logs**: a data core (one hold slot, GDR-0093) brought home waits to be decoded ([`Career::decode`], free,
 //!   GDR-0080); lost with the haul, the core stays in its wreck and the next launch rolls it again.
-//! * **The slice** (provisional, GDR-0096): every voyage of the content is pinned to a cluster of its band, the
-//!   first near home, each later one near the voyage it opens after; a launched voyage charts its cluster, an open
-//!   one not cleared yet is a located signal, a cleared one's signal is done. That is also how a format 2 save is
+//! * **The slice** (galaxy plan E7, GDR-0098): every voyage of the content lies on the cluster the skeleton placed it
+//!   on (its set pieces; a skeleton from before them keeps the pins E4 gave its career, GDR-0096); a launched voyage
+//!   charts its cluster, an open one not cleared yet is a located signal, a cleared one's signal is done, and a cleared
+//!   one on a gate opens the gate (the Warden's: the rim's first gate trail). That is also how a format 2 save is
 //!   migrated ([`Career::begin_galaxy`]).
 //!
 //! Distances are integers in hundredths of S ([`crate::skeleton::UNITS_PER_S`]), so a save narrows the same way on
@@ -49,9 +54,13 @@ pub struct Exploration {
     /// Gate clusters opened (their guardian beaten).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     gates: BTreeSet<u32>,
-    /// The content's voyages pinned to clusters (voyage id → cluster id), provisional until E7 (GDR-0096).
+    /// The content's voyages on clusters (voyage id → cluster id): the skeleton's set pieces (E7), or for a skeleton
+    /// from before them the pins E4 gave (GDR-0096).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pins: BTreeMap<String, u32>,
+    /// The memory log (GDR-0080): the lore fragments (ids) found at the ends of their trails, in the order found.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    memories: Vec<String>,
     /// The cluster a voyage was launched into and has not ended yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     underway: Option<u32>,
@@ -79,8 +88,8 @@ pub struct TrailSignal {
 pub enum Lead {
     /// A trail's signal of the skeleton.
     Trail(TrailSignal),
-    /// A slice voyage (content id), open and not cleared: located at its pinned cluster (GDR-0078's slice step,
-    /// until E7 makes the slice a trail).
+    /// A slice voyage (content id), open and not cleared: located at its cluster (GDR-0078's slice step; the slice's
+    /// voyages are the rim's first gate trail, E7).
     Voyage(String),
 }
 
@@ -155,9 +164,14 @@ impl Exploration {
         &self.gates
     }
 
-    /// The content's voyages pinned to clusters (provisional, GDR-0096).
+    /// The content's voyages on clusters.
     pub fn pins(&self) -> &BTreeMap<String, u32> {
         &self.pins
+    }
+
+    /// The memory log: the lore fragments (ids) found, in the order found.
+    pub fn memories(&self) -> &[String] {
+        &self.memories
     }
 
     /// The cluster a voyage is underway to.
@@ -214,6 +228,7 @@ impl Career {
             logs: Vec::new(),
             gates: BTreeSet::new(),
             pins: BTreeMap::new(),
+            memories: Vec::new(),
             underway: None,
         });
         self.sync_slice(content);
@@ -421,10 +436,12 @@ impl Career {
     }
 
     /// A scan in `from` heard the signal `s` (a bearing): taken in the cluster it leads to, it is located; taken
-    /// elsewhere, its area halves and moves towards the place, which stays inside (no closer than 40 % of the new
-    /// radius to its edge, the skeleton's 60 % offset), and once no other cluster lies inside, it is located. Returns
-    /// the state after, `None` for a signal not heard (or done).
-    pub fn narrow(&mut self, s: TrailSignal, from: u32) -> Option<SignalState> {
+    /// elsewhere, its area shrinks to the galaxy's `signal_area.narrow` of its radius and moves towards the place,
+    /// which stays within the galaxy's `signal_area.offset` of the new radius from its centre (as in a fresh area),
+    /// and once no other cluster lies inside, it is located. Returns the state after, `None` for a signal not heard
+    /// (or done).
+    pub fn narrow(&mut self, content: &Content, s: TrailSignal, from: u32) -> Option<SignalState> {
+        let rules = content.galaxies.get(&self.galaxy.as_ref()?.skeleton.galaxy)?.signal_area.clone();
         let g = self.galaxy.as_mut()?;
         let k = g.signals.iter().position(|r| r.lead == Lead::Trail(s) && r.state < SignalState::Located)?;
         let target = g.signals[k].cluster;
@@ -433,10 +450,10 @@ impl Career {
         let (state, area) = if from == target {
             (SignalState::Located, spot(at))
         } else {
-            let radius = (area.radius / 2).max(1);
+            let radius = ((area.radius as f32 * rules.narrow) as i32).max(1);
             let (dx, dy) = ((at.x - area.centre.x) as i64, (at.y - area.centre.y) as i64);
             let d = (dx * dx + dy * dy).isqrt();
-            let off = i64::from(radius) * 3 / 5;
+            let off = (radius as f32 * rules.offset) as i64;
             // Move the centre towards the place until the place lies within `off` of it.
             let centre = if d > off {
                 let t = d - off;
@@ -464,7 +481,7 @@ impl Career {
     /// whose area holds the cluster, narrows from it ([`Career::narrow`]), except those in `skip` (narrowed on this
     /// voyage already: one voyage's scans in one cluster tell one thing). Returns each signal narrowed and its state
     /// after, in the order heard.
-    pub fn scanned(&mut self, cluster: u32, skip: &[TrailSignal]) -> Vec<(TrailSignal, SignalState)> {
+    pub fn scanned(&mut self, content: &Content, cluster: u32, skip: &[TrailSignal]) -> Vec<(TrailSignal, SignalState)> {
         let Some(g) = &self.galaxy else { return Vec::new() };
         let Some(at) = g.skeleton.clusters.get(cluster as usize).map(|c| c.at) else { return Vec::new() };
         let near = |r: &SignalRecord| r.cluster == cluster || r.area.centre.dist2(at) <= i64::from(r.area.radius).pow(2);
@@ -477,12 +494,13 @@ impl Career {
                 _ => None,
             })
             .collect();
-        heard.into_iter().filter_map(|s| self.narrow(s, cluster).map(|state| (s, state))).collect()
+        heard.into_iter().filter_map(|s| self.narrow(content, s, cluster).map(|state| (s, state))).collect()
     }
 
     /// The site the heard signal `s` leads to was seen: it is found, or done when `done` (it was cleared, or holds
-    /// nothing to clear), and its area is its cluster. False for a signal not heard, or one that far already.
-    pub fn found(&mut self, s: TrailSignal, done: bool) -> bool {
+    /// nothing to clear), and its area is its cluster. The last signal of a trail done gives the trail's reward
+    /// ([`Career::reward`]). False for a signal not heard, or one that far already.
+    pub fn found(&mut self, content: &Content, s: TrailSignal, done: bool) -> bool {
         let Some(g) = self.galaxy.as_mut() else { return false };
         let state = if done { SignalState::Done } else { SignalState::Found };
         let Some(k) = g.signals.iter().position(|r| r.lead == Lead::Trail(s) && r.state < state) else { return false };
@@ -490,7 +508,33 @@ impl Career {
         let r = &mut g.signals[k];
         r.state = state;
         r.area = spot(at);
+        let last = g.skeleton.trails.get(s.trail as usize).is_some_and(|t| s.signal as usize + 1 == t.signals.len());
+        if done && last {
+            self.reward(content, s.trail);
+        }
         true
+    }
+
+    /// The reward at the end of trail `trail` of the skeleton (galaxy plan E8, GDR-0098): its gate opens (a gate's
+    /// guardian beaten), its lore fragment joins the memory log, and what its template `gives` goes into store.
+    fn reward(&mut self, content: &Content, trail: u32) {
+        let Some(g) = self.galaxy.as_mut() else { return };
+        let Some(t) = g.skeleton.trails.get(trail as usize) else { return };
+        let end = t.places.last().map(|p| p.cluster);
+        if let Some(k) = end.filter(|&k| g.skeleton.clusters.get(k as usize).is_some_and(|c| c.gate)) {
+            g.gates.insert(k);
+        }
+        if let Some(l) = t.lore.clone().filter(|l| !g.memories.contains(l)) {
+            g.memories.push(l);
+        }
+        if let Some(gives) = content.trails.get(&t.trail).map(|x| &x.gives) {
+            for (family, &x) in &gives.data {
+                add_data(&mut self.data, family, x);
+            }
+            for (material, &n) in &gives.materials {
+                add_materials(&mut self.materials, material, n);
+            }
+        }
     }
 
     /// A scan swept over the trail place `place` (trail, place): when the signal it sends is a beacon's (a source of
@@ -509,33 +553,24 @@ impl Career {
         g.skeleton.clusters.get(cluster as usize).is_some_and(|c| c.gate) && g.gates.insert(cluster)
     }
 
-    /// Keeps the slice's voyages in the galaxy (provisional, GDR-0096): pins every voyage of the content that has
-    /// none yet, charts the clusters of the launched ones, adds a located signal for each open voyage not cleared, and
-    /// marks the signals of cleared ones done. Called whenever voyages change and on load.
+    /// Keeps the slice's voyages in the galaxy (galaxy plan E7): every voyage of the content lies on its set piece's
+    /// cluster (a skeleton without one for it leaves it off the map), the launched ones chart their clusters, each open
+    /// voyage not cleared is a located signal, the signals of cleared ones are done, and a cleared one on a gate opens
+    /// it. Called whenever voyages change and on load.
     pub(super) fn sync_slice(&mut self, content: &Content) {
         let open = self.open_voyages(content);
         let Some(g) = self.galaxy.as_mut() else { return };
         for v in content.voyages.iter() {
-            if !g.pins.contains_key(&v.id) {
-                let anchor = v.opens_after.first().and_then(|a| g.pins.get(a)).copied().unwrap_or(g.skeleton.home);
-                let from = g.at(anchor);
-                let taken: BTreeSet<u32> = g.pins.values().copied().collect();
-                let free = (0u32..)
-                    .zip(&g.skeleton.clusters)
-                    .filter(|(k, c)| c.band == v.band && *k != g.skeleton.home && !taken.contains(k))
-                    .map(|(k, c)| (c.at.dist2(from), k))
-                    .min();
-                match free {
-                    Some((_, k)) => g.pins.insert(v.id.clone(), k),
-                    None => continue,
-                };
-            }
-            let k = g.pins[&v.id];
+            let Some(k) = g.pins.get(&v.id).or_else(|| g.skeleton.pieces.get(&v.id)).copied() else { continue };
+            g.pins.insert(v.id.clone(), k);
             let record = self.voyages.get(&v.id);
             if record.is_some_and(|r| r.launched > 0) {
                 g.charted.entry(k).or_default();
             }
             let cleared = record.is_some_and(|r| r.cleared);
+            if cleared && g.skeleton.clusters[k as usize].gate {
+                g.gates.insert(k);
+            }
             let lead = Lead::Voyage(v.id.clone());
             match g.signals.iter_mut().find(|s| s.lead == lead) {
                 Some(s) if cleared => s.state = SignalState::Done,
@@ -553,8 +588,19 @@ impl Career {
     /// lost, and the slice is brought in line ([`Career::sync_slice`]).
     pub(super) fn reconcile_galaxy(&mut self, content: &Content, notes: &mut Vec<Problem>) {
         let Some(g) = self.galaxy.as_mut() else { return };
-        g.pins.retain(|id, _| content.voyages.contains(id));
         let n = g.skeleton.clusters.len() as u32;
+        g.pins.retain(|id, k| content.voyages.contains(id) && *k < n);
+        // A skeleton from before the set pieces (E4's pins): a gate's piece makes its pinned cluster a gate.
+        let gated = content.galaxies.get(&g.skeleton.galaxy).map_or(&[][..], |x| &x.set_pieces).iter().filter(|p| p.gate);
+        for (p, k) in gated.filter_map(|p| Some((p, *g.pins.get(&p.voyage)?))) {
+            let c = &mut g.skeleton.clusters[k as usize];
+            if !c.gate {
+                c.gate = true;
+                let name = content.voyages.get(&p.voyage).map_or(p.voyage.as_str(), |v| v.name.as_str());
+                notes.push(Problem::warning(format!("{name} keeps a gate now: clearing its goal opens the next band")).field("galaxy.skeleton"));
+            }
+        }
+        g.memories.retain(|l| content.lore.contains(l));
         let before = (g.signals.len(), g.logs.len());
         let signals = std::mem::take(&mut g.signals);
         g.signals = signals
