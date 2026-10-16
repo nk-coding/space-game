@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
-use data::behavior::{LineError, LineRef, Program, TextError, check_program};
+use data::behavior::{LineError, LineRef, Program, TextError, behavior_to_ron, check_program};
 use data::{Behavior, Blueprint, Content, Kind, Problem};
 
 use crate::sim_bridge::GameContent;
@@ -47,38 +47,6 @@ impl Document for BehaviorDoc {
     fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
         parse_behavior(text).map(BehaviorDoc)
     }
-}
-
-/// A behavior as RON in the content format (`behaviors/*.ron`): the header fields, `target`, then `rules` with
-/// one rule per line, four-space indent. Absent and empty fields are left out; `source` is never written.
-pub fn behavior_to_ron(b: &Behavior) -> String {
-    fn field(s: &mut String, name: &str, value: &str) {
-        s.push_str(&format!("    {name}: {value},\n"));
-    }
-    let q = |t: &str| ron::to_string(t).unwrap_or_default();
-    let mut s = String::from("(\n");
-    field(&mut s, "id", &q(&b.id));
-    field(&mut s, "name", &q(&b.name));
-    field(&mut s, "summary", &q(&b.summary));
-    if let Some(d) = &b.description {
-        field(&mut s, "description", &q(d));
-    }
-    if let Some(l) = &b.lore {
-        field(&mut s, "lore", &q(l));
-    }
-    if !b.tags.is_empty() {
-        let tags: Vec<String> = b.tags.iter().map(|t| q(t)).collect();
-        field(&mut s, "tags", &format!("[{}]", tags.join(", ")));
-    }
-    if let Some(t) = &b.target {
-        field(&mut s, "target", &q(t));
-    }
-    s.push_str("    rules: [\n");
-    for r in &b.rules {
-        s.push_str(&format!("        {},\n", q(r)));
-    }
-    s.push_str("    ],\n)\n");
-    s
 }
 
 /// Reads one behavior written as RON (by [`behavior_to_ron`] or by hand) with the pack loader's options. Only the

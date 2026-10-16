@@ -14,13 +14,15 @@
 //! weights; trials without jobs (the hall of fame in generation 0) and weights of 0 leave the sums. With one trial and
 //! WIN alone that is the mean arena score of all its jobs, bit for bit as before.
 
+use std::collections::BTreeSet;
+
 use data::Content;
 use serde::{Deserialize, Serialize};
 
 use crate::spec::{BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec, Formation, Pilot, Side};
 use crate::voyage::{DEFAULT_VOYAGE_MINUTES, VoyageSpec};
 
-use super::config::{DEFAULT_SEEDS, Fitness, VoyagePilot};
+use super::config::{DEFAULT_SEEDS, Fitness, Population, Start, VoyagePilot};
 use super::eval::Job;
 use super::RunError;
 
@@ -128,6 +130,10 @@ pub enum Trial {
         #[serde(default)]
         pilot: VoyagePilot,
     },
+    /// CO-EVOLUTION (the ARMS RACE): the run's enemy population (`RunConfig::enemy`), its best and past champions as
+    /// the generation froze them, each in a pack sized to the contestant ([`pack`]). Its settings are the enemy's
+    /// fights too, seen from side 1.
+    CoEvolution,
 }
 
 /// The goals' weights (GDR-0092 "GOALS", the setup's sliders). Left out: WIN alone.
@@ -195,16 +201,19 @@ impl GoalScores {
 
 /// The contestant a trial makes jobs for: the genome as a fight entry (blueprint and behavior inlined, one ship) and
 /// its build points (TEST-RANGE WAVES size their waves from them).
+#[derive(Clone)]
 pub struct Contestant {
     pub entry: Entry,
     pub build_points: f32,
 }
 
 /// What a generation's jobs fight besides the fixed opponents, frozen when it opens: the run's starts (each as an
-/// entry under its own behavior) and its hall of fame (the archive's best, best first); and the seeds.
+/// entry under its own behavior), its hall of fame (the archive's best, best first) and, in an arms race, THE ENEMY's
+/// frozen set (its best, then its past champions drawn); and the seeds.
 pub struct GenCtx<'a> {
     pub starts: &'a [Entry],
     pub hall: &'a [Entry],
+    pub enemies: &'a [Contestant],
     /// VALIDATE: this many new seeds, the ones after each trial's own (`Some(20)`: seeds n + 1 to n + 20 of a trial
     /// of n); `None`: the trial's own seeds 1 to n, as a run fights them.
     pub fresh: Option<u32>,
@@ -228,6 +237,18 @@ pub trait TrialKind: Send + Sync {
     fn hall_of_fame(&self) -> u32 {
         0
     }
+    /// The jobs of an enemy (CO-EVOLUTION: the enemy population's child, side 1) against your side's frozen `rivals`,
+    /// in a fixed order (every rival, then every seed); no other kind has any.
+    fn enemy_jobs(&self, _enemy: &Contestant, _rivals: &[Contestant], _ctx: &GenCtx) -> Vec<Job> {
+        Vec::new()
+    }
+}
+
+/// How many ships of an enemy design of `enemy_bp` build points fight a side of `side_bp` (GDR-0092 "Fair pairing"):
+/// the test range's wave rule with that one design (`sim::voyage::waves::wave_mix`), so a bigger enemy comes in fewer
+/// copies; at least one.
+pub fn pack(side_bp: f32, enemy_bp: f32) -> u32 {
+    sim::voyage::waves::wave_mix(side_bp, &[enemy_bp])[0].max(1)
 }
 
 /// The settings every fight of a trial shares.
@@ -245,16 +266,27 @@ impl Fights {
     /// The fights of `me` against one opponent (and its waves, a gauntlet), one per seed, each flown as `flown_by`
     /// says.
     fn against(&self, me: &Contestant, ctx: &GenCtx, side: &[Entry], waves: &[Side], jobs: &mut Vec<Job>) {
-        let mut ours = vec![Entry { count: self.count, ..me.entry.clone() }];
-        ours.extend(self.escorts.iter().cloned());
+        self.fight(me, ctx, side, waves, 0, jobs);
+    }
+
+    /// The fights of `ours` (side 0, with the escorts beside it) against `theirs`, one per seed; the candidate is side
+    /// `candidate` (1: an enemy of the arms race, scored as side 1).
+    fn fight(&self, ours: &Contestant, ctx: &GenCtx, theirs: &[Entry], waves: &[Side], candidate: u32, jobs: &mut Vec<Job>) {
+        let mut side = vec![Entry { count: self.count, ..ours.entry.clone() }];
+        side.extend(self.escorts.iter().cloned());
         for seed in seeds(self.seeds, ctx) {
-            ours[0].pilot = self.flown_by.on(seed).cloned();
-            let mut spec = FightSpec::new(seed, ours.clone(), side.to_vec());
+            side[0].pilot = self.flown_by.on(seed).cloned();
+            let mut spec = FightSpec::new(seed, side.clone(), theirs.to_vec());
             spec.start_distance = self.start_distance;
             spec.time_limit = self.time_limit;
             spec.waves = waves.to_vec();
-            jobs.push(Job::Fight { candidate: 0, spec });
+            jobs.push(Job::Fight { candidate: 0, side: candidate, spec });
         }
+    }
+
+    /// An enemy design as side 1 against `ours`: in a pack sized to `ours`' build points (the contestant's copies).
+    fn pack_of(&self, ours: &Contestant, enemy: &Contestant) -> Entry {
+        Entry { count: pack(ours.build_points * self.count as f32, enemy.build_points), ..enemy.entry.clone() }
     }
 }
 
@@ -341,6 +373,29 @@ impl TrialKind for Hall {
 
     fn hall_of_fame(&self) -> u32 {
         self.count
+    }
+}
+
+/// CO-EVOLUTION: THE ENEMY's frozen set, and from its side your frozen set.
+struct CoEvolution {
+    fights: Fights,
+}
+
+impl TrialKind for CoEvolution {
+    fn jobs(&self, me: &Contestant, ctx: &GenCtx) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        for e in ctx.enemies {
+            self.fights.against(me, ctx, &[self.fights.pack_of(me, e)], &[], &mut jobs);
+        }
+        jobs
+    }
+
+    fn enemy_jobs(&self, enemy: &Contestant, rivals: &[Contestant], ctx: &GenCtx) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        for r in rivals {
+            self.fights.fight(r, ctx, &[self.fights.pack_of(r, enemy)], &[], 1, &mut jobs);
+        }
+        jobs
     }
 }
 
@@ -475,6 +530,7 @@ impl TrialSpec {
                 Box::new(Waves { fights, enemies, target: *target })
             }
             Trial::BeatYourStart => Box::new(Starts { fights }),
+            Trial::CoEvolution => Box::new(CoEvolution { fights }),
             Trial::HallOfFame { count } => Box::new(Hall { fights, count: *count }),
             Trial::Voyages { ids, minutes, pilot } => {
                 if let Some(v) = ids.iter().find(|v| !content.voyages.contains(v)) {
@@ -529,6 +585,7 @@ impl TrialSpec {
                 minutes: p.time_limit.unwrap_or(DEFAULT_VOYAGE_MINUTES),
                 pilot: VoyagePilot::Behavior,
             },
+            K::CoEvolution { .. } => Trial::CoEvolution,
         };
         let voyage = matches!(kind, Trial::Voyages { .. });
         Ok(TrialSpec {
@@ -538,6 +595,56 @@ impl TrialSpec {
             time_limit: if voyage { DEFAULT_TIME_LIMIT } else { p.time_limit.unwrap_or(DEFAULT_TIME_LIMIT) },
             escorts: if escorts { src.escorts.clone() } else { Vec::new() },
             ..TrialSpec::new(kind)
+        })
+    }
+}
+
+/// The ships tagged as a voyage's bosses (the guardians): an arms race starts from them only when they are picked.
+pub const BOSS_TAG: &str = "boss";
+
+/// The ships an ARMS RACE starts THE ENEMY from by default (GDR-0092 "Co-evolution", lead default): the content ships
+/// tagged `enemy` of the first faction that has any, its bosses left out, in content order (at most four).
+pub fn enemy_starts(content: &Content) -> Vec<String> {
+    let enemy = |s: &&data::Blueprint| s.tags.iter().any(|t| t == sim::voyage::waves::ENEMY_TAG);
+    let Some(faction) = content.ships.iter().find(enemy).map(|s| s.faction.clone()) else { return Vec::new() };
+    content
+        .ships
+        .iter()
+        .filter(|s| enemy(s) && s.faction == faction && !s.tags.iter().any(|t| t == BOSS_TAG))
+        .take(super::config::MAX_STARTS)
+        .map(|s| s.id.clone())
+        .collect()
+}
+
+impl Population {
+    /// THE ENEMY of a `lab.ron` ARMS RACE preset (`CoEvolution`): `ships` as its starts (content ships of one enemy
+    /// faction, under their own behaviors), the faction's `lab.ron` palette, `size` × `yours` children (at least its
+    /// starts) and the preset's pairing. Refused in words without a ship, with ships of two factions or with more
+    /// than four.
+    pub fn from_preset(content: &Content, p: &data::TrialPreset, ships: &[String], yours: u32) -> Result<Population, String> {
+        let data::TrialPresetKind::CoEvolution { size, elites, hall, anchor, check_every, champions_every, mirror } = p.kind else {
+            return Err(format!("{}: no arms race", p.name));
+        };
+        let factions: BTreeSet<&str> = ships.iter().filter_map(|id| content.ships.get(id)).map(|s| s.faction.as_str()).collect();
+        let faction = match (factions.len(), ships.len()) {
+            (_, 0) => return Err(format!("{}: pick an enemy ship to start the enemy from", p.name)),
+            (1, n) if n <= super::config::MAX_STARTS => factions.into_iter().next().expect("one faction"),
+            (1, _) => return Err(format!("{}: at most {} enemy ships", p.name, super::config::MAX_STARTS)),
+            _ => return Err(format!("{}: the enemy's ships are of one faction", p.name)),
+        };
+        Ok(Population {
+            starts: ships.iter().map(|id| Start::Design { design: DesignRef::Ship(id.clone()), behavior: None, locks: Default::default() }).collect(),
+            evolve: super::config::enemy_genes(),
+            population: ((yours as f32 * size).round() as u32).max(ships.len() as u32),
+            frame: None,
+            palette: content.lab.palette(faction).to_vec(),
+            mirror,
+            archive: Default::default(),
+            elites,
+            hall,
+            anchor,
+            check_every,
+            champions_every,
         })
     }
 }

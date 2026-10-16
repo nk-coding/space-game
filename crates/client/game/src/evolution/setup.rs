@@ -33,7 +33,9 @@
 //! * **Trials** (GDR-0092 step 5): every `lab.ron` preset, on or off (its default selection on), its weight (0 to 3)
 //!   and seeds, ENEMY SHIPS' ships, HALL OF FAME's and CHAMPIONS' count and TEST-RANGE WAVES' target; each row says
 //!   how many fights a child gets of it, or why it has nothing to fight (no open voyage, no saved design, no earlier
-//!   run). WITH YOUR ESCORTS flies FLEET's escorts beside the design in every trial.
+//!   run). WITH YOUR ESCORTS flies FLEET's escorts beside the design in every trial. The ARMS RACE (step 7, off by
+//!   default) has an enemy population evolve against yours: under its row the enemy ships it starts from (the first
+//!   enemy faction's, its boss only when picked) and its size.
 //! * **Goals**: the goals' weights (0 to 3) and `lab.ron`'s goal presets (WIN, WIN UNHURT, ...).
 //! * **The estimate**: the fights a child and a generation get, and the run's time on this device with the layer open
 //!   (from the measured cost of a tick and each kind's measured share of its time limit).
@@ -211,7 +213,8 @@ pub(crate) enum SetupButton {
     Kept(String),
     Flier(Flier),
     Pilot(String),
-    /// A trial (its index in the setup): on or off, its weight, its seeds, its count, an enemy ship's count.
+    /// A trial (its index in the setup): on or off, its weight, its seeds, its count, an enemy ship's count (the ARMS
+    /// RACE's: whether its enemy starts from it).
     Trial(usize),
     Weight(usize, i32),
     TrialSeeds(usize, i32),
@@ -457,8 +460,9 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: SetupButton) {
             }
         }
         SetupButton::Ship(k, ship, by) => {
+            let race = s.trials.get(k).and_then(|t| ctx.content.0.lab.trial(&t.preset)).is_some_and(|p| matches!(p.kind, data::TrialPresetKind::CoEvolution { .. }));
             if let Some(o) = s.trials.get_mut(k).and_then(|t| t.ships.get_mut(ship)) {
-                o.1 = step(o.1, by, (0, OPPONENTS));
+                o.1 = step(o.1, by, (0, if race { 1 } else { OPPONENTS }));
             }
         }
         SetupButton::Escorts => s.escorts = !s.escorts,
@@ -1026,7 +1030,10 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
                 n.spawn((tracked(fonts, &note, 7.0, c(tone, 1.0), 0.15), TextLayout::no_wrap()));
             });
         });
-        if t.on && !t.ships.is_empty() {
+        let race = matches!(preset.kind, data::TrialPresetKind::CoEvolution { .. });
+        if t.on && race {
+            enemy(p, fonts, c, content, page, k, t);
+        } else if t.on && !t.ships.is_empty() {
             for (j, (id, n)) in t.ships.iter().enumerate() {
                 let name = content.ships.get(id).map_or(id.as_str(), |b| b.name.as_str()).to_uppercase();
                 p.spawn(Node { height: px(TRIAL_ROW), flex_shrink: 0.0, padding: UiRect::left(px(26)), ..row(0.0) }).with_children(|r| {
@@ -1040,6 +1047,28 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
             }
         }
     }
+}
+
+/// THE ENEMY of the ARMS RACE (GDR-0092 "Co-evolution"): a pill per enemy ship, lit when the enemy starts from it (its
+/// faction's; a boss only when picked), and its size and pairing in words.
+fn enemy(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage, k: usize, t: &world::evolution::TrialPick) {
+    p.spawn(Node { height: px(TRIAL_ROW), flex_shrink: 0.0, padding: UiRect::left(px(26)), ..row(6.0) }).with_children(|r| {
+        r.spawn((tracked(fonts, "THE ENEMY FROM", 6.5, c(Tone::Dim, 1.0), 0.15), TextLayout::no_wrap()));
+        for (j, (id, n)) in t.ships.iter().enumerate() {
+            let name = content.ships.get(id).map_or(id.as_str(), |b| b.name.as_str()).to_uppercase();
+            let by = if *n > 0 { -1 } else { 1 };
+            spawn_pill(r, fonts, &name, 7.0, 20.0, None, Pill { active: *n > 0, ..Pill::new(Tone::Coral) }, LabButton::Setup(SetupButton::Ship(k, j, by)));
+        }
+    });
+    let s = &page.setup;
+    let words = match (t.picked().len(), s.enemy_cost(content)) {
+        (0, _) => ("PICK A SHIP TO START THE ENEMY FROM".to_string(), Tone::Coral),
+        (_, Some((children, jobs, _))) => (format!("{children} ENEMY CHILDREN A GENERATION  ·  {jobs} FIGHTS EACH AGAINST YOUR BEST, YOUR PAST CHAMPIONS AND YOUR STARTS"), Tone::Label),
+        (_, None) => ("WEIGHS 0: NO ENEMY EVOLVES".to_string(), Tone::Dim),
+    };
+    p.spawn(Node { height: px(18), flex_shrink: 0.0, padding: UiRect::left(px(26)), overflow: Overflow::clip(), ..row(0.0) }).with_children(|r| {
+        r.spawn((tracked(fonts, &words.0, 6.5, c(words.1, 1.0), 0.12), TextLayout::no_wrap()));
+    });
 }
 
 /// GOALS: the presets (one lit while the weights are its), then each goal's weight.
@@ -1063,7 +1092,9 @@ fn goals(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
 fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage, lab: &world::evolution::Lab) {
     let s = &page.setup;
     let (jobs, _) = s.per_child(content, &page.sources);
-    let fights = format!("{jobs} FIGHTS A CHILD, {} A GENERATION", jobs * s.size.population);
+    // An arms race's enemy fights beside your children.
+    let theirs = s.enemy_cost(content).map_or(0, |(n, jobs, _)| n * jobs);
+    let fights = format!("{jobs} FIGHTS A CHILD, {} A GENERATION", jobs * s.size.population + theirs);
     // With the layer open the run has its larger budget: ticks per second from the measured cost per tick at 60
     // frames a second (an estimate until the first run measured this device).
     let per_second = world::evolution::BUDGET_OPEN_MS * 60.0 * 1000.0 / lab.rate.us_per_tick.max(0.01);

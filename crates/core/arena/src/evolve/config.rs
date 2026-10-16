@@ -11,7 +11,7 @@ use crate::voyage::DEFAULT_VOYAGE_MINUTES;
 
 use super::RunError;
 use super::archive::ArchiveShape;
-use super::trial::{Goals, MAX_WEIGHT, TrialSpec};
+use super::trial::{Goals, MAX_WEIGHT, Trial, TrialSpec};
 
 /// Children per generation when a run leaves it out. PLACEHOLDER (the plan's 64 halved, so a run is quick).
 pub const DEFAULT_POPULATION: u32 = 32;
@@ -28,6 +28,15 @@ pub const MAX_SEEDS: u32 = 1000;
 pub const MAX_MUTATIONS: u32 = 16;
 /// Most starts a run may have (GDR-0092, lead default).
 pub const MAX_STARTS: usize = 4;
+/// THE ENEMY's pairing when a run leaves it out (GDR-0092 "Co-evolution", PLACEHOLDERS): your children fight its best
+/// 3 elites and 2 of its past champions, its children your best 3, 2 of yours and your starts; every 10 generations
+/// both bests fight the other's champions of every 5th generation.
+pub const DEFAULT_ELITES: u32 = 3;
+pub const DEFAULT_HALL: u32 = 2;
+pub const DEFAULT_CHECK_EVERY: u32 = 10;
+pub const DEFAULT_CHAMPIONS_EVERY: u32 = 5;
+/// The most elites or champions a generation's frozen set draws from each side (a sanity bound).
+pub const MAX_PAIRING: u32 = 16;
 
 /// A whole run. See `docs/arena.md` "Evolution" for an example.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -69,6 +78,95 @@ pub struct RunConfig {
     /// A child gets 1 to this many mutations.
     #[serde(default = "default_mutations")]
     pub mutations: u32,
+    /// THE ENEMY (GDR-0092 "Co-evolution", the ARMS RACE): a second population that evolves against yours in the same
+    /// run, scored by its fights against your best; your side fights it in a `CoEvolution` trial. Written only when
+    /// there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enemy: Option<Population>,
+}
+
+/// THE ENEMY of an arms race (GDR-0092 "Co-evolution"): its own starts, genes, limits, archive, size and random
+/// stream (the run's seed on a sequence of its own). Each generation both populations fight frozen sets of the
+/// other's from the end of the one before: your children its best `elites` and `hall` of its past champions, its
+/// children your best `elites`, `hall` of your past champions and (`anchor`) your starts; generation 0 the starts of
+/// each side. An enemy fights as side 1 in a pack sized by the test range's wave rule to your side's build points
+/// (`sim::voyage::waves::wave_mix`), so it needs no build-point cap: a bigger design comes in fewer copies. Its
+/// score is side 1's WIN.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Population {
+    /// One to [`MAX_STARTS`] designs (the lab's: an enemy faction's content ships under their own behaviors).
+    pub starts: Vec<Start>,
+    /// What may change (left out: the design's and the behavior's genes; enemies are never piloted, so their assists
+    /// don't change).
+    #[serde(default = "enemy_genes", skip_serializing_if = "is_enemy_genes")]
+    pub evolve: MayChange,
+    /// Its children per generation (generation 0: its starts and their mutants).
+    pub population: u32,
+    /// A content frame id; left out: the smallest content frame every start fits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<String>,
+    /// The parts it builds with besides those its starts use (`lab.ron`'s palette of the faction, resolved when the
+    /// run is made); the armour materials are its starts'.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub palette: Vec<String>,
+    /// Its designs stay symmetric (every edit mirrored; its starts must be symmetric).
+    #[serde(default)]
+    pub mirror: bool,
+    #[serde(default)]
+    pub archive: ArchiveShape,
+    #[serde(default = "default_elites")]
+    pub elites: u32,
+    #[serde(default = "default_hall")]
+    pub hall: u32,
+    /// Its children also fight your starts, so it stays able to beat the ships you actually have.
+    #[serde(default = "yes")]
+    pub anchor: bool,
+    /// PAST CHAMPIONS: every this many generations (0: never) both bests fight the other's champions of every
+    /// `champions_every`th generation so far.
+    #[serde(default = "default_check_every")]
+    pub check_every: u32,
+    #[serde(default = "default_champions_every")]
+    pub champions_every: u32,
+}
+
+impl Population {
+    /// What it builds with: its limits as a [`Kit`](super::genome::Kit) takes them (only the parts and armour
+    /// materials its starts use and its palette, no build-point cap, no hold or core limit).
+    pub(crate) fn limits(&self, parts: BTreeSet<String>, materials: BTreeSet<String>) -> Limits {
+        Limits {
+            frame: self.frame.clone(),
+            build_points: Bound::Off,
+            min_hold: Bound::Off,
+            max_cores: None,
+            counts: None,
+            parts: Some(parts.into_iter().chain(self.palette.iter().cloned()).collect()),
+            materials: Some(materials),
+            mirror: self.mirror,
+        }
+    }
+
+    fn check(&self) -> Result<(), String> {
+        if !(1..=MAX_STARTS).contains(&self.starts.len()) {
+            return Err(format!("it needs one to {MAX_STARTS} starts"));
+        }
+        if !(1..=MAX_POPULATION).contains(&self.population) || (self.population as usize) < self.starts.len() {
+            return Err(format!("`population` must be its {} starts to {MAX_POPULATION}", self.starts.len()));
+        }
+        if self.evolve.assists() {
+            return Err("enemies are never piloted: their assists don't change".into());
+        }
+        if Gene::ALL.iter().all(|g| !self.evolve.has(*g)) {
+            return Err("nothing may change".into());
+        }
+        if self.elites == 0 || self.elites > MAX_PAIRING || self.hall > MAX_PAIRING {
+            return Err(format!("`elites` must be 1 to {MAX_PAIRING}, `hall` 0 to {MAX_PAIRING}"));
+        }
+        if self.check_every > 0 && self.champions_every == 0 {
+            return Err("`champions_every` must be at least 1".into());
+        }
+        Ok(())
+    }
 }
 
 /// What evolves: the behavior only (on a fixed design), the design only (under a fixed behavior), both together,
@@ -456,6 +554,28 @@ fn default_minutes() -> f32 {
 fn one() -> u32 {
     1
 }
+fn yes() -> bool {
+    true
+}
+fn default_elites() -> u32 {
+    DEFAULT_ELITES
+}
+fn default_hall() -> u32 {
+    DEFAULT_HALL
+}
+fn default_check_every() -> u32 {
+    DEFAULT_CHECK_EVERY
+}
+fn default_champions_every() -> u32 {
+    DEFAULT_CHAMPIONS_EVERY
+}
+/// THE ENEMY's genes: the design's and the behavior's.
+pub(crate) fn enemy_genes() -> MayChange {
+    Genes::Both.may_change()
+}
+fn is_enemy_genes(m: &MayChange) -> bool {
+    *m == enemy_genes()
+}
 
 impl RunConfig {
     /// Reads a run from its RON text (`Some(..)` may be left out, unknown fields are errors, comments are fine).
@@ -557,6 +677,16 @@ impl RunConfig {
             return bad("`min_hold` must be 0 or more".into());
         }
         self.archive.check()?;
+        let coevolution = trials.iter().filter(|t| matches!(t.kind, Trial::CoEvolution)).count();
+        match (&self.enemy, coevolution) {
+            (Some(e), 1) => {
+                e.check().map_err(|m| RunError::Config(format!("the enemy: {m}")))?;
+                e.archive.check()?;
+            }
+            (None, 0) => {}
+            (None, _) => return bad("a `CoEvolution` trial needs an `enemy`".into()),
+            (Some(_), _) => return bad("an `enemy` needs one `CoEvolution` trial: it scores your designs against it".into()),
+        }
         self.schedule().map(|_| ())
     }
 }

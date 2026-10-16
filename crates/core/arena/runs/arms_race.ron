@@ -1,0 +1,41 @@
+// The ARMS RACE (GDR-0092 step 7): the starter (the rim skiff) against an enemy population that evolves against it in
+// the same run, bred from the automaton raider and hunter with the warden's shields in their palette, every design
+// symmetric. Your children fight a raider pair and the enemy's best two and one past champion (packs sized to them, the
+// casual stand-in flying the even seeds); its children fight your best two, one of your past champions and your
+// start; every second generation both bests fight the other's champions (PAST CHAMPIONS). Small, so
+// `scripts/determinism-check.sh --run arms_race` runs it natively and in wasm, straight and resumed, and compares
+// (`docs/arena.md` "Co-evolution").
+// `cargo run --release -p arena-cli -- evolve crates/core/arena/runs/arms_race.ron --save /tmp/arms_race.ron`
+// PLACEHOLDER numbers (the pilot's are lab.ron's casual).
+(
+    seed: 1,
+    evolve: MayChange(()),
+    generations: 5,
+    population: 6,
+    trials: [
+        (
+            preset: "enemy_ships",
+            kind: EnemyShips(opponents: [(design: Ship("automaton_raider"), count: 2)]),
+            seeds: 1,
+            time_limit: 30,
+        ),
+        (
+            preset: "arms_race",
+            kind: CoEvolution,
+            seeds: 2,
+            time_limit: 30,
+            flown_by: Both((profile: "casual", flies: (lock: true, close_to: 0.8, stick: Some((on: 3, off: 3)), fire: Some((on: 3, off: 2))))),
+        ),
+    ],
+    starts: [Design(design: Ship("rim_skiff"))],
+    enemy: (
+        starts: [Design(design: Ship("automaton_raider")), Design(design: Ship("automaton_hunter"))],
+        population: 4,
+        palette: ["shield_emitter"],
+        mirror: true,
+        elites: 2,
+        hall: 1,
+        check_every: 2,
+        champions_every: 1,
+    ),
+)

@@ -1,6 +1,7 @@
 //! The evolution lab's content (`lab.ron`, GDR-0092): the goals are the arena's four; goal presets weigh known goals;
 //! trial presets have weights, seeds and time limits in range and name ships the content has; genes are the arena's
-//! and gene presets name genes; stand-in pilots have their numbers in range. (An id listed twice in
+//! and gene presets name genes; stand-in pilots have their numbers in range; an arms race's numbers are in range and
+//! the enemy palettes name factions and parts the content has. (An id listed twice in
 //! one file is the loader's error: packs merged replace each other's entries by id.)
 //! Problems name the field as `lab.trials[<id>].seeds` and the like (the lab has no entry kind of its own yet).
 
@@ -91,7 +92,26 @@ impl<'a> Validator<'a> {
                 TrialPresetKind::HallOfFame { count: n } | TrialPresetKind::Champions { count: n } => {
                     count(&mut out, *n, MAX_PRESET_BEST, "designs")
                 }
+                TrialPresetKind::CoEvolution { size, elites, hall, champions_every, .. } => {
+                    if !(size.is_finite() && *size > 0.0 && *size <= 2.0) {
+                        out.push(Problem::error(format!("{size}: a share of your children above 0 and at most 2")).at(&src).field(format!("{at}.kind.size")));
+                    }
+                    count(&mut out, *elites, MAX_PRESET_BEST, "elites");
+                    if *hall > MAX_PRESET_BEST {
+                        out.push(Problem::error(format!("{hall} past champions: 0 to {MAX_PRESET_BEST}")).at(&src).field(format!("{at}.kind.hall")));
+                    }
+                    count(&mut out, *champions_every, MAX_PRESET_WAVES, "generations between champions");
+                }
                 TrialPresetKind::Encounters | TrialPresetKind::BeatYourStart | TrialPresetKind::Fleet | TrialPresetKind::Voyages => {}
+            }
+        }
+        for pal in &lab.palettes {
+            let at = format!("lab.palettes[{}]", pal.faction);
+            if !self.c.factions.contains(&pal.faction) {
+                out.push(Problem::error(format!("no faction `{}` in the content", pal.faction)).at(&src).field(at.clone()));
+            }
+            for part in pal.parts.iter().filter(|p| !self.c.parts.contains(p)) {
+                out.push(Problem::error(format!("no part `{part}` in the content")).at(&src).field(format!("{at}.parts")));
             }
         }
         for g in &lab.genes {

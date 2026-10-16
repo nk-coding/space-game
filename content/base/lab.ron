@@ -8,9 +8,13 @@
 // fights a run has FLOWN BY a stand-in, so its pilot assists are scored (the first is the setup's default): each
 // think it locks the nearest enemy (`lock`), holds the stick towards it while it is farther than `close_to` of its
 // longest gun's reach, and holds every trigger, each on for `on` seconds then off for `off` (left out: never); what
-// it leaves alone the assists may take. PLACEHOLDER NUMBERS (lead defaults of 15 and 16 Oct 2026; the measured cost
-// of each kind is in docs/arena.md). Size presets, measures and the rest of the lab's numbers come with GDR-0092
-// step 8.
+// it leaves alone the assists may take. The ARMS RACE (`CoEvolution`) has an enemy population evolve against yours in
+// the run: `size` its children as a share of yours, `elites` and `hall` how many of the other side's best and past
+// champions each side fights, `anchor` that the enemy also fights your starts, every `check_every` generations the PAST
+// CHAMPIONS check against the champions of every `champions_every`th generation, `mirror` symmetric enemies; its starts
+// are an enemy faction's ships, and `palettes` add parts a faction may build with besides its ships'. PLACEHOLDER
+// NUMBERS (lead defaults of 15 and 16 Oct 2026; the measured cost of each kind is in docs/arena.md). Size presets,
+// measures and the rest of the lab's numbers come with GDR-0092 step 8.
 (
     goals: [
         (id: "win", name: "Win", summary: "Beat the opponent: a win counts 1, a loss 0, a draw by the build points each side lost.", weight: 1),
@@ -107,6 +111,14 @@
             seeds: 2,
             time_limit: 10,
         ),
+        (
+            id: "arms_race",
+            name: "Arms race",
+            summary: "An enemy population evolves against yours in the run: your designs fight its best and its past champions, it fights your best, your past champions and your starts, so both keep getting better. It can drift from the enemies you meet, and it costs about twice a run.",
+            kind: CoEvolution(size: 0.5, elites: 3, hall: 2, check_every: 10, champions_every: 5, mirror: true),
+            seeds: 2,
+            time_limit: 60,
+        ),
     ],
     genes: [
         (id: "layout", name: "Layout", summary: "Move, turn and flip parts."),
@@ -144,5 +156,9 @@
             summary: "Locks the nearest enemy, flies at it until it is in reach and fires all the time.",
             flies: (lock: true, close_to: 0.8, stick: Some((on: 1)), fire: Some((on: 1))),
         ),
+    ],
+    palettes: [
+        // The warden's shields, for the raiders and hunters too.
+        (faction: "automatons", parts: ["shield_emitter"]),
     ],
 )

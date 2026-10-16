@@ -165,7 +165,7 @@ impl Export {
         let made_with: Vec<String> = content.packs.iter().map(|p| format!("{} {}", p.id, p.version)).collect();
         Export {
             file: format!("{}.ron", bp.id),
-            ron: share::export_text(&bp, behavior),
+            ron: data::export_text(&bp, behavior),
             code: share::encode(content, &bp, behavior),
             made_with: made_with.join(", ").to_uppercase(),
             revision: lib.design.revision(),

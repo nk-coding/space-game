@@ -318,9 +318,11 @@ fn the_labs_presets_become_trials() {
     let none = Sources::default();
     let p = c.lab.trial("your_fleet").unwrap();
     assert!(TrialSpec::from_preset(p, 1.0, 2, false, &none).unwrap_err().contains("no saved design"));
-    // Every preset's trial builds a run.
+    // Every preset's trial builds a run (the ARMS RACE with its enemy).
+    let race = c.lab.trial("arms_race").unwrap();
     let cfg = RunConfig {
         trials: trials.into_iter().map(|t| TrialSpec { seeds: 1, ..t }).collect(),
+        enemy: Some(arena::evolve::Population::from_preset(&c, race, &arena::evolve::enemy_starts(&c), 2).unwrap()),
         ..config(r#"(seed: 1, evolve: Both, generations: 1, population: 2, start: Design(design: Ship("rim_skiff")))"#)
     };
     Run::new(&c, cfg).unwrap();

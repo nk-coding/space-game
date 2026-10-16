@@ -45,6 +45,10 @@ pub struct Lab {
     /// The stand-in pilots, the first the default.
     #[serde(default)]
     pub pilots: Vec<LabPilot>,
+    /// What an enemy faction may build with in an arms race besides the parts its ships use (GDR-0092
+    /// "Co-evolution": "`lab.ron` may widen a faction's palette").
+    #[serde(default)]
+    pub palettes: Vec<EnemyPalette>,
     /// Where it was read from (the last pack that has one).
     #[serde(skip_deserializing)]
     pub source: Source,
@@ -132,6 +136,31 @@ pub enum TrialPresetKind {
     Champions { count: u32 },
     /// VOYAGES: the open voyages flown headless.
     Voyages,
+    /// CO-EVOLUTION, the ARMS RACE: an enemy population evolves against yours in the run. `size` is its children per
+    /// generation as a share of yours; your children fight its best `elites` and `hall` of its past champions, its
+    /// children your best `elites`, `hall` of yours and (`anchor`) your starts; every `check_every` generations (0:
+    /// never) both bests fight the other's champions of every `champions_every`th generation (PAST CHAMPIONS);
+    /// `mirror` keeps its designs symmetric. Its starts are an enemy faction's ships, picked in the setup (its bosses
+    /// only when picked).
+    CoEvolution {
+        size: f32,
+        elites: u32,
+        hall: u32,
+        #[serde(default = "yes")]
+        anchor: bool,
+        check_every: u32,
+        champions_every: u32,
+        #[serde(default)]
+        mirror: bool,
+    },
+}
+
+/// The parts an enemy faction may build with in an arms race besides those its ships use.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnemyPalette {
+    pub faction: String,
+    pub parts: Vec<String>,
 }
 
 /// A stand-in pilot (GDR-0092 "The stand-in pilot"): it flies the design in the fights FLOWN BY a stand-in, so its
@@ -193,6 +222,10 @@ fn one_ship() -> u32 {
     1
 }
 
+fn yes() -> bool {
+    true
+}
+
 impl Lab {
     pub fn goal(&self, id: &str) -> Option<&LabGoal> {
         self.goals.iter().find(|g| g.id == id)
@@ -210,8 +243,13 @@ impl Lab {
         self.pilots.iter().find(|p| p.id == id)
     }
 
+    /// The parts `faction` may build with in an arms race besides its ships' own (none listed: none).
+    pub fn palette(&self, faction: &str) -> &[String] {
+        self.palettes.iter().find(|p| p.faction == faction).map_or(&[], |p| &p.parts)
+    }
+
     /// Ids listed twice in this file: ("goal", id), ("goal_preset", id), ("trial", id), ("gene", id), ("gene_preset",
-    /// id) or ("pilot", id).
+    /// id), ("pilot", id) or ("palette", faction).
     pub(crate) fn repeated(&self) -> Vec<(&'static str, String)> {
         fn twice<'a>(what: &'static str, ids: impl Iterator<Item = &'a String>, out: &mut Vec<(&'static str, String)>) {
             let mut seen = std::collections::BTreeSet::new();
@@ -228,6 +266,7 @@ impl Lab {
         twice("gene", self.genes.iter().map(|g| &g.id), &mut out);
         twice("gene_preset", self.gene_presets.iter().map(|g| &g.id), &mut out);
         twice("pilot", self.pilots.iter().map(|p| &p.id), &mut out);
+        twice("palette", self.palettes.iter().map(|p| &p.faction), &mut out);
         out
     }
 
@@ -248,6 +287,7 @@ impl Lab {
         upsert(&mut self.genes, &other.genes, |g| &g.id);
         upsert(&mut self.gene_presets, &other.gene_presets, |g| &g.id);
         upsert(&mut self.pilots, &other.pilots, |p| &p.id);
+        upsert(&mut self.palettes, &other.palettes, |p| &p.faction);
         self.source = other.source.clone();
     }
 }

@@ -383,8 +383,10 @@ pub(crate) struct Kit {
     /// The assist list's vocabulary: the assists, and the conditions (the pilot's own with the behaviors').
     assist_actions: Vec<String>,
     assist_conditions: Vec<String>,
-    /// Per start, in the run's order.
+    /// Per start, in the run's order: the starts numbered from `first` (the enemy's come after yours in a run's
+    /// genome table, GDR-0092 "Co-evolution").
     pub roots: Vec<Root>,
+    pub first: u32,
 }
 
 fn pick<'a, T>(rng: &mut Pcg32, items: &'a [T]) -> Option<&'a T> {
@@ -483,7 +485,13 @@ impl Kit {
             assist_actions: palette(NodeRole::Action, ListKind::Assists),
             assist_conditions: palette(NodeRole::Condition, ListKind::Assists),
             roots: Vec::new(),
+            first: 0,
         }
+    }
+
+    /// Start `root`'s frame, limits and locks (a start of the run's numbering: [`Kit::first`] is the kit's first).
+    pub fn root(&self, root: u32) -> Option<&Root> {
+        self.roots.get(root.checked_sub(self.first)? as usize)
     }
 
     /// The frame a start of `size` (trimmed) is edited in, in a run whose frame is `frame`: one column narrower
@@ -511,7 +519,7 @@ impl Kit {
 
     /// A genome in a drydock, in its start's frame, where its parts are.
     fn open(&self, content: &Content, g: &Genome) -> Option<Drydock> {
-        let frame = self.roots.get(g.root as usize)?.frame;
+        let frame = self.root(g.root)?.frame;
         self.dock(content, &g.placed(frame), frame, true)
     }
 
@@ -521,7 +529,7 @@ impl Kit {
     /// [`TRIES`] times); `None` if none took. A design edit that breaks a lock (a locked part's mirror twin removed, a
     /// part over a KEEP EMPTY cell) is undone; no operator picks a locked part, cell or rule.
     pub fn mutate(&self, content: &Content, g: &Genome, may: &MayChange, rng: &mut Pcg32) -> Option<Genome> {
-        let locks = &self.roots.get(g.root as usize)?.locks;
+        let locks = &self.root(g.root)?.locks;
         let ops: Vec<(Mutation, u32)> = MUTATIONS.iter().filter(|(gene, ..)| may.has(*gene)).map(|&(_, m, w)| (m, w)).collect();
         let weights: Vec<u32> = ops.iter().map(|o| o.1).collect();
         if ops.is_empty() {
@@ -745,8 +753,8 @@ impl Kit {
     /// from that row down where they fit (`b`'s parts that would overlap or cover a KEEP EMPTY cell of `a`'s start
     /// are left out). The child is `a`'s: its start, its behavior. `None` if the frames differ or nothing changed.
     pub fn cross_design(&self, content: &Content, a: &Genome, b: &Genome, rng: &mut Pcg32) -> Option<Genome> {
-        let root = self.roots.get(a.root as usize)?;
-        if Some(root.frame) != self.roots.get(b.root as usize).map(|r| r.frame) {
+        let root = self.root(a.root)?;
+        if Some(root.frame) != self.root(b.root).map(|r| r.frame) {
             return None;
         }
         let mut da = self.open(content, a)?;
@@ -782,7 +790,7 @@ impl Kit {
         root: u32,
         rng: &mut Pcg32,
     ) -> Option<Genome> {
-        let frame = self.roots.get(root as usize)?.frame;
+        let frame = self.root(root)?.frame;
         let of = |f: &dyn Fn(&data::Part) -> bool| -> Vec<String> {
             self.parts
                 .iter()
@@ -1023,7 +1031,7 @@ impl Kit {
     /// past the splice before `b`'s rules, which bring no second copy) and a locked target line; then it is cut to
     /// `slots` rules ([`Kit::fit_rules`]). `None` if the result is no legal program or equals `a`.
     pub fn cross_behavior(&self, a: &str, b: &str, slots: u32, root: u32, rng: &mut Pcg32) -> Option<String> {
-        let locks = &self.roots.get(root as usize)?.locks;
+        let locks = &self.root(root)?.locks;
         let pa = BehaviorEditor::from_text(&self.nodes, a).ok()?.program().clone();
         let pb = BehaviorEditor::from_text(&self.nodes, b).ok()?.program().clone();
         let i = 1 + rng.below(pa.rules.len() as u32) as usize;
@@ -1045,7 +1053,7 @@ impl Kit {
     /// number), then `b`'s from a random rule on, `a`'s locked assists past the splice before `b`'s. The child is
     /// `a`'s. `None` if the result is no legal list, too long, or equals `a`'s.
     pub fn cross_assists(&self, a: &Genome, b: &Genome, rng: &mut Pcg32) -> Option<Genome> {
-        let locks = &self.roots.get(a.root as usize)?.locks;
+        let locks = &self.root(a.root)?.locks;
         let rules = |g: &Genome| g.blueprint.assists.as_ref().map_or(Ok(Vec::new()), |l| l.program().map(|p| p.rules)).ok();
         let (ra, rb) = (rules(a)?, rules(b)?);
         let i = rng.below(ra.len() as u32 + 1) as usize;
@@ -1072,7 +1080,7 @@ impl Kit {
         if ed.program().rules.len() <= max {
             return Some(text.to_string());
         }
-        let locks = &self.roots.get(root as usize)?.locks;
+        let locks = &self.root(root)?.locks;
         let mut p = ed.program().clone();
         while p.rules.len() > max {
             let k = p.rules.iter().rposition(|r| !locks.rule(r))?;
@@ -1086,7 +1094,7 @@ impl Kit {
     /// decided; with the dropped rules' indices. `None` if the text doesn't read.
     pub fn tidy(&self, text: &str, decided: u64, root: u32) -> Option<(String, Vec<usize>)> {
         let ed = BehaviorEditor::from_text(&self.nodes, text).ok()?;
-        let locks = &self.roots.get(root as usize)?.locks;
+        let locks = &self.root(root)?.locks;
         let mut p = ed.program().clone();
         let ran = |i: usize| i >= 64 || decided & (1u64 << i) != 0;
         let mut dropped: Vec<usize> = (0..p.rules.len()).filter(|&i| !ran(i) && !locks.rule(&p.rules[i])).collect();
@@ -1108,10 +1116,7 @@ impl Kit {
     /// and carry a gun.
     pub fn assess(&self, content: &Content, g: &Genome) -> Result<Stats, String> {
         let bp = &g.blueprint;
-        let root = self
-            .roots
-            .get(g.root as usize)
-            .ok_or_else(|| format!("no start {}", g.root))?;
+        let root = self.root(g.root).ok_or_else(|| format!("no start {}", g.root))?;
         let mut count: BTreeMap<&str, u32> = BTreeMap::new();
         for p in &bp.parts {
             if self.allowed_parts.as_ref().is_some_and(|s| !s.contains(&p.part)) {

@@ -17,6 +17,11 @@
 //! generations a run is a [`RunSave`] ([`Run::snapshot`]); [`Run::restore`] goes on from it exactly as the run would
 //! have, and marks the run stale when the rules it was fought under have changed.
 //!
+//! An ARMS RACE (GDR-0092 step 7, "Co-evolution", [`Population`]) has a second population, THE ENEMY, evolve in the
+//! same run: its starts follow yours in the one genome table, its children follow yours in each generation's
+//! records, it breeds on its own stream, and both sides fight frozen sets of the other's best and past champions
+//! (your side always side 0), with a PAST CHAMPIONS check every few generations ([`Run::beaten`]).
+//!
 //! ```
 //! let content = data::base_content();
 //! let config = arena::RunConfig::from_ron(r#"(
@@ -45,37 +50,42 @@ mod lineage;
 mod store;
 mod trial;
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
 use data::behavior::Program;
-use data::{AssistList, BehaviorEditor, Blueprint, Content};
+use data::{AssistList, BehaviorEditor, Blueprint, Content, Placement};
 use serde::{Deserialize, Serialize};
 use sim::{Pcg32, SimConfig};
 
 use crate::code::FightCode;
 use crate::fight::{Fight, FightSetup, resolve_design};
 use crate::rules::rules_fingerprint;
-use crate::spec::{BehaviorRef, DesignRef, Entry, Formation};
+use crate::spec::{BehaviorRef, DesignRef, Entry, FightSpec, Formation};
 use crate::voyage::start_voyage;
 
 pub use archive::{Archive, ArchiveShape, Axis, Elite, MAX_CELLS, Measure};
 pub use config::{
-    Bound, DEFAULT_CROSSOVER, DEFAULT_MUTATIONS, DEFAULT_POPULATION, DEFAULT_SEEDS, Evolve, Fitness, Gene,
-    Genes, Limits, Locks, MayChange, MAX_GENERATIONS, MAX_MUTATIONS, MAX_POPULATION, MAX_SEEDS, MAX_STARTS,
-    RunConfig, Stage, Start, VoyagePilot,
+    Bound, DEFAULT_CHAMPIONS_EVERY, DEFAULT_CHECK_EVERY, DEFAULT_CROSSOVER, DEFAULT_ELITES, DEFAULT_HALL,
+    DEFAULT_MUTATIONS, DEFAULT_POPULATION, DEFAULT_SEEDS, Evolve, Fitness, Gene, Genes, Limits, Locks, MayChange,
+    MAX_GENERATIONS, MAX_MUTATIONS, MAX_PAIRING, MAX_POPULATION, MAX_SEEDS, MAX_STARTS, Population, RunConfig, Stage,
+    Start, VoyagePilot,
 };
 pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
 pub use genome::Genome;
 pub use lineage::Bred;
 pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunHead, RunPart, RunParts, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
-pub use trial::{Contestant, DEFAULT_WAVES, FlownBy, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, entry_of};
+pub use trial::{BOSS_TAG, Contestant, DEFAULT_WAVES, FlownBy, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, enemy_starts, entry_of, pack};
 
 use eval::Active;
 use genome::{Kit, Locked, Root, Stats};
 
 /// The PCG sequence of a run's random stream (`"evolve"` in ASCII), so it never repeats a sim stream.
 const RUN_STREAM: u64 = 0x6576_6f6c_7665;
+/// The sequence of THE ENEMY's stream in an arms race (`"enemy"`): its breeding and the generations' draws of past
+/// champions, so yours draws as it would without it.
+const ENEMY_STREAM: u64 = 0x65_6e65_6d79;
 /// Breeding tries per child before it is given up (the pre-filter refused every one).
 const CHILD_TRIES: u32 = 16;
 /// What breeding one child counts against [`Run::step`]'s budget, in ticks: about 0.3 ms natively (10 ms per
@@ -136,6 +146,22 @@ pub struct GenerationStats {
     /// scores; it bred nothing and takes none of the run's generations (written only when it is one).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rescore: bool,
+    /// THE ENEMY's numbers in an arms race (the ones above are yours; `ticks` counts both).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enemy: Option<EnemyStats>,
+}
+
+/// THE ENEMY's numbers of one generation of an arms race (as [`GenerationStats`]' for yours).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnemyStats {
+    pub evaluated: u32,
+    pub rejected: u32,
+    pub best: f32,
+    pub mean: f32,
+    pub archive_best: f32,
+    pub filled: u32,
+    pub improved: u32,
 }
 
 /// What a run keeps of one generation besides its numbers: whom its children fought and how each of their jobs
@@ -151,6 +177,57 @@ pub struct GenerationRecord {
     /// fight codes carry it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rules: Option<u64>,
+    /// An arms race's: whom each side fought, where THE ENEMY's children begin among `children`, PAST CHAMPIONS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enemy: Option<Rivalry>,
+}
+
+/// What a generation of an arms race keeps of the enemy population (GDR-0092 "Co-evolution"): the frozen sets both
+/// sides fought, so every job rebuilds, and its PAST CHAMPIONS check.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rivalry {
+    /// The enemy genomes your children fought: its best, then its past champions drawn (genome numbers).
+    pub opponents: Vec<u32>,
+    /// Your genomes its children fought: your best, your past champions drawn, then your starts (the anchor).
+    pub rivals: Vec<u32>,
+    /// The generation's `children` from this one on are THE ENEMY's (yours before them).
+    pub first: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<Check>,
+}
+
+/// PAST CHAMPIONS (GDR-0092): your best then fought THE ENEMY's champions of every `champions_every`th generation so
+/// far, and its best yours. A champion is a generation's best child of its side.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Check {
+    /// Your archive's best and the enemy's when the generation opened.
+    pub yours: u32,
+    pub theirs: u32,
+    /// The champions each one fought: the enemy's (yours fought them), then yours (its best fought them).
+    pub their_champions: Vec<u32>,
+    pub your_champions: Vec<u32>,
+    /// The fights in order: your best against each of their champions (every seed), then their best against each
+    /// of yours; each scored for the best that fought (side 0 for yours, side 1 for theirs).
+    pub jobs: Vec<JobRecord>,
+}
+
+/// Which population of an arms race a genome is of: yours, or THE ENEMY (its starts are numbered after yours).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Camp {
+    #[default]
+    Yours,
+    Enemy,
+}
+
+/// The PAST CHAMPIONS line of a checked generation: how many of the other side's champions each best beat (a mean
+/// score above 0.5 over its fights), of how many.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Beaten {
+    pub generation: u32,
+    pub yours: (u32, u32),
+    pub theirs: (u32, u32),
 }
 
 /// One child of a generation.
@@ -257,6 +334,43 @@ struct Candidate {
     stats: Stats,
 }
 
+/// The arms race of the current generation: the frozen sets, as genome numbers and as contestants, where THE ENEMY's
+/// children begin (once yours are bred), its breeding so far, and PAST CHAMPIONS' jobs at the end of the batch.
+struct Frozen {
+    /// The enemy's stream before this generation's first draw (what a snapshot keeps, as `Batch::from`).
+    from: Pcg32,
+    opponents: Vec<u32>,
+    foes: Vec<Contestant>,
+    rivals: Vec<u32>,
+    friends: Vec<Contestant>,
+    first: Option<usize>,
+    failed: usize,
+    rejected: u32,
+    /// The check's bests and champions, and its jobs' place in the batch.
+    check: Option<(Check, Range<usize>)>,
+}
+
+/// THE ENEMY of an arms race as the run holds it: its breeding kit (its starts numbered after yours), its stream, its
+/// starts and its archive.
+struct Enemy {
+    kit: Kit,
+    rng: Pcg32,
+    starts: Vec<Genome>,
+    archive: Archive,
+}
+
+/// What breeding a child of one population reads: the content, that population's kit, starts and archive, and the
+/// run's numbers.
+struct Breeder<'a> {
+    content: &'a Content,
+    kit: &'a Kit,
+    starts: &'a [Genome],
+    archive: &'a Archive,
+    crossover: f32,
+    mutations: u32,
+    generation: u32,
+}
+
 /// The current generation: its children so far, their jobs, the results so far.
 struct Batch {
     stage: usize,
@@ -283,6 +397,8 @@ struct Batch {
     active: Option<(usize, Active)>,
     /// A RE-SCORE: the archive's elites again, nothing bred.
     rescore: bool,
+    /// An arms race's.
+    rivalry: Option<Frozen>,
 }
 
 /// An evolution run (see the module docs).
@@ -315,6 +431,8 @@ pub struct Run {
     rescore: bool,
     /// VALIDATE's results, by genome.
     validated: Vec<Validated>,
+    /// THE ENEMY of an arms race.
+    enemy: Option<Enemy>,
 }
 
 /// VALIDATE's default: the archive's best this many, on this many new seeds each (GDR-0092, PLACEHOLDER).
@@ -375,6 +493,16 @@ fn genome_entry(g: &Genome, count: u32) -> Entry {
     }
 }
 
+/// THE ENEMY's score from its jobs' goals (GDR-0092 "Co-evolution": side 1's WIN, the mean over its fights), with its
+/// breakdown: its one trial (`trial`, CO-EVOLUTION) and the goals' means.
+fn enemy_score(trial: usize, goals: &[GoalScores]) -> (f32, Breakdown) {
+    let n = goals.len().max(1) as f64;
+    let mean = |k: usize| (goals.iter().map(|g| g.all()[k] as f64).sum::<f64>() / n) as f32;
+    let means = GoalScores { win: mean(0), unhurt: mean(1), quick: mean(2), cheap: mean(3) };
+    let score = (!goals.is_empty()).then_some(means.win);
+    (means.win, Breakdown { trials: vec![TrialScore { trial, jobs: goals.len(), score, goals: means }], goals: means })
+}
+
 /// CHEAP: one less a design's build points over its limit, 0..1.
 fn cheapness(build_points: f32, limit: f32) -> f32 {
     if limit > 0.0 { (1.0 - build_points / limit).clamp(0.0, 1.0) } else { 0.0 }
@@ -389,15 +517,20 @@ struct StartText {
     locks: Locks,
 }
 
-/// The header every child of a start carries: the start's, renamed; the behavior goes beside it as text.
-fn header_of(start: &Blueprint) -> Blueprint {
+/// The header every child of a start carries: the start's, renamed, tagged `evolved` (THE ENEMY's `enemy` too, its
+/// faction kept); the behavior goes beside it as text.
+fn header_of(start: &Blueprint, camp: Camp) -> Blueprint {
+    let tags = match camp {
+        Camp::Yours => vec!["evolved".into()],
+        Camp::Enemy => vec!["evolved".into(), sim::voyage::waves::ENEMY_TAG.into()],
+    };
     Blueprint {
         id: "evolved".into(),
         name: format!("{} (evolved)", start.name),
         summary: format!("Evolved from {} in the evolution lab.", start.name),
         description: None,
         lore: None,
-        tags: vec!["evolved".into()],
+        tags,
         behavior: None,
         // A start that was evolved before is a start like any other here.
         origin: None,
@@ -406,9 +539,11 @@ fn header_of(start: &Blueprint) -> Blueprint {
     }
 }
 
-/// The headers of a configuration's starts, as a run gives its genomes.
+/// The headers of a configuration's starts (yours, then THE ENEMY's), as a run gives its genomes.
 fn headers_of(content: &Content, config: &RunConfig) -> Result<Vec<Blueprint>, RunError> {
-    config.all_starts().map(|s| resolve_start(content, s).map(|t| header_of(&t.header)).map_err(RunError::Start)).collect()
+    let yours = config.all_starts().map(|s| (s, Camp::Yours));
+    let enemy = config.enemy.iter().flat_map(|e| &e.starts).map(|s| (s, Camp::Enemy));
+    yours.chain(enemy).map(|(s, camp)| resolve_start(content, s).map(|t| header_of(&t.header, camp)).map_err(RunError::Start)).collect()
 }
 
 fn resolve_start(content: &Content, start: &Start) -> Result<StartText, String> {
@@ -470,6 +605,171 @@ fn resolve_start(content: &Content, start: &Start) -> Result<StartText, String> 
     }
 }
 
+/// Opens a population's starts (yours, or THE ENEMY's numbered from `kit.first`) in its frame (the configured one,
+/// else the smallest content frame every start fits) centred once, each checked against the limits, its locks and the
+/// pre-filter, its own cost and hold its genomes' limits by default; with their headers.
+fn open_starts(content: &Content, kit: &mut Kit, texts: Vec<StartText>, limits: &Limits, camp: Camp, rng: &mut Pcg32) -> Result<(Vec<Blueprint>, Vec<Genome>), RunError> {
+    let frame = match &limits.frame {
+        Some(id) => content
+            .frames
+            .get(id)
+            .map(|f| f.size)
+            .ok_or_else(|| RunError::Config(format!("no frame `{id}` in the content")))?,
+        None => {
+            let w = texts.iter().map(|t| t.header.size.0).max().unwrap_or(0);
+            let h = texts.iter().map(|t| t.header.size.1).max().unwrap_or(0);
+            content
+                .frames
+                .iter()
+                .filter(|f| f.size.0 >= w && f.size.1 >= h)
+                .min_by_key(|f| f.size.0 as u64 * f.size.1 as u64)
+                .map(|f| f.size)
+                .ok_or_else(|| RunError::Start("no content frame is big enough".into()))?
+        }
+    };
+    let mut headers = Vec::new();
+    let mut starts = Vec::new();
+    for (k, t) in texts.into_iter().enumerate() {
+        let root = kit.first + k as u32;
+        let at = |e: String| {
+            RunError::Start(match camp {
+                Camp::Yours if k == 0 => e,
+                Camp::Yours => format!("start {}: {e}", k + 1),
+                Camp::Enemy => format!("the enemy's start {}: {e}", k + 1),
+            })
+        };
+        let header = header_of(&t.header, camp);
+        let g = match &t.design {
+            Some(written) => {
+                let bp = Blueprint {
+                    parts: written.parts.clone(),
+                    size: written.size,
+                    ..header.clone()
+                };
+                // Opened centred once; from then on genomes keep their cells.
+                let fits = |f| kit.dock(content, &bp, f, false);
+                let size = fits(frame)
+                    .ok_or_else(|| at("it does not fit the run's frame".into()))?
+                    .export()
+                    .size;
+                let edit = kit.frame_for(frame, size);
+                let dock = fits(edit).ok_or_else(|| at("it does not fit the run's frame".into()))?;
+                let program = Program::parse(&t.behavior).map_err(|e| at(format!("{e:?}")))?;
+                let locks = Locked::resolve(content, &t.locks, written, &dock, &program).map_err(at)?;
+                kit.roots.push(Root {
+                    frame: edit,
+                    build_points: None,
+                    start_bp: 0.0,
+                    min_hold: None,
+                    locks,
+                });
+                Genome::of(&dock, t.behavior, root)
+            }
+            None => {
+                kit.roots.push(Root {
+                    frame: kit.frame_for(frame, (0, 0)),
+                    build_points: None,
+                    start_bp: 0.0,
+                    min_hold: None,
+                    locks: Locked::default(),
+                });
+                kit.random_design(content, &header, &t.behavior, root, rng)
+                    .ok_or_else(|| at("no random design with the parts allowed flies".into()))?
+            }
+        };
+        let report = sim::design_report(content, &g.blueprint, &SimConfig::default()).map_err(at)?;
+        let r = &mut kit.roots[k];
+        r.build_points = limits.build_points.of(report.build_points);
+        r.start_bp = report.build_points;
+        r.min_hold = limits.min_hold.of(content.ship_hold(&g.blueprint) as f32);
+        kit.assess(content, &g).map_err(at)?;
+        headers.push(header);
+        starts.push(g);
+    }
+    Ok((headers, starts))
+}
+
+/// One child of a population (GDR-0092 steps 2 and 3): crossover (sometimes) and mutations of a random elite of its
+/// archive (generation 0: of a start, shared out evenly), of the genes `genes` may change; its behavior cut to its
+/// design's rule slots. `None` when the pre-filter refused every try; `rejected` counts the refusals. With the child,
+/// how it was bred.
+fn breed(pop: &Breeder, rng: &mut Pcg32, genes: &Genes, made: usize, rejected: &mut u32) -> Option<(Genome, Stats, Bred)> {
+    let may = genes.may_change();
+    let content = pop.content;
+    let n = pop.starts.len();
+    let elites: Vec<(u32, &Genome)> = if pop.archive.cells().is_empty() {
+        let k = made.saturating_sub(n) % n;
+        vec![(pop.kit.first + k as u32, &pop.starts[k])]
+    } else {
+        pop.archive.cells().values().map(|e| (e.id, &e.genome)).collect()
+    };
+    for _ in 0..CHILD_TRIES {
+        let (id, a) = elites[rng.below(elites.len() as u32) as usize];
+        let mut g = a.clone();
+        let mut partner = None;
+        if elites.len() > 1 && rng.chance(pop.crossover) {
+            let (bid, b) = elites[rng.below(elites.len() as u32) as usize];
+            if may.design()
+                && let Some(c) = pop.kit.cross_design(content, &g, b, rng)
+            {
+                g = c;
+                partner = Some(bid);
+            }
+            if may.behavior() {
+                let slots = content.ship_rule_slots(&g.blueprint);
+                if let Some(t) = pop.kit.cross_behavior(&g.behavior, &b.behavior, slots, g.root, rng) {
+                    g.behavior = t;
+                    partner = Some(bid);
+                }
+            }
+            if may.assists()
+                && let Some(c) = pop.kit.cross_assists(&g, b, rng)
+            {
+                g = c;
+                partner = Some(bid);
+            }
+        }
+        let mutations = 1 + rng.below(pop.mutations);
+        for _ in 0..mutations {
+            if let Some(m) = pop.kit.mutate(content, &g, &may, rng) {
+                g = m;
+            }
+        }
+        // A design change may have cost rule slots: the lowest unlocked rules go.
+        match pop.kit.fit_rules(&g.behavior, content.ship_rule_slots(&g.blueprint), g.root) {
+            Some(t) => g.behavior = t,
+            None => {
+                *rejected += 1;
+                continue;
+            }
+        }
+        if g == *a {
+            *rejected += 1;
+            continue;
+        }
+        match pop.kit.assess(content, &g) {
+            Ok(stats) => {
+                let (removed, added) = lineage::diff(&a.frame_parts(), &g.frame_parts());
+                let bred = Bred {
+                    generation: pop.generation,
+                    root: g.root,
+                    parent: Some(id),
+                    partner,
+                    removed,
+                    added,
+                    behavior: (g.behavior != a.behavior).then(|| g.behavior.clone()),
+                    assists: (g.blueprint.assists != a.blueprint.assists)
+                        .then(|| g.blueprint.assists.clone().unwrap_or(AssistList { rules: Vec::new() })),
+                    size: g.blueprint.size,
+                };
+                return Some((g, stats, bred));
+            }
+            Err(_) => *rejected += 1,
+        }
+    }
+    None
+}
+
 impl Run {
     /// Checks the configuration, resolves the starts (or builds random ones), opens each centred in its frame once
     /// and checks it against the limits, its locks and the pre-filter, and builds one job of each opponent or voyage
@@ -494,82 +794,33 @@ impl Run {
             .map(|s| resolve_start(content, s))
             .collect::<Result<Vec<_>, _>>()
             .map_err(RunError::Start)?;
-        // The run's frame: the configured one, else the smallest content frame every start fits.
-        let frame = match &config.limits.frame {
-            Some(id) => content
-                .frames
-                .get(id)
-                .map(|f| f.size)
-                .ok_or_else(|| RunError::Config(format!("no frame `{id}` in the content")))?,
-            None => {
-                let w = texts.iter().map(|t| t.header.size.0).max().unwrap_or(0);
-                let h = texts.iter().map(|t| t.header.size.1).max().unwrap_or(0);
-                content
-                    .frames
+        let mut kit = Kit::new(content, &config.limits);
+        let (mut headers, starts) = open_starts(content, &mut kit, texts, &config.limits, Camp::Yours, &mut rng)?;
+        // THE ENEMY: its starts numbered after yours, built with the parts and armour its starts use and its palette.
+        let enemy = match &config.enemy {
+            None => None,
+            Some(pop) => {
+                let texts = pop
+                    .starts
                     .iter()
-                    .filter(|f| f.size.0 >= w && f.size.1 >= h)
-                    .min_by_key(|f| f.size.0 as u64 * f.size.1 as u64)
-                    .map(|f| f.size)
-                    .ok_or_else(|| RunError::Start("no content frame is big enough".into()))?
+                    .map(|s| resolve_start(content, s))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| RunError::Start(format!("the enemy: {e}")))?;
+                let used = |f: &dyn Fn(&Placement) -> Option<String>| -> BTreeSet<String> {
+                    texts.iter().flat_map(|t| t.design.iter().flat_map(|d| d.parts.iter().filter_map(f))).collect()
+                };
+                let limits = pop.limits(used(&|p| Some(p.part.clone())), used(&|p| p.material.clone()));
+                let mut ekit = Kit::new(content, &limits);
+                ekit.first = starts.len() as u32;
+                let mut erng = Pcg32::new(sim::rng::splitmix64(config.seed ^ ENEMY_STREAM), ENEMY_STREAM);
+                let (h, es) = open_starts(content, &mut ekit, texts, &limits, Camp::Enemy, &mut erng)?;
+                headers.extend(h);
+                Some(Enemy { kit: ekit, rng: erng, starts: es, archive: Archive::new(pop.archive.clone()) })
             }
         };
-        let mut kit = Kit::new(content, &config.limits);
-        let mut headers = Vec::new();
-        let mut starts = Vec::new();
-        for (k, t) in texts.into_iter().enumerate() {
-            let root = k as u32;
-            let at = |e: String| RunError::Start(if k == 0 { e } else { format!("start {}: {e}", k + 1) });
-            let header = header_of(&t.header);
-            let g = match &t.design {
-                Some(written) => {
-                    let bp = Blueprint {
-                        parts: written.parts.clone(),
-                        size: written.size,
-                        ..header.clone()
-                    };
-                    // Opened centred once; from then on genomes keep their cells.
-                    let fits = |f| kit.dock(content, &bp, f, false);
-                    let size = fits(frame)
-                        .ok_or_else(|| at("it does not fit the run's frame".into()))?
-                        .export()
-                        .size;
-                    let edit = kit.frame_for(frame, size);
-                    let dock = fits(edit).ok_or_else(|| at("it does not fit the run's frame".into()))?;
-                    let program = Program::parse(&t.behavior).map_err(|e| at(format!("{e:?}")))?;
-                    let locks = Locked::resolve(content, &t.locks, written, &dock, &program).map_err(at)?;
-                    kit.roots.push(Root {
-                        frame: edit,
-                        build_points: None,
-                        start_bp: 0.0,
-                        min_hold: None,
-                        locks,
-                    });
-                    Genome::of(&dock, t.behavior, root)
-                }
-                None => {
-                    kit.roots.push(Root {
-                        frame: kit.frame_for(frame, (0, 0)),
-                        build_points: None,
-                        start_bp: 0.0,
-                        min_hold: None,
-                        locks: Locked::default(),
-                    });
-                    kit.random_design(content, &header, &t.behavior, root, &mut rng)
-                        .ok_or_else(|| at("no random design with the parts allowed flies".into()))?
-                }
-            };
-            // The start's own cost and hold are its genomes' limits by default.
-            let report = sim::design_report(content, &g.blueprint, &SimConfig::default()).map_err(at)?;
-            let r = &mut kit.roots[k];
-            r.build_points = config.limits.build_points.of(report.build_points);
-            r.start_bp = report.build_points;
-            r.min_hold = config.limits.min_hold.of(content.ship_hold(&g.blueprint) as f32);
-            kit.assess(content, &g).map_err(at)?;
-            headers.push(header);
-            starts.push(g);
-        }
         let table = starts
             .iter()
+            .chain(enemy.iter().flat_map(|e| &e.starts))
             .map(|g| Bred {
                 generation: 0,
                 root: g.root,
@@ -603,16 +854,24 @@ impl Run {
             worked: 0,
             rescore: false,
             validated: Vec::new(),
+            enemy,
         };
-        // Every job of every start (generation 0's, with no hall of fame yet): the references resolve.
+        // Every job of every start (generation 0's, with no hall of fame yet, against the other side's starts): the
+        // references resolve.
+        let (yours, theirs) = (run.start_contestants(Camp::Yours), run.start_contestants(Camp::Enemy));
+        let mut jobs = Vec::new();
         for (k, g) in run.starts.iter().enumerate() {
-            for (_, job) in run.jobs_of(g, run.kit.roots[k].start_bp, &[]) {
-                let ok = match &job {
-                    Job::Fight { spec, .. } => Fight::new(content, spec).map(|_| ()),
-                    Job::Voyage { spec, .. } => start_voyage(content, spec).map(|_| ()),
-                };
-                ok.map_err(|e| RunError::Fitness(e.to_string()))?;
-            }
+            jobs.extend(run.jobs_of(g, run.kit.roots[k].start_bp, &[], &theirs));
+        }
+        for (g, e) in run.enemy_starts().iter().zip(&theirs) {
+            jobs.extend(run.enemy_jobs_of(g, e.build_points, &yours));
+        }
+        for (_, job) in jobs {
+            let ok = match &job {
+                Job::Fight { spec, .. } => Fight::new(content, spec).map(|_| ()),
+                Job::Voyage { spec, .. } => start_voyage(content, spec).map(|_| ()),
+            };
+            ok.map_err(|e| RunError::Fitness(e.to_string()))?;
         }
         Ok(run)
     }
@@ -631,9 +890,54 @@ impl Run {
         &self.starts
     }
 
+    /// THE ENEMY's starts in an arms race (genomes n to n + m − 1 after your n), each opened centred in its frame.
+    pub fn enemy_starts(&self) -> &[Genome] {
+        self.enemy.as_ref().map_or(&[], |e| &e.starts)
+    }
+
+    /// Start `root` (yours, else THE ENEMY's) as opened, and as configured.
+    pub fn start(&self, root: u32) -> Option<&Genome> {
+        self.starts.iter().chain(self.enemy_starts()).nth(root as usize)
+    }
+
+    pub fn start_config(&self, root: u32) -> Option<&Start> {
+        self.config.all_starts().chain(self.config.enemy.iter().flat_map(|e| &e.starts)).nth(root as usize)
+    }
+
+    /// The population start `root` is of.
+    pub fn camp_of(&self, root: u32) -> Camp {
+        if (root as usize) < self.starts.len() { Camp::Yours } else { Camp::Enemy }
+    }
+
+    /// The population genome `id` is of (`None`: no such genome).
+    pub fn camp(&self, id: u32) -> Option<Camp> {
+        self.table.get(id as usize).map(|b| self.camp_of(b.root))
+    }
+
+    /// THE ENEMY's archive in an arms race.
+    pub fn enemy_archive(&self) -> Option<&Archive> {
+        self.enemy.as_ref().map(|e| &e.archive)
+    }
+
+    /// A population's archive (yours; THE ENEMY's in an arms race).
+    pub fn archive_of(&self, camp: Camp) -> Option<&Archive> {
+        match camp {
+            Camp::Yours => Some(&self.archive),
+            Camp::Enemy => self.enemy_archive(),
+        }
+    }
+
+    /// The kit start `root`'s genomes are bred with.
+    fn kit_of(&self, root: u32) -> &Kit {
+        match (self.camp_of(root), &self.enemy) {
+            (Camp::Enemy, Some(e)) => &e.kit,
+            _ => &self.kit,
+        }
+    }
+
     /// The frame genomes of start `root` are edited in (`Genome::placed`).
     pub fn frame(&self, root: u32) -> Option<(u32, u32)> {
-        self.kit.roots.get(root as usize).map(|r| r.frame)
+        self.kit_of(root).root(root).map(|r| r.frame)
     }
 
     /// The rules' fingerprint when the run started (`rules_fingerprint`).
@@ -711,11 +1015,12 @@ impl Run {
     /// bred so far while it is still breeding). 0 between generations.
     pub fn generation_done(&self) -> f32 {
         let Some(b) = &self.batch else { return 0.0 };
-        let made = b.candidates.len() + b.failed;
+        let made = b.candidates.len() + b.failed + b.rivalry.as_ref().map_or(0, |r| r.failed);
         if made == 0 && !b.rescore {
             return 0.0;
         }
-        let expected = if b.rescore { b.jobs.len() as f32 } else { b.jobs.len() as f32 * self.config.population as f32 / made as f32 };
+        let population = self.config.population + self.config.enemy.as_ref().map_or(0, |e| e.population);
+        let expected = if b.rescore { b.jobs.len() as f32 } else { b.jobs.len() as f32 * population as f32 / made as f32 };
         let done = b.results.iter().filter(|r| r.is_some()).count() as f32;
         (done / expected.max(1.0)).clamp(0.0, 1.0)
     }
@@ -843,25 +1148,59 @@ impl Run {
     pub fn tagged_jobs(&self, generation: u32, child: usize) -> Option<Vec<(u32, Job)>> {
         let record = self.records.get(generation as usize)?;
         let genome = self.genome(record.children.get(child)?.genome)?;
-        let hall = record
-            .opponents
-            .iter()
-            .map(|&id| self.genome(id).map(|g| genome_entry(&g, 1)))
-            .collect::<Option<Vec<_>>>()?;
         let bp = sim::design_report(&self.content, &genome.blueprint, &SimConfig::default()).ok()?.build_points;
-        let mut jobs = self.jobs_of(&genome, bp, &hall);
+        let mut jobs = match (&record.enemy, self.camp_of(genome.root)) {
+            (Some(r), Camp::Enemy) => self.enemy_jobs_of(&genome, bp, &self.contestants(&r.rivals)?),
+            (r, _) => {
+                let hall = record
+                    .opponents
+                    .iter()
+                    .map(|&id| self.genome(id).map(|g| genome_entry(&g, 1)))
+                    .collect::<Option<Vec<_>>>()?;
+                let foes = match r {
+                    Some(r) => self.contestants(&r.opponents)?,
+                    None => Vec::new(),
+                };
+                self.jobs_of(&genome, bp, &hall, &foes)
+            }
+        };
         for (_, j) in &mut jobs {
             j.set_candidate(child as u32);
         }
         Some(jobs)
     }
 
-    /// Child `child` of generation `generation`'s score taken apart by trial and goal, from its records.
+    /// Genomes as fight contestants (blueprint and behavior inlined, one ship, with their build points).
+    fn contestants(&self, ids: &[u32]) -> Option<Vec<Contestant>> {
+        ids.iter()
+            .map(|&id| {
+                let g = self.genome(id)?;
+                let bp = sim::design_report(&self.content, &g.blueprint, &SimConfig::default()).ok()?.build_points;
+                Some(Contestant { entry: genome_entry(&g, 1), build_points: bp })
+            })
+            .collect()
+    }
+
+    /// A population's starts as fight contestants (none for THE ENEMY of a run without one).
+    fn start_contestants(&self, camp: Camp) -> Vec<Contestant> {
+        let (starts, kit) = match (camp, &self.enemy) {
+            (Camp::Yours, _) => (&self.starts, &self.kit),
+            (Camp::Enemy, Some(e)) => (&e.starts, &e.kit),
+            (Camp::Enemy, None) => return Vec::new(),
+        };
+        starts.iter().zip(&kit.roots).map(|(g, r)| Contestant { entry: genome_entry(g, 1), build_points: r.start_bp }).collect()
+    }
+
+    /// Child `child` of generation `generation`'s score taken apart by trial and goal, from its records (THE ENEMY's:
+    /// its one trial, CO-EVOLUTION, scored by WIN).
     pub fn breakdown(&self, generation: u32, child: usize) -> Option<Breakdown> {
         let rec = self.records.get(generation as usize)?.children.get(child)?;
         let tags: Vec<u32> = self.tagged_jobs(generation, child)?.into_iter().map(|(t, _)| t).collect();
         let goals: Vec<GoalScores> = rec.jobs.iter().map(JobRecord::goal_scores).collect();
-        Some(self.combine(&tags, &goals).1)
+        Some(match self.camp(rec.genome)? {
+            Camp::Yours => self.combine(&tags, &goals).1,
+            Camp::Enemy => enemy_score(tags.first().copied().unwrap_or(0) as usize, &goals).1,
+        })
     }
 
     /// A child's score from its jobs' goals and their trials (GDR-0092 "GOALS"): per trial the goals' means weighed
@@ -924,21 +1263,108 @@ impl Run {
         let (Job::Fight { spec, .. }, record) = self.job(generation, child, job)? else {
             return None;
         };
+        self.code(generation, spec, record)
+    }
+
+    /// A fight of generation `generation` as a code, under the rules it was fought under.
+    fn code(&self, generation: u32, spec: FightSpec, record: JobRecord) -> Option<FightCode> {
         let build_points = FightSetup::build(&self.content, &spec).ok()?.referee.build_points();
         let result = record.fight_result(build_points)?;
         let rules = self.records[generation as usize].rules.unwrap_or(self.rules);
         Some(FightCode::new(&self.content, rules, spec, result))
     }
 
-    /// Generation `generation`'s best child (the first of equal scores), its index among the generation's children.
+    /// Generation `generation`'s best child of yours (the first of equal scores), its index among the generation's
+    /// children.
     pub fn best_child(&self, generation: u32) -> Option<usize> {
+        self.best_of(generation, Camp::Yours)
+    }
+
+    /// Generation `generation`'s best child of a population (its champion), its index among the generation's
+    /// children.
+    pub fn best_of(&self, generation: u32, camp: Camp) -> Option<usize> {
+        let children = &self.records.get(generation as usize)?.children;
         let mut best: Option<(usize, f32)> = None;
-        for (k, c) in self.records.get(generation as usize)?.children.iter().enumerate() {
-            if best.is_none_or(|(_, s)| c.score > s) {
-                best = Some((k, c.score));
+        for k in self.children_of(generation, camp) {
+            if best.is_none_or(|(_, s)| children[k].score > s) {
+                best = Some((k, children[k].score));
             }
         }
         best.map(|(k, _)| k)
+    }
+
+    /// Where a population's children of generation `generation` are among its `children` (yours first, then THE
+    /// ENEMY's in an arms race).
+    pub fn children_of(&self, generation: u32, camp: Camp) -> Range<usize> {
+        let Some(r) = self.records.get(generation as usize) else { return 0..0 };
+        let first = r.enemy.as_ref().map_or(r.children.len(), |e| (e.first as usize).min(r.children.len()));
+        match camp {
+            Camp::Yours => 0..first,
+            Camp::Enemy => first..r.children.len(),
+        }
+    }
+
+    /// A population's champions so far: each generation's best child of it (genome numbers, each once, in order).
+    fn champions(&self, camp: Camp) -> Vec<u32> {
+        let mut out: Vec<u32> = Vec::new();
+        for g in 0..self.records.len() as u32 {
+            if let Some(k) = self.best_of(g, camp) {
+                let id = self.records[g as usize].children[k].genome;
+                if !out.contains(&id) {
+                    out.push(id);
+                }
+            }
+        }
+        out
+    }
+
+    /// PAST CHAMPIONS (GDR-0092) of generation `generation`, if it checked.
+    pub fn check(&self, generation: u32) -> Option<&Check> {
+        self.records.get(generation as usize)?.enemy.as_ref()?.check.as_ref()
+    }
+
+    /// The PAST CHAMPIONS line: per checked generation, how many of the other side's champions each best beat.
+    pub fn beaten(&self) -> Vec<Beaten> {
+        let seeds = self.coevolution().map_or(1, |(_, t)| t.seeds.max(1)) as usize;
+        let count = |jobs: &[JobRecord]| {
+            let beat = jobs.chunks(seeds).filter(|c| c.iter().map(|j| j.score).sum::<f32>() / c.len() as f32 > 0.5).count();
+            (beat as u32, jobs.len().div_ceil(seeds) as u32)
+        };
+        (0..self.records.len() as u32)
+            .filter_map(|g| {
+                let c = self.check(g)?;
+                let (mine, theirs) = c.jobs.split_at((c.their_champions.len() * seeds).min(c.jobs.len()));
+                Some(Beaten { generation: g, yours: count(mine), theirs: count(theirs) })
+            })
+            .collect()
+    }
+
+    /// The jobs of generation `generation`'s PAST CHAMPIONS check, rebuilt: the same jobs it ran.
+    pub fn check_jobs(&self, generation: u32) -> Option<Vec<Job>> {
+        self.jobs_of_check(self.check(generation)?)
+    }
+
+    /// A check's jobs: your best against each of their champions (every seed), then their best against each of yours.
+    fn jobs_of_check(&self, c: &Check) -> Option<Vec<Job>> {
+        let (_, kind) = &self.trials[self.coevolution()?.0];
+        let one = |id: u32| self.contestants(&[id]).and_then(|v| v.into_iter().next());
+        let theirs = self.contestants(&c.their_champions)?;
+        let mut jobs = kind.jobs(&one(c.yours)?, &GenCtx { starts: &self.start_entries, hall: &[], enemies: &theirs, fresh: None });
+        let ctx = GenCtx { starts: &self.start_entries, hall: &[], enemies: &[], fresh: None };
+        jobs.extend(kind.enemy_jobs(&one(c.theirs)?, &self.contestants(&c.your_champions)?, &ctx));
+        Some(jobs)
+    }
+
+    /// Job `job` of generation `generation`'s PAST CHAMPIONS check as a fight code (as [`Run::fight_code`]).
+    pub fn check_fight_code(&self, generation: u32, job: usize) -> Option<FightCode> {
+        let record = *self.check(generation)?.jobs.get(job)?;
+        let Job::Fight { spec, .. } = self.check_jobs(generation)?.into_iter().nth(job)? else { return None };
+        self.code(generation, spec, record)
+    }
+
+    /// The CO-EVOLUTION trial of an arms race: its index among the trials, and it.
+    fn coevolution(&self) -> Option<(usize, &TrialSpec)> {
+        self.trials.iter().enumerate().find(|(_, (t, _))| matches!(t.kind, Trial::CoEvolution)).map(|(k, (t, _))| (k, t))
     }
 
     /// Where genome `id` was last scored: its generation and its index among that generation's children (the
@@ -957,8 +1383,8 @@ impl Run {
             let Some(child) = record.children.iter().position(|c| c.genome == id) else { continue };
             let jobs = self.child_jobs(g as u32, child)?;
             for (job, rec) in jobs.iter().zip(&record.children[child].jobs) {
-                if let (Job::Fight { spec, .. }, JobEnd::Fight { decided: d, .. }) = (job, &rec.end)
-                    && spec.sides[0].entries.iter().all(|e| e.pilot.is_none())
+                if let (Job::Fight { spec, side, .. }, JobEnd::Fight { decided: d, .. }) = (job, &rec.end)
+                    && spec.sides[(*side as usize).min(1)].entries.iter().all(|e| e.pilot.is_none())
                 {
                     decided |= d;
                     fights += 1;
@@ -968,15 +1394,63 @@ impl Run {
         if fights == 0 {
             return None;
         }
-        let (text, dropped) = self.kit.tidy(genome.behavior_text(), decided, genome.root)?;
+        let (text, dropped) = self.kit_of(genome.root).tidy(genome.behavior_text(), decided, genome.root)?;
         Some((text, dropped, fights))
     }
 
+    /// EXPORT TO CONTENT (GDR-0092 "Saving evolved enemies"): THE ENEMY's genome `id` in the content ship format
+    /// (`data::export_text`) under the id `evolved_<faction>_<n>`, tagged `evolved` and `enemy`, with its `origin` (in
+    /// run `run`, from its start's content ship first), naming its behavior of the same id, which follows as a content
+    /// behavior file in a comment block. It goes into a pack's `ships/` (the behavior into `behaviors/`) by hand:
+    /// curated, never into voyages by itself (GDR-0032). `None` for a genome of yours, or none.
+    pub fn export_enemy(&self, id: u32, run: &str, n: u32) -> Option<String> {
+        if self.camp(id)? != Camp::Enemy {
+            return None;
+        }
+        let g = self.genome(id)?;
+        let key = format!("evolved_{}_{n}", g.blueprint.faction);
+        let (generation, score) = self.scored(id).map_or((0, 0.0), |(gn, k)| (gn, self.records[gn as usize].children[k].score));
+        let own = self.start_config(g.root);
+        let ids = |s: &Start| match s {
+            Start::Design { design: DesignRef::Ship(id), .. } => id.clone(),
+            Start::Design { design: DesignRef::Blueprint(text), .. } => data::parse_blueprint(text).map_or_else(|_| String::new(), |b| b.id),
+            Start::Random { faction } => faction.clone(),
+        };
+        let mut from: Vec<String> = own.into_iter().map(ids).collect();
+        from.extend(self.config.enemy.iter().flat_map(|e| &e.starts).filter(|s| Some(*s) != own).map(ids));
+        let (target, rules) = Program::parse(&g.behavior).ok()?.to_parts();
+        let behavior = data::Behavior {
+            id: key.clone(),
+            name: g.blueprint.name.clone(),
+            summary: format!("Evolved in an arms race of the evolution lab: generation {generation}, score {score:.2}."),
+            description: None,
+            lore: None,
+            tags: g.blueprint.tags.clone(),
+            target,
+            rules,
+            source: Default::default(),
+        };
+        let ship = Blueprint {
+            id: key.clone(),
+            behavior: Some(key),
+            origin: Some(data::Origin { run: run.to_string(), genome: id, generation, from, score }),
+            ..g.blueprint
+        };
+        Some(data::export_text(&ship, Some(&behavior)))
+    }
+
     /// VALIDATE (GDR-0092): `genomes` (the archive's best [`VALIDATE_BEST`], or the picked one) fight the run's trials
-    /// on `seeds` new seeds each (the ones after each trial's own), against the starts and today's hall of fame, and
-    /// their recorded fights again under today's rules. `None` for a genome never scored.
+    /// on `seeds` new seeds each (the ones after each trial's own), against the starts, today's hall of fame and, in an
+    /// arms race, THE ENEMY's best `elites + hall` today (no draws), and their recorded fights again under today's
+    /// rules. `None` for a genome never scored, or one of THE ENEMY's (its designs are scored only against yours).
     pub fn validation(&self, genomes: &[u32], seeds: u32) -> Option<Validation> {
         let hall: Vec<Entry> = self.hall_of_fame().iter().map(|e| genome_entry(&e.genome, 1)).collect();
+        let foes = match (&self.enemy, &self.config.enemy) {
+            (Some(e), Some(pop)) if !e.archive.cells().is_empty() => {
+                self.contestants(&e.archive.top((pop.elites + pop.hall) as usize).iter().map(|e| e.id).collect::<Vec<_>>())?
+            }
+            _ => self.start_contestants(Camp::Enemy),
+        };
         let mut v = Validation {
             content: self.content.clone(),
             seeds,
@@ -988,13 +1462,16 @@ impl Run {
             active: None,
         };
         for &id in genomes {
+            if self.camp(id)? == Camp::Enemy {
+                return None;
+            }
             let g = self.genome(id)?;
             let (generation, child) = self.scored(id)?;
             let stats = self.kit.assess(&self.content, &g).ok()?;
             let root = &self.kit.roots[g.root as usize];
             let cheap = cheapness(stats.build_points, root.build_points.unwrap_or(root.start_bp));
             let me = Contestant { entry: genome_entry(&g, 1), build_points: stats.build_points };
-            let ctx = GenCtx { starts: &self.start_entries, hall: &hall, fresh: Some(seeds) };
+            let ctx = GenCtx { starts: &self.start_entries, hall: &hall, enemies: &foes, fresh: Some(seeds) };
             let k = v.genomes.len();
             let mut tags = Vec::new();
             for (t, (_, kind)) in self.trials.iter().enumerate().filter(|(_, (spec, _))| spec.weight != 0.0) {
@@ -1072,10 +1549,11 @@ impl Run {
     }
 
     /// A genome's jobs, each with its trial: every trial in order, each its opponents (or voyages) and seeds, against
-    /// the run's starts and the generation's hall of fame `hall`; `build_points` are the genome's.
-    fn jobs_of(&self, g: &Genome, build_points: f32, hall: &[Entry]) -> Vec<(u32, Job)> {
+    /// the run's starts, the generation's hall of fame `hall` and THE ENEMY's frozen set `foes`; `build_points` are the
+    /// genome's.
+    fn jobs_of(&self, g: &Genome, build_points: f32, hall: &[Entry], foes: &[Contestant]) -> Vec<(u32, Job)> {
         let me = Contestant { entry: genome_entry(g, 1), build_points };
-        let ctx = GenCtx { starts: &self.start_entries, hall, fresh: None };
+        let ctx = GenCtx { starts: &self.start_entries, hall, enemies: foes, fresh: None };
         let mut jobs = Vec::new();
         // A trial of weight 0 counts nothing, so it is not fought.
         for (k, (_, t)) in self.trials.iter().enumerate().filter(|(_, (spec, _))| spec.weight != 0.0) {
@@ -1084,100 +1562,48 @@ impl Run {
         jobs
     }
 
-    /// One child: crossover (sometimes) and mutations of a random elite (generation 0: of a start, shared out
-    /// evenly), of the genes `genes` may change; its behavior cut to its design's rule slots. `None` when the
-    /// pre-filter refused every try; `rejected` counts the refusals. With the child, how it was bred.
-    fn child(&mut self, genes: &Genes, made: usize, rejected: &mut u32) -> Option<(Genome, Stats, Bred)> {
-        let may = genes.may_change();
-        let content = &self.content;
-        let n = self.starts.len();
-        let elites: Vec<(u32, &Genome)> = if self.archive.cells().is_empty() {
-            let k = made.saturating_sub(n) % n;
-            vec![(k as u32, &self.starts[k])]
-        } else {
-            self.archive.cells().values().map(|e| (e.id, &e.genome)).collect()
-        };
-        for _ in 0..CHILD_TRIES {
-            let rng = &mut self.rng;
-            let (id, a) = elites[rng.below(elites.len() as u32) as usize];
-            let mut g = a.clone();
-            let mut partner = None;
-            if elites.len() > 1 && rng.chance(self.config.crossover) {
-                let (bid, b) = elites[rng.below(elites.len() as u32) as usize];
-                if may.design()
-                    && let Some(c) = self.kit.cross_design(content, &g, b, rng)
-                {
-                    g = c;
-                    partner = Some(bid);
-                }
-                if may.behavior() {
-                    let slots = content.ship_rule_slots(&g.blueprint);
-                    if let Some(t) = self.kit.cross_behavior(&g.behavior, &b.behavior, slots, g.root, rng) {
-                        g.behavior = t;
-                        partner = Some(bid);
-                    }
-                }
-                if may.assists()
-                    && let Some(c) = self.kit.cross_assists(&g, b, rng)
-                {
-                    g = c;
-                    partner = Some(bid);
-                }
-            }
-            let mutations = 1 + rng.below(self.config.mutations);
-            for _ in 0..mutations {
-                if let Some(m) = self.kit.mutate(content, &g, &may, rng) {
-                    g = m;
-                }
-            }
-            // A design change may have cost rule slots: the lowest unlocked rules go.
-            match self.kit.fit_rules(&g.behavior, content.ship_rule_slots(&g.blueprint), g.root) {
-                Some(t) => g.behavior = t,
-                None => {
-                    *rejected += 1;
-                    continue;
-                }
-            }
-            if g == *a {
-                *rejected += 1;
-                continue;
-            }
-            match self.kit.assess(content, &g) {
-                Ok(stats) => {
-                    let (removed, added) = lineage::diff(&a.frame_parts(), &g.frame_parts());
-                    let bred = Bred {
-                        generation: self.history.len() as u32,
-                        root: g.root,
-                        parent: Some(id),
-                        partner,
-                        removed,
-                        added,
-                        behavior: (g.behavior != a.behavior).then(|| g.behavior.clone()),
-                        assists: (g.blueprint.assists != a.blueprint.assists)
-                            .then(|| g.blueprint.assists.clone().unwrap_or(AssistList { rules: Vec::new() })),
-                        size: g.blueprint.size,
-                    };
-                    return Some((g, stats, bred));
-                }
-                Err(_) => *rejected += 1,
-            }
-        }
-        None
+    /// An enemy's jobs (THE ENEMY's genome on side 1) against your frozen set `rivals`, tagged with the CO-EVOLUTION
+    /// trial; `build_points` are the genome's.
+    fn enemy_jobs_of(&self, g: &Genome, build_points: f32, rivals: &[Contestant]) -> Vec<(u32, Job)> {
+        let Some((k, _)) = self.coevolution() else { return Vec::new() };
+        let me = Contestant { entry: genome_entry(g, 1), build_points };
+        let ctx = GenCtx { starts: &self.start_entries, hall: &[], enemies: &[], fresh: None };
+        self.trials[k].1.enemy_jobs(&me, rivals, &ctx).into_iter().map(|j| (k as u32, j)).collect()
     }
 
-    /// Opens the next generation: its stage, the random stream's state, the hall of fame it fights, and in
-    /// generation 0 the starts as its first children.
+    /// One child of a population (yours of the stage's genes `genes`, or THE ENEMY's of its own on its own stream), see
+    /// [`breed`].
+    fn child(&mut self, camp: Camp, genes: &Genes, made: usize, rejected: &mut u32) -> Option<(Genome, Stats, Bred)> {
+        let generation = self.history.len() as u32;
+        let (crossover, mutations) = (self.config.crossover, self.config.mutations);
+        let content = &self.content;
+        match (camp, &mut self.enemy, &self.config.enemy) {
+            (Camp::Enemy, Some(e), Some(pop)) => {
+                let b = Breeder { content, kit: &e.kit, starts: &e.starts, archive: &e.archive, crossover, mutations, generation };
+                breed(&b, &mut e.rng, &Genes::MayChange(pop.evolve.clone()), made, rejected)
+            }
+            _ => {
+                let b = Breeder { content, kit: &self.kit, starts: &self.starts, archive: &self.archive, crossover, mutations, generation };
+                breed(&b, &mut self.rng, genes, made, rejected)
+            }
+        }
+    }
+
+    /// Opens the next generation: its stage, the random stream's state, the hall of fame it fights, an arms race's
+    /// frozen sets, and in generation 0 the starts as its first children (THE ENEMY's come after your children).
     fn open(&mut self) -> Batch {
         let g = self.generation();
         let stage = self.stage_of(g);
         let top = self.hall_of_fame();
+        let opponents = top.iter().map(|e| e.id).collect();
+        let hall = top.iter().map(|e| genome_entry(&e.genome, 1)).collect();
         let mut b = Batch {
             stage,
             genes: self.stages[stage].0.clone(),
             from: self.rng.clone(),
             first: self.table.len(),
-            opponents: top.iter().map(|e| e.id).collect(),
-            hall: top.iter().map(|e| genome_entry(&e.genome, 1)).collect(),
+            opponents,
+            hall,
             candidates: Vec::new(),
             failed: 0,
             rejected: 0,
@@ -1188,16 +1614,30 @@ impl Run {
             next: 0,
             active: None,
             rescore: self.rescore,
+            rivalry: self.freeze(),
         };
         if self.rescore {
-            // Every elite again in cell order; one that no longer builds or passes (a part the content lost) is left
-            // out, counted as refused.
+            // Every elite again in cell order (yours, then THE ENEMY's); one that no longer builds or passes (a part
+            // the content lost) is left out, counted as refused.
             let elites: Vec<Elite> = self.archive.cells().values().cloned().collect();
             for e in elites {
                 match self.kit.assess(&self.content, &e.genome) {
                     Ok(stats) => self.add_jobs(&mut b, Candidate { genome: e.genome, id: e.id, stats }),
                     Err(_) => b.rejected += 1,
                 }
+            }
+            let first = b.candidates.len();
+            let theirs: Vec<Elite> = self.enemy.as_ref().map_or_else(Vec::new, |e| e.archive.cells().values().cloned().collect());
+            let mut rejected = 0;
+            for e in theirs {
+                match self.kit_of(e.genome.root).assess(&self.content, &e.genome) {
+                    Ok(stats) => self.add_jobs(&mut b, Candidate { genome: e.genome, id: e.id, stats }),
+                    Err(_) => rejected += 1,
+                }
+            }
+            if let Some(r) = &mut b.rivalry {
+                r.first = Some(first);
+                r.rejected = rejected;
             }
             return b;
         }
@@ -1218,29 +1658,119 @@ impl Run {
         b
     }
 
-    /// Every child of the generation is bred (or given up); a RE-SCORE breeds none.
-    fn bred(&self, b: &Batch) -> bool {
-        b.rescore || b.candidates.len() + b.failed >= self.config.population as usize
+    /// An arms race's frozen sets for the generation opening now (GDR-0092 "How they are paired"): for your children
+    /// THE ENEMY's best `elites` and `hall` of its past champions, for its children your best `elites`, `hall` of
+    /// yours and (`anchor`) your starts; a side's starts while its archive is empty (generation 0). The champions are
+    /// drawn uniformly over the whole history on the enemy's stream (its first, then yours), each once and none
+    /// that is among the best already.
+    fn freeze(&mut self) -> Option<Frozen> {
+        let pop = self.config.enemy.as_ref()?;
+        let (elites, hall, anchor) = (pop.elites as usize, pop.hall as usize, pop.anchor);
+        let (theirs, yours) = (self.champions(Camp::Enemy), self.champions(Camp::Yours));
+        let n = self.starts.len() as u32;
+        let e = self.enemy.as_mut()?;
+        let from = e.rng.clone();
+        let draw = |archive: &Archive, champions: Vec<u32>, rng: &mut Pcg32| -> Vec<u32> {
+            let mut ids: Vec<u32> = archive.top(elites).iter().map(|e| e.id).collect();
+            let mut pool: Vec<u32> = champions.into_iter().filter(|c| !ids.contains(c)).collect();
+            for k in 0..hall.min(pool.len()) {
+                let j = k + rng.below((pool.len() - k) as u32) as usize;
+                pool.swap(k, j);
+                ids.push(pool[k]);
+            }
+            ids
+        };
+        let opponents = match e.archive.cells().is_empty() {
+            true => (n..n + e.starts.len() as u32).collect(),
+            false => draw(&e.archive, theirs, &mut e.rng),
+        };
+        let mut rivals = match self.archive.cells().is_empty() {
+            true => (0..n).collect(),
+            false => draw(&self.archive, yours, &mut e.rng),
+        };
+        if anchor {
+            for k in 0..n {
+                if !rivals.contains(&k) {
+                    rivals.push(k);
+                }
+            }
+        }
+        let foes = self.contestants(&opponents).expect("the enemy's genomes rebuild");
+        let friends = self.contestants(&rivals).expect("your genomes rebuild");
+        Some(Frozen { from, opponents, foes, rivals, friends, first: None, failed: 0, rejected: 0, check: None })
     }
 
-    /// Breeds the generation's next child: into the table and the batch with its jobs, or given up.
+    /// Your children of the generation are bred (or given up).
+    fn yours_bred(&self, b: &Batch) -> bool {
+        b.rivalry.as_ref().and_then(|r| r.first).unwrap_or(b.candidates.len()) + b.failed >= self.config.population as usize
+    }
+
+    /// Every child of the generation is bred (or given up), THE ENEMY's too; a RE-SCORE breeds none.
+    fn bred(&self, b: &Batch) -> bool {
+        let theirs = |r: &Frozen| {
+            let pop = self.config.enemy.as_ref().map_or(0, |e| e.population as usize);
+            r.first.is_some_and(|first| b.candidates.len() - first + r.failed >= pop)
+        };
+        b.rescore || (self.yours_bred(b) && b.rivalry.as_ref().is_none_or(theirs))
+    }
+
+    /// Breeds the generation's next child: into the table and the batch with its jobs, or given up. Yours first; then
+    /// in an arms race THE ENEMY's (its starts first in generation 0), and once the last is bred PAST CHAMPIONS' jobs.
     fn breed_child(&mut self, b: &mut Batch) {
-        let made = b.candidates.len() + b.failed;
-        match self.child(&b.genes, made, &mut b.rejected) {
-            Some((genome, stats, bred)) => {
-                let id = self.table.len() as u32;
-                self.table.push(bred);
-                self.add_jobs(b, Candidate { genome, id, stats });
+        let camp = if self.yours_bred(b) { Camp::Enemy } else { Camp::Yours };
+        if camp == Camp::Enemy {
+            let r = b.rivalry.as_mut().expect("only an arms race breeds after your children");
+            if r.first.is_none() {
+                r.first = Some(b.candidates.len());
+                if self.history.is_empty() {
+                    let starts = self.enemy.as_ref().map_or_else(Vec::new, |e| e.starts.clone());
+                    for s in starts {
+                        let stats = self.kit_of(s.root).assess(&self.content, &s).expect("the starts passed the pre-filter in Run::new");
+                        self.add_jobs(b, Candidate { id: s.root, genome: s, stats });
+                    }
+                }
+                if self.bred(b) {
+                    self.add_check(b);
+                }
+                return;
             }
-            // A child whose every try was refused stays out: the generation is that much smaller.
-            None => b.failed += 1,
+        }
+        let made = match (camp, &b.rivalry) {
+            (Camp::Enemy, Some(r)) => b.candidates.len() - r.first.unwrap_or(0) + r.failed,
+            _ => b.candidates.len() + b.failed,
+        };
+        let mut rejected = 0;
+        let child = self.child(camp, &b.genes, made, &mut rejected);
+        let gave_up = child.is_none() as usize;
+        match (camp, &mut b.rivalry) {
+            (Camp::Enemy, Some(r)) => {
+                r.rejected += rejected;
+                r.failed += gave_up;
+            }
+            _ => {
+                b.rejected += rejected;
+                // A child whose every try was refused stays out: the generation is that much smaller.
+                b.failed += gave_up;
+            }
+        }
+        if let Some((genome, stats, bred)) = child {
+            let id = self.table.len() as u32;
+            self.table.push(bred);
+            self.add_jobs(b, Candidate { genome, id, stats });
+        }
+        if camp == Camp::Enemy && self.bred(b) {
+            self.add_check(b);
         }
     }
 
     fn add_jobs(&self, b: &mut Batch, c: Candidate) {
         let k = b.candidates.len() as u32;
         let start = b.jobs.len();
-        for (t, mut j) in self.jobs_of(&c.genome, c.stats.build_points, &b.hall) {
+        let jobs = match (&b.rivalry, self.camp_of(c.genome.root)) {
+            (Some(r), Camp::Enemy) => self.enemy_jobs_of(&c.genome, c.stats.build_points, &r.friends),
+            (r, _) => self.jobs_of(&c.genome, c.stats.build_points, &b.hall, r.as_ref().map_or(&[], |r| &r.foes)),
+        };
+        for (t, mut j) in jobs {
             j.set_candidate(k);
             b.jobs.push(j);
             b.trial_of.push(t);
@@ -1250,22 +1780,55 @@ impl Run {
         b.candidates.push(c);
     }
 
-    /// Scores the generation's children from their results, offers each to the archive in order, records the
-    /// generation.
+    /// PAST CHAMPIONS (GDR-0092): every `check_every`th generation (not the first, nor a RE-SCORE) both archives' bests
+    /// fight the other side's champions of every `champions_every`th generation so far, after the children's jobs.
+    fn add_check(&self, b: &mut Batch) {
+        let g = self.generation();
+        let (Some(pop), Some(e)) = (&self.config.enemy, &self.enemy) else { return };
+        if b.rescore || g == 0 || pop.check_every == 0 || !g.is_multiple_of(pop.check_every) {
+            return;
+        }
+        let (Some(yours), Some(theirs), Some((trial, _))) = (self.archive.best(), e.archive.best(), self.coevolution()) else { return };
+        let every = |camp: Camp| -> Vec<u32> {
+            (0..g).step_by(pop.champions_every as usize).filter_map(|k| self.best_of(k, camp).map(|c| self.records[k as usize].children[c].genome)).collect()
+        };
+        let check = Check { yours: yours.id, theirs: theirs.id, their_champions: every(Camp::Enemy), your_champions: every(Camp::Yours), jobs: Vec::new() };
+        let Some(jobs) = self.jobs_of_check(&check) else { return };
+        let start = b.jobs.len();
+        let candidate = b.candidates.len() as u32;
+        for mut j in jobs {
+            j.set_candidate(candidate);
+            b.jobs.push(j);
+            b.trial_of.push(trial as u32);
+            b.results.push(None);
+        }
+        let end = b.jobs.len();
+        if let Some(r) = &mut b.rivalry {
+            r.check = Some((check, start..end));
+        }
+    }
+
+    /// Scores the generation's children from their results, offers each to its population's archive in order,
+    /// records the generation.
     fn close(&mut self, b: Batch) {
         let generation = self.generation();
-        let mut best = 0.0f32;
-        let mut sum = 0.0f64;
-        let mut improved = 0;
-        let mut ticks = 0;
-        let mut children = Vec::with_capacity(b.candidates.len());
         if b.rescore {
             self.archive = Archive::new(self.config.archive.clone());
+            if let (Some(e), Some(pop)) = (&mut self.enemy, &self.config.enemy) {
+                e.archive = Archive::new(pop.archive.clone());
+            }
             self.rescore = false;
         }
-        for (c, range) in b.candidates.into_iter().zip(&b.ranges) {
+        let first = b.rivalry.as_ref().and_then(|r| r.first).unwrap_or(b.candidates.len());
+        let trial = self.coevolution().map_or(0, |(k, _)| k);
+        // Per population: the best and the sum of the scores, the children that took a cell.
+        let (mut best, mut sum, mut improved) = ([0.0f32; 2], [0.0f64; 2], [0u32; 2]);
+        let mut ticks = 0;
+        let mut children = Vec::with_capacity(b.candidates.len());
+        for (k, (c, range)) in b.candidates.into_iter().zip(&b.ranges).enumerate() {
+            let side = (k >= first) as usize;
             // CHEAP is the design's: its build points against its start's limit (else the start's own).
-            let root = &self.kit.roots[c.genome.root as usize];
+            let root = self.kit_of(c.genome.root).root(c.genome.root).expect("a genome's start");
             let cheap = cheapness(c.stats.build_points, root.build_points.unwrap_or(root.start_bp));
             let rs: Vec<JobResult> = b.results[range.clone()]
                 .iter()
@@ -1276,7 +1839,10 @@ impl Run {
                 })
                 .collect();
             let goals: Vec<GoalScores> = rs.iter().map(|r| r.goals).collect();
-            let score = self.combine(&b.trial_of[range.clone()], &goals).0;
+            let score = match side {
+                0 => self.combine(&b.trial_of[range.clone()], &goals).0,
+                _ => enemy_score(trial, &goals).0,
+            };
             let samples: u32 = rs.iter().map(|r| r.engage_samples).sum();
             let engage = if samples > 0 {
                 rs.iter().map(|r| r.engage_sum as f64).sum::<f64>() as f32 / samples as f32
@@ -1284,27 +1850,13 @@ impl Run {
                 0.0
             };
             ticks += rs.iter().map(|r| r.ticks).sum::<u64>();
-            best = best.max(score);
-            sum += score as f64;
-            let s = c.stats;
-            let measures: Vec<f32> = self
-                .archive
-                .shape()
-                .axes
-                .iter()
-                .map(|a| match a.measure {
-                    Measure::TopSpeed => s.top_speed,
-                    Measure::Acceleration => s.acceleration,
-                    Measure::WeaponReach => s.reach,
-                    Measure::BuildPoints => s.build_points,
-                    Measure::Mass => s.mass,
-                    Measure::Firepower => s.firepower,
-                    Measure::HitPoints => s.hit_points,
-                    Measure::Parts => s.parts as f32,
-                    Measure::Rules => s.rules as f32,
-                    Measure::EngageDistance => engage,
-                })
-                .collect();
+            best[side] = best[side].max(score);
+            sum[side] += score as f64;
+            let archive = match (side, &mut self.enemy) {
+                (1, Some(e)) => &mut e.archive,
+                _ => &mut self.archive,
+            };
+            let measures = measures(archive.shape(), &c.stats, engage);
             let elite = Elite {
                 genome: c.genome,
                 id: c.id,
@@ -1313,8 +1865,8 @@ impl Run {
                 // Bred then (a re-scored elite keeps its own generation).
                 generation: self.table[c.id as usize].generation,
             };
-            let took = self.archive.offer(elite);
-            improved += took as u32;
+            let took = archive.offer(elite);
+            improved[side] += took as u32;
             children.push(ChildRecord {
                 genome: c.id,
                 score,
@@ -1323,31 +1875,68 @@ impl Run {
                 jobs: rs.iter().map(|r| JobRecord::of(r, self.keeps_goals())).collect(),
             });
         }
-        let evaluated = b.ranges.len() as u32;
+        let check = b.rivalry.as_ref().and_then(|r| r.check.clone()).map(|(mut check, range)| {
+            let rs: Vec<JobResult> = b.results[range].iter().map(|r| r.expect("every job done")).collect();
+            ticks += rs.iter().map(|r| r.ticks).sum::<u64>();
+            check.jobs = rs.iter().map(|r| JobRecord::of(r, self.keeps_goals())).collect();
+            check
+        });
+        let evaluated = [first as u32, (b.ranges.len() - first) as u32];
+        let mean = |side: usize| if evaluated[side] > 0 { (sum[side] / evaluated[side] as f64) as f32 } else { 0.0 };
+        let enemy = match (&b.rivalry, &self.enemy) {
+            (Some(r), Some(e)) => Some(EnemyStats {
+                evaluated: evaluated[1],
+                rejected: r.rejected,
+                best: best[1],
+                mean: mean(1),
+                archive_best: e.archive.best().map_or(0.0, |e| e.score),
+                filled: e.archive.cells().len() as u32,
+                improved: improved[1],
+            }),
+            _ => None,
+        };
         self.history.push(GenerationStats {
             generation,
             stage: b.stage,
             genes: b.genes.clone(),
-            evaluated,
+            evaluated: evaluated[0],
             rejected: b.rejected,
-            best,
-            mean: if evaluated > 0 {
-                (sum / evaluated as f64) as f32
-            } else {
-                0.0
-            },
+            best: best[0],
+            mean: mean(0),
             archive_best: self.archive.best().map_or(0.0, |e| e.score),
             filled: self.archive.cells().len() as u32,
-            improved,
+            improved: improved[0],
             ticks,
             rescore: b.rescore,
+            enemy,
         });
         self.records.push(GenerationRecord {
             opponents: b.opponents,
             children,
             rules: None,
+            enemy: b.rivalry.map(|r| Rivalry { opponents: r.opponents, rivals: r.rivals, first: first as u32, check }),
         });
     }
+}
+
+/// A design's value of each of an archive's measures.
+fn measures(shape: &ArchiveShape, s: &Stats, engage: f32) -> Vec<f32> {
+    shape
+        .axes
+        .iter()
+        .map(|a| match a.measure {
+            Measure::TopSpeed => s.top_speed,
+            Measure::Acceleration => s.acceleration,
+            Measure::WeaponReach => s.reach,
+            Measure::BuildPoints => s.build_points,
+            Measure::Mass => s.mass,
+            Measure::Firepower => s.firepower,
+            Measure::HitPoints => s.hit_points,
+            Measure::Parts => s.parts as f32,
+            Measure::Rules => s.rules as f32,
+            Measure::EngageDistance => engage,
+        })
+        .collect()
 }
 
 impl Validation {

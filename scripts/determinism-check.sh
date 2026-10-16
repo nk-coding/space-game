@@ -19,7 +19,7 @@
 # ends as recorded (`# record=as recorded`); its files are named after a short hash of the code.
 #
 # `--run NAME` runs arena's `run_hashes` example: the run file crates/core/arena/runs/NAME.ron (two_starts_locked,
-# mixed_trials, everything) with its seed replaced (default 1), one line per generation (the hash of the run file after it), straight through in
+# mixed_trials, everything, arms_race) with its seed replaced (default 1), one line per generation (the hash of the run file after it), straight through in
 # slices; the example also interrupts it after --resume-at generations (default 3), writes and reads the run file,
 # restores it, runs on and fails unless every later generation hashes the same (GDR-0092).
 #

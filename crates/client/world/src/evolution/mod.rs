@@ -30,7 +30,7 @@
 
 pub mod store;
 
-use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, FlownBy, Goals, Limits, Locks, MayChange, Measure, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
+use arena::evolve::{ArchiveShape, Axis, Bound, Camp, Evolve, FlownBy, Goals, Limits, Locks, MayChange, Measure, Population, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
 use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
@@ -297,15 +297,16 @@ pub struct Size {
 }
 
 /// A trial as the setup picks it (GDR-0092 "TRIALS"): a `lab.ron` preset, on or off, its weight and seeds, and what the
-/// setup may change of what it fights: ENEMY SHIPS' count of each enemy ship, how many of the best HALL OF FAME and
-/// CHAMPIONS fight, how many waves TEST-RANGE WAVES must clear.
+/// setup may change of what it fights: ENEMY SHIPS' count of each enemy ship, the ARMS RACE's enemy ships it starts
+/// from (1: picked), how many of the best HALL OF FAME and CHAMPIONS fight, how many waves TEST-RANGE WAVES must clear.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrialPick {
     pub preset: String,
     pub on: bool,
     pub weight: f32,
     pub seeds: u32,
-    /// ENEMY SHIPS: every content ship tagged `enemy` and how many of it a fight has (0: not fought).
+    /// ENEMY SHIPS: every content ship tagged `enemy` and how many of it a fight has (0: not fought); the ARMS RACE:
+    /// each of them 1 when the enemy starts from it.
     pub ships: Vec<(String, u32)>,
     /// HALL OF FAME, CHAMPIONS: how many; TEST-RANGE WAVES: the waves to clear.
     pub count: Option<u32>,
@@ -342,8 +343,26 @@ impl TrialPick {
                 let minutes = p.time_limit.unwrap_or(arena::DEFAULT_VOYAGE_MINUTES);
                 (src.open_voyages.len(), minutes * 60.0 * sim::TICK_HZ as f32 * VOYAGE_SHARE)
             }
+            // The enemy's best and its past champions (its starts in generation 0).
+            TrialPresetKind::CoEvolution { elites, hall, .. } => ((elites + hall) as usize, fight * FIGHT_SHARE),
         };
         (opponents as u32 * self.seeds, ticks)
+    }
+
+    /// The ARMS RACE's enemy ships it starts from.
+    pub fn picked(&self) -> Vec<String> {
+        self.ships.iter().filter(|s| s.1 > 0).map(|s| s.0.clone()).collect()
+    }
+
+    /// The ARMS RACE, on: its enemy's children a generation, the jobs each gets and their ticks on average (your best,
+    /// your past champions and, as the anchor, your `starts`).
+    pub fn enemy_cost(&self, content: &Content, population: u32, starts: usize) -> Option<(u32, u32, f32)> {
+        let p = self.preset(content).filter(|_| self.on && self.weight > 0.0)?;
+        let TrialPresetKind::CoEvolution { size, elites, hall, anchor, .. } = p.kind else { return None };
+        let children = ((population as f32 * size).round() as u32).max(self.picked().len() as u32);
+        let rivals = elites + hall + if anchor { starts as u32 } else { 0 };
+        let fight = p.time_limit.unwrap_or(arena::DEFAULT_TIME_LIMIT) * sim::TICK_HZ as f32;
+        Some((children, rivals * self.seeds, fight * FIGHT_SHARE))
     }
 }
 
@@ -410,6 +429,11 @@ impl Setup {
                             (id, n)
                         })
                         .collect(),
+                    // The enemy starts from the first enemy faction's ships, its bosses only when picked.
+                    TrialPresetKind::CoEvolution { .. } => {
+                        let picked = arena::evolve::enemy_starts(content);
+                        enemies(content).into_iter().map(|id| (id.clone(), picked.contains(&id) as u32)).collect()
+                    }
                     _ => Vec::new(),
                 };
                 let count = match &p.kind {
@@ -447,11 +471,18 @@ impl Setup {
         })
     }
 
+    /// The ARMS RACE's enemy, when it is on: its children a generation, the jobs each gets and their ticks on average.
+    pub fn enemy_cost(&self, content: &Content) -> Option<(u32, u32, f32)> {
+        self.trials.iter().find_map(|t| t.enemy_cost(content, self.size.population, self.starts.len()))
+    }
+
     /// About how many ticks of work the whole run is (every job lasting its kind's share of its time limit, breeding at
-    /// `BREED_COST` a child).
+    /// `BREED_COST` a child; an arms race's enemy too).
     pub fn ticks(&self, content: &Content, src: &Sources) -> f64 {
         let (_, child) = self.per_child(content, src);
-        self.size.generations as f64 * self.size.population as f64 * (child + arena::evolve::BREED_COST as f64)
+        let breed = arena::evolve::BREED_COST as f64;
+        let enemy = self.enemy_cost(content).map_or(0.0, |(n, jobs, ticks)| n as f64 * (jobs as f64 * ticks as f64 + breed));
+        self.size.generations as f64 * (self.size.population as f64 * (child + breed) + enemy)
     }
 
     /// The run's configuration with these starts (resolved, in order), under the career's limits: only the parts,
@@ -468,9 +499,14 @@ impl Setup {
             Flier::Both => FlownBy::Both(pilot()?),
         };
         let mut trials = Vec::new();
+        let mut enemy = None;
+        let population = self.size.population.max(starts.len() as u32);
         for pick in self.trials.iter().filter(|t| t.on && t.weight > 0.0) {
             let p = pick.preset(content).ok_or_else(|| format!("no trial `{}`", pick.preset))?;
             let t = TrialSpec::from_preset(&p, pick.weight, pick.seeds, self.escorts, src)?;
+            if matches!(p.kind, TrialPresetKind::CoEvolution { .. }) {
+                enemy = Some(Population::from_preset(content, &p, &pick.picked(), population)?);
+            }
             trials.push(TrialSpec { flown_by: if t.fights() { flown_by.clone() } else { FlownBy::Behavior }, ..t });
         }
         if trials.is_empty() {
@@ -502,7 +538,7 @@ impl Setup {
             seed: self.seed,
             evolve: Evolve::MayChange(self.may_change.clone()),
             generations: Some(self.size.generations),
-            population: self.size.population.max(starts.len() as u32),
+            population,
             fitness: None,
             trials,
             goals: self.goals,
@@ -512,6 +548,7 @@ impl Setup {
             archive,
             crossover: arena::evolve::DEFAULT_CROSSOVER,
             mutations: arena::evolve::DEFAULT_MUTATIONS,
+            enemy,
         })
     }
 }
@@ -1205,11 +1242,15 @@ pub enum SaveTo<'a> {
     Replace,
 }
 
-/// The ids a run's starts go by in an origin: a content ship's, a saved design's (its blueprint's id; an unsaved
-/// working design's the slug of its name), a random start's faction.
-fn start_ids(run: &Run) -> Vec<String> {
-    run.config()
-        .all_starts()
+/// The ids a population's starts go by in an origin (yours; THE ENEMY's in an arms race): a content ship's, a saved
+/// design's (its blueprint's id; an unsaved working design's the slug of its name), a random start's faction.
+fn start_ids(run: &Run, camp: Camp) -> Vec<String> {
+    let starts: Vec<&Start> = match camp {
+        Camp::Yours => run.config().all_starts().collect(),
+        Camp::Enemy => run.config().enemy.iter().flat_map(|e| &e.starts).collect(),
+    };
+    starts
+        .into_iter()
         .map(|s| match s {
             Start::Design { design: DesignRef::Ship(id), .. } => id.clone(),
             Start::Design { design: DesignRef::Blueprint(text), .. } => data::parse_blueprint(text).map_or_else(|_| String::new(), |b| if b.id.is_empty() { library::slug(&b.name) } else { b.id }),
@@ -1223,13 +1264,14 @@ fn start_ids(run: &Run) -> Vec<String> {
 pub fn replace_target(storage: &Storage, loaded: &Loaded, genome: u32) -> Option<(String, String)> {
     let root = loaded.run.table().get(genome as usize)?.root as usize;
     let Start::Design { design: DesignRef::Blueprint(_), .. } = loaded.run.config().all_starts().nth(root)? else { return None };
-    let id = start_ids(&loaded.run).into_iter().nth(root).filter(|id| !id.is_empty())?;
+    let id = start_ids(&loaded.run, Camp::Yours).into_iter().nth(root).filter(|id| !id.is_empty())?;
     let doc = storage.read::<DesignDoc>(&id).ok()??;
     Some((id, doc.doc.0.name))
 }
 
 /// SAVE AS DESIGN: genome `genome` of run `loaded` into YOUR DESIGNS (as a new design, or over its start: [`SaveTo`]),
-/// in its start's frame (as the drydock saves designs), tagged `evolved`, with its `origin`. When its behavior evolved
+/// in its start's frame (as the drydock saves designs), tagged `evolved` (an arms race's enemy also `enemy`, its faction
+/// kept: GDR-0092 "Saving evolved enemies"), with its `origin`. When its behavior evolved
 /// (or its start flew a player behavior no longer saved), the behavior is saved beside it as a player behavior,
 /// `<name> (evolved)`, and the design names it; else the design names its start's. `tidy`: an evolved behavior loses
 /// the rules that never decided in its fights (TIDY, `arena::Run::tidied`). Returns the design's id and the problems
@@ -1252,9 +1294,8 @@ pub fn save_as_design(
         Some((generation, child)) => (generation, run.state().records[generation as usize].children[child].score),
         None => (0, 0.0),
     };
-    let starts: Vec<&Start> = run.config().all_starts().collect();
-    let root = *starts.get(g.root as usize).ok_or("its start is gone")?;
-    let start_text = run.starts().get(g.root as usize).map(|s| s.behavior_text().to_string()).unwrap_or_default();
+    let root = run.start_config(g.root).ok_or("its start is gone")?;
+    let start_text = run.start(g.root).map(|s| s.behavior_text().to_string()).unwrap_or_default();
     let tidied = if tidy && g.behavior_text() != start_text { run.tidied(genome).map(|(text, ..)| text) } else { None };
     let text = tidied.as_deref().unwrap_or(g.behavior_text());
     let evolved = text != start_text;
@@ -1294,10 +1335,12 @@ pub fn save_as_design(
             Some(behaviors.save(storage, content, &b, now)?)
         }
     };
-    let mut from = start_ids(run);
-    // Its own start's first.
-    if (g.root as usize) < from.len() {
-        let own = from.remove(g.root as usize);
+    let camp = run.camp_of(g.root);
+    let mut from = start_ids(run, camp);
+    // Its own start's first (THE ENEMY's are numbered after yours).
+    let own = g.root as usize - if camp == Camp::Enemy { run.starts().len() } else { 0 };
+    if own < from.len() {
+        let own = from.remove(own);
         from.insert(0, own);
     }
     let bp = Blueprint {
@@ -1726,6 +1769,45 @@ mod tests {
         crate::storage::Backend::write(&mut old, "designs", "older", &format!("// space-game: designs, format 1, saved 5\n{text}")).unwrap();
         let old = Storage::new(old);
         assert_eq!(old.read::<DesignDoc>("older").unwrap().unwrap().doc.0.origin, None);
+    }
+
+    /// The ARMS RACE (GDR-0092 step 7): off by default; on, the setup's run has an enemy of the first enemy faction's
+    /// ships (its boss only when picked) at half the children, it computes and stores like any run, and an evolved
+    /// enemy saves as a design of its faction tagged `enemy`, with its origin.
+    #[test]
+    fn an_arms_race_runs_and_its_enemy_saves_as_a_design() {
+        let content = data::base_content();
+        let mut storage = mem();
+        let mut s = setup(&content);
+        let race = s.trials.iter().position(|t| t.preset == "arms_race").unwrap();
+        let fresh = Setup::new(&content, vec![StartPick::Template("rim_skiff".into())], 7).trials.swap_remove(race);
+        assert!(!fresh.on, "off by default");
+        assert_eq!(fresh.picked(), ["automaton_hunter", "automaton_raider"], "the warden is a boss");
+        s.trials[race] = fresh;
+        assert!(config(&content, &s, &storage).enemy.is_none());
+        s.trials[race].on = true;
+        assert_eq!(s.enemy_cost(&content).map(|(n, jobs, _)| (n, jobs)), Some((2, 12)), "2 children, (3 best + 2 champions + 1 start) × 2 seeds");
+        let cfg = config(&content, &s, &storage);
+        let enemy = cfg.enemy.clone().unwrap();
+        assert_eq!((enemy.starts.len(), enemy.population, enemy.palette.as_slice()), (2, 2, ["shield_emitter".to_string()].as_slice()));
+        let mut lab = Lab::load(&storage, &content, true);
+        let id = lab.create(&mut storage, &content, cfg, "Race", 10).unwrap();
+        while lab.running().is_some() {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+        }
+        let loaded = lab.get(&id).unwrap();
+        assert_eq!(file(&storage, &content, &id).to_ron(), RunSave { name: Some("Race".into()), created: Some(10), status: Some(RunStatus::Running), ..loaded.run.snapshot() }.to_ron(), "its parts are its run");
+        let theirs = loaded.run.enemy_archive().unwrap().best().unwrap().clone();
+        let mut behaviors = PlayerBehaviors::default();
+        let (saved, problems) = save_as_design(&mut storage, &content, &mut behaviors, loaded, theirs.id, SaveTo::New("Hunter evolved"), true, 99).unwrap();
+        assert!(problems.iter().all(|p| !p.is_error()), "{problems:?}");
+        let bp = storage.read::<DesignDoc>(&saved).unwrap().unwrap().doc.0;
+        assert_eq!(bp.faction, "automatons");
+        assert!(bp.tags.contains(&"enemy".to_string()) && bp.tags.contains(&"evolved".to_string()));
+        let origin = bp.origin.unwrap();
+        assert_eq!((origin.run.as_str(), origin.genome), (id.as_str(), theirs.id));
+        assert!(origin.from[0].starts_with("automaton_") && origin.from.len() == 2, "its own start first: {:?}", origin.from);
+        assert_eq!(replace_target(&storage, loaded, theirs.id), None, "an enemy replaces no design of yours");
     }
 
     /// REPLACE <START>: a genome of a saved design's run writes over that design, its id and name kept, with its

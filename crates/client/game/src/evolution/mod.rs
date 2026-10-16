@@ -254,7 +254,9 @@ fn open(
         }
         Some(LabRequest::Origin { run, genome }) => match lab.view(&storage, &content.0, Some(&run)) {
             Ok(()) => {
-                layer.run = run::RunPage::picking(genome);
+                // An evolved enemy's origin opens THE ENEMY's side.
+                let camp = lab.viewed().and_then(|l| l.run.camp(genome)).unwrap_or_default();
+                layer.run = run::RunPage::picking(genome, camp);
                 layer.go(Page::Run);
             }
             Err(e) => {

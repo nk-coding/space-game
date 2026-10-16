@@ -32,10 +32,16 @@
 //!   EVOLVED tag (`world::evolution::save_as_design`); **REPLACE START** (a start that is one of YOUR DESIGNS) asks,
 //!   then writes over it under its id and name. Either one TIDYs an evolved behavior (on by default): the rules that
 //!   never decided in the fights it flew go.
+//! * **The ARMS RACE** (GDR-0092 step 7): YOURS | THE ENEMY over the archive switches the archive, the pick and
+//!   GENERATION n between the two populations; the chart adds the enemy's archive best (coral) and the PAST CHAMPIONS
+//!   line (dots: the share of the other side's champions each best beat, teal yours, coral its), GENERATION n of a
+//!   checked generation lists the check's fights to WATCH. An enemy's fights are seen from its side (it is side 1,
+//!   coral, in the viewer as in every fight); it saves as a design of its faction tagged `enemy`, and EXPORT TO
+//!   CONTENT copies it as a content ship with its behavior (`evolved_<faction>_<genome>`) to curate into a pack.
 
 use std::collections::BTreeMap;
 
-use world::arena::evolve::{ChildRecord, Elite, GenerationStats, Job, JobEnd, Measure, RunStatus, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
+use world::arena::evolve::{Camp, ChildRecord, Elite, GenerationStats, Job, JobEnd, Measure, RunStatus, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
 use world::arena::{DesignRef, Outcome};
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
@@ -89,6 +95,8 @@ pub(crate) enum Saving {
 /// THE RUN page's state.
 #[derive(Default)]
 pub(crate) struct RunPage {
+    /// The population the archive, the pick and GENERATION n show (an arms race's YOURS | THE ENEMY).
+    camp: Camp,
     /// The picked genome (an elite, one of their ancestors, a child of a generation).
     picked: Option<u32>,
     tab: Tab,
@@ -102,17 +110,17 @@ pub(crate) struct RunPage {
     /// RENAME asks for the run's new name.
     renaming: bool,
     new_name: String,
-    /// What the page was built for: the run, its generations done, the pick, the tab, GENERATION n, the save panel and
-    /// TIDY, whether a validation was underway.
+    /// What the page was built for: the run, its generations done, the population, the pick, the tab, GENERATION n,
+    /// the save panel and TIDY, whether a validation was underway.
     built: Option<Built>,
 }
 
-type Built = (String, u32, Option<u32>, Tab, Option<u32>, Option<Saving>, bool, bool);
+type Built = (String, u32, Camp, Option<u32>, Tab, Option<u32>, Option<Saving>, bool, bool);
 
 impl RunPage {
-    /// The page with genome `genome` picked (a saved design's ORIGIN).
-    pub(crate) fn picking(genome: u32) -> RunPage {
-        RunPage { picked: Some(genome), ..default() }
+    /// The page with genome `genome` of population `camp` picked (a saved design's ORIGIN).
+    pub(crate) fn picking(genome: u32, camp: Camp) -> RunPage {
+        RunPage { picked: Some(genome), camp, ..default() }
     }
 }
 
@@ -131,6 +139,12 @@ pub(crate) enum RunButton {
     /// WATCH and COPY FIGHT CODE: generation, child, job.
     Watch(u32, usize, usize),
     Code(u32, usize, usize),
+    /// WATCH a fight of generation n's PAST CHAMPIONS check (its job).
+    WatchCheck(u32, usize),
+    /// YOURS | THE ENEMY (an arms race).
+    Camp(Camp),
+    /// EXPORT TO CONTENT: an evolved enemy as a content ship, copied.
+    Export,
     SaveAs,
     Save,
     Cancel,
@@ -155,6 +169,7 @@ pub(super) enum RunText {
     Rate,
     Scores,
     Stale,
+    Bars,
     Last,
     Axes,
 }
@@ -166,6 +181,7 @@ pub(super) struct GenerationBar;
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Panel {
     Chart,
+    Camps,
     Grid,
     Picked,
 }
@@ -224,11 +240,13 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
         });
     });
     p.spawn((Panel::Chart, abs(at, Some(size + Vec2::Y * (BARS_H + 6.0)))));
-    p.spawn((label(fonts, "BARS: CHILDREN THAT TOOK A CELL", 7.0, c(Tone::Dim, 1.0)), abs(at + Vec2::Y * (size.y + BARS_H + 12.0), None)));
+    p.spawn((RunText::Bars, label(fonts, "", 7.0, c(Tone::Dim, 1.0)), abs(at + Vec2::Y * (size.y + BARS_H + 12.0), None)));
     p.spawn((RunText::Last, tracked(fonts, "", 7.5, c(Tone::Label, 1.0), 0.15), abs(at + Vec2::Y * (size.y + BARS_H + 34.0), Some(Vec2::new(size.x, 60.0)))));
     // The archive.
     let (at, size) = GRID;
     p.spawn((label(fonts, "THE ARCHIVE  ·  THE BEST OF EACH KIND", 9.0, c(Tone::Dim, 1.0)), abs(at - Vec2::Y * 26.0, None)));
+    // An arms race's YOURS | THE ENEMY, at the archive head's right end.
+    p.spawn((Panel::Camps, Node { justify_content: JustifyContent::FlexEnd, ..on_row(abs(at - Vec2::Y * 32.0, Some(Vec2::new(size.x, 24.0))), 6.0) }));
     p.spawn((Panel::Grid, abs(at, Some(size))));
     p.spawn((RunText::Axes, tracked(fonts, "", 7.0, c(Tone::Dim, 1.0), 0.15), abs(at + Vec2::Y * (size.y + 8.0), Some(Vec2::new(size.x, 40.0)))));
     // The picked design, and SAVE AS DESIGN's name.
@@ -250,9 +268,9 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     });
 }
 
-/// The genome the page shows: the pick, else the archive's best.
+/// The genome the page shows: the pick, else the population's archive's best.
 fn shown(page: &RunPage, l: &Loaded) -> Option<u32> {
-    page.picked.or_else(|| l.run.archive().best().map(|e| e.id))
+    page.picked.or_else(|| l.run.archive_of(page.camp).and_then(|a| a.best()).map(|e| e.id))
 }
 
 /// Applies a click.
@@ -286,6 +304,34 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
             ctx.lab.watching = true;
             ctx.next.set(AppMode::Flight);
         }
+        RunButton::WatchCheck(generation, job) => {
+            let Some(code) = ctx.lab.viewed().and_then(|l| l.run.check_fight_code(generation, job)) else {
+                layer.say("that fight doesn't play", Tone::Coral);
+                return;
+            };
+            ctx.replay.queue(code.encode());
+            ctx.scene.launch = Some(Launch::Fight);
+            ctx.lab.watching = true;
+            ctx.next.set(AppMode::Flight);
+        }
+        RunButton::Camp(camp) => {
+            layer.run.camp = camp;
+            layer.run.picked = None;
+            layer.run.generation = None;
+            layer.run.saving = None;
+        }
+        RunButton::Export => {
+            let Some(l) = ctx.lab.viewed() else { return };
+            let Some(g) = shown(&layer.run, l) else { return };
+            match l.run.export_enemy(g, &l.id, g) {
+                Some(text) => {
+                    let faction = l.run.genome(g).map_or_else(String::new, |g| g.blueprint.faction);
+                    ctx.clipboard.copy = Some(text);
+                    layer.say(format!("copied as evolved_{faction}_{g}.ron  ·  a content ship with its behavior at its end: put it into a pack's ships/ to curate it"), Tone::Teal);
+                }
+                None => layer.say("only an evolved enemy exports to content", Tone::Coral),
+            }
+        }
         RunButton::Code(generation, child, job) => match ctx.lab.viewed().and_then(|l| l.run.fight_code(generation, child, job)) {
             Some(code) => {
                 ctx.clipboard.copy = Some(code.encode());
@@ -296,7 +342,7 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
         RunButton::SaveAs => {
             let Some(l) = ctx.lab.viewed() else { return };
             let Some(g) = shown(&layer.run, l) else { return };
-            let start = l.run.genome(g).and_then(|g| l.run.starts().get(g.root as usize).map(|s| s.blueprint.name.clone()));
+            let start = l.run.genome(g).and_then(|g| l.run.start(g.root).map(|s| s.blueprint.name.clone()));
             let start = start.map_or_else(|| l.name.clone(), |n| n.trim_end_matches(" (evolved)").to_string());
             let generation = l.run.scored(g).map_or(0, |(generation, _)| generation);
             layer.run.name = result_name(&start, generation);
@@ -433,19 +479,20 @@ fn trial_name(content: &Content, t: &TrialSpec) -> String {
         T::HallOfFame { .. } => "HALL OF FAME",
         T::Champions { .. } => "CHAMPIONS",
         T::Voyages { .. } => "VOYAGES",
+        T::CoEvolution => "CO-EVOLUTION",
     }
     .into()
 }
 
-/// A fight's opponent side in words: `2 × AUTOMATON RAIDER`, a design of the player's or the run's by its name
-/// (`RIM SKIFF`, without the `(evolved)` every genome's header has), a gauntlet's waves after it (`+ 4 WAVES`); a
-/// voyage by its name.
+/// A fight's opponent side in words (side 1, or side 0 for an enemy of the arms race, which is side 1): `2 × AUTOMATON
+/// RAIDER`, a design of the player's or the run's by its name (`RIM SKIFF`, without the `(evolved)` every genome's
+/// header has), a gauntlet's waves after it (`+ 4 WAVES`); a voyage by its name.
 fn opponent(content: &Content, job: &Job) -> String {
-    let spec = match job {
-        Job::Fight { spec, .. } => spec,
+    let (spec, side) = match job {
+        Job::Fight { spec, side, .. } => (spec, *side as usize),
         Job::Voyage { spec, .. } => return content.voyages.get(&spec.voyage).map_or_else(|| spec.voyage.to_uppercase(), |v| v.name.to_uppercase()),
     };
-    let names: Vec<String> = spec.sides[1]
+    let names: Vec<String> = spec.sides[1 - side.min(1)]
         .entries
         .iter()
         .map(|e| {
@@ -464,12 +511,12 @@ fn opponent(content: &Content, job: &Job) -> String {
     names.join(" + ") + waves.as_str()
 }
 
-/// How a job ended for the design and when, and its tone: `WON 0:23`, `LOST 1:02`, `BOTH OUT 0:40`, `DRAW 1:30`,
-/// `VOYAGE 4:10` (its score has a column of its own).
-fn ending(end: &JobEnd, ticks: u64) -> (String, Tone) {
+/// How a job ended for the design (on side `side`) and when, and its tone: `WON 0:23`, `LOST 1:02`, `BOTH OUT 0:40`,
+/// `DRAW 1:30`, `VOYAGE 4:10` (its score has a column of its own).
+fn ending(end: &JobEnd, ticks: u64, side: usize) -> (String, Tone) {
     let at = clock(ticks);
     match end {
-        JobEnd::Fight { outcome: Outcome::Won(0), .. } => (format!("WON {at}"), Tone::Teal),
+        JobEnd::Fight { outcome: Outcome::Won(s), .. } if *s == side => (format!("WON {at}"), Tone::Teal),
         JobEnd::Fight { outcome: Outcome::Won(_), .. } => (format!("LOST {at}"), Tone::Coral),
         JobEnd::Fight { outcome: Outcome::BothOut, .. } => (format!("BOTH OUT {at}"), Tone::Gold),
         JobEnd::Fight { outcome: Outcome::TimeLimit, .. } => (format!("DRAW {at}"), Tone::Label),
@@ -479,13 +526,17 @@ fn ending(end: &JobEnd, ticks: u64) -> (String, Tone) {
 }
 
 /// A fight's second line: the seed, a gauntlet's waves cleared of all, what each side lost (its build points: yours and
-/// theirs, a gauntlet's waves all counted), the damage you dealt.
+/// theirs, a gauntlet's waves all counted), the damage you dealt; an enemy's (side 1 of the arms race) from its side.
 fn fight_detail(job: &Job, end: &JobEnd) -> String {
-    let (seed, waves, stand_in) = match job {
-        Job::Fight { spec, .. } => (spec.seed, spec.waves.len() as u32 + 1, spec.sides[0].entries.iter().any(|e| e.pilot.is_some())),
-        Job::Voyage { spec, .. } => (spec.seed, 0, false),
+    let (seed, waves, stand_in, side) = match job {
+        Job::Fight { spec, side, .. } => (spec.seed, spec.waves.len() as u32 + 1, spec.sides[0].entries.iter().any(|e| e.pilot.is_some()), *side),
+        Job::Voyage { spec, .. } => (spec.seed, 0, false, 0),
     };
     match end {
+        JobEnd::Fight { lost, dealt, .. } if side == 1 => {
+            let flown = if stand_in { " · YOURS FLOWN BY THE STAND-IN" } else { "" };
+            format!("SEED {seed}{flown} · IT LOST {:.0} BP · YOURS LOST {:.0} BP · IT DEALT {:.0}", lost[1], lost[0], dealt[1])
+        }
         JobEnd::Fight { lost, dealt, waves: cleared, .. } => {
             // A gauntlet's waves first: its row's first line clips its opponent's waves.
             let gauntlet = if waves > 1 { format!(" · {cleared} OF {waves} WAVES CLEARED") } else { String::new() };
@@ -542,7 +593,7 @@ pub(super) fn fill(
     }
     let Some(l) = lab.viewed() else { return };
     let page = &layer.run;
-    let key = (l.id.clone(), l.run.generation(), page.picked, page.tab, page.generation, page.saving, page.untidy, lab.validating().is_some());
+    let key = (l.id.clone(), l.run.generation(), page.camp, page.picked, page.tab, page.generation, page.saving, page.untidy, lab.validating().is_some());
     if !layer.dirty && layer.run.built.as_ref() == Some(&key) {
         return;
     }
@@ -557,9 +608,10 @@ pub(super) fn fill(
         commands.entity(e).despawn_children();
         commands.entity(e).with_children(|p| match panel {
             Panel::Chart => chart(p, &c, l, layer.run.generation),
-            Panel::Grid => grid(p, fonts, &c, l, picked),
+            Panel::Camps => camps(p, fonts, l, layer.run.camp),
+            Panel::Grid => grid(p, fonts, &c, l, picked, layer.run.camp),
             Panel::Picked => match layer.run.generation {
-                Some(n) => generation(p, fonts, &c, content, l, n),
+                Some(n) => generation(p, fonts, &c, content, l, n, layer.run.camp),
                 None => picked_design(p, fonts, &c, content, &storage, &lab, l, picked, &layer.run),
             },
         });
@@ -581,8 +633,9 @@ fn segment(p: &mut ChildSpawnerCommands, a: Vec2, b: Vec2, w: f32, color: Color)
 type ChartLine = (fn(&GenerationStats) -> f32, Tone, f32);
 
 /// SCORES BY GENERATION: three lines over the run's generations (the archive's best, each generation's best and
-/// mean; 0 at the bottom, 1 at the top) and a bar per generation for the children that took a cell; a click on a
-/// generation (a column over its lines and bar, `open` lit) opens GENERATION n.
+/// mean; 0 at the bottom, 1 at the top; an arms race's enemy archive best and PAST CHAMPIONS too) and a bar per
+/// generation for the children that took a cell; a click on a generation (a column over its lines and bar, `open`
+/// lit) opens GENERATION n.
 fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, open: Option<u32>) {
     let (_, size) = CHART;
     let state = l.run.state();
@@ -623,7 +676,32 @@ fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Load
             BackgroundColor(c(Tone::Teal, 0.45)),
         ));
     }
-    let lines: [ChartLine; 3] = [(|s| s.mean, Tone::Label, 1.2), (|s| s.best, Tone::Teal, 1.5), (|s| s.archive_best, Tone::Gold, 2.0)];
+    // An arms race: the enemy's archive best (coral) under yours, and PAST CHAMPIONS as dots, the share of the other
+    // side's champions each best beat (teal yours, coral the enemy's), joined from check to check.
+    let enemy: ChartLine = (|s| s.enemy.as_ref().map_or(0.0, |e| e.archive_best), Tone::Coral, 1.5);
+    let race = history.iter().any(|h| h.enemy.is_some());
+    let mut lines: Vec<ChartLine> = vec![(|s| s.mean, Tone::Label, 1.2), (|s| s.best, Tone::Teal, 1.5)];
+    lines.extend(race.then_some(enemy));
+    lines.push((|s| s.archive_best, Tone::Gold, 2.0));
+    let beaten = l.run.beaten();
+    for (yours, tone) in [(true, Tone::Teal), (false, Tone::Coral)] {
+        let pts: Vec<Vec2> = beaten
+            .iter()
+            .map(|b| {
+                let (n, m) = if yours { b.yours } else { b.theirs };
+                Vec2::new(x(b.generation as usize), y(n as f32 / m.max(1) as f32))
+            })
+            .collect();
+        for pair in pts.windows(2) {
+            segment(p, pair[0], pair[1], 1.0, c(tone, 0.55));
+        }
+        for pt in pts {
+            p.spawn((
+                Node { position_type: PositionType::Absolute, left: px(pt.x - 3.0), top: px(pt.y - 3.0), width: px(6), height: px(6), border_radius: BorderRadius::MAX, ..default() },
+                BackgroundColor(c(tone, 1.0)),
+            ));
+        }
+    }
     for (value, tone, w) in lines {
         let pts: Vec<Vec2> = points.iter().map(|&g| Vec2::new(x(g), y(value(&history[g])))).collect();
         for pair in pts.windows(2) {
@@ -635,17 +713,33 @@ fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Load
     }
 }
 
-/// THE ARCHIVE: a cell per bin of the first two measures (the third, if any, folded in: the best of it), each
-/// occupied cell a ship card tinted by its score, the best with a gold edge, a start with a teal corner, the pick lit.
-fn grid(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, picked: Option<u32>) {
+/// YOURS | THE ENEMY (an arms race only): which population the archive, the pick and GENERATION n show.
+fn camps(p: &mut ChildSpawnerCommands, fonts: &HudFonts, l: &Loaded, camp: Camp) {
+    if l.run.enemy_archive().is_none() {
+        return;
+    }
+    for (k, words, tone) in [(Camp::Yours, "YOURS", Tone::Teal), (Camp::Enemy, "THE ENEMY", Tone::Coral)] {
+        let tip = match k {
+            Camp::Yours => "YOUR DESIGNS: THE ARCHIVE, THE PICK AND GENERATION n",
+            Camp::Enemy => "THE ENEMY THAT EVOLVES AGAINST THEM: ITS ARCHIVE, ITS PICK, ITS CHILDREN",
+        };
+        spawn_pill(p, fonts, words, 7.5, 22.0, None, Pill { active: camp == k, ..Pill::new(tone) }, (LabButton::Run(RunButton::Camp(k)), kit::ui_kit::Tip::new(tip)));
+    }
+}
+
+/// THE ARCHIVE (yours, or an arms race's enemy's in coral): a cell per bin of the first two measures (the third, if
+/// any, folded in: the best of it), each occupied cell a ship card tinted by its score, the best with a gold edge, a
+/// start with a corner of its colour, the pick lit.
+fn grid(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, picked: Option<u32>, camp: Camp) {
     let (_, size) = GRID;
-    let archive = l.run.archive();
+    let Some(archive) = l.run.archive_of(camp) else { return };
+    // THE ENEMY's archive in its colour.
+    let tone = if camp == Camp::Enemy { Tone::Coral } else { Tone::Teal };
     let axes = &archive.shape().axes;
     let cols = axes.first().map_or(1, |a| a.cells) as usize;
     let rows = axes.get(1).map_or(1, |a| a.cells) as usize;
     let cell = (size.x / cols as f32).min(size.y / rows as f32).floor();
     let best = archive.best().map(|e| e.id);
-    let starts = l.run.starts().len() as u32;
     let mut shown: BTreeMap<(usize, usize), &Elite> = BTreeMap::new();
     for (key, e) in archive.cells() {
         let at = (key.first().copied().unwrap_or(0) as usize, key.get(1).copied().unwrap_or(0) as usize);
@@ -662,20 +756,20 @@ fn grid(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -
                 p.spawn((node, BorderColor::all(c(Tone::Dim, 0.18)), BackgroundColor(Color::NONE)));
                 continue;
             };
-            let edge = if Some(e.id) == best { c(Tone::Gold, 0.95) } else { c(Tone::Teal, 0.2 + 0.6 * e.score.clamp(0.0, 1.0)) };
+            let edge = if Some(e.id) == best { c(Tone::Gold, 0.95) } else { c(tone, 0.2 + 0.6 * e.score.clamp(0.0, 1.0)) };
             p.spawn((
                 LabButton::Run(RunButton::Pick(e.id)),
-                Pill { bare: true, active: Some(e.id) == picked, ..Pill::new(Tone::Teal) },
+                Pill { bare: true, active: Some(e.id) == picked, ..Pill::new(tone) },
                 Hot::default(),
                 node,
                 BorderColor::all(edge),
-                BackgroundColor(c(Tone::Teal, 0.05 + 0.1 * e.score.clamp(0.0, 1.0))),
+                BackgroundColor(c(tone, 0.05 + 0.1 * e.score.clamp(0.0, 1.0))),
                 kit::ui_kit::Tip::new(format!("G{}  ·  SCORE {}", e.generation, score(Some(e.score)))),
             ))
             .with_children(|b| {
                 b.spawn((UiIcon::Ship(Box::new(e.genome.blueprint.clone())), Node { position_type: PositionType::Absolute, left: px(3), top: px(3), width: px(cell - 8.0), height: px(cell - 8.0), ..default() }));
-                if e.id < starts {
-                    b.spawn((Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(7), height: px(7), border_radius: BorderRadius::all(px(2)), ..default() }, BackgroundColor(c(Tone::Teal, 1.0))));
+                if l.run.table().get(e.id as usize).is_some_and(|b| b.parent.is_none()) {
+                    b.spawn((Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(7), height: px(7), border_radius: BorderRadius::all(px(2)), ..default() }, BackgroundColor(c(tone, 1.0))));
                 }
             });
         }
@@ -698,7 +792,8 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
     let Some(genome) = run.genome(g) else { return };
     let scored = run.scored(g);
     let record = scored.and_then(|(generation, child)| run.state().records.get(generation as usize).and_then(|r| r.children.get(child)).map(|c| (generation, child, c.clone())));
-    let start = run.starts().get(genome.root as usize);
+    let start = run.start(genome.root);
+    let enemy = run.camp(g) == Some(Camp::Enemy);
     let target = replace_target(storage, l, g);
     // The drawing and its numbers (narrow enough for SAVE AS DESIGN and REPLACE START side by side).
     p.spawn(row(12.0)).with_children(|r| {
@@ -718,7 +813,7 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
                         _ => format!("GENERATION {generation}  ·  #{g}"),
                     };
                     t.spawn(label(fonts, &when, 8.5, c(Tone::Label, 1.0)));
-                    let axes = &run.archive().shape().axes;
+                    let axes = run.archive_of(run.camp_of(genome.root)).map_or(&[][..], |a| &a.shape().axes[..]);
                     for (a, v) in axes.iter().zip(&rec.measures) {
                         let (name, unit) = measure_words(content, a.measure);
                         t.spawn(tracked(fonts, &format!("{name} {v:.1} {}", unit.to_uppercase()), 7.5, c(Tone::Dim, 1.0), 0.15));
@@ -728,10 +823,17 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
                     t.spawn(label(fonts, &format!("#{g}  ·  NOT SCORED"), 8.5, c(Tone::Label, 1.0)));
                 }
             }
-            t.spawn(tracked(fonts, &format!("FROM {from}"), 7.5, c(Tone::Teal, 1.0), 0.15));
+            match enemy {
+                true => t.spawn(tracked(fonts, &format!("THE ENEMY  ·  FROM {from}"), 7.5, c(Tone::Coral, 1.0), 0.15)),
+                false => t.spawn(tracked(fonts, &format!("FROM {from}"), 7.5, c(Tone::Teal, 1.0), 0.15)),
+            };
             if page.saving.is_none() {
                 t.spawn(Node { margin: UiRect::top(px(2)), ..row(6.0) }).with_children(|b| {
                     spawn_pill(b, fonts, "SAVE AS DESIGN", 8.0, 24.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::SaveAs));
+                    if enemy {
+                        let tip = "COPIES IT AS A CONTENT SHIP WITH ITS BEHAVIOR: INTO A PACK'S SHIPS/ BY HAND, TO MEET IT ON VOYAGES";
+                        spawn_pill(b, fonts, "EXPORT TO CONTENT", 8.0, 24.0, None, Pill::new(Tone::Coral), (LabButton::Run(RunButton::Export), kit::ui_kit::Tip::new(tip)));
+                    }
                     if let Some((_, name)) = &target {
                         let tip = format!("WRITES OVER {} IN YOUR DESIGNS UNDER ITS ID: FLEET'S ESCORTS FLY THE NEW VERSION", name.to_uppercase());
                         spawn_pill(b, fonts, "REPLACE START", 8.0, 24.0, None, Pill::new(Tone::Gold), (LabButton::Run(RunButton::Replace), kit::ui_kit::Tip::new(tip)));
@@ -775,7 +877,7 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
 /// the pill that drops them (on by default; its tip names them); else why there is nothing to tidy.
 #[allow(clippy::too_many_arguments)]
 fn tidy_line(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, g: u32, genome: &world::arena::Genome, untidy: bool) {
-    let start = l.run.starts().get(genome.root as usize).map_or("", |s| s.behavior_text());
+    let start = l.run.start(genome.root).map_or("", |s| s.behavior_text());
     let rules: Vec<&str> = genome.behavior_text().lines().filter(|r| !r.trim().is_empty() && !r.trim_start().starts_with("target")).collect();
     let tidied = (genome.behavior_text() != start).then(|| l.run.tidied(g));
     p.spawn(Node { height: px(22), flex_shrink: 0.0, ..row(8.0) }).with_children(|r| {
@@ -803,10 +905,12 @@ fn tidy_line(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f
 
 /// GENERATION n: its numbers, then its children best first, each a card with its drawing, score, whether it took a
 /// cell, its parent (and a crossover's partner), its cell and what changed; a click picks it with its fights.
-fn generation(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, n: u32) {
+#[allow(clippy::too_many_arguments)]
+fn generation(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, n: u32, camp: Camp) {
     let run = &l.run;
     let state = run.state();
     let (Some(stats), Some(record)) = (state.history.get(n as usize), state.records.get(n as usize)) else { return };
+    let Some(archive) = run.archive_of(camp) else { return };
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(6.0) }).with_children(|r| {
         r.spawn(label(fonts, &format!("GENERATION {n} OF {}", state.generations), 9.0, c(Tone::Dim, 1.0)));
         r.spawn(row(6.0)).with_children(|b| {
@@ -817,12 +921,19 @@ fn generation(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, 
         });
     });
     let what = if stats.rescore { "  ·  A RE-SCORE" } else { "" };
-    let line = format!("{} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  BEST {}  ·  MEAN {}{what}", stats.evaluated, stats.rejected, stats.improved, score(Some(stats.best)), score(Some(stats.mean)));
+    let line = match (camp, &stats.enemy) {
+        (Camp::Enemy, Some(e)) => format!("THE ENEMY  ·  {} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  BEST {}  ·  MEAN {}{what}", e.evaluated, e.rejected, e.improved, score(Some(e.best)), score(Some(e.mean))),
+        _ => format!("{} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  BEST {}  ·  MEAN {}{what}", stats.evaluated, stats.rejected, stats.improved, score(Some(stats.best)), score(Some(stats.mean))),
+    };
     p.spawn((tracked(fonts, &line, 7.0, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
-    let mut children: Vec<&ChildRecord> = record.children.iter().collect();
+    let mut children: Vec<&ChildRecord> = record.children[run.children_of(n, camp)].iter().collect();
     children.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let check = run.check(n).zip(run.check_jobs(n));
     p.spawn((Scrollbar::vertical(), ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, row_gap: px(3), height: px(470), overflow: Overflow::scroll_y(), padding: UiRect::right(px(10)), ..default() }))
         .with_children(|rows| {
+            if let Some((check, jobs)) = check {
+                past_champions(rows, fonts, c, content, l, n, check, &jobs);
+            }
             for ch in children {
                 let Some(genome) = run.genome(ch.genome) else { continue };
                 let bred = run.table().get(ch.genome as usize);
@@ -843,7 +954,7 @@ fn generation(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, 
                     (Some(a), None) => format!("FROM #{a}  ·  "),
                     _ => String::new(),
                 };
-                let cell: Vec<String> = run.archive().cell_of(&ch.measures).iter().map(|v| v.to_string()).collect();
+                let cell: Vec<String> = archive.cell_of(&ch.measures).iter().map(|v| v.to_string()).collect();
                 rows.spawn((
                     LabButton::Run(RunButton::Child(ch.genome)),
                     Pill { bare: true, ..Pill::new(Tone::Teal) },
@@ -868,6 +979,36 @@ fn generation(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, 
         });
 }
 
+/// PAST CHAMPIONS of GENERATION n (an arms race): what each best beat, then a row per champion it fought (its
+/// generation, its score over its seeds, WATCH of its first fight).
+#[allow(clippy::too_many_arguments)]
+fn past_champions(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, n: u32, check: &world::arena::evolve::Check, jobs: &[Job]) {
+    let run = &l.run;
+    let Some(b) = run.beaten().into_iter().find(|b| b.generation == n) else { return };
+    let line = format!("PAST CHAMPIONS  ·  YOUR BEST #{} BEAT {} OF {}  ·  THE ENEMY'S #{} {} OF {}", check.yours, b.yours.0, b.yours.1, check.theirs, b.theirs.0, b.theirs.1);
+    p.spawn((tracked(fonts, &line, 7.0, c(Tone::Gold, 1.0), 0.12), TextLayout::no_wrap(), Node { flex_shrink: 0.0, ..default() }));
+    let seeds = (jobs.len() / (check.their_champions.len() + check.your_champions.len()).max(1)).max(1);
+    let champions = check.their_champions.iter().map(|&id| (id, true)).chain(check.your_champions.iter().map(|&id| (id, false)));
+    for (k, (id, yours)) in champions.enumerate() {
+        let first = k * seeds;
+        let Some(recs) = check.jobs.get(first..first + seeds) else { continue };
+        let mean = recs.iter().map(|r| r.score).sum::<f32>() / seeds as f32;
+        let born = run.table().get(id as usize).map_or(0, |b| b.generation);
+        let who = match yours {
+            true => format!("YOUR BEST VS ITS CHAMPION OF G{born} (#{id})"),
+            false => format!("ITS BEST VS YOUR CHAMPION OF G{born} (#{id})"),
+        };
+        let against = jobs.get(first).map_or_else(String::new, |j| opponent(content, j));
+        p.spawn((Node { height: px(24), flex_shrink: 0.0, border: UiRect::bottom(px(1)), ..row(8.0) }, BorderColor::all(c(Tone::Dim, 0.2)))).with_children(|r| {
+            r.spawn((number(fonts, &format!("{mean:.2}"), 11.0, c(if mean > 0.5 { Tone::Teal } else { Tone::Coral }, 1.0)), Node { width: px(FIGHT_SCORE_W), flex_shrink: 0.0, ..default() }));
+            r.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+                t.spawn((tracked(fonts, &format!("{who}  ·  {against}"), 6.5, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
+            });
+            spawn_pill(r, fonts, "WATCH", 7.5, 20.0, None, Pill::new(if yours { Tone::Teal } else { Tone::Coral }), LabButton::Run(RunButton::WatchCheck(n, first)));
+        });
+    }
+}
+
 /// FIGHTS: WATCH BEST and WATCH WORST, then a row per fight.
 fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, record: Option<(u32, usize, &ChildRecord)>) {
     let Some((generation, child, rec)) = record else {
@@ -887,7 +1028,11 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
     });
     let trials = l.run.trials();
     for (k, ((t, job), jr)) in jobs.iter().zip(&rec.jobs).enumerate() {
-        let (words, tone) = ending(&jr.end, jr.ticks);
+        let side = match job {
+            Job::Fight { side, .. } => *side as usize,
+            Job::Voyage { .. } => 0,
+        };
+        let (words, tone) = ending(&jr.end, jr.ticks, side);
         let trial = trials.get(*t as usize).map_or_else(String::new, |t| trial_name(content, t));
         // The same columns for every fight: how it ended and when, its score, then what it was; under them the seed
         // and the losses, and the buttons. Each text takes the room left of what follows it and clips there.
@@ -957,7 +1102,8 @@ fn scores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
         line(p, &trial_name(content, spec), &sub, [t.score, gs[0], gs[1], gs[2], gs[3]], false);
     }
     let all = b.goals.all();
-    line(p, "IN ALL", "THE TRIALS BY WEIGHT", [Some(rec.score), Some(all[0]), Some(all[1]), Some(all[2]), Some(all[3])], true);
+    let how = if l.run.camp(g) == Some(Camp::Enemy) { "ITS WIN AS SIDE 1, THE MEAN OVER ITS FIGHTS" } else { "THE TRIALS BY WEIGHT" };
+    line(p, "IN ALL", how, [Some(rec.score), Some(all[0]), Some(all[1]), Some(all[2]), Some(all[3])], true);
     // VALIDATE: its result, or the buttons (one validation at a time, in the run's place).
     let validated = l.run.validated(g);
     if let Some(v) = validated {
@@ -972,6 +1118,9 @@ fn scores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
         }
         None if l.run.stale() => {
             r.spawn(label(fonts, "THE RULES HAVE CHANGED: RE-SCORE THE RUN TO VALIDATE", 7.5, c(Tone::Coral, 1.0)));
+        }
+        None if l.run.camp(g) == Some(Camp::Enemy) => {
+            r.spawn((label(fonts, "THE ENEMY IS SCORED ONLY BY ITS FIGHTS AGAINST YOUR DESIGNS", 7.0, c(Tone::Dim, 1.0)), TextLayout::no_wrap()));
         }
         None => {
             let again = if validated.is_some() { "VALIDATE AGAIN" } else { "VALIDATE THIS" };
@@ -1033,7 +1182,7 @@ fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
 
 /// COMPARE: the start and the design side by side, what changed in parts, in the behavior and in the pilot assists.
 fn compare(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, genome: &world::arena::Genome) {
-    let Some(start) = l.run.starts().get(genome.root as usize) else { return };
+    let Some(start) = l.run.start(genome.root) else { return };
     p.spawn(row(12.0)).with_children(|r| {
         for (g, words) in [(start, "THE START"), (genome, "THIS DESIGN")] {
             r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), align_items: AlignItems::Center, ..default() }).with_children(|col| {
@@ -1161,14 +1310,31 @@ pub(super) fn sync(
                 }
                 _ => (String::new(), Tone::Label),
             },
-            RunText::Scores => (format!("START {}  »  BEST {}", score(entry.and_then(|e| e.first)), score(entry.and_then(|e| e.best))), Tone::Gold),
+            RunText::Scores => {
+                let enemy = l.run.enemy_archive().and_then(|a| a.best()).map_or_else(String::new, |e| format!("  ·  ENEMY {}", score(Some(e.score))));
+                (format!("START {}  »  BEST {}{enemy}", score(entry.and_then(|e| e.first)), score(entry.and_then(|e| e.best))), Tone::Gold)
+            }
+            RunText::Bars => match l.run.enemy_archive() {
+                Some(_) => ("BARS: CHILDREN THAT TOOK A CELL  ·  CORAL: THE ENEMY'S BEST  ·  DOTS: PAST CHAMPIONS BEATEN".into(), Tone::Dim),
+                None => ("BARS: CHILDREN THAT TOOK A CELL".into(), Tone::Dim),
+            },
             RunText::Stale => (if l.run.stale() && !layer.run.renaming { "THE RULES HAVE CHANGED SINCE THIS RUN  ·  IT IS KEPT READ-ONLY  ·  ITS FIGHTS PLAY UNDER TODAY'S RULES  ·  RE-SCORE MAKES A NEW RUN OF IT" } else { "" }.to_string(), Tone::Coral),
             RunText::Last => match last {
-                Some(g) => (format!("LAST GENERATION: {} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  {} CELLS FILLED", g.evaluated, g.rejected, g.improved, g.filled), Tone::Label),
+                Some(g) => {
+                    let mut words = format!("LAST GENERATION: {} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  {} CELLS FILLED", g.evaluated, g.rejected, g.improved, g.filled);
+                    // An arms race: the enemy's, and the last PAST CHAMPIONS check.
+                    if let Some(e) = &g.enemy {
+                        words += &format!("\nTHE ENEMY: {} CHILDREN  ·  {} TOOK A CELL  ·  {} CELLS  ·  ITS BEST {}", e.evaluated, e.improved, e.filled, score(Some(e.archive_best)));
+                    }
+                    if let Some(b) = l.run.beaten().last() {
+                        words += &format!("\nPAST CHAMPIONS G{}: YOUR BEST BEAT {} OF {}, THE ENEMY'S {} OF {}", b.generation, b.yours.0, b.yours.1, b.theirs.0, b.theirs.1);
+                    }
+                    (words, Tone::Label)
+                }
                 None => ("THE FIRST GENERATION: THE STARTS AND THEIR MUTANTS".into(), Tone::Label),
             },
             RunText::Axes => {
-                let axes = &l.run.archive().shape().axes;
+                let axes = l.run.archive_of(layer.run.camp).map_or(&[][..], |a| &a.shape().axes[..]);
                 let words: Vec<String> = axes
                     .iter()
                     .zip(["ACROSS", "UP", "FOLDED IN"])
@@ -1211,15 +1377,21 @@ mod tests {
         assert_eq!(changes(&content, &skiff, &less), format!("−1 {name}"));
         assert_eq!(changes(&content, &less, &skiff), format!("+1 {name}"));
         let won = JobEnd::Fight { outcome: Outcome::Won(0), lost: [0.0; 2], dealt: [0.0; 2], left: [1, 0], hash: 0, decided: 0, waves: 0 };
-        assert_eq!(ending(&won, 30 * 23), ("WON 0:23".into(), Tone::Teal));
+        assert_eq!(ending(&won, 30 * 23, 0), ("WON 0:23".into(), Tone::Teal));
         let lost = JobEnd::Fight { outcome: Outcome::Won(1), lost: [242.0, 2.4], dealt: [40.2, 0.0], left: [0, 1], hash: 0, decided: 0, waves: 0 };
-        assert_eq!(ending(&lost, 30 * 62).0, "LOST 1:02");
+        assert_eq!(ending(&lost, 30 * 62, 0).0, "LOST 1:02");
+        // An enemy of the arms race is side 1: side 0 losing is its win, its losses its own.
+        assert_eq!(ending(&lost, 30 * 62, 1).0, "WON 1:02");
         // Every outcome has the same columns: the score is a column of its own, the sides' losses say whose.
         let draw = JobEnd::Fight { outcome: Outcome::TimeLimit, lost: [1.0, 3.0], dealt: [5.0, 1.0], left: [1, 1], hash: 0, decided: 0, waves: 0 };
-        assert_eq!(ending(&draw, 30 * 60).0, "DRAW 1:00");
-        let job = Job::Fight { candidate: 0, spec: world::arena::FightSpec::new(4, vec![world::arena::Entry::ship("rim_skiff")], vec![world::arena::Entry::ship("automaton_raider")]) };
+        assert_eq!(ending(&draw, 30 * 60, 0).0, "DRAW 1:00");
+        let spec = world::arena::FightSpec::new(4, vec![world::arena::Entry::ship("rim_skiff")], vec![world::arena::Entry::ship("automaton_raider")]);
+        let job = Job::Fight { candidate: 0, side: 0, spec: spec.clone() };
         assert_eq!(fight_detail(&job, &lost), "SEED 4 · YOU LOST 242 BP · THEY LOST 2 BP · DEALT 40");
         assert_eq!(opponent(&content, &job), "AUTOMATON RAIDER");
+        let theirs = Job::Fight { candidate: 0, side: 1, spec };
+        assert_eq!(fight_detail(&theirs, &lost), "SEED 4 · IT LOST 2 BP · YOURS LOST 242 BP · IT DEALT 0");
+        assert_eq!(opponent(&content, &theirs), "RIM SKIFF");
         assert_eq!((duration(40.0), duration(200.0), duration(4800.0)), ("40 S".into(), "4 MIN".into(), "1 H 20 MIN".into()));
     }
 }

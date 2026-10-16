@@ -47,6 +47,38 @@ pub const MAX_LINE_CHARS: usize = 240;
 /// Largest reach-relative distance (`%` on a distance), in percent.
 pub const MAX_REACH_PERCENT: f32 = 1000.0;
 
+/// A behavior as RON in the content format (`behaviors/*.ron`): the header fields, `target`, then `rules` with
+/// one rule per line, four-space indent. Absent and empty fields are left out; `source` is never written.
+pub fn behavior_to_ron(b: &crate::content::model::Behavior) -> String {
+    fn field(s: &mut String, name: &str, value: &str) {
+        s.push_str(&format!("    {name}: {value},\n"));
+    }
+    let q = |t: &str| ron::to_string(t).unwrap_or_default();
+    let mut s = String::from("(\n");
+    field(&mut s, "id", &q(&b.id));
+    field(&mut s, "name", &q(&b.name));
+    field(&mut s, "summary", &q(&b.summary));
+    if let Some(d) = &b.description {
+        field(&mut s, "description", &q(d));
+    }
+    if let Some(l) = &b.lore {
+        field(&mut s, "lore", &q(l));
+    }
+    if !b.tags.is_empty() {
+        let tags: Vec<String> = b.tags.iter().map(|t| q(t)).collect();
+        field(&mut s, "tags", &format!("[{}]", tags.join(", ")));
+    }
+    if let Some(t) = &b.target {
+        field(&mut s, "target", &q(t));
+    }
+    s.push_str("    rules: [\n");
+    for r in &b.rules {
+        s.push_str(&format!("        {},\n", q(r)));
+    }
+    s.push_str("    ],\n)\n");
+    s
+}
+
 /// A 1-based column (in characters), kept for messages. Columns never take part in equality, so a program
 /// equals its re-parsed print however it was spaced.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]

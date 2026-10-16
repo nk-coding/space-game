@@ -1,7 +1,7 @@
 //! Sharing designs with other players: `.ron` files in the content ship format and share codes, and importing
 //! both (written 13 Oct 2026; Niklas: "a sharable format in addition").
 //!
-//! * **Export file** ([`export_text`]): the design trimmed to its parts (`PlayerDesign::export`) under its id,
+//! * **Export file** ([`data::export_text`]): the design trimmed to its parts (`PlayerDesign::export`) under its id,
 //!   written by `data::blueprint_to_ron`, so it can go into a pack's `ships/` folder as is. A design that names one
 //!   of the player's behaviors carries it after the ship as a comment block (`// behavior: behaviors/<id>.ron`,
 //!   then that behavior file with every line commented out): pack loaders skip it, an import reads it. Web: a
@@ -31,7 +31,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use data::{Behavior, Blueprint, Content};
 use serde::Deserialize;
-use world::player::behaviors::{behavior_to_ron, parse_behavior};
+use data::behavior::behavior_to_ron;
+use data::BEHAVIOR_MARK;
+use world::player::behaviors::parse_behavior;
 
 /// The share code's tag; the full prefix is `SGD<version>:`.
 const TAG: &str = "SGD";
@@ -44,8 +46,6 @@ pub const MAX_TEXT: usize = 1 << 20;
 pub const MAX_PACKED: usize = 64 << 10;
 /// The largest payload a code may unpack to (zip bombs stop here).
 pub const MAX_PAYLOAD: usize = 1 << 20;
-/// The line that starts the behavior block of a `.ron` export.
-const BEHAVIOR_MARK: &str = "// behavior: ";
 
 /// A design that came from outside: the ship, the packs it was made with (empty for plain RON text) and the
 /// player behavior it carries, if any.
@@ -115,21 +115,6 @@ pub fn encode(content: &Content, ship: &Blueprint, behavior: Option<&Behavior>) 
     payload.push_str(")\n");
     let packed = miniz_oxide::deflate::compress_to_vec_zlib(payload.as_bytes(), 10);
     format!("{TAG}{CODE_VERSION}:{}", URL_SAFE_NO_PAD.encode(packed))
-}
-
-/// The `.ron` export of a blueprint (trimmed, under its id): the content ship format, then the player behavior it
-/// names, if any, as a comment block (see the module docs).
-pub fn export_text(ship: &Blueprint, behavior: Option<&Behavior>) -> String {
-    let mut s = data::blueprint_to_ron(ship);
-    if let Some(b) = behavior {
-        s.push_str(&format!("{BEHAVIOR_MARK}behaviors/{}.ron\n", b.id));
-        for line in behavior_to_ron(b).lines() {
-            s.push_str("// ");
-            s.push_str(line);
-            s.push('\n');
-        }
-    }
-    s
 }
 
 /// The behavior block of a `.ron` export, uncommented, if the text has one.
@@ -370,6 +355,7 @@ mod web {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use data::export_text;
 
     /// The Halvex Runner as a design (no pack source).
     fn runner(content: &Content) -> Blueprint {

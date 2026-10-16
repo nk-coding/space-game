@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::kind::Kind;
 
 pub use controls::Control;
-pub use lab::{Duty, GENES, GOALS, GenePreset, GoalPreset, Lab, LabGene, LabGoal, LabPilot, LabShips, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, StandIn, TrialPreset, TrialPresetKind};
+pub use lab::{Duty, EnemyPalette, GENES, GOALS, GenePreset, GoalPreset, Lab, LabGene, LabGoal, LabPilot, LabShips, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, StandIn, TrialPreset, TrialPresetKind};
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RcsSpec, SalvageSpec, Selector, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
 pub use progression::{Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};

@@ -77,6 +77,18 @@ struct Payload {
     /// VALIDATE's results (written only when there are any).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     validated: Vec<Validated>,
+    /// THE ENEMY of an arms race (written only then).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    enemy: Option<EnemyState>,
+}
+
+/// What a run file keeps of THE ENEMY between generations: its random stream and its archive's elites (genome numbers,
+/// in cell order; their scores and measures come from the records).
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnemyState {
+    rng: (u64, u64),
+    archive: Vec<u32>,
 }
 
 impl RunSave {
@@ -155,6 +167,8 @@ struct HeadPayload {
     validated: Vec<Validated>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     genomes: Vec<Bred>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    enemy: Option<EnemyState>,
 }
 
 /// What a part's payload holds.
@@ -207,7 +221,7 @@ impl RunParts {
             }
             generations.push(RunPart { stats: stats.clone(), payload: pack(&PartPayload { genomes: bred, record }) });
         }
-        let head = HeadPayload { rng: p.rng, archive: p.archive, rescore: p.rescore, validated: p.validated, genomes: genomes.collect() };
+        let head = HeadPayload { rng: p.rng, archive: p.archive, rescore: p.rescore, validated: p.validated, genomes: genomes.collect(), enemy: p.enemy };
         Ok(RunParts {
             head: RunHead {
                 format: save.format,
@@ -252,7 +266,7 @@ impl RunParts {
             return Err(damaged("its head holds a genome of a generation done"));
         }
         genomes.extend(head.genomes);
-        let payload = Payload { rng: head.rng, genomes, generations: records, archive: head.archive, rescore: head.rescore, validated: head.validated };
+        let payload = Payload { rng: head.rng, genomes, generations: records, archive: head.archive, rescore: head.rescore, validated: head.validated, enemy: head.enemy };
         Ok((history, payload))
     }
 }
@@ -325,6 +339,16 @@ impl Run {
         }
     }
 
+    /// THE ENEMY as it stood after the last closed generation: its stream then and its archive's elites.
+    fn enemy_state(&self) -> Option<EnemyState> {
+        let e = self.enemy.as_ref()?;
+        let rng = match self.batch.as_ref().and_then(|b| b.rivalry.as_ref()) {
+            Some(r) => &r.from,
+            None => &e.rng,
+        };
+        Some(EnemyState { rng: rng.raw(), archive: e.archive.cells().values().map(|e| e.id).collect() })
+    }
+
     /// The run as a document, as it stood after its last closed generation.
     pub fn snapshot(&self) -> RunSave {
         let (rng, genomes) = self.closed();
@@ -335,6 +359,7 @@ impl Run {
             archive: self.archive.cells().values().map(|e| e.id).collect(),
             rescore: self.rescore,
             validated: self.validated.clone(),
+            enemy: self.enemy_state(),
         };
         RunSave {
             format: SAVE_FORMAT,
@@ -360,6 +385,7 @@ impl Run {
             rescore: self.rescore,
             validated: self.validated.clone(),
             genomes: genomes[genomes.partition_point(|b| (b.generation as usize) < done)..].to_vec(),
+            enemy: self.enemy_state(),
         };
         RunHead {
             format: SAVE_FORMAT,
@@ -413,36 +439,50 @@ impl Run {
         if history.len() != p.generations.len() || history.len() > run.generations as usize {
             return Err(damaged("its generations don't match their numbers"));
         }
-        let n = run.starts.len();
+        let yours = run.starts.len();
+        let n = yours + run.enemy_starts().len();
         if p.genomes.len() < n || p.genomes[..n].iter().any(|b| b.parent.is_some()) {
             return Err(damaged("its genome table doesn't begin with its starts"));
         }
-        run.starts = (0..n as u32)
+        let mut starts = (0..n as u32)
             .map(|k| rebuild(&p.genomes, &run.headers, k))
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| damaged("a start doesn't rebuild"))?;
         if p.genomes.iter().any(|b| b.root as usize >= n) {
             return Err(damaged("a genome descends from no start"));
         }
-        let mut archive = Archive::new(run.config.archive.clone());
-        for &id in &p.archive {
-            let bred = p
-                .genomes
-                .get(id as usize)
-                .ok_or_else(|| damaged("an elite is no genome"))?;
-            let child = scored_in(&history, &p.generations, bred.generation, id)
-                .map(|(g, k)| &p.generations[g as usize].children[k])
-                .ok_or_else(|| damaged("an elite was never scored"))?;
-            let genome = rebuild(&p.genomes, &run.headers, id).ok_or_else(|| damaged("an elite doesn't rebuild"))?;
-            archive.offer(Elite {
-                genome,
-                id,
-                score: child.score,
-                measures: child.measures.clone(),
-                generation: bred.generation,
-            });
+        let elites = |ids: &[u32], shape: &super::ArchiveShape| -> Result<Archive, RunError> {
+            let mut archive = Archive::new(shape.clone());
+            for &id in ids {
+                let bred = p
+                    .genomes
+                    .get(id as usize)
+                    .ok_or_else(|| damaged("an elite is no genome"))?;
+                let child = scored_in(&history, &p.generations, bred.generation, id)
+                    .map(|(g, k)| &p.generations[g as usize].children[k])
+                    .ok_or_else(|| damaged("an elite was never scored"))?;
+                let genome = rebuild(&p.genomes, &run.headers, id).ok_or_else(|| damaged("an elite doesn't rebuild"))?;
+                archive.offer(Elite {
+                    genome,
+                    id,
+                    score: child.score,
+                    measures: child.measures.clone(),
+                    generation: bred.generation,
+                });
+            }
+            Ok(archive)
+        };
+        run.archive = elites(&p.archive, &run.config.archive)?;
+        match (&mut run.enemy, &run.config.enemy, &p.enemy) {
+            (Some(e), Some(pop), Some(state)) => {
+                e.archive = elites(&state.archive, &pop.archive)?;
+                e.rng = Pcg32::from_raw(state.rng.0, state.rng.1);
+                e.starts = starts.split_off(yours);
+            }
+            (None, None, None) => {}
+            _ => return Err(damaged("its enemy doesn't match its configuration")),
         }
-        run.archive = archive;
+        run.starts = starts;
         run.rng = Pcg32::from_raw(p.rng.0, p.rng.1);
         run.table = p.genomes;
         run.records = p.generations;

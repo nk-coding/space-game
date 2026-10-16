@@ -27,7 +27,10 @@
 //! (`default` for the lab's default selection; `arena trials` lists them), `--goal` and `--goals` its goals, `--open`,
 //! `--fleet`, `--champion` and `--escort` what the presets fight (step 5); the best elite's score is printed by trial
 //! and goal, and the run's cost per trial. `validate` fights a run's best designs on new seeds and their recorded
-//! fights again, `rescore` re-scores a stale run under today's rules into a new run file. `replay` prints the fight
+//! fights again, `rescore` re-scores a stale run under today's rules into a new run file. `--trial arms_race` (step 7)
+//! has an enemy population evolve against the run's (its starts `--enemy SHIP`, default the first enemy faction's
+//! ships but its bosses): `evolve` then prints its numbers beside yours, its best, the PAST CHAMPIONS line, and
+//! `--out` writes its best as content ships `enemy_NN.ron` (EXPORT TO CONTENT). `replay` prints the fight
 //! code of any fight of a saved run, `lineage` a genome's line from its start. The results do not depend on the thread count, nor on where a run was
 //! interrupted. The fights run on `available_parallelism` threads (`--threads` to change); only the wall clock line
 //! depends on the machine.
@@ -36,7 +39,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use arena::evolve::{FlownBy, Gene, Genes, Goals, Job, Locks, MayChange, Sources, Start, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
+use arena::evolve::{Camp, FlownBy, Gene, Genes, Goals, Job, Locks, MayChange, Population, Sources, Start, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
 use arena::{
     BehaviorRef, DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Pilot, Run, RunSave,
     Summary,
@@ -60,7 +63,8 @@ unhurt, quick, cheap; the others weigh 0) or --goals PRESET (win, win_unhurt, wi
 fight: --open VOYAGE,... (the open voyages; default: a new career's), --fleet DESIGN, --champion DESIGN (repeatable),
 --escort DESIGN (repeatable: every trial flies with these beside the design); --flown-by behavior|stand-in|both
 (a lab.ron stand-in pilot flies the design's first ship with its assists in every fight trial, on every seed or the
-even ones; :PROFILE picks the pilot, default the first)
+even ones; :PROFILE picks the pilot, default the first); --trial arms_race has an enemy population evolve against the
+run's, from --enemy SHIP (repeatable; default the first enemy faction's ships, its bosses left out)
 locks (of every start): part:N (its parts[N]), category:ID (every part of it, e.g. category:weapons), cell:X,Y (keep
 empty, in the start's coordinates), rule:N (its behavior's rule N, 0 = the top), target, assist:N (its pilot
 assists' rule N), order (the locked rules keep their order)";
@@ -95,6 +99,8 @@ struct Opts {
     champions: Vec<String>,
     escorts: Vec<String>,
     flown_by: Option<String>,
+    /// `evolve`: an arms race's enemy starts (content ship ids).
+    enemy: Vec<String>,
     /// `validate`: the genomes (default: the best `--best`) and the new seeds.
     genomes: Vec<u32>,
 }
@@ -131,6 +137,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         champions: Vec::new(),
         escorts: Vec::new(),
         flown_by: None,
+        enemy: Vec::new(),
         genomes: Vec::new(),
     };
     let mut it = args.iter();
@@ -164,6 +171,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--champion" => o.champions.push(v.clone()),
             "--escort" => o.escorts.push(v.clone()),
             "--flown-by" => o.flown_by = Some(v.clone()),
+            "--enemy" => o.enemy.push(v.clone()),
             "--genome" => o.genomes.push(num(a, v)?),
             _ => return Err(format!("unknown option {a}")),
         }
@@ -496,8 +504,10 @@ fn genes_name(g: &Genes) -> String {
 
 fn row(g: &arena::evolve::GenerationStats, breed: Option<f64>, secs: Option<f64>) {
     let ms = |v: Option<f64>, d: usize| v.map_or("–".into(), |v| format!("{v:.d$}"));
+    // An arms race's enemy: its best, its archive's best and its cells.
+    let enemy = g.enemy.as_ref().map_or_else(String::new, |e| format!(" {:.3} | {:.3} | {} |", e.best, e.archive_best, e.filled));
     println!(
-        "| {} | {} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {} | {} |",
+        "| {} | {} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {} | {} |{enemy}",
         g.generation,
         if g.rescore { "re-score".to_string() } else { genes_name(&g.genes) },
         g.evaluated,
@@ -517,8 +527,8 @@ fn evolve(o: &Opts) -> Result<(), String> {
     let content = data::base_content();
     let (label, mut run) = match (&o.resume, o.args.as_slice()) {
         (Some(path), []) => {
-            if !o.from.is_empty() || !o.locks.is_empty() || !o.trials.is_empty() || !o.goal.is_empty() || o.goals.is_some() || o.flown_by.is_some() {
-                return Err("--from, --lock, --trial, --goal and --flown-by set up a new run; a resumed run keeps its own".into());
+            if !o.from.is_empty() || !o.locks.is_empty() || !o.trials.is_empty() || !o.goal.is_empty() || o.goals.is_some() || o.flown_by.is_some() || !o.enemy.is_empty() {
+                return Err("--from, --lock, --trial, --goal, --flown-by and --enemy set up a new run; a resumed run keeps its own".into());
             }
             (path.clone(), restored(&content, path)?)
         }
@@ -578,6 +588,28 @@ fn evolve(o: &Opts) -> Result<(), String> {
     if let Some(best) = results.elites.first() {
         print_breakdown(&run, best.id);
     }
+    let theirs: Vec<arena::evolve::Elite> = run.enemy_archive().map_or_else(Vec::new, |a| a.top(o.best).into_iter().cloned().collect());
+    if !theirs.is_empty() {
+        println!();
+        println!("The enemy's best (an arms race: its genomes follow yours in the table):");
+        println!();
+        println!("| rank | genome | score | generation | parts | from |");
+        println!("|---|---|---|---|---|---|");
+        for (k, e) in theirs.iter().enumerate() {
+            let line: Vec<String> = run.lineage(e.id).iter().map(|g| g.to_string()).collect();
+            let from = run.start(e.genome.root).map_or("?", |s| s.blueprint.name.as_str());
+            println!("| {} | {} | {:.3} | {} | {} | {from}: {} |", k + 1, e.id, e.score, e.generation, e.genome.blueprint.parts.len(), line.join(" → "));
+        }
+        let beaten = run.beaten();
+        if !beaten.is_empty() {
+            println!();
+            println!("PAST CHAMPIONS (each best against the other side's champions so far; rising is an arms race, a saw is cycling):");
+            println!();
+            for b in beaten {
+                println!("- gen {}: your best beat {} of {}, the enemy's best {} of {}", b.generation, b.yours.0, b.yours.1, b.theirs.0, b.theirs.1);
+            }
+        }
+    }
     if let Some(out) = &o.out {
         std::fs::create_dir_all(out).map_err(|e| format!("{out}: {e}"))?;
         for (k, e) in results.elites.iter().take(o.best).enumerate() {
@@ -601,6 +633,15 @@ fn evolve(o: &Opts) -> Result<(), String> {
             "# wrote the best {} elites to {out} (elite_NN.ron: the blueprint, elite_NN.txt: the behavior)",
             o.best.min(results.elites.len())
         );
+        // EXPORT TO CONTENT: the enemy's best as content ships with their behaviors, to curate into a pack by hand.
+        for (k, e) in theirs.iter().enumerate() {
+            let base = format!("{out}/enemy_{:02}.ron", k + 1);
+            let text = run.export_enemy(e.id, &label, k as u32 + 1).ok_or_else(|| format!("genome {} doesn't export", e.id))?;
+            std::fs::write(&base, text).map_err(|e| format!("{base}: {e}"))?;
+        }
+        if !theirs.is_empty() {
+            println!("# wrote the enemy's best {} to {out} (enemy_NN.ron: a content ship, its behavior in the comment block at its end)", theirs.len());
+        }
     }
     // Every fight is kept, so each code comes from the run's records (GDR-0092): no fight runs again.
     let codes: Vec<String> = (0..run.generation())
@@ -651,10 +692,12 @@ fn generations(content: &data::Content, run: &mut Run, label: &str, save: Option
             g => format!(", resumed after generation {}", g - 1),
         }
     );
+    let race = run.config().enemy.is_some();
     println!(
-        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | breed ms | s |"
+        "| gen | evolves | children | refused | best | mean | archive best | cells | took a cell | M ticks | breed ms | s |{}",
+        if race { " enemy best | enemy archive best | enemy cells |" } else { "" }
     );
-    println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
+    println!("|---|---|---|---|---|---|---|---|---|---|---|---|{}", if race { "---|---|---|" } else { "" });
     for g in state.history {
         row(g, None, None);
     }
@@ -723,8 +766,18 @@ fn set_trials(content: &data::Content, config: &mut arena::RunConfig, o: &Opts) 
                 trials.push(t);
             }
         }
+        // The ARMS RACE brings its enemy population: from `--enemy`, else the first enemy faction's ships.
+        config.enemy = match trials.iter().find_map(|t| t.preset.as_deref().and_then(|id| lab.trial(id)).filter(|p| matches!(p.kind, data::TrialPresetKind::CoEvolution { .. }))) {
+            Some(p) => {
+                let ships = if o.enemy.is_empty() { arena::evolve::enemy_starts(content) } else { o.enemy.clone() };
+                Some(Population::from_preset(content, p, &ships, config.population)?)
+            }
+            None => None,
+        };
         config.fitness = None;
         config.trials = trials;
+    } else if !o.enemy.is_empty() {
+        return Err("--enemy picks the enemy of --trial arms_race".into());
     }
     if let Some(id) = &o.goals {
         let p = lab.goal_presets.iter().find(|p| p.id == *id).ok_or_else(|| format!("--goals {id}: no goal preset `{id}`"))?;
@@ -782,7 +835,8 @@ fn trial_costs(run: &Run) {
     let mut ticks = vec![0u64; trials.len()];
     let mut children = 0u64;
     for (g, rec) in run.state().records.iter().enumerate() {
-        for (k, child) in rec.children.iter().enumerate() {
+        for k in run.children_of(g as u32, Camp::Yours) {
+            let child = &rec.children[k];
             let Some(tags) = run.tagged_jobs(g as u32, k) else { continue };
             children += 1;
             for ((t, _), r) in tags.iter().zip(&child.jobs) {
@@ -804,6 +858,19 @@ fn trial_costs(run: &Run) {
             ticks[k] as f64 / jobs[k].max(1) as f64,
             100.0 * ticks[k] as f64 / all.max(1) as f64
         );
+    }
+    // An arms race's enemy fights beside them: its jobs a child and its share of the run's ticks.
+    let (mut theirs, mut jobs, mut ticks) = (0u64, 0u64, 0u64);
+    for (g, rec) in run.state().records.iter().enumerate() {
+        for child in &rec.children[run.children_of(g as u32, Camp::Enemy)] {
+            theirs += 1;
+            jobs += child.jobs.len() as u64;
+            ticks += child.jobs.iter().map(|j| j.ticks).sum::<u64>();
+        }
+    }
+    if theirs > 0 {
+        let total: u64 = run.state().history.iter().map(|h| h.ticks).sum();
+        println!("# the enemy: {:.1} jobs a child, mean {:.0} ticks a job, {:.0}% of the run's ticks (PAST CHAMPIONS aside)", jobs as f64 / theirs as f64, ticks as f64 / jobs.max(1) as f64, 100.0 * ticks as f64 / total.max(1) as f64);
     }
 }
 

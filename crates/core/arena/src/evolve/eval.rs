@@ -20,8 +20,14 @@ pub const SAMPLE_TICKS: u64 = 15;
 /// data with a RON form, so they can be stored with a run or sent to another thread or worker (GDR-0092).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Job {
-    /// The candidate is side 0.
-    Fight { candidate: u32, spec: FightSpec },
+    /// The candidate is side `side`: 0, or 1 for an enemy of the arms race (GDR-0092 "Co-evolution": your side is
+    /// always side 0, so its replays look the same from either population).
+    Fight {
+        candidate: u32,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        side: u32,
+        spec: FightSpec,
+    },
     Voyage { candidate: u32, spec: VoyageSpec },
 }
 
@@ -51,7 +57,8 @@ pub enum JobEnd {
     #[default]
     Failed,
     /// A fight's record without what its spec gives again (each side's build points at the start) or what follows
-    /// from the rest (the scores): [`JobRecord::fight_result`] makes the whole [`FightResult`].
+    /// from the rest (the scores): [`JobRecord::fight_result`] makes the whole [`FightResult`]. Its sides are the
+    /// spec's (the candidate's is the job's `side`).
     Fight {
         outcome: Outcome,
         /// Each side's build points lost, damage dealt and vessels left.
@@ -60,7 +67,8 @@ pub enum JobEnd {
         left: [u32; 2],
         /// The final state hash.
         hash: u64,
-        /// The candidate's behavior rules that decided at least once (bit `i`: rule `i`; `Referee::decided`).
+        /// The candidate's behavior rules that decided at least once (bit `i`: rule `i`; `Referee::decided` of its
+        /// side).
         decided: u64,
         /// A gauntlet's waves cleared (`FightResult::waves`; written only for a gauntlet).
         #[serde(default, skip_serializing_if = "is_zero")]
@@ -167,9 +175,10 @@ impl Job {
     /// Builds the job's world. A job that cannot be built (the pre-filter should have caught it) scores 0.
     pub(crate) fn start(&self, content: &Content) -> Active {
         match self {
-            Job::Fight { spec, .. } => match Fight::new(content, spec) {
+            Job::Fight { spec, side, .. } => match Fight::new(content, spec) {
                 Ok(fight) => Active::Fight {
                     fight: Box::new(fight),
+                    side: (*side as usize).min(1),
                     waves: spec.waves.len() as u32 + 1,
                     gauntlet: !spec.waves.is_empty(),
                     phase: 0,
@@ -193,6 +202,8 @@ impl Job {
 pub(crate) enum Active {
     Fight {
         fight: Box<Fight>,
+        /// The candidate's side.
+        side: usize,
         /// A gauntlet's waves, its own first one counted, and whether it is one (WIN is then the share cleared).
         waves: u32,
         gauntlet: bool,
@@ -235,6 +246,7 @@ impl Active {
             }
             Active::Fight {
                 fight,
+                side,
                 waves,
                 gauntlet,
                 phase,
@@ -251,7 +263,7 @@ impl Active {
                     *phase += dt;
                     if *phase == SAMPLE_TICKS {
                         *phase = 0;
-                        if let Some(d) = engage_distance(fight.sim()) {
+                        if let Some(d) = engage_distance(fight.sim(), *side) {
                             *sum += d;
                             *samples += 1;
                         }
@@ -263,10 +275,10 @@ impl Active {
                             dealt: r.sides.map(|s| s.damage_dealt),
                             left: r.sides.map(|s| s.vessels_left),
                             hash: r.state_hash,
-                            decided: fight.referee().decided()[0],
+                            decided: fight.referee().decided()[*side],
                             waves: r.waves,
                         };
-                        let goals = fight_goals(&r, fight.referee().limit(), (*gauntlet).then_some(*waves));
+                        let goals = fight_goals(&r, *side, fight.referee().limit(), (*gauntlet).then_some(*waves));
                         return (
                             used,
                             Some(JobResult {
@@ -286,18 +298,19 @@ impl Active {
     }
 }
 
-/// A fight's goals for side 0 (CHEAP aside): WIN is the arena score, or a gauntlet's waves cleared of `waves`; UNHURT
-/// one less the share of its build points lost; QUICK one less the share of the time limit a win took.
-fn fight_goals(r: &FightResult, limit: u64, waves: Option<u32>) -> GoalScores {
+/// A fight's goals for side `side` (CHEAP aside): WIN is the arena score, or a gauntlet's waves cleared of `waves`
+/// (side 0's); UNHURT one less the share of its build points lost; QUICK one less the share of the time limit a win
+/// took.
+fn fight_goals(r: &FightResult, side: usize, limit: u64, waves: Option<u32>) -> GoalScores {
     let win = match waves {
         Some(n) => (r.waves as f32 / n.max(1) as f32).clamp(0.0, 1.0),
-        None => r.sides[0].score,
+        None => r.sides[side].score,
     };
     let quick = match r.outcome {
-        Outcome::Won(0) => 1.0 - (r.ticks as f32 / limit.max(1) as f32).clamp(0.0, 1.0),
+        Outcome::Won(s) if s == side => 1.0 - (r.ticks as f32 / limit.max(1) as f32).clamp(0.0, 1.0),
         _ => 0.0,
     };
-    GoalScores { win, unhurt: 1.0 - r.sides[0].lost_share(), quick, cheap: 0.0 }
+    GoalScores { win, unhurt: 1.0 - r.sides[side].lost_share(), quick, cheap: 0.0 }
 }
 
 /// Where a vessel of `owner` stands: running vessels only, by ship id.
@@ -308,10 +321,10 @@ fn running(sim: &Sim, owner: Owner) -> impl Iterator<Item = sim::Vec2> + '_ {
         .filter_map(|s| Some(s.piece(s.control_piece()?)?.com_world()))
 }
 
-/// Distance from side 0's first running vessel to the nearest running vessel of side 1.
-fn engage_distance(sim: &Sim) -> Option<f32> {
-    let me = running(sim, OWNERS[0]).next()?;
-    running(sim, OWNERS[1])
+/// Distance from side `side`'s first running vessel to the nearest running vessel of the other side.
+fn engage_distance(sim: &Sim, side: usize) -> Option<f32> {
+    let me = running(sim, OWNERS[side]).next()?;
+    running(sim, OWNERS[1 - side])
         .map(|p| (p - me).length())
         .fold(None, |b: Option<f32>, d| Some(b.map_or(d, |b| b.min(d))))
 }

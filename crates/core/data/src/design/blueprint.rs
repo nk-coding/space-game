@@ -6,8 +6,29 @@ use std::fmt::Write as _;
 use crate::content::kind::Kind;
 use crate::content::limits::MAX_DOCUMENT_BYTES;
 use crate::content::load::{parse_error, ron_options, strip_bom};
-use crate::content::model::{Blueprint, Placement, PowerOverride};
+use crate::behavior::behavior_to_ron;
+use crate::content::model::{Behavior, Blueprint, Placement, PowerOverride};
 use crate::content::problem::Problem;
+
+/// The line before the commented-out behavior file of a `.ron` export ([`export_text`]).
+pub const BEHAVIOR_MARK: &str = "// behavior: ";
+
+/// The `.ron` export of a blueprint (trimmed, under its id; the drydock's EXPORT, an evolved enemy's EXPORT TO
+/// CONTENT): the content ship format, then the behavior it names, if given, as a comment block: [`BEHAVIOR_MARK`]
+/// and `behaviors/<id>.ron`, then that behavior file with every line commented out. Pack loaders skip the block, an
+/// import reads it.
+pub fn export_text(ship: &Blueprint, behavior: Option<&Behavior>) -> String {
+    let mut s = blueprint_to_ron(ship);
+    if let Some(b) = behavior {
+        s.push_str(&format!("{BEHAVIOR_MARK}behaviors/{}.ron\n", b.id));
+        for line in behavior_to_ron(b).lines() {
+            s.push_str("// ");
+            s.push_str(line);
+            s.push('\n');
+        }
+    }
+    s
+}
 
 /// Writes a blueprint as RON: the header fields, `size`, then `parts` with one placement per line, four-space
 /// indent. Defaults are left out: `rot: 0`, `flip: false`, a placement's `material` and `power` when absent,
