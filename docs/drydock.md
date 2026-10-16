@@ -301,8 +301,8 @@ A). Screenshots: `docs/results/drydock-v2-1280x720.png`, `-1280x720-more.png` (t
 - **The ⋯ menu** (opens upward, right-aligned; `actions::Rare`, carried out by `blueprints/` exactly as the
   BLUEPRINTS and EXPORT buttons are): NEW DESIGN (an empty design in this frame; unsaved changes are saved first),
   FRAME (the content frames as pills, the current one lit, locked ones dimmed), COPY SHARE CODE, DOWNLOAD .RON FILE
-  (desktop: WRITE .RON FILE), IMPORT .RON FILE, and with the evolution lab open (`?lab=1` until its research node,
-  GDR-0092 step 4) EVOLVE THIS DESIGN: home's camera flies from the drydock to the EVOLUTION lab and its setup opens
+  (desktop: WRITE .RON FILE), IMPORT .RON FILE, and with the evolution lab open (its research node, the
+  Simulation vault, researched; GDR-0092) EVOLVE THIS DESIGN: home's camera flies from the drydock to the EVOLUTION lab and its setup opens
   with the design in the drydock as the start (`world::evolution::StartPick::Working`, `docs/client.md` "Evolution").
   The screens themselves stay as they were.
 - **Menus** (`DrydockUi::menu`): one open at a time; Esc, a click outside (a veil under the menu takes it, so it

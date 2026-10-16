@@ -275,8 +275,10 @@ Not in the model: kills (the game would have to count them; the plan's log examp
 new game (the game picks it, the model has no clock), whether escort designs still exist (they live in the game's
 storage), and the evolution lab's runs (GDR-0092 step 4, 16 Oct 2026: free, GDR-0030; they live in `lab/` beside the
 save, each a head and one part per generation since ADR-0041, `docs/client.md` "Evolution", and a run's limits are taken from what the career grants when it is set up: the
-unlocked parts and materials, the part counts, the mind capacity less FLEET's escorts). Its research node (the
-Simulation vault, `Unlock::Facility("evolution")`) comes with step 8; until then `?lab=1` opens the building. A design
+unlocked parts and materials, the part counts, the mind capacity less FLEET's escorts). The lab is locked until its
+research node, the Simulation vault (`simulation_vault`, logic 3, `Unlock::Facility("evolution")`, GDR-0092 step 8, 16
+Oct 2026), is researched: `Unlocks::facilities` holds the open facilities (`content/base/facilities.ron`), derived like
+the parts, so an existing save simply lacks it until the node is paid; `?unlock=all` opens it. A design
 the lab saves is an ordinary saved design with an `origin` (designs format 2, `docs/drydock.md`): FLEET flies it and
 voyages launch it like any other.
 

@@ -156,6 +156,28 @@ running the fight again.
   today's rules with the note, runs restore stale and read-only, for RE-SCORE. Runs now (native = wasm, resumed
   identical): `two_starts_locked` `26640964243d2ef3`, `mixed_trials` `815f907b41da854c`, `everything`
   `594676fe18bf1bc5`, `arms_race` `311601d6146da787`.
+  Step 8 built 2026-10-16 (`docs/client.md` "Evolution", `docs/content-model.md` "Facilities" and "The evolution lab",
+  `docs/career.md`, `docs/wiki.md`, `docs/arena.md` "The archive and the loop"): the research node Simulation vault
+  (`simulation_vault`, logic, 3 logic data, a new research kind FACILITY) unlocks `Unlock::Facility("evolution")` from
+  the new content kind `facilities.ron` (`Kind::Facility`: name, summary, `locked`; `Unlocks::facilities`, opened by
+  `?unlock=all` too); `?lab=1` is gone: the lab follows the career's facilities (`Lab::enabled` follows `Granted`), and
+  a locked lab computes nothing; the chip `EVOLVING 12 / 50` beside home's gear ring and after the title of FLEET, the
+  LOG and SETTINGS, a click opening the lab; `lab.ron` complete (the trial kinds' words, the size presets, the measures,
+  the spreads, the frame budget; its texts keyed `lab.<list>.<id>.<field>`), its generated wiki page
+  (`reference/lab.md`), `[[lab:list.id]]` references, `wiki/mechanics/evolution-lab.md` and
+  `wiki/mechanics/evolution-trials.md`, and a completeness check that fails when a trial kind, trial, goal, goal
+  preset, gene, gene preset, pilot or size is named on no hand-written page; facility pages in the wiki. Where building
+  found otherwise: the locked building says `LOCKED` and names the node in its tooltip (`LOCKED · RESEARCH SIMULATION
+  VAULT`): the label's room above the mind holds about 24 characters, the decided line doesn't fit; a click or E on
+  it opens RESEARCH on the node (as the drydock's LOCKED rows do); the vault needs nothing, so the logic lane has two
+  rows; the chip has no PAUSE (PAUSE is on the run's page and in RUNS) and isn't on the EVOLUTION layer itself, and a
+  click on it from FLEET or the LOG closes that layer and flies to the lab; the mutation operators' weights stay the
+  arena's (a run breeds by them and its file doesn't carry them), as do the archive's ranges for the CLI
+  (`ArchiveShape::default`, kept equal to `lab.ron`'s `design` spread by a test); `MAX_RUNS` stays a code constant
+  (a storage limit, not a lab number); the `visibilitychange` pause isn't built: a hidden tab gets no frames, so the
+  run already waits (step 4's finding). The lab's runs (`lab/`) are shared by every save slot, so a slot without the
+  node keeps them, locked. Fights, codes, run files and every run hash are unchanged (the lab and facilities are
+  outside the rules' fingerprint; the spreads are the numbers the code had).
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

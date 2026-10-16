@@ -4,9 +4,10 @@ A VitePress site in the game's look (`wiki/`, [ADR-0039](adr/0039-vitepress-wiki
 2026; it replaced the static HTML generator of ADR-0032). Two halves:
 
 - **Generated** (`content-tool wiki-data`, code `crates/tools/content-tool/src/wiki/`): a page for every entry of
-  every content kind (parts, materials, categories, ships, frames, factions, research, families, starts, voyages,
-  encounters, behaviors, behavior nodes, stats, controls, articles), a list per kind and a reference overview,
-  plus the data the site's components and Markdown plugin read. Written into `wiki/gen/` (git-ignored).
+  every content kind (parts, materials, categories, ships, frames, factions, research, families, facilities, starts,
+  voyages, encounters, behaviors, behavior nodes, stats, controls, articles), a list per kind, a reference overview
+  and the evolution lab's page (`reference/lab.md`, all of `lab.ron`: a table per list, a row with an anchor per
+  entry; GDR-0092 step 8, 16 Oct 2026), plus the data the site's components and Markdown plugin read. Written into `wiki/gen/` (git-ignored).
 - **Hand-written** (`wiki/guide/`, `wiki/mechanics/`, `wiki/behavior/`, the home page `wiki/index.md`): the guide, the
   player-facing mechanics and the behavior system. Prose only: every name and number the game's data holds is a
   reference (below), so it can never drift.
@@ -45,7 +46,7 @@ A page is Markdown with front matter (`title`, `description`; quote values with 
 
 | Write | Shows |
 |---|---|
-| `[[part:thruster]]`, `[[part:thruster\|thrusters]]` | a link to the entry's page with its name (or the label); any kind: `stat`, `category`, `faction`, `material`, `part`, `frame`, `ship`, `behavior_node`, `behavior`, `family`, `research`, `start`, `voyage`, `encounter`, `control`, `page` |
+| `[[part:thruster]]`, `[[part:thruster\|thrusters]]` | a link to the entry's page with its name (or the label); any kind: `stat`, `category`, `faction`, `material`, `part`, `frame`, `ship`, `behavior_node`, `behavior`, `family`, `research`, `facility`, `start`, `voyage`, `encounter`, `control`, `page` |
 | `[[part:thruster.thrust]]` | a part's stat as the drydock shows it (`200 kN`); a hull part in a material: `[[part:block_1x1@steel.hp]]` |
 | `[[part:capacitor.bonus.fire_rate]]`, `.bonus.<stat>.max_stacks`, `.power_tier`, `.absorb.<family>`, `.salvage`, `.salvage_data`, `.salvage_materials`, `.fragment` | a part's bonus, power tier, shield absorption and salvage |
 | `[[material:steel.hp_per_cell]]`, `.salvage`, `.salvage_data` | a material's stats and salvage |
@@ -53,6 +54,7 @@ A page is Markdown with front matter (`title`, `description`; quote values with 
 | `[[control:recall.keys]]` | the default keys as key caps |
 | `[[behavior_node:orbit.signature]]`, `[[behavior_node:orbit.default.radius]]` | how a node is written; a parameter's default |
 | `[[research:tamed_core.cost]]`, `.requires`, `.unlocks`; `[[frame:frigate.grid]]`; `[[start:rim_awakening.mind_capacity]]`; `[[voyage:yard_approach.sites]]`, `.length`, `.band`, `.opens_after`; `[[encounter:the_warden.wake_radius]]`; `[[behavior:escort.rules]]`; `[[stat:mass.unit]]` | more values |
+| `[[lab:trial.voyages]]`, `[[lab:size.standard.population]]` | an entry of `lab.ron` (`goal`, `goal_preset`, `kind`, `trial`, `gene`, `gene_preset`, `pilot`, `size`, `measure`), linked to its row on the lab's page with its name, and its values (`summary`, a trial's `kind`, `weight`, `seeds`, `time_limit`, `default`, `target`, `count`, `ships`, `waves`, the arms race's numbers; a pilot's `lock`, `close_to`, `stick`, `fire`; a size's `population`, `generations`; a preset's `weights` or `genes`; a measure's `unit`); `[[lab:spread.design]]`, `[[lab:budget.layer_open]]`, `[[lab:palette.automatons]]` (`wiki::pages::lab`) |
 | `[[sim:tick_hz]]` | a simulation constant with its unit, read from the sim's own constants and `SimConfig::default()` (the list: `wiki::refs::sim_values`; add a constant there before using it) |
 
 `wiki::refs` makes the table (`gen/refs.json`); the site's Markdown plugin (`wiki/.vitepress/refs.mts`) fills it in.
@@ -130,12 +132,16 @@ pages). A global rule hides any other native bar.
   runs it over the repository's `wiki/`): every reference resolves, every rule example checks, every component names
   existing content, every page has a title and a description and is in `nav.json` (and every `nav.json` entry has a
   page), no raster image (a raster file anywhere in `wiki/`, an `<img>`, a raster `url(...)`, `src` or data URI).
+  Every entry of the evolution lab's documented lists (every trial kind, trial, goal, goal preset, gene, gene preset,
+  stand-in pilot and size: `pages::LAB_DOCUMENTED`) must be named on some hand-written page (`[[lab:<list>.<id>]]` or
+  one of its values); the lab's pages are `mechanics/evolution-lab.md` and `mechanics/evolution-trials.md`.
 - The other tests of `crates/tools/content-tool/src/wiki/tests.rs`: every kind has a section (`KINDS` covers
   `Kind::ALL`), every entry a page, a sidebar entry and a reference; every link in the pages and data resolves; two
   runs are identical; generated pages are blocks Vue leaves alone; pages link both ways; locked content is marked;
   drawings are vector and use the pack's icons; a mod with markup in every text is escaped everywhere.
-- `npm run check` on the build: every entry and hand-written page has its page, every internal link and fragment
-  resolves, no raster file, `<img>` or raster `url()`, and every page is in the search index.
+- `npm run check` on the build: every entry and hand-written page has its page (a lab entry its row's anchor),
+  every internal link and fragment resolves, no raster file, `<img>` or raster `url()`, and every page is in the
+  search index.
 
 ## Not yet
 

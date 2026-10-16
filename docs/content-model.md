@@ -37,6 +37,8 @@ content/base/
   voyages/rim.ron          voyages (the first playable loop's four rim clusters); order = voyage map order
   encounters/*.ron         what waits at a voyage site (ships, wrecks)
   controls.ron             the action map: every player action, its section, screens and default inputs (GDR-0090)
+  facilities.ron           the home shipyard's buildings research opens (the evolution lab; GDR-0092)
+  lab.ron                  the evolution lab's words and numbers: goals, trials, genes, pilots, sizes, measures (GDR-0092)
   behavior_nodes/*.ron     the behavior vocabulary: conditions, actions, target selectors (+ Rhai conditions)
   behaviors/<id>.ron       behavior programs (a target line and rules in the text format)
   icons/<key>.svg          part, material and category icons as SVG (the glyph without its tile)
@@ -49,7 +51,8 @@ File rules:
 
 - A kind's data lives in `<dir>.ron` or anywhere under `<dir>/` (any depth), with `<dir>` one of `stats`,
   `categories`, `factions`, `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`,
-  `research`, `starts`, `voyages`, `encounters`, `controls`. File names are free; group however reads best.
+  `research`, `facilities`, `starts`, `voyages`, `encounters`, `controls`. File names are free; group however reads
+  best. `lab.ron` is one file of its own (one `( ... )`, not an entry kind).
 - A file holds **one entry** `( ... )` or **a list** `[ ( ... ), ... ]`. Comments (`//`, `/* */`) are fine.
 - `Some(...)` may be omitted (`power: (output: 10)`); RON's `implicit_some` is always on.
 - Unknown fields are errors (typos fail loudly). Unknown `.ron` files are errors; `.svg` files belong in
@@ -568,10 +571,10 @@ nodes a player has researched lives in the save, never in content (`docs/career.
 | Field | Notes |
 |---|---|
 | `family` | the family whose tree the node sits in |
-| `kind` | `NewPart`, `Variant`, `SizeClass`, `Refinement` or `Alien` (GDR-0024): how the research screen draws it |
+| `kind` | `NewPart`, `Variant`, `SizeClass`, `Refinement`, `Alien` (GDR-0024) or `Facility` (16 Oct 2026, GDR-0092): how the research screen draws it |
 | `cost` | required: `data` (family id → amount, each above 0, at most 10000) and `materials` (id → whole amount, 1 to 10000); both may be left out (`cost: ()`) |
 | `requires` | optional: node ids (any family) that must be researched first |
-| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)` (clears that entry's `locked` for the player) and `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100) |
+| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)`, `Facility(id)` (clears that entry's `locked` for the player) and `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100) |
 
 Validation: the family, every cost family and material, every `requires` node and every unlock target exist; no
 node listed twice in `requires`; no cycle in `requires` (each cycle is reported once, with its path); unlocking an
@@ -582,7 +585,8 @@ tuning, GDR-0073): `automaton_cannon` (kinetic 3), `composite_plating` (hull 8, 
 (energy 10), `fusion_reactor` (power 10), `torch_drive` (propulsion 10), `tamed_core` (logic 3 + programmable
 matter 1, unlocks the automaton core), `mind_expansion_1` (logic 10 + 3, needs `tamed_core`), `mind_expansion_2`
 (logic 16 + 5, needs `mind_expansion_1`), `cruiser_drydock` (hull 20, needs `composite_plating`, unlocks the cruiser
-frame). Reactive armour, Automaton plate and the capital frame stay locked.
+frame), `simulation_vault` (logic 3, kind `Facility`, unlocks the facility `evolution`, GDR-0092 step 8, 16 Oct 2026).
+Reactive armour, Automaton plate and the capital frame stay locked.
 
 ### Starts (`starts.ron`, added 13 Oct 2026)
 
@@ -713,6 +717,43 @@ The assist actions (GDR-0088 step 3, 15 Oct 2026): `assist_toggle_1` to `assist_
 assists on that toggle slot (which ones is set per design in their `toggle` value), `all_assists` (Z) all of them. The
 debug overlay moved from F3 to F8 for them. `lock_next` (Tab) is LOCK TARGET (named "Lock target" since 15 Oct 2026,
 the id kept for saved bindings): the nearest enemy, then the next by distance (`sim::flight::next_lock`).
+
+### Facilities (`facilities.ron`, added 16 Oct 2026, GDR-0092)
+
+The home shipyard's buildings that the player opens (GDR-0071: "each area needs states from content"). Common header
+plus `locked` (default false): a locked facility is dark until a research node's `Facility(id)` opens it
+(`Career::unlocks`'s `facilities`; `?unlock=all` opens every one). `name` is the label over the building at home. The
+shipyard places and draws the building; only `evolution` (the evolution lab, locked, opened by `simulation_vault`) is
+content so far; the fabricator and the salvage bay come later. The wiki gives each a page with the research that
+opens it. Not in the rules' fingerprint.
+
+### The evolution lab (`lab.ron`, GDR-0092; completed 16 Oct 2026, step 8)
+
+One file per pack (a later pack's entry of the same id replaces an earlier one in its place; its `budget` replaces
+the earlier one), not an entry kind: problems name fields as `lab.trials[<id>].seeds`, its texts are keyed
+`lab.<list>.<id>.<field>` (`lab.goal.win.name`, in `Content::texts`). Not in the rules' fingerprint: a run keeps
+everything it was made with, so a change here changes no run.
+
+| List | Holds |
+|---|---|
+| `goals` | the arena's four goals (`win`, `unhurt`, `quick`, `cheap`): name, summary, weight in a new run (0 to 3) |
+| `goal_presets` | the one-click goal weights (WIN, WIN UNHURT, ...) |
+| `kinds` | the trial kinds' words, one per kind the arena fights (`data::TRIAL_KINDS`: `encounters`, `enemy_ships`, `waves`, `gauntlet`, `beat_your_start`, `fleet`, `hall_of_fame`, `champions`, `voyages`, `co_evolution`); a trial without a preset shows its kind's name |
+| `trials` | the setup's trial presets: name, summary, `kind` with its data, weight, seeds, time limit, `default` (on in a new run) |
+| `genes`, `gene_presets` | MAY CHANGE's genes (`data::GENES`) and the presets over them, the first a new run's |
+| `pilots` | the stand-in pilots (`flies`: lock, close to, stick and fire duty), the first the default |
+| `palettes` | parts an enemy faction may build with in an arms race besides its ships' |
+| `sizes` | SIZE's presets: children per generation and generations, one `default: true` |
+| `measures` | the archive's measures (`data::MEASURES`), named by a stat (`stat`) or by their own `name` and `unit` |
+| `spreads` | the archive's grids, `design` (runs whose design may change; the arena's own default, a test keeps them equal) and `behavior`: one to three axes of `cells` bins of a measure from `min` to `max` |
+| `budget` | the ms a frame gives the run that computes: `layer_open`, `elsewhere` |
+
+Validation: goals, genes, kinds, measures and spreads are the arena's; presets name goals and genes; trials' numbers,
+ships and factions are in range and exist, every trial's kind has its words; a measure has a stat or a name, not both;
+a lab with trials needs sizes (at most one default), both spreads and a budget. The mutation operators' weights stay
+the arena's (a run breeds by them and its file doesn't carry them). The wiki generates the lab's page from it
+(`reference/lab.md`) and hand-written pages reference it as `[[lab:trial.voyages]]` and
+`[[lab:size.standard.population]]` (`docs/wiki.md`).
 
 ## Coordinates and geometry
 

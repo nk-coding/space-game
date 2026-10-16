@@ -579,6 +579,14 @@ cells in 3 generations). Behavior runs want behavior measures (`EngageDistance` 
 `skiff_behavior.ron`); in a behavior stage under design axes every child shares its parent's cell (a plain hill
 climb).
 
+The game's runs take their axes from `lab.ron` (GDR-0092 step 8, 16 Oct 2026): its `spreads` `design` (the default
+above, kept equal to `ArchiveShape::default` by a test in `tests/trials.rs`, so the CLI's runs and the game's spread
+alike) and `behavior` (engage distance 0–160 m in 8 cells × rules 0–12 in 6), over its `measures`, whose ids are
+`Measure::id` (`top_speed`, `acceleration`, `weapon_reach`, `build_points`, `mass`, `firepower`, `hit_points`, `parts`,
+`rules`, `engage_distance`; `Measure::from_id`, `Measure::ALL`) and whose names and units are a stat's of `stats.ron`
+or their own. A trial's kind has its id too (`Trial::kind_id`, `data::TrialPresetKind::id`, the same ten), by which
+`lab.ron`'s `kinds` name it. A run carries its axes and trials, so `lab.ron` changes no run.
+
 Each generation: generation 0 is the starts and `population − n` mutants of them (shared out evenly); later ones are
 `population` children of elites drawn uniformly from the occupied cells. Each child's jobs (every opponent × seed, or every voyage × seed)
 are evaluated; its score is their mean; then the children are offered to the archive in order. All random draws

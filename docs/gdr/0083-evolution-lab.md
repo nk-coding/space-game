@@ -4,6 +4,8 @@
   player-facing (a station building unlocked by research), not a dev-only place, and its purpose is improving your
   own ships, with GDR-0083's benchmark rating one trial among several; its configurable runs, the engine-free crate
   and SAVE AS DESIGN stay.
+  2026-10-16: GDR-0092 step 8 built: the lab is in the career (the research node Simulation vault opens it), the
+  dev-only switch `?lab=1` is gone; the benchmark rating (THE LADDER) stays an optional later step of GDR-0092.
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions, interactively)
 - Related: [GDR-0032](0032-balancing-arena-evolution.md), [GDR-0030](0030-no-economy.md), [GDR-0033](0033-multiplayer-coop-and-arena.md), [ADR-0036](../adr/0036-arena-crate.md), `docs/plans/coop-arena.md`, `docs/plans/evolution-lab.md`

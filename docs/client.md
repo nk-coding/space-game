@@ -91,7 +91,6 @@ what fits the window, `kit::ui_kit::UiSize`, applied by every screen's UI scale)
 | `save=<slot>` | play the career save `saves/<slot>` instead of `saves/career` (a new game if it doesn't exist; [Career](#career)) |
 | `newgame=1` | start over: a new career replaces the save (no confirm: a development switch; every load with it starts over again), and the drydock docks the start's ship |
 | `unlock=all` | free mode: every part, material and frame in the drydock, nothing locked or NEW; no unlock is written into the save |
-| `lab=1` | opens the EVOLUTION lab at home and EVOLVE THIS DESIGN in the drydock ([Evolution](#evolution); until its research node comes, GDR-0092 step 8, it is dark without) |
 | `load=1\|5\|20` | browser load test: `sim::voyage::scenario::load_test(n, seed)`, camera frames the fight, stats overlay on |
 | `seed=N` | sim seed (default 42; a whole number, exact up to 2^64) |
 | `hashlog=1`, `hashticks=N` | log the per-tick state hash of the load scenario (20 ships unless `load=` is given) to the console, `N` ticks (default 600, at least 1) |
@@ -484,7 +483,7 @@ scene after `../space-game-archive/mockups/shipyard-long-u.png`, drawn by the ga
 | Test range: the sandbox with raider waves (a lost ship re-forms; M comes back, T opens the drydock as in any sandbox) | T, or a click on the tower or its lane |
 | FLEET: the escorts ([FLEET](#fleet)) at the moorings; Esc, CLOSE or its ring button closes it | F, or a click on the moorings |
 | LOG: the last voyages ([LOG](#log)) at the records mast; Esc, CLOSE or its ring button closes it | L, or a click on the mast |
-| EVOLUTION: the evolution lab ([Evolution](#evolution)) at the compute stack above the mind, with `?lab=1` until its research node comes; Esc, CLOSE or its ring button go back a page and close it from RUNS | E, or a click on the stack |
+| EVOLUTION: the evolution lab ([Evolution](#evolution)) at the compute stack above the mind once the Simulation vault is researched (locked, E or a click open RESEARCH on that node); Esc, CLOSE or its ring button go back a page and close it from RUNS | E, or a click on the stack |
 | Voyages: the voyage map opens at once through the gate, the camera diving at it while the map opens inside its ring ([Voyage map](#voyage-map)); coming back runs the same way backwards | V, or a click on the gate |
 | Dismiss the debrief after a voyage | Esc, Enter, or DISMISS |
 | Research: the lab ([Research](#research); Esc, `‹ HOME` or its ring button come back) | R, or a click on the lab |
@@ -872,14 +871,20 @@ grid with step 6, also 16 Oct 2026, its GENERATION n, REPLACE START, TIDY and th
 day; the ARMS RACE with step 7, 16 Oct 2026): runs that breed the
 player's designs against enemies and keep the best of each kind, every fight to watch again, any result saved as a
 design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
-the building `shipyard`. Until its research node comes (step 8) it opens with `?lab=1`; without it the building is
-dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
+the building `shipyard`. Since step 8 (16 Oct 2026; `?lab=1` is gone) it is locked until the career has the facility
+`evolution` (`content/base/facilities.ron`): the research node Simulation vault (logic, 3 logic data) opens it, and
+`?unlock=all` does (`world::evolution::Lab::enabled` follows `Granted`, system `unlock`). Locked, the building is dark
+and says `LOCKED` (its tooltip `LOCKED · RESEARCH SIMULATION VAULT`, `home::evolution_tip`), a click on it or E flies to
+the research lab and opens RESEARCH on that node (`home::unless_locked`, as the drydock's LOCKED rows do), the
+drydock has no EVOLVE THIS DESIGN, BLUEPRINTS no ORIGIN link, and no run computes (runs in `lab/` are shared by every
+save slot, so a slot without the node has its runs but the lab locked). The lab's words and numbers are `lab.ron`'s
+(goals, trials and their kinds, genes, pilots, sizes, measures, spreads, the budget; `docs/content-model.md`).
 
 - **The building** (`shipyard::layout`, `draw`, `life`): a compute stack on the base's outer face above the mind,
   between the upper truss bridge and the top arm's corner (lower in a taller frame, higher in a very short one); its
   strut lands on the base and the mind's violet conduit runs down from it onto the mind's top face. A chamfered block
   with window rows, the stack's rings seen from above, a rack either side. Its states (`draw::Evo`, from the lab:
-  `evolution::light`): dark without `?lab=1`; dim (`NO RUN`); busy while a run computes (the racks' windows flicker,
+  `evolution::light`): dark while locked (`LOCKED`); dim (`NO RUN`); busy while a run computes (the racks' windows flicker,
   a switch every 0.08–0.35 s; the label `12 / 50 · BEST 0.81` in teal); `PAUSED · 12 / 50`; `DONE · BEST 0.91` in
   gold with a gold glow breathing once a run has finished, until it is opened. A ring of 16 segments on the stack
   fills with the run's generations (the open one counted in), drawn again only when a segment lights. Its label
@@ -921,9 +926,10 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   OF (the categories whose parts may be added, removed or swapped, while PARTS is on), FLOWN BY (BEHAVIOR, STAND-IN or
   BOTH: odd seeds the behavior, even seeds the stand-in, in every fight trial) and its PILOT (`lab.ron`'s pilots:
   CASUAL, HANDS OFF, BUSY, each summary its tip); a preset with the assists sets BOTH, one without them BEHAVIOR (only a
-  pilot uses assists); a run that leaves the design as it is spreads its archive by engage distance × rules; SIZE:
-  QUICK (16 children, 20
-  generations), STANDARD (32, 50), DEEP (64, 100), or steppers; SEED (steppers and DICE). TRIALS (step 5): every
+  pilot uses assists); a run that leaves the design as it is spreads its archive by `lab.ron`'s `behavior` spread
+  (engage distance × rules), the others by its `design` spread (acceleration × firepower, the arena's default); SIZE:
+  `lab.ron`'s size presets (QUICK: 16 children, 20 generations; STANDARD, the default: 32, 50; DEEP: 64, 100), or
+  steppers; SEED (steppers and DICE). TRIALS (step 5): every
   `lab.ron` trial preset in a list, its default selection on (THE ENEMIES YOU MEET at weight 2, TEST-RANGE WAVES, BEAT
   YOUR START, HALL OF FAME; ENEMY SHIPS, the raider gauntlet, YOUR FLEET, CHAMPIONS and VOYAGES off), each row a pill
   that turns it on or off, its WEIGHT (0 to 3 in halves) and SEEDS steppers, the count where it has one (BEST for the
@@ -954,8 +960,9 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   ×; a start's `A START`, a re-score's `FOUGHT AGAIN`); a click on one picks it with its FIGHTS. THE
   ARCHIVE: a cell per bin of the run's first two measures (a third folded in), each occupied cell a ship card
   (`UiIcon::Ship`, as FLEET and BLUEPRINTS draw them) tinted by its score, the best with a gold edge, a start with a
-  teal corner; its axes in words under it (the content's stat names and units where there are some). THE PICKED
-  DESIGN (the best until one is clicked): its drawing, score, generation and genome number, its measures, its start;
+  teal corner; its axes in words under it (`lab.ron`'s measures: a stat's name and unit where there is one, else
+  their own). THE PICKED DESIGN (the best until one is clicked): its drawing, score, generation and genome number, its
+  measures, its start;
   SCORES (step 5, the first tab: a row per trial with its weight, its fights, its score and each goal's mean, the
   goals that weigh lit, a trial without fights says so; IN ALL; VALIDATE THIS and VALIDATE THE BEST 8, then
   `VALIDATED 0.76 ON 20 NEW SEEDS · 36 OF 36 RECORDED FIGHTS AS RECORDED`), FIGHTS (WATCH BEST, WATCH WORST, then a
@@ -1020,9 +1027,13 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   saved design under its id and name (`replace_target`: only a start that is one of YOUR DESIGNS still saved), so
   FLEET's escorts fly the new version; when the drydock has that design open without unsaved changes it opens the new
   version (else it keeps its unsaved changes and says so).
+- **The EVOLVING chip** (`game::evolution::Chip`, step 8): while a run computes (and the lab is open to the career),
+  a pill `EVOLVING  12 / 50` sits left of home's gear ring and after the title of FLEET, the LOG and SETTINGS (at home
+  only; SETTINGS over flight has none). A click opens the lab (`home::chip`): from the yard or SETTINGS the camera
+  flies to it, from FLEET or the LOG that layer closes and the camera flies from its place to the lab.
 - **Computing** (`world::evolution::compute`, every frame in every mode): the run that computes gets 10 ms of the
   frame with the layer open and 4 ms anywhere else at home and on the screens (the drydock, BEHAVIOR, research, the
-  map, the LOG, SETTINGS; `BUDGET_OPEN_MS`, `BUDGET_MS`, placeholders), none in flight (the test range, test flights,
+  map, the LOG, SETTINGS; `lab.ron`'s `budget`, placeholders, `world::evolution::budget`), none in flight (the test range, test flights,
   replays, voyages: it waits where it was). The budget becomes ticks of work from the measured cost per tick (a
   running mean, `Rate`; 9 µs assumed before the first measure), and `arena::Run::step` breeds and fights within it,
   so a frame keeps its time whatever the fight; every slicing gives the same run (the web's executor,

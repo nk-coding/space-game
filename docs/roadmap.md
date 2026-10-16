@@ -370,10 +370,16 @@ Next session:
      dots in the chart, YOURS | THE ENEMY on the run page, evolved enemies saved as designs and exported to content
      (`enemy_NN.ron` in the CLI); `determinism-check.sh --run arms_race` (native = wasm); runs without an enemy
      unchanged;
-  8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
+  8. **Built 16 Oct 2026**: the career and the wiki: the research node Simulation vault (logic, 3 logic data) opens
+     the lab (`facilities.ron`, a new content kind, and `Unlock::Facility`); `?lab=1` is gone; a locked lab is dark,
+     says LOCKED and leads to RESEARCH on its node; the EVOLVING chip at home and on FLEET, the LOG and SETTINGS;
+     `lab.ron` complete (trial kinds, sizes, measures, spreads, the frame budget; text keys); the wiki's generated lab
+     page, `[[lab:…]]` references and the pages mechanics/evolution-lab and mechanics/evolution-trials, with a
+     completeness check over every trial kind, trial, goal, gene, pilot, size and preset;
   9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab: the rest of `lab.ron`, its wiki page and the Simulation vault with step 8.
+  1. The evolution lab is complete through GDR-0092 step 8; step 9 (web workers, re-watching voyage jobs, THE
+     LADDER) is optional, when Niklas wants it.
 
 ## Phase 4: measurement
 
