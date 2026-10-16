@@ -203,6 +203,15 @@ pub enum StartPick {
     Template(String),
 }
 
+/// What the drydock asks the EVOLUTION layer to open on when home comes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LabRequest {
+    /// EVOLVE THIS DESIGN: the setup with this start.
+    Setup(StartPick),
+    /// A click on an evolved design's ORIGIN: its run's page with its genome picked.
+    Origin { run: String, genome: u32 },
+}
+
 /// A start resolved for a run: what the setup lists of it (its parts, its rules) and what the run gets.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StartDesign {
@@ -567,8 +576,8 @@ pub struct Lab {
     content: Option<std::sync::Arc<Content>>,
     /// The EVOLUTION layer is open: the run gets [`BUDGET_OPEN_MS`].
     pub layer_open: bool,
-    /// EVOLVE THIS DESIGN: the setup opens with this start.
-    pub request: Option<StartPick>,
+    /// What the drydock asks the layer to open on: EVOLVE THIS DESIGN's setup, or a saved design's origin.
+    pub request: Option<LabRequest>,
     /// A fight of a run is being watched: home comes back to the lab when flight ends.
     pub watching: bool,
     /// A run that finished in this session and hasn't been opened since: the building glows gold.
@@ -1188,10 +1197,42 @@ pub fn result_name(start: &str, generation: u32) -> String {
     name
 }
 
-/// SAVE AS DESIGN: genome `genome` of run `loaded` into YOUR DESIGNS as `name`, in its start's frame (as the drydock
-/// saves designs), tagged `evolved`, with its `origin`. When its behavior evolved (or its start flew a player
-/// behavior no longer saved), the behavior is saved beside it as a player behavior, `<name> (evolved)`, and the
-/// design names it; else the design names its start's. Returns the design's id and the problems
+/// Where SAVE AS DESIGN writes: a new design of this name, or over the saved design the genome's start is (REPLACE
+/// <START>, GDR-0092: its id and name kept, so FLEET's escorts fly the new version).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveTo<'a> {
+    New(&'a str),
+    Replace,
+}
+
+/// The ids a run's starts go by in an origin: a content ship's, a saved design's (its blueprint's id; an unsaved
+/// working design's the slug of its name), a random start's faction.
+fn start_ids(run: &Run) -> Vec<String> {
+    run.config()
+        .all_starts()
+        .map(|s| match s {
+            Start::Design { design: DesignRef::Ship(id), .. } => id.clone(),
+            Start::Design { design: DesignRef::Blueprint(text), .. } => data::parse_blueprint(text).map_or_else(|_| String::new(), |b| if b.id.is_empty() { library::slug(&b.name) } else { b.id }),
+            Start::Random { faction } => faction.clone(),
+        })
+        .collect()
+}
+
+/// What REPLACE <START> writes over for genome `genome`: its start, when that is one of YOUR DESIGNS still saved (its
+/// id and name). A template or a random start has none.
+pub fn replace_target(storage: &Storage, loaded: &Loaded, genome: u32) -> Option<(String, String)> {
+    let root = loaded.run.table().get(genome as usize)?.root as usize;
+    let Start::Design { design: DesignRef::Blueprint(_), .. } = loaded.run.config().all_starts().nth(root)? else { return None };
+    let id = start_ids(&loaded.run).into_iter().nth(root).filter(|id| !id.is_empty())?;
+    let doc = storage.read::<DesignDoc>(&id).ok()??;
+    Some((id, doc.doc.0.name))
+}
+
+/// SAVE AS DESIGN: genome `genome` of run `loaded` into YOUR DESIGNS (as a new design, or over its start: [`SaveTo`]),
+/// in its start's frame (as the drydock saves designs), tagged `evolved`, with its `origin`. When its behavior evolved
+/// (or its start flew a player behavior no longer saved), the behavior is saved beside it as a player behavior,
+/// `<name> (evolved)`, and the design names it; else the design names its start's. `tidy`: an evolved behavior loses
+/// the rules that never decided in its fights (TIDY, `arena::Run::tidied`). Returns the design's id and the problems
 /// `validate_design` finds (none for a genome of a run: the pre-filter checked it).
 #[allow(clippy::too_many_arguments)]
 pub fn save_as_design(
@@ -1200,7 +1241,8 @@ pub fn save_as_design(
     behaviors: &mut PlayerBehaviors,
     loaded: &Loaded,
     genome: u32,
-    name: &str,
+    to: SaveTo,
+    tidy: bool,
     now: u64,
 ) -> Result<(String, Vec<data::Problem>), String> {
     let run = &loaded.run;
@@ -1213,8 +1255,14 @@ pub fn save_as_design(
     let starts: Vec<&Start> = run.config().all_starts().collect();
     let root = *starts.get(g.root as usize).ok_or("its start is gone")?;
     let start_text = run.starts().get(g.root as usize).map(|s| s.behavior_text().to_string()).unwrap_or_default();
-    let evolved = g.behavior_text() != start_text;
+    let tidied = if tidy && g.behavior_text() != start_text { run.tidied(genome).map(|(text, ..)| text) } else { None };
+    let text = tidied.as_deref().unwrap_or(g.behavior_text());
+    let evolved = text != start_text;
     let Start::Design { design, behavior: flew, .. } = root else { return Err("a random start has no design to keep".into()) };
+    let (id, name) = match to {
+        SaveTo::New(name) => (library::new_id(storage, content, name).map_err(|e| e.to_string())?, name.to_string()),
+        SaveTo::Replace => replace_target(storage, loaded, genome).ok_or("its start is none of your designs")?,
+    };
     // The player behavior a start flew (inlined as text): the saved one with the same rules, if it is still there.
     let player = match flew {
         Some(BehaviorRef::Text(_)) => behaviors.iter().find(|p| bare(content, &behavior_text(&p.behavior)).as_deref() == Some(start_text.as_str())).map(|p| p.behavior.clone()),
@@ -1242,25 +1290,19 @@ pub fn save_as_design(
                 rules: Vec::new(),
                 source: Default::default(),
             };
-            set_text(&mut b, g.behavior_text());
+            set_text(&mut b, text);
             Some(behaviors.save(storage, content, &b, now)?)
         }
     };
-    let from = starts.iter().map(|s| match s {
-        Start::Design { design: DesignRef::Ship(id), .. } => id.clone(),
-        Start::Design { design: DesignRef::Blueprint(text), .. } => data::parse_blueprint(text).map_or_else(|_| String::new(), |b| if b.id.is_empty() { library::slug(&b.name) } else { b.id }),
-        Start::Random { faction } => faction.clone(),
-    });
-    let mut from: Vec<String> = from.collect();
+    let mut from = start_ids(run);
     // Its own start's first.
     if (g.root as usize) < from.len() {
         let own = from.remove(g.root as usize);
         from.insert(0, own);
     }
-    let id = library::new_id(storage, content, name).map_err(|e| e.to_string())?;
     let bp = Blueprint {
         id: id.clone(),
-        name: name.to_string(),
+        name,
         behavior,
         origin: Some(Origin { run: loaded.id.clone(), genome, generation, from, score }),
         ..g.placed(frame)
@@ -1649,7 +1691,10 @@ mod tests {
         let mut behaviors = PlayerBehaviors::default();
         let name = result_name("Rim skiff", best.generation);
         assert_eq!(name, format!("Rim skiff · evolved g{}", best.generation));
-        let (saved, problems) = save_as_design(&mut storage, &content, &mut behaviors, loaded, best.id, &name, 99).unwrap();
+        // A template start is none of YOUR DESIGNS: nothing to replace.
+        assert_eq!(replace_target(&storage, loaded, best.id), None);
+        assert!(save_as_design(&mut storage, &content, &mut behaviors, loaded, best.id, SaveTo::Replace, false, 99).is_err());
+        let (saved, problems) = save_as_design(&mut storage, &content, &mut behaviors, loaded, best.id, SaveTo::New(&name), false, 99).unwrap();
         assert!(problems.iter().all(|p| !p.is_error()), "{problems:?}");
         let doc = storage.read::<DesignDoc>(&saved).unwrap().unwrap();
         let bp = doc.doc.0;
@@ -1681,6 +1726,52 @@ mod tests {
         crate::storage::Backend::write(&mut old, "designs", "older", &format!("// space-game: designs, format 1, saved 5\n{text}")).unwrap();
         let old = Storage::new(old);
         assert_eq!(old.read::<DesignDoc>("older").unwrap().unwrap().doc.0.origin, None);
+    }
+
+    /// REPLACE <START>: a genome of a saved design's run writes over that design, its id and name kept, with its
+    /// origin; TIDY saves its evolved behavior without the rules that never decided in its fights.
+    #[test]
+    fn replace_writes_over_the_start_and_tidy_drops_rules() {
+        let content = data::base_content();
+        let mut storage = mem();
+        let skiff = content.ships.get("rim_skiff").unwrap().clone();
+        storage.write("my_skiff", &DesignDoc(Blueprint { id: "my_skiff".into(), name: "My skiff".into(), ..skiff }), 5).unwrap();
+        let mut s = setup(&content);
+        s.starts = vec![(StartPick::Design("my_skiff".into()), Locks::default())];
+        let mut lab = Lab::load(&storage, &content, true);
+        let cfg = config(&content, &s, &storage);
+        let id = lab.create(&mut storage, &content, cfg, "Mine", 10).unwrap();
+        while lab.running().is_some() {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+        }
+        let loaded = lab.get(&id).unwrap();
+        let start_text = loaded.run.starts()[0].behavior_text().to_string();
+        // The best genome whose behavior evolved, else the best.
+        let elites = loaded.run.results().elites;
+        let best = elites.iter().find(|e| e.genome.behavior_text() != start_text).unwrap_or(&elites[0]).clone();
+        assert_eq!(replace_target(&storage, loaded, best.id), Some(("my_skiff".into(), "My skiff".into())));
+        let mut behaviors = PlayerBehaviors::default();
+        let (saved, problems) = save_as_design(&mut storage, &content, &mut behaviors, loaded, best.id, SaveTo::Replace, true, 99).unwrap();
+        assert!(problems.iter().all(|p| !p.is_error()), "{problems:?}");
+        assert_eq!(saved, "my_skiff");
+        let doc = storage.read::<DesignDoc>("my_skiff").unwrap().unwrap();
+        let bp = doc.doc.0;
+        assert_eq!((bp.name.as_str(), doc.saved), ("My skiff", Some(99)));
+        let origin = bp.origin.unwrap();
+        assert_eq!((origin.run.as_str(), origin.genome, origin.from.as_slice()), (id.as_str(), best.id, ["my_skiff".to_string()].as_slice()));
+        let evolved = best.genome.behavior_text() != start_text;
+        let want = match loaded.run.tidied(best.id) {
+            Some((text, _, fights)) if evolved => {
+                assert!(fights > 0);
+                text
+            }
+            _ => best.genome.behavior_text().to_string(),
+        };
+        match bp.behavior.as_deref().and_then(|b| behaviors.get(b)) {
+            Some(p) => assert_eq!(bare(&content, &behavior_text(&p.behavior)).unwrap(), want),
+            None => assert!(!evolved, "an evolved behavior is saved beside it"),
+        }
+        assert_eq!(storage.list(<DesignDoc as crate::storage::Document>::NAMESPACE).unwrap(), ["my_skiff"], "no second design");
     }
 
     /// IMPORT RUN reads a CLI run file (no head) into the lab, paused, under the file's name, and it writes back the

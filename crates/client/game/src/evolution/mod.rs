@@ -39,9 +39,10 @@ use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_color, set_text, show_screen, spawn_pill};
 use world::career::{EscortDesigns, Granted, PlayerCareer};
-use world::evolution::Lab;
+use world::evolution::{Lab, LabRequest};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
+use world::player::library::DesignSlot;
 use world::player::behaviors::PlayerBehaviors;
 use world::replay::Replay;
 use world::scene::Scene;
@@ -193,7 +194,8 @@ pub(crate) struct Ctx<'w> {
     lab: ResMut<'w, Lab>,
     storage: ResMut<'w, Storage>,
     content: Res<'w, GameContent>,
-    design: Res<'w, PlayerDesign>,
+    design: ResMut<'w, PlayerDesign>,
+    slot: ResMut<'w, DesignSlot>,
     behaviors: ResMut<'w, PlayerBehaviors>,
     granted: Res<'w, Granted>,
     escorts: Res<'w, EscortDesigns>,
@@ -246,10 +248,20 @@ fn open(
         return;
     }
     match lab.request.take() {
-        Some(start) => {
+        Some(LabRequest::Setup(start)) => {
             layer.setup = Some(SetupPage::new(&content.0, &storage, &behaviors, &design, career.career(), &lab, vec![start]));
             layer.go(Page::Setup);
         }
+        Some(LabRequest::Origin { run, genome }) => match lab.view(&storage, &content.0, Some(&run)) {
+            Ok(()) => {
+                layer.run = run::RunPage::picking(genome);
+                layer.go(Page::Run);
+            }
+            Err(e) => {
+                layer.go(Page::Runs);
+                layer.say(format!("{run} doesn't open: {e}"), Tone::Coral);
+            }
+        },
         None => layer.go(Page::Runs),
     }
 }

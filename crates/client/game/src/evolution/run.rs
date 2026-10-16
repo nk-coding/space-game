@@ -15,6 +15,9 @@
 //!   the generation inside, fights per second and the time left from the measured rate.
 //! * **The archive**: a grid over the run's first two measures; a click picks a design. The best design is picked
 //!   when nothing is.
+//! * **GENERATION n**: a click on a generation in the chart lists its children in the picked design's place, best
+//!   first, each with its score, whether it took a cell, its parent, its cell and what changed; a click on one picks
+//!   it with its fights.
 //! * **SCORES** (GDR-0092 step 5): the picked design's score taken apart, per trial (its weight, score and goals'
 //!   means) and in all; VALIDATE THIS and VALIDATE THE BEST 8 (new seeds and the recorded fights again, computed in
 //!   the run's place) and the validated score once there is one.
@@ -26,7 +29,9 @@
 //! * **LINEAGE**: its line from its start, each ancestor a small card (a click picks it); **COMPARE**: the start and
 //!   it side by side, the parts it gained and lost, its behavior.
 //! * **SAVE AS DESIGN**: a name (`<start> · evolved g<generation>`), then into YOUR DESIGNS with its origin and the
-//!   EVOLVED tag (`world::evolution::save_as_design`).
+//!   EVOLVED tag (`world::evolution::save_as_design`); **REPLACE START** (a start that is one of YOUR DESIGNS) asks,
+//!   then writes over it under its id and name. Either one TIDYs an evolved behavior (on by default): the rules that
+//!   never decided in the fights it flew go.
 
 use std::collections::BTreeMap;
 
@@ -38,11 +43,11 @@ use data::Content;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::UiIcon;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, ValueBar, field_text, label, number, prose, set_color, set_text, spawn_bar, spawn_brackets, spawn_pill, tracked};
-use world::evolution::{Lab, Loaded, result_name, save_as_design};
+use world::evolution::{Lab, Loaded, SaveTo, replace_target, result_name, save_as_design};
 use world::mode::AppMode;
-use world::player::library::MAX_NAME;
+use world::player::library::{self, DesignSlot, MAX_NAME};
 use world::scene::Launch;
-use world::storage::now_unix;
+use world::storage::{Storage, now_unix};
 use world::voyage::clock;
 
 use super::{Ctx, EvolutionLayer, LabButton, Page, abs, column, on_row, row, score};
@@ -74,21 +79,41 @@ pub(crate) enum Tab {
     Compare,
 }
 
+/// What the save panel does: SAVE AS DESIGN (a name), or REPLACE <START> (asked first).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Saving {
+    New,
+    Replace,
+}
+
 /// THE RUN page's state.
 #[derive(Default)]
 pub(crate) struct RunPage {
-    /// The picked genome (an elite, or one of their ancestors).
+    /// The picked genome (an elite, one of their ancestors, a child of a generation).
     picked: Option<u32>,
     tab: Tab,
-    /// SAVE AS DESIGN asks for a name: this one (the field types into it).
-    saving: bool,
+    /// GENERATION n: the generation whose children show in the picked design's place.
+    generation: Option<u32>,
+    /// The save panel, if open; SAVE AS DESIGN's name (the field types into it).
+    saving: Option<Saving>,
     name: String,
+    /// TIDY at SAVE is off: an evolved behavior keeps the rules that never decided.
+    untidy: bool,
     /// RENAME asks for the run's new name.
     renaming: bool,
     new_name: String,
-    /// What the page was built for: the run, its generations done, the pick, the tab, the save panel, whether a
-    /// validation was underway.
-    built: Option<(String, u32, Option<u32>, Tab, bool, bool)>,
+    /// What the page was built for: the run, its generations done, the pick, the tab, GENERATION n, the save panel and
+    /// TIDY, whether a validation was underway.
+    built: Option<Built>,
+}
+
+type Built = (String, u32, Option<u32>, Tab, Option<u32>, Option<Saving>, bool, bool);
+
+impl RunPage {
+    /// The page with genome `genome` picked (a saved design's ORIGIN).
+    pub(crate) fn picking(genome: u32) -> RunPage {
+        RunPage { picked: Some(genome), ..default() }
+    }
 }
 
 /// A click on the run's page.
@@ -98,12 +123,22 @@ pub(crate) enum RunButton {
     Resume,
     Pick(u32),
     Tab(Tab),
+    /// GENERATION n (a click on the chart, its ‹ and ›), and back to the picked design.
+    Generation(u32),
+    CloseGeneration,
+    /// A child of GENERATION n: picked, with its fights.
+    Child(u32),
     /// WATCH and COPY FIGHT CODE: generation, child, job.
     Watch(u32, usize, usize),
     Code(u32, usize, usize),
     SaveAs,
     Save,
     Cancel,
+    /// REPLACE <START>: asks, then writes over the start.
+    Replace,
+    ConfirmReplace,
+    /// TIDY at SAVE on or off.
+    Tidy,
     /// VALIDATE the picked design, or the archive's best [`VALIDATE_BEST`].
     Validate,
     ValidateBest,
@@ -228,9 +263,19 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
         RunButton::Resume => super::runs::status(layer, ctx, &id, RunStatus::Running),
         RunButton::Pick(g) => {
             layer.run.picked = Some(g);
-            layer.run.saving = false;
+            layer.run.saving = None;
         }
         RunButton::Tab(t) => layer.run.tab = t,
+        RunButton::Generation(n) => {
+            layer.run.generation = Some(n);
+            layer.run.saving = None;
+        }
+        RunButton::CloseGeneration => layer.run.generation = None,
+        RunButton::Child(g) => {
+            layer.run.picked = Some(g);
+            layer.run.generation = None;
+            layer.run.tab = Tab::Fights;
+        }
         RunButton::Watch(generation, child, job) => {
             let Some(code) = ctx.lab.viewed().and_then(|l| l.run.fight_code(generation, child, job)) else {
                 layer.say("that fight doesn't play", Tone::Coral);
@@ -255,9 +300,15 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
             let start = start.map_or_else(|| l.name.clone(), |n| n.trim_end_matches(" (evolved)").to_string());
             let generation = l.run.scored(g).map_or(0, |(generation, _)| generation);
             layer.run.name = result_name(&start, generation);
-            layer.run.saving = true;
+            layer.run.saving = Some(Saving::New);
+            layer.run.untidy = false;
         }
-        RunButton::Cancel => layer.run.saving = false,
+        RunButton::Replace => {
+            layer.run.saving = Some(Saving::Replace);
+            layer.run.untidy = false;
+        }
+        RunButton::Cancel => layer.run.saving = None,
+        RunButton::Tidy => layer.run.untidy = !layer.run.untidy,
         RunButton::Validate | RunButton::ValidateBest => {
             let Some(l) = ctx.lab.viewed() else { return };
             let genomes: Vec<u32> = match b {
@@ -293,7 +344,7 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
             }
         }
         RunButton::Save => {
-            layer.run.saving = false;
+            layer.run.saving = None;
             let Some(l) = ctx.lab.viewed() else { return };
             let Some(g) = shown(&layer.run, l) else { return };
             let name = layer.run.name.trim().to_string();
@@ -302,13 +353,42 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
                 return;
             }
             let content = &ctx.content.0;
-            match save_as_design(&mut ctx.storage, content, &mut ctx.behaviors, l, g, &name, now_unix()) {
+            match save_as_design(&mut ctx.storage, content, &mut ctx.behaviors, l, g, SaveTo::New(&name), !layer.run.untidy, now_unix()) {
                 Ok((_, problems)) => match problems.iter().find(|p| p.is_error()) {
                     Some(p) => layer.say(format!("saved as {name} in your designs  ·  {}", p.message), Tone::Gold),
                     None => layer.say(format!("saved as {name} in your designs  ·  open it in the drydock's blueprints"), Tone::Teal),
                 },
                 Err(e) => layer.say(format!("not saved: {e}"), Tone::Coral),
             }
+        }
+        RunButton::ConfirmReplace => {
+            layer.run.saving = None;
+            let Some(l) = ctx.lab.viewed() else { return };
+            let Some(g) = shown(&layer.run, l) else { return };
+            let Some((id, name)) = replace_target(&ctx.storage, l, g) else {
+                layer.say("its start is none of your designs any more", Tone::Coral);
+                return;
+            };
+            let content = &ctx.content.0;
+            if let Err(e) = save_as_design(&mut ctx.storage, content, &mut ctx.behaviors, l, g, SaveTo::Replace, !layer.run.untidy, now_unix()) {
+                layer.say(format!("not replaced: {e}"), Tone::Coral);
+                return;
+            }
+            // The drydock's design follows when it is this one and has no unsaved changes.
+            let docked = ctx.slot.id.as_deref() == Some(id.as_str());
+            let words = match docked && !ctx.slot.dirty(&ctx.design) {
+                true => match library::open_saved(&ctx.storage, content, &id) {
+                    Ok(next) => {
+                        ctx.design.replace(next);
+                        *ctx.slot = DesignSlot::opened(Some(id.clone()), &ctx.design);
+                        "the drydock has the new version"
+                    }
+                    Err(_) => "the drydock keeps the old version",
+                },
+                false if docked => "the drydock keeps your unsaved changes to it",
+                false => "fleet's escorts fly the new version",
+            };
+            layer.say(format!("{name} replaced  ·  {words}"), Tone::Teal);
         }
     }
     layer.dirty = true;
@@ -452,6 +532,7 @@ pub(super) fn fill(
     mut layer: ResMut<EvolutionLayer>,
     lab: Res<Lab>,
     content: Res<world::sim_bridge::GameContent>,
+    storage: Res<Storage>,
     fonts: Res<HudFonts>,
     style: Res<Style>,
     panels: Query<(Entity, &Panel)>,
@@ -460,7 +541,8 @@ pub(super) fn fill(
         return;
     }
     let Some(l) = lab.viewed() else { return };
-    let key = (l.id.clone(), l.run.generation(), layer.run.picked, layer.run.tab, layer.run.saving, lab.validating().is_some());
+    let page = &layer.run;
+    let key = (l.id.clone(), l.run.generation(), page.picked, page.tab, page.generation, page.saving, page.untidy, lab.validating().is_some());
     if !layer.dirty && layer.run.built.as_ref() == Some(&key) {
         return;
     }
@@ -474,9 +556,12 @@ pub(super) fn fill(
     for (e, panel) in &panels {
         commands.entity(e).despawn_children();
         commands.entity(e).with_children(|p| match panel {
-            Panel::Chart => chart(p, &c, l),
+            Panel::Chart => chart(p, &c, l, layer.run.generation),
             Panel::Grid => grid(p, fonts, &c, l, picked),
-            Panel::Picked => picked_design(p, fonts, &c, content, &lab, l, picked, &layer.run),
+            Panel::Picked => match layer.run.generation {
+                Some(n) => generation(p, fonts, &c, content, l, n),
+                None => picked_design(p, fonts, &c, content, &storage, &lab, l, picked, &layer.run),
+            },
         });
     }
 }
@@ -496,8 +581,9 @@ fn segment(p: &mut ChildSpawnerCommands, a: Vec2, b: Vec2, w: f32, color: Color)
 type ChartLine = (fn(&GenerationStats) -> f32, Tone, f32);
 
 /// SCORES BY GENERATION: three lines over the run's generations (the archive's best, each generation's best and
-/// mean; 0 at the bottom, 1 at the top) and a bar per generation for the children that took a cell.
-fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Loaded) {
+/// mean; 0 at the bottom, 1 at the top) and a bar per generation for the children that took a cell; a click on a
+/// generation (a column over its lines and bar, `open` lit) opens GENERATION n.
+fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, open: Option<u32>) {
     let (_, size) = CHART;
     let state = l.run.state();
     // The grid lines at 0, 0.5 and 1.
@@ -515,6 +601,20 @@ fn chart(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, l: &Load
     let x = |g: usize| size.x * g as f32 / span;
     let y = |v: f32| size.y * (1.0 - v.clamp(0.0, 1.0));
     let bar_w = (size.x / state.generations.max(1) as f32).clamp(1.0, 8.0);
+    let column_w = (size.x * every as f32 / span).clamp(4.0, size.x);
+    for &g in &points {
+        let h = &history[g];
+        let left = (x(g) - column_w / 2.0).clamp(0.0, size.x - column_w);
+        p.spawn((
+            LabButton::Run(RunButton::Generation(g as u32)),
+            Pill { bare: true, active: open == Some(g as u32), ..Pill::new(Tone::Teal) },
+            Hot::default(),
+            Node { position_type: PositionType::Absolute, left: px(left), top: px(0), width: px(column_w), height: px(size.y + 6.0 + BARS_H), border: UiRect::all(px(1.0)), border_radius: BorderRadius::all(px(3)), ..default() },
+            BorderColor::all(Color::NONE),
+            BackgroundColor(Color::NONE),
+            kit::ui_kit::Tip::new(format!("GENERATION {g}  ·  BEST {}  ·  MEAN {}  ·  A CLICK LISTS ITS CHILDREN", score(Some(h.best)), score(Some(h.mean)))),
+        ));
+    }
     let most = history.iter().map(|g| g.evaluated).max().unwrap_or(1).max(1) as f32;
     for &g in &points {
         let h = history[g].improved as f32 / most * BARS_H;
@@ -585,9 +685,10 @@ fn grid(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -
     }
 }
 
-/// THE PICKED DESIGN: its drawing and numbers, the tabs, the tab's rows, SAVE AS DESIGN.
+/// THE PICKED DESIGN: its drawing and numbers, the tabs, the tab's rows, SAVE AS DESIGN and REPLACE <START> (when
+/// its start is one of YOUR DESIGNS), and while saving TIDY's line and REPLACE's question.
 #[allow(clippy::too_many_arguments)]
-fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, lab: &Lab, l: &Loaded, picked: Option<u32>, page: &RunPage) {
+fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, storage: &Storage, lab: &Lab, l: &Loaded, picked: Option<u32>, page: &RunPage) {
     let run = &l.run;
     p.spawn(label(fonts, "THE PICKED DESIGN", 9.0, c(Tone::Dim, 1.0)));
     let Some(g) = picked else {
@@ -598,11 +699,12 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
     let scored = run.scored(g);
     let record = scored.and_then(|(generation, child)| run.state().records.get(generation as usize).and_then(|r| r.children.get(child)).map(|c| (generation, child, c.clone())));
     let start = run.starts().get(genome.root as usize);
-    // The drawing and its numbers.
-    p.spawn(row(14.0)).with_children(|r| {
-        r.spawn(Node { width: px(150), height: px(100), flex_shrink: 0.0, ..default() }).with_children(|b| {
+    let target = replace_target(storage, l, g);
+    // The drawing and its numbers (narrow enough for SAVE AS DESIGN and REPLACE START side by side).
+    p.spawn(row(12.0)).with_children(|r| {
+        r.spawn(Node { width: px(140), height: px(100), flex_shrink: 0.0, ..default() }).with_children(|b| {
             spawn_brackets(b, 10.0, 1.2, c(Tone::Label, 0.4));
-            b.spawn((UiIcon::Ship(Box::new(genome.blueprint.clone())), Node { position_type: PositionType::Absolute, left: px(10), top: px(8), width: px(130), height: px(84), ..default() }));
+            b.spawn((UiIcon::Ship(Box::new(genome.blueprint.clone())), Node { position_type: PositionType::Absolute, left: px(10), top: px(8), width: px(120), height: px(84), ..default() }));
         });
         r.spawn(column(5.0)).with_children(|t| {
             let from = start.map_or_else(String::new, |s| s.blueprint.name.trim_end_matches(" (evolved)").to_uppercase());
@@ -627,9 +729,13 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
                 }
             }
             t.spawn(tracked(fonts, &format!("FROM {from}"), 7.5, c(Tone::Teal, 1.0), 0.15));
-            if !page.saving {
-                t.spawn(Node { margin: UiRect::top(px(2)), ..row(0.0) }).with_children(|b| {
+            if page.saving.is_none() {
+                t.spawn(Node { margin: UiRect::top(px(2)), ..row(6.0) }).with_children(|b| {
                     spawn_pill(b, fonts, "SAVE AS DESIGN", 8.0, 24.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::SaveAs));
+                    if let Some((_, name)) = &target {
+                        let tip = format!("WRITES OVER {} IN YOUR DESIGNS UNDER ITS ID: FLEET'S ESCORTS FLY THE NEW VERSION", name.to_uppercase());
+                        spawn_pill(b, fonts, "REPLACE START", 8.0, 24.0, None, Pill::new(Tone::Gold), (LabButton::Run(RunButton::Replace), kit::ui_kit::Tip::new(tip)));
+                    }
                 });
             }
         });
@@ -640,13 +746,125 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
             spawn_pill(r, fonts, words, 8.5, 26.0, None, Pill { active: page.tab == t, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::Tab(t)));
         }
     });
-    let rows_h = if page.saving { 300.0 } else { 340.0 };
+    let rows_h = match page.saving {
+        None => 340.0,
+        Some(Saving::New) => 300.0,
+        Some(Saving::Replace) => 290.0,
+    };
     p.spawn((Scrollbar::vertical(), ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, row_gap: px(3), height: px(rows_h), overflow: Overflow::scroll_y(), padding: UiRect::right(px(10)), ..default() }))
         .with_children(|rows| match page.tab {
             Tab::Scores => scores(rows, fonts, c, content, lab, l, g, record.as_ref().map(|(generation, child, rec)| (*generation, *child, rec))),
             Tab::Fights => fights(rows, fonts, c, content, l, record.as_ref().map(|(generation, child, rec)| (*generation, *child, rec))),
             Tab::Lineage => lineage(rows, fonts, c, content, l, g),
             Tab::Compare => compare(rows, fonts, c, content, l, &genome),
+        });
+    let Some(saving) = page.saving else { return };
+    tidy_line(p, fonts, c, l, g, &genome, page.untidy);
+    if let (Saving::Replace, Some((_, name))) = (saving, &target) {
+        p.spawn(Node { flex_shrink: 0.0, overflow: Overflow::clip(), ..default() }).with_children(|t| {
+            t.spawn((label(fonts, &format!("REPLACE {}? IT KEEPS ITS ID AND NAME", name.to_uppercase()), 8.0, c(Tone::Gold, 1.0)), TextLayout::no_wrap()));
+        });
+        p.spawn(Node { height: px(28), flex_shrink: 0.0, ..row(8.0) }).with_children(|r| {
+            spawn_pill(r, fonts, "REPLACE", 8.5, 26.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::ConfirmReplace));
+            spawn_pill(r, fonts, "KEEP", 8.5, 26.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::Cancel));
+        });
+    }
+}
+
+/// TIDY at SAVE's line (GDR-0092): for an evolved behavior, how many rules never decided in the fights it flew, and
+/// the pill that drops them (on by default; its tip names them); else why there is nothing to tidy.
+#[allow(clippy::too_many_arguments)]
+fn tidy_line(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, l: &Loaded, g: u32, genome: &world::arena::Genome, untidy: bool) {
+    let start = l.run.starts().get(genome.root as usize).map_or("", |s| s.behavior_text());
+    let rules: Vec<&str> = genome.behavior_text().lines().filter(|r| !r.trim().is_empty() && !r.trim_start().starts_with("target")).collect();
+    let tidied = (genome.behavior_text() != start).then(|| l.run.tidied(g));
+    p.spawn(Node { height: px(22), flex_shrink: 0.0, ..row(8.0) }).with_children(|r| {
+        let (words, tone) = match &tidied {
+            None => ("ITS BEHAVIOR IS ITS START'S: SAVED AS IT IS".to_string(), Tone::Dim),
+            Some(None) => ("ITS BEHAVIOR FLEW NO FIGHT: NOTHING TELLS WHICH RULES RAN".to_string(), Tone::Dim),
+            Some(Some((_, dropped, fights))) if dropped.is_empty() => (format!("EVERY RULE DECIDED IN ITS {fights} FIGHTS: NOTHING TO TIDY"), Tone::Dim),
+            Some(Some((_, dropped, fights))) => {
+                let names: Vec<String> = dropped.iter().filter_map(|&i| rules.get(i)).map(|r| r.trim().to_uppercase()).collect();
+                let pill = Pill { active: !untidy, ..Pill::new(Tone::Teal) };
+                spawn_pill(r, fonts, "TIDY", 8.0, 22.0, None, pill, (LabButton::Run(RunButton::Tidy), kit::ui_kit::Tip::new(format!("DROPS  {}", names.join("  ·  ")))));
+                let n = dropped.len();
+                let them = if n == 1 { "1 RULE".to_string() } else { format!("{n} RULES") };
+                match untidy {
+                    false => (format!("DROPS {them} THAT NEVER DECIDED IN ITS {fights} FIGHTS"), Tone::Label),
+                    true => (format!("KEEPS ALL {} RULES  ·  {them} NEVER DECIDED", rules.len()), Tone::Label),
+                }
+            }
+        };
+        r.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+            t.spawn((tracked(fonts, &words, 6.5, c(tone, 1.0), 0.12), TextLayout::no_wrap()));
+        });
+    });
+}
+
+/// GENERATION n: its numbers, then its children best first, each a card with its drawing, score, whether it took a
+/// cell, its parent (and a crossover's partner), its cell and what changed; a click picks it with its fights.
+fn generation(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, n: u32) {
+    let run = &l.run;
+    let state = run.state();
+    let (Some(stats), Some(record)) = (state.history.get(n as usize), state.records.get(n as usize)) else { return };
+    p.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(6.0) }).with_children(|r| {
+        r.spawn(label(fonts, &format!("GENERATION {n} OF {}", state.generations), 9.0, c(Tone::Dim, 1.0)));
+        r.spawn(row(6.0)).with_children(|b| {
+            let last = state.history.len() as u32 - 1;
+            spawn_pill(b, fonts, "‹", 9.0, 22.0, None, Pill { disabled: n == 0, ..Pill::new(Tone::Teal) }, (LabButton::Run(RunButton::Generation(n.saturating_sub(1))), kit::ui_kit::Tip::new("THE ONE BEFORE")));
+            spawn_pill(b, fonts, "›", 9.0, 22.0, None, Pill { disabled: n >= last, ..Pill::new(Tone::Teal) }, (LabButton::Run(RunButton::Generation((n + 1).min(last))), kit::ui_kit::Tip::new("THE NEXT")));
+            spawn_pill(b, fonts, "THE DESIGN", 8.0, 22.0, None, Pill::new(Tone::Teal), (LabButton::Run(RunButton::CloseGeneration), kit::ui_kit::Tip::new("BACK TO THE PICKED DESIGN")));
+        });
+    });
+    let what = if stats.rescore { "  ·  A RE-SCORE" } else { "" };
+    let line = format!("{} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  BEST {}  ·  MEAN {}{what}", stats.evaluated, stats.rejected, stats.improved, score(Some(stats.best)), score(Some(stats.mean)));
+    p.spawn((tracked(fonts, &line, 7.0, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
+    let mut children: Vec<&ChildRecord> = record.children.iter().collect();
+    children.sort_by(|a, b| b.score.total_cmp(&a.score));
+    p.spawn((Scrollbar::vertical(), ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, row_gap: px(3), height: px(470), overflow: Overflow::scroll_y(), padding: UiRect::right(px(10)), ..default() }))
+        .with_children(|rows| {
+            for ch in children {
+                let Some(genome) = run.genome(ch.genome) else { continue };
+                let bred = run.table().get(ch.genome as usize);
+                let parent = bred.and_then(|b| b.parent).filter(|_| !stats.rescore);
+                let changed = match parent.and_then(|id| run.genome(id)) {
+                    Some(from) => changes(content, &from.blueprint, &genome.blueprint),
+                    None if stats.rescore => "FOUGHT AGAIN".into(),
+                    None => "A START".into(),
+                };
+                let changed = match bred.filter(|_| parent.is_some()) {
+                    Some(b) if b.behavior.is_some() && b.assists.is_some() => format!("{changed}  ·  BEHAVIOR AND ASSISTS CHANGED"),
+                    Some(b) if b.behavior.is_some() => format!("{changed}  ·  BEHAVIOR CHANGED"),
+                    Some(b) if b.assists.is_some() => format!("{changed}  ·  ASSISTS CHANGED"),
+                    _ => changed,
+                };
+                let from = match (parent, bred.and_then(|b| b.partner)) {
+                    (Some(a), Some(b)) => format!("FROM #{a} × #{b}  ·  "),
+                    (Some(a), None) => format!("FROM #{a}  ·  "),
+                    _ => String::new(),
+                };
+                let cell: Vec<String> = run.archive().cell_of(&ch.measures).iter().map(|v| v.to_string()).collect();
+                rows.spawn((
+                    LabButton::Run(RunButton::Child(ch.genome)),
+                    Pill { bare: true, ..Pill::new(Tone::Teal) },
+                    Hot::default(),
+                    Node { height: px(48), flex_shrink: 0.0, padding: UiRect::horizontal(px(8)), border: UiRect::all(px(1.0)), border_radius: BorderRadius::all(px(10)), ..row(10.0) },
+                    BorderColor::all(Color::NONE),
+                    BackgroundColor(Color::NONE),
+                ))
+                .with_children(|r| {
+                    r.spawn((UiIcon::Ship(Box::new(genome.blueprint.clone())), Node { width: px(54), height: px(40), flex_shrink: 0.0, ..default() }));
+                    r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+                        t.spawn(row(8.0)).with_children(|h| {
+                            h.spawn(label(fonts, &format!("{}  ·  #{}", score(Some(ch.score)), ch.genome), 8.0, c(Tone::Number, 1.0)));
+                            if ch.took {
+                                h.spawn(label(fonts, "TOOK A CELL", 7.0, c(Tone::Gold, 1.0)));
+                            }
+                        });
+                        t.spawn((tracked(fonts, &format!("{from}CELL {}  ·  {changed}", cell.join(", ")), 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
+                    });
+                });
+            }
         });
 }
 
@@ -865,7 +1083,8 @@ pub(super) fn sync(
         return;
     }
     // The save row and its field: the default name shown, then what is typed.
-    for (open, k) in [(layer.run.saving, 0), (layer.run.renaming, 1)] {
+    let naming = layer.run.saving == Some(Saving::New);
+    for (open, k) in [(naming, 0), (layer.run.renaming, 1)] {
         let want = if open { Display::Flex } else { Display::None };
         let set = |n: &mut Node| {
             if n.display != want {
@@ -877,7 +1096,7 @@ pub(super) fn sync(
             _ => set(&mut rows.p1()),
         }
     }
-    if layer.run.saving {
+    if naming {
         let mut field = fields.p0();
         if field.focused && field.value != layer.run.name {
             layer.bypass_change_detection().run.name = field.value.clone();

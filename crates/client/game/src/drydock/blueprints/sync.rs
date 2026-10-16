@@ -237,30 +237,37 @@ pub(super) fn row_tag(e: &Entry, docked: bool, dirty: bool) -> (String, Tone) {
 }
 
 /// The preview follows the hovered row: built once per entry (the ship and its numbers, from a `sim::design_report`
-/// made with the drydock's content and config, about 25 µs), gone when the pointer leaves the row (it stays over
-/// the gap to the next row, so moving down the list doesn't flash it), and kept level with the row inside its
-/// column. The card is as tall as [`PREVIEW_CARD_H`] and the rows' places are laid out already, so it is placed
-/// right in the frame it appears in (with the height of its own first layout it showed a frame lower, then jumped).
-#[allow(clippy::too_many_arguments)]
+/// made with the drydock's content and config, about 25 µs; an evolved design's ORIGIN), gone when the pointer
+/// leaves the row (it stays over the gap to the next row, so moving down the list doesn't flash it, and over the
+/// card and the way to it, so its ORIGIN can be clicked), and kept level with the row inside its column. The card is
+/// as tall as [`PREVIEW_CARD_H`] (and [`PREVIEW_ORIGIN_H`] with an ORIGIN) and the rows' places are laid out already,
+/// so it is placed right in the frame it appears in (with the height of its own first layout it showed a frame lower,
+/// then jumped).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn sync_preview(
     mut commands: Commands,
     shelf: Res<Shelf>,
     storage: Res<Storage>,
     content: Res<GameContent>,
     report: Res<DrydockReport>,
+    lab: Res<Lab>,
     window: Single<&Window, With<PrimaryWindow>>,
     rows: Query<(Entity, &RowNode, &Hot, &ComputedNode, &UiGlobalTransform)>,
     column: Single<(&ComputedNode, &UiGlobalTransform), With<PreviewColumn>>,
-    card: Single<(&mut PreviewCard, &mut Node)>,
+    card: Single<(&mut PreviewCard, &mut Node, Option<&ComputedNode>, Option<&UiGlobalTransform>)>,
     ship: Single<Entity, With<PreviewShip>>,
-    mut values: Query<(&PreviewStat, &mut Text)>,
+    mut values: Query<(&PreviewStat, &mut Text), Without<OriginText>>,
+    mut origin: Query<(&OriginPart, &mut Node, Option<&mut Pill>), Without<PreviewCard>>,
+    mut origin_texts: Query<(&OriginText, &mut Text)>,
 ) {
-    let (mut card, mut node) = card.into_inner();
+    let (mut card, mut node, card_node, card_at) = card.into_inner();
     let open = shelf.page == Some(Page::Blueprints);
     let hovered = rows.iter().find(|(_, _, hot, ..)| hot.hovered).filter(|_| open);
+    let card_rect = card_node.zip(card_at).filter(|_| node.display == Display::Flex).map(|(n, at)| Rect::from_center_size(at.translation, n.size));
     let near_shown = |(_, _, _, n, at): &(Entity, &RowNode, &Hot, &ComputedNode, &UiGlobalTransform)| {
         let gap = Vec2::new(0.0, ROW_GAP / n.inverse_scale_factor);
         let r = Rect::from_center_size(at.translation, n.size + 2.0 * gap);
+        let r = card_rect.map_or(r, |c| r.union(c));
         window.physical_cursor_position().is_some_and(|c| r.contains(c))
     };
     let (row, pick) = match hovered {
@@ -280,6 +287,7 @@ pub(super) fn sync_preview(
     if card.shown != pick {
         let shown = pick.as_ref().and_then(|p| preview_of(&content.0, &storage, &report, p));
         let display = if shown.is_some() { Display::Flex } else { Display::None };
+        let evolved = shown.as_ref().and_then(|(bp, _)| bp.origin.clone());
         match shown {
             Some((bp, texts)) => {
                 commands.entity(*ship).insert(UiIcon::Ship(Box::new(bp)));
@@ -291,6 +299,39 @@ pub(super) fn sync_preview(
                 commands.entity(*ship).remove::<UiIcon>();
             }
         }
+        // An evolved design's ORIGIN: its generation and score, its run by name (a click opens it, with the lab
+        // open), or that the run is gone.
+        let run = evolved.as_ref().and_then(|o| lab.entry(&o.run));
+        card.origin = evolved.as_ref().filter(|_| lab.enabled && run.is_some()).map(|o| (o.run.clone(), o.genome));
+        if let Some(o) = &evolved {
+            for (t, mut text) in &mut origin_texts {
+                let words = match (t.0, run) {
+                    (0, _) => format!("G{}  ·  {:.2}", o.generation, o.score),
+                    (_, e) => e.map_or_else(String::new, |e| format!("{}  ›", e.name.to_uppercase())),
+                };
+                set_text(&mut text, &words);
+            }
+        }
+        for (part, mut n, pill) in &mut origin {
+            let on = match part {
+                OriginPart::Block => evolved.is_some(),
+                OriginPart::Link => run.is_some(),
+                OriginPart::Gone => run.is_none(),
+            };
+            let d = if on { Display::Flex } else { Display::None };
+            if n.display != d {
+                n.display = d;
+            }
+            if let Some(mut pill) = pill
+                && pill.disabled != card.origin.is_none()
+            {
+                pill.disabled = card.origin.is_none();
+            }
+        }
+        let height = px(PREVIEW_CARD_H + if evolved.is_some() { PREVIEW_ORIGIN_H } else { 0.0 });
+        if node.height != height {
+            node.height = height;
+        }
         if node.display != display {
             node.display = display;
         }
@@ -300,10 +341,27 @@ pub(super) fn sync_preview(
     let Some((.., row_at)) = row.and_then(|e| rows.get(e).ok()).filter(|_| card.shown.is_some()) else { return };
     let (col, col_at) = *column;
     let k = col.inverse_scale_factor;
-    let top = (row_at.translation.y - (col_at.translation.y - col.size.y / 2.0)) * k - PREVIEW_CARD_H / 2.0;
-    let top = px(top.clamp(0.0, (col.size.y * k - PREVIEW_CARD_H).max(0.0)).round());
+    let h = match node.height {
+        Val::Px(h) => h,
+        _ => PREVIEW_CARD_H,
+    };
+    let top = (row_at.translation.y - (col_at.translation.y - col.size.y / 2.0)) * k - h / 2.0;
+    let top = px(top.clamp(0.0, (col.size.y * k - h).max(0.0)).round());
     if node.top != top {
         node.top = top;
+    }
+}
+
+/// A click on an evolved design's ORIGIN: home, where the camera flies on to the lab and its run's page opens with
+/// the design picked (`evolution::open`).
+pub(super) fn open_origin(mut clicks: MessageReader<UiClick>, links: Query<(&OriginPart, &Pill)>, card: Single<&PreviewCard>, mut lab: ResMut<Lab>, mut next: ResMut<NextState<AppMode>>) {
+    for c in clicks.read() {
+        if links.get(c.0).is_ok_and(|(part, p)| *part == OriginPart::Link && !p.disabled)
+            && let Some((run, genome)) = card.origin.clone()
+        {
+            lab.request = Some(LabRequest::Origin { run, genome });
+            next.set(AppMode::Home);
+        }
     }
 }
 

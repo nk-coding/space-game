@@ -40,6 +40,8 @@ use kit::ui_kit::{
     set_color, set_text, spawn_pill, sub_tone, tracked,
 };
 use world::career::{Granted, Note, PlayerCareer};
+use world::evolution::{Lab, LabRequest};
+use world::mode::AppMode;
 use world::player::PlayerDesign;
 use world::player::behaviors::{PlayerBehaviors, validate_design};
 use world::player::library::{self, Autosave, DesignDoc, DesignSlot, Entry, MAX_NAME};
@@ -58,10 +60,10 @@ use autosave::{announce, autosave, leave, restore, save_on_exit};
 #[cfg(not(target_arch = "wasm32"))]
 use autosave::dropped_files;
 use screens::{
-    BarNode, CodeBox, EmptyHint, ListNode, PageNode, PasteBox, PreviewCard, PreviewColumn, PreviewShip, PreviewStat, RenameField, RowNode, ShelfButton, ShelfRoot,
+    BarNode, CodeBox, EmptyHint, ListNode, OriginPart, OriginText, PageNode, PasteBox, PreviewCard, PreviewColumn, PreviewShip, PreviewStat, RenameField, RowNode, ShelfButton, ShelfRoot,
     ShelfText, spawn_shelf,
 };
-use sync::{scroll_lists, sync_preview, sync_shelf};
+use sync::{open_origin, scroll_lists, sync_preview, sync_shelf};
 use title::{sync_title, title};
 pub(in crate::drydock) use handlers::apply;
 pub(in crate::drydock) use title::spawn_title;
@@ -84,6 +86,8 @@ const LISTS_GAP: f32 = 24.0;
 /// so the card is placed before its first layout: the ship, its four numbers and the padding).
 const PREVIEW_SHIP_H: f32 = 96.0;
 const PREVIEW_CARD_H: f32 = 240.0;
+/// What an evolved design's ORIGIN adds to the card: its line and its run's link.
+const PREVIEW_ORIGIN_H: f32 = 50.0;
 
 pub(super) struct BlueprintsPlugin;
 
@@ -101,13 +105,14 @@ impl Plugin for BlueprintsPlugin {
                     // Before the editing tools and the report: a design opened, renamed or moved to another frame
                     // this frame is what they, the report and the status see in the same frame.
                     (title, apply).chain().after(super::actions::apply).before(super::tools::apply),
+                    open_origin,
                     // After the status of this revision is made, so a message is not overwritten.
                     (autosave, announce).chain().after(stats::update),
                 )
                     .in_set(DockSet::Apply),
             )
             .add_systems(Update, (scroll_lists, sync_shelf, sync_preview, sync_title).in_set(DockSet::Show))
-            .add_systems(OnExit(world::mode::AppMode::Drydock), leave)
+            .add_systems(OnExit(AppMode::Drydock), leave)
             .add_systems(Last, save_on_exit);
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Update, dropped_files.in_set(DockSet::Input));
@@ -507,6 +512,7 @@ mod tests {
     fn the_preview_shows_the_hovered_entry_and_goes_on_leave() {
         let mut world = world();
         world.init_resource::<DrydockReport>();
+        world.init_resource::<Lab>();
         {
             let mut shelf = world.resource_mut::<Shelf>();
             shelf.page = Some(Page::Blueprints);
@@ -548,6 +554,23 @@ mod tests {
         assert!(world.get::<UiIcon>(ship).is_none());
         assert_eq!(world.get::<Node>(card).unwrap().display, Display::None);
         assert!(world.get::<PreviewCard>(card).unwrap().shown.is_none());
+
+        // An evolved design's card is taller by its ORIGIN: its generation and score, and here that its run is gone
+        // (no link to click).
+        let skiff = world.resource::<GameContent>().0.ships.get("rim_skiff").unwrap().clone();
+        let origin = data::Origin { run: "gone".into(), genome: 4, generation: 9, from: vec!["rim_skiff".into()], score: 0.5 };
+        world.resource_mut::<Storage>().write("evolved", &DesignDoc(Blueprint { id: "evolved".into(), origin: Some(origin), ..skiff }), 3).unwrap();
+        let designs = library::list_designs(world.resource::<Storage>(), &world.resource::<GameContent>().0).unwrap();
+        world.resource_mut::<Shelf>().designs = designs;
+        let parts = [OriginPart::Block, OriginPart::Link, OriginPart::Gone].map(|p| world.spawn((p, Pill::new(Tone::Teal), Node { display: Display::None, ..default() })).id());
+        let line = world.spawn((OriginText(0), Text::new(""))).id();
+        world.spawn((RowNode(0, 0), Hot { hovered: true, pressed: false }, Node::default()));
+        world.run_system(preview).unwrap();
+        let shown = parts.map(|e| world.get::<Node>(e).unwrap().display);
+        assert_eq!(shown, [Display::Flex, Display::None, Display::Flex]);
+        assert_eq!(world.get::<Text>(line).unwrap().0, "G9  ·  0.50");
+        assert_eq!(world.get::<Node>(card).unwrap().height, px(PREVIEW_CARD_H + PREVIEW_ORIGIN_H));
+        assert_eq!(world.get::<PreviewCard>(card).unwrap().origin, None);
     }
 
     /// Leaving the drydock with BLUEPRINTS open (BEHAVIOR or TEST-FLY in the bottom bar, T) hides the layer and lets

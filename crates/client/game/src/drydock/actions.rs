@@ -19,7 +19,9 @@ use data::input::Action;
 use world::career::{Granted, unlocked_by};
 use world::settings::Act;
 use world::mode::AppMode;
+use world::evolution::{Lab, LabRequest, StartPick};
 use world::player::PlayerDesign;
+use world::player::library::DesignSlot;
 use world::scene::{Launch, Scene};
 use world::sim_bridge::GameContent;
 
@@ -229,7 +231,7 @@ pub fn wheel_turn(acc: &mut f32, scroll: Option<&AccumulatedMouseScroll>) -> Opt
 }
 
 /// The UI-state actions, the menus, the test flight (only a design that can fly takes off), the way home and EVOLVE
-/// THIS DESIGN (home, on to the lab's setup).
+/// THIS DESIGN (home, on to the lab's setup: the saved design when it has no unsaved changes, else the working one).
 /// Locked parts and materials are never picked (their rows and swatches are disabled; the keys 1–9 reach locked ones
 /// too). Any action but opening a menu closes the open menu (its own items' actions too).
 #[allow(clippy::too_many_arguments)]
@@ -239,8 +241,9 @@ pub(super) fn apply(
     status: Res<DrydockStatus>,
     granted: Res<Granted>,
     design: Res<PlayerDesign>,
+    slot: Res<DesignSlot>,
     mut scene: ResMut<Scene>,
-    mut lab: ResMut<world::evolution::Lab>,
+    mut lab: ResMut<Lab>,
     mut next: ResMut<NextState<AppMode>>,
 ) {
     for a in actions.read() {
@@ -265,8 +268,13 @@ pub(super) fn apply(
                 next.set(AppMode::Flight);
             }
             DrydockAction::Menu => next.set(AppMode::Home),
+            // A saved design without unsaved changes starts the run as itself, so its result can replace it.
             DrydockAction::Rare(Rare::Evolve) if lab.enabled => {
-                lab.request = Some(world::evolution::StartPick::Working);
+                let start = match &slot.id {
+                    Some(id) if !slot.dirty(&design) => StartPick::Design(id.clone()),
+                    _ => StartPick::Working,
+                };
+                lab.request = Some(LabRequest::Setup(start));
                 next.set(AppMode::Home);
             }
             // Editing (tools.rs), zoom (the camera), save / export / blueprints and the ⋯ menu's actions
@@ -300,13 +308,14 @@ mod tests {
             .insert_resource(design)
             .insert_resource(granted)
             .init_resource::<DrydockStatus>()
-            .insert_resource(world::evolution::Lab::default())
+            .insert_resource(Lab::default())
+            .init_resource::<DesignSlot>()
             .init_resource::<crate::drydock::panels::Palette>()
             .insert_resource(GameContent(content))
             .add_message::<DrydockAction>()
             .add_message::<UiClick>()
             .add_systems(Update, (clicks, apply, sync_pills).chain());
-        app.world_mut().resource_mut::<world::evolution::Lab>().enabled = true;
+        app.world_mut().resource_mut::<Lab>().enabled = true;
         app
     }
 
@@ -345,15 +354,22 @@ mod tests {
         app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));
         app.update();
         app.update();
-        assert_eq!(app.world().resource::<world::evolution::Lab>().request, Some(world::evolution::StartPick::Working));
+        assert_eq!(app.world().resource::<Lab>().request, Some(LabRequest::Setup(StartPick::Working)));
         assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Home);
+        // A saved design without unsaved changes starts as itself (REPLACE <START> can then write over it).
+        let mut app = self::app();
+        let slot = DesignSlot::opened(Some("my_skiff".into()), app.world().resource::<PlayerDesign>());
+        app.insert_resource(slot);
+        app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));
+        app.update();
+        assert_eq!(app.world().resource::<Lab>().request, Some(LabRequest::Setup(StartPick::Design("my_skiff".into()))));
         // A dark lab (no `?lab=1`) has no such item, and the action does nothing.
         let mut app = self::app();
-        app.world_mut().resource_mut::<world::evolution::Lab>().enabled = false;
+        app.world_mut().resource_mut::<Lab>().enabled = false;
         app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));
         app.update();
         app.update();
-        assert_eq!(app.world().resource::<world::evolution::Lab>().request, None);
+        assert_eq!(app.world().resource::<Lab>().request, None);
         assert_eq!(*app.world().resource::<State<AppMode>>().get(), AppMode::Drydock);
     }
 

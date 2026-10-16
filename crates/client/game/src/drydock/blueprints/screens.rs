@@ -36,7 +36,8 @@ pub(in crate::drydock) struct PasteBox;
 
 /// The preview's column between the two lists (so it sits next to either), and its card: the ship of the hovered
 /// row drawn with the flight tiles ([`PreviewShip`], a `UiIcon::Ship` like FLEET's) over a few numbers
-/// ([`PreviewStat`]), built once per hovered entry (`shown`) and moved along with the row.
+/// ([`PreviewStat`]) and, for an evolved design, its ORIGIN ([`OriginPart`]), built once per hovered entry
+/// (`shown`) and moved along with the row.
 #[derive(Component)]
 pub(in crate::drydock) struct PreviewColumn;
 
@@ -45,7 +46,22 @@ pub(in crate::drydock) struct PreviewCard {
     pub(super) shown: Option<Pick>,
     /// The row it is shown for.
     pub(super) row: Option<Entity>,
+    /// The shown design's run and genome, when a click on its ORIGIN opens them (the run is still there).
+    pub(super) origin: Option<(String, u32)>,
 }
+
+/// The card's ORIGIN (an evolved design's): its lines, shown only for one; the link to its run (a click opens it at
+/// the design: `open_origin`), or the line that says the run is gone.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+pub(in crate::drydock) enum OriginPart {
+    Block,
+    Link,
+    Gone,
+}
+
+/// The ORIGIN's texts: its generation and score (0), its run's name in the link (1).
+#[derive(Component)]
+pub(in crate::drydock) struct OriginText(pub(super) usize);
 
 #[derive(Component)]
 pub(in crate::drydock) struct PreviewShip;
@@ -315,6 +331,25 @@ fn spawn_preview(lists: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn
                     r.spawn((PreviewStat(k), number(fonts, "", 12.0, c(Tone::Number, 1.0))));
                 });
             }
+            card.spawn((OriginPart::Block, Node { display: Display::None, flex_direction: FlexDirection::Column, row_gap: px(4), margin: UiRect::top(px(4)), ..default() })).with_children(|o| {
+                o.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, ..default() }).with_children(|r| {
+                    r.spawn(label(fonts, "ORIGIN", 8.5, c(Tone::Dim, 1.0)));
+                    r.spawn((OriginText(0), number(fonts, "", 12.0, c(Tone::Number, 1.0))));
+                });
+                o.spawn((
+                    OriginPart::Link,
+                    Pill { bare: true, ..Pill::new(Tone::Teal) },
+                    Hot::default(),
+                    Tip::new("OPENS ITS RUN IN THE EVOLUTION LAB, THIS DESIGN PICKED"),
+                    Node { height: px(24), padding: UiRect::horizontal(px(8)), margin: UiRect::horizontal(px(-8)), align_items: AlignItems::Center, border: UiRect::all(px(1.2)), border_radius: BorderRadius::MAX, overflow: Overflow::clip(), ..default() },
+                    BorderColor::all(Color::NONE),
+                    BackgroundColor(Color::NONE),
+                ))
+                .with_children(|l| {
+                    l.spawn((OriginText(1), label(fonts, "", 8.5, c(Tone::Teal, 1.0)), TextLayout::no_wrap()));
+                });
+                o.spawn((OriginPart::Gone, label(fonts, "ITS RUN IS DELETED", 8.5, c(Tone::Dim, 1.0)), Node { height: px(24), display: Display::None, ..default() }));
+            });
         });
     });
 }
@@ -341,10 +376,12 @@ pub(in crate::drydock) fn spawn_row(l: &mut ChildSpawnerCommands, fonts: &HudFon
         BackgroundColor(Color::NONE),
     ))
     .with_children(|r| {
-        r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|t| {
-            t.spawn((ShelfText::RowName(list, k), prose(fonts, "", 14.0, c(Tone::Number, 1.0))));
-            t.spawn((ShelfText::RowSub(list, k), tracked(fonts, "", 8.5, c(Tone::Dim, 1.0), 0.2)));
+        // One line each, the words clipped short of the tags (an evolved design's line and EVOLVED · IN THE DRYDOCK
+        // are long together).
+        r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+            t.spawn((ShelfText::RowName(list, k), prose(fonts, "", 14.0, c(Tone::Number, 1.0)), TextLayout::no_wrap()));
+            t.spawn((ShelfText::RowSub(list, k), tracked(fonts, "", 8.5, c(Tone::Dim, 1.0), 0.2), TextLayout::no_wrap()));
         });
-        r.spawn((ShelfText::RowTag(list, k), label(fonts, "", 8.5, c(Tone::Teal, 1.0))));
+        r.spawn((ShelfText::RowTag(list, k), label(fonts, "", 8.5, c(Tone::Teal, 1.0)), TextLayout::no_wrap(), Node { flex_shrink: 0.0, margin: UiRect::left(px(12)), ..default() }));
     });
 }
