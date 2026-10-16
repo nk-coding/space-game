@@ -1,6 +1,10 @@
 # GDR-0080: Exploration details: 2–3 km clusters, a scanner part, scans wake enemies, about two steps to locate, free decoding, story by fragments and cards
 
-- Status: Accepted
+- Status: Accepted. 2026-10-16: the cluster size measured (plan track E0,
+  `docs/results/2026-10-16-bigger-clusters.md`): a 2–3 km cluster fits one `f32` simulation space centred on the
+  origin (ADR-0022), with a radius of at most about 4 km; spawned and asleep, its ~200 ships and wrecks add
+  0.12–0.15 ms per tick natively and 0.16–0.21 ms as wasm, so frozen far sites stay records until the fleet comes
+  near and need no despawning in E3.
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions from `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0075](0075-voyages-feel-like-exploration.md), [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md), `docs/plans/galaxy-voyages.md`

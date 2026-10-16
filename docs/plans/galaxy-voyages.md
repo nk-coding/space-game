@@ -142,8 +142,10 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
 ### 4.6 Inside a cluster: scanning
 
 - **Clusters grow** for searching to have room: 2–3 km radius (GDR-0080), against the slice's 0.6–1 km.
-  Bigger needs the old plan's work on sensor range and freezing far sites (section 6.3); `f32` holds fine within
-  8 km of the origin.
+  Bigger needs the old plan's work on sensor range and freezing far sites (section 6.3). E0 measured it (16 Oct
+  2026, `docs/results/2026-10-16-bigger-clusters.md`): `f32` holds with the cluster centred on the origin up to
+  about 4 km (beyond it slow drift goes visibly wrong), and a whole 2–3 km cluster spawned and asleep costs
+  0.15–0.5 ms per tick in wasm.
 - **Visible on arrival**: the star, lane-less edge markers, large wreck fields and anything within sensor range.
 - **A scan needs a scanner part** built into the ship (GDR-0080): a ship without one cannot scan, so scanning is
   a drydock trade-off (room, power, mass); better scanners come by research. A scan is an action with a short
@@ -223,6 +225,9 @@ Still valid, now needed for bigger clusters: sensor range for behaviors (target 
 detect, GDR-0017), frozen far sites (record → awake → frozen with hysteresis), posts and the `patrol` / `guard`
 nodes, an inert fast path for wrecks, measuring a cluster-sized space first (the V0 load test). Not needed any more:
 lanes, routes, the gate network as instant links between gates (a gate is now a place to jump from), the ring menu.
+E0 (16 Oct 2026) narrowed the freezing: sites stay records until the fleet comes near (the director's lazy spawning,
+built) and spawned sites stay asleep; freezing them back to records with hysteresis, and the inert fast path, can wait
+until a cluster passes about 1000 bodies or the client's per-ship cost asks for it.
 
 ### 6.3 Determinism
 
@@ -235,7 +240,7 @@ Sizes: **S** one agent session, **M** one or two, **L** several.
 
 | Track | Goal | Depends on | Size |
 |---|---|---|---|
-| E0 Measure | A cluster of 2–3 km with 20–40 awake and 200 frozen ships: step cost, `f32` at 3 km, spawn hitches (the old V0) | — | S |
+| E0 Measure | A cluster of 2–3 km with 20–40 awake and 200 frozen ships: step cost, `f32` at 3 km, spawn hitches (the old V0). **Done 16 Oct 2026** (`docs/results/2026-10-16-bigger-clusters.md`, `scripts/cluster-bench.sh`): one `f32` space centred on the origin, radius ≤ 4 km; no despawning needed for cost (lazy spawning, sleeping sites); spawn per site | — | S |
 | E1 Content kinds | `galaxy`, `bands`, `cluster_types`, `trails`, `signal_sources`, `lore`; the rim filled, the other bands stubs | — | M |
 | E2 Generator | The `galaxy` crate: clusters, home, gates, trails, interiors; generation hash native vs wasm | E1 | M |
 | E3 Sim: bigger clusters | Sensor range, frozen sites, hidden sites, `Scan` with bearings, beacon sites; determinism green | E0 | M |
@@ -252,7 +257,7 @@ Order: E0, E1 first; then E2, E3, E4 side by side; then E5; then E6; E7 and E8 l
 1. **Searching can drag.** Scans that tell too little, or areas too wide, turn exploring into chores. Tune with the
    headless runner first (how many scans and voyages a trail takes), then in play.
 2. **Bigger clusters cost.** 2–3 km clusters need the streaming the slice never needed; measure (E0) before E3 is
-   final.
+   final. Measured 16 Oct 2026: they don't, at the sizes planned (see E0 in section 7).
 3. **Getting stuck.** A target out of every jump range with no research left to grow it; the generator checks
    every gate trail is reachable, and the map says why a signal is out of reach.
 4. **The slice changes under the play-test.** The 7L play-test plays the slice; the generated galaxy should land

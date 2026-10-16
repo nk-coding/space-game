@@ -381,6 +381,19 @@ Next session:
   1. The evolution lab is complete through GDR-0092 step 8; step 9 (web workers, re-watching voyage jobs, THE
      LADDER) is optional, when Niklas wants it.
 
+### 16 Oct 2026: galaxy exploration, track E0 (`plans/galaxy-voyages.md`)
+
+- **E0 measured** (`results/2026-10-16-bigger-clusters.md`; the bench is sim's `cluster` example,
+  `scripts/cluster-bench.sh --wasm`): a 2.5 km cluster with every site spawned and asleep (103 ships, 99 wrecks)
+  adds 0.12–0.15 ms per tick natively and 0.16–0.21 ms as wasm to a fight of 20–40 ships; a 3 km one with 375
+  bodies 0.28 / 0.48 ms. `f32` holds at 3 km (fights, rams and hold as at the origin, native and wasm IDENTICAL at
+  0–30 km; only slow coasting shows the 0.24 mm grid); spawning a site costs under 0.1 ms, the whole cluster at once
+  2–5 ms.
+- For E3: one `f32` space per cluster centred on the origin, radius ≤ 4 km (GDR-0080 and ADR-0022 dated status);
+  keep lazy spawning and sleeping sites, no despawning; spawn per site. Not measured: the client's cost of drawing
+  ~250 ships (Niklas's browser, once E3 has a big cluster).
+- Next: E1 (content kinds) with E0 done; then E2, E3, E4.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

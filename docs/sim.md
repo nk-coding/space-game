@@ -82,7 +82,8 @@ the runner, the scenarios); at the root what everything uses.
 Examples: `determinism` (prints per-tick hashes; used by `scripts/determinism-check.sh`), `sim_perf` (load
 numbers, Rapier vs the rest; `--report` times the design report, `--calibrate` measures its device-load model),
 `load_test` (also Rapier vs the rest), `behavior_perf` (behavior cost), `voyage` (the headless voyage runner, the
-balance tool of track 7K: [Voyages](#the-headless-voyage-runner)).
+balance tool of track 7K: [Voyages](#the-headless-voyage-runner)), `cluster` (a 2–3 km cluster's cost, `f32` far from
+the origin, spawn hitches: [Bigger clusters](#bigger-clusters)).
 
 ## Frames and units
 
@@ -2733,6 +2734,18 @@ The 20-ship fight is the one measured on the idle old VM in [Engine plumes](#eng
 p95, Rapier 0.009 / 0.024): about 40 % less per tick. During a 6-job cargo build (load 9–11, 10 runs): 0.012 /
 0.029 (Rapier 0.007 / 0.016). Final state hash with 20 ships `a884134ca1f6bfeb`. Browser comparison and the
 spike's answers: `docs/results/spike-summary.md`.
+
+## Bigger clusters
+
+The `cluster` example (galaxy track E0, 16 Oct 2026; `scripts/cluster-bench.sh [--wasm] [args]` runs it natively
+and as wasm32-wasip1 under Node and checks that every row's hash matches) prints three tables: **cost** (the load-test
+fight at the entry of a voyage rolled on a `--radius` cluster with `--sites` (`encounter:count,…`), its sites not in the
+world, kept as records by the director, or all spawned and asleep; step times per phase, the bodies asleep), **hitch**
+(spawning, waking and removing k raiders mid-fight) and **precision** (a holding ship, coasting at low speeds, a ram
+and the fight at 0, 3, 8 and 30 km from the origin). `--repeat N` gives "median (min–max)" over N runs. The numbers
+and what they mean for E3 are in `docs/results/2026-10-16-bigger-clusters.md`: a whole 2.5 km cluster asleep (about
+200 ships and wrecks) adds 0.12–0.15 ms per tick natively, 0.16–0.21 ms as wasm; `f32` holds up to about 4 km from
+the origin, where only slow coasting (under ~1 m/s) shows the grid.
 
 ## Design questions for Niklas
 
