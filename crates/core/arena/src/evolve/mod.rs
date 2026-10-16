@@ -947,6 +947,31 @@ impl Run {
         scored_in(&self.history, &self.records, self.table.get(id as usize)?.generation, id)
     }
 
+    /// TIDY at SAVE (GDR-0092): genome `id`'s behavior without the rules that never decided in any of its recorded
+    /// fights its behavior flew (a stand-in's fights leave it alone; voyages keep no rules), its start's locked rules
+    /// kept ([`Kit::tidy`]), with the dropped rules' indices and how many fights told. `None` when no fight told.
+    pub fn tidied(&self, id: u32) -> Option<(String, Vec<usize>, usize)> {
+        let genome = self.genome(id)?;
+        let (mut decided, mut fights) = (0u64, 0usize);
+        for (g, record) in self.records.iter().enumerate().skip(self.table.get(id as usize)?.generation as usize) {
+            let Some(child) = record.children.iter().position(|c| c.genome == id) else { continue };
+            let jobs = self.child_jobs(g as u32, child)?;
+            for (job, rec) in jobs.iter().zip(&record.children[child].jobs) {
+                if let (Job::Fight { spec, .. }, JobEnd::Fight { decided: d, .. }) = (job, &rec.end)
+                    && spec.sides[0].entries.iter().all(|e| e.pilot.is_none())
+                {
+                    decided |= d;
+                    fights += 1;
+                }
+            }
+        }
+        if fights == 0 {
+            return None;
+        }
+        let (text, dropped) = self.kit.tidy(genome.behavior_text(), decided, genome.root)?;
+        Some((text, dropped, fights))
+    }
+
     /// VALIDATE (GDR-0092): `genomes` (the archive's best [`VALIDATE_BEST`], or the picked one) fight the run's trials
     /// on `seeds` new seeds each (the ones after each trial's own), against the starts and today's hall of fame, and
     /// their recorded fights again under today's rules. `None` for a genome never scored.

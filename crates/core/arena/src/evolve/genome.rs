@@ -1081,6 +1081,24 @@ impl Kit {
         Some(BehaviorEditor::from_text(&self.nodes, &p.to_text()).ok()?.text())
     }
 
+    /// TIDY (GDR-0092): the behavior without its rules that never decided (`decided`: bit `i` for rule `i`, rules
+    /// past the mask's 64 counted as deciding), its start's locked rules kept, and the top rule kept when none
+    /// decided; with the dropped rules' indices. `None` if the text doesn't read.
+    pub fn tidy(&self, text: &str, decided: u64, root: u32) -> Option<(String, Vec<usize>)> {
+        let ed = BehaviorEditor::from_text(&self.nodes, text).ok()?;
+        let locks = &self.roots.get(root as usize)?.locks;
+        let mut p = ed.program().clone();
+        let ran = |i: usize| i >= 64 || decided & (1u64 << i) != 0;
+        let mut dropped: Vec<usize> = (0..p.rules.len()).filter(|&i| !ran(i) && !locks.rule(&p.rules[i])).collect();
+        if dropped.len() == p.rules.len() {
+            dropped.remove(0);
+        }
+        for &i in dropped.iter().rev() {
+            p.rules.remove(i);
+        }
+        Some((BehaviorEditor::from_text(&self.nodes, &p.to_text()).ok()?.text(), dropped))
+    }
+
     // ---- the pre-filter ----
 
     /// Checks a genome before any fight and measures it: the limits (parts, materials, part counts, its start's
@@ -1442,6 +1460,15 @@ mod tests {
         assert_eq!((rules[0].clone(), rules[2].clone()), (program.rules[0].clone(), program.rules[4].clone()));
         assert_eq!(kit.fit_rules(&text, 1, 0), None);
         assert_eq!(kit.fit_rules(&text, 9, 0).as_deref(), Some(text.as_str()));
+        // TIDY: the rules that never decided go, the locked ones stay; one rule stays when none decided.
+        let (tidied, dropped) = kit.tidy(&text, 0b00100, 0).unwrap();
+        assert_eq!(dropped, vec![1, 3]);
+        let rules = Program::parse(&tidied).unwrap().rules;
+        assert_eq!(rules, vec![program.rules[0].clone(), program.rules[2].clone(), program.rules[4].clone()]);
+        assert_eq!(kit.tidy(&text, u64::MAX, 0).unwrap(), (text.clone(), Vec::new()));
+        kit.roots[0].locks = Locked::default();
+        let (one, dropped) = kit.tidy(&text, 0, 0).unwrap();
+        assert_eq!((Program::parse(&one).unwrap().rules, dropped), (vec![program.rules[0].clone()], vec![1, 2, 3, 4]));
     }
 
     #[test]

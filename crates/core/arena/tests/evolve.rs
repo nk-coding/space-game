@@ -1,9 +1,10 @@
 //! The voyage fitness (`arena::voyage`) and the evolution (`arena::evolve`): determinism, slices and threads,
 //! limits, the configuration's text form and errors, and a tiny run that improves.
 
-use arena::evolve::{Fitness, Genes, Job, JobRecord, JobResult, Measure, Results};
+use arena::evolve::{Fitness, Genes, Job, JobEnd, JobRecord, JobResult, Measure, Results};
 use arena::{DesignRef, Run, RunConfig, RunError, VoyageSpec};
 use data::Content;
+use data::behavior::Program;
 use sim::voyage::runner::Outcome;
 
 /// A small, quick run: the skiff's behavior against one raider, 10 s fights.
@@ -296,6 +297,34 @@ fn every_childs_fights_are_kept_and_jobs_are_data() {
         candidate: 3,
         spec: VoyageSpec { voyage: "yard_approach".into(), seed: 2, design: DesignRef::Ship("rim_skiff".into()), behavior: None, minutes: 5.0, escorts: Vec::new() },
     });
+}
+
+/// TIDY at SAVE (GDR-0092): a design's behavior without the rules that never decided in its recorded fights; the
+/// rules kept are the design's own, in order, and every rule dropped decided in none of its fights.
+#[test]
+fn tidy_drops_the_rules_that_never_decided() {
+    let c = data::base_content();
+    let mut run = Run::new(&c, config(TINY)).unwrap();
+    while !run.step(1_000_000).finished {}
+    for e in run.results().elites {
+        let (text, dropped, fights) = run.tidied(e.id).unwrap();
+        assert!(fights > 0);
+        let mut decided = 0u64;
+        for g in run.state().records {
+            for ch in g.children.iter().filter(|ch| ch.genome == e.id) {
+                for j in &ch.jobs {
+                    if let JobEnd::Fight { decided: d, .. } = j.end {
+                        decided |= d;
+                    }
+                }
+            }
+        }
+        let before = Program::parse(e.genome.behavior_text()).unwrap().rules;
+        let after = Program::parse(&text).unwrap().rules;
+        assert!(dropped.iter().all(|&i| decided & (1 << i) == 0), "{dropped:?} of {decided:b}");
+        let kept: Vec<_> = before.iter().enumerate().filter(|(i, _)| !dropped.contains(i)).map(|(_, r)| r.clone()).collect();
+        assert_eq!(after, kept);
+    }
 }
 
 /// Writes a value as RON and reads it back to an equal one.
