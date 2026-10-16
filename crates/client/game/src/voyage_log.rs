@@ -18,12 +18,16 @@
 //! * A voyage's result is new until the LOG opens: the mast glows meanwhile (`shipyard::lights`) and its row is
 //!   tagged NEW this once; opening marks them read and writes the save.
 //! * The mast's tooltip is the last voyage in one line ([`LogRow::line`]).
+//! * **Logs to decode** (galaxy plan E6, GDR-0097: a data core brought home is decoded here, free, GDR-0080) head the
+//!   list: one row per core ([`cores`]: the source's name and summary from the content) with DECODE, which turns it
+//!   into a signal (`Career::decode`, saved): the row then shows the signal's words (`SIGNAL · A GATE`, its source's
+//!   line) and `ON THE MAP`, until the LOG closes. The mast glows while a core waits.
 //!
 //! UI words are chrome in code, like home's; the voyages', families' and materials' names are content.
 
 use bevy::prelude::*;
-use data::Content;
-use data::career::{Outcome, VoyageResult};
+use data::{Career, Content};
+use data::career::{Outcome, TrailSignal, VoyageResult};
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, Scrollbar, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, number, prose, ring_node, show_screen, spawn_pill, tracked};
@@ -31,7 +35,7 @@ use world::career::{Note, PlayerCareer};
 use world::mode::AppMode;
 use world::sim_bridge::GameContent;
 use world::storage::Storage;
-use world::voyage::clock;
+use world::voyage::{clock, signal_words};
 use world::voyage::debrief::{amount, outcome_words};
 
 use crate::home::HomeAction;
@@ -88,15 +92,40 @@ impl LogRow {
     }
 }
 
+/// A data core at the LOG: waiting to be decoded, or decoded while the LOG is open.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CoreRow {
+    /// The source's name and summary (`Hauler's log`), as the content writes them.
+    pub name: String,
+    pub summary: String,
+    /// Decoded: the signal's words (`A GATE`, `a log from a hauler's wreck`); `None` waiting (its index in the
+    /// career's logs is the row's).
+    pub signal: Option<(String, String)>,
+}
+
+/// The logs waiting in the career (in its order), then those decoded since the LOG opened.
+pub fn cores(content: &Content, career: &Career, decoded: &[TrailSignal]) -> Vec<CoreRow> {
+    let Some(g) = career.exploration() else { return Vec::new() };
+    let source = |s: &TrailSignal| g.skeleton().trails.get(s.trail as usize).and_then(|t| t.signals.get(s.signal as usize)).and_then(|x| content.signal_sources.get(&x.source));
+    let row = |s: &TrailSignal, signal| CoreRow {
+        name: source(s).map_or_else(|| "A data core".to_string(), |x| x.name.clone()),
+        summary: source(s).map_or_else(String::new, |x| x.summary.clone()),
+        signal,
+    };
+    let waiting = g.logs().iter().map(|s| row(s, None));
+    waiting.chain(decoded.iter().map(|s| row(s, Some(signal_words(content, career, *s))))).collect()
+}
+
 /// The career's history as rows, newest first.
 pub fn rows(content: &Content, history: &[VoyageResult]) -> Vec<LogRow> {
     history.iter().rev().map(|v| LogRow::of(content, v)).collect()
 }
 
-/// The LOG's state (a resource): open or not.
+/// The LOG's state (a resource): open or not, and the logs decoded since it opened.
 #[derive(Resource, Debug, Default)]
 pub struct VoyageLog {
     pub open: bool,
+    decoded: Vec<TrailSignal>,
 }
 
 #[derive(Component)]
@@ -116,6 +145,10 @@ enum LogText {
 
 #[derive(Component)]
 struct CloseButton;
+
+/// DECODE on the `n`th waiting log.
+#[derive(Component)]
+struct DecodeButton(usize);
 
 pub struct VoyageLogPlugin;
 
@@ -151,11 +184,10 @@ fn open(
     if !actions.read().any(|a| *a == HomeAction::Log) {
         return;
     }
-    let rows = rows(&content.0, career.career().history());
+    log.decoded.clear();
     let (list, mut scroll) = list.into_inner();
     *scroll = ScrollPosition::default();
-    commands.entity(list).despawn_children();
-    commands.entity(list).with_children(|p| fill(p, &fonts, &style, &rows));
+    refill(&mut commands, list, &fonts, &style, &content.0, career.career(), &log.decoded);
     let l = career.career().log();
     for (t, mut text) in &mut counts {
         let n = match t {
@@ -176,10 +208,57 @@ fn open(
     log.open = true;
 }
 
-/// CLOSE, the ring and Esc.
-fn input(mut clicks: MessageReader<UiClick>, buttons: Query<(), With<CloseButton>>, keys: Res<ButtonInput<KeyCode>>, mut log: ResMut<VoyageLog>) {
-    let clicked = clicks.read().any(|c| buttons.contains(c.0));
-    if log.open && (clicked || keys.just_pressed(KeyCode::Escape)) {
+/// The list's rows anew: the logs to decode, then the voyages.
+fn refill(commands: &mut Commands, list: Entity, fonts: &HudFonts, style: &Style, content: &Content, career: &Career, decoded: &[TrailSignal]) {
+    let rows = rows(content, career.history());
+    let cores = cores(content, career, decoded);
+    commands.entity(list).despawn_children();
+    commands.entity(list).with_children(|p| {
+        fill_cores(p, fonts, style, &cores);
+        fill(p, fonts, style, &rows);
+    });
+}
+
+/// CLOSE, the ring and Esc; DECODE turns a log into a signal (saved) and the list shows it.
+#[allow(clippy::too_many_arguments)]
+fn input(
+    mut commands: Commands,
+    mut clicks: MessageReader<UiClick>,
+    buttons: Query<(), With<CloseButton>>,
+    decode: Query<&DecodeButton>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut log: ResMut<VoyageLog>,
+    mut career: ResMut<PlayerCareer>,
+    mut storage: ResMut<Storage>,
+    content: Res<GameContent>,
+    fonts: Res<HudFonts>,
+    style: Res<Style>,
+    list: Single<Entity, With<LogList>>,
+) {
+    let mut closed = false;
+    let mut decoded = None;
+    for c in clicks.read() {
+        closed |= buttons.contains(c.0);
+        if let Ok(d) = decode.get(c.0) {
+            decoded = Some(d.0);
+        }
+    }
+    if !log.open {
+        return;
+    }
+    if let Some(k) = decoded {
+        let (s, written) = career.update(&mut storage, |c| c.decode(k));
+        if let Err(e) = written {
+            warn!("log: not saved: {e}");
+            career.notes.push(Note::new("NOT SAVED", e, Tone::Coral));
+        }
+        if let Some(s) = s {
+            info!("log: decoded into signal {}.{}", s.trail, s.signal);
+            log.decoded.push(s);
+            refill(&mut commands, *list, &fonts, &style, &content.0, career.career(), &log.decoded);
+        }
+    }
+    if closed || keys.just_pressed(KeyCode::Escape) {
         log.open = false;
     }
 }
@@ -187,6 +266,45 @@ fn input(mut clicks: MessageReader<UiClick>, buttons: Query<(), With<CloseButton
 /// Shown at home while open, with its transition; home's words step aside meanwhile (`home::show`).
 fn show(mode: Res<State<AppMode>>, log: Res<VoyageLog>, mut root: Single<&mut ScreenFx, With<LogRoot>>) {
     show_screen(&mut root, *mode.get() == AppMode::Home && log.open);
+}
+
+/// The logs to decode (and those just decoded) at the head of the list.
+fn fill_cores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, cores: &[CoreRow]) {
+    if cores.is_empty() {
+        return;
+    }
+    let ui = style.ui;
+    let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
+    let waiting = cores.iter().filter(|r| r.signal.is_none()).count();
+    let head = if waiting == 0 { "LOGS DECODED".to_string() } else { format!("LOGS TO DECODE  ·  {waiting}  ·  DATA CORES FROM YOUR VOYAGES, FREE TO READ") };
+    p.spawn((label(fonts, &head, 9.5, c(Tone::Gold)), Node { margin: UiRect::bottom(px(8)), flex_shrink: 0.0, ..default() }));
+    let cell = |width: f32| Node { width: px(width), flex_shrink: 0.0, ..default() };
+    for (k, r) in cores.iter().enumerate() {
+        p.spawn((
+            Node { min_height: px(ROW + 6.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), border: UiRect::bottom(px(1)), ..default() },
+            BorderColor::all(ui_color(ui.dim, 0.25)),
+        ))
+        .with_children(|row| {
+            match &r.signal {
+                None => {
+                    row.spawn((label(fonts, "LOG", 8.5, c(Tone::Gold)), cell(34.0)));
+                    row.spawn((prose(fonts, &r.name, 15.0, c(Tone::Number)), cell(210.0)));
+                    row.spawn((prose(fonts, &r.summary, 12.0, c(Tone::Label)), Node { flex_grow: 1.0, flex_shrink: 1.0, ..default() }));
+                    spawn_pill(row, fonts, "DECODE", 9.5, 30.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, (DecodeButton(k), Tip::new("DECODE")));
+                }
+                Some((hint, line)) => {
+                    row.spawn((label(fonts, "NEW", 8.5, c(Tone::Gold)), cell(34.0)));
+                    row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), width: px(210), flex_shrink: 0.0, ..default() }).with_children(|t| {
+                        t.spawn(label(fonts, &format!("SIGNAL  ·  {hint}"), 9.5, c(Tone::Gold)));
+                        t.spawn(prose(fonts, line, 12.5, c(Tone::Number)));
+                    });
+                    row.spawn((prose(fonts, &format!("Decoded from {}.", r.name.to_lowercase()), 12.0, c(Tone::Dim)), Node { flex_grow: 1.0, flex_shrink: 1.0, ..default() }));
+                    row.spawn(label(fonts, "ON THE MAP", 9.0, c(Tone::Teal)));
+                }
+            }
+        });
+    }
+    p.spawn(Node { height: px(22), flex_shrink: 0.0, ..default() });
 }
 
 /// The rows (or the empty state) into the list.

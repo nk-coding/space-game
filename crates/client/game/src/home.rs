@@ -844,7 +844,9 @@ fn sync_titles(
             }
             Place::Log => {
                 let c = career.career();
+                let logs = c.exploration().map_or(0, |g| g.logs().len());
                 match (c.unread(), c.last_voyage()) {
+                    _ if logs > 0 => (format!("{logs} {} TO DECODE", if logs == 1 { "LOG" } else { "LOGS" }), Tone::Gold),
                     (_, None) => ("NO VOYAGES YET".into(), Tone::Dim),
                     (0, Some(_)) => (plural(c.history().len(), "VOYAGE"), Tone::Label),
                     (1, Some(last)) => (format!("NEW  ·  {}", LogRow::of(&content.0, last).name.to_uppercase()), Tone::Gold),

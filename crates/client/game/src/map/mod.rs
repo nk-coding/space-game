@@ -1,54 +1,66 @@
-//! The voyage map ([`AppMode::Map`], track 7I; GDR-0065's star map): where
-//! voyages are chosen. Home's gate (V, or a click) opens it through the gate ([`portal`]: the camera dives into the
-//! gate and the map shows through it); Esc or the ring button top left goes back to the shipyard (the same way
-//! out); SET COURSE launches the selected voyage (`voyage::StartVoyage`).
+//! The voyage map ([`AppMode::Map`], track 7I; GDR-0065's star map; the galaxy's map since galaxy plan E5,
+//! GDR-0097): where voyages are chosen. Home's gate (V, or a click) opens it through the gate ([`portal`]: the camera
+//! dives into the gate and the map shows through it); Esc or the ring button top left goes back to the shipyard (the
+//! same way out); SET COURSE launches the selection (`voyage::StartVoyage`), a jump after its warp.
 //!
 //! ```text
-//! (o) RIM · 2 VOYAGES · 1 CLEARED · 1 SIGNAL   RIM :    OUTER  | DESTINATION · VOYAGE 2
-//!     Voyages                                      :           | Halvex Drift
-//!                     ((o)) HALVEX DRIFT           :           | [RIM] [ROGUE AUTOMATONS] [WRECKS]
-//!                           [SIGNAL]  ●●●●◆        :           | A raider-haunted drift of wrecks ...
-//!   SHIPYARD APPROACH  ●                           :           | SITES · 4   ● Raider pair      2 SHIPS ...
-//!   CLEARED · BEST 7:42                            :           | ≈ 6–10 MIN · RECALL WHEN CLEAR
-//!              <> SHIPYARD                         :           | FLEET   CORES 2 / 2   [ship] Rim skiff ...
-//!  <> HOME  o OPEN  ● CLEARED  ((o)) SIGNAL        :           | VOYAGE-READY ✓ FLIGHT-READY ✓ ONLY UNLOCKED PARTS
-//!  ● ENEMIES ● WRECKS ◆ GOAL SITE <> GUARDIAN      :           | [ ▶ SET COURSE ]
+//! (o) RIM · 3 CHARTED · 1 CLEARED · 2 SIGNALS    RIM :    OUTER  | BLIND JUMP · 1.6 S FROM HOME
+//!     Voyages                                         :           | Unknown space
+//!          SIGNAL · A GATE        ((                  :           | [RIM] [UNCHARTED]
+//!       a log from a hauler's wreck  .  .  .  .     :           | Nobody has charted this space. ...
+//!     .  ((o)) HALVEX DRIFT   ·  (+)  .              :           | INSIDE A SIGNAL'S AREA  ◆ A gate  HEARD
+//!   .     SHIPYARD APPROACH  ●   o VARDIS          :           | WARP ≈ 6 S · RECALL WHEN CLEAR
+//!              <> SHIPYARD          CHARTED        :           | FLEET   CORES 2 / 2   [ship] Rim skiff ...
+//!  <> HOME  o OPEN  ● CLEARED  ((o)) SIGNAL  o CHARTED  <> GUARDIAN       | VOYAGE-READY ✓ FLIGHT-READY ...
+//!  ● ENEMIES ● WRECKS ◆ GOAL SITE .:. SIGNAL AREA  o LOCATED  ) JUMP RANGE · 2.5 S | [ ▶ SET COURSE ]
 //! ```
 //!
 //! * **Layout** (`layout`): a stage of 1280 × 720 logical px scaled to fit the window at any aspect (centred,
-//!   nothing cut off); the map left of the panel, content's `map` positions in its rect, the shipyard bottom left,
-//!   the rim band's edges as arcs placed from the positions. **States** come from the career: a new signal, open,
-//!   cleared (with the best time), a guardian; no route joins the voyages (GDR-0078: the rim is explored, not
-//!   followed). Voyages not open yet are unknown space: no marker, no label, no beacon, no click area, not counted
-//!   in the header. A voyage just found by clearing the ones it opens after, and never launched, is a **signal**: a
-//!   ring sending out teal pulses and a SIGNAL tag under its name, until its first launch.
-//! * **Drawing** (`draw`, `galaxy`): the star map is four atlas meshes under the UI text (the world draws before
+//!   nothing cut off); the map left of the panel: the career's galaxy at [`layout::PX_PER_S`] a S, turned so home
+//!   sits left of the middle and the bands (from the content) bend away to the right; a slice voyage sits on the
+//!   cluster it is pinned to. **States** come from the career: a voyage new (a signal), open, cleared (with the best
+//!   time), a guardian; no route joins anything (GDR-0078: the rim is explored, not followed). Voyages not open yet
+//!   and uncharted clusters are unknown space: nothing drawn, no click area.
+//! * **What the career knows** (`known`, galaxy plan E5): the clusters charted, the signals heard (fresh or narrowed:
+//!   an area with the trail's hint over its source's line, `SIGNAL · A GATE` over "a log from a hauler's wreck";
+//!   located: a gold mark on its cluster), the gates opened, the jump range round home and every charted cluster.
+//! * **Drawing** (`draw`, `galaxy`): the star map is five atlas meshes under the UI text (the world draws before
 //!   bevy_ui), placed over the stage node through the camera rig like `ui_icons`, each with its own material for
-//!   its fade: the galaxy and its far layer (moved and scaled with the view), the voyages' detail (placed through
-//!   the view, rebuilt when the states, the selection, the hover or the view change) and the chrome (the legend
-//!   and the panel's backing, fixed). The panel's ships are `ui_icons::UiIcon::Ship`.
+//!   its fade: the galaxy and its far layer (moved and scaled with the view), the areas (the jump range and the
+//!   signals), the detail (markers, the pick, the warp; both placed through the view, rebuilt when what they show or
+//!   the view changes) and the chrome (the legend and the panel's backing, fixed). The panel's ships are
+//!   `ui_icons::UiIcon::Ship`.
 //! * **The view** (`view`): zoom (the wheel or a pinch around the cursor, + / −, the buttons bottom right) from 2×
 //!   out to the whole galaxy, pan (drag), reset (0, a double click on empty space, the reset button); entering
 //!   starts at the default view. The panel, the header and the legend stay fixed.
-//! * **Input**: a click or a tap on a voyage (its marker or its label) selects it (zoomed far out, a click on its
-//!   beacon also zooms in to it); ←/→ (and ↑/↓) step through the known voyages (bringing one off the view into it);
-//!   Enter or SET COURSE launches; Esc or the ring button goes home (back out through the gate; not while the portal
-//!   is on its way out). SET COURSE is dimmed while the selected
-//!   voyage can't launch (`layout::course_blocker`: not open, another one underway, the fleet not ready); a click
-//!   then says why, as does a launch `voyage.rs` refuses.
+//! * **Input**: a click or a tap on a voyage, a known cluster (its marker or its label) or a signal's label selects
+//!   it (zoomed far out, a click on a voyage's beacon also zooms in to it); a click on empty space picks the spot for
+//!   a blind jump (by a known cluster: that cluster); ←/→ (and ↑/↓) step through the voyages and clusters known
+//!   (bringing one off the view into it); Enter or SET COURSE launches; Esc or the ring button goes home (back out
+//!   through the gate; not while the portal is on its way out), or ends a warp. SET COURSE is dimmed while the
+//!   selection can't launch (`layout::course_blocker`, `known::jump_blocker`: not open or out of reach, another
+//!   voyage underway, the fleet not ready); a click then says why, as does a launch `voyage.rs` refuses.
+//! * **The warp** (galaxy plan E6, GDR-0093: 3 s + 2 s per S): SET COURSE on a cluster, a signal or a spot runs a
+//!   light from where the jump starts to the cluster it goes to, the status counting down (`WARP · 5 S`); then the
+//!   launch. Esc ends it on the way, nothing launched. A slice voyage launches at once, as before.
 //! * **Entering** selects the first open voyage whose goal is not cleared (`voyage::default_voyage`): after a voyage
 //!   that found a signal, that one. The debrief's VOYAGE MAP sends [`OpenMap`] (home opens the gate, as V).
 //!
-//! UI words are chrome in code, like home's.
+//! UI words are chrome in code, like home's; the clusters', trails' and sources' words are content.
 
 pub mod draw;
 pub mod galaxy;
+pub mod known;
 pub mod layout;
 pub mod portal;
 pub mod view;
 
+use std::collections::BTreeMap;
+
 use bevy::prelude::*;
+use data::career::TrailSignal;
 use data::input::Action;
+use data::skeleton::Area;
 use world::settings::ActionTip;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiSystems, UiTransform};
 use bevy::window::PrimaryWindow;
@@ -65,12 +77,13 @@ use world::career::{EscortDesigns, Granted, PlayerCareer, fleet_cores};
 use world::mode::AppMode;
 use world::player::PlayerDesign;
 use world::sim_bridge::GameContent;
-use world::voyage::{LaunchRefused, StartVoyage, default_voyage, fleet_blocker};
+use world::voyage::{Destination, LaunchRefused, StartVoyage, default_voyage, fleet_blocker};
 use crate::fleet::MAX_ESCORTS;
 
 use portal::Portal;
 
-use draw::{LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look};
+use draw::{FADE, FADE_STEPS, Hover, LEGEND, LEGEND_COLUMNS, LEGEND_GAP, LEGEND_ROWS, Look, WARP_STEPS, WarpLook};
+use known::{Known, Pick, jump_blocker, place_words};
 use layout::{Geometry, PANEL_X, STAGE, VoyageState, chips, course_blocker, is_guardian, minutes, site_dots, site_rows, state_words};
 use view::{Anchored, Layer, MapView, TOP_Y, ViewButton, ZoomText};
 
@@ -87,23 +100,45 @@ const MAX_DOTS: usize = 12;
 /// The panel's width and padding (logical px).
 const PANEL_W: f32 = STAGE.x - PANEL_X;
 const PAD: f32 = 28.0;
+/// A signal's label stack is about this tall (stage px).
+const SIGNAL_LABEL: f32 = 42.0;
 
 /// The voyage map's state (a resource).
 #[derive(Resource, Debug, Default)]
 pub struct VoyageMap {
-    /// The voyage the panel shows (a content id).
-    pub selected: Option<String>,
+    /// What the panel shows.
+    pub selected: Option<Pick>,
     /// Why the last SET COURSE did not launch.
     say: Option<String>,
+    /// Each signal's area as last drawn, and old edges fading out (the area, since when: real seconds).
+    seen: BTreeMap<TrailSignal, Area>,
+    fading: Vec<(Area, f32)>,
+    /// A warp under way (galaxy plan E6).
+    warp: Option<Warp>,
+}
+
+/// A warp on the map: to the cluster `target`, from where the jump starts (galaxy px both), since `start` (real
+/// seconds) for `seconds`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Warp {
+    target: u32,
+    from: Vec2,
+    to: Vec2,
+    start: f32,
+    seconds: f32,
 }
 
 /// The debrief's VOYAGE MAP: home flies to the gate and opens the map, as V does.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OpenMap;
 
-/// Where everything sits (built once from the content).
+/// Where everything sits (built once from the content and the career's galaxy).
 #[derive(Resource)]
 struct MapGeometry(Geometry);
+
+/// What the career knows of the galaxy (`known::Known`), kept up with the career.
+#[derive(Resource, Default)]
+struct MapKnown(Known);
 
 #[derive(Component)]
 struct MapRoot;
@@ -128,14 +163,16 @@ enum Sheet {
     Galaxy,
     /// Its far layer (`galaxy::build_far`), likewise.
     Far,
-    /// The voyages' detail (`draw::build_detail`), placed through the view.
+    /// The jump range and the signals' areas (`draw::build_areas`), placed through the view.
+    Areas,
+    /// The voyages' and clusters' detail (`draw::build_detail`), placed through the view.
     Detail,
     /// The legend and the panel's backing (`draw::build_chrome`), fixed.
     Chrome,
 }
 
 impl Sheet {
-    const ALL: [Sheet; 4] = [Sheet::Galaxy, Sheet::Far, Sheet::Detail, Sheet::Chrome];
+    const ALL: [Sheet; 5] = [Sheet::Galaxy, Sheet::Far, Sheet::Areas, Sheet::Detail, Sheet::Chrome];
 
     fn z(self) -> f32 {
         Z_MAP + 0.1 * self as u8 as f32
@@ -144,7 +181,7 @@ impl Sheet {
     /// The layer it fades with as the view zooms.
     fn layer(self) -> Layer {
         match self {
-            Sheet::Galaxy | Sheet::Chrome => Layer::Always,
+            Sheet::Galaxy | Sheet::Chrome | Sheet::Areas => Layer::Always,
             Sheet::Far => Layer::Far,
             Sheet::Detail => Layer::Detail,
         }
@@ -163,13 +200,16 @@ enum Built {
     Fixed,
     Far(Look),
     /// The look and the view (zoom, offset).
-    Detail(Look, f32, Vec2),
+    Placed(Look, f32, Vec2),
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 enum MapButton {
     Back,
     Voyage(usize),
+    Cluster(u32),
+    /// A signal's label: `Geometry::signals[j]`.
+    Signal(usize),
     SetCourse,
     View(ViewButton),
 }
@@ -179,6 +219,12 @@ enum MapText {
     Header,
     Name(usize),
     State(usize),
+    ClusterState(u32),
+    SignalHead(usize),
+    SignalLine(usize),
+    SignalState(usize),
+    /// The legend's last word: the jump range now.
+    Reach,
     Head,
     Title,
     Summary,
@@ -204,7 +250,13 @@ enum MapNode {
     Voyage(usize),
     /// The tag around a voyage's state words: outlined while it is a new signal.
     Tag(usize),
+    /// A cluster's click area or label: shown only while the map knows it.
+    Cluster(u32),
+    /// A signal's label (`Geometry::signals[j]`): shown, at its area's top, while it is an area.
+    Signal(usize),
     Chip(usize),
+    /// Over the panel's rows (the sites, the signals); hidden without rows.
+    SitesHead,
     Site(usize),
     SiteDot(usize),
     Ship(usize),
@@ -220,20 +272,26 @@ pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        let geometry = Geometry::new(&app.world().resource::<GameContent>().0);
+        let world = app.world();
+        let (content, career) = (&world.resource::<GameContent>().0, world.resource::<PlayerCareer>().career());
+        let geometry = Geometry::new(content, career.exploration());
         let view = MapView::new(geometry.band.centre, geometry.band.outer);
+        let known = Known::of(content, career);
+        let map = VoyageMap { seen: areas_now(&known), ..default() };
         app.insert_resource(MapGeometry(geometry))
+            .insert_resource(MapKnown(known))
             .insert_resource(view)
-            .init_resource::<VoyageMap>()
+            .insert_resource(map)
             .add_message::<OpenMap>()
             .add_plugins(portal::plugin)
             .add_systems(Startup, spawn.after(world::flight_hud::spawn_hud))
             .add_systems(OnEnter(AppMode::Map), enter)
-            .add_systems(OnExit(AppMode::Map), |mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>| s.0 = size.0)
+            .add_systems(OnExit(AppMode::Map), leave)
+            .add_systems(PreUpdate, know.run_if(resource_changed::<PlayerCareer>))
             .add_systems(Update, (show, fade_mesh).chain().after(portal::PortalSet))
             .add_systems(
                 Update,
-                (fit, view::input, input, view::ease, refused, sync_map, sync_panel, view::place_labels)
+                (fit, view::input, input, warp, view::ease, refused, track_areas, sync_map, sync_panel, view::place_labels)
                     .chain()
                     .after(UiInputSet)
                     .before(UiStyleSet)
@@ -255,14 +313,34 @@ pub fn stage_scale(window: Vec2) -> f32 {
     (window.x / STAGE.x).min(window.y / STAGE.y).clamp(SCALE.0, SCALE.1)
 }
 
+/// Each signal's area as the map draws it: its area while it is one, its cluster's place (radius 0) once located.
+fn areas_now(known: &Known) -> BTreeMap<TrailSignal, Area> {
+    known.signals.iter().map(|m| (m.signal, if m.is_area() { m.area } else { Area { centre: m.area.centre, radius: 0 } })).collect()
+}
+
+/// The career changed: what the map knows follows.
+fn know(career: Res<PlayerCareer>, content: Res<GameContent>, mut known: ResMut<MapKnown>) {
+    let now = Known::of(&content.0, career.career());
+    if known.0 != now {
+        known.0 = now;
+    }
+}
+
 /// Opening the map: the default view, the first open voyage not cleared yet selected (else the first known one).
 fn enter(career: Res<PlayerCareer>, content: Res<GameContent>, mut map: ResMut<VoyageMap>, mut view: ResMut<MapView>) {
     view.snap_default();
     let content = &content.0;
     let career = career.career();
     let known = || content.voyages.iter().find(|v| VoyageState::of(content, career, &v.id).known()).map(|v| v.id.as_str());
-    map.selected = default_voyage(career, content).or_else(known).map(str::to_string);
+    map.selected = default_voyage(career, content).or_else(known).map(|id| Pick::Voyage(id.to_string()));
     map.say = None;
+    map.warp = None;
+}
+
+/// Leaving the map: the UI scale back to the window's; a warp not finished ends.
+fn leave(mut s: ResMut<UiScale>, size: Res<kit::ui_kit::UiSize>, mut map: ResMut<VoyageMap>) {
+    s.0 = size.0;
+    map.warp = None;
 }
 
 /// The map opens and closes with its transition (`ui_kit::ScreenFx`: the panel slides in from the right, the map's
@@ -306,6 +384,7 @@ fn spawn(
     fonts: Res<HudFonts>,
     style: Res<Style>,
     content: Res<GameContent>,
+    career: Res<PlayerCareer>,
     geo: Res<MapGeometry>,
     atlas: Res<Atlas>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -315,9 +394,13 @@ fn spawn(
     for sheet in Sheet::ALL {
         // The galaxy and the chrome never change: built here.
         let (mesh, built) = match sheet {
-            Sheet::Galaxy => (galaxy::build(&geo.0, &style, &white, &soft), Some(Built::Fixed)),
+            Sheet::Galaxy => {
+                let (mesh, over) = galaxy::build(&geo.0, &style, &white, &soft);
+                debug!("map: the galaxy's mesh covers its disc {over:.1} times over");
+                (mesh, Some(Built::Fixed))
+            }
             Sheet::Chrome => (draw::build_chrome(&style, &white, &soft), Some(Built::Fixed)),
-            Sheet::Far | Sheet::Detail => (MeshBuf::placeholder(), None),
+            Sheet::Far | Sheet::Areas | Sheet::Detail => (MeshBuf::placeholder(), None),
         };
         let mesh = meshes.add(mesh);
         let material = atlas.group_material(&mut materials);
@@ -333,6 +416,7 @@ fn spawn(
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
     let fonts = &*fonts;
     let content = &content.0;
+    let career = career.career();
     let geo = &geo.0;
     let abs = |left: f32, top: f32| Node { position_type: PositionType::Absolute, left: px(left), top: px(top), ..default() };
     let row = |gap: f32| Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() };
@@ -355,11 +439,11 @@ fn spawn(
             // are cut there (and can't be clicked).
             let map = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(PANEL_X), height: px(STAGE.y), overflow: Overflow::clip(), ..default() };
             stage.spawn((ScreenPart::new(Edge::Fade, 0), map)).with_children(|m| {
-                // Under everything else: the galaxy's band names (seen zoomed out), halfway across each band: this
-                // band (`CHARTED`) and the next (`UNCHARTED`) above the centre, the narrower deeper ones below it.
+                // Under everything else: the galaxy's band names (seen zoomed out), halfway across each band: home's
+                // (`CHARTED`) and the next (`UNCHARTED`) above the centre, the narrower deeper ones below it.
                 let b = &geo.band;
                 let whole = MapView::new(b.centre, b.outer).whole();
-                for (k, ring) in galaxy::rings(b).iter().enumerate() {
+                for (k, ring) in geo.rings.iter().enumerate() {
                     let up = if k < 2 { -1.0 } else { 1.0 };
                     let at = b.centre + Vec2::new(0.0, up * (ring.outer + ring.inner) / 2.0);
                     let laid = whole.to_screen(at);
@@ -367,10 +451,23 @@ fn spawn(
                     let node = Node { position_type: PositionType::Absolute, left: px(laid.x), top: px(top), width: px(0), align_items: AlignItems::Center, ..column(3.0) };
                     let tone = if ring.charted { Tone::Teal } else { Tone::Label };
                     m.spawn((Anchored::Far(at), UiTransform::default(), Visibility::Hidden, node)).with_children(|l| {
-                        l.spawn((label(fonts, &ring.key.to_uppercase(), if k == 0 { 10.5 } else { 9.0 }, c(tone, 0.9)), words));
+                        l.spawn((label(fonts, &ring.key.replace('_', " ").to_uppercase(), if k == 0 { 10.5 } else { 9.0 }, c(tone, 0.9)), words));
                         if k < 2 {
                             l.spawn((label(fonts, if ring.charted { "CHARTED" } else { "UNCHARTED" }, 7.0, c(Tone::Dim, 1.0)), words));
                         }
+                    });
+                }
+                // The signals' labels, over their areas' tops (placed by `sync_map`): `SIGNAL · A GATE`, the source's
+                // line, the state; a click area.
+                for (j, _) in geo.signals.iter().enumerate() {
+                    let node = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(0), align_items: AlignItems::Center, display: Display::None, ..column(3.0) };
+                    m.spawn((MapNode::Signal(j), Anchored::At(Vec2::ZERO, Layer::Always), UiTransform::default(), node)).with_children(|l| {
+                        l.spawn((MapButton::Signal(j), Hot::default(), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(3), padding: UiRect::axes(px(6), px(2)), ..default() }))
+                            .with_children(|t| {
+                                t.spawn((MapText::SignalHead(j), label(fonts, "", 9.0, c(Tone::Gold, 1.0)), words));
+                                t.spawn((MapText::SignalLine(j), prose(fonts, "", 11.5, c(Tone::Number, 0.85)), words));
+                                t.spawn((MapText::SignalState(j), label(fonts, "", 7.5, c(Tone::Gold, 0.85)), words));
+                            });
                     });
                 }
                 // Top left: the way back and where we are.
@@ -382,7 +479,7 @@ fn spawn(
                         col.spawn(prose(fonts, "Voyages", 22.0, c(Tone::Number, 1.0)));
                     });
                 });
-                // The band names along the top: this band between its edges, the next one past the gate (they slide
+                // The band names along the top: home's band between its edges, the next one past the gate (they slide
                 // along the line with the arcs, `view::MapView::top_band_x`).
                 let top = MapView::new(b.centre, b.outer).top_band_x(b);
                 let centred = |x: f32| Node { position_type: PositionType::Absolute, left: px(x), top: px(TOP_Y - 5.0), width: px(0), justify_content: JustifyContent::Center, ..default() };
@@ -400,20 +497,35 @@ fn spawn(
                         l.spawn((label(fonts, "SHIPYARD", 10.5, c(Tone::Number, 0.9)), words));
                         l.spawn((label(fonts, "HOME  ·  DOCKED", 8.5, c(Tone::Label, 1.0)), words));
                     });
-                // The voyages: a click area on each marker (on its beacon zoomed out), and its label (a click area
-                // too, faded out with the detail); both hidden until the voyage is known.
-                for (k, v) in content.voyages.iter().enumerate() {
-                    let at = geo.nodes[k];
-                    let marker = Node { position_type: PositionType::Absolute, left: px(at.x - 22.0), top: px(at.y - 22.0), width: px(44), height: px(44), ..default() };
-                    m.spawn((MapButton::Voyage(k), MapNode::Voyage(k), Hot::default(), Anchored::At(at, Layer::Always), UiTransform::default(), marker));
-                    let left = geo.label_left(k);
+                // A label beside `at`: on its right, or its left near the map's right edge.
+                let beside = |at: Vec2| {
+                    let left = geo.label_left(at);
                     let mut node = Node { position_type: PositionType::Absolute, top: px(at.y - 10.0), align_items: if left { AlignItems::FlexEnd } else { AlignItems::FlexStart }, ..column(4.0) };
                     if left {
                         node.right = px(PANEL_X - at.x + 24.0);
                     } else {
                         node.left = px(at.x + 24.0);
                     }
-                    m.spawn((MapButton::Voyage(k), MapNode::Voyage(k), Hot::default(), Anchored::At(at, Layer::Detail), UiTransform::default(), node)).with_children(|l| {
+                    node
+                };
+                let marker = |at: Vec2, r: f32| Node { position_type: PositionType::Absolute, left: px(at.x - r), top: px(at.y - r), width: px(2.0 * r), height: px(2.0 * r), ..default() };
+                // The known clusters (charted, located, gates): a click area on each marker and its label, hidden until
+                // the map knows it.
+                for (k, &at) in (0u32..).zip(&geo.clusters) {
+                    m.spawn((MapButton::Cluster(k), MapNode::Cluster(k), Hot::default(), Anchored::At(at, Layer::Always), UiTransform::default(), Node { display: Display::None, ..marker(at, 16.0) }));
+                    m.spawn((MapButton::Cluster(k), MapNode::Cluster(k), Hot::default(), Anchored::At(at, Layer::Detail), UiTransform::default(), Node { display: Display::None, ..beside(at) }))
+                        .with_children(|l| {
+                            let name = career.exploration().and_then(|g| g.skeleton().clusters.get(k as usize)).map_or("", |c| c.name.as_str());
+                            l.spawn((label(fonts, &name.to_uppercase(), 9.5, c(Tone::Number, 0.9)), words));
+                            l.spawn((MapText::ClusterState(k), label(fonts, "", 7.5, c(Tone::Teal, 1.0)), words));
+                        });
+                }
+                // The voyages: a click area on each marker (on its beacon zoomed out), and its label (a click area
+                // too, faded out with the detail); both hidden until the voyage is known.
+                for (k, v) in content.voyages.iter().enumerate() {
+                    let at = geo.nodes[k];
+                    m.spawn((MapButton::Voyage(k), MapNode::Voyage(k), Hot::default(), Anchored::At(at, Layer::Always), UiTransform::default(), marker(at, 22.0)));
+                    m.spawn((MapButton::Voyage(k), MapNode::Voyage(k), Hot::default(), Anchored::At(at, Layer::Detail), UiTransform::default(), beside(at))).with_children(|l| {
                         l.spawn((MapText::Name(k), label(fonts, &v.name.to_uppercase(), 10.5, c(Tone::Number, 1.0)), words));
                         let tag = Node { border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() };
                         l.spawn((MapNode::Tag(k), tag, BorderColor::all(Color::NONE)))
@@ -429,10 +541,12 @@ fn spawn(
                     });
                 }
                 // The legend.
-                let legend = [["HOME", "OPEN", "CLEARED", "SIGNAL"], ["ENEMIES", "WRECKS", "GOAL SITE", "GUARDIAN"]];
-                for (r, names) in legend.iter().enumerate() {
+                for (r, names) in LEGEND.iter().enumerate() {
                     for (k, name) in names.iter().enumerate() {
-                        m.spawn((label(fonts, name, 8.0, c(Tone::Label, 1.0)), words, abs(LEGEND_COLUMNS[k] + LEGEND_GAP, LEGEND_ROWS[r] - 5.5)));
+                        let mut l = m.spawn((label(fonts, name, 8.0, c(Tone::Label, 1.0)), words, abs(LEGEND_COLUMNS[k] + LEGEND_GAP, LEGEND_ROWS[r] - 5.5)));
+                        if (r, k) == (1, names.len() - 1) {
+                            l.insert(MapText::Reach);
+                        }
                     }
                 }
                 // The view's buttons, bottom right (as the drydock's zoom).
@@ -470,7 +584,7 @@ fn spawn(
                         }
                     });
                     p.spawn((MapText::Summary, prose(fonts, "", 12.0, c(Tone::Label, 1.0))));
-                    p.spawn((MapText::SitesHead, label(fonts, "", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(4)), ..default() }));
+                    p.spawn((MapText::SitesHead, MapNode::SitesHead, label(fonts, "", 9.0, c(Tone::Label, 1.0)), Node { margin: UiRect::top(px(4)), ..default() }));
                     for k in 0..MAX_SITES {
                         p.spawn((MapNode::Site(k), column(2.0))).with_children(|s| {
                             s.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..row(8.0) }).with_children(|line| {
@@ -540,7 +654,7 @@ fn fit(window: Single<&Window, With<PrimaryWindow>>, size: Res<kit::ui_kit::UiSi
     }
 }
 
-/// What a launch of the selected voyage reads.
+/// What a launch of the selection reads.
 #[derive(bevy::ecs::system::SystemParam)]
 struct FleetNow<'w> {
     content: Res<'w, GameContent>,
@@ -548,18 +662,39 @@ struct FleetNow<'w> {
     granted: Res<'w, Granted>,
     design: Res<'w, PlayerDesign>,
     escorts: Res<'w, EscortDesigns>,
+    known: Res<'w, MapKnown>,
 }
 
 impl FleetNow<'_> {
-    /// Why the voyage can't launch now, if it can't.
-    fn blocker(&self, voyage: &str) -> Option<String> {
+    /// Why the selection can't launch now, if it can't.
+    fn blocker(&self, pick: &Pick) -> Option<String> {
         let c = &self.content.0;
         let fleet = fleet_blocker(c, &self.granted.unlocks, self.granted.mind_capacity, self.design.blueprint(), &self.escorts.0);
-        course_blocker(c, self.career.career(), voyage, fleet)
+        let career = self.career.career();
+        match pick {
+            Pick::Voyage(id) => course_blocker(c, career, id, fleet),
+            _ => jump_blocker(c, career, &self.known.0, pick, fleet),
+        }
     }
 }
 
-/// Clicks, taps and keys: select, launch, go home.
+/// The places the keys step through: the known voyages in content order, then the known clusters.
+fn places(content: &data::Content, career: &data::Career, known: &Known) -> Vec<Pick> {
+    let voyages = content.voyages.iter().filter(|v| VoyageState::of(content, career, &v.id).known()).map(|v| Pick::Voyage(v.id.clone()));
+    voyages.chain(known.clusters.iter().map(|m| Pick::Cluster(m.cluster))).collect()
+}
+
+/// Where a pick sits on the map (galaxy px), if it does.
+fn pick_at(geo: &Geometry, content: &data::Content, known: &Known, pick: &Pick) -> Option<Vec2> {
+    match pick {
+        Pick::Voyage(id) => content.voyages.position(id).map(|k| geo.nodes[k]),
+        Pick::Cluster(k) => geo.clusters.get(*k as usize).copied(),
+        Pick::Signal(s) => known.signal(*s).map(|m| geo.to_galaxy(m.area.centre)),
+        Pick::Spot(p) => Some(geo.to_galaxy(*p)),
+    }
+}
+
+/// Clicks, taps and keys: select, pick a spot, launch (a jump after its warp), go home.
 #[allow(clippy::too_many_arguments)]
 fn input(
     mut clicks: MessageReader<UiClick>,
@@ -567,6 +702,7 @@ fn input(
     keys: Res<ButtonInput<KeyCode>>,
     act: world::settings::Act,
     pointer: Res<UiPointer>,
+    time: Res<Time<Real>>,
     fleet: FleetNow,
     geo: Res<MapGeometry>,
     mut view: ResMut<MapView>,
@@ -574,20 +710,32 @@ fn input(
     mut portal: ResMut<Portal>,
     mut start: MessageWriter<StartVoyage>,
 ) {
+    let tap = view.tap.take();
     if !portal.is_open() {
         clicks.clear();
         return;
     }
     let content = &fleet.content.0;
-    // The voyages the keys step through: the known ones, in content order.
-    let states = VoyageState::all(content, fleet.career.career());
-    let known: Vec<usize> = (0..states.len()).filter(|k| states[*k].known()).collect();
-    let n = known.len();
-    let at = map.selected.as_deref().and_then(|id| content.voyages.position(id)).and_then(|k| known.iter().position(|j| *j == k));
-    let select = |map: &mut VoyageMap, k: usize| {
-        let id = content.voyages.iter().nth(k).map(|v| v.id.clone());
-        if map.selected != id {
-            map.selected = id;
+    let career = fleet.career.career();
+    let known = &fleet.known.0;
+    let geo = &geo.0;
+    // While warping, only Esc (it ends the warp) and the way home.
+    if map.warp.is_some() {
+        if keys.just_pressed(KeyCode::Escape) && !pointer.typing {
+            map.warp = None;
+            map.say = Some("WARP ENDED  ·  NOTHING LAUNCHED".into());
+        }
+        for c in clicks.read() {
+            if let Ok(MapButton::Back) = buttons.get(c.0) {
+                map.warp = None;
+                portal.leave();
+            }
+        }
+        return;
+    }
+    let select = |map: &mut VoyageMap, pick: Pick| {
+        if map.selected.as_ref() != Some(&pick) {
+            map.selected = Some(pick);
             map.say = None;
         }
     };
@@ -596,16 +744,35 @@ fn input(
         match buttons.get(c.0) {
             Ok(MapButton::Back) => portal.leave(),
             Ok(MapButton::Voyage(k)) => {
-                select(&mut map, *k);
+                if let Some(v) = content.voyages.iter().nth(*k) {
+                    select(&mut map, Pick::Voyage(v.id.clone()));
+                }
                 // Zoomed out past the labels: a click on a beacon also zooms in to it.
                 if view::detail_alpha(view.target) < 0.5 {
-                    view.zoom_to(geo.0.nodes[*k]);
+                    view.zoom_to(geo.nodes[*k]);
+                }
+            }
+            Ok(MapButton::Cluster(k)) => select(&mut map, Pick::Cluster(*k)),
+            Ok(MapButton::Signal(j)) => {
+                if let Some(s) = geo.signals.get(*j) {
+                    select(&mut map, Pick::Signal(*s));
                 }
             }
             Ok(MapButton::SetCourse) => launch = true,
             Ok(MapButton::View(_)) | Err(_) => {}
         }
     }
+    // A click on empty space: a blind jump's spot, or the known cluster a jump there would go to.
+    if let Some(q) = tap.filter(|q| q.x < PANEL_X) {
+        let p = geo.to_point(view.to_galaxy(q));
+        let pick = match known::in_reach(career, content, p).then(|| career.blind_target(content, p)).flatten() {
+            Some(k) if known.cluster(k).is_some() => Pick::Cluster(k),
+            _ => Pick::Spot(p),
+        };
+        select(&mut map, pick);
+    }
+    let places = places(content, career, known);
+    let n = places.len();
     if !pointer.typing && n > 0 {
         if keys.just_pressed(KeyCode::Escape) {
             portal.leave();
@@ -621,20 +788,43 @@ fn input(
             0
         };
         if step > 0 {
-            let k = known[at.map_or(0, |k| (k + step) % n)];
-            select(&mut map, k);
-            view.show(geo.0.nodes[k]);
+            let at = map.selected.as_ref().and_then(|s| places.iter().position(|p| p == s));
+            let pick = places[at.map_or(0, |k| (k + step) % n)].clone();
+            if let Some(g) = pick_at(geo, content, known, &pick) {
+                view.show(g);
+            }
+            select(&mut map, pick);
         }
     }
     // Only once the screen is open: SET COURSE shows from then on, and Enter mid-dive would leave the portal half way.
-    if launch && portal.screen_open() && let Some(id) = map.selected.clone() {
-        match fleet.blocker(&id) {
+    if launch && portal.screen_open() && let Some(pick) = map.selected.clone() {
+        match fleet.blocker(&pick) {
+            Some(why) => map.say = Some(why),
             None => {
                 map.say = None;
-                start.write(StartVoyage { voyage: Some(id) });
+                match (&pick, pick.target(content, career, known)) {
+                    (Pick::Voyage(id), _) => {
+                        start.write(StartVoyage { to: Destination::Voyage(id.clone()) });
+                    }
+                    (_, Some(k)) => {
+                        let from = career.jump_from(content, k).and_then(|f| geo.clusters.get(f as usize)).copied().unwrap_or(geo.home);
+                        let seconds = career.warp_seconds(content, k).unwrap_or(0.0);
+                        map.warp = Some(Warp { target: k, from, to: geo.clusters[k as usize], start: time.elapsed_secs(), seconds });
+                    }
+                    (_, None) => {}
+                }
             }
-            Some(why) => map.say = Some(why),
         }
+    }
+}
+
+/// A warp that has run its time launches.
+fn warp(time: Res<Time<Real>>, mut map: ResMut<VoyageMap>, mut start: MessageWriter<StartVoyage>) {
+    if let Some(w) = map.warp
+        && time.elapsed_secs() - w.start >= w.seconds
+    {
+        map.warp = None;
+        start.write(StartVoyage { to: Destination::Cluster(w.target) });
     }
 }
 
@@ -645,43 +835,69 @@ fn refused(mut refusals: MessageReader<LaunchRefused>, mut map: ResMut<VoyageMap
     }
 }
 
-/// The map's words: the header, each voyage's name and state (a signal's in its tag); a voyage shows once known.
+/// A signal's area that changed (narrowed, located) leaves its old edge fading out; edges done fading go.
+fn track_areas(time: Res<Time<Real>>, known: Res<MapKnown>, mut map: ResMut<VoyageMap>) {
+    let now = time.elapsed_secs();
+    let fresh = map.fading.iter().all(|f| now - f.1 < FADE);
+    if known.is_changed() {
+        let areas = areas_now(&known.0);
+        let old: Vec<Area> = map.seen.iter().filter(|(s, a)| a.radius > 0 && areas.get(s) != Some(a)).map(|(_, a)| *a).collect();
+        if !old.is_empty() || areas != map.seen {
+            let m = map.as_mut();
+            m.fading.extend(old.into_iter().map(|a| (a, now)));
+            m.seen = areas;
+        }
+    }
+    if !fresh {
+        map.fading.retain(|f| now - f.1 < FADE);
+    }
+}
+
+/// The map's words: the header, each voyage's name and state (a signal's in its tag), the known clusters' states, the
+/// signals' labels over their areas, the jump range's; each shows only while the map knows it.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn sync_map(
     map: Res<VoyageMap>,
     career: Res<PlayerCareer>,
     content: Res<GameContent>,
+    known: Res<MapKnown>,
     geo: Res<MapGeometry>,
     style: Res<Style>,
     hots: Query<(&MapButton, Ref<Hot>)>,
     mut texts: Query<(&MapText, &mut Text, &mut TextColor)>,
-    mut nodes: Query<(&MapNode, &mut Node, Option<&mut BorderColor>)>,
+    mut nodes: Query<(&MapNode, &mut Node, Option<&mut BorderColor>, Option<&mut Anchored>)>,
 ) {
     let hover = hots.iter().any(|(_, h)| h.is_changed());
-    if !(hover || map.is_changed() || career.is_changed()) {
+    if !(hover || map.is_changed() || career.is_changed() || known.is_changed()) {
         return;
     }
     let content = &content.0;
+    let (known, geo) = (&known.0, &geo.0);
     let ui = &style.ui;
     let states = VoyageState::all(content, career.career());
-    let selected = map.selected.as_deref().and_then(|id| content.voyages.position(id));
-    let hovered = |k: usize| hots.iter().any(|(b, h)| *b == MapButton::Voyage(k) && h.hovered);
+    let selected = |p: Pick| map.selected.as_ref() == Some(&p);
+    let hovered = |b: MapButton| hots.iter().any(|(x, h)| *x == b && h.hovered);
+    let mark = |j: usize| geo.signals.get(j).and_then(|s| known.signal(*s)).filter(|m| m.is_area());
+    let spots = signal_labels(geo, known, content, &states);
     for (t, mut text, mut color) in &mut texts {
         let (words, tone, alpha) = match *t {
             MapText::Header => {
-                let count = |f: fn(&VoyageState) -> bool| states.iter().filter(|s| f(s)).count();
-                let known = count(|s| s.known());
-                let cleared = count(|s| matches!(s, VoyageState::Cleared { .. }));
-                let signals = count(|s| *s == VoyageState::Signal);
-                let band = geo.0.band.key.replace('_', " ").to_uppercase();
-                let mut words = format!("{band}  ·  {known} {}  ·  {cleared} CLEARED", if known == 1 { "VOYAGE" } else { "VOYAGES" });
+                let cleared = states.iter().filter(|s| matches!(s, VoyageState::Cleared { .. })).count();
+                let charted = career.career().exploration().map_or(0, |g| g.charted().len().saturating_sub(1));
+                let signals = known.signals.len() + states.iter().filter(|s| **s == VoyageState::Signal).count();
+                let band = geo.band.key.replace('_', " ").to_uppercase();
+                let mut words = format!("{band}  ·  {charted} CHARTED  ·  {cleared} CLEARED");
                 if signals > 0 {
                     words.push_str(&format!("  ·  {signals} {}", if signals == 1 { "SIGNAL" } else { "SIGNALS" }));
                 }
                 (words, Tone::Label, 1.0)
             }
+            MapText::Reach => {
+                let r = format!("{:.2}", known.reach);
+                (format!("JUMP RANGE  ·  {} S", r.trim_end_matches('0').trim_end_matches('.')), Tone::Label, 1.0)
+            }
             MapText::Name(k) => {
-                let lit = selected == Some(k) || hovered(k);
+                let lit = content.voyages.iter().nth(k).is_some_and(|v| selected(Pick::Voyage(v.id.clone()))) || hovered(MapButton::Voyage(k));
                 (text.0.clone(), Tone::Number, if lit { 1.0 } else { 0.8 })
             }
             MapText::State(k) => {
@@ -689,12 +905,33 @@ fn sync_map(
                 let (w, tone) = state_words(states[k], v.is_some_and(|v| is_guardian(content, v)));
                 (w, tone, 1.0)
             }
+            MapText::ClusterState(k) => match known.cluster(k) {
+                Some(m) if m.gate => ("GATE  ·  OPEN".into(), Tone::Coral, 1.0),
+                Some(m) if !m.signals.is_empty() => {
+                    let s = &known.signals[m.signals[0]];
+                    (format!("{}  ·  {}", s.head(), s.state_word()), Tone::Gold, 1.0)
+                }
+                Some(_) => ("CHARTED".into(), Tone::Teal, 1.0),
+                None => continue,
+            },
+            MapText::SignalHead(j) => match mark(j) {
+                Some(m) => (m.head(), Tone::Gold, if selected(Pick::Signal(m.signal)) || hovered(MapButton::Signal(j)) { 1.0 } else { 0.85 }),
+                None => continue,
+            },
+            MapText::SignalLine(j) => match mark(j) {
+                Some(m) => (m.line.clone(), Tone::Number, 0.8),
+                None => continue,
+            },
+            MapText::SignalState(j) => match mark(j) {
+                Some(m) => (m.state_word().to_string(), Tone::Gold, 0.85),
+                None => continue,
+            },
             _ => continue,
         };
         set_text(&mut text, &words);
         set_color(&mut color, ui_color(tone.color(ui), alpha));
     }
-    for (n, mut node, border) in &mut nodes {
+    for (n, mut node, border, anchored) in &mut nodes {
         let show = match *n {
             MapNode::Voyage(k) => states[k].known(),
             MapNode::Tag(k) => {
@@ -711,6 +948,14 @@ fn sync_map(
                 }
                 true
             }
+            MapNode::Cluster(k) => known.cluster(k).is_some(),
+            MapNode::Signal(j) => match mark(j).and_then(|m| spots.get(&m.signal)) {
+                Some(&(g, at)) => {
+                    place(&mut node, anchored, g, at);
+                    true
+                }
+                None => false,
+            },
             _ => continue,
         };
         let d = if show { Display::Flex } else { Display::None };
@@ -720,72 +965,164 @@ fn sync_map(
     }
 }
 
-/// The panel follows the selection, the career and the fleet.
+/// Where each signal's label goes (galaxy px at the default view): the point of its area's edge it follows, and the
+/// label's top centre. Above the area, else below, right or left of it, else inside it in its middle, the first that
+/// stays on the map (below the header, above the legend) and keeps clear of the labels and markers of home, the
+/// voyages, the clusters and the signals placed before it (widths estimated from the words).
+fn signal_labels(geo: &Geometry, known: &Known, content: &data::Content, states: &[VoyageState]) -> BTreeMap<TrailSignal, (Vec2, Vec2)> {
+    let rect = |min: Vec2, size: Vec2| Rect::from_corners(min, min + size);
+    let beside = |at: Vec2, w: f32, h: f32| if geo.label_left(at) { rect(Vec2::new(at.x - 24.0 - w, at.y - 10.0), Vec2::new(w, h)) } else { rect(Vec2::new(at.x + 24.0, at.y - 10.0), Vec2::new(w, h)) };
+    let mut taken: Vec<Rect> = vec![rect(Vec2::new(geo.home.x - 132.0, geo.home.y - 14.0), Vec2::new(150.0, 30.0))];
+    for (k, v) in content.voyages.iter().enumerate().filter(|(k, _)| states.get(*k).is_some_and(|s| s.known())) {
+        let at = geo.nodes[k];
+        taken.push(rect(at - 14.0, Vec2::splat(28.0)));
+        taken.push(beside(at, v.name.len() as f32 * 9.5, 44.0));
+    }
+    for m in &known.clusters {
+        let at = geo.clusters[m.cluster as usize];
+        taken.push(rect(at - 10.0, Vec2::splat(20.0)));
+        taken.push(beside(at, m.name.len() as f32 * 9.0, 30.0));
+    }
+    let mut out = BTreeMap::new();
+    for m in known.signals.iter().filter(|m| m.is_area()) {
+        let (c, r) = (geo.to_galaxy(m.area.centre), geo.px(m.area.radius));
+        let (w, h) = ((m.head().chars().count() as f32 * 8.3).max(m.line.chars().count() as f32 * 6.0) + 12.0, SIGNAL_LABEL);
+        // (the edge point followed, the label's top centre)
+        let tries = [
+            (c - Vec2::Y * r, c - Vec2::new(0.0, r + h + 4.0)),
+            (c + Vec2::Y * r, c + Vec2::new(0.0, r + 6.0)),
+            (c + Vec2::X * r, c + Vec2::new(r + 8.0 + w / 2.0, -h / 2.0)),
+            (c - Vec2::X * r, c - Vec2::new(r + 8.0 + w / 2.0, h / 2.0)),
+            (c, c - Vec2::new(0.0, h / 2.0)),
+        ];
+        let fits = |top: Vec2| {
+            let b = rect(top - Vec2::new(w / 2.0, 0.0), Vec2::new(w, h));
+            let on_map = b.min.x > 0.0 && b.max.x < PANEL_X && b.min.y > view::VIEW_AREA.min.y && b.max.y < view::VIEW_AREA.max.y;
+            on_map && taken.iter().all(|t| t.intersect(b).is_empty())
+        };
+        let (g, top) = tries.iter().copied().find(|(_, top)| fits(*top)).unwrap_or(tries[0]);
+        taken.push(rect(top - Vec2::new(w / 2.0, 0.0), Vec2::new(w, h)));
+        out.insert(m.signal, (g, top));
+    }
+    out
+}
+
+/// Lays an anchored node out at `at` (stage px of the default view) following the galaxy point `g`.
+fn place(node: &mut Node, anchored: Option<Mut<Anchored>>, g: Vec2, at: Vec2) {
+    if node.left != px(at.x) || node.top != px(at.y) {
+        node.left = px(at.x);
+        node.top = px(at.y);
+    }
+    if let Some(mut a) = anchored
+        && *a != Anchored::At(g, Layer::Always)
+    {
+        *a = Anchored::At(g, Layer::Always);
+    }
+}
+
+/// The panel's words for the selection: a voyage's (`layout`), or a cluster's, a signal's or a spot's (`known`).
+struct Panel {
+    head: String,
+    title: String,
+    chips: Vec<(String, Tone)>,
+    summary: String,
+    sites_head: String,
+    sites: Vec<layout::SiteRow>,
+    minutes: String,
+    /// The status line when nothing blocks.
+    status: String,
+}
+
+impl Panel {
+    fn of(content: &data::Content, career: &data::Career, known: &Known, pick: &Pick) -> Option<Panel> {
+        let Pick::Voyage(id) = pick else {
+            let w = place_words(content, career, known, pick)?;
+            return Some(Panel { head: w.head, title: w.title, chips: w.chips, summary: w.summary, sites_head: w.rows_head, sites: w.rows, minutes: w.warp, status: w.status });
+        };
+        let (k, v) = (content.voyages.position(id)?, content.voyages.get(id)?);
+        let status = match VoyageState::of(content, career, &v.id) {
+            VoyageState::Cleared { best } => format!("CLEARED{}  ·  NEW SITES EACH TIME", best.map(|t| format!("  ·  BEST {}", world::voyage::clock(t))).unwrap_or_default()),
+            VoyageState::Signal => "A NEW SIGNAL  ·  THE GATE IS OPEN".into(),
+            _ => "THE GATE IS OPEN".into(),
+        };
+        Some(Panel {
+            head: format!("DESTINATION  ·  VOYAGE {}", k + 1),
+            title: v.name.clone(),
+            chips: chips(content, v),
+            summary: content.render_plain(&v.summary),
+            sites_head: format!("SITES  ·  {}", v.site_count()),
+            sites: site_rows(content, v),
+            minutes: format!("{}  ·  RECALL WHEN CLEAR", minutes(v)),
+            status,
+        })
+    }
+}
+
+/// The panel follows the selection, the career, the fleet and the warp.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn sync_panel(
     map: Res<VoyageMap>,
     fleet: FleetNow,
+    time: Res<Time<Real>>,
     style: Res<Style>,
     mut texts: Query<(&MapText, &mut Text, &mut TextColor)>,
     mut nodes: Query<(&MapNode, &mut Node, Option<&mut BackgroundColor>, Option<&mut BorderColor>, Option<&mut UiTransform>)>,
     mut icons: Query<(&ShipIcon, &mut UiIcon)>,
     mut glyphs: Query<(&ChildOf, &mut UiIcon), Without<ShipIcon>>,
     pill: Single<(Entity, &mut Pill), With<MapButton>>,
+    mut counted: Local<u32>,
 ) {
     let f = &fleet;
-    if !(map.is_changed() || f.career.is_changed() || f.granted.is_changed() || f.design.is_changed() || f.escorts.is_changed()) {
+    // A warp counts down in whole seconds.
+    let left = map.warp.map_or(0, |w| (w.seconds - (time.elapsed_secs() - w.start)).ceil().max(0.0) as u32);
+    let ticked = left != *counted;
+    *counted = left;
+    if !(ticked || map.is_changed() || f.career.is_changed() || f.granted.is_changed() || f.design.is_changed() || f.escorts.is_changed() || f.known.is_changed()) {
         return;
     }
     let content = &f.content.0;
     let career = f.career.career();
     let ui = &style.ui;
-    let Some(id) = map.selected.as_deref() else { return };
-    let (Some(k), Some(v)) = (content.voyages.position(id), content.voyages.get(id)) else { return };
-    let state = VoyageState::of(content, career, &v.id);
-    let chips = chips(content, v);
-    let sites = site_rows(content, v);
+    let Some(pick) = map.selected.as_ref() else { return };
+    let Some(panel) = Panel::of(content, career, &f.known.0, pick) else { return };
     let flagship = f.design.blueprint();
     let escorts = &f.escorts.0;
     let ships: Vec<&data::Blueprint> = std::iter::once(flagship).chain(escorts).collect();
     let mind = f.granted.mind_capacity;
     let used = fleet_cores(content, flagship, escorts);
     let checks = layout::checklist(content, &f.granted.unlocks, mind, flagship, escorts);
-    let blocker = f.blocker(&v.id);
+    let blocker = f.blocker(pick);
     let plural = |n: u32, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}S") };
     let ship_sub = |k: usize, b: &data::Blueprint| {
         let t = content.ship_totals(b);
         let who = if k == 0 { "FLAGSHIP".to_string() } else { format!("ESCORT {k}") };
         format!("{who}  ·  {}  ·  CARGO {}", plural(t.logic_cores, "CORE"), content.ship_hold(b))
     };
-    // What the line over SET COURSE says: a refusal, the blocker, a practice run (`?unlock=all` grants what the
-    // career doesn't), or how the voyage stands.
-    let status = if let Some(why) = &map.say {
+    // What the line over SET COURSE says: the warp, a refusal, the blocker, a practice run (`?unlock=all` grants what
+    // the career doesn't), or how the pick stands.
+    let status = if map.warp.is_some() {
+        (format!("WARP  ·  {left} S  ·  ESC ENDS IT"), Tone::Teal)
+    } else if let Some(why) = &map.say {
         (why.clone(), Tone::Coral)
     } else if let Some(b) = &blocker {
         (b.clone(), Tone::Coral)
     } else if let Some(own) = f.granted.free.then(|| fleet_blocker(content, &career.unlocks(content), career.mind_capacity(content), flagship, escorts)).flatten() {
         (format!("PRACTICE RUN, NOT SAVED  ·  {own}"), Tone::Gold)
     } else {
-        match state {
-            VoyageState::Cleared { best } => (
-                format!("CLEARED{}  ·  NEW SITES EACH TIME", best.map(|t| format!("  ·  BEST {}", world::voyage::clock(t))).unwrap_or_default()),
-                Tone::Teal,
-            ),
-            VoyageState::Signal => ("A NEW SIGNAL  ·  THE GATE IS OPEN".into(), Tone::Teal),
-            _ => ("THE GATE IS OPEN".into(), Tone::Teal),
-        }
+        (panel.status.clone(), Tone::Teal)
     };
+    let sites = &panel.sites;
     for (t, mut text, mut color) in &mut texts {
         let (words, tone) = match *t {
-            MapText::Head => (format!("DESTINATION  ·  VOYAGE {}", k + 1), Tone::Label),
-            MapText::Title => (v.name.clone(), Tone::Number),
-            MapText::Summary => (content.render_plain(&v.summary), Tone::Label),
-            MapText::Chip(j) => chips.get(j).cloned().unwrap_or((String::new(), Tone::Label)),
-            MapText::SitesHead => (format!("SITES  ·  {}", v.site_count()), Tone::Label),
+            MapText::Head => (panel.head.clone(), Tone::Label),
+            MapText::Title => (panel.title.clone(), Tone::Number),
+            MapText::Summary => (panel.summary.clone(), Tone::Label),
+            MapText::Chip(j) => panel.chips.get(j).cloned().unwrap_or((String::new(), Tone::Label)),
+            MapText::SitesHead => (panel.sites_head.clone(), Tone::Label),
             MapText::SiteName(j) => (sites.get(j).map_or(String::new(), |s| s.name.clone()), Tone::Number),
             MapText::SiteTag(j) => sites.get(j).map_or((String::new(), Tone::Dim), |s| s.tag.clone()),
             MapText::SiteGives(j) => (sites.get(j).map_or(String::new(), |s| s.gives.clone()), Tone::Dim),
-            MapText::Minutes => (format!("{}  ·  RECALL WHEN CLEAR", minutes(v)), Tone::Label),
+            MapText::Minutes => (panel.minutes.clone(), Tone::Label),
             MapText::Cores => (format!("{used} / {mind}"), if used > mind { Tone::Coral } else { Tone::Violet }),
             MapText::ShipName(j) => (ships.get(j).map_or(String::new(), |b| b.name.clone()), Tone::Number),
             MapText::ShipSub(j) => (ships.get(j).map_or(String::new(), |b| ship_sub(j, b)), Tone::Dim),
@@ -799,6 +1136,7 @@ fn sync_panel(
         set_text(&mut text, &words);
         set_color(&mut color, ui_color(tone.color(ui), 1.0));
     }
+    let chips = &panel.chips;
     for (n, mut node, bg, border, transform) in &mut nodes {
         let show = match *n {
             MapNode::Chip(j) => {
@@ -811,6 +1149,7 @@ fn sync_panel(
                 j < chips.len()
             }
             MapNode::Site(j) => j < sites.len(),
+            MapNode::SitesHead => !panel.sites_head.is_empty(),
             MapNode::SiteDot(j) => {
                 if let Some(s) = sites.get(j) {
                     if let Some(mut bg) = bg {
@@ -851,7 +1190,7 @@ fn sync_panel(
                 true
             }
             MapNode::NoEscort => escorts.is_empty(),
-            MapNode::Voyage(_) | MapNode::Tag(_) => continue,
+            MapNode::Voyage(_) | MapNode::Tag(_) | MapNode::Cluster(_) | MapNode::Signal(_) => continue,
         };
         let d = if show { Display::Flex } else { Display::None };
         if node.display != d {
@@ -867,7 +1206,7 @@ fn sync_panel(
             *icon = want;
         }
     }
-    let disabled = blocker.is_some();
+    let disabled = blocker.is_some() || map.warp.is_some();
     let (pill_entity, mut pill) = pill.into_inner();
     if pill.disabled != disabled {
         pill.disabled = disabled;
@@ -893,32 +1232,70 @@ fn place_mesh(
     mut sheets: Query<(&mut MapMesh, &mut Transform)>,
     geo: Res<MapGeometry>,
     map: Res<VoyageMap>,
+    known: Res<MapKnown>,
     career: Res<PlayerCareer>,
     content: Res<GameContent>,
     hots: Query<(&MapButton, &Hot)>,
     toggles: Res<RenderToggles>,
     style: Res<Style>,
     atlas: Res<Atlas>,
-    time: Res<Time>,
+    (time, real): (Res<Time>, Res<Time<Real>>),
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let content = &content.0;
+    let (geo, known) = (&geo.0, &known.0);
+    let career = career.career();
+    let now = real.elapsed_secs();
     let far = Look {
-        states: VoyageState::all(content, career.career()),
+        voyages: content.voyages.iter().map(|v| v.id.clone()).collect(),
+        states: VoyageState::all(content, career),
         guardian: content.voyages.iter().map(|v| is_guardian(content, v)).collect(),
+        known: known.clone(),
         selected: None,
         hovered: None,
         glow: toggles.glow_sprites,
         pulse: 0,
+        wave: 0,
+        fading: Vec::new(),
+        course: None,
+        warp: None,
     };
+    let pick = map.selected.clone();
+    // A jump's course: from where it starts to the cluster (or the spot) it goes to.
+    let course = pick.as_ref().filter(|p| !matches!(p, Pick::Voyage(_))).and_then(|p| {
+        let k = p.target(content, career, known)?;
+        let from = geo.clusters.get(career.jump_from(content, k)? as usize).copied()?;
+        let to = match p {
+            Pick::Cluster(_) => geo.clusters.get(k as usize).copied()?,
+            _ => geo.to_galaxy(p.spot(known)?),
+        };
+        Some((from, to))
+    });
+    let seconds = time.elapsed_secs_wrapped();
     let look = Look {
-        selected: map.selected.as_deref().and_then(|id| content.voyages.position(id)),
-        hovered: hots.iter().find_map(|(b, h)| match b {
-            MapButton::Voyage(k) if h.hovered => Some(*k),
+        selected: pick,
+        hovered: hots.iter().find_map(|(b, h)| match (b, h.hovered) {
+            (MapButton::Voyage(k), true) => Some(Hover::Voyage(*k)),
+            (MapButton::Cluster(k), true) => Some(Hover::Cluster(*k)),
+            (MapButton::Signal(j), true) => geo.signals.get(*j).map(|s| Hover::Signal(*s)),
             _ => None,
         }),
-        pulse: Look::pulse_at(&far.states, time.elapsed_secs_wrapped()),
+        pulse: Look::pulse_at(&far.states, seconds),
+        course: course.filter(|_| map.warp.is_none()),
+        warp: map.warp.map(|w| {
+            let steps = (w.seconds * WARP_STEPS).max(1.0) as u32;
+            WarpLook { from: w.from, to: w.to, step: (((now - w.start) * WARP_STEPS) as u32).min(steps), steps }
+        }),
         ..far.clone()
+    };
+    // The areas' own look: the waves and the fading edges, not the voyages' pulse.
+    let areas = Look {
+        pulse: 0,
+        wave: Look::wave_at(known, seconds),
+        fading: map.fading.iter().map(|&(a, t)| (a, (((now - t) / FADE) * FADE_STEPS as f32) as u32)).collect(),
+        course: None,
+        warp: None,
+        ..look.clone()
     };
     let (node, at) = *stage;
     let scale = window.scale_factor();
@@ -933,13 +1310,15 @@ fn place_mesh(
     for (mut m, mut tf) in &mut sheets {
         let want = match m.sheet {
             Sheet::Far => Some(Built::Far(far.clone())),
-            Sheet::Detail => Some(Built::Detail(look.clone(), view.zoom, view.offset)),
+            Sheet::Detail => Some(Built::Placed(look.clone(), view.zoom, view.offset)),
+            Sheet::Areas => Some(Built::Placed(areas.clone(), view.zoom, view.offset)),
             Sheet::Galaxy | Sheet::Chrome => None,
         };
         if let Some(want) = want.filter(|w| m.built.as_ref() != Some(w)) {
             let mesh = match m.sheet {
-                Sheet::Far => galaxy::build_far(&geo.0, &far.states, &far.guardian, far.glow, &style, &white, &soft),
-                _ => draw::build_detail(&geo.0, &look, |g| view.to_screen(g), &style, &white, &soft),
+                Sheet::Far => galaxy::build_far(geo, &far, &style, &white, &soft),
+                Sheet::Areas => draw::build_areas(geo, &areas, |g| view.to_screen(g), view.zoom, &style, &white, &soft),
+                _ => draw::build_detail(geo, &look, |g| view.to_screen(g), &style, &white, &soft),
             };
             let _ = meshes.insert(&m.mesh, mesh);
             m.built = Some(want);
@@ -962,7 +1341,6 @@ fn place_mesh(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

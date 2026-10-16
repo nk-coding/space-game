@@ -321,7 +321,8 @@ pub(super) fn update_text(
                         k(Action::HideHud),
                     ),
                     SceneKind::Voyage(_) => format!(
-                        "{fly} · {} RECALL · {} ABANDON · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
+                        "{fly} · {} MAP · {} RECALL · {} ABANDON · ESC MENU · {} TUNING · {} DEBUG · {} HIDE",
+                        k(Action::ClusterMap),
                         k(Action::Recall),
                         k(Action::Leave),
                         k(Action::Tuning),

@@ -150,12 +150,13 @@ pub(super) fn site_markers(
     zones: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), Or<(With<HudText>, With<HudZone>)>>,
     mut labels: Query<(&SiteLabel, &mut Node, &ComputedNode, &mut Visibility)>,
     mut texts: Query<(&SiteLabelText, &mut Text, &mut TextColor)>,
+    overview: Res<super::overview::Overview>,
     mut rects: Local<Vec<Rect>>,
     mut queue: ResMut<FxQueue>,
 ) {
-    // The arrows fade with the HUD (its labels are in it).
+    // The arrows fade with the HUD (its labels are in it); the cluster map shows the sites instead.
     let fade = hud_fade(&hud);
-    let voyage = world.sim.voyage().filter(|_| scene.voyage().is_some() && fade > 0.0);
+    let voyage = world.sim.voyage().filter(|_| scene.voyage().is_some() && fade > 0.0 && !overview.is_open());
     let mut spots: [Option<(Vec2, Vec2)>; SITE_LABELS] = [None; SITE_LABELS];
     if let (Some(v), Some(regions)) = (voyage, regions) {
         rects.clear();

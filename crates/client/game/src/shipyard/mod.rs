@@ -22,7 +22,7 @@
 //! **States** (from the career, [`lights`]): research is lit once anything has been researched or any research
 //! node can be paid now; the gate is awake while any voyage is open (a new game opens its first one, so it is
 //! awake from the start); the moorings hold the FLEET's escorts; the LOG's mast glows while a voyage's result waits
-//! there unread; the EVOLUTION lab ([`draw::Evo`], from `world::evolution::Lab`) is dark until its research node (the
+//! there unread or a data core waits to be decoded (galaxy plan E6); the EVOLUTION lab ([`draw::Evo`], from `world::evolution::Lab`) is dark until its research node (the
 //! Simulation vault) is researched, dim without a run, busy while one computes, gold once one has finished until it
 //! is opened; the fabricator and the salvage bay stay dark until they have screens.
 //!
@@ -79,7 +79,7 @@ pub fn lights(content: &Content, career: &Career, escorts: usize, evolution: Evo
         research: !career.researched().is_empty() || content.research.iter().any(|n| career.can_pay(content, &n.id).is_ok()),
         gate: !career.open_voyages(content).is_empty(),
         moored: escorts.min(MOORINGS),
-        log: career.unread() > 0,
+        log: career.unread() > 0 || career.exploration().is_some_and(|g| !g.logs().is_empty()),
         evolution,
     }
 }

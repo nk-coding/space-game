@@ -92,12 +92,14 @@ pub struct MapView {
     last_click: Option<(f64, Vec2)>,
     /// Two fingers: their distance and midpoint last frame (stage px).
     pinch: Option<(f32, Vec2)>,
+    /// The last click (or tap) on empty map space (stage px), until the map takes it (a blind jump's spot).
+    pub tap: Option<Vec2>,
 }
 
 impl MapView {
     /// The default view of a galaxy whose disc is (`centre`, `radius`).
     pub fn new(centre: Vec2, radius: f32) -> Self {
-        Self { zoom: 1.0, target: 1.0, offset: Vec2::ZERO, disc: (centre, radius), anchor: None, glide: None, drag: None, last_click: None, pinch: None }
+        Self { zoom: 1.0, target: 1.0, offset: Vec2::ZERO, disc: (centre, radius), anchor: None, glide: None, drag: None, last_click: None, pinch: None, tap: None }
     }
 
     /// Back to the default view at once (entering the map).
@@ -247,12 +249,13 @@ impl MapView {
     }
 
     /// Where the top band names sit (screen stage x on the line [`TOP_Y`]): this band's halfway between where its
-    /// edges cross the line (right of the header), the next band's just past the gate, if those are on the map.
+    /// edges cross the line (right of the header; none where that leaves no room before the gate), the next band's
+    /// just past the gate, if those are on the map.
     pub fn top_band_x(&self, band: &Band) -> [Option<f32>; 2] {
         let b = Band { centre: self.to_screen(band.centre), outer: band.outer * self.zoom, inner: band.inner * self.zoom, ..band.clone() };
         let inner = b.x_at(b.inner, TOP_Y);
         let this = match (b.x_at(b.outer, TOP_Y), inner) {
-            (Some(o), Some(i)) => Some(((o.max(0.0) + i) / 2.0).max(330.0)),
+            (Some(o), Some(i)) => Some(((o.max(0.0) + i) / 2.0).max(330.0)).filter(|x| *x <= i - 16.0),
             (Some(o), None) => Some(((o.max(0.0) + PANEL_X) / 2.0).max(330.0)),
             (None, _) => None,
         };
@@ -408,10 +411,13 @@ pub(super) fn input(
         }
         None => {
             view.drag = None;
-            // A left click (or a tap) on empty space: two of them reset the view.
+            // A left click (or a tap) on empty space: the map's (a blind jump's spot); two of them reset the view.
             let left = id.is_some() || buttons.just_released(MouseButton::Left);
-            if left && moved < CLICK_SLOP && view.empty_click(now, last) {
-                view.reset();
+            if left && moved < CLICK_SLOP {
+                view.tap = Some(last);
+                if view.empty_click(now, last) {
+                    view.reset();
+                }
             }
         }
     }
@@ -664,18 +670,19 @@ mod tests {
         assert!(v.glide.is_none() && v.offset == at);
     }
 
-    /// The top band names sit where they always did at the default view and slide with the arcs.
+    /// The top band names sit halfway between the band's arcs on the top line (the next one past the gate) and
+    /// slide with them.
     #[test]
     fn the_top_band_names_follow_their_arcs() {
-        let content = data::base_content();
-        let geo = super::super::layout::Geometry::new(&content);
+        let band = Band { centre: Vec2::new(1500.0, 400.0), outer: 1414.0, inner: 1100.0, next: 700.0, key: "rim".into(), next_key: Some("outer".into()) };
         let mut v = view();
-        let [this, next] = v.top_band_x(&geo.band);
-        let b = &geo.band;
+        let [this, next] = v.top_band_x(&band);
+        let b = &band;
         let (outer, inner) = (b.x_at(b.outer, TOP_Y).unwrap_or(0.0).max(0.0), b.x_at(b.inner, TOP_Y).unwrap());
-        assert_eq!(this, Some(((outer + inner) / 2.0).max(330.0)));
-        assert_eq!(next, Some(inner + 34.0));
+        let near = |a: Option<f32>, b: f32| a.is_some_and(|a| (a - b).abs() < 1e-3);
+        assert!(near(this, ((outer + inner) / 2.0).max(330.0)), "{this:?}");
+        assert!(near(next, inner + 34.0), "{next:?}");
         v.pan(Vec2::new(-200.0, 0.0));
-        assert_eq!(v.top_band_x(&geo.band)[1], Some(inner + 34.0 - 200.0));
+        assert!(near(v.top_band_x(&band)[1], inner + 34.0 - 200.0));
     }
 }

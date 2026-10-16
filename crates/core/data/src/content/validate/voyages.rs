@@ -85,17 +85,6 @@ impl<'a> Validator<'a> {
                 format!("band key `{}` must be snake_case", v.band),
             );
         }
-        let on_map = |x: f32| x.is_finite() && (0.0..=1.0).contains(&x);
-        if !(on_map(v.map.0) && on_map(v.map.1)) {
-            self.err(
-                v,
-                "map",
-                format!(
-                    "a place on the map, each 0 to 1, got ({}, {})",
-                    v.map.0, v.map.1
-                ),
-            );
-        }
         for (k, id) in v.opens_after.iter().enumerate() {
             let f = format!("opens_after[{k}]");
             if !c.voyages.contains(id) {

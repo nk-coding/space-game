@@ -1050,7 +1050,6 @@ mod tests {
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
         // f32 numbers export as written, without the noise of widening them to f64.
-        assert_eq!(first["map"], json!([0.28, 0.66]));
         assert_eq!(
             find("encounters", "precursor_wrecks")["wrecks"][0]["damage"],
             json!(0.4)

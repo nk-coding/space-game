@@ -113,6 +113,7 @@ actions! {
     AssistToggle4 = "assist_toggle_4",
     AllAssists = "all_assists",
     Recall = "recall",
+    ClusterMap = "cluster_map",
     Leave = "leave",
     TestReturn = "test_return",
     Waves = "waves",

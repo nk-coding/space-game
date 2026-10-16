@@ -18,8 +18,6 @@ pub struct Voyage {
     pub tags: Vec<String>,
     /// The band of the galaxy it lies in (GDR-0026: `rim`, `outer`, ...), as a snake_case key; the map shows it.
     pub band: String,
-    /// Place on the voyage map, `(x, y)` from 0 to 1 (x right, y down).
-    pub map: (f32, f32),
     /// Voyages (ids) whose goal must have been cleared once before this one opens. Empty: only a start's list
     /// opens it.
     #[serde(default)]

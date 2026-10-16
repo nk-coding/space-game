@@ -1,19 +1,20 @@
-//! The voyage map's pure side: where everything sits (from the content's `map` positions), what state each voyage
-//! is in (from the career), the panel's words, and whether SET COURSE may launch. No Bevy systems here.
+//! The voyage map's pure side: where everything sits (the career's galaxy skeleton, GDR-0096), what state each voyage
+//! and each place is in (from the career), the panel's words, and whether SET COURSE may launch. No Bevy systems here.
 //!
-//! There is no route between voyages (GDR-0078): the map shows the shipyard and the voyages found so far, each a
-//! place of its own. A voyage not open yet is unknown space ([`VoyageState::Unknown`]), not drawn at all; one just
-//! found by clearing the voyages it opens after, and not launched yet, is a new signal ([`VoyageState::Signal`]).
+//! There is no route between voyages (GDR-0078): the map shows the shipyard, the clusters charted, the signals heard
+//! and the jump range around home and every charted cluster (galaxy plan E5, GDR-0097). A voyage not open yet is
+//! unknown space ([`VoyageState::Unknown`]), not drawn at all; one just found by clearing the voyages it opens after,
+//! and not launched yet, is a new signal ([`VoyageState::Signal`]). Uncharted clusters are not drawn either: a blind
+//! jump to a spot goes to the nearest one (`Career::blind_target`).
 //!
 //! The map is laid out on a stage of [`STAGE`] logical px (the UI scale grows it with the window, as home's and
-//! FLEET's layouts). Content's `map` coordinates (0 to 1, x right, y down) land in [`MAP_RECT`], left of the panel.
-//! The galaxy's centre lies off the stage to the right ([`CENTRE`]), so the band edges are arcs across the map: the
-//! rim band's outer edge (the galaxy's edge) and inner edge (the gate to the next band) are placed from the content
-//! positions, [`BAND_MARGIN`] outside the outermost place and inside the innermost one; the next band's inner edge
-//! lies as far again inwards, at 0.6 of the rim band's depth.
+//! FLEET's layouts). Galaxy px are the stage px of the default view: the skeleton's map units at [`PX_PER_S`] a S,
+//! turned so the galaxy's centre lies right of home and home sits at [`HOME_AT`]. The bands' edges come from the
+//! content (`bands.ron`), so they are arcs across the map; a slice voyage sits on the cluster it is pinned to.
 
 use bevy::math::{Rect, Vec2};
-use data::career::{Readiness, Unlocks, voyage_ready};
+use data::career::{Exploration, Readiness, TrailSignal, Unlocks, voyage_ready};
+use data::skeleton::{Point, UNITS_PER_S};
 use data::{Blueprint, Career, Content, Voyage};
 use kit::ui_kit::Tone;
 use world::career::{fleet_cores, readiness_words};
@@ -23,30 +24,22 @@ use world::player::design::flight_ready;
 pub const STAGE: Vec2 = Vec2::new(1280.0, 720.0);
 /// The panel's left edge; the map fills the stage left of it.
 pub const PANEL_X: f32 = 904.0;
-/// Where the content's map coordinates (0 to 1) land.
+/// The map's area left of the panel, between the header and the legend.
 pub const MAP_RECT: Rect = Rect { min: Vec2::new(28.0, 64.0), max: Vec2::new(876.0, 650.0) };
-/// The shipyard's place on the map in content coordinates: bottom left, as in `map-b.png`. PLACEHOLDER: content has
-/// no place for home yet (a start or a band could carry one).
-pub const HOME_AT: (f32, f32) = (0.12, 0.86);
-/// The galaxy's centre (stage px), off the stage to the right.
-pub const CENTRE: Vec2 = Vec2::new(1500.0, 400.0);
-/// Room between a band edge and the nearest place inside the band (stage px).
-pub const BAND_MARGIN: f32 = 34.0;
-/// The next band's depth as a share of the rim band's.
-const NEXT_DEPTH: f32 = 0.6;
-/// The bands from the rim inwards (GDR-0026). Text keys until bands are content.
-pub const BANDS: [&str; 5] = ["rim", "outer", "middle", "inner", "core"];
+/// Galaxy px per S at the default view (GDR-0097): the starting jump range (2.5 S) spans the map's height, a
+/// neighbouring cluster (0.9 S) lies about 110 px away.
+pub const PX_PER_S: f32 = 120.0;
+/// Home's place on the stage at the default view: left of the map's middle, the bands bending away to the right; its
+/// height is chosen so home, the slice's voyages and the charted clusters sit in the map's middle ([`Geometry::new`]),
+/// between these.
+pub const HOME_AT: Vec2 = Vec2::new(300.0, 352.0);
+const HOME_Y: (f32, f32) = (150.0, 560.0);
 /// A voyage whose goal encounter has this tag ends at a guardian (the map draws it as a coral diamond).
 pub const GUARDIAN_TAG: &str = "boss";
-/// Nodes right of this share of the map rect put their label on their left.
+/// Places right of this share of the map rect put their label on their left.
 const LABEL_LEFT_FROM: f32 = 0.7;
 
-/// A content map position on the stage.
-pub fn to_stage(p: (f32, f32)) -> Vec2 {
-    MAP_RECT.min + Vec2::new(p.0.clamp(0.0, 1.0), p.1.clamp(0.0, 1.0)) * MAP_RECT.size()
-}
-
-/// The band the voyages lie in, as circles around [`CENTRE`] (radii in stage px).
+/// The band home lies in, as circles around the galaxy's centre (radii in galaxy px).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Band {
     pub centre: Vec2,
@@ -69,38 +62,114 @@ impl Band {
     }
 }
 
-/// Where everything sits: a pure function of the content.
+/// One band of the galaxy as a ring around its centre (galaxy px; the core's inner edge is 0).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ring {
+    pub key: String,
+    pub outer: f32,
+    pub inner: f32,
+    /// The band home lies in (the others are uncharted).
+    pub charted: bool,
+}
+
+/// Where everything sits: the content's bands and the career's skeleton, turned and scaled onto the stage.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Geometry {
-    /// The shipyard.
+    /// Galaxy px per map unit, the turn (cos, sin) that puts home left of the galaxy's centre, and the flip (1 or −1
+    /// on the turned y) that puts the slice's voyages above home.
+    scale: f32,
+    turn: Vec2,
+    flip: f32,
+    /// The shipyard (home's cluster).
     pub home: Vec2,
-    /// Each voyage, in content order (the career's and the map's order), known or not: the band's edges are placed
-    /// from all of them, so they don't move as voyages are found.
+    /// Every cluster of the skeleton by id (galaxy px); empty without a galaxy.
+    pub clusters: Vec<Vec2>,
+    /// Each voyage, in content order (the career's and the map's order), known or not: the cluster it is pinned to
+    /// (home without a pin).
     pub nodes: Vec<Vec2>,
+    /// Each voyage's cluster (id), if pinned.
+    pub pins: Vec<Option<u32>>,
     pub band: Band,
+    /// The galaxy's bands from the rim inwards.
+    pub rings: Vec<Ring>,
+    /// Every signal of the skeleton's trails (the map has a label for each, shown once heard).
+    pub signals: Vec<TrailSignal>,
 }
 
 impl Geometry {
-    pub fn new(content: &Content) -> Self {
-        let home = to_stage(HOME_AT);
-        let nodes: Vec<Vec2> = content.voyages.iter().map(|v| to_stage(v.map)).collect();
-        let dist = |p: &Vec2| p.distance(CENTRE);
-        let far = nodes.iter().chain([&home]).map(dist).fold(0.0f32, f32::max);
-        let near = nodes.iter().map(dist).fold(far, f32::min);
-        let outer = far + BAND_MARGIN;
-        // Without voyages the band is as deep as the shipyard's margin allows (a placeholder depth).
-        let inner = if nodes.is_empty() { outer - 400.0 } else { near - BAND_MARGIN }.max(BAND_MARGIN);
-        let next = (inner - (outer - inner) * NEXT_DEPTH).max(0.0);
-        let key = content.voyages.iter().next().map_or(BANDS[0], |v| v.band.as_str()).to_string();
-        let next_key = BANDS.iter().position(|b| *b == key).and_then(|k| BANDS.get(k + 1)).map(|b| b.to_string());
-        Self { home, nodes, band: Band { centre: CENTRE, outer, inner, next, key, next_key } }
+    /// From the content's first galaxy and its bands, and the career's galaxy (`None`: everything at home).
+    pub fn new(content: &Content, galaxy: Option<&Exploration>) -> Self {
+        let scale = PX_PER_S / UNITS_PER_S as f32;
+        let sk = galaxy.map(Exploration::skeleton);
+        let home_at = sk.and_then(|s| s.clusters.get(s.home as usize)).map_or(Point::default(), |c| c.at);
+        let home_v = Vec2::new(home_at.x as f32, home_at.y as f32);
+        // Home's direction from the centre turned to point left (−x).
+        let turn = if home_v.length() > 0.0 { Vec2::NEG_X.rotate(Vec2::new(home_v.x, -home_v.y).normalize()) } else { Vec2::X };
+        let turned = |p: Point| turn.rotate(Vec2::new(p.x as f32, p.y as f32) - home_v) * scale;
+        // The slice's voyages above home (flipped if they lie below), and they and the charted clusters in the map's
+        // middle.
+        let pinned: Vec<Vec2> = content.voyages.iter().filter_map(|v| galaxy?.pins().get(&v.id)).filter_map(|&k| sk?.clusters.get(k as usize)).map(|c| turned(c.at)).collect();
+        let charted: Vec<Vec2> = galaxy.map_or_else(Vec::new, |g| g.charted().keys().filter_map(|&k| sk?.clusters.get(k as usize)).map(|c| turned(c.at)).collect());
+        let flip = if pinned.iter().map(|q| q.y).sum::<f32>() > 0.0 { -1.0 } else { 1.0 };
+        let (lo, hi) = pinned.iter().chain(&charted).fold((0.0f32, 0.0f32), |(lo, hi), q| (lo.min(q.y * flip), hi.max(q.y * flip)));
+        let home_y = (MAP_RECT.center().y - (lo + hi) / 2.0).clamp(HOME_Y.0, HOME_Y.1);
+        let home_px = Vec2::new(HOME_AT.x, home_y);
+        let centre = home_px + Vec2::X * home_v.length() * scale;
+        let to = |p: Point| {
+            let v = turn.rotate(Vec2::new(p.x as f32, p.y as f32)) * scale;
+            centre + Vec2::new(v.x, v.y * flip)
+        };
+        let clusters: Vec<Vec2> = sk.map_or_else(Vec::new, |s| s.clusters.iter().map(|c| to(c.at)).collect());
+        let pins: Vec<Option<u32>> = content.voyages.iter().map(|v| galaxy.and_then(|g| g.pins().get(&v.id).copied())).collect();
+        let nodes = pins.iter().map(|p| p.and_then(|k| clusters.get(k as usize).copied()).unwrap_or(HOME_AT)).collect();
+        // The bands: the galaxy's, from its edge inwards.
+        let galaxy_content = sk.and_then(|s| content.galaxies.get(&s.galaxy)).or_else(|| content.galaxies.iter().next());
+        let keys: Vec<String> = galaxy_content.map_or_else(Vec::new, |g| g.bands.clone());
+        let edge = |k: &str| content.bands.get(k).map_or(0.0, |b| b.edge * PX_PER_S);
+        let home_band = sk.and_then(|s| s.clusters.get(s.home as usize)).map_or_else(|| keys.first().cloned().unwrap_or_default(), |c| c.band.clone());
+        let rings: Vec<Ring> = keys
+            .iter()
+            .enumerate()
+            .map(|(k, key)| Ring { key: key.clone(), outer: edge(key), inner: keys.get(k + 1).map_or(0.0, |n| edge(n)), charted: *key == home_band })
+            .collect();
+        let at = rings.iter().position(|r| r.charted).unwrap_or(0);
+        let ring = |k: usize| rings.get(k);
+        let band = Band {
+            centre,
+            outer: ring(at).map_or(0.0, |r| r.outer),
+            inner: ring(at).map_or(0.0, |r| r.inner),
+            next: ring(at + 1).map_or(0.0, |r| r.inner),
+            key: home_band,
+            next_key: ring(at + 1).map(|r| r.key.clone()),
+        };
+        let signals = sk.map_or_else(Vec::new, |s| {
+            (0u32..).zip(&s.trails).flat_map(|(trail, t)| (0u32..t.signals.len() as u32).map(move |signal| TrailSignal { trail, signal })).collect()
+        });
+        Self { scale, turn, flip, home: to(home_at), clusters, nodes, pins, band, rings, signals }
     }
 
-    /// Does voyage `k`'s label go on its left (near the right edge of the map)?
-    pub fn label_left(&self, k: usize) -> bool {
-        self.nodes.get(k).is_some_and(|p| p.x > MAP_RECT.min.x + MAP_RECT.width() * LABEL_LEFT_FROM)
+    /// A skeleton point in galaxy px.
+    pub fn to_galaxy(&self, p: Point) -> Vec2 {
+        let v = self.turn.rotate(Vec2::new(p.x as f32, p.y as f32)) * self.scale;
+        self.band.centre + Vec2::new(v.x, v.y * self.flip)
     }
 
+    /// The skeleton point at galaxy px `g` (the nearest map unit).
+    pub fn to_point(&self, g: Vec2) -> Point {
+        let d = (g - self.band.centre) / self.scale;
+        let v = Vec2::new(self.turn.x, -self.turn.y).rotate(Vec2::new(d.x, d.y * self.flip));
+        Point { x: v.x.round() as i32, y: v.y.round() as i32 }
+    }
+
+    /// A length in map units as galaxy px.
+    pub fn px(&self, units: i32) -> f32 {
+        units as f32 * self.scale
+    }
+
+    /// Does a label at galaxy px `at` go on its left (near the right edge of the map)?
+    pub fn label_left(&self, at: Vec2) -> bool {
+        at.x > MAP_RECT.min.x + MAP_RECT.width() * LABEL_LEFT_FROM
+    }
 }
 
 /// A voyage's state on the map.
@@ -366,7 +435,7 @@ pub fn checklist(content: &Content, unlocks: &Unlocks, mind: u32, flagship: &Blu
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use data::career::{Haul, VoyageEnd};
 
@@ -379,34 +448,46 @@ mod tests {
         c.voyage_ended(content, voyage, VoyageEnd::Recalled { haul: Haul::default(), cleared: true, ticks }).unwrap();
     }
 
-    /// Every voyage sits at its content position inside the map rect, the shipyard bottom left; every place lies
-    /// inside the rim band, whose edges are arcs left of the panel.
+    /// A new game as the game makes it: its galaxy generated from the seed and charted.
+    pub fn new_game(content: &Content) -> Career {
+        let mut storage = world::storage::Storage::new(world::storage::MemoryBackend::default());
+        let switches = world::career::Switches::from_params(&kit::params::Params::parse("")).0;
+        world::career::load(&mut storage, content, switches, 4207, 1).career().clone()
+    }
+
+    /// Home sits at [`HOME_AT`], the galaxy's centre right of it; every cluster lands at its skeleton point turned and
+    /// scaled (and back), every voyage on its pinned cluster; home lies in the rim, whose inner edge crosses the map's
+    /// middle line left of the panel.
     #[test]
-    fn the_layout_comes_from_the_content_positions() {
+    fn the_layout_comes_from_the_skeleton() {
         let content = data::base_content();
-        let g = Geometry::new(&content);
-        assert_eq!(g.nodes.len(), content.voyages.len());
-        for (v, p) in content.voyages.iter().zip(&g.nodes) {
-            assert_eq!(*p, MAP_RECT.min + Vec2::new(v.map.0, v.map.1) * MAP_RECT.size(), "{}", v.id);
-            assert!(MAP_RECT.contains(*p) && p.x < PANEL_X, "{} at {p}", v.id);
+        let c = new_game(&content);
+        let g = Geometry::new(&content, c.exploration());
+        let sk = c.exploration().unwrap().skeleton();
+        assert!((g.home.x - HOME_AT.x).abs() < 1e-3 && (HOME_Y.0 - 1e-3..=HOME_Y.1 + 1e-3).contains(&g.home.y), "{}", g.home);
+        assert!(g.nodes.iter().all(|n| n.y <= g.home.y), "the slice's voyages lie above home");
+        assert!(g.band.centre.x > g.home.x && (g.band.centre.y - g.home.y).abs() < 1e-3);
+        let home = sk.clusters[sk.home as usize].at;
+        for (cl, &at) in sk.clusters.iter().zip(&g.clusters) {
+            assert_eq!(g.to_point(at), cl.at);
+            let d = cl.at.distance_s(home) as f32 * PX_PER_S;
+            assert!((at.distance(g.home) - d).abs() < 0.01, "{}", cl.name);
         }
-        let at = |id: &str| g.nodes[content.voyages.position(id).unwrap()];
-        assert_eq!(at("yard_approach"), Vec2::new(28.0 + 0.28 * 848.0, 64.0 + 0.66 * 586.0));
-        assert!(g.home.x < at("yard_approach").x && g.home.y > at("yard_approach").y, "the shipyard is bottom left");
-        let k = |id: &str| content.voyages.position(id).unwrap();
-        // The band holds every place with room to spare; the next band's edge lies further in.
+        for (k, v) in content.voyages.iter().enumerate() {
+            let pin = c.exploration().unwrap().pins()[&v.id];
+            assert_eq!((g.pins[k], g.nodes[k]), (Some(pin), g.clusters[pin as usize]), "{}", v.id);
+        }
         let b = &g.band;
         assert_eq!((b.key.as_str(), b.next_key.as_deref()), ("rim", Some("outer")));
-        for p in g.nodes.iter().chain([&g.home]) {
-            let d = p.distance(b.centre);
-            assert!(d >= b.inner + BAND_MARGIN - 0.01 && d <= b.outer - BAND_MARGIN + 0.01, "{p}: {d} not in {}..{}", b.inner, b.outer);
-        }
+        assert_eq!((b.outer, b.inner), (5.5 * PX_PER_S, 4.2 * PX_PER_S));
         assert!(b.next < b.inner && b.inner < b.outer);
-        // The inner edge crosses the map's middle line left of the panel, the warden's gate just inside it.
-        let x = b.x_at(b.inner, 360.0).unwrap();
-        assert!(x < PANEL_X && x > at("wardens_gate").x, "{x}");
+        let d = g.home.distance(b.centre);
+        assert!(d > b.inner && d < b.outer);
+        let x = b.x_at(b.inner, g.home.y).unwrap();
+        assert!(x > g.home.x && x < PANEL_X, "{x}");
+        assert_eq!(g.signals.len(), sk.trails.iter().map(|t| t.signals.len()).sum::<usize>());
         // Labels go left near the right edge only.
-        assert!(g.label_left(k("wardens_gate")) && !g.label_left(k("yard_approach")));
+        assert!(g.label_left(Vec2::new(800.0, 300.0)) && !g.label_left(g.home));
     }
 
     /// A new game: only the first voyage is known (the rest are unknown space, not on the map); clearing it finds the

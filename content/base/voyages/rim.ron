@@ -1,6 +1,7 @@
 // The voyages of the first playable loop (GDR-0062): four small rim clusters in a chain, each opened by clearing the
 // goal of the one before it (the first is open at the start, `starts.ron`). The order here is the voyage map's.
-// Radius and spacing in metres, `map` a place on the voyage map (0 to 1), `minutes` the expected length.
+// Radius and spacing in metres, `minutes` the expected length. The voyage map shows each on the cluster of the
+// career's galaxy it is pinned to (GDR-0096, GDR-0097), until track E7 pins them by content.
 // PLACEHOLDER NUMBERS (track 7J draft of 13 Oct 2026; sites tuned with the headless
 // voyage runner the same day, GDR-0073 and docs/results/slice-balance-2026-10-13.md).
 [
@@ -9,7 +10,6 @@
         name: "Shipyard approach",
         summary: "The quiet lanes outside the shipyard, where a few raiders pick over old wrecks.",
         band: "rim",
-        map: (0.28, 0.66),
         radius: 600,
         spacing: (400, 700),
         minutes: (6, 8),
@@ -25,7 +25,6 @@
         name: "Halvex Drift",
         summary: "A raider-haunted drift of wrecks one warp out from the shipyard.",
         band: "rim",
-        map: (0.44, 0.30),
         opens_after: ["yard_approach"],
         radius: 900,
         spacing: (400, 700),
@@ -43,7 +42,6 @@
         name: "Corran Reach",
         summary: "A long reach of broken hulls where heavier automatons hunt in packs.",
         band: "rim",
-        map: (0.62, 0.52),
         opens_after: ["halvex_drift"],
         radius: 1000,
         spacing: (400, 700),
@@ -60,7 +58,6 @@
         name: "The Warden's gate",
         summary: "The gate to the outer reach, and the old guardian that still keeps it.",
         band: "rim",
-        map: (0.80, 0.34),
         opens_after: ["corran_reach"],
         radius: 900,
         spacing: (400, 700),

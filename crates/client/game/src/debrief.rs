@@ -28,7 +28,9 @@
 //!   the kit's [`Scrollbar`] (smooth wheel, the overlay bar, edge fades); the buttons stay put at the bottom.
 //! * A voyage its first clear opened is a signal found (GDR-0078): the panel names it (from the content) above the
 //!   voyage's `cleared` words, and adds VOYAGE MAP beside DISMISS: it dismisses the panel and flies to the gate
-//!   (`map::OpenMap`), where the map selects the new signal.
+//!   (`map::OpenMap`), where the map selects the new signal. A voyage into a cluster of the galaxy lists what it found
+//!   there the same way (galaxy plan E6): `CHARTED · VARDIS`, the signals heard and how far each came, in gold
+//!   (`SIGNAL NARROWED · A GATE`), the logs to decode at the LOG; VOYAGE MAP shows for anything on the map.
 
 use bevy::prelude::*;
 use data::career::Outcome;
@@ -310,7 +312,7 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
             }
         }
     }
-    if !d.ready.is_empty() || !d.opened.is_empty() || d.cleared_text.is_some() {
+    if !d.ready.is_empty() || !d.signals().is_empty() || d.cleared_text.is_some() {
         rule(p);
     }
     if !d.ready.is_empty() {
@@ -319,10 +321,10 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
             p.spawn(prose(fonts, name, 15.0, c(Tone::Number)));
         }
     }
-    for line in d.signals() {
+    for (line, tone) in d.signals() {
         p.spawn(row(7.0)).with_children(|l| {
-            l.spawn(signal(c(Tone::Teal), 16.0));
-            l.spawn(label(fonts, &line, 10.5, c(Tone::Teal)));
+            l.spawn(signal(c(tone), 16.0));
+            l.spawn(label(fonts, &line, 10.5, c(tone)));
         });
     }
     if let Some(t) = &d.cleared_text {
@@ -336,7 +338,7 @@ fn fill(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, d: &Debri
 /// VOYAGE MAP (after a voyage that found a signal) and DISMISS, at the panel's bottom.
 fn buttons(p: &mut ChildSpawnerCommands, fonts: &HudFonts, d: &DebriefData) {
     p.spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::FlexEnd, column_gap: px(10), flex_shrink: 0.0, ..default() }).with_children(|r| {
-        if !d.opened.is_empty() {
+        if d.to_map() {
             spawn_pill(r, fonts, "VOYAGE MAP", 10.0, 36.0, None, Pill::new(Tone::Teal), MapButton);
         }
         spawn_pill(r, fonts, "DISMISS", 10.0, 36.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, (DismissButton, Tip::key("DISMISS", "ESC / ENTER")));

@@ -629,6 +629,8 @@ bring it to 4), voyage `yard_approach` open.
 
 A voyage is one small hand-made cluster with seeded sites (GDR-0062). Each launch rolls where its sites lie and what
 each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launches and clears (`docs/career.md`).
+The voyage map shows it on the cluster of the career's galaxy it is pinned to (GDR-0096); its `map` place (0 to 1)
+went on 16 Oct 2026 with the galaxy's map (GDR-0097), until track E7 pins the voyages by content.
 
 ```ron
 // voyages/rim.ron (one of four). PLACEHOLDER NUMBERS.
@@ -637,7 +639,6 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
     name: "Halvex Drift",
     summary: "A raider-haunted drift of wrecks one warp out from the shipyard.",
     band: "rim",                         // band of the galaxy (GDR-0026), a snake_case key
-    map: (0.44, 0.30),                   // place on the voyage map, 0 to 1 (x right, y down)
     opens_after: ["yard_approach"],      // voyages whose goal must have been cleared once
     radius: 900,                         // m: the sites lie inside; the fleet enters at the edge
     spacing: (400, 700),                 // m between sites (see below)
@@ -655,7 +656,6 @@ each holds (`sim::voyage`, `docs/sim.md` "Voyages"); the career remembers launch
 | Field | Notes |
 |---|---|
 | `band` | snake_case key; text only until bands are content |
-| `map` | each coordinate 0 to 1 |
 | `opens_after` | optional: voyage ids, each known and listed once, no cycles. Empty: only a start's `voyages` opens it (a voyage nothing opens is a warning, and so is one that opens only after voyages that can never open). The voyage map draws no route along it and doesn't show a voyage before it opens; one opened this way shows as a new signal until its first launch, and the debrief that opened it says `SIGNAL FOUND · <name>` (GDR-0078) |
 | `radius` | m, above 0 and at most 20000 (`data::content::validate::MAX_VOYAGE_RADIUS`, a sanity bound) |
 | `spacing` | `(min, max)` m, `0 < min ≤ max`, `min ≤ 2 × radius`: no two sites (and no site and the entry) closer than `min`; each site within `max` of an earlier one or the entry |

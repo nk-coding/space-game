@@ -48,7 +48,7 @@ fn voyage(id: &str, fields: &str) -> String {
     format!(r#"(id: "{id}", name: "V", summary: "S.", {fields})"#)
 }
 
-const GOOD_VOYAGE: &str = r#"band: "rim", map: (0.5, 0.5), opens_after: ["yard_approach"], radius: 800,
+const GOOD_VOYAGE: &str = r#"band: "rim", opens_after: ["yard_approach"], radius: 800,
     spacing: (300, 600), minutes: (5, 10), sites: [(encounter: "raider_pair", count: 2),
     (encounter: "raider_den", goal: true)]"#;
 
@@ -66,7 +66,7 @@ fn voyages_and_encounters_load_with_texts_links_and_wiki() {
             "voyages/deep.ron",
             &voyage(
                 "deep",
-                r#"band: "outer", map: (0.9, 0.1), opens_after: ["wardens_gate"], radius: 1500,
+                r#"band: "outer", opens_after: ["wardens_gate"], radius: 1500,
                    spacing: (500, 900), minutes: (20, 30),
                    cleared: "Past [[encounter:ambush]], the reach opens.",
                    sites: [(encounter: "ambush", goal: true)]"#,
@@ -254,13 +254,12 @@ fn voyage_numbers_and_references() {
         "voyages/v.ron",
         &voyage(
             "v",
-            r#"band: "Rim", map: (1.2, -0.1), opens_after: ["nowhere", "yard_approach", "yard_approach"],
+            r#"band: "Rim", opens_after: ["nowhere", "yard_approach", "yard_approach"],
                radius: -5, spacing: (700, 400), minutes: (0, 900),
                sites: [(encounter: "who", count: 0), (encounter: "raider_pack", count: 70)]"#,
         ),
     )]);
     assert_error(&p, "v", "band", "snake_case");
-    assert_error(&p, "v", "map", "each 0 to 1");
     assert_error(&p, "v", "opens_after[0]", "unknown voyage `nowhere`");
     assert_error(&p, "v", "opens_after[2]", "listed twice");
     assert_error(&p, "v", "radius", "a distance above 0");
@@ -283,7 +282,7 @@ fn voyage_numbers_and_references() {
         "voyages/v.ron",
         &voyage(
             "v",
-            r#"band: "rim", map: (0, 1), opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
+            r#"band: "rim", opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
                minutes: (5, 10), sites: []"#,
         ),
     )]);
@@ -296,7 +295,7 @@ fn exactly_one_goal_that_can_be_cleared() {
         voyage(
             "v",
             &format!(
-                r#"band: "rim", map: (0.5, 0.5), opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
+                r#"band: "rim", opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
                    minutes: (5, 10), sites: [{s}]"#
             ),
         )
@@ -370,7 +369,7 @@ fn exactly_one_goal_that_can_be_cleared() {
             "voyages/w.ron",
             voyage(
                 "w",
-                r#"band: "rim", map: (0.5, 0.5), opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
+                r#"band: "rim", opens_after: ["yard_approach"], radius: 800, spacing: (300, 600),
                    minutes: (5, 10), sites: [(encounter: "unarmed"), (encounter: "armed", goal: true)]"#,
             ),
         ),

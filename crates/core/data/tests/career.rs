@@ -555,10 +555,10 @@ fn clearing_a_voyage_opens_the_next() {
             ),
             (
                 "voyages/more.ron",
-                r#"[(id: "both", name: "Both", summary: "S.", band: "rim", map: (0.5, 0.5),
+                r#"[(id: "both", name: "Both", summary: "S.", band: "rim",
                      opens_after: ["yard_approach", "halvex_drift"], radius: 800, spacing: (300, 600), minutes: (5, 9),
                      sites: [(encounter: "raider_den", goal: true)]),
-                    (id: "elsewhere", name: "Elsewhere", summary: "S.", band: "rim", map: (0.5, 0.5),
+                    (id: "elsewhere", name: "Elsewhere", summary: "S.", band: "rim",
                      radius: 800, spacing: (300, 600), minutes: (5, 9),
                      sites: [(encounter: "raider_den", goal: true)])]"#,
             ),

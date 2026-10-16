@@ -96,14 +96,6 @@ impl Wiki<'_> {
         let root = UP;
         let mut facts = vec![
             ("Band".to_string(), esc(&v.band)),
-            (
-                "Map place".into(),
-                format!(
-                    "<span title=\"On the voyage map, 0 to 1: x to the right, y down\">{}, {}</span>",
-                    format_number(v.map.0, 2),
-                    format_number(v.map.1, 2)
-                ),
-            ),
             ("Radius".into(), metres(v.radius)),
             (
                 "Site spacing".into(),

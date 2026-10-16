@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
-use data::career::{Haul, HaulItem, Outcome, VoyageResult, unload};
+use data::career::{Haul, HaulItem, Lead, Outcome, SignalState, VoyageResult, unload};
 use data::{Career, Content};
 use kit::ui_kit::Tone;
 
@@ -68,6 +68,11 @@ pub struct DebriefData {
     pub ready: Vec<String>,
     /// Voyages this one opened: the signals it found (names).
     pub opened: Vec<String>,
+    /// What it found in the galaxy ([`galaxy_finds`]): clusters charted (teal), signals heard and how far each came
+    /// (gold).
+    pub finds: Vec<(String, Tone)>,
+    /// Data cores it brought home: logs to decode at the LOG.
+    pub logs: usize,
     pub practice: Option<String>,
 }
 
@@ -146,10 +151,14 @@ impl DebriefData {
             .filter(|v| !open_before.contains(v))
             .map(|v| content.voyages.get(v).map_or(v.to_string(), |v| v.name.clone()))
             .collect();
+        let cluster = last.cluster.and_then(|k| after.exploration()?.skeleton().clusters.get(k as usize));
+        let band = voyage.map(|v| v.band.as_str()).or(cluster.map(|c| c.band.as_str())).unwrap_or_default();
         DebriefData {
             voyage: last.voyage.clone(),
             name: voyage.map_or(last.voyage.clone(), |v| v.name.clone()),
-            band: voyage.map_or(String::new(), |v| upper(&v.band.replace('_', " "))),
+            band: upper(&band.replace('_', " ")),
+            finds: galaxy_finds(content, before, after, last.cluster),
+            logs: after.exploration().map_or(0, |g| g.logs().len()).saturating_sub(before.exploration().map_or(0, |g| g.logs().len())),
             outcome: last.outcome,
             ticks: last.ticks,
             practice: stats.practice.clone(),
@@ -179,10 +188,51 @@ impl DebriefData {
         outcome_words(self.outcome)
     }
 
-    /// One line per signal found: `SIGNAL FOUND · HALVEX DRIFT`.
-    pub fn signals(&self) -> Vec<String> {
-        self.opened.iter().map(|v| format!("SIGNAL FOUND  ·  {}", v.to_uppercase())).collect()
+    /// One line per signal found and per find in the galaxy, with its tone: `SIGNAL FOUND · HALVEX DRIFT` (teal),
+    /// `CHARTED · VARDIS` (teal), `SIGNAL NARROWED · A GATE` (gold), `1 LOG TO DECODE · AT THE LOG` (gold).
+    pub fn signals(&self) -> Vec<(String, Tone)> {
+        let opened = self.opened.iter().map(|v| (format!("SIGNAL FOUND  ·  {}", v.to_uppercase()), Tone::Teal));
+        let logs = (self.logs > 0).then(|| (format!("{} {} TO DECODE  ·  AT THE LOG", self.logs, if self.logs == 1 { "LOG" } else { "LOGS" }), Tone::Gold));
+        opened.chain(self.finds.iter().cloned()).chain(logs).collect()
     }
+
+    /// Something to see on the map: a voyage opened, a cluster charted or a signal that came on.
+    pub fn to_map(&self) -> bool {
+        !self.opened.is_empty() || !self.finds.is_empty()
+    }
+}
+
+/// What a voyage found in the galaxy, from the career before and after it (galaxy plan E6, GDR-0097), as the
+/// debrief's lines: the voyage's `cluster` on its first launch (the launch charted it) and any other cluster charted
+/// meanwhile (not a slice voyage's), each signal heard or come further (`SIGNAL HEARD · A GATE`, then `NARROWED`,
+/// `LOCATED`, `FOUND`, `FOLLOWED` for one done).
+pub fn galaxy_finds(content: &Content, before: &Career, after: &Career, cluster: Option<u32>) -> Vec<(String, Tone)> {
+    let (Some(a), Some(b)) = (before.exploration(), after.exploration()) else { return Vec::new() };
+    let pinned: Vec<u32> = b.pins().values().copied().collect();
+    let first = |k: &u32| Some(*k) == cluster && b.charted().get(k).is_some_and(|r| r.launched == 1);
+    let mut out: Vec<(String, Tone)> = b
+        .charted()
+        .keys()
+        .filter(|k| (first(k) || !a.is_charted(**k)) && !pinned.contains(k))
+        .filter_map(|k| b.skeleton().clusters.get(*k as usize))
+        .map(|c| (format!("CHARTED  ·  {}", c.name.to_uppercase()), Tone::Teal))
+        .collect();
+    for r in b.signals() {
+        let Lead::Trail(s) = r.lead else { continue };
+        let word = match a.signal(s).map(|x| x.state) {
+            None => "HEARD",
+            Some(was) if was == r.state => continue,
+            Some(_) => match r.state {
+                SignalState::Fresh => continue,
+                SignalState::Narrowed => "NARROWED",
+                SignalState::Located => "LOCATED",
+                SignalState::Found => "FOUND",
+                SignalState::Done => "FOLLOWED",
+            },
+        };
+        out.push((format!("SIGNAL {word}  ·  {}", super::signal_words(content, after, s).0), Tone::Gold));
+    }
+    out
 }
 
 /// The last debrief and whether its panel is open (a resource).
@@ -241,7 +291,7 @@ mod tests {
         let kinetic = d.families.iter().find(|f| f.name == "KINETIC WEAPONS").unwrap();
         assert_eq!(kinetic.gained, kinetic.store);
         assert_eq!(d.opened, ["Halvex Drift"]);
-        assert_eq!(d.signals(), ["SIGNAL FOUND  ·  HALVEX DRIFT"]);
+        assert_eq!(d.signals(), [("SIGNAL FOUND  ·  HALVEX DRIFT".to_string(), Tone::Teal)]);
         assert!(d.cleared_text.as_deref().is_some_and(|t| t.contains("Halvex Drift") && !t.contains("[[")), "{:?}", d.cleared_text);
         assert!(!d.ready.is_empty(), "the cannon data pays for the cannon node");
     }

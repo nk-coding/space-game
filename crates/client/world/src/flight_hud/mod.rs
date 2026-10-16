@@ -33,6 +33,7 @@
 mod assists;
 mod markers;
 mod menu;
+mod overview;
 mod scan;
 mod text;
 
@@ -233,11 +234,15 @@ impl Plugin for FlightHudPlugin {
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), forget_ship)
-        .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers, scan::scan_world).after(CameraSet).before(crate::fx::FxFlush));
+        .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers, scan::scan_world, overview::draw).chain().after(CameraSet).before(crate::fx::FxFlush));
         app.init_resource::<scan::ScanFx>()
             .add_systems(Update, (scan::scan_widgets, scan::scan_click).after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
             .add_systems(FixedUpdate, scan::note_scans.after(crate::sim_bridge::SimSet::Events).run_if(in_state(AppMode::Flight)))
             .add_systems(OnExit(AppMode::Flight), scan::forget_scans);
+        app.init_resource::<overview::Overview>()
+            .add_systems(Update, overview::toggle.run_if(in_state(AppMode::Flight)))
+            .add_systems(FixedUpdate, overview::note.after(crate::sim_bridge::SimSet::Events).run_if(in_state(AppMode::Flight)))
+            .add_systems(OnExit(AppMode::Flight), overview::forget);
     }
 }
 
@@ -349,6 +354,8 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                         row.spawn((HudText::LostHome, label(&fonts, "", 11.0, teal)));
                     });
             });
+            // Voyages: the cluster map's title (N).
+            overview::spawn(root, &fonts, ui);
             // Voyages: the labels of the site markers at the screen edge (placed every frame).
             for k in 0..SITE_LABELS {
                 root.spawn((

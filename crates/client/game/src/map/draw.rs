@@ -2,47 +2,97 @@
 //! at the stage's centre), drawn under the map's UI text like home's world under its labels; the galaxy behind them
 //! is `galaxy`'s.
 //!
+//! * **The areas** ([`build_areas`], galaxy plan E5, GDR-0097): the jump range as soft circles round home and every
+//!   charted cluster (their union's edge, a crisp teal line over a glow fading inwards; no dots, no fill), and each
+//!   signal heard as an area: a dotted gold edge like the band edges, a faint fill and a slow pulse running out to
+//!   the edge; when a signal narrows the old edge fades out over [`FADE`] while the new one draws. Placed through
+//!   the view but drawn in stage px (lines keep their width at any zoom); rebuilt when what it shows or the view
+//!   changes, and per step of the pulse ([`WAVE_STEPS`] a [`WAVE_PERIOD`]).
 //! * **The detail** ([`build_detail`]): the markers of the voyages found so far, no route between them
 //!   (GDR-0078): open a ring, cleared a filled dot, a new signal a ring sending out pulses, a guardian a coral
-//!   diamond, the shipyard a diamond with a ship, the selection a dotted ring around it. Unknown voyages are not
-//!   drawn. Placed through the view (`view::MapView`) but sized in stage px, so they keep their size at any zoom;
-//!   they fade out towards the panel's edge. Rebuilt when what it shows ([`Look`], with the pulse's step while a
-//!   signal shows) or the view changes: a few hundred vertices.
+//!   diamond, the shipyard a diamond with a ship, the selection a dotted ring around it; a charted cluster a small
+//!   teal ring, a located signal's cluster a gold one, an opened gate a coral diamond; a blind jump's spot a
+//!   crosshair, and a dotted line from where a jump to the pick starts; the warp, a light running along it. Unknown
+//!   voyages and uncharted clusters are not drawn. Placed through the view (`view::MapView`) but sized in stage px,
+//!   so they keep their size at any zoom; they fade out towards the panel's edge. Rebuilt when what it shows
+//!   ([`Look`], with the pulse's step while a signal shows) or the view changes: a few hundred vertices.
 //! * **The chrome** ([`build_chrome`]): the legend's symbols and the panel's backing, fixed to the stage. Built once.
 
 use bevy::prelude::*;
+use data::career::TrailSignal;
+use data::skeleton::Area;
 use kit::atlas::Region;
 use kit::meshbuf::MeshBuf;
 use kit::style::{Style, mix, vcol};
 
-use super::layout::{Geometry, PANEL_X, STAGE, VoyageState};
+use super::known::{Known, Pick};
+use super::layout::{Geometry, PANEL_X, PX_PER_S, STAGE, VoyageState};
 
 /// The legend's rows (stage y) and its columns (stage x of the symbols; the words start [`LEGEND_GAP`] after).
 pub const LEGEND_ROWS: [f32; 2] = [676.0, 698.0];
-pub const LEGEND_COLUMNS: [f32; 4] = [38.0, 132.0, 226.0, 326.0];
+pub const LEGEND_COLUMNS: [f32; 6] = [38.0, 132.0, 226.0, 326.0, 430.0, 534.0];
 pub const LEGEND_GAP: f32 = 14.0;
-/// Marker sizes (stage px): the ring of an open voyage, the selection's dotted ring, how far a signal's pulses run.
+/// The legend's words, by row and column.
+pub const LEGEND: [[&str; 6]; 2] = [["HOME", "OPEN", "CLEARED", "SIGNAL", "CHARTED", "GUARDIAN"], ["ENEMIES", "WRECKS", "GOAL SITE", "SIGNAL AREA", "LOCATED", "JUMP RANGE"]];
+/// Marker sizes (stage px): the ring of an open voyage, of a known cluster, the selection's dotted ring, how far a
+/// signal's pulses run.
 const OPEN_R: f32 = 8.5;
+const CLUSTER_R: f32 = 6.0;
 const SELECT_R: f32 = 19.0;
 const PULSE_R: f32 = 25.0;
 /// A signal's pulse: one every this many seconds, drawn in this many steps (the detail is rebuilt per step).
 pub const PULSE_PERIOD: f32 = 1.6;
 pub const PULSE_STEPS: u32 = 32;
+/// A signal area's pulse runs out to its edge in this many seconds, in this many steps.
+pub const WAVE_PERIOD: f32 = 3.2;
+pub const WAVE_STEPS: u32 = 48;
+/// A narrowed signal's old edge fades out over this many seconds, in this many steps.
+pub const FADE: f32 = 1.6;
+pub const FADE_STEPS: u32 = 24;
+/// The warp's light, drawn in this many steps a second.
+pub const WARP_STEPS: f32 = 30.0;
 /// How far the panel's backing runs on past the stage (a much wider or taller window than the stage).
 const PANEL_RUN: f32 = 6000.0;
 /// The detail fades out over this many stage px before the panel's edge.
 const EDGE_FADE: (f32, f32) = (8.0, 32.0);
 
-/// What the mesh shows besides the content's layout (the rebuild key).
+/// What the hover is over (the rebuild key's part).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hover {
+    Voyage(usize),
+    Cluster(u32),
+    Signal(TrailSignal),
+}
+
+/// A warp under way on the map: from where to where (galaxy px) and how far along (0 to 1, in [`WARP_STEPS`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WarpLook {
+    pub from: Vec2,
+    pub to: Vec2,
+    pub step: u32,
+    pub steps: u32,
+}
+
+/// What the meshes show besides the layout (the rebuild key).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Look {
+    /// The voyages' ids and states, in content order.
+    pub voyages: Vec<String>,
     pub states: Vec<VoyageState>,
     pub guardian: Vec<bool>,
-    pub selected: Option<usize>,
-    pub hovered: Option<usize>,
+    pub known: Known,
+    pub selected: Option<Pick>,
+    pub hovered: Option<Hover>,
     pub glow: bool,
-    /// The signals' pulse step (0 to [`PULSE_STEPS`]; always 0 while there is no signal).
+    /// The voyages' signal pulse step (0 to [`PULSE_STEPS`]; always 0 while there is no new voyage signal).
     pub pulse: u32,
+    /// The signal areas' pulse step (0 to [`WAVE_STEPS`]; 0 without an area).
+    pub wave: u32,
+    /// Old edges of signals that narrowed, fading: the area and its fade step (0 to [`FADE_STEPS`]).
+    pub fading: Vec<(Area, u32)>,
+    /// Where a jump to the selection starts (galaxy px), drawn as a dotted line to it.
+    pub course: Option<(Vec2, Vec2)>,
+    pub warp: Option<WarpLook>,
 }
 
 impl Look {
@@ -53,6 +103,14 @@ impl Look {
         }
         ((seconds / PULSE_PERIOD).fract() * PULSE_STEPS as f32) as u32 % PULSE_STEPS
     }
+
+    /// The areas' pulse step at `seconds` while an area shows, else 0.
+    pub fn wave_at(known: &Known, seconds: f32) -> u32 {
+        if !known.signals.iter().any(|s| s.is_area()) {
+            return 0;
+        }
+        ((seconds / WAVE_PERIOD).fract() * WAVE_STEPS as f32) as u32 % WAVE_STEPS
+    }
 }
 
 /// The mesh builder in stage coordinates (also `galaxy`'s, in galaxy px).
@@ -61,6 +119,8 @@ pub struct Pen {
     white: Region,
     soft: Region,
     uv: Vec2,
+    /// The area of the glows and discs drawn so far (px²): how much a frame blends (`galaxy::overdraw`).
+    area: f32,
 }
 
 /// A stage point in the mesh (origin at the stage's centre, y up).
@@ -70,7 +130,11 @@ fn p(s: Vec2) -> Vec2 {
 
 impl Pen {
     pub fn new(white: &Region, soft: &Region) -> Self {
-        Self { m: MeshBuf::default(), white: *white, soft: *soft, uv: white.uv_center() }
+        Self { m: MeshBuf::default(), white: *white, soft: *soft, uv: white.uv_center(), area: 0.0 }
+    }
+
+    pub fn area(&self) -> f32 {
+        self.area
     }
 
     pub fn into_mesh(self) -> Mesh {
@@ -84,6 +148,7 @@ impl Pen {
     /// A disc of `n` sides.
     pub fn disc_n(&mut self, c: Vec2, r: f32, n: usize, col: [f32; 4]) {
         let pts: Vec<Vec2> = (0..n).map(|k| p(c + Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU) * r)).collect();
+        self.area += std::f32::consts::PI * r * r;
         self.m.polygon(&pts, self.uv, col);
     }
 
@@ -103,6 +168,12 @@ impl Pen {
         self.m.strip(&[p(a), p(b)], false, half, &self.white, col);
     }
 
+    /// An open line through `pts`.
+    pub fn polyline(&mut self, pts: &[Vec2], half: f32, col: [f32; 4]) {
+        let pts: Vec<Vec2> = pts.iter().map(|q| p(*q)).collect();
+        self.m.strip(&pts, false, half, &self.white, col);
+    }
+
     /// Dots every `step` from `a` to `b`.
     pub fn dotted(&mut self, a: Vec2, b: Vec2, step: f32, dot: f32, col: [f32; 4]) {
         let n = (a.distance(b) / step).floor() as usize;
@@ -114,6 +185,7 @@ impl Pen {
     /// A soft glow (the atlas's soft dot) `size` across.
     pub fn glow(&mut self, c: Vec2, size: f32, col: [f32; 4]) {
         let (a, b) = (p(c) - Vec2::splat(size / 2.0), p(c) + Vec2::splat(size / 2.0));
+        self.area += size * size;
         self.m.region_box(&self.soft, a, b, 0, false, col);
     }
 
@@ -161,11 +233,106 @@ fn pulses(pen: &mut Pen, at: Vec2, t: f32, glow: bool, tone: Color, f: impl Fn([
     }
 }
 
-/// The detail's mesh: the known voyages' markers and the shipyard, each galaxy point placed on the stage by `to`.
+/// The areas' mesh (see the module doc), each galaxy point placed on the stage by `to`, `zoom` the view's.
+pub fn build_areas(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, zoom: f32, style: &Style, white: &Region, soft: &Region) -> Mesh {
+    let ui = &style.ui;
+    let mut pen = Pen::new(white, soft);
+    let known = &look.known;
+
+    // The jump range: the union of the circles round home and every charted cluster, its edge only (a run of the
+    // circle is drawn where no other circle covers it), a crisp line over a glow fading inwards.
+    let r = known.reach * PX_PER_S * zoom;
+    let circles: Vec<Vec2> = known.starts.iter().filter_map(|k| geo.clusters.get(*k as usize)).map(|g| to(*g)).collect();
+    if r > 0.0 {
+        let n = ((std::f32::consts::TAU * r / 6.0) as usize).clamp(48, 480);
+        for (i, c) in circles.iter().enumerate() {
+            let free = |q: Vec2| circles.iter().enumerate().all(|(j, o)| j == i || o.distance(q) >= r - 0.5);
+            for (inset, half, a) in [(0.0, 0.7, 0.2), (2.5, 2.0, 0.07), (7.0, 4.5, 0.035)] {
+                let mut run: Vec<Vec2> = Vec::new();
+                for k in 0..=n {
+                    let dir = Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU);
+                    let q = *c + dir * (r - inset);
+                    let shows = free(*c + dir * r) && edge(q.x) > 0.0;
+                    if shows {
+                        run.push(q);
+                    }
+                    if (!shows || k == n) && run.len() > 1 {
+                        pen.polyline(&run, half, vcol(ui.teal, a));
+                    }
+                    if !shows {
+                        run.clear();
+                    }
+                }
+            }
+        }
+    }
+
+    // Old edges of narrowed signals, fading.
+    for (area, step) in &look.fading {
+        let k = 1.0 - *step as f32 / FADE_STEPS as f32;
+        dotted_edge(&mut pen, to(geo.to_galaxy(area.centre)), geo.px(area.radius) * zoom, 0.9, vcol(ui.gold, 0.6 * k));
+    }
+    // The signal areas: a faint fill, a dotted edge, a pulse running out to it.
+    let wave = look.wave as f32 / WAVE_STEPS as f32;
+    for m in known.signals.iter().filter(|m| m.is_area()) {
+        let c = to(geo.to_galaxy(m.area.centre));
+        let r = geo.px(m.area.radius) * zoom;
+        let lit = look.selected == Some(Pick::Signal(m.signal)) || look.hovered == Some(Hover::Signal(m.signal));
+        pen.disc_n(c, r, ((r * 0.5) as usize).clamp(32, 128), vcol(ui.gold, if lit { 0.07 } else { 0.04 }));
+        let ease = 1.0 - (1.0 - wave) * (1.0 - wave);
+        if r * ease > 2.0 {
+            pen.ring(c, r * ease, 0.9, vcol(ui.gold, 0.32 * (1.0 - wave)));
+        }
+        dotted_edge(&mut pen, c, r, if lit { 1.25 } else { 1.0 }, vcol(ui.gold, if lit { 0.95 } else { 0.7 }));
+    }
+    pen.into_mesh()
+}
+
+/// A dotted circle like the band edges, its dots faded towards the panel.
+fn dotted_edge(pen: &mut Pen, c: Vec2, r: f32, dot: f32, col: [f32; 4]) {
+    let n = ((std::f32::consts::TAU * r / 7.0).ceil() as usize).max(8);
+    for k in 0..n {
+        let q = c + Vec2::from_angle(k as f32 / n as f32 * std::f32::consts::TAU) * r;
+        let e = edge(q.x);
+        if e > 0.0 {
+            pen.disc_n(q, dot, 6, faded(col, e));
+        }
+    }
+}
+
+/// The detail's mesh: the known voyages' and clusters' markers, the shipyard, the pick and the warp, each galaxy
+/// point placed on the stage by `to`.
 pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, style: &Style, white: &Region, soft: &Region) -> Mesh {
     let ui = &style.ui;
     let mut pen = Pen::new(white, soft);
     let glow = look.glow;
+
+    // The course to the pick: dots from where its jump starts; the warp's light running along it.
+    if let Some((a, b)) = look.course {
+        let (a, b) = (to(a), to(b));
+        let n = (a.distance(b) / 9.0).floor() as usize;
+        for k in 1..n {
+            let q = a.lerp(b, k as f32 / n as f32);
+            let e = edge(q.x);
+            if e > 0.0 {
+                pen.disc_n(q, 1.1, 6, faded(vcol(ui.number, 0.45), e));
+            }
+        }
+    }
+    if let Some(w) = look.warp {
+        let (a, b) = (to(w.from), to(w.to));
+        let t = (w.step as f32 / w.steps.max(1) as f32).clamp(0.0, 1.0);
+        let head = a.lerp(b, t);
+        pen.line(a, head, 1.2, vcol(ui.teal, 0.8));
+        if glow {
+            pen.glow(head, 46.0, vcol(ui.teal, 0.6));
+        }
+        pen.disc(head, 3.5, vcol(ui.number, 1.0));
+        // Rings closing in on the target as the warp nears its end.
+        for k in [t, (t + 0.5).fract()] {
+            pen.ring(b, 30.0 * (1.0 - k) + 6.0, 0.8, vcol(ui.teal, 0.8 * k));
+        }
+    }
 
     // The shipyard: a diamond with a ship in it.
     let h = to(geo.home);
@@ -176,6 +343,46 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
         }
         pen.diamond_outline(h, 13.0, 0.9, faded(vcol(ui.number, 0.9), k));
         pen.m.polygon(&[h + Vec2::new(0.0, -5.5), h + Vec2::new(4.5, 3.5), h + Vec2::new(-4.5, 3.5)].map(p), pen.uv, faded(vcol(ui.teal, 1.0), k));
+    }
+
+    // The known clusters: charted a small teal ring, a located signal's gold, an opened gate a coral diamond.
+    for m in &look.known.clusters {
+        let Some(&g) = geo.clusters.get(m.cluster as usize) else { continue };
+        let at = to(g);
+        let k = edge(at.x);
+        if k <= 0.0 {
+            continue;
+        }
+        let f = |col| faded(col, k);
+        let tone = if m.gate { ui.coral } else if m.signals.is_empty() { ui.teal } else { ui.gold };
+        if look.hovered == Some(Hover::Cluster(m.cluster)) && look.selected != Some(Pick::Cluster(m.cluster)) {
+            pen.ring(at, 14.0, 0.6, f(vcol(ui.number, 0.35)));
+        }
+        if glow {
+            pen.glow(at, 30.0, f(vcol(tone, 0.3)));
+        }
+        if m.gate {
+            pen.diamond_outline(at, 9.0, 0.9, f(vcol(tone, 0.95)));
+        } else {
+            pen.ring(at, CLUSTER_R, 0.9, f(vcol(tone, 1.0)));
+        }
+        pen.disc(at, if m.charted { 2.6 } else { 2.0 }, f(vcol(tone, 1.0)));
+        if look.selected == Some(Pick::Cluster(m.cluster)) {
+            pen.dotted_ring(at, SELECT_R - 3.0, 24, 1.0, f(vcol(tone, 0.85)));
+        }
+    }
+
+    // A blind jump's spot: a crosshair in a dotted ring.
+    if let Some(Pick::Spot(p)) = &look.selected {
+        let at = to(geo.to_galaxy(*p));
+        let k = edge(at.x);
+        if k > 0.0 {
+            let col = faded(vcol(ui.number, 0.9), k);
+            pen.dotted_ring(at, 11.0, 20, 0.9, col);
+            for d in [Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y] {
+                pen.line(at + d * 4.0, at + d * 8.0, 0.7, col);
+            }
+        }
     }
 
     // The voyages.
@@ -191,7 +398,8 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
             continue;
         }
         let guardian = look.guardian.get(n).copied().unwrap_or(false);
-        if look.hovered == Some(n) && look.selected != Some(n) {
+        let selected = matches!(&look.selected, Some(Pick::Voyage(id)) if look.voyages.get(n) == Some(id));
+        if look.hovered == Some(Hover::Voyage(n)) && !selected {
             pen.ring(at, 16.0, 0.6, f(vcol(ui.number, 0.35)));
         }
         let pulse = look.pulse as f32 / PULSE_STEPS as f32;
@@ -227,7 +435,7 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
                 VoyageState::Unknown => {}
             }
         }
-        if look.selected == Some(n) {
+        if selected {
             let tone = if guardian { ui.coral } else { ui.teal };
             pen.dotted_ring(at, SELECT_R, 28, 1.05, f(vcol(tone, 0.85)));
         }
@@ -239,18 +447,28 @@ pub fn build_detail(geo: &Geometry, look: &Look, to: impl Fn(Vec2) -> Vec2, styl
 pub fn build_chrome(style: &Style, white: &Region, soft: &Region) -> Mesh {
     let ui = &style.ui;
     let mut pen = Pen::new(white, soft);
-    // The legend's symbols: home, open, cleared, signal; enemies, wrecks, goal site, guardian.
+    // The legend's symbols ([`LEGEND`]'s words).
     let (r0, r1) = (LEGEND_ROWS[0], LEGEND_ROWS[1]);
-    let c = LEGEND_COLUMNS;
-    pen.diamond_outline(Vec2::new(c[0], r0), 5.5, 0.7, vcol(ui.number, 0.85));
-    pen.ring(Vec2::new(c[1], r0), 4.5, 0.7, vcol(ui.teal, 1.0));
-    pen.disc(Vec2::new(c[2], r0), 4.0, vcol(mix(ui.teal, ui.number, 0.25), 1.0));
-    pen.ring(Vec2::new(c[3], r0), 2.6, 0.7, vcol(ui.teal, 1.0));
-    pen.ring(Vec2::new(c[3], r0), 5.6, 0.6, vcol(ui.teal, 0.5));
-    pen.disc(Vec2::new(c[0], r1), 3.0, vcol(ui.coral, 1.0));
-    pen.disc(Vec2::new(c[1], r1), 3.0, vcol(ui.gold, 1.0));
-    pen.diamond(Vec2::new(c[2], r1), 4.5, vcol(ui.gold, 1.0));
-    pen.diamond_outline(Vec2::new(c[3], r1), 5.5, 0.7, vcol(ui.coral, 1.0));
+    let at = |k: usize, r: f32| Vec2::new(LEGEND_COLUMNS[k], r);
+    pen.diamond_outline(at(0, r0), 5.5, 0.7, vcol(ui.number, 0.85));
+    pen.ring(at(1, r0), 4.5, 0.7, vcol(ui.teal, 1.0));
+    pen.disc(at(2, r0), 4.0, vcol(mix(ui.teal, ui.number, 0.25), 1.0));
+    pen.ring(at(3, r0), 2.6, 0.7, vcol(ui.teal, 1.0));
+    pen.ring(at(3, r0), 5.6, 0.6, vcol(ui.teal, 0.5));
+    pen.ring(at(4, r0), 3.6, 0.6, vcol(ui.teal, 1.0));
+    pen.disc(at(4, r0), 1.4, vcol(ui.teal, 1.0));
+    pen.diamond_outline(at(5, r0), 5.5, 0.7, vcol(ui.coral, 1.0));
+    pen.disc(at(0, r1), 3.0, vcol(ui.coral, 1.0));
+    pen.disc(at(1, r1), 3.0, vcol(ui.gold, 1.0));
+    pen.diamond(at(2, r1), 4.5, vcol(ui.gold, 1.0));
+    for k in 0..7 {
+        let q = at(3, r1) + Vec2::from_angle(std::f32::consts::PI * (1.15 + 0.7 * k as f32 / 6.0)) * 9.0 + Vec2::new(0.0, 6.0);
+        pen.disc_n(q, 0.9, 6, vcol(ui.gold, 0.8));
+    }
+    pen.ring(at(4, r1), 3.6, 0.6, vcol(ui.gold, 1.0));
+    pen.disc(at(4, r1), 1.4, vcol(ui.gold, 1.0));
+    let arc: Vec<Vec2> = (0..=10).map(|k| at(5, r1) + Vec2::from_angle(std::f32::consts::PI * (1.15 + 0.7 * k as f32 / 10.0)) * 9.0 + Vec2::new(0.0, 6.0)).collect();
+    pen.polyline(&arc, 0.8, vcol(ui.teal, 0.6));
 
     // The panel's backing (over the galaxy, which shows through faintly) and its edge; it runs on past the stage
     // for wider windows.

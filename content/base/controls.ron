@@ -27,6 +27,7 @@
     (id: "assist_toggle_4", name: "Assist toggle 4", summary: "Switches the pilot assists on toggle 4 on and off (set under PILOT ASSISTS).", section: flight, contexts: [flight], inputs: ["F4"]),
     (id: "all_assists", name: "All assists", summary: "Switches every pilot assist off, and back on as the toggles left them.", section: flight, contexts: [flight], inputs: ["KeyZ"]),
     // Missions.
+    (id: "cluster_map", name: "Cluster map", summary: "On a voyage: lays the whole cluster over the view, with the sites found, the bearings, your fleet and what your scans swept; again to close it.", section: mission, contexts: [flight], inputs: ["KeyN"]),
     (id: "recall", name: "Recall", summary: "On a voyage: warps the fleet home with what it carries.", section: mission, contexts: [flight], inputs: ["KeyR"]),
     (id: "leave", name: "Shipyard / abandon", summary: "In the test range: back to the shipyard. On a voyage: asks whether to abandon it.", section: mission, contexts: [flight], inputs: ["KeyM"]),
     (id: "test_return", name: "End the test", summary: "Ends a test flight: back to the drydock or the behavior screen it started from.", section: mission, contexts: [flight], inputs: ["KeyT"]),

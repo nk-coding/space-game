@@ -565,7 +565,6 @@ fn voyage_pages_link_both_ways() {
     // marked), the start that opens it, the cleared line with its links, and the voyages it opens.
     let first = "voyages/yard_approach.html";
     has(first, "<dt>Band</dt><dd>rim</dd>");
-    has(first, ">0.28, 0.66</span></dd>");
     has(first, "<dt>Radius</dt><dd>600 m</dd>");
     has(first, "<dt>Site spacing</dt><dd>400–700 m</dd>");
     has(first, "<dt>Expected length</dt><dd>6–8 min</dd>");
@@ -933,10 +932,10 @@ fn tricky_content() -> Content {
         ),
         (
             "voyages/v.ron",
-            r#"[(id: "first_hop", name: "Hop <1>", summary: "First & <hop>.", band: "rim", map: (0.1, 0.2), radius: 500,
+            r#"[(id: "first_hop", name: "Hop <1>", summary: "First & <hop>.", band: "rim", radius: 500,
                  spacing: (300, 600), minutes: (5, 5), cleared: "Cleared <done> & on to [[voyage:second_hop|the <next>]].",
                  sites: [(encounter: "tricky_encounter", goal: true), (encounter: "raider_pack", count: 2)]),
-                (id: "second_hop", name: "Hop <2>", summary: "Second <hop>.", band: "outer", map: (0.3, 0.4),
+                (id: "second_hop", name: "Hop <2>", summary: "Second <hop>.", band: "outer",
                  opens_after: ["first_hop"], radius: 500, spacing: (300, 600), minutes: (5, 9),
                  sites: [(encounter: "tricky_encounter", goal: true)])]"#,
         ),
