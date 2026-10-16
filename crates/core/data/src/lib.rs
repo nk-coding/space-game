@@ -20,6 +20,7 @@ pub mod content;
 pub mod design;
 pub mod hash;
 pub mod input;
+pub mod rng;
 
 #[cfg(feature = "fs")]
 pub mod fs;
