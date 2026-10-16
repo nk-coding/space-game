@@ -1,7 +1,9 @@
 // The starter ship of a new game (start `rim_awakening`), built from the early-game kit only. PLACEHOLDER design
 // (lead default, 13 Oct 2026): `sample_early` with a gyro pair in place of its two rear armour blocks (it turned only
 // on its cores and differential thrust) and radiators on the shoulders in place of two slopes, so each reactor has
-// two venting radiators and feeds the gyros too.
+// two venting radiators and feeds the gyros too. The shield emitters sit in row 1 with the armour blocks in the rear
+// row (16 Oct 2026, Niklas: they were in the rear row and their 2.3 m bubbles left the whole nose bare): the two
+// bubbles cover the front row, guns and slopes.
 (
     id: "rim_skiff",
     name: "Rim skiff",
@@ -16,8 +18,8 @@
         (part: "pulse_laser", x: 4, y: 0, flip: true),
         (part: "radiator", x: 1, y: 1),
         (part: "radiator", x: 6, y: 1, flip: true),
-        (part: "armor_block", x: 2, y: 1, material: "steel"),
-        (part: "armor_block", x: 5, y: 1, flip: true, material: "steel"),
+        (part: "shield_emitter", x: 2, y: 1),
+        (part: "shield_emitter", x: 5, y: 1, flip: true),
         (part: "capacitor", x: 3, y: 1),
         (part: "capacitor", x: 4, y: 1, flip: true),
         (part: "radiator", x: 0, y: 2),
@@ -32,8 +34,8 @@
         (part: "slope_1x1", x: 7, y: 3, rot: 2, flip: true, material: "steel"),
         (part: "thruster", x: 1, y: 3),
         (part: "thruster", x: 6, y: 3, flip: true),
-        (part: "shield_emitter", x: 2, y: 3),
-        (part: "shield_emitter", x: 5, y: 3, flip: true),
+        (part: "armor_block", x: 2, y: 3, material: "steel"),
+        (part: "armor_block", x: 5, y: 3, flip: true, material: "steel"),
         (part: "gyro", x: 3, y: 3),
         (part: "gyro", x: 4, y: 3, flip: true),
     ],
