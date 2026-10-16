@@ -401,15 +401,16 @@ fn ending(end: &JobEnd, ticks: u64) -> (String, Tone) {
 /// A fight's second line: the seed, a gauntlet's waves cleared of all, what each side lost (its build points: yours and
 /// theirs, a gauntlet's waves all counted), the damage you dealt.
 fn fight_detail(job: &Job, end: &JobEnd) -> String {
-    let (seed, waves) = match job {
-        Job::Fight { spec, .. } => (spec.seed, spec.waves.len() as u32 + 1),
-        Job::Voyage { spec, .. } => (spec.seed, 0),
+    let (seed, waves, stand_in) = match job {
+        Job::Fight { spec, .. } => (spec.seed, spec.waves.len() as u32 + 1, spec.sides[0].entries.iter().any(|e| e.pilot.is_some())),
+        Job::Voyage { spec, .. } => (spec.seed, 0, false),
     };
     match end {
         JobEnd::Fight { lost, dealt, waves: cleared, .. } => {
             // A gauntlet's waves first: its row's first line clips its opponent's waves.
             let gauntlet = if waves > 1 { format!(" · {cleared} OF {waves} WAVES CLEARED") } else { String::new() };
-            format!("SEED {seed}{gauntlet} · YOU LOST {:.0} BP · THEY LOST {:.0} BP · DEALT {:.0}", lost[0], lost[1], dealt[0])
+            let flown = if stand_in { " · STAND-IN" } else { "" };
+            format!("SEED {seed}{flown}{gauntlet} · YOU LOST {:.0} BP · THEY LOST {:.0} BP · DEALT {:.0}", lost[0], lost[1], dealt[0])
         }
         JobEnd::Voyage { .. } => format!("SEED {seed} · FLOWN HEADLESS FROM ENTRY TO HOME"),
         JobEnd::Failed => format!("SEED {seed}"),
@@ -787,7 +788,8 @@ fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
             Some(b) => changes(content, b, &genome.blueprint),
             None => "THE START".into(),
         };
-        let behavior = run.table().get(*id as usize).is_some_and(|b| b.parent.is_some() && b.behavior.is_some());
+        let bred = run.table().get(*id as usize).filter(|b| b.parent.is_some());
+        let (behavior, assists) = (bred.is_some_and(|b| b.behavior.is_some()), bred.is_some_and(|b| b.assists.is_some()));
         p.spawn((
             LabButton::Run(RunButton::Pick(*id)),
             Pill { bare: true, active: *id == g, ..Pill::new(Tone::Teal) },
@@ -803,6 +805,7 @@ fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
                 let head = scored.map_or_else(|| format!("#{id}"), |(generation, s)| format!("G{generation}  ·  {}  ·  #{id}", score(Some(s))));
                 t.spawn(label(fonts, &head, 8.0, c(Tone::Number, 1.0)));
                 let what = if behavior { format!("{what}  ·  BEHAVIOR CHANGED") } else { what };
+                let what = if assists { format!("{what}  ·  ASSISTS CHANGED") } else { what };
                 t.spawn((tracked(fonts, &what, 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
             });
         });
@@ -810,7 +813,7 @@ fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
     }
 }
 
-/// COMPARE: the start and the design side by side, what changed in parts and in the behavior.
+/// COMPARE: the start and the design side by side, what changed in parts, in the behavior and in the pilot assists.
 fn compare(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, genome: &world::arena::Genome) {
     let Some(start) = l.run.starts().get(genome.root as usize) else { return };
     p.spawn(row(12.0)).with_children(|r| {
@@ -834,6 +837,14 @@ fn compare(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
     };
     p.spawn(label(fonts, "THE BEHAVIOR", 8.0, c(Tone::Dim, 1.0)));
     p.spawn(prose(fonts, &behavior, 12.0, c(Tone::Number, 1.0)));
+    let count = |g: &world::arena::Genome| g.blueprint.assists.as_ref().map_or(0, |a| a.rules.len());
+    let assists = match (start.blueprint.assists == genome.blueprint.assists, count(genome)) {
+        (true, 0) => "NONE, AS THE START".to_string(),
+        (true, _) => "AS THE START'S".to_string(),
+        (false, n) => format!("CHANGED  ·  {n} RULES (THE START {})", count(start)),
+    };
+    p.spawn(label(fonts, "THE PILOT ASSISTS", 8.0, c(Tone::Dim, 1.0)));
+    p.spawn(prose(fonts, &assists, 12.0, c(Tone::Number, 1.0)));
 }
 
 /// The progress line, read every [`SYNC_EVERY`] while the page shows; the save row and its name field.

@@ -1,24 +1,35 @@
-//! SETUP (NEW RUN, GDR-0092 "The run setup", what steps 4 and 5 have of it): one page, two columns.
+//! SETUP (NEW RUN, GDR-0092 "The run setup", what steps 4 to 6 have of it): one page, two columns.
 //!
 //! ```text
 //! START FROM · PICK 1 TO 4                       LOCKS · RIM SKIFF COPY
 //! [1 RIM SKIFF COPY] [2 HALVEX RUNNER]           KEEP ALL [HULL] [POWER] [WEAPONS] ...
-//! YOUR DESIGNS            TEMPLATES              PARTS (a lock each)      RULES (a lock each)
-//! LIMITS: BUILD POINTS, HOLD, VOYAGE-READY,       [TARGET LINE] [LOCK ORDER]
-//!   MIRROR, PARTS                                TRIALS · WEIGHT · SEEDS         [WITH YOUR ESCORTS]
-//! MAY CHANGE: [DESIGN AND BEHAVIOR] ...          [THE ENEMIES YOU MEET] (−) 2 (+)  (−) 4 (+)   16 FIGHTS ...
-//! SIZE: [QUICK] [STANDARD] [DEEP], SEED, DICE    GOALS [WIN] [WIN UNHURT] ...; WIN (−) 1 (+) UNHURT ...
-//!   CHILDREN (−) 32 (+) GENERATIONS (−) 50 (+)   THE RUN: fights a child, a generation, the estimate
-//!                                                NAME [__________]                   [START RUN]
+//! YOUR DESIGNS            TEMPLATES              SHIP (a grid)  PARTS        [RULES] [ASSISTS] (a lock each)
+//! LIMITS: BUILD POINTS, HOLD, VOYAGE-READY,       ▦▦▦▦          (a lock      [ALL] [TARGET LINE] [LOCK ORDER]
+//!   MIRROR                                                       each)
+//! MAY CHANGE: [EVERYTHING] [DESIGN ONLY] ...     TRIALS · WEIGHT · SEEDS         [WITH YOUR ESCORTS]
+//!   [LAYOUT] [PARTS] [ARMOUR] [POWER]            [THE ENEMIES YOU MEET] (−) 2 (+)  (−) 4 (+)   16 FIGHTS ...
+//!   [BEHAVIOR NUMBERS] ... [ASSIST RULES]        GOALS [WIN] [WIN UNHURT] ...; WIN (−) 1 (+) UNHURT ...
+//!   PARTS OF [HULL] [POWER] [WEAPONS] ...        THE RUN: fights a child, a generation, the estimate
+//!   FLOWN BY [BEHAVIOR] [STAND-IN] [BOTH] · [CASUAL] ...
+//! SIZE: [QUICK] [STANDARD] [DEEP], SEED, DICE    NAME [__________]                   [START RUN]
+//!   CHILDREN (−) 32 (+) GENERATIONS (−) 50 (+)
 //! ```
 //!
 //! * **Starts**: a click on a row of YOUR DESIGNS or TEMPLATES adds it (at most four) or takes it out; a click on a
 //!   start's chip shows its locks. The drydock's EVOLVE THIS DESIGN opens the page with the working design picked.
-//! * **Locks** (in lists until the on-ship painting of GDR-0092 step 6): KEEP ALL of a category, a part, a rule,
-//!   the target line, LOCK ORDER; per start.
+//! * **Locks** (per start): KEEP ALL of a category; the start drawn as a grid of its cells (and two around it), where
+//!   a click on a part locks it (gold) or frees it and a click on an empty cell keeps it empty (coral, KEEP EMPTY: a
+//!   clear line of fire) or frees it, each cell's tip naming it; the parts listed, a lock each; the behavior's rules
+//!   and the pilot assists (a tab each), a lock each, ALL of the list, the target line, LOCK ORDER. Under MIRROR the
+//!   arena locks a lock's mirror image too.
 //! * **Limits**: build points at most the start's (the default), a number or no cap; the hold at least the start's
 //!   or any; VOYAGE-READY (logic cores within the mind capacity less FLEET's escorts'); MIRROR (on when the first
-//!   start looks symmetric); only the career's parts, always (`?unlock=all` lifts it).
+//!   start looks symmetric); only the career's parts, always (`?unlock=all` lifts it), said in LIMITS' head.
+//! * **May change** (GDR-0092 step 6): `lab.ron`'s gene presets (EVERYTHING, the default, DESIGN ONLY, BEHAVIOR ONLY,
+//!   ASSISTS ONLY, NUMBERS ONLY; one lit while the genes are its), each gene on or off (`lab.ron`'s words, its summary
+//!   as the tip), the part categories whose parts may be added, removed or swapped, and FLOWN BY: the behavior, a
+//!   stand-in pilot or both (odd seeds and even seeds) in every fight trial, and which `lab.ron` pilot; a preset with
+//!   the assists sets BOTH, one without them the behavior (only a pilot uses assists).
 //! * **Trials** (GDR-0092 step 5): every `lab.ron` preset, on or off (its default selection on), its weight (0 to 3)
 //!   and seeds, ENEMY SHIPS' ships, HALL OF FAME's and CHAMPIONS' count and TEST-RANGE WAVES' target; each row says
 //!   how many fights a child gets of it, or why it has nothing to fight (no open voyage, no saved design, no earlier
@@ -29,7 +40,7 @@
 //! * **START RUN** builds the run (`world::evolution::Lab::create`): it computes from now on and the page of the run
 //!   opens; a setup the arena refuses says why in the status line.
 
-use world::arena::evolve::{Bound, Genes, Goals, Locks, Sources};
+use world::arena::evolve::{Bound, Gene, Goals, Locks, MayChange, Sources};
 use bevy::prelude::*;
 use data::Content;
 use data::behavior::Program;
@@ -37,7 +48,7 @@ use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, field_text, label, number, prose, ring_glyph, ring_node, spawn_pill, sub_tone, tracked};
 use world::career::fleet_cores;
-use world::evolution::{Lab, SIZES, Setup, StartDesign, StartPick, sources, templates};
+use world::evolution::{Flier, Lab, SIZES, Setup, StartDesign, StartPick, sources, templates};
 use world::player::PlayerDesign;
 use world::player::behaviors::PlayerBehaviors;
 use world::player::library::{self, MAX_NAME, fresh_name, list_designs};
@@ -47,11 +58,16 @@ use super::{Ctx, EvolutionLayer, LabButton, Page, abs, on_row, row};
 
 /// Most starts a run has (`world::arena::evolve::MAX_STARTS`).
 const MAX_STARTS: usize = world::arena::evolve::MAX_STARTS;
-/// The columns' left edges and widths, the lists' height and a row's.
+/// The columns' left edges and widths, the lists' heights (the starts', the locks') and a row's.
 const LEFT: (f32, f32) = (36.0, 600.0);
 const RIGHT: (f32, f32) = (664.0, 580.0);
+const PICK_H: f32 = 104.0;
 const LIST_H: f32 = 130.0;
 const LIST_ROW: f32 = 30.0;
+/// The locks' grid: its square's side, a cell's largest side, and the empty cells shown around the start.
+const GRID: f32 = 130.0;
+const CELL_MAX: f32 = 16.0;
+const MARGIN: i32 = 2;
 /// The trials' list: its top and height, and a row's height; the widths of a row's columns (the trial, its weight,
 /// its seeds, its count).
 const TRIALS_TOP: f32 = 336.0;
@@ -76,8 +92,9 @@ pub struct SetupPage {
     templates: Vec<String>,
     /// The starts resolved as picked: their parts and rules for the locks, or why they don't read.
     resolved: Vec<Result<StartDesign, String>>,
-    /// The start whose locks show.
+    /// The start whose locks show, and which of its lists of rules.
     selected: usize,
+    list: Lists,
     /// The name field holds a name of the player's: picking starts no longer renames the run.
     named: bool,
     /// The first start's build points and hold (the limits' words).
@@ -108,6 +125,7 @@ impl SetupPage {
             templates: templates(content, &design.blueprint().faction),
             resolved: Vec::new(),
             selected: 0,
+            list: Lists::Rules,
             named: false,
             start_bp: None,
             start_hold: None,
@@ -155,6 +173,13 @@ fn symmetric(content: &Content, bp: &data::Blueprint) -> bool {
     dock.parts().iter().all(|p| keys.contains(&key(&dock.mirror_of(p))))
 }
 
+/// The locks' lists of rules: the behavior's or the pilot assists'.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Lists {
+    Rules,
+    Assists,
+}
+
 /// A click on the setup page.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SetupButton {
@@ -164,7 +189,13 @@ pub(crate) enum SetupButton {
     Start(usize),
     Category(String),
     Part(u32),
+    /// A cell of the locks' grid (the start's coordinates): its part's lock, or KEEP EMPTY.
+    Cell(i32, i32),
+    List(Lists),
     Rule(u32),
+    Assist(u32),
+    /// Every rule of the list shown locked, or none.
+    AllRules,
     Target,
     Order,
     /// BUILD POINTS: as the start, no cap, a step up or down from what it is.
@@ -174,7 +205,12 @@ pub(crate) enum SetupButton {
     Hold,
     VoyageReady,
     Mirror,
-    Genes(Genes),
+    /// MAY CHANGE: a gene preset (its index in `lab.ron`), a gene, a part category kept; FLOWN BY and its pilot.
+    GenePreset(usize),
+    Gene(Gene),
+    Kept(String),
+    Flier(Flier),
+    Pilot(String),
     /// A trial (its index in the setup): on or off, its weight, its seeds, its count, an enemy ship's count.
     Trial(usize),
     Weight(usize, i32),
@@ -203,7 +239,9 @@ pub(super) enum Section {
     Genes,
     Size,
     LocksHead,
+    Grid,
     Parts,
+    ListsHead,
     Rules,
     RuleLocks,
     TrialsHead,
@@ -234,24 +272,25 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
         ));
     };
     let lists = 162.0 + LIST_H;
+    let picks = 162.0 + PICK_H;
     // The left column: the starts, the limits, what may change, the size and the seed.
     head(p, Vec2::new(lx, 90.0), "START FROM  ·  PICK 1 TO 4  ·  A CLICK ON A START SHOWS ITS LOCKS");
     section(p, Section::Chips, Vec2::new(lx, 108.0), Vec2::new(lw, 30.0));
     head(p, Vec2::new(lx, 146.0), "YOUR DESIGNS");
-    list(p, Section::Designs, Vec2::new(lx, 162.0), 300.0, LIST_H);
+    list(p, Section::Designs, Vec2::new(lx, 162.0), 300.0, PICK_H);
     head(p, Vec2::new(lx + 316.0, 146.0), "TEMPLATES");
-    list(p, Section::Templates, Vec2::new(lx + 316.0, 162.0), lw - 316.0, LIST_H);
-    head(p, Vec2::new(lx, lists + 10.0), "LIMITS");
-    section(p, Section::Limits, Vec2::new(lx, lists + 28.0), Vec2::new(lw, 156.0));
-    head(p, Vec2::new(lx, lists + 194.0), "MAY CHANGE");
-    section(p, Section::Genes, Vec2::new(lx, lists + 210.0), Vec2::new(lw, 30.0));
-    head(p, Vec2::new(lx, lists + 250.0), "SIZE");
-    section(p, Section::Size, Vec2::new(lx, lists + 266.0), Vec2::new(lw, 64.0));
+    list(p, Section::Templates, Vec2::new(lx + 316.0, 162.0), lw - 316.0, PICK_H);
+    section(p, Section::Limits, Vec2::new(lx, picks + 10.0), Vec2::new(lw, 142.0));
+    head(p, Vec2::new(lx, picks + 162.0), "MAY CHANGE  ·  THE LOCKS HOLD WITHIN IT");
+    section(p, Section::Genes, Vec2::new(lx, picks + 178.0), Vec2::new(lw, 154.0));
+    head(p, Vec2::new(lx, picks + 340.0), "SIZE");
+    section(p, Section::Size, Vec2::new(lx, picks + 356.0), Vec2::new(lw, 58.0));
     // The right column: the locks, the trials and goals, the run in numbers, the name, START RUN.
     section(p, Section::LocksHead, Vec2::new(rx, 90.0), Vec2::new(rw, 50.0));
-    head(p, Vec2::new(rx, 146.0), "PARTS  ·  A LOCKED ONE STAYS AS IT IS");
-    list(p, Section::Parts, Vec2::new(rx, 162.0), 282.0, LIST_H);
-    head(p, Vec2::new(rx + 298.0, 146.0), "RULES  ·  A LOCKED ONE STAYS");
+    head(p, Vec2::new(rx, 146.0), "LOCK A PART  ·  KEEP A CELL EMPTY");
+    p.spawn((Section::Grid, Node { justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..abs(Vec2::new(rx, 162.0), Some(Vec2::splat(GRID))) }));
+    list(p, Section::Parts, Vec2::new(rx + GRID + 8.0, 162.0), 282.0 - GRID - 8.0, LIST_H);
+    p.spawn((Section::ListsHead, on_row(abs(Vec2::new(rx + 298.0, 141.0), Some(Vec2::new(rw - 298.0, 20.0))), 6.0)));
     list(p, Section::Rules, Vec2::new(rx + 298.0, 162.0), rw - 298.0, LIST_H - 34.0);
     section(p, Section::RuleLocks, Vec2::new(rx + 298.0, 162.0 + LIST_H - 28.0), Vec2::new(rw - 298.0, 30.0));
     p.spawn((Section::TrialsHead, Node { justify_content: JustifyContent::SpaceBetween, ..on_row(abs(Vec2::new(rx, lists + 6.0), Some(Vec2::new(rw, 38.0))), 8.0) }));
@@ -320,9 +359,42 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: SetupButton) {
                 flip(&mut l.parts, k);
             }
         }
+        SetupButton::Cell(x, y) => {
+            // A part's cell locks or frees the part (one kept with its category stays kept); an empty one is kept
+            // empty or freed.
+            let start = page.resolved.get(page.selected).and_then(|r| r.as_ref().ok());
+            let at = start.and_then(|st| st.blueprint.parts.iter().position(|q| content.placed_shape(q).is_some_and(|sh| sh.cells().contains(&(x, y)))));
+            let by_category = |l: &Locks| at.zip(start).is_some_and(|(k, st)| content.parts.get(&st.blueprint.parts[k].part).is_some_and(|d| l.categories.contains(&d.category)));
+            if let Some(l) = locks(s, page.selected) {
+                match at {
+                    Some(_) if by_category(l) => say = Some(("it is kept with its category".to_string(), Tone::Gold)),
+                    Some(k) => flip(&mut l.parts, k as u32),
+                    None => flip(&mut l.cells, (x, y)),
+                }
+            }
+        }
+        SetupButton::List(list) => page.list = list,
         SetupButton::Rule(k) => {
             if let Some(l) = locks(s, page.selected) {
                 flip(&mut l.rules, k);
+            }
+        }
+        SetupButton::Assist(k) => {
+            if let Some(l) = locks(s, page.selected) {
+                flip(&mut l.assists, k);
+            }
+        }
+        SetupButton::AllRules => {
+            let n = page.resolved.get(page.selected).and_then(|r| r.as_ref().ok()).map_or(0, |st| match page.list {
+                Lists::Rules => Program::parse(&st.program).map_or(0, |p| p.rules.len()),
+                Lists::Assists => st.blueprint.assists.as_ref().map_or(0, |a| a.rules.len()),
+            });
+            if let Some(l) = locks(s, page.selected) {
+                let list = match page.list {
+                    Lists::Rules => &mut l.rules,
+                    Lists::Assists => &mut l.assists,
+                };
+                *list = if list.len() == n { Vec::new() } else { (0..n as u32).collect() };
             }
         }
         SetupButton::Target => {
@@ -347,7 +419,23 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: SetupButton) {
         SetupButton::Hold => s.min_hold = if s.min_hold == Bound::Start { Bound::Off } else { Bound::Start },
         SetupButton::VoyageReady => s.voyage_ready = !s.voyage_ready,
         SetupButton::Mirror => s.mirror = !s.mirror,
-        SetupButton::Genes(g) => s.genes = g,
+        SetupButton::GenePreset(k) => {
+            if let Some(p) = content.lab.gene_presets.get(k) {
+                s.may_change = MayChange { fixed: s.may_change.fixed.clone(), ..MayChange::only(&p.genes) };
+                s.flown_by = Flier::default_for(&s.may_change);
+            }
+        }
+        SetupButton::Gene(g) => {
+            let on = !s.may_change.has(g);
+            s.may_change.set(g, on);
+            if Gene::ALL.iter().all(|g| !s.may_change.has(*g)) {
+                s.may_change.set(g, true);
+                say = Some(("one gene at least may change".to_string(), Tone::Coral));
+            }
+        }
+        SetupButton::Kept(id) => flip(&mut s.may_change.fixed, id),
+        SetupButton::Flier(f) => s.flown_by = f,
+        SetupButton::Pilot(id) => s.pilot = id,
         SetupButton::Trial(k) => {
             if let Some(t) = s.trials.get_mut(k) {
                 t.on = !t.on;
@@ -520,21 +608,37 @@ pub(super) fn fill(
                 }
             }
             Section::Limits => limits(p, fonts, &c, page, &granted, free),
-            Section::Genes => {
-                p.spawn(row(8.0)).with_children(|r| {
-                    for (g, words) in [(Genes::Both, "DESIGN AND BEHAVIOR"), (Genes::Design, "DESIGN ONLY"), (Genes::Behavior, "BEHAVIOR ONLY")] {
-                        toggle(r, fonts, words, page.setup.genes == g, SetupButton::Genes(g));
-                    }
-                });
-            }
+            Section::Genes => genes(p, fonts, &c, content, page),
             Section::Size => size(p, fonts, &c, page),
             Section::LocksHead => locks_head(p, fonts, &c, content, page),
+            Section::Grid => grid(p, &c, content, page),
             Section::Parts => parts(p, fonts, &c, content, page),
-            Section::Rules => rules(p, fonts, &c, page),
+            Section::ListsHead => {
+                for (list, words) in [(Lists::Rules, "RULES"), (Lists::Assists, "ASSISTS")] {
+                    spawn_pill(p, fonts, words, 7.0, 18.0, None, Pill { active: page.list == list, ..Pill::new(Tone::Teal) }, LabButton::Setup(SetupButton::List(list)));
+                }
+                p.spawn((label(fonts, "A LOCKED ONE STAYS", 8.0, c(Tone::Dim, 1.0)), Node { margin: UiRect::left(px(4)), ..default() }));
+            }
+            Section::Rules => match page.list {
+                Lists::Rules => rules(p, fonts, &c, page),
+                Lists::Assists => assists(p, fonts, &c, page),
+            },
             Section::RuleLocks => {
                 let l = page.setup.starts.get(page.selected).map(|(_, l)| l.clone()).unwrap_or_default();
+                let start = page.resolved.get(page.selected).and_then(|r| r.as_ref().ok());
+                let n = start.map_or(0, |st| match page.list {
+                    Lists::Rules => Program::parse(&st.program).map_or(0, |p| p.rules.len()),
+                    Lists::Assists => st.blueprint.assists.as_ref().map_or(0, |a| a.rules.len()),
+                });
+                let locked = match page.list {
+                    Lists::Rules => l.rules.len(),
+                    Lists::Assists => l.assists.len(),
+                };
                 p.spawn(row(8.0)).with_children(|r| {
-                    toggle(r, fonts, "TARGET LINE", l.target, SetupButton::Target);
+                    toggle(r, fonts, "ALL", n > 0 && locked == n, SetupButton::AllRules);
+                    if page.list == Lists::Rules {
+                        toggle(r, fonts, "TARGET LINE", l.target, SetupButton::Target);
+                    }
                     toggle(r, fonts, "LOCK ORDER", l.order, SetupButton::Order);
                 });
             }
@@ -610,6 +714,8 @@ fn chips(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
 
 fn limits(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage, granted: &world::career::Granted, free: u32) {
     let s = &page.setup;
+    let parts = if granted.free { "LIMITS  ·  EVERY PART  ·  ?UNLOCK=ALL" } else { "LIMITS  ·  ONLY THE PARTS AND MATERIALS YOUR CAREER HAS" };
+    p.spawn(label(fonts, parts, 9.0, c(Tone::Dim, 1.0)));
     let line = |p: &mut ChildSpawnerCommands, head: &str, body: &mut dyn FnMut(&mut ChildSpawnerCommands)| {
         p.spawn(Node { height: px(26), ..row(8.0) }).with_children(|r| {
             r.spawn((label(fonts, head, 8.5, c(Tone::Label, 1.0)), Node { width: px(120), flex_shrink: 0.0, ..default() }));
@@ -638,9 +744,54 @@ fn limits(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
         toggle(r, fonts, if s.mirror { "ON" } else { "OFF" }, s.mirror, SetupButton::Mirror);
         r.spawn(label(fonts, "EVERY EDIT MIRRORED  ·  THE STARTS MUST BE SYMMETRIC", 8.0, c(Tone::Dim, 1.0)));
     });
-    line(p, "PARTS", &mut |r| {
-        let words = if granted.free { "EVERY PART  ·  ?UNLOCK=ALL" } else { "ONLY THE PARTS AND MATERIALS YOUR CAREER HAS" };
-        r.spawn(label(fonts, words, 8.0, c(Tone::Dim, 1.0)));
+}
+
+/// MAY CHANGE: `lab.ron`'s gene presets (one lit while the genes are its), the genes of the design and of the behavior
+/// and assists, the part categories whose parts may change (while PARTS is on), FLOWN BY and its pilot.
+fn genes(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
+    let s = &page.setup;
+    let m = &s.may_change;
+    p.spawn(row(8.0)).with_children(|r| {
+        for (k, preset) in content.lab.gene_presets.iter().enumerate() {
+            let on = MayChange { fixed: m.fixed.clone(), ..MayChange::only(&preset.genes) } == *m;
+            toggle(r, fonts, &preset.name.to_uppercase(), on, SetupButton::GenePreset(k));
+        }
+    });
+    let gene = |r: &mut ChildSpawnerCommands, g: Gene| {
+        let (name, tip) = content.lab.gene(g.id()).map_or_else(|| (g.id().to_uppercase(), String::new()), |l| (l.name.to_uppercase(), l.summary.to_uppercase()));
+        spawn_pill(r, fonts, &name, 8.0, 24.0, None, Pill { active: m.has(g), ..Pill::new(Tone::Teal) }, (LabButton::Setup(SetupButton::Gene(g)), kit::ui_kit::Tip::new(tip)));
+    };
+    let line = |p: &mut ChildSpawnerCommands, head: &str, body: &mut dyn FnMut(&mut ChildSpawnerCommands)| {
+        p.spawn(Node { height: px(24), ..row(6.0) }).with_children(|r| {
+            r.spawn((label(fonts, head, 8.0, c(Tone::Label, 1.0)), Node { width: px(76), flex_shrink: 0.0, ..default() }));
+            body(r);
+        });
+    };
+    line(p, "DESIGN", &mut |r| {
+        for g in [Gene::Layout, Gene::Parts, Gene::Armour, Gene::Power] {
+            gene(r, g);
+        }
+    });
+    line(p, "MIND", &mut |r| {
+        for g in [Gene::Numbers, Gene::Rules, Gene::AssistNumbers, Gene::AssistRules] {
+            gene(r, g);
+        }
+    });
+    line(p, "PARTS OF", &mut |r| {
+        for cat in content.categories.iter() {
+            let pill = Pill { active: m.parts && !m.fixed.contains(&cat.id), disabled: !m.parts, ..Pill::new(Tone::Teal) };
+            spawn_pill(r, fonts, &cat.name.to_uppercase(), 7.0, 20.0, None, pill, LabButton::Setup(SetupButton::Kept(cat.id.clone())));
+        }
+    });
+    line(p, "FLOWN BY", &mut |r| {
+        for (f, words) in [(Flier::Behavior, "BEHAVIOR"), (Flier::StandIn, "STAND-IN"), (Flier::Both, "BOTH")] {
+            toggle(r, fonts, words, s.flown_by == f, SetupButton::Flier(f));
+        }
+        r.spawn((label(fonts, "PILOT", 8.0, c(Tone::Label, 1.0)), Node { margin: UiRect::left(px(8)), ..default() }));
+        for pilot in &content.lab.pilots {
+            let pill = Pill { active: s.pilot == pilot.id, disabled: s.flown_by == Flier::Behavior, ..Pill::new(Tone::Teal) };
+            spawn_pill(r, fonts, &pilot.name.to_uppercase(), 7.5, 22.0, None, pill, (LabButton::Setup(SetupButton::Pilot(pilot.id.clone())), kit::ui_kit::Tip::new(pilot.summary.to_uppercase())));
+        }
     });
 }
 
@@ -687,21 +838,70 @@ fn parts(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
         let by_category = def.is_some_and(|d| l.categories.contains(&d.category));
         let locked = by_category || l.parts.contains(&(k as u32));
         let name = def.map_or(part.part.as_str(), |d| d.name.as_str()).to_uppercase();
-        let sub = if by_category { "KEPT WITH ITS CATEGORY".to_string() } else { format!("({}, {})", part.x, part.y) };
+        let tip = if by_category { format!("{name}  ·  KEPT WITH ITS CATEGORY") } else { format!("{name}  ·  AT ({}, {})", part.x, part.y) };
         let b = LabButton::Setup(SetupButton::Part(k as u32));
         p.spawn((
             b,
+            kit::ui_kit::Tip::new(tip),
             Pill { bare: true, active: locked, disabled: by_category, ..Pill::new(Tone::Gold) },
             Hot::default(),
-            Node { height: px(24), flex_shrink: 0.0, padding: UiRect::horizontal(px(10)), border: UiRect::all(px(1.0)), border_radius: BorderRadius::all(px(8)), justify_content: JustifyContent::SpaceBetween, ..row(8.0) },
+            Node { height: px(22), flex_shrink: 0.0, padding: UiRect::horizontal(px(8)), border: UiRect::all(px(1.0)), border_radius: BorderRadius::all(px(8)), overflow: Overflow::clip(), ..row(8.0) },
             BorderColor::all(Color::NONE),
             BackgroundColor(Color::NONE),
         ))
         .with_children(|r| {
-            r.spawn((tracked(fonts, &name, 8.0, c(if locked { Tone::Gold } else { Tone::Number }, 1.0), 0.15), TextLayout::no_wrap()));
-            r.spawn((tracked(fonts, &sub, 7.0, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
+            r.spawn((tracked(fonts, &name, 7.5, c(if locked { Tone::Gold } else { Tone::Number }, 1.0), 0.12), TextLayout::no_wrap()));
         });
     }
+}
+
+/// The locks' grid: the selected start's cells and [`MARGIN`] around them, a part's cells gold while it is locked (by
+/// itself or with its category), else light; KEEP EMPTY cells coral; each a button with a tip that names it.
+fn grid(p: &mut ChildSpawnerCommands, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
+    let Some(Ok(start)) = page.resolved.get(page.selected) else { return };
+    let l = page.setup.starts.get(page.selected).map(|(_, l)| l.clone()).unwrap_or_default();
+    let mut owner = std::collections::BTreeMap::new();
+    for (k, part) in start.blueprint.parts.iter().enumerate() {
+        for cell in content.placed_shape(part).map(|s| s.cells()).unwrap_or_default() {
+            owner.insert(cell, k);
+        }
+    }
+    let (Some(x0), Some(x1), Some(y0), Some(y1)) = (owner.keys().map(|c| c.0).min(), owner.keys().map(|c| c.0).max(), owner.keys().map(|c| c.1).min(), owner.keys().map(|c| c.1).max()) else {
+        return;
+    };
+    let (x0, x1, y0, y1) = (x0 - MARGIN, x1 + MARGIN, y0 - MARGIN, y1 + MARGIN);
+    let side = (GRID / (x1 - x0 + 1).max(y1 - y0 + 1) as f32).floor().min(CELL_MAX);
+    p.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
+        for y in y0..=y1 {
+            col.spawn(Node { flex_direction: FlexDirection::Row, ..default() }).with_children(|r| {
+                for x in x0..=x1 {
+                    let (tone, alpha, tip) = match owner.get(&(x, y)) {
+                        Some(&k) => {
+                            let part = &start.blueprint.parts[k];
+                            let def = content.parts.get(&part.part);
+                            let name = def.map_or(part.part.as_str(), |d| d.name.as_str()).to_uppercase();
+                            let kept = def.is_some_and(|d| l.categories.contains(&d.category));
+                            if kept || l.parts.contains(&(k as u32)) {
+                                (Tone::Gold, 0.85, format!("{name}  ·  LOCKED{}", if kept { " WITH ITS CATEGORY" } else { "" }))
+                            } else {
+                                (Tone::Label, 0.45, format!("{name}  ·  A CLICK LOCKS IT"))
+                            }
+                        }
+                        None if l.cells.contains(&(x, y)) => (Tone::Coral, 0.6, "KEPT EMPTY  ·  A CLICK FREES IT".to_string()),
+                        None => (Tone::Dim, 0.12, "EMPTY  ·  A CLICK KEEPS IT EMPTY".to_string()),
+                    };
+                    r.spawn((
+                        LabButton::Setup(SetupButton::Cell(x, y)),
+                        kit::ui_kit::Tip::new(tip),
+                        Hot::default(),
+                        Node { width: px(side), height: px(side), border: UiRect::all(px(0.5)), ..default() },
+                        BackgroundColor(c(tone, alpha)),
+                        BorderColor::all(c(Tone::Dim, 0.35)),
+                    ));
+                }
+            });
+        }
+    });
 }
 
 fn rules(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage) {
@@ -726,6 +926,30 @@ fn rules(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
         ))
         .with_children(|r| {
             r.spawn((prose(fonts, &rule.to_string(), 10.5, c(if locked { Tone::Gold } else { Tone::Number }, 1.0)), TextLayout::no_wrap()));
+        });
+    }
+}
+
+/// The selected start's pilot assists, a lock each (none: a line that says so; the stand-in flies it then without).
+fn assists(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage) {
+    let Some(Ok(start)) = page.resolved.get(page.selected) else { return };
+    let l = page.setup.starts.get(page.selected).map(|(_, l)| l.clone()).unwrap_or_default();
+    let rules = start.blueprint.assists.as_ref().map_or(&[][..], |a| &a.rules[..]);
+    if rules.is_empty() {
+        p.spawn(prose(fonts, "No pilot assists yet: the run may grow them.", 11.0, c(Tone::Dim, 1.0)));
+    }
+    for (k, rule) in rules.iter().enumerate() {
+        let locked = l.assists.contains(&(k as u32));
+        p.spawn((
+            LabButton::Setup(SetupButton::Assist(k as u32)),
+            Pill { bare: true, active: locked, ..Pill::new(Tone::Gold) },
+            Hot::default(),
+            Node { height: px(24), flex_shrink: 0.0, padding: UiRect::horizontal(px(10)), border: UiRect::all(px(1.0)), border_radius: BorderRadius::all(px(8)), overflow: Overflow::clip(), ..row(8.0) },
+            BorderColor::all(Color::NONE),
+            BackgroundColor(Color::NONE),
+        ))
+        .with_children(|r| {
+            r.spawn((prose(fonts, rule, 10.5, c(if locked { Tone::Gold } else { Tone::Number }, 1.0)), TextLayout::no_wrap()));
         });
     }
 }
@@ -874,6 +1098,8 @@ mod tests {
         assert_eq!(page.setup.name, format!("Evolving {}", design.blueprint().name));
         assert!(page.start_bp.is_some_and(|b| b > 0.0) && page.start_hold.is_some());
         assert!(page.setup.mirror, "the starter is symmetric");
+        // Everything may change, flown by both the behavior and lab.ron's first stand-in pilot.
+        assert_eq!((page.setup.may_change.clone(), page.setup.flown_by, page.setup.pilot.as_str()), (MayChange::default(), Flier::Both, "casual"));
         assert!(page.templates.contains(&"rim_skiff".to_string()) && !page.templates.contains(&"automaton_raider".to_string()));
         let mut page = page;
         for t in ["rim_skiff", "halvex_runner", "sample_early"] {

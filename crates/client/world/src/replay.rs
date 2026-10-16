@@ -17,8 +17,9 @@
 //! * **Checked**: when the code's rules fingerprint differs from today's (`arena::rules_fingerprint`) the banner says
 //!   so at once; the fight still plays under today's rules. At the end the result is compared with the record:
 //!   `AS RECORDED`, or `THE RULES HAVE CHANGED SINCE THIS FIGHT` with how it ends now and how it ended then.
-//! * **The HUD**: the title names both sides and the seed, the subtitle the time, the speed and each side's build
-//!   points left; a timeline under the view shows how far the fight is, how far it has been simulated, and a mark
+//! * **The HUD**: the title names both sides and the seed, the subtitle the time, the speed, each side's build
+//!   points left and who flew side 0's first ship when a stand-in pilot did (`FLOWN BY STAND-IN · CASUAL`, GDR-0092
+//!   step 6: the referee flies it, so the replay is the fight); a timeline under the view shows how far the fight is, how far it has been simulated, and a mark
 //!   for every vessel lost (teal: side 0's, coral: side 1's).
 
 use std::collections::BTreeMap;
@@ -77,6 +78,8 @@ pub struct Watched {
     pub stale: bool,
     /// Each side as the banner names it (`3 × AUTOMATON RAIDER`).
     pub names: [String; 2],
+    /// The stand-in pilot that flies side 0's first ship, by its `lab.ron` name.
+    pub pilot: Option<String>,
     referee: Referee,
     /// A copy of the world and the referee every [`KEYFRAME_TICKS`] seen so far, by tick (tick 0: the start).
     keyframes: BTreeMap<u64, (Sim, Referee)>,
@@ -118,6 +121,9 @@ impl Watched {
         if !self.code.spec.waves.is_empty() {
             let (wave, of) = self.referee.wave();
             let _ = write!(out, "  ·  WAVE {} / {of}", wave.min(of));
+        }
+        if let Some(p) = &self.pilot {
+            let _ = write!(out, "  ·  FLOWN BY STAND-IN · {}", p.to_uppercase());
         }
     }
 
@@ -262,7 +268,8 @@ impl Replay {
             Some(Ok(w)) => w.speed,
             _ => NORMAL_SPEED,
         };
-        self.watch = Some(Ok(Watched { code, stale, names, referee: setup.referee, keyframes, seen: 0, marks: Vec::new(), speed }));
+        let pilot = code.spec.sides[0].entries.iter().find_map(|e| e.pilot.as_ref()).map(|p| content.lab.pilot(&p.profile).map_or_else(|| p.profile.clone(), |l| l.name.clone()));
+        self.watch = Some(Ok(Watched { code, stale, names, pilot, referee: setup.referee, keyframes, seen: 0, marks: Vec::new(), speed }));
         world
     }
 

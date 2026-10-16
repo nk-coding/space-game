@@ -308,7 +308,7 @@ pub(super) fn update_text(
                     ),
                     SceneKind::Voyage(_) if input.touch_ui => "STICK FLY  ·  TAP SHIP LOCK  ·  FIRE BUTTON  ·  PINCH ZOOM  ·  RECALL".into(),
                     SceneKind::Fight => format!(
-                        "NOBODY PILOTS · {} PAUSE · {} {} SPEED · {} {} 1 S · {} FROM THE START · CLICK A SHIP FOLLOW · {} FRAME / FREE · DRAG PAN · WHEEL ZOOM · {} HOME · {} HIDE",
+                        "YOU WATCH · {} PAUSE · {} {} SPEED · {} {} 1 S · {} FROM THE START · CLICK A SHIP FOLLOW · {} FRAME / FREE · DRAG PAN · WHEEL ZOOM · {} HOME · {} HIDE",
                         k(Action::ReplayPause),
                         k(Action::ReplaySlower),
                         k(Action::ReplayFaster),

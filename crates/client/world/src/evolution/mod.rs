@@ -30,7 +30,7 @@
 
 pub mod store;
 
-use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, Genes, Goals, Limits, Locks, Measure, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
+use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, FlownBy, Goals, Limits, Locks, MayChange, Measure, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
 use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
@@ -338,14 +338,35 @@ impl TrialPick {
     }
 }
 
+/// FLOWN BY as the setup picks it (GDR-0092): who flies the design's first ship in every fight trial.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Flier {
+    /// Its behavior.
+    Behavior,
+    /// The stand-in pilot, with its assists.
+    StandIn,
+    /// The behavior on odd seeds, the stand-in on even ones.
+    Both,
+}
+
+impl Flier {
+    /// FLOWN BY's default (GDR-0092): both while the assists may change (only a pilot uses them), else the behavior.
+    pub fn default_for(may: &MayChange) -> Flier {
+        if may.assists() { Flier::Both } else { Flier::Behavior }
+    }
+}
+
 /// What the setup page has picked (GDR-0092 "The run setup").
 #[derive(Clone, Debug, PartialEq)]
 pub struct Setup {
     pub name: String,
     /// One to four starts and their locks.
     pub starts: Vec<(StartPick, Locks)>,
-    /// What may change: the design, the behavior or both.
-    pub genes: Genes,
+    /// What may change (MAY CHANGE): the genes on, the part categories kept.
+    pub may_change: MayChange,
+    /// FLOWN BY, and the stand-in pilot (a `lab.ron` pilot's id).
+    pub flown_by: Flier,
+    pub pilot: String,
     /// Every `lab.ron` trial preset, on or off.
     pub trials: Vec<TrialPick>,
     /// The goals' weights.
@@ -363,8 +384,9 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// The defaults (GDR-0092, lead defaults until step 6: design and behavior, STANDARD): the starts given, `lab.ron`'s
-    /// default trials and goal weights, the start's build points and hold, voyage-ready, no escorts beside it.
+    /// The defaults (GDR-0092): the starts given, `lab.ron`'s first gene preset (EVERYTHING) flown by both the behavior
+    /// and its first stand-in pilot, its default trials and goal weights, STANDARD, the start's build points and hold,
+    /// voyage-ready, no escorts beside it.
     pub fn new(content: &Content, starts: Vec<StartPick>, seed: u64) -> Setup {
         let trials = content
             .lab
@@ -389,10 +411,13 @@ impl Setup {
             })
             .collect();
         let goals = Goals::of(content.lab.goals.iter().map(|g| (g.id.clone(), g.weight)));
+        let may_change = content.lab.gene_presets.first().map_or_else(MayChange::default, |p| MayChange::only(&p.genes));
         Setup {
             name: String::new(),
             starts: starts.into_iter().map(|s| (s, Locks::default())).collect(),
-            genes: Genes::Both,
+            flown_by: Flier::default_for(&may_change),
+            may_change,
+            pilot: content.lab.pilots.first().map(|p| p.id.clone()).unwrap_or_default(),
             trials,
             goals,
             escorts: false,
@@ -424,10 +449,20 @@ impl Setup {
     /// materials and counts it has (`?unlock=all` lifts them), and with VOYAGE-READY at most `free_cores` cores; the
     /// trials that are on, filled in from `src`. Refused in words when a trial has nothing to fight or none is on.
     pub fn config(&self, content: &Content, starts: &[StartDesign], granted: &Granted, free_cores: u32, src: &Sources) -> Result<RunConfig, String> {
+        let pilot = || {
+            let p = content.lab.pilot(&self.pilot).ok_or_else(|| format!("no stand-in pilot `{}`", self.pilot))?;
+            Ok::<_, String>(arena::Pilot { profile: p.id.clone(), flies: p.flies.clone() })
+        };
+        let flown_by = match self.flown_by {
+            Flier::Behavior => FlownBy::Behavior,
+            Flier::StandIn => FlownBy::StandIn(pilot()?),
+            Flier::Both => FlownBy::Both(pilot()?),
+        };
         let mut trials = Vec::new();
         for pick in self.trials.iter().filter(|t| t.on && t.weight > 0.0) {
             let p = pick.preset(content).ok_or_else(|| format!("no trial `{}`", pick.preset))?;
-            trials.push(TrialSpec::from_preset(&p, pick.weight, pick.seeds, self.escorts, src)?);
+            let t = TrialSpec::from_preset(&p, pick.weight, pick.seeds, self.escorts, src)?;
+            trials.push(TrialSpec { flown_by: if t.fights() { flown_by.clone() } else { FlownBy::Behavior }, ..t });
         }
         if trials.is_empty() {
             return Err("turn a trial on: nothing would score the designs".into());
@@ -443,23 +478,20 @@ impl Setup {
             materials: (!free).then(|| granted.unlocks.materials.clone()),
             mirror: self.mirror,
         };
-        // A behavior run is spread by how it fights, a design run by what it is (`docs/arena.md` "The archive").
-        let archive = match self.genes {
-            Genes::Behavior => ArchiveShape {
+        // A run that leaves the design as it is is spread by how it fights, a design run by what it is (`docs/arena.md`
+        // "The archive").
+        let archive = match self.may_change.design() {
+            false => ArchiveShape {
                 axes: vec![
                     Axis { measure: Measure::EngageDistance, min: 0.0, max: 160.0, cells: 8 },
                     Axis { measure: Measure::Rules, min: 0.0, max: 12.0, cells: 6 },
                 ],
             },
-            _ => ArchiveShape::default(),
+            true => ArchiveShape::default(),
         };
         Ok(RunConfig {
             seed: self.seed,
-            evolve: match self.genes {
-                Genes::Behavior => Evolve::Behavior,
-                Genes::Design => Evolve::Design,
-                Genes::Both => Evolve::Both,
-            },
+            evolve: Evolve::MayChange(self.may_change.clone()),
             generations: Some(self.size.generations),
             population: self.size.population.max(starts.len() as u32),
             fitness: None,
@@ -1742,7 +1774,19 @@ mod tests {
         let ids: Vec<(&str, f32)> = cfg.trials.iter().map(|t| (t.preset.as_deref().unwrap(), t.weight)).collect();
         assert_eq!(ids, [("enemies_you_meet", 2.0), ("test_range_waves", 1.0), ("beat_your_start", 1.0), ("hall_of_fame", 1.0)]);
         assert!(cfg.goals.is_default() && cfg.fitness.is_none());
+        // GDR-0092 step 6: everything may change, and every fight is flown by the behavior on odd seeds and lab.ron's
+        // first stand-in on even ones.
+        assert_eq!(cfg.evolve, Evolve::MayChange(MayChange::default()));
+        let casual = arena::Pilot { profile: "casual".into(), flies: content.lab.pilot("casual").unwrap().flies.clone() };
+        assert!(cfg.trials.iter().all(|t| t.flown_by == FlownBy::Both(casual.clone())));
         Run::new(&content, cfg).unwrap();
+        // A preset without the assists flies the behavior.
+        let mut behavior = s.clone();
+        behavior.may_change = MayChange::only(&content.lab.gene_presets.iter().find(|p| p.id == "behavior_only").unwrap().genes);
+        behavior.flown_by = Flier::default_for(&behavior.may_change);
+        let cfg = behavior.config(&content, std::slice::from_ref(&w), &granted, 4, &src).unwrap();
+        assert!(cfg.trials.iter().all(|t| t.flown_by == FlownBy::Behavior));
+        assert_eq!(cfg.archive.axes[0].measure, Measure::EngageDistance, "spread by how it fights");
         // Without an open voyage THE ENEMIES YOU MEET has nothing to fight; without a trial on, nothing scores.
         assert!(s.config(&content, std::slice::from_ref(&w), &granted, 4, &Sources::default()).unwrap_err().contains("no voyage is open"));
         let mut none = s.clone();
