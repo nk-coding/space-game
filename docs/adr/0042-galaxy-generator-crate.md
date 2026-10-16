@@ -1,6 +1,8 @@
 # ADR-0042: The galaxy generator is an engine-free `galaxy` crate in `core/`, deterministic with integer positions and a generation hash
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 2026-10-16: the skeleton's types (`Skeleton`, `Cluster`, `TrailPlan`,
+  `Place`, `Signal`, `Area`, `Point`) moved to `data::skeleton` so the career can store them (track E4,
+  [GDR-0096](../gdr/0096-career-galaxy-format-3.md)); the crate re-exports them, the generation hash is unchanged.
 - Date: 2026-10-16
 - Decided by: lead session (default for Niklas to review; the plan's recommendation, `docs/plans/galaxy-voyages.md` 6.1)
 - Related: [ADR-0003](0003-crate-architecture.md), [ADR-0010](0010-cross-platform-determinism.md), [ADR-0024](0024-saves-seed-and-deltas.md), [ADR-0035](0035-saves-keep-the-galaxy-skeleton.md), [ADR-0038](0038-workspace-structure-feature-folders-and-client-split.md), [GDR-0093](../gdr/0093-galaxy-exploration-decisions-16-oct.md), [GDR-0094](../gdr/0094-galaxy-generator-defaults.md)

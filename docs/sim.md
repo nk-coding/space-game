@@ -1941,8 +1941,12 @@ were set by the salvage agent for Niklas to review.
 ### Items and cargo
 
 - **Items** (`Item`): `Part { part, material }`, a whole part by content id (hull parts carry their armour
-  material), and `Fragment { part }`, what a destroyed part leaves if its `salvage` block names a `fragment` (the
-  content id of that part). Ordered: cargo lists and ties follow this order.
+  material), `Fragment { part }`, what a destroyed part leaves if its `salvage` block names a `fragment` (the
+  content id of that part), and `DataCore { trail, signal }` (16 Oct 2026, galaxy track E4, GDR-0096): a log of the
+  galaxy's trail signal, one cargo unit worth `salvage::DATA_CORE_VALUE` (1000) a unit, so a hold takes it first and a
+  shrinking hold drops it last; a voyage puts it into the first wreck of a log's site when the site spawns
+  (`Sim::stow_data_core`; loose at the site, never expiring, without a wreck). `Item::haul()` is the career's copy
+  (`data::career::HaulItem`). Ordered: cargo lists and ties follow this order.
 - **What counts** (the content's `salvage` blocks, `docs/content-model.md` "Salvage", compiled into the design as
   `PartSpec::salvageable` and `PartSpec::fragment`, so the sim never looks content up per tick): only a part with a
   `salvage` block is collected (a hull part: its armour material's block), and only a part whose block has a
@@ -2779,10 +2783,14 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
   `SimEvent::SiteBearing`: exact, a unit vector from the scan spot) and marks the sleeping sites within its `wake`
   radius to wake. Then every hidden site within a player vessel's sensor range shows (a signal's site,
   `SitePlan::signal`, only within `signal_reveal` as well). Signals' sites: the goal of a content voyage (until E7),
-  every trail place of a generated cluster. Found is final.
-- **Generated clusters**: `VoyagePlan::roll_interior(content, id, &galaxy::Interior, seed)` rolls an interior on the
-  same generator and draw order as `roll` (no goal; a trail place is a signal's site; one without an encounter, a
-  beacon alone, rolls no ships or wrecks and is a quiet site). `roll` itself draws exactly as before.
+  the trail places of a generated cluster that a signal the career has heard leads to (E4: `Leads::signals`; E3 had
+  every trail place). Found is final.
+- **Generated clusters**: `VoyagePlan::roll_interior(content, id, &galaxy::Interior, &Leads, seed)` rolls an interior
+  on the same generator and draw order as `roll` (no goal; a trail place in `leads.signals` is a signal's site, one in
+  `leads.cores` holds its data core, `SitePlan::core`; one without an encounter, a beacon alone, rolls no ships or wrecks
+  and is a quiet site). `data::career::Leads` comes from the career (`Career::leads`, `docs/career.md` "The galaxy").
+  `roll` itself draws exactly as before; a site's hash takes its core only when it has one, so plans without (the
+  slice's) hash as before.
 - **The edge** (`voyage::edge_force`, in the physics phase with the wrenches): with a voyage underway, a piece whose
   centre of mass lies beyond `Voyage::edge` (radius + `edge_margin`, at most `MAX_EDGE`) gets a force towards the
   centre: `mass × (EDGE_PUSH × min(depth / EDGE_DEPTH, 1) + outward speed / EDGE_BRAKE)` (3 m/s², 100 m, 2 s); it is
@@ -2793,6 +2801,9 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
   runner_vs_raiders` (won in 1273 ticks, `de48601be0d811c1`), `--run two_starts_locked` (resumed identical, last line
   `c4372c8cd861fe24`), `--galaxy 5`. Every stream with the starter or a core changed (the scanner, the sensors in
   the content, the new action).
+  Galaxy track E4 (16 Oct 2026: data cores, `Leads`, the skeleton's types in `data`): no hash changed, native = wasm:
+  voyage seed 42 3600 ticks `539fc2dd23846817`, core `f47052940ca8ca75`, salvage `4388b608ceda33b3`, `--galaxy 5`
+  identical (a plan hashes a data core only when a site holds one; the slice's never do).
 
 ## Design questions for Niklas
 

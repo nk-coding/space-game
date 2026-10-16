@@ -3,6 +3,9 @@
 - Status: Accepted. 2026-10-16: the scanner, the starter's (hold 8 → 4), SCAN (G) and the `scan` behavior action built
   (track E3); the open questions around them (sensor range, hidden sites, bearings, the cluster's edge) as lead
   defaults in [GDR-0095](0095-sensors-hidden-sites-and-scans.md).
+  2026-10-16: the jump range built (track E4, [GDR-0096](0096-career-galaxy-format-3.md)): the `JumpRange` unlock kind and Jump calibration I and II in
+  the propulsion lane, jumps from home or any charted cluster; a data core takes one cargo unit and stays in its wreck
+  when the voyage is lost.
 - Date: 2026-10-16
 - Decided by: Niklas (the open questions of `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Supersedes: GDR-0078 in part (jumps start from home and opened gates only; now from home or any charted cluster)

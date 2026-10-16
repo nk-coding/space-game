@@ -584,18 +584,20 @@ nodes a player has researched lives in the save, never in content (`docs/career.
 | `kind` | `NewPart`, `Variant`, `SizeClass`, `Refinement`, `Alien` (GDR-0024) or `Facility` (16 Oct 2026, GDR-0092): how the research screen draws it |
 | `cost` | required: `data` (family id → amount, each above 0, at most 10000) and `materials` (id → whole amount, 1 to 10000); both may be left out (`cost: ()`) |
 | `requires` | optional: node ids (any family) that must be researched first |
-| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)`, `Facility(id)` (clears that entry's `locked` for the player) and `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100) |
+| `unlocks` | required list of `Part(id)`, `Material(id)`, `Frame(id)`, `Facility(id)` (clears that entry's `locked` for the player), `MindCapacity(n)` (n more logic cores the mind runs at once, 1 to 100) and `JumpRange(s)` (16 Oct 2026, galaxy track E4, GDR-0093: every jump reaches s S further, above 0 and at most 100; the career adds them to the galaxy's `jump_range`) |
 
 Validation: the family, every cost family and material, every `requires` node and every unlock target exist; no
 node listed twice in `requires`; no cycle in `requires` (each cycle is reported once, with its path); unlocking an
 entry that is not `locked` is a warning (a new game has it already), so is a node that unlocks nothing.
 
-Base nodes (`research/rim.ron`, the first playable loop's nine, placeholders; costs about halved by the slice
+Base nodes (`research/rim.ron`, the first playable loop's nine and the two jump calibrations, placeholders; costs about halved by the slice
 tuning, GDR-0073): `automaton_cannon` (kinetic 3), `composite_plating` (hull 8, unlocks composite), `beam_laser`
 (energy 10), `fusion_reactor` (power 10), `torch_drive` (propulsion 10), `tamed_core` (logic 3 + programmable
 matter 1, unlocks the automaton core), `mind_expansion_1` (logic 10 + 3, needs `tamed_core`), `mind_expansion_2`
 (logic 16 + 5, needs `mind_expansion_1`), `cruiser_drydock` (hull 20, needs `composite_plating`, unlocks the cruiser
-frame), `simulation_vault` (logic 3, kind `Facility`, unlocks the facility `evolution`, GDR-0092 step 8, 16 Oct 2026).
+frame), `simulation_vault` (logic 3, kind `Facility`, unlocks the facility `evolution`, GDR-0092 step 8, 16 Oct 2026),
+`jump_calibration_1` (propulsion 8, `JumpRange(0.75)`) and `jump_calibration_2` (propulsion 16 + programmable matter 3,
+needs `jump_calibration_1`, `JumpRange(0.75)`; both `Refinement`, 16 Oct 2026, GDR-0096: 2.5 → 3.25 → 4 S).
 Reactive armour, Automaton plate and the capital frame stay locked.
 
 ### Starts (`starts.ron`, added 13 Oct 2026)
@@ -755,8 +757,9 @@ is in the rules' fingerprint: a game keeps its generated galaxy (ADR-0035).
 
 Texts keyed as usual: `trail.<id>.hint`, `signal_source.<id>.line`, `lore.<id>.text`. Name syllables and words are
 not keyed (they make proper names). Validation warns when a band is in no galaxy, a cluster type in no band, or a
-trail placed by no band or fragment. The jump range's research (two propulsion nodes of +0.75 S, GDR-0093) and its
-unlock kind come with track E4.
+trail placed by no band or fragment. The jump range's research is two propulsion nodes of +0.75 S (GDR-0093, built 16
+Oct 2026 in track E4: `Unlock::JumpRange`, "Research nodes" above). A game's generated skeleton is kept in its career
+(`docs/career.md` "The galaxy"; its types are `data::skeleton`).
 
 ### The evolution lab (`lab.ron`, GDR-0092; completed 16 Oct 2026, step 8)
 

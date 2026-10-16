@@ -104,6 +104,7 @@ overview and links to both series. Format and status rules: `CLAUDE.md`, section
 | [0093](0093-galaxy-exploration-decisions-16-oct.md) | Galaxy exploration, 16 Oct: the S unit, a light scanner on the starter skiff, jump range 2.5 → 4 S from home or any charted cluster, how a signal looks and reads, SCAN for pilots and behaviors, data cores in the hold | Accepted | 2026-10-16 |
 | [0094](0094-galaxy-generator-defaults.md) | The galaxy generator's defaults: clusters 0.9 S apart fill five ring bands (about 80, most in the rim), 3 hidden gates per band, trails walked towards home, the rim real and the rest stubs | Accepted (provisional, lead) | 2026-10-16 |
 | [0095](0095-sensors-hidden-sites-and-scans.md) | Sensors, hidden sites and scans: cores see 800 m (behaviors' targets too), signals' sites show within 400 m or under a sweep, far ones get exact bearings, the `scan` action steps aside, the cluster's edge turns ships back, the mirror lock keeps a single part in place | Accepted (provisional, lead) | 2026-10-16 |
+| [0096](0096-career-galaxy-format-3.md) | The galaxy in the career: save format 3 keeps the skeleton, charting on arrival, signals that halve towards their place, data cores as one-slot logs, Jump calibration I and II (2.5 → 4 S), the slice pinned in a chain from home; the drydock's power leaves bursts apart | Accepted (provisional, lead) | 2026-10-16 |
 <!-- index:end -->
 
 ## How to add, supersede and deprecate

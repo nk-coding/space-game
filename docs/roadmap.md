@@ -426,6 +426,23 @@ Next session:
   "Sensors and scans"); the rules' fingerprint changed, so saved lab runs restore stale.
 - Next: E4 (career format 2), then E5 (map).
 
+### 16 Oct 2026: galaxy track E4 (`plans/galaxy-voyages.md`)
+
+- **E4 built** ([GDR-0096](gdr/0096-career-galaxy-format-3.md), lead defaults): the career's save format 3 (the plan's
+  "format 2") keeps the galaxy: the skeleton (types moved to `data::skeleton`), charted clusters (home, and every
+  cluster launched into), signals heard (fresh → narrowed → located: the area halves towards its place), logs from data
+  cores, gates opened, the slice's voyages pinned to clusters until E7. `Unlock::JumpRange` with Jump calibration I and
+  II in the propulsion lane (2.5 → 3.25 → 4 S, GDR-0093), jumps from home or any charted cluster; cluster voyages in the
+  model (`cluster_launched`, `cluster_ended`, their seed) and `Leads` for `VoyagePlan::roll_interior` (signals' sites
+  only of heard signals, a log's data core in its first wreck: one cargo unit, lost with the haul).
+- Slice saves (format 2) migrate at load and are written at once: the voyages pinned in a chain from home, the flown
+  ones charted, the open one a located signal. `?scene=voyage&cluster=` flies a cluster of the career's galaxy with what
+  the career knows (`&galaxy=<seed>`: another galaxy with everything in place).
+- The drydock's POWER leaves draws in bursts out of full use (`power.intermittent`, the scanner's "+3 WHILE
+  SCANNING"): the starter skiff reads 26 / 28 instead of 29 / 28 in coral. The rules' fingerprint changed (the
+  scanner's power block), so saved lab runs restore stale.
+- Next: E5 (the map: unknown space, charted clusters, signal areas, range circles, blind-jump picking), then E6.
+
 ## Phase 4: measurement
 
 Status 12 Oct 2026 (new VM): `results/spike-summary.md` written. Determinism native vs wasm IDENTICAL on the new VM

@@ -614,8 +614,10 @@ game keeps the save".
 - **`CareerPlugin`** (after `StoragePlugin`, before `DrydockPlugin`) loads `saves/<slot>` in its build, before the
   first frame (`career::load`): reconciled with the content, or a new game from the content's first start
   (written at once; the drydock then docks a copy of the start's ship, `rim_skiff`), or a stand-in when the save
-  doesn't read (kept as it is, never written). Every problem is a note (`PlayerCareer::notes`: home's note block
-  and the console), never a panic.
+  doesn't read (kept as it is, never written). A career without a galaxy then gets the content's first one,
+  generated from its game seed (`career::chart`, galaxy track E4: a new game charts home; a format 2 save is charted
+  from its voyages, noted as THE GALAXY and written at once). Every problem is a note (`PlayerCareer::notes`: home's
+  note block and the console), never a panic.
 - **Resources**: `PlayerCareer` (the `Career`, the slot, the switches, the notes; `update(storage, f)` changes and
   writes it), `Granted` (the unlocks the drydock offers: the career's, or everything with `?unlock=all`; the fresh
   parts for the NEW tags; the mind capacity; recomputed in `PreUpdate` whenever the career changes) and
@@ -681,10 +683,13 @@ off, the flash and its ring where it left), `voyage-warp-emergency.png` (the eme
   nearest 12, a signal's site labelled `· SIGNAL`, a beacon alone `BEACON`. A sweep makes a banner:
   `SCAN · 3 SITES FOUND` / `2 BEARINGS TOWARDS A SIGNAL · SCAN AGAIN ELSEWHERE TO CROSS IT` (gold with bearings,
   else teal with `SWEPT 1.2 KM AROUND`).
-- **A generated cluster** (for testing E3): `?scene=voyage&cluster=<id>|signal[&galaxy=<seed>]` generates the base
-  galaxy from the seed (default: the career's game seed), takes the cluster (`signal`: the first that holds a trail's
-  place) and flies its interior (`VoyagePlan::roll_interior`, seeded with the cluster's seed) as a practice run,
-  named after the cluster, never saved.
+- **A generated cluster** (for testing E3, E4): `?scene=voyage&cluster=<id>|signal[&galaxy=<seed>]` takes the cluster
+  (`signal`: the first that holds a trail's place) of the career's galaxy and flies its interior
+  (`VoyagePlan::roll_interior`) as a practice run, named after the cluster, never saved: rolled from the seed the
+  career's next launch there would get, carrying what the career knows (`Career::leads`: signals' sites only of heard
+  signals, data cores at the logs it has not got). With `galaxy=<seed>` the base galaxy generated from that seed
+  instead, rolled from the cluster's own seed, every trail place a signal's site and every log's core in place
+  (`voyage::every_lead`).
 - **Recall**: R or the pill asks; the next tick starts the 3 s warp-out only if the sim allows it (else `NO
   RECALL · ARMED ENEMIES WITHIN 200 M`; a disarmed fleet always may, and the banner says `EMERGENCY WARP`). The warp-out can't be broken off (`WARPING HOME · 2`, for the emergency recall `EMERGENCY WARP · 2` in gold); what it looks like: **Transitions** below; losing every vessel
   during it still loses the voyage. At its end the haul is every player vessel's cargo (dormant and dark ones

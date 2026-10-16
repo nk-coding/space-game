@@ -33,7 +33,8 @@ the map is a route.
   holds, core fragments, research data by family, unloading the haul at home, the research tree (GDR-0066,
   `docs/career.md`).
 - **The career save** (`data::career`, format 1): unlocks, open and cleared voyages, voyage seeds from the game
-  seed, the voyage id and the launch count, the haul.
+  seed, the voyage id and the launch count, the haul. (Format 2, 15 Oct 2026: the voyage history; format 3, 16 Oct
+  2026, E4: the galaxy.)
 - **The voyage map** (`crates/client/game/src/map/`): a star map of the rim with the voyages, a panel with SET COURSE,
   zoom out to the whole galaxy (five bands drawn as placeholders).
 - **Being changed now** (GDR-0078's slice step): the map no longer draws a route between voyages; voyages not yet
@@ -138,6 +139,9 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
 - A target outside every circle is a reason to research range or open a nearer gate.
 - Warp time grows with distance (3 s + 2 s per S, GDR-0093); the voyage starts at the
   destination's edge. Coming home stays the recall (GDR-0062).
+- Built 16 Oct 2026 (E4, [GDR-0096](../gdr/0096-career-galaxy-format-3.md)): `Unlock::JumpRange` and Jump calibration I
+  and II (propulsion 8, then 16 and 3 programmable matter); `Career::jump_range` and `jump_from` (the nearest of home
+  and the charted clusters within range); arriving charts a cluster.
 - No lanes: GDR-0078 supersedes GDR-0026's and GDR-0028's lanes.
 
 ### 4.6 Inside a cluster: scanning
@@ -163,7 +167,10 @@ the cluster. Empty space between clusters is not a destination; a jump picks the
 They stay the first steps (GDR-0078). After the step being built now (no route, unknown until opened, a signal on
 clearing), the later move is to place them into the generated rim as set pieces: the Shipyard approach is home's
 own cluster, Halvex Drift and Corran Reach are hand-made clusters inside the first signals' areas, the Warden's gate
-is the rim's first gate trail. Until the generator exists they stay as they are.
+is the rim's first gate trail. Until the generator exists they stay as they are. Until E7 (16 Oct 2026, E4,
+[GDR-0096](../gdr/0096-career-galaxy-format-3.md)): the career pins each voyage to a rim cluster, the first nearest home
+and each later one nearest the voyage it opens after; flown voyages chart their clusters, the open one is a located
+signal, and that is how a slice save migrates.
 
 ### 4.8 Placeholder numbers
 
@@ -218,7 +225,8 @@ reshuffle a running galaxy; interiors are still generated from each cluster's se
   kind (`docs/content-model.md`).
 - **`data::career`** (save format 2, with a migration from 1): charted clusters, signals (target, area, state,
   sources seen), decoded and undecoded logs, opened gates, the jump range's research, the lore log; the voyage seed
-  rule stays.
+  rule stays. Built 16 Oct 2026 (E4) as the save's format 3 with a migration from 2 (format 2 had gone to the history),
+  the lore log left for E8; the skeleton's types moved to `data::skeleton`.
 - **Generation**: a new engine-free crate `galaxy` (depends on `data`; no Bevy, no I/O, wasm-safe), or a module in
   `data`. Recommendation: the crate, as the 13 Oct plan proposed; it holds the skeleton, trails and interiors.
   Built 16 Oct 2026 as the crate ([ADR-0042](../adr/0042-galaxy-generator-crate.md)); the content kinds above are
@@ -255,7 +263,7 @@ Sizes: **S** one agent session, **M** one or two, **L** several.
 | E1 Content kinds | `galaxy`, `bands`, `cluster_types`, `trails`, `signal_sources`, `lore`; the rim filled, the other bands stubs. **Done 16 Oct 2026**: the six kinds with validation, JSON export and wiki pages (a page per entry, `mechanics/galaxy`); S in `stats.ron`; the jump-range research nodes and their unlock kind wait for E4 | — | M |
 | E2 Generator | The `galaxy` crate: clusters, home, gates, trails, interiors; generation hash native vs wasm. **Done 16 Oct 2026** (ADR-0042, GDR-0094): `galaxy::generate` and `interior`, `content-tool galaxy [--svg]`, `scripts/determinism-check.sh --galaxy N` (50 seeds identical native vs wasm) | E1 | M |
 | E3 Sim: bigger clusters | Sensor range, frozen sites, hidden sites, `Scan` with bearings, beacon sites; determinism green. **Done 16 Oct 2026** ([GDR-0095](../gdr/0095-sensors-hidden-sites-and-scans.md)): the scanner part on the starter, SCAN (G) and the `scan` action; cores see 800 m; sites hidden until sensors (a signal's site: 400 m) or a sweep reach them, bearings to the far ones, wakes within 300 m; the edge turns ships back; `VoyagePlan::roll_interior` (beacons alone as quiet sites); no despawning (E0); native = wasm. Fly a generated cluster: `?scene=voyage&cluster=signal` | E0 | M |
-| E4 Career format 2 | Charted, signals and narrowing, logs, gates, range; migration from format 1 | E1 | M |
+| E4 Career format 2 | Charted, signals and narrowing, logs, gates, range; migration from format 1. **Done 16 Oct 2026** ([GDR-0096](../gdr/0096-career-galaxy-format-3.md); the save's format 3, as format 2 had gone to the history): the career keeps the skeleton (`data::skeleton`), charted clusters (on arrival), signals (fresh → narrowed → located: halved towards the place), logs from data cores (one cargo unit, lost with the haul), gates, `Unlock::JumpRange` with Jump calibration I and II (2.5 → 3.25 → 4 S), jumps from home or any charted cluster, cluster voyages (`cluster_launched`/`cluster_ended`) and their `Leads` for `roll_interior`; slice saves migrate at load (voyages pinned in a chain from home, flown ones charted, the open one a located signal) | E1 | M |
 | E5 Map | Unknown space, charted clusters, signal areas, range circles, blind-jump picking; the panel says what a signal knows | E2, E4 | M |
 | E6 Voyage flow | Launch into a generated cluster, scanning in flight (control, bearing lines, the cluster overlay), finding, the debrief's finds, decoding logs at home | E3, E4, E5 | L |
 | E7 Slice into the galaxy | The four voyages pinned as set pieces; the Warden's gate as the rim's first gate trail | E2, E6 | S |

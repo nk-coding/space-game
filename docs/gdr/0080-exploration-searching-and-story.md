@@ -11,6 +11,8 @@
   2026-10-16: the scanner part and scanning built (track E3): a short charge on the part's power, a sweep that
   reveals sites and gives signals bearings, waking sleeping enemies within 300 m; how scans and sensors work in
   [GDR-0095](0095-sensors-hidden-sites-and-scans.md).
+  2026-10-16: logs are kept in the career until decoded (track E4, [GDR-0096](0096-career-galaxy-format-3.md)): a data core from a log's wreck, decoded
+  free into its signal; the skeleton is in the save (format 3).
 - Date: 2026-10-14
 - Decided by: Niklas (eight questions from `docs/plans/galaxy-voyages.md` section 9, interactively)
 - Related: [GDR-0078](0078-galaxy-exploration-v1.md), [GDR-0075](0075-voyages-feel-like-exploration.md), [GDR-0002](0002-awakened-ship-mind-light-story.md), [GDR-0028](0028-clusters-and-voyages.md), [ADR-0035](../adr/0035-saves-keep-the-galaxy-skeleton.md), `docs/plans/galaxy-voyages.md`
