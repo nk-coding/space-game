@@ -1,0 +1,23 @@
+// Everything mutates (GDR-0092 step 6): the starter (the rim skiff), its design, behavior and pilot assists, every
+// gene on (`MayChange(())`), each trial flown by both its behavior (odd seeds) and the casual stand-in pilot (even
+// seeds), so the assists, which the skiff starts without, are scored as they grow. Small, so
+// `scripts/determinism-check.sh --run everything` runs it natively and in wasm, straight and resumed, and compares
+// (`docs/arena.md` "Determinism").
+// `cargo run --release -p arena-cli -- evolve crates/core/arena/runs/everything.ron --save /tmp/everything.ron`
+// PLACEHOLDER numbers (the pilot's are lab.ron's casual).
+(
+    seed: 1,
+    evolve: MayChange(()),
+    generations: 5,
+    population: 8,
+    trials: [
+        (
+            preset: "enemy_ships",
+            kind: EnemyShips(opponents: [(design: Ship("automaton_raider"), count: 2)], hall_of_fame: 1),
+            seeds: 2,
+            time_limit: 30,
+            flown_by: Both((profile: "casual", flies: (lock: true, close_to: 0.8, stick: Some((on: 3, off: 3)), fire: Some((on: 3, off: 2))))),
+        ),
+    ],
+    starts: [Design(design: Ship("rim_skiff"))],
+)

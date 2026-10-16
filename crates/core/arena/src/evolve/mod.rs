@@ -49,7 +49,7 @@ use std::fmt;
 use std::ops::Range;
 
 use data::behavior::Program;
-use data::{BehaviorEditor, Blueprint, Content};
+use data::{AssistList, BehaviorEditor, Blueprint, Content};
 use serde::{Deserialize, Serialize};
 use sim::{Pcg32, SimConfig};
 
@@ -61,15 +61,15 @@ use crate::voyage::start_voyage;
 
 pub use archive::{Archive, ArchiveShape, Axis, Elite, MAX_CELLS, Measure};
 pub use config::{
-    Bound, DEFAULT_CROSSOVER, DEFAULT_MUTATIONS, DEFAULT_POPULATION, DEFAULT_SEEDS, Evolve, Fitness,
-    Genes, Limits, Locks, MAX_GENERATIONS, MAX_MUTATIONS, MAX_POPULATION, MAX_SEEDS, MAX_STARTS,
+    Bound, DEFAULT_CROSSOVER, DEFAULT_MUTATIONS, DEFAULT_POPULATION, DEFAULT_SEEDS, Evolve, Fitness, Gene,
+    Genes, Limits, Locks, MayChange, MAX_GENERATIONS, MAX_MUTATIONS, MAX_POPULATION, MAX_SEEDS, MAX_STARTS,
     RunConfig, Stage, Start, VoyagePilot,
 };
 pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
 pub use genome::Genome;
 pub use lineage::Bred;
 pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunHead, RunPart, RunParts, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
-pub use trial::{Contestant, DEFAULT_WAVES, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, entry_of};
+pub use trial::{Contestant, DEFAULT_WAVES, FlownBy, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, entry_of};
 
 use eval::Active;
 use genome::{Kit, Locked, Root, Stats};
@@ -371,6 +371,7 @@ fn genome_entry(g: &Genome, count: u32) -> Entry {
         behavior: Some(BehaviorRef::Text(g.behavior.clone())),
         count,
         formation: Formation::Line,
+        pilot: None,
     }
 }
 
@@ -577,6 +578,7 @@ impl Run {
                 removed: Vec::new(),
                 added: g.frame_parts().into_iter().enumerate().map(|(k, p)| (k as u32, p)).collect(),
                 behavior: Some(g.behavior.clone()),
+                assists: None,
                 size: g.blueprint.size,
             })
             .collect();
@@ -1058,9 +1060,10 @@ impl Run {
     }
 
     /// One child: crossover (sometimes) and mutations of a random elite (generation 0: of a start, shared out
-    /// evenly), under `genes`; its behavior cut to its design's rule slots. `None` when the pre-filter refused every
-    /// try; `rejected` counts the refusals. With the child, how it was bred.
-    fn child(&mut self, genes: Genes, made: usize, rejected: &mut u32) -> Option<(Genome, Stats, Bred)> {
+    /// evenly), of the genes `genes` may change; its behavior cut to its design's rule slots. `None` when the
+    /// pre-filter refused every try; `rejected` counts the refusals. With the child, how it was bred.
+    fn child(&mut self, genes: &Genes, made: usize, rejected: &mut u32) -> Option<(Genome, Stats, Bred)> {
+        let may = genes.may_change();
         let content = &self.content;
         let n = self.starts.len();
         let elites: Vec<(u32, &Genome)> = if self.archive.cells().is_empty() {
@@ -1076,36 +1079,30 @@ impl Run {
             let mut partner = None;
             if elites.len() > 1 && rng.chance(self.config.crossover) {
                 let (bid, b) = elites[rng.below(elites.len() as u32) as usize];
-                if genes != Genes::Behavior
+                if may.design()
                     && let Some(c) = self.kit.cross_design(content, &g, b, rng)
                 {
                     g = c;
                     partner = Some(bid);
                 }
-                if genes != Genes::Design {
+                if may.behavior() {
                     let slots = content.ship_rule_slots(&g.blueprint);
                     if let Some(t) = self.kit.cross_behavior(&g.behavior, &b.behavior, slots, g.root, rng) {
                         g.behavior = t;
                         partner = Some(bid);
                     }
                 }
+                if may.assists()
+                    && let Some(c) = self.kit.cross_assists(&g, b, rng)
+                {
+                    g = c;
+                    partner = Some(bid);
+                }
             }
             let mutations = 1 + rng.below(self.config.mutations);
             for _ in 0..mutations {
-                let design = match genes {
-                    Genes::Design => true,
-                    Genes::Behavior => false,
-                    Genes::Both => rng.chance(0.5),
-                };
-                if design {
-                    if let Some(m) = self.kit.mutate_design(content, &g, rng, 1) {
-                        g = m;
-                    }
-                } else {
-                    let slots = content.ship_rule_slots(&g.blueprint);
-                    if let Some(t) = self.kit.mutate_behavior(&g.behavior, slots, g.root, rng, 1) {
-                        g.behavior = t;
-                    }
+                if let Some(m) = self.kit.mutate(content, &g, &may, rng) {
+                    g = m;
                 }
             }
             // A design change may have cost rule slots: the lowest unlocked rules go.
@@ -1131,6 +1128,8 @@ impl Run {
                         removed,
                         added,
                         behavior: (g.behavior != a.behavior).then(|| g.behavior.clone()),
+                        assists: (g.blueprint.assists != a.blueprint.assists)
+                            .then(|| g.blueprint.assists.clone().unwrap_or(AssistList { rules: Vec::new() })),
                         size: g.blueprint.size,
                     };
                     return Some((g, stats, bred));
@@ -1149,7 +1148,7 @@ impl Run {
         let top = self.hall_of_fame();
         let mut b = Batch {
             stage,
-            genes: self.stages[stage].0,
+            genes: self.stages[stage].0.clone(),
             from: self.rng.clone(),
             first: self.table.len(),
             opponents: top.iter().map(|e| e.id).collect(),
@@ -1202,7 +1201,7 @@ impl Run {
     /// Breeds the generation's next child: into the table and the batch with its jobs, or given up.
     fn breed_child(&mut self, b: &mut Batch) {
         let made = b.candidates.len() + b.failed;
-        match self.child(b.genes, made, &mut b.rejected) {
+        match self.child(&b.genes, made, &mut b.rejected) {
             Some((genome, stats, bred)) => {
                 let id = self.table.len() as u32;
                 self.table.push(bred);
@@ -1303,7 +1302,7 @@ impl Run {
         self.history.push(GenerationStats {
             generation,
             stage: b.stage,
-            genes: b.genes,
+            genes: b.genes.clone(),
             evaluated,
             rejected: b.rejected,
             best,

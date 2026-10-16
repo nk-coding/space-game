@@ -53,7 +53,7 @@ pub use rules::rules_fingerprint;
 pub use score::{Summary, arena_score, run_seeds};
 pub use spec::{
     BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec,
-    Formation, MAX_SHIPS_PER_SIDE, MAX_START_DISTANCE, MAX_TIME_LIMIT, Side,
+    Formation, MAX_SHIPS_PER_SIDE, MAX_START_DISTANCE, MAX_TIME_LIMIT, Pilot, Side,
 };
 pub use evolve::{Genome, Run, RunConfig, RunError, RunSave};
 pub use voyage::{

@@ -87,7 +87,7 @@ fn design_runs_keep_the_limits() {
     let mut run = Run::new(&c, cfg).unwrap();
     while !run.step(u64::MAX).finished {}
     let r = run.results();
-    let genes: Vec<Genes> = r.history.iter().map(|g| g.genes).collect();
+    let genes: Vec<Genes> = r.history.iter().map(|g| g.genes.clone()).collect();
     assert_eq!(genes, [Genes::Design, Genes::Design, Genes::Design, Genes::Both, Genes::Both]);
     assert!(r.elites.len() > 1, "the archive spreads");
     assert!(r.elites.iter().any(|e| e.genome.blueprint.parts != c.ships.get("rim_skiff").unwrap().parts));

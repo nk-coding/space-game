@@ -21,7 +21,8 @@
 //! generation's fights or voyage runs on every core, prints a row per generation, the best elites with their
 //! lineage, writes them (blueprint and behavior text) into `--out` and prints a fight code per generation (its best
 //! child in its hardest fight). `--from` starts it from designs (replacing the run file's starts), `--lock` keeps
-//! parts, cells, categories and rules of every start, `--save` writes the run file after every generation and
+//! parts, cells, categories, rules and assists of every start, `--flown-by` has every fight trial flown by a `lab.ron`
+//! stand-in pilot (on every seed, or on the even ones: step 6), `--save` writes the run file after every generation and
 //! `--resume` goes on from one (GDR-0092 steps 2 and 3). `--trial` sets the run's trials from `lab.ron`'s presets
 //! (`default` for the lab's default selection; `arena trials` lists them), `--goal` and `--goals` its goals, `--open`,
 //! `--fleet`, `--champion` and `--escort` what the presets fight (step 5); the best elite's score is printed by trial
@@ -35,9 +36,9 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use arena::evolve::{Goals, Job, Locks, Sources, Start, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
+use arena::evolve::{FlownBy, Gene, Genes, Goals, Job, Locks, MayChange, Sources, Start, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
 use arena::{
-    BehaviorRef, DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Run, RunSave,
+    BehaviorRef, DesignRef, Entry, FightCode, FightResult, FightSpec, Formation, Outcome, Pilot, Run, RunSave,
     Summary,
 };
 
@@ -57,10 +58,12 @@ evolve's trials and goals (they replace the run file's): --trial PRESET[:WEIGHT[
 preset, `default` for the lab's default selection, `arena trials` lists them), --goal ID:WEIGHT (repeatable: win,
 unhurt, quick, cheap; the others weigh 0) or --goals PRESET (win, win_unhurt, win_cheaply, win_fast); what presets
 fight: --open VOYAGE,... (the open voyages; default: a new career's), --fleet DESIGN, --champion DESIGN (repeatable),
---escort DESIGN (repeatable: every trial flies with these beside the design)
+--escort DESIGN (repeatable: every trial flies with these beside the design); --flown-by behavior|stand-in|both
+(a lab.ron stand-in pilot flies the design's first ship with its assists in every fight trial, on every seed or the
+even ones; :PROFILE picks the pilot, default the first)
 locks (of every start): part:N (its parts[N]), category:ID (every part of it, e.g. category:weapons), cell:X,Y (keep
-empty, in the start's coordinates), rule:N (its behavior's rule N, 0 = the top), target, order (the locked rules
-keep their order)";
+empty, in the start's coordinates), rule:N (its behavior's rule N, 0 = the top), target, assist:N (its pilot
+assists' rule N), order (the locked rules keep their order)";
 
 #[derive(Clone)]
 struct Opts {
@@ -91,6 +94,7 @@ struct Opts {
     fleet: Vec<String>,
     champions: Vec<String>,
     escorts: Vec<String>,
+    flown_by: Option<String>,
     /// `validate`: the genomes (default: the best `--best`) and the new seeds.
     genomes: Vec<u32>,
 }
@@ -126,6 +130,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         fleet: Vec::new(),
         champions: Vec::new(),
         escorts: Vec::new(),
+        flown_by: None,
         genomes: Vec::new(),
     };
     let mut it = args.iter();
@@ -158,6 +163,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--fleet" => o.fleet.push(v.clone()),
             "--champion" => o.champions.push(v.clone()),
             "--escort" => o.escorts.push(v.clone()),
+            "--flown-by" => o.flown_by = Some(v.clone()),
             "--genome" => o.genomes.push(num(a, v)?),
             _ => return Err(format!("unknown option {a}")),
         }
@@ -345,6 +351,7 @@ fn matrix(o: &Opts) -> Result<(), String> {
             behavior: None,
             count: 1,
             formation: Formation::Line,
+            pilot: None,
         };
         let mut s = FightSpec::new(seed, vec![entry(a)], vec![entry(b)]);
         s.start_distance = o.distance.unwrap_or(s.start_distance);
@@ -435,7 +442,7 @@ fn locks_of(args: &[String]) -> Result<Locks, String> {
     let mut l = Locks::default();
     for a in args {
         let (kind, v) = a.split_once(':').unwrap_or((a, ""));
-        let bad = || format!("--lock {a}: one of part:N, category:ID, cell:X,Y, rule:N, target, order");
+        let bad = || format!("--lock {a}: one of part:N, category:ID, cell:X,Y, rule:N, target, assist:N, order");
         match kind {
             "part" => l.parts.push(v.parse().map_err(|_| bad())?),
             "category" => l.categories.push(v.to_string()),
@@ -444,6 +451,7 @@ fn locks_of(args: &[String]) -> Result<Locks, String> {
                 l.cells.push((x.trim().parse().map_err(|_| bad())?, y.trim().parse().map_err(|_| bad())?));
             }
             "rule" => l.rules.push(v.parse().map_err(|_| bad())?),
+            "assist" => l.assists.push(v.parse().map_err(|_| bad())?),
             "target" => l.target = true,
             "order" => l.order = true,
             _ => return Err(bad()),
@@ -477,12 +485,21 @@ fn restored(content: &data::Content, path: &str) -> Result<Run, String> {
     Ok(run)
 }
 
+/// What a generation evolved, short: `Design`, `Behavior`, `Both`, `Everything` or the genes on (`Layout+Numbers`).
+fn genes_name(g: &Genes) -> String {
+    match g {
+        Genes::MayChange(m) if *m == MayChange::default() => "Everything".into(),
+        Genes::MayChange(m) => Gene::ALL.iter().filter(|g| m.has(**g)).map(|g| format!("{g:?}")).collect::<Vec<_>>().join("+"),
+        other => format!("{other:?}"),
+    }
+}
+
 fn row(g: &arena::evolve::GenerationStats, breed: Option<f64>, secs: Option<f64>) {
     let ms = |v: Option<f64>, d: usize| v.map_or("–".into(), |v| format!("{v:.d$}"));
     println!(
         "| {} | {} | {} | {} | {:.3} | {:.3} | {:.3} | {} | {} | {:.2} | {} | {} |",
         g.generation,
-        if g.rescore { "re-score".to_string() } else { format!("{:?}", g.genes) },
+        if g.rescore { "re-score".to_string() } else { genes_name(&g.genes) },
         g.evaluated,
         g.rejected,
         g.best,
@@ -500,8 +517,8 @@ fn evolve(o: &Opts) -> Result<(), String> {
     let content = data::base_content();
     let (label, mut run) = match (&o.resume, o.args.as_slice()) {
         (Some(path), []) => {
-            if !o.from.is_empty() || !o.locks.is_empty() || !o.trials.is_empty() || !o.goal.is_empty() || o.goals.is_some() {
-                return Err("--from, --lock, --trial and --goal set up a new run; a resumed run keeps its own".into());
+            if !o.from.is_empty() || !o.locks.is_empty() || !o.trials.is_empty() || !o.goal.is_empty() || o.goals.is_some() || o.flown_by.is_some() {
+                return Err("--from, --lock, --trial, --goal and --flown-by set up a new run; a resumed run keeps its own".into());
             }
             (path.clone(), restored(&content, path)?)
         }
@@ -723,6 +740,27 @@ fn set_trials(content: &data::Content, config: &mut arena::RunConfig, o: &Opts) 
             weights.push((id.to_string(), num::<f32>("--goal", w)?));
         }
         config.goals = Goals::of(weights);
+    }
+    if let Some(arg) = &o.flown_by {
+        let (who, profile) = arg.split_once(':').map_or((arg.as_str(), None), |(w, p)| (w, Some(p)));
+        let pilot = match profile {
+            Some(id) => lab.pilot(id).ok_or_else(|| format!("--flown-by {arg}: no stand-in pilot `{id}` in lab.ron"))?,
+            None => lab.pilots.first().ok_or("lab.ron has no stand-in pilot")?,
+        };
+        let pilot = Pilot { profile: pilot.id.clone(), flies: pilot.flies.clone() };
+        let flown_by = match who {
+            "behavior" => FlownBy::Behavior,
+            "stand-in" => FlownBy::StandIn(pilot),
+            "both" => FlownBy::Both(pilot),
+            _ => return Err(format!("--flown-by {arg}: behavior, stand-in or both")),
+        };
+        // The old `fitness` form is one trial: it becomes one of `trials` to carry the pilot.
+        if let Some(f) = config.fitness.take() {
+            config.trials.insert(0, TrialSpec::of_fitness(&f));
+        }
+        for t in config.trials.iter_mut() {
+            t.flown_by = flown_by.clone();
+        }
     }
     Ok(())
 }

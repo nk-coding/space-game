@@ -1,9 +1,9 @@
 //! The genome table (GDR-0092 "What a run stores"): every genome a run breeds, numbered in breeding order, kept as a
-//! change against its parent (the parts it lost and gained, in frame coordinates, and its behavior text when that
-//! changed), so a run stores a few hundred bytes per child and still rebuilds any genome exactly, by replaying the
+//! change against its parent (the parts it lost and gained, in frame coordinates, and its behavior text and pilot
+//! assists when they changed), so a run stores a few hundred bytes per child and still rebuilds any genome exactly, by replaying the
 //! changes from its start.
 
-use data::{Blueprint, Placement};
+use data::{AssistList, Blueprint, Placement};
 use serde::{Deserialize, Serialize};
 
 use super::genome::Genome;
@@ -30,6 +30,9 @@ pub struct Bred {
     /// Its behavior text, when it differs from the parent's (always for a start).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub behavior: Option<String>,
+    /// Its pilot assists, when they differ from the parent's (no rules: none); a start's are its header's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assists: Option<AssistList>,
     /// The size of its blueprint (trimmed to its parts).
     pub size: (u32, u32),
 }
@@ -116,16 +119,20 @@ pub(crate) fn rebuild(table: &[Bred], headers: &[Blueprint], id: u32) -> Option<
         chain.push(bred);
         k = bred.parent;
     }
+    let last = table.get(id as usize)?;
+    let header = headers.get(last.root as usize)?;
     let mut parts = Vec::new();
     let mut behavior = None;
+    let mut assists = header.assists.clone();
     for b in chain.iter().rev() {
         parts = apply(&parts, &b.removed, &b.added);
         if let Some(t) = &b.behavior {
             behavior = Some(t);
         }
+        if let Some(a) = &b.assists {
+            assists = (!a.rules.is_empty()).then(|| a.clone());
+        }
     }
-    let last = table.get(id as usize)?;
-    let header = headers.get(last.root as usize)?;
     let at = (
         parts.iter().map(|p| p.x).min().unwrap_or(0),
         parts.iter().map(|p| p.y).min().unwrap_or(0),
@@ -141,6 +148,7 @@ pub(crate) fn rebuild(table: &[Bred], headers: &[Blueprint], id: u32) -> Option<
                     ..p
                 })
                 .collect(),
+            assists,
             ..header.clone()
         },
         behavior: behavior?.clone(),

@@ -17,7 +17,7 @@ fn spec(content: &data::Content) -> FightSpec {
     let behavior = content.behaviors.get("skirmisher").unwrap().program().unwrap().to_text();
     let mut spec = FightSpec::new(
         4,
-        vec![Entry { design: DesignRef::Blueprint(skiff), behavior: Some(BehaviorRef::Text(behavior)), count: 1, formation: Formation::Line }],
+        vec![Entry { design: DesignRef::Blueprint(skiff), behavior: Some(BehaviorRef::Text(behavior)), count: 1, formation: Formation::Line, pilot: None }],
         vec![Entry { count: 2, ..Entry::ship("automaton_raider") }],
     );
     spec.time_limit = 30.0;

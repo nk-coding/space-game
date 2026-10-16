@@ -53,6 +53,11 @@ pub enum ArenaError {
         entry: usize,
         design: String,
     },
+    /// A second stand-in pilot on a side, or one in a reinforcement wave.
+    Pilot {
+        side: usize,
+        entry: usize,
+    },
     /// The content's own behaviors do not compile.
     Content(String),
     /// No voyage of this id in the content.
@@ -116,6 +121,10 @@ impl fmt::Display for ArenaError {
                     f,
                     "`{design}` has no default behavior (neither its own nor its faction's); name one"
                 )
+            }
+            ArenaError::Pilot { side, entry } => {
+                at(f, side, entry)?;
+                f.write_str("a side has one stand-in pilot at most, and a reinforcement wave none")
             }
             ArenaError::Content(e) => write!(f, "the content's behaviors do not compile: {e}"),
             ArenaError::UnknownVoyage(id) => write!(f, "no voyage `{id}` in the content"),

@@ -58,6 +58,20 @@ pub struct Entry {
     pub count: u32,
     #[serde(default)]
     pub formation: Formation,
+    /// A stand-in pilot flies its first ship (GDR-0092 "FLOWN BY"): that ship is its side's focus, flown by the
+    /// pilot with the design's assists, the others fly the behavior. One entry of a side at most, none in a wave.
+    /// Left out (written only when there is one): nobody pilots, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pilot: Option<Pilot>,
+}
+
+/// A stand-in pilot as a fight carries it: the `lab.ron` profile it came from (its name on the replay's HUD) and how
+/// it flies, inlined, so a fight doesn't change when `lab.ron` does.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pilot {
+    pub profile: String,
+    pub flies: data::StandIn,
 }
 
 /// A design: a ship of the content by id, or a blueprint as text (a saved or exported drydock design, the format
@@ -121,6 +135,7 @@ impl Entry {
             behavior: None,
             count: 1,
             formation: Formation::Line,
+            pilot: None,
         }
     }
 }
@@ -172,9 +187,16 @@ impl FightSpec {
                 return Err(ArenaError::EmptySide { side });
             }
             let mut ships = 0u32;
+            let mut piloted = false;
             for (entry, e) in s.entries.iter().enumerate() {
                 if e.count == 0 {
                     return Err(ArenaError::ZeroCount { side, entry });
+                }
+                if e.pilot.is_some() {
+                    if piloted || side > 1 {
+                        return Err(ArenaError::Pilot { side, entry });
+                    }
+                    piloted = true;
                 }
                 ships = ships.saturating_add(e.count);
             }

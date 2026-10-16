@@ -72,24 +72,180 @@ pub struct RunConfig {
 }
 
 /// What evolves: the behavior only (on a fixed design), the design only (under a fixed behavior), both together,
-/// or a sequence of stages (e.g. behavior for 30 generations, then design for 30, then both).
+/// the genes a run may change (GDR-0092 "MAY CHANGE": `MayChange(())` is everything, the assists included), or a
+/// sequence of stages (e.g. behavior for 30 generations, then design for 30, then both).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Evolve {
     Behavior,
     Design,
     Both,
+    MayChange(MayChange),
     Stages(Vec<Stage>),
 }
 
-/// What one stage evolves.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// What one stage evolves: `Design` is the design's genes (layout, parts, armour, power), `Behavior` the behavior's
+/// (its numbers and its rules), `Both` both; `MayChange` the genes it names.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Genes {
     Behavior,
     Design,
     Both,
+    MayChange(MayChange),
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+impl Genes {
+    /// The genes it changes.
+    pub fn may_change(&self) -> MayChange {
+        let both = MayChange { assist_numbers: false, assist_rules: false, ..MayChange::default() };
+        match self {
+            Genes::Design => MayChange { numbers: false, rules: false, ..both },
+            Genes::Behavior => MayChange { layout: false, parts: false, armour: false, power: false, ..both },
+            Genes::Both => both,
+            Genes::MayChange(m) => m.clone(),
+        }
+    }
+}
+
+/// A gene of a genome (GDR-0092 "MAY CHANGE"): what a mutation may change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Gene {
+    /// Move, rotate and flip parts.
+    Layout,
+    /// Add, remove and swap parts (of the categories not [`MayChange::fixed`]).
+    Parts,
+    /// A hull part's material.
+    Armour,
+    /// A part's power tier and weight.
+    Power,
+    /// The behavior's thresholds, parameters and choices.
+    Numbers,
+    /// The behavior's structure: its rules and their order, their actions and conditions, the target line.
+    Rules,
+    /// The pilot assists' numbers and choices, and whether each is on at the start.
+    AssistNumbers,
+    /// The pilot assists' structure: their rules and order, their assists and conditions.
+    AssistRules,
+}
+
+impl Gene {
+    /// In the order of `data::GENES`, whose ids they have.
+    pub const ALL: [Gene; 8] = [
+        Gene::Layout,
+        Gene::Parts,
+        Gene::Armour,
+        Gene::Power,
+        Gene::Numbers,
+        Gene::Rules,
+        Gene::AssistNumbers,
+        Gene::AssistRules,
+    ];
+
+    /// Its id in `lab.ron` (`data::GENES`).
+    pub fn id(self) -> &'static str {
+        data::GENES[Gene::ALL.iter().position(|g| *g == self).expect("every gene is in ALL")]
+    }
+
+    pub fn of(id: &str) -> Option<Gene> {
+        Gene::ALL.into_iter().find(|g| g.id() == id)
+    }
+}
+
+/// The genes a run may change (GDR-0092 "MAY CHANGE"; each left out: on, so `()` is everything). The locks still
+/// hold within them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MayChange {
+    pub layout: bool,
+    pub parts: bool,
+    /// Part categories (`categories.ron` ids) whose parts are neither added, removed nor swapped while `parts` is on.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fixed: Vec<String>,
+    pub armour: bool,
+    pub power: bool,
+    pub numbers: bool,
+    pub rules: bool,
+    pub assist_numbers: bool,
+    pub assist_rules: bool,
+}
+
+impl Default for MayChange {
+    /// Everything.
+    fn default() -> MayChange {
+        MayChange {
+            layout: true,
+            parts: true,
+            fixed: Vec::new(),
+            armour: true,
+            power: true,
+            numbers: true,
+            rules: true,
+            assist_numbers: true,
+            assist_rules: true,
+        }
+    }
+}
+
+impl MayChange {
+    pub fn has(&self, gene: Gene) -> bool {
+        match gene {
+            Gene::Layout => self.layout,
+            Gene::Parts => self.parts,
+            Gene::Armour => self.armour,
+            Gene::Power => self.power,
+            Gene::Numbers => self.numbers,
+            Gene::Rules => self.rules,
+            Gene::AssistNumbers => self.assist_numbers,
+            Gene::AssistRules => self.assist_rules,
+        }
+    }
+
+    pub fn set(&mut self, gene: Gene, on: bool) {
+        *match gene {
+            Gene::Layout => &mut self.layout,
+            Gene::Parts => &mut self.parts,
+            Gene::Armour => &mut self.armour,
+            Gene::Power => &mut self.power,
+            Gene::Numbers => &mut self.numbers,
+            Gene::Rules => &mut self.rules,
+            Gene::AssistNumbers => &mut self.assist_numbers,
+            Gene::AssistRules => &mut self.assist_rules,
+        } = on;
+    }
+
+    /// These genes (`lab.ron` ids, a gene preset's) on, the others off; no category kept.
+    pub fn only<'a>(ids: impl IntoIterator<Item = &'a String>) -> MayChange {
+        let mut m = MayChange::default();
+        for g in Gene::ALL {
+            m.set(g, false);
+        }
+        for g in ids.into_iter().filter_map(|id| Gene::of(id)) {
+            m.set(g, true);
+        }
+        m
+    }
+
+    /// A gene of the design is on (layout, parts, armour, power).
+    pub fn design(&self) -> bool {
+        self.layout || self.parts || self.armour || self.power
+    }
+
+    /// A gene of the behavior is on.
+    pub fn behavior(&self) -> bool {
+        self.numbers || self.rules
+    }
+
+    /// A gene of the pilot assists is on.
+    pub fn assists(&self) -> bool {
+        self.assist_numbers || self.assist_rules
+    }
+
+    /// Parts of this content part may be added, removed or swapped.
+    pub(crate) fn changes(&self, content: &data::Content, part: &str) -> bool {
+        self.parts && content.parts.get(part).is_some_and(|p| !self.fixed.contains(&p.category))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stage {
     pub evolve: Genes,
@@ -262,7 +418,10 @@ pub struct Locks {
     /// The behavior's target line stays as it is.
     #[serde(default)]
     pub target: bool,
-    /// LOCK ORDER: the locked rules also keep their order among themselves.
+    /// Rules by index in the start's pilot assists (0 = the top): never changed, moved or deleted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assists: Vec<u32>,
+    /// LOCK ORDER: the locked rules also keep their order among themselves (the behavior's and the assists' each).
     #[serde(default)]
     pub order: bool,
 }
@@ -322,15 +481,19 @@ impl RunConfig {
             (Evolve::Stages(_), Some(_)) => {
                 return bad("`generations` goes into each stage with `Stages`");
             }
-            (Evolve::Stages(s), None) => s.iter().map(|s| (s.evolve, s.generations)).collect(),
+            (Evolve::Stages(s), None) => s.iter().map(|s| (s.evolve.clone(), s.generations)).collect(),
             (_, None) => return bad("`generations` is missing"),
             (Evolve::Behavior, Some(g)) => vec![(Genes::Behavior, g)],
             (Evolve::Design, Some(g)) => vec![(Genes::Design, g)],
             (Evolve::Both, Some(g)) => vec![(Genes::Both, g)],
+            (Evolve::MayChange(m), Some(g)) => vec![(Genes::MayChange(m.clone()), g)],
         };
         let total: u64 = stages.iter().map(|s: &(Genes, u32)| s.1 as u64).sum();
         if stages.is_empty() || stages.iter().any(|s| s.1 == 0) {
             return bad("every stage needs at least one generation");
+        }
+        if stages.iter().any(|s| Gene::ALL.iter().all(|g| !s.0.may_change().has(*g))) {
+            return bad("nothing may change");
         }
         if total > MAX_GENERATIONS as u64 {
             return Err(RunError::Config(format!(

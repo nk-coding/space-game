@@ -422,3 +422,53 @@ fn the_head_keeps_name_time_and_status() {
     assert!(named.to_ron().starts_with("(\n    format: 1,\n    name: \"Evolving the skiff\",\n    created: 1760000000,\n    status: Paused,\n"));
     assert_eq!(text(&Run::restore(&c, &back).unwrap()), file);
 }
+
+/// GDR-0092 step 6, `runs/everything.ron` from a start with pilot assists (one locked): the design, the behavior and
+/// the assists all evolve, the locked assist stays, the genome table rebuilds the assists every child fought with, the
+/// stand-in flies the even seeds, and the run resumes as it was.
+#[test]
+fn everything_mutates_and_the_stand_in_flies_the_even_seeds() {
+    let c = data::base_content();
+    let mut cfg = config(include_str!("../runs/everything.ron"));
+    let mut bp = c.ships.get("rim_skiff").unwrap().clone();
+    let brake = "when idle(thrust) >= 1s -> brake";
+    bp.assists = Some(data::AssistList { rules: vec!["always -> auto_lock(nearest)".into(), brake.into()] });
+    let design = arena::DesignRef::Blueprint(data::blueprint_to_ron(&bp));
+    cfg.starts = vec![Start::Design { design, behavior: None, locks: Locks { assists: vec![1], ..Locks::default() } }];
+    let mut run = Run::new(&c, cfg.clone()).unwrap();
+    while !run.finished() {
+        let jobs = run.jobs().to_vec();
+        for j in &jobs {
+            let Job::Fight { spec, .. } = j else { unreachable!() };
+            assert_eq!(spec.sides[0].entries[0].pilot.is_some(), spec.seed % 2 == 0, "FLOWN BY BOTH");
+        }
+        let results: Vec<JobResult> = jobs.iter().map(|j| j.run(&c)).collect();
+        run.submit(results);
+        let g = run.generation() - 1;
+        for (k, child) in run.state().records[g as usize].children.iter().enumerate() {
+            let genome = run.genome(child.genome).unwrap();
+            let Job::Fight { spec, .. } = jobs.iter().find(|j| j.candidate() == k as u32).unwrap() else { unreachable!() };
+            assert_eq!(spec.sides[0].entries[0].design, arena::DesignRef::Blueprint(genome.blueprint_text()), "genome {}", child.genome);
+        }
+    }
+    let start = &run.starts()[0];
+    let rules = |g: &arena::Genome| data::behavior::Program::parse(&g.assists_text()).unwrap().rules;
+    let locked = &rules(start)[1];
+    let mut changed = [0; 3];
+    for id in 0..run.table().len() as u32 {
+        let g = run.genome(id).unwrap();
+        assert!(rules(&g).contains(locked), "genome {id} lost its locked assist: {}", g.assists_text());
+        changed[0] += (g.blueprint.parts != start.blueprint.parts) as u32;
+        changed[1] += (g.behavior != start.behavior) as u32;
+        changed[2] += (g.blueprint.assists != start.blueprint.assists) as u32;
+    }
+    assert!(changed.iter().all(|&n| n > 3), "design, behavior and assists all evolve: {changed:?}");
+    // Resumed after two generations: the same run.
+    let mut first = Run::new(&c, cfg.clone()).unwrap();
+    while first.generation() < 2 {
+        first.step(u64::MAX);
+    }
+    let mut resumed = Run::restore(&c, &RunSave::from_ron(&first.snapshot().to_ron()).unwrap()).unwrap();
+    while !resumed.step(5_000).finished {}
+    assert_eq!(text(&resumed), text(&run), "byte for byte");
+}

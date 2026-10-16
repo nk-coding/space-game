@@ -3,10 +3,10 @@
 use std::sync::Arc;
 
 use arena::{
-    ArenaError, BehaviorRef, DesignRef, Entry, Fight, FightSpec, Formation, Outcome, Summary,
+    ArenaError, BehaviorRef, DesignRef, Entry, Fight, FightCode, FightSpec, Formation, Outcome, Pilot, Summary,
     arena_score, run_fight, run_seeds,
 };
-use sim::{BehaviorLibrary, ShipCommand, Sim, SimConfig, TickInputs};
+use sim::{BehaviorLibrary, HelmMode, ShipCommand, Sim, SimConfig, TickInputs};
 
 fn runner_vs_raiders(seed: u64) -> FightSpec {
     FightSpec::new(
@@ -235,6 +235,7 @@ fn the_spec_reads_back_from_its_text() {
                         )),
                         count: 2,
                         formation: Formation::Column,
+                        pilot: None,
                     },
                     Entry::ship("halvex_runner"),
                 ],
@@ -272,6 +273,68 @@ fn the_spec_reads_back_from_its_text() {
             vec![Entry::ship("automaton_raider")]
         )
     );
+}
+
+/// The starter flown by `lab.ron`'s stand-in `profile`, with pilot assists that fire group 1 and brake, against two
+/// raiders.
+fn piloted(content: &data::Content, profile: &str, seed: u64) -> FightSpec {
+    let mut bp = content.ships.get("rim_skiff").unwrap().clone();
+    bp.assists = Some(data::AssistList {
+        rules: vec!["when target_in_range(90%) -> auto_fire(1)".into(), "when idle(thrust) >= 1s -> brake".into()],
+    });
+    let pilot = content.lab.pilot(profile).unwrap();
+    let me = Entry {
+        design: DesignRef::Blueprint(data::blueprint_to_ron(&bp)),
+        count: 2,
+        pilot: Some(Pilot { profile: pilot.id.clone(), flies: pilot.flies.clone() }),
+        ..Entry::ship("rim_skiff")
+    };
+    FightSpec::new(seed, vec![me], vec![Entry { count: 2, ..Entry::ship("automaton_raider") }])
+}
+
+/// GDR-0092 "FLOWN BY": a stand-in flies the entry's first ship as its side's focus with the design's assists (the
+/// copy flies the behavior), locks an enemy and steers; the fight is deterministic, a code of it replays as recorded,
+/// and it ends otherwise than the same fight unpiloted.
+#[test]
+fn a_stand_in_flies_the_first_ship_with_its_assists() {
+    let content = data::base_content();
+    for profile in ["casual", "hands_off", "busy"] {
+        let spec = piloted(&content, profile, 2);
+        let mut fight = Fight::new(&content, &spec).unwrap();
+        let first = fight.sim().ships()[0].id();
+        assert_eq!(fight.sim().focus(arena::OWNERS[0]), Some(first), "{profile}");
+        assert_eq!(fight.sim().focus(arena::OWNERS[1]), None, "nobody pilots side 1");
+        let mut locked = false;
+        let mut steered = false;
+        for _ in 0..20 * sim::TICK_HZ as u64 {
+            if fight.step(1).is_some() {
+                break;
+            }
+            let s = fight.sim().ship(first).unwrap();
+            assert!(s.assists().is_some() && s.behavior().is_none(), "{profile}: piloted, with its assists");
+            if let HelmMode::Pilot(p) = s.helm() {
+                locked |= p.lock.is_some();
+                steered |= p.stick.length() > 0.0;
+            }
+            assert!(fight.sim().ships()[1].behavior().is_some(), "the copy flies the behavior");
+        }
+        assert!(steered, "{profile} steers");
+        // The casual and busy pilots lock by themselves; hands-off leaves it to an auto-lock, which these assists lack.
+        assert_eq!(locked, profile != "hands_off", "{profile}");
+        let end = run_fight(&content, &spec).unwrap();
+        assert_eq!(run_fight(&content, &spec).unwrap(), end, "{profile}: deterministic");
+        let code = FightCode::new(&content, arena::rules_fingerprint(&content), spec.clone(), end);
+        let back = FightCode::decode(&code.encode()).unwrap();
+        assert_eq!(back.spec, spec);
+        assert_eq!(run_fight(&content, &back.spec).unwrap(), end, "{profile}: its code replays as recorded");
+        let mut unpiloted = spec.clone();
+        unpiloted.sides[0].entries[0].pilot = None;
+        assert_ne!(run_fight(&content, &unpiloted).unwrap().state_hash, end.state_hash, "{profile}");
+    }
+    // One stand-in a side, and none in a wave.
+    let mut two = piloted(&content, "casual", 1);
+    two.sides[0].entries.push(two.sides[0].entries[0].clone());
+    assert_eq!(Fight::new(&content, &two).err(), Some(ArenaError::Pilot { side: 0, entry: 1 }));
 }
 
 #[test]

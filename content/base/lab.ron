@@ -1,10 +1,16 @@
-// The evolution lab (GDR-0092): the goals a run weighs and the trials it can fight. What each goal and trial kind
-// computes is the arena's (`docs/arena.md` "Trials and goals"); the words and numbers are here. A run keeps its
-// trials as they were when it was made, so a change here changes no run. Weights run 0 to 3; `seeds` is how many
-// seeds each opponent is fought on (1, 2, ...); `time_limit` is seconds a fight lasts at most (minutes for VOYAGES).
-// `default: true` trials are on in a new run (GDR-0092's default selection). PLACEHOLDER NUMBERS (lead defaults of
-// 15 Oct 2026; the measured cost of each kind is in docs/arena.md). Size presets, measures, stand-in pilots and the
-// rest of the lab's numbers come with GDR-0092 step 8.
+// The evolution lab (GDR-0092): the goals a run weighs, the genes it may change, the trials it can fight and the
+// stand-in pilots. What each goal, gene and trial kind computes is the arena's (`docs/arena.md` "Trials and goals",
+// "Genomes, mutation and crossover"); the words and numbers are here. A run keeps its trials and pilot as they were
+// when it was made, so a change here changes no run. Weights run 0 to 3; `seeds` is how many seeds each opponent is
+// fought on (1, 2, ...); `time_limit` is seconds a fight lasts at most (minutes for VOYAGES). `default: true` trials
+// are on in a new run (GDR-0092's default selection). `genes` are what a run may change (MAY CHANGE) and
+// `gene_presets` the pills over them, the first a new run's. `pilots` are the stand-ins that fly a design in the
+// fights a run has FLOWN BY a stand-in, so its pilot assists are scored (the first is the setup's default): each
+// think it locks the nearest enemy (`lock`), holds the stick towards it while it is farther than `close_to` of its
+// longest gun's reach, and holds every trigger, each on for `on` seconds then off for `off` (left out: never); what
+// it leaves alone the assists may take. PLACEHOLDER NUMBERS (lead defaults of 15 and 16 Oct 2026; the measured cost
+// of each kind is in docs/arena.md). Size presets, measures and the rest of the lab's numbers come with GDR-0092
+// step 8.
 (
     goals: [
         (id: "win", name: "Win", summary: "Beat the opponent: a win counts 1, a loss 0, a draw by the build points each side lost.", weight: 1),
@@ -100,6 +106,43 @@
             kind: Voyages,
             seeds: 2,
             time_limit: 10,
+        ),
+    ],
+    genes: [
+        (id: "layout", name: "Layout", summary: "Move, turn and flip parts."),
+        (id: "parts", name: "Parts", summary: "Add, remove and swap parts, of the categories left on."),
+        (id: "armour", name: "Armour", summary: "Another armour material on a hull part."),
+        (id: "power", name: "Power", summary: "A part's power priority: its tier one up or down, or its weight."),
+        (id: "numbers", name: "Behavior numbers", summary: "The behavior's thresholds, distances and choices."),
+        (id: "rules", name: "Behavior rules", summary: "The behavior's rules: add, remove, copy and reorder them, change their actions, conditions and the target line."),
+        (id: "assist_numbers", name: "Assist numbers", summary: "The pilot assists' numbers and choices, and whether each is on at the start."),
+        (id: "assist_rules", name: "Assist rules", summary: "The pilot assists' rules: add, remove and reorder them, change their assists and conditions."),
+    ],
+    gene_presets: [
+        (id: "everything", name: "Everything", genes: ["layout", "parts", "armour", "power", "numbers", "rules", "assist_numbers", "assist_rules"]),
+        (id: "design_only", name: "Design only", genes: ["layout", "parts", "armour", "power"]),
+        (id: "behavior_only", name: "Behavior only", genes: ["numbers", "rules"]),
+        (id: "assists_only", name: "Assists only", genes: ["assist_numbers", "assist_rules"]),
+        (id: "numbers_only", name: "Numbers only", genes: ["numbers", "assist_numbers"]),
+    ],
+    pilots: [
+        (
+            id: "casual",
+            name: "Casual",
+            summary: "Locks the nearest enemy, flies at it until it is in reach, lets go of the stick for 3 s every 6 s and fires in bursts: 3 s on, 2 s off.",
+            flies: (lock: true, close_to: 0.8, stick: Some((on: 3, off: 3)), fire: Some((on: 3, off: 2))),
+        ),
+        (
+            id: "hands_off",
+            name: "Hands off",
+            summary: "Only steers at the nearest enemy: the lock and the triggers are the assists'.",
+            flies: (close_to: 0.8, stick: Some((on: 1))),
+        ),
+        (
+            id: "busy",
+            name: "Busy",
+            summary: "Locks the nearest enemy, flies at it until it is in reach and fires all the time.",
+            flies: (lock: true, close_to: 0.8, stick: Some((on: 1)), fire: Some((on: 1))),
         ),
     ],
 )

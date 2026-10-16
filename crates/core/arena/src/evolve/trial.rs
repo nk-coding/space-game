@@ -17,7 +17,7 @@
 use data::Content;
 use serde::{Deserialize, Serialize};
 
-use crate::spec::{BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec, Formation, Side};
+use crate::spec::{BehaviorRef, DEFAULT_START_DISTANCE, DEFAULT_TIME_LIMIT, DesignRef, Entry, FightSpec, Formation, Pilot, Side};
 use crate::voyage::{DEFAULT_VOYAGE_MINUTES, VoyageSpec};
 
 use super::config::{DEFAULT_SEEDS, Fitness, VoyagePilot};
@@ -55,6 +55,38 @@ pub struct TrialSpec {
     /// launches them; on a voyage their designs come along under the content's escort behavior.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub escorts: Vec<Entry>,
+    /// Who flies the contestant's first ship in its fights (a voyage has its own pilot).
+    #[serde(default, skip_serializing_if = "FlownBy::is_behavior")]
+    pub flown_by: FlownBy,
+}
+
+/// FLOWN BY (GDR-0092): who flies the contestant's first ship in a trial's fights. A stand-in pilot flies it as its
+/// side's focus, with the design's pilot assists filling the channels it leaves idle, so the assists are scored;
+/// the behavior is scored on the fights it flies.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum FlownBy {
+    /// Its behavior, as before (nobody pilots).
+    #[default]
+    Behavior,
+    /// The stand-in on every seed.
+    StandIn(Pilot),
+    /// The behavior on odd seeds, the stand-in on even ones (at no extra cost).
+    Both(Pilot),
+}
+
+impl FlownBy {
+    pub fn is_behavior(&self) -> bool {
+        *self == FlownBy::Behavior
+    }
+
+    /// The pilot of the fight on `seed`, if a stand-in flies it.
+    pub fn on(&self, seed: u64) -> Option<&Pilot> {
+        match self {
+            FlownBy::Behavior => None,
+            FlownBy::StandIn(p) => Some(p),
+            FlownBy::Both(p) => seed.is_multiple_of(2).then_some(p),
+        }
+    }
 }
 
 /// The trial kinds (GDR-0092's table). Player designs come inlined as text, content by id.
@@ -206,14 +238,17 @@ struct Fights {
     start_distance: f32,
     time_limit: f32,
     escorts: Vec<Entry>,
+    flown_by: FlownBy,
 }
 
 impl Fights {
-    /// The fights of `me` against one opponent (and its waves, a gauntlet), one per seed.
+    /// The fights of `me` against one opponent (and its waves, a gauntlet), one per seed, each flown as `flown_by`
+    /// says.
     fn against(&self, me: &Contestant, ctx: &GenCtx, side: &[Entry], waves: &[Side], jobs: &mut Vec<Job>) {
         let mut ours = vec![Entry { count: self.count, ..me.entry.clone() }];
         ours.extend(self.escorts.iter().cloned());
         for seed in seeds(self.seeds, ctx) {
+            ours[0].pilot = self.flown_by.on(seed).cloned();
             let mut spec = FightSpec::new(seed, ours.clone(), side.to_vec());
             spec.start_distance = self.start_distance;
             spec.time_limit = self.time_limit;
@@ -354,6 +389,7 @@ impl TrialSpec {
             start_distance: DEFAULT_START_DISTANCE,
             time_limit: DEFAULT_TIME_LIMIT,
             escorts: Vec::new(),
+            flown_by: FlownBy::Behavior,
         }
     }
 
@@ -413,6 +449,7 @@ impl TrialSpec {
             start_distance: self.start_distance,
             time_limit: self.time_limit,
             escorts: self.escorts.clone(),
+            flown_by: self.flown_by.clone(),
         };
         let each = |list: &[Entry]| list.iter().map(|e| (vec![e.clone()], Vec::new())).collect::<Vec<_>>();
         Ok(match &self.kind {
@@ -532,7 +569,7 @@ pub fn encounters(content: &Content, voyages: &[String]) -> Result<Vec<(String, 
 
 /// A design and behavior as a fight entry of one ship in a line (a player design or a genome, inlined).
 pub fn entry_of(design: DesignRef, behavior: Option<BehaviorRef>) -> Entry {
-    Entry { design, behavior, count: 1, formation: Formation::Line }
+    Entry { design, behavior, count: 1, formation: Formation::Line, pilot: None }
 }
 
 fn one() -> u32 {

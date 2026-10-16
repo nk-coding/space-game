@@ -1,10 +1,11 @@
 //! The evolution lab's content (`lab.ron`, GDR-0092): the goals are the arena's four; goal presets weigh known goals;
-//! trial presets have weights, seeds and time limits in range and name ships the content has. (An id listed twice in
+//! trial presets have weights, seeds and time limits in range and name ships the content has; genes are the arena's
+//! and gene presets name genes; stand-in pilots have their numbers in range. (An id listed twice in
 //! one file is the loader's error: packs merged replace each other's entries by id.)
 //! Problems name the field as `lab.trials[<id>].seeds` and the like (the lab has no entry kind of its own yet).
 
 use super::Validator;
-use crate::content::model::{GOALS, LabShips, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, TrialPresetKind};
+use crate::content::model::{Duty, GENES, GOALS, LabShips, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, TrialPresetKind};
 use crate::content::problem::Problem;
 
 /// The longest time limit a preset may give a fight (s) or a voyage (minutes): the arena's bounds.
@@ -91,6 +92,33 @@ impl<'a> Validator<'a> {
                     count(&mut out, *n, MAX_PRESET_BEST, "designs")
                 }
                 TrialPresetKind::Encounters | TrialPresetKind::BeatYourStart | TrialPresetKind::Fleet | TrialPresetKind::Voyages => {}
+            }
+        }
+        for g in &lab.genes {
+            if !GENES.contains(&g.id.as_str()) {
+                out.push(Problem::error(format!("`{}` is not a gene the arena changes (one of {})", g.id, GENES.join(", "))).at(&src).field(format!("lab.genes[{}]", g.id)));
+            }
+        }
+        for p in &lab.gene_presets {
+            let at = format!("lab.gene_presets[{}].genes", p.id);
+            if p.genes.is_empty() {
+                out.push(Problem::error("no gene: nothing would change").at(&src).field(at.clone()));
+            }
+            for g in p.genes.iter().filter(|g| !GENES.contains(&g.as_str())) {
+                out.push(Problem::error(format!("`{g}` is not a gene (one of {})", GENES.join(", "))).at(&src).field(at.clone()));
+            }
+        }
+        for p in &lab.pilots {
+            let at = format!("lab.pilots[{}].flies", p.id);
+            let f = &p.flies;
+            if !(f.close_to.is_finite() && f.close_to > 0.0 && f.close_to <= 2.0) {
+                out.push(Problem::error(format!("{}: a share of the reach above 0 and at most 2", f.close_to)).at(&src).field(format!("{at}.close_to")));
+            }
+            let duty = |d: &Duty| [d.on, d.off].iter().all(|v| v.is_finite() && (0.0..=MAX_DUTY_SECONDS).contains(v)) && d.on > 0.0;
+            for (what, d) in [("stick", &f.stick), ("fire", &f.fire)] {
+                if d.as_ref().is_some_and(|d| !duty(d)) {
+                    out.push(Problem::error(format!("on above 0, on and off at most {MAX_DUTY_SECONDS} s")).at(&src).field(format!("{at}.{what}")));
+                }
             }
         }
         self.out.extend(out);

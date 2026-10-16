@@ -1,8 +1,10 @@
 //! The evolution lab's content (`lab.ron`, GDR-0092 "Content and the wiki"): the goals a run's fitness weighs, their
-//! one-click presets, and the trial presets the setup offers. What a goal or a trial kind computes is the arena's
-//! (`arena::evolve`); its words and numbers are here, so a pack can retune them. A run keeps the trials it was made
-//! with (resolved), so a change here changes no run. GDR-0092 step 8 completes the file (size presets, measures,
-//! stand-in profiles, operator weights, budgets) and gives it a wiki page.
+//! one-click presets, the genes a run may change and their presets, the trial presets the setup offers and the stand-in
+//! pilots that fly a design in its fights.
+//! What a goal or a trial kind computes is the arena's (`arena::evolve`), how a stand-in flies the sim's
+//! (`sim::flight::stand_in`); their words and numbers are here, so a pack can retune them. A run keeps the trials and
+//! the pilot it was made with (resolved), so a change here changes no run. GDR-0092 step 8 completes the file (size
+//! presets, measures, operator weights, budgets) and gives it a wiki page.
 
 use std::collections::BTreeMap;
 
@@ -12,6 +14,9 @@ use super::Source;
 
 /// The goals a run can weigh, by id: what the arena computes per job (`arena::evolve::GoalScores`).
 pub const GOALS: [&str; 4] = ["win", "unhurt", "quick", "cheap"];
+/// The genes a run may change (GDR-0092 "MAY CHANGE"), by id: what the arena's operators edit (`arena::evolve::Gene`,
+/// in this order).
+pub const GENES: [&str; 8] = ["layout", "parts", "armour", "power", "numbers", "rules", "assist_numbers", "assist_rules"];
 /// The largest weight a goal or a trial may have (the setup's steppers run 0 to this).
 pub const MAX_LAB_WEIGHT: f32 = 3.0;
 /// Bounds of a preset's numbers: seeds per opponent, ships of an entry, waves of a target, the run's best fought.
@@ -19,6 +24,8 @@ pub const MAX_PRESET_SEEDS: u32 = 64;
 pub const MAX_PRESET_SHIPS: u32 = 64;
 pub const MAX_PRESET_WAVES: u32 = 50;
 pub const MAX_PRESET_BEST: u32 = 16;
+/// The longest stretch a stand-in holds or leaves the stick or the triggers (s).
+pub const MAX_DUTY_SECONDS: f32 = 60.0;
 
 /// `lab.ron`: one per pack (a later pack's entry of the same id replaces an earlier one, in its place).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -30,6 +37,14 @@ pub struct Lab {
     pub goal_presets: Vec<GoalPreset>,
     #[serde(default)]
     pub trials: Vec<TrialPreset>,
+    /// The genes' words (MAY CHANGE's pills) and the one-click presets over them, the first the default.
+    #[serde(default)]
+    pub genes: Vec<LabGene>,
+    #[serde(default)]
+    pub gene_presets: Vec<GenePreset>,
+    /// The stand-in pilots, the first the default.
+    #[serde(default)]
+    pub pilots: Vec<LabPilot>,
     /// Where it was read from (the last pack that has one).
     #[serde(skip_deserializing)]
     pub source: Source,
@@ -53,6 +68,24 @@ pub struct GoalPreset {
     pub id: String,
     pub name: String,
     pub weights: BTreeMap<String, f32>,
+}
+
+/// A gene (GDR-0092 "MAY CHANGE"): one of [`GENES`] and its words.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabGene {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+}
+
+/// A preset of what may change (the pills EVERYTHING, DESIGN ONLY, ...): the genes on, the others off.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GenePreset {
+    pub id: String,
+    pub name: String,
+    pub genes: Vec<String>,
 }
 
 /// A trial preset (GDR-0092 "Trials"): a kind with its data, the words the setup shows, its weight and seeds in a new
@@ -101,6 +134,44 @@ pub enum TrialPresetKind {
     Voyages,
 }
 
+/// A stand-in pilot (GDR-0092 "The stand-in pilot"): it flies the design in the fights FLOWN BY a stand-in, so its
+/// pilot assists are scored (they act only on a piloted ship) and fill the channels it leaves idle, as for the player.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabPilot {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    pub flies: StandIn,
+}
+
+/// How a stand-in flies, every think: what a run carries of its pilot (`sim::flight::stand_in`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StandIn {
+    /// It locks the nearest enemy itself (LOCK TARGET's order) while it holds no lock; otherwise the lock is left to
+    /// the assists (an auto-lock's pick is taken as a player's client takes it).
+    #[serde(default)]
+    pub lock: bool,
+    /// It holds the stick towards the enemy while that one is farther than this share of its longest gun's reach.
+    pub close_to: f32,
+    /// When it holds the stick: none, never (it leaves thrust to the assists).
+    #[serde(default)]
+    pub stick: Option<Duty>,
+    /// When it holds every trigger: none, never (it leaves firing to the assists).
+    #[serde(default)]
+    pub fire: Option<Duty>,
+}
+
+/// On for `on` seconds, then off for `off` (0: always on), from the fight's start.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Duty {
+    pub on: f32,
+    #[serde(default)]
+    pub off: f32,
+}
+
 /// `count` ships of a content ship.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -131,7 +202,16 @@ impl Lab {
         self.trials.iter().find(|t| t.id == id)
     }
 
-    /// Ids listed twice in this file: ("goal", id), ("goal_preset", id) or ("trial", id).
+    pub fn gene(&self, id: &str) -> Option<&LabGene> {
+        self.genes.iter().find(|g| g.id == id)
+    }
+
+    pub fn pilot(&self, id: &str) -> Option<&LabPilot> {
+        self.pilots.iter().find(|p| p.id == id)
+    }
+
+    /// Ids listed twice in this file: ("goal", id), ("goal_preset", id), ("trial", id), ("gene", id), ("gene_preset",
+    /// id) or ("pilot", id).
     pub(crate) fn repeated(&self) -> Vec<(&'static str, String)> {
         fn twice<'a>(what: &'static str, ids: impl Iterator<Item = &'a String>, out: &mut Vec<(&'static str, String)>) {
             let mut seen = std::collections::BTreeSet::new();
@@ -145,6 +225,9 @@ impl Lab {
         twice("goal", self.goals.iter().map(|g| &g.id), &mut out);
         twice("goal_preset", self.goal_presets.iter().map(|g| &g.id), &mut out);
         twice("trial", self.trials.iter().map(|t| &t.id), &mut out);
+        twice("gene", self.genes.iter().map(|g| &g.id), &mut out);
+        twice("gene_preset", self.gene_presets.iter().map(|g| &g.id), &mut out);
+        twice("pilot", self.pilots.iter().map(|p| &p.id), &mut out);
         out
     }
 
@@ -162,6 +245,9 @@ impl Lab {
         upsert(&mut self.goals, &other.goals, |g| &g.id);
         upsert(&mut self.goal_presets, &other.goal_presets, |g| &g.id);
         upsert(&mut self.trials, &other.trials, |t| &t.id);
+        upsert(&mut self.genes, &other.genes, |g| &g.id);
+        upsert(&mut self.gene_presets, &other.gene_presets, |g| &g.id);
+        upsert(&mut self.pilots, &other.pilots, |p| &p.id);
         self.source = other.source.clone();
     }
 }

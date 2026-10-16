@@ -1,15 +1,18 @@
 //! Building a fight from a spec and running it, in one go ([`run_fight`]) or in slices ([`Fight::step`]). A client
 //! that steps the world itself (the fight viewer, GDR-0092) builds it with [`FightSetup::build`] and asks the
 //! [`Referee`] after every tick; [`Fight`] is the two together. A gauntlet (a spec with `waves`) is a fight whose
-//! referee sends side 1's next wave once the one before has no running vessel, as the test range does.
+//! referee sends side 1's next wave once the one before has no running vessel, as the test range does. An entry with a
+//! stand-in pilot (GDR-0092 "FLOWN BY") has its first ship flown by it, as its side's focus with the design's pilot
+//! assists: the referee gives it the pilot's input every tick it decides (`sim::flight::stand_in`).
 
 use std::sync::Arc;
 
 use data::{Blueprint, Content};
 use serde::{Deserialize, Serialize};
+use sim::flight::stand_in::stand_in;
 use sim::voyage::waves::wave_bodies;
 use sim::{
-    BehaviorId, BehaviorLibrary, Body, Owner, ShipCommand, ShipDesign, Sim, SimConfig, SimEvent,
+    BehaviorId, BehaviorLibrary, Body, Owner, ShipCommand, ShipDesign, ShipId, Sim, SimConfig, SimEvent,
     Stream, TickInputs, Vec2, VesselState,
 };
 
@@ -136,14 +139,18 @@ pub struct Referee {
     wave_at: Option<u64>,
     cleared: u32,
     fielded: f32,
+    /// The ships stand-in pilots fly, each with how it flies and its longest gun's reach.
+    pilots: Vec<(ShipId, data::StandIn, f32)>,
     result: Option<FightResult>,
 }
 
-/// One entry resolved against the content: its blueprint, its compiled design and its behavior.
+/// One entry resolved against the content: its blueprint, its compiled design, its behavior and its stand-in pilot
+/// (how it flies, the design's assists, the longest gun's reach).
 struct Resolved {
     blueprint: Blueprint,
     design: Arc<ShipDesign>,
     behavior: BehaviorId,
+    pilot: Option<(data::StandIn, Option<sim::AssistsId>, f32)>,
 }
 
 impl FightSetup {
@@ -200,10 +207,28 @@ impl FightSetup {
                             design: design.id.clone(),
                         })?,
                 };
+                let pilot = match &e.pilot {
+                    Some(p) => {
+                        let assists = match &blueprint.assists {
+                            Some(list) => Some(lib.add_assists(list).map_err(|errs| ArenaError::Blueprint {
+                                side,
+                                entry,
+                                problems: errs.iter().map(|e| e.to_string()).collect(),
+                            })?),
+                            None => None,
+                        };
+                        let report = sim::design_report(content, &blueprint, &SimConfig::default())
+                            .map_err(|e| ArenaError::Blueprint { side, entry, problems: vec![e] })?;
+                        let reach = report.guns.iter().map(|g| g.range).fold(0.0, f32::max);
+                        Some((p.flies.clone(), assists, reach))
+                    }
+                    None => None,
+                };
                 list.push(Resolved {
                     blueprint,
                     design,
                     behavior,
+                    pilot,
                 });
             }
             resolved.push(list);
@@ -217,8 +242,18 @@ impl FightSetup {
         }
         let mut sim = Sim::with_config(spec.seed, config);
         sim.set_behaviors(lib);
+        let mut pilots = Vec::new();
         for (side, resolved) in sides.iter().enumerate() {
-            spawn_side(&mut sim, side, spec, resolved);
+            let firsts = spawn_side(&mut sim, side, spec, resolved);
+            for (r, ship) in resolved.iter().zip(firsts) {
+                let Some((flies, assists, reach)) = &r.pilot else { continue };
+                sim.command(ship, ShipCommand::Focus);
+                sim.command(ship, ShipCommand::Assists(*assists));
+                if let Some(input) = stand_in(flies, &sim, ship, *reach) {
+                    sim.command(ship, ShipCommand::Pilot(input));
+                }
+                pilots.push((ship, flies.clone(), *reach));
+            }
         }
         let build_points = OWNERS.map(|o| kept(&sim, o).0);
         let referee = Referee {
@@ -241,6 +276,7 @@ impl FightSetup {
             wave_at: None,
             cleared: 0,
             fielded: build_points[1],
+            pilots,
             result: None,
         };
         let mut designs = sides.map(|side| {
@@ -269,6 +305,9 @@ impl Referee {
                 self.reinforce(sim);
             }
             self.result = self.end(sim);
+            if self.result.is_none() {
+                self.fly(sim);
+            }
         }
         self.result
     }
@@ -312,6 +351,15 @@ impl Referee {
             self.fielded += kept(sim, OWNERS[1]).0 - before;
             self.next_wave += 1;
             self.out_since[1] = None;
+        }
+    }
+
+    /// The stand-in pilots' input for the next tick, on the ticks they decide.
+    fn fly(&self, sim: &mut Sim) {
+        for (ship, flies, reach) in &self.pilots {
+            if let Some(input) = stand_in(flies, sim, *ship, *reach) {
+                sim.command(*ship, ShipCommand::Pilot(input));
+            }
         }
     }
 
@@ -519,10 +567,12 @@ pub(crate) fn resolve_design(
     Ok((bp, design))
 }
 
-/// Spawns one side's entries, one behind the other, each under its behavior. Side 0 stands at the origin with
-/// its noses to +y; side 1 is the same layout turned half a turn about the middle of the field.
-fn spawn_side(sim: &mut Sim, side: usize, spec: &FightSpec, resolved: &[Resolved]) {
+/// Spawns one side's entries, one behind the other, each under its behavior, and returns each entry's first ship.
+/// Side 0 stands at the origin with its noses to +y; side 1 is the same layout turned half a turn about the middle of
+/// the field.
+fn spawn_side(sim: &mut Sim, side: usize, spec: &FightSpec, resolved: &[Resolved]) -> Vec<ShipId> {
     let owner = OWNERS[side];
+    let mut firsts = Vec::new();
     let mut depth = 0.0;
     let mut prev_half: Option<f32> = None;
     for (r, e) in resolved.iter().zip(&spec.sides[side].entries) {
@@ -555,12 +605,16 @@ fn spawn_side(sim: &mut Sim, side: usize, spec: &FightSpec, resolved: &[Resolved
             };
             let id = sim.spawn_ship(Arc::clone(&r.design), owner, body);
             sim.command(id, ShipCommand::Behavior(Some(r.behavior)));
+            if k == 0 {
+                firsts.push(id);
+            }
         }
         if e.formation == Formation::Column {
             depth += (n as f32 - 1.0) * (h + FORMATION_GAP);
         }
         prev_half = Some(h / 2.0);
     }
+    firsts
 }
 
 /// Build points on side `side`'s vessels now, and how many vessels it has (what a client shows during a fight).

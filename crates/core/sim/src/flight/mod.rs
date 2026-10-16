@@ -27,6 +27,7 @@ mod pilot;
 
 pub mod maneuver;
 pub mod physics;
+pub mod stand_in;
 
 use core::f32::consts::{FRAC_PI_2, PI};
 
