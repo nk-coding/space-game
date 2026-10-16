@@ -136,6 +136,24 @@ pub enum Trial {
     CoEvolution,
 }
 
+impl Trial {
+    /// The kind's id, as `lab.ron` names it (`data::TRIAL_KINDS`, `data::TrialPresetKind::id`).
+    pub fn kind_id(&self) -> &'static str {
+        match self {
+            Trial::EnemyShips { .. } => "enemy_ships",
+            Trial::Encounters { .. } => "encounters",
+            Trial::Waves { .. } => "waves",
+            Trial::Gauntlet { .. } => "gauntlet",
+            Trial::BeatYourStart => "beat_your_start",
+            Trial::Fleet { .. } => "fleet",
+            Trial::HallOfFame { .. } => "hall_of_fame",
+            Trial::Champions { .. } => "champions",
+            Trial::Voyages { .. } => "voyages",
+            Trial::CoEvolution => "co_evolution",
+        }
+    }
+}
+
 /// The goals' weights (GDR-0092 "GOALS", the setup's sliders). Left out: WIN alone.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

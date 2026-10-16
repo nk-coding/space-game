@@ -21,6 +21,8 @@ pub enum Kind {
     Family,
     /// A research node: what it costs, needs and unlocks.
     Research,
+    /// A building of the home shipyard that research opens (GDR-0071, GDR-0092): the evolution lab.
+    Facility,
     /// How a new game begins.
     Start,
     /// A voyage: one small cluster with seeded sites (GDR-0062).
@@ -34,7 +36,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 16] = [
+    pub const ALL: [Kind; 17] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
@@ -46,6 +48,7 @@ impl Kind {
         Kind::Behavior,
         Kind::Family,
         Kind::Research,
+        Kind::Facility,
         Kind::Start,
         Kind::Voyage,
         Kind::Encounter,
@@ -66,6 +69,7 @@ impl Kind {
             Kind::Behavior => "behavior",
             Kind::Family => "family",
             Kind::Research => "research",
+            Kind::Facility => "facility",
             Kind::Start => "start",
             Kind::Voyage => "voyage",
             Kind::Encounter => "encounter",
@@ -88,6 +92,7 @@ impl Kind {
             Kind::Behavior => Some("behaviors"),
             Kind::Family => Some("families"),
             Kind::Research => Some("research"),
+            Kind::Facility => Some("facilities"),
             Kind::Start => Some("starts"),
             Kind::Voyage => Some("voyages"),
             Kind::Encounter => Some("encounters"),

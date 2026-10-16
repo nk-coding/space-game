@@ -114,6 +114,7 @@ once. There is no research time. The line above the button says what happened, o
 | SIZE CLASS | a bigger frame for bigger hulls |
 | REFINEMENT | a small step in a chain, such as more mind capacity |
 | ALIEN TECH | needs reverse-engineered alien technology |
+| FACILITY | opens a building of the shipyard |
 
 ### The nodes
 
@@ -128,8 +129,10 @@ once. There is no research time. The line above the button says what happened, o
 | [[research:tamed_core]] | [[research:tamed_core.cost]] | [[research:tamed_core.requires]] | [[research:tamed_core.unlocks]] |
 | [[research:mind_expansion_1]] | [[research:mind_expansion_1.cost]] | [[research:mind_expansion_1.requires]] | [[research:mind_expansion_1.unlocks]] |
 | [[research:mind_expansion_2]] | [[research:mind_expansion_2.cost]] | [[research:mind_expansion_2.requires]] | [[research:mind_expansion_2.unlocks]] |
+| [[research:simulation_vault]] | [[research:simulation_vault.cost]] | [[research:simulation_vault.requires]] | [[research:simulation_vault.unlocks]] |
 
-A node unlocks one or more of four things: a part, an armour material, a drydock frame, or more mind capacity.
+A node unlocks one or more of five things: a part, an armour material, a drydock frame, more mind capacity, or a
+building of the shipyard (the [evolution lab](/mechanics/evolution-lab)).
 Unlocks are for good. A newly unlocked part shows a gold NEW tag in the drydock until you pick it.
 
 ## Locked content
@@ -143,7 +146,9 @@ A new game has every part, armour and frame that isn't marked locked. The rest i
 - A design that uses locked parts can still be opened, looked at and test-flown, but it is not **voyage-ready**: you
   can't take it on a voyage until you have researched what it uses.
 
-See [the drydock](/mechanics/drydock#locked-parts).
+See [the drydock](/mechanics/drydock#locked-parts). A locked building at home (the [[facility:evolution]] lab) is
+dark, says LOCKED and names the node that opens it in its tooltip; a click on it opens the research screen on that
+node.
 
 ## Mind capacity
 

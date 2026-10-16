@@ -54,6 +54,7 @@ impl Wiki<'_> {
             Unlock::Part(id) => self.a_badged(root, Kind::Part, id),
             Unlock::Material(id) => self.a_badged(root, Kind::Material, id),
             Unlock::Frame(id) => self.a_badged(root, Kind::Frame, id),
+            Unlock::Facility(id) => self.a_badged(root, Kind::Facility, id),
             Unlock::MindCapacity(x) => format!("Mind capacity&nbsp;+{x}"),
         }
     }
@@ -293,6 +294,10 @@ impl Wiki<'_> {
                     ),
                     None => continue,
                 },
+                Unlock::Facility(id) => match self.c.facilities.get(id) {
+                    Some(f) => (String::new(), self.a_badged(root, Kind::Facility, id), self.text(root, &f.summary)),
+                    None => continue,
+                },
                 Unlock::MindCapacity(x) => (
                     String::new(),
                     format!("Mind capacity +{x}"),
@@ -329,6 +334,21 @@ impl Wiki<'_> {
         self.entry(
             n,
             EntryParts {
+                facts,
+                sections,
+                ..Default::default()
+            },
+        )
+    }
+
+    /// A facility of the home shipyard: whether a new game has it, and the research that opens it.
+    pub(crate) fn facility_page(&self, f: &data::Facility) -> String {
+        let facts = vec![("At home".to_string(), if f.locked { "dark until researched".into() } else { "open from the start".into() })];
+        let sections = self.unlocked_by(&Unlock::Facility(f.id.clone()), f.locked).into_iter().collect();
+        self.entry(
+            f,
+            EntryParts {
+                badges: badges(f.locked, &[]),
                 facts,
                 sections,
                 ..Default::default()

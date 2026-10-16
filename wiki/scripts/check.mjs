@@ -30,9 +30,9 @@ const walk = (d) => {
 walk(dist)
 const have = new Set(files)
 
-// Every entry and every hand-written page has its page.
+// Every entry and every hand-written page has its page (an entry of the lab's page its row there, below).
 const refs = JSON.parse(fs.readFileSync(path.join(root, 'gen', 'refs.json'), 'utf8'))
-for (const [key, e] of Object.entries(refs.entries)) if (!have.has(e.url)) fail(`no page for ${key} (${e.url})`)
+for (const [key, e] of Object.entries(refs.entries)) if (!have.has(e.url.split('#')[0])) fail(`no page for ${key} (${e.url})`)
 const nav = JSON.parse(fs.readFileSync(path.join(root, 'nav.json'), 'utf8'))
 const handPages = ['index', ...nav.flatMap((s) => s.items)]
 for (const p of handPages) if (!have.has(`${p}.html`)) fail(`no page for the hand-written ${p}.md`)
@@ -49,6 +49,10 @@ const idsOf = (f) => {
     ids.set(f, new Set([...text.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])))
   }
   return ids.get(f)
+}
+for (const [key, e] of Object.entries(refs.entries)) {
+  const [page, anchor] = e.url.split('#')
+  if (anchor && have.has(page) && !idsOf(page).has(anchor)) fail(`no anchor for ${key} (${e.url})`)
 }
 const pages = files.filter((f) => f.endsWith('.html'))
 let links = 0

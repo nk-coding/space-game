@@ -11,6 +11,8 @@
       "mechanics/drydock",
       "mechanics/voyages",
       "mechanics/career",
+      "mechanics/evolution-lab",
+      "mechanics/evolution-trials",
       "mechanics/controls"
     ]
   },

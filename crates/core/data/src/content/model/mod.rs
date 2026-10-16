@@ -4,8 +4,9 @@
 //! Structs deny unknown fields so typos fail loudly. Numbers are `f32`, containers are ordered.
 //!
 //! The kinds are split by subject: parts and materials (`parts.rs`), ships (`ships.rs`), behaviors
-//! (`behaviors.rs`), progression (`progression.rs`), voyages and encounters (`voyages.rs`), the evolution lab's
-//! goals and trial presets (`lab.rs`, one `lab.ron` per pack, no entry kind of its own yet); the shared header, packs,
+//! (`behaviors.rs`), progression and the station's facilities (`progression.rs`), voyages and encounters
+//! (`voyages.rs`), the evolution lab's goals, trials, genes, pilots, sizes and measures (`lab.rs`, one `lab.ron` per
+//! pack, not an entry kind: its texts are keyed `lab.<list>.<id>.<field>`); the shared header, packs,
 //! stats, categories and factions here. Every type is reached as `content::model::*` (and `data::*`).
 
 use std::collections::BTreeMap;
@@ -15,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::content::kind::Kind;
 
 pub use controls::Control;
-pub use lab::{Duty, EnemyPalette, GENES, GOALS, GenePreset, GoalPreset, Lab, LabGene, LabGoal, LabPilot, LabShips, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, StandIn, TrialPreset, TrialPresetKind};
+pub use lab::{Duty, EnemyPalette, GENES, GOALS, GenePreset, GoalPreset, Lab, LabAxis, LabBudget, LabGene, LabGoal, LabKind, LabMeasure, LabPilot, LabShips, LabSize, LabSpread, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, MEASURES, SPREADS, StandIn, TRIAL_KINDS, TrialPreset, TrialPresetKind};
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RcsSpec, SalvageSpec, Selector, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
-pub use progression::{Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};
+pub use progression::{Facility, Family, ResearchCost, ResearchKind, ResearchNode, Start, Unlock};
 pub use ships::{AssistList, Blueprint, Frame, Icon, MAX_ASSIST_TOGGLES, MAX_WEAPON_GROUP, Origin, Placement};
 pub use voyages::{Encounter, EncounterShips, EncounterWrecks, Voyage, VoyageSite};
 

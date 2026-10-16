@@ -6,6 +6,8 @@
 //   [[part:thruster|thrusters]]  the same link with a label
 //   [[part:thruster.thrust]]     a value as the game shows it ("200 kN")
 //   [[sim:tick_hz]]              a constant of the simulation ("30 Hz")
+//   [[lab:trial.voyages]]        an entry of the evolution lab's data, linked to its row on the lab's page
+//   [[lab:size.deep.population]] one of its values ("64")
 //   ```behavior / ```assists     a rule list: its linked text and its graph, rendered by content-tool
 import type MarkdownIt from 'markdown-it'
 
@@ -33,16 +35,15 @@ export function refsPlugin(md: MarkdownIt, refs: Refs, base: string) {
       if (v === undefined) throw new Error(`${where}: [[${ref}]]: unknown sim constant (run npm run gen)`)
       return `<span class="sg-value">${esc(v)}</span>`
     }
+    // Entries first: the lab's (`lab:trial.voyages`) have a dot in their key.
+    const e = refs.entries[target]
+    if (e) return `<a class="sg-ref" href="${base}${e.url}">${vueSafe(esc(label ?? e.name))}</a>`
     const colon = target.indexOf(':')
     const rest = target.slice(colon + 1)
-    if (/[.@]/.test(rest)) {
-      const v = refs.values[target]
-      if (v === undefined) throw new Error(`${where}: [[${ref}]]: no such value (run npm run gen)`)
-      return `<span class="sg-value">${fill(v)}</span>`
-    }
-    const e = refs.entries[target]
-    if (!e) throw new Error(`${where}: [[${ref}]]: no such entry (run npm run gen)`)
-    return `<a class="sg-ref" href="${base}${e.url}">${vueSafe(esc(label ?? e.name))}</a>`
+    if (!/[.@]/.test(rest)) throw new Error(`${where}: [[${ref}]]: no such entry (run npm run gen)`)
+    const v = refs.values[target]
+    if (v === undefined) throw new Error(`${where}: [[${ref}]]: no such value (run npm run gen)`)
+    return `<span class="sg-value">${fill(v)}</span>`
   }
 
   // A line break between two references (`[[a]]\n[[b]]`) is a whitespace-only text node between two elements, which

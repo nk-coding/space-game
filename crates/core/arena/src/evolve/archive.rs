@@ -40,6 +40,39 @@ pub enum Measure {
 }
 
 impl Measure {
+    pub const ALL: [Measure; 10] = [
+        Measure::TopSpeed,
+        Measure::Acceleration,
+        Measure::WeaponReach,
+        Measure::BuildPoints,
+        Measure::Mass,
+        Measure::Firepower,
+        Measure::HitPoints,
+        Measure::Parts,
+        Measure::Rules,
+        Measure::EngageDistance,
+    ];
+
+    /// Its id, as `lab.ron` names it (`data::MEASURES`).
+    pub fn id(self) -> &'static str {
+        match self {
+            Measure::TopSpeed => "top_speed",
+            Measure::Acceleration => "acceleration",
+            Measure::WeaponReach => "weapon_reach",
+            Measure::BuildPoints => "build_points",
+            Measure::Mass => "mass",
+            Measure::Firepower => "firepower",
+            Measure::HitPoints => "hit_points",
+            Measure::Parts => "parts",
+            Measure::Rules => "rules",
+            Measure::EngageDistance => "engage_distance",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Measure> {
+        Measure::ALL.into_iter().find(|m| m.id() == id)
+    }
+
     /// Needs the arena pool's fights.
     pub fn needs_fights(self) -> bool {
         self == Measure::EngageDistance

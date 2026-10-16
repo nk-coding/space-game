@@ -259,21 +259,24 @@ pub enum VoyageEnd {
     Lost { ticks: u64 },
 }
 
-/// What the player may build with: parts, materials and frames. Derived ([`Career::unlocks`]), never stored.
+/// What the player may build with (parts, materials and frames) and the home shipyard's facilities open to them.
+/// Derived ([`Career::unlocks`]), never stored.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Unlocks {
     pub parts: BTreeSet<String>,
     pub materials: BTreeSet<String>,
     pub frames: BTreeSet<String>,
+    pub facilities: BTreeSet<String>,
 }
 
 impl Unlocks {
-    /// Every part, material and frame of the content, locked or not (the development switch `?unlock=all`).
+    /// Every part, material, frame and facility of the content, locked or not (the development switch `?unlock=all`).
     pub fn all(content: &Content) -> Unlocks {
         Unlocks {
             parts: content.parts.iter().map(|p| p.id.clone()).collect(),
             materials: content.materials.iter().map(|m| m.id.clone()).collect(),
             frames: content.frames.iter().map(|f| f.id.clone()).collect(),
+            facilities: content.facilities.iter().map(|f| f.id.clone()).collect(),
         }
     }
 
@@ -287,6 +290,10 @@ impl Unlocks {
 
     pub fn has_frame(&self, id: &str) -> bool {
         self.frames.contains(id)
+    }
+
+    pub fn has_facility(&self, id: &str) -> bool {
+        self.facilities.contains(id)
     }
 }
 
@@ -493,19 +500,21 @@ impl Career {
         changed
     }
 
-    /// What the player may build with: every part, material and frame that is not `locked` in the content, plus
-    /// every part, material and frame a researched node unlocks.
+    /// What the player may build with and the facilities open: every part, material, frame and facility that is not
+    /// `locked` in the content, plus every one a researched node unlocks.
     pub fn unlocks(&self, content: &Content) -> Unlocks {
         let mut u = Unlocks {
             parts: open_ids(content.parts.iter().map(|p| (&p.id, p.locked))),
             materials: open_ids(content.materials.iter().map(|m| (&m.id, m.locked))),
             frames: open_ids(content.frames.iter().map(|f| (&f.id, f.locked))),
+            facilities: open_ids(content.facilities.iter().map(|f| (&f.id, f.locked))),
         };
         for unlock in self.researched_unlocks(content) {
             match unlock {
                 Unlock::Part(id) => u.parts.insert(id.clone()),
                 Unlock::Material(id) => u.materials.insert(id.clone()),
                 Unlock::Frame(id) => u.frames.insert(id.clone()),
+                Unlock::Facility(id) => u.facilities.insert(id.clone()),
                 Unlock::MindCapacity(_) => false,
             };
         }

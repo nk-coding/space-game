@@ -363,7 +363,7 @@ mod tests {
         app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));
         app.update();
         assert_eq!(app.world().resource::<Lab>().request, Some(LabRequest::Setup(StartPick::Design("my_skiff".into()))));
-        // A dark lab (no `?lab=1`) has no such item, and the action does nothing.
+        // A locked lab (no Simulation vault yet) has no such item, and the action does nothing.
         let mut app = self::app();
         app.world_mut().resource_mut::<Lab>().enabled = false;
         app.world_mut().write_message(DrydockAction::Rare(Rare::Evolve));

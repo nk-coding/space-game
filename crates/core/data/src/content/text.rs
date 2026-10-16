@@ -97,6 +97,9 @@ impl Content {
                 );
             }
         }
+        for (key, text) in self.lab.texts() {
+            out.insert(key, text.to_string());
+        }
         out
     }
 
@@ -120,6 +123,7 @@ impl Content {
         each(self.behaviors.as_slice(), &mut f);
         each(self.families.as_slice(), &mut f);
         each(self.research.as_slice(), &mut f);
+        each(self.facilities.as_slice(), &mut f);
         each(self.starts.as_slice(), &mut f);
         each(self.voyages.as_slice(), &mut f);
         each(self.encounters.as_slice(), &mut f);

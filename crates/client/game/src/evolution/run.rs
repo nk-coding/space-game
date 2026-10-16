@@ -441,48 +441,16 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
     layer.dirty = true;
 }
 
-/// A measure's label and unit: the content's stat where it has one, else words of the lab's own (its `lab.ron`
-/// comes with GDR-0092 step 8).
+/// A measure's label and unit (`lab.ron`'s: a stat's words or its own), its id for a measure the content lacks.
 fn measure_words(content: &Content, m: Measure) -> (String, String) {
-    let stat = match m {
-        Measure::TopSpeed => Some("top_speed"),
-        Measure::Acceleration => Some("acceleration"),
-        Measure::WeaponReach => Some("range"),
-        Measure::BuildPoints => Some("build_points"),
-        Measure::Mass => Some("mass"),
-        Measure::Firepower => Some("firepower"),
-        Measure::HitPoints => Some("hp"),
-        Measure::Parts | Measure::Rules | Measure::EngageDistance => None,
-    };
-    match stat.and_then(|id| content.stats.get(id)) {
-        Some(d) => (d.name.to_uppercase(), d.unit.clone()),
-        None => match m {
-            Measure::Parts => ("PARTS".into(), String::new()),
-            Measure::Rules => ("RULES".into(), String::new()),
-            _ => ("ENGAGE DISTANCE".into(), "m".into()),
-        },
-    }
+    content.lab.measure_words(&content.stats, m.id()).map_or_else(|| (m.id().to_uppercase(), String::new()), |(name, unit)| (name.to_uppercase(), unit.to_string()))
 }
 
-/// A trial's name: its `lab.ron` preset's, else its kind's in words.
+/// A trial's name: its `lab.ron` preset's, else its kind's.
 fn trial_name(content: &Content, t: &TrialSpec) -> String {
-    use world::arena::evolve::Trial as T;
-    if let Some(p) = t.preset.as_deref().and_then(|id| content.lab.trial(id)) {
-        return p.name.to_uppercase();
-    }
-    match &t.kind {
-        T::EnemyShips { .. } => "ENEMY SHIPS",
-        T::Encounters { .. } => "THE ENEMIES YOU MEET",
-        T::Waves { .. } => "TEST-RANGE WAVES",
-        T::Gauntlet { .. } => "A GAUNTLET",
-        T::BeatYourStart => "BEAT YOUR START",
-        T::Fleet { .. } => "YOUR FLEET",
-        T::HallOfFame { .. } => "HALL OF FAME",
-        T::Champions { .. } => "CHAMPIONS",
-        T::Voyages { .. } => "VOYAGES",
-        T::CoEvolution => "CO-EVOLUTION",
-    }
-    .into()
+    let id = t.kind.kind_id();
+    let name = t.preset.as_deref().and_then(|p| content.lab.trial(p)).map(|p| &p.name).or(content.lab.kind(id).map(|k| &k.name));
+    name.map_or_else(|| id.to_uppercase(), |n| n.to_uppercase())
 }
 
 /// A fight's opponent side in words (side 1, or side 0 for an enemy of the arms race, which is side 1): `2 × AUTOMATON

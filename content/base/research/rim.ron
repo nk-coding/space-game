@@ -2,7 +2,8 @@
 // defaults, 13 Oct 2026; costs about halved by the slice tuning of the same day, GDR-0073, to fit what the starter's
 // hold brings home: docs/results/slice-balance-2026-10-13.md): costs are research data per family (from salvage) and
 // materials, paid at once; a node unlocks the moment it is paid (GDR-0063). Reactive armour, the automaton plate and
-// the capital frame stay locked.
+// the capital frame stay locked. The simulation vault opens the evolution lab (GDR-0092: in the logic family and
+// cheap, 3 logic data, PLACEHOLDER).
 [
     (
         id: "automaton_cannon",
@@ -78,6 +79,16 @@
         cost: (data: {"logic": 16}, materials: {"programmable_matter": 5}),
         requires: ["mind_expansion_1"],
         unlocks: [MindCapacity(1)],
+    ),
+    (
+        id: "simulation_vault",
+        name: "Simulation vault",
+        summary: "Wakes the compute stack above the mind: the evolution lab.",
+        description: "Opens the [[facility:evolution]] lab at home. Its runs cost nothing.",
+        family: "logic",
+        kind: Facility,
+        cost: (data: {"logic": 3}),
+        unlocks: [Facility("evolution")],
     ),
     (
         id: "cruiser_drydock",

@@ -190,6 +190,41 @@ fn the_wiki_is_complete_and_consistent() {
     assert!(site.files.keys().filter(|p| p.ends_with(".md")).count() > 100);
 }
 
+/// The lab's page has a row for every entry of `lab.ron`, where its references link; a hand-written page names the
+/// lab's entries and values, and an entry of a documented list that no page names fails the check.
+#[test]
+fn the_lab_page_and_its_references() {
+    let c = base();
+    let w = Wiki::new(&c);
+    let site = gen_files(&c);
+    let lab = std::str::from_utf8(&site.files[&format!("{}.md", pages::LAB_PAGE)]).unwrap().to_string();
+    let entries = w.lab_entries(ROOT);
+    let refs = refs::Refs::new(&w);
+    for e in &entries {
+        assert!(lab.contains(&format!("<tr id=\"{}\">", e.anchor())), "the lab's page lacks {}", e.key);
+        assert_eq!(refs.entries[&format!("lab:{}", e.key)].1, format!("{}.html#{}", pages::LAB_PAGE, e.anchor()));
+    }
+    for list in pages::LAB_DOCUMENTED {
+        assert!(entries.iter().any(|e| e.key.starts_with(&format!("{list}."))), "no {list} in the base lab");
+    }
+    assert!(refs.check("lab:trial.voyages").is_ok() && refs.check("lab:trial.voyages|voyages").is_ok());
+    let standard = c.lab.default_size().unwrap();
+    assert_eq!(refs.values["lab:size.standard.population"], standard.population.to_string());
+    assert!(refs.check("lab:size.standard.population|x").is_err(), "a value takes no label");
+    assert!(refs.check("lab:spread.design").is_ok() && refs.check("lab:budget.layer_open").is_ok());
+    assert!(refs.check("lab:trial.no_such_trial").unwrap_err().contains("no lab entry"));
+    // A wiki that names one trial leaves every other entry of the documented lists undocumented.
+    let hand = [
+        hand::HandFile { path: "nav.json".into(), text: Some(r#"[{ "text": "Lab", "items": ["lab"] }]"#.into()) },
+        hand::HandFile { path: "lab.md".into(), text: Some("---\ntitle: Lab\ndescription: The lab.\n---\n\n[[lab:trial.voyages.seeds]] and [[lab:measure.mass]]\n".into()) },
+    ];
+    let errors = generate(&c, &hand).errors;
+    assert!(!errors.iter().any(|e| e.contains("[[lab:trial.voyages]]")), "a value of it names it: {errors:?}");
+    assert!(errors.iter().any(|e| e.contains("[[lab:trial.arms_race]]: no hand-written page names it")), "{errors:?}");
+    assert!(errors.iter().any(|e| e.contains("[[lab:pilot.casual]]")) && errors.iter().any(|e| e.contains("[[lab:kind.co_evolution]]")));
+    assert!(!errors.iter().any(|e| e.contains("[[lab:measure.")), "measures are not a documented list");
+}
+
 #[test]
 fn every_content_item_has_a_page() {
     let c = base();
@@ -206,6 +241,7 @@ fn every_content_item_has_a_page() {
     want.extend(c.behaviors.iter().map(|e| (Kind::Behavior, e.id.clone())));
     want.extend(c.families.iter().map(|e| (Kind::Family, e.id.clone())));
     want.extend(c.research.iter().map(|e| (Kind::Research, e.id.clone())));
+    want.extend(c.facilities.iter().map(|e| (Kind::Facility, e.id.clone())));
     want.extend(c.starts.iter().map(|e| (Kind::Start, e.id.clone())));
     want.extend(c.controls.iter().map(|e| (Kind::Control, e.id.clone())));
     want.extend(c.voyages.iter().map(|e| (Kind::Voyage, e.id.clone())));
@@ -241,6 +277,8 @@ fn every_content_item_has_a_page() {
         assert!(page(&site, "index.html").contains(&format!("href=\"../{}\"", list_path(kind))));
     }
     pages.push("reference/index.md".into());
+    pages.push(format!("{}.md", pages::LAB_PAGE));
+    assert!(sidebar.contains(&format!("\"/{}\"", pages::LAB_PAGE)), "the sidebar lacks the lab's page");
     // Nothing else but the data files, the sprite, the tokens and the fonts.
     let data = ["refs.json", "ui.json", "sidebar.json", "sprite.svg", "tokens.css"];
     let extra: Vec<&String> = site
@@ -461,7 +499,12 @@ fn career_pages_link_both_ways() {
     has("research.html", "href=\"../research/cruiser_drydock.html\"");
     lacks("research.html", "href=\"../families/shields.html\"");
     has("families.html", "href=\"../families/utility.html\"");
-    has("families.html", "3 research nodes");
+    has("families.html", "4 research nodes");
+    // A facility: the research that opens it, and back.
+    has("research/simulation_vault.html", "href=\"../facilities/evolution.html\"");
+    has("facilities/evolution.html", "href=\"../research/simulation_vault.html\"");
+    has("facilities/evolution.html", "class=\"badge locked\"");
+    has("facilities.html", "href=\"../research/simulation_vault.html\"");
     has(
         "starts.html",
         "<a class=\"card\" href=\"../starts/rim_awakening.html\">",

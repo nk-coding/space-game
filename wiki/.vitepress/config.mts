@@ -90,7 +90,7 @@ export default defineConfig({
       {
         text: 'Reference',
         link: '/reference/',
-        activeMatch: '^/(reference|materials|categories|ships|frames|factions|research|families|starts|voyages|encounters|behaviors|behavior_nodes|stats|controls|pages)/',
+        activeMatch: '^/(reference|materials|categories|ships|frames|factions|research|families|facilities|starts|voyages|encounters|behaviors|behavior_nodes|stats|controls|pages)/',
       },
     ],
     sidebar: [...handSidebar, reference],

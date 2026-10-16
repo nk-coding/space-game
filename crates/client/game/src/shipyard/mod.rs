@@ -22,9 +22,9 @@
 //! **States** (from the career, [`lights`]): research is lit once anything has been researched or any research
 //! node can be paid now; the gate is awake while any voyage is open (a new game opens its first one, so it is
 //! awake from the start); the moorings hold the FLEET's escorts; the LOG's mast glows while a voyage's result waits
-//! there unread; the EVOLUTION lab ([`draw::Evo`], from `world::evolution::Lab`) is dark without `?lab=1` (its
-//! research node comes with GDR-0092 step 8), dim without a run, busy while one computes, gold once one has
-//! finished until it is opened; the fabricator and the salvage bay stay dark until they have screens.
+//! there unread; the EVOLUTION lab ([`draw::Evo`], from `world::evolution::Lab`) is dark until its research node (the
+//! Simulation vault) is researched, dim without a run, busy while one computes, gold once one has finished until it
+//! is opened; the fabricator and the salvage bay stay dark until they have screens.
 //!
 //! **In the drydock** the walls and the parked cranes stay around the frame (the drydock's veil dims them outside
 //! its grid viewport); the floor, the yard and the drones are home's alone. **On the research screen** the whole

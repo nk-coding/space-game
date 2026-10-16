@@ -6,9 +6,11 @@
 //!
 //! * one page per entry of every kind, `<kind dir>/<id>.md` (`parts/fission_reactor.md`; free articles under
 //!   `pages/`), and one list per kind, `<kind dir>/index.md`, plus `reference/index.md` (every kind, the packs).
+//!   The evolution lab's page, `reference/lab.md`, shows `lab.ron`.
 //!   The site serves them at the same paths (`parts/fission_reactor.html`). They are Markdown files that hold
 //!   only HTML blocks, which Vue leaves alone (`v-pre`), with the headings the site's outline and search use;
-//! * `refs.json`: what hand-written pages may reference (`[[kind:id]]`, `[[kind:id.field]]`, `[[sim:name]]`) and
+//! * `refs.json`: what hand-written pages may reference (`[[kind:id]]`, `[[kind:id.field]]`, `[[sim:name]]`,
+//!   `[[lab:list.id]]`) and
 //!   the rendered rule examples, for the site's Markdown plugin at build time;
 //! * `ui.json` (what the site's components show: cards, the parts table, controls, nodes) and `sidebar.json`;
 //! * `sprite.svg` (the pack's icons as symbols), `tokens.css` (`art/tokens.json` as CSS variables) and `fonts/`.
@@ -62,7 +64,7 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages. Every [`Kind`] is here (a test checks).
-pub const KINDS: [(Kind, &str); 16] = [
+pub const KINDS: [(Kind, &str); 17] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -71,6 +73,7 @@ pub const KINDS: [(Kind, &str); 16] = [
     (Kind::Faction, "Factions"),
     (Kind::Research, "Research"),
     (Kind::Family, "Families"),
+    (Kind::Facility, "Facilities"),
     (Kind::Start, "Starts"),
     (Kind::Voyage, "Voyages"),
     (Kind::Encounter, "Encounters"),
@@ -192,6 +195,16 @@ pub fn generate(c: &Content, hand: &[hand::HandFile]) -> Site {
             body: w.reference(),
         },
     );
+    put(
+        format!("{}.md", pages::LAB_PAGE),
+        Page {
+            title: "Evolution lab".into(),
+            description: "The evolution lab's goals, trials, genes, stand-in pilots, sizes and measures, from the content.".into(),
+            entry: None,
+            wide: false,
+            body: w.lab_page(),
+        },
+    );
     // One page per entry, below the list of its kind.
     let mut entry = |kind: Kind, id: &str, name: &str, summary: &str, body: String| {
         put(
@@ -237,6 +250,9 @@ pub fn generate(c: &Content, hand: &[hand::HandFile]) -> Site {
     }
     for e in &c.research {
         entry(Kind::Research, &e.id, &e.name, &e.summary, w.research_page(e));
+    }
+    for e in &c.facilities {
+        entry(Kind::Facility, &e.id, &e.name, &e.summary, w.facility_page(e));
     }
     for e in &c.starts {
         entry(Kind::Start, &e.id, &e.name, &e.summary, w.start_page(e));
@@ -591,6 +607,7 @@ impl<'a> Wiki<'a> {
             Kind::Part => self.c.parts.get(id).is_some_and(|p| p.locked),
             Kind::Material => self.c.materials.get(id).is_some_and(|m| m.locked),
             Kind::Frame => self.c.frames.get(id).is_some_and(|f| f.locked),
+            Kind::Facility => self.c.facilities.get(id).is_some_and(|f| f.locked),
             _ => false,
         }
     }
@@ -1121,6 +1138,9 @@ impl<'a> Wiki<'a> {
                 Kind::Family => {
                     flat(kind, c.families.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
                 }
+                Kind::Facility => {
+                    flat(kind, c.facilities.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
                 Kind::Start => flat(kind, c.starts.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::Voyage => {
                     flat(kind, c.voyages.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
@@ -1142,6 +1162,7 @@ impl<'a> Wiki<'a> {
                 "items": items,
             }));
         }
+        out.push(json!({ "text": "Evolution lab", "link": format!("/{}", pages::LAB_PAGE) }));
         Value::Array(out)
     }
 }

@@ -263,11 +263,13 @@ pub fn kind_words(kind: ResearchKind) -> &'static str {
         ResearchKind::SizeClass => "SIZE CLASS",
         ResearchKind::Refinement => "REFINEMENT",
         ResearchKind::Alien => "ALIEN TECH",
+        ResearchKind::Facility => "FACILITY",
     }
 }
 
 /// What a node's unlocks give, in words: `Beam laser in the drydock, unlimited`, `Composite armour in the
-/// drydock`, `The cruiser frame in the drydock`, `One more logic core in the mind (runs 3)`; joined by `; `.
+/// drydock`, `The cruiser frame in the drydock`, `One more logic core in the mind (runs 3)`, `Evolution opens at
+/// home`; joined by `; `.
 /// `capacity` is the mind's capacity now.
 pub fn gives(content: &Content, node: &ResearchNode, capacity: u32) -> String {
     let mut capacity = capacity;
@@ -282,17 +284,20 @@ pub fn gives(content: &Content, node: &ResearchNode, capacity: u32) -> String {
                 let more = if *n == 1 { "One more logic core".to_string() } else { format!("{n} more logic cores") };
                 format!("{more} in the mind (runs {capacity})")
             }
+            Unlock::Facility(f) => format!("{} opens at home", content.facilities.get(f).map_or(f.as_str(), |f| f.name.as_str())),
         })
         .collect::<Vec<_>>()
         .join("; ")
 }
 
-/// The line after an UNLOCK: `BEAM LASER · NOW IN THE DRYDOCK`, `MIND EXPANSION I · YOUR MIND RUNS 3 CORES`
-/// (`capacity` is the mind's capacity after it).
+/// The line after an UNLOCK: `BEAM LASER · NOW IN THE DRYDOCK`, `MIND EXPANSION I · YOUR MIND RUNS 3 CORES`,
+/// `SIMULATION VAULT · OPEN AT HOME` (`capacity` is the mind's capacity after it).
 pub fn unlocked_words(node: &ResearchNode, capacity: u32) -> String {
     let name = node.name.to_uppercase();
-    if node.unlocks.iter().any(|u| !matches!(u, Unlock::MindCapacity(_))) {
+    if node.unlocks.iter().any(|u| matches!(u, Unlock::Part(_) | Unlock::Material(_) | Unlock::Frame(_))) {
         format!("{name}  ·  NOW IN THE DRYDOCK")
+    } else if node.unlocks.iter().any(|u| matches!(u, Unlock::Facility(_))) {
+        format!("{name}  ·  OPEN AT HOME")
     } else {
         format!("{name}  ·  YOUR MIND RUNS {capacity} CORES")
     }
@@ -339,8 +344,9 @@ mod tests {
         (tree.lanes[c.lane].family.clone(), c.row, c.column)
     }
 
-    /// The base pack's nine nodes: six lanes (families with nodes, content order), three columns (the mind
-    /// expansions' chain), connectors along the chains.
+    /// The base pack's ten nodes: six lanes (families with nodes, content order), three columns (the mind
+    /// expansions' chain), connectors along the chains; the simulation vault under the tamed core (both need
+    /// nothing).
     #[test]
     fn lanes_follow_the_families_and_columns_the_requirement_depth() {
         let content = data::base_content();
@@ -354,9 +360,10 @@ mod tests {
         assert_eq!(at(&tree, "tamed_core"), ("logic".into(), 0, 0));
         assert_eq!(at(&tree, "mind_expansion_1"), ("logic".into(), 0, 1));
         assert_eq!(at(&tree, "mind_expansion_2"), ("logic".into(), 0, 2));
+        assert_eq!(at(&tree, "simulation_vault"), ("logic".into(), 1, 0));
         let link = |a: &str, b: &str| Link { from: tree.card_of(a).unwrap(), to: tree.card_of(b).unwrap() };
         assert_eq!(tree.links, [link("tamed_core", "mind_expansion_1"), link("mind_expansion_1", "mind_expansion_2"), link("composite_plating", "cruiser_drydock")]);
-        assert!(tree.lanes.iter().all(|l| l.rows == 1));
+        assert!(tree.lanes.iter().all(|l| l.rows == if l.family == "logic" { 2 } else { 1 }));
     }
 
     /// Nodes of one lane in one column stack in rows; a requirement in another lane still sets the column; the
@@ -417,7 +424,7 @@ mod tests {
         assert_eq!(state(&content, &c, "mind_expansion_1"), CardState::Short(vec![Shortfall::Material { material: "programmable_matter".into(), have: 1, cost: 3 }]));
         assert_eq!(cost_chips(content.research.get("mind_expansion_1").unwrap()), [Chip { material: false, text: "LOGIC 10".into(), payable: true }, Chip { material: true, text: "3".into(), payable: true }]);
         let ready: Vec<&str> = ready(&content, &c).iter().map(|n| n.id.as_str()).collect();
-        assert_eq!(ready, ["beam_laser"]);
+        assert_eq!(ready, ["beam_laser", "simulation_vault"]);
         let chips_of = |n: &str| chips(&c, content.research.get(n).unwrap());
         assert_eq!(chips_of("composite_plating"), [Chip { material: false, text: "HULL 6 / 8".into(), payable: false }]);
         assert_eq!(chips_of("beam_laser"), [Chip { material: false, text: "ENERGY 10".into(), payable: true }]);
@@ -448,6 +455,8 @@ mod tests {
         assert_eq!(gives(&content, me, 2), "One more logic core in the mind (runs 3)");
         assert_eq!(gives(&content, content.research.get("beam_laser").unwrap(), 2), "Beam laser in the drydock, unlimited");
         assert_eq!(gives(&content, content.research.get("cruiser_drydock").unwrap(), 2), "The cruiser frame in the drydock");
+        let vault = content.research.get("simulation_vault").unwrap();
+        assert_eq!((gives(&content, vault, 2).as_str(), unlocked_words(vault, 2).as_str()), ("Evolution opens at home", "SIMULATION VAULT  ·  OPEN AT HOME"));
         assert_eq!(refusal_words(&content, &c.research(&content, "tamed_core").unwrap_err()), "ALREADY RESEARCHED");
     }
 

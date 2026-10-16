@@ -5,7 +5,7 @@
 //! (`escorts`). Escorts fly the behavior their design names and follow the flagship's lock (the voyage, track 7H).
 //!
 //! ```text
-//! (o) SHIPYARD › FLEET                                              CORES 2 / 3 ●●○   [CLOSE ESC]
+//! (o) SHIPYARD › FLEET  [EVOLVING 12 / 50]                           CORES 2 / 3 ●●○   [CLOSE ESC]
 //!     Fleet
 //!  [ escort 1 ]            [      flagship      ]            [ escort 2 ]
 //!  ESCORT 1                 FLAGSHIP · THE DRYDOCK'S DESIGN   ESCORT 2 · 1 CORE FREE
@@ -414,6 +414,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                 col.spawn(label(fonts, "SHIPYARD  ›  FLEET", 10.0, c(Tone::Label, 1.0)));
                                 col.spawn(prose(fonts, "Fleet", 22.0, c(Tone::Number, 1.0)));
                             });
+                            crate::evolution::spawn_chip(tl, fonts);
                         });
                     stage.spawn((
                         ScreenPart::new(Edge::Fade, 1),

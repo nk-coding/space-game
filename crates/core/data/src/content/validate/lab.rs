@@ -1,17 +1,26 @@
 //! The evolution lab's content (`lab.ron`, GDR-0092): the goals are the arena's four; goal presets weigh known goals;
 //! trial presets have weights, seeds and time limits in range and name ships the content has; genes are the arena's
 //! and gene presets name genes; stand-in pilots have their numbers in range; an arms race's numbers are in range and
-//! the enemy palettes name factions and parts the content has. (An id listed twice in
-//! one file is the loader's error: packs merged replace each other's entries by id.)
-//! Problems name the field as `lab.trials[<id>].seeds` and the like (the lab has no entry kind of its own yet).
+//! the enemy palettes name factions and parts the content has; the trial kinds, measures and spreads are the arena's,
+//! every trial kind has its words, a measure takes a stat's words or has its own, a spread's axes are in range and
+//! measure what the file names; a lab with trials has sizes (one default, in the arena's bounds), both spreads and a
+//! budget. (An id listed twice in one file is the loader's error: packs merged replace each other's entries by id.)
+//! Problems name the field as `lab.trials[<id>].seeds` and the like (the lab is not an entry kind).
 
 use super::Validator;
-use crate::content::model::{Duty, GENES, GOALS, LabShips, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, TrialPresetKind};
+use crate::content::model::{Duty, GENES, GOALS, LabShips, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, MEASURES, SPREADS, TRIAL_KINDS, TrialPresetKind};
 use crate::content::problem::Problem;
 
 /// The longest time limit a preset may give a fight (s) or a voyage (minutes): the arena's bounds.
 const MAX_FIGHT_SECONDS: f32 = 1800.0;
 const MAX_VOYAGE_MINUTES: f32 = 600.0;
+/// A size preset's bounds: the arena's (`arena::evolve::MAX_POPULATION`, `MAX_GENERATIONS`).
+const MAX_SIZE_POPULATION: u32 = 4096;
+const MAX_SIZE_GENERATIONS: u32 = 100_000;
+/// Most cells an archive may have (`arena::evolve::MAX_CELLS`).
+const MAX_SPREAD_CELLS: u64 = 65_536;
+/// The longest a frame may give a run (ms).
+const MAX_BUDGET_MS: f32 = 100.0;
 
 impl<'a> Validator<'a> {
     pub(super) fn lab(&mut self) {
@@ -139,6 +148,84 @@ impl<'a> Validator<'a> {
                 if d.as_ref().is_some_and(|d| !duty(d)) {
                     out.push(Problem::error(format!("on above 0, on and off at most {MAX_DUTY_SECONDS} s")).at(&src).field(format!("{at}.{what}")));
                 }
+            }
+        }
+        for k in &lab.kinds {
+            if !TRIAL_KINDS.contains(&k.id.as_str()) {
+                out.push(Problem::error(format!("`{}` is not a trial kind the arena fights (one of {})", k.id, TRIAL_KINDS.join(", "))).at(&src).field(format!("lab.kinds[{}]", k.id)));
+            }
+        }
+        for t in lab.trials.iter().filter(|t| lab.kind(t.kind.id()).is_none()) {
+            out.push(Problem::error(format!("the kind `{}` has no words in `kinds`", t.kind.id())).at(&src).field(format!("lab.trials[{}].kind", t.id)));
+        }
+        for z in &lab.sizes {
+            let at = format!("lab.sizes[{}]", z.id);
+            if !(1..=MAX_SIZE_POPULATION).contains(&z.population) {
+                out.push(Problem::error(format!("{} children: 1 to {MAX_SIZE_POPULATION}", z.population)).at(&src).field(format!("{at}.population")));
+            }
+            if !(1..=MAX_SIZE_GENERATIONS).contains(&z.generations) {
+                out.push(Problem::error(format!("{} generations: 1 to {MAX_SIZE_GENERATIONS}", z.generations)).at(&src).field(format!("{at}.generations")));
+            }
+        }
+        if lab.sizes.iter().filter(|z| z.default).count() > 1 {
+            out.push(Problem::error("more than one size is the default").at(&src).field("lab.sizes"));
+        }
+        for m in &lab.measures {
+            let at = format!("lab.measures[{}]", m.id);
+            if !MEASURES.contains(&m.id.as_str()) {
+                out.push(Problem::error(format!("`{}` is not a measure the arena takes (one of {})", m.id, MEASURES.join(", "))).at(&src).field(at.clone()));
+            }
+            match (&m.stat, &m.name) {
+                (Some(st), None) if !self.c.stats.contains(st) => {
+                    out.push(Problem::error(format!("no stat `{st}` in the content")).at(&src).field(format!("{at}.stat")));
+                }
+                (Some(_), None) if m.unit.is_some() => {
+                    out.push(Problem::error("a measure with a stat takes the stat's unit").at(&src).field(format!("{at}.unit")));
+                }
+                (Some(_), Some(_)) => out.push(Problem::error("a stat's words or a name of its own, not both").at(&src).field(at.clone())),
+                (None, None) => out.push(Problem::error("a measure needs a stat or a name").at(&src).field(at.clone())),
+                _ => {}
+            }
+        }
+        for sp in &lab.spreads {
+            let at = format!("lab.spreads[{}]", sp.id);
+            if !SPREADS.contains(&sp.id.as_str()) {
+                out.push(Problem::error(format!("`{}` is not a spread (one of {})", sp.id, SPREADS.join(", "))).at(&src).field(at.clone()));
+            }
+            if !(1..=3).contains(&sp.axes.len()) {
+                out.push(Problem::error("one to three axes").at(&src).field(format!("{at}.axes")));
+            }
+            let mut cells = 1u64;
+            for (k, a) in sp.axes.iter().enumerate() {
+                if lab.measure(&a.measure).is_none() {
+                    out.push(Problem::error(format!("no measure `{}` in `measures`", a.measure)).at(&src).field(format!("{at}.axes[{k}].measure")));
+                }
+                if !(a.min.is_finite() && a.max.is_finite() && a.min < a.max) || a.cells == 0 {
+                    out.push(Problem::error("min below max and at least one cell").at(&src).field(format!("{at}.axes[{k}]")));
+                }
+                cells = cells.saturating_mul(a.cells as u64);
+            }
+            if cells > MAX_SPREAD_CELLS {
+                out.push(Problem::error(format!("{cells} cells: at most {MAX_SPREAD_CELLS}")).at(&src).field(format!("{at}.axes")));
+            }
+        }
+        if let Some(b) = lab.budget {
+            for (what, ms) in [("layer_open", b.layer_open), ("elsewhere", b.elsewhere)] {
+                if !(ms.is_finite() && ms > 0.0 && ms <= MAX_BUDGET_MS) {
+                    out.push(Problem::error(format!("{ms} ms: above 0 and at most {MAX_BUDGET_MS}")).at(&src).field(format!("lab.budget.{what}")));
+                }
+            }
+        }
+        // What the setup needs to make a run.
+        if !lab.trials.is_empty() {
+            if lab.sizes.is_empty() {
+                out.push(Problem::error("a lab with trials needs a size preset").at(&src).field("lab.sizes"));
+            }
+            for id in SPREADS.iter().filter(|id| lab.spread(id).is_none()) {
+                out.push(Problem::error(format!("a lab with trials needs the spread `{id}`")).at(&src).field("lab.spreads"));
+            }
+            if lab.budget.is_none() {
+                out.push(Problem::error("a lab with trials needs a budget").at(&src).field("lab.budget"));
             }
         }
         self.out.extend(out);

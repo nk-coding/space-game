@@ -12,8 +12,8 @@
 //!   run under today's rules; **VALIDATE** ([`Lab::validate`]) fights a run's best designs on new seeds and their
 //!   recorded fights again, computed like a generation (the run waits meanwhile) and kept in its file.
 //! * **One run computes at a time** ([`Lab::running`]); starting or resuming another pauses it. It computes at home
-//!   and on every screen within a time budget per frame ([`BUDGET_OPEN_MS`] with the layer open, else
-//!   [`BUDGET_MS`]) and pauses in flight: the test range, test flights, replays and voyages ([`compute`]). The
+//!   and on every screen within a time budget per frame (`lab.ron`'s `budget`: more with the layer open, [`budget`])
+//!   and pauses in flight: the test range, test flights, replays and voyages ([`compute`]). The
 //!   budget is turned into ticks of work from the measured cost per tick ([`Rate`]). On the web `arena::Run::step`
 //!   breeds and fights within it on the main thread ([`Lab::compute`]), so frames keep their time whatever the fight;
 //!   natively the frame's budget breeds and the fights run on Bevy's compute threads ([`Lab::compute_threads`]). Both
@@ -26,7 +26,8 @@
 //!   from today's is stale: read-only, it doesn't compute. At most [`MAX_RUNS`].
 //! * **SAVE AS DESIGN** ([`save_as_design`]): a genome into YOUR DESIGNS in its run's frame with an `origin` and the
 //!   `evolved` tag; an evolved behavior is saved beside it as a player behavior.
-//! * **`?lab=1`** opens the building until its research node comes (step 8); without it the building is dark.
+//! * **Locked** until the career opens the facility [`FACILITY`] (the research node Simulation vault, or
+//!   `?unlock=all`): [`Lab::enabled`] follows [`Granted`], and a locked lab computes nothing.
 
 pub mod store;
 
@@ -34,8 +35,7 @@ use arena::evolve::{ArchiveShape, Axis, Bound, Camp, Evolve, FlownBy, Goals, Lim
 use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use data::{Behavior, BehaviorEditor, Blueprint, Content, Origin, TrialPresetKind};
-use kit::params::Params;
+use data::{Behavior, BehaviorEditor, Blueprint, Content, LabSize, Origin, TrialPresetKind};
 
 use crate::career::Granted;
 use crate::mode::AppMode;
@@ -45,10 +45,8 @@ use crate::player::library::{self, DesignDoc, fresh_name, slug_or, unique_id};
 use crate::sim_bridge::GameContent;
 use crate::storage::{Storage, StorageError, now_unix};
 
-/// The time a frame gives the run (ms; GDR-0092 "Running it", lead defaults, PLACEHOLDER): with the EVOLUTION layer
-/// open, and anywhere else at home and on the screens. In flight it pauses.
-pub const BUDGET_OPEN_MS: f32 = 10.0;
-pub const BUDGET_MS: f32 = 4.0;
+/// The facility (`facilities.ron`) whose building the lab is: locked until research opens it.
+pub const FACILITY: &str = "evolution";
 /// The cost of a tick of work assumed before one is measured (µs): wasm's, the slower (natively 5–6 µs).
 const FIRST_US_PER_TICK: f32 = 9.0;
 /// How fast the measured cost and throughput follow a frame (a running mean).
@@ -58,13 +56,6 @@ const RATE_MIN_TICKS: u64 = 200;
 /// Most runs the lab keeps (GDR-0092, PLACEHOLDER: chosen for the web's local storage of about 5 MB, which a STANDARD
 /// run of about 0.7 MB filled quickly; IndexedDB holds far more since 16 Oct 2026, ADR-0041).
 pub const MAX_RUNS: usize = 8;
-/// Children and generations of the size presets (GDR-0092 "SIZE", PLACEHOLDER; the seeds are each trial's, from
-/// `lab.ron`, since step 5).
-pub const SIZES: [(&str, Size); 3] = [
-    ("QUICK", Size { population: 16, generations: 20 }),
-    ("STANDARD", Size { population: 32, generations: 50 }),
-    ("DEEP", Size { population: 64, generations: 100 }),
-];
 /// The share of its time limit a job lasts on average, for the setup's estimate: a fight, a gauntlet (its time limit
 /// is for all its waves), a voyage. Measured 16 Oct 2026 (`docs/arena.md` "What a trial costs": 0.40–0.52, 0.25–0.34,
 /// 0.13 for designs early in a run); PLACEHOLDER.
@@ -295,11 +286,17 @@ fn bare(content: &Content, text: &str) -> Option<String> {
     Some(ed.text())
 }
 
-/// Children and generations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Children and generations (SIZE: a `lab.ron` preset's, or the player's own).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Size {
     pub population: u32,
     pub generations: u32,
+}
+
+impl Size {
+    pub fn of(preset: &LabSize) -> Size {
+        Size { population: preset.population, generations: preset.generations }
+    }
 }
 
 /// A trial as the setup picks it (GDR-0092 "TRIALS"): a `lab.ron` preset, on or off, its weight and seeds, and what the
@@ -419,7 +416,7 @@ pub struct Setup {
 
 impl Setup {
     /// The defaults (GDR-0092): the starts given, `lab.ron`'s first gene preset (EVERYTHING) flown by both the behavior
-    /// and its first stand-in pilot, its default trials and goal weights, STANDARD, the start's build points and hold,
+    /// and its first stand-in pilot, its default trials, goal weights and size, the start's build points and hold,
     /// voyage-ready, no escorts beside it.
     pub fn new(content: &Content, starts: Vec<StartPick>, seed: u64) -> Setup {
         let trials = content
@@ -460,7 +457,7 @@ impl Setup {
             trials,
             goals,
             escorts: false,
-            size: SIZES[1].1,
+            size: content.lab.default_size().map(Size::of).unwrap_or_default(),
             seed,
             build_points: Bound::Start,
             min_hold: Bound::Start,
@@ -530,16 +527,11 @@ impl Setup {
             mirror: self.mirror,
         };
         // A run that leaves the design as it is is spread by how it fights, a design run by what it is (`docs/arena.md`
-        // "The archive").
-        let archive = match self.may_change.design() {
-            false => ArchiveShape {
-                axes: vec![
-                    Axis { measure: Measure::EngageDistance, min: 0.0, max: 160.0, cells: 8 },
-                    Axis { measure: Measure::Rules, min: 0.0, max: 12.0, cells: 6 },
-                ],
-            },
-            true => ArchiveShape::default(),
-        };
+        // "The archive"; `lab.ron`'s spreads).
+        let spread = if self.may_change.design() { "design" } else { "behavior" };
+        let archive = content.lab.spread(spread).map_or_else(ArchiveShape::default, |s| ArchiveShape {
+            axes: s.axes.iter().filter_map(|a| Some(Axis { measure: Measure::from_id(&a.measure)?, min: a.min, max: a.max, cells: a.cells })).collect(),
+        });
         Ok(RunConfig {
             seed: self.seed,
             evolve: Evolve::MayChange(self.may_change.clone()),
@@ -597,7 +589,7 @@ pub fn templates(content: &Content, faction: &str) -> Vec<String> {
 /// The lab (a resource): the runs, the one loaded for the page and the one that computes, the measured rate.
 #[derive(Resource, Default)]
 pub struct Lab {
-    /// `?lab=1`: the building works (its research node comes with GDR-0092 step 8).
+    /// The career has the facility [`FACILITY`] (its research node, or `?unlock=all`): the building works.
     pub enabled: bool,
     /// Every run, newest first.
     runs: Vec<RunEntry>,
@@ -617,7 +609,7 @@ pub struct Lab {
     threads: Option<threads::Threads>,
     #[cfg(not(target_arch = "wasm32"))]
     content: Option<std::sync::Arc<Content>>,
-    /// The EVOLUTION layer is open: the run gets [`BUDGET_OPEN_MS`].
+    /// The EVOLUTION layer is open: the run gets the larger budget ([`budget`]).
     pub layer_open: bool,
     /// What the drydock asks the layer to open on: EVOLVE THIS DESIGN's setup, or a saved design's origin.
     pub request: Option<LabRequest>,
@@ -633,8 +625,8 @@ pub struct Lab {
 
 impl Lab {
     /// Lists the stored runs (newest first) and restores the one that was computing, so it goes on.
-    pub fn load(storage: &Storage, content: &Content, enabled: bool) -> Lab {
-        let mut lab = Lab { enabled, ..default() };
+    pub fn load(storage: &Storage, content: &Content) -> Lab {
+        let mut lab = Lab::default();
         let ids = match store::ids(storage) {
             Ok(ids) => ids,
             Err(e) => {
@@ -1362,33 +1354,41 @@ pub fn save_as_design(
     Ok((id, problems))
 }
 
-/// The budget the run gets this frame: none in flight (it pauses), more while the layer is open.
-pub fn budget(mode: AppMode, layer_open: bool) -> f32 {
-    match mode {
-        AppMode::Flight => 0.0,
-        _ if layer_open => BUDGET_OPEN_MS,
-        _ => BUDGET_MS,
+/// The budget (ms) the run gets this frame (`lab.ron`'s): none in flight (it pauses), more while the layer is open.
+pub fn budget(content: &Content, mode: AppMode, layer_open: bool) -> f32 {
+    match (mode, content.lab.budget) {
+        (AppMode::Flight, _) | (_, None) => 0.0,
+        (_, Some(b)) if layer_open => b.layer_open,
+        (_, Some(b)) => b.elsewhere,
     }
 }
 
 /// Every frame at home and on the screens: the run that computes gets its budget (none in flight), its fights on the
 /// threads ([`Lab::compute_threads`]). Only a closed generation is news for the screens that show the lab (they read
-/// the progress inside one themselves while they show it).
+/// the progress inside one themselves while they show it). A locked lab computes nothing.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
-    let ms = budget(*mode.get(), lab.layer_open);
-    if (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute_threads(&mut storage, &content.0, ms, time.delta_secs()) {
+    let ms = budget(&content.0, *mode.get(), lab.layer_open);
+    if lab.enabled && (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute_threads(&mut storage, &content.0, ms, time.delta_secs()) {
         lab.set_changed();
     }
 }
 
 /// Every frame at home and on the screens: the run that computes gets its budget in slices on this thread (the web
-/// has no threads, [`Lab::compute`]); none in flight.
+/// has no threads, [`Lab::compute`]); none in flight, none while the lab is locked.
 #[cfg(target_arch = "wasm32")]
-pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>) {
-    let ms = budget(*mode.get(), lab.layer_open);
-    if ms > 0.0 && (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
+pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
+    let ms = budget(&content.0, *mode.get(), lab.layer_open);
+    if lab.enabled && ms > 0.0 && (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
         lab.set_changed();
+    }
+}
+
+/// The lab opens with its facility: whenever the career's unlocks change (a research, `?unlock=all`).
+fn unlock(granted: Res<Granted>, mut lab: ResMut<Lab>) {
+    let open = granted.unlocks.has_facility(FACILITY);
+    if granted.is_changed() && lab.enabled != open {
+        lab.enabled = open;
     }
 }
 
@@ -1396,15 +1396,14 @@ pub struct EvolutionPlugin;
 
 impl Plugin for EvolutionPlugin {
     fn build(&self, app: &mut App) {
-        let enabled = app.world().resource::<Params>().flag("lab").unwrap_or(false);
         let lab = {
             let world = app.world();
-            Lab::load(world.resource::<Storage>(), &world.resource::<GameContent>().0, enabled)
+            Lab::load(world.resource::<Storage>(), &world.resource::<GameContent>().0)
         };
         if let Some(t) = &lab.trouble {
             warn!("lab: {t}");
         }
-        app.insert_resource(lab).add_systems(Update, compute);
+        app.insert_resource(lab).add_systems(Update, (unlock, compute).chain());
     }
 }
 
@@ -1417,6 +1416,10 @@ mod tests {
 
     use crate::storage::MemoryBackend;
     use crate::storage::testing::Behind;
+
+    /// The slices these tests compute in (ms): a frame's at home and with the layer open.
+    const BUDGET_MS: f32 = 4.0;
+    const BUDGET_OPEN_MS: f32 = 10.0;
 
     /// A small run of the starter: three generations of four children, against one raider and the hall of fame,
     /// one seed each.
@@ -1459,7 +1462,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let mut k = 0;
@@ -1473,9 +1476,10 @@ mod tests {
             assert!(closed || used >= ticks, "frame {k}: an open generation uses its whole budget ({used} of {ticks})");
         }
         assert!(lab.rate.measured && lab.rate.us_per_tick > 0.0 && lab.rate.ticks_per_second > 0.0);
-        // Budgets: none in flight, more with the layer open.
-        assert_eq!(budget(AppMode::Flight, true), 0.0);
-        assert_eq!((budget(AppMode::Home, true), budget(AppMode::Drydock, false), budget(AppMode::Map, false)), (BUDGET_OPEN_MS, BUDGET_MS, BUDGET_MS));
+        // Budgets (lab.ron's): none in flight, more with the layer open.
+        let b = content.lab.budget.unwrap();
+        assert_eq!(budget(&content, AppMode::Flight, true), 0.0);
+        assert_eq!((budget(&content, AppMode::Home, true), budget(&content, AppMode::Drydock, false), budget(&content, AppMode::Map, false)), (b.layer_open, b.elsewhere, b.elsewhere));
         let r = Rate { us_per_tick: 5.0, ..default() };
         assert_eq!((r.ticks_for(10.0), r.ticks_for(4.0)), (2000, 800));
     }
@@ -1486,8 +1490,9 @@ mod tests {
             .insert_state(mode)
             .insert_resource(storage)
             .insert_resource(lab)
+            .insert_resource(Granted { unlocks: data::career::Unlocks::all(&data::base_content()), ..default() })
             .insert_resource(GameContent(data::base_content()))
-            .add_systems(Update, compute);
+            .add_systems(Update, (unlock, compute).chain());
         app
     }
 
@@ -1498,7 +1503,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let mut app = app(storage, lab, AppMode::Flight);
@@ -1520,6 +1525,13 @@ mod tests {
         }
         let after = (worked(&app), app.world().resource::<Lab>().get(&id).unwrap().run.generation());
         assert_eq!(after, flying, "and waits again in flight");
+        // A locked lab computes nothing, wherever the player is.
+        app.world_mut().resource_mut::<Granted>().unlocks.facilities.clear();
+        app.world_mut().resource_mut::<NextState<AppMode>>().set(AppMode::Drydock);
+        app.update();
+        app.update();
+        assert!(!app.world().resource::<Lab>().enabled);
+        assert_eq!(worked(&app), after.0, "locked: nothing");
     }
 
     /// Natively a generation's fights run on the threads: the run they make is the one the slices make, file for file.
@@ -1530,14 +1542,14 @@ mod tests {
         let content = data::base_content();
         let s = setup(&content);
         let mut sliced = mem();
-        let mut lab = Lab::load(&sliced, &content, true);
+        let mut lab = Lab::load(&sliced, &content);
         let cfg = config(&content, &s, &sliced);
         let a = lab.create(&mut sliced, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
             lab.compute(&mut sliced, BUDGET_MS, 0.016);
         }
         let mut threaded = mem();
-        let mut lab = Lab::load(&threaded, &content, true);
+        let mut lab = Lab::load(&threaded, &content);
         let cfg = config(&content, &s, &threaded);
         let b = lab.create(&mut threaded, &content, cfg, "Small", 10).unwrap();
         let mut frames = 0;
@@ -1564,7 +1576,7 @@ mod tests {
             }
         };
         let mut storage = mem();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         run_to_end(&mut lab, &mut storage);
@@ -1573,7 +1585,7 @@ mod tests {
         assert_eq!(lab.fresh.as_deref(), Some(id.as_str()), "a finished run glows until it is opened");
 
         let mut storage = mem();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         while lab.get(&id).unwrap().run.generation() < 1 {
@@ -1583,7 +1595,7 @@ mod tests {
             lab.compute(&mut storage, BUDGET_MS, 1.0 / 60.0);
         }
         // The page reloads: the lab is read from the storage again and the run goes on.
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let entry = lab.entry(&id).unwrap().clone();
         assert_eq!((entry.generation, entry.status, entry.stale, entry.name.as_str()), (1, RunStatus::Running, false, "Small"));
         assert_eq!(lab.running().map(|l| l.id.as_str()), Some(id.as_str()));
@@ -1600,7 +1612,7 @@ mod tests {
         let mut storage = mem();
         // An old storage: designs and a save, no lab.
         storage.write("old", &DesignDoc(content.ships.get("rim_skiff").unwrap().clone()), 1).unwrap();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         assert!(lab.runs().is_empty() && lab.trouble.is_none() && lab.running().is_none());
         let s = setup(&content);
         let cfg = config(&content, &s, &storage);
@@ -1622,7 +1634,7 @@ mod tests {
         // A stored run that doesn't read is listed with why.
         let mut text_store = MemoryBackend::default();
         crate::storage::Backend::write(&mut text_store, "lab", "broken", "// space-game: lab, format 1\n(format: 1").unwrap();
-        let broken = Lab::load(&Storage::new(text_store), &content, true);
+        let broken = Lab::load(&Storage::new(text_store), &content);
         assert!(broken.entry("broken").unwrap().problem.is_some());
     }
 
@@ -1660,7 +1672,7 @@ mod tests {
         let written = || -> Vec<(String, usize)> { log.lock().unwrap().drain(..).map(|(f, n, b)| (format!("{f}/{n}"), b)).collect() };
         let mut storage = Storage::new(backend);
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let names = |w: &[(String, usize)]| w.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>();
@@ -1683,7 +1695,7 @@ mod tests {
         let mut damaged = Storage::new(MemoryBackend::default());
         store::write_new(&mut damaged, "r", &l.parts(), 1).unwrap();
         damaged.delete::<store::RunDoc>("r/g1").unwrap();
-        let listed = Lab::load(&damaged, &content, true);
+        let listed = Lab::load(&damaged, &content);
         assert!(listed.entry("r").unwrap().problem.as_deref().is_some_and(|p| p.contains("generation 1")));
         lab.delete(&mut storage, &id).unwrap();
         assert!(storage.parts::<store::RunDoc>(&id).unwrap().is_empty() && store::ids(&storage).unwrap().is_empty());
@@ -1699,7 +1711,7 @@ mod tests {
         let backend = Behind::default();
         let db = Behind(backend.0.clone());
         let mut storage = Storage::new(backend);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         db.commit(false);
@@ -1730,7 +1742,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
@@ -1797,7 +1809,7 @@ mod tests {
         let cfg = config(&content, &s, &storage);
         let enemy = cfg.enemy.clone().unwrap();
         assert_eq!((enemy.starts.len(), enemy.population, enemy.palette.as_slice()), (2, 2, ["shield_emitter".to_string()].as_slice()));
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let id = lab.create(&mut storage, &content, cfg, "Race", 10).unwrap();
         while lab.running().is_some() {
             lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
@@ -1827,7 +1839,7 @@ mod tests {
         storage.write("my_skiff", &DesignDoc(Blueprint { id: "my_skiff".into(), name: "My skiff".into(), ..skiff }), 5).unwrap();
         let mut s = setup(&content);
         s.starts = vec![(StartPick::Design("my_skiff".into()), Locks::default())];
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Mine", 10).unwrap();
         while lab.running().is_some() {
@@ -1872,7 +1884,7 @@ mod tests {
         let content = data::base_content();
         let mut made = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&made, &content, true);
+        let mut lab = Lab::load(&made, &content);
         let cfg = config(&content, &s, &made);
         let id = lab.create(&mut made, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
@@ -1882,7 +1894,7 @@ mod tests {
         let full = file(&made, &content, &id);
         let cli = RunSave { name: None, created: None, status: None, ..full.clone() }.to_ron();
         let mut storage = mem();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         let imported = lab.import(&mut storage, &content, "runs/deep_skiff.ron", &cli, 50).unwrap();
         let e = lab.entry(&imported).unwrap().clone();
         assert_eq!((e.name.as_str(), e.status, e.generation, e.stale), ("deep_skiff", RunStatus::Paused, 3, false));
@@ -1916,7 +1928,7 @@ mod tests {
         // RE-SCORE: a run fought under other rules is stale; re-scored, a new run fights its elites again.
         let stale = RunSave { rules: save.rules ^ 1, ..save };
         store::write_new(&mut storage, "old_rules", &RunParts::of(&stale).unwrap(), 70).unwrap();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&storage, &content);
         assert!(lab.entry("old_rules").unwrap().stale);
         assert!(lab.validate(&storage, &content, "old_rules", &[best]).is_err(), "re-score it first");
         let fresh = lab.rescore(&mut storage, &content, "old_rules", 80).unwrap();

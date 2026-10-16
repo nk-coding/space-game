@@ -304,6 +304,7 @@ fn the_labs_presets_become_trials() {
     for p in &c.lab.trials {
         let t = TrialSpec::from_preset(p, p.weight, p.seeds, p.id == "beat_your_start", &src).unwrap();
         assert_eq!(t.preset.as_deref(), Some(p.id.as_str()));
+        assert_eq!(t.kind.kind_id(), p.kind.id(), "the arena's kind is the preset's, by lab.ron's id");
         trials.push(t);
     }
     let by = |id: &str| trials.iter().find(|t| t.preset.as_deref() == Some(id)).unwrap();
@@ -326,4 +327,10 @@ fn the_labs_presets_become_trials() {
         ..config(r#"(seed: 1, evolve: Both, generations: 1, population: 2, start: Design(design: Ship("rim_skiff")))"#)
     };
     Run::new(&c, cfg).unwrap();
+    // Every kind and measure the arena has is named in lab.ron's ids, and the lab's design spread is the arena's own
+    // default (the CLI's runs spread as the game's).
+    assert_eq!(arena::evolve::Measure::ALL.map(|m| m.id()), data::MEASURES);
+    let spread = c.lab.spread("design").unwrap();
+    let axes: Vec<(&str, f32, f32, u32)> = arena::evolve::ArchiveShape::default().axes.iter().map(|a| (a.measure.id(), a.min, a.max, a.cells)).collect();
+    assert_eq!(axes, spread.axes.iter().map(|a| (a.measure.as_str(), a.min, a.max, a.cells)).collect::<Vec<_>>());
 }

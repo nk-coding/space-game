@@ -163,6 +163,7 @@ fn node_icon(content: &Content, style: &Style, node: &ResearchNode) -> UiIcon {
             None => UiIcon::Glyph { glyph: Glyph::Diamond, color: style.ui.label },
         },
         Some(Unlock::Frame(_)) => UiIcon::Glyph { glyph: Glyph::Formation, color: style.ui.teal },
+        Some(Unlock::Facility(_)) => UiIcon::Glyph { glyph: Glyph::Diamond, color: style.ui.violet },
         Some(Unlock::MindCapacity(_)) | None => UiIcon::Glyph { glyph: Glyph::Menu, color: style.ui.violet },
     }
 }
@@ -540,6 +541,7 @@ pub fn preview(content: &Content, style: &Style, node: &ResearchNode, capacity: 
             let stats = vec![Stat { label: "MIND CAPACITY".into(), value: format!("{capacity} » {} cores", capacity + n) }];
             ("THE SHIP-MIND".into(), icon, stats, Vec::new())
         }
+        Some(Unlock::Facility(f)) => (content.facilities.get(f).map_or_else(|| f.to_uppercase(), |x| format!("{} AT HOME", x.name.to_uppercase())), icon, Vec::new(), Vec::new()),
         None => (String::new(), icon, Vec::new(), Vec::new()),
     }
 }

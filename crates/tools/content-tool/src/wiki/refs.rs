@@ -6,7 +6,10 @@
 //!   (`[[part:thruster.thrust]]`, `[[ship:rim_skiff.top_speed]]`; a hull part in a material:
 //!   `[[part:block_1x1@steel.hp]]`), a control's default keys (`.keys`), a node's signature and parameter defaults
 //!   (`.signature`, `.default.radius`), and a few more (see [`Refs::new`]);
-//! * `[[sim:name]]`: a constant of the simulation, from the sim's own constants and default config ([`sim_values`]).
+//! * `[[sim:name]]`: a constant of the simulation, from the sim's own constants and default config ([`sim_values`]);
+//! * `[[lab:list.id]]`: an entry of `lab.ron` (a goal, trial, gene, pilot, size, ...), a link to its row on the lab's
+//!   page with its name, and `[[lab:list.id.field]]` one of its values (`[[lab:size.standard.population]]`);
+//!   `[[lab:spread.design]]`, `[[lab:budget.layer_open]]` and `[[lab:palette.<faction>]]` are values too.
 //!
 //! `refs.json` carries all of them for the site's Markdown plugin; [`super::hand`] checks the pages against them.
 
@@ -65,6 +68,9 @@ impl Refs {
         }
         for e in &c.research {
             add(Kind::Research, &e.id, &e.name);
+        }
+        for e in &c.facilities {
+            add(Kind::Facility, &e.id, &e.name);
         }
         for e in &c.starts {
             add(Kind::Start, &e.id, &e.name);
@@ -246,6 +252,15 @@ impl Refs {
                 },
             );
         }
+        for e in w.lab_entries(ROOT) {
+            for (field, html) in &e.values {
+                values.insert(format!("lab:{}.{field}", e.key), html.clone());
+            }
+            entries.insert(format!("lab:{}", e.key), (e.name.clone(), format!("{}.html#{}", pages::LAB_PAGE, e.anchor())));
+        }
+        for (key, html) in w.lab_values(ROOT) {
+            values.insert(format!("lab:{key}"), html);
+        }
         Refs {
             entries,
             values,
@@ -272,9 +287,17 @@ impl Refs {
                 Err(format!("unknown sim constant `{name}`"))
             };
         }
+        if let Some(key) = target.strip_prefix("lab:") {
+            return match (self.entries.contains_key(target), self.values.contains_key(target)) {
+                (true, _) => Ok(()),
+                (false, true) if label.is_some() => Err("a value takes no label".into()),
+                (false, true) => Ok(()),
+                (false, false) => Err(format!("no lab entry or value `{key}`")),
+            };
+        }
         let (kind, rest) = target
             .split_once(':')
-            .ok_or_else(|| "write [[kind:id]], [[kind:id.field]] or [[sim:name]]".to_string())?;
+            .ok_or_else(|| "write [[kind:id]], [[kind:id.field]], [[lab:list.id]] or [[sim:name]]".to_string())?;
         if Kind::from_key(kind).is_none() {
             return Err(format!("unknown kind `{kind}`"));
         }

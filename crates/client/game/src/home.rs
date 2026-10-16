@@ -18,8 +18,10 @@
 //!   TEST RANGE (T: the sandbox with raider waves), the moorings FLEET (F, a layer over home), the lab RESEARCH (R,
 //!   `research/`), the records mast by the gate the LOG (L, a layer over home, `voyage_log.rs`; its tooltip is the
 //!   last voyage in one line, and it glows while a result waits there), the compute stack above the mind the
-//!   EVOLUTION lab (E, a layer over home, `evolution/`, GDR-0092; with `?lab=1` until its research node comes, dark
-//!   without; its label says how far its run is). The gate opens the voyage map at once (V, `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
+//!   EVOLUTION lab (E, a layer over home, `evolution/`, GDR-0092; its label says how far its run is). The lab is dark
+//!   and says `LOCKED` (its tooltip `LOCKED · RESEARCH SIMULATION VAULT`) until its research node is researched; a
+//!   click or E on it then flies to the lab and opens RESEARCH on that node, as the drydock's LOCKED rows do. The gate opens the voyage map at once (V,
+//!   `map/`; the debrief's VOYAGE MAP, `map::OpenMap`, too):
 //!   its portal takes the camera through the gate and back out (`map::portal`). The fabricator and the salvage bay
 //!   are dark.
 //!   Every working place sends one message when the camera arrives, [`HomeAction`]. Hover highlights a working
@@ -58,7 +60,7 @@ use world::sim_bridge::GameContent;
 use crate::drydock::view::{DockCamera, GridViewport};
 use crate::evolution::{self, EvolutionLayer};
 use crate::fleet::{self, Fleet};
-use crate::research;
+use crate::research::{self, ResearchView};
 use crate::shipyard::fly::{Fly, View};
 use crate::voyage_log::{self, LogRow, VoyageLog};
 use crate::shipyard::draw::Evo;
@@ -243,9 +245,10 @@ impl Plugin for HomePlugin {
                 (
                     ui_scale,
                     (clicks, keys).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open)).and_eager(not(evolution::is_open))),
+                    chip,
                     fly,
                     apply,
-                    (place_labels, sync_titles, sync_name, sync_notes, log_tip).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open)).and_eager(not(evolution::is_open))),
+                    (place_labels, sync_titles, sync_name, sync_notes, log_tip, evolution_tip).run_if(not(fleet::is_open).and_eager(not(crate::settings::is_open)).and_eager(not(voyage_log::is_open)).and_eager(not(evolution::is_open))),
                     measure_labels,
                     show,
                 )
@@ -295,8 +298,11 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                 tl.spawn(label(fonts, "THE SHIPYARD  ·  RIM", 11.0, c(Tone::Label, 1.0)));
                 tl.spawn((DesignName, prose(fonts, "", 20.0, c(Tone::Number, 1.0))));
             });
-        // Top right: SETTINGS (GDR-0090).
-        root.spawn(Node { position_type: PositionType::Absolute, right: px(22), top: px(18), ..default() }).with_children(crate::settings::spawn_ring);
+        // Top right: the EVOLVING chip while a run computes, SETTINGS (GDR-0090).
+        root.spawn(Node { position_type: PositionType::Absolute, right: px(22), top: px(18), align_items: AlignItems::Center, column_gap: px(10), ..default() }).with_children(|tr| {
+            evolution::spawn_chip(tr, fonts);
+            crate::settings::spawn_ring(tr);
+        });
         // Bottom right: the career's notes.
         root.spawn(Node {
             position_type: PositionType::Absolute,
@@ -501,11 +507,22 @@ fn go(place: Place, visit: &mut Visit, yard: &Yard, window: &Window, rig: &Camer
     visit.phase = Phase::Flying { fly: Fly::new(from, to), to: Some(place), from: None };
 }
 
-/// Clicks and taps on the places (the EVOLUTION lab only while it is open, `?lab=1`).
+/// Where going to a place leads: the locked EVOLUTION lab leads to RESEARCH, on the node that opens it.
+fn unless_locked(place: Place, lab: &Lab, content: &data::Content, research: &mut ResearchView) -> Place {
+    if place != Place::Evolution || lab.enabled {
+        return place;
+    }
+    research.request = evolution::unlocked_by(content).map(|n| n.id.clone());
+    Place::Research
+}
+
+/// Clicks and taps on the places (the locked EVOLUTION lab's lead to RESEARCH).
 #[allow(clippy::too_many_arguments)]
 fn clicks(
     mut clicks: MessageReader<UiClick>,
     lab: Res<Lab>,
+    content: Res<GameContent>,
+    mut research: ResMut<ResearchView>,
     spots: Query<&Spot>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
@@ -515,21 +532,52 @@ fn clicks(
     mut visit: ResMut<Visit>,
 ) {
     for c in clicks.read() {
-        if let Ok(spot) = spots.get(c.0)
-            && (spot.0 != Place::Evolution || lab.enabled)
-        {
-            go(spot.0, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
+        if let Ok(spot) = spots.get(c.0) {
+            let place = unless_locked(spot.0, &lab, &content.0, &mut research);
+            go(place, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
         }
     }
 }
 
-/// The places' actions (D, B, T, F, R, V, L, E by default; E only while the lab is open): not while a text field has
-/// the keyboard (the action map keeps them apart from Ctrl and Cmd combinations: Ctrl+D is the browser's bookmark
-/// key). The debrief's VOYAGE MAP acts as the voyages' key.
+/// The EVOLVING chip (`evolution::Chip`, at home and on the layers over it) opens the lab: SETTINGS closes (the camera
+/// rests on the yard meanwhile) and the camera flies to the lab, from the yard or from FLEET's or the LOG's place as
+/// their layer closes.
+#[allow(clippy::too_many_arguments)]
+fn chip(
+    mut clicks: MessageReader<UiClick>,
+    chips: Query<(), With<evolution::Chip>>,
+    (mut fleet, mut log, mut settings): (ResMut<Fleet>, ResMut<VoyageLog>, ResMut<world::settings::SettingsLayer>),
+    window: Single<&Window, With<PrimaryWindow>>,
+    dock: Res<DockCamera>,
+    viewport: Query<(&ComputedNode, &UiGlobalTransform), With<GridViewport>>,
+    yard: Res<Yard>,
+    rig: Res<CameraRig>,
+    mut visit: ResMut<Visit>,
+) {
+    if !clicks.read().any(|c| chips.contains(c.0)) {
+        return;
+    }
+    settings.open = false;
+    match visit.phase {
+        Phase::At(from @ (Place::Fleet | Place::Log), view) => {
+            fleet.open = false;
+            log.open = false;
+            let to = place_view(Place::Evolution, &yard.layout, &window, &dock, None);
+            visit.phase = Phase::Flying { fly: Fly::new(view, to).after(EXIT_SECONDS), to: Some(Place::Evolution), from: Some(from) };
+        }
+        _ => go(Place::Evolution, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok()),
+    }
+}
+
+/// The places' actions (D, B, T, F, R, V, L, E by default; E on the locked lab leads to RESEARCH): not while a text
+/// field has the keyboard (the action map keeps them apart from Ctrl and Cmd combinations: Ctrl+D is the browser's
+/// bookmark key). The debrief's VOYAGE MAP acts as the voyages' key.
 #[allow(clippy::too_many_arguments)]
 fn keys(
     act: Act,
     lab: Res<Lab>,
+    content: Res<GameContent>,
+    mut research: ResMut<ResearchView>,
     pointer: Res<UiPointer>,
     window: Single<&Window, With<PrimaryWindow>>,
     dock: Res<DockCamera>,
@@ -545,8 +593,9 @@ fn keys(
     if pointer.typing {
         return;
     }
-    for place in Place::ALL.into_iter().filter(|p| *p != Place::Evolution || lab.enabled) {
+    for place in Place::ALL {
         if key_of(place).is_some_and(|a| act.just_pressed(a)) {
+            let place = unless_locked(place, &lab, &content.0, &mut research);
             go(place, &mut visit, &yard, &window, &rig, &dock, viewport.single().ok());
         }
     }
@@ -667,7 +716,6 @@ fn show(
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn place_labels(
     yard: Res<Yard>,
-    lab: Res<Lab>,
     rig: Res<CameraRig>,
     ui_scale: Res<UiScale>,
     visit: Res<Visit>,
@@ -724,11 +772,6 @@ fn place_labels(
         }
     };
     for (spot, mut node) in &mut spots {
-        // The lab is no place to go while it is dark.
-        let display = if spot.0 != Place::Evolution || lab.enabled { Display::Flex } else { Display::None };
-        if node.display != display {
-            node.display = display;
-        }
         let r = l.hit(spot.0);
         let (a, b) = (at(Vec2::new(r.min.x, r.max.y)), at(Vec2::new(r.max.x, r.min.y)));
         set(&mut node, px(a.x), px(a.y), b - a);
@@ -770,7 +813,7 @@ fn sync_titles(
             Place::TestRange => "TEST RANGE".into(),
             Place::Fleet => "FLEET".into(),
             Place::Log => "LOG".into(),
-            Place::Evolution => "EVOLUTION".into(),
+            Place::Evolution => content.0.facilities.get(world::evolution::FACILITY).map_or_else(|| world::evolution::FACILITY.to_uppercase(), |f| f.name.to_uppercase()),
             Place::Fabricator => "FABRICATOR".into(),
             Place::SalvageBay => "SALVAGE BAY".into(),
         };
@@ -833,6 +876,22 @@ fn log_tip(career: Res<PlayerCareer>, content: Res<GameContent>, mut spots: Quer
     for (spot, mut tip) in &mut spots {
         if spot.0 == Place::Log && tip.name != line {
             tip.name = line.clone().into();
+        }
+    }
+}
+
+/// The EVOLUTION lab's tooltip: its name, or while it is locked the research node that opens it.
+fn evolution_tip(lab: Res<Lab>, content: Res<GameContent>, mut spots: Query<(&Spot, &mut Tip)>) {
+    if !lab.is_changed() {
+        return;
+    }
+    let words = match evolution::unlocked_by(&content.0).filter(|_| !lab.enabled) {
+        Some(node) => format!("LOCKED  ·  RESEARCH {}", node.name.to_uppercase()),
+        None => "EVOLUTION".into(),
+    };
+    for (spot, mut tip) in &mut spots {
+        if spot.0 == Place::Evolution && tip.name != words {
+            tip.name = words.clone().into();
         }
     }
 }
@@ -916,6 +975,21 @@ mod tests {
             .add_message::<HomeAction>()
             .add_systems(Update, apply);
         app
+    }
+
+    /// The locked lab leads to RESEARCH on the node that opens it; once open it is a place of its own.
+    #[test]
+    fn the_locked_lab_leads_to_its_research() {
+        let content = data::base_content();
+        let mut research = ResearchView::default();
+        let mut lab = Lab::default();
+        assert_eq!(unless_locked(Place::Evolution, &lab, &content, &mut research), Place::Research);
+        assert_eq!(research.request.as_deref(), Some("simulation_vault"));
+        research.request = None;
+        lab.enabled = true;
+        assert_eq!(unless_locked(Place::Evolution, &lab, &content, &mut research), Place::Evolution);
+        assert_eq!(unless_locked(Place::Fleet, &Lab::default(), &content, &mut research), Place::Fleet);
+        assert_eq!(research.request, None);
     }
 
     /// TEST RANGE asks for the plain sandbox (not a test flight) and flies; DRYDOCK, BEHAVIOR and the gate (the voyage map)

@@ -503,6 +503,13 @@ body {
 .sg-value a {
   white-space: normal;
 }
+/* A text among the values (the lab's summaries): prose, not a number. */
+.sg-value .sg-text {
+  white-space: normal;
+  font-weight: 400;
+  color: var(--vp-c-text-1);
+  text-shadow: none;
+}
 
 /* Callouts: thin outline panels with a tracked title. */
 .vp-doc .custom-block {

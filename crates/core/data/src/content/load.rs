@@ -43,11 +43,12 @@ pub struct Pack {
     pub behaviors: Vec<Behavior>,
     pub families: Vec<Family>,
     pub research: Vec<ResearchNode>,
+    pub facilities: Vec<Facility>,
     pub starts: Vec<Start>,
     pub voyages: Vec<Voyage>,
     pub encounters: Vec<Encounter>,
     pub controls: Vec<Control>,
-    /// `lab.ron`: the evolution lab's goals and trial presets (GDR-0092).
+    /// `lab.ron`: the evolution lab's words and numbers (GDR-0092).
     pub lab: Option<Lab>,
     /// `icons/<key>.svg`, sorted by key.
     pub icons: Vec<Icon>,
@@ -63,8 +64,8 @@ impl Pack {
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
     ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
-    ///   `starts`, `voyages`, `encounters` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
-    /// * `lab.ron`: the evolution lab's goals and trial presets, one `( ... )` ([`Lab`]).
+    ///   `facilities`, `starts`, `voyages`, `encounters`, `controls` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    /// * `lab.ron`: the evolution lab's goals, trials, genes, pilots, sizes and measures, one `( ... )` ([`Lab`]).
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `icons/<key>.ship.svg`: the ship drawing of the machines whose icon is `key` (GDR-0069).
     /// * `wiki/<kind>/<id>.md`: wiki prose (kind = `part`, `ship`, ..., or `page` for free articles).
@@ -127,6 +128,7 @@ impl Pack {
             behaviors: Vec::new(),
             families: Vec::new(),
             research: Vec::new(),
+            facilities: Vec::new(),
             starts: Vec::new(),
             voyages: Vec::new(),
             encounters: Vec::new(),
@@ -190,6 +192,7 @@ impl Pack {
                     Some(Kind::Research) => {
                         parse_into(text, &src, &mut pack.research, &mut problems)
                     }
+                    Some(Kind::Facility) => parse_into(text, &src, &mut pack.facilities, &mut problems),
                     Some(Kind::Start) => parse_into(text, &src, &mut pack.starts, &mut problems),
                     Some(Kind::Voyage) => parse_into(text, &src, &mut pack.voyages, &mut problems),
                     Some(Kind::Encounter) => {
@@ -270,6 +273,7 @@ impl Pack {
         check_duplicates(&pack.behaviors, &mut problems);
         check_duplicates(&pack.families, &mut problems);
         check_duplicates(&pack.research, &mut problems);
+        check_duplicates(&pack.facilities, &mut problems);
         check_duplicates(&pack.starts, &mut problems);
         check_duplicates(&pack.voyages, &mut problems);
         check_duplicates(&pack.encounters, &mut problems);
@@ -394,13 +398,15 @@ pub struct Content {
     /// Research families in load order, which is also their display order.
     pub families: Table<Family>,
     pub research: Table<ResearchNode>,
+    /// The home shipyard's facilities in load order.
+    pub facilities: Table<Facility>,
     pub starts: Table<Start>,
     /// Voyages in load order, which is also the voyage map's order.
     pub voyages: Table<Voyage>,
     pub encounters: Table<Encounter>,
     /// The action map's actions in load order, which is also the settings screen's order within a section.
     pub controls: Table<Control>,
-    /// The evolution lab's goals and trial presets (`lab.ron`, packs merged by id).
+    /// The evolution lab's words and numbers (`lab.ron`, packs merged by id).
     pub lab: Lab,
     /// Icons by key (`icons/<key>.svg`); a later pack's icon replaces an earlier one with the same key.
     pub icons: BTreeMap<String, Icon>,
@@ -460,6 +466,7 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.research.upsert(e)));
+            p.facilities.iter().cloned().for_each(|e| drop(c.facilities.upsert(e)));
             p.starts
                 .iter()
                 .cloned()
@@ -503,9 +510,9 @@ impl Content {
 
     /// A fingerprint of everything a fight or a voyage reads from the content (GDR-0092): FNV-1a 64 of the RON of
     /// the stats, categories, factions, materials, parts, frames, ships, behavior nodes, behaviors, voyages and
-    /// encounters, in load order. Pack versions, research, starts, controls, the lab, icons and wiki prose are left out:
-    /// they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal content
-    /// gives the same fingerprint on every platform (RON writes floats exactly and the same everywhere).
+    /// encounters, in load order. Pack versions, research, facilities, starts, controls, the lab, icons and wiki prose
+    /// are left out: they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal
+    /// content gives the same fingerprint on every platform (RON writes floats exactly and the same everywhere).
     pub fn fingerprint(&self) -> u64 {
         let ruled = (
             &self.stats,
@@ -535,6 +542,7 @@ impl Content {
             Kind::Behavior => self.behaviors.contains(id),
             Kind::Family => self.families.contains(id),
             Kind::Research => self.research.contains(id),
+            Kind::Facility => self.facilities.contains(id),
             Kind::Start => self.starts.contains(id),
             Kind::Voyage => self.voyages.contains(id),
             Kind::Encounter => self.encounters.contains(id),
@@ -557,6 +565,7 @@ impl Content {
             Kind::Behavior => self.behaviors.get(id).map(|e| e.name.as_str()),
             Kind::Family => self.families.get(id).map(|e| e.name.as_str()),
             Kind::Research => self.research.get(id).map(|e| e.name.as_str()),
+            Kind::Facility => self.facilities.get(id).map(|e| e.name.as_str()),
             Kind::Start => self.starts.get(id).map(|e| e.name.as_str()),
             Kind::Voyage => self.voyages.get(id).map(|e| e.name.as_str()),
             Kind::Encounter => self.encounters.get(id).map(|e| e.name.as_str()),

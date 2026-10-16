@@ -5,7 +5,9 @@
 //! (a ```` ```behavior ```` or ```` ```assists ```` block) that the game's parser or vocabulary refuses, a component
 //! that names missing content, a page without a title or description, a page missing from the navigation
 //! (`nav.json`) or a navigation entry without a page, and any raster image (a raster file anywhere in the wiki, an
-//! `<img>`, a raster `url(...)` or `src`): the wiki is vector only.
+//! `<img>`, a raster `url(...)` or `src`): the wiki is vector only. It also fails when an entry of the evolution lab's
+//! documented lists ([`pages::LAB_DOCUMENTED`]: every trial kind, trial, goal, gene, pilot, size and preset) is named
+//! on no hand-written page.
 
 use std::path::Path;
 
@@ -225,6 +227,8 @@ pub(super) fn check(w: &Wiki, refs: &Refs, files: &[HandFile]) -> Checked {
     let mut errors = Vec::new();
     let mut examples = BTreeMap::new();
     let nav = nav_pages(files, &mut errors);
+    // Every reference the pages make (without its label), for the lab's documented lists.
+    let mut named: BTreeSet<String> = BTreeSet::new();
     let mut seen = BTreeSet::new();
     for p in &nav {
         if !seen.insert(p.as_str()) {
@@ -287,6 +291,7 @@ pub(super) fn check(w: &Wiki, refs: &Refs, files: &[HandFile]) -> Checked {
                 if let Err(why) = refs.check(&after[..e]) {
                     errors.push(format!("{}:{n}: [[{}]]: {why}", f.path, &after[..e]));
                 }
+                named.insert(after[..e].split('|').next().unwrap_or_default().to_string());
                 rest = &after[e + 2..];
             }
             for (name, attrs) in components(&line) {
@@ -316,6 +321,14 @@ pub(super) fn check(w: &Wiki, refs: &Refs, files: &[HandFile]) -> Checked {
                     }
                 }
             }
+        }
+    }
+    for e in w.lab_entries(ROOT) {
+        let list = e.key.split_once('.').map_or("", |(l, _)| l);
+        let key = format!("lab:{}", e.key);
+        let documented = named.iter().any(|r| *r == key || r.strip_prefix(&key).is_some_and(|f| f.starts_with('.')));
+        if pages::LAB_DOCUMENTED.contains(&list) && !documented {
+            errors.push(format!("[[{key}]]: no hand-written page names it (the evolution lab's pages document every {list})"));
         }
     }
     Checked {

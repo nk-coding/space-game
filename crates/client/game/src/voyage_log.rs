@@ -3,7 +3,7 @@
 //! the debrief.
 //!
 //! ```text
-//! (o) SHIPYARD › LOG                               VOYAGES 12  HOME 9  LOST 3  SALVAGED 140   [CLOSE]
+//! (o) SHIPYARD › LOG  [EVOLVING 12 / 50]          VOYAGES 12  HOME 9  LOST 3  SALVAGED 140   [CLOSE]
 //!     Log
 //!   THE LAST 12 VOYAGES  ·  NEWEST FIRST
 //!   NEW  The Warden's Gate    GOAL CLEARED   8:15   7 PARTS  »  HULL AND ARMOUR +1  ·  PROGRAMMABLE MATTER +6
@@ -263,6 +263,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                                 col.spawn(label(fonts, "SHIPYARD  ›  LOG", 10.0, c(Tone::Label, 1.0)));
                                 col.spawn(prose(fonts, "Log", 22.0, c(Tone::Number, 1.0)));
                             });
+                            crate::evolution::spawn_chip(tl, fonts);
                         });
                     // Top right: the career's counts, CLOSE.
                     stage

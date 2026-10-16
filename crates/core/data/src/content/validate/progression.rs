@@ -35,6 +35,7 @@ impl<'a> Validator<'a> {
                 Unlock::Part(id) => (Kind::Part, id, c.parts.get(id).map(|p| p.locked)),
                 Unlock::Material(id) => (Kind::Material, id, c.materials.get(id).map(|m| m.locked)),
                 Unlock::Frame(id) => (Kind::Frame, id, c.frames.get(id).map(|x| x.locked)),
+                Unlock::Facility(id) => (Kind::Facility, id, c.facilities.get(id).map(|x| x.locked)),
             };
             match locked {
                 None => self.err(n, &f, format!("unknown {kind} `{id}`")),

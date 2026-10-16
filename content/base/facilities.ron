@@ -1,0 +1,12 @@
+// The home shipyard's facilities (GDR-0071 "each area needs states from content", GDR-0092): the buildings research
+// opens. `name` is the label over the building at home; a `locked` one stays dark until a research node's
+// `Facility(id)` opens it. The shipyard places and draws them; the fabricator and the salvage bay come later.
+[
+    (
+        id: "evolution",
+        name: "Evolution",
+        summary: "The evolution lab: it breeds your designs and behaviors against trials you pick, keeps every fight to watch again and saves the best as designs. Runs cost nothing.",
+        description: "A stack of compute rings above the mind, joined to it by its violet conduit: the mind's own simulation. Research the [[research:simulation_vault]] to open it.",
+        locked: true,
+    ),
+]

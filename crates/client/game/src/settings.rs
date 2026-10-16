@@ -2,7 +2,7 @@
 //! SETTINGS), with two tabs.
 //!
 //! ```text
-//! (o) SHIPYARD › SETTINGS                                     [CONTROLS] [DISPLAY]   [CLOSE]
+//! (o) SHIPYARD › SETTINGS  [EVOLVING 12 / 50]                  [CONTROLS] [DISPLAY]   [CLOSE]
 //!     Settings
 //!   FLIGHT
 //!   Turn left      Rotates the ship to the left; …            [   A   ] [   ←   ]
@@ -454,6 +454,7 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>, conten
                             col.spawn((SettingsText::Crumb, label(fonts, "SHIPYARD  ›  SETTINGS", 10.0, c(Tone::Label, 1.0))));
                             col.spawn(prose(fonts, "Settings", 22.0, c(Tone::Number, 1.0)));
                         });
+                        crate::evolution::spawn_chip(tl, fonts);
                     });
                     // Top right: the tabs, CLOSE.
                     stage

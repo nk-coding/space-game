@@ -350,6 +350,15 @@ impl Wiki<'_> {
                     );
                 }
             }
+            Kind::Facility => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.facilities.as_slice(), |_| String::new(), |f| {
+                        let by: Vec<String> = crate::unlocked_by(c, &Unlock::Facility(f.id.clone())).iter().map(|n| self.a(UP, Kind::Research, &n.id)).collect();
+                        if by.is_empty() { "at home from the start".into() } else { by.join(", ") }
+                    }),
+                )
+            }
             Kind::Start => {
                 let cards: Vec<Card> = c
                     .starts
@@ -458,6 +467,11 @@ impl Wiki<'_> {
             .unwrap();
         }
         packs.push_str("</table>\n");
+        s.push_str(&heading(2, "Evolution lab", "evolution-lab"));
+        s.push_str(&wide_block(
+            "sg-section",
+            &format!("<p>The evolution lab's goals, trials, genes, stand-in pilots, sizes and measures: <a href=\"{UP}{}.html\">Evolution lab</a>.</p>\n", pages::LAB_PAGE),
+        ));
         s.push_str(&heading(2, "Packs", "packs"));
         s.push_str(&wide_block("sg-section", &packs));
         s
@@ -478,6 +492,7 @@ impl Wiki<'_> {
             Kind::Behavior => c.behaviors.len(),
             Kind::Family => c.families.len(),
             Kind::Research => c.research.len(),
+            Kind::Facility => c.facilities.len(),
             Kind::Start => c.starts.len(),
             Kind::Voyage => c.voyages.len(),
             Kind::Encounter => c.encounters.len(),

@@ -1,22 +1,31 @@
 //! The evolution lab's content (`lab.ron`, GDR-0092 "Content and the wiki"): the goals a run's fitness weighs, their
-//! one-click presets, the genes a run may change and their presets, the trial presets the setup offers and the stand-in
-//! pilots that fly a design in its fights.
-//! What a goal or a trial kind computes is the arena's (`arena::evolve`), how a stand-in flies the sim's
-//! (`sim::flight::stand_in`); their words and numbers are here, so a pack can retune them. A run keeps the trials and
-//! the pilot it was made with (resolved), so a change here changes no run. GDR-0092 step 8 completes the file (size
-//! presets, measures, operator weights, budgets) and gives it a wiki page.
+//! one-click presets, the genes a run may change and their presets, the trial kinds and the trial presets the setup
+//! offers, the stand-in pilots that fly a design in its fights, the size presets, the archive's measures and the
+//! spreads over them, and the time a frame gives a run.
+//! What a goal, a trial kind or a measure computes is the arena's (`arena::evolve`), how a stand-in flies the sim's
+//! (`sim::flight::stand_in`); their words and numbers are here, so a pack can retune them. A run keeps everything it
+//! was made with (resolved), so a change here changes no run. The mutation operators' weights stay the arena's: a run
+//! breeds by them and its file doesn't carry them. The wiki generates the lab's page from this file and references its
+//! entries as `[[lab:<list>.<id>]]` (`docs/wiki.md`); its texts are keyed `lab.<list>.<id>.<field>`.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::Source;
+use super::{Source, StatDef};
+use crate::content::table::Table;
 
 /// The goals a run can weigh, by id: what the arena computes per job (`arena::evolve::GoalScores`).
 pub const GOALS: [&str; 4] = ["win", "unhurt", "quick", "cheap"];
 /// The genes a run may change (GDR-0092 "MAY CHANGE"), by id: what the arena's operators edit (`arena::evolve::Gene`,
 /// in this order).
 pub const GENES: [&str; 8] = ["layout", "parts", "armour", "power", "numbers", "rules", "assist_numbers", "assist_rules"];
+/// The trial kinds the arena fights (`arena::evolve::Trial`), by id ([`TrialPresetKind::id`]).
+pub const TRIAL_KINDS: [&str; 10] = ["encounters", "enemy_ships", "waves", "gauntlet", "beat_your_start", "fleet", "hall_of_fame", "champions", "voyages", "co_evolution"];
+/// What the archive measures a genome by (`arena::evolve::Measure`), by id.
+pub const MEASURES: [&str; 10] = ["top_speed", "acceleration", "weapon_reach", "build_points", "mass", "firepower", "hit_points", "parts", "rules", "engage_distance"];
+/// The archive's spreads (SPREAD BY): over what a design is, for runs whose design may change, else over how it fights.
+pub const SPREADS: [&str; 2] = ["design", "behavior"];
 /// The largest weight a goal or a trial may have (the setup's steppers run 0 to this).
 pub const MAX_LAB_WEIGHT: f32 = 3.0;
 /// Bounds of a preset's numbers: seeds per opponent, ships of an entry, waves of a target, the run's best fought.
@@ -49,6 +58,21 @@ pub struct Lab {
     /// "Co-evolution": "`lab.ron` may widen a faction's palette").
     #[serde(default)]
     pub palettes: Vec<EnemyPalette>,
+    /// The trial kinds' words (a run's trial without a preset shows its kind's name).
+    #[serde(default)]
+    pub kinds: Vec<LabKind>,
+    /// The size presets (SIZE), one of them the default.
+    #[serde(default)]
+    pub sizes: Vec<LabSize>,
+    /// The archive's measures: their words.
+    #[serde(default)]
+    pub measures: Vec<LabMeasure>,
+    /// The archive's grids, one per [`SPREADS`].
+    #[serde(default)]
+    pub spreads: Vec<LabSpread>,
+    /// The time a frame gives the run that computes (a later pack's replaces it).
+    #[serde(default)]
+    pub budget: Option<LabBudget>,
     /// Where it was read from (the last pack that has one).
     #[serde(skip_deserializing)]
     pub source: Source,
@@ -155,6 +179,89 @@ pub enum TrialPresetKind {
     },
 }
 
+/// A trial kind (one of [`TRIAL_KINDS`]) and its words.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabKind {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+}
+
+/// A size preset (QUICK, STANDARD, DEEP): children per generation and generations.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabSize {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    pub population: u32,
+    pub generations: u32,
+    /// A new run's size.
+    #[serde(default)]
+    pub default: bool,
+}
+
+/// A measure of the archive (one of [`MEASURES`]): its name and unit are a stat's (`stats.ron`) where one says the
+/// same, else its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabMeasure {
+    pub id: String,
+    #[serde(default)]
+    pub stat: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub unit: Option<String>,
+    pub summary: String,
+}
+
+/// A spread (one of [`SPREADS`]): the archive's grid, one to three axes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabSpread {
+    pub id: String,
+    pub axes: Vec<LabAxis>,
+}
+
+/// An axis of the archive: `cells` equal bins of a measure from `min` to `max` (values outside go to the end bins).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabAxis {
+    pub measure: String,
+    pub min: f32,
+    pub max: f32,
+    pub cells: u32,
+}
+
+/// The time a frame gives the run that computes (ms): with the EVOLUTION layer open, and anywhere else at home and
+/// on the screens (in flight it pauses).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabBudget {
+    pub layer_open: f32,
+    pub elsewhere: f32,
+}
+
+impl TrialPresetKind {
+    /// The kind's id (one of [`TRIAL_KINDS`]).
+    pub fn id(&self) -> &'static str {
+        match self {
+            TrialPresetKind::Encounters => "encounters",
+            TrialPresetKind::EnemyShips { .. } => "enemy_ships",
+            TrialPresetKind::Waves { .. } => "waves",
+            TrialPresetKind::Gauntlet { .. } => "gauntlet",
+            TrialPresetKind::BeatYourStart => "beat_your_start",
+            TrialPresetKind::Fleet => "fleet",
+            TrialPresetKind::HallOfFame { .. } => "hall_of_fame",
+            TrialPresetKind::Champions { .. } => "champions",
+            TrialPresetKind::Voyages => "voyages",
+            TrialPresetKind::CoEvolution { .. } => "co_evolution",
+        }
+    }
+}
+
 /// The parts an enemy faction may build with in an arms race besides those its ships use.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -243,13 +350,80 @@ impl Lab {
         self.pilots.iter().find(|p| p.id == id)
     }
 
+    pub fn kind(&self, id: &str) -> Option<&LabKind> {
+        self.kinds.iter().find(|k| k.id == id)
+    }
+
+    pub fn measure(&self, id: &str) -> Option<&LabMeasure> {
+        self.measures.iter().find(|m| m.id == id)
+    }
+
+    pub fn spread(&self, id: &str) -> Option<&LabSpread> {
+        self.spreads.iter().find(|s| s.id == id)
+    }
+
+    /// A measure's name and unit: its stat's (`stats`) or its own; none for a measure the file lacks.
+    pub fn measure_words<'a>(&'a self, stats: &'a Table<StatDef>, id: &str) -> Option<(&'a str, &'a str)> {
+        let m = self.measure(id)?;
+        match m.stat.as_deref().and_then(|s| stats.get(s)) {
+            Some(st) => Some((st.name.as_str(), st.unit.as_str())),
+            None => Some((m.name.as_deref()?, m.unit.as_deref().unwrap_or(""))),
+        }
+    }
+
+    /// A new run's size: the preset marked `default`, else the first.
+    pub fn default_size(&self) -> Option<&LabSize> {
+        self.sizes.iter().find(|s| s.default).or(self.sizes.first())
+    }
+
+    /// Every text with its key, `lab.<list>.<id>.<field>` (`lab.goal.win.name`), in file order.
+    pub fn texts<'a>(&'a self) -> Vec<(String, &'a str)> {
+        let mut out = Vec::new();
+        let mut put = |list: &str, id: &str, fields: &[(&str, &'a str)]| {
+            for (field, text) in fields {
+                out.push((format!("lab.{list}.{id}.{field}"), *text));
+            }
+        };
+        for g in &self.goals {
+            put("goal", &g.id, &[("name", &g.name), ("summary", &g.summary)]);
+        }
+        for p in &self.goal_presets {
+            put("goal_preset", &p.id, &[("name", &p.name)]);
+        }
+        for k in &self.kinds {
+            put("kind", &k.id, &[("name", &k.name), ("summary", &k.summary)]);
+        }
+        for t in &self.trials {
+            put("trial", &t.id, &[("name", &t.name), ("summary", &t.summary)]);
+        }
+        for g in &self.genes {
+            put("gene", &g.id, &[("name", &g.name), ("summary", &g.summary)]);
+        }
+        for p in &self.gene_presets {
+            put("gene_preset", &p.id, &[("name", &p.name)]);
+        }
+        for p in &self.pilots {
+            put("pilot", &p.id, &[("name", &p.name), ("summary", &p.summary)]);
+        }
+        for s in &self.sizes {
+            put("size", &s.id, &[("name", &s.name), ("summary", &s.summary)]);
+        }
+        for m in &self.measures {
+            let mut fields = vec![("summary", m.summary.as_str())];
+            fields.extend(m.name.as_deref().map(|n| ("name", n)));
+            fields.extend(m.unit.as_deref().map(|u| ("unit", u)));
+            put("measure", &m.id, &fields);
+        }
+        out
+    }
+
     /// The parts `faction` may build with in an arms race besides its ships' own (none listed: none).
     pub fn palette(&self, faction: &str) -> &[String] {
         self.palettes.iter().find(|p| p.faction == faction).map_or(&[], |p| &p.parts)
     }
 
     /// Ids listed twice in this file: ("goal", id), ("goal_preset", id), ("trial", id), ("gene", id), ("gene_preset",
-    /// id), ("pilot", id) or ("palette", faction).
+    /// id), ("pilot", id), ("palette", faction), ("kind", id), ("size", id), ("measure", id) or ("spread", id).
     pub(crate) fn repeated(&self) -> Vec<(&'static str, String)> {
         fn twice<'a>(what: &'static str, ids: impl Iterator<Item = &'a String>, out: &mut Vec<(&'static str, String)>) {
             let mut seen = std::collections::BTreeSet::new();
@@ -267,11 +441,15 @@ impl Lab {
         twice("gene_preset", self.gene_presets.iter().map(|g| &g.id), &mut out);
         twice("pilot", self.pilots.iter().map(|p| &p.id), &mut out);
         twice("palette", self.palettes.iter().map(|p| &p.faction), &mut out);
+        twice("kind", self.kinds.iter().map(|k| &k.id), &mut out);
+        twice("size", self.sizes.iter().map(|s| &s.id), &mut out);
+        twice("measure", self.measures.iter().map(|m| &m.id), &mut out);
+        twice("spread", self.spreads.iter().map(|s| &s.id), &mut out);
         out
     }
 
     /// A later pack's lab merged in: an entry of the same id replaces the earlier one in its place, a new one goes
-    /// at the end.
+    /// at the end; its budget replaces the earlier one.
     pub(crate) fn merge(&mut self, other: &Lab) {
         fn upsert<T: Clone>(list: &mut Vec<T>, add: &[T], id: impl Fn(&T) -> &str) {
             for e in add {
@@ -288,6 +466,13 @@ impl Lab {
         upsert(&mut self.gene_presets, &other.gene_presets, |g| &g.id);
         upsert(&mut self.pilots, &other.pilots, |p| &p.id);
         upsert(&mut self.palettes, &other.palettes, |p| &p.faction);
+        upsert(&mut self.kinds, &other.kinds, |k| &k.id);
+        upsert(&mut self.sizes, &other.sizes, |s| &s.id);
+        upsert(&mut self.measures, &other.measures, |m| &m.id);
+        upsert(&mut self.spreads, &other.spreads, |s| &s.id);
+        if other.budget.is_some() {
+            self.budget = other.budget;
+        }
         self.source = other.source.clone();
     }
 }

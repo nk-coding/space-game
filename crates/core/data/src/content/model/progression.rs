@@ -39,6 +39,8 @@ pub enum ResearchKind {
     Refinement,
     /// Needs reverse-engineered alien tech.
     Alien,
+    /// Opens a facility of the home shipyard (GDR-0092: the evolution lab).
+    Facility,
 }
 
 /// What a research node costs: research data per family and materials, paid at once (GDR-0063).
@@ -64,6 +66,8 @@ pub enum Unlock {
     Frame(String),
     /// More mind capacity: this many more logic cores the ship-mind runs at once (GDR-0013).
     MindCapacity(u32),
+    /// A `locked` facility (id): its building at home opens (GDR-0092: the evolution lab).
+    Facility(String),
 }
 
 /// `research/*.ron`: a research node. Unlocks at once when paid (GDR-0063); the player's set of researched nodes
@@ -92,6 +96,29 @@ pub struct ResearchNode {
     pub source: Source,
 }
 entry!(ResearchNode, Kind::Research);
+
+/// `facilities.ron` / `facilities/*.ron`: a building of the home shipyard that the player opens (GDR-0071: "each area
+/// needs states from content"; GDR-0092): its name, the label over it at home, and whether research must open it
+/// first. The shipyard places and draws it (`game::shipyard`); the evolution lab is the only one so far.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Facility {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub lore: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Dark until a research node's [`Unlock::Facility`] opens it.
+    #[serde(default)]
+    pub locked: bool,
+    #[serde(skip_deserializing)]
+    pub source: Source,
+}
+entry!(Facility, Kind::Facility);
 
 /// `starts.ron` / `starts/*.ron`: how a new game begins. A new game has every part, material and frame that is
 /// not `locked` (a start names no unlocks of its own).

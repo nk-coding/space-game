@@ -147,7 +147,7 @@ fn layout_errors_name_the_new_dirs_and_kinds() {
     assert!(
         err[0]
             .message
-            .contains("families, research, starts, voyages, encounters or controls"),
+            .contains("families, research, facilities, starts, voyages, encounters or controls"),
         "{}",
         err[0]
     );
@@ -155,7 +155,7 @@ fn layout_errors_name_the_new_dirs_and_kinds() {
     assert!(
         err[0]
             .message
-            .contains("family, research, start, voyage, encounter, control or page"),
+            .contains("family, research, facility, start, voyage, encounter, control or page"),
         "{}",
         err[0]
     );
@@ -681,6 +681,7 @@ fn base_research_nodes() {
             "tamed_core",
             "mind_expansion_1",
             "mind_expansion_2",
+            "simulation_vault",
             "cruiser_drydock",
         ]
     );
@@ -691,6 +692,7 @@ fn base_research_nodes() {
                 Unlock::Part(id) => c.parts.get(id).unwrap().locked,
                 Unlock::Material(id) => c.materials.get(id).unwrap().locked,
                 Unlock::Frame(id) => c.frames.get(id).unwrap().locked,
+                Unlock::Facility(id) => c.facilities.get(id).unwrap().locked,
                 Unlock::MindCapacity(n) => *n > 0,
             };
             assert!(locked, "{}: {u:?}", n.id);

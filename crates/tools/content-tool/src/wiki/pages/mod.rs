@@ -1,11 +1,12 @@
 //! The pages of the wiki: one per entry of every kind, one list per kind, and the index.
 //!
 //! Parts, materials, categories, factions, frames, ships, stats and articles here; behaviors (`behaviors.rs`), the
-//! career's research and starts (`career.rs`), voyages and encounters (`voyages.rs`), the lists and the index
-//! (`lists.rs`).
+//! career's research, facilities and starts (`career.rs`), voyages and encounters (`voyages.rs`), the evolution lab's
+//! page (`lab.rs`), the lists and the index (`lists.rs`).
 
 mod behaviors;
 mod career;
+mod lab;
 mod lists;
 mod voyages;
 
@@ -13,6 +14,7 @@ use super::*;
 
 pub(crate) use behaviors::{ROLES, role_title, signature};
 pub(crate) use behaviors::role_class;
+pub(crate) use lab::{LAB_DOCUMENTED, LAB_PAGE};
 
 impl Wiki<'_> {
     pub(crate) fn part_page(&self, p: &Part) -> String {
@@ -755,6 +757,7 @@ fn research_kind_name(k: ResearchKind) -> &'static str {
         ResearchKind::SizeClass => "Size class",
         ResearchKind::Refinement => "Refinement",
         ResearchKind::Alien => "Alien tech",
+        ResearchKind::Facility => "Facility",
     }
 }
 
@@ -767,6 +770,7 @@ fn research_kind_about(k: ResearchKind) -> &'static str {
             "A small step of a chain, such as a stat step or more mind capacity"
         }
         ResearchKind::Alien => "Needs reverse-engineered alien tech",
+        ResearchKind::Facility => "Opens a building of the home shipyard",
     }
 }
 

@@ -298,6 +298,19 @@ fn research_pays_and_unlocks_at_once() {
 }
 
 #[test]
+fn the_simulation_vault_opens_the_evolution_lab() {
+    let c = content();
+    let mut career = new_game(&c);
+    assert!(!career.unlocks(&c).has_facility("evolution"), "dark in a new game");
+    assert!(Unlocks::all(&c).has_facility("evolution"), "open with ?unlock=all");
+    // Three logic data: a salvaged logic core and an automaton core's fragment.
+    bring_home(&mut career, &c, &[(part("logic_core"), 1), (fragment("automaton_core"), 1)]);
+    career.research(&c, "simulation_vault").unwrap();
+    assert!(career.unlocks(&c).has_facility("evolution"));
+    assert_eq!(career.mind_capacity(&c), new_game(&c).mind_capacity(&c), "it opens a building, nothing else");
+}
+
+#[test]
 fn researched_parts_are_fresh_until_seen() {
     let c = content();
     let mut career = new_game(&c);

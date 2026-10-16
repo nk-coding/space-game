@@ -13,8 +13,14 @@
 // champions each side fights, `anchor` that the enemy also fights your starts, every `check_every` generations the PAST
 // CHAMPIONS check against the champions of every `champions_every`th generation, `mirror` symmetric enemies; its starts
 // are an enemy faction's ships, and `palettes` add parts a faction may build with besides its ships'. PLACEHOLDER
-// NUMBERS (lead defaults of 15 and 16 Oct 2026; the measured cost of each kind is in docs/arena.md). Size presets,
-// measures and the rest of the lab's numbers come with GDR-0092 step 8.
+// NUMBERS (lead defaults of 15 and 16 Oct 2026; the measured cost of each kind is in docs/arena.md). `kinds` are the
+// words of the trial kinds the arena fights (a trial without a preset shows its kind's). `sizes` are SIZE's presets:
+// children per generation and generations (`default: true` a new run's). `measures` are what the archive spreads
+// designs by, named by a stat of stats.ron (`stat`) or by their own `name` and `unit`; `spreads` are its grids, `design`
+// for runs whose design may change, `behavior` for the others: each axis `cells` bins of a measure from `min` to `max`
+// (the design spread is the arena's own default, for CLI runs too). `budget` is how many ms a frame gives the run that
+// computes: with the EVOLUTION layer open, and anywhere else at home and on the screens (in flight it pauses). The
+// mutation operators' weights are the arena's (docs/arena.md "Genomes, mutation and crossover").
 (
     goals: [
         (id: "win", name: "Win", summary: "Beat the opponent: a win counts 1, a loss 0, a draw by the build points each side lost.", weight: 1),
@@ -161,4 +167,38 @@
         // The warden's shields, for the raiders and hunters too.
         (faction: "automatons", parts: ["shield_emitter"]),
     ],
+    kinds: [
+        (id: "encounters", name: "The enemies you meet", summary: "Every encounter of the voyages open to the career, each a fight against its ships at their largest count."),
+        (id: "enemy_ships", name: "Enemy ships", summary: "Content ships tagged as enemies, a count of each, every pack a fight."),
+        (id: "waves", name: "Test-range waves", summary: "A gauntlet sized to the design: waves as the test range sends them, one after the other, until it is out or time is up; WIN is the share of the target cleared."),
+        (id: "gauntlet", name: "Gauntlet", summary: "Fixed waves, one after the other: the next comes in a few seconds after the one before has no running vessel left."),
+        (id: "beat_your_start", name: "Beat your start", summary: "Every start of the run, flown by its own behavior, as the opponent."),
+        (id: "fleet", name: "Your fleet", summary: "Your saved designs as opponents, FLEET's escorts first."),
+        (id: "hall_of_fame", name: "Hall of fame", summary: "The run's own best designs so far, a bar that rises as the run goes on."),
+        (id: "champions", name: "Champions", summary: "The best designs of the lab's earlier runs."),
+        (id: "voyages", name: "Voyages", summary: "The voyages open to the career, flown headless from launch to home; the voyage's score is the trial's WIN."),
+        (id: "co_evolution", name: "Arms race", summary: "An enemy population that evolves against yours in the same run, from an enemy faction's ships."),
+    ],
+    sizes: [
+        (id: "quick", name: "Quick", summary: "A first look at where a run goes.", population: 16, generations: 20),
+        (id: "standard", name: "Standard", summary: "The everyday run.", population: 32, generations: 50, default: true),
+        (id: "deep", name: "Deep", summary: "Twice the children over twice the generations, four times the work: leave it running.", population: 64, generations: 100),
+    ],
+    measures: [
+        (id: "top_speed", stat: "top_speed", summary: "Top speed along the direction with the most thrust: the engines' rating, so it changes only with the engine type."),
+        (id: "acceleration", stat: "acceleration", summary: "Acceleration along the direction with the most thrust: thrust over mass."),
+        (id: "weapon_reach", stat: "range", summary: "The reach of the longest gun with a clear line of fire."),
+        (id: "build_points", stat: "build_points", summary: "The design's build points."),
+        (id: "mass", stat: "mass", summary: "The mass of the main piece."),
+        (id: "firepower", stat: "firepower", summary: "Damage per second of all the main piece's guns at full power, as if each were clear and powered."),
+        (id: "hit_points", stat: "hp", summary: "The design's hit points."),
+        (id: "parts", name: "Parts", summary: "The parts in the design."),
+        (id: "rules", name: "Rules", summary: "The rules the behavior runs, at most the design's rule slots."),
+        (id: "engage_distance", name: "Engage distance", unit: "m", summary: "How far the design keeps from the nearest enemy vessel, on average over its fights: close brawlers on one side, snipers on the other."),
+    ],
+    spreads: [
+        (id: "design", axes: [(measure: "acceleration", min: 0, max: 24, cells: 8), (measure: "firepower", min: 0, max: 16, cells: 8)]),
+        (id: "behavior", axes: [(measure: "engage_distance", min: 0, max: 160, cells: 8), (measure: "rules", min: 0, max: 12, cells: 6)]),
+    ],
+    budget: (layer_open: 10, elsewhere: 4),
 )

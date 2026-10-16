@@ -23,9 +23,11 @@
 //!   picked design: its scores by trial and goal with VALIDATE, its fights with WATCH (the fight viewer; M brings the
 //!   lab back), its lineage, a comparison with its start, SAVE AS DESIGN; RENAME, and RE-SCORE for a stale run.
 //! * The building's label says what the lab does ([`building_line`]); its look follows [`light`].
+//! * **The chip** ([`Chip`]): `EVOLVING  12 / 50` beside home's gear ring and after the title of every layer over
+//!   home (FLEET, the LOG, SETTINGS) while a run computes; a click opens the lab (`home::chip`).
 //!
-//! UI words are chrome in code, like FLEET's and the LOG's; names come from content and the player's designs. The
-//! lab's own content (`lab.ron`: size presets, measures' names, budgets) comes with GDR-0092 step 8.
+//! UI words are chrome in code, like FLEET's and the LOG's; names come from content and the player's designs, the
+//! lab's own words and numbers from `lab.ron` (goals, genes, trials and their kinds, pilots, sizes, measures).
 
 mod run;
 mod runs;
@@ -34,10 +36,11 @@ mod setup;
 use world::arena::evolve::RunStatus;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use data::{Content, ResearchNode, Unlock};
 use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
-use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_color, set_text, show_screen, spawn_pill};
+use kit::ui_kit::{Edge, HudFonts, Pill, PillText, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_color, set_text, show_screen, spawn_pill};
 use world::career::{EscortDesigns, Granted, PlayerCareer};
 use world::evolution::{Lab, LabRequest};
 use world::mode::AppMode;
@@ -100,7 +103,7 @@ pub fn is_open(layer: Res<EvolutionLayer>) -> bool {
     layer.open
 }
 
-/// How the building looks (GDR-0092 "Its states"): dark until the lab opens (`?lab=1`), busy while a run computes,
+/// How the building looks (GDR-0092 "Its states"): dark while the lab is locked, busy while a run computes,
 /// gold once one has finished until it is opened, paused while a run waits for RESUME, else dim.
 pub fn light(lab: &Lab) -> Evo {
     if !lab.enabled {
@@ -121,12 +124,18 @@ pub fn score(v: Option<f32>) -> String {
     v.map_or_else(|| "—".into(), |s| format!("{s:.2}"))
 }
 
+/// The research node that opens the lab (the Simulation vault).
+pub fn unlocked_by(content: &Content) -> Option<&ResearchNode> {
+    world::career::unlocked_by(content, &Unlock::Facility(world::evolution::FACILITY.into()))
+}
+
 /// The line under the building's name and its tone, short enough for the room above the mind: `12 / 50  ·  BEST
-/// 0.81` while a run computes, `PAUSED  ·  12 / 50`, `DONE  ·  BEST 0.91`, `NO RUN`, and `LATER` while it is dark.
+/// 0.81` while a run computes, `PAUSED  ·  12 / 50`, `DONE  ·  BEST 0.91`, `NO RUN`, and `LOCKED` while it is locked
+/// (its tooltip names the node that opens it, `home::evolution_tip`: a node's name doesn't fit the room).
 pub fn building_line(lab: &Lab) -> (String, Tone) {
     let entry = |id: Option<&str>| id.and_then(|id| lab.entry(id));
     match light(lab) {
-        Evo::Dark => ("LATER".into(), Tone::Dim),
+        Evo::Dark => ("LOCKED".into(), Tone::Dim),
         Evo::Idle => ("NO RUN".into(), Tone::Label),
         Evo::Running => match entry(lab.running().map(|l| l.id.as_str())) {
             Some(e) => (format!("{} / {}  ·  BEST {}", e.generation, e.generations, score(e.best)), Tone::Teal),
@@ -140,6 +149,37 @@ pub fn building_line(lab: &Lab) -> (String, Tone) {
             Some(e) => (format!("DONE  ·  BEST {}", score(e.best)), Tone::Gold),
             None => ("DONE".into(), Tone::Gold),
         },
+    }
+}
+
+/// The EVOLVING chip: on home and the layers over it while a run computes.
+#[derive(Component)]
+pub struct Chip;
+
+/// Spawns the chip into a row (home's top right beside the gear ring, a layer's top left after its title).
+pub fn spawn_chip(parent: &mut ChildSpawnerCommands, fonts: &HudFonts) {
+    let chip = spawn_pill(parent, fonts, "EVOLVING", 8.5, 26.0, None, Pill::new(Tone::Teal), (Chip, Tip::new("THE EVOLUTION LAB")));
+    parent.commands().entity(chip).entry::<Node>().and_modify(|mut n| n.display = Display::None);
+}
+
+/// The chip's words follow the run that computes (`EVOLVING  12 / 50`, the generations done of its generations); it
+/// shows only while one does, and only at home (SETTINGS over flight has none).
+fn sync_chip(mode: Res<State<AppMode>>, lab: Res<Lab>, mut chips: Query<(&mut Node, &Children), With<Chip>>, mut texts: Query<&mut Text, With<PillText>>) {
+    if !(lab.is_changed() || mode.is_changed()) {
+        return;
+    }
+    let shown = *mode.get() == AppMode::Home && lab.enabled;
+    let words = lab.running().filter(|_| shown).and_then(|l| lab.entry(&l.id)).map(|e| format!("EVOLVING  {} / {}", e.generation, e.generations));
+    for (mut node, children) in &mut chips {
+        let display = if words.is_some() { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
+        for &child in children {
+            if let (Ok(mut text), Some(w)) = (texts.get_mut(child), &words) {
+                set_text(&mut text, w);
+            }
+        }
     }
 }
 
@@ -217,6 +257,7 @@ impl Plugin for EvolutionPlugin {
                 lab.layer_open = false;
             })
             .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<EvolutionLayer>)))
+            .add_systems(Update, sync_chip)
             .add_systems(
                 Update,
                 (open, input, runs::imported, trouble, (runs::fill, setup::fill, run::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
@@ -521,11 +562,12 @@ mod tests {
     use super::*;
     use world::evolution::RunEntry;
 
-    /// The building's words follow the lab: dark without `?lab=1`, no run, a run's generations and best.
+    /// The building's words follow the lab: locked until its research node, no run, a run's generations and best.
     #[test]
     fn the_building_says_what_the_lab_does() {
         let mut lab = Lab::default();
-        assert_eq!((light(&lab), building_line(&lab).0.as_str()), (Evo::Dark, "LATER"));
+        assert_eq!((light(&lab), building_line(&lab).0.as_str()), (Evo::Dark, "LOCKED"));
+        assert_eq!(unlocked_by(&data::base_content()).map(|n| n.id.as_str()), Some("simulation_vault"));
         lab.enabled = true;
         assert_eq!((light(&lab), building_line(&lab)), (Evo::Idle, ("NO RUN".into(), Tone::Label)));
         assert_eq!(score(Some(0.8125)), "0.81");

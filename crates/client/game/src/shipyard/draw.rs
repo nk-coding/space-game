@@ -77,8 +77,8 @@ pub struct Lights {
     pub evolution: Evo,
 }
 
-/// The EVOLUTION lab's state (GDR-0092 "Its states"): dark until it opens (`?lab=1` until its research node comes),
-/// dim without a run, its racks flickering while a run computes, gold once a run has finished until it is opened.
+/// The EVOLUTION lab's state (GDR-0092 "Its states"): dark until its research node opens it, dim without a run, its
+/// racks flickering while a run computes, gold once a run has finished until it is opened.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Evo {
     #[default]

@@ -226,6 +226,7 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Behavior => rows(c.behaviors.as_slice()),
         Kind::Family => rows(c.families.as_slice()),
         Kind::Research => rows(c.research.as_slice()),
+        Kind::Facility => rows(c.facilities.as_slice()),
         Kind::Start => rows(c.starts.as_slice()),
         Kind::Voyage => rows(c.voyages.as_slice()),
         Kind::Encounter => rows(c.encounters.as_slice()),
@@ -511,6 +512,15 @@ fn export(c: &Content) -> Value {
         })
         .collect();
     let starts: Vec<Value> = c.starts.iter().map(|e| entry_json(c, e)).collect();
+    let facilities: Vec<Value> = c
+        .facilities
+        .iter()
+        .map(|e| {
+            let mut v = entry_json(c, e);
+            v["unlocked_by"] = json!(ids(&unlocked_by(c, &Unlock::Facility(e.id.clone()))));
+            v
+        })
+        .collect();
     // Voyages list what opens them and what they open; encounters the voyages that place them.
     let voyages: Vec<Value> = c
         .voyages
@@ -637,6 +647,7 @@ fn export(c: &Content) -> Value {
         "behaviors": behaviors,
         "families": families,
         "research": research,
+        "facilities": facilities,
         "starts": starts,
         "voyages": voyages,
         "encounters": encounters,
@@ -837,7 +848,7 @@ mod tests {
         );
         assert_eq!(
             logic["research"],
-            json!(["tamed_core", "mind_expansion_1", "mind_expansion_2"])
+            json!(["tamed_core", "mind_expansion_1", "mind_expansion_2", "simulation_vault"])
         );
         assert_eq!(
             find("families", "hull")["salvaged_from_materials"],

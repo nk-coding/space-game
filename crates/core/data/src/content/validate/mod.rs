@@ -60,6 +60,7 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         }
     });
     v.entries(c.research.as_slice(), |v, e| v.research(e));
+    v.entries(c.facilities.as_slice(), |_, _| {});
     v.cycles(
         &c.research,
         |n| &n.requires,

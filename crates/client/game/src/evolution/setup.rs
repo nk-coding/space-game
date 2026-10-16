@@ -50,7 +50,7 @@ use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, field_text, label, number, prose, ring_glyph, ring_node, spawn_pill, sub_tone, tracked};
 use world::career::fleet_cores;
-use world::evolution::{Flier, Lab, SIZES, Setup, StartDesign, StartPick, sources, templates};
+use world::evolution::{Flier, Lab, Setup, Size, StartDesign, StartPick, sources, templates};
 use world::player::PlayerDesign;
 use world::player::behaviors::PlayerBehaviors;
 use world::player::library::{self, MAX_NAME, fresh_name, list_designs};
@@ -483,7 +483,11 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: SetupButton) {
                 s.goals = Goals::of(p.weights.clone());
             }
         }
-        SetupButton::Size(k) => s.size = SIZES[k.min(SIZES.len() - 1)].1,
+        SetupButton::Size(k) => {
+            if let Some(z) = content.lab.sizes.get(k) {
+                s.size = Size::of(z);
+            }
+        }
         SetupButton::Population(by) => s.size.population = step(s.size.population, by * POPULATION.0 as i32, (POPULATION.1, POPULATION.2)),
         SetupButton::Generations(by) => s.size.generations = step(s.size.generations, by * GENERATIONS.0 as i32, (GENERATIONS.1, GENERATIONS.2)),
         SetupButton::Seed(by) => s.seed = s.seed.saturating_add_signed(by),
@@ -613,7 +617,7 @@ pub(super) fn fill(
             }
             Section::Limits => limits(p, fonts, &c, page, &granted, free),
             Section::Genes => genes(p, fonts, &c, content, page),
-            Section::Size => size(p, fonts, &c, page),
+            Section::Size => size(p, fonts, &c, content, page),
             Section::LocksHead => locks_head(p, fonts, &c, content, page),
             Section::Grid => grid(p, &c, content, page),
             Section::Parts => parts(p, fonts, &c, content, page),
@@ -799,11 +803,11 @@ fn genes(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
     });
 }
 
-fn size(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage) {
+fn size(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
     let s = &page.setup;
     p.spawn(row(8.0)).with_children(|r| {
-        for (k, (name, preset)) in SIZES.iter().enumerate() {
-            toggle(r, fonts, name, s.size == *preset, SetupButton::Size(k));
+        for (k, z) in content.lab.sizes.iter().enumerate() {
+            toggle(r, fonts, &z.name.to_uppercase(), s.size == Size::of(z), SetupButton::Size(k));
         }
         r.spawn(Node { width: px(14), ..default() });
         r.spawn(label(fonts, "SEED", 8.5, c(Tone::Label, 1.0)));
@@ -1097,7 +1101,7 @@ fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f3
     let fights = format!("{jobs} FIGHTS A CHILD, {} A GENERATION", jobs * s.size.population + theirs);
     // With the layer open the run has its larger budget: ticks per second from the measured cost per tick at 60
     // frames a second (an estimate until the first run measured this device).
-    let per_second = world::evolution::BUDGET_OPEN_MS * 60.0 * 1000.0 / lab.rate.us_per_tick.max(0.01);
+    let per_second = world::evolution::budget(content, world::mode::AppMode::Home, true) * 60.0 * 1000.0 / lab.rate.us_per_tick.max(0.01);
     let minutes = (s.ticks(content, &page.sources) / per_second as f64 / 60.0).max(0.1);
     let time = match minutes {
         m if m < 1.0 => "UNDER A MINUTE".to_string(),
