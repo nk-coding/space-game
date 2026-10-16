@@ -1,6 +1,7 @@
 # ADR-0041: The web build keeps its documents in IndexedDB, read into memory at start and written behind; the local storage moves in once; lab runs are stored in parts
 
-- Status: Accepted (provisional, lead)
+- Status: Accepted (provisional, lead). 2026-10-16: the move from the local storage and the conversion of lab runs
+  stored whole (format 1) into parts were removed once Niklas's data had moved; the game no longer reads either.
 - Date: 2026-10-16
 - Decided by: Niklas (IndexedDB instead of the local storage, after a lab run filled it: "for what does indexeddb
   exist"); the shape by the lead session and the storage agent, for Niklas to review

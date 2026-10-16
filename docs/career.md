@@ -286,8 +286,7 @@ Track 7F, 13 Oct 2026: `game::career` (`crates/client/world/src/career.rs`; test
 
 - **The document**: `saves/<slot>` in the player storage (ADR-0031: on the web the browser's IndexedDB since 16 Oct
   2026, ADR-0041, key `saves/career` in the database `space-game`, read into memory before the game starts and
-  written behind it; a save made in the local storage before, key `space-game/saves/career`, moves in at the first
-  start of the new build; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
+  written behind it; `<data dir>/saves/career.ron` on desktop; memory where the platform has none, with a
   note). The text is `Career::to_ron()` after the storage's header line `// space-game: saves, format 2, saved
   <unix seconds>` (`CareerDoc`, format `career::FORMAT`). The slot is `career`; `?save=<slot>` plays another one
   (a storage name: `a-z 0-9 _ -`; another name falls back to `career` with a note).

@@ -529,8 +529,7 @@ saved template copy moved to the cruiser frame).
   `Storage::set_aside` copies a document's text as stored to another name (a working document this build can't
   read is kept before it is written over); `Storage::keep_on_leave` keeps a document that waits for its write, and
   the web backend writes it when the page goes away or is hidden (made into text only then).
-- Backends: **web** the browser's IndexedDB (since 16 Oct 2026, ADR-0041; until then the local storage, keys
-  `space-game/<namespace>/<name>`, moved in once at the first start): the database `space-game`, keys
+- Backends: **web** the browser's IndexedDB (since 16 Oct 2026, ADR-0041; until then the local storage): the database `space-game`, keys
   `<namespace>/<name>`, every document read into memory before the game starts, writes kept at once and committed
   behind them (per origin: the copies on :8080 and :8081 don't share designs; the browser's quota is a share of the
   disk, a design is 2–250 kB; `docs/client.md` "The web's storage"); **desktop** files
