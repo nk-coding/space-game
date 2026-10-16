@@ -39,6 +39,36 @@ running the fight again.
   about 5–6 s at 60 fps with the layer open and 13–15 s elsewhere (estimates from the measured cost; the headless
   browser's frames are too slow to time it directly). Not yet: VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME
   (step 5), GENERATION n, the chip on every layer (step 8), the `visibilitychange` pause (a hidden tab gets no frames).
+  Step 5 built 2026-10-16 (`docs/arena.md` "Trials and goals", `docs/client.md` "Evolution", `docs/sim.md` "Test-range
+  waves"): the `TrialKind` abstraction and nine kinds (THE ENEMIES YOU MEET, ENEMY SHIPS, TEST-RANGE WAVES and fixed
+  gauntlets as reinforcements in the referee, which the viewer plays unchanged, BEAT YOUR START, YOUR FLEET, HALL OF
+  FAME, CHAMPIONS, VOYAGES; WITH YOUR ESCORTS), weights, the four goals per job kept in the records, `lab.ron` with the
+  goals, goal presets and trial presets (the default selection as above), the test range's waves in
+  `sim::voyage::waves` (the same ships, order and places, pinned by a test), VALIDATE, RE-SCORE and IMPORT RUN, the
+  setup's trials and goals with an estimate, the run's SCORES by trial and goal, the CLI's `--trial`, `--goal(s)`,
+  `trials`, `validate` and `rescore`. Where building found otherwise: `lab.ron` is one file without an entry kind of its
+  own (no text keys, no wiki page; step 8 completes it) and holds only the goals and the presets (sizes, budgets,
+  measures and the rest stay code constants until then); `resolve` returns the kind itself, holding what it fights,
+  and the trait has no `goals` method: a job's goals follow from the job (a fight, a gauntlet, a voyage) and how it
+  ended, CHEAP being the design's (filled in by the run); the old `fitness` reads and writes as it was, as one trial
+  (ArenaPool as ENEMY SHIPS with its hall of fame in the same mean), and only runs with `trials` or `goals` keep the
+  goals in their records, so runs and files from before are unchanged (`two_starts_locked` seeds 1 and 7 hash as
+  before: no scoring change); a trial of weight 0 is not fought, one without fights (the hall of fame in generation 0)
+  leaves the sums; a gauntlet's wave is cleared, as in the test range, when it has no running vessel (a disarmed one
+  that runs holds it up), the next comes in 4 s later around side 0's first running vessel, and TEST-RANGE WAVES has
+  a 180 s limit (WIN the waves cleared of 5, QUICK on clearing them all); the seeds moved from the size presets to each
+  trial (QUICK, STANDARD and DEEP set children and generations); VALIDATE also fights the design's recorded fights again
+  and says how many end as recorded, its results kept in the run file, not yet in a saved design's `origin` (a new
+  designs format); RE-SCORE keeps the stale run's history and fights (each earlier generation keeps the rules it was
+  fought under, for its codes) and adds a re-score generation that takes none of the run's generations (its hall of
+  fame is the old archive's best); VOYAGES run on the web as well (3–6 fights' worth a job once designs survive, the
+  setup shows it) and stay off by default; DUPLICATE and RENAME (step 4's list) are built; FLOWN BY stays with the
+  stand-in (step 6). Measured (16 Oct 2026, native, 4 threads): a tick 5–6 µs per thread whatever the kind; the default
+  selection about 20 jobs and 19 000 ticks a child, 0.6 M a STANDARD generation (about 6 s on the web with the layer
+  open, 0.8 s natively on 4 threads); per kind in `docs/arena.md` "What a trial costs". Determinism: native = wasm for
+  `--run mixed_trials` (seed 1 `222c9bee00fa033e`, seed 4 `8d85b8edf59c7a64`) and the gauntlet
+  `fights/runner_gauntlet.ron`; every older stream, fight code and run unchanged. Not yet: GENERATION n, the chip, the
+  `visibilitychange` pause (step 8), the stand-in and FLOWN BY (step 6), the ARMS RACE (step 7).
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

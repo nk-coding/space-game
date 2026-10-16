@@ -118,7 +118,7 @@ else (`/`, `?debug=1`, `?stats=1`) starts at home; the sandbox alone is `?scene=
 - **Sandbox** (home's TEST RANGE, `?scene=sandbox`; the HUD title says `TEST RANGE`): the player flies their design (`player::PlayerDesign`; at the first start and a new game
   a copy of the career's start ship, the Rim skiff; after that the autosaved working design). Waves of enemies (the content ships tagged `enemy`:
   the base pack's automaton raider, hunter and warden; their faction's behavior, `raider_basic`) spawn 105–125 m away; a new wave starts 4 s after the last
-  enemy vessel goes dark (a raider shot in half can be two raiders). **A wave follows the flown design** (GDR-0074, GDR-0089, `scene::wave_mix`, a placeholder rule):
+  enemy vessel goes dark (a raider shot in half can be two raiders). **A wave follows the flown design** (GDR-0074, GDR-0089, `sim::voyage::waves` since GDR-0092 step 5, shared with the lab's TEST-RANGE WAVES and pinned by `scene::tests::the_test_range_waves_stay_as_they_were`; a placeholder rule):
   half the design's build points (`WAVE_SHARE`) are spent on the biggest enemies first, each as often as it fits whole, then one more
   of the smallest if at least half of it is left; at least 1 ship, at most 8 (`WAVE_CAP`). The starter `rim_skiff` (59 build points) meets a hunter
   (23.6), the Halvex Runner (132.5) two hunters and a raider (15.8), a 300-point design two wardens (75) (Niklas, 15 Oct 2026: a single ship
@@ -189,6 +189,10 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
 - **Seeking**: the first pass keeps a copy of the `Sim` and the referee every 10 s (`replay::KEYFRAME_TICKS`).
   Back restores the keyframe before the target and runs on; forward runs ahead; both within the frame, then every
   piece view is rebuilt (`SimWorld::rebuild_views`) and effects and shield ripples are cleared.
+- **Gauntlets** (GDR-0092 step 5: a code whose spec has `waves`, the lab's TEST-RANGE WAVES and gauntlets): the
+  referee brings side 1's next wave in as the fight runs (`Referee::observe` steps the world's ships in), so the
+  viewer plays them unchanged; the setup's designs include every wave's, for drawing. The title adds `· 3 WAVES`, the
+  subtitle `· WAVE 2 / 3`.
 - **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`; subtitle `0:23 / 1:30 · 2× · BUILD POINTS
   120 / 132 VS 12 / 47`; a timeline under the view (how far the fight is in teal, how far it has been simulated in
   grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the help line lists the replay keys.
@@ -814,7 +818,8 @@ the records mast by the gate, once the camera has flown there).
 
 ## Evolution
 
-The evolution lab ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026): runs that breed the
+The evolution lab ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026; its trials and goals,
+VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME with step 5 the same day): runs that breed the
 player's designs against enemies and keep the best of each kind, every fight to watch again, any result saved as a
 design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
 the building `shipyard`. Until its research node comes (step 8) it opens with `?lab=1`; without it the building is
@@ -837,8 +842,12 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
 - **RUNS**: every run, newest first (at most `MAX_RUNS`, 8: the web's local storage holds about 5 MB per origin):
   its name, its starts, its status (`RUNNING` teal, `PAUSED`, `DONE` gold, `RULES CHANGED` and `DOESN'T READ` coral),
   generation n / N, `START 0.42 » BEST 0.81` (generation 0's best, the archive's best), when it was made; PAUSE or
-  RESUME, OPEN (or a click on the row) and DELETE, which asks in the row (`DELETE IT? THERE IS NO UNDO`, DELETE /
-  KEEP). NEW RUN top right. One run computes at a time: making or resuming one pauses the one that computed.
+  RESUME, DUPLICATE (the same setup with a new seed, a new run that computes), OPEN (or a click on the row) and DELETE,
+  which asks in the row (`DELETE IT? THERE IS NO UNDO`, DELETE / KEEP). NEW RUN and IMPORT RUN top right: IMPORT RUN
+  reads a run file of the CLI (`arena evolve --save`; on the web through the file chooser, on desktop dropped onto
+  the window while the layer is open; at most 32 MB), paused, under its file's name (`Lab::import`); one fought under
+  other rules comes in read-only, to be re-scored. One run computes at a time: making or resuming one pauses the one
+  that computed.
 - **SETUP** (NEW RUN): START FROM, one to four starts picked from YOUR DESIGNS and the templates (the content ships of
   the player's faction), each a chip (a click shows its locks); LOCKS in lists until the on-ship painting of step 6:
   KEEP ALL of a category (gold pills, `categories.ron`), each part of the start (a part kept with its category shows
@@ -846,26 +855,48 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   default), a number (steps of 5) or NO CAP, HOLD at least the start's or any, VOYAGE-READY (logic cores within the
   mind capacity less FLEET's escorts'), MIRROR (on when the first start looks symmetric; the arena checks), only the
   career's parts and materials (`?unlock=all`: every part); MAY CHANGE: design and behavior (the default until step
-  6), design only, behavior only (then the archive spreads by engage distance × rules); TRIALS: ENEMY SHIPS (each
-  content ship tagged `enemy` with a count, 0 = not fought; two raiders and a hunter by default) and the HALL OF FAME
-  (the run's best so far, 2); SIZE: QUICK (16 children, 20 generations, 2 seeds), STANDARD (32, 50, 4), DEEP (64, 100,
-  6), or steppers; SEED (steppers and DICE); NAME (`Evolving <start>`); the fights a child and a generation has and
-  the time it takes with the layer open, from the measured rate (estimated before a run measured this device). START
-  RUN builds the run (`Lab::create`): a setup the arena refuses says why in the status line.
+  6), design only, behavior only (then the archive spreads by engage distance × rules); SIZE: QUICK (16 children, 20
+  generations), STANDARD (32, 50), DEEP (64, 100), or steppers; SEED (steppers and DICE). TRIALS (step 5): every
+  `lab.ron` trial preset in a list, its default selection on (THE ENEMIES YOU MEET at weight 2, TEST-RANGE WAVES, BEAT
+  YOUR START, HALL OF FAME; ENEMY SHIPS, the raider gauntlet, YOUR FLEET, CHAMPIONS and VOYAGES off), each row a pill
+  that turns it on or off, its WEIGHT (0 to 3 in halves) and SEEDS steppers, the count where it has one (BEST for the
+  hall of fame and the champions, WAVES for the test-range waves' target), and how many fights a child gets of it, or
+  in coral why it has nothing to fight (`NO VOYAGE OPEN`, `NO SAVED DESIGN`, `NO EARLIER RUN YET`; the pill is then
+  disabled); ENEMY SHIPS on lists each enemy ship with a count under it. WITH YOUR ESCORTS (top right of the list)
+  flies FLEET's escorts beside the design in every trial. What the trials fight from outside the run comes from the
+  career and the lab when the page opens (`world::evolution::sources`): the career's open voyages, YOUR DESIGNS (FLEET's
+  escorts first), the best design of every other run (`Lab::champions`, rebuilt from its file), FLEET's escorts.
+  GOALS: `lab.ron`'s goal presets (WIN, WIN UNHURT, WIN CHEAPLY, WIN FAST; the one whose weights these are lit) and
+  each goal's weight (0 to 3; one at least above 0). THE RUN (one line): the fights a child and a generation get and
+  the time it takes with the layer open, from the measured cost of a tick and each kind's measured share of its time
+  limit (a fight 0.5, a gauntlet 0.35, a voyage 0.25; estimated before a run measured this device). NAME (`Evolving
+  <start>`). START RUN builds the run (`Lab::create`): a setup the arena refuses, or a trial with nothing to fight, says
+  why in the status line.
 - **THE RUN**: its status and seed, GENERATION n / N with a bar inside the open generation (`Run::generation_done`),
   fights per second, the time left and the last generation's time (measured), `START » BEST`; PAUSE or RESUME top
-  right; a coral line for a stale run (`THE RULES HAVE CHANGED SINCE THIS RUN · IT IS KEPT READ-ONLY`). SCORES BY
+  right, RENAME (a name field where the stale line is) and, for a stale run, RE-SCORE (`Lab::rescore`: a new run
+  `<name> (re-scored)` under today's rules that fights the archive's elites again first, then goes on; the stale run
+  stays as it was); a coral line for a stale run (`THE RULES HAVE CHANGED SINCE THIS RUN · IT IS KEPT READ-ONLY`). SCORES BY
   GENERATION: three lines over the run's generations (the archive's best gold, each generation's best teal, its mean
   grey; thin rotated nodes) over bars of the children that took a cell, and the last generation in numbers. THE
   ARCHIVE: a cell per bin of the run's first two measures (a third folded in), each occupied cell a ship card
   (`UiIcon::Ship`, as FLEET and BLUEPRINTS draw them) tinted by its score, the best with a gold edge, a start with a
   teal corner; its axes in words under it (the content's stat names and units where there are some). THE PICKED
   DESIGN (the best until one is clicked): its drawing, score, generation and genome number, its measures, its start;
-  FIGHTS (WATCH BEST, WATCH WORST, then a row per fight: `WON 0:23`, `LOST 1:02`, `DRAW 1:30 · 0.62` against `2 ×
-  AUTOMATON RAIDER` or the run's best, the seed, build points lost on both sides and damage dealt; CODE copies the
-  fight's code, WATCH plays it), LINEAGE (the start and the last ancestors as cards with generation, score and what
+  SCORES (step 5, the first tab: a row per trial with its weight, its fights, its score and each goal's mean, the
+  goals that weigh lit, a trial without fights says so; IN ALL; VALIDATE THIS and VALIDATE THE BEST 8, then
+  `VALIDATED 0.76 ON 20 NEW SEEDS · 36 OF 36 RECORDED FIGHTS AS RECORDED`), FIGHTS (WATCH BEST, WATCH WORST, then a
+  row per fight in the same columns whatever its end: `WON 0:23`, `LOST 1:02`, `DRAW 1:00`, `BOTH OUT 0:40` in a
+  column of fixed width, its score in the next, then a column that takes the rest and clips short of the buttons: the
+  trial and the opponent (`THE ENEMIES YOU MEET · 2 × AUTOMATON RAIDER`, a design by its name, a gauntlet's `+ 4
+  WAVES`, a voyage by its name) and under them `SEED 4 · YOU LOST 242 BP · THEY LOST 2 BP · YOU DEALT 40 DAMAGE` (a
+  gauntlet's waves cleared after it); CODE copies the fight's code, WATCH plays it), LINEAGE (the start and the last ancestors as cards with generation, score and what
   changed; a click picks one), COMPARE (the start and the design side by side, the parts gained and lost by name, the
   behavior), and SAVE AS DESIGN (a name, `<start> · evolved g<generation>`, then SAVE).
+- **VALIDATE** (`Lab::validate`): the picked design, or the archive's best 8, fight the run's trials on 20 new seeds
+  each and their recorded fights again (`arena::Run::validation`); it computes in the run's place (the progress line
+  says `VALIDATING 8 DESIGNS · 40% · THE RUN WAITS`; slices on the web, the compute threads natively), then its results
+  go into the run's file. A stale run is re-scored first.
 - **WATCH** queues the fight's code in the fight viewer (`replay::Replay::queue`, `scene::Launch::Fight`) and flies; the
   run pauses meanwhile (flight). M, the HUD's ring or the flight menu's way out come home onto the lab with the
   layer open on the same page and pick (`Lab::watching`, `home::enter`).

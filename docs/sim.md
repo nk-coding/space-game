@@ -401,6 +401,15 @@ stays `87f8e44db8186359`. Core, flight, assists, behavior, salvage and voyage (s
 the probe `close_quarters`, the Runner's code against three raiders (as recorded) and `--run two_starts_locked` (seeds 1
 and 7): native x86_64 vs wasm32-wasip1 **identical**, every last hash as above.
 
+**Trials** ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 5, 16 Oct 2026): the test range's wave rule
+and where its waves come in moved from the client into `sim::voyage::waves` (below); nothing in a scenario or a step
+uses it, so no stream changed: core `04c38a80a753f50f` (seed 42, 900 ticks) identical native against wasm and as
+before, the rules fingerprint still `87f8e44db8186359` (`lab.ron` is not part of it). The arena's gauntlets bring
+their waves in with it on the `Scenario` stream (`fights/runner_gauntlet.ron` seeds 1 and 3 identical native against
+wasm); `--run two_starts_locked` seeds 1 and 7 unchanged (`4f126e780aff05c0`, `887374c2560c32e7`), and the new
+`--run mixed_trials` (every kind of trial, all four goals) identical, seed 1 `222c9bee00fa033e` and seed 4
+`8d85b8edf59c7a64` (`docs/arena.md` "Determinism").
+
 Scenarios (`sim::voyage::scenario`); `core` and `flight` spawn two copies of every blueprint in the content:
 
 - `core`: raw throttles and fire flags (every second ship flat out), random hits, a blast every 75 ticks, a ram
@@ -2385,6 +2394,23 @@ reach makes the voyages harder: the starter clears as often but is lost more oft
 and 0 → 9 of 120; a reactor shot off now reaches the logic core two cells away through the cargo bay, nothing
 shields it), the Runner clears 10–12 fewer of 120 on three voyages and is lost a few times more (its reactors' blasts
 reach two cells out too).
+
+## Test-range waves (`sim::voyage::waves`)
+
+The test range's waves (GDR-0074 sized them, GDR-0089 fills them), in the sim since GDR-0092 step 5 so the test range
+(`world::scene`) and the arena's TEST-RANGE WAVES gauntlet (`docs/arena.md` "Trials and goals") share one rule. Pure
+functions, no state, no random stream of their own:
+
+- `wave_mix(design_bp, enemies)`: a budget of the flown design's build points × `WAVE_SHARE` (0.5) spent on the
+  biggest enemies first (each as often as it fits whole), then one more of the smallest if at least half of it is
+  left; at least one ship, at most `WAVE_CAP` (8). `wave(design_bp, enemies)` the wave's ships in the order they come
+  in, the biggest first. `wave_enemies(content)` the content ships tagged `enemy` (`ENEMY_TAG`) with their build
+  points, smallest first; `build_points(design)` a compiled design's.
+- `wave_bodies(centre, n, roll)`: where the `n` ships come in around the ship they are sent at: on an arc at a random
+  bearing, `WAVE_SPREAD` (0.32 rad) apart, each `WAVE_RADIUS` (105–125 m) out, nose and velocity (`WAVE_SPEED`, 3
+  m/s) towards it; `sim::math`'s trigonometry. The caller rolls: the arena on the `Scenario` stream, the test range on
+  its own generator (`kit::rng::Rng`), where the positions match those before the move to well under a millimetre
+  (`world::scene`'s test pins the ships, their order and the positions taken from the code before).
 
 ## Driving the sim from the client
 

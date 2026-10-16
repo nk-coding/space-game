@@ -346,14 +346,23 @@ Next session:
      generation and resume after a reload; designs format 2 with an `origin` (the EVOLVED tag in BLUEPRINTS), share
      codes SGD3; EVOLVE THIS DESIGN in the drydock (taken forward from step 6, like several starts and the locks in
      lists);
-  5. trials (the `TrialKind` abstraction, the test-range waves in shared code, goals, VALIDATE);
+  5. **Built 16 Oct 2026**: trials and goals (`docs/arena.md` "Trials and goals"): the `TrialKind` abstraction and
+     nine kinds (THE ENEMIES YOU MEET, ENEMY SHIPS, TEST-RANGE WAVES and gauntlets as reinforcements in the referee and
+     the viewer, BEAT YOUR START, YOUR FLEET, HALL OF FAME, CHAMPIONS, VOYAGES; WITH YOUR ESCORTS), weights, the four
+     goals (WIN, UNHURT, QUICK, CHEAP) kept per fight, `lab.ron`'s goals and trial presets with GDR-0092's default
+     selection; the test range's waves moved to `sim::voyage::waves` (unchanged, pinned by a test); VALIDATE (new
+     seeds and the recorded fights again), RE-SCORE (a stale run as a new run under today's rules), IMPORT RUN,
+     DUPLICATE, RENAME; the SETUP's trials and goals with the estimate, the run's SCORES by trial and goal and its
+     fights in fixed columns; the CLI's `--trial`, `--goal(s)`, `arena trials`, `validate`, `rescore`;
+     `determinism-check.sh --run mixed_trials` (native = wasm); every older stream and run unchanged;
   6. everything mutates (behavior structure, assists with a stand-in pilot, the LOCKS UI);
   7. co-evolution (the ARMS RACE);
   8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
   9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab, GDR-0092 step 5 (trials: the `TrialKind` abstraction, the test-range waves in shared code,
-     goals, VALIDATE, RE-SCORE, IMPORT RUN); `lab.ron` and the Simulation vault with step 8.
+  1. The evolution lab, GDR-0092 step 6 (everything mutates: the behavior structure and assist operators, the stand-in
+     pilot and FLOWN BY, MAY CHANGE's presets, the LOCKS UI); co-evolution with step 7; the rest of `lab.ron`, its wiki
+     page and the Simulation vault with step 8.
 
 ## Phase 4: measurement
 

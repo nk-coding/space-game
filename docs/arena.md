@@ -42,6 +42,7 @@ and what a fight code will carry later.
 | `formation` | `Line` (side by side across the line of the fight, the default) or `Column` (one behind the other) |
 | `start_distance` | Metres between the two sides' front rows (centre to centre), above 0, at most 5000 |
 | `time_limit` | Seconds, above 0, at most 1800 |
+| `waves` | Optional (written only when there are any): side 1's reinforcements, a list of sides. A **gauntlet** (GDR-0092 step 5): each wave comes in `WAVE_DELAY` (4 s, the test range's pause, placeholder) after the one before has no running vessel left, its ships on an arc around side 0's first running vessel heading for it, as the test range's waves come in (`sim::voyage::waves::wave_bodies`, rolled on the `Scenario` stream); side 1 is not out while a wave is still to come. The result counts the waves cleared (`FightResult::waves`, side 1's own entries the first; written only for a gauntlet), and side 1's build points lost count every wave it brought in. `fights/runner_gauntlet.ron` is one |
 
 Blueprint and behavior texts are written as multi-line strings by `to_ron`, so a written spec stays readable.
 
@@ -301,6 +302,95 @@ Since GDR-0092 steps 2 and 3 (15 Oct 2026) a run starts from one to four designs
 designs within the mind capacity and with the start's hold, and keeps every fight: [Starts and locks](#starts-and-locks),
 [What a run keeps](#what-a-run-keeps).
 
+### Trials and goals
+
+Since GDR-0092 step 5 (16 Oct 2026) a run is scored against any number of **trials**, each with a weight, and its
+score weighs four **goals** (`src/evolve/trial.rs`). `RunConfig` gets `trials: [...]` and `goals: (...)`; the old
+`fitness` still reads (and writes) as it was, as one trial, so the runs before step 5 and their files are unchanged:
+`two_starts_locked` seeds 1 and 7 still hash `4f126e780aff05c0` and `887374c2560c32e7`.
+
+```ron
+trials: [
+    (preset: "enemies_you_meet", kind: Encounters(voyages: ["yard_approach"]), weight: 2, seeds: 4, time_limit: 60),
+    (kind: Waves(target: 5), seeds: 2, time_limit: 180),
+    (kind: BeatYourStart, seeds: 2, time_limit: 60, escorts: [(design: Blueprint("…"), behavior: Some(Text("…")))]),
+    (kind: HallOfFame(count: 4), seeds: 2, time_limit: 60),
+],
+goals: (win: 1, unhurt: 1),   // left out: WIN alone
+```
+
+Every trial shares `weight` (default 1; 0: not fought), `seeds` (each opponent on seeds 1..=n), `count` (ships of the
+contestant), `start_distance`, `time_limit`, `escorts` (WITH YOUR ESCORTS: these fly beside it on side 0; on a voyage
+they come along under the content's escort behavior) and `preset` (the `lab.ron` preset it came from, for its name).
+At `Run::new` each spec resolves against the content into a `TrialKind` (the one abstraction: `jobs(contestant,
+ctx)`, `hall_of_fame()`), which then makes a genome's jobs against the generation's frozen starts and hall of fame;
+the run is self-contained (player designs inlined as text, content by id).
+
+| Kind | What it fights |
+|---|---|
+| `EnemyShips(opponents, hall_of_fame)` | ENEMY SHIPS: each entry a fight per seed, and the run's best `hall_of_fame` in the same mean (the old `fitness: ArenaPool` reads as this) |
+| `Encounters(voyages)` | THE ENEMIES YOU MEET: every encounter of these voyages that has ships (each once, in their sites' order), its ships at their largest counts, a fight each; the guardian with its voyage (`evolve::encounters`) |
+| `Waves(target)` | TEST-RANGE WAVES: a gauntlet of `target` (5) equal waves as the test range sends them, sized from the contestant's build points (`sim::voyage::waves::wave`); WIN is the waves cleared of `target` |
+| `Gauntlet(waves)` | fixed waves, one after the other (`lab.ron`'s raider gauntlet) |
+| `BeatYourStart` | every start under its own behavior |
+| `Fleet(designs)` | YOUR FLEET: the player's designs, inlined |
+| `HallOfFame(count)` | the run's best `count` so far (frozen per generation; none in generation 0, so it leaves the sums there) |
+| `Champions(designs)` | CHAMPIONS: the best designs of earlier runs, inlined |
+| `Voyages(ids, minutes, pilot)` | VOYAGES: headless voyages (the old `fitness: Voyages` reads as this) |
+
+**Goals** (per job, 0..1): WIN (the arena score; a gauntlet's waves cleared of all; the voyage score), UNHURT (one less
+the share of side 0's build points lost; of the hull, on a voyage), QUICK (one less the share of the time limit a win
+took, 0 otherwise), CHEAP (one less the design's build points over its build-point limit, else its start's). A child's
+score: per trial, Σ goal weight × the goal's mean over the trial's jobs ÷ Σ goal weight; then Σ trial weight × that ÷ Σ
+trial weight, trials without jobs and of weight 0 left out. One trial with WIN alone is the mean score of its jobs, bit
+for bit the score before step 5. Records of runs with trials or goals keep every job's goals (`JobRecord::goals`; the
+old form's files stay as they were); `Run::breakdown(generation, child)` takes a score apart by trial and goal,
+`Run::tagged_jobs` says which trial each job is of.
+
+**Presets** come from `lab.ron` (`content/base/lab.ron`, `data::Lab`: the goals' words and default weights, the goal
+presets WIN, WIN UNHURT, WIN CHEAPLY, WIN FAST, and the trial presets with their weights, seeds and time limits; the
+default selection THE ENEMIES YOU MEET (weight 2, 4 seeds), TEST-RANGE WAVES, BEAT YOUR START and HALL OF FAME (4)).
+`TrialSpec::from_preset(preset, weight, seeds, escorts, &Sources)` makes a run's trial of one, filling in what comes
+from outside (`Sources`: the open voyages, YOUR FLEET's designs, CHAMPIONS, FLEET's escorts), refused in words when it
+has nothing to fight. The game's setup and the CLI's `--trial` use it.
+
+**VALIDATE** (`Run::validation(genomes, seeds)` → a steppable `Validation`, `step(budget)` or `jobs()`/`submit()`,
+then `Run::validated_by`): the genomes fight the run's trials on `seeds` new seeds (the ones after each trial's own;
+`VALIDATE_SEEDS` 20 and `VALIDATE_BEST` 8, placeholders) against the starts and today's hall of fame, and their
+recorded fights again under today's rules; each gets a `Validated` (its score on the new seeds, per trial, and how
+many recorded fights ended as recorded), kept in the run file.
+
+**RE-SCORE** (`Run::rescored(&content, &save)`): a stale run as a run under today's rules: its history and fights are
+kept (each generation fought before keeps the rules it was fought under, `GenerationRecord::rules`, so its fight codes
+say so), and its next generation (`GenerationStats::rescore`) fights the archive's elites again and rebuilds the
+archive from their new scores; an elite that no longer passes is left out, counted as refused. It takes none of the
+run's generations and then goes on breeding. Deterministic in slices and on threads, and from a file written in the
+middle of it (`tests/trials.rs`).
+
+### What a trial costs
+
+Measured 16 Oct 2026, native release, 4 threads (the 4-core VM, load 0.9–1.4), `skiff_design_60bp.ron` (the starter,
+32 children) with one trial at a time, 3 generations, the lab's preset numbers; a new career's open voyage
+(`yard_approach`: a raider pair and the derelict field's raider):
+
+| Trial | Jobs a child | Mean ticks a job (share of its limit) | Generations per minute (32 children) |
+|---|---|---|---|
+| THE ENEMIES YOU MEET (2 encounters × 4 seeds, 60 s) | 8 | 936 (0.52) | 195 |
+| TEST-RANGE WAVES (5 waves × 2 seeds, 180 s) | 2 | 1839 (0.34) | 372 |
+| BEAT YOUR START (1 start × 2 seeds) | 2 | 920 (0.51) | 712 |
+| HALL OF FAME (4 × 2 seeds; none in generation 0) | 5.3 | 719 (0.40) | 345 |
+| ENEMY SHIPS (2 packs × 4 seeds) | 8 | 857 (0.48) | 213 |
+| Raider gauntlet (4 waves × 2 seeds, 180 s) | 2 | 1366 (0.25) | 438 |
+| YOUR FLEET (1 design × 2 seeds) | 2 | 660 (0.37) | 745 |
+| CHAMPIONS (1 design × 2 seeds) | 2 | 466 (0.26) | 990 |
+| VOYAGES (1 voyage × 2 seeds, 10 minutes) | 2 | 2329 (0.13; early designs, lost early) | 249 |
+
+A tick costs 5–6 µs on one thread whatever the kind (a voyage's too). The default selection is about 20 jobs and
+19 000 ticks a child, 0.6 M ticks a STANDARD generation: about 6 s on the web with the layer open (wasm 4.7–7.9 µs a
+tick, GDR-0092 step 4), about 0.8 s natively on 4 threads (0.8 M ticks a second). A voyage job is 3–6 fights' worth once designs survive it
+(minutes, not seconds), so VOYAGES stay off by default and the setup's estimate shows their cost; they run on the web
+too. All nine trials together: 1.0–1.2 M ticks a generation (42 generations a minute on 4 threads).
+
 ### A run is a text file
 
 `RunConfig` has a RON form (`RunConfig::from_ron`, `to_ron`; the content's RON options: `Some(..)` may be left out,
@@ -493,6 +583,10 @@ What the lab builds on (the game's EVOLUTION lab since GDR-0092 step 4, 16 Oct 2
 | `Run::starts()`, `Run::frame(root)` | The starts as opened in their frames; the frame genomes of a start are edited in (`Genome::placed`) |
 | `Run::snapshot()`, `Run::restore(&content, &save)`, `RunSave::to_ron` / `from_ron` | The run file and going on from it ([What a run keeps](#what-a-run-keeps)) |
 | `Run::rules()`, `Run::stale()` | The rules' fingerprint the run started under; whether today's differ |
+| `Run::trials()`, `Run::tagged_jobs(generation, child)`, `Run::breakdown(generation, child)` | The run's trials; a child's jobs with their trial; its score by trial and goal ([Trials and goals](#trials-and-goals)) |
+| `Run::validation(genomes, seeds)`, `Run::validated_by(v)`, `Run::validated(id)` | VALIDATE as work, its results into the run, a genome's result |
+| `Run::rescored(&content, &save)` | RE-SCORE: a stale run as a new run under today's rules |
+| `RunSave::genome(&content, id)` | A genome of a run file without building the run (the lab's CHAMPIONS) |
 
 `Job`, `JobResult`, `JobRecord`, `VoyageSpec`, `FightSpec`, `FightResult`, `GenerationStats`, `GenerationRecord`,
 `Bred` and `RunSave` are serde types with a RON form.
@@ -535,7 +629,8 @@ ended, and rebuilds any job's spec from them.
 - **Stale runs**: the run file keeps the rules' fingerprint the run started under (`rules_fingerprint`, built in step
   1). `Run::restore` on content whose fingerprint differs marks the run stale (`Run::stale()`): it keeps its fingerprint
   (its fight codes say which rules they were fought under), it is read-only (`step` does nothing, `jobs` is empty),
-  and the CLI refuses to resume, replay or trace one. RE-SCORE comes with step 5.
+  and the CLI refuses to resume, replay or trace one. RE-SCORE ([Trials and goals](#trials-and-goals), step 5) makes a
+  new run of it under today's rules.
 
 **Size** (`skiff_design_60bp.ron`, 32 children × 12 fights a generation, 20 generations, 15 Oct 2026): a job record is
 133 bytes of RON and **22 bytes packed**; a genome 382 bytes of RON and 24 packed; a generation **about 10 kB packed**
@@ -558,6 +653,15 @@ file, restores it and runs on, and fails unless every later generation hashes th
 builds): `two_starts_locked` seed 1 resumed after generations 0, 2 and 4, and seed 7 resumed after generation 2: native
 x86_64 vs wasm32-wasip1 **identical** (6 generations, 48 genomes; last line `4f126e780aff05c0` for seed 1,
 `887374c2560c32e7` for seed 7), every resume identical to the straight run.
+
+**With trials and goals** (GDR-0092 step 5, 16 Oct 2026, release builds): `two_starts_locked` (the old `fitness`
+form) seeds 1 and 7 unchanged (`4f126e780aff05c0`, `887374c2560c32e7`), native and wasm identical. The new
+`runs/mixed_trials.ron` (the starter and the Runner against the first voyage's enemies, the test-range waves as a
+gauntlet of two, their starts, the run's best and a one-minute voyage, weighing all four goals; 4 generations of 6):
+seed 1 resumed after generation 2 **identical** (last line `222c9bee00fa033e`), seed 4 resumed after generation 1
+**identical** (`8d85b8edf59c7a64`). The gauntlet `fights/runner_gauntlet.ron` seeds 1 (lost, 2883 ticks, 1 wave of 3,
+`6bab099e86643a52`) and 3 (the time limit, 5400 ticks, 2 waves of 3, `d4205aa2207a2ca6`) identical; `runner_vs_raiders`
+seed 2 unchanged (`4f4334e1218ed181`).
 
 ### The CLI: `arena evolve`
 
@@ -586,6 +690,15 @@ voyages print none). Every code comes from the run's records; no fight runs agai
 | `--until N` | Stops once N generations are done (with `--save`, a run to resume later) |
 | `--from DESIGN` | (repeatable, at most four) the run's starts instead of its file's: a content ship id or a blueprint file `*.ron`, whose behavior is the `.txt` of the same name beside it if there is one (as `--out` writes them), else its own or its faction's |
 | `--lock LOCK` | (repeatable) a lock of every start: `part:N` (its `parts[N]`), `category:ID` (`category:weapons`), `cell:X,Y` (KEEP EMPTY, in the start's coordinates), `rule:N` (its behavior's rule N, 0 = the top), `target`, `order` |
+| `--trial PRESET[:WEIGHT[:SEEDS]]` | (repeatable) the run's trials from `lab.ron`'s presets instead of its file's (`default`: the lab's default selection; `arena trials` lists them) |
+| `--goal ID:WEIGHT`, `--goals PRESET` | (repeatable) the goals' weights (`win`, `unhurt`, `quick`, `cheap`; the others weigh 0), or a goal preset (`win_unhurt`, ...) |
+| `--open V,V`, `--fleet DESIGN`, `--champion DESIGN`, `--escort DESIGN` | what the presets fight: the open voyages (default: a new career's), YOUR FLEET's and CHAMPIONS' designs, the escorts every trial flies beside the design |
+
+After its tables `evolve` prints the run's cost per trial (jobs a child, mean ticks a job, share of the ticks) and the
+best elite by trial and goal. `arena trials` lists the presets; `arena validate <run file> [--genome G]... [--best N]
+[--seeds N] [--save FILE]` fights the best (or the named) genomes on new seeds and their recorded fights again and
+prints each one's run score, validated score and fights as recorded; `arena rescore <run file> --save FILE [--until
+N]` re-scores a stale run under today's rules into a new run file (the re-score generation, then on to `--until`).
 
 `arena replay <run file> <generation> <child> <job>` prints that fight's code with the seed, how it ended, the score and
 the final hash; `arena lineage <run file> [<genome>]` a table of the genome's line from its start (generation, start,
