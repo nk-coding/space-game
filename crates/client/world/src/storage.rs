@@ -16,7 +16,7 @@
 //!   ones to [`Document::from_ron`], where migrations live. A file without the header line (a ship file copied
 //!   in by hand) reads as format 1.
 //! * **Backends** ([`Backend`]): the browser's IndexedDB (web, ADR-0041: every document read into memory before the
-//!   game starts, writes kept at once and written behind; until 16 Oct 2026 the local storage, moved in once),
+//!   game starts, writes kept at once and written behind),
 //!   files in the user's data directory (desktop: `<data dir>/<namespace>/<name>.ron`, a part
 //!   `<data dir>/<namespace>/<name>/<part>.ron`), and memory (tests, and the fallback when the platform has no
 //!   storage, e.g. Android until its backend lands: the files backend with the app's internal data path).
@@ -157,11 +157,11 @@ impl Storage {
 
     /// The platform's storage: the browser's IndexedDB on the web (opened by `preload` before the game starts),
     /// files in the user's data directory on desktop. Falls back to memory (with [`Storage::fallback`] set) when the
-    /// platform has none; on the web that memory holds the documents found (so the game shows them), unsaved.
+    /// platform has none.
     pub fn open() -> Self {
         match platform_backend() {
             Ok(b) => Self { backend: b, fallback: None },
-            Err((e, memory)) => Self { backend: Box::new(memory), fallback: Some(e.to_string()) },
+            Err(e) => Self { backend: Box::new(MemoryBackend::default()), fallback: Some(e.to_string()) },
         }
     }
 
@@ -376,17 +376,17 @@ impl Backend for MemoryBackend {
     }
 }
 
-/// The platform's backend, else why not and the memory to run on instead.
+/// The platform's backend, else why not.
 #[cfg(target_arch = "wasm32")]
-fn platform_backend() -> Result<Box<dyn Backend>, (StorageError, MemoryBackend)> {
+fn platform_backend() -> Result<Box<dyn Backend>, StorageError> {
     web::opened()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn platform_backend() -> Result<Box<dyn Backend>, (StorageError, MemoryBackend)> {
+fn platform_backend() -> Result<Box<dyn Backend>, StorageError> {
     match data_dir() {
         Some(dir) => Ok(Box::new(FileBackend::new(dir))),
-        None => Err((StorageError::Unavailable("no user data directory on this platform".into()), MemoryBackend::default())),
+        None => Err(StorageError::Unavailable("no user data directory on this platform".into())),
     }
 }
 
@@ -641,85 +641,12 @@ mod behind {
     }
 }
 
-/// Moving the web's documents out of the local storage (where they were kept until 16 Oct 2026) into IndexedDB,
-/// once, before the game first runs on it (ADR-0041). Platform-free: the web runs it on the browser's stores
-/// ([`web`]), the tests on fakes.
-///
-/// Every old document is copied, read back and compared; only then is the move marked done in the new store, and
-/// only after that are the old copies removed, each only when the new store holds the same text. Closed at any
-/// point, the next start finds it as it was left: unmarked, it copies again (the game never ran on the new store,
-/// so nothing there is newer); marked, it only removes what is left of the old copies. An old document whose text
-/// differs from the new store's after the move (a tab of an older build still open and writing) is left where it
-/// is, untouched, and named.
-#[cfg(any(target_arch = "wasm32", test))]
-mod moving {
-    use std::collections::BTreeMap;
-
-    use super::StorageError;
-
-    /// The old store: its documents by key (`namespace/name`).
-    pub(super) trait OldStore {
-        fn keys(&self) -> Vec<String>;
-        fn get(&self, key: &str) -> Option<String>;
-        fn remove(&mut self, key: &str) -> Result<(), StorageError>;
-    }
-
-    /// The new store.
-    pub(super) trait NewStore {
-        /// Whether the move was marked done.
-        async fn moved(&mut self) -> Result<bool, StorageError>;
-        /// Writes documents, all or none.
-        async fn put(&mut self, docs: &[(String, String)]) -> Result<(), StorageError>;
-        /// Every document.
-        async fn all(&mut self) -> Result<BTreeMap<String, String>, StorageError>;
-        async fn mark_moved(&mut self) -> Result<(), StorageError>;
-    }
-
-    /// What the move did, and the new store's documents after it (the game's).
-    #[derive(Debug)]
-    pub(super) struct Moved {
-        pub docs: BTreeMap<String, String>,
-        pub copied: usize,
-        pub removed: usize,
-        /// Old documents left as they were: written after the move.
-        pub kept: Vec<String>,
-        /// Old copies that didn't go (the next start removes them).
-        pub stayed: Vec<(String, StorageError)>,
-    }
-
-    pub(super) async fn run(old: &mut impl OldStore, new: &mut impl NewStore) -> Result<Moved, StorageError> {
-        let first = !new.moved().await?;
-        let found: Vec<(String, String)> = old.keys().into_iter().filter_map(|k| old.get(&k).map(|t| (k, t))).collect();
-        if first && !found.is_empty() {
-            new.put(&found).await?;
-        }
-        let docs = new.all().await?;
-        let (same, kept): (Vec<_>, Vec<_>) = found.into_iter().partition(|(k, t)| docs.get(k) == Some(t));
-        let kept: Vec<String> = kept.into_iter().map(|(k, _)| k).collect();
-        if first {
-            if let Some(k) = kept.first() {
-                return Err(StorageError::Io(format!("{k} didn't read back from IndexedDB as it was written; the old storage stays")));
-            }
-            new.mark_moved().await?;
-        }
-        let (mut removed, mut stayed) = (0, Vec::new());
-        for (k, _) in &same {
-            match old.remove(k) {
-                Ok(()) => removed += 1,
-                Err(e) => stayed.push((k.clone(), e)),
-            }
-        }
-        Ok(Moved { docs, copied: if first { same.len() } else { 0 }, removed, kept, stayed })
-    }
-}
-
 /// The web's storage: IndexedDB (ADR-0041), database `space-game` with the documents in `docs` (keys
-/// `namespace/name`, the text as it is stored) and the move's mark in `meta`. It belongs to the origin (scheme, host
-/// and port: the copies served on :8080 and :8081 don't share it); the browser's quota is a share of the disk, not
-/// local storage's 5 MB.
+/// `namespace/name`, the text as it is stored). It belongs to the origin (scheme, host and port: the copies served
+/// on :8080 and :8081 don't share it); the browser's quota is a share of the disk.
 ///
-/// `preload` (awaited by `main` before the app is built) opens it, moves the old local storage's documents in
-/// ([`moving`]) and reads every document into memory ([`behind`]). The game's calls then never wait: writes are
+/// `preload` (awaited by `main` before the app is built) opens it and reads every document into memory
+/// ([`behind`]). The game's calls then never wait: writes are
 /// kept in memory at once and committed behind them, what a frame writes in one transaction (a microtask at the
 /// end of the frame's task), so a lab generation's part and head are kept together or not at all. A failed
 /// transaction (the quota: `QuotaExceededError`) comes back with the next write and through [`Backend::waiting`].
@@ -741,16 +668,11 @@ mod web {
     use web_sys::{IdbDatabase, IdbRequest, IdbTransaction, IdbTransactionMode};
 
     use super::behind::{Batch, WriteBehind, key};
-    use super::moving::{self, NewStore, OldStore};
-    use super::{Backend, MemoryBackend, StorageError, Usage, valid_name};
+    use super::{Backend, StorageError, Usage};
 
     const DB: &str = "space-game";
     const VERSION: u32 = 1;
     const DOCS: &str = "docs";
-    const META: &str = "meta";
-    const MOVED: &str = "moved-from-local-storage";
-    /// The old local storage's keys began with this.
-    const OLD_PREFIX: &str = "space-game/";
 
     /// The open database and what is written behind it.
     struct Open {
@@ -777,8 +699,8 @@ mod web {
     thread_local! {
         static OPEN: RefCell<Option<Open>> = const { RefCell::new(None) };
         static HANDLERS: RefCell<Option<Handlers>> = const { RefCell::new(None) };
-        /// Why the database didn't open, and the old documents to run on in memory.
-        static FAILED: RefCell<Option<(StorageError, BTreeMap<String, String>)>> = const { RefCell::new(None) };
+        /// Why the database didn't open.
+        static FAILED: RefCell<Option<StorageError>> = const { RefCell::new(None) };
         static LISTENING: Cell<bool> = const { Cell::new(false) };
     }
 
@@ -786,12 +708,10 @@ mod web {
         OPEN.with_borrow_mut(|o| o.as_mut().map(f))
     }
 
-    /// Opens the storage before the game starts: the database, the move from the local storage (once) and every
-    /// document into memory. If it fails, the game runs on the old documents in memory, unsaved (`Storage::fallback`
-    /// says why).
+    /// Opens the storage before the game starts: the database and every document into memory. If it fails, the
+    /// game runs on memory (`Storage::fallback` says why).
     pub async fn preload() {
-        let mut old = OldLocal::open();
-        match open(&mut old).await {
+        match open().await {
             Ok(open) => {
                 OPEN.with_borrow_mut(|o| *o = Some(open));
                 HANDLERS.with_borrow_mut(|h| {
@@ -806,49 +726,22 @@ mod web {
                 persist();
                 with_open(estimate);
             }
-            Err(e) => {
-                console(true, &format!("storage: IndexedDB didn't open: {e}; the game runs on the old documents in memory"));
-                FAILED.with_borrow_mut(|f| *f = Some((e, old.docs())));
-            }
+            Err(e) => FAILED.with_borrow_mut(|f| *f = Some(e)),
         }
     }
 
-    async fn open(old: &mut OldLocal) -> Result<Open, StorageError> {
+    async fn open() -> Result<Open, StorageError> {
         let db = open_db().await?;
-        let moved = moving::run(old, &mut Idb(&db)).await?;
-        if moved.copied > 0 || moved.removed > 0 {
-            console(false, &format!("storage: moved {} documents from the local storage into IndexedDB, {} old copies removed", moved.copied, moved.removed));
-        }
-        if !moved.kept.is_empty() {
-            console(true, &format!("storage: left in the local storage, written there after the move (by a tab of an older build?): {}", moved.kept.join(", ")));
-        }
-        for (k, e) in &moved.stayed {
-            console(true, &format!("storage: the old copy of {k} stays until the next start: {e}"));
-        }
-        Ok(Open { db, docs: WriteBehind::new(moved.docs), flying: Vec::new(), queued: false, on_leave: BTreeMap::new(), estimate: None, estimating: false })
+        let docs = read_all(&db).await?;
+        Ok(Open { db, docs: WriteBehind::new(docs), flying: Vec::new(), queued: false, on_leave: BTreeMap::new(), estimate: None, estimating: false })
     }
 
-    /// A line in the browser's console: the game's log isn't up before the app is built.
-    fn console(warn: bool, line: &str) {
-        match warn {
-            true => web_sys::console::warn_1(&line.into()),
-            false => web_sys::console::log_1(&line.into()),
-        }
-    }
-
-    /// The backend `Storage::open` gets: the database `preload` opened, else memory with the documents it found.
-    pub fn opened() -> Result<Box<dyn Backend>, (StorageError, MemoryBackend)> {
+    /// The backend `Storage::open` gets: the database `preload` opened, else why it didn't open.
+    pub fn opened() -> Result<Box<dyn Backend>, StorageError> {
         if OPEN.with_borrow(Option::is_some) {
             return Ok(Box::new(IndexedDb));
         }
-        let (e, docs) = FAILED.with_borrow_mut(Option::take).unwrap_or_else(|| (StorageError::Unavailable("the storage wasn't opened before the game started".into()), BTreeMap::new()));
-        let mut memory = MemoryBackend::default();
-        for (k, text) in docs {
-            if let Some((folder, name)) = k.rsplit_once('/') {
-                let _ = memory.write(folder, name, &text);
-            }
-        }
-        Err((e, memory))
+        Err(FAILED.with_borrow_mut(Option::take).unwrap_or_else(|| StorageError::Unavailable("the storage wasn't opened before the game started".into())))
     }
 
     fn js_error(e: JsValue) -> StorageError {
@@ -866,21 +759,17 @@ mod web {
     }
 
     // -----------------------------------------------------------------------------------------------------
-    // Opening and the move
+    // Opening
 
     async fn open_db() -> Result<IdbDatabase, StorageError> {
         let unavailable = |why: &str| StorageError::Unavailable(format!("the browser's IndexedDB {why}"));
         let factory = web_sys::window().and_then(|w| w.indexed_db().ok().flatten()).ok_or_else(|| unavailable("is blocked"))?;
         let req = factory.open_with_u32(DB, VERSION).map_err(js_error)?;
-        // A new database gets its stores.
+        // A new database gets its store.
         let upgrade = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
             let db = e.target().and_then(|t| t.dyn_into::<web_sys::IdbOpenDbRequest>().ok()).and_then(|r| r.result().ok()).and_then(|r| r.dyn_into::<IdbDatabase>().ok());
-            if let Some(db) = db {
-                for store in [DOCS, META] {
-                    if !db.object_store_names().contains(store) {
-                        let _ = db.create_object_store(store);
-                    }
-                }
+            if let Some(db) = db.filter(|db| !db.object_store_names().contains(DOCS)) {
+                let _ = db.create_object_store(DOCS);
             }
         });
         req.set_onupgradeneeded(Some(upgrade.as_ref().unchecked_ref()));
@@ -904,96 +793,14 @@ mod web {
         }
     }
 
-    /// A transaction, once it committed.
-    async fn committed(tx: &IdbTransaction) -> Result<(), StorageError> {
-        let done = Promise::new(&mut |resolve, reject| {
-            tx.set_oncomplete(Some(&resolve));
-            tx.set_onabort(Some(&reject));
-        });
-        match JsFuture::from(done).await {
-            Ok(_) => Ok(()),
-            Err(_) => Err(tx.error().map_or_else(|| StorageError::Io("a write was cut off".into()), dom_error)),
-        }
-    }
-
-    /// The database as the move sees it.
-    struct Idb<'a>(&'a IdbDatabase);
-
-    impl Idb<'_> {
-        fn tx(&self, store: &str, mode: IdbTransactionMode) -> Result<(IdbTransaction, web_sys::IdbObjectStore), StorageError> {
-            let tx = self.0.transaction_with_str_and_mode(store, mode).map_err(js_error)?;
-            let s = tx.object_store(store).map_err(js_error)?;
-            Ok((tx, s))
-        }
-    }
-
-    impl NewStore for Idb<'_> {
-        async fn moved(&mut self) -> Result<bool, StorageError> {
-            let (_, meta) = self.tx(META, IdbTransactionMode::Readonly)?;
-            Ok(!request(&meta.get(&MOVED.into()).map_err(js_error)?).await?.is_undefined())
-        }
-
-        async fn put(&mut self, docs: &[(String, String)]) -> Result<(), StorageError> {
-            let (tx, store) = self.tx(DOCS, IdbTransactionMode::Readwrite)?;
-            for (k, text) in docs {
-                store.put_with_key(&text.into(), &k.into()).map_err(js_error)?;
-            }
-            committed(&tx).await
-        }
-
-        async fn all(&mut self) -> Result<BTreeMap<String, String>, StorageError> {
-            let (_, store) = self.tx(DOCS, IdbTransactionMode::Readonly)?;
-            let keys = store.get_all_keys().map_err(js_error)?;
-            let values = store.get_all().map_err(js_error)?;
-            let (keys, values) = (Array::from(&request(&keys).await?), Array::from(&request(&values).await?));
-            Ok(keys.iter().zip(values.iter()).filter_map(|(k, v)| Some((k.as_string()?, v.as_string()?))).collect())
-        }
-
-        async fn mark_moved(&mut self) -> Result<(), StorageError> {
-            let (tx, meta) = self.tx(META, IdbTransactionMode::Readwrite)?;
-            meta.put_with_key(&js_sys::Date::now().into(), &MOVED.into()).map_err(js_error)?;
-            committed(&tx).await
-        }
-    }
-
-    /// The old local storage (kept only to move its documents out and remove them).
-    struct OldLocal(Option<web_sys::Storage>);
-
-    impl OldLocal {
-        fn open() -> Self {
-            OldLocal(web_sys::window().and_then(|w| w.local_storage().ok().flatten()))
-        }
-
-        /// Its documents, to run on in memory when the database doesn't open.
-        fn docs(&self) -> BTreeMap<String, String> {
-            self.keys().into_iter().filter_map(|k| self.get(&k).map(|t| (k, t))).collect()
-        }
-    }
-
-    impl OldStore for OldLocal {
-        /// The game's keys without their prefix: `namespace/name`, both valid (other pages' keys stay out).
-        fn keys(&self) -> Vec<String> {
-            let Some(s) = &self.0 else { return Vec::new() };
-            let n = s.length().unwrap_or(0);
-            let mut keys: Vec<String> = (0..n)
-                .filter_map(|i| s.key(i).ok().flatten())
-                .filter_map(|k| k.strip_prefix(OLD_PREFIX).map(str::to_string))
-                .filter(|k| k.split_once('/').is_some_and(|(ns, name)| valid_name(ns) && valid_name(name)))
-                .collect();
-            keys.sort();
-            keys
-        }
-
-        fn get(&self, key: &str) -> Option<String> {
-            self.0.as_ref()?.get_item(&format!("{OLD_PREFIX}{key}")).ok().flatten()
-        }
-
-        fn remove(&mut self, key: &str) -> Result<(), StorageError> {
-            match &self.0 {
-                Some(s) => s.remove_item(&format!("{OLD_PREFIX}{key}")).map_err(js_error),
-                None => Ok(()),
-            }
-        }
+    /// Every document.
+    async fn read_all(db: &IdbDatabase) -> Result<BTreeMap<String, String>, StorageError> {
+        let tx = db.transaction_with_str_and_mode(DOCS, IdbTransactionMode::Readonly).map_err(js_error)?;
+        let store = tx.object_store(DOCS).map_err(js_error)?;
+        let keys = store.get_all_keys().map_err(js_error)?;
+        let values = store.get_all().map_err(js_error)?;
+        let (keys, values) = (Array::from(&request(&keys).await?), Array::from(&request(&values).await?));
+        Ok(keys.iter().zip(values.iter()).filter_map(|(k, v)| Some((k.as_string()?, v.as_string()?))).collect())
     }
 
     // -----------------------------------------------------------------------------------------------------
@@ -1459,7 +1266,6 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::behind::WriteBehind;
-    use super::moving::{self, NewStore, OldStore};
     use super::testing::{Behind, commit_in as commit};
 
     fn docs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -1573,157 +1379,6 @@ mod tests {
         shared.commit(false);
         let db = shared.0.lock().unwrap().1.clone();
         assert_eq!(db.keys().collect::<Vec<_>>(), ["notes/a", "notes/c"]);
-    }
-
-    // -----------------------------------------------------------------------------------------------------
-    // The move from the local storage
-
-    /// The old local storage; its removals stop after `removals` (the page closed).
-    #[derive(Clone, Default)]
-    struct OldFake {
-        docs: BTreeMap<String, String>,
-        removals: Option<usize>,
-    }
-
-    impl OldStore for OldFake {
-        fn keys(&self) -> Vec<String> {
-            self.docs.keys().cloned().collect()
-        }
-        fn get(&self, key: &str) -> Option<String> {
-            self.docs.get(key).cloned()
-        }
-        fn remove(&mut self, key: &str) -> Result<(), StorageError> {
-            if let Some(n) = &mut self.removals {
-                if *n == 0 {
-                    return Err(StorageError::Io("the page closed".into()));
-                }
-                *n -= 1;
-            }
-            self.docs.remove(key);
-            Ok(())
-        }
-    }
-
-    /// IndexedDB: its operations stop after `ops` (the page closed); `garble` writes damaged text.
-    #[derive(Clone, Default)]
-    struct NewFake {
-        docs: BTreeMap<String, String>,
-        moved: bool,
-        ops: Option<usize>,
-        garble: bool,
-    }
-
-    impl NewFake {
-        fn op(&mut self) -> Result<(), StorageError> {
-            match &mut self.ops {
-                Some(0) => Err(StorageError::Io("the page closed".into())),
-                Some(n) => {
-                    *n -= 1;
-                    Ok(())
-                }
-                None => Ok(()),
-            }
-        }
-    }
-
-    impl NewStore for NewFake {
-        async fn moved(&mut self) -> Result<bool, StorageError> {
-            self.op()?;
-            Ok(self.moved)
-        }
-        async fn put(&mut self, docs: &[(String, String)]) -> Result<(), StorageError> {
-            self.op()?;
-            let garble = self.garble;
-            self.docs.extend(docs.iter().map(|(k, t)| (k.clone(), if garble { format!("{t}?") } else { t.clone() })));
-            Ok(())
-        }
-        async fn all(&mut self) -> Result<BTreeMap<String, String>, StorageError> {
-            self.op()?;
-            Ok(self.docs.clone())
-        }
-        async fn mark_moved(&mut self) -> Result<(), StorageError> {
-            self.op()?;
-            self.moved = true;
-            Ok(())
-        }
-    }
-
-    fn old_docs() -> BTreeMap<String, String> {
-        docs(&[("saves/career", "career"), ("designs/rim-skiff-copy", "design"), ("drydock/working", "working"), ("lab/evolving-rim-skiff", "run")])
-    }
-
-    fn moved(old: &mut OldFake, new: &mut NewFake) -> Result<moving::Moved, StorageError> {
-        bevy::tasks::block_on(moving::run(old, new))
-    }
-
-    /// The first start moves every document, checks it and only then removes the old copies; the next starts
-    /// change nothing.
-    #[test]
-    fn the_move_copies_checks_and_then_clears_once() {
-        let mut old = OldFake { docs: old_docs(), ..default() };
-        let mut new = NewFake::default();
-        let m = moved(&mut old, &mut new).unwrap();
-        assert_eq!((m.copied, m.removed, m.kept.len()), (4, 4, 0));
-        assert_eq!((m.docs.clone(), new.docs.clone(), new.moved), (old_docs(), old_docs(), true));
-        assert!(old.docs.is_empty());
-        // Again: nothing to move, nothing changes.
-        let again = moved(&mut old, &mut new).unwrap();
-        assert_eq!((again.copied, again.removed, again.docs), (0, 0, old_docs()));
-        // A new player: nothing to move, the move is marked all the same.
-        let mut empty = NewFake::default();
-        assert_eq!(moved(&mut OldFake::default(), &mut empty).unwrap().copied, 0);
-        assert!(empty.moved && empty.docs.is_empty());
-    }
-
-    /// The page closed at any point of the move: the next start finishes it, with every document there once and
-    /// the old copies gone.
-    #[test]
-    fn a_move_cut_off_anywhere_is_finished_by_the_next_start() {
-        for ops in 0..5 {
-            for removals in [Some(0), Some(2), None] {
-                let mut old = OldFake { docs: old_docs(), removals };
-                let mut new = NewFake { ops: Some(ops), ..default() };
-                match moved(&mut old, &mut new) {
-                    Err(_) => assert!(old.docs == old_docs(), "nothing old goes before the move is marked ({ops} ops)"),
-                    // The page closed while the old copies went: the ones left are named.
-                    Ok(m) => assert_eq!((m.removed, m.stayed.len()), (4 - old.docs.len(), old.docs.len())),
-                }
-                old.removals = None;
-                new.ops = None;
-                let m = moved(&mut old, &mut new).unwrap();
-                assert_eq!(m.docs, old_docs(), "{ops} ops, {removals:?} removals");
-                assert_eq!(new.docs, old_docs());
-                assert!(new.moved && old.docs.is_empty(), "{ops} ops, {removals:?} removals");
-            }
-        }
-    }
-
-    /// Text that doesn't read back as written stops the move: nothing is marked or removed (the game runs on the old
-    /// documents in memory and the next start tries again).
-    #[test]
-    fn a_move_that_doesnt_read_back_keeps_the_old_storage() {
-        let mut old = OldFake { docs: old_docs(), ..default() };
-        let mut new = NewFake { garble: true, ..default() };
-        assert!(matches!(moved(&mut old, &mut new), Err(StorageError::Io(_))));
-        assert!(!new.moved && old.docs == old_docs());
-        new.garble = false;
-        assert_eq!(moved(&mut old, &mut new).unwrap().copied, 4);
-    }
-
-    /// After the move, an old document that differs from the new one (a tab of an older build still writing) is left
-    /// in the old storage, untouched, and named; the new one is never overwritten.
-    #[test]
-    fn documents_written_after_the_move_are_left_alone() {
-        let mut old = OldFake { docs: old_docs(), ..default() };
-        let mut new = NewFake::default();
-        moved(&mut old, &mut new).unwrap();
-        new.docs.insert("saves/career".into(), "career, played on".into());
-        old.docs.insert("saves/career".into(), "career, an old tab".into());
-        old.docs.insert("designs/from-old-tab".into(), "design".into());
-        let m = moved(&mut old, &mut new).unwrap();
-        assert_eq!(m.kept, ["designs/from-old-tab", "saves/career"]);
-        assert_eq!(new.docs["saves/career"], "career, played on");
-        assert_eq!(old.docs.len(), 2);
     }
 
     #[test]

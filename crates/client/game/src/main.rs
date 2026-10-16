@@ -35,8 +35,8 @@ use bevy_egui::EguiPlugin;
 use kit::params::{Params, RenderToggles};
 
 fn main() {
-    // The web's storage is IndexedDB, which only answers asynchronously: every document is read into memory (and the
-    // old local storage moved in, once) before the app is built, so the game's storage calls never wait (ADR-0041).
+    // The web's storage is IndexedDB, which only answers asynchronously: every document is read into memory before
+    // the app is built, so the game's storage calls never wait (ADR-0041).
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
         world::storage::preload().await;

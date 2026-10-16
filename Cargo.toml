@@ -36,9 +36,9 @@ bevy = { version = "=0.20.0", default-features = false, features = [
 ] }
 web-sys = { version = "=0.3.106", features = [
   "Window", "Location", "console",
-  # world/storage.rs: IndexedDB, the storage estimate, and the old local storage (moved into IndexedDB once)
+  # world/storage.rs: IndexedDB and the storage estimate
   "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbTransaction", "IdbTransactionMode",
-  "IdbObjectStore", "DomStringList", "StorageManager", "StorageEstimate", "Storage", "DomException",
+  "IdbObjectStore", "DomStringList", "StorageManager", "StorageEstimate", "DomException",
   # kit/clipboard.rs, game/drydock/share.rs: copy / paste events, downloads, the file chooser
   "Document", "HtmlDocument", "Element", "HtmlElement", "HtmlAnchorElement", "HtmlInputElement", "CssStyleDeclaration",
   "Navigator", "Clipboard", "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "ClipboardEvent",

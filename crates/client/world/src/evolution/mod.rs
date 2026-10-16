@@ -549,7 +549,7 @@ pub struct Lab {
 
 impl Lab {
     /// Lists the stored runs (newest first) and restores the one that was computing, so it goes on.
-    pub fn load(storage: &mut Storage, content: &Content, enabled: bool) -> Lab {
+    pub fn load(storage: &Storage, content: &Content, enabled: bool) -> Lab {
         let mut lab = Lab { enabled, ..default() };
         let ids = match store::ids(storage) {
             Ok(ids) => ids,
@@ -561,18 +561,11 @@ impl Lab {
         let mut computing = None;
         for id in ids {
             let entry = match store::read(storage, &id) {
-                Ok((parts, old)) => {
+                Ok(parts) => {
                     let rules = lab.today(content);
                     let e = RunEntry::of(content, &id, &parts, rules);
                     if e.status == RunStatus::Running && !e.done() && !e.stale && computing.is_none() {
                         computing = Some(id.clone());
-                    }
-                    // A run kept whole (until 16 Oct 2026) is written in parts from now on.
-                    if old {
-                        match store::write_new(storage, &id, &parts, now_unix()) {
-                            Ok(bytes) => info!("lab: {id} written in parts ({} kB)", bytes / 1024),
-                            Err(e) => warn!("lab: {id} stays whole for now: {e}"),
-                        }
                     }
                     e
                 }
@@ -641,7 +634,7 @@ impl Lab {
         if self.get(id).is_some() {
             return Ok(());
         }
-        let (parts, _) = store::read(storage, id)?;
+        let parts = store::read(storage, id)?;
         let run = Run::restore_parts(content, &parts).map_err(|e| e.to_string())?;
         let RunHead { name, created, status, generations, .. } = parts.head;
         self.loaded.push(Loaded {
@@ -719,11 +712,6 @@ impl Lab {
         fresh_name(name, &names)
     }
 
-    /// A stored run's parts.
-    fn read(storage: &Storage, id: &str) -> Result<RunParts, String> {
-        store::read(storage, id).map(|(parts, _)| parts)
-    }
-
     /// IMPORT RUN: a run file (a CLI's, `arena evolve --save`, or another lab's) read into the lab, paused, under its
     /// head's name or the file's. It must restore on today's content; under other rules it comes in read-only (stale),
     /// to be re-scored. Refused, in words, when it doesn't read.
@@ -739,7 +727,7 @@ impl Lab {
     /// DUPLICATE: the same setup with a new seed, as a new run that computes.
     pub fn duplicate(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
         self.room()?;
-        let mut config = Self::read(storage, id)?.config;
+        let mut config = store::read(storage, id)?.config;
         config.seed = (now.wrapping_mul(2_654_435_761) ^ config.seed.rotate_left(17)) % 1_000_000;
         let run = Run::new(content, config).map_err(|e| e.to_string())?;
         let name = self.fresh(&self.entry(id).map_or_else(|| id.to_string(), |e| e.name.clone()));
@@ -770,7 +758,7 @@ impl Lab {
     pub fn rescore(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
         self.room()?;
         // The stale run's file as it stands (its rules and all), re-scored.
-        let stale = Run::restore_parts(content, &Self::read(storage, id)?).map_err(|e| e.to_string())?;
+        let stale = Run::restore_parts(content, &store::read(storage, id)?).map_err(|e| e.to_string())?;
         let run = Run::rescored(content, &stale.snapshot()).map_err(|e| e.to_string())?;
         let name = self.fresh(&format!("{} (re-scored)", self.entry(id).map_or(id, |e| e.name.as_str())));
         self.add(storage, content, run, &name, now, RunStatus::Running)
@@ -816,7 +804,7 @@ impl Lab {
     pub fn champions(&self, storage: &Storage, content: &Content) -> Vec<Entry> {
         let mut out: Vec<(f32, Entry)> = Vec::new();
         for e in self.runs.iter().filter(|e| e.problem.is_none()) {
-            let (Ok(parts), Some(score)) = (Self::read(storage, &e.id), e.best) else { continue };
+            let (Ok(parts), Some(score)) = (store::read(storage, &e.id), e.best) else { continue };
             let Some(best) = parts.head.best else { continue };
             if let Ok(g) = parts.genome(content, best) {
                 let entry = arena::evolve::entry_of(DesignRef::Blueprint(g.blueprint_text()), Some(BehaviorRef::Text(g.behavior_text().to_string())));
@@ -1285,7 +1273,10 @@ pub struct EvolutionPlugin;
 impl Plugin for EvolutionPlugin {
     fn build(&self, app: &mut App) {
         let enabled = app.world().resource::<Params>().flag("lab").unwrap_or(false);
-        let lab = app.world_mut().resource_scope(|world, mut storage: Mut<Storage>| Lab::load(&mut storage, &world.resource::<GameContent>().0, enabled));
+        let lab = {
+            let world = app.world();
+            Lab::load(world.resource::<Storage>(), &world.resource::<GameContent>().0, enabled)
+        };
         if let Some(t) = &lab.trouble {
             warn!("lab: {t}");
         }
@@ -1332,7 +1323,7 @@ mod tests {
 
     /// A stored run as its run file: what its parts restore to, with the game's head.
     fn file(storage: &Storage, content: &Content, id: &str) -> RunSave {
-        let (parts, _) = store::read(storage, id).unwrap();
+        let parts = store::read(storage, id).unwrap();
         let run = Run::restore_parts(content, &parts).unwrap();
         RunSave { name: parts.head.name.clone(), created: parts.head.created, status: parts.head.status, ..run.snapshot() }
     }
@@ -1344,7 +1335,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let mut k = 0;
@@ -1383,7 +1374,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let mut app = app(storage, lab, AppMode::Flight);
@@ -1415,14 +1406,14 @@ mod tests {
         let content = data::base_content();
         let s = setup(&content);
         let mut sliced = mem();
-        let mut lab = Lab::load(&mut sliced, &content, true);
+        let mut lab = Lab::load(&sliced, &content, true);
         let cfg = config(&content, &s, &sliced);
         let a = lab.create(&mut sliced, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
             lab.compute(&mut sliced, BUDGET_MS, 0.016);
         }
         let mut threaded = mem();
-        let mut lab = Lab::load(&mut threaded, &content, true);
+        let mut lab = Lab::load(&threaded, &content, true);
         let cfg = config(&content, &s, &threaded);
         let b = lab.create(&mut threaded, &content, cfg, "Small", 10).unwrap();
         let mut frames = 0;
@@ -1449,7 +1440,7 @@ mod tests {
             }
         };
         let mut storage = mem();
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         run_to_end(&mut lab, &mut storage);
@@ -1458,7 +1449,7 @@ mod tests {
         assert_eq!(lab.fresh.as_deref(), Some(id.as_str()), "a finished run glows until it is opened");
 
         let mut storage = mem();
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         while lab.get(&id).unwrap().run.generation() < 1 {
@@ -1468,7 +1459,7 @@ mod tests {
             lab.compute(&mut storage, BUDGET_MS, 1.0 / 60.0);
         }
         // The page reloads: the lab is read from the storage again and the run goes on.
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let entry = lab.entry(&id).unwrap().clone();
         assert_eq!((entry.generation, entry.status, entry.stale, entry.name.as_str()), (1, RunStatus::Running, false, "Small"));
         assert_eq!(lab.running().map(|l| l.id.as_str()), Some(id.as_str()));
@@ -1485,7 +1476,7 @@ mod tests {
         let mut storage = mem();
         // An old storage: designs and a save, no lab.
         storage.write("old", &DesignDoc(content.ships.get("rim_skiff").unwrap().clone()), 1).unwrap();
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         assert!(lab.runs().is_empty() && lab.trouble.is_none() && lab.running().is_none());
         let s = setup(&content);
         let cfg = config(&content, &s, &storage);
@@ -1507,7 +1498,7 @@ mod tests {
         // A stored run that doesn't read is listed with why.
         let mut text_store = MemoryBackend::default();
         crate::storage::Backend::write(&mut text_store, "lab", "broken", "// space-game: lab, format 1\n(format: 1").unwrap();
-        let broken = Lab::load(&mut Storage::new(text_store), &content, true);
+        let broken = Lab::load(&Storage::new(text_store), &content, true);
         assert!(broken.entry("broken").unwrap().problem.is_some());
     }
 
@@ -1545,7 +1536,7 @@ mod tests {
         let written = || -> Vec<(String, usize)> { log.lock().unwrap().drain(..).map(|(f, n, b)| (format!("{f}/{n}"), b)).collect() };
         let mut storage = Storage::new(backend);
         let s = setup(&content);
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let names = |w: &[(String, usize)]| w.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>();
@@ -1568,46 +1559,10 @@ mod tests {
         let mut damaged = Storage::new(MemoryBackend::default());
         store::write_new(&mut damaged, "r", &l.parts(), 1).unwrap();
         damaged.delete::<store::RunDoc>("r/g1").unwrap();
-        let listed = Lab::load(&mut damaged, &content, true);
+        let listed = Lab::load(&damaged, &content, true);
         assert!(listed.entry("r").unwrap().problem.as_deref().is_some_and(|p| p.contains("generation 1")));
         lab.delete(&mut storage, &id).unwrap();
         assert!(storage.parts::<store::RunDoc>(&id).unwrap().is_empty() && store::ids(&storage).unwrap().is_empty());
-    }
-
-    /// A run kept whole (format 1, until 16 Oct 2026; the web's local storage moved into IndexedDB as it was) is
-    /// listed, written in parts when the lab loads, and goes on to the run that ran through.
-    #[test]
-    fn a_run_kept_whole_moves_into_parts_and_goes_on() {
-        let content = data::base_content();
-        let s = setup(&content);
-        let mut storage = mem();
-        let mut lab = Lab::load(&mut storage, &content, true);
-        let cfg = config(&content, &s, &storage);
-        let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
-        while lab.running().is_some() {
-            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
-        }
-        let straight = file(&storage, &content, &id);
-        let mut storage = mem();
-        let mut lab = Lab::load(&mut storage, &content, true);
-        let cfg = config(&content, &s, &storage);
-        let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
-        while lab.get(&id).unwrap().run.generation() < 1 {
-            lab.compute(&mut storage, BUDGET_MS, 0.016);
-        }
-        let whole = format!("// space-game: lab, format 1, saved 10\n{}", file(&storage, &content, &id).to_ron());
-        let mut old = MemoryBackend::default();
-        crate::storage::Backend::write(&mut old, "lab", "old-run", &whole).unwrap();
-        let mut storage = Storage::new(old);
-        let mut lab = Lab::load(&mut storage, &content, true);
-        let e = lab.entry("old-run").unwrap().clone();
-        assert_eq!((e.generation, e.status, e.problem), (1, RunStatus::Running, None));
-        assert!(!store::read(&storage, "old-run").unwrap().1, "written in parts");
-        assert_eq!(storage.parts::<store::RunDoc>("old-run").unwrap(), ["config", "g0"]);
-        while lab.running().is_some() {
-            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
-        }
-        assert_eq!(file(&storage, &content, "old-run").to_ron(), straight.to_ron(), "byte for byte");
     }
 
     /// The web writes behind: a checkpoint the storage failed to keep (the quota) pauses the run with the words a
@@ -1620,7 +1575,7 @@ mod tests {
         let backend = Behind::default();
         let db = Behind(backend.0.clone());
         let mut storage = Storage::new(backend);
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         db.commit(false);
@@ -1651,7 +1606,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
@@ -1705,7 +1660,7 @@ mod tests {
         let content = data::base_content();
         let mut made = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&mut made, &content, true);
+        let mut lab = Lab::load(&made, &content, true);
         let cfg = config(&content, &s, &made);
         let id = lab.create(&mut made, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
@@ -1715,7 +1670,7 @@ mod tests {
         let full = file(&made, &content, &id);
         let cli = RunSave { name: None, created: None, status: None, ..full.clone() }.to_ron();
         let mut storage = mem();
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         let imported = lab.import(&mut storage, &content, "runs/deep_skiff.ron", &cli, 50).unwrap();
         let e = lab.entry(&imported).unwrap().clone();
         assert_eq!((e.name.as_str(), e.status, e.generation, e.stale), ("deep_skiff", RunStatus::Paused, 3, false));
@@ -1749,7 +1704,7 @@ mod tests {
         // RE-SCORE: a run fought under other rules is stale; re-scored, a new run fights its elites again.
         let stale = RunSave { rules: save.rules ^ 1, ..save };
         store::write_new(&mut storage, "old_rules", &RunParts::of(&stale).unwrap(), 70).unwrap();
-        let mut lab = Lab::load(&mut storage, &content, true);
+        let mut lab = Lab::load(&storage, &content, true);
         assert!(lab.entry("old_rules").unwrap().stale);
         assert!(lab.validate(&storage, &content, "old_rules", &[best]).is_err(), "re-score it first");
         let fresh = lab.rescore(&mut storage, &content, "old_rules", 80).unwrap();
