@@ -8,7 +8,8 @@
 //! * **Who is who**: side 0 is drawn in the player's teal and side 1 in coral, whatever their designs' faction
 //!   (`SimWorld::looks`): an automaton against an automaton shows which is which.
 //! * **The camera** frames both sides; a click on a ship follows it (the HUD then shows its hull, speed and what its
-//!   behavior targets), a click on empty space frames again; F frees the camera, drag pans, the wheel zooms.
+//!   behavior targets), a click on empty space frames again; F frees the camera, drag pans, the wheel zooms: out to
+//!   [`OUT_TO`], further only as far as the whole fight needs ([`zoom_floor`]).
 //! * **Playback** (the `replay` actions, `controls.ron`): pause and play (Space; at the end it plays again from the
 //!   start), slower and faster (`,` `.`: [`SPEEDS`], through `Time<Virtual>`'s speed), one second back and forward
 //!   (← →), from the start (R). The first pass keeps a copy of the world and the referee every [`KEYFRAME_TICKS`]
@@ -35,7 +36,7 @@ use kit::style::{Style, ui_color};
 use kit::ui_kit::Tone;
 use sim::{Sim, SimEvent, Target, TickInputs};
 
-use crate::camera::{CamMode, CameraRig};
+use crate::camera::{CamMode, CameraRig, LOCK_MIN_SHARE, MIN_PX_PER_M, frame_fit};
 use crate::controls::pick;
 use crate::flight_hud::{FlightMenu, HudZone};
 use crate::fx::Effects;
@@ -60,6 +61,9 @@ const NOTICE_TICKS: u64 = 6 * sim::TICK_HZ as u64;
 const MARKS: usize = 24;
 /// Following a clicked ship zooms in to at least this (logical px per metre; flight's default).
 const FOLLOW_ZOOM: f32 = 18.0;
+/// How far out a zoom by hand goes at least (px per metre): as far as flight's lock framing goes from flight's default
+/// zoom. Further out only while the whole fight needs it, never past the camera's [`MIN_PX_PER_M`].
+const OUT_TO: f32 = FOLLOW_ZOOM * LOCK_MIN_SHARE;
 /// A click moves the pointer less than this (logical px); more is a drag that pans.
 const CLICK_SLOP: f32 = 6.0;
 
@@ -307,11 +311,14 @@ impl Plugin for ReplayPlugin {
             .add_systems(FixedUpdate, (drop_inputs.in_set(SimSet::Inputs), observe.in_set(SimSet::Events)))
             .add_systems(
                 Update,
-                (playback, follow_click.run_if(not(egui_wants_any_pointer_input)), update_timeline)
+                (playback, follow_click.run_if(not(egui_wants_any_pointer_input)), zoom_floor, update_timeline)
                     .chain()
                     .run_if(in_state(AppMode::Flight)),
             )
-            .add_systems(OnExit(AppMode::Flight), |mut time: ResMut<Time<Virtual>>| time.set_relative_speed(1.0));
+            .add_systems(OnExit(AppMode::Flight), |mut time: ResMut<Time<Virtual>>, mut rig: ResMut<CameraRig>| {
+                time.set_relative_speed(1.0);
+                rig.floor = MIN_PX_PER_M;
+            });
     }
 }
 
@@ -425,6 +432,18 @@ fn follow_click(
             }
         }
     }
+}
+
+/// How far out the replay zooms by hand ([`CameraRig::floor`]): [`OUT_TO`], or what frames every ship still
+/// fighting when that is further out (a fight spread wide), never past [`MIN_PX_PER_M`]. A view zoomed out past it
+/// comes in to it.
+fn zoom_floor(scene: Res<Scene>, world: Res<SimWorld>, mut rig: ResMut<CameraRig>) {
+    if !fight_scene(&scene) {
+        return;
+    }
+    let fit = frame_fit(&world, rig.viewport).map_or(OUT_TO, |(_, fit)| fit);
+    rig.floor = fit.clamp(MIN_PX_PER_M, OUT_TO);
+    rig.zoom_target = rig.zoom_target.max(rig.floor);
 }
 
 /// The timeline over the help line: a thin bar, how far the fight has been simulated (dim) and how far it is

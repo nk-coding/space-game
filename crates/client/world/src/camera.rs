@@ -81,6 +81,9 @@ pub struct CameraRig {
     /// Logical pixels per metre (current, eased).
     pub zoom: f32,
     pub zoom_target: f32,
+    /// The farthest out a zoom by hand goes (px per metre): [`MIN_PX_PER_M`], more in a replay
+    /// (`replay::zoom_floor`).
+    pub floor: f32,
     pub mode: CamMode,
     /// The mode `F` returns to.
     pub auto_mode: CamMode,
@@ -120,6 +123,7 @@ impl Default for CameraRig {
             pos: Vec2::ZERO,
             zoom: 18.0,
             zoom_target: 18.0,
+            floor: MIN_PX_PER_M,
             mode: CamMode::Follow,
             auto_mode: CamMode::Follow,
             user_zoom: false,
@@ -348,7 +352,8 @@ pub fn spawn_camera(mut commands: Commands, params: Res<Params>, mut rig: ResMut
 
 fn zoom_by(rig: &mut CameraRig, factor: f32, around: Option<Vec2>) {
     rig.hand_zoom();
-    rig.zoom_around(factor, around, MIN_PX_PER_M, MAX_PX_PER_M);
+    let floor = rig.floor;
+    rig.zoom_around(factor, around, floor, MAX_PX_PER_M);
     rig.user_zoom = true;
 }
 
@@ -411,7 +416,7 @@ fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInp
     if let Some((last_dist, last_mid)) = rig.pinch_last {
         let f = dist / last_dist;
         rig.hand_zoom();
-        rig.zoom_target = (rig.zoom_target * f).clamp(MIN_PX_PER_M, MAX_PX_PER_M);
+        rig.zoom_target = (rig.zoom_target * f).clamp(rig.floor, MAX_PX_PER_M);
         rig.user_zoom = true;
         if rig.mode == CamMode::Free {
             let d = mid - last_mid;
@@ -420,6 +425,25 @@ fn pinch(mut rig: ResMut<CameraRig>, touches: Res<Touches>, input: Res<PlayerInp
         }
     }
     rig.pinch_last = Some((dist, mid));
+}
+
+/// Framing every active ship: their centre and the zoom (px per metre, unclamped) that shows them all in a view of
+/// `viewport` logical px, the HUD's title lines and its bottom lines (help, a replay's timeline) kept clear. `None`
+/// without an active ship.
+pub fn frame_fit(world: &SimWorld, viewport: Vec2) -> Option<(Vec2, f32)> {
+    let (mut min, mut max) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN));
+    let mut any = false;
+    for p in world.sim.ships().iter().filter(|s| s.is_active()).flat_map(|s| s.pieces()) {
+        let c = v2(p.com_world());
+        min = min.min(c - Vec2::splat(6.0));
+        max = max.max(c + Vec2::splat(6.0));
+        any = true;
+    }
+    any.then(|| {
+        let size = (max - min) * 1.15;
+        let room = viewport - Vec2::new(0.0, 2.0 * FRAME_HUD_BAND);
+        ((min + max) / 2.0, (room.x / size.x).min(room.y.max(1.0) / size.y))
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -464,30 +488,11 @@ fn update_camera(
             }
         }
         CamMode::Frame => {
-            // Frame every active ship (or every piece if none is active).
-            let (mut min, mut max) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN));
-            let mut any = false;
-            for s in world.sim.ships() {
-                if !s.is_active() {
-                    continue;
-                }
-                for p in s.pieces() {
-                    let c = v2(p.com_world());
-                    min = min.min(c - Vec2::splat(6.0));
-                    max = max.max(c + Vec2::splat(6.0));
-                    any = true;
-                }
-            }
-            if any {
+            if let Some((centre, fit)) = frame_fit(&world, rig.viewport) {
                 // A replay played faster moves its ships faster: the framing keeps up (never slower than real time).
                 let k = 1.0 - (-dt * playback.relative_speed().max(1.0) / 0.6).exp();
-                let centre = (min + max) / 2.0;
                 rig.pos = rig.pos.lerp(centre, k);
                 if !rig.user_zoom {
-                    // The HUD's title lines and its bottom lines (help, a replay's timeline) are kept clear.
-                    let size = (max - min) * 1.15;
-                    let room = rig.viewport - Vec2::new(0.0, 2.0 * FRAME_HUD_BAND);
-                    let fit = (room.x / size.x).min(room.y.max(1.0) / size.y);
                     rig.zoom_target = fit.clamp(MIN_PX_PER_M, 40.0);
                 }
             }
