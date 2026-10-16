@@ -117,12 +117,14 @@ pub(super) fn offscreen_markers(
     }
 }
 
-/// How a site marker looks: its colour and alpha (raiders coral, wrecks only gold, cleared dim; the goal brighter),
-/// and the label's first line (`RAIDER PACK · GOAL`, `... · CLEARED`).
+/// How a site marker looks: its colour and alpha (raiders coral, wrecks only and beacons gold, cleared dim; the goal
+/// brighter), and the label's first line (`RAIDER PACK · GOAL`, `BEACON · SIGNAL`, `... · CLEARED`).
 pub(super) fn site_look(content: &data::Content, site: &sim::Site, ui: &kit::style::UiPalette) -> (Color, f32, String) {
     let mut name = voyage::encounter_name(content, site.encounter());
     if site.goal() {
         name.push_str("  ·  GOAL");
+    } else if site.signal() {
+        name.push_str("  ·  SIGNAL");
     }
     if site.state() == sim::SiteState::Cleared {
         name.push_str("  ·  CLEARED");
@@ -132,8 +134,9 @@ pub(super) fn site_look(content: &data::Content, site: &sim::Site, ui: &kit::sty
     (color, if site.goal() { 1.0 } else { 0.75 }, name)
 }
 
-/// Voyages: a marker at the screen edge for every site whose centre is off screen (like the enemy markers, kept
-/// clear of the HUD), with its name and distance beside it.
+/// Voyages: a marker at the screen edge for every site the fleet has found (`sim::Site::known`) whose centre is off
+/// screen (like the enemy markers, kept clear of the HUD), the nearest [`SITE_LABELS`] with its name and distance
+/// beside it.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn site_markers(
     world: Res<SimWorld>,
@@ -163,12 +166,19 @@ pub(super) fn site_markers(
         let from = focus.0.and_then(|id| world.sim.ship(id)).and_then(|s| s.control_piece().and_then(|c| s.piece(c))).map_or(rig.pos, |p| piece_com(p, alpha));
         let (px, half, centre) = (1.0 / rig.zoom, rig.half_extent(), rig.view_center());
         let edge = rig.viewport / 2.0 - Vec2::splat(MARKER_INSET + 14.0);
-        for (k, site) in v.sites().iter().enumerate().take(SITE_LABELS) {
+        let mut shown: Vec<(f32, &sim::Site)> = v
+            .sites()
+            .iter()
+            .filter(|s| s.known())
+            .map(|s| (v2(s.pos()).distance(from), s))
+            .filter(|(_, s)| {
+                let d = v2(s.pos()) - rig.pos;
+                d.x.abs() >= half.x || d.y.abs() >= half.y
+            })
+            .collect();
+        shown.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (k, &(dist, site)) in shown.iter().enumerate().take(SITE_LABELS) {
             let at = v2(site.pos());
-            let d = at - rig.pos;
-            if d.x.abs() < half.x && d.y.abs() < half.y {
-                continue;
-            }
             let ray = rig.world_to_screen(at) - centre;
             let spot = marker_spot(centre, ray, edge, &rects);
             let (c, a, name) = site_look(&world.content, site, &ui);
@@ -184,7 +194,6 @@ pub(super) fn site_markers(
             if site.goal() {
                 queue.dot(&regions.soft, pos, 26.0 * px, c.with_alpha(0.3 * fade), Z_HUD - 0.1);
             }
-            let dist = at.distance(from);
             for (t, mut text, mut color) in &mut texts {
                 if t.0 != k {
                     continue;

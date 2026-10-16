@@ -6,20 +6,22 @@
 //!   hidden for a ship without a hold);
 //! * left: speed (m/s), the top speed and the drift state; under it the pilot assists of the ship flown, with their
 //!   toggle keys and state (`assists.rs`, GDR-0088);
-//! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target);
+//! * top right: target panel (name, hull %, distance; in watch mode the watched ship's behavior target); under it,
+//!   for a ship with a scanner, the SCAN pill with what the scanner does and its charge or cooldown (`scan.rs`);
 //! * top centre: scene / wave line and whether raider waves come, centre: banners (wave cleared, ship lost,
 //!   `PAUSED`);
 //! * bottom centre: heat and power warnings ("PULSE LASER 2 · HEAT 96 %"); bottom: the controls help line;
 //! * in the world: a dotted lock ring around the target, off-screen markers for enemies (also in watch mode; kept
-//!   clear of the HUD's texts and widgets; in a replayed fight for every ship, in its side's colour).
+//!   clear of the HUD's texts and widgets; in a replayed fight for every ship, in its side's colour); scans charging
+//!   and sweeping, bearings, and the sites found (`scan.rs`).
 //! * **a replayed fight** (`replay.rs`): the title names both sides and the seed, the subtitle the time, speed and
 //!   build points left; the banner says whether the rules changed and, at the end, whether it ended as recorded;
 //!   the help line lists the replay keys.
 //! * **voyages** (GDR-0065): the title is the voyage and its band, the
 //!   subtitle `SITES 2 / 5 · 7:05`; under the hull the cargo block (`SALVAGE`, `5 / 8` with one pip per cargo unit,
 //!   the hold's name) and right under it the RECALL pill (R; enabled only while the sim allows the recall) with
-//!   what it does; markers at the screen edge for the sites off screen (name and distance: raiders coral, wrecks
-//!   gold, the goal brighter, cleared ones dim); banners for sites waking and cleared and for the goal; the
+//!   what it does; markers at the screen edge for the sites found that are off screen (the nearest 12, name and
+//!   distance: raiders coral, wrecks gold, the goal brighter, cleared ones dim); banners for sites waking and cleared and for the goal; the
 //!   warp-out's countdown (`EMERGENCY WARP · 2` in gold for the emergency recall); `SHIP LOST · RECALLED HOME` with
 //!   its countdown (`voyage-hud-lost.png`; `VOYAGE ABANDONED` after abandoning). No home ring: M opens the ABANDON
 //!   VOYAGE? panel instead (GDR-0077), a root of its own low under the ship (the flight goes on while it is open),
@@ -31,6 +33,7 @@
 mod assists;
 mod markers;
 mod menu;
+mod scan;
 mod text;
 
 use std::fmt::Write as _;
@@ -230,7 +233,11 @@ impl Plugin for FlightHudPlugin {
         .add_systems(Update, abandon_panel.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(Update, voyage_widgets.after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
         .add_systems(OnExit(AppMode::Flight), forget_ship)
-        .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers).after(CameraSet).before(crate::fx::FxFlush));
+        .add_systems(PostUpdate, (lock_ring, offscreen_markers, site_markers, scan::scan_world).after(CameraSet).before(crate::fx::FxFlush));
+        app.init_resource::<scan::ScanFx>()
+            .add_systems(Update, (scan::scan_widgets, scan::scan_click).after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Flight)))
+            .add_systems(FixedUpdate, scan::note_scans.after(crate::sim_bridge::SimSet::Events).run_if(in_state(AppMode::Flight)))
+            .add_systems(OnExit(AppMode::Flight), scan::forget_scans);
     }
 }
 
@@ -306,6 +313,7 @@ pub fn spawn_hud(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>
                     c.spawn((HudText::TargetName, label(&fonts, "NO TARGET", 13.0, grey)));
                     c.spawn((HudText::TargetValue, number(&fonts, "", 34.0, coral)));
                     c.spawn((HudText::TargetSub, label(&fonts, "", 11.0, dim)));
+                    scan::spawn(c, &fonts, ui);
                 });
             // Top centre: title.
             root.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, top: px(16), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, ..default() }))

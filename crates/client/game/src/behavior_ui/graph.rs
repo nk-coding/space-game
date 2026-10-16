@@ -97,9 +97,17 @@ impl GraphView {
 
 /// Per rule: does it decide whenever its turn comes? An `always` rule does if its action needs no target (`hold`,
 /// `escort`); one whose action needs a target steps aside while there is none and the next rule gets its turn, as
-/// the sim walks the rules (`sim::behavior::action_needs_target`), so the escort template's last rule runs.
+/// the sim walks the rules (`sim::behavior::action_needs_target`), so the escort template's last rule runs. `scan`
+/// never decides: it starts a scan and steps aside (`sim::behavior::action_decides`).
 pub fn always_decides(program: &Program) -> Vec<bool> {
-    program.rules.iter().map(|r| r.when.is_empty() && !sim::behavior::action_needs_target(&r.action.name)).collect()
+    program
+        .rules
+        .iter()
+        .map(|r| {
+            let a = &r.action.name;
+            r.when.is_empty() && !sim::behavior::action_needs_target(a) && sim::behavior::action_decides(a)
+        })
+        .collect()
 }
 
 /// The rules that have a slot but never run, by index: those below the first rule that always decides

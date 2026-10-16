@@ -7,7 +7,8 @@
 //!   left button on empty space = fire weapon group 1. Space fires every group, 1 / 2 / 3 (and the right button:
 //!   2) fire one group each (GDR-0088); the held triggers make the pilot's fire mask. Tab (LOCK TARGET) = the nearest
 //!   enemy, then the next by distance (`sim::flight::next_lock`), Esc = unlock (not while
-//!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle. V / Shift+V = next / previous
+//!   the ABANDON VOYAGE? panel is open: Esc closes it, `voyage.rs`), X = drift toggle, G (SCAN) = a scan with the
+//!   flown ship's scanner (`ShipCommand::Scan`; the HUD's SCAN pill does the same). V / Shift+V = next / previous
 //!   vessel of the player (the sim's vessel list); clicking a friendly vessel switches to it. Both send
 //!   `ShipCommand::Focus`; the sim moves the focus and `scene::PilotFocus` mirrors it on the next tick. F1–F4 (ASSIST
 //!   TOGGLE 1–4) and Z (ALL ASSISTS) switch the flown ship's pilot assists for the mission
@@ -258,6 +259,12 @@ fn keyboard(
         && let Some(me) = focus.0
     {
         input.lock = sim::flight::next_lock(world.sim.ships(), me, input.locked_ship());
+    }
+    // SCAN: the flown ship's scanner (the sim ignores it while a scan charges or cools down, and without one).
+    if act.just_pressed(Action::Scan)
+        && let Some(me) = focus.0
+    {
+        world.inputs.commands.push((me, ShipCommand::Scan));
     }
     // Cycle the focus through the player's vessels (a focus command for the sim).
     let step = if act.just_pressed(Action::FocusNext) {

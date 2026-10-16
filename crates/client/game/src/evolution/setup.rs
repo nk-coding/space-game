@@ -24,7 +24,7 @@
 //!   arena locks a lock's mirror image too.
 //! * **Limits**: build points at most the start's (the default), a number or no cap; the hold at least the start's
 //!   or any; VOYAGE-READY (logic cores within the mind capacity less FLEET's escorts'); MIRROR (on when the first
-//!   start looks symmetric); only the career's parts, always (`?unlock=all` lifts it), said in LIMITS' head.
+//!   start looks symmetric, a single part and the one across from it aside, which the arena keeps in place); only the career's parts, always (`?unlock=all` lifts it), said in LIMITS' head.
 //! * **May change** (GDR-0092 step 6): `lab.ron`'s gene presets (EVERYTHING, the default, DESIGN ONLY, BEHAVIOR ONLY,
 //!   ASSISTS ONLY, NUMBERS ONLY; one lit while the genes are its), each gene on or off (`lab.ron`'s words, its summary
 //!   as the tip), the part categories whose parts may be added, removed or swapped, and FLOWN BY: the behavior, a
@@ -166,13 +166,12 @@ impl SetupPage {
 }
 
 /// Every part has its mirror image across the frame's centre line (the same part, material and pose mirrored) when
-/// the design opens centred in the first frame it fits: MIRROR's default. The arena checks the run's starts again.
+/// the design opens centred in the first frame it fits, but at most one single part and the part across from it
+/// (the starter's scanner, GDR-0093; the arena keeps such parts where they are, `arena::evolve::unmatched`):
+/// MIRROR's default. The arena checks the run's starts again.
 fn symmetric(content: &Content, bp: &data::Blueprint) -> bool {
     let Ok(d) = library::open_in_first_frame(content, bp) else { return false };
-    let dock = d.dock();
-    let key = |p: &data::Placement| (p.part.clone(), p.material.clone(), p.x, p.y, p.rot, p.flip);
-    let keys: Vec<_> = dock.parts().iter().map(key).collect();
-    dock.parts().iter().all(|p| keys.contains(&key(&dock.mirror_of(p))))
+    world::arena::evolve::unmatched(content, d.dock()).len() <= 2
 }
 
 /// The locks' lists of rules: the behavior's or the pilot assists'.

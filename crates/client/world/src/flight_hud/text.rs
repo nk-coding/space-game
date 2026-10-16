@@ -271,7 +271,7 @@ pub(super) fn update_text(
                 // The bound inputs (the first of each), GDR-0090; the weapon groups' triggers as one entry.
                 let k = |a: Action| controls.0.inputs(a).next().map_or_else(|| "—".to_string(), |c| c.label());
                 let fly = format!(
-                    "{}/{} TURN · {}/{} THRUST · {}/{} STRAFE · CLICK LOCK · {} FIRE · {}/{}/{} GROUPS · {} TARGET · {} DRIFT · {} VESSEL",
+                    "{}/{} TURN · {}/{} THRUST · {}/{} STRAFE · CLICK LOCK · {} FIRE · {}/{}/{} GROUPS · {} TARGET · {} SCAN · {} DRIFT · {} VESSEL",
                     k(Action::TurnLeft),
                     k(Action::TurnRight),
                     k(Action::ThrustForward),
@@ -283,6 +283,7 @@ pub(super) fn update_text(
                     k(Action::FireGroup2),
                     k(Action::FireGroup3),
                     k(Action::LockNext),
+                    k(Action::Scan),
                     k(Action::Drift),
                     k(Action::FocusNext),
                 );

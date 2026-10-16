@@ -73,7 +73,7 @@ pub use config::{
     Start, VoyagePilot,
 };
 pub use eval::{Job, JobEnd, JobRecord, JobResult, SAMPLE_TICKS};
-pub use genome::Genome;
+pub use genome::{Genome, unmatched};
 pub use lineage::Bred;
 pub use store::{MAX_SAVE_PACKED, MAX_SAVE_PAYLOAD, RunHead, RunPart, RunParts, RunSave, RunStatus, SAVE_FORMAT, SAVE_TAG};
 pub use trial::{BOSS_TAG, Contestant, DEFAULT_WAVES, FlownBy, GenCtx, GoalScores, Goals, MAX_WEIGHT, Sources, Trial, TrialKind, TrialSpec, encounters, enemy_starts, entry_of, pack};

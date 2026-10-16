@@ -235,6 +235,7 @@ fn kind_line(node: &BehaviorNode) -> &'static str {
         NodeRole::Condition if node.script.is_some() => "CONDITION  ·  SCRIPT",
         NodeRole::Condition if node.value.is_some() => "CONDITION  ·  VALUE",
         NodeRole::Condition => "CONDITION  ·  FLAG",
+        NodeRole::Action if !sim::behavior::action_decides(&node.id) => "ACTION  ·  STEPS ASIDE",
         NodeRole::Action => "ACTION  ·  MANEUVER",
         NodeRole::Target => "TARGET  ·  SELECTOR",
     }

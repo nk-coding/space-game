@@ -2,7 +2,8 @@
 //! one, what happens while it runs, and how it ends. The scene builds the voyage's world (`scene.rs`,
 //! `SceneKind::Voyage`), the HUD shows it (`flight_hud/`), the debrief reports it at home (`debrief.rs`).
 //!
-//! * **Launch** ([`StartVoyage`], or `?scene=voyage&voyage=<id>` at start): the career records the launch
+//! * **Launch** ([`StartVoyage`], or `?scene=voyage&voyage=<id>` at start; `?scene=voyage&cluster=<id or
+//!   signal>[&galaxy=<seed>]` flies a generated cluster as a practice run, galaxy plan E3): the career records the launch
 //!   (`Career::voyage_launched`: the voyage's seed, `underway`) and the save is written at once, so closing or
 //!   reloading mid-voyage loses it (GDR-0062). The fleet is the drydock's working design (the flagship) and the
 //!   FLEET escorts; it must be voyage-ready (`data::career::voyage_ready` against what the career grants) and every
@@ -70,6 +71,9 @@ pub struct Launched {
     pub escorts: Vec<Blueprint>,
     /// `None`: recorded in the career (its end is too). `Some(why)`: a practice run (URL only), never saved.
     pub practice: Option<String>,
+    /// A generated cluster instead of a content voyage (galaxy plan E3, for testing: `?scene=voyage&cluster=`): the
+    /// galaxy's seed and the cluster's id; `voyage` is its name.
+    pub cluster: Option<(u64, u32)>,
 }
 
 /// Where a voyage is.
@@ -180,12 +184,54 @@ impl LaunchInputs<'_> {
         info!("voyage: {id} launched, seed {seed}{}", practice.as_deref().map(|p| format!(" (practice: {p})")).unwrap_or_default());
         let mind = self.granted.mind_capacity;
         *self.run = VoyageRun {
-            launched: Some(Launched { voyage: id.clone(), seed, mind, escorts: escorts.clone(), practice }),
+            launched: Some(Launched { voyage: id.clone(), seed, mind, escorts: escorts.clone(), practice, cluster: None }),
             ..default()
         };
         self.scene.kind = SceneKind::Voyage(id);
         Ok(())
     }
+
+    /// A practice run into a generated cluster (galaxy plan E3; [`url_launch`]): the base galaxy from `galaxy` (the
+    /// career's game seed if `None`), cluster `cluster` (`signal`: the first that holds a trail's place), its
+    /// interior rolled from the cluster's seed. Never saved.
+    fn launch_cluster(&mut self, galaxy: Option<u64>, cluster: &str) -> Result<(), String> {
+        let content = &self.content.0;
+        let flagship = self.design.blueprint();
+        if let Some(b) = fleet_blocker(content, &self.granted.unlocks, self.granted.mind_capacity, flagship, &self.escorts.0) {
+            return Err(format!("NOT VOYAGE-READY · {b}"));
+        }
+        let id = content.galaxies.iter().next().map(|g| g.id.clone()).ok_or("THE CONTENT HAS NO GALAXY")?;
+        let seed = galaxy.unwrap_or_else(|| self.career.career().seed());
+        let sk = galaxy::generate(content, &id, seed).map_err(|e| e.0.to_uppercase())?;
+        let k = match cluster.parse::<u32>() {
+            Ok(k) => k,
+            Err(_) => sk.trails.iter().flat_map(|t| &t.places).map(|p| p.cluster).find(|&k| k != sk.home).ok_or("NO CLUSTER HOLDS A TRAIL'S PLACE")?,
+        };
+        let c = sk.clusters.get(k as usize).ok_or_else(|| format!("THE GALAXY HAS {} CLUSTERS", sk.clusters.len()))?;
+        info!("voyage: cluster {k} ({}) of galaxy seed {seed} launched (practice)", c.name);
+        *self.run = VoyageRun {
+            launched: Some(Launched {
+                voyage: c.name.clone(),
+                seed: c.seed,
+                mind: self.granted.mind_capacity,
+                escorts: self.escorts.0.clone(),
+                practice: Some("A GENERATED CLUSTER, FOR TESTING".into()),
+                cluster: Some((seed, k)),
+            }),
+            ..default()
+        };
+        self.scene.kind = SceneKind::Voyage(c.name.clone());
+        Ok(())
+    }
+}
+
+/// The plan of a launched generated cluster ([`Launched::cluster`]), rolled from `content` (the content the enemies
+/// fly with).
+pub fn cluster_plan(content: &Content, launched: &Launched, (galaxy, cluster): (u64, u32)) -> Result<sim::VoyagePlan, String> {
+    let id = content.galaxies.iter().next().map(|g| g.id.clone()).ok_or("no galaxy")?;
+    let sk = galaxy::generate(content, &id, galaxy).map_err(|e| e.0)?;
+    let interior = galaxy::interior(content, &sk, cluster).map_err(|e| e.0)?;
+    sim::VoyagePlan::roll_interior(content, &launched.voyage, &interior, launched.seed)
 }
 
 /// The voyage the map selects when it opens: the first open one whose goal is not cleared, else the first open one.
@@ -245,12 +291,17 @@ fn refusal_words(content: &Content, r: &Refusal) -> String {
 }
 
 /// `?scene=voyage[&voyage=<id>]`: launch at once (a practice run when the career refuses it); without any voyage
-/// to fly, home with a note.
+/// to fly, home with a note. `?scene=voyage&cluster=<id or signal>[&galaxy=<seed>]`: a practice run into a generated
+/// cluster ([`LaunchInputs::launch_cluster`]).
 fn url_launch(params: Res<Params>, mut inputs: LaunchInputs, mut next: ResMut<NextState<AppMode>>) {
     if params.text("scene") != Some("voyage") {
         return;
     }
-    if let Err(why) = inputs.launch(params.text("voyage"), true) {
+    let launched = match params.text("cluster") {
+        Some(k) => inputs.launch_cluster(params.u64("galaxy"), k),
+        None => inputs.launch(params.text("voyage"), true),
+    };
+    if let Err(why) = launched {
         warn!("voyage: {why}");
         inputs.career.notes.push(Note::new("NO VOYAGE", why, Tone::Coral));
         next.set(AppMode::Home);
@@ -344,9 +395,13 @@ pub fn title(content: &Content, voyage: &str) -> String {
     }
 }
 
-/// An encounter's name, uppercase (`RAIDER PACK`).
-pub fn encounter_name(content: &Content, encounter: &str) -> String {
-    content.encounters.get(encounter).map_or(encounter, |e| e.name.as_str()).to_uppercase()
+/// A site's name, uppercase: its encounter's (`RAIDER PACK`), `BEACON` for a beacon alone (a trail's place with no
+/// encounter).
+pub fn encounter_name(content: &Content, encounter: Option<&str>) -> String {
+    match encounter {
+        Some(id) => content.encounters.get(id).map_or(id, |e| e.name.as_str()).to_uppercase(),
+        None => "BEACON".into(),
+    }
 }
 
 /// The RECALL pill and the line under it: its text, the line, and whether it can be pressed. `emergency`: the fleet
@@ -385,6 +440,30 @@ pub fn site_banner(content: &Content, voyage: &sim::Voyage, event: &SimEvent) ->
     })
 }
 
+/// The player's scan this tick as a banner (galaxy plan E3): how many sites it found and how many bearings it gave
+/// (`SimEvent::Scanned`, `SiteRevealed`, `SiteBearing`); `None` without a sweep of `owner`'s.
+pub fn scan_banner(sim: &sim::Sim, owner: Owner) -> Option<(String, String, Tone)> {
+    let mut range = None;
+    let (mut found, mut bearings) = (0, 0);
+    for e in sim.events() {
+        match *e {
+            SimEvent::Scanned { ship, range: r, .. } if sim.ship(ship).is_some_and(|s| s.owner() == owner) => range = Some(r),
+            SimEvent::SiteRevealed { .. } => found += 1,
+            SimEvent::SiteBearing { .. } => bearings += 1,
+            _ => {}
+        }
+    }
+    let range = range?;
+    let plural = |n: u32, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+    let title = if found == 0 { "SCAN  ·  NOTHING NEW".to_string() } else { format!("SCAN  ·  {} FOUND", plural(found, "SITE", "SITES")) };
+    let sub = if bearings > 0 {
+        format!("{} TOWARDS A SIGNAL  ·  SCAN AGAIN ELSEWHERE TO CROSS IT", plural(bearings, "BEARING", "BEARINGS"))
+    } else {
+        format!("SWEPT {:.1} KM AROUND", range / 1000.0)
+    };
+    Some((title, sub, if bearings > 0 { Tone::Gold } else { Tone::Teal }))
+}
+
 /// Every tick of a voyage: counts, banners, the recall, the endings.
 #[allow(clippy::too_many_arguments)]
 fn voyage_tick(
@@ -415,6 +494,11 @@ fn voyage_tick(
         {
             scene.say(title, sub, tone, now + 3.5);
         }
+    }
+    if let Some((title, sub, tone)) = scan_banner(sim, PLAYER)
+        && matches!(run.phase, Phase::Flying)
+    {
+        scene.say(title, sub, tone, now + 3.5);
     }
     let alive = sim.vessels(PLAYER).next().is_some();
     run.can_recall = alive && sim.can_recall(PLAYER);
@@ -564,7 +648,7 @@ mod tests {
     }
 
     fn launched(voyage: &str, seed: u64, practice: Option<String>) -> Launched {
-        Launched { voyage: voyage.into(), seed, mind: 2, escorts: Vec::new(), practice }
+        Launched { voyage: voyage.into(), seed, mind: 2, escorts: Vec::new(), practice, cluster: None }
     }
 
     /// The V key's voyage, the launch's decisions, and the seed it rolls from (`docs/career.md`'s fixed value).
@@ -696,7 +780,8 @@ mod tests {
         assert_eq!(title(&content, "yard_approach"), "SHIPYARD APPROACH  ·  RIM");
         assert_eq!(title(&content, "x"), "X");
         assert_eq!((clock(0), clock(30 * 425), clock(30 * 3600 + 29)), ("0:00".into(), "7:05".into(), "60:00".into()));
-        assert_eq!(encounter_name(&content, "raider_pack"), "RAIDER PACK");
+        assert_eq!(encounter_name(&content, Some("raider_pack")), "RAIDER PACK");
+        assert_eq!(encounter_name(&content, None), "BEACON");
         assert_eq!(recall_words(Phase::Flying, true, false, 0), ("RECALL".into(), "WARP HOME 3 S  ·  KEEPS THE HAUL".into(), true));
         assert!(!recall_words(Phase::Flying, false, false, 0).2);
         // GDR-0074: a fleet without a working gun gets the emergency recall, and the hint says why.
@@ -724,5 +809,38 @@ mod tests {
         let (t, _, tone) = site_banner(&content, v, &SimEvent::SiteWoke { site: 0 }).unwrap();
         assert_eq!((t.as_str(), tone), ("RAIDER PAIR  ·  AWAKE", Tone::Coral));
         assert!(site_banner(&content, v, &SimEvent::ShipSpawned { ship: sim::ShipId(0) }).is_none());
+    }
+
+    /// A scan from the entry of a voyage says what it found; the cluster launch finds a cluster with a trail's place
+    /// and rolls it.
+    #[test]
+    fn a_scan_makes_a_banner_and_a_generated_cluster_rolls() {
+        let content = data::base_content();
+        let plan = sim::VoyagePlan::roll(&content, content.voyages.get("corran_reach").unwrap(), 3).unwrap();
+        let entry = plan.entry;
+        let mut sim = sim::Sim::new(3);
+        sim.start_voyage(plan, PLAYER, ENEMY);
+        let bp = content.ships.get("rim_skiff").unwrap();
+        let me = sim.spawn_ship(std::sync::Arc::new(sim::ShipDesign::compile(&content, bp).unwrap()), PLAYER, entry);
+        sim.step(&sim::TickInputs::default());
+        sim.command(me, sim::ShipCommand::Scan);
+        let mut banner = None;
+        for _ in 0..90 {
+            sim.step(&sim::TickInputs::default());
+            banner = banner.or(scan_banner(&sim, PLAYER));
+        }
+        let (title, sub, _) = banner.expect("the sweep's banner");
+        assert!(title.starts_with("SCAN  ·  "), "{title}");
+        assert!(sub.contains("BEARING") || sub.starts_with("SWEPT 1.2 KM"), "{sub}");
+        assert!(scan_banner(&sim, PLAYER).is_none(), "one banner per sweep");
+
+        let (_, _, pc) = fresh();
+        let id = content.galaxies.iter().next().unwrap().id.clone();
+        let sk = galaxy::generate(&content, &id, pc.career().seed()).unwrap();
+        let k = sk.trails[0].places.iter().map(|p| p.cluster).find(|&k| k != sk.home).unwrap();
+        let mut l = launched(&sk.clusters[k as usize].name, sk.clusters[k as usize].seed, Some("TEST".into()));
+        l.cluster = Some((pc.career().seed(), k));
+        let plan = cluster_plan(&content, &l, l.cluster.unwrap()).unwrap();
+        assert!(plan.sites.iter().any(|s| s.signal));
     }
 }

@@ -6746,6 +6746,7 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "data",
+ "galaxy",
  "js-sys",
  "kit",
  "ron",

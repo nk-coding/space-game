@@ -1233,7 +1233,7 @@ impl Kit {
 /// The parts (indices) of `dock` without a mirror image across the frame's centre line: no part of the same id and
 /// material with the reflected outline and facing (an unknown part has none). Under the mirror lock a start keeps
 /// these where they are: the starter's single scanner and the cargo bay across from it (GDR-0093).
-fn unmatched(content: &Content, dock: &Drydock) -> Vec<usize> {
+pub fn unmatched(content: &Content, dock: &Drydock) -> Vec<usize> {
     type Key = (String, Option<String>, Vec<(i32, i32)>, u8);
     let key = |p: &Placement| -> Option<Key> {
         let part = content.parts.get(&p.part)?;

@@ -27,7 +27,8 @@ use super::graph::{Chip, GraphView};
 pub enum RowState {
     /// It decides.
     Active,
-    /// A condition is false (or its action has no target): the next rule gets its turn.
+    /// A condition is false (or its action has no target, or it is `scan`, which starts a scan and steps aside): the
+    /// next rule gets its turn.
     Failed,
     /// Not evaluated: a rule above decides (or the ship hasn't thought yet).
     Waiting,
@@ -99,7 +100,7 @@ pub fn live_panel(watch: &BehaviorWatch, labels: &[String]) -> Option<LivePanel>
             let status = watch.rules.get(i).copied().filter(|_| watch.running).unwrap_or(RuleStatus::Skipped);
             let state = match status {
                 RuleStatus::Active => RowState::Active,
-                RuleStatus::Failed { .. } | RuleStatus::NoTarget => RowState::Failed,
+                RuleStatus::Failed { .. } | RuleStatus::NoTarget | RuleStatus::Scan { .. } => RowState::Failed,
                 RuleStatus::Skipped => RowState::Waiting,
                 RuleStatus::NoSlot => RowState::NoSlot,
             };
