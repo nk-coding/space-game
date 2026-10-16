@@ -21,6 +21,7 @@ pub mod design;
 pub mod hash;
 pub mod input;
 pub mod rng;
+pub mod skeleton;
 
 #[cfg(feature = "fs")]
 pub mod fs;

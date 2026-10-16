@@ -16,4 +16,6 @@ fs = []
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 ron = "=0.12.2"  # format-level: content, share codes and saved documents are RON text
+# Pure-Rust math for the galaxy skeleton's distances and angles: identical results on every platform (ADR-0010).
+libm = { version = "=0.2.16", default-features = false }
 
