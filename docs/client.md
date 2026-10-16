@@ -869,7 +869,7 @@ the records mast by the gate, once the camera has flown there).
 The evolution lab ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026; its trials and goals,
 VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME with step 5 the same day; MAY CHANGE, FLOWN BY and the locks'
 grid with step 6, also 16 Oct 2026, its GENERATION n, REPLACE START, TIDY and the preview card's ORIGIN the same
-day): runs that breed the
+day; the ARMS RACE with step 7, 16 Oct 2026): runs that breed the
 player's designs against enemies and keep the best of each kind, every fight to watch again, any result saved as a
 design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
 the building `shipyard`. Until its research node comes (step 8) it opens with `?lab=1`; without it the building is
@@ -973,6 +973,33 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   and `DROPS 2 RULES THAT NEVER DECIDED IN ITS 12 FIGHTS` (its tip lists them; off: `KEEPS ALL 7 RULES · 2 RULES
   NEVER DECIDED`), else why there is nothing to tidy (`ITS BEHAVIOR IS ITS START'S: SAVED AS IT IS`, `EVERY RULE
   DECIDED IN ITS 12 FIGHTS: NOTHING TO TIDY`, `ITS BEHAVIOR FLEW NO FIGHT`).
+- **THE ARMS RACE** (GDR-0092 step 7, "Co-evolution"; `docs/arena.md` "Co-evolution"): `lab.ron`'s ARMS RACE is a
+  trial row of the SETUP like the others, off by default (it costs about half a run more and can drift from the
+  enemies you meet). On, it lists under its row the enemy ships its enemy starts from (`THE ENEMY FROM`: a coral pill
+  per content ship tagged `enemy`, the first enemy faction's lit, its boss, the warden, only when picked; one faction
+  at a time) and `16 ENEMY CHILDREN A GENERATION · 12 FIGHTS EACH AGAINST YOUR BEST, YOUR PAST CHAMPIONS AND YOUR
+  STARTS`; its row says the fights a child gets of it (the enemy's best 3 and 2 of its past champions, each on its
+  seeds), and THE RUN's line counts the enemy's fights in a generation's and in the time (`TrialPick::enemy_cost`).
+  The run's config gets its `enemy` (`arena::evolve::Population::from_preset`: half your children, the faction's
+  `lab.ron` palette). RUNS says `RIM SKIFF · ARMS RACE`. On the run's page: `START 0.42 » BEST 0.81 · ENEMY 0.93`;
+  THE ARCHIVES with YOURS | THE ENEMY at the head's right end (a tip each): the archive, the picked design (each
+  side's best until one is clicked) and GENERATION n show that side, the enemy's archive in coral (a start's corner
+  coral). SCORES BY GENERATION adds the enemy's archive best (coral) and PAST CHAMPIONS as dots (the share of the
+  other side's champions each best beat, teal yours, coral the enemy's, joined from check to check); the line under
+  the bars says so, and the last generation's numbers add the enemy's and the last check (`PAST CHAMPIONS G10: YOUR
+  BEST BEAT 1 OF 2, THE ENEMY'S 2 OF 2`). GENERATION n of a checked generation begins with the check: `PAST CHAMPIONS
+  · YOUR BEST #37 BEAT 1 OF 2 · THE ENEMY'S #91 2 OF 2`, then a row per champion fought (its mean score teal above
+  0.5, else coral; `YOUR BEST VS ITS CHAMPION OF G5 (#136) · AUTOMATON HUNTER`) with WATCH (its first seed,
+  `Run::check_fight_code`); on the enemy's side its children with `THE ENEMY · 8 CHILDREN · …`. An enemy picked:
+  `THE ENEMY · FROM AUTOMATON HUNTER` (coral), SCORES its one trial and `IN ALL · ITS WIN AS SIDE 1` (`THE ENEMY IS
+  SCORED ONLY BY ITS FIGHTS AGAINST YOUR DESIGNS`, no VALIDATE), FIGHTS from its side (`WON 0:14` when your side
+  lost, `SEED 1 · IT LOST 4 BP · YOURS LOST 58 BP · IT DEALT 30`, the opponent your design; in the viewer your side is
+  teal and the enemy coral as in every fight), LINEAGE and COMPARE with its start. SAVE AS DESIGN keeps its faction
+  and tags it `evolved` and `enemy`, with its origin (its own start's content ship first; no REPLACE START), and
+  EXPORT (coral; its tip says to content) copies it as a content ship with its behavior in a comment block,
+  `evolved_<faction>_<genome>` (`arena::Run::export_enemy`), to put into a pack's `ships/` by hand. A saved design's
+  ORIGIN of an evolved enemy opens its run on THE ENEMY's side. Checked at the three UI sizes with a CLI run brought
+  in by IMPORT RUN.
 - **VALIDATE** (`Lab::validate`): the picked design, or the archive's best 8, fight the run's trials on 20 new seeds
   each and their recorded fights again (`arena::Run::validation`); it computes in the run's place (the progress line
   says `VALIDATING 8 DESIGNS · 40% · THE RUN WAITS`; slices on the web, the compute threads natively), then its results

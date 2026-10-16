@@ -364,12 +364,16 @@ Next session:
      fights and codes unchanged; the same day GENERATION n (a click on the chart lists a generation's children),
      REPLACE START (over a start that is one of YOUR DESIGNS), TIDY at SAVE (`Run::tidied`: an evolved behavior's
      rules that never decided go) and the BLUEPRINTS preview card's ORIGIN (a click opens the run at the design);
-  7. co-evolution (the ARMS RACE);
+  7. **Built 16 Oct 2026**: co-evolution, the ARMS RACE (`lab.ron`'s preset, off by default): an enemy population
+     evolves against yours in the same run (its own starts, palette, archive and stream; frozen best and past
+     champions each way, your starts as its anchor, packs sized by the wave rule), the PAST CHAMPIONS check and its
+     dots in the chart, YOURS | THE ENEMY on the run page, evolved enemies saved as designs and exported to content
+     (`enemy_NN.ron` in the CLI); `determinism-check.sh --run arms_race` (native = wasm); runs without an enemy
+     unchanged;
   8. the career and the wiki (the Simulation vault, `lab.ron`, the wiki page; `?lab=1` goes);
   9. optional: web workers, voyage replays, THE LADDER.
 - **Next** (Niklas, 15 Oct 2026):
-  1. The evolution lab: co-evolution with step 7; the rest of `lab.ron`, its wiki page and the Simulation vault with
-     step 8.
+  1. The evolution lab: the rest of `lab.ron`, its wiki page and the Simulation vault with step 8.
 
 ## Phase 4: measurement
 

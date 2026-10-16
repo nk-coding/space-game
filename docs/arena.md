@@ -304,6 +304,8 @@ designs within the mind capacity and with the start's hold, and keeps every figh
 [What a run keeps](#what-a-run-keeps). Since step 6 (16 Oct 2026) everything mutates, the pilot assists included,
 within the genes a run may change, and fights can be flown by a stand-in pilot so the assists are scored:
 [Genomes, mutation and crossover](#genomes-mutation-and-crossover), FLOWN BY under [Trials and goals](#trials-and-goals).
+Since step 7 (16 Oct 2026) an enemy population can evolve against yours in the same run, the ARMS RACE:
+[Co-evolution](#co-evolution-the-arms-race).
 
 ### Trials and goals
 
@@ -347,6 +349,7 @@ the run is self-contained (player designs inlined as text, content by id).
 | `HallOfFame(count)` | the run's best `count` so far (frozen per generation; none in generation 0, so it leaves the sums there) |
 | `Champions(designs)` | CHAMPIONS: the best designs of earlier runs, inlined |
 | `Voyages(ids, minutes, pilot)` | VOYAGES: headless voyages (the old `fitness: Voyages` reads as this) |
+| `CoEvolution` | CO-EVOLUTION, the ARMS RACE (step 7): the run's `enemy` population's frozen best and past champions, each in a pack sized to the contestant ([Co-evolution](#co-evolution-the-arms-race)); its settings are the enemy's fights too |
 
 **Goals** (per job, 0..1): WIN (the arena score; a gauntlet's waves cleared of all; the voyage score), UNHURT (one less
 the share of side 0's build points lost; of the hull, on a voyage), QUICK (one less the share of the time limit a win
@@ -437,6 +440,7 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
 | `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: 60`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; the starts must be symmetric) |
 | `start`, `starts` | One start (`start`, the old form) or a list (`starts: [...]`), one to four in all. `Design(design, behavior, locks)`: a content ship or blueprint text (with its pilot assists, `assists`), a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
 | `archive` | `(axes: [(measure, min, max, cells), ...])`, one to three axes (at most 65 536 cells) |
+| `enemy` | Optional (written only when there is one; step 7): THE ENEMY of an ARMS RACE, a `Population` ([Co-evolution](#co-evolution-the-arms-race)); a run with one has exactly one `CoEvolution` trial, and one with that trial an `enemy` |
 | `population`, `generations`, `seed`, `crossover`, `mutations` | Children per generation; generations; the run's stream; the share of children bred by crossover (0.2); a child gets 1 to `mutations` (3) mutations. All *placeholders* |
 
 Every error is a `RunError` value: `Config` (does not read, a number out of range, `generations` missing or given with
@@ -582,6 +586,69 @@ come from the run's PCG stream (`seed`, its own sequence) in a fixed order; figh
 same for every child and generation, so scores stay comparable. The hall of fame (`hall_of_fame` best elites joining
 the pool) makes the fitness move with the archive; elites are not re-scored.
 
+### Co-evolution (the ARMS RACE)
+
+GDR-0092 step 7 (16 Oct 2026; `src/evolve/`, `tests/coevolve.rs`): an enemy population evolves against yours in the
+same run, each improving against the other ("self-improving enemies"). `RunConfig::enemy`:
+
+```ron
+// crates/core/arena/runs/arms_race.ron (with a `CoEvolution` trial among `trials`)
+enemy: (
+    starts: [Design(design: Ship("automaton_raider")), Design(design: Ship("automaton_hunter"))],
+    population: 4,                // its children per generation (the lab: half of yours)
+    palette: ["shield_emitter"],  // parts beyond those its starts use (lab.ron's palette of the faction)
+    mirror: true,                 // its designs stay symmetric
+    elites: 2, hall: 2,           // the frozen sets (default 3 and 2)
+    anchor: true,                 // its children also fight your starts (default)
+    check_every: 10, champions_every: 5,   // PAST CHAMPIONS (the defaults; 0: never)
+    // evolve: MayChange((...)),  // default the design's and the behavior's genes; never the assists
+    // frame, archive             // default the smallest frame its starts fit, the default axes
+),
+```
+
+- **One run, one table.** THE ENEMY's starts are genomes n to n + m − 1 after your n starts (`Bred::root` ≥ n: its
+  side, `Run::camp`), its children follow yours in every generation (`GenerationRecord::enemy`, a `Rivalry` with
+  `first`, where its children begin, `Run::children_of`), its headers are tagged `evolved` and `enemy` with their
+  faction kept. It breeds with a kit of its own (`Kit::first` numbers its roots after yours): only the parts and
+  armour its starts use and its palette, no build-point cap, hold or core limit, on its own stream (the run's seed on
+  the sequence `"enemy"`), so your breeding draws as it would without it. Its archive is its own (`Run::enemy_archive`).
+- **Pairing.** Generation g fights frozen sets from the end of g − 1: your children THE ENEMY's best `elites` and
+  `hall` of its past champions, its children your best `elites`, `hall` of yours and (`anchor`) your starts;
+  generation 0 the other side's starts. A champion is a generation's best child of its side; champions are drawn
+  uniformly over the whole history, each once and none among the best already, on the enemy's stream (its first,
+  then yours), and the drawn genome numbers are kept per generation (`Rivalry::opponents`, `rivals`), so every job
+  rebuilds. Every fight has your side as side 0 and the enemy as side 1 (`Job::Fight::side`, 1 for an enemy's own
+  jobs, written only then), the trial's seeds, time limit, copies, escorts and FLOWN BY applied to your side either
+  way, so a replay looks the same from either population.
+- **Fair packs** (`arena::evolve::pack`): an enemy design fights in a pack sized by the test range's wave rule to
+  your side's build points (the contestant's times its copies; `sim::voyage::waves::wave_mix` with that one design),
+  at least one: a bigger enemy comes in fewer copies, so it evolves strength per build point without a cap.
+- **Scores.** Yours as before, the `CoEvolution` trial one of your trials with its weight. THE ENEMY's score is side
+  1's WIN, the mean over its fights (its goals kept in the records; `Run::breakdown` gives its one trial).
+- **PAST CHAMPIONS** (`check_every`, `champions_every`): in every `check_every`th generation (not the first, nor a
+  RE-SCORE) your archive's best fights THE ENEMY's champions of every `champions_every`th generation so far and its
+  best yours, after the children's jobs (`GenerationRecord::enemy.check`, `Check`). `Run::beaten` gives per checked
+  generation how many of the other side's champions each best beat (a mean score above 0.5 over its seeds): a rising
+  line is an arms race, a saw is cycling. `Run::check_jobs`, `check_fight_code`: its fights, re-watchable.
+- **Saving evolved enemies.** SAVE AS DESIGN keeps an enemy's faction and its `evolved` and `enemy` tags, with its
+  origin. `Run::export_enemy(id, run, n)` is EXPORT TO CONTENT: the content ship format (`data::export_text`) under
+  `evolved_<faction>_<n>`, its origin, naming its behavior of the same id, which follows as a content behavior file in
+  a comment block, for a pack's `ships/` and `behaviors/` by hand (curated, GDR-0032; never into voyages by itself).
+  `arena evolve --out` writes the enemy's best as `enemy_NN.ron` so.
+- **VALIDATE** is of your designs (an enemy's genome is refused); your designs fight THE ENEMY's best `elites + hall`
+  of today (no draws). A RE-SCORE fights both archives' elites again against the sets frozen as usual.
+- **Run files** keep the enemy's stream and archive (`enemy` in the payload and in the head's, written only then);
+  everything else is in the table and the records, so the parts (ADR-0041) need nothing new. A run without an enemy
+  reads, writes and hashes as before.
+- **Cost** (the CLI, 16 Oct 2026, 4 threads): the starter with the default trials and the ARMS RACE (16 children, 8
+  enemy children, 12 generations): 6.6 s; the ARMS RACE 9 jobs a child of yours (22 % of your ticks), the enemy 10 a
+  child (11 % of the run's ticks).
+
+What the first run found (`--trial default --trial arms_race`, seed 4): the enemy's archive best was 1.000 from
+generation 3 on (an evolved hunter: its two cannons on top of its armour, `face` in bursts within 140 % of its reach, else close in), your
+generation bests fell from 0.95 to about 0.8 as it improved, and at generation 10 your best beat 1 of 2 of its past
+champions and its best both of yours.
+
 ### The API
 
 ```rust
@@ -617,6 +684,8 @@ creation time and status):
 | `Run::trials()`, `Run::tagged_jobs(generation, child)`, `Run::breakdown(generation, child)` | The run's trials; a child's jobs with their trial; its score by trial and goal ([Trials and goals](#trials-and-goals)) |
 | `Run::validation(genomes, seeds)`, `Run::validated_by(v)`, `Run::validated(id)` | VALIDATE as work, its results into the run, a genome's result |
 | `Run::rescored(&content, &save)` | RE-SCORE: a stale run as a new run under today's rules |
+| `Run::camp(id)`, `camp_of(root)`, `children_of(generation, camp)`, `best_of(generation, camp)`, `start(root)`, `start_config(root)`, `enemy_starts()`, `enemy_archive()`, `archive_of(camp)` | An ARMS RACE's two populations ([Co-evolution](#co-evolution-the-arms-race)): whose a genome is, a generation's children of a side, its champion, any start, THE ENEMY's starts and archive |
+| `Run::check(generation)`, `check_jobs(generation)`, `check_fight_code(generation, job)`, `beaten()`, `export_enemy(id, run, n)` | PAST CHAMPIONS: a generation's check, its fights rebuilt and as codes, the line of what each best beat; EXPORT TO CONTENT |
 | `Run::tidied(id)` | TIDY at SAVE (GDR-0092 step 6): genome `id`'s behavior without the rules that never decided in any of its recorded fights its behavior flew (the records' `decided` bits, ORed; a stand-in's fights and voyages tell nothing), its start's locked rules kept and the top rule when none decided; with the dropped rules' indices and the fights that told. `None` when no fight told. The lab saves an evolved behavior so (on by default) |
 | `RunSave::genome(&content, id)`, `RunParts::genome(&content, id)` | A genome of a run file or of a run's parts without building the run (the lab's CHAMPIONS) |
 | `Run::head()`, `Run::part(generation)`, `Run::parts()`, `RunParts::of(&save)`, `Run::restore_parts(&content, &parts)`, `RunHead`/`RunPart::to_ron`/`from_ron` | The run in parts (the lab's storage): the small head, a closed generation's part, all of them, a run file split; going on from them is going on from the run file |
@@ -721,6 +790,12 @@ Native and wasm identical, each resumed after generation 2 identical: `two_start
 FLOWN BY BOTH with the casual stand-in; 5 generations of 8) seed 1 `ef0039c55cfebe6d`. A stand-in fight's code (that
 run's generation 0, child 0, seed 2: won, 646 ticks) replays native = wasm (`5526178cace9f4f9`).
 
+**The ARMS RACE** (GDR-0092 step 7, 16 Oct 2026, release builds): `runs/arms_race.ron` (the starter against the
+raider and the hunter evolving beside it, PAST CHAMPIONS every second generation; 5 generations of 6 and 4) seed 1
+resumed after generation 1 and seed 2 after generation 2: native and wasm **identical** (`cf042041f708d5e6`,
+`d642fc5d8e93e758`); `two_starts_locked` seed 1 still `76a00f92091034f7`, `mixed_trials` `d544b205648f22a1`,
+`everything` `ef0039c55cfebe6d`, the rules' fingerprint `87f8e44db8186359`.
+
 ### The CLI: `arena evolve`
 
 ```sh
@@ -729,6 +804,7 @@ cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_6
 cargo run --release -p arena-cli -- evolve --resume /tmp/run.ron        # goes on, and keeps saving to it
 cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --from my_ship.ron --from rim_skiff --lock category:weapons --lock rule:0
 cargo run --release -p arena-cli -- evolve crates/core/arena/runs/everything.ron --trial default --flown-by both:casual
+cargo run --release -p arena-cli -- evolve crates/core/arena/runs/everything.ron --trial default --trial arms_race --out /tmp/race   # and enemy_NN.ron
 cargo run --release -p arena-cli -- replay /tmp/run.ron 12 3 5         # generation 12, child 3, job 5: its fight code
 cargo run --release -p arena-cli -- lineage /tmp/run.ron [GENOME]       # a genome's line from its start (default: the best)
 ```
@@ -752,6 +828,7 @@ voyages print none). Every code comes from the run's records; no fight runs agai
 | `--flown-by WHO[:PILOT]` | every fight trial FLOWN BY `behavior`, `stand-in` or `both` (odd seeds the behavior, even the stand-in), with `lab.ron`'s pilot `PILOT` (default its first, `casual`); a run file's old `fitness` becomes a trial for it |
 | `--trial PRESET[:WEIGHT[:SEEDS]]` | (repeatable) the run's trials from `lab.ron`'s presets instead of its file's (`default`: the lab's default selection; `arena trials` lists them) |
 | `--goal ID:WEIGHT`, `--goals PRESET` | (repeatable) the goals' weights (`win`, `unhurt`, `quick`, `cheap`; the others weigh 0), or a goal preset (`win_unhurt`, ...) |
+| `--enemy SHIP` | (repeatable) with `--trial arms_race`: THE ENEMY's starts (content ships of one faction; default the first enemy faction's ships, its boss left out); the rest is the preset's (`Population::from_preset`). The table then adds the enemy's best, archive best and cells, and after the elites come the enemy's best with their lineage and the PAST CHAMPIONS line; `--out` also writes `enemy_NN.ron` (EXPORT TO CONTENT) |
 | `--open V,V`, `--fleet DESIGN`, `--champion DESIGN`, `--escort DESIGN` | what the presets fight: the open voyages (default: a new career's), YOUR FLEET's and CHAMPIONS' designs, the escorts every trial flies beside the design |
 
 After its tables `evolve` prints the run's cost per trial (jobs a child, mean ticks a job, share of the ticks) and the

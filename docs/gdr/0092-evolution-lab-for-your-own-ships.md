@@ -123,6 +123,33 @@ running the fight again.
   working copy) when it has no unsaved changes, so REPLACE <START> has a design to write over; the pill says REPLACE
   START (the start's name in its tip and question: names are too long for the pill); GENERATION n shows in the right
   column, not as a page of its own. Breeding, fights, codes and run hashes are unchanged.
+  Step 7 built 2026-10-16 (`docs/arena.md` "Co-evolution (the ARMS RACE)", `docs/client.md` "Evolution"): the enemy
+  population (`RunConfig::enemy`, `Population`) with its own starts (an enemy faction's ships, the boss only when
+  picked), genes (design and behavior), palette (its ships' parts and `lab.ron`'s `palettes`), mirror, archive, size
+  (half of yours) and stream; the pairing as above (best 3 and 2 past champions drawn over the whole history, your
+  starts as the anchor, 2 seeds; generation 0 the starts) with the drawn genome numbers kept per generation; packs
+  sized by the wave rule (`pack`); PAST CHAMPIONS every 10th generation against every 5th generation's champions
+  (`Run::beaten`, its fights re-watchable); the CO-EVOLUTION trial (`CoEvolution`) and `lab.ron`'s ARMS RACE preset
+  (off by default); the setup's ARMS RACE row with the enemy ships it starts from; the run page's YOURS | THE ENEMY,
+  the enemy's best and PAST CHAMPIONS in the chart, GENERATION n per side with the check's fights to WATCH; SAVE AS
+  DESIGN for enemies (faction kept, tagged `evolved` and `enemy`, `origin`) and EXPORT TO CONTENT
+  (`Run::export_enemy`, copied); the CLI's `--trial arms_race`, `--enemy SHIP` and `enemy_NN.ron` from `--out`. Where
+  building found otherwise: CO-EVOLUTION is a trial of yours with its weight and settings, the enemy in
+  `RunConfig::enemy`, each requiring the other; the pairing numbers, the check's and the palette are the enemy's in
+  the run file (`lab.ron`'s preset gives them: `CoEvolution(size, elites, hall, anchor, check_every,
+  champions_every, mirror)`), so a run doesn't change with `lab.ron`; THE ENEMY's genomes follow yours in the one
+  table and its children follow yours in each generation's records (`Rivalry::first`), its stream is the run's seed on
+  its own sequence, and the champions are drawn on it (yours, then its), so your breeding draws as without it; a
+  champion is a generation's best child, drawn without repeats and none among the best already; an enemy's score is
+  side 1's WIN alone (the pack sizing stands for cheapness), its fights flown on your side as the trial says; the pack
+  counts the contestant's build points times its copies, not the escorts'; VALIDATE is for your designs (against the
+  enemy's best `elites + hall` of today, no draws) and a RE-SCORE fights both archives again; the PAST CHAMPIONS dots
+  share the score chart (the share beaten); the switch is YOURS | THE ENEMY over THE ARCHIVES; EXPORT TO CONTENT copies
+  to the clipboard as `evolved_<faction>_<genome>` (the CLI numbers by rank); `behavior_to_ron` and the export text
+  moved into `data` so the arena writes it. Determinism: `runs/arms_race.ron` native = wasm, resumed identical (seed 1
+  `cf042041f708d5e6`, seed 2 `d642fc5d8e93e758`); runs without an enemy, fights, codes and the rules' fingerprint are
+  unchanged (`two_starts_locked` `76a00f92091034f7`, `mixed_trials` `d544b205648f22a1`, `everything`
+  `ef0039c55cfebe6d`, `87f8e44db8186359`).
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as
