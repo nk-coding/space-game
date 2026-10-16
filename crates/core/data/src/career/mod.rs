@@ -36,7 +36,7 @@ use crate::content::load::{Content, parse_error, ron_options, strip_bom};
 use crate::content::model::{Blueprint, Frame, ResearchNode, Unlock};
 use crate::content::problem::Problem;
 
-pub use galaxy::{Charted, Exploration, Lead, Leads, SignalRecord, SignalState, TrailSignal};
+pub use galaxy::{Charted, Exploration, Lead, Leads, SignalRecord, SignalState, TrailSignal, signal_to};
 pub use voyages::{unload, voyage_ready};
 
 /// The format version of the save's RON text ([`Career::to_ron`]). The game's storage writes it into the
@@ -356,6 +356,8 @@ pub enum Refusal {
     UnknownCluster(u32),
     /// The cluster lies beyond the jump range from home and every charted cluster.
     OutOfReach(u32),
+    /// The cluster lies in a band no opened gate leads into yet.
+    BandClosed(u32),
 }
 
 /// One cost of a research node that the stores can't meet.

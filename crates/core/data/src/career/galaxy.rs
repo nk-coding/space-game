@@ -5,9 +5,14 @@
 //! * **Charting**: home is charted from the start; launching into a cluster charts it (arriving is enough: the
 //!   chart is knowledge, not haul). Jumps start from home or any charted cluster (GDR-0093) and reach
 //!   [`Career::jump_range`] S.
-//! * **Signals** ([`SignalRecord`]): a trail's signal is heard (a beacon scanned, a log decoded) with the skeleton's
-//!   fresh area; a scan in another cluster halves it towards its place ([`Career::narrow`]), and once no other
-//!   cluster lies inside, or a scan is taken in its own cluster, it is located.
+//! * **Signals** ([`SignalRecord`]): a trail's signal is heard (a beacon scanned, [`Career::beacon`]; a log
+//!   decoded) with the skeleton's fresh area; a scan in another cluster inside it halves it towards its place
+//!   ([`Career::scanned`], [`Career::narrow`]), and once no other cluster lies inside, or a scan is taken in its own
+//!   cluster, it is located. Its site seen is found, and cleared (or seen, with nothing there to clear) done
+//!   ([`Career::found`], galaxy plan E6, GDR-0097).
+//! * **Jumps** reach the jump range from home or a charted cluster, into the bands opened so far
+//!   ([`Career::band_open`]); a blind jump to a spot goes to the cluster nearest it ([`Career::blind_target`]); the
+//!   warp takes the galaxy's `warp` seconds ([`Career::warp_seconds`]).
 //! * **Logs**: a data core (one hold slot, GDR-0093) brought home waits to be decoded ([`Career::decode`], free,
 //!   GDR-0080); lost with the haul, the core stays in its wreck and the next launch rolls it again.
 //! * **The slice** (provisional, GDR-0096): every voyage of the content is pinned to a cluster of its band, the
@@ -21,6 +26,10 @@
 use super::*;
 use crate::content::model::SourceForm;
 use crate::skeleton::{Area, Point, Skeleton, UNITS_PER_S};
+
+/// How far from a blind jump's spot its cluster may lie, in the galaxy's spacings (GDR-0097: about the farthest any
+/// spot of the disc lies from a cluster).
+pub const BLIND_REACH: f32 = 1.5;
 
 /// What the player knows of the galaxy (save format 3).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -75,7 +84,7 @@ pub enum Lead {
     Voyage(String),
 }
 
-/// How far a signal has come (the plan's 4.1; found, the site seen, comes with E6).
+/// How far a signal has come (the plan's 4.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SignalState {
     /// Heard: its area is the skeleton's.
@@ -84,7 +93,9 @@ pub enum SignalState {
     Narrowed,
     /// Its cluster is known (LOCATED).
     Located,
-    /// Followed to its end: a slice voyage cleared.
+    /// Its site was seen (FOUND).
+    Found,
+    /// Followed to its end: its site cleared (or seen, with nothing to clear), a slice voyage cleared.
     Done,
 }
 
@@ -175,6 +186,12 @@ fn spot(at: Point) -> Area {
     Area { centre: at, radius: 0 }
 }
 
+/// The trail signal that leads to the place `(trail, place)` of the skeleton: the trail's signal before it; `None`
+/// for a trail's first place (a source only).
+pub fn signal_to((trail, place): (u32, u32)) -> Option<TrailSignal> {
+    place.checked_sub(1).map(|signal| TrailSignal { trail, signal })
+}
+
 impl Career {
     /// What the player knows of the galaxy (`None` before [`Career::begin_galaxy`], or for content without one).
     pub fn exploration(&self) -> Option<&Exploration> {
@@ -232,15 +249,56 @@ impl Career {
     }
 
     /// Where a jump to `cluster` starts: the nearest of home and the charted clusters within the jump range (the
-    /// lowest id on a tie), `None` beyond every one of them (or without a galaxy).
+    /// lowest id on a tie), not the cluster itself unless nothing else reaches it (galaxy plan E6: the warp runs from
+    /// there); `None` beyond every one of them (or without a galaxy).
     pub fn jump_from(&self, content: &Content, cluster: u32) -> Option<u32> {
         let g = self.galaxy.as_ref()?;
         let to = g.skeleton.clusters.get(cluster as usize)?.at;
         let reach = (self.jump_range(content) as f64 * UNITS_PER_S as f64) as i64;
         g.charted
             .keys()
-            .map(|&k| (to.dist2(g.at(k)), k))
-            .filter(|&(d2, _)| d2 <= reach * reach)
+            .map(|&k| (k == cluster, to.dist2(g.at(k)), k))
+            .filter(|&(_, d2, _)| d2 <= reach * reach)
+            .min()
+            .map(|(_, _, k)| k)
+    }
+
+    /// Can jumps reach into `band`: the galaxy's first band, and a band past it once a gate of the band outside it is
+    /// open (GDR-0078: any one gate opens the next band). False without a galaxy or for a band it doesn't have.
+    pub fn band_open(&self, content: &Content, band: &str) -> bool {
+        let Some(g) = &self.galaxy else { return false };
+        let Some(bands) = content.galaxies.get(&g.skeleton.galaxy).map(|x| &x.bands) else { return false };
+        match bands.iter().position(|b| b == band) {
+            Some(0) => true,
+            Some(k) => g.skeleton.entrances(bands, k).iter().any(|e| g.gates.contains(e)),
+            None => false,
+        }
+    }
+
+    /// How long the warp to `cluster` takes (s): the galaxy's `warp`, a base plus so much per S from where the jump
+    /// starts ([`Career::jump_from`]; GDR-0093: 3 s + 2 s per S). `None` beyond reach.
+    pub fn warp_seconds(&self, content: &Content, cluster: u32) -> Option<f32> {
+        let g = self.galaxy.as_ref()?;
+        let warp = content.galaxies.get(&g.skeleton.galaxy)?.warp;
+        let from = self.jump_from(content, cluster)?;
+        Some(warp.0 + warp.1 * g.at(from).distance_s(g.at(cluster)) as f32)
+    }
+
+    /// Where a blind jump to the spot `at` (map units) goes (the plan's 4.4: empty space is no destination): the
+    /// cluster nearest it that a jump reaches, neither home nor a slice voyage's (those are found by their own
+    /// signals, GDR-0097), within [`BLIND_REACH`] of the galaxy's spacing (`None` farther: empty space); the lowest id
+    /// on a tie. Charted ones count: a jump to a spot by one goes there. One in a band not open yet is still the
+    /// target: [`Career::cluster_launched`] refuses it, and the map says why.
+    pub fn blind_target(&self, content: &Content, at: Point) -> Option<u32> {
+        let g = self.galaxy.as_ref()?;
+        let spacing = content.galaxies.get(&g.skeleton.galaxy)?.spacing;
+        let near = (spacing * BLIND_REACH * UNITS_PER_S as f32) as i64;
+        let pinned: BTreeSet<u32> = g.pins.values().copied().collect();
+        (0u32..)
+            .zip(&g.skeleton.clusters)
+            .filter(|(k, c)| *k != g.skeleton.home && !pinned.contains(k) && c.at.dist2(at) <= near * near)
+            .filter(|(k, _)| self.jump_from(content, *k).is_some())
+            .map(|(k, c)| (c.at.dist2(at), k))
             .min()
             .map(|(_, k)| k)
     }
@@ -269,6 +327,9 @@ impl Career {
         }
         if self.jump_from(content, cluster).is_none() {
             return Err(Refusal::OutOfReach(cluster));
+        }
+        if !self.band_open(content, &g.skeleton.clusters[cluster as usize].band) {
+            return Err(Refusal::BandClosed(cluster));
         }
         let seed = self.cluster_seed(cluster);
         let g = self.galaxy.as_mut().expect("checked");
@@ -397,6 +458,49 @@ impl Career {
         r.state = state;
         r.area = area;
         Some(state)
+    }
+
+    /// A scan taken in `cluster` (galaxy plan E6, GDR-0097): every heard signal not located yet that leads there, or
+    /// whose area holds the cluster, narrows from it ([`Career::narrow`]), except those in `skip` (narrowed on this
+    /// voyage already: one voyage's scans in one cluster tell one thing). Returns each signal narrowed and its state
+    /// after, in the order heard.
+    pub fn scanned(&mut self, cluster: u32, skip: &[TrailSignal]) -> Vec<(TrailSignal, SignalState)> {
+        let Some(g) = &self.galaxy else { return Vec::new() };
+        let Some(at) = g.skeleton.clusters.get(cluster as usize).map(|c| c.at) else { return Vec::new() };
+        let near = |r: &SignalRecord| r.cluster == cluster || r.area.centre.dist2(at) <= i64::from(r.area.radius).pow(2);
+        let heard: Vec<TrailSignal> = g
+            .signals
+            .iter()
+            .filter(|r| r.state < SignalState::Located && near(r))
+            .filter_map(|r| match r.lead {
+                Lead::Trail(s) if !skip.contains(&s) => Some(s),
+                _ => None,
+            })
+            .collect();
+        heard.into_iter().filter_map(|s| self.narrow(s, cluster).map(|state| (s, state))).collect()
+    }
+
+    /// The site the heard signal `s` leads to was seen: it is found, or done when `done` (it was cleared, or holds
+    /// nothing to clear), and its area is its cluster. False for a signal not heard, or one that far already.
+    pub fn found(&mut self, s: TrailSignal, done: bool) -> bool {
+        let Some(g) = self.galaxy.as_mut() else { return false };
+        let state = if done { SignalState::Done } else { SignalState::Found };
+        let Some(k) = g.signals.iter().position(|r| r.lead == Lead::Trail(s) && r.state < state) else { return false };
+        let at = g.at(g.signals[k].cluster);
+        let r = &mut g.signals[k];
+        r.state = state;
+        r.area = spot(at);
+        true
+    }
+
+    /// A scan swept over the trail place `place` (trail, place): when the signal it sends is a beacon's (a source of
+    /// form `Beacon`), it is heard ([`Career::hear`]). Returns it, `None` when the place sends none or it was heard
+    /// already.
+    pub fn beacon(&mut self, content: &Content, (trail, place): (u32, u32)) -> Option<TrailSignal> {
+        let g = self.galaxy.as_ref()?;
+        let source = &g.skeleton.trails.get(trail as usize)?.signals.get(place as usize)?.source;
+        let s = TrailSignal { trail, signal: place };
+        (content.signal_sources.get(source)?.form == SourceForm::Beacon && self.hear(s)).then_some(s)
     }
 
     /// Opens the gate `cluster` (its guardian beaten). False when it is no gate of the skeleton or open already.

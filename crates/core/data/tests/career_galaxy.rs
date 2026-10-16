@@ -212,3 +212,64 @@ fn the_galaxy_is_saved_and_a_voyage_underway_is_lost_at_load() {
     assert!(back.reconcile(&c).is_empty());
     assert_eq!(back, again);
 }
+
+/// Galaxy plan E6 (GDR-0097) on the skeleton with a free rim cluster, an outer one and a beacon's trail: a beacon
+/// scanned is heard; a scan narrows the signals whose area holds the cluster, once a voyage; its site seen is found,
+/// cleared done; blind jumps go to the nearest cluster in reach, never home or a slice voyage's, launching only into
+/// an open band;
+/// the warp takes 3 s + 2 s per S.
+#[test]
+fn beacons_scans_finds_and_blind_jumps() {
+    let c = content();
+    let mut sk = skeleton();
+    let free = |name: &str, x: i32, y: i32, band: &str| Cluster { name: name.into(), band: band.into(), kind: "wreck_drift".into(), at: Point { x, y }, seed: 5, gate: false };
+    sk.clusters.push(free("Five", -150, -150, "rim"));
+    sk.clusters.push(free("Deep", 0, -150, "outer"));
+    sk.trails.push(TrailPlan {
+        trail: "memory".into(),
+        band: "rim".into(),
+        lore: None,
+        places: vec![Place { cluster: 5, encounter: None }, Place { cluster: 2, encounter: Some("precursor_wrecks".into()) }],
+        signals: vec![Signal { source: "old_beacon".into(), area: Area { centre: Point { x: 250, y: 0 }, radius: 200 } }],
+    });
+    let mut career = Career::from_ron("(start: \"rim_awakening\", seed: 4207, generator: 2)").unwrap();
+    assert!(career.reconcile(&c).is_empty());
+    career.begin_galaxy(&c, sk);
+    assert_eq!(career.exploration().unwrap().pins().values().copied().collect::<std::collections::BTreeSet<_>>(), [1, 2, 3, 4].into());
+    let beacon = TrailSignal { trail: 1, signal: 0 };
+    assert_eq!((data::career::signal_to((1, 1)), data::career::signal_to((1, 0))), (Some(beacon), None));
+
+    // A log's place sends no beacon; the beacon's is heard once.
+    assert_eq!(career.beacon(&c, (0, 0)), None);
+    assert_eq!(career.beacon(&c, (1, 0)), Some(beacon));
+    assert_eq!(career.beacon(&c, (1, 0)), None, "heard already");
+
+    // Scans: in cluster 1 (inside its area), once a voyage; not in cluster 5 (outside it).
+    let mut far = career.clone();
+    assert!(far.scanned(5, &[]).is_empty());
+    let narrowed = career.scanned(1, &[]);
+    assert_eq!(narrowed.iter().map(|n| n.0).collect::<Vec<_>>(), [beacon]);
+    assert!(career.scanned(1, &[beacon]).is_empty());
+
+    // Found, then done; never back.
+    assert!(career.found(beacon, false));
+    assert!(!career.found(beacon, false));
+    let s = career.exploration().unwrap().signal(beacon).unwrap().clone();
+    assert_eq!((s.state, s.area), (SignalState::Found, Area { centre: Point { x: 300, y: 0 }, radius: 0 }));
+    assert!(career.found(beacon, true));
+    assert_eq!(career.exploration().unwrap().signal(beacon).unwrap().state, SignalState::Done);
+    assert!(!career.found(LOG, true), "not heard");
+    assert!(career.scanned(1, &[]).is_empty(), "done");
+
+    // Blind jumps: to the cluster nearest the spot, Five, or Deep in the outer band, which opens with the gate.
+    assert_eq!(career.blind_target(&c, Point { x: -120, y: -150 }), Some(5));
+    let spot = Point { x: -20, y: -140 };
+    assert_eq!(career.blind_target(&c, spot), Some(6));
+    assert!(!career.band_open(&c, "outer") && career.band_open(&c, "rim"));
+    assert_eq!(career.cluster_launched(&c, 6), Err(Refusal::BandClosed(6)));
+    assert!(career.open_gate(4));
+    assert!(career.band_open(&c, "outer"));
+    assert_eq!(career.warp_seconds(&c, 5).map(|s| (s * 100.0).round()), Some(724.0));
+    assert_eq!(career.warp_seconds(&c, 3), None, "out of reach");
+    assert_eq!(career.blind_target(&c, Point { x: -400, y: -400 }), None, "empty space: no cluster near");
+}
