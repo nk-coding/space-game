@@ -40,6 +40,7 @@ and what a fight code will carry later.
 | `behavior` | Optional. `Content("<id>")` or `Text("<program>")` (the text form of `docs/behavior-format.md`). Left out: the design's own behavior, else its faction's default |
 | `count` | Ships of this entry, default 1 (at most 64 per side) |
 | `formation` | `Line` (side by side across the line of the fight, the default) or `Column` (one behind the other) |
+| `pilot` | Optional (written only when there is one; GDR-0092 step 6): a **stand-in pilot** flies the entry's first ship, `(profile: "casual", flies: (lock: true, close_to: 0.8, stick: Some((on: 3, off: 3)), fire: Some((on: 3, off: 2))))`, inlined from `lab.ron`'s `pilots` so a code doesn't change when `lab.ron` does. That ship is its side's focus (its behavior parked) with the design's pilot assists (its blueprint's `assists`), and the referee gives it the pilot's input on every think tick (`sim::flight::stand_in`): its lock (the one it holds, else its auto-lock's pick, else the nearest enemy when `lock`), the stick towards its lock or the nearest enemy while that is farther than `close_to` of its longest gun's reach, every trigger, stick and triggers each on for `on` s then off for `off` (left out: never); the assists take the channels it leaves idle, as for a player (GDR-0088). The others of the entry fly the behavior. One entry a side at most, none in a wave (`ArenaError::Pilot`) |
 | `start_distance` | Metres between the two sides' front rows (centre to centre), above 0, at most 5000 |
 | `time_limit` | Seconds, above 0, at most 1800 |
 | `waves` | Optional (written only when there are any): side 1's reinforcements, a list of sides. A **gauntlet** (GDR-0092 step 5): each wave comes in `WAVE_DELAY` (4 s, the test range's pause, placeholder) after the one before has no running vessel left, its ships on an arc around side 0's first running vessel heading for it, as the test range's waves come in (`sim::voyage::waves::wave_bodies`, rolled on the `Scenario` stream); side 1 is not out while a wave is still to come. The result counts the waves cleared (`FightResult::waves`, side 1's own entries the first; written only for a gauntlet), and side 1's build points lost count every wave it brought in. `fights/runner_gauntlet.ron` is one |
@@ -54,7 +55,7 @@ so without the jitter every seed would give the same fight.
 
 **Owners.** Side 0 is `Owner(1)`, side 1 `Owner(2)` (`arena::OWNERS`): neither is the player's `Owner(0)`, so both
 sides play by the same rules (only the player collects salvage). Both get unlimited mind capacity: every core runs.
-Every ship flies its behavior from the first tick; nobody pilots.
+Every ship flies its behavior from the first tick; nobody pilots, unless an entry has a stand-in `pilot`.
 
 **Spawn order.** Side 0 spawns first, so its ships get the lower ids; the sim gives lower ids no edge
 ([ADR-0037](adr/0037-simultaneous-fire-within-a-tick.md)). Until 14 Oct 2026 it did: in a mirror match of two
@@ -300,7 +301,9 @@ the voyages, kept in a MAP-Elites archive (GDR-0032, GDR-0083; the method of `do
 `arena::Run` per run; single-threaded and steppable in the library, every core in the CLI, the same results either way.
 Since GDR-0092 steps 2 and 3 (15 Oct 2026) a run starts from one to four designs, keeps what is locked, produces only
 designs within the mind capacity and with the start's hold, and keeps every fight: [Starts and locks](#starts-and-locks),
-[What a run keeps](#what-a-run-keeps).
+[What a run keeps](#what-a-run-keeps). Since step 6 (16 Oct 2026) everything mutates, the pilot assists included,
+within the genes a run may change, and fights can be flown by a stand-in pilot so the assists are scored:
+[Genomes, mutation and crossover](#genomes-mutation-and-crossover), FLOWN BY under [Trials and goals](#trials-and-goals).
 
 ### Trials and goals
 
@@ -321,7 +324,14 @@ goals: (win: 1, unhurt: 1),   // left out: WIN alone
 
 Every trial shares `weight` (default 1; 0: not fought), `seeds` (each opponent on seeds 1..=n), `count` (ships of the
 contestant), `start_distance`, `time_limit`, `escorts` (WITH YOUR ESCORTS: these fly beside it on side 0; on a voyage
-they come along under the content's escort behavior) and `preset` (the `lab.ron` preset it came from, for its name).
+they come along under the content's escort behavior), `preset` (the `lab.ron` preset it came from, for its name) and
+`flown_by` (FLOWN BY, step 6; left out: `Behavior`, as before): `StandIn(pilot)` has a stand-in pilot fly the
+contestant's first ship in every fight (the spec's entry `pilot`, [The fight spec](#the-fight-spec)), `Both(pilot)` on
+the even seeds while the behavior flies the odd ones, at no extra cost: the assists are scored on half the fights, the
+behavior on the other half. A voyage has its own pilot (`Voyages`' `pilot`). The pilots are `lab.ron`'s `pilots`
+(CASUAL, the default: locks the nearest enemy, flies at it until it is within 80 % of its longest gun's reach, lets go
+of the stick 3 s every 6 s, fires 3 s on and 2 s off; HANDS OFF: only steers, the lock and the triggers are the
+assists'; BUSY: locks, steers and fires all the time; placeholders). The voyage runner keeps its own closing pilot.
 At `Run::new` each spec resolves against the content into a `TrialKind` (the one abstraction: `jobs(contestant,
 ctx)`, `hall_of_fame()`), which then makes a genome's jobs against the generation's frozen starts and hall of fame;
 the run is self-contained (player designs inlined as text, content by id).
@@ -422,10 +432,10 @@ unknown fields are errors, comments are fine). Examples in `crates/core/arena/ru
 
 | Field | What |
 |---|---|
-| `evolve` | `Behavior` (the design stays), `Design` (the behavior stays), `Both` (each mutation picks one), or `Stages([(evolve: Behavior, generations: 10), (evolve: Design, generations: 10), (evolve: Both, generations: 10)])`: one after the other, one archive throughout |
+| `evolve` | `MayChange((...))`: the genes a run may change (GDR-0092 "MAY CHANGE", step 6), each left out on, so `MayChange(())` is everything ([Genomes, mutation and crossover](#genomes-mutation-and-crossover)); `Behavior` (the behavior's genes: numbers and rules), `Design` (the design's: layout, parts, armour, power), `Both` (both, not the assists); or `Stages([(evolve: Behavior, generations: 10), (evolve: Design, generations: 10), (evolve: MayChange(()), generations: 10)])`: one after the other, one archive throughout. Nothing to change is an error |
 | `fitness` | `ArenaPool(opponents, seeds, hall_of_fame, count, start_distance, time_limit)`: the genome (`count` ships of it, side 0) fights each opponent entry and the best `hall_of_fame` elites so far over seeds 1..=`seeds`; the mean arena score. `Voyages(ids, seeds, minutes, pilot)`: each voyage over seeds 1..=`seeds`, the mean voyage score; `pilot: Behavior` (default: the genome's behavior flies the fights) or `Closing` (the runner's scripted pilot) |
 | `limits` | Each optional. `frame`: a content frame id (24, 40 or 64 cells; default the smallest every start fits). `build_points`: the most a design may cost: `Start` (the default since GDR-0092: its own start's build points, "same cost, better ship"), a number (`build_points: 60`) or `Off`. `min_hold`: the smallest cargo hold (`Content::ship_hold`): `Start` (the default: its start's, so every result still brings salvage home), a number or `Off`. `max_cores`: the most logic cores (VOYAGE-READY: the career's mind capacity less the escorts' cores; default any). `counts`: how many of a part a design may hold (`{"pulse_laser": 2}`, `Career::available`; the drydock refuses more with `NoneLeft`). `parts`, `materials`: only these (e.g. a career's `Unlocks`; default all, locked ones too). `mirror`: the mirror lock (every edit mirrored, designs stay symmetric; the starts must be symmetric) |
-| `start`, `starts` | One start (`start`, the old form) or a list (`starts: [...]`), one to four in all. `Design(design, behavior, locks)`: a content ship or blueprint text, a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
+| `start`, `starts` | One start (`start`, the old form) or a list (`starts: [...]`), one to four in all. `Design(design, behavior, locks)`: a content ship or blueprint text (with its pilot assists, `assists`), a behavior (default: the design's own, else its faction's) and what the run keeps of it ([Starts and locks](#starts-and-locks)). `Random(faction: "ship_mind")`: a random design that passes the pre-filter, under the faction's behavior |
 | `archive` | `(axes: [(measure, min, max, cells), ...])`, one to three axes (at most 65 536 cells) |
 | `population`, `generations`, `seed`, `crossover`, `mutations` | Children per generation; generations; the run's stream; the share of children bred by crossover (0.2); a child gets 1 to `mutations` (3) mutations. All *placeholders* |
 
@@ -439,9 +449,10 @@ format, or doesn't match its configuration).
 ### Genomes, mutation and crossover
 
 A `Genome` is a blueprint (trimmed, as the drydock exports it; named "<start> (evolved)", tagged `evolved`, no
-behavior field), a behavior text (canonical, without the start's notes), its `root` (the start it descends from) and
-`at`, where the blueprint's top-left cell sits in that start's frame. `genome.blueprint_text()` is the content RON form
-and `genome.behavior_text()` the text form, so the game can SAVE AS DESIGN; `genome.placed(run.frame(root))` is the
+behavior field, its pilot assists in `assists`), a behavior text (canonical, without the start's notes), its `root` (the
+start it descends from) and `at`, where the blueprint's top-left cell sits in that start's frame.
+`genome.blueprint_text()` is the content RON form, `genome.behavior_text()` and `genome.assists_text()` the text forms,
+so the game can SAVE AS DESIGN; `genome.placed(run.frame(root))` is the
 design as the drydock holds and saves it (`size` = the frame, parts in frame coordinates).
 
 **Genomes keep frame coordinates** (GDR-0092 step 3): each start is opened centred in its frame once
@@ -450,35 +461,52 @@ never centred again, so a design that grows on one side keeps its cells and the 
 Designs change only through `data::design::edit::Drydock` (in the start's frame: the run's, one column narrower under
 the mirror lock when the start's width has the other parity), so every child is a legal placement; under the mirror
 lock an edit whose mirror image is impossible (`Twin::Skipped`) is undone, and so is an edit that breaks a lock (a
-locked part's mirror twin, a part over a KEEP EMPTY cell). One mutation is one of (weights are *placeholders*):
+locked part's mirror twin, a part over a KEEP EMPTY cell). Behaviors change only through
+`data::behavior::edit::BehaviorEditor`, and the pilot assists through the same editor as an assist list
+(`from_text_as(.., ListKind::Assists)`: only the assists' vocabulary, no target line), so every program is legal.
 
-| Design operator | Weight | How |
-|---|---|---|
-| add a part | 30 | an allowed part on a free cell next to a random part: slopes oriented to the hull (`place_slope`), others in a random pose; only where the preview replaces nothing (since GDR-0081 `place` replaces what is under it) |
-| remove a part | 15 | `remove_part` (and its twin); like every operator on a part, only an unlocked one |
-| move a part | 15 | by −2..2 cells each way (`move_part`, refused into other parts) |
-| rotate / flip | 10 / 5 | `rotate`, `flip` |
-| swap a part | 15 | another allowed part of the same footprint and shape in its place and pose: `place`, accepted only when it replaces just that part (and its twin) |
-| material | 10 | another allowed armour material on a hull part |
+**What may change** (GDR-0092 "MAY CHANGE", step 6): the genes, `Gene` (`lab.ron`'s `genes` hold their words, by id):
+LAYOUT, PARTS (of the categories not in `fixed`), ARMOUR, POWER, BEHAVIOR NUMBERS, BEHAVIOR RULES, ASSIST NUMBERS,
+ASSIST RULES (the assists split in two, so NUMBERS ONLY can keep every structure). A run's `MayChange` names them
+(`evolve: MayChange((assist_rules: false, fixed: ["weapons"]))`); the old forms are genes too: `Design` the design's
+four, `Behavior` the behavior's two, `Both` all six. `lab.ron`'s `gene_presets` are the setup's pills (EVERYTHING,
+DESIGN ONLY, BEHAVIOR ONLY, ASSISTS ONLY, NUMBERS ONLY: the behavior's and the assists' numbers). One mutation draws one
+operator among those of the genes on, by these weights (*placeholders*, GDR-0092's tables), tried up to 8 times; no
+operator picks a locked part, KEEP EMPTY cell, locked rule or a locked target line:
 
-Behaviors change only through `data::behavior::edit::BehaviorEditor`, so every program is legal; rules are added only
-below the design's rule slots, and no operator picks a locked rule (its nodes, its conditions) or a locked target line:
+| Gene | Operator | Weight | How |
+|---|---|---|---|
+| PARTS | add a part | 30 | an allowed part (of a category not kept) on a free cell next to a random part: slopes oriented to the hull (`place_slope`), others in a random pose; only where the preview replaces nothing (since GDR-0081 `place` replaces what is under it). A gun goes into the weapon group of the nearest gun (its mirror twin with it; none: group 1) |
+| PARTS | remove a part | 15 | `remove_part` (and its twin); like every operator on a part, only an unlocked one |
+| PARTS | swap a part | 15 | another allowed part of the same footprint and shape in its place and pose: `place`, accepted only when it replaces just that part (and its twin); a gun for a gun keeps its group |
+| LAYOUT | move / rotate / flip | 15 / 10 / 5 | by −2..2 cells each way (`move_part`, refused into other parts); `rotate`; `flip` |
+| ARMOUR | material | 10 | another allowed armour material on a hull part |
+| POWER | power priority | 5 | a part that draws power: its tier one up or down (Critical to Low) or its weight × 0.6–1.4 (two decimals, within `MAX_POWER_WEIGHT`); the twin follows (`set_power`) |
+| NUMBERS | nudge a number | 25 | a comparison's threshold (one time in ten its comparator too) or a numeric parameter, × 0.6–1.4, rounded (`set_compare`, `set_param`, refused out of range) |
+| NUMBERS | change a choice | 5 | another option (an orbit's direction, a target's aim point) |
+| RULES | move / swap two rules | 8 / 4 | `move_rule` to a random place; two unlocked rules trade places |
+| RULES | duplicate a rule | 4 | `duplicate_rule`, then one more mutation of the copy (a number, a choice, its action or a condition; none took: undone) |
+| RULES | replace an action / the target | 8 / 5 | `replace_node` with a random action or selector |
+| RULES | add / remove a rule | 8 / 7 | `add_rule` (with a random condition four times in five), `delete_rule` |
+| RULES | add / remove / negate / replace a condition | 7 / 5 / 4 / 4 | `add_condition`, `remove_condition`, `toggle_not`, `replace_node` |
+| ASSIST NUMBERS | nudge a number / change a choice | 25 / 10 | as the behavior's (`idle(thrust) >= 1s`, auto-fire's group, auto-lock's pick, hold station's point or ally) |
+| ASSIST NUMBERS | switch `start` | 8 | on ↔ off: whether a rule acts at all (an assist's last value, as the sim compiles it) |
+| ASSIST RULES | move / add / remove a rule | 10 / 12 / 8 | an assist with a random condition four times in five; a new rule's toggle is `none` |
+| ASSIST RULES | add / remove / negate / replace a condition | 8 / 6 / 4 / 4 | the pilot's conditions (`lock_held`, `idle(..)`) and the behaviors' |
 
-| Behavior operator | Weight | How |
-|---|---|---|
-| nudge a number | 30 | a comparison's threshold (one time in ten its comparator too) or a numeric parameter, × 0.6–1.4, rounded (`set_compare`, `set_param`, refused out of range) |
-| change a choice | 5 | another option (an orbit's direction, a target's aim point) |
-| move a rule | 10 | `move_rule` to a random place |
-| swap an action / the target | 10 / 5 | `replace_node` with a random action or selector |
-| add / remove a rule | 10 / 8 | `add_rule` (with a random condition four times in five), `delete_rule` |
-| add / remove / negate / replace a condition | 8 / 6 / 4 / 4 | `add_condition`, `remove_condition`, `toggle_not`, `replace_node` |
+An assist's toggle (its last but one value) never changes: nobody presses a toggle in the lab, so the player sets the
+keys after saving. Rules are added only below the design's rule slots (behaviors) or `MAX_RULES` (assists). Weapon
+groups are no gene: they only say which key fires a gun, and a stand-in fires every group. Before step 6 a mutation
+first picked design or behavior (a coin under `Both`), with other weights and without power, swap, duplicate or the
+assists: runs breed differently since (their files still read, restore and replay, [Determinism](#what-a-run-keeps)).
 
 **Crossover** (a `crossover` share of the children, before their mutations): designs splice `a`'s parts above a
 random row with `b`'s from that row down (both in one frame: two starts of different frames don't cross; `b`'s parts
 that overlap or cover one of `a`'s KEEP EMPTY cells are left out, `a`'s locked parts below the row stay), behaviors
 `a`'s first rules with `b`'s from a random rule on (the target line of either, `a`'s when it is locked; `a`'s locked
-rules past the splice stay, before `b`'s, which bring no second copy). The child is `a`'s: its start, its locks.
-What evolves decides which halves cross.
+rules past the splice stay, before `b`'s, which bring no second copy), the pilot assists likewise (`a`'s first rules,
+any number, then `b`'s from a random rule on, `a`'s locked assists kept). The child is `a`'s: its start, its locks.
+The genes on decide which halves cross (the design's, the behavior's, the assists').
 
 **The rule slots are repaired** (GDR-0092): after a child's mutations, a behavior with more rules than its own design's
 rule slots (a design mutation took a logic core) loses its lowest unlocked rules until it fits; if its locked rules
@@ -513,13 +541,15 @@ starts: [
             cells: [(3, -1), (4, -1)],    // KEEP EMPTY: cells in the start's own coordinates (a clear line of fire)
             rules: [0],                   // the behavior's rule 0 (the top): never changed, moved or deleted
             target: true,                 // the target line stays
-            order: true,                  // LOCK ORDER: the locked rules keep their order
+            assists: [1],                 // its pilot assists' rule 1 (step 6)
+            order: true,                  // LOCK ORDER: the locked rules keep their order (each list's)
         )),
     Design(design: Ship("halvex_runner")),
 ],
 ```
 
-Under the mirror lock a locked part or cell locks its mirror image too. Rules may still be added around a locked rule,
+Under the mirror lock a locked part or cell locks its mirror image too. Locked assist rules (GDR-0092 step 6) are kept
+like locked behavior rules (never changed, moved or deleted; LOCK ORDER keeps their order too). Rules may still be added around a locked rule,
 and the rules above it may change. The operators never pick what is locked, and the pre-filter refuses a child that
 lost any of it, so crossover can't break a lock either. `crates/core/arena/runs/two_starts_locked.ron` is a small
 example (the skiff's guns, first part, top rule and the cells in front of its guns, with the Runner beside it).
@@ -602,7 +632,8 @@ ended, and rebuilds any job's spec from them.
   starts are 0 to n − 1), as a change against its parent: the generation, its start (`root`), its parent and a
   crossover partner, the parent's parts it lost (indices) and the parts it gained (index and placement, in frame
   coordinates; the longest common run of the two part lists is kept, so a mutation stores a part or two), its behavior
-  text when it changed, and its size. A start stores all its parts and its behavior. `Run::genome(id)` replays the
+  text when it changed, its pilot assists when they changed (`assists`, step 6; no rules: none; a start's are its
+  header's), and its size. A start stores all its parts and its behavior. `Run::genome(id)` replays the
   changes from the start: the identical genome, header included (`tests/runs.rs` checks every genome against the
   blueprint and behavior its fights carried).
 - **The records** (`Run::state().records`): per generation the hall of fame its children fought (genome numbers),
@@ -681,6 +712,14 @@ seed 1 resumed after generation 2 **identical** (last line `222c9bee00fa033e`), 
 `6bab099e86643a52`) and 3 (the time limit, 5400 ticks, 2 waves of 3, `d4205aa2207a2ca6`) identical; `runner_vs_raiders`
 seed 2 unchanged (`4f4334e1218ed181`).
 
+**Everything mutates** (GDR-0092 step 6, 16 Oct 2026, release builds): one mutation now draws among the operators of
+every gene on, so breeding draws differ and every run breeds otherwise than before (its fights, fight codes and the
+rules' fingerprint, `87f8e44db8186359`, are unchanged; old run files read, restore and replay their recorded fights).
+Native and wasm identical, each resumed after generation 2 identical: `two_starts_locked` seed 1 `76a00f92091034f7`,
+`mixed_trials` seed 1 `d544b205648f22a1`, and the new `runs/everything.ron` (the starter, every gene, its enemy ships
+FLOWN BY BOTH with the casual stand-in; 5 generations of 8) seed 1 `ef0039c55cfebe6d`. A stand-in fight's code (that
+run's generation 0, child 0, seed 2: won, 646 ticks) replays native = wasm (`5526178cace9f4f9`).
+
 ### The CLI: `arena evolve`
 
 ```sh
@@ -688,13 +727,14 @@ cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_6
 cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --save /tmp/run.ron --until 10
 cargo run --release -p arena-cli -- evolve --resume /tmp/run.ron        # goes on, and keeps saving to it
 cargo run --release -p arena-cli -- evolve crates/core/arena/runs/skiff_design_60bp.ron --from my_ship.ron --from rim_skiff --lock category:weapons --lock rule:0
+cargo run --release -p arena-cli -- evolve crates/core/arena/runs/everything.ron --trial default --flown-by both:casual
 cargo run --release -p arena-cli -- replay /tmp/run.ron 12 3 5         # generation 12, child 3, job 5: its fight code
 cargo run --release -p arena-cli -- lineage /tmp/run.ron [GENOME]       # a genome's line from its start (default: the best)
 ```
 
 Breeds on the main thread and runs each generation's jobs on every core (`--threads`, default all), prints a
 Markdown row per generation (evolves, children, refused, best, mean, archive best, cells, took a cell, million
-ticks, breeding ms, seconds), the generations per minute, the best elites (rank, genome number, cell, score, measures,
+ticks, breeding ms, seconds; what evolves as `Design`, `Both`, `Everything` or the genes on, `Layout+Numbers`), the generations per minute, the best elites (rank, genome number, cell, score, measures,
 generation, parts) and the lineage of the best three (`0 → 34 → 120 → 812`). With `--out DIR` it writes the best
 `--best` (8) elites: `elite_NN.ron` (the blueprint, id `evolved_NN`, with a comment naming the run, rank, score,
 generation and genome) and `elite_NN.txt` (its behavior). Last, a fight code per generation: its best child in the fight
@@ -707,7 +747,8 @@ voyages print none). Every code comes from the run's records; no fight runs agai
 | `--resume FILE` | Goes on from a run file instead of a run's configuration (its rows so far are printed with `–` for the times), and saves to it again unless `--save` names another; refused for a stale run |
 | `--until N` | Stops once N generations are done (with `--save`, a run to resume later) |
 | `--from DESIGN` | (repeatable, at most four) the run's starts instead of its file's: a content ship id or a blueprint file `*.ron`, whose behavior is the `.txt` of the same name beside it if there is one (as `--out` writes them), else its own or its faction's |
-| `--lock LOCK` | (repeatable) a lock of every start: `part:N` (its `parts[N]`), `category:ID` (`category:weapons`), `cell:X,Y` (KEEP EMPTY, in the start's coordinates), `rule:N` (its behavior's rule N, 0 = the top), `target`, `order` |
+| `--lock LOCK` | (repeatable) a lock of every start: `part:N` (its `parts[N]`), `category:ID` (`category:weapons`), `cell:X,Y` (KEEP EMPTY, in the start's coordinates), `rule:N` (its behavior's rule N, 0 = the top), `target`, `assist:N` (its pilot assists' rule N), `order` |
+| `--flown-by WHO[:PILOT]` | every fight trial FLOWN BY `behavior`, `stand-in` or `both` (odd seeds the behavior, even the stand-in), with `lab.ron`'s pilot `PILOT` (default its first, `casual`); a run file's old `fitness` becomes a trial for it |
 | `--trial PRESET[:WEIGHT[:SEEDS]]` | (repeatable) the run's trials from `lab.ron`'s presets instead of its file's (`default`: the lab's default selection; `arena trials` lists them) |
 | `--goal ID:WEIGHT`, `--goals PRESET` | (repeatable) the goals' weights (`win`, `unhurt`, `quick`, `cheap`; the others weigh 0), or a goal preset (`win_unhurt`, ...) |
 | `--open V,V`, `--fleet DESIGN`, `--champion DESIGN`, `--escort DESIGN` | what the presets fight: the open voyages (default: a new career's), YOUR FLEET's and CHAMPIONS' designs, the escorts every trial flies beside the design |

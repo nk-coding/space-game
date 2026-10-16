@@ -193,9 +193,13 @@ generation (its best child's hardest fight); paste one after `fight=`, e.g.
   referee brings side 1's next wave in as the fight runs (`Referee::observe` steps the world's ships in), so the
   viewer plays them unchanged; the setup's designs include every wave's, for drawing. The title adds `· 3 WAVES`, the
   subtitle `· WAVE 2 / 3`.
+- **Stand-in pilots** (GDR-0092 step 6: a code whose side 0 entry has a `pilot`, the lab's fights FLOWN BY a
+  stand-in): the referee gives the piloted ship the stand-in's input every think (`sim::flight::stand_in`), so the
+  viewer plays it unchanged; the subtitle adds `· FLOWN BY STAND-IN · CASUAL` (the pilot's `lab.ron` name).
 - **HUD**: title `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`; subtitle `0:23 / 1:30 · 2× · BUILD POINTS
   120 / 132 VS 12 / 47`; a timeline under the view (how far the fight is in teal, how far it has been simulated in
-  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the help line lists the replay keys.
+  grey, a mark per vessel lost: teal side 0's, coral side 1's, at most 24); the help line (`YOU WATCH · …`) lists the
+  replay keys.
 - **Checks**: today's rules fingerprint is computed once (`arena::rules_fingerprint`, about 5 ms natively); a code
   fought under other rules shows `THE RULES HAVE CHANGED SINCE THIS FIGHT` for its first 6 s and plays anyway. At the
   end the result is compared with the record: `AS RECORDED · WON AT 0:57 · HASH afa541fe50b16945` in teal, or `THE
@@ -863,7 +867,8 @@ the records mast by the gate, once the camera has flown there).
 ## Evolution
 
 The evolution lab ([GDR-0092](gdr/0092-evolution-lab-for-your-own-ships.md) step 4, 16 Oct 2026; its trials and goals,
-VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME with step 5 the same day): runs that breed the
+VALIDATE, RE-SCORE, IMPORT RUN, DUPLICATE and RENAME with step 5 the same day; MAY CHANGE, FLOWN BY and the locks'
+grid with step 6, also 16 Oct 2026): runs that breed the
 player's designs against enemies and keep the best of each kind, every fight to watch again, any result saved as a
 design. The runs are `world::evolution` (computed in the background, stored in `lab/`), the screens `game::evolution`,
 the building `shipyard`. Until its research node comes (step 8) it opens with `?lab=1`; without it the building is
@@ -896,13 +901,24 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   tenth of the quota left; on an insecure address (`http://10.77.9.2`, where browsers give no estimate) the game's own
   bytes (`GAME DATA 3.4 MB · NO QUOTA KNOWN ON THIS ADDRESS`). It follows each commit.
 - **SETUP** (NEW RUN): START FROM, one to four starts picked from YOUR DESIGNS and the templates (the content ships of
-  the player's faction), each a chip (a click shows its locks); LOCKS in lists until the on-ship painting of step 6:
-  KEEP ALL of a category (gold pills, `categories.ron`), each part of the start (a part kept with its category shows
-  so), each rule of its behavior, the target line and LOCK ORDER; LIMITS: BUILD POINTS at most the start's (the
+  the player's faction), each a chip (a click shows its locks); LOCKS per start: KEEP ALL of a category (gold pills,
+  `categories.ron`); the start as a grid of its cells and two around it (`LOCK A PART · KEEP A CELL EMPTY`): a click on
+  a part's cell locks the part (gold) or frees it, on an empty cell keeps it empty (coral, KEEP EMPTY: a clear line of
+  fire) or frees it, each cell's tip naming it (`PULSE LASER · LOCKED`, `KEPT EMPTY · A CLICK FREES IT`); the parts
+  listed beside it, a lock each (a part kept with its category shows so); RULES and ASSISTS tabs, each rule of the
+  behavior or of the pilot assists a lock (`No pilot assists yet` when it has none), ALL of the list, the target line
+  (rules) and LOCK ORDER; under MIRROR the arena locks a lock's mirror image too. LIMITS (its head says only the
+  career's parts and materials, or every part with `?unlock=all`): BUILD POINTS at most the start's (the
   default), a number (steps of 5) or NO CAP, HOLD at least the start's or any, VOYAGE-READY (logic cores within the
-  mind capacity less FLEET's escorts'), MIRROR (on when the first start looks symmetric; the arena checks), only the
-  career's parts and materials (`?unlock=all`: every part); MAY CHANGE: design and behavior (the default until step
-  6), design only, behavior only (then the archive spreads by engage distance × rules); SIZE: QUICK (16 children, 20
+  mind capacity less FLEET's escorts'), MIRROR (on when the first start looks symmetric; the arena checks); MAY CHANGE
+  (step 6): `lab.ron`'s gene presets (EVERYTHING, the default, DESIGN ONLY, BEHAVIOR ONLY, ASSISTS ONLY, NUMBERS ONLY;
+  the one whose genes these are lit), the genes by name on two rows, DESIGN (LAYOUT, PARTS, ARMOUR, POWER) and MIND
+  (BEHAVIOR NUMBERS, BEHAVIOR RULES, ASSIST NUMBERS, ASSIST RULES; one at least on; each gene's summary its tip), PARTS
+  OF (the categories whose parts may be added, removed or swapped, while PARTS is on), FLOWN BY (BEHAVIOR, STAND-IN or
+  BOTH: odd seeds the behavior, even seeds the stand-in, in every fight trial) and its PILOT (`lab.ron`'s pilots:
+  CASUAL, HANDS OFF, BUSY, each summary its tip); a preset with the assists sets BOTH, one without them BEHAVIOR (only a
+  pilot uses assists); a run that leaves the design as it is spreads its archive by engage distance × rules; SIZE:
+  QUICK (16 children, 20
   generations), STANDARD (32, 50), DEEP (64, 100), or steppers; SEED (steppers and DICE). TRIALS (step 5): every
   `lab.ron` trial preset in a list, its default selection on (THE ENEMIES YOU MEET at weight 2, TEST-RANGE WAVES, BEAT
   YOUR START, HALL OF FAME; ENEMY SHIPS, the raider gauntlet, YOUR FLEET, CHAMPIONS and VOYAGES off), each row a pill
@@ -936,10 +952,11 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   row per fight in the same columns whatever its end: `WON 0:23`, `LOST 1:02`, `DRAW 1:00`, `BOTH OUT 0:40` in a
   column of fixed width, its score in the next, then a column that takes the rest and clips short of the buttons: the
   trial and the opponent (`THE ENEMIES YOU MEET · 2 × AUTOMATON RAIDER`, a design by its name, a gauntlet's `+ 4
-  WAVES`, a voyage by its name) and under them `SEED 4 · YOU LOST 242 BP · THEY LOST 2 BP · YOU DEALT 40 DAMAGE` (a
-  gauntlet's waves cleared after it); CODE copies the fight's code, WATCH plays it), LINEAGE (the start and the last ancestors as cards with generation, score and what
-  changed; a click picks one), COMPARE (the start and the design side by side, the parts gained and lost by name, the
-  behavior), and SAVE AS DESIGN (a name, `<start> · evolved g<generation>`, then SAVE).
+  WAVES`, a voyage by its name) and under them `SEED 4 · YOU LOST 242 BP · THEY LOST 2 BP · YOU DEALT 40 DAMAGE` (`·
+  STAND-IN` after the seed when a stand-in flew it; a gauntlet's waves cleared after it); CODE copies the fight's code,
+  WATCH plays it), LINEAGE (the start and the last ancestors as cards with generation, score and what changed, `·
+  BEHAVIOR CHANGED`, `· ASSISTS CHANGED`; a click picks one), COMPARE (the start and the design side by side, the parts
+  gained and lost by name, the behavior, the pilot assists), and SAVE AS DESIGN (a name, `<start> · evolved g<generation>`, then SAVE).
 - **VALIDATE** (`Lab::validate`): the picked design, or the archive's best 8, fight the run's trials on 20 new seeds
   each and their recorded fights again (`arena::Run::validation`); it computes in the run's place (the progress line
   says `VALIDATING 8 DESIGNS · 40% · THE RUN WAITS`; slices on the web, the compute threads natively), then its results
@@ -951,8 +968,8 @@ dark (`LATER`) and the drydock has no EVOLVE THIS DESIGN.
   drydock saves designs, into `designs/<id>` (format 2) with its name, the `evolved` tag, the summary "Evolved from …",
   and `origin` (the run's id, the genome, its generation, the designs it descends from, its score). Its behavior: the
   start's when it didn't change (a content behavior by id, a template's own, the player's that it flew); else saved
-  beside it as a player behavior `<behavior> (evolved)` that the design names. Its assists and weapon groups are the
-  start's. YOUR DESIGNS tags it EVOLVED and its line reads `FROM RIM SKIFF COPY · G37` ([Drydock](#drydock)); it opens
+  beside it as a player behavior `<behavior> (evolved)` that the design names. Its pilot assists and weapon groups are
+  the genome's (since step 6 they evolve: the assists as a gene, a new gun in its nearest gun's group). YOUR DESIGNS tags it EVOLVED and its line reads `FROM RIM SKIFF COPY · G37` ([Drydock](#drydock)); it opens
   in the drydock like any design.
 - **Computing** (`world::evolution::compute`, every frame in every mode): the run that computes gets 10 ms of the
   frame with the layer open and 4 ms anywhere else at home and on the screens (the drydock, BEHAVIOR, research, the

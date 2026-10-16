@@ -81,6 +81,30 @@ running the fight again.
   with "delete runs you don't need to make room" for a full storage; RUNS shows the storage used and the quota and
   warns before it runs out. 2026-10-16: share codes of the formats before `SGD3:` are no longer read (an older code
   is refused as older); designs of format 1 still read, as the same reader takes both.
+  Step 6 built 2026-10-16 (`docs/arena.md` "Genomes, mutation and crossover", "Starts and locks", "Trials and goals",
+  `docs/client.md` "Evolution", `docs/sim.md` "Pilot assists"): everything mutates, within MAY CHANGE's genes
+  (`Evolve::MayChange`, EVERYTHING the setup's default; the old `Design`, `Behavior` and `Both` read as their genes),
+  one mutation drawn over the operators of the genes on with the tables above (power priority, swap and duplicate a
+  rule and every assist operator new; an assist's toggle never changes), assist crossover, locked assist rules
+  (`Locks::assists`, LOCK ORDER for both lists), a new gun in its nearest gun's weapon group; the stand-in pilot
+  (`sim::flight::stand_in`, `lab.ron`'s `pilots` CASUAL, HANDS OFF, BUSY with the numbers above) flies a fight
+  entry's first ship as its side's focus with the design's assists, the referee giving its input, so the viewer plays
+  it unchanged and says `FLOWN BY STAND-IN · CASUAL`; FLOWN BY per trial (BEHAVIOR, STAND-IN, BOTH: even seeds the
+  stand-in), BOTH the default while the assists may change; the LOCKS UI: the start as a grid (a click locks a part
+  or keeps a cell empty, KEEP EMPTY, each cell's tip naming it), the parts listed, RULES and ASSISTS tabs with a lock
+  each and ALL; the CLI's `--lock assist:N` and `--flown-by`. Where building found otherwise: ASSISTS is two genes,
+  ASSIST NUMBERS (with `start`) and ASSIST RULES, so NUMBERS ONLY can leave every structure; the genes' words and the
+  MAY CHANGE presets are `lab.ron`'s (`genes`, `gene_presets`), not chrome; a fight carries its pilot inlined
+  (`Entry::pilot`: the profile's id and numbers), so codes of before are unchanged and a code doesn't change with
+  `lab.ron`; the setup has one FLOWN BY and one pilot for all its fight trials (the run file has them per trial); the
+  voyage runner keeps its own closing pilot (the stand-in generalises it but doesn't replace it); auto-fire's group is
+  nudged as a number, not limited to groups that have a gun; the grid shows a start's own cells, not their mirror images
+  (the arena still locks those under MIRROR); the viewer shows who flew, not the stand-in's inputs or the assists'
+  channels. Determinism: breeding draws differ, so every run breeds otherwise than before (`two_starts_locked` seed 1
+  now `76a00f92091034f7`, `mixed_trials` seed 1 `d544b205648f22a1`, the new `runs/everything.ron` seed 1
+  `ef0039c55cfebe6d`; native = wasm, resumed identical); fights, fight codes and the rules' fingerprint
+  (`87f8e44db8186359`) are unchanged, and run files of before read, restore and replay. Not yet (still step 6's):
+  GENERATION n, REPLACE <START>, the preview card's ORIGIN line and a click on the origin, TIDY at SAVE.
 - Date: 2026-10-15
 - Decided by: Niklas (the requirements quoted below, and four answers on 15 Oct 2026: a research node unlocks the
   building and runs are free; runs compute at home and on every screen and pause in flight; as many trials as

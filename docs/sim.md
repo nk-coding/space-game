@@ -63,7 +63,7 @@ the runner, the scenarios); at the root what everything uses.
 | `ship::power` | power allocation by tier and weight (`allocate`), `PowerSetting`, `Consumer` rows, `Ship::set_power_setting` |
 | `report` | the static design report for the drydock (`design_report`, `DesignReport`, `Issue`), see [Design report (drydock)](#design-report-drydock) |
 | `ship::alloc` | control allocation: `AllocTable`, `Actuation`, `TorqueSource`, `allocate` (first line; `translate` is its step 1), `couples` (RCS couples), `lasting` (translation that lasts beyond the tick), `assist` (last resort), `wrench_of` |
-| `flight` | (`pilot.rs`: the pilot's input and goal; `aim.rs`: leads and smart aim; `controllers.rs`: the plan into actuator commands) flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step`, `next_lock` (LOCK TARGET's order) |
+| `flight` | (`pilot.rs`: the pilot's input and goal; `aim.rs`: leads and smart aim; `controllers.rs`: the plan into actuator commands) flight computer: `PilotInput`, `Target`, `FlightGoal`, `HeadingGoal`, `HelmMode`, `Kin`, `FlightTelemetry`, `TurnAssist`, `nudge_step`, `turn_ramp_step`, `next_lock` (LOCK TARGET's order); `stand_in.rs`: the evolution lab's stand-in pilot |
 | `flight::maneuver` | `Maneuver` (Brake, Hold, FaceTarget, Approach, Orbit, KeepRange, Flee, Escort), goals capped at the top speed |
 | `behavior` | `BehaviorLibrary`, `BehaviorId`, `BehaviorState` (debug view), `RuleStatus`, `Why`, `BUILTIN_NODES`, `check_vocabulary`; `compile.rs` (program → flat code), `eval.rs` (think pass, fly), `script.rs` (Rhai host), `assist.rs` (pilot assists: `AssistsId`, `Assists`, `AssistState`, `AssistSwitch`, `Channel`) |
 | `combat::weapons` | beams, pulses, projectiles (`Projectile`, `ProjectileId`), shields (`Bubble`, `absorbs_from`: which bubbles take damage from a source), no friendly fire, `BeamTrace`, `ShotKind`, `GoneReason`, weapon `tuning` |
@@ -1262,6 +1262,13 @@ as before.
   free, brake stops a 4 m/s forward drift by turning around, hold station comes back and stays within 1.3 m, and
   avoidance turns and passes a raider it otherwise hits; with a held lock or the pilot steering the heading goal
   stays theirs, and a 0.3 m/s drift never turns the ship).
+- **Stand-in pilots** (`flight::stand_in`, GDR-0092 step 6): a scripted pilot from content (`data::StandIn`, `lab.ron`'s
+  `pilots`) that gives a piloted ship `PilotInput` on think ticks, so its assists act where no player is (the
+  evolution lab's fights FLOWN BY a stand-in, `docs/arena.md`). It keeps no state: the lock it holds while that ship
+  is active (the helm's), else the auto-lock's pick as a client takes it, else LOCK TARGET's nearest when it locks
+  itself; the stick towards its lock (or the nearest enemy) while that is farther than its share of the longest gun's
+  reach; every trigger; stick and triggers each on and off by the clock from tick 0. The voyage runner keeps its own
+  closing pilot.
 
 ### Rhai conditions
 
