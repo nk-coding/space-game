@@ -75,4 +75,12 @@
             (id: "distance", name: "Distance", summary: "How far from the leader it may be: metres, or a share of your weapon reach.", type: Distance, default: "30m", min: 5, max: 5000),
         ],
     ),
+    (
+        id: "scan",
+        name: "Scan",
+        summary: "Start a scan with the ship's scanner, then let the next rule fly the ship.",
+        description: "Needs no target and never decides the maneuver: while its conditions hold it starts a scan whenever the [[part:scanner|scanner]] is ready (charged for a moment, then a sweep, then the cooldown), and the next rule that holds flies the ship meanwhile. A ship without a working scanner skips it. A sweep wakes sleeping enemies close by, so a rule like `when enemies_near(300m) < 1 -> scan` scans only where it is quiet.",
+        tags: ["scan"],
+        role: Action,
+    ),
 ]

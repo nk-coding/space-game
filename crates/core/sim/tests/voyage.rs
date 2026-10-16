@@ -99,7 +99,8 @@ fn plans_are_reproducible_and_follow_the_content() {
             for s in &p.sites {
                 assert!(s.pos.length() <= v.radius * 1.0001, "{} outside", v.id);
                 spots.push(s.pos);
-                let e = c.encounters.get(&s.encounter).unwrap();
+                let e = c.encounters.get(s.encounter.as_deref().unwrap()).unwrap();
+                assert_eq!(s.signal, s.goal, "the slice's goal is its signal");
                 assert_eq!(s.wake_radius, e.wake_radius);
                 // Counts within the encounter's ranges, per blueprint.
                 for (list, entries) in [
@@ -113,7 +114,7 @@ fn plans_are_reproducible_and_follow_the_content() {
                     assert_eq!(total as usize, list.len());
                     for (id, (lo, hi)) in entries {
                         let n = list.iter().filter(|x| &x.design.id == id).count() as u32;
-                        assert!((lo..=hi).contains(&n), "{}: {id} ×{n}", s.encounter);
+                        assert!((lo..=hi).contains(&n), "{:?}: {id} ×{n}", s.encounter);
                     }
                 }
                 for w in &s.wrecks {
@@ -162,7 +163,7 @@ fn sites_spawn_lazily_sleep_and_wake() {
     let at = w.ship(me).unwrap().pieces()[0].com_world();
     for s in v.sites() {
         let near = (s.pos() - at).length() <= spawn;
-        assert_eq!(s.state() != SiteState::Unspawned, near, "{}", s.encounter());
+        assert_eq!(s.state() != SiteState::Unspawned, near, "{:?}", s.encounter());
         if near {
             assert_eq!(s.ships().len(), s.plan().ships.len());
             assert_eq!(s.wrecks().len(), s.plan().wrecks.len());
@@ -634,8 +635,9 @@ fn one_site(ships: Vec<sim::Spawn>, wake_radius: f32) -> VoyagePlan {
         radius: 1000.0,
         entry: Body::at(Vec2::new(0.0, -1000.0), 0.0),
         sites: vec![sim::SitePlan {
-            encounter: "raider_pack".into(),
+            encounter: Some("raider_pack".into()),
             goal: true,
+            signal: false,
             pos: Vec2::ZERO,
             wake_radius,
             ships,

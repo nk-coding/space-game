@@ -112,6 +112,9 @@ pub enum ShipCommand {
     /// Wake this vessel (GDR-0044): it claims its owner's mind capacity before every vessel not woken since,
     /// so the newest other vessels go dormant to make room. Ignored for salvage.
     Wake,
+    /// Start a scan with the ship's scanner (`Ship::start_scan`; in flight the SCAN key). Ignored while one charges
+    /// or cools down, and for a ship without a working scanner.
+    Scan,
 }
 
 /// Everything from outside that affects one tick. Applied in list order.
@@ -461,6 +464,9 @@ impl Sim {
             ShipCommand::Power { part, setting } => {
                 s.set_power_setting(part, setting);
             }
+            ShipCommand::Scan => {
+                s.start_scan();
+            }
             ShipCommand::Focus | ShipCommand::Wake => {}
         }
     }
@@ -743,6 +749,14 @@ impl Sim {
         mark(StepPhase::Systems);
         for s in &mut self.ships {
             s.update_systems();
+            if let Some(sw) = s.advance_scan() {
+                self.events.push(SimEvent::Scanned {
+                    ship: s.id(),
+                    at: sw.at,
+                    range: sw.range,
+                    wake: sw.wake,
+                });
+            }
         }
 
         // Weapons (shields, projectiles, guns) and engine plumes, then whatever they broke; then salvage.
@@ -753,9 +767,10 @@ impl Sim {
 
         // Physics: ghosts expire, this tick's wrenches replace the last ones (world force at the centre of
         // mass; the speed governor cuts what would pass the top speed, salvage pieces settle,
-        // `SalvageTuning::settle`), one Rapier step.
+        // `SalvageTuning::settle`, a voyage's edge turns pieces back, `voyage::edge_force`), one Rapier step.
         mark(StepPhase::Physics);
         let salvage = self.config.salvage;
+        let edge = self.voyage.as_deref().map(|v| v.edge(&self.config.voyage));
         for s in &mut self.ships {
             let sid = s.id();
             let control = s.control_piece();
@@ -779,6 +794,9 @@ impl Sim {
                 if control != Some(p.id) {
                     let v = p.body.linvel;
                     f += (salvage.settle(v) - v) * (p.mass.mass / crate::DT);
+                }
+                if let Some(edge) = edge {
+                    f += crate::voyage::edge_force(p.body.pos, p.body.linvel, p.mass.mass, edge);
                 }
                 self.physics.set_wrench(key, f, p.wrench.torque);
             }

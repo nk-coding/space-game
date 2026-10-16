@@ -1197,7 +1197,7 @@ fn research_data_that_is_not_finite_pays_nothing() {
 fn cargo_off_the_main_piece_is_no_cargo() {
     let c = content();
     let mut skiff = ship(&c, "rim_skiff");
-    // The skiff's bays, moved two columns right of its hull: a piece of their own.
+    // The skiff's bay, moved two columns right of its hull: a piece of its own.
     let right = skiff.size.0 as i32;
     let mut moved = 0;
     for p in &mut skiff.parts {
@@ -1207,10 +1207,10 @@ fn cargo_off_the_main_piece_is_no_cargo() {
             moved += 1;
         }
     }
-    assert_eq!(moved, 2);
+    assert_eq!(moved, 1);
     skiff.size.0 += 4;
     assert_eq!(c.ship_hold(&skiff), 0);
-    assert_eq!(c.ship_hold(&ship(&c, "rim_skiff")), 8);
+    assert_eq!(c.ship_hold(&ship(&c, "rim_skiff")), 4);
     let all = Unlocks::all(&c);
     assert_eq!(voyage_ready(&c, &all, 2, &skiff, &[]), [Readiness::NoCargo]);
 }

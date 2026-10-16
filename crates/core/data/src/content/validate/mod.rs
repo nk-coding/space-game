@@ -143,6 +143,8 @@ pub const MAX_GIMBAL: f32 = 45.0;
 pub const MAX_PLUME_LENGTH: f32 = 50.0;
 /// Largest explosion radius, in metres (keeps the blast lists of a design short; placeholder).
 pub const MAX_BLAST_RADIUS: f32 = 4.0;
+/// Longest sensor or scanner reach, in metres: a cluster's radius at most (one `f32` space, ADR-0022, E0).
+pub const MAX_SENSOR_RANGE: f32 = 4000.0;
 /// Longest allowed side of a drydock frame and of a ship's `size`, in cells (placeholder: twice the capital
 /// frame). The drydock editor uses the same limit.
 pub const MAX_FRAME_SIZE: u32 = 128;
@@ -452,6 +454,14 @@ impl<'a> Validator<'a> {
                 "weapon.delivery.rate",
                 format!("at most {MAX_SHOT_RATE} shots per second, got {rate}"),
             );
+        }
+    }
+
+    /// A sensor's or scanner's reach: above 0, at most [`MAX_SENSOR_RANGE`].
+    fn reach<T: Entry>(&mut self, e: &T, field: &str, x: f32) {
+        self.number(e, field, x, 0.0, true);
+        if x > MAX_SENSOR_RANGE {
+            self.err(e, field, format!("at most {MAX_SENSOR_RANGE} m (a cluster's radius), got {x}"));
         }
     }
 

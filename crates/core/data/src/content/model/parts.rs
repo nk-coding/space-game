@@ -1,5 +1,5 @@
 //! Parts and materials: armour, salvage, power, heat, weapons, engines, plumes, explosions, gyros, RCS, shields,
-//! cargo, logic, bonuses.
+//! cargo, logic, sensors, scanners, bonuses.
 
 use super::*;
 
@@ -326,6 +326,32 @@ pub struct CargoSpec {
     pub capacity: f32,
 }
 
+/// What a vessel sees on its own (GDR-0017; galaxy plan E3): its behaviors pick targets only within the longest
+/// sensor range of its working cores, and a voyage's sites show once one of the player's vessels has one within
+/// it (a trail's place only within `VoyageTuning::signal_reveal`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SensorSpec {
+    /// Metres.
+    pub range: f32,
+}
+
+/// A scanner (GDR-0080, GDR-0093): a scan (SCAN in flight, the `scan` behavior action) charges for `charge` seconds,
+/// drawing the part's power only then, and sweeps: on a voyage every site within `range` shows, every trail place
+/// beyond it gets a bearing, and sleeping sites within `wake` wake up. Then it cools down for `cooldown` seconds.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScannerSpec {
+    /// Metres from the ship.
+    pub range: f32,
+    /// Seconds at full power.
+    pub charge: f32,
+    /// Seconds after a sweep before the next scan may start.
+    pub cooldown: f32,
+    /// The sweep wakes sleeping sites within this many metres of the ship.
+    pub wake: f32,
+}
+
 /// Hosts a copy of the ship-mind (or an automaton mind) and runs behaviour rules.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -438,6 +464,10 @@ pub struct Part {
     pub cargo: Option<CargoSpec>,
     #[serde(default)]
     pub logic: Option<LogicSpec>,
+    #[serde(default)]
+    pub sensor: Option<SensorSpec>,
+    #[serde(default)]
+    pub scanner: Option<ScannerSpec>,
     #[serde(default)]
     pub gyro: Option<GyroSpec>,
     #[serde(default)]

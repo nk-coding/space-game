@@ -433,6 +433,7 @@ fn think_all(ships: &mut [Ship], lib: &BehaviorLibrary, scratch: &mut Scratch, t
             tick,
             kin: None,
             reach: 0.0,
+            sensor: 0.0,
             focus: None,
             acquired: 0,
             hull,

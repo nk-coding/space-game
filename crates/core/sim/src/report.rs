@@ -15,7 +15,8 @@
 //!   actuators and clear guns make at full power with bonuses, idle parts left out, as if the piece runs (a
 //!   working, powered core). Whether the reactors can feed everything at once is the power section's answer.
 //! * **Full use** (power and heat): every consumer at full activity: engines and RCS pods at full thrust, gyros
-//!   at full torque, guns with a clear line of fire firing, shields on, logic cores and other consumers on.
+//!   at full torque, guns with a clear line of fire firing, shields on, scanners charging, logic cores and other
+//!   consumers on.
 //!   Idle parts and blocked guns draw nothing. This is the worst case; real flight rarely uses all at once.
 //! * **Heat** is the steady state of the dynamic model at full use, with each part's work from that power
 //!   pass. The shutdown above a limit is not applied (the parts are flagged instead), and plume heat on own
@@ -497,6 +498,7 @@ pub fn design_report(
             true,
             |_| true,
             true,
+            |_| true,
         );
         power = PowerReport {
             supply,

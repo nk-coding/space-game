@@ -15,7 +15,7 @@
     limits: (
         frame: "frigate",
         parts: ["armor_block", "slope_1x1", "pulse_laser", "radiator", "capacitor", "fission_reactor", "cargo_bay",
-            "logic_core", "thruster", "shield_emitter", "gyro", "rcs_pod"],
+            "logic_core", "thruster", "shield_emitter", "gyro", "rcs_pod", "scanner"],
         mirror: true,
     ),
     start: Design(design: Ship("rim_skiff"), behavior: Content("skirmisher")),

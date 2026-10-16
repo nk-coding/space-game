@@ -53,6 +53,9 @@ pub enum RuleStatus {
     Failed { cond: u8, why: Why },
     /// Every condition held, but the action needs a target and there is none.
     NoTarget,
+    /// A `scan` rule held and stepped aside for the next rule: `started` a scan, or the scanner was not ready (none
+    /// working, or a scan charging or cooling down).
+    Scan { started: bool },
     /// Beyond the ship's working rule slots: inactive.
     NoSlot,
 }
@@ -172,6 +175,8 @@ impl BehaviorState {
                 self.slots
             ),
             RuleStatus::NoTarget => format!("no target for `{}`", rule.action.name),
+            RuleStatus::Scan { started: true } => "started a scan".into(),
+            RuleStatus::Scan { started: false } => "the scanner is not ready".into(),
             RuleStatus::Failed { cond, why } => {
                 let c = &rule.when[cond as usize];
                 let measure = self
@@ -240,6 +245,8 @@ pub(crate) struct Out {
     slots: u32,
     status: Vec<RuleStatus>,
     script_error: Option<String>,
+    /// A `scan` rule started a scan.
+    scan: bool,
 }
 
 impl Default for Out {
@@ -254,6 +261,7 @@ impl Default for Out {
             slots: 0,
             status: Vec::new(),
             script_error: None,
+            scan: false,
         }
     }
 }
@@ -338,6 +346,7 @@ pub(crate) fn think_all(
                 tick,
                 kin: None,
                 reach: 0.0,
+                sensor: 0.0,
                 focus: None,
                 acquired: 0,
                 hull,
@@ -369,6 +378,9 @@ pub(crate) fn think_all(
             std::mem::swap(&mut st.status, &mut out.status);
             st.script_error = out.script_error.take();
         }
+        if std::mem::take(&mut out.scan) {
+            ships[k].start_scan();
+        }
     }
 }
 
@@ -391,6 +403,8 @@ pub(super) struct Ctx<'a> {
     pub tick: u64,
     pub kin: Option<Kin>,
     pub reach: f32,
+    /// How far the ship sees (`Ship::sensor_range`): targets farther away are not picked.
+    pub sensor: f32,
     /// Index, centre and distance of the target.
     pub focus: Option<(usize, TargetState, f32)>,
     pub acquired: u64,
@@ -662,6 +676,7 @@ impl Ctx<'_> {
         } else {
             tuning::DEFAULT_REACH
         };
+        self.sensor = me.sensor_range();
         self.kin = Some(kin);
         Some(kin)
     }
@@ -722,6 +737,11 @@ impl Ctx<'_> {
             }
             out.status[i] = match failed {
                 Some((j, why)) => RuleStatus::Failed { cond: j as u8, why },
+                None if rule.action == Action::Scan => {
+                    let started = !out.scan && me.can_scan();
+                    out.scan |= started;
+                    RuleStatus::Scan { started }
+                }
                 None if rule.needs_target && focus.is_none() => RuleStatus::NoTarget,
                 None => {
                     active = Some(i);
@@ -786,12 +806,13 @@ impl Ctx<'_> {
                 aim: AimMode::Auto,
             },
             Action::Flee => Maneuver::Flee { from: target },
-            Action::Hold | Action::Escort(_) => Maneuver::Brake,
+            Action::Hold | Action::Escort(_) | Action::Scan => Maneuver::Brake,
         }
     }
 
-    /// Picks the target ship (index, centre, distance). The current target keeps its place unless another
-    /// is better by the stickiness margin.
+    /// Picks the target ship (index, centre, distance) among the enemies within sensor range (the `locked`
+    /// selector: the leader's lock, wherever it is). The current target keeps its place unless another is better by
+    /// the stickiness margin.
     pub(super) fn select(
         &mut self,
         kind: SelectorKind,
@@ -820,6 +841,9 @@ impl Ctx<'_> {
                 continue;
             };
             let d = (ts.pos - from).length();
+            if d > self.sensor {
+                continue;
+            }
             let mut cost = match kind {
                 SelectorKind::Nearest | SelectorKind::Locked => d,
                 SelectorKind::Weakest => self.hull_of(k),

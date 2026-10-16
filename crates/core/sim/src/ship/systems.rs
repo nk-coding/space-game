@@ -18,6 +18,7 @@ impl Ship {
             controls,
             scratch,
             dormant,
+            scan,
             ..
         } = self;
         let d = &**design;
@@ -70,6 +71,7 @@ impl Ship {
                 active,
                 |slot| controls.gun_fires(slot),
                 controls.shields,
+                |part| scan.charging() == Some(part),
             );
             // Shield bubbles recharge while their emitter works.
             for &e in &piece.shields {
@@ -282,8 +284,8 @@ pub(crate) fn reactor_supply(piece: &Piece, parts: &[PartState]) -> f32 {
 
 /// How hard a consumer is asked to work, 0..1: nothing while its piece is not active or the part is
 /// overheated, idle or a gun without a clear line of fire; else engines, RCS pods and gyros their `mover`
-/// activity (throttle × rated-speed falloff, |torque used|), guns `fires`, shield emitters `shields`, logic
-/// cores and other consumers 1.
+/// activity (throttle × rated-speed falloff, |torque used|), guns `fires`, shield emitters `shields`, scanners
+/// `charging`, logic cores and other consumers 1.
 #[inline]
 pub(crate) fn consumer_activity(
     kind: ConsumerKind,
@@ -292,6 +294,7 @@ pub(crate) fn consumer_activity(
     mover: f32,
     fires: bool,
     shields: bool,
+    charging: bool,
 ) -> f32 {
     if !active || ps.overheated || !ps.clear || ps.idle {
         0.0
@@ -299,6 +302,7 @@ pub(crate) fn consumer_activity(
         match kind {
             ConsumerKind::Engine => mover.clamp(0.0, 1.0),
             ConsumerKind::Weapon => fires as u8 as f32,
+            ConsumerKind::Scanner => charging as u8 as f32,
             ConsumerKind::Shield => shields as u8 as f32,
             ConsumerKind::Logic | ConsumerKind::Other => 1.0,
         }
@@ -322,8 +326,8 @@ pub(crate) fn reactor_work(served: f32, supply: f32) -> f32 {
 /// consumers their level (0 while idle) and `activity × level`, reactors full level and [`reactor_work`],
 /// heaters (heat without a power role) 1 while working. `activity[part]` holds the movers' activity on entry
 /// and each consumer's activity on return; `want` and `level` are scratch (per consumer row on return).
-/// `fires(slot)`: does the gun in this slot fire. Returns `(demand, served)`. The one power rule for
-/// [`Ship::update_systems`] and the design report.
+/// `fires(slot)`: does the gun in this slot fire; `charging(part)`: does a scan charge on this scanner. Returns
+/// `(demand, served)`. The one power rule for [`Ship::update_systems`] and the design report.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn power_pass(
     piece: &Piece,
@@ -335,6 +339,7 @@ pub(crate) fn power_pass(
     active: bool,
     fires: impl Fn(u32) -> bool,
     shields: bool,
+    charging: impl Fn(PartIdx) -> bool,
 ) -> (f32, f32) {
     want.clear();
     for c in &piece.consumers {
@@ -346,6 +351,7 @@ pub(crate) fn power_pass(
             activity[c.part as usize],
             fires(c.slot),
             shields,
+            charging(c.part),
         );
         activity[c.part as usize] = act;
         want.push(c.draw * act);

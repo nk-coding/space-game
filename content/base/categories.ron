@@ -7,6 +7,6 @@
     (id: "defense", name: "Defense", summary: "Shields that soak up hits before they reach the hull.", color: "shields"),
     (id: "heat", name: "Heat", summary: "Radiators that dump heat into space.", color: "heat"),
     (id: "propulsion", name: "Propulsion", summary: "Engines that push and turn the ship.", color: "propulsion"),
-    (id: "logic", name: "Logic", summary: "Cores that host a mind and run its behaviors.", color: "logic"),
+    (id: "logic", name: "Logic", summary: "Cores that host a mind and run its behaviors, and scanners that sweep the space around the ship.", color: "logic"),
     (id: "cargo", name: "Cargo", summary: "Space for salvage on the way home.", color: "cargo"),
 ]

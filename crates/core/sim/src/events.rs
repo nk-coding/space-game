@@ -189,6 +189,19 @@ pub enum SimEvent {
     /// hold, the lowest-value items first, and spilled as loose items at the lost hold (`salvage.rs`, GDR-0076;
     /// `Sim::loose`, collected again like fragments).
     CargoLost { ship: ShipId, item: Item, count: u32 },
+    /// A ship's scan swept (`ship/scan.rs`): from `at` (its controlling piece's centre of mass), out to `range`
+    /// m; it wakes sleeping voyage sites within `wake` m.
+    Scanned {
+        ship: ShipId,
+        at: Vec2,
+        range: f32,
+        wake: f32,
+    },
+    /// A voyage site shows now (`voyage/mod.rs`): one of the player's vessels has it within its sensors or a scan
+    /// swept over it. `site` indexes `Voyage::sites`.
+    SiteRevealed { site: u32 },
+    /// A scan gave hidden signal site `site` a bearing (`Voyage::bearings`, the newest last).
+    SiteBearing { site: u32 },
     /// A voyage site woke (`voyage/mod.rs`): its ships fly their behavior from now on. `site` indexes
     /// `Voyage::sites`.
     SiteWoke { site: u32 },

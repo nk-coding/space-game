@@ -10,6 +10,7 @@
 
 mod caches;
 mod piece;
+mod scan;
 mod systems;
 
 pub mod alloc;
@@ -37,6 +38,7 @@ use crate::math::{Rot, Vec2, sin};
 use crate::ship::power::{Consumer, PowerSetting, Reactor};
 
 pub use piece::{GunMount, Piece, ThrustAuthority, Thruster, gun_works, producing};
+pub use scan::{Scan, tuning as sensor_tuning};
 pub(crate) use piece::{HeatK, refresh_authority};
 pub(crate) use systems::{applied_bonuses, gun_blockers, power_pass, reactor_supply};
 
@@ -302,6 +304,8 @@ pub struct Ship {
     pub(crate) cargo: crate::combat::salvage::Cargo,
     /// Spawned as a wreck (`Sim::spawn_wreck`): its logic cores never form a vessel.
     pub(crate) burned_out: bool,
+    /// Its scan underway or cooling down (`scan.rs`).
+    pub(crate) scan: Scan,
     /// The intact hit points its hull share (the `hull` condition) is measured against: the whole design's for
     /// a spawned ship, the parts of its own piece's for a vessel split off another (GDR-0064).
     pub(crate) hull_base: f32,
@@ -368,6 +372,7 @@ impl Ship {
             parked: None,
             cargo: crate::combat::salvage::Cargo::default(),
             burned_out: false,
+            scan: Scan::Ready,
             hull_base: 0.0,
         };
         ship.hull_base = ship.design.hp_total;
@@ -718,6 +723,10 @@ impl StateHash for Ship {
             a.hash_state(h);
         }
         h.u32(self.leader.map_or(u32::MAX, |l| l.0));
+        // Nothing while no scan is underway, so worlds without scans keep their hashes.
+        if self.scan != Scan::Ready {
+            self.scan.hash_state(h);
+        }
         h.u8(self.owner.0);
         h.bool(self.dormant);
         h.u64(self.claim as u64);

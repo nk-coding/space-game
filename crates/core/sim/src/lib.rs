@@ -63,7 +63,7 @@ pub use math::{Rot, Vec2};
 pub use report::{DesignReport, design_report};
 pub use rng::{Pcg32, Stream};
 pub use ship::{
-    Body, GunMount, PartState, Piece, PowerState, Ship, ShipControls, ThrustAuthority, Thruster,
+    Body, GunMount, PartState, Piece, PowerState, Scan, Ship, ShipControls, ThrustAuthority, Thruster,
     Wrench, gun_works, inherited_velocity, producing, rated_falloff,
 };
 pub use ship::alloc::{Actuation, TorqueSource};
@@ -74,7 +74,7 @@ pub use ship::design::{BlastTarget, ConsumerKind, PartIdx, PartStats, ShipDesign
 pub use ship::mass::MassProps;
 pub use ship::power::{Consumer, PowerSetting};
 pub use ship::vessel::{MAX_OWNERS, Owner, VesselInfo, VesselState, friendly};
-pub use voyage::{Site, SitePlan, SiteState, Spawn, Voyage, VoyagePlan, VoyageTuning};
+pub use voyage::{Bearing, Site, SitePlan, SiteState, Spawn, Voyage, VoyagePlan, VoyageTuning};
 pub use voyage::runner::{Flagship, VoyageRun, VoyageRunner, closing_reach};
 pub use voyage::scenario::ScenarioKind;
 pub use world::{DamageCommand, PartHit, ShipCommand, Sim, StepPhase, TickInputs};

@@ -47,6 +47,8 @@ pub enum ConsumerKind {
     Engine,
     /// Guns: the trigger.
     Weapon,
+    /// Scanners: while a scan charges on it (`Ship::start_scan`).
+    Scanner,
     /// Anything else that draws power: always on.
     Other,
 }
@@ -172,6 +174,10 @@ pub struct PartSpec {
     pub control_cost: u32,
     /// Cargo capacity of a cargo part (content `cargo.capacity`, in cargo units; 0 for other parts).
     pub cargo: f32,
+    /// How far the vessel sees while the part works (content `sensor.range`, m; 0 for parts without sensors).
+    pub sensor: f32,
+    /// A scanner's numbers (content `scanner`).
+    pub scanner: Option<data::ScannerSpec>,
     /// Armour material of a hull part (the placement's; `None` for other parts). Salvaged hull parts carry it.
     pub material: Option<String>,
     /// Build points as placed (hull parts with their material's factor): what a salvaged part is worth by
@@ -321,6 +327,10 @@ pub struct ShipDesign {
     pub guns: Vec<GunSpec>,
     /// Engine or gun slot of each part (`NO_SLOT` otherwise).
     pub slot_of_part: Vec<u32>,
+    /// Parts with a sensor range, ascending (`ship/scan.rs`).
+    pub sensors: Vec<PartIdx>,
+    /// Scanners, ascending.
+    pub scanners: Vec<PartIdx>,
     /// Parts that block each gun's line of fire (cells straight ahead, to the grid edge), per gun slot.
     pub gun_blockers: Csr<PartIdx>,
     /// Every engine's plume lanes (see `EngineSpec::lanes`).
@@ -434,6 +444,8 @@ impl ShipDesign {
                     ConsumerKind::Engine
                 } else if def.weapon.is_some() {
                     ConsumerKind::Weapon
+                } else if def.scanner.is_some() {
+                    ConsumerKind::Scanner
                 } else {
                     ConsumerKind::Other
                 }
@@ -475,6 +487,8 @@ impl ShipDesign {
                 control_capacity: def.logic.as_ref().map_or(0, |l| l.control_capacity),
                 control_cost: def.control_cost(),
                 cargo: def.cargo.as_ref().map_or(0.0, |c| c.capacity),
+                sensor: def.sensor.as_ref().map_or(0.0, |x| x.range),
+                scanner: def.scanner.clone(),
                 material: if def.hull { pl.material.clone() } else { None },
                 build_points: def.build_points_in(content.placement_armor(pl)),
                 cargo_units: def.size.0.saturating_mul(def.size.1).max(1),
@@ -619,6 +633,8 @@ impl ShipDesign {
         let (blast, blast_cover) = blast_targets(&grid, &parts);
 
         let hp_total = parts.iter().map(|p: &PartSpec| p.hp).sum::<f32>();
+        let with = |f: fn(&PartSpec) -> bool| (0..n as PartIdx).filter(|&i| f(&parts[i as usize])).collect::<Vec<_>>();
+        let (sensors, scanners) = (with(|p| p.sensor > 0.0), with(|p| p.scanner.is_some()));
         Ok(ShipDesign {
             id: ship.id.clone(),
             name: ship.name.clone(),
@@ -631,6 +647,8 @@ impl ShipDesign {
             engines,
             guns,
             slot_of_part,
+            sensors,
+            scanners,
             gun_blockers: Csr::from_lists(gun_blockers),
             plume_lanes,
             plume_path: Csr::from_lists(plume_path),

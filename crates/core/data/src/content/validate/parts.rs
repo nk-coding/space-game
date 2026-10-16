@@ -191,6 +191,18 @@ impl<'a> Validator<'a> {
         if let Some(x) = &p.cargo {
             self.number(p, "cargo.capacity", x.capacity, 0.0, true);
         }
+        if let Some(x) = &p.sensor {
+            self.reach(p, "sensor.range", x.range);
+        }
+        if let Some(x) = &p.scanner {
+            self.reach(p, "scanner.range", x.range);
+            self.reach(p, "scanner.wake", x.wake);
+            self.number(p, "scanner.charge", x.charge, 0.0, true);
+            self.number(p, "scanner.cooldown", x.cooldown, 0.0, false);
+            if !p.draws_power() {
+                self.err(p, "scanner", "a scanner draws power while it charges (`power.draw`)");
+            }
+        }
         if let Some(c) = p.control_cost {
             if c > MAX_CONTROL_COST {
                 self.err(

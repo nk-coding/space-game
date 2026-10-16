@@ -109,7 +109,7 @@ pub(crate) struct Locked {
 impl Locked {
     /// The run file's locks of a start: `bp` as written (with its assists) and `dock`, the start opened in its frame
     /// (centred, part order kept), `program` its behavior. Under the mirror lock a locked part or cell locks its mirror
-    /// image too.
+    /// image too, and a part without a mirror image ([`unmatched`]) is locked.
     pub fn resolve(
         content: &Content,
         locks: &Locks,
@@ -148,6 +148,7 @@ impl Locked {
             cells.insert(cell);
         }
         if dock.mirror {
+            parts.extend(unmatched(content, dock));
             let twins: Vec<usize> = parts
                 .iter()
                 .filter_map(|&i| dock.part_at(dock.mirror_cell(dock.shapes()[i].cells()[0])))
@@ -1146,7 +1147,7 @@ impl Kit {
         let dock = self
             .open(content, g)
             .ok_or("the design does not open in its frame")?;
-        if self.mirror && !self.symmetric(content, &dock) {
+        if self.mirror && !self.symmetric(content, &dock, &root.locks) {
             return Err("not symmetric under the mirror lock".into());
         }
         if !root.locks.design_holds(&dock) {
@@ -1222,31 +1223,35 @@ impl Kit {
         })
     }
 
-    /// Every part has a mirror image across the frame's centre line: a part of the same id and material with
-    /// the reflected outline and facing.
-    fn symmetric(&self, content: &Content, dock: &Drydock) -> bool {
-        type Key = (String, Option<String>, Vec<(i32, i32)>, u8);
-        let key = |p: &Placement| -> Option<Key> {
-            let part = content.parts.get(&p.part)?;
-            let s = PlacedShape {
-                footprint: part.footprint(),
-                x: p.x,
-                y: p.y,
-                rot: p.rot,
-                flip: p.flip,
-            };
-            let mut outline: Vec<(i32, i32)> = s.polygon().iter().map(|q| (q.x, q.y)).collect();
-            outline.sort_unstable();
-            Some((p.part.clone(), p.material.clone(), outline, s.facing().index()))
-        };
-        let keys: Option<BTreeSet<Key>> = dock.parts().iter().map(key).collect();
-        let Some(keys) = keys else {
-            return false;
-        };
-        dock.parts()
-            .iter()
-            .all(|p| key(&dock.mirror_of(p)).is_some_and(|k| keys.contains(&k)))
+    /// Every part has a mirror image across the frame's centre line ([`unmatched`]), but the parts its start keeps
+    /// where they are for having none (`locked`, [`Locked::resolve`]).
+    fn symmetric(&self, content: &Content, dock: &Drydock, locked: &Locked) -> bool {
+        unmatched(content, dock).into_iter().all(|i| locked.part(&dock.parts()[i]))
     }
+}
+
+/// The parts (indices) of `dock` without a mirror image across the frame's centre line: no part of the same id and
+/// material with the reflected outline and facing (an unknown part has none). Under the mirror lock a start keeps
+/// these where they are: the starter's single scanner and the cargo bay across from it (GDR-0093).
+fn unmatched(content: &Content, dock: &Drydock) -> Vec<usize> {
+    type Key = (String, Option<String>, Vec<(i32, i32)>, u8);
+    let key = |p: &Placement| -> Option<Key> {
+        let part = content.parts.get(&p.part)?;
+        let s = PlacedShape {
+            footprint: part.footprint(),
+            x: p.x,
+            y: p.y,
+            rot: p.rot,
+            flip: p.flip,
+        };
+        let mut outline: Vec<(i32, i32)> = s.polygon().iter().map(|q| (q.x, q.y)).collect();
+        outline.sort_unstable();
+        Some((p.part.clone(), p.material.clone(), outline, s.facing().index()))
+    };
+    let keys: BTreeSet<Key> = dock.parts().iter().filter_map(key).collect();
+    (0..dock.parts().len())
+        .filter(|&i| key(&dock.parts()[i]).is_none() || key(&dock.mirror_of(&dock.parts()[i])).is_none_or(|k| !keys.contains(&k)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -1329,7 +1334,8 @@ mod tests {
                 let Some(g) = kit.mutate(&c, &a, &MayChange::default(), &mut rng) else { continue };
                 legal(&c, &kit, &g);
                 if mirror {
-                    assert!(kit.symmetric(&c, &kit.open(&c, &g).unwrap()), "a mirror-locked mutant is not symmetric");
+                    let locks = &kit.roots[g.root as usize].locks;
+                    assert!(kit.symmetric(&c, &kit.open(&c, &g).unwrap(), locks), "a mirror-locked mutant is not symmetric");
                 }
                 let ed = BehaviorEditor::from_text(&c.behavior_nodes, &g.behavior).expect("a legal program");
                 assert!(ed.program().rules.len() <= slots.max(1) as usize || g.behavior == a.behavior);
@@ -1482,12 +1488,17 @@ mod tests {
         let mut kit = new_kit(&c, true);
         for id in ["rim_skiff", "automaton_raider"] {
             let g = start(&c, &mut kit, id, "raider_basic", &Locks::default());
-            assert!(kit.symmetric(&c, &kit.open(&c, &g).unwrap()), "{id}");
+            let dock = kit.open(&c, &g).unwrap();
+            assert!(kit.symmetric(&c, &dock, &kit.roots[g.root as usize].locks), "{id}");
+            // The skiff's scanner and the cargo bay across from it have no twin: its start keeps them in place.
+            let single: Vec<&str> = unmatched(&c, &dock).into_iter().map(|i| dock.parts()[i].part.as_str()).collect();
+            assert_eq!(single, if id == "rim_skiff" { vec!["cargo_bay", "scanner"] } else { vec![] }, "{id}");
         }
         // One part moved off its twin's mirror cell.
         let mut g = start(&c, &mut kit, "rim_skiff", "raider_basic", &Locks::default());
         g.blueprint.parts[0].x -= 1;
-        assert!(kit.open(&c, &g).is_none_or(|d| !kit.symmetric(&c, &d)));
+        let locks = &kit.roots[g.root as usize].locks;
+        assert!(kit.open(&c, &g).is_none_or(|d| !kit.symmetric(&c, &d, locks)));
     }
 
     #[test]

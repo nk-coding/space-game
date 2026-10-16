@@ -43,6 +43,11 @@ pub const BUILTIN_STATS: &[&str] = &[
     "cargo_capacity",
     "rule_slots",
     "control_capacity",
+    "sensor_range",
+    "scan_range",
+    "scan_charge",
+    "scan_cooldown",
+    "scan_wake",
     "mass_per_cell",
     "hp_per_cell",
     "build_point_factor",
@@ -274,6 +279,15 @@ impl Content {
         if let Some(l) = &part.logic {
             v.push(("rule_slots", l.rule_slots as f32));
             v.push(("control_capacity", l.control_capacity as f32));
+        }
+        if let Some(x) = &part.sensor {
+            v.push(("sensor_range", x.range));
+        }
+        if let Some(x) = &part.scanner {
+            v.push(("scan_range", x.range));
+            v.push(("scan_charge", x.charge));
+            v.push(("scan_cooldown", x.cooldown));
+            v.push(("scan_wake", x.wake));
         }
         if let Some(x) = &part.explosion {
             v.push(("blast_damage", x.damage));

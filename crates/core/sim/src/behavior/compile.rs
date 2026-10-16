@@ -138,13 +138,22 @@ pub enum Action {
     Hold,
     /// Keep within this distance of the leader (GDR-0065).
     Escort(Dist),
+    /// Start a scan, then step aside for the next rule (`RuleStatus::Scan`).
+    Scan,
 }
 
-/// Whether the behavior action `id` needs a target to fly: all but `hold`, and `escort` (it flies relative to the
-/// leader). Without a target such a rule steps aside and the next rule gets its turn (`RuleStatus::NoTarget`), so
-/// only an `always` rule whose action needs none ends the list; the BEHAVIOR screen marks the rules below that one.
+/// Whether the behavior action `id` needs a target to fly: all but `hold`, `escort` (it flies relative to the
+/// leader) and `scan`. Without a target such a rule steps aside and the next rule gets its turn
+/// (`RuleStatus::NoTarget`), so only an `always` rule whose action needs none and decides ([`action_decides`]) ends
+/// the list; the BEHAVIOR screen marks the rules below that one.
 pub fn action_needs_target(id: &str) -> bool {
-    !matches!(id, "hold" | "escort")
+    !matches!(id, "hold" | "escort" | "scan")
+}
+
+/// Whether the behavior action `id` decides the maneuver when its rule holds: all but `scan`, which starts a scan and
+/// lets the next rule fly the ship (`RuleStatus::Scan`).
+pub fn action_decides(id: &str) -> bool {
+    id != "scan"
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -402,6 +411,7 @@ pub(crate) fn compile(program: &Program, vocab: &Vocab) -> Result<Code, Vec<Line
             "flee" => Action::Flee,
             "hold" => Action::Hold,
             "escort" => Action::Escort(dist(args[0])),
+            "scan" => Action::Scan,
             _ => return Err(fail(line, &r.action, "no implementation in the sim")),
         };
         code.rules.push(Rule {

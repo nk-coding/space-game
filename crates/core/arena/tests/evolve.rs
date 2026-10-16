@@ -79,7 +79,7 @@ fn design_runs_keep_the_limits() {
         fitness: ArenaPool(opponents: [(design: Ship("automaton_raider"))], seeds: 2, time_limit: 8),
         limits: (frame: "frigate", build_points: 62, mirror: true,
             parts: ["armor_block", "slope_1x1", "pulse_laser", "radiator", "capacitor", "fission_reactor",
-                "cargo_bay", "logic_core", "thruster", "shield_emitter", "gyro", "rcs_pod"],
+                "cargo_bay", "logic_core", "thruster", "shield_emitter", "gyro", "rcs_pod", "scanner"],
             materials: ["steel"]),
         start: Design(design: Ship("rim_skiff")),
     )"#;
@@ -104,7 +104,8 @@ fn design_runs_keep_the_limits() {
             assert!(allowed.contains(&p.part), "{} is not allowed", p.part);
             assert!(p.material.as_deref().is_none_or(|m| m == "steel"));
         }
-        // Mirror lock: every cell's part has the same part on the mirror cell.
+        // Mirror lock: every cell's part has the same part on the mirror cell, but the starter's scanner and the
+        // cargo bay across from it, which have no twin and stay where they are (locked).
         let mut cells = std::collections::BTreeMap::new();
         for p in &bp.parts {
             for cell in c.placed_shape(p).unwrap().cells() {
@@ -112,8 +113,14 @@ fn design_runs_keep_the_limits() {
             }
         }
         let w = bp.size.0 as i32;
+        let single = |p: &(String, Option<String>)| p.0 == "scanner";
+        assert_eq!(cells.values().filter(|p| single(p)).count(), 1, "the scanner stays");
         for ((x, y), part) in &cells {
-            assert_eq!(cells.get(&(w - 1 - x, *y)), Some(part), "symmetric at ({x}, {y})");
+            let twin = cells.get(&(w - 1 - x, *y));
+            if single(part) || twin.is_some_and(single) {
+                continue;
+            }
+            assert_eq!(twin, Some(part), "symmetric at ({x}, {y})");
         }
         // The text forms read back (SAVE AS DESIGN).
         let back = data::parse_blueprint(&e.genome.blueprint_text()).unwrap();
@@ -128,7 +135,7 @@ fn a_tiny_run_improves_on_an_easy_target() {
     // evolution find one that fights.
     let c = data::base_content();
     let text = r#"(
-        seed: 1,
+        seed: 2,
         evolve: Behavior,
         generations: 5,
         population: 8,

@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 data = { path = "../data" }
+galaxy = { path = "../galaxy" }  # generated clusters' interiors become voyage plans (`VoyagePlan::roll_interior`, ADR-0042)
 # Pure-Rust transcendental functions (sin, cos, atan2, exp, ...): identical results on every platform.
 # `default-features = false` drops libm's `arch` feature here, but num-traits (through rapier) turns it back on;
 # that is harmless: `arch` only switches exactly rounded operations (sqrt, fabs, ...) to hardware instructions.

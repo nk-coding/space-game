@@ -6,7 +6,15 @@
 //!   no two sites or a site and the entry closer than the spacing's min, each within its max of an earlier one or
 //!   the entry; the goal last, the farthest from the entry of a few good spots), how many ships and wrecks each
 //!   holds, where they lie around it, each wreck's damage seed, and the compiled designs. The fleet enters at the cluster's edge
-//!   ([`VoyagePlan::entry`]).
+//!   ([`VoyagePlan::entry`]). [`VoyagePlan::roll_interior`] rolls a generated cluster's interior (`galaxy::interior`)
+//!   the same way: its trail places are signals' sites, a place with no encounter a beacon alone (a quiet site).
+//! * **Hidden sites** (galaxy plan E3, GDR-0095): a site shows ([`Site::known`], `SimEvent::SiteRevealed`) once a
+//!   player vessel has it within its sensor range (`Ship::sensor_range`; a signal's site only within
+//!   `VoyageTuning::signal_reveal`), or a player's scan sweeps over it (`SimEvent::Scanned`, within the scanner's
+//!   range). A sweep gives every hidden signal's site beyond its range a [`Bearing`] (`SimEvent::SiteBearing`) and
+//!   wakes the sleeping sites within the scanner's wake radius. The slice's goal counts as a signal's site.
+//! * **The edge**: beyond the radius plus `VoyageTuning::edge_margin` (at most [`MAX_EDGE`] from the centre, where
+//!   `f32` still holds, E0) every piece is pushed back ([`edge_force`]).
 //! * **Lazy spawning**: [`Sim::start_voyage`] hands the plan to the sim; at the end of every step a site's ships
 //!   (holding where they spawned, `Maneuver::Hold`) and wrecks (`Sim::spawn_wreck`) spawn once a vessel of the
 //!   player owner comes within `VoyageTuning::spawn_radius` of it.
@@ -23,8 +31,9 @@
 //!
 //! Everything works by owner (the player and the enemy side passed to `start_voyage`), so co-op can add more
 //! player owners later. The voyage's state is in the state hash. Cost per step: one pass over this step's events,
-//! the player's vessels, and per site one distance test per player vessel (plus, for awake sites, one look-up per
-//! ship); no allocation once warm, except the ships a site spawns.
+//! the player's vessels, and per site up to two distance tests per player vessel (plus, for awake sites, one look-up
+//! per ship, and per scan one test per site); no allocation once warm, except the ships a site spawns and a step's
+//! scans.
 
 pub mod runner;
 pub mod scenario;
@@ -55,6 +64,12 @@ pub struct VoyageTuning {
     pub spawn_radius: f32,
     /// Recall works when no armed awake enemy vessel is this close to any of the owner's vessels (m).
     pub recall_radius: f32,
+    /// A signal's site (a trail's place, a slice voyage's goal) shows when a player vessel comes this close, if
+    /// its sensors reach that far, or when a scan sweeps over it (m; the plan's 4.1, 400 m).
+    pub signal_reveal: f32,
+    /// The cluster's edge lies this far outside its radius (m, at most [`MAX_EDGE`] from the centre): beyond it
+    /// every piece is turned back (GDR-0095).
+    pub edge_margin: f32,
 }
 
 impl Default for VoyageTuning {
@@ -62,6 +77,8 @@ impl Default for VoyageTuning {
         VoyageTuning {
             spawn_radius: 600.0,
             recall_radius: 200.0,
+            signal_reveal: 400.0,
+            edge_margin: 500.0,
         }
     }
 }
@@ -70,8 +87,19 @@ impl StateHash for VoyageTuning {
     fn hash_state(&self, h: &mut StateHasher) {
         h.f32(self.spawn_radius);
         h.f32(self.recall_radius);
+        h.f32(self.signal_reveal);
+        h.f32(self.edge_margin);
     }
 }
+
+/// The edge never lies further than this from the centre (m): one `f32` space holds a cluster of about 4 km
+/// (ADR-0022, `docs/results/2026-10-16-bigger-clusters.md`).
+pub const MAX_EDGE: f32 = 4000.0;
+/// Beyond the edge a piece is pushed back towards the centre at up to this acceleration (m/s²), reached this
+/// many metres past the edge, and its outward speed is taken away within [`EDGE_BRAKE`] seconds (PLACEHOLDERS).
+pub const EDGE_PUSH: f32 = 3.0;
+pub const EDGE_DEPTH: f32 = 100.0;
+pub const EDGE_BRAKE: f32 = 2.0;
 
 /// How a site's ships and wrecks lie around it (PLACEHOLDERS): within this many metres of the site at first ...
 const SITE_SPREAD: f32 = 30.0;
@@ -106,10 +134,13 @@ pub struct Spawn {
 /// One site of a rolled voyage.
 #[derive(Clone, Debug)]
 pub struct SitePlan {
-    /// The encounter (content id).
-    pub encounter: String,
+    /// The encounter (content id); `None` for a beacon alone (a trail's place with nothing waiting there).
+    pub encounter: Option<String>,
     /// Clearing it clears the voyage.
     pub goal: bool,
+    /// A signal leads here (a trail's place; a slice voyage's goal, GDR-0095): it shows only within
+    /// `VoyageTuning::signal_reveal` or under a scan's sweep, and a scan farther away gives it a bearing.
+    pub signal: bool,
     pub pos: Vec2,
     /// From the encounter (m).
     pub wake_radius: f32,
@@ -136,11 +167,7 @@ impl VoyagePlan {
     /// designs. The same content, voyage and seed give the same plan on every platform. `Err` for content that
     /// does not validate (an unknown encounter or ship).
     pub fn roll(content: &Content, voyage: &data::Voyage, seed: u64) -> Result<VoyagePlan, String> {
-        let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM);
-        let radius = voyage.radius;
-        let entry = Vec2::new(0.0, -radius);
-
-        let mut list: Vec<(&data::Encounter, bool)> = Vec::new();
+        let mut list = Vec::new();
         for s in &voyage.sites {
             let e = content.encounters.get(&s.encounter).ok_or_else(|| {
                 format!(
@@ -148,16 +175,50 @@ impl VoyagePlan {
                     voyage.id, s.encounter
                 )
             })?;
-            list.extend((0..s.count).map(|_| (e, s.goal)));
+            // The goal is the slice's signal until the slice is pinned into the galaxy (E7; GDR-0095).
+            list.extend((0..s.count).map(|_| (Some(e), s.goal, s.goal)));
         }
+        Self::roll_sites(content, &voyage.id, voyage.radius, voyage.spacing, &list, seed)
+    }
+
+    /// Rolls a launch into a generated cluster's interior (`galaxy::interior`), named `id`: its ordinary sites and
+    /// its trail places (each a signal's site, none a goal), on the same generator as [`VoyagePlan::roll`]. `Err`
+    /// for content that does not validate.
+    pub fn roll_interior(content: &Content, id: &str, interior: &galaxy::Interior, seed: u64) -> Result<VoyagePlan, String> {
+        let list = interior
+            .sites
+            .iter()
+            .map(|s| {
+                let e = match &s.encounter {
+                    Some(e) => Some(content.encounters.get(e).ok_or_else(|| format!("cluster `{id}`: unknown encounter `{e}`"))?),
+                    None => None,
+                };
+                Ok((e, false, s.place.is_some()))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Self::roll_sites(content, id, interior.radius, interior.spacing, &list, seed)
+    }
+
+    /// The roll of both: `list` holds each site's encounter (none: a beacon alone), whether it is the goal and
+    /// whether it is a signal's site.
+    fn roll_sites(
+        content: &Content,
+        id: &str,
+        radius: f32,
+        spacing: (f32, f32),
+        list: &[(Option<&data::Encounter>, bool, bool)],
+        seed: u64,
+    ) -> Result<VoyagePlan, String> {
+        let rng = &mut Pcg32::new(splitmix64(seed ^ splitmix64(PLAN_STREAM)), PLAN_STREAM);
+        let entry = Vec2::new(0.0, -radius);
 
         // Positions: every other site first, in order, then the goal.
         let mut pos = vec![Vec2::ZERO; list.len()];
         let mut placed = vec![entry];
         for goal in [false, true] {
-            for (k, &(_, g)) in list.iter().enumerate() {
+            for (k, &(_, g, _)) in list.iter().enumerate() {
                 if g == goal {
-                    pos[k] = place_site(rng, radius, voyage.spacing, &placed, entry, goal);
+                    pos[k] = place_site(rng, radius, spacing, &placed, entry, goal);
                     placed.push(pos[k]);
                 }
             }
@@ -177,15 +238,15 @@ impl VoyagePlan {
             Ok(d)
         };
         let mut sites = Vec::with_capacity(list.len());
-        for (k, &(e, goal)) in list.iter().enumerate() {
+        for (k, &(e, goal, signal)) in list.iter().enumerate() {
             let mut ships = Vec::new();
-            for s in &e.ships {
+            for s in e.map_or(&[][..], |e| &e.ships) {
                 for _ in 0..roll_count(rng, s.count) {
                     ships.push((design(&s.ship)?, 0.0));
                 }
             }
             let mut wrecks = Vec::new();
-            for w in &e.wrecks {
+            for w in e.map_or(&[][..], |e| &e.wrecks) {
                 for _ in 0..roll_count(rng, w.count) {
                     wrecks.push((design(&w.ship)?, w.damage));
                 }
@@ -210,22 +271,39 @@ impl VoyagePlan {
             let ships = spawns(ships, None);
             let wrecks = spawns(wrecks, Some(&mut *rng));
             sites.push(SitePlan {
-                encounter: e.id.clone(),
+                encounter: e.map(|e| e.id.clone()),
                 goal,
+                signal,
                 pos: pos[k],
-                wake_radius: e.wake_radius,
+                wake_radius: e.map_or(0.0, |e| e.wake_radius),
                 ships,
                 wrecks,
             });
         }
         Ok(VoyagePlan {
-            voyage: voyage.id.clone(),
+            voyage: id.to_string(),
             seed,
             radius,
             entry: Body::at(entry, 0.0),
             sites,
         })
     }
+}
+
+/// The push that turns a piece back at a voyage's edge (GDR-0095): nothing inside `edge` (m from the centre);
+/// beyond it, towards the centre, an acceleration growing to [`EDGE_PUSH`] over [`EDGE_DEPTH`] m plus what takes
+/// its outward speed away within [`EDGE_BRAKE`] s. `com` and `vel`: the piece's centre of mass and velocity (world),
+/// `mass` its mass. Not the piece's own force, so the speed governor never cuts it.
+pub(crate) fn edge_force(com: Vec2, vel: Vec2, mass: f32, edge: f32) -> Vec2 {
+    let r2 = com.length_squared();
+    if r2 <= edge * edge {
+        return Vec2::ZERO;
+    }
+    let r = sqrt(r2);
+    let out = com * (1.0 / r);
+    let depth = ((r - edge) / EDGE_DEPTH).min(1.0);
+    let away = out.dot(vel).max(0.0);
+    out * (-mass * (EDGE_PUSH * depth + away / EDGE_BRAKE))
 }
 
 /// A count in `lo..=hi` (`hi` below `lo` counts as `lo`).
@@ -364,17 +442,29 @@ pub struct Site {
     ships: Vec<ShipId>,
     /// Its wrecks, ascending id.
     wrecks: Vec<ShipId>,
-    /// One of its ships was hit since the last pass (scratch, always false between steps).
+    /// It shows: a player vessel had it within its sensors (a signal's site: within `signal_reveal`), or a scan
+    /// swept over it. Final.
+    known: bool,
+    /// One of its ships was hit, or a scan swept close enough to wake it, since the last pass (scratch, always
+    /// false between steps).
     hit: bool,
 }
 
 impl Site {
-    /// The encounter (content id).
-    pub fn encounter(&self) -> &str {
-        &self.plan.encounter
+    /// The encounter (content id); `None` for a beacon alone.
+    pub fn encounter(&self) -> Option<&str> {
+        self.plan.encounter.as_deref()
     }
     pub fn goal(&self) -> bool {
         self.plan.goal
+    }
+    /// A signal leads here ([`SitePlan::signal`]).
+    pub fn signal(&self) -> bool {
+        self.plan.signal
+    }
+    /// Has the fleet found it ([`SimEvent::SiteRevealed`])? Until then the client shows nothing of it.
+    pub fn known(&self) -> bool {
+        self.known
     }
     pub fn pos(&self) -> Vec2 {
         self.plan.pos
@@ -400,6 +490,19 @@ impl Site {
     }
 }
 
+/// A line a scan drew towards a hidden signal's site ([`Voyage::bearings`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Bearing {
+    /// The site (an index into [`Voyage::sites`]).
+    pub site: u32,
+    /// Where the scan was taken.
+    pub from: Vec2,
+    /// Unit vector from there towards the site.
+    pub dir: Vec2,
+    /// The tick of the scan.
+    pub tick: u64,
+}
+
 /// A voyage underway ([`Sim::voyage`]).
 #[derive(Clone, Debug)]
 pub struct Voyage {
@@ -410,10 +513,12 @@ pub struct Voyage {
     player: Owner,
     enemy: Owner,
     sites: Vec<Site>,
+    /// Every bearing a scan gave, oldest first.
+    bearings: Vec<Bearing>,
     /// The site of every ship spawned for one and of the vessels split off them (derived from `sites`).
     site_of: BTreeMap<ShipId, u32>,
-    /// The player's vessel positions this pass (scratch).
-    players: Vec<Vec2>,
+    /// The player's vessel positions and sensor ranges this pass (scratch).
+    players: Vec<(Vec2, f32)>,
 }
 
 impl Voyage {
@@ -440,6 +545,15 @@ impl Voyage {
     pub fn sites(&self) -> &[Site] {
         &self.sites
     }
+    /// Every bearing a scan gave to a hidden signal's site, oldest first (one per site and scan).
+    pub fn bearings(&self) -> &[Bearing] {
+        &self.bearings
+    }
+    /// How far from the centre the cluster's edge lies for `tuning` (m): its radius plus the margin, at most
+    /// [`MAX_EDGE`].
+    pub fn edge(&self, tuning: &VoyageTuning) -> f32 {
+        (self.radius + tuning.edge_margin).min(MAX_EDGE)
+    }
     /// The site a ship belongs to (a site's ship, a vessel split off one, or a wreck), as an index into
     /// [`Voyage::sites`].
     pub fn site_of(&self, ship: ShipId) -> Option<usize> {
@@ -458,7 +572,14 @@ impl Voyage {
     }
     /// Is a player vessel within `r` of `p`?
     fn near(&self, p: Vec2, r: f32) -> bool {
-        self.players.iter().any(|&q| (q - p).length_squared() <= r * r)
+        self.players.iter().any(|&(q, _)| (q - p).length_squared() <= r * r)
+    }
+    /// Does a player vessel see `p`: within its sensor range, and within `cap` of it?
+    fn seen(&self, p: Vec2, cap: f32) -> bool {
+        self.players.iter().any(|&(q, r)| {
+            let r = r.min(cap);
+            (q - p).length_squared() <= r * r
+        })
     }
 }
 
@@ -474,8 +595,9 @@ impl StateHash for Spawn {
 impl StateHash for Site {
     fn hash_state(&self, h: &mut StateHasher) {
         let p = &self.plan;
-        h.str(&p.encounter);
+        h.str(p.encounter.as_deref().unwrap_or(""));
         h.bool(p.goal);
+        h.bool(p.signal);
         h.vec2(p.pos);
         h.f32(p.wake_radius);
         for list in [&p.ships, &p.wrecks] {
@@ -485,6 +607,7 @@ impl StateHash for Site {
             }
         }
         h.u8(self.state as u8);
+        h.bool(self.known);
         for list in [&self.ships, &self.wrecks] {
             h.u32(list.len() as u32);
             for s in list {
@@ -506,6 +629,13 @@ impl StateHash for Voyage {
         for s in &self.sites {
             s.hash_state(h);
         }
+        h.u32(self.bearings.len() as u32);
+        for b in &self.bearings {
+            h.u32(b.site);
+            h.vec2(b.from);
+            h.vec2(b.dir);
+            h.u64(b.tick);
+        }
     }
 }
 
@@ -522,6 +652,7 @@ impl Sim {
                 state: SiteState::Unspawned,
                 ships: Vec::new(),
                 wrecks: Vec::new(),
+                known: false,
                 hit: false,
             })
             .collect();
@@ -533,6 +664,7 @@ impl Sim {
             player,
             enemy,
             sites,
+            bearings: Vec::new(),
             site_of: BTreeMap::new(),
             players: Vec::new(),
         }));
@@ -608,25 +740,61 @@ impl Sim {
     }
 
     /// The director's pass at the end of a step: spawn the sites near player vessels, follow the events since the
-    /// last pass (split-off vessels join their site, hits wake it), wake sites, clear them.
+    /// last pass (split-off vessels join their site, hits wake it, the player's scans reveal sites, give bearings
+    /// and wake sites), show the sites the player's sensors reach, wake sites, clear them.
     pub(crate) fn direct_voyage(&mut self) {
         let Some(mut v) = self.voyage.take() else {
             return;
         };
-        let spawn_radius = self.config().voyage.spawn_radius;
+        let VoyageTuning { spawn_radius, signal_reveal, .. } = self.config().voyage;
         v.players.clear();
         for s in &self.ships {
             if s.team() == Some(v.player)
                 && !s.is_dormant()
                 && let Some(p) = s.control_piece().and_then(|c| s.piece(c))
             {
-                v.players.push(p.com_world());
+                v.players.push((p.com_world(), s.sensor_range()));
             }
         }
         for k in 0..v.sites.len() {
             if v.sites[k].state == SiteState::Unspawned && v.near(v.sites[k].plan.pos, spawn_radius)
             {
                 self.spawn_site(&mut v, k);
+            }
+        }
+        let reveal = |v: &mut Voyage, events: &mut Vec<SimEvent>, k: usize| {
+            if !v.sites[k].known {
+                v.sites[k].known = true;
+                events.push(SimEvent::SiteRevealed { site: k as u32 });
+            }
+        };
+        let mut found = Vec::new();
+        for e in &self.events {
+            if let &SimEvent::Scanned { ship, at, range, wake } = e
+                && self.ship(ship).is_some_and(|s| s.team() == Some(v.player))
+            {
+                found.push((at, range, wake));
+            }
+        }
+        for (at, range, wake) in found {
+            for k in 0..v.sites.len() {
+                let d = v.sites[k].plan.pos - at;
+                let d2 = d.length_squared();
+                if d2 <= range * range {
+                    reveal(&mut v, &mut self.events, k);
+                } else if v.sites[k].plan.signal && !v.sites[k].known {
+                    v.bearings.push(Bearing { site: k as u32, from: at, dir: d * (1.0 / sqrt(d2)), tick: self.tick() });
+                    self.events.push(SimEvent::SiteBearing { site: k as u32 });
+                }
+                if d2 <= wake * wake {
+                    v.sites[k].hit = true;
+                }
+            }
+        }
+        for k in 0..v.sites.len() {
+            let cap = if v.sites[k].plan.signal { signal_reveal } else { f32::INFINITY };
+            if !v.sites[k].known && v.seen(v.sites[k].plan.pos, cap) {
+                reveal(&mut v, &mut self.events, k);
             }
         }
         let mark = |v: &mut Voyage, ship: ShipId| {

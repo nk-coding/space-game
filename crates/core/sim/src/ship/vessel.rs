@@ -210,6 +210,7 @@ impl Ship {
             parked: None,
             cargo: crate::combat::salvage::Cargo::default(),
             burned_out: false,
+            scan: crate::ship::Scan::Ready,
             hull_base: 0.0,
         };
         for i in 0..self.parts.len() {

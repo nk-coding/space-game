@@ -37,7 +37,7 @@ use data::{AssistList, BehaviorNode, Content, Kind, NodeRole, ParamType, Problem
 
 pub use assist::{AssistState, AssistSwitch, Channel, StationPoint};
 pub(crate) use assist::{assist_all, assist_plan};
-pub use compile::{AimAt, action_needs_target};
+pub use compile::{AimAt, action_decides, action_needs_target};
 pub use eval::{BehaviorState, RuleStatus, Why};
 pub(crate) use eval::{Scratch, fly, guns_at_will, think_all};
 pub use script::{SCRIPT_API, ScriptFault, ShipView};
@@ -180,6 +180,7 @@ pub const BUILTIN_NODES: &[NodeSig] = {
         node("flee", Action, None, &[]),
         node("hold", Action, None, &[]),
         node("escort", Action, None, DIST),
+        node("scan", Action, None, &[]),
         pilot(
             "auto_lock",
             Action,

@@ -728,7 +728,8 @@ fn base_start() {
         })
         .sum();
     assert_eq!(s.mind_capacity + more, 4);
-    // The starter is built from the early-game kit and carries salvage home.
+    // The starter is built from the early-game kit, carries salvage home and a scanner (GDR-0093: in place of a
+    // cargo bay).
     let skiff = c.ships.get("rim_skiff").unwrap();
     for pl in &skiff.parts {
         assert!(!c.parts.get(&pl.part).unwrap().locked, "{}", pl.part);
@@ -739,6 +740,7 @@ fn base_start() {
         );
     }
     let totals = c.ship_totals(skiff);
-    assert_eq!((totals.logic_cores, totals.cargo_capacity), (2, 8.0));
+    assert_eq!((totals.logic_cores, totals.cargo_capacity), (2, 4.0));
     assert!(skiff.parts.iter().filter(|p| p.part == "gyro").count() == 2);
+    assert!(skiff.parts.iter().filter(|p| p.part == "scanner").count() == 1);
 }

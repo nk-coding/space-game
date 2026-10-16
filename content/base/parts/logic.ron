@@ -20,7 +20,26 @@
         power: (draw: 1, tier: Critical),
         heat: (output: 0.4, limit: 3),
         logic: (rule_slots: 6, control_capacity: 16), // control capacity: lead placeholder (12 Oct 2026)
+        sensor: (range: 800), // lead default, 16 Oct 2026 (GDR-0095)
         gyro: (torque: 50),
         salvage: (family: "logic", data: 3, materials: {"programmable_matter": 1}, fragment: {"programmable_matter": 1}),
+    ),
+    // The scanner (GDR-0080, GDR-0093: Niklas's numbers, placeholders). It draws its power only while a scan charges.
+    (
+        id: "scanner",
+        name: "Scanner",
+        summary: "Sweeps the cluster around the ship: sites within its range show, signals beyond it give a bearing.",
+        description: "A scan (SCAN in flight, or the [[behavior_node:scan|scan]] action of a behavior) charges for a moment, drawing power only then, and sweeps. Every site within its range shows; every signal's place beyond it gets a bearing, a line from where the scan was taken, and two lines from different spots cross at the place. The sweep is loud: sleeping enemies close by wake up. Then it cools down.",
+        tags: ["scanner"],
+        category: "logic",
+        icon: "scanner",
+        size: (1, 1),
+        build_points: 3,
+        mass: 1,
+        hp: 1,
+        power: (draw: 3, tier: Normal),
+        heat: (output: 0.4, limit: 3),
+        scanner: (range: 1200, charge: 2, cooldown: 8, wake: 300),
+        salvage: (family: "logic", data: 3),
     ),
 ]

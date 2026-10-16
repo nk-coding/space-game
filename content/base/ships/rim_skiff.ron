@@ -3,11 +3,12 @@
 // on its cores and differential thrust) and radiators on the shoulders in place of two slopes, so each reactor has
 // two venting radiators and feeds the gyros too. The shield emitters sit in row 1 with the armour blocks in the rear
 // row (16 Oct 2026, Niklas: they were in the rear row and their 2.3 m bubbles left the whole nose bare): the two
-// bubbles cover the front row, guns and slopes.
+// bubbles cover the front row, guns and slopes. The right cargo bay is a scanner (16 Oct 2026, Niklas, GDR-0093: the
+// first scanner; the hold goes from 8 to 4).
 (
     id: "rim_skiff",
     name: "Rim skiff",
-    summary: "A small steel ship from the dead shipyard: twin pulse lasers, two fission reactors and a gyro pair.",
+    summary: "A small steel ship from the dead shipyard: twin pulse lasers, two fission reactors, a gyro pair and a scanner.",
     tags: ["starter"],
     faction: "ship_mind",
     size: (8, 4),
@@ -27,7 +28,7 @@
         (part: "fission_reactor", x: 1, y: 2),
         (part: "fission_reactor", x: 6, y: 2, flip: true),
         (part: "cargo_bay", x: 2, y: 2),
-        (part: "cargo_bay", x: 5, y: 2, flip: true),
+        (part: "scanner", x: 5, y: 2),
         (part: "logic_core", x: 3, y: 2),
         (part: "logic_core", x: 4, y: 2, flip: true),
         (part: "slope_1x1", x: 0, y: 3, rot: 2, material: "steel"),
