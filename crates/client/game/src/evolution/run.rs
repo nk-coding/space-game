@@ -398,8 +398,8 @@ fn ending(end: &JobEnd, ticks: u64) -> (String, Tone) {
     }
 }
 
-/// A fight's second line: the seed, what each side lost (its build points: yours and theirs, a gauntlet's waves all
-/// counted), the damage dealt, a gauntlet's waves cleared of all.
+/// A fight's second line: the seed, a gauntlet's waves cleared of all, what each side lost (its build points: yours and
+/// theirs, a gauntlet's waves all counted), the damage you dealt.
 fn fight_detail(job: &Job, end: &JobEnd) -> String {
     let (seed, waves) = match job {
         Job::Fight { spec, .. } => (spec.seed, spec.waves.len() as u32 + 1),
@@ -407,10 +407,11 @@ fn fight_detail(job: &Job, end: &JobEnd) -> String {
     };
     match end {
         JobEnd::Fight { lost, dealt, waves: cleared, .. } => {
-            let gauntlet = if waves > 1 { format!("  ·  {cleared} OF {waves} WAVES CLEARED") } else { String::new() };
-            format!("SEED {seed}  ·  YOU LOST {:.0} BP  ·  THEY LOST {:.0} BP  ·  YOU DEALT {:.0} DAMAGE{gauntlet}", lost[0], lost[1], dealt[0])
+            // A gauntlet's waves first: its row's first line clips its opponent's waves.
+            let gauntlet = if waves > 1 { format!(" · {cleared} OF {waves} WAVES CLEARED") } else { String::new() };
+            format!("SEED {seed}{gauntlet} · YOU LOST {:.0} BP · THEY LOST {:.0} BP · DEALT {:.0}", lost[0], lost[1], dealt[0])
         }
-        JobEnd::Voyage { .. } => format!("SEED {seed}  ·  FLOWN HEADLESS FROM ENTRY TO HOME"),
+        JobEnd::Voyage { .. } => format!("SEED {seed} · FLOWN HEADLESS FROM ENTRY TO HOME"),
         JobEnd::Failed => format!("SEED {seed}"),
     }
 }
@@ -607,7 +608,13 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
             match &record {
                 Some((generation, _, rec)) => {
                     t.spawn(number(fonts, &score(Some(rec.score)), 22.0, c(Tone::Gold, 1.0)));
-                    t.spawn(label(fonts, &format!("GENERATION {generation}  ·  #{g}"), 8.5, c(Tone::Label, 1.0)));
+                    // Scored last by a RE-SCORE: say so, and when it was bred.
+                    let rescored = run.state().history.get(*generation as usize).is_some_and(|h| h.rescore);
+                    let when = match (rescored, run.table().get(g as usize)) {
+                        (true, Some(b)) => format!("RE-SCORED  ·  BRED IN G{}  ·  #{g}", b.generation),
+                        _ => format!("GENERATION {generation}  ·  #{g}"),
+                    };
+                    t.spawn(label(fonts, &when, 8.5, c(Tone::Label, 1.0)));
                     let axes = &run.archive().shape().axes;
                     for (a, v) in axes.iter().zip(&rec.measures) {
                         let (name, unit) = measure_words(content, a.measure);
@@ -619,16 +626,17 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
                 }
             }
             t.spawn(tracked(fonts, &format!("FROM {from}"), 7.5, c(Tone::Teal, 1.0), 0.15));
+            if !page.saving {
+                t.spawn(Node { margin: UiRect::top(px(2)), ..row(0.0) }).with_children(|b| {
+                    spawn_pill(b, fonts, "SAVE AS DESIGN", 8.0, 24.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::SaveAs));
+                });
+            }
         });
     });
     // The tabs.
     p.spawn(row(8.0)).with_children(|r| {
         for (t, words) in [(Tab::Scores, "SCORES"), (Tab::Fights, "FIGHTS"), (Tab::Lineage, "LINEAGE"), (Tab::Compare, "COMPARE")] {
             spawn_pill(r, fonts, words, 8.5, 26.0, None, Pill { active: page.tab == t, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::Tab(t)));
-        }
-        r.spawn(Node { flex_grow: 1.0, ..default() });
-        if !page.saving {
-            spawn_pill(r, fonts, "SAVE AS DESIGN", 8.5, 26.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::SaveAs));
         }
     });
     let rows_h = if page.saving { 300.0 } else { 340.0 };
@@ -662,19 +670,25 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
     for (k, ((t, job), jr)) in jobs.iter().zip(&rec.jobs).enumerate() {
         let (words, tone) = ending(&jr.end, jr.ticks);
         let trial = trials.get(*t as usize).map_or_else(String::new, |t| trial_name(content, t));
-        // The same columns for every fight: how it ended and when, its score, then what it was (clipped short of the
-        // buttons), and the buttons.
-        p.spawn((Node { height: px(36), flex_shrink: 0.0, border: UiRect::bottom(px(1)), ..row(8.0) }, BorderColor::all(c(Tone::Dim, 0.25)))).with_children(|r| {
-            r.spawn((label(fonts, &words, 8.0, c(tone, 1.0)), TextLayout::no_wrap(), Node { width: px(FIGHT_END_W), flex_shrink: 0.0, ..default() }));
-            r.spawn((number(fonts, &format!("{:.2}", jr.score), 12.0, c(Tone::Number, 1.0)), Node { width: px(FIGHT_SCORE_W), flex_shrink: 0.0, ..default() }));
-            r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
-                t.spawn((tracked(fonts, &format!("{trial}  ·  {}", opponent(content, job)), 7.0, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
-                t.spawn((tracked(fonts, &fight_detail(job, &jr.end), 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
+        // The same columns for every fight: how it ended and when, its score, then what it was; under them the seed
+        // and the losses, and the buttons. Each text takes the room left of what follows it and clips there.
+        p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(2), flex_shrink: 0.0, padding: UiRect::vertical(px(3)), border: UiRect::bottom(px(1)), ..default() }, BorderColor::all(c(Tone::Dim, 0.25)))).with_children(|f| {
+            f.spawn(Node { height: px(18), ..row(8.0) }).with_children(|r| {
+                r.spawn((label(fonts, &words, 8.0, c(tone, 1.0)), TextLayout::no_wrap(), Node { width: px(FIGHT_END_W), flex_shrink: 0.0, ..default() }));
+                r.spawn((number(fonts, &format!("{:.2}", jr.score), 12.0, c(Tone::Number, 1.0)), Node { width: px(FIGHT_SCORE_W), flex_shrink: 0.0, ..default() }));
+                r.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+                    t.spawn((tracked(fonts, &format!("{trial}  ·  {}", opponent(content, job)), 7.0, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
+                });
             });
-            if matches!(jr.end, JobEnd::Fight { .. }) {
-                spawn_pill(r, fonts, "CODE", 7.5, 24.0, None, Pill::new(Tone::Label), (LabButton::Run(RunButton::Code(generation, child, k)), kit::ui_kit::Tip::new("COPY FIGHT CODE")));
-                spawn_pill(r, fonts, "WATCH", 8.0, 24.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::Watch(generation, child, k)));
-            }
+            f.spawn(Node { height: px(22), ..row(6.0) }).with_children(|r| {
+                r.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), margin: UiRect::left(px(FIGHT_END_W + 8.0)), ..default() }).with_children(|t| {
+                    t.spawn((tracked(fonts, &fight_detail(job, &jr.end), 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
+                });
+                if matches!(jr.end, JobEnd::Fight { .. }) {
+                    spawn_pill(r, fonts, "CODE", 7.0, 20.0, None, Pill::new(Tone::Label), (LabButton::Run(RunButton::Code(generation, child, k)), kit::ui_kit::Tip::new("COPY FIGHT CODE")));
+                    spawn_pill(r, fonts, "WATCH", 7.5, 20.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::Watch(generation, child, k)));
+                }
+            });
         });
     }
 }
@@ -728,9 +742,9 @@ fn scores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
     // VALIDATE: its result, or the buttons (one validation at a time, in the run's place).
     let validated = l.run.validated(g);
     if let Some(v) = validated {
-        let words = format!("VALIDATED {:.2} ON {} NEW SEEDS  ·  {} OF {} RECORDED FIGHTS AS RECORDED", v.score, v.seeds, v.as_recorded.0, v.as_recorded.1);
         let tone = if v.as_recorded.0 == v.as_recorded.1 { Tone::Teal } else { Tone::Coral };
-        p.spawn((label(fonts, &words, 7.5, c(tone, 1.0)), TextLayout::no_wrap(), Node { margin: UiRect::top(px(8)), ..default() }));
+        p.spawn((label(fonts, &format!("VALIDATED {:.2} ON {} NEW SEEDS", v.score, v.seeds), 8.0, c(Tone::Gold, 1.0)), TextLayout::no_wrap(), Node { margin: UiRect::top(px(8)), ..default() }));
+        p.spawn((label(fonts, &format!("{} OF {} RECORDED FIGHTS END AS RECORDED", v.as_recorded.0, v.as_recorded.1), 7.0, c(tone, 1.0)), TextLayout::no_wrap()));
     }
     p.spawn(Node { margin: UiRect::top(px(8)), ..row(8.0) }).with_children(|r| match lab.validating() {
         Some((id, done, genomes)) => {
@@ -784,7 +798,8 @@ fn lineage(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
         ))
         .with_children(|r| {
             r.spawn((UiIcon::Ship(Box::new(genome.blueprint.clone())), Node { width: px(54), height: px(40), flex_shrink: 0.0, ..default() }));
-            r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), min_width: px(0), ..default() }).with_children(|t| {
+            // The words take the rest of the row and clip there (a long list of changes).
+            r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
                 let head = scored.map_or_else(|| format!("#{id}"), |(generation, s)| format!("G{generation}  ·  {}  ·  #{id}", score(Some(s))));
                 t.spawn(label(fonts, &head, 8.0, c(Tone::Number, 1.0)));
                 let what = if behavior { format!("{what}  ·  BEHAVIOR CHANGED") } else { what };
@@ -973,7 +988,7 @@ mod tests {
         let draw = JobEnd::Fight { outcome: Outcome::TimeLimit, lost: [1.0, 3.0], dealt: [5.0, 1.0], left: [1, 1], hash: 0, decided: 0, waves: 0 };
         assert_eq!(ending(&draw, 30 * 60).0, "DRAW 1:00");
         let job = Job::Fight { candidate: 0, spec: world::arena::FightSpec::new(4, vec![world::arena::Entry::ship("rim_skiff")], vec![world::arena::Entry::ship("automaton_raider")]) };
-        assert_eq!(fight_detail(&job, &lost), "SEED 4  ·  YOU LOST 242 BP  ·  THEY LOST 2 BP  ·  YOU DEALT 40 DAMAGE");
+        assert_eq!(fight_detail(&job, &lost), "SEED 4 · YOU LOST 242 BP · THEY LOST 2 BP · DEALT 40");
         assert_eq!(opponent(&content, &job), "AUTOMATON RAIDER");
         assert_eq!((duration(40.0), duration(200.0), duration(4800.0)), ("40 S".into(), "4 MIN".into(), "1 H 20 MIN".into()));
     }

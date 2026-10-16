@@ -57,7 +57,7 @@ const LIST_ROW: f32 = 30.0;
 const TRIALS_TOP: f32 = 336.0;
 const TRIALS_H: f32 = 164.0;
 const TRIAL_ROW: f32 = 26.0;
-const TRIAL_COLUMNS: [f32; 4] = [188.0, 96.0, 96.0, 104.0];
+const TRIAL_COLUMNS: [f32; 4] = [178.0, 84.0, 84.0, 118.0];
 /// The steppers' steps and bounds (PLACEHOLDER, like the presets).
 const BP_STEP: f32 = 5.0;
 const POPULATION: (u32, u32, u32) = (4, 4, 256);
@@ -258,7 +258,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     list(p, Section::Trials, Vec2::new(rx, TRIALS_TOP), rw, TRIALS_H);
     head(p, Vec2::new(rx, TRIALS_TOP + TRIALS_H + 8.0), "GOALS  ·  WHAT A SCORE WEIGHS");
     section(p, Section::Goals, Vec2::new(rx, TRIALS_TOP + TRIALS_H + 24.0), Vec2::new(rw, 58.0));
-    section(p, Section::Estimate, Vec2::new(rx, TRIALS_TOP + TRIALS_H + 90.0), Vec2::new(rw, 18.0));
+    p.spawn((Section::Estimate, Node { overflow: Overflow::clip(), ..abs(Vec2::new(rx, TRIALS_TOP + TRIALS_H + 90.0), Some(Vec2::new(rw, 18.0))) }));
     p.spawn(Node { ..abs(Vec2::new(rx, 618.0), Some(Vec2::new(rw, 58.0))) }).with_children(|n| {
         n.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|col| {
             col.spawn(label(fonts, "NAME", 9.0, c(Tone::Dim, 1.0)));
@@ -560,6 +560,15 @@ fn stepper(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32
     });
 }
 
+/// A small − / value / + stepper, for the trials' rows.
+fn small_stepper(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, value: &str, less: SetupButton, more: SetupButton) {
+    p.spawn(row(4.0)).with_children(|r| {
+        r.spawn((ring_node(20.0), LabButton::Setup(less))).with_child(ring_glyph(Glyph::Minus, 8.0));
+        r.spawn((number(fonts, value, 12.5, c(Tone::Number, 1.0)), Node { min_width: px(26), justify_content: JustifyContent::Center, ..default() }, TextLayout::justify(bevy::text::Justify::Center)));
+        r.spawn((ring_node(20.0), LabButton::Setup(more))).with_child(ring_glyph(Glyph::Plus, 8.0));
+    });
+}
+
 /// A row of a list one picks from: its name and the line under it, lit while picked.
 fn pick_row(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, name: &str, sub: &str, picked: bool, b: SetupButton) {
     p.spawn((
@@ -750,8 +759,11 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
     let s = &page.setup;
     let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..row(4.0) };
     p.spawn(Node { height: px(14), flex_shrink: 0.0, ..row(0.0) }).with_children(|h| {
+        // Each word centred over its column's stepper (74 px: two rings and the value).
         for (word, w) in ["", "WEIGHT", "SEEDS", ""].into_iter().zip(TRIAL_COLUMNS) {
-            h.spawn((tracked(fonts, word, 6.5, c(Tone::Dim, 1.0), 0.15), Node { padding: UiRect::left(px(26)), ..cell(w) }));
+            h.spawn(cell(w)).with_children(|n| {
+                n.spawn((tracked(fonts, word, 6.5, c(Tone::Dim, 1.0), 0.15), TextLayout::justify(bevy::text::Justify::Center), Node { width: px(74), ..default() }));
+            });
         }
     });
     for (k, t) in s.trials.iter().enumerate() {
@@ -764,10 +776,10 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
                 spawn_pill(n, fonts, &preset.name.to_uppercase(), 7.5, 22.0, None, pill, LabButton::Setup(SetupButton::Trial(k)));
             });
             r.spawn(cell(TRIAL_COLUMNS[1])).with_children(|n| {
-                stepper(n, fonts, c, &weight(t.weight), SetupButton::Weight(k, -1), SetupButton::Weight(k, 1));
+                small_stepper(n, fonts, c, &weight(t.weight), SetupButton::Weight(k, -1), SetupButton::Weight(k, 1));
             });
             r.spawn(cell(TRIAL_COLUMNS[2])).with_children(|n| {
-                stepper(n, fonts, c, &t.seeds.to_string(), SetupButton::TrialSeeds(k, -1), SetupButton::TrialSeeds(k, 1));
+                small_stepper(n, fonts, c, &t.seeds.to_string(), SetupButton::TrialSeeds(k, -1), SetupButton::TrialSeeds(k, 1));
             });
             r.spawn(cell(TRIAL_COLUMNS[3])).with_children(|n| {
                 if let Some(count) = t.count {
@@ -775,8 +787,8 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
                         data::TrialPresetKind::Waves { .. } => "WAVES",
                         _ => "BEST",
                     };
-                    n.spawn(tracked(fonts, what, 6.5, c(Tone::Dim, 1.0), 0.15));
-                    stepper(n, fonts, c, &count.to_string(), SetupButton::Count(k, -1), SetupButton::Count(k, 1));
+                    n.spawn((tracked(fonts, what, 6.5, c(Tone::Dim, 1.0), 0.15), Node { width: px(36), flex_shrink: 0.0, ..default() }));
+                    small_stepper(n, fonts, c, &count.to_string(), SetupButton::Count(k, -1), SetupButton::Count(k, 1));
                 }
             });
             let (note, tone) = match (blocked, t.on, t.weight > 0.0) {
@@ -785,7 +797,10 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
                 (None, true, false) => ("WEIGHS 0: NOT FOUGHT".to_string(), Tone::Dim),
                 (None, true, true) => (format!("{jobs} {}", if jobs == 1 { "FIGHT" } else { "FIGHTS" }), Tone::Label),
             };
-            r.spawn((tracked(fonts, &note, 7.0, c(tone, 1.0), 0.15), TextLayout::no_wrap(), Node { flex_grow: 1.0, min_width: px(0), overflow: Overflow::clip(), justify_content: JustifyContent::FlexEnd, ..default() }));
+            // The note at the row's right end, clipped short of the count before it.
+            r.spawn(Node { flex_grow: 1.0, min_width: px(0), overflow: Overflow::clip(), justify_content: JustifyContent::FlexEnd, ..default() }).with_children(|n| {
+                n.spawn((tracked(fonts, &note, 7.0, c(tone, 1.0), 0.15), TextLayout::no_wrap()));
+            });
         });
         if t.on && !t.ships.is_empty() {
             for (j, (id, n)) in t.ships.iter().enumerate() {
@@ -793,7 +808,7 @@ fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
                 p.spawn(Node { height: px(TRIAL_ROW), flex_shrink: 0.0, padding: UiRect::left(px(26)), ..row(0.0) }).with_children(|r| {
                     r.spawn((tracked(fonts, &name, 7.0, c(if *n > 0 { Tone::Number } else { Tone::Dim }, 1.0), 0.15), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cell(TRIAL_COLUMNS[0] - 26.0) }));
                     r.spawn(cell(TRIAL_COLUMNS[1])).with_children(|c2| {
-                        stepper(c2, fonts, c, &n.to_string(), SetupButton::Ship(k, j, -1), SetupButton::Ship(k, j, 1));
+                        small_stepper(c2, fonts, c, &n.to_string(), SetupButton::Ship(k, j, -1), SetupButton::Ship(k, j, 1));
                     });
                     let note = if *n == 0 { "NOT FOUGHT".to_string() } else { format!("{n} IN A FIGHT") };
                     r.spawn((tracked(fonts, &note, 7.0, c(Tone::Dim, 1.0), 0.15), TextLayout::no_wrap()));
@@ -824,7 +839,7 @@ fn goals(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
 fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage, lab: &world::evolution::Lab) {
     let s = &page.setup;
     let (jobs, _) = s.per_child(content, &page.sources);
-    let fights = format!("{jobs} FIGHTS A CHILD  ·  {} A GENERATION", jobs * s.size.population);
+    let fights = format!("{jobs} FIGHTS A CHILD, {} A GENERATION", jobs * s.size.population);
     // With the layer open the run has its larger budget: ticks per second from the measured cost per tick at 60
     // frames a second (an estimate until the first run measured this device).
     let per_second = world::evolution::BUDGET_OPEN_MS * 60.0 * 1000.0 / lab.rate.us_per_tick.max(0.01);
@@ -835,8 +850,8 @@ fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f3
         m => format!("ABOUT {:.1} H", m / 60.0),
     };
     let measured = if lab.rate.measured { "MEASURED" } else { "ESTIMATED" };
-    let line = format!("THE RUN  ·  {fights}  ·  {time} WITH THIS LAYER OPEN ({measured})");
-    p.spawn((label(fonts, &line, 8.0, c(if jobs == 0 { Tone::Coral } else { Tone::Label }, 1.0)), TextLayout::no_wrap()));
+    let line = format!("THE RUN  ·  {fights}  ·  {time}, THE LAYER OPEN ({measured})");
+    p.spawn((label(fonts, &line, 7.5, c(if jobs == 0 { Tone::Coral } else { Tone::Label }, 1.0)), TextLayout::no_wrap()));
 }
 
 #[cfg(test)]
