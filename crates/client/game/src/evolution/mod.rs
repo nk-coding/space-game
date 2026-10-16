@@ -12,15 +12,16 @@
 //! * The building above the mind (E, a click, or EVOLVE THIS DESIGN in the drydock's ⋯ menu, which opens the setup
 //!   with the working design as its start) opens it; the ring top left, CLOSE and Esc go back a page, and close it
 //!   from RUNS. It is a layer over home, like FLEET and the LOG.
-//! * **RUNS** ([`runs`]): every run, newest first, with OPEN, PAUSE / RESUME and DELETE (asked in the row first).
+//! * **RUNS** ([`runs`]): every run, newest first, with OPEN, PAUSE / RESUME, DUPLICATE and DELETE (asked in the row
+//!   first); IMPORT RUN reads a CLI run file (web: a file chooser; desktop: drop it onto the window).
 //! * **SETUP** ([`setup`]): one to four starts from YOUR DESIGNS and the templates, their locks (whole parts, KEEP
 //!   ALL of a category, rules, the target line, LOCK ORDER), the career's limits (build points, the hold,
-//!   voyage-ready, mirror; only the unlocked parts), what may change, the ENEMY SHIPS trial and the run's hall of
-//!   fame, the size, the seed, the name; START RUN.
+//!   voyage-ready, mirror; only the unlocked parts), what may change, the trials (`lab.ron`'s presets with weights and
+//!   seeds) and the goals, the size, the seed, the name, the estimate; START RUN.
 //! * **THE RUN** ([`run`]): its progress (generation n of N and the open one, the measured fights per second and
 //!   the time left, start → best), PAUSE / RESUME, the scores by generation, the archive as ship cards, and the
-//!   picked design: its fights with WATCH (the fight viewer; M brings the lab back), its lineage, a comparison with
-//!   its start, SAVE AS DESIGN.
+//!   picked design: its scores by trial and goal with VALIDATE, its fights with WATCH (the fight viewer; M brings the
+//!   lab back), its lineage, a comparison with its start, SAVE AS DESIGN; RENAME, and RE-SCORE for a stale run.
 //! * The building's label says what the lab does ([`building_line`]); its look follows [`light`].
 //!
 //! UI words are chrome in code, like FLEET's and the LOG's; names come from content and the player's designs. The
@@ -37,7 +38,7 @@ use kit::clipboard::Clipboard;
 use kit::style::{Style, ui_color};
 use kit::ui_icons::{Glyph, UiIcon};
 use kit::ui_kit::{Edge, HudFonts, Pill, ScreenFx, ScreenPart, TextField, Tip, Tone, UiClick, UiInputSet, UiStyleSet, label, prose, ring_node, set_color, set_text, show_screen, spawn_pill};
-use world::career::{EscortDesigns, Granted};
+use world::career::{EscortDesigns, Granted, PlayerCareer};
 use world::evolution::Lab;
 use world::mode::AppMode;
 use world::player::PlayerDesign;
@@ -45,7 +46,7 @@ use world::player::behaviors::PlayerBehaviors;
 use world::replay::Replay;
 use world::scene::Scene;
 use world::sim_bridge::GameContent;
-use world::storage::Storage;
+use world::storage::{Storage, now_unix};
 
 use crate::home::HomeAction;
 use crate::shipyard::draw::Evo;
@@ -160,8 +161,11 @@ enum LayerText {
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum TopPill {
     NewRun,
+    Import,
     Pause,
     Resume,
+    Rescore,
+    Rename,
 }
 
 /// What a click on a widget of the layer does.
@@ -176,6 +180,8 @@ pub(crate) enum LabButton {
     Resume(String),
     Delete(String),
     ConfirmDelete(String),
+    Duplicate(String),
+    Import,
     KeepRun,
     Setup(setup::SetupButton),
     Run(run::RunButton),
@@ -191,6 +197,7 @@ pub(crate) struct Ctx<'w> {
     behaviors: ResMut<'w, PlayerBehaviors>,
     granted: Res<'w, Granted>,
     escorts: Res<'w, EscortDesigns>,
+    career: Res<'w, PlayerCareer>,
     scene: ResMut<'w, Scene>,
     replay: ResMut<'w, Replay>,
     next: ResMut<'w, NextState<AppMode>>,
@@ -210,13 +217,14 @@ impl Plugin for EvolutionPlugin {
             .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<EvolutionLayer>)))
             .add_systems(
                 Update,
-                (open, input, (runs::fill, setup::fill, run::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
+                (open, input, runs::imported, (runs::fill, setup::fill, run::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
             );
     }
 }
 
 /// The building (E, a click; EVOLVE THIS DESIGN and coming back from WATCH send the same): open on RUNS, on the
 /// setup with the drydock's design as its start, or where it was when a fight was watched.
+#[allow(clippy::too_many_arguments)]
 fn open(
     mut actions: MessageReader<HomeAction>,
     mut layer: ResMut<EvolutionLayer>,
@@ -225,6 +233,7 @@ fn open(
     content: Res<GameContent>,
     behaviors: Res<PlayerBehaviors>,
     design: Res<PlayerDesign>,
+    career: Res<PlayerCareer>,
 ) {
     if !actions.read().any(|a| *a == HomeAction::Evolution) {
         return;
@@ -238,7 +247,7 @@ fn open(
     }
     match lab.request.take() {
         Some(start) => {
-            layer.setup = Some(SetupPage::new(&content.0, &storage, &behaviors, &design, vec![start]));
+            layer.setup = Some(SetupPage::new(&content.0, &storage, &behaviors, &design, career.career(), &lab, vec![start]));
             layer.go(Page::Setup);
         }
         None => layer.go(Page::Runs),
@@ -279,7 +288,7 @@ fn input(
             },
             LabButton::NewRun => {
                 let start = world::evolution::StartPick::Working;
-                layer.setup = Some(SetupPage::new(&ctx.content.0, &ctx.storage, &ctx.behaviors, &ctx.design, vec![start]));
+                layer.setup = Some(SetupPage::new(&ctx.content.0, &ctx.storage, &ctx.behaviors, &ctx.design, ctx.career.career(), &ctx.lab, vec![start]));
                 layer.say = None;
                 layer.go(Page::Setup);
             }
@@ -292,6 +301,15 @@ fn input(
                 Err(e) => layer.say(format!("{id} doesn't open: {e}"), Tone::Coral),
             },
             LabButton::Pause(id) => runs::status(&mut layer, &mut ctx, &id, RunStatus::Paused),
+            LabButton::Duplicate(id) => match ctx.lab.duplicate(&mut ctx.storage, &ctx.content.0, &id, now_unix()) {
+                Ok(new) => {
+                    let name = ctx.lab.entry(&new).map_or_else(|| new.clone(), |e| e.name.clone());
+                    layer.say(format!("{name} computes: the same setup with a new seed"), Tone::Teal);
+                    layer.dirty = true;
+                }
+                Err(e) => layer.say(format!("not duplicated: {e}"), Tone::Coral),
+            },
+            LabButton::Import => runs::import(&mut layer),
             LabButton::Resume(id) => runs::status(&mut layer, &mut ctx, &id, RunStatus::Running),
             LabButton::Delete(id) => {
                 layer.confirm = Some(id);
@@ -362,9 +380,11 @@ fn sync(
     let can_resume = viewed.is_some_and(|l| l.status == RunStatus::Paused && !l.run.finished() && !l.run.stale());
     for (p, mut node) in &mut pills {
         let on = match p {
-            TopPill::NewRun => layer.page == Page::Runs,
+            TopPill::NewRun | TopPill::Import => layer.page == Page::Runs,
             TopPill::Pause => layer.page == Page::Run && computes,
             TopPill::Resume => layer.page == Page::Run && can_resume,
+            TopPill::Rescore => layer.page == Page::Run && viewed.is_some_and(|l| l.run.stale()),
+            TopPill::Rename => layer.page == Page::Run && viewed.is_some(),
         };
         let d = if on { Display::Flex } else { Display::None };
         if node.display != d {
@@ -442,8 +462,14 @@ fn spawn(mut commands: Commands, fonts: Res<HudFonts>, style: Res<Style>) {
                     // Top right: the page's pill, CLOSE.
                     stage.spawn((ScreenPart::new(Edge::Top, 0), Node { position_type: PositionType::Absolute, right: px(20), top: px(19), ..row(10.0) })).with_children(|tr| {
                         let primary = Pill { primary: true, ..Pill::new(Tone::Teal) };
+                        let import = spawn_pill(tr, fonts, "IMPORT RUN", 9.5, 30.0, None, Pill::new(Tone::Teal), (LabButton::Import, Tip::new("A RUN FILE OF THE CLI: ARENA EVOLVE --SAVE")));
+                        tr.commands().entity(import).insert(TopPill::Import);
                         let new_run = spawn_pill(tr, fonts, "NEW RUN", 9.5, 30.0, None, primary, (LabButton::NewRun, Tip::new("SET UP A NEW RUN")));
                         tr.commands().entity(new_run).insert(TopPill::NewRun);
+                        let rename = spawn_pill(tr, fonts, "RENAME", 9.5, 30.0, None, Pill::new(Tone::Teal), LabButton::Run(run::RunButton::Rename));
+                        tr.commands().entity(rename).insert(TopPill::Rename);
+                        let rescore = spawn_pill(tr, fonts, "RE-SCORE", 9.5, 30.0, None, primary, (LabButton::Run(run::RunButton::Rescore), Tip::new("A NEW RUN UNDER TODAY'S RULES")));
+                        tr.commands().entity(rescore).insert(TopPill::Rescore);
                         let pause = spawn_pill(tr, fonts, "PAUSE", 9.5, 30.0, None, Pill::new(Tone::Gold), LabButton::Run(run::RunButton::Pause));
                         tr.commands().entity(pause).insert(TopPill::Pause);
                         let resume = spawn_pill(tr, fonts, "RESUME", 9.5, 30.0, None, primary, LabButton::Run(run::RunButton::Resume));

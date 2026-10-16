@@ -265,7 +265,8 @@ pub fn write_export(file_name: &str, text: &str) -> Result<String, String> {
     Ok(format!("written to {}", path.display()))
 }
 
-/// Opens the browser's file chooser; the file's text arrives through [`take_picked`].
+/// Opens the browser's file chooser (for a file of at most `max` bytes, else `too_large` is its error); the file's text
+/// arrives through [`take_picked`]. The drydock imports designs with it, the evolution lab run files.
 #[cfg(target_arch = "wasm32")]
 pub use web::{pick_file, take_picked};
 
@@ -277,8 +278,10 @@ mod web {
     use wasm_bindgen::closure::Closure;
 
     thread_local! {
-        /// The file input (made once) and the files read from it: (name, text or why not).
+        /// The file input (made once), the largest file it reads now and why a larger one is refused, and the files
+        /// read from it: (name, text or why not).
         static INPUT: RefCell<Option<web_sys::HtmlInputElement>> = const { RefCell::new(None) };
+        static LIMIT: RefCell<(usize, String)> = const { RefCell::new((0, String::new())) };
         static PICKED: RefCell<Vec<(String, Result<String, String>)>> = const { RefCell::new(Vec::new()) };
     }
 
@@ -299,8 +302,9 @@ mod web {
         web_sys::Url::revoke_object_url(&url).map_err(js)
     }
 
-    /// Opens the file chooser for `.ron` files.
-    pub fn pick_file() -> Result<(), String> {
+    /// Opens the file chooser for `.ron` files of at most `max` bytes.
+    pub fn pick_file(max: usize, too_large: String) -> Result<(), String> {
+        LIMIT.with_borrow_mut(|l| *l = (max, too_large));
         INPUT.with_borrow_mut(|input| {
             if input.is_none() {
                 *input = Some(make_input()?);
@@ -328,8 +332,9 @@ mod web {
             let Some(input) = e.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) else { return };
             let Some(file) = input.files().and_then(|f| f.get(0)) else { return };
             let name = file.name();
-            if file.size() > super::MAX_TEXT as f64 {
-                PICKED.with_borrow_mut(|p| p.push((name, Err(super::ShareError::TooLarge.to_string()))));
+            let (max, too_large) = LIMIT.with_borrow(|l| l.clone());
+            if file.size() > max as f64 {
+                PICKED.with_borrow_mut(|p| p.push((name, Err(too_large))));
                 return;
             }
             let Ok(reader) = web_sys::FileReader::new() else { return };

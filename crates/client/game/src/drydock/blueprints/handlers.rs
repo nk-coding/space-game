@@ -318,7 +318,7 @@ pub(super) fn press(b: ShelfButton, shelf: &mut Shelf, lib: &mut Lib, content: &
         ShelfButton::ImportFile => {
             #[cfg(target_arch = "wasm32")]
             {
-                if let Err(e) = share::pick_file() {
+                if let Err(e) = share::pick_file(share::MAX_TEXT, share::ShareError::TooLarge.to_string()) {
                     shelf.say(format!("no file chooser: {e}"), Tone::Coral);
                 }
             }

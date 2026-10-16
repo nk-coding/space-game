@@ -1,5 +1,7 @@
 //! RUNS: every run of the lab, newest first: its name and starts, its status, how far it is, its start's score and
-//! its best, when it was made; OPEN, PAUSE or RESUME, and DELETE, which asks in the row first.
+//! its best, when it was made; OPEN, PAUSE or RESUME, DUPLICATE (the same setup, a new seed) and DELETE, which asks in
+//! the row first. IMPORT RUN (the top right) reads a CLI run file: on the web through the file chooser, on desktop
+//! dropped onto the window while the layer is open.
 //!
 //! ```text
 //! RUNS  ·  2 OF 8  ·  ONE COMPUTES AT A TIME
@@ -13,7 +15,7 @@ use kit::style::{Style, ui_color};
 use kit::ui_kit::{HudFonts, Hot, Pill, Tone, label, number, prose, spawn_pill, tracked};
 use world::evolution::{Lab, MAX_RUNS, RunEntry};
 use world::player::library::ago;
-use world::storage::now_unix;
+use world::storage::{Storage, now_unix};
 
 use super::{Ctx, EvolutionLayer, LabButton, Page, abs, column, row, score};
 
@@ -136,6 +138,7 @@ pub(super) fn fill(mut commands: Commands, mut layer: ResMut<EvolutionLayer>, la
                         spawn_pill(b, fonts, "RESUME", 8.5, 26.0, None, Pill::new(Tone::Teal), LabButton::Resume(e.id.clone()));
                     }
                     if e.problem.is_none() {
+                        spawn_pill(b, fonts, "DUPLICATE", 8.5, 26.0, None, Pill::new(Tone::Teal), (LabButton::Duplicate(e.id.clone()), kit::ui_kit::Tip::new("THE SAME SETUP, A NEW SEED")));
                         spawn_pill(b, fonts, "OPEN", 8.5, 26.0, None, Pill::new(Tone::Teal), LabButton::Open(e.id.clone()));
                     }
                     spawn_pill(b, fonts, "DELETE", 8.5, 26.0, None, Pill::new(Tone::Coral), LabButton::Delete(e.id.clone()));
@@ -147,3 +150,63 @@ pub(super) fn fill(mut commands: Commands, mut layer: ResMut<EvolutionLayer>, la
         }
     });
 }
+
+/// The largest run file IMPORT RUN reads (the arena's bound on a run file's text).
+const MAX_RUN_FILE: usize = world::arena::evolve::MAX_SAVE_PACKED * 2;
+
+/// IMPORT RUN: the web's file chooser opens (the file comes in through [`imported`]); on desktop a run file dropped
+/// onto the window is read.
+pub(super) fn import(layer: &mut EvolutionLayer) {
+    #[cfg(target_arch = "wasm32")]
+    match crate::drydock::share::pick_file(MAX_RUN_FILE, format!("that file is too large for a run (over {} MB)", MAX_RUN_FILE >> 20)) {
+        Ok(()) => layer.say("pick a run file  ·  arena evolve --save writes them", Tone::Teal),
+        Err(e) => layer.say(format!("no file chooser: {e}"), Tone::Coral),
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    layer.say("drop a run file onto the window  ·  arena evolve --save writes them", Tone::Teal);
+}
+
+/// Run files that came in (the web's file chooser, a file dropped onto the window on desktop) go into the lab, paused;
+/// the list shows them first.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn imported(
+    mut layer: ResMut<EvolutionLayer>,
+    mut lab: ResMut<Lab>,
+    mut storage: ResMut<Storage>,
+    content: Res<world::sim_bridge::GameContent>,
+    #[cfg(not(target_arch = "wasm32"))] mut drops: MessageReader<bevy::window::FileDragAndDrop>,
+) {
+    #[cfg(target_arch = "wasm32")]
+    let files = crate::drydock::share::take_picked();
+    #[cfg(not(target_arch = "wasm32"))]
+    let files: Vec<(String, Result<String, String>)> = drops
+        .read()
+        .filter_map(|d| match d {
+            bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } => Some(path_buf.clone()),
+            _ => None,
+        })
+        .filter(|_| layer.open)
+        .map(|path| {
+            let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let text = match std::fs::metadata(&path) {
+                Ok(m) if m.len() > MAX_RUN_FILE as u64 => Err(format!("that file is too large for a run (over {} MB)", MAX_RUN_FILE >> 20)),
+                _ => std::fs::read_to_string(&path).map_err(|e| e.to_string()),
+            };
+            (name, text)
+        })
+        .collect();
+    for (file, text) in files {
+        let done = text.and_then(|t| lab.import(&mut storage, &content.0, &file, &t, now_unix()));
+        match done {
+            Ok(id) => {
+                let e = lab.entry(&id);
+                let name = e.map_or_else(|| id.clone(), |e| e.name.clone());
+                let stale = if e.is_some_and(|e| e.stale) { "  ·  fought under other rules: RE-SCORE makes a run of it" } else { "" };
+                layer.say(format!("{name} imported, paused{stale}"), Tone::Teal);
+                layer.dirty = true;
+            }
+            Err(e) => layer.say(format!("{file} doesn't import: {e}"), Tone::Coral),
+        }
+    }
+}
+

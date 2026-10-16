@@ -1,22 +1,28 @@
-//! THE RUN (GDR-0092 "The run's page", what step 4 has of it): how far the run is, its scores by generation, its
-//! archive, and the picked design.
+//! THE RUN (GDR-0092 "The run's page", what steps 4 and 5 have of it): how far the run is, its scores by generation,
+//! its archive, and the picked design.
 //!
 //! ```text
 //! RUNNING · SEED 4711   GENERATION 12 / 50 [=====-----]   ~ 140 FIGHTS/S · ABOUT 4 MIN LEFT   START 0.42 » BEST 0.81
 //! SCORES BY GENERATION          THE ARCHIVE                         THE PICKED DESIGN
 //!  archive best (gold),          a ship card per occupied cell,      its drawing, score, cell, build points
 //!  generation best (teal),       tinted by score; the best a gold    [FIGHTS] [LINEAGE] [COMPARE]
-//!  mean (grey); bars: children   edge, a start a teal corner         WON 0:23 vs 2 × AUTOMATON RAIDER [WATCH] ...
-//!  that took a cell                                                  [SAVE AS DESIGN]
+//!  mean (grey); bars: children   edge, a start a teal corner         [SCORES] [FIGHTS] [LINEAGE] [COMPARE]
+//!  that took a cell                                                  per trial and goal; VALIDATE; the fights
+//!                                                                    [SAVE AS DESIGN]
 //! ```
 //!
 //! * **Progress** is read every few frames while the page shows (the run computes in the background, `world::evolution`):
 //!   the generation inside, fights per second and the time left from the measured rate.
 //! * **The archive**: a grid over the run's first two measures; a click picks a design. The best design is picked
 //!   when nothing is.
-//! * **FIGHTS**: every fight of the picked design in its generation (opponent, seed, how it ended, build points lost
-//!   on both sides, damage dealt), WATCH BEST and WATCH WORST; WATCH opens the fight viewer (`world::replay`) with the
-//!   fight's code, and M (or the flight menu's way out) brings the lab back here.
+//! * **SCORES** (GDR-0092 step 5): the picked design's score taken apart, per trial (its weight, score and goals'
+//!   means) and in all; VALIDATE THIS and VALIDATE THE BEST 8 (new seeds and the recorded fights again, computed in
+//!   the run's place) and the validated score once there is one.
+//! * **FIGHTS**: every fight of the picked design in its generation, each in the same columns: how it ended and when,
+//!   its score, then the trial and the opponent, and under them the seed, the build points each side lost and the
+//!   damage dealt; WATCH BEST and WATCH WORST; WATCH opens the fight viewer (`world::replay`) with the fight's code,
+//!   and M (or the flight menu's way out) brings the lab back here.
+//! * **RE-SCORE** (a stale run) makes a new run under today's rules; **RENAME** names the run anew.
 //! * **LINEAGE**: its line from its start, each ancestor a small card (a click picks it); **COMPARE**: the start and
 //!   it side by side, the parts it gained and lost, its behavior.
 //! * **SAVE AS DESIGN**: a name (`<start> · evolved g<generation>`), then into YOUR DESIGNS with its origin and the
@@ -24,7 +30,7 @@
 
 use std::collections::BTreeMap;
 
-use world::arena::evolve::{ChildRecord, Elite, GenerationStats, Job, JobEnd, Measure, RunStatus};
+use world::arena::evolve::{ChildRecord, Elite, GenerationStats, Job, JobEnd, Measure, RunStatus, TrialSpec, VALIDATE_BEST, VALIDATE_SEEDS};
 use world::arena::{DesignRef, Outcome};
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
@@ -46,6 +52,11 @@ const CHART: (Vec2, Vec2) = (Vec2::new(36.0, 170.0), Vec2::new(380.0, 210.0));
 const BARS_H: f32 = 44.0;
 const GRID: (Vec2, Vec2) = (Vec2::new(444.0, 170.0), Vec2::new(392.0, 392.0));
 const PICKED: (Vec2, Vec2) = (Vec2::new(864.0, 140.0), Vec2::new(380.0, 540.0));
+/// The fight rows' columns: how it ended and when, its score; the score table's: the score, a goal.
+const FIGHT_END_W: f32 = 76.0;
+const FIGHT_SCORE_W: f32 = 30.0;
+const SCORE_W: f32 = 40.0;
+const GOAL_W: f32 = 44.0;
 /// The chart draws at most this many generations (a longer run is sampled).
 const CHART_POINTS: usize = 120;
 /// Ancestors the lineage strip shows at most (the start, then the last ones).
@@ -57,6 +68,7 @@ const SYNC_EVERY: f32 = 0.25;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Tab {
     #[default]
+    Scores,
     Fights,
     Lineage,
     Compare,
@@ -71,8 +83,12 @@ pub(crate) struct RunPage {
     /// SAVE AS DESIGN asks for a name: this one (the field types into it).
     saving: bool,
     name: String,
-    /// What the page was built for: the run, its generations done, the pick, the tab, the save panel.
-    built: Option<(String, u32, Option<u32>, Tab, bool)>,
+    /// RENAME asks for the run's new name.
+    renaming: bool,
+    new_name: String,
+    /// What the page was built for: the run, its generations done, the pick, the tab, the save panel, whether a
+    /// validation was underway.
+    built: Option<(String, u32, Option<u32>, Tab, bool, bool)>,
 }
 
 /// A click on the run's page.
@@ -88,6 +104,13 @@ pub(crate) enum RunButton {
     SaveAs,
     Save,
     Cancel,
+    /// VALIDATE the picked design, or the archive's best [`VALIDATE_BEST`].
+    Validate,
+    ValidateBest,
+    Rescore,
+    Rename,
+    SaveName,
+    CancelName,
 }
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
@@ -119,6 +142,13 @@ pub(super) struct SaveField;
 #[derive(Component)]
 pub(super) struct SaveRow;
 
+/// RENAME's field and its row (where the stale line is).
+#[derive(Component)]
+pub(super) struct RenameField;
+
+#[derive(Component)]
+pub(super) struct RenameRow;
+
 pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color) {
     // The progress line.
     p.spawn(on_row(abs(Vec2::new(36.0, 88.0), Some(Vec2::new(1208.0, 34.0))), 18.0)).with_children(|r| {
@@ -133,6 +163,21 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
         r.spawn((RunText::Scores, number(fonts, "", 15.0, c(Tone::Gold, 1.0))));
     });
     p.spawn((RunText::Stale, label(fonts, "", 9.0, c(Tone::Coral, 1.0)), abs(Vec2::new(36.0, 122.0), None)));
+    p.spawn((RenameRow, on_row(Node { display: Display::None, ..abs(Vec2::new(36.0, 116.0), Some(Vec2::new(800.0, 30.0))) }, 8.0))).with_children(|r| {
+        r.spawn(label(fonts, "THE RUN'S NAME", 8.5, c(Tone::Label, 1.0)));
+        r.spawn((
+            RenameField,
+            TextField { placeholder: "Name of the run".into(), max_chars: MAX_NAME, ..default() },
+            Hot::default(),
+            Node { width: px(260), height: px(28), align_items: AlignItems::Center, padding: UiRect::horizontal(px(12)), border: UiRect::all(px(1.2)), border_radius: BorderRadius::MAX, overflow: Overflow::clip(), ..default() },
+            BorderColor::all(c(Tone::Label, 0.3)),
+        ))
+        .with_children(|f| {
+            f.spawn(field_text(fonts, 13.0));
+        });
+        spawn_pill(r, fonts, "RENAME", 8.5, 26.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::SaveName));
+        spawn_pill(r, fonts, "CANCEL", 8.5, 26.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::CancelName));
+    });
     // The chart.
     let (at, size) = CHART;
     p.spawn((label(fonts, "SCORES BY GENERATION", 9.0, c(Tone::Dim, 1.0)), abs(at - Vec2::Y * 26.0, None)));
@@ -213,6 +258,40 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: RunButton) {
             layer.run.saving = true;
         }
         RunButton::Cancel => layer.run.saving = false,
+        RunButton::Validate | RunButton::ValidateBest => {
+            let Some(l) = ctx.lab.viewed() else { return };
+            let genomes: Vec<u32> = match b {
+                RunButton::Validate => shown(&layer.run, l).into_iter().collect(),
+                _ => l.run.results().elites.iter().take(VALIDATE_BEST).map(|e| e.id).collect(),
+            };
+            match ctx.lab.validate(&ctx.storage, &ctx.content.0, &id, &genomes) {
+                Ok(jobs) => layer.say(format!("validating {} on {VALIDATE_SEEDS} new seeds and its recorded fights again  ·  {jobs} jobs, in the run's place", if genomes.len() == 1 { "the design".to_string() } else { format!("the best {}", genomes.len()) }), Tone::Teal),
+                Err(e) => layer.say(format!("not validated: {e}"), Tone::Coral),
+            }
+        }
+        RunButton::Rescore => match ctx.lab.rescore(&mut ctx.storage, &ctx.content.0, &id, now_unix()) {
+            Ok(new) => {
+                let name = ctx.lab.entry(&new).map_or_else(|| new.clone(), |e| e.name.clone());
+                layer.run = RunPage::default();
+                layer.say(format!("{name} re-scores the archive under today's rules, then goes on  ·  the old run stays as it was"), Tone::Teal);
+            }
+            Err(e) => layer.say(format!("not re-scored: {e}"), Tone::Coral),
+        },
+        RunButton::Rename => {
+            layer.run.new_name = ctx.lab.viewed().map_or_else(String::new, |l| l.name.clone());
+            layer.run.renaming = true;
+        }
+        RunButton::CancelName => layer.run.renaming = false,
+        RunButton::SaveName => {
+            let name = layer.run.new_name.clone();
+            match ctx.lab.rename(&mut ctx.storage, &id, &name) {
+                Ok(()) => {
+                    layer.run.renaming = false;
+                    layer.say(format!("renamed {}", name.trim()), Tone::Teal);
+                }
+                Err(e) => layer.say(e, Tone::Coral),
+            }
+        }
         RunButton::Save => {
             layer.run.saving = false;
             let Some(l) = ctx.lab.viewed() else { return };
@@ -258,33 +337,81 @@ fn measure_words(content: &Content, m: Measure) -> (String, String) {
     }
 }
 
-/// A fight's opponent side in words: `2 × AUTOMATON RAIDER`, a hall-of-fame genome as `THE RUN'S BEST`.
+/// A trial's name: its `lab.ron` preset's, else its kind's in words.
+fn trial_name(content: &Content, t: &TrialSpec) -> String {
+    use world::arena::evolve::Trial as T;
+    if let Some(p) = t.preset.as_deref().and_then(|id| content.lab.trial(id)) {
+        return p.name.to_uppercase();
+    }
+    match &t.kind {
+        T::EnemyShips { .. } => "ENEMY SHIPS",
+        T::Encounters { .. } => "THE ENEMIES YOU MEET",
+        T::Waves { .. } => "TEST-RANGE WAVES",
+        T::Gauntlet { .. } => "A GAUNTLET",
+        T::BeatYourStart => "BEAT YOUR START",
+        T::Fleet { .. } => "YOUR FLEET",
+        T::HallOfFame { .. } => "HALL OF FAME",
+        T::Champions { .. } => "CHAMPIONS",
+        T::Voyages { .. } => "VOYAGES",
+    }
+    .into()
+}
+
+/// A fight's opponent side in words: `2 × AUTOMATON RAIDER`, a design of the player's or the run's by its name
+/// (`RIM SKIFF`, without the `(evolved)` every genome's header has), a gauntlet's waves after it (`+ 4 WAVES`); a
+/// voyage by its name.
 fn opponent(content: &Content, job: &Job) -> String {
-    let Job::Fight { spec, .. } = job else { return "A VOYAGE".into() };
+    let spec = match job {
+        Job::Fight { spec, .. } => spec,
+        Job::Voyage { spec, .. } => return content.voyages.get(&spec.voyage).map_or_else(|| spec.voyage.to_uppercase(), |v| v.name.to_uppercase()),
+    };
     let names: Vec<String> = spec.sides[1]
         .entries
         .iter()
         .map(|e| {
             let name = match &e.design {
                 DesignRef::Ship(id) => content.ships.get(id).map_or_else(|| id.to_uppercase(), |b| b.name.to_uppercase()),
-                DesignRef::Blueprint(_) => "THE RUN'S BEST SO FAR".into(),
+                DesignRef::Blueprint(text) => data::parse_blueprint(text).map_or_else(|_| "A DESIGN".into(), |b| b.name.trim_end_matches(" (evolved)").to_uppercase()),
             };
             if e.count > 1 { format!("{} × {name}", e.count) } else { name }
         })
         .collect();
-    names.join(" + ")
+    let waves = match spec.waves.len() {
+        0 => String::new(),
+        1 => "  +  1 WAVE".into(),
+        n => format!("  +  {n} WAVES"),
+    };
+    names.join(" + ") + waves.as_str()
 }
 
-/// How a job ended for the design, and its tone: `WON 0:23`, `LOST 1:02`, `BOTH OUT 0:40`, `DRAW 1:30 · 0.62`.
-fn ending(end: &JobEnd, ticks: u64, score: f32) -> (String, Tone) {
+/// How a job ended for the design and when, and its tone: `WON 0:23`, `LOST 1:02`, `BOTH OUT 0:40`, `DRAW 1:30`,
+/// `VOYAGE 4:10` (its score has a column of its own).
+fn ending(end: &JobEnd, ticks: u64) -> (String, Tone) {
     let at = clock(ticks);
     match end {
         JobEnd::Fight { outcome: Outcome::Won(0), .. } => (format!("WON {at}"), Tone::Teal),
         JobEnd::Fight { outcome: Outcome::Won(_), .. } => (format!("LOST {at}"), Tone::Coral),
         JobEnd::Fight { outcome: Outcome::BothOut, .. } => (format!("BOTH OUT {at}"), Tone::Gold),
-        JobEnd::Fight { outcome: Outcome::TimeLimit, .. } => (format!("DRAW {at}  ·  {score:.2}"), Tone::Label),
-        JobEnd::Voyage { .. } => (format!("VOYAGE {at}  ·  {score:.2}"), Tone::Label),
+        JobEnd::Fight { outcome: Outcome::TimeLimit, .. } => (format!("DRAW {at}"), Tone::Label),
+        JobEnd::Voyage { .. } => (format!("VOYAGE {at}"), Tone::Label),
         JobEnd::Failed => ("DIDN'T BUILD".into(), Tone::Coral),
+    }
+}
+
+/// A fight's second line: the seed, what each side lost (its build points: yours and theirs, a gauntlet's waves all
+/// counted), the damage dealt, a gauntlet's waves cleared of all.
+fn fight_detail(job: &Job, end: &JobEnd) -> String {
+    let (seed, waves) = match job {
+        Job::Fight { spec, .. } => (spec.seed, spec.waves.len() as u32 + 1),
+        Job::Voyage { spec, .. } => (spec.seed, 0),
+    };
+    match end {
+        JobEnd::Fight { lost, dealt, waves: cleared, .. } => {
+            let gauntlet = if waves > 1 { format!("  ·  {cleared} OF {waves} WAVES CLEARED") } else { String::new() };
+            format!("SEED {seed}  ·  YOU LOST {:.0} BP  ·  THEY LOST {:.0} BP  ·  YOU DEALT {:.0} DAMAGE{gauntlet}", lost[0], lost[1], dealt[0])
+        }
+        JobEnd::Voyage { .. } => format!("SEED {seed}  ·  FLOWN HEADLESS FROM ENTRY TO HOME"),
+        JobEnd::Failed => format!("SEED {seed}"),
     }
 }
 
@@ -331,7 +458,7 @@ pub(super) fn fill(
         return;
     }
     let Some(l) = lab.viewed() else { return };
-    let key = (l.id.clone(), l.run.generation(), layer.run.picked, layer.run.tab, layer.run.saving);
+    let key = (l.id.clone(), l.run.generation(), layer.run.picked, layer.run.tab, layer.run.saving, lab.validating().is_some());
     if !layer.dirty && layer.run.built.as_ref() == Some(&key) {
         return;
     }
@@ -347,7 +474,7 @@ pub(super) fn fill(
         commands.entity(e).with_children(|p| match panel {
             Panel::Chart => chart(p, &c, l),
             Panel::Grid => grid(p, fonts, &c, l, picked),
-            Panel::Picked => picked_design(p, fonts, &c, content, l, picked, &layer.run),
+            Panel::Picked => picked_design(p, fonts, &c, content, &lab, l, picked, &layer.run),
         });
     }
 }
@@ -458,7 +585,7 @@ fn grid(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -
 
 /// THE PICKED DESIGN: its drawing and numbers, the tabs, the tab's rows, SAVE AS DESIGN.
 #[allow(clippy::too_many_arguments)]
-fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, l: &Loaded, picked: Option<u32>, page: &RunPage) {
+fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, lab: &Lab, l: &Loaded, picked: Option<u32>, page: &RunPage) {
     let run = &l.run;
     p.spawn(label(fonts, "THE PICKED DESIGN", 9.0, c(Tone::Dim, 1.0)));
     let Some(g) = picked else {
@@ -496,7 +623,7 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
     });
     // The tabs.
     p.spawn(row(8.0)).with_children(|r| {
-        for (t, words) in [(Tab::Fights, "FIGHTS"), (Tab::Lineage, "LINEAGE"), (Tab::Compare, "COMPARE")] {
+        for (t, words) in [(Tab::Scores, "SCORES"), (Tab::Fights, "FIGHTS"), (Tab::Lineage, "LINEAGE"), (Tab::Compare, "COMPARE")] {
             spawn_pill(r, fonts, words, 8.5, 26.0, None, Pill { active: page.tab == t, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::Tab(t)));
         }
         r.spawn(Node { flex_grow: 1.0, ..default() });
@@ -507,6 +634,7 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
     let rows_h = if page.saving { 300.0 } else { 340.0 };
     p.spawn((Scrollbar::vertical(), ScrollPosition::default(), Node { flex_direction: FlexDirection::Column, row_gap: px(3), height: px(rows_h), overflow: Overflow::scroll_y(), padding: UiRect::right(px(10)), ..default() }))
         .with_children(|rows| match page.tab {
+            Tab::Scores => scores(rows, fonts, c, content, lab, l, g, record.as_ref().map(|(generation, child, rec)| (*generation, *child, rec))),
             Tab::Fights => fights(rows, fonts, c, content, l, record.as_ref().map(|(generation, child, rec)| (*generation, *child, rec))),
             Tab::Lineage => lineage(rows, fonts, c, content, l, g),
             Tab::Compare => compare(rows, fonts, c, content, l, &genome),
@@ -519,7 +647,7 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
         p.spawn(prose(fonts, "Its fights come with its generation.", 12.0, c(Tone::Dim, 1.0)));
         return;
     };
-    let jobs = l.run.child_jobs(generation, child).unwrap_or_default();
+    let jobs = l.run.tagged_jobs(generation, child).unwrap_or_default();
     let by_score = |best: bool| rec.jobs.iter().enumerate().reduce(|a, b| if (b.1.score > a.1.score) == best && b.1.score != a.1.score { b } else { a }).map(|(k, _)| k);
     p.spawn(Node { margin: UiRect::bottom(px(4)), ..row(8.0) }).with_children(|r| {
         if let Some(k) = by_score(true) {
@@ -530,23 +658,18 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
         }
         r.spawn(label(fonts, &format!("{} FIGHTS", rec.jobs.len()), 8.0, c(Tone::Dim, 1.0)));
     });
-    for (k, (job, jr)) in jobs.iter().zip(&rec.jobs).enumerate() {
-        let (words, tone) = ending(&jr.end, jr.ticks, jr.score);
-        let seed = match job {
-            Job::Fight { spec, .. } => spec.seed,
-            Job::Voyage { spec, .. } => spec.seed,
-        };
-        let detail = match jr.end {
-            JobEnd::Fight { lost, dealt, .. } => format!("BUILD POINTS LOST {:.0} / {:.0}  ·  DAMAGE {:.0}", lost[0], lost[1], dealt[0]),
-            _ => String::new(),
-        };
+    let trials = l.run.trials();
+    for (k, ((t, job), jr)) in jobs.iter().zip(&rec.jobs).enumerate() {
+        let (words, tone) = ending(&jr.end, jr.ticks);
+        let trial = trials.get(*t as usize).map_or_else(String::new, |t| trial_name(content, t));
+        // The same columns for every fight: how it ended and when, its score, then what it was (clipped short of the
+        // buttons), and the buttons.
         p.spawn((Node { height: px(36), flex_shrink: 0.0, border: UiRect::bottom(px(1)), ..row(8.0) }, BorderColor::all(c(Tone::Dim, 0.25)))).with_children(|r| {
-            r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, min_width: px(0), ..default() }).with_children(|t| {
-                t.spawn(row(8.0)).with_children(|h| {
-                    h.spawn((label(fonts, &words, 8.5, c(tone, 1.0)), TextLayout::no_wrap()));
-                    h.spawn((tracked(fonts, &format!("VS {}  ·  SEED {seed}", opponent(content, job)), 7.0, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
-                });
-                t.spawn((tracked(fonts, &detail, 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
+            r.spawn((label(fonts, &words, 8.0, c(tone, 1.0)), TextLayout::no_wrap(), Node { width: px(FIGHT_END_W), flex_shrink: 0.0, ..default() }));
+            r.spawn((number(fonts, &format!("{:.2}", jr.score), 12.0, c(Tone::Number, 1.0)), Node { width: px(FIGHT_SCORE_W), flex_shrink: 0.0, ..default() }));
+            r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+                t.spawn((tracked(fonts, &format!("{trial}  ·  {}", opponent(content, job)), 7.0, c(Tone::Label, 1.0), 0.12), TextLayout::no_wrap()));
+                t.spawn((tracked(fonts, &fight_detail(job, &jr.end), 6.5, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
             });
             if matches!(jr.end, JobEnd::Fight { .. }) {
                 spawn_pill(r, fonts, "CODE", 7.5, 24.0, None, Pill::new(Tone::Label), (LabButton::Run(RunButton::Code(generation, child, k)), kit::ui_kit::Tip::new("COPY FIGHT CODE")));
@@ -554,6 +677,80 @@ fn fights(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
             }
         });
     }
+}
+
+/// SCORES: the design's score per trial (weight, score, each goal's mean over its fights) and in all, VALIDATE and
+/// its result.
+#[allow(clippy::too_many_arguments)]
+fn scores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, lab: &Lab, l: &Loaded, g: u32, record: Option<(u32, usize, &ChildRecord)>) {
+    let Some((generation, child, rec)) = record else {
+        p.spawn(prose(fonts, "Its scores come with its generation.", 12.0, c(Tone::Dim, 1.0)));
+        return;
+    };
+    let Some(b) = l.run.breakdown(generation, child) else { return };
+    let trials = l.run.trials();
+    let goals: Vec<String> = data::GOALS.iter().map(|id| content.lab.goal(id).map_or_else(|| id.to_uppercase(), |g| g.name.to_uppercase())).collect();
+    let weights = l.run.config().goals.weights();
+    let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, justify_content: JustifyContent::FlexEnd, ..default() };
+    let line = |p: &mut ChildSpawnerCommands, name: &str, sub: &str, values: [Option<f32>; 5], strong: bool| {
+        p.spawn((Node { height: px(30), flex_shrink: 0.0, border: UiRect::bottom(px(1)), ..row(4.0) }, BorderColor::all(c(Tone::Dim, 0.2)))).with_children(|r| {
+            r.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(2), flex_grow: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|t| {
+                t.spawn((tracked(fonts, name, 7.0, c(if strong { Tone::Number } else { Tone::Label }, 1.0), 0.12), TextLayout::no_wrap()));
+                t.spawn((tracked(fonts, sub, 6.0, c(Tone::Dim, 1.0), 0.12), TextLayout::no_wrap()));
+            });
+            for (k, v) in values.iter().enumerate() {
+                let text = v.map_or_else(|| "—".into(), |v| format!("{v:.2}"));
+                let tone = if k == 0 { Tone::Gold } else if weights[k - 1] > 0.0 { Tone::Number } else { Tone::Dim };
+                r.spawn((number(fonts, &text, if k == 0 { 12.0 } else { 10.5 }, c(tone, 1.0)), cell(if k == 0 { SCORE_W } else { GOAL_W })));
+            }
+        });
+    };
+    p.spawn(Node { height: px(16), flex_shrink: 0.0, ..row(4.0) }).with_children(|h| {
+        h.spawn((tracked(fonts, "TRIAL", 6.5, c(Tone::Dim, 1.0), 0.15), Node { flex_grow: 1.0, ..default() }));
+        h.spawn((tracked(fonts, "SCORE", 6.5, c(Tone::Dim, 1.0), 0.15), cell(SCORE_W)));
+        for (name, w) in goals.iter().zip(weights) {
+            let head = if w > 0.0 { format!("{name} ×{}", short(w)) } else { name.clone() };
+            h.spawn((tracked(fonts, &head, 6.0, c(if w > 0.0 { Tone::Label } else { Tone::Dim }, 1.0), 0.1), TextLayout::no_wrap(), cell(GOAL_W)));
+        }
+    });
+    for t in &b.trials {
+        let spec = trials[t.trial];
+        let sub = match t.jobs {
+            0 if spec.weight == 0.0 => "WEIGHS 0: NOT FOUGHT".to_string(),
+            0 => "NO FIGHTS YET: IT LEAVES THE SUM".to_string(),
+            n => format!("WEIGHT {}  ·  {n} {}", short(spec.weight), if n == 1 { "FIGHT" } else { "FIGHTS" }),
+        };
+        let gs = t.goals.all().map(|v| (t.jobs > 0).then_some(v));
+        line(p, &trial_name(content, spec), &sub, [t.score, gs[0], gs[1], gs[2], gs[3]], false);
+    }
+    let all = b.goals.all();
+    line(p, "IN ALL", "THE TRIALS BY WEIGHT", [Some(rec.score), Some(all[0]), Some(all[1]), Some(all[2]), Some(all[3])], true);
+    // VALIDATE: its result, or the buttons (one validation at a time, in the run's place).
+    let validated = l.run.validated(g);
+    if let Some(v) = validated {
+        let words = format!("VALIDATED {:.2} ON {} NEW SEEDS  ·  {} OF {} RECORDED FIGHTS AS RECORDED", v.score, v.seeds, v.as_recorded.0, v.as_recorded.1);
+        let tone = if v.as_recorded.0 == v.as_recorded.1 { Tone::Teal } else { Tone::Coral };
+        p.spawn((label(fonts, &words, 7.5, c(tone, 1.0)), TextLayout::no_wrap(), Node { margin: UiRect::top(px(8)), ..default() }));
+    }
+    p.spawn(Node { margin: UiRect::top(px(8)), ..row(8.0) }).with_children(|r| match lab.validating() {
+        Some((id, done, genomes)) => {
+            let what = if id == l.id && genomes.contains(&g) { "VALIDATING IT" } else { "A VALIDATION IS UNDERWAY" };
+            r.spawn(label(fonts, &format!("{what}  ·  {:.0}%", done * 100.0), 8.0, c(Tone::Gold, 1.0)));
+        }
+        None if l.run.stale() => {
+            r.spawn(label(fonts, "THE RULES HAVE CHANGED: RE-SCORE THE RUN TO VALIDATE", 7.5, c(Tone::Coral, 1.0)));
+        }
+        None => {
+            let again = if validated.is_some() { "VALIDATE AGAIN" } else { "VALIDATE THIS" };
+            spawn_pill(r, fonts, again, 8.0, 24.0, None, Pill::new(Tone::Teal), (LabButton::Run(RunButton::Validate), kit::ui_kit::Tip::new("NEW SEEDS AND ITS RECORDED FIGHTS AGAIN")));
+            spawn_pill(r, fonts, &format!("VALIDATE THE BEST {VALIDATE_BEST}"), 8.0, 24.0, None, Pill::new(Tone::Teal), LabButton::Run(RunButton::ValidateBest));
+        }
+    });
+}
+
+/// A weight in few characters: `2`, `1.5`.
+fn short(w: f32) -> String {
+    if w.fract() == 0.0 { format!("{w:.0}") } else { format!("{w:.1}") }
 }
 
 /// LINEAGE: its line from its start, each ancestor a small card with its generation, score and what changed.
@@ -635,22 +832,39 @@ pub(super) fn sync(
     style: Res<Style>,
     mut texts: Query<(&RunText, &mut Text, &mut TextColor)>,
     mut bar: Single<&mut ValueBar, With<GenerationBar>>,
-    mut save: Single<&mut Node, With<SaveRow>>,
-    mut field: Single<&mut TextField, With<SaveField>>,
+    mut rows: ParamSet<(Single<&mut Node, With<SaveRow>>, Single<&mut Node, With<RenameRow>>)>,
+    mut fields: ParamSet<(Single<&mut TextField, With<SaveField>>, Single<&mut TextField, With<RenameField>>)>,
 ) {
     if !layer.open || layer.page != Page::Run {
         return;
     }
     // The save row and its field: the default name shown, then what is typed.
-    let want = if layer.run.saving { Display::Flex } else { Display::None };
-    if save.display != want {
-        save.display = want;
+    for (open, k) in [(layer.run.saving, 0), (layer.run.renaming, 1)] {
+        let want = if open { Display::Flex } else { Display::None };
+        let set = |n: &mut Node| {
+            if n.display != want {
+                n.display = want;
+            }
+        };
+        match k {
+            0 => set(&mut rows.p0()),
+            _ => set(&mut rows.p1()),
+        }
     }
     if layer.run.saving {
+        let mut field = fields.p0();
         if field.focused && field.value != layer.run.name {
             layer.bypass_change_detection().run.name = field.value.clone();
         } else if !field.focused && field.value != layer.run.name {
             field.value = layer.run.name.clone();
+        }
+    }
+    if layer.run.renaming {
+        let mut field = fields.p1();
+        if field.focused && field.value != layer.run.new_name {
+            layer.bypass_change_detection().run.new_name = field.value.clone();
+        } else if !field.focused && field.value != layer.run.new_name {
+            field.value = layer.run.new_name.clone();
         }
     }
     *since += time.delta_secs();
@@ -688,6 +902,11 @@ pub(super) fn sync(
                 (format!("{words}  ·  SEED {}", l.run.config().seed), tone)
             }
             RunText::Generation => (format!("GENERATION {} / {}", state.generation, state.generations), Tone::Number),
+            RunText::Rate if lab.validating().is_some() => {
+                let (id, done, genomes) = lab.validating().expect("a validation is underway");
+                let whose = if id == l.id { String::new() } else { format!(" OF {}", lab.entry(id).map_or(id, |e| e.name.as_str()).to_uppercase()) };
+                (format!("VALIDATING {} {}{whose}  ·  {:.0}%  ·  THE RUN WAITS", genomes.len(), if genomes.len() == 1 { "DESIGN" } else { "DESIGNS" }, done * 100.0), Tone::Gold)
+            }
             RunText::Rate => match (per_fight, l.computes() && rate > 0.0) {
                 (Some(f), true) => {
                     let left = (state.generations - state.generation) as f32 - inside;
@@ -698,7 +917,7 @@ pub(super) fn sync(
                 _ => (String::new(), Tone::Label),
             },
             RunText::Scores => (format!("START {}  »  BEST {}", score(entry.and_then(|e| e.first)), score(entry.and_then(|e| e.best))), Tone::Gold),
-            RunText::Stale => (if l.run.stale() { "THE RULES HAVE CHANGED SINCE THIS RUN  ·  IT IS KEPT READ-ONLY  ·  ITS FIGHTS PLAY UNDER TODAY'S RULES" } else { "" }.to_string(), Tone::Coral),
+            RunText::Stale => (if l.run.stale() && !layer.run.renaming { "THE RULES HAVE CHANGED SINCE THIS RUN  ·  IT IS KEPT READ-ONLY  ·  ITS FIGHTS PLAY UNDER TODAY'S RULES  ·  RE-SCORE MAKES A NEW RUN OF IT" } else { "" }.to_string(), Tone::Coral),
             RunText::Last => match last {
                 Some(g) => (format!("LAST GENERATION: {} CHILDREN  ·  {} REFUSED  ·  {} TOOK A CELL  ·  {} CELLS FILLED", g.evaluated, g.rejected, g.improved, g.filled), Tone::Label),
                 None => ("THE FIRST GENERATION: THE STARTS AND THEIR MUTANTS".into(), Tone::Label),
@@ -746,10 +965,16 @@ mod tests {
         let name = content.parts.get(&gone.part).unwrap().name.to_uppercase();
         assert_eq!(changes(&content, &skiff, &less), format!("−1 {name}"));
         assert_eq!(changes(&content, &less, &skiff), format!("+1 {name}"));
-        let won = JobEnd::Fight { outcome: Outcome::Won(0), lost: [0.0; 2], dealt: [0.0; 2], left: [1, 0], hash: 0, decided: 0 };
-        assert_eq!(ending(&won, 30 * 23, 1.0), ("WON 0:23".into(), Tone::Teal));
-        let lost = JobEnd::Fight { outcome: Outcome::Won(1), lost: [0.0; 2], dealt: [0.0; 2], left: [0, 1], hash: 0, decided: 0 };
-        assert_eq!(ending(&lost, 30 * 62, 0.0).0, "LOST 1:02");
+        let won = JobEnd::Fight { outcome: Outcome::Won(0), lost: [0.0; 2], dealt: [0.0; 2], left: [1, 0], hash: 0, decided: 0, waves: 0 };
+        assert_eq!(ending(&won, 30 * 23), ("WON 0:23".into(), Tone::Teal));
+        let lost = JobEnd::Fight { outcome: Outcome::Won(1), lost: [242.0, 2.4], dealt: [40.2, 0.0], left: [0, 1], hash: 0, decided: 0, waves: 0 };
+        assert_eq!(ending(&lost, 30 * 62).0, "LOST 1:02");
+        // Every outcome has the same columns: the score is a column of its own, the sides' losses say whose.
+        let draw = JobEnd::Fight { outcome: Outcome::TimeLimit, lost: [1.0, 3.0], dealt: [5.0, 1.0], left: [1, 1], hash: 0, decided: 0, waves: 0 };
+        assert_eq!(ending(&draw, 30 * 60).0, "DRAW 1:00");
+        let job = Job::Fight { candidate: 0, spec: world::arena::FightSpec::new(4, vec![world::arena::Entry::ship("rim_skiff")], vec![world::arena::Entry::ship("automaton_raider")]) };
+        assert_eq!(fight_detail(&job, &lost), "SEED 4  ·  YOU LOST 242 BP  ·  THEY LOST 2 BP  ·  YOU DEALT 40 DAMAGE");
+        assert_eq!(opponent(&content, &job), "AUTOMATON RAIDER");
         assert_eq!((duration(40.0), duration(200.0), duration(4800.0)), ("40 S".into(), "4 MIN".into(), "1 H 20 MIN".into()));
     }
 }

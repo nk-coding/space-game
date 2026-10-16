@@ -1,14 +1,15 @@
-//! SETUP (NEW RUN, GDR-0092 "The run setup", what step 4 has of it): one page, two columns.
+//! SETUP (NEW RUN, GDR-0092 "The run setup", what steps 4 and 5 have of it): one page, two columns.
 //!
 //! ```text
 //! START FROM · PICK 1 TO 4                       LOCKS · RIM SKIFF COPY
 //! [1 RIM SKIFF COPY] [2 HALVEX RUNNER]           KEEP ALL [HULL] [POWER] [WEAPONS] ...
 //! YOUR DESIGNS            TEMPLATES              PARTS (a lock each)      RULES (a lock each)
 //! LIMITS: BUILD POINTS, HOLD, VOYAGE-READY,       [TARGET LINE] [LOCK ORDER]
-//!   MIRROR, PARTS                                TRIALS · ENEMY SHIPS: (−) 2 (+) each, HALL OF FAME
-//! MAY CHANGE: [DESIGN AND BEHAVIOR] ...          THE RUN: fights, the estimate
-//! SIZE: [QUICK] [STANDARD] [DEEP], children ...  NAME [__________]
-//! SEED (−) 1234 (+) [DICE]                                                    [START RUN]
+//!   MIRROR, PARTS                                TRIALS · WEIGHT · SEEDS         [WITH YOUR ESCORTS]
+//! MAY CHANGE: [DESIGN AND BEHAVIOR] ...          [THE ENEMIES YOU MEET] (−) 2 (+)  (−) 4 (+)   16 FIGHTS ...
+//! SIZE: [QUICK] [STANDARD] [DEEP], SEED, DICE    GOALS [WIN] [WIN UNHURT] ...; WIN (−) 1 (+) UNHURT ...
+//!   CHILDREN (−) 32 (+) GENERATIONS (−) 50 (+)   THE RUN: fights a child, a generation, the estimate
+//!                                                NAME [__________]                   [START RUN]
 //! ```
 //!
 //! * **Starts**: a click on a row of YOUR DESIGNS or TEMPLATES adds it (at most four) or takes it out; a click on a
@@ -18,10 +19,17 @@
 //! * **Limits**: build points at most the start's (the default), a number or no cap; the hold at least the start's
 //!   or any; VOYAGE-READY (logic cores within the mind capacity less FLEET's escorts'); MIRROR (on when the first
 //!   start looks symmetric); only the career's parts, always (`?unlock=all` lifts it).
+//! * **Trials** (GDR-0092 step 5): every `lab.ron` preset, on or off (its default selection on), its weight (0 to 3)
+//!   and seeds, ENEMY SHIPS' ships, HALL OF FAME's and CHAMPIONS' count and TEST-RANGE WAVES' target; each row says
+//!   how many fights a child gets of it, or why it has nothing to fight (no open voyage, no saved design, no earlier
+//!   run). WITH YOUR ESCORTS flies FLEET's escorts beside the design in every trial.
+//! * **Goals**: the goals' weights (0 to 3) and `lab.ron`'s goal presets (WIN, WIN UNHURT, ...).
+//! * **The estimate**: the fights a child and a generation get, and the run's time on this device with the layer open
+//!   (from the measured cost of a tick and each kind's measured share of its time limit).
 //! * **START RUN** builds the run (`world::evolution::Lab::create`): it computes from now on and the page of the run
 //!   opens; a setup the arena refuses says why in the status line.
 
-use world::arena::evolve::{Bound, Genes, Locks};
+use world::arena::evolve::{Bound, Genes, Goals, Locks, Sources};
 use bevy::prelude::*;
 use data::Content;
 use data::behavior::Program;
@@ -29,27 +37,34 @@ use kit::style::{Style, UiPalette, ui_color};
 use kit::ui_icons::Glyph;
 use kit::ui_kit::{HudFonts, Hot, Pill, Scrollbar, TextField, Tone, field_text, label, number, prose, ring_glyph, ring_node, spawn_pill, sub_tone, tracked};
 use world::career::fleet_cores;
-use world::evolution::{SIZES, Setup, StartDesign, StartPick, templates};
+use world::evolution::{Lab, SIZES, Setup, StartDesign, StartPick, sources, templates};
 use world::player::PlayerDesign;
 use world::player::behaviors::PlayerBehaviors;
 use world::player::library::{self, MAX_NAME, fresh_name, list_designs};
 use world::storage::{Storage, now_unix};
 
-use super::{Ctx, EvolutionLayer, LabButton, Page, abs, row};
+use super::{Ctx, EvolutionLayer, LabButton, Page, abs, on_row, row};
 
 /// Most starts a run has (`world::arena::evolve::MAX_STARTS`).
 const MAX_STARTS: usize = world::arena::evolve::MAX_STARTS;
 /// The columns' left edges and widths, the lists' height and a row's.
 const LEFT: (f32, f32) = (36.0, 600.0);
 const RIGHT: (f32, f32) = (664.0, 580.0);
-const LIST_H: f32 = 190.0;
+const LIST_H: f32 = 130.0;
 const LIST_ROW: f32 = 30.0;
+/// The trials' list: its top and height, and a row's height; the widths of a row's columns (the trial, its weight,
+/// its seeds, its count).
+const TRIALS_TOP: f32 = 336.0;
+const TRIALS_H: f32 = 164.0;
+const TRIAL_ROW: f32 = 26.0;
+const TRIAL_COLUMNS: [f32; 4] = [188.0, 96.0, 96.0, 104.0];
 /// The steppers' steps and bounds (PLACEHOLDER, like the presets).
 const BP_STEP: f32 = 5.0;
 const POPULATION: (u32, u32, u32) = (4, 4, 256);
 const GENERATIONS: (u32, u32, u32) = (5, 1, 500);
 const SEEDS: (u32, u32) = (1, 12);
-const HALL_OF_FAME: u32 = 8;
+const WEIGHT_STEP: f32 = 0.5;
+const COUNT: (u32, u32) = (1, 16);
 const OPPONENTS: u32 = 6;
 
 /// What the setup page holds: the setup and what it is picked from.
@@ -68,11 +83,13 @@ pub struct SetupPage {
     /// The first start's build points and hold (the limits' words).
     start_bp: Option<f32>,
     start_hold: Option<u32>,
+    /// What the trials fight from outside the run: the career's open voyages, YOUR DESIGNS, earlier runs, the escorts.
+    sources: Sources,
 }
 
 impl SetupPage {
     /// The setup with the defaults and these starts, the lists read fresh.
-    pub fn new(content: &Content, storage: &Storage, behaviors: &PlayerBehaviors, design: &PlayerDesign, starts: Vec<StartPick>) -> SetupPage {
+    pub fn new(content: &Content, storage: &Storage, behaviors: &PlayerBehaviors, design: &PlayerDesign, career: &data::Career, lab: &Lab, starts: Vec<StartPick>) -> SetupPage {
         let designs = list_designs(storage, content)
             .unwrap_or_default()
             .into_iter()
@@ -94,6 +111,7 @@ impl SetupPage {
             named: false,
             start_bp: None,
             start_hold: None,
+            sources: sources(storage, content, career, behaviors, design, lab),
         };
         page.resolve(content, storage, behaviors, design);
         page.setup.mirror = page.resolved.first().and_then(|r| r.as_ref().ok()).is_some_and(|s| symmetric(content, &s.blueprint));
@@ -157,12 +175,19 @@ pub(crate) enum SetupButton {
     VoyageReady,
     Mirror,
     Genes(Genes),
-    Opponent(usize, i32),
-    HallOfFame(i32),
+    /// A trial (its index in the setup): on or off, its weight, its seeds, its count, an enemy ship's count.
+    Trial(usize),
+    Weight(usize, i32),
+    TrialSeeds(usize, i32),
+    Count(usize, i32),
+    Ship(usize, usize, i32),
+    Escorts,
+    /// A goal's weight (its index in `data::GOALS`), a goal preset (its index in `lab.ron`).
+    Goal(usize, i32),
+    GoalPreset(usize),
     Size(usize),
     Population(i32),
     Generations(i32),
-    Seeds(i32),
     Seed(i64),
     Dice,
     StartRun,
@@ -181,7 +206,9 @@ pub(super) enum Section {
     Parts,
     Rules,
     RuleLocks,
+    TrialsHead,
     Trials,
+    Goals,
     Estimate,
 }
 
@@ -206,6 +233,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
             Node { flex_direction: FlexDirection::Column, row_gap: px(2), overflow: Overflow::scroll_y(), padding: UiRect::right(px(10)), ..abs(at, Some(Vec2::new(w, h))) },
         ));
     };
+    let lists = 162.0 + LIST_H;
     // The left column: the starts, the limits, what may change, the size and the seed.
     head(p, Vec2::new(lx, 90.0), "START FROM  ·  PICK 1 TO 4  ·  A CLICK ON A START SHOWS ITS LOCKS");
     section(p, Section::Chips, Vec2::new(lx, 108.0), Vec2::new(lw, 30.0));
@@ -213,23 +241,25 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     list(p, Section::Designs, Vec2::new(lx, 162.0), 300.0, LIST_H);
     head(p, Vec2::new(lx + 316.0, 146.0), "TEMPLATES");
     list(p, Section::Templates, Vec2::new(lx + 316.0, 162.0), lw - 316.0, LIST_H);
-    head(p, Vec2::new(lx, 364.0), "LIMITS");
-    section(p, Section::Limits, Vec2::new(lx, 382.0), Vec2::new(lw, 150.0));
-    head(p, Vec2::new(lx, 540.0), "MAY CHANGE");
-    section(p, Section::Genes, Vec2::new(lx, 556.0), Vec2::new(lw, 30.0));
-    head(p, Vec2::new(lx, 596.0), "SIZE");
-    section(p, Section::Size, Vec2::new(lx, 612.0), Vec2::new(lw, 70.0));
-    // The right column: the locks, the trials, the run in numbers, the name, START RUN.
+    head(p, Vec2::new(lx, lists + 10.0), "LIMITS");
+    section(p, Section::Limits, Vec2::new(lx, lists + 28.0), Vec2::new(lw, 156.0));
+    head(p, Vec2::new(lx, lists + 194.0), "MAY CHANGE");
+    section(p, Section::Genes, Vec2::new(lx, lists + 210.0), Vec2::new(lw, 30.0));
+    head(p, Vec2::new(lx, lists + 250.0), "SIZE");
+    section(p, Section::Size, Vec2::new(lx, lists + 266.0), Vec2::new(lw, 64.0));
+    // The right column: the locks, the trials and goals, the run in numbers, the name, START RUN.
     section(p, Section::LocksHead, Vec2::new(rx, 90.0), Vec2::new(rw, 50.0));
     head(p, Vec2::new(rx, 146.0), "PARTS  ·  A LOCKED ONE STAYS AS IT IS");
     list(p, Section::Parts, Vec2::new(rx, 162.0), 282.0, LIST_H);
     head(p, Vec2::new(rx + 298.0, 146.0), "RULES  ·  A LOCKED ONE STAYS");
-    list(p, Section::Rules, Vec2::new(rx + 298.0, 162.0), rw - 298.0, LIST_H - 36.0);
+    list(p, Section::Rules, Vec2::new(rx + 298.0, 162.0), rw - 298.0, LIST_H - 34.0);
     section(p, Section::RuleLocks, Vec2::new(rx + 298.0, 162.0 + LIST_H - 28.0), Vec2::new(rw - 298.0, 30.0));
-    head(p, Vec2::new(rx, 364.0), "TRIALS  ·  ENEMY SHIPS AND THE RUN'S OWN BEST");
-    section(p, Section::Trials, Vec2::new(rx, 382.0), Vec2::new(rw, 150.0));
-    section(p, Section::Estimate, Vec2::new(rx, 540.0), Vec2::new(rw, 40.0));
-    p.spawn(Node { ..abs(Vec2::new(rx, 596.0), Some(Vec2::new(rw, 70.0))) }).with_children(|n| {
+    p.spawn((Section::TrialsHead, Node { justify_content: JustifyContent::SpaceBetween, ..on_row(abs(Vec2::new(rx, lists + 6.0), Some(Vec2::new(rw, 38.0))), 8.0) }));
+    list(p, Section::Trials, Vec2::new(rx, TRIALS_TOP), rw, TRIALS_H);
+    head(p, Vec2::new(rx, TRIALS_TOP + TRIALS_H + 8.0), "GOALS  ·  WHAT A SCORE WEIGHS");
+    section(p, Section::Goals, Vec2::new(rx, TRIALS_TOP + TRIALS_H + 24.0), Vec2::new(rw, 58.0));
+    section(p, Section::Estimate, Vec2::new(rx, TRIALS_TOP + TRIALS_H + 90.0), Vec2::new(rw, 18.0));
+    p.spawn(Node { ..abs(Vec2::new(rx, 618.0), Some(Vec2::new(rw, 58.0))) }).with_children(|n| {
         n.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|col| {
             col.spawn(label(fonts, "NAME", 9.0, c(Tone::Dim, 1.0)));
             col.spawn((
@@ -252,7 +282,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
                 f.spawn(field_text(fonts, 14.0));
             });
         });
-        n.spawn(Node { position_type: PositionType::Absolute, right: px(0), top: px(18), ..default() }).with_children(|b| {
+        n.spawn(Node { position_type: PositionType::Absolute, right: px(0), top: px(16), ..default() }).with_children(|b| {
             let play = kit::ui_icons::UiIcon::Glyph { glyph: Glyph::Play, color: ui.teal };
             spawn_pill(b, fonts, "START RUN", 12.0, 40.0, Some(play), Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Setup(SetupButton::StartRun));
         });
@@ -318,16 +348,52 @@ pub(super) fn press(layer: &mut EvolutionLayer, ctx: &mut Ctx, b: SetupButton) {
         SetupButton::VoyageReady => s.voyage_ready = !s.voyage_ready,
         SetupButton::Mirror => s.mirror = !s.mirror,
         SetupButton::Genes(g) => s.genes = g,
-        SetupButton::Opponent(k, by) => {
-            if let Some(o) = s.opponents.get_mut(k) {
+        SetupButton::Trial(k) => {
+            if let Some(t) = s.trials.get_mut(k) {
+                t.on = !t.on;
+            }
+        }
+        SetupButton::Weight(k, by) => {
+            if let Some(t) = s.trials.get_mut(k) {
+                t.weight = (t.weight + by as f32 * WEIGHT_STEP).clamp(0.0, data::MAX_LAB_WEIGHT);
+            }
+        }
+        SetupButton::TrialSeeds(k, by) => {
+            if let Some(t) = s.trials.get_mut(k) {
+                t.seeds = step(t.seeds, by, SEEDS);
+            }
+        }
+        SetupButton::Count(k, by) => {
+            if let Some(n) = s.trials.get_mut(k).and_then(|t| t.count.as_mut()) {
+                *n = step(*n, by, COUNT);
+            }
+        }
+        SetupButton::Ship(k, ship, by) => {
+            if let Some(o) = s.trials.get_mut(k).and_then(|t| t.ships.get_mut(ship)) {
                 o.1 = step(o.1, by, (0, OPPONENTS));
             }
         }
-        SetupButton::HallOfFame(by) => s.hall_of_fame = step(s.hall_of_fame, by, (0, HALL_OF_FAME)),
+        SetupButton::Escorts => s.escorts = !s.escorts,
+        SetupButton::Goal(g, by) => {
+            let mut w = s.goals.weights();
+            if let Some(v) = w.get_mut(g) {
+                *v = (*v + by as f32 * WEIGHT_STEP).clamp(0.0, data::MAX_LAB_WEIGHT);
+            }
+            // A score needs a goal to weigh.
+            if w.iter().any(|v| *v > 0.0) {
+                s.goals = Goals { win: w[0], unhurt: w[1], quick: w[2], cheap: w[3] };
+            } else {
+                say = Some(("one goal at least weighs something".to_string(), Tone::Coral));
+            }
+        }
+        SetupButton::GoalPreset(k) => {
+            if let Some(p) = content.lab.goal_presets.get(k) {
+                s.goals = Goals::of(p.weights.clone());
+            }
+        }
         SetupButton::Size(k) => s.size = SIZES[k.min(SIZES.len() - 1)].1,
         SetupButton::Population(by) => s.size.population = step(s.size.population, by * POPULATION.0 as i32, (POPULATION.1, POPULATION.2)),
         SetupButton::Generations(by) => s.size.generations = step(s.size.generations, by * GENERATIONS.0 as i32, (GENERATIONS.1, GENERATIONS.2)),
-        SetupButton::Seeds(by) => s.size.seeds = step(s.size.seeds, by, SEEDS),
         SetupButton::Seed(by) => s.seed = s.seed.saturating_add_signed(by),
         SetupButton::Dice => s.seed = (now_unix().wrapping_mul(2_654_435_761) ^ s.seed.rotate_left(17)) % 1_000_000,
         SetupButton::StartRun => {
@@ -375,7 +441,13 @@ fn start_run(layer: &mut EvolutionLayer, ctx: &mut Ctx) {
     };
     let escorts = fleet_cores(content, &data::Blueprint { parts: Vec::new(), ..ctx.design.blueprint().clone() }, &ctx.escorts.0);
     let free = ctx.granted.mind_capacity.saturating_sub(escorts);
-    let config = page.setup.config(&starts, &ctx.granted, free);
+    let config = match page.setup.config(content, &starts, &ctx.granted, free, &page.sources) {
+        Ok(c) => c,
+        Err(e) => {
+            layer.say(format!("the run doesn't start: {e}"), Tone::Coral);
+            return;
+        }
+    };
     let names: Vec<String> = ctx.lab.runs().iter().map(|e| e.name.clone()).collect();
     let name = page.setup.name.trim();
     let name = fresh_name(if name.is_empty() { "New run" } else { name }, &names);
@@ -466,8 +538,10 @@ pub(super) fn fill(
                     toggle(r, fonts, "LOCK ORDER", l.order, SetupButton::Order);
                 });
             }
+            Section::TrialsHead => trials_head(p, fonts, &c, page),
             Section::Trials => trials(p, fonts, &c, content, page),
-            Section::Estimate => estimate(p, fonts, &c, page, &lab),
+            Section::Goals => goals(p, fonts, &c, content, page),
+            Section::Estimate => estimate(p, fonts, &c, content, page, &lab),
         });
     }
 }
@@ -576,7 +650,6 @@ fn size(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -
         for (head, value, less, more) in [
             ("CHILDREN", s.size.population, SetupButton::Population(-1), SetupButton::Population(1)),
             ("GENERATIONS", s.size.generations, SetupButton::Generations(-1), SetupButton::Generations(1)),
-            ("SEEDS", s.size.seeds, SetupButton::Seeds(-1), SetupButton::Seeds(1)),
         ] {
             r.spawn(label(fonts, head, 8.5, c(Tone::Label, 1.0)));
             stepper(r, fonts, c, &value.to_string(), less, more);
@@ -648,37 +721,122 @@ fn rules(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) 
     }
 }
 
-fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
-    let s = &page.setup;
-    let line = |p: &mut ChildSpawnerCommands, head: &str, value: u32, less: SetupButton, more: SetupButton, note: &str| {
-        p.spawn(Node { height: px(26), ..row(8.0) }).with_children(|r| {
-            r.spawn((prose(fonts, head, 12.5, c(if value > 0 { Tone::Number } else { Tone::Dim }, 1.0)), Node { width: px(170), flex_shrink: 0.0, ..default() }));
-            stepper(r, fonts, c, &value.to_string(), less, more);
-            r.spawn(label(fonts, note, 8.0, c(Tone::Dim, 1.0)));
-        });
-    };
-    for (k, (id, n)) in s.opponents.iter().enumerate() {
-        let name = content.ships.get(id).map_or(id.as_str(), |b| b.name.as_str());
-        let seeds = if s.size.seeds == 1 { "1 SEED".to_string() } else { format!("{} SEEDS", s.size.seeds) };
-        let note = if *n == 0 { "NOT FOUGHT".to_string() } else { format!("{n} IN A FIGHT  ·  {seeds}") };
-        line(p, name, *n, SetupButton::Opponent(k, -1), SetupButton::Opponent(k, 1), &note);
-    }
-    let note = if s.hall_of_fame == 0 { "NOT FOUGHT".to_string() } else { format!("THE RUN'S {} BEST SO FAR", s.hall_of_fame) };
-    line(p, "Hall of fame", s.hall_of_fame, SetupButton::HallOfFame(-1), SetupButton::HallOfFame(1), &note);
+/// A weight as the steppers show it: `2`, `1.5`.
+fn weight(w: f32) -> String {
+    if w.fract() == 0.0 { format!("{w:.0}") } else { format!("{w:.1}") }
 }
 
-fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage, lab: &world::evolution::Lab) {
+fn trials_head(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, page: &SetupPage) {
+    p.spawn(label(fonts, "TRIALS  ·  WHAT A DESIGN IS SCORED AGAINST", 9.0, c(Tone::Dim, 1.0)));
+    let words = if page.sources.escorts.is_empty() { "WITH YOUR ESCORTS  ·  NONE IN FLEET".to_string() } else { format!("WITH YOUR {} ESCORTS", page.sources.escorts.len()) };
+    let on = page.setup.escorts && !page.sources.escorts.is_empty();
+    spawn_pill(p, fonts, &words, 8.0, 24.0, None, Pill { active: on, disabled: page.sources.escorts.is_empty(), ..Pill::new(Tone::Teal) }, LabButton::Setup(SetupButton::Escorts));
+}
+
+/// Why a trial has nothing to fight now, if it hasn't.
+fn nothing_to_fight(kind: &data::TrialPresetKind, src: &Sources) -> Option<&'static str> {
+    use data::TrialPresetKind as K;
+    match kind {
+        K::Encounters | K::Voyages if src.open_voyages.is_empty() => Some("NO VOYAGE OPEN"),
+        K::Fleet if src.fleet.is_empty() => Some("NO SAVED DESIGN"),
+        K::Champions { .. } if src.champions.is_empty() => Some("NO EARLIER RUN YET"),
+        _ => None,
+    }
+}
+
+/// The trials: a row each (on or off, weight, seeds, its count, how many fights a child gets of it), ENEMY SHIPS'
+/// ships under it while it is on.
+fn trials(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
     let s = &page.setup;
-    let jobs = s.jobs_per_child();
+    let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..row(4.0) };
+    p.spawn(Node { height: px(14), flex_shrink: 0.0, ..row(0.0) }).with_children(|h| {
+        for (word, w) in ["", "WEIGHT", "SEEDS", ""].into_iter().zip(TRIAL_COLUMNS) {
+            h.spawn((tracked(fonts, word, 6.5, c(Tone::Dim, 1.0), 0.15), Node { padding: UiRect::left(px(26)), ..cell(w) }));
+        }
+    });
+    for (k, t) in s.trials.iter().enumerate() {
+        let Some(preset) = content.lab.trial(&t.preset) else { continue };
+        let blocked = nothing_to_fight(&preset.kind, &page.sources);
+        let (jobs, _) = t.cost(content, s.starts.len(), &page.sources);
+        p.spawn(Node { height: px(TRIAL_ROW), flex_shrink: 0.0, ..row(0.0) }).with_children(|r| {
+            r.spawn(cell(TRIAL_COLUMNS[0])).with_children(|n| {
+                let pill = Pill { active: t.on && blocked.is_none(), disabled: blocked.is_some(), ..Pill::new(Tone::Teal) };
+                spawn_pill(n, fonts, &preset.name.to_uppercase(), 7.5, 22.0, None, pill, LabButton::Setup(SetupButton::Trial(k)));
+            });
+            r.spawn(cell(TRIAL_COLUMNS[1])).with_children(|n| {
+                stepper(n, fonts, c, &weight(t.weight), SetupButton::Weight(k, -1), SetupButton::Weight(k, 1));
+            });
+            r.spawn(cell(TRIAL_COLUMNS[2])).with_children(|n| {
+                stepper(n, fonts, c, &t.seeds.to_string(), SetupButton::TrialSeeds(k, -1), SetupButton::TrialSeeds(k, 1));
+            });
+            r.spawn(cell(TRIAL_COLUMNS[3])).with_children(|n| {
+                if let Some(count) = t.count {
+                    let what = match preset.kind {
+                        data::TrialPresetKind::Waves { .. } => "WAVES",
+                        _ => "BEST",
+                    };
+                    n.spawn(tracked(fonts, what, 6.5, c(Tone::Dim, 1.0), 0.15));
+                    stepper(n, fonts, c, &count.to_string(), SetupButton::Count(k, -1), SetupButton::Count(k, 1));
+                }
+            });
+            let (note, tone) = match (blocked, t.on, t.weight > 0.0) {
+                (Some(why), _, _) => (why.to_string(), Tone::Coral),
+                (None, false, _) => ("OFF".to_string(), Tone::Dim),
+                (None, true, false) => ("WEIGHS 0: NOT FOUGHT".to_string(), Tone::Dim),
+                (None, true, true) => (format!("{jobs} {}", if jobs == 1 { "FIGHT" } else { "FIGHTS" }), Tone::Label),
+            };
+            r.spawn((tracked(fonts, &note, 7.0, c(tone, 1.0), 0.15), TextLayout::no_wrap(), Node { flex_grow: 1.0, min_width: px(0), overflow: Overflow::clip(), justify_content: JustifyContent::FlexEnd, ..default() }));
+        });
+        if t.on && !t.ships.is_empty() {
+            for (j, (id, n)) in t.ships.iter().enumerate() {
+                let name = content.ships.get(id).map_or(id.as_str(), |b| b.name.as_str()).to_uppercase();
+                p.spawn(Node { height: px(TRIAL_ROW), flex_shrink: 0.0, padding: UiRect::left(px(26)), ..row(0.0) }).with_children(|r| {
+                    r.spawn((tracked(fonts, &name, 7.0, c(if *n > 0 { Tone::Number } else { Tone::Dim }, 1.0), 0.15), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cell(TRIAL_COLUMNS[0] - 26.0) }));
+                    r.spawn(cell(TRIAL_COLUMNS[1])).with_children(|c2| {
+                        stepper(c2, fonts, c, &n.to_string(), SetupButton::Ship(k, j, -1), SetupButton::Ship(k, j, 1));
+                    });
+                    let note = if *n == 0 { "NOT FOUGHT".to_string() } else { format!("{n} IN A FIGHT") };
+                    r.spawn((tracked(fonts, &note, 7.0, c(Tone::Dim, 1.0), 0.15), TextLayout::no_wrap()));
+                });
+            }
+        }
+    }
+}
+
+/// GOALS: the presets (one lit while the weights are its), then each goal's weight.
+fn goals(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage) {
+    let w = page.setup.goals;
+    p.spawn(row(8.0)).with_children(|r| {
+        for (k, preset) in content.lab.goal_presets.iter().enumerate() {
+            let on = Goals::of(preset.weights.clone()) == w;
+            spawn_pill(r, fonts, &preset.name.to_uppercase(), 7.5, 22.0, None, Pill { active: on, ..Pill::new(Tone::Teal) }, LabButton::Setup(SetupButton::GoalPreset(k)));
+        }
+    });
+    p.spawn(row(6.0)).with_children(|r| {
+        for (k, (id, v)) in data::GOALS.iter().zip(w.weights()).enumerate() {
+            let name = content.lab.goal(id).map_or_else(|| id.to_uppercase(), |g| g.name.to_uppercase());
+            r.spawn((tracked(fonts, &name, 7.0, c(if v > 0.0 { Tone::Label } else { Tone::Dim }, 1.0), 0.15), Node { margin: UiRect::left(px(if k == 0 { 0.0 } else { 8.0 })), ..default() }));
+            stepper(r, fonts, c, &weight(v), SetupButton::Goal(k, -1), SetupButton::Goal(k, 1));
+        }
+    });
+}
+
+fn estimate(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32) -> Color, content: &Content, page: &SetupPage, lab: &world::evolution::Lab) {
+    let s = &page.setup;
+    let (jobs, _) = s.per_child(content, &page.sources);
     let fights = format!("{jobs} FIGHTS A CHILD  ·  {} A GENERATION", jobs * s.size.population);
     // With the layer open the run has its larger budget: ticks per second from the measured cost per tick at 60
     // frames a second (an estimate until the first run measured this device).
     let per_second = world::evolution::BUDGET_OPEN_MS * 60.0 * 1000.0 / lab.rate.us_per_tick.max(0.01);
-    let minutes = (s.ticks() / per_second as f64 / 60.0).max(0.1);
-    let time = if minutes < 1.0 { "UNDER A MINUTE".to_string() } else { format!("ABOUT {minutes:.0} MIN") };
+    let minutes = (s.ticks(content, &page.sources) / per_second as f64 / 60.0).max(0.1);
+    let time = match minutes {
+        m if m < 1.0 => "UNDER A MINUTE".to_string(),
+        m if m < 90.0 => format!("ABOUT {m:.0} MIN"),
+        m => format!("ABOUT {:.1} H", m / 60.0),
+    };
     let measured = if lab.rate.measured { "MEASURED" } else { "ESTIMATED" };
-    p.spawn(label(fonts, "THE RUN", 9.0, c(Tone::Dim, 1.0)));
-    p.spawn(label(fonts, &format!("{fights}  ·  {time} WITH THIS LAYER OPEN ({measured})"), 8.5, c(if jobs == 0 { Tone::Coral } else { Tone::Label }, 1.0)));
+    let line = format!("THE RUN  ·  {fights}  ·  {time} WITH THIS LAYER OPEN ({measured})");
+    p.spawn((label(fonts, &line, 8.0, c(if jobs == 0 { Tone::Coral } else { Tone::Label }, 1.0)), TextLayout::no_wrap()));
 }
 
 #[cfg(test)]
@@ -693,7 +851,8 @@ mod tests {
         let content = data::base_content();
         let storage = Storage::new(MemoryBackend::default());
         let design = PlayerDesign::starter(&content, "rim_skiff");
-        let page = SetupPage::new(&content, &storage, &PlayerBehaviors::default(), &design, vec![StartPick::Working]);
+        let career = data::Career::new(&content, content.starts.iter().next().unwrap().id.as_str(), 1).unwrap();
+        let page = SetupPage::new(&content, &storage, &PlayerBehaviors::default(), &design, &career, &Lab::default(), vec![StartPick::Working]);
         assert_eq!(page.setup.starts, vec![(StartPick::Working, Locks::default())]);
         let start = page.resolved[0].as_ref().unwrap();
         assert_eq!(start.name, design.blueprint().name);
@@ -708,5 +867,14 @@ mod tests {
         assert!(page.toggle(StartPick::Template("sample_mid".into())).is_err(), "at most four");
         page.toggle(StartPick::Template("rim_skiff".into())).unwrap();
         assert_eq!(page.setup.starts.len(), 3);
+        // The trials are lab.ron's, its default selection on; the first voyage is open, no design saved, no run made.
+        let on: Vec<&str> = page.setup.trials.iter().filter(|t| t.on).map(|t| t.preset.as_str()).collect();
+        assert_eq!(on, ["enemies_you_meet", "test_range_waves", "beat_your_start", "hall_of_fame"]);
+        assert_eq!(page.sources.open_voyages, ["yard_approach"]);
+        let kind = |id: &str| &content.lab.trial(id).unwrap().kind;
+        assert_eq!(nothing_to_fight(kind("enemies_you_meet"), &page.sources), None);
+        assert_eq!(nothing_to_fight(kind("your_fleet"), &page.sources), Some("NO SAVED DESIGN"));
+        assert_eq!(nothing_to_fight(kind("champions"), &page.sources), Some("NO EARLIER RUN YET"));
+        assert_eq!((weight(2.0), weight(1.5)), ("2".to_string(), "1.5".to_string()));
     }
 }
