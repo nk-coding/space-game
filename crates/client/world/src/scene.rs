@@ -879,7 +879,8 @@ mod tests {
         assert_eq!(ids(next_wave(&designs, bp("halvex_runner"), Some(3))), [raider; 3], "set by hand: the smallest");
         assert!(next_wave(&[], 100.0, None).is_empty() && next_wave(&[], 100.0, Some(2)).is_empty());
         // Where they come in: (seed, ships) → each ship's position, heading and velocity, around (10, -20).
-        let before: [(u64, &[((f32, f32), f32, (f32, f32))]); 3] = [
+        type Came = ((f32, f32), f32, (f32, f32));
+        let before: [(u64, &[Came]); 3] = [
             (1, &[((-2.0234, 102.2343), -3.04354, (0.2937, -2.9856)), ((-39.9370, 92.4117), -2.72354, (1.2179, -2.7416)), ((-61.6915, 58.8237), -2.40354, (2.0185, -2.2194))]),
             (42, &[((-36.4230, 80.5114), -2.70891, (1.2579, -2.7235))]),
             (

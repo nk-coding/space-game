@@ -99,9 +99,13 @@ impl Watched {
         self.referee.limit()
     }
 
-    /// The HUD's title: `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3`.
+    /// The HUD's title: `REPLAY · HALVEX RUNNER VS 3 × AUTOMATON RAIDER · SEED 3` (a gauntlet's: `… · 3 WAVES · …`).
     pub fn title(&self) -> String {
-        format!("REPLAY  ·  {}  VS  {}  ·  SEED {}", self.names[0], self.names[1], self.code.spec.seed)
+        let waves = match self.code.spec.waves.len() {
+            0 => String::new(),
+            n => format!("  ·  {} WAVES", n + 1),
+        };
+        format!("REPLAY  ·  {}  VS  {}{waves}  ·  SEED {}", self.names[0], self.names[1], self.code.spec.seed)
     }
 
     /// The HUD's subtitle: the time, the speed and each side's build points left of its start.
@@ -111,6 +115,10 @@ impl Watched {
         let speed = SPEEDS[self.speed];
         let _ = write!(out, "{} / {}  ·  {speed}×", clock(sim.tick()), clock(self.limit()));
         let _ = write!(out, "  ·  BUILD POINTS {:.0} / {:.0}  VS  {:.0} / {:.0}", left[0], bp[0], left[1], bp[1]);
+        if !self.code.spec.waves.is_empty() {
+            let (wave, of) = self.referee.wave();
+            let _ = write!(out, "  ·  WAVE {} / {of}", wave.min(of));
+        }
     }
 
     /// The banner the viewer shows at `tick`, if any: the end check from the end on, the changed rules at the start.
@@ -135,7 +143,7 @@ impl Watched {
 
     /// After a tick of the world: the referee's look, a keyframe every [`KEYFRAME_TICKS`] and the vessels lost the
     /// first time the tick is seen. `true` once the fight has ended.
-    fn after_tick(&mut self, sim: &Sim) -> bool {
+    fn after_tick(&mut self, sim: &mut Sim) -> bool {
         let ended = self.referee.observe(sim).is_some();
         let tick = sim.tick();
         if tick > self.seen {
@@ -168,7 +176,7 @@ impl Watched {
         let mut ended = self.result().is_some();
         while world.sim.tick() < target && !ended {
             world.sim.step(&idle);
-            ended = self.after_tick(&world.sim);
+            ended = self.after_tick(&mut world.sim);
         }
         world.hold = ended;
         world.rebuild_views = true;
@@ -318,7 +326,7 @@ fn observe(scene: Res<Scene>, mut replay: ResMut<Replay>, mut world: ResMut<SimW
         return;
     }
     let Some(Ok(w)) = replay.watch.as_mut() else { return };
-    if w.after_tick(&world.sim) {
+    if w.after_tick(&mut world.sim) {
         world.hold = true;
     }
 }
@@ -522,7 +530,7 @@ mod tests {
         let idle = TickInputs::default();
         for _ in 0..400 {
             world.sim.step(&idle);
-            w.after_tick(&world.sim);
+            w.after_tick(&mut world.sim);
         }
         let at = world.sim.state_hash();
         assert_eq!(w.keyframes.keys().copied().collect::<Vec<_>>(), [0, KEYFRAME_TICKS]);

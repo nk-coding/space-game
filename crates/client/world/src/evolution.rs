@@ -4,8 +4,13 @@
 //!
 //! * **Runs** are `arena::Run`s, built from a [`Setup`] (the setup page's choices) as an `arena::RunConfig`: one to
 //!   four starts (YOUR DESIGNS, templates, the drydock's working design) with their locks, the career's limits, the
-//!   ENEMY SHIPS trial and the run's own hall of fame, a size and a seed. Every player design and behavior a run uses
-//!   is inlined as text, so deleting or editing one later changes nothing in it.
+//!   trials (`lab.ron`'s presets with their weights and seeds, filled in from the career's open voyages, YOUR
+//!   DESIGNS, the lab's earlier runs and FLEET's escorts: [`Sources`]) and the goals' weights, a size and a seed. Every
+//!   player design and behavior a run uses is inlined as text, so deleting or editing one later changes nothing in it.
+//! * **IMPORT RUN** ([`Lab::import`]) takes a CLI run file (`arena evolve --save`); **DUPLICATE** makes the same
+//!   setup again with a new seed, **RENAME** names a run anew; **RE-SCORE** ([`Lab::rescore`]) makes a stale run a new
+//!   run under today's rules; **VALIDATE** ([`Lab::validate`]) fights a run's best designs on new seeds and their
+//!   recorded fights again, computed like a generation (the run waits meanwhile) and kept in its file.
 //! * **One run computes at a time** ([`Lab::running`]); starting or resuming another pauses it. It computes at home
 //!   and on every screen within a time budget per frame ([`BUDGET_OPEN_MS`] with the layer open, else
 //!   [`BUDGET_MS`]) and pauses in flight: the test range, test flights, replays and voyages ([`compute`]). The
@@ -22,11 +27,11 @@
 //!   `evolved` tag; an evolved behavior is saved beside it as a player behavior.
 //! * **`?lab=1`** opens the building until its research node comes (step 8); without it the building is dark.
 
-use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, Fitness, Genes, Limits, Locks, Measure, RunStatus, Start};
+use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, Genes, Goals, Limits, Locks, Measure, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
 use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig, RunSave};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use data::{Behavior, BehaviorEditor, Blueprint, Content, Origin};
+use data::{Behavior, BehaviorEditor, Blueprint, Content, Origin, TrialPresetKind};
 use kit::params::Params;
 
 use crate::career::Granted;
@@ -50,15 +55,19 @@ const RATE_MIN_TICKS: u64 = 200;
 /// Most runs the lab keeps: the web's local storage holds about 5 MB per origin, shared with the designs, and a
 /// STANDARD run is about 0.7 MB. PLACEHOLDER.
 pub const MAX_RUNS: usize = 8;
-/// Children, generations and seeds per opponent of the size presets (GDR-0092 "SIZE", PLACEHOLDER).
+/// Children and generations of the size presets (GDR-0092 "SIZE", PLACEHOLDER; the seeds are each trial's, from
+/// `lab.ron`, since step 5).
 pub const SIZES: [(&str, Size); 3] = [
-    ("QUICK", Size { population: 16, generations: 20, seeds: 2 }),
-    ("STANDARD", Size { population: 32, generations: 50, seeds: 4 }),
-    ("DEEP", Size { population: 64, generations: 100, seeds: 6 }),
+    ("QUICK", Size { population: 16, generations: 20 }),
+    ("STANDARD", Size { population: 32, generations: 50 }),
+    ("DEEP", Size { population: 64, generations: 100 }),
 ];
-/// The fights' time limit (s) and the share of it a fight lasts on average, for the setup's estimate. PLACEHOLDER.
-pub const TIME_LIMIT: f32 = 60.0;
-const MEAN_FIGHT_SHARE: f32 = 0.6;
+/// The share of its time limit a job lasts on average, for the setup's estimate: a fight, a gauntlet (its time limit
+/// is for all its waves), a voyage. Measured 16 Oct 2026 (`docs/arena.md` "What a trial costs": 0.40–0.52, 0.25–0.34,
+/// 0.13 for designs early in a run); PLACEHOLDER.
+const FIGHT_SHARE: f32 = 0.5;
+const GAUNTLET_SHARE: f32 = 0.35;
+const VOYAGE_SHARE: f32 = 0.25;
 
 /// A run as a stored document (`lab/<id>`): the run file, the CLI's format (`arena evolve --resume` reads it).
 #[derive(Clone, Debug, PartialEq)]
@@ -277,15 +286,65 @@ fn bare(content: &Content, text: &str) -> Option<String> {
     Some(ed.text())
 }
 
-/// Children, generations and seeds per opponent.
+/// Children and generations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Size {
     pub population: u32,
     pub generations: u32,
-    pub seeds: u32,
 }
 
-/// What the setup page has picked (GDR-0092 "The run setup", step 4's part of it).
+/// A trial as the setup picks it (GDR-0092 "TRIALS"): a `lab.ron` preset, on or off, its weight and seeds, and what the
+/// setup may change of what it fights: ENEMY SHIPS' count of each enemy ship, how many of the best HALL OF FAME and
+/// CHAMPIONS fight, how many waves TEST-RANGE WAVES must clear.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrialPick {
+    pub preset: String,
+    pub on: bool,
+    pub weight: f32,
+    pub seeds: u32,
+    /// ENEMY SHIPS: every content ship tagged `enemy` and how many of it a fight has (0: not fought).
+    pub ships: Vec<(String, u32)>,
+    /// HALL OF FAME, CHAMPIONS: how many; TEST-RANGE WAVES: the waves to clear.
+    pub count: Option<u32>,
+}
+
+impl TrialPick {
+    /// The preset as the setup has it: weights and seeds aside, its ships and count.
+    pub fn preset(&self, content: &Content) -> Option<data::TrialPreset> {
+        let mut p = content.lab.trial(&self.preset)?.clone();
+        match (&mut p.kind, self.count) {
+            (TrialPresetKind::EnemyShips { ships }, _) => {
+                *ships = self.ships.iter().filter(|s| s.1 > 0).map(|(ship, count)| data::LabShips { ship: ship.clone(), count: *count }).collect();
+            }
+            (TrialPresetKind::Waves { target: n } | TrialPresetKind::HallOfFame { count: n } | TrialPresetKind::Champions { count: n }, Some(c)) => *n = c,
+            _ => {}
+        }
+        Some(p)
+    }
+
+    /// The jobs it gives a child and how long one lasts on average (ticks), with `starts` starts and what `src` holds
+    /// (for the estimate: the hall of fame counted full).
+    pub fn cost(&self, content: &Content, starts: usize, src: &Sources) -> (u32, f32) {
+        let Some(p) = self.preset(content).filter(|_| self.on && self.weight > 0.0) else { return (0, 0.0) };
+        let fight = p.time_limit.unwrap_or(arena::DEFAULT_TIME_LIMIT) * sim::TICK_HZ as f32;
+        let (opponents, ticks) = match &p.kind {
+            TrialPresetKind::Encounters => (arena::evolve::encounters(content, &src.open_voyages).map_or(0, |e| e.len()), fight * FIGHT_SHARE),
+            TrialPresetKind::EnemyShips { ships } => (ships.len(), fight * FIGHT_SHARE),
+            TrialPresetKind::Waves { .. } | TrialPresetKind::Gauntlet { .. } => (1, fight * GAUNTLET_SHARE),
+            TrialPresetKind::BeatYourStart => (starts, fight * FIGHT_SHARE),
+            TrialPresetKind::Fleet => (src.fleet.len(), fight * FIGHT_SHARE),
+            TrialPresetKind::HallOfFame { count } => (*count as usize, fight * FIGHT_SHARE),
+            TrialPresetKind::Champions { count } => ((*count as usize).min(src.champions.len()), fight * FIGHT_SHARE),
+            TrialPresetKind::Voyages => {
+                let minutes = p.time_limit.unwrap_or(arena::DEFAULT_VOYAGE_MINUTES);
+                (src.open_voyages.len(), minutes * 60.0 * sim::TICK_HZ as f32 * VOYAGE_SHARE)
+            }
+        };
+        (opponents as u32 * self.seeds, ticks)
+    }
+}
+
+/// What the setup page has picked (GDR-0092 "The run setup").
 #[derive(Clone, Debug, PartialEq)]
 pub struct Setup {
     pub name: String,
@@ -293,10 +352,12 @@ pub struct Setup {
     pub starts: Vec<(StartPick, Locks)>,
     /// What may change: the design, the behavior or both.
     pub genes: Genes,
-    /// ENEMY SHIPS: content ships tagged `enemy` and how many of each a fight has (0: not fought).
-    pub opponents: Vec<(String, u32)>,
-    /// The run's own best so far as opponents (HALL OF FAME).
-    pub hall_of_fame: u32,
+    /// Every `lab.ron` trial preset, on or off.
+    pub trials: Vec<TrialPick>,
+    /// The goals' weights.
+    pub goals: Goals,
+    /// WITH YOUR ESCORTS: FLEET's escorts fly beside the design in every trial.
+    pub escorts: bool,
     pub size: Size,
     pub seed: u64,
     /// BUILD POINTS ≤ the start's, a number, or no cap; the hold at least the start's or not.
@@ -308,23 +369,39 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// The defaults (GDR-0092, lead defaults until step 6: design and behavior, STANDARD): the starts given, two
-    /// raiders and a hunter, a hall of fame of two, the start's build points and hold, voyage-ready.
+    /// The defaults (GDR-0092, lead defaults until step 6: design and behavior, STANDARD): the starts given, `lab.ron`'s
+    /// default trials and goal weights, the start's build points and hold, voyage-ready, no escorts beside it.
     pub fn new(content: &Content, starts: Vec<StartPick>, seed: u64) -> Setup {
-        let opponents = enemies(content).into_iter().map(|id| {
-            let n = match id.as_str() {
-                "automaton_raider" => 2,
-                "automaton_hunter" => 1,
-                _ => 0,
-            };
-            (id, n)
-        });
+        let trials = content
+            .lab
+            .trials
+            .iter()
+            .map(|p| {
+                let ships = match &p.kind {
+                    TrialPresetKind::EnemyShips { ships } => enemies(content)
+                        .into_iter()
+                        .map(|id| {
+                            let n = ships.iter().find(|s| s.ship == id).map_or(0, |s| s.count);
+                            (id, n)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                let count = match &p.kind {
+                    TrialPresetKind::Waves { target: n } | TrialPresetKind::HallOfFame { count: n } | TrialPresetKind::Champions { count: n } => Some(*n),
+                    _ => None,
+                };
+                TrialPick { preset: p.id.clone(), on: p.default, weight: p.weight, seeds: p.seeds, ships, count }
+            })
+            .collect();
+        let goals = Goals::of(content.lab.goals.iter().map(|g| (g.id.clone(), g.weight)));
         Setup {
             name: String::new(),
             starts: starts.into_iter().map(|s| (s, Locks::default())).collect(),
             genes: Genes::Both,
-            opponents: opponents.collect(),
-            hall_of_fame: 2,
+            trials,
+            goals,
+            escorts: false,
             size: SIZES[1].1,
             seed,
             build_points: Bound::Start,
@@ -334,22 +411,33 @@ impl Setup {
         }
     }
 
-    /// The fights a child has in a generation.
-    pub fn jobs_per_child(&self) -> u32 {
-        let opponents = self.opponents.iter().filter(|o| o.1 > 0).count() as u32;
-        (opponents + self.hall_of_fame) * self.size.seeds
+    /// The jobs a child has in a generation, and their ticks on average in all, with what `src` holds.
+    pub fn per_child(&self, content: &Content, src: &Sources) -> (u32, f64) {
+        self.trials.iter().fold((0, 0.0), |(n, t), p| {
+            let (jobs, ticks) = p.cost(content, self.starts.len(), src);
+            (n + jobs, t + jobs as f64 * ticks as f64)
+        })
     }
 
-    /// About how many ticks of work the whole run is (fights lasting [`MEAN_FIGHT_SHARE`] of their time limit).
-    pub fn ticks(&self) -> f64 {
-        let fight = (TIME_LIMIT * MEAN_FIGHT_SHARE * sim::TICK_HZ as f32) as f64;
-        self.size.generations as f64 * self.size.population as f64 * (self.jobs_per_child() as f64 * fight + arena::evolve::BREED_COST as f64)
+    /// About how many ticks of work the whole run is (every job lasting its kind's share of its time limit, breeding at
+    /// `BREED_COST` a child).
+    pub fn ticks(&self, content: &Content, src: &Sources) -> f64 {
+        let (_, child) = self.per_child(content, src);
+        self.size.generations as f64 * self.size.population as f64 * (child + arena::evolve::BREED_COST as f64)
     }
 
     /// The run's configuration with these starts (resolved, in order), under the career's limits: only the parts,
-    /// materials and counts it has (`?unlock=all` lifts them), and with VOYAGE-READY at most `free_cores` cores.
-    pub fn config(&self, starts: &[StartDesign], granted: &Granted, free_cores: u32) -> RunConfig {
-        let opponents = self.opponents.iter().filter(|o| o.1 > 0).map(|(id, n)| Entry { count: *n, ..Entry::ship(id) }).collect();
+    /// materials and counts it has (`?unlock=all` lifts them), and with VOYAGE-READY at most `free_cores` cores; the
+    /// trials that are on, filled in from `src`. Refused in words when a trial has nothing to fight or none is on.
+    pub fn config(&self, content: &Content, starts: &[StartDesign], granted: &Granted, free_cores: u32, src: &Sources) -> Result<RunConfig, String> {
+        let mut trials = Vec::new();
+        for pick in self.trials.iter().filter(|t| t.on && t.weight > 0.0) {
+            let p = pick.preset(content).ok_or_else(|| format!("no trial `{}`", pick.preset))?;
+            trials.push(TrialSpec::from_preset(&p, pick.weight, pick.seeds, self.escorts, src)?);
+        }
+        if trials.is_empty() {
+            return Err("turn a trial on: nothing would score the designs".into());
+        }
         let free = granted.free;
         let limits = Limits {
             frame: None,
@@ -371,7 +459,7 @@ impl Setup {
             },
             _ => ArchiveShape::default(),
         };
-        RunConfig {
+        Ok(RunConfig {
             seed: self.seed,
             evolve: match self.genes {
                 Genes::Behavior => Evolve::Behavior,
@@ -380,21 +468,41 @@ impl Setup {
             },
             generations: Some(self.size.generations),
             population: self.size.population.max(starts.len() as u32),
-            fitness: Fitness::ArenaPool {
-                opponents,
-                seeds: self.size.seeds,
-                hall_of_fame: self.hall_of_fame,
-                count: 1,
-                start_distance: arena::DEFAULT_START_DISTANCE,
-                time_limit: TIME_LIMIT,
-            },
+            fitness: None,
+            trials,
+            goals: self.goals,
             limits,
             start: None,
             starts: starts.iter().zip(&self.starts).map(|(s, (_, locks))| s.start(locks.clone())).collect(),
             archive,
             crossover: arena::evolve::DEFAULT_CROSSOVER,
             mutations: arena::evolve::DEFAULT_MUTATIONS,
-        }
+        })
+    }
+}
+
+/// A player design as a fight entry (YOUR FLEET, the escorts): its blueprint and the behavior it flies inlined, as a
+/// start is (`StartPick::resolve`); a template by id.
+pub fn design_entry(d: &StartDesign) -> Entry {
+    let design = match d.template {
+        true => DesignRef::Ship(d.from.clone()),
+        false => DesignRef::Blueprint(data::blueprint_to_ron(&d.blueprint)),
+    };
+    arena::evolve::entry_of(design, d.behavior.clone())
+}
+
+/// What the trials fight from outside the run, now: the career's open voyages, YOUR DESIGNS for YOUR FLEET (FLEET's
+/// escorts first), the lab's earlier runs' best designs for CHAMPIONS ([`Lab::champions`]), FLEET's escorts.
+pub fn sources(storage: &Storage, content: &Content, career: &data::Career, behaviors: &PlayerBehaviors, working: &PlayerDesign, lab: &Lab) -> Sources {
+    let escort_ids = career.escorts();
+    let mut ids: Vec<String> = library::list_designs(storage, content).unwrap_or_default().into_iter().filter(|e| e.problem.is_none()).map(|e| e.id).collect();
+    ids.sort_by_key(|id| !escort_ids.contains(id));
+    let entry = |id: &String| StartPick::Design(id.clone()).resolve(storage, content, behaviors, working).ok().map(|d| design_entry(&d));
+    Sources {
+        open_voyages: career.open_voyages(content).into_iter().map(String::from).collect(),
+        fleet: ids.iter().filter_map(entry).collect(),
+        champions: lab.champions(storage, content),
+        escorts: escort_ids.iter().filter_map(entry).collect(),
     }
 }
 
@@ -441,6 +549,8 @@ pub struct Lab {
     pub fresh: Option<String>,
     /// What went wrong while computing (a write that failed), for the layer.
     pub trouble: Option<String>,
+    /// VALIDATE underway: the run it validates and the work (it computes in the run's place until done).
+    validating: Option<(String, Validation)>,
 }
 
 impl Lab {
@@ -554,30 +664,162 @@ impl Lab {
             }
         }
         self.viewed = id.map(str::to_string);
-        let (running, viewed) = (self.running.clone(), self.viewed.clone());
-        self.loaded.retain(|l| Some(&l.id) == running.as_ref() || Some(&l.id) == viewed.as_ref());
+        let keep = [self.running.clone(), self.viewed.clone(), self.validating.as_ref().map(|v| v.0.clone())];
+        self.loaded.retain(|l| keep.iter().any(|k| k.as_ref() == Some(&l.id)));
         Ok(())
     }
 
     /// A new run from `config`, named `name`: it computes from now on (another that did is paused) and the page
     /// shows it. Refused when it doesn't build (why, in words) or [`MAX_RUNS`] runs are kept.
     pub fn create(&mut self, storage: &mut Storage, content: &Content, config: RunConfig, name: &str, now: u64) -> Result<String, String> {
-        if self.runs.len() >= MAX_RUNS {
-            return Err(format!("the lab keeps at most {MAX_RUNS} runs: delete one first"));
-        }
+        self.room()?;
         let run = Run::new(content, config).map_err(|e| e.to_string())?;
+        self.add(storage, content, run, name, now, RunStatus::Running)
+    }
+
+    /// Room for one more run.
+    fn room(&self) -> Result<(), String> {
+        match self.runs.len() >= MAX_RUNS {
+            true => Err(format!("the lab keeps at most {MAX_RUNS} runs: delete one first")),
+            false => Ok(()),
+        }
+    }
+
+    /// A run made (or read) into the lab as `name`: written, listed first, shown; running, it computes from now on
+    /// (another that did is paused).
+    fn add(&mut self, storage: &mut Storage, content: &Content, run: Run, name: &str, now: u64, status: RunStatus) -> Result<String, String> {
+        self.room()?;
         let stored = storage.list(RunDoc::NAMESPACE).map_err(|e| e.to_string())?;
         let id = unique_id(&slug_or(name, "run"), |id| stored.iter().any(|s| s == id) || self.runs.iter().any(|e| e.id == id));
-        self.pause_running(storage)?;
+        if status == RunStatus::Running {
+            self.pause_running(storage)?;
+        }
         let rules = self.today(content);
-        let loaded = Loaded { id: id.clone(), run, name: name.to_string(), created: now, status: RunStatus::Running };
+        let loaded = Loaded { id: id.clone(), run, name: name.to_string(), created: now, status };
         let save = loaded.save();
         storage.write(&id, &RunDoc(save.clone()), now).map_err(|e| e.to_string())?;
         self.runs.insert(0, RunEntry::of(content, &id, &save, rules));
         self.loaded.push(loaded);
-        self.running = Some(id.clone());
+        if status == RunStatus::Running {
+            self.running = Some(id.clone());
+        }
         self.view(storage, content, Some(&id))?;
         Ok(id)
+    }
+
+    /// A name no run has yet: `name`, else `name 2`, ...
+    fn fresh(&self, name: &str) -> String {
+        let names: Vec<String> = self.runs.iter().map(|e| e.name.clone()).collect();
+        fresh_name(name, &names)
+    }
+
+    /// The stored document of a run.
+    fn read(storage: &Storage, id: &str) -> Result<RunSave, String> {
+        Ok(storage.read::<RunDoc>(id).map_err(|e| e.to_string())?.ok_or_else(|| format!("{id} is gone"))?.doc.0)
+    }
+
+    /// IMPORT RUN: a run file (a CLI's, `arena evolve --save`, or another lab's) read into the lab, paused, under its
+    /// head's name or the file's. It must restore on today's content; under other rules it comes in read-only (stale),
+    /// to be re-scored. Refused, in words, when it doesn't read.
+    pub fn import(&mut self, storage: &mut Storage, content: &Content, file: &str, text: &str, now: u64) -> Result<String, String> {
+        self.room()?;
+        let save = RunSave::from_ron(text).map_err(|e| e.to_string())?;
+        let run = Run::restore(content, &save).map_err(|e| e.to_string())?;
+        let stem = file.rsplit(['/', '\\']).next().unwrap_or(file).trim_end_matches(".ron");
+        let name = self.fresh(save.name.as_deref().unwrap_or(if stem.is_empty() { "Imported run" } else { stem }));
+        self.add(storage, content, run, &name, now, RunStatus::Paused)
+    }
+
+    /// DUPLICATE: the same setup with a new seed, as a new run that computes.
+    pub fn duplicate(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
+        self.room()?;
+        let save = Self::read(storage, id)?;
+        let mut config = save.config;
+        config.seed = (now.wrapping_mul(2_654_435_761) ^ config.seed.rotate_left(17)) % 1_000_000;
+        let run = Run::new(content, config).map_err(|e| e.to_string())?;
+        let name = self.fresh(&self.entry(id).map_or_else(|| id.to_string(), |e| e.name.clone()));
+        self.add(storage, content, run, &name, now, RunStatus::Running)
+    }
+
+    /// RENAME: the run's head gets the new name (in memory, the list and its document).
+    pub fn rename(&mut self, storage: &mut Storage, id: &str, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("a run needs a name".into());
+        }
+        let save = match self.loaded.iter_mut().find(|l| l.id == id) {
+            Some(l) => {
+                l.name = name.to_string();
+                l.save()
+            }
+            None => RunSave { name: Some(name.to_string()), ..Self::read(storage, id)? },
+        };
+        storage.write(id, &RunDoc(save), now_unix()).map_err(|e| e.to_string())?;
+        if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
+            e.name = name.to_string();
+        }
+        Ok(())
+    }
+
+    /// RE-SCORE: a stale run as a new run under today's rules (`arena::Run::rescored`): its elites are fought again
+    /// first, then it goes on. The stale run stays as it is.
+    pub fn rescore(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
+        self.room()?;
+        let save = Self::read(storage, id)?;
+        let run = Run::rescored(content, &save).map_err(|e| e.to_string())?;
+        let name = self.fresh(&format!("{} (re-scored)", self.entry(id).map_or(id, |e| e.name.as_str())));
+        self.add(storage, content, run, &name, now, RunStatus::Running)
+    }
+
+    /// VALIDATE (GDR-0092): `genomes` of run `id` fight its trials on new seeds ([`VALIDATE_SEEDS`] each) and their
+    /// recorded fights again; it computes in the run's place until done, then its results go into the run's file.
+    /// Returns its jobs. Refused for a stale run (re-score it first) and while another validation is underway.
+    pub fn validate(&mut self, storage: &Storage, content: &Content, id: &str, genomes: &[u32]) -> Result<usize, String> {
+        if self.validating.is_some() {
+            return Err("a validation is underway".into());
+        }
+        self.load_run(storage, content, id)?;
+        let l = self.get(id).ok_or_else(|| format!("{id} is gone"))?;
+        if l.run.stale() {
+            return Err("its rules have changed since: RE-SCORE it first".into());
+        }
+        let v = l.run.validation(genomes, VALIDATE_SEEDS).ok_or("that design was never scored")?;
+        let n = v.jobs().len();
+        self.validating = Some((id.to_string(), v));
+        self.started = None;
+        Ok(n)
+    }
+
+    /// The validation underway: its run, how far it is (0..1), the genomes it validates.
+    pub fn validating(&self) -> Option<(&str, f32, Vec<u32>)> {
+        self.validating.as_ref().map(|(id, v)| (id.as_str(), v.done(), v.genomes()))
+    }
+
+    /// A validation is done: its results into its run, written. `true` (the page follows).
+    fn validated(&mut self, storage: &mut Storage) -> bool {
+        let Some((id, v)) = self.validating.take() else { return false };
+        if let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) {
+            l.run.validated_by(v);
+            if let Err(e) = storage.write(&id, &RunDoc(l.save()), now_unix()) {
+                self.trouble = Some(format!("the validation isn't saved: {e}"));
+            }
+        }
+        true
+    }
+
+    /// CHAMPIONS: every run's best design (its archive's best, rebuilt from its file), the best scores first.
+    pub fn champions(&self, storage: &Storage, content: &Content) -> Vec<Entry> {
+        let mut out: Vec<(f32, Entry)> = Vec::new();
+        for e in self.runs.iter().filter(|e| e.problem.is_none()) {
+            let (Ok(save), Some(score)) = (Self::read(storage, &e.id), e.best) else { continue };
+            let Some(best) = save.best else { continue };
+            if let Ok(g) = save.genome(content, best) {
+                let entry = arena::evolve::entry_of(DesignRef::Blueprint(g.blueprint_text()), Some(BehaviorRef::Text(g.behavior_text().to_string())));
+                out.push((score, entry));
+            }
+        }
+        out.sort_by(|a, b| b.0.total_cmp(&a.0));
+        out.into_iter().map(|(_, e)| e).collect()
     }
 
     /// Pauses the run that computes, if one does (written).
@@ -642,6 +884,9 @@ impl Lab {
                 *slot = None;
             }
         }
+        if self.validating.as_ref().is_some_and(|v| v.0 == id) {
+            self.validating = None;
+        }
         Ok(())
     }
 
@@ -650,8 +895,12 @@ impl Lab {
     /// generation that closes is written (the run's checkpoint), and so is the run's end. `true` when a generation
     /// closed (the page and the building follow).
     pub fn compute(&mut self, storage: &mut Storage, budget_ms: f32, frame: f32) -> bool {
-        let Some(id) = self.running.clone() else { return false };
         let ticks = self.rate.ticks_for(budget_ms);
+        // A validation computes in the run's place.
+        if let Some((_, v)) = self.validating.as_mut() {
+            return v.step(ticks) && self.validated(storage);
+        }
+        let Some(id) = self.running.clone() else { return false };
         let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
         if !l.computes() {
             return false;
@@ -708,7 +957,7 @@ impl Lab {
     /// `arena::Run::generation_done`.
     pub fn generation_done(&self, l: &Loaded) -> f32 {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(t) = self.threads.as_ref().filter(|t| t.id == l.id && t.generation == l.run.generation()) {
+        if let Some(t) = self.threads.as_ref().filter(|t| t.id == l.id && t.generation == l.run.generation() && self.validating.is_none()) {
             return t.done() as f32 / t.total().max(1) as f32;
         }
         l.run.generation_done()
@@ -721,6 +970,24 @@ impl Lab {
     /// the cores are flight's once the fights underway end (each under about 50 ms).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn compute_threads(&mut self, storage: &mut Storage, content: &Content, budget_ms: f32, frame: f32) -> bool {
+        // A validation's jobs go to the threads in the run's place (as generation `u32::MAX` of its run).
+        if let Some((id, v)) = self.validating.as_mut() {
+            if !self.threads.as_ref().is_some_and(|t| t.id == *id && t.generation == u32::MAX) {
+                if budget_ms <= 0.0 {
+                    return false;
+                }
+                let content = self.content.get_or_insert_with(|| std::sync::Arc::new(content.clone())).clone();
+                self.threads = Some(threads::Threads::new(id, u32::MAX, v.jobs().to_vec(), content));
+            }
+            let t = self.threads.as_mut().expect("the validation's jobs are out");
+            t.pump(budget_ms <= 0.0);
+            if budget_ms <= 0.0 || !t.finished() {
+                return false;
+            }
+            let results = self.threads.take().expect("the validation's jobs are in").take();
+            v.submit(results);
+            return self.validated(storage);
+        }
         let Some(id) = self.running.clone() else {
             self.threads = None;
             return false;
@@ -951,7 +1218,7 @@ pub fn budget(mode: AppMode, layer_open: bool) -> f32 {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>, content: Res<GameContent>) {
     let ms = budget(*mode.get(), lab.layer_open);
-    if lab.running.is_some() && lab.bypass_change_detection().compute_threads(&mut storage, &content.0, ms, time.delta_secs()) {
+    if (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute_threads(&mut storage, &content.0, ms, time.delta_secs()) {
         lab.set_changed();
     }
 }
@@ -961,7 +1228,7 @@ pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut
 #[cfg(target_arch = "wasm32")]
 pub fn compute(mode: Res<State<AppMode>>, time: Res<Time<Real>>, mut lab: ResMut<Lab>, mut storage: ResMut<Storage>) {
     let ms = budget(*mode.get(), lab.layer_open);
-    if ms > 0.0 && lab.running.is_some() && lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
+    if ms > 0.0 && (lab.running.is_some() || lab.validating.is_some()) && lab.bypass_change_detection().compute(&mut storage, ms, time.delta_secs()) {
         lab.set_changed();
     }
 }
@@ -989,13 +1256,18 @@ mod tests {
     use super::*;
     use crate::storage::MemoryBackend;
 
-    /// A small run of the starter: two generations of four children, one raider, short fights.
+    /// A small run of the starter: three generations of four children, against one raider and the hall of fame,
+    /// one seed each.
     fn setup(content: &Content) -> Setup {
         let mut s = Setup::new(content, vec![StartPick::Template("rim_skiff".into())], 7);
-        s.size = Size { population: 4, generations: 3, seeds: 1 };
-        s.hall_of_fame = 1;
-        for o in &mut s.opponents {
-            o.1 = u32::from(o.0 == "automaton_raider");
+        s.size = Size { population: 4, generations: 3 };
+        for t in &mut s.trials {
+            t.on = matches!(t.preset.as_str(), "enemy_ships" | "hall_of_fame");
+            t.seeds = 1;
+            t.count = t.count.map(|_| 1);
+            for o in &mut t.ships {
+                o.1 = u32::from(o.0 == "automaton_raider");
+            }
         }
         s
     }
@@ -1004,7 +1276,7 @@ mod tests {
         let design = PlayerDesign::starter(content, "rim_skiff");
         let starts: Vec<StartDesign> = s.starts.iter().map(|(p, _)| p.resolve(storage, content, &PlayerBehaviors::default(), &design).unwrap()).collect();
         let granted = Granted { unlocks: data::career::Unlocks::all(content), mind_capacity: 4, free: true, ..default() };
-        s.config(&starts, &granted, 4)
+        s.config(content, &starts, &granted, 4, &Sources::default()).unwrap()
     }
 
     fn mem() -> Storage {
@@ -1237,6 +1509,73 @@ mod tests {
         assert_eq!(old.read::<DesignDoc>("older").unwrap().unwrap().doc.0.origin, None);
     }
 
+    /// IMPORT RUN reads a CLI run file (no head) into the lab, paused, under the file's name, and it writes back the
+    /// same run; RENAME names it anew; VALIDATE computes in the run's place and keeps its results in the file;
+    /// DUPLICATE makes the same setup with a new seed; RE-SCORE makes a stale run a new run that fights its elites
+    /// again first.
+    #[test]
+    fn runs_import_validate_duplicate_and_rescore() {
+        let content = data::base_content();
+        let mut made = mem();
+        let s = setup(&content);
+        let mut lab = Lab::load(&made, &content, true);
+        let cfg = config(&content, &s, &made);
+        let id = lab.create(&mut made, &content, cfg, "Small", 10).unwrap();
+        while lab.running().is_some() {
+            lab.compute(&mut made, BUDGET_OPEN_MS, 0.016);
+        }
+        // What `arena evolve --save` writes: the run file without the game's head.
+        let full = made.read::<RunDoc>(&id).unwrap().unwrap().doc.0;
+        let cli = RunSave { name: None, created: None, status: None, ..full.clone() }.to_ron();
+        let mut storage = mem();
+        let mut lab = Lab::load(&storage, &content, true);
+        let imported = lab.import(&mut storage, &content, "runs/deep_skiff.ron", &cli, 50).unwrap();
+        let e = lab.entry(&imported).unwrap().clone();
+        assert_eq!((e.name.as_str(), e.status, e.generation, e.stale), ("deep_skiff", RunStatus::Paused, 3, false));
+        let back = storage.read::<RunDoc>(&imported).unwrap().unwrap().doc.0;
+        assert_eq!(RunSave { name: None, created: None, status: None, ..back }.to_ron(), cli, "it round-trips");
+        assert!(lab.running().is_none(), "an imported run waits");
+        assert!(lab.import(&mut storage, &content, "x.ron", "(format: 1", 50).is_err());
+        lab.rename(&mut storage, &imported, "  Deep skiff  ").unwrap();
+        assert_eq!(lab.entry(&imported).unwrap().name, "Deep skiff");
+        assert_eq!(storage.read::<RunDoc>(&imported).unwrap().unwrap().doc.0.name.as_deref(), Some("Deep skiff"));
+        // VALIDATE the best: it computes until done, then the run's file keeps it.
+        let best = lab.get(&imported).unwrap().run.archive().best().unwrap().id;
+        assert!(lab.validate(&storage, &content, &imported, &[best]).unwrap() > 0);
+        assert!(lab.validate(&storage, &content, &imported, &[best]).is_err(), "one at a time");
+        let mut frames = 0;
+        while lab.validating().is_some() {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+            frames += 1;
+            assert!(frames < 100_000);
+        }
+        let v = lab.get(&imported).unwrap().run.validated(best).cloned().unwrap();
+        assert_eq!(v.as_recorded.0, v.as_recorded.1, "today's rules: every fight as recorded");
+        let save = storage.read::<RunDoc>(&imported).unwrap().unwrap().doc.0;
+        assert_eq!(Run::restore(&content, &save).unwrap().validated(best), Some(&v));
+        // DUPLICATE: the same setup, a new seed, computing.
+        let copy = lab.duplicate(&mut storage, &content, &imported, 60).unwrap();
+        let c = lab.get(&copy).unwrap();
+        assert_eq!((c.run.config().trials.clone(), c.status), (save.config.trials.clone(), RunStatus::Running));
+        assert_ne!(c.run.config().seed, save.config.seed);
+        assert_eq!(lab.entry(&copy).unwrap().name, "Deep skiff 2");
+        // RE-SCORE: a run fought under other rules is stale; re-scored, a new run fights its elites again.
+        let stale = RunSave { rules: save.rules ^ 1, ..save };
+        storage.write("old_rules", &RunDoc(stale), 70).unwrap();
+        let mut lab = Lab::load(&storage, &content, true);
+        assert!(lab.entry("old_rules").unwrap().stale);
+        assert!(lab.validate(&storage, &content, "old_rules", &[best]).is_err(), "re-score it first");
+        let fresh = lab.rescore(&mut storage, &content, "old_rules", 80).unwrap();
+        assert_eq!(lab.running().map(|l| l.id.as_str()), Some(fresh.as_str()));
+        while lab.get(&fresh).unwrap().run.generation() < 4 {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+        }
+        let r = &lab.get(&fresh).unwrap().run;
+        assert!(r.state().history[3].rescore && !r.stale());
+        assert!(lab.entry(&fresh).unwrap().name.ends_with("(re-scored)"));
+        assert!(lab.entry("old_rules").unwrap().stale, "the stale run stays as it was");
+    }
+
     /// A start picked from the working design inlines it (no behavior field: the run carries the behavior beside it)
     /// and names it by its name; a template goes by id.
     #[test]
@@ -1252,9 +1591,25 @@ mod tests {
         assert!(!w.program.is_empty());
         // It builds a run as it is (the arena checks the blueprint text like content).
         let mut s = Setup::new(&content, vec![StartPick::Working], 3);
-        s.size = Size { population: 2, generations: 1, seeds: 1 };
+        s.size = Size { population: 2, generations: 1 };
         let granted = Granted { unlocks: data::career::Unlocks::all(&content), mind_capacity: 4, free: true, ..default() };
-        Run::new(&content, s.config(&[w], &granted, 4)).unwrap();
+        let src = Sources { open_voyages: vec!["yard_approach".into()], ..default() };
+        let cfg = s.config(&content, std::slice::from_ref(&w), &granted, 4, &src).unwrap();
+        // GDR-0092's default selection: the enemies you meet (weight 2), the test-range waves, beat your start, the
+        // hall of fame, each a lab.ron preset; WIN alone.
+        let ids: Vec<(&str, f32)> = cfg.trials.iter().map(|t| (t.preset.as_deref().unwrap(), t.weight)).collect();
+        assert_eq!(ids, [("enemies_you_meet", 2.0), ("test_range_waves", 1.0), ("beat_your_start", 1.0), ("hall_of_fame", 1.0)]);
+        assert!(cfg.goals.is_default() && cfg.fitness.is_none());
+        Run::new(&content, cfg).unwrap();
+        // Without an open voyage THE ENEMIES YOU MEET has nothing to fight; without a trial on, nothing scores.
+        assert!(s.config(&content, std::slice::from_ref(&w), &granted, 4, &Sources::default()).unwrap_err().contains("no voyage is open"));
+        let mut none = s.clone();
+        none.trials.iter_mut().for_each(|t| t.on = false);
+        assert!(none.config(&content, &[w], &granted, 4, &src).is_err());
+        // The estimate: every trial's jobs a child (two encounters of the first voyage × 4 seeds, the waves 2, the start
+        // 2, the hall of fame 4 × 2).
+        assert_eq!(s.per_child(&content, &src).0, 8 + 2 + 2 + 8);
+        assert!(s.ticks(&content, &src) > 0.0);
         let t = StartPick::Template("halvex_runner".into()).resolve(&storage, &content, &behaviors, &design).unwrap();
         assert!(matches!(t.start(Locks::default()), Start::Design { design: DesignRef::Ship(ref id), .. } if id == "halvex_runner"));
         assert_eq!(templates(&content, "ship_mind").first().map(String::as_str), Some("halvex_runner"));
