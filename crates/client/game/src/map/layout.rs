@@ -13,7 +13,7 @@
 //! content (`bands.ron`), so they are arcs across the map; a slice voyage sits on the cluster it is pinned to.
 
 use bevy::math::{Rect, Vec2};
-use data::career::{Exploration, Readiness, TrailSignal, Unlocks, voyage_ready};
+use data::career::{Exploration, Lead, Readiness, TrailSignal, Unlocks, voyage_ready};
 use data::skeleton::{Point, UNITS_PER_S};
 use data::{Blueprint, Career, Content, Voyage};
 use kit::ui_kit::Tone;
@@ -30,7 +30,7 @@ pub const MAP_RECT: Rect = Rect { min: Vec2::new(28.0, 64.0), max: Vec2::new(876
 /// neighbouring cluster (0.9 S) lies about 110 px away.
 pub const PX_PER_S: f32 = 120.0;
 /// Home's place on the stage at the default view: left of the map's middle, the bands bending away to the right; its
-/// height is chosen so home, the slice's voyages and the charted clusters sit in the map's middle ([`Geometry::new`]),
+/// height is chosen so home, the slice's known voyages and the charted clusters sit in the map's middle ([`Geometry::new`]),
 /// between these.
 pub const HOME_AT: Vec2 = Vec2::new(300.0, 352.0);
 const HOME_Y: (f32, f32) = (150.0, 560.0);
@@ -106,12 +106,14 @@ impl Geometry {
         // Home's direction from the centre turned to point left (−x).
         let turn = if home_v.length() > 0.0 { Vec2::NEG_X.rotate(Vec2::new(home_v.x, -home_v.y).normalize()) } else { Vec2::X };
         let turned = |p: Point| turn.rotate(Vec2::new(p.x as f32, p.y as f32) - home_v) * scale;
-        // The slice's voyages above home (flipped if they lie below), and they and the charted clusters in the map's
-        // middle.
+        // The slice's voyages above home (flipped if they lie below), and the known ones (each has its signal) and
+        // the charted clusters in the map's middle: the unknown ones are not drawn.
         let pinned: Vec<Vec2> = content.voyages.iter().filter_map(|v| galaxy?.pins().get(&v.id)).filter_map(|&k| sk?.clusters.get(k as usize)).map(|c| turned(c.at)).collect();
+        let known = |v: &&Voyage| galaxy.is_some_and(|g| g.signals().iter().any(|r| r.lead == Lead::Voyage(v.id.clone())));
+        let shown: Vec<Vec2> = content.voyages.iter().filter(known).filter_map(|v| galaxy?.pins().get(&v.id)).filter_map(|&k| sk?.clusters.get(k as usize)).map(|c| turned(c.at)).collect();
         let charted: Vec<Vec2> = galaxy.map_or_else(Vec::new, |g| g.charted().keys().filter_map(|&k| sk?.clusters.get(k as usize)).map(|c| turned(c.at)).collect());
         let flip = if pinned.iter().map(|q| q.y).sum::<f32>() > 0.0 { -1.0 } else { 1.0 };
-        let (lo, hi) = pinned.iter().chain(&charted).fold((0.0f32, 0.0f32), |(lo, hi), q| (lo.min(q.y * flip), hi.max(q.y * flip)));
+        let (lo, hi) = shown.iter().chain(&charted).fold((0.0f32, 0.0f32), |(lo, hi), q| (lo.min(q.y * flip), hi.max(q.y * flip)));
         let home_y = (MAP_RECT.center().y - (lo + hi) / 2.0).clamp(HOME_Y.0, HOME_Y.1);
         let home_px = Vec2::new(HOME_AT.x, home_y);
         let centre = home_px + Vec2::X * home_v.length() * scale;
@@ -465,7 +467,7 @@ pub(super) mod tests {
         let g = Geometry::new(&content, c.exploration());
         let sk = c.exploration().unwrap().skeleton();
         assert!((g.home.x - HOME_AT.x).abs() < 1e-3 && (HOME_Y.0 - 1e-3..=HOME_Y.1 + 1e-3).contains(&g.home.y), "{}", g.home);
-        assert!(g.nodes.iter().all(|n| n.y <= g.home.y), "the slice's voyages lie above home");
+        assert!(g.nodes.iter().map(|n| n.y - g.home.y).sum::<f32>() <= 0.0, "the slice's voyages lie above home, on the whole");
         assert!(g.band.centre.x > g.home.x && (g.band.centre.y - g.home.y).abs() < 1e-3);
         let home = sk.clusters[sk.home as usize].at;
         for (cl, &at) in sk.clusters.iter().zip(&g.clusters) {

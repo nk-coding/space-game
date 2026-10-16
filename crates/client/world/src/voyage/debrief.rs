@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 use data::career::{Haul, HaulItem, Lead, Outcome, SignalState, VoyageResult, unload};
-use data::{Career, Content};
+use data::{Career, Content, Reward};
 use kit::ui_kit::Tone;
 
 /// What one part's items gave: how many, research data per family, materials per id.
@@ -205,7 +205,8 @@ impl DebriefData {
 /// What a voyage found in the galaxy, from the career before and after it (galaxy plan E6, GDR-0097), as the
 /// debrief's lines: the voyage's `cluster` on its first launch (the launch charted it) and any other cluster charted
 /// meanwhile (not a slice voyage's), each signal heard or come further (`SIGNAL HEARD · A GATE`, then `NARROWED`,
-/// `LOCATED`, `FOUND`, `FOLLOWED` for one done).
+/// `LOCATED`, `FOUND`, `FOLLOWED` for one done), what a trail's end gave (`CACHE OPENED · LOGIC +8`, `A MEMORY · THE
+/// LAST LAUNCH · READ IT AT THE LOG`) and each gate opened (`GATE OPEN · THE OUTER REACH`, coral).
 pub fn galaxy_finds(content: &Content, before: &Career, after: &Career, cluster: Option<u32>) -> Vec<(String, Tone)> {
     let (Some(a), Some(b)) = (before.exploration(), after.exploration()) else { return Vec::new() };
     let pinned: Vec<u32> = b.pins().values().copied().collect();
@@ -231,6 +232,21 @@ pub fn galaxy_finds(content: &Content, before: &Career, after: &Career, cluster:
             },
         };
         out.push((format!("SIGNAL {word}  ·  {}", super::signal_words(content, after, s).0), Tone::Gold));
+        // A cache's or a memory's reward (a gate's is the gate below, a graveyard's the haul).
+        let reward = b.skeleton().trails.get(s.trail as usize).and_then(|t| content.trails.get(&t.trail)).map(|t| t.reward);
+        if r.state == SignalState::Done
+            && matches!(reward, Some(Reward::Cache | Reward::Lore))
+            && let Some((head, sub, tone)) = super::reward_words(content, after, s)
+        {
+            out.push((format!("{head}  ·  {sub}"), tone));
+        }
+    }
+    // Gates opened: a trail's guardian beaten, or the Warden (the slice's voyages are the rim's first gate trail).
+    let bands = content.galaxies.get(&b.skeleton().galaxy).map_or(&[][..], |g| g.bands.as_slice());
+    for k in b.gates().iter().filter(|k| !a.gates().contains(k)) {
+        let Some(c) = b.skeleton().clusters.get(*k as usize) else { continue };
+        let next = bands.iter().position(|x| *x == c.band).and_then(|j| bands.get(j + 1)).and_then(|x| content.bands.get(x));
+        out.push((format!("GATE OPEN  ·  {}", next.map_or_else(|| "THE NEXT BAND".to_string(), |x| x.name.to_uppercase())), Tone::Coral));
     }
     out
 }

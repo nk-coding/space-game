@@ -22,6 +22,8 @@
 //!   list: one row per core ([`cores`]: the source's name and summary from the content) with DECODE, which turns it
 //!   into a signal (`Career::decode`, saved): the row then shows the signal's words (`SIGNAL · A GATE`, its source's
 //!   line) and `ON THE MAP`, until the LOG closes. The mast glows while a core waits.
+//! * **The memory log** (galaxy plan E8, GDR-0080, GDR-0098): the lore fragments found at the ends of lore trails
+//!   ([`memories`]: each one's name and text from the content), newest first, after the logs.
 //!
 //! UI words are chrome in code, like home's; the voyages', families' and materials' names are content.
 
@@ -114,6 +116,12 @@ pub fn cores(content: &Content, career: &Career, decoded: &[TrailSignal]) -> Vec
     };
     let waiting = g.logs().iter().map(|s| row(s, None));
     waiting.chain(decoded.iter().map(|s| row(s, Some(signal_words(content, career, *s))))).collect()
+}
+
+/// The memory log: the fragments found (name, text), newest first.
+pub fn memories(content: &Content, career: &Career) -> Vec<(String, String)> {
+    let Some(g) = career.exploration() else { return Vec::new() };
+    g.memories().iter().rev().filter_map(|l| content.lore.get(l)).map(|l| (l.name.clone(), l.text.clone())).collect()
 }
 
 /// The career's history as rows, newest first.
@@ -212,9 +220,11 @@ fn open(
 fn refill(commands: &mut Commands, list: Entity, fonts: &HudFonts, style: &Style, content: &Content, career: &Career, decoded: &[TrailSignal]) {
     let rows = rows(content, career.history());
     let cores = cores(content, career, decoded);
+    let memories = memories(content, career);
     commands.entity(list).despawn_children();
     commands.entity(list).with_children(|p| {
         fill_cores(p, fonts, style, &cores);
+        fill_memories(p, fonts, style, &memories);
         fill(p, fonts, style, &rows);
     });
 }
@@ -302,6 +312,29 @@ fn fill_cores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, cor
                     row.spawn(label(fonts, "ON THE MAP", 9.0, c(Tone::Teal)));
                 }
             }
+        });
+    }
+    p.spawn(Node { height: px(22), flex_shrink: 0.0, ..default() });
+}
+
+/// The memory log's fragments, after the logs.
+fn fill_memories(p: &mut ChildSpawnerCommands, fonts: &HudFonts, style: &Style, memories: &[(String, String)]) {
+    if memories.is_empty() {
+        return;
+    }
+    let ui = style.ui;
+    let c = |tone: Tone| ui_color(tone.color(&ui), 1.0);
+    let head = format!("MEMORY  ·  {}  ·  WHAT THE TRAILS LED BACK TO", memories.len());
+    p.spawn((label(fonts, &head, 9.5, c(Tone::Gold)), Node { margin: UiRect::bottom(px(8)), flex_shrink: 0.0, ..default() }));
+    for (name, text) in memories {
+        p.spawn((
+            Node { flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), padding: UiRect::vertical(px(10)), border: UiRect::bottom(px(1)), ..default() },
+            BorderColor::all(ui_color(ui.dim, 0.25)),
+        ))
+        .with_children(|row| {
+            row.spawn((label(fonts, "LORE", 8.5, c(Tone::Gold)), Node { width: px(34), flex_shrink: 0.0, ..default() }));
+            row.spawn((prose(fonts, name, 15.0, c(Tone::Number)), Node { width: px(210), flex_shrink: 0.0, ..default() }));
+            row.spawn((prose(fonts, text, 12.5, c(Tone::Label)), Node { flex_grow: 1.0, flex_shrink: 1.0, ..default() }));
         });
     }
     p.spawn(Node { height: px(22), flex_shrink: 0.0, ..default() });

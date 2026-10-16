@@ -932,8 +932,14 @@ fn sync_map(
             }
             MapText::State(k) => {
                 let v = content.voyages.iter().nth(k);
-                let (w, tone) = state_words(states[k], v.is_some_and(|v| is_guardian(content, v)));
-                (w, tone, 1.0)
+                // A voyage on a gate it opened (the Warden's, galaxy plan E7) says so, as an opened gate does.
+                let g = career.career().exploration();
+                if v.and_then(|v| g?.pins().get(&v.id)).is_some_and(|c| g.is_some_and(|g| g.gates().contains(c))) {
+                    ("GATE  ·  OPEN".into(), Tone::Coral, 1.0)
+                } else {
+                    let (w, tone) = state_words(states[k], v.is_some_and(|v| is_guardian(content, v)));
+                    (w, tone, 1.0)
+                }
             }
             MapText::ClusterState(k) => match known.cluster(k) {
                 Some(m) if m.gate => ("GATE  ·  OPEN".into(), Tone::Coral, 1.0),
@@ -1071,6 +1077,9 @@ impl Panel {
         };
         let (k, v) = (content.voyages.position(id)?, content.voyages.get(id)?);
         let status = match VoyageState::of(content, career, &v.id) {
+            VoyageState::Cleared { .. } if career.exploration().and_then(|g| Some(g.gates().contains(g.pins().get(id)?))) == Some(true) => {
+                "CLEARED  ·  ITS GATE IS OPEN".into()
+            }
             VoyageState::Cleared { best } => format!("CLEARED{}  ·  NEW SITES EACH TIME", best.map(|t| format!("  ·  BEST {}", world::voyage::clock(t))).unwrap_or_default()),
             VoyageState::Signal => "A NEW SIGNAL  ·  THE GATE IS OPEN".into(),
             _ => "THE GATE IS OPEN".into(),

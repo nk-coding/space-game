@@ -84,16 +84,16 @@ pub enum Find {
 
 impl Find {
     /// Gives the find to `career`.
-    pub fn apply(self, career: &mut Career) {
+    pub fn apply(self, career: &mut Career, content: &Content) {
         match self {
             Find::Heard(s) => {
                 career.hear(s);
             }
             Find::Narrowed(s, k) => {
-                career.narrow(s, k);
+                career.narrow(content, s, k);
             }
             Find::Found(s, done) => {
-                career.found(s, done);
+                career.found(content, s, done);
             }
         }
     }
@@ -587,6 +587,35 @@ pub fn signal_words(content: &Content, career: &Career, s: TrailSignal) -> (Stri
     (hint.to_uppercase(), line)
 }
 
+/// What following the signal `s` to its end gave, when it was the last of its trail (galaxy plan E8, GDR-0098), as a
+/// banner's words: `GATE OPEN · THE OUTER REACH`, `CACHE OPENED` over what went into store, `A MEMORY · THE LAST
+/// LAUNCH` (read at the LOG), `SIGNAL FOLLOWED · A GRAVEYARD` (salvage it).
+pub fn reward_words(content: &Content, career: &Career, s: TrailSignal) -> Option<(String, String, Tone)> {
+    let g = career.exploration()?;
+    let plan = g.skeleton().trails.get(s.trail as usize).filter(|t| s.signal as usize + 1 == t.signals.len())?;
+    let trail = content.trails.get(&plan.trail)?;
+    Some(match trail.reward {
+        data::Reward::Gate => {
+            let bands = &content.galaxies.get(&g.skeleton().galaxy)?.bands;
+            let next = bands.iter().position(|b| *b == plan.band).and_then(|k| bands.get(k + 1)).and_then(|b| content.bands.get(b));
+            (format!("GATE OPEN  ·  {}", next.map_or("THE NEXT BAND".into(), |b| b.name.to_uppercase())), "ITS GUARDIAN IS BEATEN  ·  THE BAND BEYOND IS IN REACH".into(), Tone::Coral)
+        }
+        data::Reward::Cache => ("CACHE OPENED".into(), gives_words(content, &trail.gives), Tone::Teal),
+        data::Reward::Lore => {
+            let name = plan.lore.as_ref().and_then(|l| content.lore.get(l)).map_or_else(String::new, |l| l.name.to_uppercase());
+            (format!("A MEMORY  ·  {name}"), "READ IT AT THE LOG".into(), Tone::Gold)
+        }
+        data::Reward::Salvage => (format!("SIGNAL FOLLOWED  ·  {}", trail.hint.to_uppercase()), "FAR MORE THAN USUAL TO SALVAGE HERE".into(), Tone::Gold),
+    })
+}
+
+/// What a trail's `gives` puts into store, in words: `LOGIC +8  ·  PROGRAMMABLE MATTER +4`.
+pub fn gives_words(content: &Content, gives: &data::ResearchCost) -> String {
+    let data = gives.data.iter().map(|(f, x)| format!("{} +{}", content.families.get(f).map_or(f.as_str(), |x| x.name.as_str()).to_uppercase(), debrief::amount(*x)));
+    let materials = gives.materials.iter().map(|(m, n)| format!("{} +{n}", content.materials.get(m).map_or(m.as_str(), |x| x.name.as_str()).to_uppercase()));
+    data.chain(materials).collect::<Vec<_>>().join("  ·  ")
+}
+
 /// A recorded cluster voyage's finds this tick ([`Find`]), each given to the run's copy of the career at once, and the
 /// banner of the last one.
 pub fn note_finds(run: &mut VoyageRun, sim: &sim::Sim, content: &Content) -> Option<(String, String, Tone)> {
@@ -600,12 +629,12 @@ pub fn note_finds(run: &mut VoyageRun, sim: &sim::Sim, content: &Content) -> Opt
         match *e {
             SimEvent::Scanned { ship, at, range, .. } if sim.ship(ship).is_some_and(|s| s.owner() == PLAYER) => {
                 let skip: Vec<TrailSignal> = finds.iter().filter_map(|f| if let Find::Narrowed(s, _) = f { Some(*s) } else { None }).collect();
-                for (s, state) in knows.scanned(c.cluster, &skip) {
+                for (s, state) in knows.scanned(content, c.cluster, &skip) {
                     finds.push(Find::Narrowed(s, c.cluster));
                     let (hint, _) = signal_words(content, knows, s);
                     let here = knows.exploration().and_then(|g| g.signal(s)).is_some_and(|r| r.cluster == c.cluster);
                     banner = Some(match state {
-                        SignalState::Narrowed => (format!("SIGNAL NARROWED  ·  {hint}"), "ITS AREA ON THE MAP HALVED TOWARDS ITS PLACE".into(), Tone::Gold),
+                        SignalState::Narrowed => (format!("SIGNAL NARROWED  ·  {hint}"), "ITS AREA ON THE MAP SHRANK TOWARDS ITS PLACE".into(), Tone::Gold),
                         _ if here => (format!("SIGNAL LOCATED  ·  {hint}"), "IT LEADS INTO THIS CLUSTER  ·  FOLLOW ITS BEARING".into(), Tone::Gold),
                         _ => (format!("SIGNAL LOCATED  ·  {hint}"), "ITS CLUSTER IS ON THE MAP".into(), Tone::Gold),
                     });
@@ -625,9 +654,11 @@ pub fn note_finds(run: &mut VoyageRun, sim: &sim::Sim, content: &Content) -> Opt
                 let Some(st) = v.sites().get(site as usize).filter(|x| x.signal()) else { continue };
                 let Some(s) = place(site).and_then(signal_to) else { continue };
                 let done = cleared || st.plan().ships.is_empty();
-                if knows.found(s, done) {
+                if knows.found(content, s, done) {
                     finds.push(Find::Found(s, done));
-                    if !cleared {
+                    if let Some(words) = done.then(|| reward_words(content, knows, s)).flatten() {
+                        banner = Some(words);
+                    } else if !cleared {
                         let (hint, _) = signal_words(content, knows, s);
                         let sub = if done { "FOLLOWED TO ITS END".to_string() } else { format!("{}  ·  CLEAR IT", encounter_name(content, st.encounter())) };
                         banner = Some((format!("SIGNAL FOUND  ·  {hint}"), sub, Tone::Gold));
@@ -799,7 +830,7 @@ fn end_in(career: &mut Career, content: &Content, launched: &Launched, finds: &[
     match &launched.cluster {
         Some(c) => {
             for f in finds {
-                f.apply(career);
+                f.apply(career, content);
             }
             career.cluster_ended(content, c.cluster, how).ok().cloned()
         }
@@ -960,8 +991,9 @@ mod tests {
     fn a_cluster_voyage_charts_and_keeps_its_finds() {
         let (content, mut storage, mut pc) = fresh();
         let mut next = pc.career().clone();
-        let home = next.exploration().unwrap().skeleton().clusters[next.exploration().unwrap().skeleton().home as usize].at;
-        let k = next.blind_target(&content, data::skeleton::Point { x: home.x + 60, y: home.y }).expect("a cluster near home");
+        let g = next.exploration().unwrap();
+        let free = (0u32..).zip(&g.skeleton().clusters).find(|(k, c)| *k != g.skeleton().home && !g.pins().values().any(|p| p == k) && c.band == "rim" && next.jump_from(&content, *k).is_some());
+        let k = next.blind_target(&content, free.expect("a free cluster near home").1.at).unwrap();
         let seed = next.cluster_launched(&content, k).unwrap();
         pc.update(&mut storage, |c| *c = next).1.unwrap();
         let s = TrailSignal { trail: 0, signal: 0 };
