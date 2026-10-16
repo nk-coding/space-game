@@ -125,6 +125,8 @@ pub struct RunEntry {
     pub first: Option<f32>,
     /// Its starts' names.
     pub starts: Vec<String>,
+    /// An arms race's: its CO-EVOLUTION trial's name (`lab.ron`'s ARMS RACE).
+    pub race: Option<String>,
     /// Fought under rules that have changed since: read-only.
     pub stale: bool,
     /// Why it doesn't read or go on (listed anyway, so it can be deleted).
@@ -149,6 +151,10 @@ impl RunEntry {
             best: generations.last().map(|g| g.stats.archive_best),
             first: generations.first().map(|g| g.stats.best),
             starts: config.all_starts().map(|s| start_name(content, s)).collect(),
+            race: config.enemy.as_ref().map(|_| {
+                let preset = config.trials.iter().find(|t| matches!(t.kind, arena::evolve::Trial::CoEvolution)).and_then(|t| t.preset.as_deref());
+                preset.and_then(|id| content.lab.trial(id)).map_or_else(|| "Co-evolution".into(), |p| p.name.clone())
+            }),
             stale: head.rules != rules,
             problem: None,
         }
@@ -657,6 +663,7 @@ impl Lab {
                     best: None,
                     first: None,
                     starts: Vec::new(),
+                    race: None,
                     stale: false,
                     problem: Some(e),
                 },

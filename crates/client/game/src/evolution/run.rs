@@ -36,8 +36,8 @@
 //!   GENERATION n between the two populations; the chart adds the enemy's archive best (coral) and the PAST CHAMPIONS
 //!   line (dots: the share of the other side's champions each best beat, teal yours, coral its), GENERATION n of a
 //!   checked generation lists the check's fights to WATCH. An enemy's fights are seen from its side (it is side 1,
-//!   coral, in the viewer as in every fight); it saves as a design of its faction tagged `enemy`, and EXPORT TO
-//!   CONTENT copies it as a content ship with its behavior (`evolved_<faction>_<genome>`) to curate into a pack.
+//!   coral, in the viewer as in every fight); it saves as a design of its faction tagged `enemy`, and EXPORT (TO
+//!   CONTENT) copies it as a content ship with its behavior (`evolved_<faction>_<genome>`) to curate into a pack.
 
 use std::collections::BTreeMap;
 
@@ -171,6 +171,7 @@ pub(super) enum RunText {
     Stale,
     Bars,
     Last,
+    ArchiveHead,
     Axes,
 }
 
@@ -244,7 +245,7 @@ pub(super) fn spawn(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(
     p.spawn((RunText::Last, tracked(fonts, "", 7.5, c(Tone::Label, 1.0), 0.15), abs(at + Vec2::Y * (size.y + BARS_H + 34.0), Some(Vec2::new(size.x, 60.0)))));
     // The archive.
     let (at, size) = GRID;
-    p.spawn((label(fonts, "THE ARCHIVE  ·  THE BEST OF EACH KIND", 9.0, c(Tone::Dim, 1.0)), abs(at - Vec2::Y * 26.0, None)));
+    p.spawn((RunText::ArchiveHead, label(fonts, "", 9.0, c(Tone::Dim, 1.0)), abs(at - Vec2::Y * 26.0, None)));
     // An arms race's YOURS | THE ENEMY, at the archive head's right end.
     p.spawn((Panel::Camps, Node { justify_content: JustifyContent::FlexEnd, ..on_row(abs(at - Vec2::Y * 32.0, Some(Vec2::new(size.x, 24.0))), 6.0) }));
     p.spawn((Panel::Grid, abs(at, Some(size))));
@@ -831,8 +832,8 @@ fn picked_design(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Ton
                 t.spawn(Node { margin: UiRect::top(px(2)), ..row(6.0) }).with_children(|b| {
                     spawn_pill(b, fonts, "SAVE AS DESIGN", 8.0, 24.0, None, Pill { primary: true, ..Pill::new(Tone::Teal) }, LabButton::Run(RunButton::SaveAs));
                     if enemy {
-                        let tip = "COPIES IT AS A CONTENT SHIP WITH ITS BEHAVIOR: INTO A PACK'S SHIPS/ BY HAND, TO MEET IT ON VOYAGES";
-                        spawn_pill(b, fonts, "EXPORT TO CONTENT", 8.0, 24.0, None, Pill::new(Tone::Coral), (LabButton::Run(RunButton::Export), kit::ui_kit::Tip::new(tip)));
+                        let tip = "EXPORT TO CONTENT: COPIES IT AS A CONTENT SHIP WITH ITS BEHAVIOR, FOR A PACK'S SHIPS/ BY HAND";
+                        spawn_pill(b, fonts, "EXPORT", 8.0, 24.0, None, Pill::new(Tone::Coral), (LabButton::Run(RunButton::Export), kit::ui_kit::Tip::new(tip)));
                     }
                     if let Some((_, name)) = &target {
                         let tip = format!("WRITES OVER {} IN YOUR DESIGNS UNDER ITS ID: FLEET'S ESCORTS FLY THE NEW VERSION", name.to_uppercase());
@@ -1102,7 +1103,7 @@ fn scores(p: &mut ChildSpawnerCommands, fonts: &HudFonts, c: &impl Fn(Tone, f32)
         line(p, &trial_name(content, spec), &sub, [t.score, gs[0], gs[1], gs[2], gs[3]], false);
     }
     let all = b.goals.all();
-    let how = if l.run.camp(g) == Some(Camp::Enemy) { "ITS WIN AS SIDE 1, THE MEAN OVER ITS FIGHTS" } else { "THE TRIALS BY WEIGHT" };
+    let how = if l.run.camp(g) == Some(Camp::Enemy) { "ITS WIN AS SIDE 1" } else { "THE TRIALS BY WEIGHT" };
     line(p, "IN ALL", how, [Some(rec.score), Some(all[0]), Some(all[1]), Some(all[2]), Some(all[3])], true);
     // VALIDATE: its result, or the buttons (one validation at a time, in the run's place).
     let validated = l.run.validated(g);
@@ -1314,6 +1315,11 @@ pub(super) fn sync(
                 let enemy = l.run.enemy_archive().and_then(|a| a.best()).map_or_else(String::new, |e| format!("  ·  ENEMY {}", score(Some(e.score))));
                 (format!("START {}  »  BEST {}{enemy}", score(entry.and_then(|e| e.first)), score(entry.and_then(|e| e.best))), Tone::Gold)
             }
+            // An arms race's head is short: YOURS | THE ENEMY follow it.
+            RunText::ArchiveHead => match l.run.enemy_archive() {
+                Some(_) => ("THE ARCHIVES".into(), Tone::Dim),
+                None => ("THE ARCHIVE  ·  THE BEST OF EACH KIND".into(), Tone::Dim),
+            },
             RunText::Bars => match l.run.enemy_archive() {
                 Some(_) => ("BARS: CHILDREN THAT TOOK A CELL  ·  CORAL: THE ENEMY'S BEST  ·  DOTS: PAST CHAMPIONS BEATEN".into(), Tone::Dim),
                 None => ("BARS: CHILDREN THAT TOOK A CELL".into(), Tone::Dim),

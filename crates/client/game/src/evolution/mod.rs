@@ -541,6 +541,7 @@ mod tests {
             best: Some(0.5),
             first: None,
             starts: Vec::new(),
+            race: None,
             stale: false,
             problem: None,
         };

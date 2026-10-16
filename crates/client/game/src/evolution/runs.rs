@@ -156,7 +156,7 @@ pub(super) fn fill(
             ))
             .with_children(|r| {
                 r.spawn((prose(fonts, &e.name, 15.0, c(Tone::Number, 1.0)), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cell(COLUMNS[0]) }));
-                let starts = e.starts.join(" + ").to_uppercase();
+                let starts = e.starts.join(" + ").to_uppercase() + e.race.as_ref().map_or(String::new(), |r| format!("  ·  {}", r.to_uppercase())).as_str();
                 r.spawn((tracked(fonts, &starts, 8.0, c(Tone::Label, 1.0), 0.18), TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..cell(COLUMNS[1]) }));
                 r.spawn((label(fonts, status, 9.0, c(tone, 1.0)), cell(COLUMNS[2])));
                 r.spawn((number(fonts, &format!("{} / {}", e.generation, e.generations), 14.0, c(Tone::Number, 1.0)), cell(COLUMNS[3])));
