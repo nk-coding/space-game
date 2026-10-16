@@ -268,6 +268,7 @@ power: (draw: 9, tier: Low, min_level: 0.5),   // beam laser: fed after everythi
 | `tier` | `Normal` | `Critical`, `High`, `Normal`, `Low` or `Off`: tiers are served in this order, `Off` never draws |
 | `weight` | 1 | share inside the one tier that cannot be fully served (weight 2 runs at twice the level of weight 1); above 0, at most 100 |
 | `min_level` | 0 | below this share of its draw the part switches off instead of running at partial output (0..1); shown as the stat line `power_min_level` |
+| `intermittent` | none | the draw comes in short bursts, and when, in a few words (the scanner: `"while scanning"`, 16 Oct 2026): the design report's full use leaves it out and the drydock shows it under POWER ("+3 WHILE SCANNING"); only on scanners |
 
 `tier` and `weight` are defaults: a blueprint placement may override them (see Ships), and the sim can change
 them at runtime. `min_level` belongs to the part type. The exact rule is in `docs/sim.md` "Power". Base content
@@ -904,7 +905,7 @@ clean grid and report nothing until the placements are fixed. Header errors do n
   warning since GDR-0039: its plume burns them.)
 - Power: `power.weight` above 0 and at most 100 (`data::MAX_POWER_WEIGHT`), `power.min_level` 0 to 1, `tier`,
   `weight` and `min_level` only on parts that draw power; a placement `power` override only on such parts, with
-  the same weight range.
+  the same weight range; `power.intermittent` not empty and only on a scanner that draws power.
 - Turning parts: `engine.gimbal` between 0 and 45 degrees, `gyro.torque` and `rcs.thrust` above 0, no `rcs` on
   hull parts.
 - Rated speed: `engine.rated_speed` and `rcs.rated_speed` are required (a missing one is a parse error) and

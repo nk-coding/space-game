@@ -2520,7 +2520,7 @@ steady-state heat solve and the turn estimate are the report's own, on the sim's
 | `parts[i]` | stats after bonuses, open (venting) sides, steady-state heat and `heat / limit`, power level at full use, idle |
 | `bonuses` | every bonus that applies (target, source, stat, effect), for the bonus overlay |
 | `mass`, `centre_of_mass`, `inertia`, `hp`, `cargo`, `rule_slots` | main piece |
-| `power` | supply (working reactors after bonuses), demand at full use, served, deficit, the consumer rows in allocation order with what each asks and gets |
+| `power` | supply (working reactors after bonuses), demand at full use, served, deficit, the draws in bursts left out of full use per their words (`intermittent`), the consumer rows in allocation order with what each asks and gets |
 | `heat` | peak `heat / limit` and its part, the parts above their limit (they would shut down) |
 | `flight` | thrust and acceleration per direction (forward, backward, right, left), top speed per direction (GDR-0041), pure and differential torque, the planning `α` (first line), the 90° turn time, the yaw balance |
 | `guns`, `firepower` | per gun: muzzle, facing, clear, blockers, range, dps, rate, family, delivery; Σ dps of the main piece's working guns (clear, not idle) |
@@ -2767,7 +2767,9 @@ Galaxy track E3, 16 Oct 2026 ([GDR-0093](gdr/0093-galaxy-exploration-decisions-1
   scan adds the scanner's `work × DT` (its power level), sweeps when it reaches `charge` (`SimEvent::Scanned { ship, at,
   range, wake }`, `at` the controlling piece's centre of mass) and cools down for `cooldown` seconds; a scanner that
   died or left the controlling piece ends it (no sweep). The scan state is in the ship's hash only while not `Ready`.
-  The design report's full use counts every scanner as charging.
+  The design report's full use leaves a draw out when its part's `power.intermittent` says it comes in bursts (the
+  scanner's), and sums such draws apart per their words (`PowerReport::intermittent`, the drydock's "+3 WHILE
+  SCANNING"; 16 Oct 2026: the starter skiff read 29 / 28 with its scanner counted as always charging).
 - **The `scan` action** (`Action::Scan`, `RuleStatus::Scan { started }`, `behavior::action_decides`): when its
   rule's conditions hold it starts a scan if the ship can (one per think) and steps aside; the next rule that holds
   decides the maneuver. It needs no target.

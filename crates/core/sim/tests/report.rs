@@ -281,6 +281,18 @@ fn a_power_deficit_names_the_parts_that_run_short() {
 }
 
 #[test]
+fn draws_in_bursts_stand_apart_from_full_use() {
+    // The starter skiff's scanner draws 3 only while a scan charges (`power.intermittent`): full use leaves it out,
+    // so the skiff is not short of power, and the report sums it apart under its words.
+    let c = content();
+    let r = base_report(&c, "rim_skiff");
+    assert_eq!(r.power.intermittent, vec![("while scanning".to_string(), 3.0)]);
+    assert!(r.power.demand <= r.power.supply, "{} / {}", r.power.demand, r.power.supply);
+    assert!(r.power.demand + 3.0 > r.power.supply, "the test needs the skiff close to its supply");
+    assert!(!has(&r, |i| matches!(i, Issue::PowerDeficit { .. })), "{:?}", r.issues);
+}
+
+#[test]
 fn overheating_parts_are_flagged_with_the_peak() {
     let c = content();
     // The scenario's heat-stress ship (three beams on two reactors, no radiators) with a thruster.

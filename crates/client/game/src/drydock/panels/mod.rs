@@ -227,6 +227,8 @@ pub(super) enum PanelText {
     RowCount(usize),
     StatLabel(usize),
     StatValue(usize),
+    /// A main cell's small line under its bar (the power drawn in bursts, "+3 WHILE SCANNING").
+    StatNote(usize),
     SelStatLabel(usize),
     SelStatValue(usize),
     SelBonus(usize),

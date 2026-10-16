@@ -37,7 +37,7 @@
         build_points: 3,
         mass: 1,
         hp: 1,
-        power: (draw: 3, tier: Normal),
+        power: (draw: 3, tier: Normal, intermittent: "while scanning"),
         heat: (output: 0.4, limit: 3),
         scanner: (range: 1200, charge: 2, cooldown: 8, wake: 300),
         salvage: (family: "logic", data: 3),

@@ -202,7 +202,8 @@ A bar over 100 % fills its track, and a white notch marks 100 %.
 
 ::: info Full power, full use
 The panel shows the worst case. Every consumer is assumed to run at once at full power: engines at full thrust,
-gyros at full torque, every gun with a clear line firing, shields on. Thrust, speeds, turning and firepower are
+gyros at full torque, every gun with a clear line firing, shields on. Power drawn only in bursts (a scanner while
+it charges) is shown apart under POWER. Thrust, speeds, turning and firepower are
 what the main piece makes at full power with its bonuses. Only the main piece counts. In a real fight you rarely
 use everything at once, so a design that runs a little hot here may be fine.
 :::

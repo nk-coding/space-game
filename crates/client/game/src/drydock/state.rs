@@ -163,6 +163,8 @@ pub struct StatCell {
     pub tone: Tone,
     /// A thin bar under the cell: the share filled (over 1: over a limit, a notch marks 100 %) and its colour.
     pub bar: Option<(f32, Tone)>,
+    /// A small line under the bar: the power drawn in bursts beside full use ("+3 WHILE SCANNING").
+    pub note: Option<String>,
 }
 
 /// The stats grid (`stats.rs` fills it from the design report): the first `stats::MAIN_CELLS` cells are the

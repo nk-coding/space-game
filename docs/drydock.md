@@ -433,7 +433,7 @@ Labels, units and precision come from content (`stats.ron`: the `SHIP_STATS` ids
 
 | Cell | From the report | Shown | Tone |
 |---|---|---|---|
-| POWER | `power.demand / power.supply` at full use | `50 / 54` (no unit, to fit), gold bar of the share | teal; coral and the bar over 100 % on a deficit |
+| POWER | `power.demand / power.supply` at full use; under the bar the draws in bursts left out of it (`power.intermittent`) | `50 / 54` (no unit, to fit), gold bar of the share; `+3 WHILE SCANNING` | teal; coral and the bar over 100 % on a deficit; the burst line in the label tone (a scanner short of power charges slower) |
 | PEAK HEAT | `heat.peak` | `109%`, bar of the share | teal up to 100 %, gold up to `RUNS_HOT_MAX` (120 %, GDR-0052), coral above |
 | THRUST/MASS | `flight.accel[0]` (forward) | `10.3` (no unit, to fit) | teal; coral without forward thrust |
 | YAW | `flight.yaw / thrust[0]` (the thrust line's offset from the centre of mass), `yaw_balanced` | `Balanced` (offset ≤ `BALANCED_ARM` = 0.05 m), `Pulls left` (counter-clockwise), `Pulls right`; `—` without forward thrust | teal balanced; gold if the gyros and gimbals hold the pull, coral if not |

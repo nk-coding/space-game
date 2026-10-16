@@ -15,9 +15,10 @@
 //!   actuators and clear guns make at full power with bonuses, idle parts left out, as if the piece runs (a
 //!   working, powered core). Whether the reactors can feed everything at once is the power section's answer.
 //! * **Full use** (power and heat): every consumer at full activity: engines and RCS pods at full thrust, gyros
-//!   at full torque, guns with a clear line of fire firing, shields on, scanners charging, logic cores and other
-//!   consumers on.
+//!   at full torque, guns with a clear line of fire firing, shields on, logic cores and other consumers on.
 //!   Idle parts and blocked guns draw nothing. This is the worst case; real flight rarely uses all at once.
+//!   Draws that come in bursts (content `power.intermittent`: a scanner while a scan charges) are left out and
+//!   summed apart ([`PowerReport::intermittent`]), so a starter that scans now and then does not read as short.
 //! * **Heat** is the steady state of the dynamic model at full use, with each part's work from that power
 //!   pass. The shutdown above a limit is not applied (the parts are flagged instead), and plume heat on own
 //!   parts is left out (the burn is flagged instead).
@@ -176,6 +177,10 @@ pub struct PowerReport {
     pub served: f32,
     /// `demand − served`.
     pub deficit: f32,
+    /// What the consumers whose draw comes in bursts ask for at full activity, summed per their words (content
+    /// `power.intermittent`, "while scanning"), in part order; `Off` left out. Not part of `demand`: the drydock
+    /// shows it beside it.
+    pub intermittent: Vec<(String, f32)>,
     /// The consumers in allocation order (tier, weight descending, part), with what they get.
     pub consumers: Vec<ConsumerReport>,
 }
@@ -484,7 +489,7 @@ pub fn design_report(
                 .collect(),
         };
 
-        // Full use: every mover at full activity, every gun firing, shields on.
+        // Full use: every mover at full activity, every gun firing, shields on; draws in bursts left out.
         let supply = reactor_supply(piece, parts);
         let mut activity = vec![1.0f32; n];
         let (mut want, mut level) = (Vec::new(), Vec::new());
@@ -498,13 +503,29 @@ pub fn design_report(
             true,
             |_| true,
             true,
-            |_| true,
+            |p| d.parts[p as usize].intermittent.is_none(),
         );
+        let mut bursts: Vec<(PartIdx, f32)> = piece
+            .consumers()
+            .iter()
+            .filter(|c| d.parts[c.part as usize].intermittent.is_some() && c.tier != PowerTier::Off)
+            .map(|c| (c.part, c.draw))
+            .collect();
+        bursts.sort_by_key(|b| b.0);
+        let mut intermittent: Vec<(String, f32)> = Vec::new();
+        for (part, draw) in bursts {
+            let words = d.parts[part as usize].intermittent.as_deref().unwrap_or_default();
+            match intermittent.iter_mut().find(|(w, _)| w == words) {
+                Some((_, x)) => *x += draw,
+                None => intermittent.push((words.to_string(), draw)),
+            }
+        }
         power = PowerReport {
             supply,
             demand,
             served,
             deficit: (demand - served).max(0.0),
+            intermittent,
             consumers: piece
                 .consumers()
                 .iter()

@@ -102,6 +102,14 @@ impl<'a> Validator<'a> {
                     "`tier`, `weight` and `min_level` are for parts that draw power",
                 );
             }
+            if let Some(words) = &x.intermittent {
+                if words.trim().is_empty() {
+                    self.err(p, "power.intermittent", "say when it draws, in a few words (\"while scanning\")");
+                }
+                if p.scanner.is_none() || x.draw <= 0.0 {
+                    self.err(p, "power.intermittent", "only a scanner's draw comes in bursts (while a scan charges)");
+                }
+            }
         }
         if let Some(x) = &p.heat {
             self.number(p, "heat.output", x.output, 0.0, false);

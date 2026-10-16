@@ -178,6 +178,9 @@ pub struct PartSpec {
     pub sensor: f32,
     /// A scanner's numbers (content `scanner`).
     pub scanner: Option<data::ScannerSpec>,
+    /// Its draw comes in bursts, and when in words (content `power.intermittent`): the design report's full use
+    /// leaves it out.
+    pub intermittent: Option<String>,
     /// Armour material of a hull part (the placement's; `None` for other parts). Salvaged hull parts carry it.
     pub material: Option<String>,
     /// Build points as placed (hull parts with their material's factor): what a salvaged part is worth by
@@ -489,6 +492,7 @@ impl ShipDesign {
                 cargo: def.cargo.as_ref().map_or(0.0, |c| c.capacity),
                 sensor: def.sensor.as_ref().map_or(0.0, |x| x.range),
                 scanner: def.scanner.clone(),
+                intermittent: def.power.as_ref().and_then(|p| p.intermittent.clone()),
                 material: if def.hull { pl.material.clone() } else { None },
                 build_points: def.build_points_in(content.placement_armor(pl)),
                 cargo_units: def.size.0.saturating_mul(def.size.1).max(1),

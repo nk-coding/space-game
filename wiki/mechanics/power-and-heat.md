@@ -89,7 +89,9 @@ NORMAL or HIGH if it must keep firing, or give it a higher weight than the engin
 ### Seeing it
 
 - The drydock's [[stat:power_use]] cell shows what everything draws at full use against what the reactors make, and
-  the status line says POWER SHORT BY … when it doesn't fit. SELECTED PART shows each part's POWER LEVEL at full
+  the status line says POWER SHORT BY … when it doesn't fit. Power drawn only in short bursts, like the
+  [[part:scanner]]'s while a scan charges, is left out of that figure and shown under it ("+3 WHILE SCANNING"): a
+  scanner short of power only charges slower. SELECTED PART shows each part's POWER LEVEL at full
   use: 100 %, a gold share, OFF or IDLE.
 - In flight the HUD says POWER and the share served while the pool falls short, and NO POWER when your vessel is
   dark.

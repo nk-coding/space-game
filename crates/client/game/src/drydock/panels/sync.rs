@@ -427,6 +427,11 @@ pub(in crate::drydock) fn sync_blocks(
         for (cell, mut n) in &mut cells {
             set_display(&mut n, cell.0 < stats.cells.len());
         }
+        for (t, mut n) in &mut texts {
+            if let PanelText::StatNote(k) = *t {
+                set_display(&mut n, stats.cells.get(k).is_some_and(|c| c.note.is_some()));
+            }
+        }
         for (bar, mut v, mut n) in &mut bars {
             let b = stats.cells.get(bar.0).and_then(|c| c.bar);
             set_display(&mut n, b.is_some());
@@ -594,6 +599,10 @@ pub(in crate::drydock) fn sync_texts(
                 let cell = stats.cells.get(k);
                 s.push_str(cell.map_or("", |c| c.value.as_str()));
                 cell.map_or(Tone::Number, |c| c.tone)
+            }
+            PanelText::StatNote(k) => {
+                s.push_str(stats.cells.get(k).and_then(|c| c.note.as_deref()).unwrap_or_default());
+                Tone::Label
             }
             PanelText::SelStatLabel(k) => {
                 s.push_str(insp.stats.get(k).map_or("", |l| l.label.as_str()));

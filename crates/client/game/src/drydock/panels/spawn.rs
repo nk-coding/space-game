@@ -222,6 +222,7 @@ pub(in crate::drydock) fn spawn(mut commands: Commands, fonts: Res<HudFonts>, st
                                         r.spawn((PanelText::StatValue(k), number(fonts, "", 16.0, c(Tone::Number, 1.0))));
                                     });
                                 spawn_bar(cell, ValueBar { share: 0.0, tone: Tone::Gold }, StatBar(k));
+                                cell.spawn((PanelText::StatNote(k), label(fonts, "", 8.0, c(Tone::Label, 1.0)), Node { display: Display::None, ..default() }));
                             });
                         }
                     });

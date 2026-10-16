@@ -15,7 +15,8 @@
 //!
 //! The grid holds [`MAIN_CELLS`] cells in the mockup's two columns (POWER, PEAK HEAT, THRUST/MASS, YAW,
 //! FIREPOWER, CARGO, CONTROL, DEVICE LOAD), then [`DETAIL_CELLS`] smaller ones under them (TOP SPEED, TURN 90°,
-//! MASS, BUILD POINTS).
+//! MASS, BUILD POINTS). POWER's note under its bar lists the draws in bursts full use leaves out ("+3 WHILE
+//! SCANNING", content `power.intermittent`).
 
 use bevy::prelude::*;
 use data::Content;
@@ -114,7 +115,7 @@ fn share(used: f32, cap: f32) -> f32 {
 
 /// The stats grid from a report; `None` (the design doesn't compile) shows labels and "—".
 pub fn stat_cells(content: &Content, report: Option<&DesignReport>) -> Vec<StatCell> {
-    let cell = |stat: &str, value: String, tone: Tone, bar: Option<(f32, Tone)>| StatCell { label: stat_label(content, stat), value, tone, bar };
+    let cell = |stat: &str, value: String, tone: Tone, bar: Option<(f32, Tone)>| StatCell { label: stat_label(content, stat), value, tone, bar, note: None };
     // The value of a stat: shortened, with or without its unit.
     let val = |stat: &str, v: f32, unit: bool| if unit { stat_value(content, stat, v) } else { short(v, def(content, stat).1) };
     let pair = |stat: &str, a: f32, b: f32| format!("{} / {}", val(stat, a, false), val(stat, b, false));
@@ -131,12 +132,17 @@ pub fn stat_cells(content: &Content, report: Option<&DesignReport>) -> Vec<StatC
 
     let p = &r.power;
     let short_power = p.deficit > 0.0;
-    let power = cell(
+    let mut power = cell(
         "power_use",
         pair("power_use", p.demand, p.supply),
         if short_power { Tone::Coral } else { Tone::Teal },
         Some((share(p.demand, p.supply), if short_power { Tone::Coral } else { Tone::Gold })),
     );
+    // Draws in bursts stand apart from full use, in the label's tone: a scanner short of power only charges slower.
+    if !p.intermittent.is_empty() {
+        let words: Vec<String> = p.intermittent.iter().map(|(w, x)| format!("+{} {}", val("power_use", *x, false), w.to_uppercase())).collect();
+        power.note = Some(words.join(SEP));
+    }
     let peak = r.heat.peak;
     let heat = cell("peak_heat", val("peak_heat", peak * 100.0, true), heat_tone(peak), Some((peak, heat_tone(peak))));
     let accel = r.flight.accel[0];
@@ -330,6 +336,17 @@ mod tests {
         assert_eq!(value(&cells, "TURN 90°").value, "1.5 s");
         assert!(value(&cells, "MASS").value.ends_with(" t"));
         assert!(value(&cells, "BUILD POINTS").value.ends_with(" BP"));
+    }
+
+    #[test]
+    fn the_starters_scanner_reads_apart_from_full_use() {
+        let content = data::base_content();
+        let r = report_of(&content, &PlayerDesign::starter(&content, "rim_skiff")).unwrap();
+        let cells = stat_cells(&content, Some(&r));
+        let power = value(&cells, "POWER");
+        assert_eq!(power.tone, Tone::Teal, "{}", power.value);
+        assert_eq!(power.value, "26 / 28");
+        assert_eq!(power.note.as_deref(), Some("+3 WHILE SCANNING"));
     }
 
     #[test]

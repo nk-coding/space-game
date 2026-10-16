@@ -117,6 +117,11 @@ pub struct PowerSpec {
     /// Below this share of its demand (0..1) the part switches off instead of running partially.
     #[serde(default)]
     pub min_level: f32,
+    /// The draw comes in short bursts, not in steady use (a scanner draws only while a scan charges): when, in a
+    /// few words ("while scanning"). The design report's full use leaves it out, and the drydock shows it beside
+    /// the power figure ("+3 WHILE SCANNING"). Only scanners: the sim draws their power only while they charge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intermittent: Option<String>,
 }
 
 impl Default for PowerSpec {
@@ -127,6 +132,7 @@ impl Default for PowerSpec {
             tier: PowerTier::default(),
             weight: 1.0,
             min_level: 0.0,
+            intermittent: None,
         }
     }
 }
