@@ -7,6 +7,7 @@
 //! content-tool list <kind> [pack_dir...]
 //! content-tool wiki-data <wiki_dir> [pack_dir...]
 //! content-tool galaxy [--seed N] [--svg out.svg] [pack_dir...]
+//! content-tool galaxy --seeds N [pack_dir...]
 //! ```
 //!
 //! Pack directories are loaded in the order given (later packs override earlier ones by id). Without any,
@@ -23,6 +24,7 @@ use data::{
 };
 use serde_json::{Value, json};
 
+mod survey;
 mod wiki;
 
 const USAGE: &str = "usage:
@@ -38,6 +40,9 @@ const USAGE: &str = "usage:
   content-tool galaxy [--seed N] [--svg out.svg] [pack_dir...]
                                              generates the galaxy for a seed (default 1, the `galaxy`
                                              crate): its bands, home, gates and trails, and its map as SVG
+  content-tool galaxy --seeds N [pack_dir...]
+                                             seeds 1 to N: home's free clusters in range, and how many
+                                             voyages finding a signal takes
 
 Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
@@ -301,24 +306,33 @@ fn wiki_data(args: &[String]) -> Result<(), String> {
 /// Generates a galaxy of the content (the first `galaxy.ron` entry) for a seed and prints what it holds; `--svg`
 /// also writes its map.
 fn galaxy_cmd(args: &[String]) -> Result<(), String> {
-    let (mut seed, mut svg, mut dirs) = (1u64, None, Vec::new());
+    let (mut seed, mut svg, mut seeds, mut dirs) = (1u64, None, None, Vec::new());
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--seed" => seed = it.next().and_then(|v| v.parse().ok()).ok_or("--seed needs an integer")?,
+            "--seeds" => seeds = Some(it.next().and_then(|v| v.parse().ok()).ok_or("--seeds needs an integer")?),
             "--svg" => svg = Some(it.next().ok_or("--svg needs a file")?.clone()),
             _ => dirs.push(a.clone()),
         }
     }
     let (c, _) = load_content(&pack_dirs(&dirs))?;
+    if let Some(n) = seeds {
+        return survey::survey(&c, n);
+    }
     let g = c.galaxies.iter().next().ok_or("the content has no galaxy (`galaxy.ron`)")?;
     let s = galaxy::generate(&c, &g.id, seed).map_err(|e| e.to_string())?;
     let name = |k: u32| s.clusters[k as usize].name.as_str();
     let counts: Vec<String> = g.bands.iter().map(|b| format!("{b} {}", s.band(b).count())).collect();
     println!("galaxy `{}`, seed {seed}, generator {}: {} clusters ({}), hash {:016x}", g.id, s.version, s.clusters.len(), counts.join(", "), s.hash());
     let home = s.clusters[s.home as usize].at;
-    let near = s.band(&g.bands[0]).filter(|&k| k != s.home && s.clusters[k as usize].at.distance_s(home) <= g.jump_range as f64).count();
-    println!("home: {} at ({:.2}, {:.2}) S, {near} clusters of its band within {} S", name(s.home), home.x as f64 / 100.0, home.y as f64 / 100.0, g.jump_range);
+    let piece = |k: u32| s.pieces.values().any(|&p| p == k);
+    let near = s.band(&g.bands[0]).filter(|&k| k != s.home && !piece(k) && s.clusters[k as usize].at.distance_s(home) <= g.jump_range as f64).count();
+    println!("home: {} at ({:.2}, {:.2}) S, {near} free clusters of its band within {} S", name(s.home), home.x as f64 / 100.0, home.y as f64 / 100.0, g.jump_range);
+    for (v, &k) in &s.pieces {
+        let gate = if s.clusters[k as usize].gate { ", a gate" } else { "" };
+        println!("set piece {v}: {} at {:.1} S from home{gate}", name(k), s.clusters[k as usize].at.distance_s(home));
+    }
     for b in &g.bands {
         let gates: Vec<&str> = s.band(b).filter(|&k| s.clusters[k as usize].gate).map(name).collect();
         if !gates.is_empty() {
@@ -1036,17 +1050,17 @@ mod tests {
         );
         assert_eq!(
             find("ships", "automaton_warden")["in_encounters"],
-            json!(["the_warden"])
+            json!(["gate_sentinel", "the_warden"])
         );
         assert_eq!(find("ships", "rim_skiff")["in_encounters"], json!([]));
-        // The raider is almost everywhere: fighting in every encounter but the hunters' den, lying as a wreck in two
-        // of them.
+        // The raider is almost everywhere: fighting in every encounter but the hunters' den, the gate sentinel and the
+        // memory wreck, lying as a wreck in some.
         assert_eq!(
             find("ships", "automaton_raider")["in_encounters"]
                 .as_array()
                 .unwrap()
                 .len(),
-            c.encounters.len() - 1
+            c.encounters.len() - 3
         );
         assert_eq!(v["texts"]["encounter.the_warden.name"], json!("The Warden"));
         // f32 numbers export as written, without the noise of widening them to f64.

@@ -92,9 +92,10 @@ impl Wiki<'_> {
             ("Spacing".into(), format!("<span title=\"No two clusters closer\">{}</span>", self.value("galaxy_distance", g.spacing))),
             ("Jump range at the start".into(), self.value("jump_range", g.jump_range)),
             ("With research".into(), self.jump_research(root, g.jump_range)),
-            ("Home".into(), format!("{} or more clusters within the jump range", g.home_neighbours)),
+            ("Home".into(), format!("{} or more free clusters within the jump range (no set piece)", g.home_neighbours)),
             ("Warp time".into(), format!("{} s + {} s per S", format_number(g.warp.0, 1), format_number(g.warp.1, 1))),
             ("Fresh signal area".into(), format!("{} across", self.s_range(g.signal_area.across))),
+            ("A scan narrows it to".into(), format!("{}% of its radius", format_number(100.0 * g.signal_area.narrow, 0))),
             ("Trail step".into(), self.s_range(g.trail_step)),
             ("Name parts".into(), format!("{} starts, {} ends", g.names.starts.len(), g.names.ends.len())),
         ];
@@ -117,6 +118,17 @@ impl Wiki<'_> {
             .unwrap();
         }
         bands.push_str("</table>\n<p class=\"note\">A band reaches from its edge in to the next band's edge (the core's to the centre).</p>\n");
+        let pieces = if g.set_pieces.is_empty() {
+            none()
+        } else {
+            let mut t = String::from("<p>Hand-made voyages placed into every generated galaxy, each on a cluster of its band that takes its name. A gate's piece keeps one of its band's gates: its voyages are that gate's trail, and clearing its goal opens it.</p>\n<table class=\"list\">\n<tr><th>Voyage</th><th class=\"num\">From home</th><th></th></tr>\n");
+            for p in &g.set_pieces {
+                let gate = if p.gate { "the band's first gate" } else { "" };
+                writeln!(t, "<tr><td class=\"name\">{}</td><td class=\"num\">{}</td><td>{gate}</td></tr>", self.a(root, Kind::Voyage, &p.voyage), self.s_range(p.distance)).unwrap();
+            }
+            t.push_str("</table>\n");
+            t
+        };
         let example = match ::galaxy::generate(c, &g.id, EXAMPLE_SEED) {
             Ok(s) => {
                 let counts: Vec<String> =
@@ -138,7 +150,7 @@ impl Wiki<'_> {
             g,
             EntryParts {
                 facts,
-                sections: vec![("Bands".to_string(), bands), ("An example".into(), example)],
+                sections: vec![("Bands".to_string(), bands), ("Set pieces".into(), pieces), ("An example".into(), example)],
                 ..Default::default()
             },
         )
@@ -179,7 +191,15 @@ impl Wiki<'_> {
         types.push_str("</table>\n");
         let mut trails = Vec::new();
         if let Some(g) = &b.gates {
-            trails.push((g.trail.as_str(), format!("{} (one per gate)", g.count)));
+            // A gate's set piece has its voyages for a trail.
+            let piece = galaxies.iter().flat_map(|x| &x.set_pieces).find(|p| p.gate && c.voyages.get(&p.voyage).is_some_and(|v| v.band == b.id));
+            match piece {
+                Some(p) => {
+                    facts.push(("First gate".into(), self.a(root, Kind::Voyage, &p.voyage)));
+                    trails.push((g.trail.as_str(), format!("{} (one per gate but the first)", g.count.saturating_sub(1))));
+                }
+                None => trails.push((g.trail.as_str(), format!("{} (one per gate)", g.count))),
+            }
         }
         for t in &b.trails {
             trails.push((t.trail.as_str(), t.count.to_string()));
@@ -255,12 +275,22 @@ impl Wiki<'_> {
     pub(crate) fn trail_page(&self, t: &Trail) -> String {
         let root = UP;
         let c = self.c;
-        let facts = vec![
+        let mut facts = vec![
             ("Leads to".to_string(), reward_word(t.reward).into()),
             ("Signals".into(), count_range(t.length)),
             ("At its end".into(), self.a(root, Kind::Encounter, &t.target)),
             ("On the map".into(), format!("<span class=\"sig\">{}</span>", self.text(root, &signal_line(&t.hint)))),
         ];
+        let reward = match t.reward {
+            Reward::Gate => "its guardian beaten, the gate opens: jumps reach the band beyond".to_string(),
+            Reward::Lore => "its fragment, seen, joins the memory log at the LOG".into(),
+            Reward::Cache | Reward::Salvage => "what lies there, salvaged".into(),
+        };
+        facts.push(("Its end gives".into(), reward));
+        let gives = self.cost_items(root, &t.gives);
+        if !gives.is_empty() {
+            facts.push(("Into store".into(), format!("{}, kept even when the voyage is lost", gives.join(", "))));
+        }
         let mut sources = String::from("<p>Each of its signals comes from one of these, equally likely; the first lies in an ordinary cluster of the band, each later one where the signal before it led.</p>\n<table class=\"list\">\n");
         for id in &t.sources {
             let Some(s) = c.signal_sources.get(id) else { continue };

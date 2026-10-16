@@ -266,6 +266,7 @@ impl Refs {
             put(format!("galaxy:{}.home_neighbours", g.id), g.home_neighbours.to_string());
             put(format!("galaxy:{}.warp", g.id), format!("{} s + {} s per S", format_number(g.warp.0, 1), format_number(g.warp.1, 1)));
             put(format!("galaxy:{}.signal_area", g.id), esc(&w.s_range(g.signal_area.across)));
+            put(format!("galaxy:{}.signal_narrow", g.id), format!("{}%", format_number(100.0 * g.signal_area.narrow, 0)));
             put(format!("galaxy:{}.trail_step", g.id), esc(&w.s_range(g.trail_step)));
             put(format!("galaxy:{}.bands", g.id), g.bands.len().to_string());
         }

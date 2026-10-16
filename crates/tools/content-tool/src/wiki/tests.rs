@@ -531,12 +531,15 @@ fn galaxy_pages_link_both_ways() {
     has("galaxy/galaxy.html", "<figure class=\"galaxy-map\"><svg class=\"galaxy-map\"");
     has("galaxy/galaxy.html", "<p class=\"note\">Seed 1: ");
     has("bands/rim.html", "<a href=\"../cluster_types/wreck_drift.html\">Wreck drift</a>");
-    has("bands/rim.html", "<a href=\"../trails/rim_gate.html\">A rim gate</a></td><td>A band gate</td><td class=\"num\">3 (one per gate)</td>");
+    has("bands/rim.html", "<a href=\"../trails/rim_gate.html\">A rim gate</a></td><td>A band gate</td><td class=\"num\">2 (one per gate but the first)</td>");
     has("bands/outer.html", "<span class=\"tag\">stub</span>");
     has("bands/index.html", "<span class=\"badge stub\"");
     has("cluster_types/wreck_drift.html", "<dt>Radius</dt><dd>2000–2600 m</dd>");
     has("cluster_types/wreck_drift.html", "<a href=\"../encounters/derelict_field.html\">Derelict field</a>");
-    has("trails/rim_gate.html", "<dt>At its end</dt><dd><a href=\"../encounters/the_warden.html\">The Warden</a></dd>");
+    has("trails/rim_gate.html", "<dt>At its end</dt><dd><a href=\"../encounters/gate_sentinel.html\">Gate sentinel</a></dd>");
+    has("trails/precursor_cache.html", "<dt>Into store</dt><dd>");
+    has("galaxy/galaxy.html", "<td class=\"name\"><a href=\"../voyages/wardens_gate.html\">The Warden&#39;s gate</a></td>");
+    has("bands/rim.html", "<dt>First gate</dt><dd><a href=\"../voyages/wardens_gate.html\">");
     has("trails/rim_gate.html", "<span class=\"sig\">SIGNAL · A GATE</span>");
     has("trails/memory.html", "<a href=\"../lore/the_quiet.html\">The quiet</a>");
     has("signal_sources/hauler_log.html", "<dt>On the map</dt><dd>“a log from a hauler");
@@ -665,7 +668,7 @@ fn voyage_pages_link_both_ways() {
     // A ship names the encounters it waits in, fighting or as a wreck; the encounters name it back.
     has(
         "ships/automaton_warden.html",
-        "<h2>In encounters</h2>\n<ul>\n<li><a href=\"../encounters/the_warden.html\">The Warden</a>: ×1 fighting</li>",
+        "<h2>In encounters</h2>\n<ul>\n<li><a href=\"../encounters/gate_sentinel.html\">Gate sentinel</a>: ×1 fighting</li>\n<li><a href=\"../encounters/the_warden.html\">The Warden</a>: ×1 fighting</li>",
     );
     has(
         "ships/automaton_raider.html",
