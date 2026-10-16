@@ -6,6 +6,7 @@
 #   scripts/determinism-check.sh --fight NAME [--seed N] [--ticks N]   # an arena fight (crates/core/arena/fights/NAME.ron)
 #   scripts/determinism-check.sh --fight SGF1:…            # a fight code (GDR-0092: `arena fight|evolve` print them)
 #   scripts/determinism-check.sh --run NAME [--seed N] [--resume-at K]   # an evolution run (crates/core/arena/runs/NAME.ron)
+#   scripts/determinism-check.sh --galaxy N [--seed S]      # the generated galaxy of N seeds from S (default 1)
 #   scripts/determinism-check.sh --compare A.txt B.txt     # compare two existing hash streams
 #
 # Scenarios of sim's `determinism` example (sim::voyage::scenario): core (default), flight, assists (flight with pilot
@@ -22,6 +23,9 @@
 # mixed_trials, everything, arms_race) with its seed replaced (default 1), one line per generation (the hash of the run file after it), straight through in
 # slices; the example also interrupts it after --resume-at generations (default 3), writes and reads the run file,
 # restores it, runs on and fails unless every later generation hashes the same (GDR-0092).
+#
+# `--galaxy N` runs galaxy's `galaxy_hashes` example: the base content's galaxy generated for N seeds from --seed
+# (default 1), one line per seed, "<seed> <skeleton hash><interiors hash>" (ADR-0042).
 #
 # Hash stream format (what the example prints): one "<tick> <hash>" line per tick; lines starting with '#'
 # are comments (header, summary) and are shown but not compared. Any producer that prints this format can
@@ -61,7 +65,7 @@ if [ "${1:-}" = "--compare" ]; then
   exit $?
 fi
 
-SEED=; TICKS=; SCENARIO=core; PACKAGE=sim; EXAMPLE=determinism; DEFAULT_TICKS=900; RESUME_AT=3; RUN=0
+SEED=; TICKS=; SCENARIO=core; PACKAGE=sim; EXAMPLE=determinism; DEFAULT_TICKS=900; RESUME_AT=3; RUN=0; GALAXY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --seed) SEED=$2; shift 2 ;;
@@ -72,6 +76,7 @@ while [ $# -gt 0 ]; do
     --fight) PACKAGE=arena; EXAMPLE=fight_hashes; SCENARIO=$2; DEFAULT_TICKS=2700; shift 2 ;;
     --run) PACKAGE=arena; EXAMPLE=run_hashes; SCENARIO=$2; RUN=1; shift 2 ;;
     --resume-at) RESUME_AT=$2; shift 2 ;;
+    --galaxy) PACKAGE=galaxy; EXAMPLE=galaxy_hashes; SCENARIO=$2; GALAXY=1; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -80,7 +85,7 @@ CODE=0
 case "$SCENARIO" in SGF*) CODE=1; DEFAULT_TICKS=54000 ;; esac
 TICKS=${TICKS:-$DEFAULT_TICKS}
 # A run's seed is its own stream (its run file's is 1); every other check defaults to 42.
-if [ $RUN = 1 ]; then SEED=${SEED:-1}; else SEED=${SEED:-42}; fi
+if [ $RUN = 1 ] || [ $GALAXY = 1 ]; then SEED=${SEED:-1}; else SEED=${SEED:-42}; fi
 JOBS=${JOBS:-6}
 PROFILE=${PROFILE:-release}
 TARGET=${CARGO_TARGET_DIR:-target}
@@ -103,6 +108,10 @@ fi
 if [ $RUN = 1 ]; then
   ARGS=(--seed "$SEED" --scenario "$SCENARIO" --resume-at "$RESUME_AT")
   LABEL="$SCENARIO-$SEED-at$RESUME_AT"
+fi
+if [ $GALAXY = 1 ]; then
+  ARGS=(--seed "$SEED" --count "$SCENARIO")
+  LABEL="$SEED-x$SCENARIO"
 fi
 NATIVE_OUT="$OUT/$EXAMPLE-$LABEL-native.txt"
 WASM_OUT="$OUT/$EXAMPLE-$LABEL-wasm.txt"

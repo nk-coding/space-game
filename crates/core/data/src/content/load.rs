@@ -47,6 +47,12 @@ pub struct Pack {
     pub starts: Vec<Start>,
     pub voyages: Vec<Voyage>,
     pub encounters: Vec<Encounter>,
+    pub galaxies: Vec<Galaxy>,
+    pub bands: Vec<Band>,
+    pub cluster_types: Vec<ClusterType>,
+    pub trails: Vec<Trail>,
+    pub signal_sources: Vec<SignalSource>,
+    pub lore: Vec<LoreFragment>,
     pub controls: Vec<Control>,
     /// `lab.ron`: the evolution lab's words and numbers (GDR-0092).
     pub lab: Option<Lab>,
@@ -64,7 +70,8 @@ impl Pack {
     /// * `pack.ron`: the manifest (required).
     /// * `<kind-dir>.ron` or `<kind-dir>/**/*.ron` with kind-dir one of `stats`, `categories`, `factions`,
     ///   `materials`, `parts`, `frames`, `ships`, `behavior_nodes`, `behaviors`, `families`, `research`,
-    ///   `facilities`, `starts`, `voyages`, `encounters`, `controls` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
+    ///   `facilities`, `starts`, `voyages`, `encounters`, `galaxy`, `bands`, `cluster_types`, `trails`,
+    ///   `signal_sources`, `lore`, `controls` ([`Kind::dir`]). A file holds one entry `( ... )` or a list `[ ( ... ), ... ]`.
     /// * `lab.ron`: the evolution lab's goals, trials, genes, pilots, sizes and measures, one `( ... )` ([`Lab`]).
     /// * `icons/<key>.svg`: part, material and category icons as SVG text (`key` kebab-case).
     /// * `icons/<key>.ship.svg`: the ship drawing of the machines whose icon is `key` (GDR-0069).
@@ -132,6 +139,12 @@ impl Pack {
             starts: Vec::new(),
             voyages: Vec::new(),
             encounters: Vec::new(),
+            galaxies: Vec::new(),
+            bands: Vec::new(),
+            cluster_types: Vec::new(),
+            trails: Vec::new(),
+            signal_sources: Vec::new(),
+            lore: Vec::new(),
             controls: Vec::new(),
             lab: None,
             icons: Vec::new(),
@@ -198,6 +211,12 @@ impl Pack {
                     Some(Kind::Encounter) => {
                         parse_into(text, &src, &mut pack.encounters, &mut problems)
                     }
+                    Some(Kind::Galaxy) => parse_into(text, &src, &mut pack.galaxies, &mut problems),
+                    Some(Kind::Band) => parse_into(text, &src, &mut pack.bands, &mut problems),
+                    Some(Kind::ClusterType) => parse_into(text, &src, &mut pack.cluster_types, &mut problems),
+                    Some(Kind::Trail) => parse_into(text, &src, &mut pack.trails, &mut problems),
+                    Some(Kind::SignalSource) => parse_into(text, &src, &mut pack.signal_sources, &mut problems),
+                    Some(Kind::Lore) => parse_into(text, &src, &mut pack.lore, &mut problems),
                     Some(Kind::Control) => parse_into(text, &src, &mut pack.controls, &mut problems),
                     Some(Kind::Page) | None => problems.push(
                         Problem::error(format!(
@@ -277,6 +296,12 @@ impl Pack {
         check_duplicates(&pack.starts, &mut problems);
         check_duplicates(&pack.voyages, &mut problems);
         check_duplicates(&pack.encounters, &mut problems);
+        check_duplicates(&pack.galaxies, &mut problems);
+        check_duplicates(&pack.bands, &mut problems);
+        check_duplicates(&pack.cluster_types, &mut problems);
+        check_duplicates(&pack.trails, &mut problems);
+        check_duplicates(&pack.signal_sources, &mut problems);
+        check_duplicates(&pack.lore, &mut problems);
         check_duplicates(&pack.controls, &mut problems);
         let mut seen: BTreeMap<(Kind, &str), &Source> = BTreeMap::new();
         for page in &pack.wiki {
@@ -404,6 +429,15 @@ pub struct Content {
     /// Voyages in load order, which is also the voyage map's order.
     pub voyages: Table<Voyage>,
     pub encounters: Table<Encounter>,
+    /// The galaxies a game may be generated from (`galaxy.ron`), in load order.
+    pub galaxies: Table<Galaxy>,
+    /// The galaxy's bands; each galaxy lists its own from the rim inwards.
+    pub bands: Table<Band>,
+    pub cluster_types: Table<ClusterType>,
+    pub trails: Table<Trail>,
+    pub signal_sources: Table<SignalSource>,
+    /// Lore fragments in load order, which is also their order within a band.
+    pub lore: Table<LoreFragment>,
     /// The action map's actions in load order, which is also the settings screen's order within a section.
     pub controls: Table<Control>,
     /// The evolution lab's words and numbers (`lab.ron`, packs merged by id).
@@ -479,6 +513,12 @@ impl Content {
                 .iter()
                 .cloned()
                 .for_each(|e| drop(c.encounters.upsert(e)));
+            p.galaxies.iter().cloned().for_each(|e| drop(c.galaxies.upsert(e)));
+            p.bands.iter().cloned().for_each(|e| drop(c.bands.upsert(e)));
+            p.cluster_types.iter().cloned().for_each(|e| drop(c.cluster_types.upsert(e)));
+            p.trails.iter().cloned().for_each(|e| drop(c.trails.upsert(e)));
+            p.signal_sources.iter().cloned().for_each(|e| drop(c.signal_sources.upsert(e)));
+            p.lore.iter().cloned().for_each(|e| drop(c.lore.upsert(e)));
             p.controls.iter().cloned().for_each(|e| drop(c.controls.upsert(e)));
             if let Some(lab) = &p.lab {
                 c.lab.merge(lab);
@@ -510,8 +550,8 @@ impl Content {
 
     /// A fingerprint of everything a fight or a voyage reads from the content (GDR-0092): FNV-1a 64 of the RON of
     /// the stats, categories, factions, materials, parts, frames, ships, behavior nodes, behaviors, voyages and
-    /// encounters, in load order. Pack versions, research, facilities, starts, controls, the lab, icons and wiki prose
-    /// are left out: they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal
+    /// encounters, in load order. Pack versions, research, facilities, starts, the galaxy's kinds (a game keeps its
+    /// generated galaxy, ADR-0035), controls, the lab, icons and wiki prose are left out: they change no fight, and a replay whose fingerprint differs says the rules have changed. Equal
     /// content gives the same fingerprint on every platform (RON writes floats exactly and the same everywhere).
     pub fn fingerprint(&self) -> u64 {
         let ruled = (
@@ -546,6 +586,12 @@ impl Content {
             Kind::Start => self.starts.contains(id),
             Kind::Voyage => self.voyages.contains(id),
             Kind::Encounter => self.encounters.contains(id),
+            Kind::Galaxy => self.galaxies.contains(id),
+            Kind::Band => self.bands.contains(id),
+            Kind::ClusterType => self.cluster_types.contains(id),
+            Kind::Trail => self.trails.contains(id),
+            Kind::SignalSource => self.signal_sources.contains(id),
+            Kind::Lore => self.lore.contains(id),
             Kind::Control => self.controls.contains(id),
             Kind::Page => self.wiki.contains_key(&format!("page:{id}")),
         }
@@ -569,6 +615,12 @@ impl Content {
             Kind::Start => self.starts.get(id).map(|e| e.name.as_str()),
             Kind::Voyage => self.voyages.get(id).map(|e| e.name.as_str()),
             Kind::Encounter => self.encounters.get(id).map(|e| e.name.as_str()),
+            Kind::Galaxy => self.galaxies.get(id).map(|e| e.name.as_str()),
+            Kind::Band => self.bands.get(id).map(|e| e.name.as_str()),
+            Kind::ClusterType => self.cluster_types.get(id).map(|e| e.name.as_str()),
+            Kind::Trail => self.trails.get(id).map(|e| e.name.as_str()),
+            Kind::SignalSource => self.signal_sources.get(id).map(|e| e.name.as_str()),
+            Kind::Lore => self.lore.get(id).map(|e| e.name.as_str()),
             Kind::Control => self.controls.get(id).map(|e| e.name.as_str()),
             Kind::Page => self.wiki.get(&format!("page:{id}")).map(|p| {
                 p.markdown

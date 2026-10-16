@@ -147,7 +147,7 @@ fn layout_errors_name_the_new_dirs_and_kinds() {
     assert!(
         err[0]
             .message
-            .contains("families, research, facilities, starts, voyages, encounters or controls"),
+            .contains("facilities, starts, voyages, encounters, galaxy, bands, cluster_types, trails, signal_sources, lore or controls"),
         "{}",
         err[0]
     );
@@ -155,7 +155,7 @@ fn layout_errors_name_the_new_dirs_and_kinds() {
     assert!(
         err[0]
             .message
-            .contains("family, research, facility, start, voyage, encounter, control or page"),
+            .contains("start, voyage, encounter, galaxy, band, cluster_type, trail, signal_source, lore, control or page"),
         "{}",
         err[0]
     );

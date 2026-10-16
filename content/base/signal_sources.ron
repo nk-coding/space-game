@@ -1,0 +1,36 @@
+// Where signals come from (GDR-0078, GDR-0080, GDR-0093): a `Log` is a data core in a wreck of `site`, decoded at
+// home for free; a `Beacon` is scanned in the cluster and is a signal at once (`site`: what keeps it, none: the
+// beacon alone). `line` is the signal's second line on the map, under the trail's hint.
+[
+    (
+        id: "hauler_log",
+        name: "Hauler's log",
+        summary: "A data core in a hauler's wreck, still holding its last course.",
+        form: Log,
+        line: "a log from a hauler's wreck",
+        site: "derelict_field",
+    ),
+    (
+        id: "precursor_log",
+        name: "Precursor log",
+        summary: "A data core in a precursor hull, its log stopped mid-sentence.",
+        form: Log,
+        line: "a log in a precursor hull",
+        site: "precursor_wrecks",
+    ),
+    (
+        id: "old_beacon",
+        name: "Old beacon",
+        summary: "A precursor beacon that still calls on its old channel.",
+        form: Beacon,
+        line: "a beacon still calling",
+    ),
+    (
+        id: "distress_call",
+        name: "Distress call",
+        summary: "A call for help, long unanswered. Raiders found it first.",
+        form: Beacon,
+        line: "a distress call nobody answered",
+        site: "raider_pair",
+    ),
+]

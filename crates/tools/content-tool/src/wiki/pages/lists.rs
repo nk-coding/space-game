@@ -386,6 +386,42 @@ impl Wiki<'_> {
                     &self.encounter_table(UP, &c.encounters.iter().collect::<Vec<_>>()),
                 );
             }
+            Kind::Galaxy => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.galaxies.as_slice(), |_| String::new(), |g| count(g.bands.len(), "band", "bands")),
+                )
+            }
+            Kind::Band => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.bands.as_slice(), |_| String::new(), |b| format!("{}{}", self.value("galaxy_distance", b.edge), super::galaxy::stub(&b.tags))),
+                )
+            }
+            Kind::ClusterType => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.cluster_types.as_slice(), |_| String::new(), |t| format!("{}{}", super::galaxy::radius(t), super::galaxy::stub(&t.tags))),
+                )
+            }
+            Kind::Trail => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.trails.as_slice(), |_| String::new(), |t| format!("{}{}", super::galaxy::reward_word(t.reward), super::galaxy::stub(&t.tags))),
+                )
+            }
+            Kind::SignalSource => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.signal_sources.as_slice(), |_| String::new(), |x| super::galaxy::form_word(x.form).into()),
+                )
+            }
+            Kind::Lore => {
+                s += &wide_block(
+                    "sg-list",
+                    &self.rows(c.lore.as_slice(), |_| String::new(), |l| self.a(UP, Kind::Band, &l.band)),
+                )
+            }
             Kind::Control => {
                 s += &wide_block(
                     "sg-list",
@@ -496,6 +532,12 @@ impl Wiki<'_> {
             Kind::Start => c.starts.len(),
             Kind::Voyage => c.voyages.len(),
             Kind::Encounter => c.encounters.len(),
+            Kind::Galaxy => c.galaxies.len(),
+            Kind::Band => c.bands.len(),
+            Kind::ClusterType => c.cluster_types.len(),
+            Kind::Trail => c.trails.len(),
+            Kind::SignalSource => c.signal_sources.len(),
+            Kind::Lore => c.lore.len(),
             Kind::Control => c.controls.len(),
             Kind::Page => c.wiki.values().filter(|p| p.kind == Kind::Page).count(),
         }

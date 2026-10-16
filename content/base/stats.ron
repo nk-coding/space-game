@@ -52,4 +52,8 @@
     (id: "firepower", name: "Firepower", summary: "Damage per second of all guns together at full power, with bonuses.", unit: "/s", decimals: 1, better: Higher),
     (id: "control_load", name: "Control", summary: "Control cost of the parts against the capacity of the logic cores; parts beyond it go idle.", decimals: 0, better: Neutral),
     (id: "device_load", name: "Device load", summary: "How heavy the design is to simulate on this device; very heavy designs can slow the game down.", decimals: 0, better: Neutral),
+    // The galaxy map's distances (GDR-0093). S, the spacing unit, is about the distance between two neighbouring
+    // clusters: the first playable loop's voyages lie 0.9-1.3 S apart on the voyage map (1 S is 200 of its px).
+    (id: "galaxy_distance", name: "Distance", summary: "A distance on the galaxy map, in S: about the distance between two neighbouring clusters.", unit: "S", decimals: 2, better: Neutral),
+    (id: "jump_range", name: "Jump range", summary: "How far the drive jumps on the galaxy map, from home or any charted cluster.", unit: "S", decimals: 2, better: Higher),
 ]

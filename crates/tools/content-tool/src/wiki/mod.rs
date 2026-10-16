@@ -26,6 +26,7 @@
 mod draw;
 mod graph;
 pub mod hand;
+mod map;
 mod markup;
 mod pages;
 mod refs;
@@ -52,6 +53,11 @@ use sim::DesignReport;
 use draw::{Art, Glow, Style, Tile};
 use markup::{esc, inline, markdown};
 
+/// The map of a generated galaxy as SVG, cluster names of its first band shown (`content-tool galaxy --svg`).
+pub fn map_svg(c: &Content, s: &galaxy::Skeleton) -> String {
+    map::svg(c, s, &Style::embedded(), 60.0, true)
+}
+
 /// The generated files: path (relative to `wiki/gen/`, `/`-separated) → contents, sorted by path.
 pub struct Site {
     pub files: BTreeMap<String, Vec<u8>>,
@@ -64,7 +70,7 @@ pub struct Site {
 }
 
 /// The kinds in navigation order, with the titles of their list pages. Every [`Kind`] is here (a test checks).
-pub const KINDS: [(Kind, &str); 17] = [
+pub const KINDS: [(Kind, &str); 23] = [
     (Kind::Part, "Parts"),
     (Kind::Material, "Materials"),
     (Kind::Category, "Categories"),
@@ -77,6 +83,12 @@ pub const KINDS: [(Kind, &str); 17] = [
     (Kind::Start, "Starts"),
     (Kind::Voyage, "Voyages"),
     (Kind::Encounter, "Encounters"),
+    (Kind::Galaxy, "Galaxies"),
+    (Kind::Band, "Bands"),
+    (Kind::ClusterType, "Cluster types"),
+    (Kind::Trail, "Trails"),
+    (Kind::SignalSource, "Signal sources"),
+    (Kind::Lore, "Lore"),
     (Kind::Behavior, "Behaviors"),
     (Kind::BehaviorNode, "Behavior nodes"),
     (Kind::Stat, "Stats"),
@@ -262,6 +274,24 @@ pub fn generate(c: &Content, hand: &[hand::HandFile]) -> Site {
     }
     for e in &c.encounters {
         entry(Kind::Encounter, &e.id, &e.name, &e.summary, w.encounter_page(e));
+    }
+    for e in &c.galaxies {
+        entry(Kind::Galaxy, &e.id, &e.name, &e.summary, w.galaxy_page(e));
+    }
+    for e in &c.bands {
+        entry(Kind::Band, &e.id, &e.name, &e.summary, w.band_page(e));
+    }
+    for e in &c.cluster_types {
+        entry(Kind::ClusterType, &e.id, &e.name, &e.summary, w.cluster_type_page(e));
+    }
+    for e in &c.trails {
+        entry(Kind::Trail, &e.id, &e.name, &e.summary, w.trail_page(e));
+    }
+    for e in &c.signal_sources {
+        entry(Kind::SignalSource, &e.id, &e.name, &e.summary, w.signal_source_page(e));
+    }
+    for e in &c.lore {
+        entry(Kind::Lore, &e.id, &e.name, &e.summary, w.lore_page(e));
     }
     for e in &c.controls {
         entry(Kind::Control, &e.id, &e.name, &e.summary, w.control_page(e));
@@ -1148,6 +1178,16 @@ impl<'a> Wiki<'a> {
                 Kind::Encounter => {
                     flat(kind, c.encounters.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
                 }
+                Kind::Galaxy => flat(kind, c.galaxies.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::Band => flat(kind, c.bands.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::ClusterType => {
+                    flat(kind, c.cluster_types.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Trail => flat(kind, c.trails.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
+                Kind::SignalSource => {
+                    flat(kind, c.signal_sources.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect())
+                }
+                Kind::Lore => flat(kind, c.lore.iter().map(|e| (e.id.as_str(), e.name.as_str())).collect()),
                 Kind::Page => c
                     .wiki
                     .values()

@@ -672,6 +672,9 @@ body {
 .badge.pilot { color: var(--sg-teal); }
 .badge.tgt { color: var(--sg-number); }
 .badge.rhai { color: var(--sg-gold); }
+.badge.stub { color: var(--sg-dim); }
+/* A signal's first line, as the voyage map words it. */
+.sig { font-weight: 500; letter-spacing: 0.06em; color: var(--sg-teal); }
 .tag {
   display: inline-block;
   margin: 0 6px 4px 0;
@@ -1467,3 +1470,7 @@ svg.diagram + p em:first-child {
     background: color-mix(in srgb, var(--sg-darkest) 96%, transparent) !important;
   }
 }
+
+/* A generated galaxy (the galaxy's page): scales down to the column. */
+figure.galaxy-map { margin: 0 0 8px; }
+figure.galaxy-map svg { display: block; width: 100%; max-width: 560px; height: auto; margin: 0 auto; }

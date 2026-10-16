@@ -1,11 +1,13 @@
 //! The pages of the wiki: one per entry of every kind, one list per kind, and the index.
 //!
 //! Parts, materials, categories, factions, frames, ships, stats and articles here; behaviors (`behaviors.rs`), the
-//! career's research, facilities and starts (`career.rs`), voyages and encounters (`voyages.rs`), the evolution lab's
+//! career's research, facilities and starts (`career.rs`), voyages and encounters (`voyages.rs`), the galaxy's kinds
+//! (`galaxy.rs`), the evolution lab's
 //! page (`lab.rs`), the lists and the index (`lists.rs`).
 
 mod behaviors;
 mod career;
+mod galaxy;
 mod lab;
 mod lists;
 mod voyages;
@@ -14,6 +16,7 @@ use super::*;
 
 pub(crate) use behaviors::{ROLES, role_title, signature};
 pub(crate) use behaviors::role_class;
+pub(crate) use galaxy::radius as cluster_radius;
 pub(crate) use lab::{LAB_DOCUMENTED, LAB_PAGE};
 
 impl Wiki<'_> {

@@ -1,0 +1,51 @@
+// The galaxy's bands from the rim inwards (GDR-0026), each a ring around the centre out to its `edge` (S). A band's
+// clusters fill its ring at the galaxy's spacing; its `gates` lie near its inner edge, each at the end of a trail;
+// `trails` adds caches and graveyards (lore trails come from `lore/`). Only the rim is real: the other bands are
+// stubs (tag `stub`) until their races and guardians exist (plan track E8 and later). PLACEHOLDER NUMBERS (lead,
+// 16 Oct 2026, GDR-0094).
+[
+    (
+        id: "rim",
+        name: "The rim",
+        summary: "The galaxy's dark edge, where the shipyard lies and automatons pick over what the precursors left.",
+        edge: 5.5,
+        clusters: [(id: "wreck_drift", weight: 3), (id: "hunting_reach", weight: 2), (id: "quiet_field", weight: 2)],
+        gates: (count: 3, trail: "rim_gate"),
+        trails: [(trail: "precursor_cache", count: 2), (trail: "graveyard", count: 2)],
+    ),
+    (
+        id: "outer",
+        name: "The outer reach",
+        summary: "The band behind the rim's gates. Uncharted.",
+        tags: ["stub"],
+        edge: 4.2,
+        clusters: [(id: "uncharted_deep", weight: 1)],
+        gates: (count: 3, trail: "deep_gate"),
+    ),
+    (
+        id: "middle",
+        name: "The middle band",
+        summary: "Halfway to the core. Uncharted.",
+        tags: ["stub"],
+        edge: 3.2,
+        clusters: [(id: "uncharted_deep", weight: 1)],
+        gates: (count: 3, trail: "deep_gate"),
+    ),
+    (
+        id: "inner",
+        name: "The inner band",
+        summary: "Crowded space close to the core. Uncharted.",
+        tags: ["stub"],
+        edge: 2.2,
+        clusters: [(id: "uncharted_deep", weight: 1)],
+        gates: (count: 3, trail: "deep_gate"),
+    ),
+    (
+        id: "core",
+        name: "The core",
+        summary: "The bright heart of the galaxy. Uncharted.",
+        tags: ["stub"],
+        edge: 1.1,
+        clusters: [(id: "uncharted_deep", weight: 1)],
+    ),
+]

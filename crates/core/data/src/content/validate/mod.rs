@@ -2,11 +2,12 @@
 //! drydock designs). Every problem names pack, file, kind, id and field where possible.
 //!
 //! The checks are split by what they check: parts (`parts.rs`), research and starts (`progression.rs`), encounters
-//! and voyages (`voyages.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`); packs, headers,
+//! and voyages (`voyages.rs`), the galaxy's kinds (`galaxy.rs`), behaviors (`behaviors.rs`), ships (`ships.rs`), the lab (`lab.rs`); packs, headers,
 //! links, icons and numbers here.
 
 mod behaviors;
 mod controls;
+mod galaxy;
 mod lab;
 mod parts;
 mod progression;
@@ -84,6 +85,12 @@ pub fn validate(c: &Content) -> Vec<Problem> {
         "opens after",
         "can ever open",
     );
+    v.entries(c.galaxies.as_slice(), |v, e| v.galaxy(e));
+    v.entries(c.bands.as_slice(), |v, e| v.band(e));
+    v.entries(c.cluster_types.as_slice(), |v, e| v.cluster_type(e));
+    v.entries(c.trails.as_slice(), |v, e| v.trail(e));
+    v.entries(c.signal_sources.as_slice(), |v, e| v.signal_source(e));
+    v.entries(c.lore.as_slice(), |v, e| v.lore_fragment(e));
     v.entries(c.controls.as_slice(), |v, e| v.control(e));
     v.controls();
     v.lab();
@@ -156,6 +163,17 @@ pub const MAX_VOYAGE_SITES: u32 = 64;
 pub const MAX_ENCOUNTER_COUNT: u32 = 32;
 /// Longest expected voyage, in minutes (a sanity bound, placeholder).
 pub const MAX_VOYAGE_MINUTES: u32 = 600;
+/// Largest cluster radius, in metres: one `f32` simulation space centred on the origin holds about 4 km (ADR-0022,
+/// galaxy track E0, `docs/results/2026-10-16-bigger-clusters.md`).
+pub const MAX_CLUSTER_RADIUS: f32 = 4000.0;
+/// Largest galaxy radius and galaxy-map distance, in S (a sanity bound on the generator's work, placeholder).
+pub const MAX_GALAXY_RADIUS: f32 = 100.0;
+/// Most gates of one band, home's required neighbours and trails of one entry of a band (sanity bounds, placeholder).
+pub const MAX_GATES: u32 = 16;
+pub const MAX_HOME_NEIGHBOURS: u32 = 16;
+pub const MAX_BAND_TRAILS: u32 = 64;
+/// Most signals in one trail (GDR-0078's plan: 1 to 4).
+pub const MAX_TRAIL_LENGTH: u32 = 4;
 /// Largest number in content (masses, hit points, thrust, damage, bonus amounts, ...): a sanity limit that keeps
 /// sums over a ship far from overflowing to infinity (placeholder).
 pub const MAX_NUMBER: f32 = 1.0e6;

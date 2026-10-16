@@ -5,7 +5,8 @@
 //!
 //! The kinds are split by subject: parts and materials (`parts.rs`), ships (`ships.rs`), behaviors
 //! (`behaviors.rs`), progression and the station's facilities (`progression.rs`), voyages and encounters
-//! (`voyages.rs`), the evolution lab's goals, trials, genes, pilots, sizes and measures (`lab.rs`, one `lab.ron` per
+//! (`voyages.rs`), the galaxy: its generator numbers, bands, cluster types, trails, signal sources and lore
+//! (`galaxy.rs`), the evolution lab's goals, trials, genes, pilots, sizes and measures (`lab.rs`, one `lab.ron` per
 //! pack, not an entry kind: its texts are keyed `lab.<list>.<id>.<field>`); the shared header, packs,
 //! stats, categories and factions here. Every type is reached as `content::model::*` (and `data::*`).
 
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::kind::Kind;
 
 pub use controls::Control;
+pub use galaxy::{Band, ClusterSite, ClusterType, Galaxy, Gates, LoreFragment, NameParts, Reward, SignalArea, SignalSource, SourceForm, Trail, TrailCount, Weighted};
 pub use lab::{Duty, EnemyPalette, GENES, GOALS, GenePreset, GoalPreset, Lab, LabAxis, LabBudget, LabGene, LabGoal, LabKind, LabMeasure, LabPilot, LabShips, LabSize, LabSpread, MAX_DUTY_SECONDS, MAX_LAB_WEIGHT, MAX_PRESET_BEST, MAX_PRESET_SEEDS, MAX_PRESET_SHIPS, MAX_PRESET_WAVES, MEASURES, SPREADS, StandIn, TRIAL_KINDS, TrialPreset, TrialPresetKind};
 pub use behaviors::{Behavior, BehaviorNode, ChoiceOption, NodeParam, NodeRole, ParamType, Quantity};
 pub use parts::{ArmorSpec, BarrelArt, Bonus, CargoSpec, Condition, Delivery, Effect, EngineSpec, ExplosionSpec, GyroSpec, HeatSpec, HullSalvageSpec, LogicSpec, MAX_CONTROL_COST, MAX_POWER_WEIGHT, Material, Part, PlumeSpec, PowerOverride, PowerSpec, PowerTier, RadiatorSpec, RcsSpec, SalvageSpec, Selector, Shape, ShieldSpec, WeaponFamily, WeaponSpec};
@@ -81,6 +83,7 @@ macro_rules! entry {
 // After `entry!`, which they use.
 mod behaviors;
 mod controls;
+mod galaxy;
 mod lab;
 mod parts;
 mod progression;

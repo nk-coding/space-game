@@ -6,6 +6,7 @@
 //! content-tool export-json <out.json | -> [pack_dir...]
 //! content-tool list <kind> [pack_dir...]
 //! content-tool wiki-data <wiki_dir> [pack_dir...]
+//! content-tool galaxy [--seed N] [--svg out.svg] [pack_dir...]
 //! ```
 //!
 //! Pack directories are loaded in the order given (later packs override earlier ones by id). Without any,
@@ -29,10 +30,14 @@ const USAGE: &str = "usage:
   content-tool export-json <out.json | -> [pack_dir...]
   content-tool list <kind> [pack_dir...]     kind: stat, category, faction, material, part, frame,
                                              ship, behavior_node, behavior, family, research, start,
-                                             voyage, encounter, page
+                                             voyage, encounter, galaxy, band, cluster_type,
+                                             trail, signal_source, lore, page
   content-tool wiki-data <wiki_dir> [pack_dir...]
                                              the wiki's generated half into <wiki_dir>/gen, checking its
                                              hand-written pages (docs/wiki.md)
+  content-tool galaxy [--seed N] [--svg out.svg] [pack_dir...]
+                                             generates the galaxy for a seed (default 1, the `galaxy`
+                                             crate): its bands, home, gates and trails, and its map as SVG
 
 Pack dirs load in order; later packs override earlier ones by id (icons by key). Default: content/base.";
 
@@ -46,6 +51,7 @@ fn main() -> ExitCode {
         Some("export-json") => export_json(&args[1..]),
         Some("list") => list(&args[1..]),
         Some("wiki-data") => wiki_data(&args[1..]),
+        Some("galaxy") => galaxy_cmd(&args[1..]),
         Some("-h" | "--help" | "help") => {
             println!("{USAGE}");
             Ok(())
@@ -169,7 +175,7 @@ fn load_content(dirs: &[PathBuf]) -> Result<(Content, usize), String> {
 fn validate(args: &[String]) -> Result<(), String> {
     let (content, warnings) = load_content(&pack_dirs(args))?;
     let counts = format!(
-        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} controls, {} icons, {} wiki pages",
+        "{} stats, {} categories, {} factions, {} materials, {} parts, {} frames, {} ships, {} behavior nodes, {} behaviors, {} families, {} research nodes, {} starts, {} voyages, {} encounters, {} galaxies, {} bands, {} cluster types, {} trails, {} signal sources, {} lore fragments, {} controls, {} icons, {} wiki pages",
         content.stats.len(),
         content.categories.len(),
         content.factions.len(),
@@ -184,6 +190,12 @@ fn validate(args: &[String]) -> Result<(), String> {
         content.starts.len(),
         content.voyages.len(),
         content.encounters.len(),
+        content.galaxies.len(),
+        content.bands.len(),
+        content.cluster_types.len(),
+        content.trails.len(),
+        content.signal_sources.len(),
+        content.lore.len(),
         content.controls.len(),
         content.icons.len(),
         content.wiki.len()
@@ -230,6 +242,12 @@ fn list(args: &[String]) -> Result<(), String> {
         Kind::Start => rows(c.starts.as_slice()),
         Kind::Voyage => rows(c.voyages.as_slice()),
         Kind::Encounter => rows(c.encounters.as_slice()),
+        Kind::Galaxy => rows(c.galaxies.as_slice()),
+        Kind::Band => rows(c.bands.as_slice()),
+        Kind::ClusterType => rows(c.cluster_types.as_slice()),
+        Kind::Trail => rows(c.trails.as_slice()),
+        Kind::SignalSource => rows(c.signal_sources.as_slice()),
+        Kind::Lore => rows(c.lore.as_slice()),
         Kind::Control => rows(c.controls.as_slice()),
         Kind::Page => c
             .wiki
@@ -278,6 +296,69 @@ fn wiki_data(args: &[String]) -> Result<(), String> {
     } else {
         Err(format!("{} error(s) in the wiki's hand-written pages", site.errors.len()))
     }
+}
+
+/// Generates a galaxy of the content (the first `galaxy.ron` entry) for a seed and prints what it holds; `--svg`
+/// also writes its map.
+fn galaxy_cmd(args: &[String]) -> Result<(), String> {
+    let (mut seed, mut svg, mut dirs) = (1u64, None, Vec::new());
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--seed" => seed = it.next().and_then(|v| v.parse().ok()).ok_or("--seed needs an integer")?,
+            "--svg" => svg = Some(it.next().ok_or("--svg needs a file")?.clone()),
+            _ => dirs.push(a.clone()),
+        }
+    }
+    let (c, _) = load_content(&pack_dirs(&dirs))?;
+    let g = c.galaxies.iter().next().ok_or("the content has no galaxy (`galaxy.ron`)")?;
+    let s = galaxy::generate(&c, &g.id, seed).map_err(|e| e.to_string())?;
+    let name = |k: u32| s.clusters[k as usize].name.as_str();
+    let counts: Vec<String> = g.bands.iter().map(|b| format!("{b} {}", s.band(b).count())).collect();
+    println!("galaxy `{}`, seed {seed}, generator {}: {} clusters ({}), hash {:016x}", g.id, s.version, s.clusters.len(), counts.join(", "), s.hash());
+    let home = s.clusters[s.home as usize].at;
+    let near = s.band(&g.bands[0]).filter(|&k| k != s.home && s.clusters[k as usize].at.distance_s(home) <= g.jump_range as f64).count();
+    println!("home: {} at ({:.2}, {:.2}) S, {near} clusters of its band within {} S", name(s.home), home.x as f64 / 100.0, home.y as f64 / 100.0, g.jump_range);
+    for b in &g.bands {
+        let gates: Vec<&str> = s.band(b).filter(|&k| s.clusters[k as usize].gate).map(name).collect();
+        if !gates.is_empty() {
+            println!("gates of {b}: {}", gates.join(", "));
+        }
+    }
+    let mut nearest: Vec<f64> = s
+        .clusters
+        .iter()
+        .enumerate()
+        .map(|(k, a)| s.clusters.iter().enumerate().filter(|(j, _)| *j != k).map(|(_, b)| a.at.distance_s(b.at)).fold(f64::MAX, f64::min))
+        .collect();
+    nearest.sort_by(f64::total_cmp);
+    println!("nearest neighbour: {:.2} / {:.2} / {:.2} S (min / median / max)", nearest[0], nearest[nearest.len() / 2], nearest[nearest.len() - 1]);
+    for t in &s.trails {
+        let steps: Vec<String> = t
+            .places
+            .iter()
+            .enumerate()
+            .map(|(k, p)| {
+                let what = match (t.signals.get(k), &p.encounter) {
+                    (Some(sig), _) => sig.source.clone(),
+                    (None, Some(e)) => e.clone(),
+                    (None, None) => "?".into(),
+                };
+                let hop = k.checked_sub(1).map_or(String::new(), |j| {
+                    format!("{:.1} S → ", s.clusters[t.places[j].cluster as usize].at.distance_s(s.clusters[p.cluster as usize].at))
+                });
+                format!("{hop}{} [{what}]", name(p.cluster))
+            })
+            .collect();
+        let lore = t.lore.as_ref().map_or(String::new(), |l| format!(" ({l})"));
+        println!("trail {}{lore} in {}, {} signals: {}", t.trail, t.band, t.signals.len(), steps.join(" "));
+    }
+    if let Some(path) = svg {
+        let map = wiki::map_svg(&c, &s);
+        std::fs::write(&path, map).map_err(|e| format!("cannot write {path}: {e}"))?;
+        eprintln!("wrote {path}");
+    }
+    Ok(())
 }
 
 fn export_json(args: &[String]) -> Result<(), String> {
@@ -651,6 +732,12 @@ fn export(c: &Content) -> Value {
         "starts": starts,
         "voyages": voyages,
         "encounters": encounters,
+        "galaxies": c.galaxies.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
+        "bands": c.bands.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
+        "cluster_types": c.cluster_types.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
+        "trails": c.trails.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
+        "signal_sources": c.signal_sources.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
+        "lore": c.lore.iter().map(|e| entry_json(c, e)).collect::<Vec<_>>(),
         "icons": icons,
         "pages": pages,
         "texts": c.texts(),

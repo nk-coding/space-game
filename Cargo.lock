@@ -2285,6 +2285,7 @@ name = "content-tool"
 version = "0.1.0"
 dependencies = [
  "data",
+ "galaxy",
  "serde",
  "serde_json",
  "sim",
@@ -2938,6 +2939,16 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "galaxy"
+version = "0.1.0"
+dependencies = [
+ "data",
+ "libm",
+ "ron",
+ "serde",
 ]
 
 [[package]]

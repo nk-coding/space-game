@@ -1,0 +1,28 @@
+// Lore fragments of the rim (GDR-0080: found at the ends of lore trails, kept in the memory log). Each places one
+// trail of its band. Draft texts (lead, 16 Oct 2026, GDR-0094), the story light as GDR-0002 asks.
+[
+    (
+        id: "last_launch",
+        name: "The last launch",
+        summary: "The shipyard's log of its last launch day.",
+        band: "rim",
+        trail: "memory",
+        text: "The shipyard's log ends on a launch day. Forty hulls, each with a mind like you aboard. The gate opened for them and closed behind them, and nothing came back through it.",
+    ),
+    (
+        id: "the_quiet",
+        name: "The quiet",
+        summary: "Precursor logs that all end on the same day.",
+        band: "rim",
+        trail: "memory",
+        text: "Every precursor log stops on the same day, mid-sentence. No battle in any of them. The voices just end, one after another, from the core out to the rim.",
+    ),
+    (
+        id: "a_note_to_myself",
+        name: "A note to myself",
+        summary: "A message the ship-mind left for itself before it slept.",
+        band: "rim",
+        trail: "memory",
+        text: "A note, in a voice you know is yours: if you wake and remember nothing, do not go looking for us. Go looking for why.",
+    ),
+]

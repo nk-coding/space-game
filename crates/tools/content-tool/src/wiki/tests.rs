@@ -107,8 +107,9 @@ fn values<'a>(text: &'a str, open: &str, close: char) -> Vec<&'a str> {
 }
 
 /// Every link of every generated page, and of the HTML in `refs.json` and `ui.json`, points at a generated page (and
-/// an element with that id); `#icon-…` references at the sprite's symbols, arrows at the theme's markers; `url(...)`
-/// in `tokens.css` at a generated file. Nothing points outside the site.
+/// an element with that id); `#icon-…` references at the sprite's symbols, arrows at the theme's markers or an
+/// element of the page (the galaxy map's clip path); `url(...)` in `tokens.css` at a generated file. Nothing points
+/// outside the site.
 fn assert_links_resolve(site: &Site) {
     let sprite = std::str::from_utf8(&site.files["sprite.svg"]).unwrap();
     let symbols: BTreeSet<&str> = values(sprite, " id=\"", '"').into_iter().collect();
@@ -135,7 +136,7 @@ fn assert_links_resolve(site: &Site) {
             }
         }
         for m in values(text, "url(#", ')') {
-            assert!(markers.contains(&m) || symbols.contains(m), "{from}: no marker or filter #{m}");
+            assert!(markers.contains(&m) || symbols.contains(m) || ids.contains(m), "{from}: no marker or filter #{m}");
         }
     };
     for (path, bytes) in &site.files {
@@ -246,6 +247,12 @@ fn every_content_item_has_a_page() {
     want.extend(c.controls.iter().map(|e| (Kind::Control, e.id.clone())));
     want.extend(c.voyages.iter().map(|e| (Kind::Voyage, e.id.clone())));
     want.extend(c.encounters.iter().map(|e| (Kind::Encounter, e.id.clone())));
+    want.extend(c.galaxies.iter().map(|e| (Kind::Galaxy, e.id.clone())));
+    want.extend(c.bands.iter().map(|e| (Kind::Band, e.id.clone())));
+    want.extend(c.cluster_types.iter().map(|e| (Kind::ClusterType, e.id.clone())));
+    want.extend(c.trails.iter().map(|e| (Kind::Trail, e.id.clone())));
+    want.extend(c.signal_sources.iter().map(|e| (Kind::SignalSource, e.id.clone())));
+    want.extend(c.lore.iter().map(|e| (Kind::Lore, e.id.clone())));
     want.extend(
         c.wiki
             .values()
@@ -509,6 +516,38 @@ fn career_pages_link_both_ways() {
         "starts.html",
         "<a class=\"card\" href=\"../starts/rim_awakening.html\">",
     );
+}
+
+/// The galaxy's pages: the galaxy with its bands and a generated example map, a band with its cluster types and
+/// trails, a cluster type with its sites, a trail with its sources and where it is placed, a source, a fragment; and
+/// the values hand-written pages use.
+#[test]
+fn galaxy_pages_link_both_ways() {
+    let c = base();
+    let site = gen_files(&c);
+    let has = |path: &str, needle: &str| assert!(page(&site, path).contains(needle), "{path} lacks {needle}");
+    has("galaxy/galaxy.html", "<dt>Jump range at the start</dt><dd>2.5 S</dd>");
+    has("galaxy/galaxy.html", "<td class=\"name\"><a href=\"../bands/rim.html\">The rim</a></td>");
+    has("galaxy/galaxy.html", "<figure class=\"galaxy-map\"><svg class=\"galaxy-map\"");
+    has("galaxy/galaxy.html", "<p class=\"note\">Seed 1: ");
+    has("bands/rim.html", "<a href=\"../cluster_types/wreck_drift.html\">Wreck drift</a>");
+    has("bands/rim.html", "<a href=\"../trails/rim_gate.html\">A rim gate</a></td><td>A band gate</td><td class=\"num\">3 (one per gate)</td>");
+    has("bands/outer.html", "<span class=\"tag\">stub</span>");
+    has("bands/index.html", "<span class=\"badge stub\"");
+    has("cluster_types/wreck_drift.html", "<dt>Radius</dt><dd>2000–2600 m</dd>");
+    has("cluster_types/wreck_drift.html", "<a href=\"../encounters/derelict_field.html\">Derelict field</a>");
+    has("trails/rim_gate.html", "<dt>At its end</dt><dd><a href=\"../encounters/the_warden.html\">The Warden</a></dd>");
+    has("trails/rim_gate.html", "<span class=\"sig\">SIGNAL · A GATE</span>");
+    has("trails/memory.html", "<a href=\"../lore/the_quiet.html\">The quiet</a>");
+    has("signal_sources/hauler_log.html", "<dt>On the map</dt><dd>“a log from a hauler");
+    has("signal_sources/old_beacon.html", "<dt>At its place</dt><dd>the beacon alone</dd>");
+    has("lore/the_quiet.html", "<blockquote><p>Every precursor log");
+    let w = Wiki::new(&c);
+    let refs = refs::Refs::new(&w);
+    assert_eq!(refs.values["galaxy:galaxy.jump_range"], "2.5 S");
+    assert_eq!(refs.values["galaxy:galaxy.warp"], "3 s + 2 s per S");
+    assert_eq!(refs.values["trail:rim_gate.length"], "3–4");
+    assert!(refs.check("band:rim").is_ok() && refs.check("lore:a_note_to_myself").is_ok());
 }
 
 #[test]

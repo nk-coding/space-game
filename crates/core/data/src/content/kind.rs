@@ -29,6 +29,18 @@ pub enum Kind {
     Voyage,
     /// What waits at a voyage site: ships and wrecks.
     Encounter,
+    /// A galaxy's generator numbers (`galaxy.ron`).
+    Galaxy,
+    /// A band of the galaxy: its ring, cluster types, gates and trails.
+    Band,
+    /// What kind of place a cluster is: its radius and ordinary sites.
+    ClusterType,
+    /// A trail template: a chain of signals ending at a reward.
+    Trail,
+    /// Where a signal comes from: a log in a wreck or a beacon.
+    SignalSource,
+    /// A lore fragment at the end of a lore trail.
+    Lore,
     /// A player action and its default inputs (the action map, GDR-0090).
     Control,
     /// Free-standing wiki article (`wiki/page/<id>.md`); has no RON data.
@@ -36,7 +48,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 17] = [
+    pub const ALL: [Kind; 23] = [
         Kind::Stat,
         Kind::Category,
         Kind::Faction,
@@ -52,6 +64,12 @@ impl Kind {
         Kind::Start,
         Kind::Voyage,
         Kind::Encounter,
+        Kind::Galaxy,
+        Kind::Band,
+        Kind::ClusterType,
+        Kind::Trail,
+        Kind::SignalSource,
+        Kind::Lore,
         Kind::Control,
         Kind::Page,
     ];
@@ -73,6 +91,12 @@ impl Kind {
             Kind::Start => "start",
             Kind::Voyage => "voyage",
             Kind::Encounter => "encounter",
+            Kind::Galaxy => "galaxy",
+            Kind::Band => "band",
+            Kind::ClusterType => "cluster_type",
+            Kind::Trail => "trail",
+            Kind::SignalSource => "signal_source",
+            Kind::Lore => "lore",
             Kind::Control => "control",
             Kind::Page => "page",
         }
@@ -96,6 +120,12 @@ impl Kind {
             Kind::Start => Some("starts"),
             Kind::Voyage => Some("voyages"),
             Kind::Encounter => Some("encounters"),
+            Kind::Galaxy => Some("galaxy"),
+            Kind::Band => Some("bands"),
+            Kind::ClusterType => Some("cluster_types"),
+            Kind::Trail => Some("trails"),
+            Kind::SignalSource => Some("signal_sources"),
+            Kind::Lore => Some("lore"),
             Kind::Control => Some("controls"),
             Kind::Page => None,
         }

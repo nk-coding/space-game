@@ -84,6 +84,24 @@ impl Refs {
         for e in &c.controls {
             add(Kind::Control, &e.id, &e.name);
         }
+        for e in &c.galaxies {
+            add(Kind::Galaxy, &e.id, &e.name);
+        }
+        for e in &c.bands {
+            add(Kind::Band, &e.id, &e.name);
+        }
+        for e in &c.cluster_types {
+            add(Kind::ClusterType, &e.id, &e.name);
+        }
+        for e in &c.trails {
+            add(Kind::Trail, &e.id, &e.name);
+        }
+        for e in &c.signal_sources {
+            add(Kind::SignalSource, &e.id, &e.name);
+        }
+        for e in &c.lore {
+            add(Kind::Lore, &e.id, &e.name);
+        }
         for p in c.wiki.values().filter(|p| p.kind == Kind::Page) {
             add(Kind::Page, &p.id, c.name_of(Kind::Page, &p.id).unwrap_or(&p.id));
         }
@@ -241,6 +259,30 @@ impl Refs {
                 format!("encounter:{}.wake_radius", e.id),
                 esc(&pages::metres(e.wake_radius)),
             );
+        }
+        for g in &c.galaxies {
+            put(format!("galaxy:{}.spacing", g.id), esc(&w.value("galaxy_distance", g.spacing)));
+            put(format!("galaxy:{}.jump_range", g.id), esc(&w.value("jump_range", g.jump_range)));
+            put(format!("galaxy:{}.home_neighbours", g.id), g.home_neighbours.to_string());
+            put(format!("galaxy:{}.warp", g.id), format!("{} s + {} s per S", format_number(g.warp.0, 1), format_number(g.warp.1, 1)));
+            put(format!("galaxy:{}.signal_area", g.id), esc(&w.s_range(g.signal_area.across)));
+            put(format!("galaxy:{}.trail_step", g.id), esc(&w.s_range(g.trail_step)));
+            put(format!("galaxy:{}.bands", g.id), g.bands.len().to_string());
+        }
+        for b in &c.bands {
+            put(format!("band:{}.edge", b.id), esc(&w.value("galaxy_distance", b.edge)));
+            put(format!("band:{}.gates", b.id), b.gates.as_ref().map_or(0, |g| g.count).to_string());
+        }
+        for t in &c.cluster_types {
+            put(format!("cluster_type:{}.radius", t.id), esc(&pages::cluster_radius(t)));
+        }
+        for t in &c.trails {
+            let (lo, hi) = t.length;
+            put(format!("trail:{}.length", t.id), if lo == hi { lo.to_string() } else { format!("{lo}–{hi}") });
+            put(format!("trail:{}.hint", t.id), w.text(ROOT, &t.hint));
+        }
+        for x in &c.signal_sources {
+            put(format!("signal_source:{}.line", x.id), w.text(ROOT, &x.line));
         }
         for st in &c.stats {
             put(
