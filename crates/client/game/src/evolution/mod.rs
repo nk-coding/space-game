@@ -217,7 +217,7 @@ impl Plugin for EvolutionPlugin {
             .add_systems(Update, show.run_if(state_changed::<AppMode>.or_eager(resource_changed::<EvolutionLayer>)))
             .add_systems(
                 Update,
-                (open, input, runs::imported, (runs::fill, setup::fill, run::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
+                (open, input, runs::imported, trouble, (runs::fill, setup::fill, run::fill), (sync, run::sync)).chain().after(UiInputSet).before(UiStyleSet).run_if(in_state(AppMode::Home)),
             );
     }
 }
@@ -341,6 +341,17 @@ fn show(mode: Res<State<AppMode>>, layer: Res<EvolutionLayer>, mut root: Single<
         let d = if p.0 == layer.page { Display::Flex } else { Display::None };
         if node.display != d {
             node.display = d;
+        }
+    }
+}
+
+/// What went wrong while computing is news: it takes the status line from the last message (a checkpoint the web's
+/// storage failed to keep comes after START RUN said the run computes).
+fn trouble(mut layer: ResMut<EvolutionLayer>, lab: Res<Lab>, mut shown: Local<Option<String>>) {
+    if lab.is_changed() && lab.trouble != *shown {
+        shown.clone_from(&lab.trouble);
+        if lab.trouble.is_some() {
+            layer.say = None;
         }
     }
 }

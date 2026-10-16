@@ -1,10 +1,11 @@
 //! RUNS: every run of the lab, newest first: its name and starts, its status, how far it is, its start's score and
 //! its best, when it was made; OPEN, PAUSE or RESUME, DUPLICATE (the same setup, a new seed) and DELETE, which asks in
 //! the row first. IMPORT RUN (the top right) reads a CLI run file: on the web through the file chooser, on desktop
-//! dropped onto the window while the layer is open.
+//! dropped onto the window while the layer is open. On the web the head says how much the storage holds and may hold
+//! (`world::storage::Usage`), and warns in coral when little room is left.
 //!
 //! ```text
-//! RUNS  ·  2 OF 8  ·  ONE COMPUTES AT A TIME
+//! RUNS  ·  2 OF 8  ·  ONE COMPUTES AT A TIME                                        STORAGE  3.4 MB OF 2.1 GB
 //! NAME                 STARTS            STATUS     GENERATION   START → BEST   MADE
 //! Evolving Rim skiff   RIM SKIFF COPY    RUNNING    12 / 50      0.42 → 0.81    5 MIN AGO   [PAUSE] [DELETE]
 //! ```
@@ -15,7 +16,7 @@ use kit::style::{Style, ui_color};
 use kit::ui_kit::{HudFonts, Hot, Pill, Tone, label, number, prose, spawn_pill, tracked};
 use world::evolution::{Lab, MAX_RUNS, RunEntry};
 use world::player::library::ago;
-use world::storage::{Storage, now_unix};
+use world::storage::{Storage, Usage, now_unix};
 
 use super::{Ctx, EvolutionLayer, LabButton, Page, abs, column, row, score};
 
@@ -63,11 +64,43 @@ pub(super) fn status(layer: &mut EvolutionLayer, ctx: &mut Ctx, id: &str, status
     layer.dirty = true;
 }
 
-/// The rows, built again when the runs or the page change.
-pub(super) fn fill(mut commands: Commands, mut layer: ResMut<EvolutionLayer>, lab: Res<Lab>, fonts: Res<HudFonts>, style: Res<Style>, list: Single<Entity, With<RunsList>>) {
-    if !layer.open || layer.page != Page::Runs || !(layer.dirty || lab.is_changed()) {
+/// A size in words: `840 kB`, `3.4 MB`, `2.1 GB`.
+fn size(bytes: u64) -> String {
+    let b = bytes as f64;
+    match bytes {
+        0..0x10_0000 => format!("{} kB", bytes.div_ceil(1024)),
+        0x10_0000..0x4000_0000 => format!("{:.1} MB", b / f64::from(1 << 20)),
+        _ => format!("{:.1} GB", b / f64::from(1 << 30)),
+    }
+}
+
+/// What the storage holds, for the head's right end, and its tone: coral when little room is left.
+fn usage_words(u: &Usage) -> (String, Tone) {
+    match u.estimate {
+        Some((used, quota)) if u.low() => (format!("STORAGE  {} OF {}  ·  NEARLY FULL: DELETE RUNS YOU DON'T NEED", size(used), size(quota)), Tone::Coral),
+        Some((used, quota)) => (format!("STORAGE  {} OF {}", size(used), size(quota)), Tone::Dim),
+        // The browser estimates only on a secure address (https, localhost).
+        None => (format!("GAME DATA  {}  ·  NO QUOTA KNOWN ON THIS ADDRESS", size(u.documents)), Tone::Dim),
+    }
+}
+
+/// The rows, built again when the runs, the page or what the storage holds change.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn fill(
+    mut commands: Commands,
+    mut layer: ResMut<EvolutionLayer>,
+    lab: Res<Lab>,
+    storage: Res<Storage>,
+    mut shown: Local<Option<Usage>>,
+    fonts: Res<HudFonts>,
+    style: Res<Style>,
+    list: Single<Entity, With<RunsList>>,
+) {
+    let usage = storage.usage();
+    if !layer.open || layer.page != Page::Runs || !(layer.dirty || lab.is_changed() || usage != *shown) {
         return;
     }
+    *shown = usage;
     layer.bypass_change_detection().dirty = false;
     let ui = style.ui;
     let c = |tone: Tone, a: f32| ui_color(tone.color(&ui), a);
@@ -89,7 +122,13 @@ pub(super) fn fill(mut commands: Commands, mut layer: ResMut<EvolutionLayer>, la
             return;
         }
         let head = format!("RUNS  ·  {} OF {MAX_RUNS}  ·  ONE COMPUTES AT A TIME", lab.runs().len());
-        p.spawn((label(fonts, &head, 9.5, c(Tone::Dim, 1.0)), Node { margin: UiRect::bottom(px(10)), ..default() }));
+        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, margin: UiRect::bottom(px(10)), ..row(16.0) }).with_children(|h| {
+            h.spawn(label(fonts, &head, 9.5, c(Tone::Dim, 1.0)));
+            if let Some(u) = &usage {
+                let (words, tone) = usage_words(u);
+                h.spawn(label(fonts, &words, 9.5, c(tone, 1.0)));
+            }
+        });
         let cell = |w: f32| Node { width: px(w), flex_shrink: 0.0, ..default() };
         p.spawn(Node { padding: UiRect::horizontal(px(14)), margin: UiRect::bottom(px(4)), ..row(0.0) }).with_children(|h| {
             for (word, w) in ["NAME", "STARTS", "STATUS", "GENERATION", "START  »  BEST", "MADE"].into_iter().zip(COLUMNS) {
