@@ -18,17 +18,20 @@
 //!   breeds and fights within it on the main thread ([`Lab::compute`]), so frames keep their time whatever the fight;
 //!   natively the frame's budget breeds and the fights run on Bevy's compute threads ([`Lab::compute_threads`]). Both
 //!   make the same run.
-//! * **Storage**: each run is a document `lab/<id>` ([`RunDoc`], format 1): the run file (`arena::RunSave`) with its
-//!   head's name, creation time and status, written after every generation (its only checkpoint: a reload breeds the
-//!   open generation again from the same random state, the same run) and when it is paused, resumed or made. A run
-//!   whose rules' fingerprint differs from today's is stale: read-only, it doesn't compute. At most [`MAX_RUNS`]
-//!   (the web's local storage holds about 5 MB per origin).
+//! * **Storage** ([`store`]): each run in parts, `lab/<id>` its head (with its name, creation time and status),
+//!   `lab/<id>/config` and one part `lab/<id>/g<n>` per generation done; after every generation its part and the head
+//!   are written (its only checkpoint: a reload breeds the open generation again from the same random state, the
+//!   same run), the head again when it is paused, resumed or renamed. A checkpoint the web's storage failed to keep
+//!   (it writes behind) pauses the run as a write that fails at once does. A run whose rules' fingerprint differs
+//!   from today's is stale: read-only, it doesn't compute. At most [`MAX_RUNS`].
 //! * **SAVE AS DESIGN** ([`save_as_design`]): a genome into YOUR DESIGNS in its run's frame with an `origin` and the
 //!   `evolved` tag; an evolved behavior is saved beside it as a player behavior.
 //! * **`?lab=1`** opens the building until its research node comes (step 8); without it the building is dark.
 
-use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, Genes, Goals, Limits, Locks, Measure, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
-use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig, RunSave};
+pub mod store;
+
+use arena::evolve::{ArchiveShape, Axis, Bound, Evolve, Genes, Goals, Limits, Locks, Measure, RunHead, RunParts, RunStatus, Sources, Start, TrialSpec, VALIDATE_SEEDS, Validation};
+use arena::{BehaviorRef, DesignRef, Entry, Run, RunConfig};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use data::{Behavior, BehaviorEditor, Blueprint, Content, Origin, TrialPresetKind};
@@ -40,7 +43,7 @@ use crate::player::PlayerDesign;
 use crate::player::behaviors::{PlayerBehaviors, set_text, validate_design};
 use crate::player::library::{self, DesignDoc, fresh_name, slug_or, unique_id};
 use crate::sim_bridge::GameContent;
-use crate::storage::{Document, Storage, now_unix};
+use crate::storage::{Storage, StorageError, now_unix};
 
 /// The time a frame gives the run (ms; GDR-0092 "Running it", lead defaults, PLACEHOLDER): with the EVOLUTION layer
 /// open, and anywhere else at home and on the screens. In flight it pauses.
@@ -52,8 +55,8 @@ const FIRST_US_PER_TICK: f32 = 9.0;
 const RATE_FOLLOW: f32 = 0.1;
 /// Frames with less work than this don't measure the cost (their timer's noise is larger than the work).
 const RATE_MIN_TICKS: u64 = 200;
-/// Most runs the lab keeps: the web's local storage holds about 5 MB per origin, shared with the designs, and a
-/// STANDARD run is about 0.7 MB. PLACEHOLDER.
+/// Most runs the lab keeps (GDR-0092, PLACEHOLDER: chosen for the web's local storage of about 5 MB, which a STANDARD
+/// run of about 0.7 MB filled quickly; IndexedDB holds far more since 16 Oct 2026, ADR-0041).
 pub const MAX_RUNS: usize = 8;
 /// Children and generations of the size presets (GDR-0092 "SIZE", PLACEHOLDER; the seeds are each trial's, from
 /// `lab.ron`, since step 5).
@@ -68,23 +71,6 @@ pub const SIZES: [(&str, Size); 3] = [
 const FIGHT_SHARE: f32 = 0.5;
 const GAUNTLET_SHARE: f32 = 0.35;
 const VOYAGE_SHARE: f32 = 0.25;
-
-/// A run as a stored document (`lab/<id>`): the run file, the CLI's format (`arena evolve --resume` reads it).
-#[derive(Clone, Debug, PartialEq)]
-pub struct RunDoc(pub RunSave);
-
-impl Document for RunDoc {
-    const NAMESPACE: &'static str = "lab";
-    const FORMAT: u32 = 1;
-
-    fn to_ron(&self) -> String {
-        self.0.to_ron()
-    }
-
-    fn from_ron(text: &str, _format: u32) -> Result<Self, String> {
-        RunSave::from_ron(text).map(RunDoc).map_err(|e| e.to_string())
-    }
-}
 
 /// The measured cost of the run's work on this device.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -150,19 +136,20 @@ impl RunEntry {
         self.generation >= self.generations
     }
 
-    /// The run file's head and numbers as an entry; `stale` against today's rules.
-    fn of(content: &Content, id: &str, save: &RunSave, rules: u64) -> RunEntry {
+    /// A stored run's head and numbers as an entry; `stale` against today's rules.
+    fn of(content: &Content, id: &str, parts: &RunParts, rules: u64) -> RunEntry {
+        let RunParts { head, config, generations } = parts;
         RunEntry {
             id: id.to_string(),
-            name: save.name.clone().unwrap_or_else(|| id.to_string()),
-            created: save.created,
-            status: save.status.unwrap_or(RunStatus::Paused),
-            generation: save.history.len() as u32,
-            generations: save.config.schedule().map_or(0, |s| s.iter().map(|g| g.1).sum()),
-            best: save.history.last().map(|g| g.archive_best),
-            first: save.history.first().map(|g| g.best),
-            starts: save.config.all_starts().map(|s| start_name(content, s)).collect(),
-            stale: save.rules != rules,
+            name: head.name.clone().unwrap_or_else(|| id.to_string()),
+            created: head.created,
+            status: head.status.unwrap_or(RunStatus::Paused),
+            generation: generations.len() as u32,
+            generations: config.schedule().map_or(0, |s| s.iter().map(|g| g.1).sum()),
+            best: generations.last().map(|g| g.stats.archive_best),
+            first: generations.first().map(|g| g.stats.best),
+            starts: config.all_starts().map(|s| start_name(content, s)).collect(),
+            stale: head.rules != rules,
             problem: None,
         }
     }
@@ -184,12 +171,19 @@ pub struct Loaded {
     pub name: String,
     pub created: u64,
     pub status: RunStatus,
+    /// Its generations whose parts are written (the ones after go out with the next checkpoint).
+    stored: u32,
 }
 
 impl Loaded {
-    /// The run file as it is written: the snapshot (the state after its last closed generation) with the head.
-    pub fn save(&self) -> RunSave {
-        RunSave { name: Some(self.name.clone()), created: Some(self.created), status: Some(self.status), ..self.run.snapshot() }
+    /// The head as it is written: the run's (the state after its last closed generation) with the game's fields.
+    fn head(&self) -> RunHead {
+        RunHead { name: Some(self.name.clone()), created: Some(self.created), status: Some(self.status), ..self.run.head() }
+    }
+
+    /// The run in parts as it is written, all of it.
+    fn parts(&self) -> RunParts {
+        RunParts { head: self.head(), ..self.run.parts() }
     }
 
     /// It computes when it may: running, not finished, not stale.
@@ -555,9 +549,9 @@ pub struct Lab {
 
 impl Lab {
     /// Lists the stored runs (newest first) and restores the one that was computing, so it goes on.
-    pub fn load(storage: &Storage, content: &Content, enabled: bool) -> Lab {
+    pub fn load(storage: &mut Storage, content: &Content, enabled: bool) -> Lab {
         let mut lab = Lab { enabled, ..default() };
-        let ids = match storage.list(RunDoc::NAMESPACE) {
+        let ids = match store::ids(storage) {
             Ok(ids) => ids,
             Err(e) => {
                 lab.trouble = Some(format!("the runs don't read: {e}"));
@@ -566,16 +560,22 @@ impl Lab {
         };
         let mut computing = None;
         for id in ids {
-            let entry = match storage.read::<RunDoc>(&id) {
-                Ok(Some(doc)) => {
+            let entry = match store::read(storage, &id) {
+                Ok((parts, old)) => {
                     let rules = lab.today(content);
-                    let e = RunEntry::of(content, &id, &doc.doc.0, rules);
+                    let e = RunEntry::of(content, &id, &parts, rules);
                     if e.status == RunStatus::Running && !e.done() && !e.stale && computing.is_none() {
                         computing = Some(id.clone());
                     }
+                    // A run kept whole (until 16 Oct 2026) is written in parts from now on.
+                    if old {
+                        match store::write_new(storage, &id, &parts, now_unix()) {
+                            Ok(bytes) => info!("lab: {id} written in parts ({} kB)", bytes / 1024),
+                            Err(e) => warn!("lab: {id} stays whole for now: {e}"),
+                        }
+                    }
                     e
                 }
-                Ok(None) => continue,
                 Err(e) => RunEntry {
                     name: id.clone(),
                     id,
@@ -587,7 +587,7 @@ impl Lab {
                     first: None,
                     starts: Vec::new(),
                     stale: false,
-                    problem: Some(e.to_string()),
+                    problem: Some(e),
                 },
             };
             lab.runs.push(entry);
@@ -641,15 +641,16 @@ impl Lab {
         if self.get(id).is_some() {
             return Ok(());
         }
-        let doc = storage.read::<RunDoc>(id).map_err(|e| e.to_string())?.ok_or_else(|| format!("{id} is gone"))?;
-        let save = doc.doc.0;
-        let run = Run::restore(content, &save).map_err(|e| e.to_string())?;
+        let (parts, _) = store::read(storage, id)?;
+        let run = Run::restore_parts(content, &parts).map_err(|e| e.to_string())?;
+        let RunHead { name, created, status, generations, .. } = parts.head;
         self.loaded.push(Loaded {
             id: id.to_string(),
-            name: save.name.unwrap_or_else(|| id.to_string()),
-            created: save.created.unwrap_or(0),
-            status: save.status.unwrap_or(RunStatus::Paused),
+            name: name.unwrap_or_else(|| id.to_string()),
+            created: created.unwrap_or(0),
+            status: status.unwrap_or(RunStatus::Paused),
             run,
+            stored: generations,
         });
         Ok(())
     }
@@ -689,16 +690,21 @@ impl Lab {
     /// (another that did is paused).
     fn add(&mut self, storage: &mut Storage, content: &Content, run: Run, name: &str, now: u64, status: RunStatus) -> Result<String, String> {
         self.room()?;
-        let stored = storage.list(RunDoc::NAMESPACE).map_err(|e| e.to_string())?;
+        let stored = store::ids(storage).map_err(|e| e.to_string())?;
         let id = unique_id(&slug_or(name, "run"), |id| stored.iter().any(|s| s == id) || self.runs.iter().any(|e| e.id == id));
         if status == RunStatus::Running {
             self.pause_running(storage)?;
         }
         let rules = self.today(content);
-        let loaded = Loaded { id: id.clone(), run, name: name.to_string(), created: now, status };
-        let save = loaded.save();
-        storage.write(&id, &RunDoc(save.clone()), now).map_err(|e| e.to_string())?;
-        self.runs.insert(0, RunEntry::of(content, &id, &save, rules));
+        let mut loaded = Loaded { id: id.clone(), stored: 0, run, name: name.to_string(), created: now, status };
+        let parts = loaded.parts();
+        if let Err(e) = store::write_new(storage, &id, &parts, now) {
+            // Not added: what was kept of it goes again.
+            let _ = store::delete(storage, &id);
+            return Err(not_saved(&e));
+        }
+        loaded.stored = parts.head.generations;
+        self.runs.insert(0, RunEntry::of(content, &id, &parts, rules));
         self.loaded.push(loaded);
         if status == RunStatus::Running {
             self.running = Some(id.clone());
@@ -713,9 +719,9 @@ impl Lab {
         fresh_name(name, &names)
     }
 
-    /// The stored document of a run.
-    fn read(storage: &Storage, id: &str) -> Result<RunSave, String> {
-        Ok(storage.read::<RunDoc>(id).map_err(|e| e.to_string())?.ok_or_else(|| format!("{id} is gone"))?.doc.0)
+    /// A stored run's parts.
+    fn read(storage: &Storage, id: &str) -> Result<RunParts, String> {
+        store::read(storage, id).map(|(parts, _)| parts)
     }
 
     /// IMPORT RUN: a run file (a CLI's, `arena evolve --save`, or another lab's) read into the lab, paused, under its
@@ -723,7 +729,7 @@ impl Lab {
     /// to be re-scored. Refused, in words, when it doesn't read.
     pub fn import(&mut self, storage: &mut Storage, content: &Content, file: &str, text: &str, now: u64) -> Result<String, String> {
         self.room()?;
-        let save = RunSave::from_ron(text).map_err(|e| e.to_string())?;
+        let save = arena::RunSave::from_ron(text).map_err(|e| e.to_string())?;
         let run = Run::restore(content, &save).map_err(|e| e.to_string())?;
         let stem = file.rsplit(['/', '\\']).next().unwrap_or(file).trim_end_matches(".ron");
         let name = self.fresh(save.name.as_deref().unwrap_or(if stem.is_empty() { "Imported run" } else { stem }));
@@ -733,8 +739,7 @@ impl Lab {
     /// DUPLICATE: the same setup with a new seed, as a new run that computes.
     pub fn duplicate(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
         self.room()?;
-        let save = Self::read(storage, id)?;
-        let mut config = save.config;
+        let mut config = Self::read(storage, id)?.config;
         config.seed = (now.wrapping_mul(2_654_435_761) ^ config.seed.rotate_left(17)) % 1_000_000;
         let run = Run::new(content, config).map_err(|e| e.to_string())?;
         let name = self.fresh(&self.entry(id).map_or_else(|| id.to_string(), |e| e.name.clone()));
@@ -747,14 +752,13 @@ impl Lab {
         if name.is_empty() {
             return Err("a run needs a name".into());
         }
-        let save = match self.loaded.iter_mut().find(|l| l.id == id) {
+        match self.loaded.iter_mut().find(|l| l.id == id) {
             Some(l) => {
                 l.name = name.to_string();
-                l.save()
+                store::write_head(storage, id, &l.head(), now_unix()).map_err(|e| not_saved(&e))?;
             }
-            None => RunSave { name: Some(name.to_string()), ..Self::read(storage, id)? },
-        };
-        storage.write(id, &RunDoc(save), now_unix()).map_err(|e| e.to_string())?;
+            None => store::change_head(storage, id, now_unix(), |h| h.name = Some(name.to_string()))?,
+        }
         if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
             e.name = name.to_string();
         }
@@ -765,8 +769,9 @@ impl Lab {
     /// first, then it goes on. The stale run stays as it is.
     pub fn rescore(&mut self, storage: &mut Storage, content: &Content, id: &str, now: u64) -> Result<String, String> {
         self.room()?;
-        let save = Self::read(storage, id)?;
-        let run = Run::rescored(content, &save).map_err(|e| e.to_string())?;
+        // The stale run's file as it stands (its rules and all), re-scored.
+        let stale = Run::restore_parts(content, &Self::read(storage, id)?).map_err(|e| e.to_string())?;
+        let run = Run::rescored(content, &stale.snapshot()).map_err(|e| e.to_string())?;
         let name = self.fresh(&format!("{} (re-scored)", self.entry(id).map_or(id, |e| e.name.as_str())));
         self.add(storage, content, run, &name, now, RunStatus::Running)
     }
@@ -800,8 +805,8 @@ impl Lab {
         let Some((id, v)) = self.validating.take() else { return false };
         if let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) {
             l.run.validated_by(v);
-            if let Err(e) = storage.write(&id, &RunDoc(l.save()), now_unix()) {
-                self.trouble = Some(format!("the validation isn't saved: {e}"));
+            if let Err(e) = store::write_head(storage, &id, &l.head(), now_unix()) {
+                self.trouble = Some(format!("the validation isn't saved: {}", not_saved(&e)));
             }
         }
         true
@@ -811,9 +816,9 @@ impl Lab {
     pub fn champions(&self, storage: &Storage, content: &Content) -> Vec<Entry> {
         let mut out: Vec<(f32, Entry)> = Vec::new();
         for e in self.runs.iter().filter(|e| e.problem.is_none()) {
-            let (Ok(save), Some(score)) = (Self::read(storage, &e.id), e.best) else { continue };
-            let Some(best) = save.best else { continue };
-            if let Ok(g) = save.genome(content, best) {
+            let (Ok(parts), Some(score)) = (Self::read(storage, &e.id), e.best) else { continue };
+            let Some(best) = parts.head.best else { continue };
+            if let Ok(g) = parts.genome(content, best) {
                 let entry = arena::evolve::entry_of(DesignRef::Blueprint(g.blueprint_text()), Some(BehaviorRef::Text(g.behavior_text().to_string())));
                 out.push((score, entry));
             }
@@ -844,16 +849,12 @@ impl Lab {
         let k = self.loaded.iter().position(|l| l.id == id);
         match k {
             Some(k) => {
+                let head = RunHead { status: Some(status), ..self.loaded[k].head() };
+                store::write_head(storage, id, &head, now_unix()).map_err(|e| not_saved(&e))?;
                 self.loaded[k].status = status;
-                let save = self.loaded[k].save();
-                storage.write(id, &RunDoc(save), now_unix()).map_err(|e| e.to_string())?;
             }
-            // Not in memory (a paused run in the list): its document's head changes, the rest stays.
-            None => {
-                let doc = storage.read::<RunDoc>(id).map_err(|e| e.to_string())?.ok_or_else(|| format!("{id} is gone"))?;
-                let save = RunSave { status: Some(status), ..doc.doc.0 };
-                storage.write(id, &RunDoc(save), now_unix()).map_err(|e| e.to_string())?;
-            }
+            // Not in memory (a paused run in the list): its head changes, the rest stays.
+            None => store::change_head(storage, id, now_unix(), |h| h.status = Some(status))?,
         }
         if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
             e.status = status;
@@ -861,7 +862,11 @@ impl Lab {
         // A generation's time is measured while it computes in one go.
         self.started = None;
         match status {
-            RunStatus::Running => self.running = Some(id.to_string()),
+            RunStatus::Running => {
+                self.running = Some(id.to_string());
+                // It goes on: what stopped it is past.
+                self.trouble = None;
+            }
             RunStatus::Paused if self.running.as_deref() == Some(id) => self.running = None,
             RunStatus::Paused => {}
         }
@@ -874,9 +879,9 @@ impl Lab {
         self.set_status(storage, id, RunStatus::Running)
     }
 
-    /// DELETE (the page asked first): the document goes, and the run with it.
+    /// DELETE (the page asked first): its documents go, and the run with them.
     pub fn delete(&mut self, storage: &mut Storage, id: &str) -> Result<(), String> {
-        storage.delete::<RunDoc>(id).map_err(|e| e.to_string())?;
+        store::delete(storage, id).map_err(|e| e.to_string())?;
         self.runs.retain(|e| e.id != id);
         self.loaded.retain(|l| l.id != id);
         for slot in [&mut self.running, &mut self.viewed, &mut self.fresh] {
@@ -895,6 +900,9 @@ impl Lab {
     /// generation that closes is written (the run's checkpoint), and so is the run's end. `true` when a generation
     /// closed (the page and the building follow).
     pub fn compute(&mut self, storage: &mut Storage, budget_ms: f32, frame: f32) -> bool {
+        if self.checkpoint_lost(storage) {
+            return true;
+        }
         let ticks = self.rate.ticks_for(budget_ms);
         // A validation computes in the run's place.
         if let Some((_, v)) = self.validating.as_mut() {
@@ -914,43 +922,71 @@ impl Lab {
         p.generation != generation && self.closed(storage, &id)
     }
 
-    /// The run that computes has closed a generation: it is written (its checkpoint), its entry follows, and its end
-    /// or a failed write stops it. `true` (a generation closed).
+    /// The run that computes has closed a generation: its part and its head are written (its checkpoint), its entry
+    /// follows, and its end or a failed write stops it. `true` (a generation closed).
     fn closed(&mut self, storage: &mut Storage, id: &str) -> bool {
         let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
         let t1 = Instant::now();
-        let save = l.save();
-        let written = storage.write(id, &RunDoc(save.clone()), now_unix());
+        let (done, now) = (l.run.state().generation, now_unix());
+        // The parts not written yet (one, unless a checkpoint failed before), then the head.
+        let mut written = (l.stored..done).try_fold(0, |bytes, g| {
+            let part = l.run.part(g).expect("a closed generation has its part");
+            store::write_part(storage, id, g, &part, now).map(|b| bytes + b)
+        });
+        if written.is_ok() {
+            l.stored = done;
+            written = written.and_then(|bytes| store::write_head(storage, id, &l.head(), now).map(|b| bytes + b));
+        }
         let took = self.started.take().map_or(0.0, |t| (t1 - t).as_secs_f32());
         let write = t1.elapsed().as_secs_f32() * 1000.0;
         self.last_generation = Some((took, write));
         let p = l.run.progress();
         info!(
-            "lab: {id} generation {} of {} in {took:.1} s ({:.1} µs a tick of work, {:.0} ticks/s), written in {write:.1} ms ({} kB)",
+            "lab: {id} generation {} of {} in {took:.1} s ({:.1} µs a tick of work, {:.0} ticks/s), written in {write:.1} ms ({:.1} kB)",
             p.generation,
             p.generations,
             self.rate.us_per_tick,
             self.rate.ticks_per_second,
-            save.payload.len() / 1024
+            written.as_ref().map_or(0.0, |b| *b as f32 / 1024.0)
         );
+        let state = l.run.state();
         if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
-            e.generation = save.history.len() as u32;
-            e.best = save.history.last().map(|g| g.archive_best);
-            e.first = save.history.first().map(|g| g.best);
+            e.generation = state.history.len() as u32;
+            e.best = state.history.last().map(|g| g.archive_best);
+            e.first = state.history.first().map(|g| g.best);
         }
-        if let Err(e) = written {
-            // Not kept: the run waits, so no more work is lost than this generation's.
-            self.trouble = Some(format!("not saved: {e}; the run is paused"));
-            l.status = RunStatus::Paused;
-            self.running = None;
-            if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
-                e.status = RunStatus::Paused;
+        match written {
+            Err(e) => self.stop(id, &e),
+            Ok(_) if p.finished => {
+                self.running = None;
+                self.fresh = Some(id.to_string());
             }
-        } else if p.finished {
-            self.running = None;
-            self.fresh = Some(id.to_string());
+            Ok(_) => {}
         }
         true
+    }
+
+    /// The run that computes lost its last checkpoint: the web writes behind, and the storage failed to keep what it
+    /// wrote (the quota). It stops as it does when a write fails at once. `true` when it did.
+    fn checkpoint_lost(&mut self, storage: &Storage) -> bool {
+        let Some(id) = self.running.clone() else { return false };
+        let Some(e) = storage.unsaved::<store::RunDoc>(&id) else { return false };
+        self.stop(&id, &e);
+        true
+    }
+
+    /// A checkpoint isn't kept: the run waits, so no more work is lost than this generation's.
+    fn stop(&mut self, id: &str, e: &StorageError) {
+        self.trouble = Some(format!("{}; the run is paused", not_saved(e)));
+        if let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) {
+            l.status = RunStatus::Paused;
+        }
+        if self.running.as_deref() == Some(id) {
+            self.running = None;
+        }
+        if let Some(e) = self.runs.iter_mut().find(|e| e.id == id) {
+            e.status = RunStatus::Paused;
+        }
     }
 
     /// How far the open generation of a run is, 0..1: its jobs done (natively, on the threads), else
@@ -970,6 +1006,9 @@ impl Lab {
     /// the cores are flight's once the fights underway end (each under about 50 ms).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn compute_threads(&mut self, storage: &mut Storage, content: &Content, budget_ms: f32, frame: f32) -> bool {
+        if self.checkpoint_lost(storage) {
+            return true;
+        }
         // A validation's jobs go to the threads in the run's place (as generation `u32::MAX` of its run).
         if let Some((id, v)) = self.validating.as_mut() {
             if !self.threads.as_ref().is_some_and(|t| t.id == *id && t.generation == u32::MAX) {
@@ -1025,6 +1064,14 @@ impl Lab {
         let Some(l) = self.loaded.iter_mut().find(|l| l.id == id) else { return false };
         l.run.submit(results);
         self.closed(storage, &id)
+    }
+}
+
+/// A failed write in words: a full storage says what makes room.
+fn not_saved(e: &StorageError) -> String {
+    match e {
+        StorageError::Full => format!("not saved: {e}: delete runs you don't need to make room"),
+        e => format!("not saved: {e}"),
     }
 }
 
@@ -1238,10 +1285,7 @@ pub struct EvolutionPlugin;
 impl Plugin for EvolutionPlugin {
     fn build(&self, app: &mut App) {
         let enabled = app.world().resource::<Params>().flag("lab").unwrap_or(false);
-        let lab = {
-            let world = app.world();
-            Lab::load(world.resource::<Storage>(), &world.resource::<GameContent>().0, enabled)
-        };
+        let lab = app.world_mut().resource_scope(|world, mut storage: Mut<Storage>| Lab::load(&mut storage, &world.resource::<GameContent>().0, enabled));
         if let Some(t) = &lab.trouble {
             warn!("lab: {t}");
         }
@@ -1254,7 +1298,10 @@ mod tests {
     use bevy::state::app::StatesPlugin;
 
     use super::*;
+    use arena::RunSave;
+
     use crate::storage::MemoryBackend;
+    use crate::storage::testing::Behind;
 
     /// A small run of the starter: three generations of four children, against one raider and the hall of fame,
     /// one seed each.
@@ -1283,6 +1330,13 @@ mod tests {
         Storage::new(MemoryBackend::default())
     }
 
+    /// A stored run as its run file: what its parts restore to, with the game's head.
+    fn file(storage: &Storage, content: &Content, id: &str) -> RunSave {
+        let (parts, _) = store::read(storage, id).unwrap();
+        let run = Run::restore_parts(content, &parts).unwrap();
+        RunSave { name: parts.head.name.clone(), created: parts.head.created, status: parts.head.status, ..run.snapshot() }
+    }
+
     /// A frame's work is the ticks its budget buys at the measured rate, no more (a generation that closes ends it
     /// early); the rate follows what frames measure.
     #[test]
@@ -1290,7 +1344,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let mut k = 0;
@@ -1329,7 +1383,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         let mut app = app(storage, lab, AppMode::Flight);
@@ -1361,14 +1415,14 @@ mod tests {
         let content = data::base_content();
         let s = setup(&content);
         let mut sliced = mem();
-        let mut lab = Lab::load(&sliced, &content, true);
+        let mut lab = Lab::load(&mut sliced, &content, true);
         let cfg = config(&content, &s, &sliced);
         let a = lab.create(&mut sliced, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
             lab.compute(&mut sliced, BUDGET_MS, 0.016);
         }
         let mut threaded = mem();
-        let mut lab = Lab::load(&threaded, &content, true);
+        let mut lab = Lab::load(&mut threaded, &content, true);
         let cfg = config(&content, &s, &threaded);
         let b = lab.create(&mut threaded, &content, cfg, "Small", 10).unwrap();
         let mut frames = 0;
@@ -1379,7 +1433,7 @@ mod tests {
             frames += 1;
             assert!(frames < 100_000, "the threads never finished");
         }
-        let doc = |st: &Storage, id: &str| st.read::<RunDoc>(id).unwrap().unwrap().doc.0.to_ron();
+        let doc = |st: &Storage, id: &str| file(st, &content, id).to_ron();
         assert_eq!(doc(&threaded, &b), doc(&sliced, &a));
     }
 
@@ -1395,16 +1449,16 @@ mod tests {
             }
         };
         let mut storage = mem();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         run_to_end(&mut lab, &mut storage);
-        let straight = storage.read::<RunDoc>(&id).unwrap().unwrap().doc.0;
+        let straight = file(&storage, &content, &id);
         assert_eq!(straight.history.len(), 3);
         assert_eq!(lab.fresh.as_deref(), Some(id.as_str()), "a finished run glows until it is opened");
 
         let mut storage = mem();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         while lab.get(&id).unwrap().run.generation() < 1 {
@@ -1414,12 +1468,12 @@ mod tests {
             lab.compute(&mut storage, BUDGET_MS, 1.0 / 60.0);
         }
         // The page reloads: the lab is read from the storage again and the run goes on.
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let entry = lab.entry(&id).unwrap().clone();
         assert_eq!((entry.generation, entry.status, entry.stale, entry.name.as_str()), (1, RunStatus::Running, false, "Small"));
         assert_eq!(lab.running().map(|l| l.id.as_str()), Some(id.as_str()));
         run_to_end(&mut lab, &mut storage);
-        let resumed = storage.read::<RunDoc>(&id).unwrap().unwrap().doc.0;
+        let resumed = file(&storage, &content, &id);
         assert_eq!(resumed.to_ron(), straight.to_ron(), "byte for byte");
     }
 
@@ -1431,7 +1485,7 @@ mod tests {
         let mut storage = mem();
         // An old storage: designs and a save, no lab.
         storage.write("old", &DesignDoc(content.ships.get("rim_skiff").unwrap().clone()), 1).unwrap();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         assert!(lab.runs().is_empty() && lab.trouble.is_none() && lab.running().is_none());
         let s = setup(&content);
         let cfg = config(&content, &s, &storage);
@@ -1441,20 +1495,153 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(lab.runs().iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), [b.as_str(), a.as_str()], "newest first");
         assert_eq!(lab.entry(&a).unwrap().status, RunStatus::Paused, "the new run paused the other");
-        assert_eq!(storage.read::<RunDoc>(&a).unwrap().unwrap().doc.0.status, Some(RunStatus::Paused));
+        assert_eq!(file(&storage, &content, &a).status, Some(RunStatus::Paused));
         lab.resume(&mut storage, &content, &a).unwrap();
         assert_eq!((lab.entry(&b).unwrap().status, lab.running().unwrap().id.as_str()), (RunStatus::Paused, a.as_str()));
         lab.set_status(&mut storage, &a, RunStatus::Paused).unwrap();
         assert!(lab.running().is_none());
         assert!(!lab.compute(&mut storage, BUDGET_MS, 0.016));
         lab.delete(&mut storage, &a).unwrap();
-        assert_eq!(storage.list(RunDoc::NAMESPACE).unwrap(), std::slice::from_ref(&b));
+        assert_eq!(store::ids(&storage).unwrap(), std::slice::from_ref(&b));
         assert!(lab.entry(&a).is_none() && lab.get(&a).is_none());
         // A stored run that doesn't read is listed with why.
         let mut text_store = MemoryBackend::default();
         crate::storage::Backend::write(&mut text_store, "lab", "broken", "// space-game: lab, format 1\n(format: 1").unwrap();
-        let broken = Lab::load(&Storage::new(text_store), &content, true);
+        let broken = Lab::load(&mut Storage::new(text_store), &content, true);
         assert!(broken.entry("broken").unwrap().problem.is_some());
+    }
+
+    /// Memory that notes every write: (folder, name, bytes).
+    #[derive(Default)]
+    struct Counting(MemoryBackend, std::sync::Arc<std::sync::Mutex<Vec<(String, String, usize)>>>);
+
+    impl crate::storage::Backend for Counting {
+        fn list(&self, folder: &str) -> Result<Vec<String>, StorageError> {
+            self.0.list(folder)
+        }
+        fn read(&self, folder: &str, name: &str) -> Result<Option<String>, StorageError> {
+            self.0.read(folder, name)
+        }
+        fn write(&mut self, folder: &str, name: &str, text: &str) -> Result<(), StorageError> {
+            self.1.lock().unwrap().push((folder.into(), name.into(), text.len()));
+            self.0.write(folder, name, text)
+        }
+        fn delete(&mut self, folder: &str, name: &str) -> Result<(), StorageError> {
+            self.0.delete(folder, name)
+        }
+        fn location(&self) -> String {
+            "counting".into()
+        }
+    }
+
+    /// In parts: a new run writes its configuration and head; each generation writes its own part and the head, and
+    /// nothing else (the head stays small); the parts read back as the run computed it; a lost part is named; DELETE
+    /// removes every document of the run.
+    #[test]
+    fn a_generation_writes_its_part_and_the_head() {
+        let content = data::base_content();
+        let backend = Counting::default();
+        let log = backend.1.clone();
+        let written = || -> Vec<(String, usize)> { log.lock().unwrap().drain(..).map(|(f, n, b)| (format!("{f}/{n}"), b)).collect() };
+        let mut storage = Storage::new(backend);
+        let s = setup(&content);
+        let mut lab = Lab::load(&mut storage, &content, true);
+        let cfg = config(&content, &s, &storage);
+        let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
+        let names = |w: &[(String, usize)]| w.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&written()), [format!("lab/{id}/config"), format!("lab/{id}")], "made: its configuration and head");
+        let mut generation = 0;
+        while lab.running().is_some() {
+            if lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016) {
+                let w = written();
+                assert_eq!(names(&w), [format!("lab/{id}/g{generation}"), format!("lab/{id}")], "generation {generation}");
+                assert!(w[1].1 < 1024, "the head stays small: {} bytes", w[1].1);
+                generation += 1;
+            }
+        }
+        assert_eq!(generation, 3);
+        assert_eq!(storage.parts::<store::RunDoc>(&id).unwrap(), ["config", "g0", "g1", "g2"]);
+        let l = lab.get(&id).unwrap();
+        let computed = RunSave { name: Some(l.name.clone()), created: Some(l.created), status: Some(l.status), ..l.run.snapshot() };
+        assert_eq!(file(&storage, &content, &id).to_ron(), computed.to_ron(), "the parts are the run");
+        // A part gone: the run is listed with why.
+        let mut damaged = Storage::new(MemoryBackend::default());
+        store::write_new(&mut damaged, "r", &l.parts(), 1).unwrap();
+        damaged.delete::<store::RunDoc>("r/g1").unwrap();
+        let listed = Lab::load(&mut damaged, &content, true);
+        assert!(listed.entry("r").unwrap().problem.as_deref().is_some_and(|p| p.contains("generation 1")));
+        lab.delete(&mut storage, &id).unwrap();
+        assert!(storage.parts::<store::RunDoc>(&id).unwrap().is_empty() && store::ids(&storage).unwrap().is_empty());
+    }
+
+    /// A run kept whole (format 1, until 16 Oct 2026; the web's local storage moved into IndexedDB as it was) is
+    /// listed, written in parts when the lab loads, and goes on to the run that ran through.
+    #[test]
+    fn a_run_kept_whole_moves_into_parts_and_goes_on() {
+        let content = data::base_content();
+        let s = setup(&content);
+        let mut storage = mem();
+        let mut lab = Lab::load(&mut storage, &content, true);
+        let cfg = config(&content, &s, &storage);
+        let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
+        while lab.running().is_some() {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+        }
+        let straight = file(&storage, &content, &id);
+        let mut storage = mem();
+        let mut lab = Lab::load(&mut storage, &content, true);
+        let cfg = config(&content, &s, &storage);
+        let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
+        while lab.get(&id).unwrap().run.generation() < 1 {
+            lab.compute(&mut storage, BUDGET_MS, 0.016);
+        }
+        let whole = format!("// space-game: lab, format 1, saved 10\n{}", file(&storage, &content, &id).to_ron());
+        let mut old = MemoryBackend::default();
+        crate::storage::Backend::write(&mut old, "lab", "old-run", &whole).unwrap();
+        let mut storage = Storage::new(old);
+        let mut lab = Lab::load(&mut storage, &content, true);
+        let e = lab.entry("old-run").unwrap().clone();
+        assert_eq!((e.generation, e.status, e.problem), (1, RunStatus::Running, None));
+        assert!(!store::read(&storage, "old-run").unwrap().1, "written in parts");
+        assert_eq!(storage.parts::<store::RunDoc>("old-run").unwrap(), ["config", "g0"]);
+        while lab.running().is_some() {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+        }
+        assert_eq!(file(&storage, &content, "old-run").to_ron(), straight.to_ron(), "byte for byte");
+    }
+
+    /// The web writes behind: a checkpoint the storage failed to keep (the quota) pauses the run with the words a
+    /// failed write has (the storage is full, delete runs to make room). Until there is room, RESUME is refused the
+    /// same way; then the unsaved documents go out again and the run goes on to its end, every part kept.
+    #[test]
+    fn a_checkpoint_the_storage_couldnt_keep_pauses_the_run() {
+        let content = data::base_content();
+        let s = setup(&content);
+        let backend = Behind::default();
+        let db = Behind(backend.0.clone());
+        let mut storage = Storage::new(backend);
+        let mut lab = Lab::load(&mut storage, &content, true);
+        let cfg = config(&content, &s, &storage);
+        let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
+        db.commit(false);
+        while lab.get(&id).unwrap().run.generation() < 1 {
+            lab.compute(&mut storage, BUDGET_MS, 0.016);
+        }
+        db.commit(true);
+        assert!(lab.compute(&mut storage, BUDGET_MS, 0.016), "the page follows");
+        assert!(lab.running().is_none());
+        assert_eq!(lab.entry(&id).unwrap().status, RunStatus::Paused);
+        let trouble = lab.trouble.clone().unwrap();
+        assert!(trouble.contains("the storage is full") && trouble.contains("delete runs") && trouble.ends_with("the run is paused"), "{trouble}");
+        assert!(lab.resume(&mut storage, &content, &id).unwrap_err().contains("the storage is full"));
+        db.commit(false);
+        lab.resume(&mut storage, &content, &id).unwrap();
+        while lab.running().is_some() {
+            lab.compute(&mut storage, BUDGET_OPEN_MS, 0.016);
+            db.commit(false);
+        }
+        let kept: Vec<String> = db.0.lock().unwrap().1.keys().cloned().collect();
+        assert_eq!(kept, [format!("lab/{id}"), format!("lab/{id}/config"), format!("lab/{id}/g0"), format!("lab/{id}/g1"), format!("lab/{id}/g2")]);
     }
 
     /// SAVE AS DESIGN: the best genome becomes a saved design in the run's frame with its origin and the EVOLVED tag;
@@ -1464,7 +1651,7 @@ mod tests {
         let content = data::base_content();
         let mut storage = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let cfg = config(&content, &s, &storage);
         let id = lab.create(&mut storage, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
@@ -1518,27 +1705,27 @@ mod tests {
         let content = data::base_content();
         let mut made = mem();
         let s = setup(&content);
-        let mut lab = Lab::load(&made, &content, true);
+        let mut lab = Lab::load(&mut made, &content, true);
         let cfg = config(&content, &s, &made);
         let id = lab.create(&mut made, &content, cfg, "Small", 10).unwrap();
         while lab.running().is_some() {
             lab.compute(&mut made, BUDGET_OPEN_MS, 0.016);
         }
         // What `arena evolve --save` writes: the run file without the game's head.
-        let full = made.read::<RunDoc>(&id).unwrap().unwrap().doc.0;
+        let full = file(&made, &content, &id);
         let cli = RunSave { name: None, created: None, status: None, ..full.clone() }.to_ron();
         let mut storage = mem();
-        let mut lab = Lab::load(&storage, &content, true);
+        let mut lab = Lab::load(&mut storage, &content, true);
         let imported = lab.import(&mut storage, &content, "runs/deep_skiff.ron", &cli, 50).unwrap();
         let e = lab.entry(&imported).unwrap().clone();
         assert_eq!((e.name.as_str(), e.status, e.generation, e.stale), ("deep_skiff", RunStatus::Paused, 3, false));
-        let back = storage.read::<RunDoc>(&imported).unwrap().unwrap().doc.0;
+        let back = file(&storage, &content, &imported);
         assert_eq!(RunSave { name: None, created: None, status: None, ..back }.to_ron(), cli, "it round-trips");
         assert!(lab.running().is_none(), "an imported run waits");
         assert!(lab.import(&mut storage, &content, "x.ron", "(format: 1", 50).is_err());
         lab.rename(&mut storage, &imported, "  Deep skiff  ").unwrap();
         assert_eq!(lab.entry(&imported).unwrap().name, "Deep skiff");
-        assert_eq!(storage.read::<RunDoc>(&imported).unwrap().unwrap().doc.0.name.as_deref(), Some("Deep skiff"));
+        assert_eq!(file(&storage, &content, &imported).name.as_deref(), Some("Deep skiff"));
         // VALIDATE the best: it computes until done, then the run's file keeps it.
         let best = lab.get(&imported).unwrap().run.archive().best().unwrap().id;
         assert!(lab.validate(&storage, &content, &imported, &[best]).unwrap() > 0);
@@ -1551,7 +1738,7 @@ mod tests {
         }
         let v = lab.get(&imported).unwrap().run.validated(best).cloned().unwrap();
         assert_eq!(v.as_recorded.0, v.as_recorded.1, "today's rules: every fight as recorded");
-        let save = storage.read::<RunDoc>(&imported).unwrap().unwrap().doc.0;
+        let save = file(&storage, &content, &imported);
         assert_eq!(Run::restore(&content, &save).unwrap().validated(best), Some(&v));
         // DUPLICATE: the same setup, a new seed, computing.
         let copy = lab.duplicate(&mut storage, &content, &imported, 60).unwrap();
@@ -1561,8 +1748,8 @@ mod tests {
         assert_eq!(lab.entry(&copy).unwrap().name, "Deep skiff 2");
         // RE-SCORE: a run fought under other rules is stale; re-scored, a new run fights its elites again.
         let stale = RunSave { rules: save.rules ^ 1, ..save };
-        storage.write("old_rules", &RunDoc(stale), 70).unwrap();
-        let mut lab = Lab::load(&storage, &content, true);
+        store::write_new(&mut storage, "old_rules", &RunParts::of(&stale).unwrap(), 70).unwrap();
+        let mut lab = Lab::load(&mut storage, &content, true);
         assert!(lab.entry("old_rules").unwrap().stale);
         assert!(lab.validate(&storage, &content, "old_rules", &[best]).is_err(), "re-score it first");
         let fresh = lab.rescore(&mut storage, &content, "old_rules", 80).unwrap();
