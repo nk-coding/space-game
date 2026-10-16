@@ -13,8 +13,9 @@
 //!   other owners are hit.
 //! * **Shields**: every working emitter projects a bubble (`shield_radius`) around itself. A shot that enters a
 //!   bubble of a non-friendly ship loses `damage × absorb[family]` to it (up to what the bubble has left);
-//!   bubbles along the path are crossed in order, so overlapping bubbles stack. A shot starting inside a bubble
-//!   passes.
+//!   bubbles along the path are crossed in order, so overlapping bubbles stack. A shot fired from inside a
+//!   bubble (its muzzle in it: point blank) passes it. A projectile is taken once by each bubble, also by one it
+//!   finds itself inside in flight (that ship moved onto it since the last tick: ships move after the weapons).
 //!   Ram damage (GDR-0045) at a contact point inside bubbles is absorbed the same way, with the kinetic share,
 //!   by every bubble covering the point that is not friendly to the rammer ([`Sim::ram_shields`]). Shots, plumes
 //!   and rams share one rule for which bubbles take damage ([`absorbs_from`], GDR-0067).
@@ -68,6 +69,8 @@ pub mod tuning {
     pub const MAX_SHOTS_PER_TICK: u32 = 8;
     /// A collapsed shield bubble comes back once it has recharged this share of its capacity.
     pub const SHIELD_RESTART: f32 = 0.3;
+    /// A projectile remembers this many bubbles it is done with ([`super::Crossed`]).
+    pub const MAX_CROSSED: usize = 8;
 }
 
 /// Stable id of a projectile (monotonic, never reused).
@@ -112,6 +115,32 @@ pub struct Projectile {
     /// Seconds left.
     pub life: f32,
     pub ricochets: u8,
+    pub(crate) crossed: Crossed,
+}
+
+/// The shield bubbles a projectile is done with, as `(ship, emitter)`: those its muzzle was inside when it was
+/// fired (point blank: it passes them) and every one that has taken its share since, so each bubble takes a share
+/// of it once. The last [`tuning::MAX_CROSSED`] of them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Crossed {
+    list: [(ShipId, PartIdx); tuning::MAX_CROSSED],
+    len: u8,
+}
+
+impl Crossed {
+    fn has(&self, b: &Bubble) -> bool {
+        self.list[..self.len as usize].contains(&(b.ship, b.part))
+    }
+
+    /// Adds `b`, dropping the oldest when full.
+    fn add(&mut self, b: &Bubble) {
+        if self.len as usize == tuning::MAX_CROSSED {
+            self.list.copy_within(1.., 0);
+            self.len -= 1;
+        }
+        self.list[self.len as usize] = (b.ship, b.part);
+        self.len += 1;
+    }
 }
 
 /// A beam that fired this tick (for drawing).
@@ -176,6 +205,11 @@ impl StateHash for Projectile {
         h.u32(self.pierce);
         h.f32(self.life);
         h.u8(self.ricochets);
+        h.u8(self.crossed.len);
+        for &(ship, part) in &self.crossed.list[..self.crossed.len as usize] {
+            h.u32(ship.0);
+            h.u32(part);
+        }
     }
 }
 
@@ -347,9 +381,37 @@ impl Sim {
         }
     }
 
-    /// Bubbles that take damage from the shooter `owner` of `team` ([`absorbs_from`]) that the segment
-    /// `from + t·dir, t ∈ [0, len]` enters take their share of `damage`, in order along the path. Returns the
-    /// distance where the shot was fully absorbed, if it was.
+    /// The bubbles a shot of the shooter `owner` of `team` fired at `point` starts inside, of those that take its
+    /// damage ([`absorbs_from`]): a projectile passes them (point blank).
+    pub(crate) fn crossed_at(
+        &self,
+        owner: ShipId,
+        team: Option<Owner>,
+        family: WeaponFamily,
+        point: Vec2,
+    ) -> Crossed {
+        let fi = family_index(family);
+        let mut crossed = Crossed {
+            list: [(ShipId(0), 0); tuning::MAX_CROSSED],
+            len: 0,
+        };
+        for bub in &self.bubbles {
+            if absorbs_from(bub, &self.ships, owner, team, fi)
+                && (point - bub.centre).length_squared() <= bub.radius * bub.radius
+            {
+                crossed.add(bub);
+            }
+        }
+        crossed
+    }
+
+    /// Bubbles that take damage from the shooter `owner` of `team` ([`absorbs_from`]) along the segment
+    /// `from + t·dir, t ∈ [0, len]` take their share of `damage`, in order along the path: those the segment
+    /// enters, and for a projectile (its `crossed`) also those it starts inside, at its start. A hit-scan shot
+    /// starts at its muzzle, so it passes a bubble it starts in (point blank); a projectile inside a bubble it has
+    /// not been taken by was reached by that ship moving onto it since the last tick. A projectile is taken once by
+    /// each bubble: those in `crossed` are skipped and those that take their share added. Returns the distance
+    /// where the shot was fully absorbed, if it was.
     #[allow(clippy::too_many_arguments)]
     fn shield_pass(
         &mut self,
@@ -360,6 +422,7 @@ impl Sim {
         dir: Vec2,
         len: f32,
         damage: &mut f32,
+        mut crossed: Option<&mut Crossed>,
     ) -> Option<f32> {
         if self.bubbles.is_empty() || *damage <= 0.0 {
             return None;
@@ -368,13 +431,18 @@ impl Sim {
         let entries = &mut self.shield_scratch;
         entries.clear();
         for (b, bub) in self.bubbles.iter().enumerate() {
-            if !absorbs_from(bub, &self.ships, owner, team, fi) {
+            if !absorbs_from(bub, &self.ships, owner, team, fi)
+                || crossed.as_ref().is_some_and(|c| c.has(bub))
+            {
                 continue;
             }
             let oc = from - bub.centre;
             let c = oc.length_squared() - bub.radius * bub.radius;
             if c <= 0.0 {
-                continue; // starts inside: passes
+                if crossed.is_some() {
+                    entries.push((0.0, b as u32));
+                }
+                continue;
             }
             let bq = oc.dot(dir);
             let disc = bq * bq - c;
@@ -392,6 +460,9 @@ impl Sim {
         entries.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         for n in 0..self.shield_scratch.len() {
             let (t, b) = self.shield_scratch[n];
+            if let Some(c) = crossed.as_deref_mut() {
+                c.add(&self.bubbles[b as usize]);
+            }
             *damage -= self.absorb(b as usize, fi, owner, from + dir * t, *damage);
             if *damage <= 1e-6 {
                 *damage = 0.0;
@@ -603,7 +674,7 @@ impl Sim {
         let hit = self.shot_cast(owner, team, from, dir, range);
         let len = hit.map_or(range, |h| h.hit.distance);
         let mut left = damage;
-        if let Some(t) = self.shield_pass(owner, team, family, from, dir, len, &mut left) {
+        if let Some(t) = self.shield_pass(owner, team, family, from, dir, len, &mut left, None) {
             return ShotEnd {
                 to: from + dir * t,
                 hit: false,
@@ -779,9 +850,16 @@ impl Sim {
                 let hit = self.shot_cast(p.owner, p.team, p.pos, dir, remaining);
                 let len = hit.map_or(remaining, |h| h.hit.distance);
                 let before = p.damage;
-                if let Some(t) =
-                    self.shield_pass(p.owner, p.team, p.family, p.pos, dir, len, &mut p.damage)
-                {
+                if let Some(t) = self.shield_pass(
+                    p.owner,
+                    p.team,
+                    p.family,
+                    p.pos,
+                    dir,
+                    len,
+                    &mut p.damage,
+                    Some(&mut p.crossed),
+                ) {
                     p.pos += dir * t;
                     gone = Some(GoneReason::Absorbed);
                     break;
@@ -945,6 +1023,7 @@ impl Sim {
                         } => {
                             let id = self.ids.projectile();
                             let vel = v_muzzle + dir * speed;
+                            let crossed = self.crossed_at(owner, team, g.family, from);
                             self.projectiles.push(Projectile {
                                 id,
                                 owner,
@@ -957,6 +1036,7 @@ impl Sim {
                                 pierce: penetration.max(1),
                                 life: if speed > 0.0 { g.range / speed } else { 0.0 },
                                 ricochets: 0,
+                                crossed,
                             });
                             self.events.push(SimEvent::ShotFired {
                                 ship: owner,

@@ -466,7 +466,8 @@ impl Sim {
     }
 
     /// Spawns a projectile directly (tools, tests). It flies from the next step on and never hits `owner`, nor
-    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048). NaN or infinite numbers count as 0.
+    /// any vessel of `owner`'s owner while `owner` is a vessel now (GDR-0048). Like a gun's shot it passes the
+    /// bubbles (of the last step) that `pos` is inside, as if fired from there. NaN or infinite numbers count as 0.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_projectile(
         &mut self,
@@ -483,6 +484,7 @@ impl Sim {
         let (damage, life) = (finite_or_zero(damage), finite_or_zero(life));
         let id = self.ids.projectile();
         let team = self.ship(owner).and_then(|s| s.team());
+        let crossed = self.crossed_at(owner, team, family, pos);
         self.projectiles.push(Projectile {
             id,
             owner,
@@ -495,6 +497,7 @@ impl Sim {
             pierce: pierce.max(1),
             life,
             ricochets: 0,
+            crossed,
         });
         self.events.push(SimEvent::ProjectileSpawned {
             id,

@@ -382,6 +382,83 @@ fn shields_let_half_of_a_kinetic_shot_through() {
     );
 }
 
+/// Damage a lone kinetic shot (0.8, 100 m/s) fired at `from` dealt: what the target's bubbles took and what its
+/// hull took, until the shot is gone.
+fn kinetic_shot(w: &mut sim::Sim, t: ShipId, from: Vec2) -> (f32, f32) {
+    w.spawn_projectile(ShipId(999), WeaponFamily::Kinetic, from, Vec2::new(0.0, 100.0), 0.8, 1, 1.0);
+    let (mut absorbed, mut hull) = (0.0, 0.0);
+    for _ in 0..20 {
+        w.step(&TickInputs::default());
+        for e in w.events() {
+            match e {
+                SimEvent::ShieldHit { absorbed: a, .. } => absorbed += a,
+                SimEvent::Hit { ship, damage, .. } if *ship == t => hull += damage,
+                _ => {}
+            }
+        }
+    }
+    (absorbed, hull)
+}
+
+/// A ship closing on a shot at 20 m/s can move its bubble onto it between ticks (16 Oct 2026: the shot then began
+/// the tick inside the bubble, passed it and hit the hull for full damage). Started at 40 distances a tenth of a
+/// metre apart (one tick of closing at 120 m/s), every shot is halved by the bubble.
+#[test]
+fn a_ship_closing_on_a_shot_never_lets_it_through_its_shield() {
+    let c = content();
+    let td = custom(&c, &shielded());
+    for i in 0..40 {
+        let mut w = sim::Sim::new(1);
+        let body = Body {
+            linvel: Vec2::new(0.0, -20.0),
+            ..Body::at(Vec2::new(0.0, 20.0), 0.0)
+        };
+        let t = w.spawn_ship(td.clone(), sim::Owner::PLAYER, body);
+        w.step(&TickInputs::default());
+        let b = w.bubbles()[0];
+        let from = Vec2::new(b.centre.x, b.centre.y - b.radius - 6.0 - 0.1 * i as f32);
+        let (absorbed, hull) = kinetic_shot(&mut w, t, from);
+        assert!(
+            (absorbed - 0.4f32).abs() < 1e-5 && (hull - 0.4f32).abs() < 1e-5,
+            "start {i}: absorbed {absorbed}, hull {hull}"
+        );
+    }
+}
+
+/// Point blank: a shot fired from inside a bubble passes it whole.
+#[test]
+fn a_shot_fired_inside_a_bubble_passes_it() {
+    let c = content();
+    let mut w = sim::Sim::new(1);
+    let t = w.spawn_ship(custom(&c, &shielded()), sim::Owner::PLAYER, Body::at(Vec2::new(0.0, 20.0), 0.0));
+    w.step(&TickInputs::default());
+    let b = w.bubbles()[0];
+    let (absorbed, hull) = kinetic_shot(&mut w, t, b.centre - Vec2::new(0.0, b.radius - 0.2));
+    assert!(absorbed == 0.0 && (hull - 0.8f32).abs() < 1e-5, "absorbed {absorbed}, hull {hull}");
+}
+
+/// The starter's two bubbles cover its whole front row, both pulse lasers and the slopes beside them (16 Oct 2026:
+/// its emitters sat in the rear row and left the nose bare).
+#[test]
+fn the_rim_skiffs_bubbles_cover_its_nose() {
+    let c = content();
+    let mut w = sim::Sim::new(1);
+    let s = w.spawn_ship(design(&c, "rim_skiff"), sim::Owner::PLAYER, Body::default());
+    w.step(&TickInputs::default());
+    assert_eq!(w.bubbles().len(), 2);
+    let pc = &w.ship(s).unwrap().pieces()[0];
+    let (pos, o) = (pc.body.pos, pc.origin);
+    for x in 2..=6 {
+        for y in 0..=1 {
+            let corner = pos + Vec2::new(x as f32 - o[0], o[1] - y as f32);
+            assert!(
+                w.bubbles().iter().any(|b| (corner - b.centre).length() <= b.radius),
+                "the corner ({x}, {y}) of the front row is bare"
+            );
+        }
+    }
+}
+
 #[test]
 fn raiders_shoot_back() {
     let c = content();
